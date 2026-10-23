@@ -489,6 +489,14 @@ SLICE_SCALE_SQUARED = "1000000"
 # Recursion and sites differ only by rounding (binary64) or not at all within
 # the 200-bit carrier's working precision; the legacy O1 tolerances.
 SLICE_TOLERANCE = {"double": Decimal("1e-12"), "arbitrary-200": Decimal("1e-40")}
+# The 200-bit carrier and the six-leg request with tops in every block (about
+# 15 minutes per carrier) run in the nightly tier; gg -> tt~g keeps the top
+# width and the full kernels in the physics tier.
+SLICE_CARRIERS = (
+    "double",
+    pytest.param("arbitrary-200", marks=pytest.mark.loop_nightly),
+)
+SLICE_NIGHTLY = frozenset({"gg_ttxgg"})
 
 
 @pytest.fixture(scope="module")
@@ -603,8 +611,16 @@ def _route_differences(slice_routes, name, carrier, parameters, masses=None):
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("carrier", tuple(SLICE_TOLERANCE))
-@pytest.mark.parametrize("name", tuple(SLICE_O6))
+@pytest.mark.parametrize("carrier", SLICE_CARRIERS)
+@pytest.mark.parametrize(
+    "name",
+    tuple(
+        pytest.param(name, marks=pytest.mark.loop_nightly)
+        if name in SLICE_NIGHTLY
+        else name
+        for name in SLICE_O6
+    ),
+)
 def test_slice_counterterms_from_recursion_equal_sites(
     slice_routes, monkeypatch, name, carrier
 ):

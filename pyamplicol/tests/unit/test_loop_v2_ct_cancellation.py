@@ -28,6 +28,7 @@ import pytest
 from tools.loop_reference import legacy_capture
 
 from .test_loop_v2_ct_closure import (  # noqa: F401 (fixtures)
+    SLICE_CARRIERS,
     SLICE_PARAMETERS,
     SLICE_TOLERANCE,
     _certify_furry_zeros,
@@ -142,7 +143,7 @@ def cancellation_routes(two_point_model, loop_native):  # noqa: F811
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("carrier", tuple(SLICE_TOLERANCE))
+@pytest.mark.parametrize("carrier", SLICE_CARRIERS)
 @pytest.mark.parametrize("name", tuple(CANCELLATION_O6))
 def test_cancelled_counterterms_from_recursion_equal_sites(
     cancellation_routes, monkeypatch, name, carrier

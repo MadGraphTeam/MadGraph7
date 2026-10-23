@@ -34,6 +34,7 @@ import pytest
 from tools.loop_reference import legacy_capture
 
 from .test_loop_v2_ct_closure import (  # noqa: F401 (fixtures)
+    SLICE_CARRIERS,
     SLICE_PARAMETERS,
     SLICE_SCALE_SQUARED,
     SLICE_TOLERANCE,
@@ -338,7 +339,7 @@ def two_point_routes(two_point_model, loop_native):
     return build
 
 
-@pytest.mark.parametrize("carrier", tuple(SLICE_TOLERANCE))
+@pytest.mark.parametrize("carrier", SLICE_CARRIERS)
 @pytest.mark.parametrize("name", tuple(TWO_POINT_O6))
 def test_two_point_counterterms_from_recursion_equal_sites(
     two_point_routes, monkeypatch, name, carrier
