@@ -341,3 +341,68 @@ def test_reachability_falls_back_where_field_level_families_differ(
             LoopSlice.generate(compiled, request, loop_native)
         found[reachability] = stop.value.args[0]
     assert_same_families(found[True], found[False])
+
+
+# ------------------------------------------------- evaluation reuse (I1c)
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("process", "born", "ignored"),
+    [
+        ("g g > g g g", {"QCD": 3}, ()),
+        ("u u~ > d d~ s s~", {"QCD": 4}, ()),
+        ("u u~ > e- e+ d d~ g", {"QCD": 3, "QED": 2}, (23,)),
+    ],
+)
+def test_reuse_fast_path_equals_the_derivation(
+    loop_sm_compiled_model, monkeypatch, process, born, ignored
+):
+    """The evaluation-reuse pass skips its class derivation when no two
+    currents share an evaluation contract; the DAGs equal the derived ones
+    (the photon process merges electroweak evaluations and derives)."""
+
+    import pyamplicol.generation.dag_compiler as dag_compiler
+    from pyamplicol.generation import dag_equivalence as equivalence
+    from pyamplicol.loops.v2.blocks import build_tree_blocks
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.processes.model import build_model_process_ir
+
+    def derived(dag, model):
+        if not dag.interactions:
+            return dag
+        kinds = {}
+        classes = equivalence._derive_current_value_equivalences(
+            dag, model, equivalence_by_kind=kinds
+        )
+        return equivalence._rewrite_interaction_evaluation_reuse(
+            dag, model, current_equivalences=classes, equivalence_by_kind=kinds
+        )
+
+    def signature(dag):
+        return (
+            [
+                (i.evaluation_group_id, repr(i.evaluation_factor), i.result_id)
+                for i in dag.interactions
+            ],
+            [repr(current.index) for current in dag.currents],
+        )
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    loop = {k: v + (2 if k == "QCD" else 0) for k, v in born.items()}
+    ir = build_model_process_ir(process, compiled.ir, color_accuracy="full")
+    found = []
+    for reuse in (equivalence.assign_recursive_current_evaluation_reuse, derived):
+        monkeypatch.setattr(
+            dag_compiler, "assign_recursive_current_evaluation_reuse", reuse
+        )
+        blocks = build_tree_blocks(
+            ir,
+            CompiledUFOModel(compiled),
+            born_coupling_orders=born,
+            block_coupling_orders=loop,
+            ignored_particle_ids=ignored,
+        )
+        found.append((signature(blocks.blocks_dag), signature(blocks.born_dag)))
+    assert found[0] == found[1]

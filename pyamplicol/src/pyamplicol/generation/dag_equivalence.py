@@ -3833,11 +3833,23 @@ def assign_recursive_current_evaluation_reuse(
         return dag
 
     equivalence_by_kind: dict[int, VertexEvaluationEquivalence] = {}
-    current_equivalences = _derive_current_value_equivalences(
-        dag,
-        model,
-        equivalence_by_kind=equivalence_by_kind,
-    )
+    contracts = {
+        _current_evaluation_contract(current) for current in dag.currents
+    }
+    if len(contracts) == len(dag.currents):
+        # Every class key starts with the evaluation contract, so a current
+        # whose contract no other current shares is its own representative:
+        # the derivation would return the identity for every current.
+        current_equivalences = tuple(
+            _CurrentValueEquivalence(current_id, (1.0, 0.0))
+            for current_id in sorted(current.id for current in dag.currents)
+        )
+    else:
+        current_equivalences = _derive_current_value_equivalences(
+            dag,
+            model,
+            equivalence_by_kind=equivalence_by_kind,
+        )
     return _rewrite_interaction_evaluation_reuse(
         dag,
         model,
