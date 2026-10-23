@@ -542,15 +542,18 @@ def _canonical_symbols(count: int) -> list[Any]:
     term order no longer follows those bytes, raises instead of silently
     making generation depend on the process history again."""
 
-    from symbolica import Expression, S
+    from symbolica import Expression
+
+    from pyamplicol._internal.physics.symbols import symbols
 
     while len(_CANONICAL_SYMBOLS) < count:
         start = len(_CANONICAL_SYMBOLS)
         padding = -len(Expression.get_all_symbol_names()) % _CANONICAL_BLOCK
         for k in range(padding):
-            S(f"pyamplicol_v2_canonical::pad{start}_{k}")
+            symbols.qualified(f"pyamplicol_v2_canonical::pad{start}_{k}")
         block = [
-            S(f"pyamplicol_v2_canonical::c{start + k}") for k in range(_CANONICAL_BLOCK)
+            symbols.qualified(f"pyamplicol_v2_canonical::c{start + k}")
+            for k in range(_CANONICAL_BLOCK)
         ]
         _check_canonical_block(block)
         _CANONICAL_SYMBOLS.extend(block)
@@ -593,7 +596,9 @@ def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
     stage normalises and compiles identically in every process. The renaming
     is exact: values do not change beyond rounding."""
 
-    from symbolica import E, Replacement, S
+    from symbolica import E, Replacement
+
+    from pyamplicol._internal.physics.symbols import symbols
 
     parameters = list(stage.parameter_symbols)
     definitions = list(stage.symbolica_functions)
@@ -630,7 +635,7 @@ def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
     )
     old = [*parameters, *heads, *arguments]
     renamed = dict(zip(old, _canonical_symbols(len(old)), strict=True))
-    tail = S("pyamplicol_v2_canonical::args___")
+    tail = symbols.qualified("pyamplicol_v2_canonical::args___")
     # Two passes: a single ``replace_multiple`` does not descend into a call
     # its head rule replaced, so the arguments of a model-function call kept
     # their old symbols (the evaluator then refused them).
