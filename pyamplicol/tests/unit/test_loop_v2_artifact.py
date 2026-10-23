@@ -341,8 +341,8 @@ def test_configuration_selects_the_engine_and_the_runtime_options(tmp_path):
 @pytest.mark.loop_fast
 def test_slice_request_records_round_trip():
     """Every ``SliceRequest`` field is recorded and restored (a field added
-    by another package needs no edit of the record); unknown record fields
-    are refused."""
+    by another package needs no edit of the record); a record with an
+    unknown or a missing field is refused."""
 
     from dataclasses import fields
 
@@ -381,8 +381,12 @@ def test_slice_request_records_round_trip():
     single = request_record(default)
     assert single["loop_orders"] == {"QCD": 4}
     assert request_from_record(single) == default
-    with pytest.raises(ArtifactError, match="unknown fields"):
+    with pytest.raises(ArtifactError, match=r"unknown.*future_option"):
         request_from_record({**record, "future_option": 1})
+    with pytest.raises(ArtifactError, match=r"missing.*compress_colour"):
+        request_from_record(
+            {key: value for key, value in record.items() if key != "compress_colour"}
+        )
 
 
 @pytest.mark.loop_fast

@@ -174,29 +174,23 @@ def request_record(request: Any, correlators: Any = None) -> dict[str, object]:
 
 
 def request_from_record(record: Mapping[str, Any]) -> Any:
-    """The ``SliceRequest`` of a request record. A field the record lacks
-    keeps its default (records written before the field existed); a record
-    key the request does not know is refused."""
+    """The ``SliceRequest`` of a request record, which must name exactly the
+    request's fields (a missing field would silently take its default)."""
 
-    from dataclasses import MISSING, fields
+    from dataclasses import fields
 
     from .assemble import SliceRequest
 
-    known = {item.name: item for item in fields(SliceRequest)}
-    unknown = set(record) - set(known) - {"correlators"}
-    if unknown:
+    known = {item.name for item in fields(SliceRequest)}
+    if set(record) != known | {"correlators"}:
         raise ArtifactError(
-            f"the loop request record has unknown fields {sorted(unknown)}: it was "
-            "written by a different pyAmpliCol build; regenerate the artifact"
+            "the loop request record does not match this pyAmpliCol build "
+            f"(unknown {sorted(set(record) - known - {'correlators'})}, missing "
+            f"{sorted(known - set(record))}); regenerate the artifact"
         )
-    values = {}
-    for name, item in known.items():
-        if name not in record:
-            if item.default is MISSING and item.default_factory is MISSING:
-                raise ArtifactError(f"the loop request record has no {name!r}")
-            continue
-        values[name] = _decode_field(name, record[name])
-    return SliceRequest(**values)
+    return SliceRequest(
+        **{name: _decode_field(name, record[name]) for name in sorted(known)}
+    )
 
 
 def correlators_from_record(record: Mapping[str, Any]) -> Any:
