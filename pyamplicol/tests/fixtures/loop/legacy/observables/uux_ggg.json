@@ -7,6 +7,7 @@
   ]
  ],
  "engine": "legacy public pipeline: Generator(...).generate(..., correlators=...); Runtime.evaluate_correlated_many / evaluate_resolved",
+ "provenance": "Assembled from two legacy runs of tools/loop_reference/legacy_observables_capture.py. Directed part (born, T12, T35, both carriers): a run of the combined directed and resolved control, made before commit 8b7e75b8; that commit changes only the digits of the resolved colour sums, not directed values. Resolved part: a resolved-only recapture with the fixed tool; at 200 bits it agrees with the first run's resolved values to 4e-28 relative, and the binary64 values are identical. The committed 'uux_ggg' control produces both parts in one run; that run has not been repeated (its directed generation takes about 5 h).",
  "model": "MG5_aMC 3.7.0 loop_sm, restriction no_b_mass (MB = 0), aS 0.118, MT 173",
  "parameters": {
   "aS": "0.118",
