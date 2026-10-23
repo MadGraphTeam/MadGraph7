@@ -406,3 +406,81 @@ def test_reuse_fast_path_equals_the_derivation(
         )
         found.append((signature(blocks.blocks_dag), signature(blocks.born_dag)))
     assert found[0] == found[1]
+
+
+# ------------------------------------------------------------- seven legs
+
+
+@pytest.fixture(scope="module")
+def loop_sm_request_model(loop_sm_compiled_model):
+    """loop_sm prepared for QCD corrections with up to five gluon couplings."""
+
+    import json
+
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    prepared = prepare_loop_request_model(
+        compiled,
+        born_order_bounds={"QCD": 5, "QED": 0},
+        loop_order_bounds={"QCD": 7, "QED": 0},
+        fixed_parameters={"MB": "0"},
+    )
+    data = json.loads(prepared.structure.native.to_json())
+    catalogue = ModelLoopCatalogue(
+        data, species_orders=prepared.structure.perturbative_species_orders
+    )
+    return compiled, data, catalogue
+
+
+@pytest.mark.loop_physics
+def test_native_families_at_seven_legs(loop_sm_request_model, loop_native):
+    """gg -> ggggg FC: the native recursion equals Python's on the
+    field-level table (9,414 families, 52,682 routings, 109,179 prefix
+    states; WP3.1 plan §2.5)."""
+
+    _compiled, data, catalogue = loop_sm_request_model
+    selection = _selection({"QCD": 5})
+    table = ModelBlockTable(data, ["G", "G"], ["G"] * 5, cap=selection.cap)
+    native = NativeGeneration(table, catalogue, selection, loop_native).families()
+    assert len(native.families) == 9414
+    assert sum(len(f.closures) for f in native.families.values()) == 52682
+    assert len(native.prefixes) == 109179
+    assert_same_families(native, generate_families(table, catalogue, selection))
+
+
+@pytest.mark.loop_nightly
+def test_native_schedules_at_seven_legs(loop_sm_request_model, loop_native):
+    """uu~ -> ggggg FC: the native skeletons, view and tries equal Python's
+    on the reachable tree blocks with the slice's colour model."""
+
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.blocks import build_tree_blocks, requested_loop_blocks
+    from pyamplicol.loops.v2.colour import SeedColour
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.processes.model import build_model_process_ir
+
+    compiled, data, catalogue = loop_sm_request_model
+    selection = _selection({"QCD": 5})
+    field = ModelBlockTable(data, ["u", "u~"], ["G"] * 5, cap=selection.cap)
+    reachable = NativeGeneration(field, catalogue, selection, loop_native).families()
+    process = build_model_process_ir(
+        "u u~ > g g g g g", compiled.ir, color_accuracy="full"
+    )
+    blocks = build_tree_blocks(
+        process,
+        CompiledUFOModel(compiled),
+        born_coupling_orders={"QCD": 5, "QED": 0},
+        block_coupling_orders={"QCD": 7, "QED": 0},
+        reachability=requested_loop_blocks(reachable.block_requests(), data),
+    )
+    table = blocks.block_table(data)
+    generation = NativeGeneration(table, catalogue, selection, loop_native)
+    families = generate_families(table, catalogue, selection)
+    assert_same_families(generation.families(), families)
+    colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
+    assert_same_schedules(
+        generation.schedules(colour),
+        build_schedules(families, catalogue, colour, policy=assemble._FRAME_POLICY),
+    )
