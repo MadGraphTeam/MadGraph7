@@ -14955,3 +14955,50 @@ class TestAllMomentaMergedAntiparticles(unittest.TestCase):
             # u~ <-> s~ (or u <-> s) between the production and the W decay
             self.assertEqual(len(full), 2)
             self.assertEqual(len(stub._all_momenta(event, order)), len(full))
+
+
+class TestDensityLibtag(unittest.TestCase):
+    """_density_libtag: the madmatrix libraries are loaded with the LIBTAG this
+    run builds them with, not one guessed from the library names -- a reused
+    directory may hold the build of another run (another _ms_run_id) too."""
+
+    def setUp(self):
+        import tempfile
+        self.tree = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.tree, 'lib'))
+
+    def tearDown(self):
+        shutil.rmtree(self.tree, ignore_errors=True)
+
+    def touch(self, tag):
+        open(os.path.join(self.tree, 'lib',
+                          'libmadmatrix_common%s_scalar.so' % tag), 'w').close()
+
+    def libtag(self, run_id, side='prod'):
+        stub = type('Stub', (), {'_ms_run_id': run_id})()
+        return interface_madspin.MadSpinInterface._density_libtag(stub, self.tree, side)
+
+    def test_shared_formula(self):
+        self.assertEqual(madspin.density_libtag(2, 'p'), '_ms2p')
+        stub = type('Stub', (), {})()
+        stub.mscmd = type('MSCmd', (), {'_ms_run_id': 2})()
+        self.assertEqual(
+            madspin.decay_all_events_onshell.density_libtag(stub, 'd'), '_ms2d')
+
+    def test_this_run_build_wins_over_another(self):
+        self.touch('_ms1p')
+        self.touch('_ms2p')
+        self.assertEqual(self.libtag(2), '_ms2p')
+        self.assertEqual(self.libtag(1), '_ms1p')
+
+    def test_only_another_run_build(self):
+        self.touch('_ms1d')
+        self.assertEqual(self.libtag(2, 'decay'), '_ms1d')
+
+    def test_no_build(self):
+        try:
+            self.libtag(2)
+        except madmatrix_density.MadDensityError as error:
+            self.assertIn('LIBTAG=_ms2p', str(error))
+        else:
+            self.fail('no library, yet a LIBTAG was found')

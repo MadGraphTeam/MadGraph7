@@ -76,6 +76,14 @@ import madmatrix.density as madmatrix_density
 
 MAX_COMPAT_FLAVS = 500
 
+
+def density_libtag(run_id, side):
+    """The LIBTAG the madmatrix density libraries of MadSpin run run_id are
+    built and loaded with, side 'p' (production) or 'd' (decay). Production and
+    decay live in one process, as do the trees of a second MadSpin run, and the
+    loader tells libraries apart by their name only."""
+    return '_ms%d%s' % (run_id, side)
+
 # Optimisation flag the matrix elements are compiled with. It is the
 # GLOBAL_FLAG of the tree's Source/make_opts, which every makefile of the tree
 # (DHELAS, MODEL, the P directories, MadSpin/src/makefile_*) adds to FFLAGS;
@@ -5620,10 +5628,8 @@ class decay_all_events_onshell(decay_all_events):
 
     def density_libtag(self, side):
         """The LIBTAG of the madmatrix libraries of one density tree (side 'p'
-        production, 'd' decay). Production and decay live in one process, as do
-        the trees of a second MadSpin run, and the loader tells libraries apart
-        by their name only."""
-        return '_ms%d%s' % (getattr(self.mscmd, '_ms_run_id', 1), side)
+        production, 'd' decay) for this MadSpin run (density_libtag)."""
+        return density_libtag(getattr(self.mscmd, '_ms_run_id', 1), side)
 
     def output_density_me(self, path, backend, side):
         """Write the matrix elements just generated to path, for the density

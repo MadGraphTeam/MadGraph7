@@ -11928,6 +11928,23 @@ class MadSpinInterface(extended_cmd.Cmd):
                 return card
         return pjoin(self.path_me, 'param_card.dat')
 
+    def _density_libtag(self, tree, prod_or_decay):
+        """The LIBTAG to load the madmatrix libraries of tree with: the one
+        this run builds them with (madspin.density_libtag), and not one read
+        off the library names, which is ambiguous as soon as a reused
+        directory holds the build of another run as well. A directory holding
+        only another run's build (reused without being rebuilt) is loaded with
+        that build's tag."""
+        tag = madspin.density_libtag(self._ms_run_id,
+                                     'p' if prod_or_decay == 'prod' else 'd')
+        if os.path.exists(pjoin(tree, 'lib', 'libmadmatrix_common%s_scalar.so' % tag)):
+            return tag
+        try:
+            return madmatrix_density.find_libtag(tree)
+        except madmatrix_density.MadDensityError as error:
+            raise madmatrix_density.MadDensityError(
+                '%s (this run builds them as LIBTAG=%s)' % (error, tag))
+
     def initialise_f2py_module(self, mymod, sp_path, prod_or_decay):
         """ Routine to initialise the fortran module with module.initialise(param_card_path).
             If one the process is at loop-induced level, it is also needed to call module.set_madloop_path(path_to_MadLoop5_resources)
@@ -11997,7 +12014,8 @@ class MadSpinInterface(extended_cmd.Cmd):
             # standalone output, with the f2py module's method names (see
             # madmatrix/density.py), built with a LIBTAG of their own by
             # decay_all_events_onshell.compile
-            mymod = madmatrix_density.MadDensityLibrary(tree)
+            mymod = madmatrix_density.MadDensityLibrary(
+                tree, libtag=self._density_libtag(tree, prod_or_decay))
         else:
             # production and decay are built with distinct MENUM (2 vs 1) so
             # their f2py modules / dependent libraries don't clash in-process
