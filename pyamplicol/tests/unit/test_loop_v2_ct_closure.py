@@ -122,7 +122,6 @@ def _program_rows(closure, parameters, digits):
     from symbolica import E
 
     from pyamplicol._internal.physics.symbols import symbols
-    from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
 
     compiled = closure.program.recursion.model.lowered.compiled
@@ -320,7 +319,7 @@ def _born_vectors(ct, label: str, index: int) -> dict:
         for key, value in ct._caches.items()
         if isinstance(key, tuple) and key[:2] == ("closure", None)
     )
-    _sites, _fields, closure, born_terms, _site_terms, plan, _names = cached
+    _sites, _fields, closure, born_terms, _site_terms, _plan, _names = cached
     assert isinstance(closure, SiteClosure)
     return _born_vectors_from(ct, closure, born_terms, label, index)
 
@@ -382,9 +381,7 @@ def _born_vectors_from(ct, closure, born_terms, label: str, index: int) -> dict:
                         values = None
                         break
                     variant = "source" if block.is_source else "propagated"
-                    values.append(
-                        [convert(v) for v in rows[(row.current_id, variant)]]
-                    )
+                    values.append([convert(v) for v in rows[(row.current_id, variant)]])
                 if values is None:
                     continue
                 vectors = [momenta[block.key.external_mask] for block in term.blocks]
@@ -434,7 +431,7 @@ def _assert_closure_equals_sites_and_legacy(ct, lowered, label: str) -> None:
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", CONTROLS)
-def test_closure_equals_site_closure(ct_slice, closure_ct_model, name):
+def test_closure_equals_site_closure(ct_slice, closure_ct_model, name):  # noqa: F811
     """O6 and O1 of the closed CT amplitudes in binary64."""
 
     ct = ct_slice(name)
@@ -443,7 +440,11 @@ def test_closure_equals_site_closure(ct_slice, closure_ct_model, name):
 
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize("name", ("gg_gg", "uux_ggg", "uux_ddxg", "dy"))
-def test_closure_equals_site_closure_at_200_bits(ct_slice, closure_ct_model, name):
+def test_closure_equals_site_closure_at_200_bits(
+    ct_slice,  # noqa: F811
+    closure_ct_model,
+    name,
+):
     """O6 and O1 of the closed CT amplitudes in the 200-bit carrier."""
 
     ct = ct_slice(name)
@@ -652,3 +653,50 @@ def test_slice_counterterms_from_recursion_equal_sites(
     assert recursion.blocks.kernel_variant == variant
     worst = _route_differences(slice_routes, name, carrier, SLICE_PARAMETERS)
     assert all(value <= SLICE_TOLERANCE[carrier] for value in worst.values()), worst
+
+
+@pytest.mark.loop_physics
+def test_generation_leaves_the_program_rows_to_the_first_point(
+    loop_sm_compiled_model, loop_native, monkeypatch
+):
+    """Generation builds the CT program and its root terms but not the
+    program's Python tree rows: a native evaluation never needs them, and at
+    seven legs their evaluator would cost hours. The first point compiles
+    them, after the block rows."""
+
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+
+    built = []
+    tree_rows = assemble.TreeRows
+
+    class Recorded(tree_rows):
+        def __init__(self, dag, compiled):
+            built.append(id(dag))
+            super().__init__(dag, compiled)
+
+    monkeypatch.setattr(assemble, "TreeRows", Recorded)
+    _certify_furry_zeros(monkeypatch)
+    route = LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model),
+        SliceRequest(
+            "u u~ > a g",
+            {"QCD": 1, "QED": 1},
+            {"QCD": 3, "QED": 1},
+            fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+        ),
+        loop_native,
+    )
+    program = route.counterterm_program
+    assert program is not None and program.closure.terms
+    blocks = id(route.blocks.blocks_dag)
+    counterterms = id(program.blocks.blocks.blocks_dag)
+    assert built == [blocks]
+    route.evaluate(
+        _slice_point((0,) * 4),
+        SLICE_SCALE_SQUARED,
+        parameters=SLICE_PARAMETERS,
+        precision=Precision.double(),
+    )
+    assert built == [blocks, counterterms]

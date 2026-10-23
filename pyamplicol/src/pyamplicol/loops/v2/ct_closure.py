@@ -46,13 +46,12 @@ from pyamplicol.models.loading import (
     counterterm_slot_order,
 )
 
-from .blocks import Block, TreeBlocks, _blocks
+from .blocks import TreeBlocks, _blocks
 from .ct_recursion import CountertermRecursion, _physical
 from .ct_sites import (
     COMPONENT_BY_KIND,
     CountertermSite,
     SiteClosure,
-    SiteTerm,
     generate_counterterm_sites,
 )
 from .families import (
@@ -61,7 +60,6 @@ from .families import (
     Orders,
     _set_partitions,
     add_orders,
-    model_data,
 )
 
 RootKind = Literal["vertex", "line", "counterterm"]
@@ -78,7 +76,7 @@ class RootReachability:
     full_mask: int
 
     def admits_mask(self, mask: int) -> bool:
-        return 0 < mask and not mask & 1 and mask & self.full_mask == mask
+        return mask > 0 and not mask & 1 and mask & self.full_mask == mask
 
     def admits_block(self, index: Any) -> bool:
         return self.admits_mask(index.external_mask)
@@ -294,9 +292,7 @@ class CountertermClosure:
         full = (1 << len(legs)) - 1
         loop = set(recursion.loop_orders)
         slots = {
-            name: slot
-            for slot in recursion.slots
-            for name in (_slot_order(slot),)
+            name: slot for slot in recursion.slots for name in (_slot_order(slot),)
         }
         terms: list[ClosureTerm] = []
         for entries in ordinary:
@@ -495,7 +491,6 @@ def _slot_order(slot: tuple[str, int, int]) -> str:
     return counterterm_slot_order(*slot)
 
 
-
 def _powers(recursion: CountertermRecursion, site: CountertermSite) -> tuple[int, ...]:
     """Epsilon powers of a CT-root site: those of its rule's lowered terms."""
 
@@ -604,10 +599,9 @@ def model_value(compiled: Any, expression: str, parameters: Mapping[str, Any], d
             strict=True,
         )
     )
-    return value.evaluate(substitutions, decimal_digit_precision=digits).to_decimal_tuple()
-
-
-
+    return value.evaluate(
+        substitutions, decimal_digit_precision=digits
+    ).to_decimal_tuple()
 
 
 # ------------------------------------------------------------------ production
@@ -674,19 +668,34 @@ class CountertermProgram:
 
     ``blocks`` is the CT program (``CountertermBlocks``), ``root_sites`` its
     CT-root sites; ``residual`` names the request's rules left to site
-    closure. ``bind`` attaches the root terms (``closure``) and the program's
-    tree rows (``rows``, an ``assemble.TreeRows``); ``point`` evaluates the
-    rows and Weyl factors at one point.
+    closure. ``bind`` attaches the root terms (``closure``); ``point``
+    evaluates the program's tree rows (``rows``) and Weyl factors at one
+    point.
     """
 
     blocks: CountertermBlocks
     root_sites: tuple[CountertermSite, ...]
     closure: CountertermClosure | None = None
-    rows: Any = None
+    _rows: Any = field(default=None, repr=False, compare=False)
 
     @property
     def recursion(self) -> CountertermRecursion:
         return self.blocks.recursion
+
+    @property
+    def rows(self) -> Any:
+        """The program's tree rows (``assemble.TreeRows``), compiled on first
+        use: generation and a native evaluation of the program do not need
+        this Python evaluator (at gg -> gggg it takes most of the bind's
+        6 minutes and 11.8 GB)."""
+
+        if self._rows is None:
+            from .assemble import TreeRows
+
+            self._rows = TreeRows(
+                self.blocks.blocks.blocks_dag, self.recursion.model.lowered.compiled
+            )
+        return self._rows
 
     @property
     def residual(self) -> tuple[str, ...]:
@@ -737,9 +746,7 @@ class CountertermProgram:
         ir = build_model_process_ir(
             process, lowered.lowered.compiled.ir, color_accuracy="full"
         )
-        program = CountertermBlocks.build(
-            recursion, ir, ignored_particle_ids=forbidden
-        )
+        program = CountertermBlocks.build(recursion, ir, ignored_particle_ids=forbidden)
         # The lowered model projects the gluon legs of its CT vertices onto
         # SU(N) unless a tree vertex of the model couples to the U(1) part of
         # a gluon itself; the request's blocks are then not exact either.
@@ -760,16 +767,11 @@ class CountertermProgram:
     def bind(
         self, ordinary: Sequence[Sequence[Any]], native_model: Any, catalogue: Any
     ) -> CountertermProgram:
-        """Attach the root terms and the tree rows (``catalogue`` binds the
+        """Attach the root terms (``catalogue`` binds the
         ``counterterm_closure_entries``)."""
-
-        from .assemble import TreeRows
 
         self.closure = CountertermClosure.build(
             self.blocks, self.root_sites, ordinary, native_model, catalogue
-        )
-        self.rows = TreeRows(
-            self.blocks.blocks.blocks_dag, self.recursion.model.lowered.compiled
         )
         return self
 
@@ -786,7 +788,10 @@ class CountertermProgram:
         values = dict(parameters)
         recursion = self.recursion
         values.update(
-            {name: str(v) for name, v in recursion.parameter_values(poles=poles).items()}
+            {
+                name: str(v)
+                for name, v in recursion.parameter_values(poles=poles).items()
+            }
         )
         recursion.model.check_parameters(
             {name: complex(float(v)) for name, v in parameters.items()}
@@ -807,13 +812,13 @@ __all__ = [
     "ROOT_COUNTERTERM",
     "ROOT_LINE",
     "ROOT_VERTEX",
-    "UnprojectedU1Error",
     "CloneLine",
     "ClosureTerm",
     "CountertermBlocks",
     "CountertermClosure",
     "CountertermProgram",
     "RootReachability",
+    "UnprojectedU1Error",
     "counterterm_closure_entries",
     "lowered_counterterm_model",
     "model_value",
