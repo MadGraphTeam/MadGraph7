@@ -426,13 +426,14 @@ fn massless_families() -> Vec<Family> {
 }
 
 /// Largest deviation of column `a` of `x` from column `b` of `y`, per lane
-/// relative to the lane's largest Laurent coefficient of `y`.
+/// relative to the lane's largest value in `x` or `y` (a scaleless lane's
+/// combined Laurent vanishes, its UV and IR residues do not).
 fn column_deviation(x: &[[f64; 2]], a: usize, wx: usize, y: &[[f64; 2]], b: usize, wy: usize) -> f64 {
     let norm = |z: &[f64; 2]| z[0].hypot(z[1]);
     x.chunks(wx)
         .zip(y.chunks(wy))
         .map(|(x, y)| {
-            let scale = y.iter().take(3).map(norm).fold(0., f64::max);
+            let scale = x.iter().chain(y).map(norm).fold(0., f64::max);
             norm(&[x[a][0] - y[b][0], x[a][1] - y[b][1]]) / scale
         })
         .fold(0., f64::max)
@@ -558,8 +559,9 @@ fn split_residues_in_double_double_match_selected_masters() {
         let split = parse(&split.values().unwrap());
         let uv = parse(&uv.values().unwrap());
         for (four, three) in split.chunks(4).zip(uv.chunks(3)) {
-            let scale = four[..3]
+            let scale = four
                 .iter()
+                .chain(three)
                 .map(|z| z[0].to_f64().hypot(z[1].to_f64()))
                 .fold(0., f64::max);
             let re = (four[3][0].clone() - &three[1][0]).to_f64();
