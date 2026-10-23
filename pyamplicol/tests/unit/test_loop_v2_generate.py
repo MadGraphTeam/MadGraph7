@@ -272,3 +272,35 @@ def test_loop_aware_reachability_changes_no_result(
     pruned, full = found[True], found[False]
     assert pruned[:4] == full[:4]
     assert pruned[4] <= full[4]
+
+
+# ------------------------------------------------- providers at 5 and 6 legs
+
+
+@pytest.mark.parametrize(
+    ("name", "points"),
+    [
+        pytest.param("uux_ddxg", [0], marks=pytest.mark.loop_physics),
+        pytest.param("gg_gggg", [0], marks=pytest.mark.loop_nightly),
+    ],
+)
+def test_validate_agrees_with_the_providers(loop_sm_compiled_model, name, points):
+    """``tools/loop_v2_generate.py validate``: generation with the native
+    stages, plan export and native evaluation against every provider of a
+    required reference (the fixture's metric and tolerance)."""
+
+    import argparse
+
+    from tools import loop_v2_generate
+
+    record = loop_v2_generate.validate(
+        argparse.Namespace(
+            name=name,
+            points=points,
+            precision="double",
+            stability=False,
+            model=str(loop_sm_compiled_model),
+        )
+    )
+    assert record["passed"], record["points"]
+    assert all(p["max_error"] <= 1e-10 for p in record["points"]), record["points"]
