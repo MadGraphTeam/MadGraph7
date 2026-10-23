@@ -132,6 +132,8 @@ class _Timers:
                         "peak_gb": round(peak / 2**30, 3),
                     }
                 )
+                # Each stage as it ends: a long run that fails keeps its record.
+                print(json.dumps(self.events[-1]), file=sys.stderr, flush=True)
 
         return timed
 
