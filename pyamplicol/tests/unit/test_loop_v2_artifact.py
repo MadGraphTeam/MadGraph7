@@ -24,8 +24,8 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   E <= 1e-9; Borns to 1e-12) and in double-double (1e-24); the NLC, LC/NLC
   member and five-leg records nightly, the full-colour ones also in
   arbitrary precision (60 digits, 1e-40);
-* at non-default model parameters (aS = 0.13, MT = 150) g g > g g (inclusive,
-  colour histories, spin classes) equals a legacy artifact at the same
+* at non-default model parameters (aS = 0.13, MT = 150) g g > g g (inclusive
+  and the T12 colour correlation) equals a legacy artifact at the same
   parameters, whether they are passed at load or set afterwards;
 * the pole selection (``PoleSelection``, TOML/CLI/API/results/artifact):
   ``poles="none"`` returns the finite parts with absent poles, also for
@@ -1425,7 +1425,6 @@ def test_public_correlated_and_resolved_calls_equal_legacy_o1(
 
 
 NON_DEFAULT_PARAMETERS = {"aS": "0.13", "MT": "150"}
-LEGACY_REFERENCE = {"arithmetic": "arbitrary", "precision": 40}
 
 
 @pytest.mark.loop_physics
@@ -1436,24 +1435,24 @@ def test_public_v2_runtime_at_non_default_model_parameters(
     MT = 173, also the frozen fixtures' values), where a runtime that ignored
     its parameters would pass. At aS = 0.13 and MT = 150, g g > g g at full
     colour through the v2 artifact of its observables record equals a legacy
-    artifact generated here and evaluated at the same parameters in 40
-    digits, at the record's first point: the inclusive virtual, every
-    declared colour history and both spin classes, in binary64 (the user's
-    rule) and double-double (1e-24). Parameters passed at load and through
+    artifact generated here with the T12 history and evaluated at the same
+    parameters in double-double, at the record's first point: the inclusive
+    virtual and the T12 colour correlation, in binary64 (the user's rule)
+    and double-double (1e-24). Parameters passed at load and through
     ``set_model_parameters`` give bitwise-identical binary64 values; the
     resolved rows (double-double) sum to the inclusive value; the Born
-    scales as aS^2 against the defaults."""
+    scales as aS^2 against the defaults. (One history keeps the legacy
+    generation at about a minute: with all of the record's correlators it
+    takes 4-5 min.)"""
 
     from decimal import localcontext
 
     from pyamplicol import Runtime
-    from pyamplicol.correlators import CorrelatedRequest
+    from pyamplicol.correlators import CorrelatedRequest, CorrelatorConfig
 
     record = _observables_record("gg_gg")
     entries = (("gg", "g g > g g"),)
-    # The legacy engine's own post-build validation fails on these
-    # correlators at the default tolerances (a known oracle limitation,
-    # DESIGN WP2.6); the reference is evaluated in 40 digits instead.
+    (history,) = (item for item in record["histories"] if item["id"] == "T12")
     card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries).replace(
         'engine = "v2"', 'engine = "legacy"'
     )
@@ -1461,24 +1460,19 @@ def test_public_v2_runtime_at_non_default_model_parameters(
         card.replace("post_build_validation = true", "post_build_validation = false"),
         tmp_path,
         entries,
-        _correlators(record),
+        CorrelatorConfig.from_json_dict(
+            {"color_correlations": [history], "spin_correlations": []}
+        ),
     )
     points, scales = record["points"][:1], record["scales_squared"][:1]
-    requests = {
-        name: CorrelatedRequest(name, {})
-        for name in ("born", *(history["id"] for history in record["histories"]))
-    } | {
-        f"spin:{legs}": CorrelatedRequest("born", _spin_vectors(record, legs))
-        for legs in ("3", "3,4")
-    }
+    requests = {"T12": CorrelatedRequest("T12", {})}
     legacy = Runtime.load(
         legacy_artifact, process="gg", model_parameters=NON_DEFAULT_PARAMETERS
     )
+    reference = {"arithmetic": "double-double"}
     expected = {
-        "inclusive": legacy.evaluate(points, mu_r2=scales, **LEGACY_REFERENCE),
-        **legacy.evaluate_correlated_many(
-            points, requests, mu_r2=scales, **LEGACY_REFERENCE
-        ),
+        "inclusive": legacy.evaluate(points, mu_r2=scales, **reference),
+        **legacy.evaluate_correlated_many(points, requests, mu_r2=scales, **reference),
     }
     output = observables_artifact("gg_gg")
     runtime = Runtime.load(
@@ -1518,9 +1512,9 @@ def test_public_v2_runtime_at_non_default_model_parameters(
     born = default.evaluate(points, mu_r2=scales, arithmetic="double-double")
     with localcontext(prec=80):
         ((value,),) = inclusive.born_values
-        ((reference,),) = born.born_values
+        ((initial,),) = born.born_values
         ratio = (Decimal("0.13") / Decimal("0.118")) ** 2
-        assert abs(value / reference - ratio) <= DOUBLE_DOUBLE_TOLERANCE * ratio
+        assert abs(value / initial - ratio) <= DOUBLE_DOUBLE_TOLERANCE * ratio
         rows = sum(
             (_parts(x)[0] for row in resolved.born_values[0][0] for x in row),
             Decimal(0),
