@@ -392,6 +392,9 @@ struct Outcome<T> {
 
 trait BucketEngine<T> {
     fn reduce(&mut self, input: &BucketInput<T>) -> ExecutionResult<Vec<Outcome<T>>>;
+    /// The carrier's working precision in binary digits (the UV residue
+    /// lifts its inputs to it).
+    fn precision(&self) -> u32;
 }
 
 /// Reduce every lane of `groups` (optionally in `frame`); outcomes per group
@@ -407,6 +410,7 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
         .iter()
         .map(|g| (0..g.ids.len()).map(|_| None).collect())
         .collect();
+    let precision = engine.precision();
     for (&(n, rank), members) in buckets {
         let input = BucketInput::gather(groups, n, rank, members, frame);
         // A rescaled frame's integrals are x^(4-2N) times the family's.
@@ -426,6 +430,7 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
                     &input.shifts[lane * 4 * n..(lane + 1) * 4 * n],
                     &input.masses[lane * n..(lane + 1) * n],
                     &input.coefficients[lane * width..(lane + 1) * width],
+                    precision,
                 ));
             }
             if let Some(factor) = &undo {
@@ -535,6 +540,10 @@ fn real(value: &Complex<f64>, name: &str) -> ExecutionResult<f64> {
 }
 
 impl BucketEngine<f64> for FastEngine {
+    fn precision(&self) -> u32 {
+        f64::MANTISSA_DIGITS
+    }
+
     fn reduce(&mut self, input: &BucketInput<f64>) -> ExecutionResult<Vec<Outcome<f64>>> {
         let (n, rank, lanes) = (input.n, input.rank, input.ids.len());
         let shifts = input
@@ -683,6 +692,10 @@ impl<T: Carrier> BucketEngine<T> for GenericEngine<T>
 where
     Complex<T>: Real + EvaluationDomain,
 {
+    fn precision(&self) -> u32 {
+        self.prototype.get_precision()
+    }
+
     fn reduce(&mut self, input: &BucketInput<T>) -> ExecutionResult<Vec<Outcome<T>>> {
         let reductions = match self.reductions.entry((input.n, input.rank)) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),

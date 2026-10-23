@@ -206,7 +206,7 @@ impl<T: Carrier> Walk<'_, T> {
 /// propagators with real or complex shifts `shifts` (`4n`, component-major
 /// per propagator), squared masses `masses` (`n`) and the dense rank-`rank`
 /// coefficients `coefficients` (`binomial(rank + 4, 4)`, NinjaRS's tensor
-/// layout).
+/// layout), at the largest binary precision of the inputs.
 pub fn uv_residue<T: Carrier>(
     n: usize,
     rank: usize,
@@ -214,7 +214,30 @@ pub fn uv_residue<T: Carrier>(
     masses: &[Complex<T>],
     coefficients: &[Complex<T>],
 ) -> Complex<T> {
-    UvResidues::new(n, rank).residue(shifts, masses, coefficients)
+    let precision = shifts
+        .iter()
+        .chain(masses)
+        .chain(coefficients)
+        .map(|c| c.re.get_precision().max(c.im.get_precision()))
+        .max()
+        .unwrap_or(0);
+    UvResidues::new(n, rank).residue(shifts, masses, coefficients, precision)
+}
+
+/// `value` with both parts at no less than `precision` binary digits. An
+/// exact input (a zero or a small integer of an evaluator) can carry a low
+/// precision under Symbolica's loose tracking, and an MPFR product rounds to
+/// the smaller precision of its factors, so every input of the walk is lifted
+/// to the carrier's working precision first (exact; a no-op for binary64 and
+/// DoubleFloat).
+fn lifted<T: Carrier>(value: &Complex<T>, precision: u32) -> Complex<T> {
+    let mut value = value.clone();
+    for part in [&mut value.re, &mut value.im] {
+        if part.get_precision() < precision {
+            part.set_precision(precision);
+        }
+    }
+    value
 }
 
 /// [`uv_residue`] for every lane of one `(n, rank)` bucket: the monomial
@@ -236,18 +259,23 @@ impl UvResidues {
         }
     }
 
-    /// The residue of one lane (inputs as [`uv_residue`]).
+    /// The residue of one lane (inputs as [`uv_residue`]) at the carrier's
+    /// working `precision` (binary digits; every input is lifted to it).
     pub fn residue<T: Carrier>(
         &self,
         shifts: &[Complex<T>],
         masses: &[Complex<T>],
         coefficients: &[Complex<T>],
+        precision: u32,
     ) -> Complex<T> {
         let (n, rank) = (self.n, self.rank);
-        let zero = Complex::new(coefficients[0].re.zero(), coefficients[0].re.zero());
+        let prototype = lifted(&coefficients[0], precision);
+        let zero = Complex::new(prototype.re.zero(), prototype.re.zero());
         let Some(layout) = &self.layout else {
             return zero;
         };
+        let shifts: Vec<_> = shifts.iter().map(|v| lifted(v, precision)).collect();
+        let masses: Vec<_> = masses.iter().map(|m| lifted(m, precision)).collect();
         let metric = [1, -1, -1, -1];
         let mut walk = Walk {
             layout,
@@ -277,8 +305,9 @@ impl UvResidues {
             if block.iter().all(|c| c.re.is_zero() && c.im.is_zero()) {
                 continue;
             }
+            let block: Vec<_> = block.iter().map(|c| lifted(c, precision)).collect();
             let one = walk.integer(1);
-            walk.walk(0, r + 4 - 2 * n, block, r, one);
+            walk.walk(0, r + 4 - 2 * n, &block, r, one);
         }
         walk.total
     }
@@ -298,6 +327,41 @@ mod tests {
             out[ninjars::fast::tensor_layout::monomial_index(m)] = c(value);
         }
         out
+    }
+
+    #[test]
+    fn exact_low_precision_inputs_are_lifted_to_the_working_precision() {
+        // MPFR: an evaluator's exact coefficients and masses at 2 binary digits
+        // against 128-bit shifts. Unlifted, every product rounds to 2 digits
+        // (the native executor's MPFR residues at rotated points).
+        use symbolica::domains::float::{Float, FloatLike, RealLike, SingleFloat};
+        let mpfr =
+            |x: f64, bits: u32| Complex::new(Float::with_val(bits, x), Float::with_val(bits, 0));
+        let shifts = [
+            0.0, 0.0, 0.0, 0.0, 0.3, 0.1, -0.7, 0.45, 1.1, -0.35, 0.2, 0.6,
+        ];
+        let masses = [3.0, 0.0, 2.0];
+        let terms = [([2, 0, 0, 0], 3.), ([0, 1, 1, 0], -2.), ([1, 0, 0, 1], 3.)];
+        let numerator = tensor(3, &terms);
+        let mut cubic = numerator.clone();
+        cubic[ninjars::fast::tensor_layout::monomial_index([1, 1, 1, 0])] = c(3.);
+        let expected = uv_residue(3, 3, &shifts.map(c), &masses.map(c), &cubic);
+        let low = |v: &[Complex<f64>]| -> Vec<Complex<Float>> {
+            v.iter().map(|x| mpfr(x.re, 2)).collect()
+        };
+        let got = UvResidues::new(3, 3).residue(
+            &shifts.map(|x| mpfr(x, 128)),
+            &low(&masses.map(c)),
+            &low(&cubic),
+            128,
+        );
+        assert!(got.re.get_precision() >= 128);
+        let difference = (got.re.to_f64() - expected.re).abs();
+        assert!(
+            difference <= 1e-14 * expected.re.abs().max(1.),
+            "{difference}"
+        );
+        assert!(got.im.is_zero() || got.im.to_f64().abs() <= 1e-14);
     }
 
     #[test]
