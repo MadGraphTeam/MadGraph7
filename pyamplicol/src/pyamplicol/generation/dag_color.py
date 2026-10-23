@@ -8,8 +8,7 @@ from itertools import pairwise
 
 from ..color.plan import GenericColorPlan
 from ..models.base import Model, Vertex
-from ..models.compiler_color_flow import U1_IDENTITY_SUFFIX
-from ..models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
+from ..models.contracts import U1_IDENTITY_SUFFIX, U1_SUBTRACTION_AUXILIARY_KIND
 from ..processes.ir import ProcessLegIR
 from .dag_ordering import (
     _closure_combination_matches_word,

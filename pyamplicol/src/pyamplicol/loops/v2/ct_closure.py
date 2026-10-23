@@ -402,7 +402,7 @@ def u1_projected(compiled: Any) -> bool:
     vertices onto SU(N) (``models.compiler_color_flow.
     synthesize_u1_projections``, all or nothing per model)."""
 
-    from pyamplicol.models.compiler_color_flow import U1_PROJECTION_SUFFIX
+    from pyamplicol.models.contracts import U1_PROJECTION_SUFFIX
 
     return any(
         kernel.vertex.endswith(U1_PROJECTION_SUFFIX)

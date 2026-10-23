@@ -15,7 +15,11 @@ from .compiler_kernels import (
     _remap_kernel_symbols,
 )
 from .contracts import (
+    U1_IDENTITY_PREFIX,
+    U1_IDENTITY_SUFFIX,
+    U1_PROJECTION_SUFFIX,
     U1_SUBTRACTION_AUXILIARY_KIND,
+    U1_SUBTRACTION_PREFIX,
     CompiledLCColorTransitionTerm,
     CompiledOrientedKernel,
     CompiledParticleRecord,
@@ -24,12 +28,6 @@ from .contracts import (
 )
 from .tensors import normalize_color_expression
 
-U1_SUBTRACTION_PREFIX = "__pyamplicol_u1_subtraction_"
-U1_IDENTITY_PREFIX = "__pyamplicol_u1_identity_"
-# Auxiliary kind suffix of the identity contact lines (their contact line's
-# kind, so that contact bookkeeping keeps reading their origin).
-U1_IDENTITY_SUFFIX = ":u1-identity"
-U1_PROJECTION_SUFFIX = "::u1-projection"
 # Colour rules of oriented stages that couple to the U(1) part of an adjoint
 # leg: the d-symbol and identities between adjoint legs. Structure constants
 # and fundamental generators do not (or have the Fierz auxiliaries).
