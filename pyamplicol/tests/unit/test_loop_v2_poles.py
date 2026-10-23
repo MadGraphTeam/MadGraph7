@@ -26,7 +26,9 @@ Checks, one phase-space point per process (HANDOFF §0.3):
   factors' UV part in the result is fixed by UV finiteness (design §12.4);
 * the Python reference path (``LoopSlice.evaluate``) and the native executor
   agree in split mode (also at massive external legs), and the stability
-  estimates exist in every mode and carrier.
+  estimates exist in every mode and carrier; in binary64 a rotation check
+  brackets the "uv" and "ir" errors against DoubleFloat (the reduction check
+  alone is blind to numerator errors of the "uv" UV residue).
 
 The lane-level residue is checked against NinjaRS's generic engine with
 oneloopmaster's UV- and IR-selected masters in
@@ -59,7 +61,12 @@ from pyamplicol.loops.v2.poles import (
     select_sector,
     split_sector,
 )
-from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+from pyamplicol.loops.v2.stability import (
+    REDUCTION,
+    ROTATION,
+    Rotation,
+    StabilityChecks,
+)
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "loop"
 PARAMETERS = {"aS": "0.118", "MT": "173"}
@@ -121,6 +128,12 @@ PROCESSES = {
         {"QCD": 2, "QED": 0},
         lambda: _legacy_point("uux_uux"),
         (0, 4),
+    ),
+    "uux_ddxg": (
+        "u u~ > d d~ g",
+        {"QCD": 3, "QED": 0},
+        lambda: _required_point("uux_ddxg")[:2],
+        (1, 4),
     ),
     "dy": (
         "u u~ > e- e+",
@@ -671,6 +684,51 @@ def test_split_estimates_in_the_extended_carriers(slices, carrier):
                     laurent.coefficients[k]
                 )
                 assert abs(difference) <= 1e-12 * _scale(laurent), (mode, k)
+
+
+@pytest.mark.loop_physics
+def test_a_rotation_brackets_the_split_poles_in_binary64(slices):
+    """In "uv" the reduction-direction check is blind to numerator errors:
+    the selected single pole is the bare loop's UV residue, an exact
+    functional of each lane's coefficients that does not depend on the
+    reduction frame, so re-reducing a lane in another frame sees only the
+    residue's own rounding (design §12.4 "Carriers and estimates"). At this
+    point the reduction check alone underestimates the binary64 error of the
+    "uv" single pole by 7.7x (3.9x rescaled); a rotation re-evaluates the
+    numerators and brackets it. So, at one point of u u~ > d d~ g, binary64
+    with one rotation and the reduction check: the rotation's estimate alone
+    and the combined estimate bound the true error of every coefficient of
+    every sector, measured against DoubleFloat, in "uv" and "ir" (with no
+    margin: the true error is at most E)."""
+
+    _slice, executor = slices("uux_ddxg")
+    point, scale = PROCESSES["uux_ddxg"][2]()
+    checks = StabilityChecks((Rotation.about("z", "3/5", "4/5"),), True)
+    for mode in ("uv", "ir"):
+        (truth,) = executor.evaluate(
+            [point],
+            [scale],
+            parameters=PARAMETERS,
+            precision=Precision.double_double(),
+            poles=mode,
+        )
+        (result,) = executor.evaluate(
+            [point], [scale], parameters=PARAMETERS, poles=mode, stability=checks
+        )
+        combined = result.stability
+        assert set(combined.checks) == {ROTATION.format(0), REDUCTION}
+        rotation = combined.subset((ROTATION.format(0),))
+        for sector, laurent in result.components["virtual"].items():
+            exact = truth.components["virtual"][sector]
+            for k in range(3):
+                error = abs(
+                    complex(laurent.coefficients[k]) - complex(exact.coefficients[k])
+                )
+                for name, estimate in (("rotation", rotation), ("combined", combined)):
+                    bound = abs(float(estimate.absolute[sector].coefficients[k]))
+                    assert error <= bound, (mode, name, sector, k, error, bound)
+            if mode == "uv":
+                assert laurent.double_pole == exact.double_pole == 0
 
 
 # ----------------------------------------------------------------- unit
