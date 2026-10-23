@@ -61,9 +61,20 @@ class NativeProcess:
 
         if executor.inputs != "native":
             raise ValueError("a native process needs an executor with native inputs")
-        slice_ = executor.slice
-        exported = executor.exported
+        return cls.export(executor.slice, executor.exported, executor._plan_json)
+
+    @classmethod
+    def export(cls, slice_: Any, exported: Any, plan_json: str) -> NativeProcess:
+        """The process of a plan exported with its tree program
+        (``export_plan(slice_, trees=True, born_squared=True)``, sector
+        columns); ``plan_json`` is ``exported.json()``."""
+
         trees = exported.trees
+        born = None if trees is None else trees.program["born"]
+        if born is None or (born["gram"] is None and born["metric"] is None):
+            raise ValueError(
+                "a native process needs a plan exported with trees and |A0|^2"
+            )
         sectors = [sector for sector, _pairs in slice_.sectors]
         if tuple(exported.columns) != tuple(sectors):
             raise ValueError("a native process evaluates the sector columns")
@@ -103,7 +114,7 @@ class NativeProcess:
                 ],
             },
         }
-        return cls(executor._plan_json, trees, record)
+        return cls(plan_json, trees, record)
 
     # -- storage -------------------------------------------------------------
 

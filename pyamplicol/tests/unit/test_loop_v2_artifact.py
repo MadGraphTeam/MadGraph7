@@ -34,11 +34,12 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 * stability checks (rotations by count or exact specification, the
   reduction-direction check) return one estimate per point that bounds the
   true error, and no estimate without checks;
-* a fresh interpreter rebuilds the per-point inputs from the artifact, with
-  the same plan and bitwise-identical binary64 values also after unrelated
-  Symbolica symbols were created (the regeneration does not depend on the
-  interpreter's symbol history), and refuses a stored plan that differs
-  from the regenerated one;
+* a fresh interpreter loads and evaluates the stored native point inputs
+  (``point_inputs = "native-v1"``, WP3.1) with generation forbidden, with
+  bitwise-identical binary64 values also after unrelated Symbolica symbols
+  were created; a call that needs the generation objects (correlated and
+  resolved outputs) regenerates the slice and refuses a stored plan that
+  differs from the regenerated one;
 * the native artifact loader (``load_loop_v2_artifact``) admits each plan v4
   process, cross-checks families, buckets, legs, helicity rows and sectors
   against the declarations, and refuses tampered declarations and digests;
@@ -764,17 +765,20 @@ FILLER_SYMBOLS = (0, 141)
 
 
 @pytest.mark.loop_physics
-def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
+def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
     full_colour, monkeypatch
 ):
-    """A new interpreter regenerates the per-point inputs from the artifact
-    alone, with the same plan and bitwise-identical binary64 Born and virtual
-    values whatever Symbolica symbols it created before; a stored plan
-    unequal to the regenerated one is refused."""
+    """A new interpreter loads the artifact's native point inputs and
+    evaluates them with generation forbidden (no slice is regenerated),
+    giving the same plan and bitwise-identical binary64 Born and virtual
+    values whatever Symbolica symbols it created before; a call that
+    regenerates the slice (the correlated outputs) refuses a stored plan
+    unequal to the regenerated one."""
 
     from pyamplicol import Runtime
 
     here = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
+    assert here.inspect()["point_inputs"] == "native-v1"
     value = here.evaluate([POINT], mu_r2="1000000")
     expected = [
         here.inspect()["plan_sha256"],
@@ -787,6 +791,11 @@ def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
             "from symbolica import S",
             "fillers = [S(f'filler::f{k}') for k in range(int(sys.argv[2]))]",
             "from pyamplicol import Runtime",
+            "from pyamplicol.loops.v2 import artifact, assemble",
+            "def forbidden(*args, **kwargs):",
+            "    raise AssertionError('a native load must not generate')",
+            "artifact.generate_process = forbidden",
+            "assemble.LoopSlice.generate = forbidden",
             "r = Runtime.load(sys.argv[1], process='gg', model_parameters=PARAMETERS)",
             "v = r.evaluate([POINT], mu_r2='1000000')",
             "print(json.dumps([r.inspect()['plan_sha256'], v.born_values, v.values]))",
@@ -821,8 +830,9 @@ def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
 
     monkeypatch.setattr(artifact, "_slices", type(artifact._slices)())
     monkeypatch.setattr(artifact, "generate_process", drifted)
+    loaded = Runtime.load(full_colour, process="gg")
     with pytest.raises(ArtifactError, match="differs from the stored one"):
-        Runtime.load(full_colour, process="gg")
+        loaded.available_color_correlations()
 
 
 def _rewrite_payloads(source: Path, destination: Path, edits) -> Path:
@@ -989,7 +999,7 @@ def test_inspect_summarizes_v2_loop_artifacts(full_colour):
     assert loop.arithmetic == ("double", "double-double", "arbitrary")
     assert loop.resolved and not loop.correlations
     assert loop.color_correlations == () and loop.spin_correlations == ()
-    assert loop.point_inputs == "regenerated-at-load"
+    assert loop.point_inputs == "native-v1"
     execution = json.loads((full_colour / "processes/gg/execution.json").read_text())
     assert loop.plan_sha256 == execution["plan_sha256"]
     assert by_id["uux_ddxg"].loop.families == 42
@@ -1761,8 +1771,8 @@ def test_artifacts_hold_no_host_paths_and_load_relocated(
     )
     script = script.replace("PARAMETERS", repr(GG_PARAMETERS))
     script = script.replace("POINTS", repr(points))
-    # A fresh interpreter in another working directory regenerates the point
-    # inputs from the copy alone.
+    # A fresh interpreter in another working directory evaluates the copy's
+    # stored native point inputs.
     process = subprocess.run(
         [sys.executable, "-c", script, str(moved)],
         capture_output=True,

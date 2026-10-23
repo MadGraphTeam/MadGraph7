@@ -1400,7 +1400,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                     process = generate_process(compiled, request, native, correlators)
                     generated[name] = process
                     path = Path(temporary) / f"{name}.pacbin"
-                    write_plan(process.plan_json, path)
+                    write_plan(process.plan_json, path, process.native)
                     legs = process.state_legs()
                     artifacts.append(
                         LoopV2ProcessArtifact(
@@ -1443,6 +1443,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                             plan_sha256=process.plan_sha256,
                             state_legs=tuple(legs),
                             helicities=tuple(map(tuple, process.helicities())),
+                            point_inputs=process.point_inputs,
                         )
                     )
                     phase.update(index + 1, message=name)
