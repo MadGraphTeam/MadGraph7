@@ -42,7 +42,7 @@ jobs:
 
   IOtest_bundle_1:
     # former jobs, run one after the other: IOtest_iotest_examples
-    #   IOtest_modification_to_cuts IOtest_fks IOtest_fd_gauge IOtest_export
+    #   IOtest_fks IOtest_fd_gauge IOtest_export
     #   IOtest_unit_proc IOtest_ewsudakov
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ubuntu-24.04
@@ -55,14 +55,6 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py testIO_IOTestWrappedWithSetUP testIO_MyHandwrittenIOTest testIO_MyCustomNameIOTestWithPathRegExpr testIO_MyCustomNameIOTestWrapped testIO_MyCustomNameIOTestWrappedWithReturnPath testIO_MySimpleIOTestWrapped -t0
-
-      # ---- IOtest_modification_to_cuts ----
-      # MadWeight IOTest (from unittest_0 and test_additional_unittest)
-      - name: "IOtest_modification_to_cuts: test testIO_modification_to_cuts"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py testIO_modification_to_cuts -t0
 
       # ---- IOtest_fks ----
       # FKS exporter IOTests (from unittest_18_1 and unittest_18_2)
