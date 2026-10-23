@@ -23,10 +23,14 @@ space point and in binary64 or arbitrary precision (design §5.1):
 
 Runtime options (REQUIREMENTS_ADDENDUM B and C):
 
-* ``poles=False`` evaluates the same generated slice in finite-only mode: the
-  reducer returns no pole columns, counterterm and field couplings are bound
-  only at eps^0, and the IR-pole check is skipped. Pole coefficients are then
-  absent (``None``), not zero.
+* ``poles="none"`` evaluates the same generated slice in finite-only mode:
+  the reducer returns no pole columns, counterterm and field couplings are
+  bound only at eps^0, and the IR-pole check is skipped. Pole coefficients
+  are then absent (``None``), not zero. ``poles="uv"`` returns the bare
+  loop's UV poles as the virtual's (the counterterms' UV poles in their
+  components) and ``poles="ir"`` the renormalised virtual's IR poles, both
+  with every component's UV and IR parts (``poles``, design §12.4); the
+  finite part is the same in all four modes.
 * ``stability`` requests estimates (``stability.StabilityChecks``): rotation
   checks re-evaluate the point with rotated momenta, the reduction-direction
   check re-reduces every lane in the reversed frame; each check's error budget
@@ -60,6 +64,7 @@ This is the Python reference path of the slice (gate S1); the native executor
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 from collections import defaultdict
@@ -80,6 +85,7 @@ from pyamplicol.color.connections import (
     evaluate_color_nc_terms,
 )
 from pyamplicol.color.contraction_types import NC
+from pyamplicol.config import PoleSelection
 
 from . import generator_input
 from . import reference_executor as rx
@@ -142,6 +148,17 @@ from .families import (
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
 from .generator_input import NativeGeneration
+from .poles import (
+    ORIGINS,
+    catani_poles,
+    has_poles,
+    pole_mode,
+    reducer_poles,
+    select_lane,
+    select_sector,
+    split_sector,
+    splits,
+)
 from .poly_affine import MonomialLayout, leg_momentum
 from .schedules import (
     STRUCTURED,
@@ -1084,11 +1101,20 @@ class PointResult:
     sectors (Born, then each component's Laurent coefficients; 7 entries in
     finite-only mode). ``families`` keeps each reduction lane's raw integrals
     ``(family, loop order, sector) -> Laurent``. ``ir_poles`` is Catani's
-    prediction of the virtual's (single, double) poles per sector, ``None``
-    in finite-only mode, at leading colour and for non-QCD corrections;
-    ``stability`` is ``None`` unless checks were asked.
-    ``colour_contraction`` is the seed contraction used ("direct" or
-    "symmetric-group-fft").
+    prediction of the virtual's (single, double) poles per sector (massless
+    and massive coloured legs), ``None`` in finite-only and ``"uv"`` mode, at
+    leading colour and for non-QCD corrections; ``stability`` is ``None``
+    unless checks were asked. ``colour_contraction`` is the seed contraction
+    used ("direct" or "symmetric-group-fft").
+
+    ``poles`` is the evaluation's pole selection (``PoleSelection``). In
+    ``"uv"`` and ``"ir"`` the components, totals and families carry the
+    selected pole parts (``poles.select_sector``: in ``"uv"`` the virtual's
+    poles are the bare loop's UV poles, the unrenormalised amplitude's), and
+    ``pole_origins[origin][component][sector]`` gives both origins' parts of
+    every renormalised component (``Laurent`` with the combined finite part;
+    ``pole_origins["uv"]["virtual"]`` is the renormalised virtual's UV
+    part), ``None`` otherwise.
     """
 
     born: Mapping[Orders, Any]
@@ -1098,6 +1124,8 @@ class PointResult:
     ir_poles: Mapping[Orders, tuple[Any, Any]] | None
     stability: StabilityEstimate | None = None
     colour_contraction: str = "direct"
+    poles: PoleSelection = PoleSelection.ALL
+    pole_origins: Mapping[str, Mapping[str, Mapping[Orders, Laurent]]] | None = None
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
@@ -1291,6 +1319,10 @@ class LoopSlice:
     # Site -> cells left out of its closure because they cancel between the
     # rules closed on the same blocks (``SiteClosure.cancelled_cells``).
     cancelled_cells: Mapping[Any, Any] = field(default_factory=dict)
+    # The certified-scaleless families as a slice of their own (same blocks,
+    # Born, counterterms and degrees): dressed only by the "uv" and "ir" pole
+    # selections, whose bare UV and IR parts they carry (design §12.4).
+    scaleless: LoopSlice | None = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -1308,7 +1340,9 @@ class LoopSlice:
     def _terms_of(self, site: Any) -> tuple[SiteTerm | WholeRuleTerm, ...]:
         found = self._cache.get("site-terms")
         if found is not None:
-            return found[site]
+            # A slice whose terms were set (a copy without some sites, in
+            # tests) has none for the sites left out.
+            return found.get(site, ())
         cache = self._cache.setdefault("terms-of", {})
         terms = cache.get(site)
         if terms is None:
@@ -1404,10 +1438,13 @@ class LoopSlice:
             )
 
         reachable = None
-        if LOOP_BLOCK_REACHABILITY:
+        if LOOP_BLOCK_REACHABILITY and request.counterterms == "recursion":
             # Loop-aware reachability (design §3.2 item 1): the tree program
             # builds only the block currents the admitted positions of the
-            # field-level families consume.
+            # field-level families consume. Site closure attaches counterterm
+            # vertices to the tree currents of every leg partition, which
+            # loop positions need not consume (a two-point counterterm on an
+            # electroweak line), so the site route builds every current.
             reachable = _field_level_families(
                 data,
                 process,
@@ -1426,16 +1463,16 @@ class LoopSlice:
             # build split closed-loop flavour classes, ``families.
             # _closed_loop_classes``): every block current is built.
             blocks, compiled, table, generation, families = tree_program(None)
-        colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
-        if generation is not None and "schedules" in generator_input.NATIVE_STAGES:
-            plan = generation.schedules(colour, model=_FRAME_MODEL)
-        else:
-            plan = build_schedules(
-                families,
-                loop_catalogue,
-                colour,
-                policy=_FRAME_POLICY,
+
+        def schedules():
+            colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
+            if generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+                return colour, generation.schedules(colour, model=_FRAME_MODEL)
+            return colour, build_schedules(
+                families, loop_catalogue, colour, policy=_FRAME_POLICY
             )
+
+        colour, plan = schedules()
         program = None
         if request.counterterms == "recursion":
             # Production form of the counterterms (design §6.1): the tree
@@ -1465,6 +1502,11 @@ class LoopSlice:
                     request.compatibility,
                 ),
             )
+            if program.residual and reachable is not None:
+                # The rules left to site closure need every leg partition's
+                # tree currents (above); the families do not change.
+                blocks, compiled, table, generation, families = tree_program(None)
+                colour, plan = schedules()
         sites = generate_counterterm_sites(
             families,
             table,
@@ -1580,7 +1622,62 @@ class LoopSlice:
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
         slice_._plan_contraction()
+        slice_.scaleless = slice_._scaleless_companion()
         return slice_
+
+    def _scaleless_companion(self, prune: bool | None = None) -> LoopSlice | None:
+        """The certified-scaleless families (``FamilySet.scaleless_families``)
+        as a slice sharing this one's blocks, Born, counterterms, kernels and
+        colour degrees, with its own schedules and seed table (contracted
+        directly), or None without such families. At LC/NLC it is pruned for
+        the inclusive virtual unless ``prune`` is False (the observables'
+        companion, ``ObservableSlice.scaleless``, prunes it for its declared
+        histories).
+
+        Their integrals vanish (scaleless), so the combined Laurent never needs
+        them; their UV residues, e.g. B0(0;0,0) = 1/eps_UV - 1/eps_IR, are part
+        of the bare loop's UV and IR poles (``poles``).
+        """
+
+        families = self.families
+        # A massless tadpole (N = 1) has neither a UV nor an IR pole: after
+        # the shift q -> q - V its integrand has no term of degree -4.
+        kept = {
+            key: family
+            for key, family in families.scaleless_families.items()
+            if len(key) >= 2
+        }
+        if not kept:
+            return None
+        twin_families = replace(
+            families,
+            families=kept,
+            scaleless=(),
+            rejected=(),
+            scaleless_families={},
+        )
+        plan = build_schedules(
+            twin_families, self.loop_catalogue, self.colour, policy=_FRAME_POLICY
+        )
+        readings = rx.reading_skeletons(plan)
+        for skeleton in readings:
+            self.weights.fermion_sign(skeleton)
+        table, class_of = build_seed_table(
+            self.colour, readings, self.basis, compress=self.request.compress_colour
+        )
+        twin = replace(
+            self,
+            families=twin_families,
+            plan=plan,
+            table=table,
+            class_of=class_of,
+            fourier=None,
+            colour_pruned=False,
+            scaleless=None,
+        )
+        if self.request.accuracy != "full" and prune is not False:
+            twin._prune_colour()
+        return twin
 
     def _plan_contraction(self) -> None:
         """Certify the seed FFT's orbits per ``colour_contraction``."""
@@ -1679,7 +1776,7 @@ class LoopSlice:
         *,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
-        poles: bool = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
         stability: StabilityChecks | None = None,
     ) -> PointResult:
         """The complete virtual at one exact point (decimal strings or rationals).
@@ -1687,6 +1784,9 @@ class LoopSlice:
         ``point`` lists the physical momenta (E, px, py, pz) of the legs in
         process order, incoming momenta as given; ``scale_squared`` is mu_R^2.
         ``parameters`` overrides external model parameters (decimal strings).
+        ``poles`` is a ``PoleSelection`` or its value: ``"all"`` (default),
+        ``"none"`` (finite only), ``"uv"`` or ``"ir"`` (``poles``, design
+        §12.4).
         """
 
         precision = precision or Precision.double()
@@ -1780,7 +1880,7 @@ class LoopSlice:
                 _fraction(scale_squared),
                 dict(parameters or {}),
                 precision,
-                True,
+                PoleSelection.ALL,
             )
             execution = evaluation.dress(schedule, exact=exact)
         return execution, tuple(tuple(p) for p in evaluation.incoming)
@@ -2219,7 +2319,12 @@ class _PointEvaluation:
 
         self.slice = slice_
         self.numbers = numbers
-        self.poles = poles
+        # ``mode`` selects the pole parts (``poles``); ``poles`` says whether
+        # any pole column is computed (every mode but finite-only).
+        self.mode = pole_mode(poles)
+        self.poles = has_poles(self.mode)
+        # The reducer's split columns per lane in "uv" and "ir" mode.
+        self.split_lanes: dict | None = None
         process = slice_.blocks.process
         labels = sorted(leg.label for leg in process.legs)
         initial = {leg.label for leg in process.legs if leg.is_initial}
@@ -2244,9 +2349,11 @@ class _PointEvaluation:
                 numbers,
                 sources={**(sources or {}), **loop_sources},
             )
-        scalars = slice_.scalars(parameters, numbers, poles)
+        scalars = slice_.scalars(parameters, numbers, self.poles)
         program = slice_.counterterm_program
-        # CT amplitudes are loop side: they take the loop sources too.
+        # CT amplitudes are loop side: they take the loop sources too. Their
+        # pole slots are off only in finite-only mode (``self.poles``: every
+        # selection but "none"; design §12.4 "Counterterm slots").
         self.counterterm_rows = (
             None
             if program is None
@@ -2254,7 +2361,7 @@ class _PointEvaluation:
                 decimal_point,
                 parameters,
                 numbers,
-                poles,
+                self.poles,
                 sources={**(sources or {}), **(loop_sources or {})} or None,
             )
         )
@@ -2667,12 +2774,69 @@ class _PointEvaluation:
 
     # -- reduction -----------------------------------------------------------------
 
-    def _reduce(self, numerators, retest: str | None, columns=None) -> None:
+    def _reduce(
+        self, numerators, retest: str | None, columns=None, scaleless=None
+    ) -> None:
         """Reduce every nonzero (family, loop order, column) lane; lanes are
         labelled by ``columns[column]`` (by default the column's sector).
         ``retest`` re-reduces them in that frame (``stability.FRAMES``:
-        "reversed" or "rescaled")."""
+        "reversed" or "rescaled"). The "uv" and "ir" pole selections also
+        dress and reduce the certified-scaleless families for their UV
+        residues: the slice's companion (``LoopSlice.scaleless``) on the
+        sector columns, or for observable ``columns`` ``scaleless`` =
+        (companion slice or None, its seeds of an evaluation;
+        ``observables.ColumnPlan``)."""
+        slice_, numbers = self.slice, self.numbers
+        split = splits(self.mode)
+        lanes, groups = self._groups(numerators, 0, columns)
+        twin_lanes: list = []
+        companion, seeds = slice_.scaleless, None
+        if split and columns is not None:
+            if scaleless is None:
+                raise ValueError(
+                    "observable columns in the uv and ir pole selections need "
+                    "their companion column plan"
+                )
+            companion, seeds = scaleless
+        if split and companion is not None:
+            twin = copy.copy(self)
+            twin.slice = companion
+            dressed = twin.dress(seeds=None if seeds is None else seeds(twin))
+            twin_lanes, twin_groups = twin._groups(
+                dressed.numerators, len(lanes), columns
+            )
+            groups = groups + twin_groups
+        arithmetic = "double" if numbers.double else "arbitrary"
+        digits = None if numbers.double else numbers.precision.digits
+        reducer = slice_.native.V2Reducer(
+            arithmetic, digits, "fast" if numbers.double else "generic"
+        )
+        direct, check = reducer.reduce(
+            groups,
+            poles=reducer_poles(self.mode),
+            check=retest is not None,
+            rescale=retest == "rescaled",
+        )
+        everything = lanes + twin_lanes
 
+        def values(batches, chosen):
+            return {
+                lane: self._values(batch, lane)
+                for lane, batch in zip(everything, batches, strict=True)
+                if lane in chosen
+            }
+
+        main, extra = set(lanes), set(twin_lanes)
+        self.set_lanes(
+            values(direct, main),
+            None if check is None else values(check, main),
+            values(direct, extra) if extra else None,
+            None if check is None or not extra else values(check, extra),
+        )
+
+    def _groups(self, numerators, offset: int, columns=None) -> tuple[list, list]:
+        """Reduction lanes ``(family, loop order, column label)`` and their
+        native groups, with batch row ids from ``offset``."""
         slice_, numbers = self.slice, self.numbers
         if columns is None:
             columns = [sector for sector, _pairs in slice_.sectors]
@@ -2707,7 +2871,7 @@ class _PointEvaluation:
             for column, coefficients in enumerate(numerator.columns):
                 if not any(coefficients):
                     continue
-                lane = len(lanes)
+                lane = offset + len(lanes)
                 lanes.append((family, loop_order, columns[column]))
                 groups.append(
                     (
@@ -2719,32 +2883,59 @@ class _PointEvaluation:
                         batch([numbers.strings(c) for c in coefficients], lane),
                     )
                 )
-        reducer = native.V2Reducer(
-            arithmetic, digits, "fast" if numbers.double else "generic"
-        )
-        direct, check = reducer.reduce(
-            groups,
-            poles=self.poles,
-            check=retest is not None,
-            rescale=retest == "rescaled",
-        )
-        self.families = {}
-        self.retest_families = {} if check is not None else None
-        for lane, batch in zip(lanes, direct, strict=True):
-            self.families[lane] = self._laurent(batch, lane)
-        if check is not None:
-            for lane, batch in zip(lanes, check, strict=True):
-                self.retest_families[lane] = self._laurent(batch, lane)
+        return lanes, groups
 
-    def _laurent(self, batch, lane) -> Laurent:
+    def _values(self, batch, lane) -> list[Any]:
         ((_row, status),) = batch.statuses
         if status != "success":
             raise ArithmeticError(f"reduction lane {lane} failed: {status}")
-        values = [
+        return [
             self.numbers.pair(Decimal(re), Decimal(im))
             for re, im in batch.values.to_decimal()
         ]
-        return Laurent(*values)
+
+    def set_lanes(
+        self,
+        direct: Mapping,
+        check: Mapping | None,
+        scaleless: Mapping | None = None,
+        scaleless_check: Mapping | None = None,
+    ) -> None:
+        """Each lane's raw integrals in the evaluation's pole mode.
+
+        In ``"uv"`` and ``"ir"`` mode the reducer returns ``[finite, 1/eps,
+        1/eps^2, 1/eps_UV]`` per lane; ``families`` (and the re-test's) keep
+        the selected parts and ``split_lanes`` the reducer's columns, from
+        which ``_assemble`` takes the combined and UV parts of ``bare``.
+        ``scaleless`` are the lanes of the certified-scaleless families
+        (``LoopSlice.scaleless``): their combined integrals vanish exactly in
+        dimensional regularisation, so only their UV residues are kept.
+        """
+
+        split = splits(self.mode)
+        zero = self.numbers.zero
+
+        def laurent(values) -> Laurent:
+            if split:
+                return Laurent(*select_lane(values, self.mode, zero))
+            return Laurent(*values)
+
+        def vanishing(lanes: Mapping) -> dict:
+            return {lane: [zero, zero, zero, v[3]] for lane, v in lanes.items()}
+
+        direct = dict(direct)
+        check = None if check is None else dict(check)
+        if split and scaleless:
+            direct.update(vanishing(scaleless))
+            if check is not None and scaleless_check is not None:
+                check.update(vanishing(scaleless_check))
+        self.split_lanes = direct if split else None
+        self.families = {lane: laurent(values) for lane, values in direct.items()}
+        self.retest_families = (
+            None
+            if check is None
+            else {lane: laurent(values) for lane, values in check.items()}
+        )
 
     # -- assembly --------------------------------------------------------------------
 
@@ -2768,7 +2959,17 @@ class _PointEvaluation:
         slice_, numbers = self.slice, self.numbers
         width = 3 if self.poles else 1
         zero = numbers.real(0)
-        bare = self._bare(self.families)
+        split = self.split_lanes
+        if split is None:
+            bare = self._bare(self.families)
+            origins = None
+        else:
+            # The combined Laurent of every lane, and its UV part (``poles``).
+            bare = self._bare({lane: Laurent(*v[:3]) for lane, v in split.items()})
+            bare_uv = self._bare(
+                {lane: Laurent(v[0], v[3], numbers.zero) for lane, v in split.items()}
+            )
+            origins = {origin: {name: {} for name in COMPONENTS} for origin in ORIGINS}
         components: dict[str, dict[Orders, Laurent]] = {name: {} for name in COMPONENTS}
         for sector, _pairs in slice_.sectors:
             values = {
@@ -2781,8 +2982,20 @@ class _PointEvaluation:
                         for power in LAURENT_POWERS[:width]
                     ]
                 )
-            values["uv"] = values["uv_local"] + values[FIELD_COMPONENT]
-            values["virtual"] = values["bare"] + values["uv"] + values["r2"]
+            if origins is not None:
+                parts = split_sector(
+                    values,
+                    bare_uv.get(sector, Laurent(zero, zero, zero)),
+                    FIELD_COMPONENT,
+                    Laurent,
+                )
+                for origin, part in parts.items():
+                    for name in COMPONENTS:
+                        origins[origin][name][sector] = part[name]
+                values = select_sector(parts, self.mode, Laurent)
+            else:
+                values["uv"] = values["uv_local"] + values[FIELD_COMPONENT]
+                values["virtual"] = values["bare"] + values["uv"] + values["r2"]
             for name in COMPONENTS:
                 components[name][sector] = values[name]
         totals = [sum(self.born.values(), zero)]
@@ -2798,13 +3011,16 @@ class _PointEvaluation:
                     )
                 )
         # Catani's operator is the full-colour pole prediction of QCD
-        # corrections with massless coloured legs.
+        # corrections (massless and stable massive coloured legs); in "uv"
+        # mode the renormalised virtual has no IR pole to predict.
         checked = (
             slice_.request.accuracy == "full"
             and slice_.alpha_s_parameter
-            and self._massless_coloured_legs()
+            and self._stable_coloured_legs()
         )
-        ir_poles = self._ir_poles() if self.poles and checked else None
+        ir_poles = (
+            self._ir_poles() if self.poles and self.mode != "uv" and checked else None
+        )
         self.result = PointResult(
             dict(self.born),
             components,
@@ -2812,6 +3028,8 @@ class _PointEvaluation:
             dict(self.families),
             ir_poles,
             colour_contraction=self.colour_contraction,
+            poles=self.mode,
+            pole_origins=origins,
         )
         self.absolute = self._lane_budget(
             {lane: value.coefficients for lane, value in self.families.items()},
@@ -2887,22 +3105,27 @@ class _PointEvaluation:
 
     # -- IR poles ----------------------------------------------------------------------
 
-    def _massless_coloured_legs(self) -> bool:
-        """Whether every coloured leg is massless (Catani's massless dipoles)."""
+    def _stable_coloured_legs(self) -> bool:
+        """Whether every massive coloured leg has a zero width: Catani's
+        operator describes stable (real-mass) emitters."""
 
-        return not any(
-            any(self.incoming[leg.label - 1])
-            and _minkowski(self.incoming[leg.label - 1])
-            for leg in self.slice.basis.legs
-            if leg.representation != 1
+        values = _kernel_parameters(self.slice.compiled, self.parameters)
+        return all(
+            leg.mass.width == ZERO or values.get(leg.mass.width, 0) == 0
+            for leg in self.slice.families.legs
+            if abs(leg.colour) != 1 and leg.mass.mass != ZERO
         )
 
-    def _ir_poles(self) -> dict[Orders, tuple[Any, Any]]:
-        """Catani's single and double poles of the renormalised virtual.
+    def _ir_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
+        """Catani's single and double poles of the renormalised virtual, or
+        None where the operator makes no prediction (``poles.catani_poles``).
 
         V_poles = (alpha_s / 2 pi) sum_i sum_{j != i} (1/C_i) (C_i/eps^2 +
-        gamma_i/eps) (1 + eps log(mu^2 / |2 p_i.p_j|)) <T_i.T_j>, massless
-        coloured legs, QCD corrections, n_f light flavours in gamma_g.
+        gamma_i/eps) (1 + eps log(mu^2 / |2 p_i.p_j|)) <T_i.T_j> for massless
+        coloured legs, QCD corrections, n_f light flavours in gamma_g; massive
+        emitters take the massive form. The legs' masses are the model's
+        runtime values (a symbolic mass bound to 0 is massless), not the p^2
+        of the given (possibly rounded) momenta.
         """
 
         slice_, numbers = self.slice, self.numbers
@@ -2910,6 +3133,16 @@ class _PointEvaluation:
         coloured = sorted(
             label for label, leg in legs.items() if leg.representation != 1
         )
+        values = _kernel_parameters(slice_.compiled, self.parameters)
+        masses = {}
+        for leg in slice_.families.legs:
+            name = leg.mass.mass
+            if name == ZERO:
+                masses[leg.index + 1] = Fraction(0)
+            elif name in values:
+                masses[leg.index + 1] = values[name] ** 2
+            elif leg.index + 1 in coloured:
+                return None
         dipoles = slice_.dipoles()
         three = Fraction(NC)
         physical = []
@@ -2920,7 +3153,6 @@ class _PointEvaluation:
                 for (tensor, power), value in vector.items():
                     scaled = value * numbers.real(three**power)
                     folded[tensor] = folded.get(tensor, numbers.zero) + scaled
-        values = _kernel_parameters(slice_.compiled, self.parameters)
         light = _light_flavours(slice_.data, values)
         alpha = numbers.real(values[slice_.alpha_s_parameter])
         prefactor = alpha / (2 * numbers.pi)
@@ -2928,32 +3160,33 @@ class _PointEvaluation:
         correction = add_orders(tuple((name, 2) for name in slice_.request.corrections))
         out = {}
         for sector, _pairs in slice_.sectors:
-            single = double = numbers.real(0)
-            for i in coloured:
-                representation = legs[i].representation
-                casimir = _casimir(representation)
-                gamma = _gamma(representation, light)
-                for j in coloured:
-                    if j == i:
-                        continue
-                    correlated = numbers.real(0)
-                    for vectors in physical:
-                        for a, left in vectors.items():
-                            for b, right in vectors.items():
-                                if add_orders(a, b, correction) != sector:
-                                    continue
-                                correlated += self._sandwich(
-                                    left, right, dipoles[(i, j)]
-                                )
-                    correlated = correlated / slice_.normalisation.average
-                    invariant = 2 * _minkowski_dot(
-                        self.incoming[i - 1], self.incoming[j - 1]
-                    )
-                    log = _log(mu2 / numbers.real(abs(invariant)), numbers)
-                    double += correlated
-                    single += (
-                        numbers.real(gamma) / numbers.real(casimir) + log
-                    ) * correlated
+
+            def correlated(i: int, j: int, sector=sector) -> Any:
+                total = numbers.real(0)
+                for vectors in physical:
+                    for a, left in vectors.items():
+                        for b, right in vectors.items():
+                            if add_orders(a, b, correction) != sector:
+                                continue
+                            total += self._sandwich(left, right, dipoles[(i, j)])
+                return total / slice_.normalisation.average
+
+            prediction = catani_poles(
+                coloured,
+                {label: legs[label].representation for label in coloured},
+                {label: self.incoming[label - 1] for label in coloured},
+                {label: masses[label] for label in coloured},
+                correlated,
+                casimir=_casimir,
+                gamma=lambda j: _gamma(legs[j].representation, light),
+                mu2=mu2,
+                log=lambda x: _log(x, numbers),
+                real=numbers.real,
+                sqrt=lambda x: math.sqrt(x) if numbers.double else x.sqrt(),
+            )
+            if prediction is None:
+                return None
+            single, double = prediction
             out[sector] = (prefactor * single, prefactor * double)
         return out
 
@@ -2992,7 +3225,10 @@ class _NativePoint(_PointEvaluation):
 
         self.slice = slice_
         self.numbers = numbers
+        # The pole mode is set per batch (``plan_export.NativeExecutor``).
+        self.mode = pole_mode(PoleSelection.ALL)
         self.poles = True
+        self.split_lanes = None
         process = slice_.blocks.process
         labels = sorted(leg.label for leg in process.legs)
         initial = {leg.label for leg in process.legs if leg.is_initial}
@@ -3008,7 +3244,7 @@ class _NativePoint(_PointEvaluation):
         self.colour_contraction = "direct"
         self.retest_families = None
 
-    def _massless_coloured_legs(self) -> bool:
+    def _stable_coloured_legs(self) -> bool:
         # Catani's prediction is not formed natively (WP3.1 I5c).
         return False
 
@@ -3019,6 +3255,10 @@ class _NativePoint(_PointEvaluation):
         if self.native_counterterms:
             super()._assemble()
             return
+        if self.split_lanes is not None:
+            raise NotImplementedError(
+                "the uv and ir pole selections need the counterterm components"
+            )
         slice_, numbers = self.slice, self.numbers
         width = 3 if self.poles else 1
         zero = numbers.real(0)

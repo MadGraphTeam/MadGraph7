@@ -343,8 +343,9 @@ pub struct LoopV2Sector {
 /// output is served (always: observable columns are contracted directly, and
 /// `color_contraction` is "auto" or "direct" since generation refuses the
 /// forced seed FFT). `poles` lists the pole selections an evaluation may
-/// request (`PoleSelection`): every pole ("all") or the finite part only
-/// ("none"); the UV and IR selections are added with the pole split.
+/// request (`PoleSelection`, DESIGN.md §12.4): every pole ("all"), the finite
+/// part only ("none"), and the ultraviolet ("uv") or infrared ("ir") parts:
+/// always all four ([`LOOP_V2_POLE_SELECTIONS`]).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoopV2ExecutionMetadata {
@@ -384,6 +385,11 @@ pub struct LoopV2StateLeg {
     pub incoming: bool,
 }
 
+/// The pole selections a plan v4 process declares (one artifact serves every
+/// selection). No older declaration is admitted (AGENTS.md: no backward
+/// compatibility of internal artifact formats).
+pub const LOOP_V2_POLE_SELECTIONS: [&str; 4] = ["all", "none", "uv", "ir"];
+
 #[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -397,8 +403,24 @@ struct ExecutionV4 {
     required_runtime_capabilities: Vec<String>,
     runtime_path: String,
     plan_sha256: String,
+    /// SHA-256 of the companion plan of the certified-scaleless families
+    /// (`LOOP_PROGRAM_V4_SCALELESS_MEMBER`); null without such families. The
+    /// key is required (an absent key is not read as null: no compatibility
+    /// of internal artifact formats, AGENTS.md).
+    #[serde(deserialize_with = "required_nullable")]
+    scaleless_plan_sha256: Option<String>,
     point_inputs: String,
     request: serde_json::Value,
+}
+
+/// A nullable key that must be present: serde reads an absent `Option` field
+/// as `None` unless the field has its own deserializer.
+#[cfg(feature = "loop-v2")]
+fn required_nullable<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)
 }
 
 /// How a plan v4 process obtains its per-point inputs (trees, Born
@@ -434,6 +456,9 @@ struct PhysicsV4 {
 
 /// A plan v4 process admitted from its artifact. `plan_json` is the stored
 /// plan (its SHA-256 is `plan_sha256`); `request` is the generation recipe.
+/// `scaleless_*` is the companion plan of the certified-scaleless families
+/// that the "uv" and "ir" pole selections run (DESIGN.md §12.4), when the
+/// process has such families.
 #[cfg(feature = "loop-v2")]
 pub struct LoadedLoopV2Artifact {
     pub artifact_id: String,
@@ -445,6 +470,9 @@ pub struct LoadedLoopV2Artifact {
     pub plan_sha256: String,
     pub plan_json: Vec<u8>,
     pub program: Arc<crate::loop_v2::plan::LoopProgramV4>,
+    pub scaleless_plan_sha256: Option<String>,
+    pub scaleless_plan_json: Option<Vec<u8>>,
+    pub scaleless_program: Option<Arc<crate::loop_v2::plan::LoopProgramV4>>,
 }
 
 #[cfg(feature = "loop-v2")]
@@ -596,6 +624,33 @@ pub fn load_loop_v2_artifact(
         )?;
         Arc::new(program)
     };
+    // The companion plan of the certified-scaleless families: declared by
+    // digest exactly when stored.
+    let scaleless_plan_json = crate::loop_runtime::read_loop_program_v4_scaleless_json(&reader)?;
+    require(
+        scaleless_plan_json.is_some() == execution.scaleless_plan_sha256.is_some(),
+        "the companion plan of certified-scaleless families is stored exactly \
+         when declared",
+    )?;
+    let scaleless_program = match (&scaleless_plan_json, &execution.scaleless_plan_sha256) {
+        (Some(json), Some(digest)) => {
+            require(
+                format!("{:x}", Sha256::digest(json)) == *digest,
+                "the stored companion plan v4 differs from its declared digest",
+            )?;
+            let companion = crate::loop_v2::plan::LoopProgramV4::load(json)?;
+            require(
+                !companion.families.is_empty()
+                    && companion.legs == program.legs
+                    && companion.rows == program.rows
+                    && companion.columns == program.columns,
+                "the companion plan's legs, helicity rows or sectors disagree \
+                 with the process plan",
+            )?;
+            Some(Arc::new(companion))
+        }
+        _ => None,
+    };
     Ok(LoadedLoopV2Artifact {
         artifact_id: artifact.manifest().artifact_id.clone(),
         selection,
@@ -606,6 +661,9 @@ pub fn load_loop_v2_artifact(
         plan_sha256: execution.plan_sha256,
         plan_json,
         program,
+        scaleless_plan_sha256: execution.scaleless_plan_sha256,
+        scaleless_plan_json,
+        scaleless_program,
     })
 }
 
@@ -621,12 +679,16 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
             && metadata.interference == ORDINARY_INTERFERENCE
             && metadata.scheme_status == "declared-not-certified"
             && metadata.schedule == "backward"
-            && metadata.poles == ["all", "none"]
             && metadata.accuracy_retest == "reduction-direction"
             && metadata.rescue_policy == "caller"
             && metadata.stability_checks == ["rotation", "reduction-direction"]
             && matches!(metadata.color_contraction.as_str(), "auto" | "direct"),
         "unsupported contribution, convention or feature declaration",
+    )?;
+    require(
+        metadata.poles == LOOP_V2_POLE_SELECTIONS,
+        "unsupported pole selections (plan v4 serves all, none, uv and ir): \
+         regenerate the artifact",
     )?;
     require(
         metadata.arithmetic == ["double", "double-double", "arbitrary"],

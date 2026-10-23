@@ -21,6 +21,7 @@ from itertools import product
 
 import pytest
 
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.v2.ct_sites import LAURENT_POWERS, ColourOverlaps, add_colour
 from pyamplicol.loops.v2.families import add_orders
 from tools.loop_reference import legacy_capture
@@ -667,10 +668,12 @@ def test_slice_counterterms_from_recursion_equal_sites(
 def test_generation_leaves_the_program_rows_to_the_first_point(
     loop_sm_compiled_model, loop_native, monkeypatch
 ):
-    """Generation builds the CT program and its root terms but not the
-    program's Python tree rows: a native evaluation never needs them, and at
-    seven legs their evaluator would cost hours. The first point compiles
-    them, after the block rows."""
+    """Generation builds the CT program and its root terms but no Python
+    tree rows: a native evaluation never needs them, and at seven legs their
+    evaluators would cost hours. The first point compiles the block rows,
+    then the program's (the rows are lazy, RUST-MIGRATION.md §10 decision 5;
+    their rounding does not depend on the CT route,
+    ``test_lazy_block_rows_do_not_depend_on_the_counterterm_route``)."""
 
     from pyamplicol.loops.v2 import assemble
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
@@ -700,7 +703,7 @@ def test_generation_leaves_the_program_rows_to_the_first_point(
     assert program is not None and program.closure.terms
     blocks = id(route.blocks.blocks_dag)
     counterterms = id(program.blocks.blocks.blocks_dag)
-    assert built == [blocks]
+    assert built == []
     route.evaluate(
         _slice_point((0,) * 4),
         SLICE_SCALE_SQUARED,
@@ -758,7 +761,7 @@ def _counterterms_per_route(compiled, native, process, qcd, point, **options):
                 _fraction(SLICE_SCALE_SQUARED),
                 dict(SLICE_PARAMETERS),
                 Precision.double(),
-                True,
+                PoleSelection.ALL,
             )
         values[route] = (dict(evaluation.born), dict(evaluation.counterterms))
     return values
@@ -821,6 +824,7 @@ def test_six_leg_four_gluon_counterterms_from_recursion_equal_sites(
 _SIX_GLUON_SCRIPT = """
 import json, sys
 from pyamplicol import licensing
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.v2.assemble import (
     LoopSlice, Precision, SliceRequest, _fraction, _Numbers,
@@ -838,7 +842,7 @@ for route in ("recursion", "sites"):
         assert not generated.counterterm_program.recursion.residual
     with _Numbers(Precision.double()).scope():
         evaluation = generated._point(exact, _fraction(scale),
-            json.loads(parameters), Precision.double(), True)
+            json.loads(parameters), Precision.double(), PoleSelection.ALL)
     out[route] = [[[repr(k), float(v)] for k, v in part.items()]
                   for part in (evaluation.born, evaluation.counterterms)]
 out["serial"] = (licensing._SPENSO_POLICY_APPLIED, licensing._SPENSO_SERIAL)

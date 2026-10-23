@@ -2115,11 +2115,36 @@ pub mod v2 {
         M,
     }
 
+    /// The Laurent columns of every reduction lane (DESIGN.md §12.4).
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub enum Poles {
+        /// The finite part only (finite-only mode).
+        None,
+        /// `[finite, 1/ε, 1/ε²]` with `ε_UV = ε_IR`.
+        #[default]
+        All,
+        /// `[finite, 1/ε, 1/ε², 1/ε_UV]`: the combined Laurent integrals and
+        /// the ultraviolet part of the single pole (the double pole is
+        /// infrared), for the `uv` and `ir` pole selections.
+        Split,
+    }
+
+    impl Poles {
+        /// Values per lane.
+        pub fn width(self) -> usize {
+            match self {
+                Self::None => 1,
+                Self::All => 3,
+                Self::Split => 4,
+            }
+        }
+    }
+
     /// Options of one evaluation.
     #[derive(Clone, Copy, Debug)]
     pub struct V2Options {
-        /// Return the 1/ε and 1/ε² coefficients (finite-only otherwise).
-        pub poles: bool,
+        /// The Laurent columns of every lane (finite-only, combined, split).
+        pub poles: Poles,
         /// Reduce every lane a second time in this frame (stability estimate).
         pub check: Option<ReductionCheck>,
         pub chunk_families: usize,
@@ -2133,7 +2158,7 @@ pub mod v2 {
     impl Default for V2Options {
         fn default() -> Self {
             Self {
-                poles: true,
+                poles: Poles::All,
                 check: None,
                 chunk_families: DEFAULT_CHUNK_FAMILIES,
                 schedule: Schedule::B,
@@ -2167,8 +2192,8 @@ pub mod v2 {
         pub coefficients: Vec<Complex<T>>,
     }
 
-    /// One reduction lane: its raw Laurent integrals `[finite, 1/ε, 1/ε²]`
-    /// (finite only without poles), or the reducer status of a failed lane.
+    /// One reduction lane: its raw Laurent integrals in the columns of
+    /// [`Poles`], or the reducer status of a failed lane.
     pub type LaneOutcome<T> = Result<Vec<Complex<T>>, String>;
 
     /// Direct outcomes, and the re-test outcomes when a check was asked; one
@@ -2182,7 +2207,7 @@ pub mod v2 {
         fn reduce(
             &mut self,
             groups: &[FamilyLanes<T>],
-            poles: bool,
+            poles: Poles,
             check: Option<ReductionCheck>,
         ) -> RusticolResult<Reduced<T>>;
     }
@@ -2702,7 +2727,7 @@ pub mod v2 {
         options: V2Options,
     ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
         let points = batch.points();
-        let width = if options.poles { 3 } else { 1 };
+        let width = options.poles.width();
         let mut report = Report {
             lanes: L,
             real_bytes: std::mem::size_of::<T>(),
@@ -2869,10 +2894,10 @@ pub mod v2 {
             fn reduce(
                 &mut self,
                 groups: &[FamilyLanes<f64>],
-                poles: bool,
+                poles: Poles,
                 check: Option<ReductionCheck>,
             ) -> RusticolResult<Reduced<f64>> {
-                assert!(poles && check.is_none());
+                assert!(poles == Poles::All && check.is_none());
                 let first = self.calls.is_empty();
                 self.calls
                     .push(groups.iter().flat_map(|g| g.points.clone()).collect());

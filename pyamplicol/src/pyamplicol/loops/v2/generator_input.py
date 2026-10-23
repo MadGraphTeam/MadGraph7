@@ -262,9 +262,16 @@ class NativeGeneration:
 
     def _decode_families(self) -> FamilySet:
         tables = self.tables
-        raw_positions, parents, labels, species, raw_families, scaleless, rejected = (
-            self._native.families()
-        )
+        (
+            raw_positions,
+            parents,
+            labels,
+            species,
+            raw_families,
+            scaleless,
+            rejected,
+            raw_scaleless,
+        ) = self._native.families()
         positions = [self._position(vertex, blocks) for vertex, blocks in raw_positions]
         graph = PrefixGraph()
         fields = tables.fields
@@ -283,22 +290,29 @@ class NativeGeneration:
                 graph.depth.append(graph.depth[parent] + 1)
                 self._state_positions.append(label)
             graph.species.append(fields[name])
-        families = {}
-        for raw, rank, closures in raw_families:
-            key = _key(tables, raw)
-            if rank > len(key) + 2:
-                raise ValueError(
-                    f"family {key} has structural rank {rank} > N + 2, outside "
-                    "the integrand-reduction domain"
+        def decoded(raws) -> dict[FamilyKey, Family]:
+            out = {}
+            for raw, rank, closures in raws:
+                key = _key(tables, raw)
+                if rank > len(key) + 2:
+                    raise ValueError(
+                        f"family {key} has structural rank {rank} > N + 2, "
+                        "outside the integrand-reduction domain"
+                    )
+                out[key] = Family(
+                    key,
+                    rank,
+                    tuple(
+                        Closure(state, symmetric, multiplicity)
+                        for state, symmetric, multiplicity in closures
+                    ),
                 )
-            families[key] = Family(
-                key,
-                rank,
-                tuple(
-                    Closure(state, symmetric, multiplicity)
-                    for state, symmetric, multiplicity in closures
-                ),
-            )
+            return out
+
+        families = decoded(raw_families)
+        # The certified-scaleless families with their routings, interned
+        # after every admitted family's states (the poles companion).
+        scaleless_families = decoded(raw_scaleless)
         self._positions = positions
         self._families = FamilySet(
             self.legs,
@@ -310,6 +324,7 @@ class NativeGeneration:
             ),
             tuple(LoggedFamily(_key(tables, raw), reason) for raw, reason in rejected),
             self._merged,
+            scaleless_families,
         )
         return self._families
 

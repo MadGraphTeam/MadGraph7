@@ -150,8 +150,9 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
 ):
     """O6 with the Levi-Civita cells cancelled: the g g Z (and g g g Z)
     rules are admitted in the recursion with their cell left out (no rule is
-    residual), the site closure drops the same cells on its own, and every
-    component agrees."""
+    residual), the site closure closes the same cells with the catalogue's
+    Levi-Civita kernels (WP3.1 I-AX, ``test_loop_v2_levi_civita``), whose
+    up- and down-type terms cancel, and every component agrees."""
 
     _certify_furry_zeros(monkeypatch)
     recursion = cancellation_routes(name, "recursion")
@@ -179,7 +180,7 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
         if _vertices(site.rule) & GGZ_VERTICES
         for term in terms
     }
-    assert not lorentz & LEVI_CIVITA
+    assert lorentz & LEVI_CIVITA
     worst = _route_differences(
         cancellation_routes,
         name,
@@ -200,14 +201,17 @@ def _assert_vertex_changes_r2(sites, vertex: str, masses) -> None:
 
     from .test_loop_v2_ct_closure import SLICE_SCALE_SQUARED, _slice_point
 
+    # The site terms are built on first use (``LoopSlice.site_terms``): a
+    # copy with a fresh cache holding the terms without the vertex's sites.
     without = replace(
         sites,
-        site_terms={
-            site: terms
-            for site, terms in sites.site_terms.items()
-            if vertex not in _vertices(site.rule)
+        _cache={
+            "site-terms": {
+                site: terms
+                for site, terms in sites.site_terms.items()
+                if vertex not in _vertices(site.rule)
+            }
         },
-        _cache={},
     )
     point = _slice_point(masses)
     full, rest = (
@@ -274,44 +278,49 @@ def anomalous_model(loop_sm_ufo, tmp_path_factory):
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("counterterms", ("recursion", "sites"))
-def test_uncancelled_levi_civita_cells_fail_closed(
-    anomalous_model, loop_native, monkeypatch, counterterms
+def test_uncancelled_levi_civita_cells_close_at_sites(
+    anomalous_model, loop_native, monkeypatch
 ):
-    """Where the g g Z cell does not cancel (an anomalous model) it has no
-    kernel: the lowering leaves its rules to sites, and both routes refuse
-    the request rather than drop the cell."""
+    """Where the g g Z cell does not cancel (an anomalous model) the
+    lowering has no tree kernel for it and leaves its rules to sites; the
+    site closure closes them with the catalogue's Levi-Civita kernel (WP3.1
+    I-AX), so both routes keep the cell and agree (they refused the request
+    while the catalogue had no Levi-Civita kernel)."""
 
-    from pyamplicol.loops.v2 import ct_closure
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.models.loading import load_compiled_model
 
     _certify_furry_zeros(monkeypatch)
-    residual = {}
-    build = ct_closure.CountertermProgram.build.__func__
-
-    def recorded(cls, *args, **kwargs):
-        program = build(cls, *args, **kwargs)
-        residual.update(program.recursion.residual)
-        return program
-
-    monkeypatch.setattr(ct_closure.CountertermProgram, "build", classmethod(recorded))
     compiled = load_compiled_model(anomalous_model)
-    with pytest.raises(ValueError, match="no ct-site kernel"):
-        LoopSlice.generate(
-            compiled,
-            SliceRequest(
-                "u u~ > e- e+ g",
-                {"QCD": 1, "QED": 2},
-                {"QCD": 3, "QED": 2},
-                fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-                counterterms=counterterms,
-            ),
-            loop_native,
-        )
-    if counterterms == "recursion":
-        rules = {
-            name: reason for name, reason in residual.items() if "R2_GGZ" in reason
-        }
-        assert len(rules) == 2, residual
-        assert all("does not cancel" in reason for reason in rules.values())
+    built = {}
+
+    def routes(name, counterterms):
+        if counterterms not in built:
+            built[counterterms] = LoopSlice.generate(
+                compiled,
+                SliceRequest(
+                    "u u~ > e- e+ g",
+                    {"QCD": 1, "QED": 2},
+                    {"QCD": 3, "QED": 2},
+                    fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+                    counterterms=counterterms,
+                ),
+                loop_native,
+            )
+        return built[counterterms]
+
+    residual = routes("anomalous", "recursion").counterterm_program.recursion.residual
+    rules = {name: reason for name, reason in residual.items() if "R2_GGZ" in reason}
+    assert len(rules) == 2, residual
+    assert all("does not cancel" in reason for reason in rules.values())
+    sites = routes("anomalous", "sites")
+    assert {
+        term.entry.lorentz_name
+        for site, terms in sites.site_terms.items()
+        if _vertices(site.rule) & GGZ_VERTICES
+        for term in terms
+    } & LEVI_CIVITA
+    worst = _route_differences(
+        routes, "anomalous", "double", SLICE_PARAMETERS, masses=(0,) * 5
+    )
+    assert all(value <= SLICE_TOLERANCE["double"] for value in worst.values()), worst

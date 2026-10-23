@@ -20,6 +20,7 @@ type RawFamilies = (
     Vec<RawFamily>,
     Vec<Key>,
     Vec<(Key, &'static str)>,
+    Vec<RawFamily>,
 );
 type RawContent = (u32, u32, u32, u64, u32, Vec<(u32, Vec<u32>)>, i64);
 type RawNode = (usize, u32, Vec<u32>, i64, Vec<(u32, u32)>);
@@ -61,9 +62,21 @@ impl V2Generation {
     }
 
     /// `(positions, state_parents, state_labels, state_species, families,
-    /// scaleless, rejected)`; a root's label is its cut species.
+    /// scaleless, rejected, scaleless_families)`; a root's label is its cut
+    /// species; the scaleless families' states follow every admitted one's.
     fn families(&self) -> RawFamilies {
         let output = &self.families;
+        let raw = |family: &rusticol_core::loop_v2::generate::families::Family| -> RawFamily {
+            (
+                family.key.clone(),
+                family.rank,
+                family
+                    .closures
+                    .iter()
+                    .map(|c| (c.state, c.symmetric, c.multiplicity))
+                    .collect(),
+            )
+        };
         let labels = output
             .state_position
             .iter()
@@ -85,27 +98,14 @@ impl V2Generation {
             output.state_parent.clone(),
             labels,
             output.state_species.clone(),
-            output
-                .families
-                .iter()
-                .map(|family| {
-                    (
-                        family.key.clone(),
-                        family.rank,
-                        family
-                            .closures
-                            .iter()
-                            .map(|c| (c.state, c.symmetric, c.multiplicity))
-                            .collect(),
-                    )
-                })
-                .collect(),
+            output.families.iter().map(raw).collect(),
             output.scaleless.clone(),
             output
                 .rejected
                 .iter()
                 .map(|(key, reason)| (key.clone(), reason.as_str()))
                 .collect(),
+            output.scaleless_families.iter().map(raw).collect(),
         )
     }
 

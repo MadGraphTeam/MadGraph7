@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import json
 from collections import OrderedDict, defaultdict
-from collections.abc import Hashable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from fractions import Fraction
@@ -53,6 +53,7 @@ from itertools import product
 from typing import Any, Literal
 
 from pyamplicol.color.connections import ExactColorCoefficient
+from pyamplicol.config import PoleSelection
 
 from . import reference_executor as rx
 from .colour import project
@@ -932,11 +933,14 @@ class NativeExecutor:
         inputs: Literal["python", "native"] = "python",
         born_squared: bool = True,
         counterterms: bool = True,
+        scaleless: tuple[ExportedPlan, str] | Callable[[], Any] | None = None,
     ):
         if inputs not in ("python", "native"):
             raise ValueError(f"unknown input path {inputs!r}")
         if plan_json is not None and exported is None:
             raise ValueError("plan_json is the serialised exported plan")
+        if isinstance(scaleless, tuple) and slice_.scaleless is None:
+            raise ValueError("a scaleless companion plan needs the slice's companion")
         if slice_.request.colour_contraction == "fft":
             # The native seeds contract the exported exact weights directly
             # (``seed_records``); an explicit "fft" is refused, not ignored.
@@ -964,6 +968,12 @@ class NativeExecutor:
         # ``plan_json``: ``exported.json()`` when the caller already holds it.
         self._plan_json = self.exported.json() if plan_json is None else plan_json
         self._native: dict[tuple[str, int | None, int], Any] = {}
+        self._scaleless: list[NativeExecutor | None] = []
+        # (exported plan, its JSON) of the companion when the caller holds it
+        # (an artifact's stored companion, ``artifact.GeneratedProcess``), or
+        # a builder of the companion's executor (observable columns,
+        # ``observables.NativeObservables``).
+        self._scaleless_plan = scaleless
         # Point inputs of the latest ``family_numerators`` calls (oracle
         # comparisons run several schedules and carriers on one batch).
         self._point_inputs: OrderedDict[str, Any] = OrderedDict()
@@ -996,6 +1006,43 @@ class NativeExecutor:
                 trees=trees,
             )
         return found
+
+    @property
+    def scaleless(self) -> NativeExecutor | None:
+        """The executor of the slice's certified-scaleless families
+        (``LoopSlice.scaleless``), which only the "uv" and "ir" pole
+        selections run; built on first use (from the companion plan or the
+        builder given at construction, else exported then), schedule B
+        only; None without such families."""
+
+        if not self._scaleless:
+            source = self._scaleless_plan
+            built = None
+            if callable(source):
+                built = source()
+            elif self.slice.scaleless is not None:
+                exported, plan_json = source or (None, None)
+                if self.inputs == "native" and (
+                    exported is None or exported.trees is None
+                ):
+                    # With native inputs the companion forms its own block
+                    # rows: its plan is exported with its tree program (no
+                    # Born or counterterm outputs; it adds only lanes).
+                    exported = plan_json = None
+                built = NativeExecutor(
+                    self.slice.scaleless,
+                    lanes=self.lanes,
+                    threads=self.threads,
+                    forward=False,
+                    exported=exported,
+                    forms=self.forms,
+                    plan_json=plan_json,
+                    inputs=self.inputs,
+                    born_squared=False,
+                    counterterms=False,
+                )
+            self._scaleless.append(built)
+        return self._scaleless[0]
 
     def lanes_for(self, arithmetic: Arithmetic, points: int | None) -> int:
         """Lanes per chunk: the configured count in binary64 (SIMD lanes);
@@ -1051,7 +1098,7 @@ class NativeExecutor:
                 [scales[k] for k in missing],
                 parameters,
                 precision,
-                True,
+                PoleSelection.ALL,
             )
             for k, evaluation in zip(missing, fresh, strict=True):
                 cache[keys[k]] = evaluation
@@ -1223,13 +1270,15 @@ class NativeExecutor:
         *,
         parameters: Mapping[str, str] | None = None,
         precision: Any = None,
-        poles: bool = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
         stability: Any = None,
         schedule: Literal["B", "M"] = "B",
     ) -> list[Any]:
         """The complete virtual of every point (``LoopSlice.evaluate``), with
         dressing and reduction in the native executor (``schedule`` B, or M
-        for the plan's schedule-M families).
+        for the plan's schedule-M families). ``poles`` is the pole selection
+        (``PoleSelection`` or its value: ``"all"``, ``"none"``, ``"uv"``,
+        ``"ir"``; ``poles``).
 
         Rotation checks re-evaluate the rotated points natively; the
         reduction check is the native re-test pass. A failed point fails
@@ -1325,10 +1374,13 @@ class NativeExecutor:
         from .assemble import Precision, _Numbers
 
         if self.inputs == "native":
+            from .poles import has_poles, pole_mode
+
             precision = precision or Precision.double()
             evaluations = self._native_points(points, scales, parameters, precision)
             for evaluation in evaluations:
-                evaluation.poles = poles
+                evaluation.mode = pole_mode(poles)
+                evaluation.poles = has_poles(evaluation.mode)
         else:
             precision, evaluations = self._points(
                 points, scales, parameters, precision, poles
@@ -1348,7 +1400,7 @@ class NativeExecutor:
         self,
         evaluations,
         precision,
-        poles: bool,
+        poles: PoleSelection | str,
         retest: str | None,
         schedule: Literal["B", "M"] = "B",
     ) -> dict[int, list[str]]:
@@ -1358,23 +1410,55 @@ class NativeExecutor:
         schedule-M families): sets each evaluation's ``families`` (and
         ``retest_families`` in the re-test frame ``retest``,
         ``stability.FRAMES``), lanes labelled (family, loop orders, column
-        label), and with native inputs its ``born``. Returns the failures per
-        point index; a failed point's evaluation is left without families."""
+        label), and with native inputs its ``born`` and counterterm and field
+        components. Returns the failures per point index; a failed point's
+        evaluation is left without families. ``poles`` is the pole mode
+        (``poles``): "uv" and "ir" also run the scaleless companion
+        (``scaleless``: the slice's on the sector columns, or the one built
+        for the plan's observable columns)."""
 
-        from .assemble import Laurent, _Numbers
+        from .assemble import _Numbers
+        from .poles import pole_mode, reducer_poles, splits
 
+        mode = pole_mode(poles)
+        if splits(mode) and not hasattr(self.slice, "scaleless"):
+            # A stored native process (``native_process``) has no companion of
+            # its certified-scaleless families: its loads regenerate for them.
+            raise NotImplementedError(
+                "the uv and ir pole selections of a stored native process need "
+                "its regenerated slice"
+            )
+        sectors = tuple(sector for sector, _pairs in self.slice.sectors)
+        if (
+            splits(mode)
+            and tuple(self.exported.columns) != sectors
+            and not callable(self._scaleless_plan)
+        ):
+            raise ValueError(
+                "observable columns in the uv and ir pole selections need the "
+                "companion of their column plan (observables.NativeObservables)"
+            )
         arithmetic, digits = self._arithmetic(precision, False)
         native = self.native(arithmetic, digits, len(evaluations))
+        options = {
+            "poles": reducer_poles(mode),
+            "check": retest is not None,
+            "rescale": retest == "rescaled",
+        }
         output = native.evaluate(
-            self._inputs(evaluations, arithmetic),
-            poles=poles,
-            check=retest is not None,
-            rescale=retest == "rescaled",
-            schedule=schedule,
+            self._inputs(evaluations, arithmetic), schedule=schedule, **options
         )
         exported = self.exported
         self.last_report = output["report"]
         self.last_bare = output["bare"]
+        # The certified-scaleless families carry part of the bare UV and IR
+        # poles; only the "uv" and "ir" selections dress them (schedule B).
+        twin = self.scaleless if splits(mode) else None
+        extra = None
+        if twin is not None:
+            extra = twin.native(arithmetic, digits, len(evaluations)).evaluate(
+                twin._inputs(evaluations, arithmetic), schedule="B", **options
+            )
         failed: dict[int, list[str]] = {}
         for index, (evaluation, lanes, checks, failures) in enumerate(
             zip(
@@ -1385,21 +1469,19 @@ class NativeExecutor:
                 strict=True,
             )
         ):
+            if extra is not None and extra["failures"][index]:
+                failures = [*failures, *extra["failures"][index]]
             if failures:
                 failed[index] = [str(failure) for failure in failures]
                 continue
             numbers = evaluation.numbers
 
-            def laurent(values, numbers=numbers):
+            def carrier(values, numbers=numbers):
                 if numbers.double:
-                    return Laurent(
-                        *[complex(float(re), float(im)) for re, im in values]
-                    )
-                return Laurent(
-                    *[numbers.pair(Decimal(re), Decimal(im)) for re, im in values]
-                )
+                    return [complex(float(re), float(im)) for re, im in values]
+                return [numbers.pair(Decimal(re), Decimal(im)) for re, im in values]
 
-            def label(lane):
+            def label(lane, exported=exported):
                 family, order, column = lane
                 return (
                     exported.families[family],
@@ -1407,6 +1489,16 @@ class NativeExecutor:
                     exported.columns[column],
                 )
 
+            def read(runs, exported=exported):
+                if runs is None:
+                    return None
+                return {label(lane, exported): carrier(values) for lane, values in runs}
+
+            scaleless = scaleless_check = None
+            if extra is not None:
+                scaleless = read(extra["families"][index], twin.exported)
+                if extra["check"] is not None:
+                    scaleless_check = read(extra["check"][index], twin.exported)
             with _Numbers(precision).scope():
                 if output.get("counterterms") is not None:
                     evaluation.counterterms = {
@@ -1427,13 +1519,8 @@ class NativeExecutor:
                             strict=True,
                         )
                     }
-                evaluation.families = {
-                    label(lane): laurent(values) for lane, values in lanes
-                }
-                evaluation.retest_families = (
-                    None
-                    if checks is None
-                    else {label(lane): laurent(values) for lane, values in checks}
+                evaluation.set_lanes(
+                    read(lanes), read(checks), scaleless, scaleless_check
                 )
         return failed
 

@@ -552,11 +552,68 @@ finite part and, with poles, of each pole, plus each check's own budget).
 Without checks no estimate is returned. Escalating to `arithmetic = "arbitrary"`
 is left to the caller; `[evaluation.stability]` rescue policies belong to the
 legacy engine. `poles` is a pole selection (`PoleSelection` in Python):
-`"all"` (the default) or `"none"`; the finite part is the same under both, and
-`"none"` saves the pole work. The CLI spells these `--loop-engine v2`,
-`--poles none`,
+`"all"` (the default), `"none"`, `"uv"` or `"ir"`; the finite part is the same
+under every selection, and `"none"` saves the pole work. The CLI spells these
+`--loop-engine v2`, `--poles {all,none,uv,ir}`,
 `--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT` and
 `--stability-reduction-direction`.
+
+#### Ultraviolet and infrared poles
+
+With `poles = "uv"` or `"ir"` every pole of the Born-virtual interference is
+split by origin, `P/eps = P_UV/eps_UV + P_IR/eps_IR`; the double pole is
+infrared. The finite part is always that of the renormalised virtual; the
+returned poles are:
+
+- `"uv"`: the ultraviolet poles of the bare (unrenormalised) one-loop
+  amplitude interfered with the Born, i.e. the reduction's UV poles (the
+  double pole is zero). The counterterms' UV poles are returned separately
+  (below), so that their cancellation can be checked.
+- `"ir"`: the infrared poles of the renormalised virtual, which Catani's
+  operator predicts. Where the ultraviolet renormalisation is complete they
+  equal the poles of `"all"`.
+
+Both selections cost the same and both also return each origin's parts by
+component, `VirtualEvaluation.pole_parts` (per point, `uv` and `ir`, each
+component a Laurent triple per sector; `pole_part(origin, component)` reads one):
+`virtual` (renormalised), `bare` (the bare loop), `r2`, `uv_local` (the model's
+coupling and mass counterterms), `uv_external_fields` (the on-shell field
+factors) and `uv` (`uv_local + uv_external_fields`). A model states its
+external-field factors with one eps (a massless leg's vanishes), so their
+ultraviolet part is fixed by the ultraviolet finiteness of the renormalised
+virtual: the bare and counterterm UV poles then cancel by construction, and
+the field factors' UV part is the quantity to compare with a field
+renormalisation of your own (for loop_sm in Feynman gauge it equals the
+textbook constants of the external legs). An incomplete ultraviolet
+renormalisation shows in the `"ir"` (and `"all"`) poles, which then miss
+Catani's operator. In Python:
+
+```python
+result = runtime.evaluate(points, mu_r2=scales, poles="uv")
+bare_uv = result.values                           # [point][sector] (finite, 1/eps_UV, 0)
+counterterms_uv = result.pole_part("uv", "uv")    # UV_local + field factors' UV part
+local_uv = result.pole_part("uv", "uv_local")     # the model's coupling and mass CTs
+```
+
+The selection is a runtime option: the same artifact serves all four (it stores
+the companion plan of its certified-scaleless loop families, which only `"uv"`
+and `"ir"` evaluate; they cost about 1 % (u u~ > e- e+ g g), 7 % (g g > g g g)
+and 13–18 % (g g > g g g g) more than `"all"`).
+An artifact written before the split is refused at load with a request to
+regenerate it.
+
+Stability estimates follow the selection. With `"uv"`, request at least one
+rotation check (`rotations` or `rotation_count`) to bracket the selected single
+pole: it is the bare loop's UV residue, which does not depend on the reduction
+frame, so `reduction_direction` alone (also rescaled) sees only its rounding
+and not the error of the loop numerators (at a `u u~ > d d~ g` point in
+double precision it underestimated that error about 8 times; a rotation
+bracketed it). With `"all"`, `"ir"` and `"none"` either check works. The
+`"uv"` double pole is exactly zero, and so is its estimate.
+
+Correlated and resolved outputs
+take every selection too; their `pole_parts` follow their own axes (resolved:
+per sector, helicity and colour component).
 
 Current v2 scope: model-supplied R2; full, NLC or LC colour (LC/NLC with the
 model's source colour declaration); double, double-double and arbitrary
