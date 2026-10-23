@@ -388,6 +388,14 @@ pyamplicol generate --card run.toml \
   --set generation.validation.post_build_validation=true
 ```
 
+Known limitation of the legacy loop engine: with colour-correlated outputs
+declared (for example the Casimir and dipole histories of `g g > g g`), its
+post-build validation can fail at the default tolerances ("saved virtual
+execution differs from source execution for 'gg/casimir'", an absolute
+difference of about 3e-10). Validate such legacy artifacts with
+`relative_tolerance = 3e-9` and `absolute_tolerance = 2e-12`; the v2 engine
+is not affected.
+
 ## Numerical current reuse
 
 Certified current-relation reuse is an opt-in optimization. It is off by

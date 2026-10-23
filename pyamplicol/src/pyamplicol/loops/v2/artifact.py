@@ -71,8 +71,8 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
-from functools import cached_property
 from decimal import Decimal
+from functools import cached_property
 from pathlib import Path
 from threading import RLock
 from typing import Any, Literal, cast

@@ -890,7 +890,8 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
 
     # The legacy virtual runtime, which the standalone SDK wraps, names the
     # plan v4 loader instead of misreading the artifact.
-    with pytest.raises(ValueError, match=r"loop-runtime\.v4\) are not evaluated by this"):
+    refusal = r"loop-runtime\.v4\) are not evaluated by this runtime"
+    with pytest.raises(ValueError, match=refusal):
         loop_native.NativeVirtualRuntime(str(full_colour), process="gg")
 
     def shuffle_buckets(physics):
@@ -1489,7 +1490,9 @@ def test_public_v2_runtime_at_non_default_model_parameters(
         options = CARRIER_OPTIONS[carrier]
         results = {
             "inclusive": runtime.evaluate(points, mu_r2=scales, **options),
-            **runtime.evaluate_correlated_many(points, requests, mu_r2=scales, **options),
+            **runtime.evaluate_correlated_many(
+                points, requests, mu_r2=scales, **options
+            ),
         }
         for label, result in results.items():
             target = {
@@ -1527,11 +1530,7 @@ def test_public_v2_runtime_at_non_default_model_parameters(
         scale = max(abs(Decimal(c)) for c in laurent)
         for k, coefficient in enumerate(laurent):
             summed = sum(
-                (
-                    _parts(entry[k])[0]
-                    for row in resolved.values[0][0]
-                    for entry in row
-                ),
+                (_parts(entry[k])[0] for row in resolved.values[0][0] for entry in row),
                 Decimal(0),
             )
             assert abs(summed - Decimal(coefficient)) <= DOUBLE_DOUBLE_TOLERANCE * scale
