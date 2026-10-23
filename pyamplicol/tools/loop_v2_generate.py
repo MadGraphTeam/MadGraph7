@@ -17,12 +17,23 @@ records of one process compare the native stages with Python's.
 difference.
 
 ``validate`` generates a process of ``tests/fixtures/loop/required``, exports
-its plan and evaluates the fixture's points with the native executor
-(per-point trees, Born and counterterm inputs still Python, WP3.1), then
+its plan and evaluates the fixture's points with the native executor, then
 compares the Born and the three Laurent coefficients of the virtual with
 every provider by the fixture's metric and tolerance. Catani's pole check is
 skipped: its exact dipole matrices cost hours at seven legs (WP3.1 I5c); the
-poles are compared with the providers instead.
+poles are compared with the providers instead. With ``--inputs python``
+(default) the per-point trees, Born and counterterms are Python inputs; with
+``--inputs native`` the executor forms the trees and the Born itself
+(``native_trees``) and returns the bare virtual without counterterms (WP3.1
+I5), so only the Born and the double pole (no counterterm has one) are
+compared; the bare finite part and single pole are reported.
+
+``poles`` validates a process without provider references by other means
+(MASTER_PLAN §0.1): native inputs at ``--points`` exact points
+(``tools/loop_reference/exact_points``), the double pole of the bare virtual
+over the Born against the universal -(alpha_s/2pi) sum_i C_i of its massless
+coloured legs, and with ``--rotation`` the stability estimate of one
+rotation check.
 
 Usage:
     python tools/loop_v2_generate.py measure "g g > g g g g" --born QCD=4
@@ -30,7 +41,10 @@ Usage:
         [--digests] [--export] [--json OUT.json] [--model COMPILED.json]
     python tools/loop_v2_generate.py diff A.json B.json
     python tools/loop_v2_generate.py validate gg_gggg [--points 0 1 2]
-        [--precision double|dd] [--stability] [--json OUT.json]
+        [--precision double|dd] [--stability] [--inputs python|native]
+        [--json OUT.json]
+    python tools/loop_v2_generate.py poles "g g > g g g g g" --born QCD=5
+        [--points 3] [--rotation] [--tolerance 1e-8] [--json OUT.json]
 """
 
 from __future__ import annotations
@@ -41,6 +55,7 @@ import json
 import resource
 import sys
 import time
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -260,8 +275,6 @@ def validate(args) -> dict[str, Any]:
 
 
 def _validate(args) -> dict[str, Any]:
-    from fractions import Fraction
-
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
     from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
@@ -295,10 +308,20 @@ def _validate(args) -> dict[str, Any]:
     )
     record["generate_s"] = round(time.perf_counter() - start, 1)
     start = time.perf_counter()
-    executor = NativeExecutor(
-        slice_, forward=False, exported=export_plan(slice_, forward=False)
-    )
+    if args.inputs == "native":
+        executor = NativeExecutor(slice_, forward=False, inputs="native")
+    else:
+        executor = NativeExecutor(
+            slice_, forward=False, exported=export_plan(slice_, forward=False)
+        )
     record["export_s"] = round(time.perf_counter() - start, 1)
+    record["inputs"] = args.inputs
+    # Native inputs give the bare virtual: no counterterm has a double pole.
+    compared = (
+        ("born", "double_pole")
+        if args.inputs == "native"
+        else ("born", "finite", "single_pole", "double_pole")
+    )
     precision = Precision.double_double() if args.precision == "dd" else None
     checks = None
     if args.stability:
@@ -332,6 +355,7 @@ def _validate(args) -> dict[str, Any]:
                 for key, value in zip(
                     ("born", "finite", "single_pole", "double_pole"), mine, strict=True
                 )
+                if key in compared
             }
         worst = max(e for row in errors.values() for e in row.values())
         failed |= worst > tolerance
@@ -347,6 +371,83 @@ def _validate(args) -> dict[str, Any]:
         record["points"].append(entry)
         print(json.dumps(entry), flush=True)
     record["passed"] = not failed
+    return record
+
+
+# Quadratic Casimirs of SU(3) by UFO colour representation.
+_CASIMIRS = {1: Fraction(0), 3: Fraction(4, 3), 6: Fraction(10, 3), 8: Fraction(3)}
+
+
+def poles(args) -> dict[str, Any]:
+    """Universal double pole and rotation stability with native inputs."""
+
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2.assemble import LoopSlice, _kernel_parameters
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+    from tools.loop_reference.exact_points import generate
+
+    timers = _Timers()
+    timers.install()
+    compiled = _compiled_model(args.model)
+    request = _request(args)
+    record: dict[str, Any] = {"process": args.process, "born": args.born}
+    start = time.perf_counter()
+    slice_ = LoopSlice.generate(compiled, request, load_loop_native())
+    record["generate_s"] = round(time.perf_counter() - start, 1)
+    start = time.perf_counter()
+    executor = NativeExecutor(slice_, forward=False, inputs="native")
+    record["export_with_trees_s"] = round(time.perf_counter() - start, 1)
+    parameters = {"aS": args.alpha_s, "MT": "173"}
+    values = _kernel_parameters(compiled, {**parameters, **request.fixed_parameters})
+    by_pdg = {int(p["pdg_code"]): p for p in slice_.data["particles"]}
+    masses, casimirs = [], Fraction(0)
+    for leg in sorted(slice_.blocks.process.legs, key=lambda leg: leg.label):
+        particle = by_pdg[int(leg.pdg)]
+        mass = particle.get("mass")
+        mass = Fraction(0) if mass in (None, "ZERO", "0") else values[mass]
+        masses.append(mass)
+        colour = abs(int(particle["color"]))
+        if colour not in _CASIMIRS:
+            raise SystemExit(f"no Casimir for colour representation {colour}")
+        if mass == 0:
+            casimirs += _CASIMIRS[colour]
+    expected = -float(Fraction(args.alpha_s) * casimirs) / (2 * 3.141592653589793)
+    record["expected_double_pole_over_born"] = expected
+    checks = None
+    if args.rotation:
+        checks = StabilityChecks(rotations=(Rotation.about("z", "3/5", "4/5"),))
+    record["points"] = []
+    worst = 0.0
+    for index, point in enumerate(generate(masses, count=args.points)):
+        start = time.perf_counter()
+        (result,) = executor.evaluate(
+            [[[str(x) for x in p] for p in point]],
+            ["1000000"],
+            parameters=parameters,
+            stability=checks,
+        )
+        born, *bare = (float(x) for x in result.totals[:4])
+        deviation = abs(bare[2] / born - expected) / abs(expected)
+        worst = max(worst, deviation)
+        entry = {
+            "index": index,
+            "seconds": round(time.perf_counter() - start, 2),
+            "born": born,
+            "bare": bare,
+            "double_pole_over_born": bare[2] / born,
+            "deviation": deviation,
+        }
+        if result.stability is not None:
+            entry["stability_relative"] = result.stability.relative
+        record["points"].append(entry)
+        print(json.dumps(entry), flush=True)
+    record["max_deviation"] = worst
+    record["passed"] = worst <= args.tolerance
+    record["events"] = timers.events
+    record["max_rss_gb"] = round(
+        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20, 3
+    )
     return record
 
 
@@ -381,18 +482,34 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("--points", type=int, nargs="*")
     check.add_argument("--precision", choices=("double", "dd"), default="double")
     check.add_argument("--stability", action="store_true")
+    check.add_argument("--inputs", choices=("python", "native"), default="python")
     check.add_argument("--model", help="compiled loop model JSON")
     check.add_argument("--json", help="write the record here")
+    pole = commands.add_parser("poles")
+    pole.add_argument("process")
+    pole.add_argument("--born", required=True, help="e.g. QCD=5")
+    pole.add_argument("--accuracy", choices=("fc", "lc", "nlc"), default="fc")
+    pole.add_argument("--ignored", default="", help="ignored particle ids, e.g. 23")
+    pole.add_argument("--points", type=int, default=3)
+    pole.add_argument("--rotation", action="store_true")
+    pole.add_argument("--alpha-s", default="0.118")
+    pole.add_argument("--tolerance", type=float, default=1e-8)
+    pole.add_argument("--model", help="compiled loop model JSON")
+    pole.add_argument("--json", help="write the record here")
     args = parser.parse_args(argv)
     if args.command == "diff":
         return diff(
             json.loads(Path(args.a).read_text()), json.loads(Path(args.b).read_text())
         )
-    if args.command == "validate":
-        record = validate(args)
+    if args.command in ("validate", "poles"):
+        record = validate(args) if args.command == "validate" else poles(args)
         if args.json:
             Path(args.json).write_text(json.dumps(record, indent=1))
-        print(json.dumps({k: v for k, v in record.items() if k != "points"}))
+        print(
+            json.dumps(
+                {k: v for k, v in record.items() if k not in ("points", "events")}
+            )
+        )
         return 0 if record["passed"] else 1
     record = measure(args)
     text = json.dumps(record, indent=1)
