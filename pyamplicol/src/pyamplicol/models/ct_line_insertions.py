@@ -542,7 +542,9 @@ def _composed(entering: str, leaving: str, insertion: Any) -> str:
     return _momenta_restored(composed).to_canonical_string()
 
 
-def _engine_denominator(propagator: Mapping[str, Any], particle: Mapping[str, Any]) -> str:
+def _engine_denominator(
+    propagator: Mapping[str, Any], particle: Mapping[str, Any]
+) -> str:
     """The denominator the tree engine applies for ``propagator``.
 
     A model-supplied propagator is applied as written; the record of a
@@ -556,7 +558,8 @@ def _engine_denominator(propagator: Mapping[str, Any], particle: Mapping[str, An
     mass, width = str(particle["mass"]), str(particle["width"])
     if mass.upper() == "ZERO" or width.upper() == "ZERO":
         return denominator
-    return f"({denominator})+𝑖*UFO::{{}}::{mass}*UFO::{{}}::{width}"
+    # Symbolica's imaginary unit.
+    return f"({denominator})+𝑖*UFO::{{}}::{mass}*UFO::{{}}::{width}"  # noqa: RUF001
 
 
 def _line_factor(

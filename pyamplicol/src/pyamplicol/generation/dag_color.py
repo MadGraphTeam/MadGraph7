@@ -1500,8 +1500,8 @@ class ColorEngine:
             # be a block word.
             labels = (
                 proposed
-                if set(proposed) <= self._shared_lc_coloured_labels
-                | self._shared_lc_singlet_labels
+                if set(proposed)
+                <= self._shared_lc_coloured_labels | self._shared_lc_singlet_labels
                 else None
             )
             if labels is not None:

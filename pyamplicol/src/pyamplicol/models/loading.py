@@ -1424,9 +1424,7 @@ def lower_counterterm_vertices(
                 "name": f"{_COUNTERTERM_PARAMETER_BLOCK}_V{number}",
                 "particles": list(legs),
                 "color_structures": [
-                    tree_colour_source(
-                        colour, representations, multi_trace=multi_trace
-                    )
+                    tree_colour_source(colour, representations, multi_trace=multi_trace)
                     for colour in colours
                 ],
                 "lorentz_structures": lorentz,

@@ -665,9 +665,7 @@ def _contact_decomposition_split_proof(
         open_legs=open_legs,
         kind=term.id,
         model_symbols=model_symbols,
-        symmetry=contact_pair_symmetry(
-            source_particles, pair_legs, outer_color_source
-        ),
+        symmetry=contact_pair_symmetry(source_particles, pair_legs, outer_color_source),
     )
     representative_indices, component_expansion = _compress_contact_components(
         canonical_components

@@ -307,8 +307,6 @@ class CoefficientLowering:
         """An expression in source (``UFO::name``) symbols, e.g. a whole-rule
         coefficient, as a coefficient in the payload's symbols."""
 
-        from symbolica import E
-
         expression = _payload_symbols(expression)
         for symbol, value in self._fixed:
             expression = expression.replace(symbol, value)
@@ -805,17 +803,17 @@ def whole_rule_rows(rule: Any, coefficients: CoefficientLowering) -> dict:
             raise NotImplementedError("whole-rule colour with an odd power of sqrt 2")
         scale = Fraction(1, 2 ** (tensor.normalization_power // 2))
         value = coefficients.payload_expression(term.coefficient)
-        for lorentz_scale, pairs in _metric_pairings(kernel.lorentz.to_expression(), legs):
-            lorentz = counterterm_metric_lorentz_name(
-                (a + 1, b + 1) for a, b in pairs
-            )
+        for lorentz_scale, pairs in _metric_pairings(
+            kernel.lorentz.to_expression(), legs
+        ):
+            lorentz = counterterm_metric_lorentz_name((a + 1, b + 1) for a, b in pairs)
             for item in tensor.terms:
                 if item.tensor.open_strings:
                     raise NotImplementedError("whole-rule colour with open strings")
                 number = item.coefficient.scaled(scale * lorentz_scale)
                 weight = (
                     E(str(number.real)) + E(str(number.imag)) * Expression.I
-                ) * nc ** item.nc_power
+                ) * nc**item.nc_power
                 for colour, factor in _adjoint_trace_colours(item.tensor.traces, nc):
                     structure = CountertermStructure(
                         particles=particles,
@@ -910,9 +908,7 @@ def _coupling_expressions(
             term = multiplicity * value
             sums[structure] = sums[structure] + term if structure in sums else term
     return {
-        structure: (
-            E(f"UFO::{{}}::{switches[_slot_of(structure)]}") * total
-        )
+        structure: (E(f"UFO::{{}}::{switches[_slot_of(structure)]}") * total)
         .expand()
         .to_canonical_string()
         for structure, total in sums.items()

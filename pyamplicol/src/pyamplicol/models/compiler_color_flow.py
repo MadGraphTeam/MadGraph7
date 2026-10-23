@@ -614,9 +614,7 @@ def synthesize_u1_projections(
     ) -> None:
         kind = next_kind + len(synthetic)
         representations = tuple(
-            1
-            if name.startswith(U1_IDENTITY_PREFIX)
-            else particle_by_name[name].color
+            1 if name.startswith(U1_IDENTITY_PREFIX) else particle_by_name[name].color
             for name in new_particles
         )
         coloured = tuple(
@@ -739,9 +737,7 @@ def synthesize_u1_projections(
         identity = identity_of[name].name
         for kernel in finals:
             names = [identity if value == name else value for value in kernel.particles]
-            other = next(
-                index for index in (0, 1) if kernel.particles[index] != name
-            )
+            other = next(index for index in (0, 1) if kernel.particles[index] != name)
             weight = _vertex_weight(kernel)
             if role(kernel.particles[other]) in {"gluon", "adjoint"}:
                 copy(kernel, tuple(names), weight)  # type: ignore[arg-type]

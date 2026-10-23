@@ -7,6 +7,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from typing import Any
 
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
@@ -25,13 +26,12 @@ from .compiler_contact_trees import (
 from .compiler_contacts import (
     _build_contact_decomposition_proof,
     _contact_final_component_expressions,
-    _contact_partial_component_expressions,
-    contact_pair_symmetry,
-    projected_contact_partial_components,
     _contact_term_has_literal_color_singlet,
     _fuse_contact_finals,
     _record_contact_decomposition_proofs,
     _validated_contact_decomposition_proof,
+    contact_pair_symmetry,
+    projected_contact_partial_components,
 )
 from .compiler_contractions import compile_contraction_records
 from .compiler_gauge import compile_goldstone_partner_records
@@ -589,8 +589,10 @@ def _contact_stage_structure(split: Any, stage: str) -> str:
         # Each stage carries its own tensor: a structure constant or a
         # d-symbol (counterterm contacts, ``ct_color_flow``), an identity, or
         # nothing (a pair of colour singlets).
-        source = split.outer_color_source if stage == "partial" else (
-            split.final_color_source
+        source = (
+            split.outer_color_source
+            if stage == "partial"
+            else (split.final_color_source)
         )
         if "Identity(" in source:
             return "color-identity"

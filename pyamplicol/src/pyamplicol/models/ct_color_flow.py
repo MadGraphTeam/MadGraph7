@@ -208,8 +208,7 @@ def d_product_u1_term(source: str) -> str | None:
     if not _adjoint_trilinears(factors):
         return None
     pairs = sorted(
-        tuple(sorted(index for index in factor.args if index > 0))
-        for factor in factors
+        tuple(sorted(index for index in factor.args if index > 0)) for factor in factors
     )
     return "*".join(f"Identity({a},{b})" for a, b in pairs)
 

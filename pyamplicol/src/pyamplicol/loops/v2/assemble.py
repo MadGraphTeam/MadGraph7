@@ -705,9 +705,7 @@ def _site_coefficient(compiled: Any, fixed: Mapping[str, Any], continuation: Any
                 CoefficientLowering(
                     compiled,
                     fixed,
-                    None
-                    if continuation is None
-                    else _payload_identities(continuation),
+                    None if continuation is None else _payload_identities(continuation),
                 )
             )
         return lowering[0](entry, power)
@@ -1446,7 +1444,9 @@ class LoopSlice:
         # binary64 couplings are the correctly rounded values (32 digits,
         # rounded once): they do not depend on the scalar program's
         # evaluation order.
-        digits = _COUPLING_DIGITS if numbers.double else numbers.precision.working_digits
+        digits = (
+            _COUPLING_DIGITS if numbers.double else numbers.precision.working_digits
+        )
         values = []
         for plan in plans:
             state = NativeScalarBindings(
@@ -1893,7 +1893,10 @@ class _PointEvaluation:
                 if isinstance(item.term, WholeRuleTerm):
                     if item.term not in whole:
                         whole[item.term] = item.term.coefficients(
-                            {name: scalars[name, 0][0] for name in item.term.parameters},
+                            {
+                                name: scalars[name, 0][0]
+                                for name in item.term.parameters
+                            },
                             numbers,
                         )
                     value = item.multiplicity * item.term.kinematic(values, numbers)
@@ -1906,8 +1909,12 @@ class _PointEvaluation:
                             numbers,
                         )
                     continue
-                vectors = [momenta[block.key.external_mask] for block in item.term.blocks]
-                value = item.term.sign * closure.value(item.term, values, vectors, carrier)
+                vectors = [
+                    momenta[block.key.external_mask] for block in item.term.blocks
+                ]
+                value = item.term.sign * closure.value(
+                    item.term, values, vectors, carrier
+                )
                 value = item.multiplicity * value
                 if item.scale is not None:
                     value = scales[item.scale] * value
