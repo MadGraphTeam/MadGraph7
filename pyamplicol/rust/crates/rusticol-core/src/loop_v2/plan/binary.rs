@@ -20,7 +20,11 @@
 //!   kernel input kinds) are numbers into a string table in first-use order.
 //!   Each column is stored at the narrowest of 0, 1, 2, 4 or 8 bytes per value
 //!   after subtracting its minimum, as values or as differences of successive
-//!   values, whichever is narrower. The member holds plan data only (no path,
+//!   values, whichever is narrower. The per-content lists that repeat across
+//!   contents (row helicities, fused entries, term dimensions, binding and
+//!   split inputs and entries) are stored once: their reference column holds
+//!   the number of the list's first use, and a list not seen before takes the
+//!   next number and follows in full. The member holds plan data only (no path,
 //!   no host or build information), is deterministic, and decodes to the same
 //!   model, so `binary → model → binary` is bitwise.
 //!
@@ -41,7 +45,9 @@ use super::{
 };
 use crate::RusticolResult;
 use sha2::{Digest, Sha256};
+use std::any::Any;
 use std::collections::HashMap;
+use std::hash::Hash;
 
 /// The first bytes of a binary plan member.
 pub const MAGIC: [u8; 8] = *b"LOOPPLAN";
@@ -168,11 +174,12 @@ columns! {
     MonomialPower,
     // contents
     ContentLen, ContentDIn, ContentDOut, ContentDegree, ContentRows, ContentMask,
-    RowHelicityLen, RowHelicityLegs, RowHelicity, FusedLen, Fused0, Fused1, Fused2, Fused3,
-    Fused4, Fused5, TermLen, SlotLen, Slot, DimensionLen, Dimension, BindingLen,
-    BindingKernel, BindingInputLen, BindingInputKind, BindingInputA, BindingInputB,
-    BindingEntryLen, BindingEntry, TermVertex, SplitLen, SplitKernel, SplitInputLen,
-    SplitInputKind, SplitInputA, SplitInputB, SplitEntryLen, SplitEntryA, SplitEntryB,
+    RowHelicityRef, RowHelicityLen, RowHelicityLegs, RowHelicity, FusedRef, FusedLen, Fused0, Fused1, Fused2, Fused3,
+    Fused4, Fused5, TermLen, SlotLen, Slot, DimensionRef, DimensionLen, Dimension,
+    BindingLen, BindingKernel, BindingInputRef, BindingInputLen, BindingInputKind, BindingInputA, BindingInputB,
+    BindingEntryRef, BindingEntryLen, BindingEntry, TermVertex, SplitLen, SplitKernel,
+    SplitInputRef, SplitInputLen, SplitInputKind, SplitInputA, SplitInputB, SplitEntryRef,
+    SplitEntryLen, SplitEntryA, SplitEntryB,
     TermRowLen, TermRow, TermRowBlockLen, TermRowBlock,
     // factors
     FactorLen, FactorContent, FactorShift,
@@ -211,6 +218,21 @@ trait Stream {
     fn string(&mut self, col: Col, value: &mut String) -> RusticolResult<()>;
     /// A list length: written as `len`, or read (and bounded).
     fn len(&mut self, col: Col, len: usize) -> RusticolResult<usize>;
+    /// Per reference column, its table of shared lists (`shared`).
+    fn tables(&mut self) -> &mut Vec<Option<Box<dyn Any>>>;
+}
+
+/// The table of shared lists of one reference column: by list when writing
+/// (`HashMap<Vec<T>, i64>`), by number when reading (`Vec<Vec<T>>`).
+fn table<S: Stream, X: Default + 'static>(stream: &mut S, refs: Col) -> &mut X {
+    let tables = stream.tables();
+    if tables.is_empty() {
+        tables.resize_with(COLUMN_NAMES.len(), || None);
+    }
+    tables[refs as usize]
+        .get_or_insert_with(|| Box::new(X::default()))
+        .downcast_mut::<X>()
+        .expect("one list type per reference column")
 }
 
 fn num<S: Stream, T>(stream: &mut S, col: Col, value: &mut T) -> RusticolResult<()>
@@ -261,6 +283,51 @@ where
     list(stream, len, items, |s, item| num(s, col, item))
 }
 
+/// A list stored once at its first use and referenced by number afterwards.
+fn shared<S: Stream, T>(
+    stream: &mut S,
+    refs: Col,
+    len: Col,
+    items: &mut Vec<T>,
+    visit: impl FnMut(&mut S, &mut T) -> RusticolResult<()>,
+) -> RusticolResult<()>
+where
+    T: Clone + Default + Eq + Hash + 'static,
+{
+    if S::READ {
+        let mut id = 0i64;
+        stream.int(refs, &mut id)?;
+        let known: &mut Vec<Vec<T>> = table(stream, refs);
+        match usize::try_from(id) {
+            Ok(k) if k < known.len() => {
+                items.clone_from(&known[k]);
+                Ok(())
+            }
+            Ok(k) if k == known.len() => {
+                list(stream, len, items, visit)?;
+                table::<S, Vec<Vec<T>>>(stream, refs).push(items.clone());
+                Ok(())
+            }
+            _ => Err(invalid(format!("binary plan: {refs:?} reference"))),
+        }
+    } else {
+        let known: &mut HashMap<Vec<T>, i64> = table(stream, refs);
+        let next = known.len() as i64;
+        let mut id = match known.get(items.as_slice()) {
+            Some(&id) => id,
+            None => {
+                known.insert(items.clone(), next);
+                next
+            }
+        };
+        stream.int(refs, &mut id)?;
+        if id == next {
+            list(stream, len, items, visit)?;
+        }
+        Ok(())
+    }
+}
+
 fn option<S: Stream, T: Default>(
     stream: &mut S,
     col: Col,
@@ -280,18 +347,14 @@ fn option<S: Stream, T: Default>(
 
 // ---------------------------------------------------------------- traversal
 
-/// Kernel or binding inputs `(kind, a, b)` in one column group.
-fn inputs<S: Stream>(
-    stream: &mut S,
-    cols: [Col; 4],
-    items: &mut Vec<(String, usize, usize)>,
-) -> RusticolResult<()> {
-    let [len, kind, a, b] = cols;
-    list(stream, len, items, |s, (k, x, y)| {
-        s.string(kind, k)?;
-        num(s, a, x)?;
-        num(s, b, y)
-    })
+type Input = (String, usize, usize);
+
+/// One kernel or binding input `(kind, a, b)`.
+fn input<S: Stream>(s: &mut S, [kind, a, b]: [Col; 3], item: &mut Input) -> RusticolResult<()> {
+    let (k, x, y) = item;
+    s.string(kind, k)?;
+    num(s, a, x)?;
+    num(s, b, y)
 }
 
 fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
@@ -359,16 +422,13 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
 }
 
 fn visit_kernel<S: Stream>(s: &mut S, kernel: &mut KernelFile) -> RusticolResult<()> {
-    inputs(
-        s,
-        [
-            Col::KernelInputLen,
-            Col::KernelInputKind,
-            Col::KernelInputA,
-            Col::KernelInputB,
-        ],
-        &mut kernel.inputs,
-    )?;
+    list(s, Col::KernelInputLen, &mut kernel.inputs, |s, item| {
+        input(
+            s,
+            [Col::KernelInputKind, Col::KernelInputA, Col::KernelInputB],
+            item,
+        )
+    })?;
     list(s, Col::KernelOutputLen, &mut kernel.outputs, |s, terms| {
         list(s, Col::KernelTermLen, terms, |s, (constant, monomial)| {
             num(s, Col::KernelTermConstant, constant)?;
@@ -386,83 +446,103 @@ fn visit_content<S: Stream>(s: &mut S, content: &mut ContentFile) -> RusticolRes
     num(s, Col::ContentDegree, &mut content.degree)?;
     num(s, Col::ContentRows, &mut content.rows)?;
     num(s, Col::ContentMask, &mut content.mask)?;
-    list(
+    let rows = &mut content.row_helicities;
+    shared(
         s,
+        Col::RowHelicityRef,
         Col::RowHelicityLen,
-        &mut content.row_helicities,
+        rows,
         |s, row| nums(s, Col::RowHelicityLegs, Col::RowHelicity, row),
     )?;
-    list(s, Col::FusedLen, &mut content.fused, |s, entry| {
-        const FUSED: [Col; 6] = [
-            Col::Fused0,
-            Col::Fused1,
-            Col::Fused2,
-            Col::Fused3,
-            Col::Fused4,
-            Col::Fused5,
-        ];
-        for (col, value) in FUSED.into_iter().zip(entry.iter_mut()) {
-            num(s, col, value)?;
-        }
-        Ok(())
-    })?;
+    shared(
+        s,
+        Col::FusedRef,
+        Col::FusedLen,
+        &mut content.fused,
+        |s, entry| {
+            const FUSED: [Col; 6] = [
+                Col::Fused0,
+                Col::Fused1,
+                Col::Fused2,
+                Col::Fused3,
+                Col::Fused4,
+                Col::Fused5,
+            ];
+            for (col, value) in FUSED.into_iter().zip(entry.iter_mut()) {
+                num(s, col, value)?;
+            }
+            Ok(())
+        },
+    )?;
     list(s, Col::TermLen, &mut content.terms, visit_term)
 }
 
 fn visit_term<S: Stream>(s: &mut S, term: &mut TermFile) -> RusticolResult<()> {
     nums(s, Col::SlotLen, Col::Slot, &mut term.slots)?;
-    nums(s, Col::DimensionLen, Col::Dimension, &mut term.dimensions)?;
-    list(
+    let dimensions = &mut term.dimensions;
+    shared(
         s,
-        Col::BindingLen,
-        &mut term.bindings,
-        |s, binding: &mut BindingFile| {
-            num(s, Col::BindingKernel, &mut binding.kernel)?;
-            inputs(
-                s,
-                [
-                    Col::BindingInputLen,
-                    Col::BindingInputKind,
-                    Col::BindingInputA,
-                    Col::BindingInputB,
-                ],
-                &mut binding.inputs,
-            )?;
-            nums(
-                s,
-                Col::BindingEntryLen,
-                Col::BindingEntry,
-                &mut binding.entries,
-            )
-        },
+        Col::DimensionRef,
+        Col::DimensionLen,
+        dimensions,
+        |s, d| num(s, Col::Dimension, d),
     )?;
+    list(s, Col::BindingLen, &mut term.bindings, visit_binding)?;
     num(s, Col::TermVertex, &mut term.vertex)?;
-    list(
-        s,
-        Col::SplitLen,
-        &mut term.split,
-        |s, split: &mut SplitFile| {
-            num(s, Col::SplitKernel, &mut split.kernel)?;
-            inputs(
-                s,
-                [
-                    Col::SplitInputLen,
-                    Col::SplitInputKind,
-                    Col::SplitInputA,
-                    Col::SplitInputB,
-                ],
-                &mut split.inputs,
-            )?;
-            list(s, Col::SplitEntryLen, &mut split.entries, |s, (a, b)| {
-                num(s, Col::SplitEntryA, a)?;
-                num(s, Col::SplitEntryB, b)
-            })
-        },
-    )?;
+    list(s, Col::SplitLen, &mut term.split, visit_split)?;
     list(s, Col::TermRowLen, &mut term.rows, |s, (row, blocks)| {
         num(s, Col::TermRow, row)?;
         nums(s, Col::TermRowBlockLen, Col::TermRowBlock, blocks)
     })
+}
+
+fn visit_binding<S: Stream>(s: &mut S, binding: &mut BindingFile) -> RusticolResult<()> {
+    const INPUT: [Col; 3] = [
+        Col::BindingInputKind,
+        Col::BindingInputA,
+        Col::BindingInputB,
+    ];
+    num(s, Col::BindingKernel, &mut binding.kernel)?;
+    let inputs = &mut binding.inputs;
+    shared(
+        s,
+        Col::BindingInputRef,
+        Col::BindingInputLen,
+        inputs,
+        |s, item| input(s, INPUT, item),
+    )?;
+    let entries = &mut binding.entries;
+    shared(
+        s,
+        Col::BindingEntryRef,
+        Col::BindingEntryLen,
+        entries,
+        |s, e| num(s, Col::BindingEntry, e),
+    )
+}
+
+fn visit_split<S: Stream>(s: &mut S, split: &mut SplitFile) -> RusticolResult<()> {
+    const INPUT: [Col; 3] = [Col::SplitInputKind, Col::SplitInputA, Col::SplitInputB];
+    num(s, Col::SplitKernel, &mut split.kernel)?;
+    let inputs = &mut split.inputs;
+    shared(
+        s,
+        Col::SplitInputRef,
+        Col::SplitInputLen,
+        inputs,
+        |s, item| input(s, INPUT, item),
+    )?;
+    let entries = &mut split.entries;
+    shared(
+        s,
+        Col::SplitEntryRef,
+        Col::SplitEntryLen,
+        entries,
+        |s, (a, b)| {
+            num(s, Col::SplitEntryA, a)?;
+            num(s, Col::SplitEntryB, b)
+        },
+    )
 }
 
 fn visit_family<S: Stream>(s: &mut S, family: &mut FamilyFile) -> RusticolResult<()> {
@@ -635,6 +715,7 @@ struct Writer {
     columns: Vec<Vec<i64>>,
     strings: Vec<String>,
     ids: HashMap<String, i64>,
+    tables: Vec<Option<Box<dyn Any>>>,
 }
 
 impl Writer {
@@ -693,6 +774,10 @@ impl Stream for Writer {
         let mut wide = len as i64;
         self.int(col, &mut wide)?;
         Ok(len)
+    }
+
+    fn tables(&mut self) -> &mut Vec<Option<Box<dyn Any>>> {
+        &mut self.tables
     }
 }
 
@@ -804,8 +889,9 @@ impl Cursor<'_> {
 struct Reader<'a> {
     cursors: Vec<Cursor<'a>>,
     strings: Vec<String>,
-    /// Values left in the member: no list is longer.
+    /// Values in the member: no list is longer.
     budget: usize,
+    tables: Vec<Option<Box<dyn Any>>>,
 }
 
 fn take<'a>(bytes: &mut &'a [u8], n: usize) -> RusticolResult<&'a [u8]> {
@@ -887,6 +973,7 @@ impl<'a> Reader<'a> {
             cursors,
             strings: Vec::new(),
             budget,
+            tables: Vec::new(),
         };
         let count = reader.cursors[Col::StringLen as usize].count;
         let mut strings = Vec::with_capacity(count);
@@ -946,6 +1033,10 @@ impl Stream for Reader<'_> {
             .ok()
             .filter(|&len| len <= self.budget)
             .ok_or_else(|| invalid(format!("binary plan: {col:?} list length")))
+    }
+
+    fn tables(&mut self) -> &mut Vec<Option<Box<dyn Any>>> {
+        &mut self.tables
     }
 }
 
