@@ -94,6 +94,12 @@ struct TreeFile {
     /// The counterterm and external-field components (none: Born and bare
     /// virtual only).
     counterterms: Option<CountertermFile>,
+    /// Kernel input layouts of the closure terms: ("current", slot,
+    /// component) or ("momentum", slot, mu).
+    layouts: Vec<Vec<(String, usize, usize)>>,
+    /// Colour weights of the closure terms: (re, im, sqrt(2) power p), the
+    /// weight times 2^(-p/2).
+    weights: Vec<(String, String, i32)>,
 }
 
 /// The parameter program: one saved exact evaluator (the program's last
@@ -230,16 +236,16 @@ struct CountertermFile {
 #[serde(deny_unknown_fields)]
 struct TermFile {
     kernel: usize,
-    /// Per kernel input: ("current", slot, component) or ("momentum", slot, mu).
-    inputs: Vec<(String, usize, usize)>,
+    /// The term's kernel input layout (`TreeFile::layouts`).
+    layout: usize,
     /// Closure block of each slot.
     blocks: Vec<usize>,
     /// Leg mask of each slot.
     masks: Vec<u64>,
     sign: i32,
-    /// (coupling, component, weight re, weight im, sqrt(2) power p): the
-    /// term adds coupling * weight * 2^(-p/2) * value to the component.
-    contributions: Vec<(usize, usize, String, String, i32)>,
+    /// (coupling, component, colour weight): the term adds coupling *
+    /// weight * value to the component (`TreeFile::weights`).
+    contributions: Vec<(usize, usize, usize)>,
 }
 
 // ------------------------------------------------------------ program form
@@ -282,12 +288,21 @@ struct Interactions {
 
 struct Term {
     kernel: usize,
-    inputs: Vec<TermInput>,
+    layout: usize,
     blocks: Vec<usize>,
     /// Per slot its leg mask's index in the program's `masks`.
     masks: Vec<usize>,
     sign: i32,
-    contributions: Vec<(usize, usize, [Rational; 2], i32)>,
+    /// (coupling, component, colour weight).
+    contributions: Vec<(usize, usize, usize)>,
+}
+
+/// The shared tables of the closure terms.
+struct Closures<'a> {
+    /// Per layout its inputs and the number of slots it reads.
+    layouts: &'a [(Vec<TermInput>, usize)],
+    weights: usize,
+    masks: &'a mut BTreeMap<u64, usize>,
 }
 
 /// Where a tree-program model parameter comes from.
@@ -350,6 +365,10 @@ pub struct TreeProgram {
     counterterms: Option<Counterterms>,
     /// The leg masks of the closure terms' slots.
     masks: Vec<u64>,
+    /// The closure terms' kernel input layouts.
+    layouts: Vec<Vec<TermInput>>,
+    /// The closure terms' colour weights and their sqrt(2) powers.
+    weights: Vec<([Rational; 2], i32)>,
 }
 
 /// The parameter-only inputs of one batch.
@@ -399,12 +418,12 @@ pub struct TreeRuntime<T> {
     /// its interactions' weights.
     kernels: Vec<BatchExpressionEvaluator<Complex<T>>>,
     edge_weights: Vec<Vec<Vec<Complex<T>>>>,
-    weights: Vec<Vec<Complex<T>>>,
+    /// The closure terms' colour weights.
+    weights: Vec<Complex<T>>,
     factors: Vec<Vec<T>>,
     gram: Option<Vec<Complex<T>>>,
     metric: Option<Vec<Complex<T>>>,
     average: T,
-    counterterm_weights: Vec<Vec<Complex<T>>>,
     interference: Option<InterferenceRuntime<T>>,
 }
 
@@ -594,68 +613,76 @@ fn load_term(
     couplings: usize,
     components: usize,
     legs: usize,
-    masks: &mut BTreeMap<u64, usize>,
+    closures: &mut Closures<'_>,
 ) -> RusticolResult<Term> {
     let kernel = plan
         .kernels
         .get(term.kernel)
         .ok_or_else(|| invalid("closure term kernel index"))?;
+    let (inputs, slots) = closures
+        .layouts
+        .get(term.layout)
+        .ok_or_else(|| invalid("closure term layout"))?;
     require(
-        kernel.outputs.len() == 1 && kernel.inputs == term.inputs.len(),
+        kernel.outputs.len() == 1 && kernel.inputs == inputs.len(),
         "a closure kernel has one output and the term's inputs",
     )?;
     require(
         term.blocks.len() == term.masks.len()
+            && *slots <= term.blocks.len()
             && term.blocks.iter().all(|&block| block < blocks)
             && term.masks.iter().all(|&mask| mask >> legs == 0)
             && term.sign.abs() == 1,
         "closure term blocks",
     )?;
-    let inputs = term
-        .inputs
-        .iter()
-        .map(|(kind, slot, component)| {
-            require(*slot < term.blocks.len(), "closure term input slot")?;
-            match kind.as_str() {
-                "current" => Ok(TermInput::Current {
-                    slot: *slot,
-                    component: *component,
-                }),
-                "momentum" if *component < 4 => Ok(TermInput::Momentum {
-                    slot: *slot,
-                    mu: *component,
-                }),
-                _ => Err(invalid(format!("closure term input {kind:?}"))),
-            }
-        })
-        .collect::<RusticolResult<Vec<_>>>()?;
-    let contributions = term
-        .contributions
-        .iter()
-        .map(|(coupling, component, re, im, power)| {
-            require(
-                *coupling < couplings && *component < components,
-                "closure term contribution",
-            )?;
-            Ok((*coupling, *component, [exact(re)?, exact(im)?], *power))
-        })
-        .collect::<RusticolResult<Vec<_>>>()?;
+    require(
+        term.contributions.iter().all(|&(coupling, component, weight)| {
+            coupling < couplings && component < components && weight < closures.weights
+        }),
+        "closure term contribution",
+    )?;
     let masks = term
         .masks
         .iter()
         .map(|mask| {
-            let next = masks.len();
-            *masks.entry(*mask).or_insert(next)
+            let next = closures.masks.len();
+            *closures.masks.entry(*mask).or_insert(next)
         })
         .collect();
     Ok(Term {
         kernel: term.kernel,
-        inputs,
+        layout: term.layout,
         blocks: term.blocks,
         masks,
         sign: term.sign,
-        contributions,
+        contributions: term.contributions,
     })
+}
+
+/// Validate the closure terms' input layouts: per layout its inputs and
+/// the number of slots it reads.
+fn load_layouts(layouts: &[Vec<(String, usize, usize)>]) -> RusticolResult<Vec<(Vec<TermInput>, usize)>> {
+    layouts
+        .iter()
+        .map(|layout| {
+            let inputs = layout
+                .iter()
+                .map(|(kind, slot, component)| match kind.as_str() {
+                    "current" => Ok(TermInput::Current {
+                        slot: *slot,
+                        component: *component,
+                    }),
+                    "momentum" if *component < 4 => Ok(TermInput::Momentum {
+                        slot: *slot,
+                        mu: *component,
+                    }),
+                    _ => Err(invalid(format!("closure term input {kind:?}"))),
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+            let slots = layout.iter().map(|&(_, slot, _)| slot + 1).max().unwrap_or(0);
+            Ok((inputs, slots))
+        })
+        .collect()
 }
 
 /// Validate a counterterm program (`CountertermFile`).
@@ -668,7 +695,7 @@ fn load_counterterms(
     basis: usize,
     orders: usize,
     legs: usize,
-    masks: &mut BTreeMap<u64, usize>,
+    closures: &mut Closures<'_>,
 ) -> RusticolResult<Counterterms> {
     require(
         file.coupling_powers.len() == file.couplings,
@@ -682,7 +709,7 @@ fn load_counterterms(
     let terms = file
         .terms
         .into_iter()
-        .map(|term| load_term(term, plan, blocks, file.couplings, components, legs, masks))
+        .map(|term| load_term(term, plan, blocks, file.couplings, components, legs, closures))
         .collect::<RusticolResult<Vec<_>>>()?;
     let cells = file
         .cells
@@ -805,6 +832,17 @@ impl TreeProgram {
             )?;
         }
         let mut masks = BTreeMap::new();
+        let layouts = load_layouts(&file.layouts)?;
+        let weights = file
+            .weights
+            .iter()
+            .map(|(re, im, power)| Ok(([exact(re)?, exact(im)?], *power)))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let mut closures = Closures {
+            layouts: &layouts,
+            weights: weights.len(),
+            masks: &mut masks,
+        };
         let blocks = born.blocks.len();
         let terms = born
             .terms
@@ -817,7 +855,7 @@ impl TreeProgram {
                     born.couplings,
                     born.components,
                     file.legs,
-                    &mut masks,
+                    &mut closures,
                 )
             })
             .collect::<RusticolResult<Vec<_>>>()?;
@@ -888,7 +926,7 @@ impl TreeProgram {
                     basis,
                     born.orders,
                     file.legs,
-                    &mut masks,
+                    &mut closures,
                 )
             })
             .transpose()?;
@@ -916,6 +954,8 @@ impl TreeProgram {
             average: exact(&born.average)?,
             parameters,
             counterterms,
+            layouts: layouts.into_iter().map(|(inputs, _)| inputs).collect(),
+            weights,
             masks: {
                 let mut table = vec![0; masks.len()];
                 for (mask, index) in masks {
@@ -1114,33 +1154,22 @@ impl TreeProgram {
                     .collect()
             })
             .collect();
-        let weights_of = |terms: &[Term]| -> Vec<Vec<Complex<T>>> {
-            terms
-                .iter()
-                .map(|term| {
-                    term.contributions
-                        .iter()
-                        .map(|(_c, _j, [re, im], power)| {
-                            let mut scale = cast(zero, &Rational::from(1));
-                            for _ in 0..power.unsigned_abs() {
-                                scale = if *power > 0 {
-                                    scale / root.clone()
-                                } else {
-                                    scale * root.clone()
-                                };
-                            }
-                            let w = complex(re, im);
-                            Complex::new(w.re * scale.clone(), w.im * scale)
-                        })
-                        .collect()
-                })
-                .collect()
-        };
-        let weights = weights_of(&self.terms);
-        let counterterm_weights = self
-            .counterterms
-            .as_ref()
-            .map_or_else(Vec::new, |ct| weights_of(&ct.terms));
+        let weights = self
+            .weights
+            .iter()
+            .map(|([re, im], power)| {
+                let mut scale = cast(zero, &Rational::from(1));
+                for _ in 0..power.unsigned_abs() {
+                    scale = if *power > 0 {
+                        scale / root.clone()
+                    } else {
+                        scale * root.clone()
+                    };
+                }
+                let w = complex(re, im);
+                Complex::new(w.re * scale.clone(), w.im * scale)
+            })
+            .collect();
         let interference = self
             .counterterms
             .as_ref()
@@ -1171,7 +1200,6 @@ impl TreeProgram {
             gram,
             metric,
             average: cast(zero, &self.average),
-            counterterm_weights,
             interference,
         })
     }
@@ -1325,7 +1353,7 @@ impl TreeProgram {
                 let couplings = &batch.counterterm_couplings[index];
                 let ket = self.close(
                     &ct.terms,
-                    &runtime.counterterm_weights,
+                    &runtime.weights,
                     couplings,
                     (!poles).then_some(ct.finite_slot.as_slice()),
                     ct.components,
@@ -1503,7 +1531,7 @@ impl TreeProgram {
     fn close<T: Carrier>(
         &self,
         terms: &[Term],
-        weights: &[Vec<Complex<T>>],
+        weights: &[Complex<T>],
         couplings: &[Complex<T>],
         active: Option<&[bool]>,
         width: usize,
@@ -1523,7 +1551,7 @@ impl TreeProgram {
             .for_each(|(row, target)| {
                 let mut x = Vec::new();
                 let mut starts = Vec::new();
-                for (term, weights) in terms.iter().zip(weights) {
+                for term in terms {
                     if active.is_some_and(|active| {
                         term.contributions.iter().all(|(c, ..)| !active[*c])
                     }) {
@@ -1540,7 +1568,7 @@ impl TreeProgram {
                         continue;
                     }
                     x.clear();
-                    for input in &term.inputs {
+                    for input in &self.layouts[term.layout] {
                         x.push(match *input {
                             TermInput::Current { slot, component } => {
                                 state[starts[slot] + component].clone()
@@ -1563,13 +1591,12 @@ impl TreeProgram {
                     if term.sign < 0 {
                         value = -value;
                     }
-                    for ((coupling, component, _, _), weight) in term.contributions.iter().zip(weights)
-                    {
-                        if active.is_some_and(|active| !active[*coupling]) {
+                    for &(coupling, component, weight) in &term.contributions {
+                        if active.is_some_and(|active| !active[coupling]) {
                             continue;
                         }
-                        target[*component] +=
-                            couplings[*coupling].clone() * weight.clone() * value.clone();
+                        target[component] +=
+                            couplings[coupling].clone() * weights[weight].clone() * value.clone();
                     }
                 }
             });

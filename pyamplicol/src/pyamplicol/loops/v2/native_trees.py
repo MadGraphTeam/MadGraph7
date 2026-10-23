@@ -197,6 +197,34 @@ def export_trees(
         block_dimensions.append(dimensions.pop())
         return found
 
+    # Closure terms share their input layouts and colour weights (interned).
+    layouts: dict[tuple[tuple[Any, ...], ...], int] = {}
+    weights: dict[tuple[str, str, int], int] = {}
+
+    def record(
+        term: Any, kernel: int, inputs: list[list[Any]], contributions: list[list[Any]]
+    ) -> dict[str, Any]:
+        """A closure term's record: its kernel on the layout of its inputs,
+        and per contribution (coupling, component, weight); ``contributions``
+        are (coupling, component, weight re, weight im, sqrt(2) power)."""
+
+        layout = layouts.setdefault(tuple(tuple(item) for item in inputs), len(layouts))
+        return {
+            "kernel": kernel,
+            "layout": layout,
+            "blocks": [block_id(block) for block in term.blocks],
+            "masks": [block.key.external_mask for block in term.blocks],
+            "sign": term.sign,
+            "contributions": [
+                [
+                    coupling,
+                    component,
+                    weights.setdefault((real, imag, power), len(weights)),
+                ]
+                for coupling, component, real, imag, power in contributions
+            ],
+        }
+
     def closure_term(term: Any, contributions: list[list[Any]]) -> dict[str, Any]:
         """A root-closure term (``ct_sites.SiteTerm``: a vertex closed on
         tree blocks) as a plan kernel on its blocks' rows and momenta."""
@@ -217,14 +245,7 @@ def export_trees(
                 inputs.append(["momentum", component // 4, component % 4])
             else:
                 raise ValueError(f"a closure kernel reads a {kind} input")
-        return {
-            "kernel": kernel,
-            "inputs": inputs,
-            "blocks": ids,
-            "masks": [block.key.external_mask for block in term.blocks],
-            "sign": term.sign,
-            "contributions": contributions,
-        }
+        return record(term, kernel, inputs, contributions)
 
     def whole_term(term: Any, contributions: list[list[Any]]) -> dict[str, Any]:
         """A whole-rule continuation term (``assemble.WholeRuleTerm``): its
@@ -268,16 +289,8 @@ def export_trees(
                     "outputs": [outputs],
                 }
             )
-        return {
-            "kernel": kernel,
-            "inputs": [
-                ["current", slot, k] for slot in range(len(ids)) for k in range(4)
-            ],
-            "blocks": ids,
-            "masks": [block.key.external_mask for block in term.blocks],
-            "sign": term.sign,
-            "contributions": contributions,
-        }
+        inputs = [["current", slot, k] for slot in range(len(ids)) for k in range(4)]
+        return record(term, kernel, inputs, contributions)
 
     terms = []
     born_orders = tuple(sorted(slice_.born_terms))
@@ -385,6 +398,11 @@ def export_trees(
         },
         "parameters": parameters,
         "counterterms": None if counterterms is None else counterterms.record,
+        # Per closure-term layout its kernel inputs: ("current", slot,
+        # component) or ("momentum", slot, mu); per colour weight (re, im,
+        # sqrt(2) power p): the weight times 2^(-p/2).
+        "layouts": [[list(item) for item in layout] for layout in layouts],
+        "weights": [list(weight) for weight in weights],
     }
     return NativeTrees(
         program,
@@ -444,8 +462,10 @@ def _counterterm_program(
     are their N_c-graded coefficients.
     """
 
+    from pyamplicol.color.connections import overlap_traces
+
     from .assemble import LAURENT_POWERS, WholeRuleTerm, _single
-    from .colour import _DEPTH
+    from .colour import _DEPTH, _literal_tensor_overlap_nc_terms, _trace_overlaps
     from .fields import FIELD_COMPONENT
 
     _plan, layout = slice_._scalar_plan(LAURENT_POWERS)
@@ -474,24 +494,30 @@ def _counterterm_program(
                 literal.append(tensor)
         return found
 
-    def contribute(out, slot, vector, grade, colour, multiplicity) -> None:
-        for item in colour.terms:
-            t = tensor_index(item.tensor)
-            k = ket.setdefault((t, vector, item.nc_power + grade), len(ket))
-            out.append(
-                [
-                    slot,
-                    k,
-                    _fraction_text(item.coefficient.real * multiplicity),
-                    _fraction_text(item.coefficient.imag * multiplicity),
-                    colour.normalization_power,
-                ]
+    def colour_items(colour: Any, multiplicity: int) -> list[tuple[Any, ...]]:
+        """(ket tensor, N_c power, weight re, weight im) per literal tensor."""
+
+        return [
+            (
+                tensor_index(item.tensor),
+                item.nc_power,
+                _fraction_text(item.coefficient.real * multiplicity),
+                _fraction_text(item.coefficient.imag * multiplicity),
             )
+            for item in colour.terms
+        ]
+
+    def contribute(out, slot, vector, grade, items, power2) -> None:
+        for t, nc_power, real, imag in items:
+            k = ket.setdefault((t, vector, nc_power + grade), len(ket))
+            out.append([slot, k, real, imag, power2])
 
     for site, site_terms in slice_.site_terms.items():
         multiplicity = len(site.alternatives)
         for term in site_terms:
             contributions: list[list[Any]] = []
+            items = colour_items(term.colour, multiplicity)
+            power2 = term.colour.normalization_power
             if isinstance(term, WholeRuleTerm):
                 # Only the eps^0 coefficient exists; its N_c grades are model
                 # expressions of the named scalars' grade-0 values.
@@ -509,9 +535,7 @@ def _counterterm_program(
                     if slot is None:
                         slot = couplings[key] = len(couplings)
                         whole_expressions[slot] = expression
-                    contribute(
-                        contributions, slot, vector, degree, term.colour, multiplicity
-                    )
+                    contribute(contributions, slot, vector, degree, items, power2)
                 if contributions:
                     terms.append(whole_term(term, contributions))
                 continue
@@ -527,9 +551,7 @@ def _counterterm_program(
                     slot = couplings.setdefault(
                         ("scalar", name, power, grade), len(couplings)
                     )
-                    contribute(
-                        contributions, slot, vector, grade, term.colour, multiplicity
-                    )
+                    contribute(contributions, slot, vector, grade, items, power2)
             if contributions:
                 terms.append(closure_term(term, contributions))
     born_index = {order: o for o, order in enumerate(born_orders)}
@@ -580,13 +602,14 @@ def _counterterm_program(
                             degree(s),
                         ]
                     )
-    # Exact overlaps of the Born basis with every ket tensor, per N_c power.
+    # Exact overlaps of the Born basis with every ket tensor, per N_c power:
+    # the basis Gram, and the other ket tensors' overlaps counted natively
+    # in one batch (``colour.contract_colour`` of unit literal tensors).
     gram = slice_.basis.gram
     cells = []
-    for b, left in enumerate(literal[: len(basis)]):
-        for t, right in enumerate(literal):
-            found = gram[b][t] if t < len(basis) else slice_.overlaps(left, right)
-            for power, cell in found.items():
+    for b in range(len(basis)):
+        for t in range(len(basis)):
+            for power, cell in gram[b][t].items():
                 if cell:
                     cells.append(
                         [
@@ -597,6 +620,25 @@ def _counterterm_program(
                             _fraction_text(cell.imag),
                         ]
                     )
+    pairs = [(b, t) for b in range(len(basis)) for t in range(len(basis), len(literal))]
+    if pairs:
+        counted = _trace_overlaps()(
+            [overlap_traces(literal[b], literal[t]) for b, t in pairs]
+        )
+        for (b, t), laurent in zip(pairs, counted, strict=True):
+            nc_terms = (
+                _literal_tensor_overlap_nc_terms(literal[b], literal[t]).items()
+                if laurent is None
+                else ((power, Fraction(value)) for power, value in laurent)
+            )
+            found: dict[int, Fraction] = defaultdict(Fraction)
+            for power, value in nc_terms:
+                found[power] += value
+            cells.extend(
+                [b, t, power, _fraction_text(value), "0"]
+                for power, value in sorted(found.items())
+                if value
+            )
     record = {
         "couplings": len(couplings),
         "coupling_powers": [key[2] if key[0] == "scalar" else 0 for key in couplings],
