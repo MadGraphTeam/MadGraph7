@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: 0BSD
 """Long v2 observable controls (WP2.5; nightly).
 
-* O1: the helicity-resolved outputs of u u~ > g g g at 200 bits against the
-  frozen legacy record (``test_loop_v2_observables.py`` runs the others);
-* the helicity x Born-basis entries of u u~ > g g g in binary64 sum to the
-  inclusive result, and the native resolved columns equal the Python ones;
+* O1: the helicity-resolved outputs of u u~ > g g g at 200 bits and in
+  binary64 (both executors, every point) against the frozen legacy record
+  (``test_loop_v2_observables.py`` and its other nightly files run the
+  others);
+* the helicity x Born-basis entries of u u~ > g g g in binary64 (and its
+  Born-basis entries at 200 bits) sum to the inclusive result, and the
+  native resolved columns equal the Python ones;
 * O14 with resolved-colour seed columns: BDK's partial amplitudes of
   qbar q g g g reproduce v2's helicity-resolved bare virtual at 200 bits.
 """
@@ -41,12 +44,20 @@ def test_five_leg_helicity_resolved_outputs_equal_legacy_at_200_bits(generate):
     assert_helicity_resolved_legacy(generate, "uux_ggg", "arbitrary-200")
 
 
-def test_five_leg_resolved_entries_sum_to_the_inclusive_result(generate):
+def test_five_leg_helicity_resolved_outputs_equal_legacy_in_binary64(generate):
+    """O1 of u u~ > g g g's helicity-resolved outputs in binary64, both
+    executors at both points, under the binary64 rule."""
+
+    assert_helicity_resolved_legacy(generate, "uux_ggg", "double")
+
+
+@pytest.mark.parametrize("carrier", tuple(CARRIERS))
+def test_five_leg_resolved_entries_sum_to_the_inclusive_result(generate, carrier):
     """Helicity x Born-basis entries of u u~ > g g g in binary64 (about 5.5
     minutes, mostly the Python executor's one-hot helicity x colour
-    columns)."""
+    columns) and its Born-basis entries at 200 bits (about 2 minutes)."""
 
-    assert_resolved_entries_sum(generate, "uux_ggg", "double")
+    assert_resolved_entries_sum(generate, "uux_ggg", carrier)
 
 
 def _rank(vectors: list[list[Fraction]]) -> int:
