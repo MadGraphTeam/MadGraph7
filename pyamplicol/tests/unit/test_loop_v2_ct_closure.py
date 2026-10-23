@@ -855,7 +855,10 @@ def test_six_gluon_generation_completes_without_a_personal_key(
     key alone, as users without a license run it: Spenso is set serial);
     O6 at the CT level at the first point of the three-provider reference,
     and the R2 component of both routes against MadLoop's (an independent
-    oracle of the four-gluon R2 at six legs). About an hour."""
+    oracle of the four-gluon R2 at six legs). About an hour. The native loop
+    module's own Symbolica runs restricted without a key, on the user's one
+    restricted Symbolica thread: no other unlicensed Symbolica process of
+    the user may run at the same time."""
 
     import ast
     import json

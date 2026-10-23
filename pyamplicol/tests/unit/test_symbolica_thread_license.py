@@ -66,7 +66,10 @@ def test_spenso_keeps_its_policy_under_a_thread_wide_key(monkeypatch):
 
 def test_the_policy_is_applied_by_model_compilation_not_by_the_import():
     """Without a personal key, the import leaves Spenso alone; the first
-    model-compilation namespace sets it serial, once."""
+    model-compilation namespace sets it serial, once. The script makes no
+    Symbolica call outside the package: without a key such a call would take
+    the user's one restricted Symbolica thread (and fail while another
+    unlicensed process of the user holds it)."""
 
     environment = {
         key: value
@@ -79,18 +82,15 @@ def test_the_policy_is_applied_by_model_compilation_not_by_the_import():
     environment["SYMBOLICA_HIDE_BANNER"] = "1"
     source = textwrap.dedent(
         """
-        import symbolica.community.tensor as tensor
-        calls = []
-        original = tensor.set_symbolica_rayon_enabled
-        tensor.set_symbolica_rayon_enabled = lambda policy: calls.append(policy)
         import pyamplicol
         from pyamplicol import licensing
-        assert calls == [] and not licensing._SPENSO_POLICY_APPLIED
+        assert not licensing._SPENSO_POLICY_APPLIED
+        assert licensing._SPENSO_SERIAL is None
         from pyamplicol.models import compiler_symbolica, tensors
         compiler_symbolica._ensure_symbolica()
+        assert licensing._SPENSO_POLICY_APPLIED
+        assert licensing._SPENSO_SERIAL is True
         tensors._ensure_symbolica()
-        assert calls == [tensor.SymbolicParallelism.Serial], calls
-        assert licensing._SPENSO_POLICY_APPLIED and licensing._SPENSO_SERIAL
         print("policy applied lazily")
         """
     )
