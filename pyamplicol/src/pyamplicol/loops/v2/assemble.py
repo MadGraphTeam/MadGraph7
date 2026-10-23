@@ -2549,13 +2549,16 @@ class _PointEvaluation:
             if abs(leg.colour) != 1 and leg.mass.mass != ZERO
         )
 
-    def _ir_poles(self) -> dict[Orders, tuple[Any, Any]]:
-        """Catani's single and double poles of the renormalised virtual.
+    def _ir_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
+        """Catani's single and double poles of the renormalised virtual, or
+        None where the operator makes no prediction (``poles.catani_poles``).
 
         V_poles = (alpha_s / 2 pi) sum_i sum_{j != i} (1/C_i) (C_i/eps^2 +
         gamma_i/eps) (1 + eps log(mu^2 / |2 p_i.p_j|)) <T_i.T_j> for massless
         coloured legs, QCD corrections, n_f light flavours in gamma_g; massive
-        emitters take the massive form (``poles.catani_poles``).
+        emitters take the massive form. The legs' masses are the model's
+        runtime values (a symbolic mass bound to 0 is massless), not the p^2
+        of the given (possibly rounded) momenta.
         """
 
         slice_, numbers = self.slice, self.numbers
@@ -2563,11 +2566,17 @@ class _PointEvaluation:
         coloured = sorted(
             label for label, leg in legs.items() if leg.representation != 1
         )
+        values = _kernel_parameters(slice_.compiled, self.parameters)
+        masses = {}
+        for leg in slice_.families.legs:
+            name = leg.mass.mass
+            if name == ZERO:
+                masses[leg.index + 1] = Fraction(0)
+            elif name in values:
+                masses[leg.index + 1] = values[name] ** 2
+            elif leg.index + 1 in coloured:
+                return None
         dipoles = slice_.dipoles()
-        # Massless legs by the model, not by the rounded momenta's p^2.
-        massless = {
-            leg.index + 1 for leg in slice_.families.legs if leg.mass.mass == ZERO
-        }
         three = Fraction(NC)
         physical = []
         for vectors in self.born_vectors.values():
@@ -2577,7 +2586,6 @@ class _PointEvaluation:
                 for (tensor, power), value in vector.items():
                     scaled = value * numbers.real(three**power)
                     folded[tensor] = folded.get(tensor, numbers.zero) + scaled
-        values = _kernel_parameters(slice_.compiled, self.parameters)
         light = _light_flavours(slice_.data, values)
         alpha = numbers.real(values[slice_.alpha_s_parameter])
         prefactor = alpha / (2 * numbers.pi)
@@ -2596,10 +2604,11 @@ class _PointEvaluation:
                             total += self._sandwich(left, right, dipoles[(i, j)])
                 return total / slice_.normalisation.average
 
-            single, double = catani_poles(
+            prediction = catani_poles(
                 coloured,
                 {label: legs[label].representation for label in coloured},
                 {label: self.incoming[label - 1] for label in coloured},
+                {label: masses[label] for label in coloured},
                 correlated,
                 casimir=_casimir,
                 gamma=lambda j: _gamma(legs[j].representation, light),
@@ -2607,8 +2616,10 @@ class _PointEvaluation:
                 log=lambda x: _log(x, numbers),
                 real=numbers.real,
                 sqrt=lambda x: math.sqrt(x) if numbers.double else x.sqrt(),
-                massless=massless,
             )
+            if prediction is None:
+                return None
+            single, double = prediction
             out[sector] = (prefactor * single, prefactor * double)
         return out
 

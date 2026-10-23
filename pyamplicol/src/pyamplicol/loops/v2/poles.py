@@ -46,7 +46,7 @@ gamma_j/eps (massless) or C_j/eps (massive); n_f light flavours in gamma_g.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from fractions import Fraction
 from typing import Any, Literal
 
@@ -156,6 +156,7 @@ def catani_poles(
     coloured: Sequence[int],
     representation: Mapping[int, int],
     momenta: Mapping[int, Sequence[Fraction]],
+    masses: Mapping[int, Fraction],
     correlated: Callable[[int, int], Any],
     *,
     casimir: Callable[[int], Fraction],
@@ -164,24 +165,23 @@ def catani_poles(
     log: Callable[[Any], Any],
     real: Callable[[Any], Any],
     sqrt: Callable[[Any], Any],
-    massless: Collection[int] = (),
-) -> tuple[Any, Any]:
+) -> tuple[Any, Any] | None:
     """(single, double) pole of the renormalised virtual over (alpha_s/2pi)
-    for one sector, massless and massive coloured legs.
+    for one sector, massless and massive coloured legs; None where the
+    operator makes no prediction.
 
     ``correlated(j, k)`` is the sector's colour-correlated Born <T_j.T_k>,
-    ``momenta`` the all-incoming exact momenta, ``gamma(j)`` gamma_j of a
-    massless leg (n_f light flavours). ``massless`` are the legs of massless
-    particles (by the model): their p^2 is taken as 0, whatever the rounding
-    of the given momenta; another leg's mass^2 is its p^2. ``log``, ``real``
-    and ``sqrt`` act in the carrier. The massless-only arithmetic is that of
-    the previous implementation (``assemble._PointEvaluation._ir_poles``).
+    ``momenta`` the all-incoming exact momenta, ``masses`` the squared
+    masses of the coloured legs by the model's runtime values (0: massless,
+    whatever the p^2 of rounded momenta), ``gamma(j)`` gamma_j of a massless
+    leg (n_f light flavours). ``log``, ``real`` and ``sqrt`` act in the
+    carrier. No prediction (None) at a vanishing invariant 2 p_j.p_k or a
+    pair of massive legs at or below threshold ((p_j.p_k)^2 <= m_j^2 m_k^2):
+    the caller reports the prediction absent. The massless-only arithmetic is
+    that of the previous implementation.
     """
 
     single = double = real(0)
-    masses = {
-        j: Fraction(0) if j in massless else _minkowski(momenta[j]) for j in coloured
-    }
     for j in coloured:
         c_j = casimir(representation[j])
         massive_j = masses[j] != 0
@@ -192,6 +192,8 @@ def catani_poles(
             value = correlated(j, k)
             dot = _minkowski_dot(momenta[j], momenta[k])
             invariant = abs(2 * dot)
+            if invariant == 0:
+                return None
             massive_k = masses[k] != 0
             if not massive_j and not massive_k:
                 double += value
@@ -205,17 +207,15 @@ def catani_poles(
                     / 2
                 ) * value
             else:
-                # v = sqrt(1 - m_j^2 m_k^2 / (p_j.p_k)^2), rho = sqrt((1-v)/(1+v)).
+                # v = sqrt(1 - m_j^2 m_k^2 / (p_j.p_k)^2), rho^2 = (1-v)/(1+v)
+                # = ratio / (1+v)^2 (no cancellation in 1 - v at small masses).
                 ratio = (masses[j] * masses[k]) / (dot * dot)
+                if ratio >= 1:
+                    return None
                 v = sqrt(real(1 - ratio))
-                log_rho = log((1 - v) / (1 + v)) / 2
+                log_rho = log(real(ratio) / ((1 + v) * (1 + v))) / 2
                 single += (real(g_j) / real(c_j) + log_rho / v) * value
     return single, double
-
-
-def _minkowski(vector: Sequence[Fraction]) -> Fraction:
-    e, x, y, z = vector
-    return e * e - x * x - y * y - z * z
 
 
 def _minkowski_dot(a: Sequence[Fraction], b: Sequence[Fraction]) -> Fraction:

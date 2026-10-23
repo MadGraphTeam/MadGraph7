@@ -5,13 +5,15 @@
 Checks, one phase-space point per process (HANDOFF §0.3):
 
 * the finite part of every component is identical, bit for bit, in all four
-  modes (native binary64 and DoubleFloat), and ``"all"`` is the default;
+  modes (native binary64, DoubleFloat and, for g g > g g, MPFR at 32
+  digits), and ``"all"`` is the default;
 * the UV and IR parts of every component and of the virtual add up to the
   combined poles; the double pole is infrared; ``"uv"`` leaves the
   renormalised virtual without poles and ``"ir"`` keeps those of ``"all"``;
 * the IR poles of the renormalised virtual equal Catani's operator, massless
-  (g g > g g, u u~ > g g g) and massive (g g > t t~, u u~ > t t~), and the
-  provider poles of g g > t t~;
+  (g g > g g, u u~ > g g g, and g g > b b~ with a symbolic mass bound to 0 at
+  rounded momenta) and massive (g g > t t~, u u~ > t t~), and the provider
+  poles of g g > t t~;
 * the bare-loop UV poles cancel the UV_local counterterm poles up to the
   textbook Feynman-gauge field renormalisation of the external legs,
   independently of the reduction: -(bare_UV + uv_local) = sum_legs Z_i^UV
@@ -133,7 +135,7 @@ def slices(loop_sm_compiled_model, loop_native):
 @pytest.fixture(scope="module")
 def modes(slices):
     """One point per process and carrier in every pole mode through the
-    native executor (binary64, DoubleFloat)."""
+    native executor (binary64, DoubleFloat, MPFR at 32 digits)."""
 
     cache: dict = {}
 
@@ -142,10 +144,11 @@ def modes(slices):
         if key not in cache:
             _slice, executor = slices(name)
             point, scale = PROCESSES[name][2]()
-            if carrier == "double":
-                precision = Precision.double()
-            else:
-                precision = Precision.double_double()
+            precision = {
+                "double": Precision.double,
+                "extended": Precision.double_double,
+                "arbitrary": lambda: Precision.arbitrary(32),
+            }[carrier]()
             out = {}
             for mode in (True, *MODES):
                 (out[mode],) = executor.evaluate(
@@ -169,8 +172,16 @@ def _scale(laurent) -> float:
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("carrier", ("double", "extended"))
-@pytest.mark.parametrize("name", ("gg_gg", "gg_ttx"))
+@pytest.mark.parametrize(
+    ("name", "carrier"),
+    (
+        ("gg_gg", "double"),
+        ("gg_gg", "extended"),
+        ("gg_gg", "arbitrary"),
+        ("gg_ttx", "double"),
+        ("gg_ttx", "extended"),
+    ),
+)
 def test_finite_parts_are_identical_in_every_mode(modes, name, carrier):
     results = modes(name, carrier)
     default, combined = results[True], results["all"]
@@ -575,10 +586,12 @@ def test_lane_and_sector_splits_are_exact_for_exact_numbers():
 
 
 @pytest.mark.loop_fast
-def test_catani_takes_massless_legs_from_the_model():
-    """A massless leg's p^2 of rounded momenta (here -1e-17 relative) is not a
-    mass: with the model's massless legs the prediction is the massless one
-    (the massive branch would take the log of a negative p^2)."""
+def test_catani_takes_the_masses_from_the_model():
+    """The legs' masses are the model's runtime values, not the p^2 of the
+    given momenta: with rounded massless momenta (p^2 = -1e-17 relative) the
+    prediction is the massless one. No prediction (None) at a vanishing
+    invariant or a massive pair at threshold; tiny masses do not cancel in
+    1 - v."""
 
     from pyamplicol.loops.v2.poles import catani_poles
 
@@ -591,12 +604,14 @@ def test_catani_takes_massless_legs_from_the_model():
     }
     rounded = dict(exact)
     rounded[3] = (q(-1), q(0), q(3, 5), q(4, 5) + q(1, 10**17))
+    massless = dict.fromkeys(exact, q(0))
 
-    def poles(momenta, massless):
+    def poles(momenta, masses):
         return catani_poles(
             (1, 2, 3, 4),
             {1: 8, 2: 8, 3: 8, 4: 8},
             momenta,
+            masses,
             lambda j, k: -1.5,
             casimir=lambda r: q(3),
             gamma=lambda j: q(11, 2) - q(1, 3) * 5,
@@ -604,14 +619,72 @@ def test_catani_takes_massless_legs_from_the_model():
             log=math.log,
             real=float,
             sqrt=math.sqrt,
-            massless=massless,
         )
 
-    expected = poles(exact, ())
-    got = poles(rounded, (1, 2, 3, 4))
+    expected = poles(exact, massless)
+    got = poles(rounded, massless)
     assert all(abs(a - b) <= 1e-12 * abs(b) for a, b in zip(got, expected, strict=True))
-    with pytest.raises(ValueError):
-        poles(rounded, ())
+    tiny = {**massless, 3: q(1, 10**30), 4: q(1, 10**30)}
+    assert all(math.isfinite(x) for x in poles(rounded, tiny))
+    collinear = {**exact, 4: (q(-1), q(0), q(0), q(-1))}
+    assert poles(collinear, massless) is None
+    # (p_3.p_4)^2 = 4 <= m_3^2 m_4^2 = 100.
+    assert poles(exact, {**massless, 3: q(10), 4: q(10)}) is None
+
+
+@pytest.mark.loop_physics
+def test_symbolic_mass_bound_to_zero_at_rounded_momenta(
+    loop_sm_compiled_model, loop_native
+):
+    """g g > b b~ with MB left symbolic and bound to 0 at runtime, at rounded
+    massless momenta (p_b^2 = O(1e-12)): every mode evaluates (Catani took
+    p^2 for the mass and raised), and Catani's operator with the runtime
+    masses equals the virtual's poles. Natively in binary64 and on the
+    Python path."""
+
+    from pyamplicol.models.loading import load_compiled_model
+
+    slice_ = LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model),
+        SliceRequest(
+            "g g > b b~",
+            {"QCD": 2, "QED": 0},
+            {"QCD": 4, "QED": 0},
+            fixed_parameters={"WT": "0"},
+        ),
+        loop_native,
+    )
+    theta, phi = 2.3, 0.3
+    x = 500 * math.sin(theta) * math.cos(phi)
+    y = 500 * math.sin(theta) * math.sin(phi)
+    z = 500 * math.cos(theta)
+    point = [
+        ["500", "0", "0", "500"],
+        ["500", "0", "0", "-500"],
+        ["500", repr(x), repr(y), repr(z)],
+        ["500", repr(-x), repr(-y), repr(-z)],
+    ]
+    p3 = [Fraction(v) for v in point[2]]
+    assert p3[0] ** 2 - p3[1] ** 2 - p3[2] ** 2 - p3[3] ** 2 != 0
+    parameters = {**PARAMETERS, "MB": "0"}
+    results = {
+        mode: NativeExecutor(slice_).evaluate(
+            [point], ["1000000"], parameters=parameters, poles=mode
+        )[0]
+        for mode in MODES
+    }
+    python = slice_.evaluate(point, "1000000", parameters=parameters, poles="all")
+    for result in (results["all"], results["ir"], python):
+        ((sector, virtual),) = result.components["virtual"].items()
+        single, double = _catani(result, sector)
+        scale = max(abs(single), abs(double))
+        assert abs(float(virtual.single_pole.real) - single) <= POLE_TOLERANCE * scale
+        assert abs(float(virtual.double_pole.real) - double) <= POLE_TOLERANCE * scale
+    for mode in MODES:
+        for component in COMPONENTS:
+            for sector, laurent in results["all"].components[component].items():
+                other = results[mode].components[component][sector]
+                assert other.finite == laurent.finite, (mode, component)
 
 
 @pytest.mark.loop_physics
