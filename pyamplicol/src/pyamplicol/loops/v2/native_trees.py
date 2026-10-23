@@ -42,6 +42,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
+from types import SimpleNamespace
 from typing import Any
 
 from pyamplicol.color.contraction_types import NC
@@ -325,6 +326,8 @@ def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]
     )
     from pyamplicol.models._physics_ir import PropagatorIR
 
+    from .assemble import _canonical_stage
+
     dag, schema = trees.dag, trees.schema
     records = trees._records
     model_symbols = [S(f"pyamplicol_v2_trees::m{i}") for i in range(len(records))]
@@ -366,12 +369,22 @@ def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]
         outputs, retained = _specialize_stage_symbolica_functions(
             list(components), _model_symbolica_functions(model)
         )
+        # On canonical symbols the kernel's term order, and so its binary64
+        # rounding, does not depend on the symbols created earlier in the
+        # interpreter (``assemble._canonical_stage``).
+        outputs, parameters, functions = _canonical_stage(
+            SimpleNamespace(
+                output_expressions=list(outputs),
+                parameter_symbols=[*inputs, *model_symbols],
+                symbolica_functions=list(retained),
+            )
+        )
         evaluator = Expression.evaluator_multiple(
-            list(outputs),
-            [*inputs, *model_symbols],
+            outputs,
+            parameters,
             functions=[
                 FunctionDefinition(function, arguments, body, inlining="always")
-                for function, arguments, body in retained
+                for function, arguments, body in functions
             ],
             jit_compile=False,
         )
