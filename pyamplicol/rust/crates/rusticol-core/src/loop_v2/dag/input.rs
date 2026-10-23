@@ -21,6 +21,8 @@ pub const INPUT_SCHEMA: &str = "pyamplicol.loop-v2.dag-input/1";
 pub type SignContract = (bool, String, bool);
 /// `(chirality, spin state, coupling re bits, im bits, coupling identity)`.
 type RawFlow = (i8, i32, u64, u64, u32);
+/// `(leg label, [(chirality, helicity, spin state)], colour state ids)`.
+type RawSources = (u8, Vec<(i8, i32, i32)>, Vec<u32>);
 
 #[derive(Deserialize)]
 struct RawLeg {
@@ -89,7 +91,7 @@ struct RawInput {
     right_particles: Vec<(i64, Vec<i64>)>,
     order_limits: Vec<(String, i64)>,
     ignored_particles: Vec<i64>,
-    sources: Vec<(u8, Vec<(i8, i32, i32)>, Vec<u32>)>,
+    sources: Vec<RawSources>,
     colours: Vec<(i64, Vec<i64>)>,
     admitted_masks: Vec<u64>,
     block_rule: RawBlockRule,

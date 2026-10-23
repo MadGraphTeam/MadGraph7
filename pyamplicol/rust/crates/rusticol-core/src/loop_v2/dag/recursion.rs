@@ -64,6 +64,8 @@ type InteractionKey = (u32, u32, u32, u32, [u64; 2]);
 /// The compile-time evaluation group key: kernel class, canonical inputs,
 /// result particle and chirality, coupling.
 type GroupKey = (u32, u32, u32, u32, i8, [u64; 2]);
+/// (left colour, right colour, vertex, merged word) of a colour merge.
+type CombineKey = (u32, u32, u32, u32);
 
 /// An interning table: ids in first-seen order.
 pub struct Interner<T: Eq + Hash + Clone> {
@@ -404,7 +406,7 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
     let mut label_cache: FxMap<(i64, u32, u32, u32), Option<u32>> = FxMap::default();
     let mut interaction_keys: FxSet<InteractionKey> = FxSet::default();
     let mut compile_groups: FxMap<GroupKey, i64> = FxMap::default();
-    let mut combine_cache: FxMap<(u32, u32, u32, u32), Option<(u32, u32)>> = FxMap::default();
+    let mut combine_cache: FxMap<CombineKey, Option<(u32, u32)>> = FxMap::default();
     let mut flavour_cache: FxMap<(u32, u32, u32), u32> = FxMap::default();
     let mut candidates: Vec<u32> = Vec::new();
     for mask in recursive {
