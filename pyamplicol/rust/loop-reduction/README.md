@@ -31,13 +31,14 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `aa6a6307dd081dc3714f9accebc0df9e5561ae73`.
+- NinjaRS `41a4c00e7635e3ab188fc26bacf0aae6941e8082` (UV/IR pole selection through the
+  master providers; the fast engine refuses separated poles).
 - Symbolica, Numerica and Graphica `9cdc2949cdb153478c1eca0d40690dc0abfc616e`,
   the owner's integration revision published on
   `https://github.com/alphal00p/symbolica`.
 - FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
   dependency revision recorded by NinjaRS.
-- oneloopmaster `8ec256fc26cb361b20e10f59c19beb35717ef32c`.
+- oneloopmaster `5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5` (per-evaluator `PoleSelection`).
 
 From this crate's directory, using the shared workspace environment:
 
@@ -324,7 +325,9 @@ canonicalising cache (`runtime::MasterCache`), or by the generic engine from
 one exponent-array template per bucket in DoubleFloat/arbitrary precision.
 `check=True` re-reduces every lane in a dihedrally relabelled frame (default:
 loop direction reversed) with the same coefficients and cached masters and
-returns both results; `poles=False` returns the finite column only. Families
+returns both results; `poles="none"` returns the finite column only and
+`poles="split"` adds each lane's UV residue (`"all"` is the default; the
+binding refuses any other value, a bool included). Families
 must be in loop-cycle order.
 The main workspace excludes this experimental workspace and has no NinjaRS path
 dependency, so its normal builds do not require the `upstream` symlink.

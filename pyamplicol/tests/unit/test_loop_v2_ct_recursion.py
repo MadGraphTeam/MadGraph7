@@ -414,6 +414,80 @@ def test_lowered_couplings_are_exact_model_expressions(lowered_ct_model):
 
 
 @pytest.mark.loop_fast
+def test_constant_factors_are_decided_not_assumed():
+    """Helper arguments free of model parameters are decided when the CT
+    couplings are lowered: loop_qcd_qed_sm's reglog(2 pi) is log(2 pi) with no
+    assumption, and only the parameter factors of reglog(4 pi MU_R^2/MW^2)
+    are assumed non-zero. The branch a cond does not take adds nothing. The
+    runtime check decides every assumption, builtin constants included, and
+    still refuses parameters that make one vanish or singular."""
+
+    import re
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.loops.v2.ct_recursion import (
+        CoefficientLowering,
+        CountertermCouplingError,
+        CountertermModel,
+    )
+
+    # The helper resolution alone (UFO function bindings value_0 = cond,
+    # value_1 = reglog), without a compiled model.
+    lowering = CoefficientLowering.__new__(CoefficientLowering)
+    lowering._helpers = {0: "cond", 1: "reglog"}
+    lowering._zero = E("0")
+    lowering._log = symbols.qualified("symbolica::log")
+    lowering.assumptions = set()
+    helper = "pyamplicol_scalar_model_test::value_"
+    assert lowering._resolve(E(f"{helper}1(2*𝜋)")) == E("log(2*𝜋)")
+    assert not lowering.assumptions
+    lowering._resolve(E(f"{helper}1(4*𝜋*UFO::{{}}::MU_R^2/UFO::{{}}::MW^2)"))
+    assert lowering.assumptions == {"UFO::{}::MU_R^2*UFO::{}::MW^(-2)"}
+    # cond(0, 1, reglog(MZ)): the untaken branch's argument is no assumption.
+    assert lowering._resolve(E(f"{helper}0(0, 1, {helper}1(UFO::{{}}::MZ))")) == E("1")
+    assert lowering.assumptions == {"UFO::{}::MU_R^2*UFO::{}::MW^(-2)"}
+    assert lowering._resolve(E(f"{helper}1(0)")) == E("0")
+    with pytest.raises(CountertermCouplingError, match="undecided"):
+        lowering._resolve(E(f"{helper}1(sin(𝜋)*UFO::{{}}::MW)"))
+
+    # The runtime check decides assumptions with builtin constants too (with
+    # or without model parameters next to them).
+    defaults = {"MT": (173.0, 0.0), "MU_R": (91.188, 0.0)}
+    model = CountertermModel(
+        lowered=SimpleNamespace(compiled=SimpleNamespace(parameter_defaults=defaults)),
+        multiplicities={},
+        switches={},
+        assumptions=(
+            "2*𝜋",
+            "UFO::{}::MT",
+            "UFO::{}::MT^(-2)*UFO::{}::MU_R^2*𝜋",
+            "UFO::{}::MT^2*UFO::{}::MU_R^(-2)",
+        ),
+        residual={},
+    )
+    model.check_parameters({})
+    model.check_parameters({"MT": 4.5, "MU_R": 1000.0})
+    with pytest.raises(ValueError, match=re.escape("make UFO::{}::MT vanish")):
+        model.check_parameters({"MT": 0.0})
+    with pytest.raises(ValueError, match="singular"):
+        replace(model, assumptions=model.assumptions[2:3]).check_parameters({"MT": 0.0})
+    undecided = replace(model, assumptions=("sin(𝜋)*UFO::{}::MT",))
+    with pytest.raises(ValueError, match="cannot decide"):
+        undecided.check_parameters({})
+
+    from pyamplicol.loops.v2.ct_recursion import decide_constant
+
+    assert [
+        decide_constant(E(value))
+        for value in ("2*𝜋", "1/(4*𝜋)", "0", "0.0", "𝜋-𝜋", "0^(-2)", "sin(𝜋)")
+    ] == ["non-zero"] * 2 + ["zero"] * 3 + ["singular", "undecided"]
+
+
+@pytest.mark.loop_fast
 def test_rules_split_between_recursion_and_sites(ct_slice, lowered_ct_model):
     """Only the fixed-SU(3) four-gluon R2 stays a site; every two-point,
     three-gluon, quark-gluon and four-gluon rule is in the recursion with its

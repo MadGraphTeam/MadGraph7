@@ -280,12 +280,12 @@ def _relative(a: float, b: float, floor: float = 0.0) -> float:
 def validate(args) -> dict[str, Any]:
     from pyamplicol.loops.v2 import assemble
 
-    checked = assemble._PointEvaluation._massless_coloured_legs
-    assemble._PointEvaluation._massless_coloured_legs = lambda self: False
+    checked = assemble._PointEvaluation._stable_coloured_legs
+    assemble._PointEvaluation._stable_coloured_legs = lambda self: False
     try:
         return _validate(args)
     finally:
-        assemble._PointEvaluation._massless_coloured_legs = checked
+        assemble._PointEvaluation._stable_coloured_legs = checked
 
 
 def _validate(args) -> dict[str, Any]:

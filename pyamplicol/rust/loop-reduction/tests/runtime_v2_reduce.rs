@@ -2,7 +2,8 @@
 
 //! v2 family reductions: true-rank buckets, cached masters and frames.
 use rusticol_loop_reduction::runtime::{
-    Batch, FamilyGroup, PolynomialPlan, ReduceOptions, ReductionFrame, V2Reducer, tensor_monomials,
+    Batch, FamilyGroup, MasterCache, PoleSelection, Poles, PolynomialPlan, ReduceOptions,
+    ReductionFrame, V2Reducer, tensor_monomials,
 };
 use symbolica::domains::float::{Float, RealLike};
 
@@ -207,8 +208,8 @@ fn fast_reductions_match_the_polynomial_plan_and_are_cache_independent() {
     let all = all_lanes("double");
     let groups: Vec<_> = all.iter().map(group).collect();
     let options = ReduceOptions {
-        poles: true,
         check: Some(ReductionFrame::REVERSED),
+        ..ReduceOptions::default()
     };
     let mut cached = V2Reducer::new("double", None, "fast", true).unwrap();
     let mut uncached = V2Reducer::new("double", None, "fast", false).unwrap();
@@ -308,8 +309,9 @@ fn frames_true_rank_and_finite_only_mode() {
             .reduce(
                 &groups,
                 ReduceOptions {
-                    poles: false,
+                    poles: Poles::None,
                     check: Some(frame),
+                    ..ReduceOptions::default()
                 },
             )
             .unwrap();
@@ -374,8 +376,8 @@ fn generic_double_double_agrees_with_the_fast_engine() {
             .reduce(
                 &dd_lanes.iter().map(group).collect::<Vec<_>>(),
                 ReduceOptions {
-                    poles: true,
                     check: Some(frame),
+                    ..ReduceOptions::default()
                 },
             )
             .unwrap();
@@ -394,4 +396,234 @@ fn generic_double_double_agrees_with_the_fast_engine() {
         }
     }
     assert!(V2Reducer::new("double-double", None, "fast", true).is_err());
+}
+
+/// Massless families with scaleless sub-bubbles (p0² = p1² = 0): the
+/// fast engine skips those bubbles, whose UV and IR residues cancel.
+fn massless_families() -> Vec<Family> {
+    vec![
+        Family {
+            legs: vec![vec![0], vec![1], vec![2, 3]],
+            masses: vec![0., 0., 0.],
+            rank: 3,
+        },
+        Family {
+            legs: vec![vec![0], vec![1], vec![2], vec![3]],
+            masses: vec![0., 0., 0., 0.],
+            rank: 4,
+        },
+        Family {
+            legs: vec![vec![0], vec![1, 2, 3]],
+            masses: vec![0., 0.],
+            rank: 2,
+        },
+        Family {
+            legs: vec![vec![0, 1, 2, 3]],
+            masses: vec![TOP],
+            rank: 3,
+        },
+    ]
+}
+
+/// Largest deviation of column `a` of `x` from column `b` of `y`, per lane
+/// relative to the lane's largest value in `x` or `y` (a scaleless lane's
+/// combined Laurent vanishes, its UV and IR residues do not).
+fn column_deviation(
+    x: &[[f64; 2]],
+    a: usize,
+    wx: usize,
+    y: &[[f64; 2]],
+    b: usize,
+    wy: usize,
+) -> f64 {
+    let norm = |z: &[f64; 2]| z[0].hypot(z[1]);
+    x.chunks(wx)
+        .zip(y.chunks(wy))
+        .map(|(x, y)| {
+            let scale = x.iter().chain(y).map(norm).fold(0., f64::max);
+            norm(&[x[a][0] - y[b][0], x[a][1] - y[b][1]]) / scale
+        })
+        .fold(0., f64::max)
+}
+
+#[test]
+fn split_poles_keep_the_combined_columns_and_match_selected_masters() {
+    let mut all = all_lanes("double");
+    for (f, family) in massless_families().iter().enumerate() {
+        let ids: Vec<u64> = (0..POINTS.len() as u64)
+            .map(|p| 100 + 10 * p + f as u64)
+            .collect();
+        all.push(lanes(family, &POINTS, &ids, "double"));
+    }
+    let groups: Vec<_> = all.iter().map(group).collect();
+    let mut fast = V2Reducer::new("double", None, "fast", true).unwrap();
+    let combined = fast.reduce(&groups, ReduceOptions::default()).unwrap();
+    let split = fast
+        .reduce(
+            &groups,
+            ReduceOptions {
+                poles: Poles::Split,
+                check: Some(ReductionFrame::RESCALED),
+                ..ReduceOptions::default()
+            },
+        )
+        .unwrap();
+    let mut generic = V2Reducer::new("double", None, "generic", true).unwrap();
+    let selected = |generic: &mut V2Reducer, masters| {
+        generic
+            .reduce(
+                &groups,
+                ReduceOptions {
+                    masters,
+                    ..ReduceOptions::default()
+                },
+            )
+            .unwrap()
+            .direct
+    };
+    let uv = selected(&mut generic, PoleSelection::UV);
+    let ir = selected(&mut generic, PoleSelection::IR);
+    let both = selected(&mut generic, PoleSelection::BOTH);
+    let mut largest_uv = 0f64;
+    for index in 0..groups.len() {
+        let all3 = values(&combined.direct[index].values().unwrap());
+        let four = values(&split.direct[index].values().unwrap());
+        let check = values(&split.check.as_ref().unwrap()[index].values().unwrap());
+        // The combined columns are those of `Poles::All`, bit for bit.
+        let firsts: Vec<_> = four.chunks(4).flat_map(|z| z[..3].to_vec()).collect();
+        assert_eq!(firsts, all3);
+        // The residue against the generic engine's UV- and IR-selected masters.
+        let uv = values(&uv[index].values().unwrap());
+        let ir = values(&ir[index].values().unwrap());
+        let both = values(&both[index].values().unwrap());
+        assert!(
+            column_deviation(&four, 3, 4, &uv, 1, 3) < 1e-10,
+            "group {index} UV"
+        );
+        let infrared: Vec<_> = four
+            .chunks(4)
+            .flat_map(|z| [z[0], [z[1][0] - z[3][0], z[1][1] - z[3][1]], z[2]])
+            .collect();
+        assert!(
+            column_deviation(&infrared, 1, 3, &ir, 1, 3) < 1e-10,
+            "group {index} IR"
+        );
+        for row in uv.chunks(3) {
+            assert_eq!(row[2], [0., 0.], "the double pole is infrared");
+        }
+        // Master selection leaves the generic engine's finite part bitwise.
+        for ((u, i), b) in uv.chunks(3).zip(ir.chunks(3)).zip(both.chunks(3)) {
+            assert_eq!(u[0], b[0]);
+            assert_eq!(i[0], b[0]);
+        }
+        // The rescaled check frame reproduces the residue.
+        assert!(
+            column_deviation(&check, 3, 4, &four, 3, 4) < 1e-12,
+            "group {index} check"
+        );
+        largest_uv = four
+            .chunks(4)
+            .map(|z| z[3][0].hypot(z[3][1]))
+            .fold(largest_uv, f64::max);
+    }
+    assert!(largest_uv > 0.);
+    // Selected masters need the generic engine; the fast engine refuses them.
+    for masters in [PoleSelection::UV, PoleSelection::IR, PoleSelection::NONE] {
+        assert!(
+            fast.reduce(
+                &groups,
+                ReduceOptions {
+                    masters,
+                    ..ReduceOptions::default()
+                }
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn split_residues_in_double_double_match_selected_masters() {
+    let mut all = all_lanes("double-double");
+    for (f, family) in massless_families().iter().enumerate() {
+        let ids: Vec<u64> = (0..POINTS.len() as u64)
+            .map(|p| 100 + 10 * p + f as u64)
+            .collect();
+        all.push(lanes(family, &POINTS, &ids, "double-double"));
+    }
+    let groups: Vec<_> = all.iter().map(group).collect();
+    let mut reducer = V2Reducer::new("double-double", None, "generic", true).unwrap();
+    let split = reducer
+        .reduce(
+            &groups,
+            ReduceOptions {
+                poles: Poles::Split,
+                ..ReduceOptions::default()
+            },
+        )
+        .unwrap();
+    let uv = reducer
+        .reduce(
+            &groups,
+            ReduceOptions {
+                masters: PoleSelection::UV,
+                ..ReduceOptions::default()
+            },
+        )
+        .unwrap();
+    let parse = |batch: &Batch| -> Vec<[Float; 2]> {
+        batch
+            .to_decimal()
+            .iter()
+            .map(|z| z.clone().map(|x| Float::parse(&x, Some(256)).unwrap()))
+            .collect()
+    };
+    for (split, uv) in split.direct.iter().zip(&uv.direct) {
+        let split = parse(&split.values().unwrap());
+        let uv = parse(&uv.values().unwrap());
+        for (four, three) in split.chunks(4).zip(uv.chunks(3)) {
+            let scale = four
+                .iter()
+                .chain(three)
+                .map(|z| z[0].to_f64().hypot(z[1].to_f64()))
+                .fold(0., f64::max);
+            let re = (four[3][0].clone() - &three[1][0]).to_f64();
+            let im = (four[3][1].clone() - &three[1][1]).to_f64();
+            assert!(re.hypot(im) <= 1e-26 * scale, "{re} {im} {scale}");
+        }
+    }
+}
+
+#[test]
+fn the_master_cache_forwards_a_selected_providers_capability() {
+    use ninjars::fast::{
+        C64, FastAmplitude, FastInput, FastMasters, FastOptions, FastResult, FastStatus,
+        TensorNumerator,
+    };
+    use ninjars_symbolica::OneLoopNativeMasters;
+    let selected = OneLoopNativeMasters::new()
+        .unwrap()
+        .with_pole_selection(PoleSelection::UV);
+    let mut cache = MasterCache::new(selected, true);
+    assert!(cache.requires_scaleless_bubbles());
+    let mut amplitude = FastAmplitude::new(2, 0, FastOptions::default()).unwrap();
+    let mut numerator = TensorNumerator::new(0, 1);
+    numerator.coefficients_mut()[0] = C64::real(1.);
+    let mut results = [FastResult::default()];
+    let mut statuses = [FastStatus::NotEvaluated];
+    let refused = amplitude.evaluate(
+        &FastInput {
+            lanes: 1,
+            shifts: &[[0.; 4], [2., 0., 0., 2.]],
+            masses_squared: &[C64::ZERO; 2],
+            scales_squared: &[7.],
+            s_matrix: Some(&[0.; 4]),
+        },
+        &mut numerator,
+        &mut cache,
+        &mut results,
+        &mut statuses,
+    );
+    assert!(refused.is_err());
+    assert!(cache.is_empty());
 }
