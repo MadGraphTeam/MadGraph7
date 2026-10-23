@@ -360,7 +360,9 @@ def lower_line_insertions(
     return out
 
 
-def _orientation(term: Any, particles: Mapping[str, Mapping[str, Any]]) -> tuple[str, str]:
+def _orientation(
+    term: Any, particles: Mapping[str, Mapping[str, Any]]
+) -> tuple[str, str]:
     """``(X, Y)``: the leg a class's current enters and the one it leaves.
 
     ``C`` is read as the antiparticle of ``Y``; the orientation is the one
@@ -536,7 +538,8 @@ def _composed(entering: str, leaving: str, insertion: Any) -> str:
     # Expanded, one spinor chain or tensor per term: Spenso's network
     # execution of a product of sums of chains with chiral projectors does
     # not finish (``custom_propagator_components``).
-    return _momenta_restored((first * insertion * second).expand()).to_canonical_string()
+    composed = (first * insertion * second).expand()
+    return _momenta_restored(composed).to_canonical_string()
 
 
 def _engine_denominator(propagator: Mapping[str, Any], particle: Mapping[str, Any]) -> str:
