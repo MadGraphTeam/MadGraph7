@@ -15,11 +15,12 @@ two run identical programs:
 * **kernels**: every catalogue kernel as exact polynomial terms over its
   inputs (``reference_executor.ExactKernel``); the model factors of its
   coefficients are numbered kernel constants, valued per batch;
-* **seeds**: per seed key (class combination, loop orders) and observable
-  column the exact colour weights sum_c x_c K[c, b] N_c^g of each Born
+* **seed classes and seeds**: per seed class and loop orders, and per
+  observable column, the exact colour weights K[c, b] N_c^g of each Born
   component (b, Born order, N_c grade g), projected at the request's colour
-  accuracy (``colour.SeedTable.seeds``), so U0 = sum K conj(A0) is formed
-  natively;
+  accuracy (``colour.SeedTable.seeds``); per seed key (class combination,
+  loop orders) its exact weights x_c of the classes, so U0_c = sum_b K
+  conj(A0) and U0 = sum_c x_c U0_c are formed natively;
 * **families**: per family its trie frame reading, rank and loop orders, the
   leaves (seed key, leaf weight) and the schedule-B steps with their edges
   (child step or leaf, fused factor) and helicity row links;
@@ -281,14 +282,16 @@ class _Exporter:
             found = self.seeds[key] = len(self.seeds)
         return found
 
-    def seed_records(self) -> list[dict]:
-        """Per seed key and column the exact weights of the Born components,
-        the projection of ``assemble.SectorSeeds`` (``SeedTable.seeds``).
+    def seed_records(self) -> tuple[list[dict], list[dict]]:
+        """The seed classes and seed keys of the plan: the projection of
+        ``assemble.SectorSeeds`` (``SeedTable.seeds``) in two levels.
 
-        The admitted (basis, Born order) entries of each sector are indexed
-        by (class, loop order) once, in ``SeedTable.admitted`` order, and each
-        projected cell is formed once, so the records and the numbering of
-        the Born components do not depend on the number of seed keys.
+        A seed class record holds, per column, the exact projected weights
+        K[c, b] of the Born components that the sector admits for one class
+        c at one loop order; a seed key record holds its combination
+        sum_c x_c of class records (``U0 = sum_c x_c U0_c``, formed by the
+        executor). The admitted entries of each sector are indexed by
+        (class, loop order) once, in ``SeedTable.admitted`` order.
         """
 
         slice_ = self.slice_
@@ -308,31 +311,25 @@ class _Exporter:
                 index[(c, order)].append((b, born_order))
             sectors.append((degree, index))
         admitted = {key for _degree, index in sectors for key in index}
-        projected: dict[tuple[int, int, int | None, int], Any] = {}
-        records = []
-        for combination, order in self.seeds:
-            for c, _x in combination:
-                if (c, order) not in admitted:
-                    raise KeyError(f"no sector admits class {c} at {order}")
+        classes: dict[tuple[int, Orders], int] = {}
+        class_records: list[dict] = []
+
+        def class_record(c: int, order: Orders) -> int:
+            found = classes.get((c, order))
+            if found is not None:
+                return found
             columns = []
             for degree, index in sectors:
                 weights: dict[int, ExactColorCoefficient] = {}
-                for c, x in combination:
-                    for b, born_order in index.get((c, order), ()):
-                        for grade in sorted(born_grades.get((b, born_order), ())):
-                            key = (c, b, degree, grade)
-                            weight = projected.get(key)
-                            if weight is None:
-                                weight = projected[key] = project(
-                                    table.cells[c][b], degree, accuracy, grade
-                                )
-                            if not weight:
-                                continue
-                            j = self.born_components.setdefault(
-                                (b, born_order, grade), len(self.born_components)
-                            )
-                            term = x * weight
-                            weights[j] = term + weights[j] if j in weights else term
+                for b, born_order in index.get((c, order), ()):
+                    for grade in sorted(born_grades.get((b, born_order), ())):
+                        weight = project(table.cells[c][b], degree, accuracy, grade)
+                        if not weight:
+                            continue
+                        j = self.born_components.setdefault(
+                            (b, born_order, grade), len(self.born_components)
+                        )
+                        weights[j] = weight + weights[j] if j in weights else weight
                 columns.append(
                     [
                         [j, _fraction_text(w.real), _fraction_text(w.imag)]
@@ -340,8 +337,29 @@ class _Exporter:
                         if w
                     ]
                 )
-            records.append({"columns": columns})
-        return records
+            found = classes[(c, order)] = len(class_records)
+            class_records.append({"columns": columns})
+            return found
+
+        records = []
+        for combination, order in self.seeds:
+            for c, _x in combination:
+                if (c, order) not in admitted:
+                    raise KeyError(f"no sector admits class {c} at {order}")
+            records.append(
+                {
+                    "classes": [
+                        [
+                            class_record(c, order),
+                            _fraction_text(x.real),
+                            _fraction_text(x.imag),
+                        ]
+                        for c, x in combination
+                        if x
+                    ]
+                }
+            )
+        return class_records, records
 
     # -- schedule B -----------------------------------------------------------
 
@@ -680,7 +698,7 @@ def export_plan(
         if merged is not None
         else None
     )
-    seeds = exporter.seed_records()
+    seed_classes, seeds = exporter.seed_records()
     legs = len(slice_.blocks.process.legs)
     program = {
         "schema": PLAN_SCHEMA,
@@ -695,6 +713,7 @@ def export_plan(
         "kernels": exporter.kernel_records,
         "contents": exporter.content_records,
         "factors": [list(key) for key in exporter.factors],
+        "seed_classes": seed_classes,
         "seeds": seeds,
         "families": families,
         "forward": forward_program,

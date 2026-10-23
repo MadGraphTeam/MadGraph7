@@ -12,8 +12,10 @@
 //!   bindings that build the fused factor `X(J)` of each content row from
 //!   block-current rows, block momenta and the frame shift;
 //! - **factors**: the (content, frame shift) pairs whose `X(J)` steps read;
-//! - **seeds**: exact colour weights `K[c, b]` per seed key and observable
-//!   column, contracted with the Born components at run time;
+//! - **seed classes and seeds**: the exact colour weights `K[c, b]` of each
+//!   (seed class, loop orders) per observable column, contracted with the
+//!   Born components at run time, and per seed key its combination
+//!   `Σ_c x_c` of seed classes (exact `x_c`);
 //! - **families**: frame reading, rank and loop orders, the leaves and the
 //!   schedule-B steps (edges, row links, trace targets);
 //! - **forward**: the schedule-F prefix tree, an oracle of B.
@@ -62,7 +64,8 @@ struct PlanFile {
     kernels: Vec<KernelFile>,
     contents: Vec<ContentFile>,
     factors: Vec<(usize, u64)>,
-    seeds: Vec<SeedFile>,
+    seed_classes: Vec<SeedFile>,
+    seeds: Vec<SeedKeyFile>,
     families: Vec<FamilyFile>,
     forward: Option<ForwardFile>,
     merged: Option<MergedFile>,
@@ -120,6 +123,12 @@ struct BindingFile {
 #[serde(deny_unknown_fields)]
 struct SeedFile {
     columns: Vec<Vec<(usize, String, String)>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SeedKeyFile {
+    classes: Vec<(usize, String, String)>,
 }
 
 #[derive(Deserialize)]
@@ -378,10 +387,17 @@ pub struct SeedTerm {
     pub weight: [Rational; 2],
 }
 
-/// Seed key (class, loop orders): per observable column its terms.
+/// A seed class at one loop order: per observable column its terms.
 #[derive(Clone, Debug)]
 pub struct Seed {
     pub columns: Vec<Vec<SeedTerm>>,
+}
+
+/// A seed key: its combination `Σ_c x_c` of seed classes (indices into
+/// `LoopProgramV4::seed_classes`, exact complex `x_c`).
+#[derive(Clone, Debug)]
+pub struct SeedKey {
+    pub classes: Vec<(usize, [Rational; 2])>,
 }
 
 #[derive(Clone, Debug)]
@@ -770,7 +786,8 @@ pub struct LoopProgramV4 {
     /// Block currents of the split form: (content, term), one row of `width`
     /// components per term row.
     pub currents: Vec<(usize, usize)>,
-    pub seeds: Vec<Seed>,
+    pub seed_classes: Vec<Seed>,
+    pub seeds: Vec<SeedKey>,
     pub families: Vec<Family>,
     pub forward: Option<Vec<State>>,
     pub merged: Option<Merged>,
@@ -1345,8 +1362,8 @@ impl LoopProgramV4 {
             .into_iter()
             .map(|vertex| vertex.ok_or_else(|| invalid("a vertex id no term defines")))
             .collect::<RusticolResult<Vec<_>>>()?;
-        let seeds = file
-            .seeds
+        let seed_classes = file
+            .seed_classes
             .iter()
             .map(|s| {
                 require(s.columns.len() == columns, "seed columns")?;
@@ -1365,6 +1382,22 @@ impl LoopProgramV4 {
                                     })
                                 })
                                 .collect::<RusticolResult<Vec<_>>>()
+                        })
+                        .collect::<RusticolResult<Vec<_>>>()?,
+                })
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let seeds = file
+            .seeds
+            .iter()
+            .map(|key| {
+                Ok(SeedKey {
+                    classes: key
+                        .classes
+                        .iter()
+                        .map(|(class, re, im)| {
+                            require(*class < seed_classes.len(), "seed class index")?;
+                            Ok((*class, [exact(re)?, exact(im)?]))
                         })
                         .collect::<RusticolResult<Vec<_>>>()?,
                 })
@@ -1413,6 +1446,7 @@ impl LoopProgramV4 {
             vertices,
             vertex_instances: SplitInputs::ordered(&split_inputs.instances),
             currents: SplitInputs::ordered(&split_inputs.currents),
+            seed_classes,
             seeds,
             families,
             forward,
@@ -1914,7 +1948,7 @@ mod tests {
     fn rejects_other_schemas() {
         let text = br#"{"schema":3,"legs":4,"rows":1,"columns":1,"average":1,
             "born_components":0,"constants":0,"masses":0,"block_rows":[],"kernels":[],
-            "contents":[],"factors":[],"seeds":[],"families":[],"forward":null}"#;
+            "contents":[],"factors":[],"seed_classes":[],"seeds":[],"families":[],"forward":null}"#;
         let error = LoopProgramV4::load(text).unwrap_err();
         assert!(error.message().contains("schema"), "{error}");
     }

@@ -101,6 +101,10 @@ impl Rejection {
 /// A family key: the canonical cyclic sequence of (leg mask, mass id).
 pub type FamilyKey = Vec<(LegSet, u32)>;
 
+/// Admitted routings per family key in discovery order: (cut species,
+/// positions, reflection-symmetric).
+type Admitted = HashMap<FamilyKey, Vec<(u32, Vec<u32>, bool)>>;
+
 /// An interned position: a vertex with the block currents it attaches.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Position {
@@ -542,7 +546,7 @@ pub fn generate_families(input: &FamilyInput) -> Result<FamilyOutput, String> {
     let full = recursion.full;
     let first = full & full.wrapping_neg();
     // Admitted routings per key in discovery order; keys are sorted later.
-    let mut admitted: HashMap<FamilyKey, Vec<(u32, Vec<u32>, bool)>> = HashMap::default();
+    let mut admitted: Admitted = HashMap::default();
     let mut rejected: HashMap<FamilyKey, Rejection> = HashMap::default();
     // Prefix arena: (parent node, position); the stack holds node indices.
     let mut nodes: Vec<(u32, u32)> = Vec::new();
@@ -638,7 +642,7 @@ fn close(
     recursion: &Recursion<'_>,
     cut: u32,
     positions: Vec<u32>,
-    admitted: &mut HashMap<FamilyKey, Vec<(u32, Vec<u32>, bool)>>,
+    admitted: &mut Admitted,
     rejected: &mut HashMap<FamilyKey, Rejection>,
 ) -> Result<(), String> {
     let count = positions.len();

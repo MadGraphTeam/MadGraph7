@@ -299,7 +299,9 @@ impl<'a> Builder<'a> {
         let mut ring_index: HashMap<Vec<Label>, usize> = HashMap::default();
         // Per ring: per-slot positions (insertion order, distinct), the
         // distinct position combinations, symmetric flag and multiplicity.
-        let mut rings: Vec<(Vec<Label>, Vec<Vec<u32>>, FastSet<Vec<u32>>, bool, u32)> = Vec::new();
+        // (labels, slots, combinations, symmetric, multiplicity) per ring.
+        type Ring = (Vec<Label>, Vec<Vec<u32>>, FastSet<Vec<u32>>, bool, u32);
+        let mut rings: Vec<Ring> = Vec::new();
         for closure in &record.closures {
             let positions = self.path(closure.state);
             let mut options = Vec::with_capacity(positions.len());
@@ -642,13 +644,16 @@ fn trie_cost(
     Ok(total)
 }
 
+/// Contents, order vectors and the skeletons of every family.
+pub type SkeletonOutput = (Vec<Content>, Vec<OrderVec>, Vec<Vec<Skeleton>>);
+
 /// The skeletons of every family (`family_skeletons`) without the view:
 /// `(contents, orders, skeletons per family)`.
 pub fn build_skeletons(
     families: &FamilyInput,
     output: &FamilyOutput,
     input: &ScheduleInput,
-) -> Result<(Vec<Content>, Vec<OrderVec>, Vec<Vec<Skeleton>>), String> {
+) -> Result<SkeletonOutput, String> {
     let mut builder = Builder::new(families, output, input);
     let mut all = Vec::with_capacity(output.families.len());
     for family in 0..output.families.len() {
@@ -778,13 +783,15 @@ pub fn build_schedules(
                         .ok_or_else(|| format!("no fixed frame for family {family}"))?,
                 ),
             };
-            let mut best: Option<(
+            // (frame, leaves, nodes, rank, cost) of the cheapest frame so far.
+            type Candidate = (
                 (usize, bool),
                 Vec<(usize, Vec<u32>)>,
                 Vec<TrieNode>,
                 i64,
                 u128,
-            )> = None;
+            );
+            let mut best: Option<Candidate> = None;
             // orient: per skeleton and frame, the fitting reading that
             // `shared_suffix` picks (first minimum of (ring[1:], ring)).
             let target_index: HashMap<&FamilyKey, usize> = targets

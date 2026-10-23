@@ -2848,7 +2848,7 @@ pub mod v2 {
                 "terms":[{"slots":[],"dimensions":[],"vertex":-1,"split":[],"rows":[[0,[]]],
                     "bindings":[{"kernel":0,"inputs":[],"entries":[0]}]}]}],
             "factors":[[0,0]],
-            "seeds":[{"columns":[[[0,"1","0"]]]}],
+            "seed_classes":[{"columns":[[[0,"1","0"]]]}],"seeds":[{"classes":[[0,"1","0"]]}],
             "families":[FAMILY,FAMILY],"forward":null}"#;
         const FAMILY: &str = r#"{"sequence":[[1,0],[2,0]],"rank":0,"orders":[0],
             "leaves":[{"seed":0,"weight":"1"}],

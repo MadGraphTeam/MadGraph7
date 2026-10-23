@@ -611,7 +611,7 @@ mod tests {
         "kernels":[{"inputs":[],"outputs":[[[0,[]]]]},{"inputs":[],"outputs":[[[1,[]]]]}],
         "contents":[CONTENT0,CONTENT1],
         "factors":[[0,0],[1,1]],
-        "seeds":[{"columns":[[[0,"1","0"]]]}],
+        "seed_classes":[{"columns":[[[0,"1","0"]]]}],"seeds":[{"classes":[[0,"1","0"]]}],
         "families":[FAMILY,FAMILY],"forward":null,
         "merged":{"families":[0,1],
             "entries":[{"seed":0,"weight":["1","0"]},{"seed":0,"weight":["0","2"]},
