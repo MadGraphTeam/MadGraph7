@@ -51,7 +51,7 @@ else:
     import madgraph.various.misc as misc
     import madgraph.iolibs.file_writers as file_writers
     import madgraph.iolibs.files as files 
-    import models.check_param_card as param_card_reader
+    import madgraph.models.check_param_card as param_card_reader
     from madgraph import MG5DIR, MadGraph5Error, InvalidCmd
 
 
@@ -1115,6 +1115,35 @@ class ConfigFile(dict):
         
         return log(text)
 
+    @staticmethod
+    def parse_dict_value(value):
+        """Split the text of a dict parameter into ({key: value-text},
+        full_reset). Allowed entries:
+          {name1:value1, name2:value2}   => full reset
+          name : value                   => just add the entry
+          name , value                   => just add the entry
+          name  value                    => just add the entry
+        Raises ValueError for anything else."""
+        value = value.strip()
+        if value.startswith('{') and value.endswith('}'):
+            new_value = {}
+            for pair in value[1:-1].split(','):
+                if not pair.strip():
+                    break
+                x, y = pair.rsplit(':',1)
+                x, y = x.strip(), y.strip()
+                if x.startswith(('"',"'")) and x.endswith(x[0]):
+                    x = x[1:-1]
+                new_value[x] = y
+            return new_value, True
+        elif ',' in value:
+            x,y = value.split(',')
+        elif ':' in value:
+            x,y = value.split(':')
+        else:
+            x,y = value.split()
+        return {x.strip():y.strip()}, False
+
     def post_set(self, name, value, change_userdefine, raiseerror):
         
         if value is None:
@@ -1269,39 +1298,8 @@ class ConfigFile(dict):
             full_reset = True #check if we just update the current dict or not
             
             if isinstance(value, str):
-                value = value.strip()
-                # allowed entry:
-                #   name : value   => just add the entry
-                #   name , value   => just add the entry
-                #   name  value    => just add the entry
-                #   {name1:value1, name2:value2}   => full reset
-                
-                # split for each comma/space
-                if value.startswith('{') and value.endswith('}'):
-                    new_value = {}
-                    for pair in value[1:-1].split(','):
-                        if not pair.strip():
-                            break
-                        x, y = pair.rsplit(':',1)
-                        x, y = x.strip(), y.strip()
-                        if x.startswith(('"',"'")) and x.endswith(x[0]):
-                            x = x[1:-1] 
-                        new_value[x] = y
-                    value = new_value
-                elif ',' in value:
-                    x,y = value.split(',')
-                    value = {x.strip():y.strip()}
-                    full_reset = False
-                    
-                elif ':' in value:
-                    x,y = value.split(':')
-                    value = {x.strip():y.strip()}
-                    full_reset = False       
-                else:
-                    x,y = value.split()
-                    value = {x:y}
-                    full_reset = False 
-            
+                value, full_reset = self.parse_dict_value(value)
+
             if isinstance(value, dict):
                 for key in value:
                     value[key] = self.format_variable(value[key], targettype, name=name)
@@ -4062,6 +4060,17 @@ class RunCard(ConfigFile):
     def get_lhapdf_id(self):
         return self.get_pdf_id(self['pdlabel'])
 
+    def get_event_norm(self):
+        """Normalisation of the event weights: 'average' (their mean is the
+        cross section), 'sum', 'unity' or 'bias'; 'sum' for a card without
+        the entry. Use this rather than `'event_norm' in card`: RunCardMG7
+        provides event_norm only through its legacy-compat lookup, which
+        `in` does not see."""
+        try:
+            return self['event_norm']
+        except KeyError:
+            return 'sum'
+
     def remove_all_cut(self): 
         """remove all the cut"""
 
@@ -5893,7 +5902,9 @@ template_on = \
 # CONTROL The extra running scale (not QCD)                       *
 #    Such running is NOT include in systematics computation            *
 #***********************************************************************
+ %(fixed_extra_scale)s = fixed_extra_scale ! False means dynamical scale
  %(mue_ref_fixed)s  =  mue_ref_fixed ! scale to use if fixed scale mode
+ %(mue_over_ref)s   =  mue_over_ref  ! ratio to mur if dynamical scale
 """
 running_block_nlo = RunBlock('RUNNING', template_on=template_on, template_off="")
     
@@ -5980,7 +5991,7 @@ class RunCardNLO(RunCard):
         self.add_param('mcatnlo_delta', False)
         self.add_param('fixed_ren_scale', False)
         self.add_param('fixed_fac_scale', False)
-        self.add_param('fixed_extra_scale', True, hidden=True, system=True) # set system since running from Ellis-Sexton scale not implemented
+        self.add_param('fixed_extra_scale', True, hidden=True) # False: the extra (EFT) running scale follows muR event by event
         self.add_param('mur_ref_fixed', 91.118, shortcut={'mz':91.118, 'mw':80.419, 'mt':172.5, 'mh':125.0})                       
         self.add_param('muf1_ref_fixed', -1.0, hidden=True)
         self.add_param('muf_ref_fixed', 91.118, shortcut={'mz':91.118, 'mw':80.419, 'mt':172.5, 'mh':125.0})                       
@@ -5996,7 +6007,7 @@ class RunCardNLO(RunCard):
         self.add_param('muf_over_ref', 1.0)                       
         self.add_param('muf1_over_ref', -1.0, hidden=True)                       
         self.add_param('muf2_over_ref', -1.0, hidden=True)
-        self.add_param('mue_over_ref', 1.0, hidden=True, system=True) # forbid the user to modigy due to incorrect handling of the Ellis-Sexton scale
+        self.add_param('mue_over_ref', 1.0, hidden=True, comment='ratio mu_other/muR for dynamical scale') # the Ellis-Sexton scale must stay equal to muR when this is used
         self.add_param('qes_over_ref', -1.0, hidden=True)
         self.add_param('reweight_scale', [True], fortran_name='lscalevar')
         self.add_param('rw_rscale_down', -1.0, hidden=True)        
@@ -6623,7 +6634,7 @@ class RunCardMG7(RunCard):
                     'gev': 1.0, 'tev': 1e3, 'pev': 1e6}
     # typed parameters carrying an energy dimension (stored in GeV); a value
     # like "13 TeV" is converted to 13000.0 when assigned to one of these.
-    energy_params = ('beam.e_cm', 'beam.ren_scale',
+    energy_params = ('beam.ebeam1', 'beam.ebeam2', 'beam.e_cm', 'beam.ren_scale',
                      'beam.fact_scale1', 'beam.fact_scale2')
     # name -> pdg for masses that can be referenced in expressions (e.g. a scale
     # set to "mz/2"); resolved against the param_card by get_mass_shortcuts.
@@ -6649,6 +6660,8 @@ class RunCardMG7(RunCard):
         self.dynamic_sections = collections.OrderedDict()
         # unknown sections preserved for round-trip
         self.extra_sections = collections.OrderedDict()
+        # <kind>_parameters.<name> = value in [custom_functions]: kind -> {name: value}
+        self.custom_function_parameters = collections.OrderedDict()
         # set while read(from_banner=True) fills the card, see __setitem__
         self._from_banner = False
         super(RunCardMG7, self).__init__(*args, **opts)
@@ -6684,6 +6697,16 @@ class RunCardMG7(RunCard):
         if auto:
             self.auto_set.add(internal)
 
+    def gzip_configuration(self):
+        """The ``misc.configure_gzip`` settings given by the [run] section:
+        'auto' lets misc pick pigz, and a positive thread pool size caps it."""
+        run = self['run']
+        threads = run['cpu_thread_pool_size']
+        return {
+            'use_pigz': None if run['use_pigz'] == 'auto' else run['use_pigz'],
+            'nb_core': threads if threads > 0 else None,
+        }
+
     def default_setup(self):
         """Define every parameter of the default ``run_card.toml``."""
 
@@ -6710,6 +6733,9 @@ class RunCardMG7(RunCard):
             comment="-1 chooses automatically; x86: 1, 4, 8; Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
             comment="threads for the cpu devices; -1 chooses automatically")
+        self.add_toml_param('run', 'use_pigz', False, gridpack=True, auto=True,
+            allowed=['auto', True, False],
+            comment="compress large event files with pigz when available; auto detects it, false uses gzip")
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True,
             comment="threads per gpu device")
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True,
@@ -6755,14 +6781,30 @@ class RunCardMG7(RunCard):
             comment="include the installed madspace package")
         self.add_toml_param('gridpack', 'include_madspace_source', False,
             comment="include the madspace source code")
+        self.add_toml_param('gridpack', 'compress', False,
+            comment="compress the gridpack into a tarball")
+        self.add_toml_param('gridpack', 'run_mode', "minimal",
+            allowed=['regular', 'minimal', 'fix_max_weight'],
+            comment="how the run creating the gridpack ends: regular (with events), "
+                    "minimal or fix_max_weight (no events)")
+        self.add_toml_param('gridpack', 'temp_output_dir', "", gridpack=True,
+            comment="directory for the temporary npy files; \"\" uses the output directory, "
+                    "\"auto\" a new temporary directory")
+        self.add_toml_param('gridpack', 'output_dir', "", gridpack=True,
+            comment="directory for the output files; \"\" creates a new run folder in Events")
 
         # ----------------------------- [beam] -------------------------
-        self.add_toml_param('beam', 'e_cm', 13000.0,
-            comment="center-of-mass energy in GeV; units are accepted, e.g. \"13 TeV\"")
+        self.add_toml_param('beam', 'ebeam1', 6500.0,
+            comment="energy of beam 1 (moving along +z) in GeV; units are accepted. "
+                    "Events and eta cuts are in this lab frame; set e_cm X sets both beams to X/2")
+        self.add_toml_param('beam', 'ebeam2', 6500.0,
+            comment="energy of beam 2 (moving along -z) in GeV; units are accepted")
         self.add_toml_param('beam', 'leptonic', False,
             comment="lepton collider: no PDFs, beam energy fixed")
-        self.add_toml_param('beam', 'pdf', "NNPDF40_lo_as_01180",
-            comment="LHAPDF set name")
+        self.add_toml_param('beam', 'pdf1', "NNPDF40_lo_as_01180",
+            comment="LHAPDF set name of beam 1; set beam.pdf X sets both beams")
+        self.add_toml_param('beam', 'pdf2', "NNPDF40_lo_as_01180",
+            comment="LHAPDF set name of beam 2; PDF member variations need the same set on both beams")
         self.add_toml_param('beam', 'fixed_ren_scale', False,
             comment="use ren_scale instead of the dynamical scale")
         self.add_toml_param('beam', 'fixed_fact_scale', False,
@@ -6883,6 +6925,17 @@ class RunCardMG7(RunCard):
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True,
             comment="sample symmetric channels adaptively")
 
+        # ------------------------- [custom_functions] -----------------
+        # user functions built with bin/init_custom_func; "" disables them
+        self.add_toml_param('custom_functions', 'cut', "",
+            comment="custom cut, a .so library or a .py file, e.g. lib/custom_cut.so")
+        self.add_toml_param('custom_functions', 'scale', "",
+            comment="custom scale, replaces dynamical_scale_choice")
+        self.add_toml_param('custom_functions', 'pdf', "",
+            comment="custom PDF, replaces the PDF set (not alpha_s)")
+        self.add_toml_param('custom_functions', 'bias', "",
+            comment="custom event bias")
+
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,
             comment="train MadNIS networks to improve the sampling; auto decides by process")
@@ -6997,7 +7050,22 @@ class RunCardMG7(RunCard):
                 return TOMLSectionView(self, lname)
             if lname in self.legacy_compat_keys:
                 return self._legacy_compat(lname)
+            if lname in self.derived_beam_keys:
+                return self._derived_beam_value(lname)
         return super(RunCardMG7, self).__getitem__(name)
+
+    # [beam] quantities kept readable (and settable, see set()) although the
+    # card stores them per beam
+    derived_beam_keys = ('beam.e_cm', 'beam.pdf')
+
+    def _derived_beam_value(self, lname):
+        if lname == 'beam.e_cm':
+            return 2. * (float(self['beam.ebeam1']) * float(self['beam.ebeam2'])) ** 0.5
+        pdf1, pdf2 = self['beam.pdf1'], self['beam.pdf2']
+        if pdf1 != pdf2:
+            raise KeyError("beam.pdf is ambiguous: the beams use different PDF "
+                           "sets (%s, %s), read beam.pdf1 / beam.pdf2" % (pdf1, pdf2))
+        return pdf1
 
     get = __getitem__
 
@@ -7067,7 +7135,6 @@ class RunCardMG7(RunCard):
     def _legacy_compat(self, key):
         beam = self['beam']
         leptonic = bool(beam['leptonic'])
-        half_e = float(beam['e_cm']) / 2.
         if key == 'nevents':
             return self['generation']['events']
         if key in ('pdlabel', 'pdlabel1', 'pdlabel2'):
@@ -7076,7 +7143,7 @@ class RunCardMG7(RunCard):
         if key in ('lpp1', 'lpp2'):
             return 0 if leptonic else 1
         if key in ('ebeam1', 'ebeam2'):
-            return half_e
+            return float(beam[key])
         if key in ('nb_proton1', 'nb_proton2'):
             return 0 if leptonic else 1
         if key in ('nb_neutron1', 'nb_neutron2'):
@@ -7125,11 +7192,11 @@ class RunCardMG7(RunCard):
             return float(self['phasespace']['bw_cutoff'])
         raise KeyError(key)
 
-    def get_lhapdf_id(self):
-        """Central LHAPDF id of the beam PDF set, read from the set's .info
-        (SetIndex) so it does not depend on lhapdf being able to resolve the
-        set by name; falls back to lhapdf.getPDFSet, then 0."""
-        name = self['beam']['pdf']
+    def get_lhapdf_id(self, beam=1):
+        """Central LHAPDF id of the PDF set of `beam` (1 or 2), read from the
+        set's .info (SetIndex) so it does not depend on lhapdf being able to
+        resolve the set by name; falls back to lhapdf.getPDFSet, then 0."""
+        name = self['beam']['pdf%d' % beam]
         if not name:
             return 0
         search = []
@@ -7207,7 +7274,13 @@ class RunCardMG7(RunCard):
             elif sl in self.toml_sections:
                 for key, value in content.items():
                     internal = '%s.%s' % (sl, key.lower())
-                    if internal in self:
+                    if sl == 'custom_functions' and isinstance(value, dict):
+                        for name, parameter in value.items():
+                            self.set_custom_parameter(key.lower(), name, parameter)
+                    elif internal in self.derived_beam_keys:
+                        # a card written before the per-beam energies/PDFs
+                        self.set(internal, value, user=True)
+                    elif internal in self:
                         self.set(internal, value, user=True)
                     else:
                         if unknown_warning:
@@ -7249,6 +7322,27 @@ class RunCardMG7(RunCard):
         across all sections."""
         if isinstance(name, str):
             lname = name.lower()
+            if lname == 'e_cm':
+                lname = name = 'beam.e_cm'
+            if lname == 'pdf':
+                logger.warning("Ambiguous key 'pdf' — use beam.pdf (both beams), "
+                               "beam.pdf1, beam.pdf2 or systematics.pdf")
+                return
+            if lname == 'beam.e_cm':
+                value = self.parse_energy(value)
+                if isinstance(value, str):
+                    if value.strip().lower().startswith('scan'):
+                        raise InvalidRunCard(
+                            "e_cm cannot be scanned: scan beam.ebeam1 and "
+                            "beam.ebeam2 together instead (scan1:[...] on both)")
+                    value = self.format_variable(value, float, name='e_cm')
+                for key in ('beam.ebeam1', 'beam.ebeam2'):
+                    super(RunCardMG7, self).set(key, float(value) / 2., *args, **opts)
+                return
+            if lname == 'beam.pdf':
+                for key in ('beam.pdf1', 'beam.pdf2'):
+                    super(RunCardMG7, self).set(key, value, *args, **opts)
+                return
             if '.' not in lname:
                 matches = ['%s.%s' % (sec, lname)
                            for sec, keys in self.toml_sections.items()
@@ -7263,7 +7357,42 @@ class RunCardMG7(RunCard):
                     return
             if lname in self.energy_params:
                 value = self.parse_energy(value)
+            parts = lname.split('.')
+            if len(parts) == 3 and parts[0] == 'custom_functions':
+                # set custom_functions.cut_parameters.pt_min 30
+                self.set_custom_parameter(parts[1], parts[2], value)
+                return
         return super(RunCardMG7, self).set(name, value, *args, **opts)
+
+    custom_function_kinds = ('cut', 'scale', 'pdf', 'bias')
+
+    def set_custom_parameter(self, table, name, value):
+        """Set the parameter ``name`` of a custom function, written
+        ``<kind>_parameters.<name> = value`` in ``[custom_functions]``."""
+        kind = table[:-len('_parameters')] if table.endswith('_parameters') else None
+        if kind not in self.custom_function_kinds:
+            raise InvalidRunCard(
+                "unknown key custom_functions.%s.%s: parameters are set as "
+                "<table>.<name> with <table> one of %s" % (table, name,
+                ', '.join('%s_parameters' % k for k in self.custom_function_kinds)))
+        if isinstance(value, str):
+            value = self.format_variable(value, float, name=name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise InvalidRunCard(
+                "custom_functions.%s.%s must be a number, not %r" % (table, name, value))
+        self.custom_function_parameters.setdefault(kind, collections.OrderedDict())[
+            name] = float(value)
+
+    def custom_parameters(self, kind):
+        """The parameters of the custom ``kind`` function, {name: value}."""
+        return dict(self.custom_function_parameters.get(kind, {}))
+
+    def format_custom_parameters(self):
+        """Render the ``<kind>_parameters.<name> = value`` lines of [custom_functions]."""
+        return '\n'.join(
+            '%s_parameters.%s = %r' % (kind, name, value)
+            for kind, parameters in self.custom_function_parameters.items()
+            for name, value in parameters.items())
 
     def is_cut_name(self, name):
         """True if ``name`` addresses a cut entry of the ``[cuts]`` section
@@ -7298,6 +7427,257 @@ class RunCardMG7(RunCard):
                 value = self.format_variable(value, float, name=name)
         self.dynamic_sections['cuts'].setdefault(cut, collections.OrderedDict())[bound] = value
         return cut, bound, value
+
+    @staticmethod
+    def _lo_cut_is_active(bound, value):
+        """Whether a madevent cut value imposes a constraint: a minimum must be
+        positive, a maximum non-negative (-1 is madevent's "no cut")."""
+        return (bound == 'min' and value > 0) or (bound == 'max' and value >= 0)
+
+    def set_lo_cut(self, name, value):
+        """Set a cut from its madevent run_card name (``ptj``, ``mmll``,
+        ``etaj``, ``mmllmax``, ... see ``_LO_CUT_MAP``) in the ``[cuts]``
+        section, with the same conventions as :meth:`from_LO`: a "no cut"
+        value (minimum <= 0, maximum < 0) removes that bound, and the cut
+        itself once it has no bound left. A cut on one of the
+        ``_LO_CUT_GROUPS`` (``ihtmin``, ``ptllmin``, ...) also defines that
+        group in ``[multiparticles]``, unless the card already has it.
+        Returns ``(cut, bound, value)``, with value None when the bound was
+        removed."""
+        cut, bound = self._LO_CUT_MAP[name.lower()]
+        value = self.parse_energy(value)
+        if isinstance(value, str):
+            value = self.format_variable(value, float, name=name)
+        value = self._put_lo_cut(cut, bound, float(value))
+        if value is not None:
+            multiparticles = self.dynamic_sections['multiparticles']
+            for group, build in self._LO_CUT_GROUPS.items():
+                if cut.startswith(group + '-') and group not in multiparticles:
+                    multiparticles[group] = build(multiparticles)
+        return cut, bound, value
+
+    def _put_lo_cut(self, cut, bound, value):
+        """Set one bound of a [cuts] entry, or remove it (and the entry once
+        it has no bound left) for a madevent "no cut" value. Returns the value
+        set, None when the bound was removed."""
+        cuts = self.dynamic_sections['cuts']
+        if self._lo_cut_is_active(bound, value):
+            cuts.setdefault(cut, collections.OrderedDict())[bound] = value
+            return value
+        if cut in cuts:
+            cuts[cut].pop(bound, None)
+            if not cuts[cut]:
+                del cuts[cut]
+        return None
+
+    @staticmethod
+    def _lo_jet_group(maxjetflavor):
+        """The jet group of a madevent maxjetflavor: the quarks up to that
+        flavour, their antiquarks and the gluon."""
+        return list(range(1, maxjetflavor + 1)) + \
+            [-i for i in range(1, maxjetflavor + 1)] + [21]
+
+    @staticmethod
+    def _lo_pdg_group(pdg):
+        """Name and content of the group a madevent per-pdg cut is put on."""
+        return 'pdg%d' % abs(pdg), [abs(pdg), -abs(pdg)]
+
+    @staticmethod
+    def _lo_pdg_dict(mapping):
+        """A madevent {pdg: value} parameter with integer pdg keys: a
+        run_card.dat is read with string keys ({'6': 100.0}). 'default' is
+        kept as such."""
+        out = {}
+        for key, val in (mapping or {}).items():
+            if str(key).strip().lower() == 'default':
+                out['default'] = val
+            elif re.match(r'^\s*[-+]?\d+\s*$', str(key)):
+                out[int(key)] = val
+        return out
+
+    @staticmethod
+    def _lo_pair_observable(pdg, only_part_antipart):
+        """Observable of mxx_min_pdg for this pdg: X X~ pairs only when
+        mxx_only_part_antipart says so (for it, or by default)."""
+        return 'sfos_pair_mass' if only_part_antipart.get(
+            pdg, only_part_antipart.get('default', False)) else 'pair_mass'
+
+    def _lo_card_pair_observable(self, pdg, only_part_antipart):
+        """Observable of ``set mxx_min_pdg`` for this pdg: what
+        ``set mxx_only_part_antipart`` chose, else the pair-mass cut the card
+        already has on that pdg (e.g. from the run_card.dat conversion), else
+        every pair of the group."""
+        if pdg in only_part_antipart or 'default' in only_part_antipart:
+            return self._lo_pair_observable(pdg, only_part_antipart)
+        cuts = self.dynamic_sections['cuts']
+        if 'pdg%d-sfos_pair_mass' % pdg in cuts and 'pdg%d-pair_mass' % pdg not in cuts:
+            return 'sfos_pair_mass'
+        return 'pair_mass'
+
+    @staticmethod
+    def _merge_cut_bounds(kept, other):
+        """Bounds of two [cuts] entries on the same quantity, as one entry:
+        the tighter of each bound; ``kept`` wins for anything else (mode)."""
+        merged = collections.OrderedDict(other)
+        for bound, value in kept.items():
+            if bound == 'min' and 'min' in other:
+                value = max(value, other['min'])
+            elif bound == 'max' and 'max' in other:
+                value = min(value, other['max'])
+            merged[bound] = value
+        return merged
+
+    def _lo_parse_pdg_items(self, name, text):
+        """The (key, value-text) pairs of a madevent {pdg: value} parameter,
+        in any form the run_card.dat editor takes ({6: 100, 25: 50}, 6:100,
+        6 100); keys are pdg integers or 'default'."""
+        try:
+            parsed, _ = self.parse_dict_value(text)
+        except ValueError:
+            raise InvalidCmd('%s takes {pdg: value, ...}, not %s' % (name, text))
+        items = []
+        for key, val in parsed.items():
+            if str(key).strip().lower() == 'default':
+                key = 'default'
+            else:
+                key = self.format_variable(key, int, name=name)
+            items.append((key, val))
+        return items
+
+    def set_lo_param(self, name, value, masses=None):
+        """Apply ``set <name> <value>`` for a madevent parameter that mg7 does
+        not just rename (``_LO_SET_PARAMS``): its value needs translating
+        (``dynamical_scale_choice 3``, ``maxjetflavor 4``, ...), or several
+        madevent settings make one mg7 entry (fixed_fac_scale1 and
+        fixed_fac_scale2 give beam.fixed_fact_scale). The beam energies,
+        types and PDFs go to :meth:`set_lo_beam_param` instead. A per-beam
+        fixed_fac_scale is combined with the other beam's from earlier ``set``
+        commands of the same launch question, and :meth:`lo_set_warnings`
+        reports a mismatch once the question closes.
+
+        Returns None when ``value`` is already an mg7 value (``set
+        sde_strategy denominators``, ``set dynamical_scale_choice HT/4``),
+        for the caller to set as usual. Otherwise returns ``(changes,
+        warnings)``: the {mg7 key: new value} written (None for a removed
+        cut) and what of the request could not be followed. Raises
+        InvalidCmd for a value of the wrong type."""
+        name = name.lower()
+        text = str(value).split('#')[0].strip()
+        beam = self['beam']
+        changes, warnings = collections.OrderedDict(), []
+
+        def put(key, val):
+            self.set(key, val, user=True)
+            changes[key] = self[key]
+
+        def number(val):
+            val = self.evaluate(val, masses)
+            if isinstance(val, str):
+                val = self.format_variable(val, float, name=name)
+            return float(val)
+
+        if name in ('dynamical_scale_choice', 'sde_strategy'):
+            code = text
+            if name == 'dynamical_scale_choice':
+                code = str(self._LO_DYNSCALE_SHORTCUTS.get(text.lower(), text))
+            if not re.match(r'^[-+]?\d+$', code):
+                return None
+            code = int(code)
+            if name == 'sde_strategy':
+                if code in (1, 2):
+                    put('phasespace.sde_strategy',
+                        'denominators' if code == 2 else 'diagrams')
+                else:
+                    warnings.append(
+                        'sde_strategy %d does not exist (1 = diagrams, '
+                        '2 = denominators): keeping %s'
+                        % (code, self['phasespace.sde_strategy']))
+            elif code in self._LO_DYNSCALE_MAP:
+                put('beam.dynamical_scale_choice', self._LO_DYNSCALE_MAP[code])
+            else:
+                what = {-1: ' (CKKW back-clustering)',
+                        0: ' (user-defined scale)'}.get(code, '')
+                warnings.append(
+                    'dynamical_scale_choice %d%s has no mg7 equivalent: '
+                    'keeping %s' % (code, what, beam['dynamical_scale_choice']))
+
+        elif name in ('fixed_fac_scale', 'fixed_fac_scale1', 'fixed_fac_scale2'):
+            flag = self.format_variable(text, bool, name=name)
+            current = beam['fixed_fact_scale']
+            flags = vars(self).setdefault('_lo_fixed_fac_scale', {1: current, 2: current})
+            for i in ((1, 2) if name == 'fixed_fac_scale' else (int(name[-1]),)):
+                flags[i] = flag
+            put('beam.fixed_fact_scale', flag)
+
+        elif name == 'maxjetflavor':
+            flavours = self.format_variable(text, int, name=name)
+            if not 0 <= flavours <= 6:
+                raise InvalidCmd('maxjetflavor must be between 0 and 6')
+            jet = self._lo_jet_group(flavours)
+            self.dynamic_sections['multiparticles']['jet'] = jet
+            changes['multiparticles.jet'] = jet
+
+        else:
+            # per-pdg cuts, written {pdg: value, ...} as in the run_card.dat
+            items = self._lo_parse_pdg_items(name, text)
+            cuts = self.dynamic_sections['cuts']
+            multiparticles = self.dynamic_sections['multiparticles']
+            # kept with the card, not the question: it decides the observable
+            # of a later "set mxx_min_pdg" too
+            only_pairs = vars(self).setdefault('_lo_only_part_antipart', {})
+            if name == 'mxx_only_part_antipart':
+                for key, val in items:
+                    only_pairs[key] = self.format_variable(val, bool, name=name)
+                # existing pair-mass cuts follow the new choice
+                for cut in list(cuts):
+                    match = re.match(r'^pdg(\d+)-(sfos_)?pair_mass$', cut)
+                    if not match or cut not in cuts:
+                        continue
+                    pdg = int(match.group(1))
+                    new = 'pdg%d-%s' % (pdg, self._lo_pair_observable(pdg, only_pairs))
+                    if new != cut:
+                        moved = cuts.pop(cut)
+                        if new in cuts:
+                            moved = self._merge_cut_bounds(cuts[new], moved)
+                        cuts[new] = moved
+                        changes['cuts.' + cut] = None
+                        changes['cuts.' + new] = cuts[new]
+            else:
+                for pdg, val in items:
+                    if pdg == 'default':
+                        continue
+                    group, pids = self._lo_pdg_group(pdg)
+                    if name == 'mxx_min_pdg':
+                        observable = self._lo_card_pair_observable(pdg, only_pairs)
+                        bound = 'min'
+                        # madevent has one pair-mass minimum per pdg: drop
+                        # the one on the other kind of pair
+                        other = '%s-%s' % (group, 'pair_mass' if observable
+                                           == 'sfos_pair_mass' else 'sfos_pair_mass')
+                        if 'min' in cuts.get(other, {}):
+                            self._put_lo_cut(other, 'min', 0.)
+                            changes['cuts.' + other] = cuts.get(other)
+                    else:
+                        observable, bound = self._LO_PDG_CUT_MAP[name]
+                    cut = '%s-%s' % (group, observable)
+                    if self._put_lo_cut(cut, bound, number(val)) is not None:
+                        multiparticles[group] = pids
+                    changes['cuts.' + cut] = cuts.get(cut)
+        return changes, warnings
+
+    def lo_set_warnings(self):
+        """What the madevent-style ``set`` commands of a launch question asked
+        for that mg7, with one factorisation-scale switch for both beams,
+        cannot do. Meant for when the question closes: the per-beam settings
+        are forgotten afterwards, so the next question starts over."""
+        flags = vars(self).pop('_lo_fixed_fac_scale', None)
+        beam = self['beam']
+        out = []
+        if flags and flags[1] != flags[2]:
+            out.append('fixed_fac_scale1 = %s and fixed_fac_scale2 = %s: mg7 has '
+                       'one beam.fixed_fact_scale for both beams (%s)'
+                       % (flags[1], flags[2], beam['fixed_fact_scale']))
+        return out
 
     # ------------------------------------------------------------------
     # expression evaluation (energy units + arithmetic + masses)
@@ -7381,9 +7761,88 @@ class RunCardMG7(RunCard):
             val = self.format_variable(val, float, name=name)
         if not had_unit and name in ('lhc', 'lcc'):
             val = val * 1000.0  # unit-less hadron collider energy is in TeV
-        self.set('beam.e_cm', float(val), user=True)
+        self.set('beam.e_cm', float(val), user=True)  # both beams at val/2
         self.set('beam.leptonic', name in ('lep', 'ilc'), user=True)
         return float(val)
+
+    # madevent beam settings understood by set_lo_beam_param
+    lo_beam_params = ('ebeam', 'ebeam1', 'ebeam2', 'lpp', 'lpp1', 'lpp2',
+                      'pdlabel', 'pdlabel1', 'pdlabel2', 'lhaid')
+
+    def set_lo_beam_param(self, name, value, masses=None, data_paths=()):
+        """``set <name> <value>`` with a madevent beam setting (lo_beam_params);
+        returns a description of what was set. A name ending in 1 or 2 acts
+        on that beam, the others on both.
+
+        * ebeam: the beam energies, with units and expressions as for any
+          energy.
+        * pdlabel / lhaid: the PDF set, through the label and id tables of
+          the run_card.dat conversion (an lhaid also through pdfsets.index).
+          'lhapdf' alone changes nothing, since the set comes from lhaid;
+          'none' on both beams is a lepton collider.
+        * lpp: mg7 has one switch for both beams, beam.leptonic, true for
+          0 (no PDF) and +-3/+-4 (e/mu), false for +-1.
+
+        Raises InvalidRunCard for a value mg7 cannot represent."""
+        name = name.lower()
+        beams = (name[-1],) if name[-1] in '12' else ('1', '2')
+        which = 'beam ' + beams[0] if len(beams) == 1 else 'both beams'
+        value = str(value).strip()
+
+        if name.startswith('ebeam'):
+            energy = self.evaluate(value, masses)
+            if isinstance(energy, str):
+                energy = self.format_variable(energy, float, name=name)
+            for beam in beams:
+                self.set('beam.ebeam' + beam, float(energy), user=True)
+            return 'beam energy of %s: %s GeV' % (which, float(energy))
+
+        if name.startswith('lpp'):
+            try:
+                lpp = int(value)
+            except ValueError:
+                raise InvalidRunCard('%s = %s: not an integer' % (name, value))
+            if abs(lpp) not in (0, 1, 3, 4):
+                raise InvalidRunCard('%s = %s: beam type not representable in mg7'
+                                     % (name, lpp))
+            leptonic = abs(lpp) != 1
+            beam_types = getattr(self, '_lo_beam_leptonic', {})
+            beam_types.update((beam, leptonic) for beam in beams)
+            self._lo_beam_leptonic = beam_types
+            if len(set(beam_types.values())) > 1:
+                logger.warning('mg7 cannot collide a lepton beam with a hadron '
+                               'beam: beam.leptonic = %s now applies to both',
+                               leptonic)
+            if lpp == -1:
+                logger.warning('%s = -1: mg7 has no antiproton beam and keeps '
+                               'the proton PDF', name)
+            self.set('beam.leptonic', leptonic, user=True)
+            return 'beam.leptonic = %s' % leptonic
+
+        if name == 'lhaid':
+            label, lhaid = 'lhapdf', value.split()[0] if value else value
+            try:
+                lhaid = int(lhaid)
+            except ValueError:
+                raise InvalidRunCard('lhaid = %s: not an integer' % value)
+        else:
+            label, lhaid = value, None
+            if label.lower() == 'lhapdf':
+                return ('unchanged: mg7 always uses LHAPDF, the set is chosen '
+                        'with lhaid or beam.pdf1/pdf2')
+            if label.lower() in ('none', 'no'):
+                if len(beams) == 1:
+                    raise InvalidRunCard('%s = none: only a lepton collider has '
+                                         'no PDF in mg7, on both beams' % name)
+                self.set('beam.leptonic', True, user=True)
+                return 'beam.leptonic = True'
+        pdf = self._resolve_pdf_label(label, lhaid, [], data_paths)
+        if pdf is None:
+            raise InvalidRunCard('%s = %s: unknown %s' % (
+                name, value, 'LHAPDF id' if name == 'lhaid' else 'PDF label'))
+        for beam in beams:
+            self.set('beam.pdf' + beam, pdf, user=True)
+        return 'PDF of %s: %s' % (which, pdf)
 
     def set_fixed_scale(self, value, masses=None):
         """``set fixed_scale X``: switch to fixed scales and set them all to X
@@ -7407,6 +7866,10 @@ class RunCardMG7(RunCard):
         """Minimal consistency checks for the TOML run_card."""
         if self['generation']['survey_min_iters'] > self['generation']['survey_max_iters']:
             raise InvalidRunCard("survey_min_iters can not be larger than survey_max_iters")
+        for beam in (1, 2):
+            energy = self['beam']['ebeam%d' % beam]
+            if isinstance(energy, (int, float)) and energy <= 0:
+                raise InvalidRunCard("beam.ebeam%d must be positive (got %s)" % (beam, energy))
 
         beam = self['beam']
         if float(beam['scale_factor']) <= 0.:
@@ -7509,6 +7972,10 @@ class RunCardMG7(RunCard):
             text = text.replace('$%s' % section,
                                 self.format_dynamic_section(section))
 
+        text = text.replace('$custom_function_parameters\n',
+                            self.format_custom_parameters() + '\n'
+                            if self.custom_function_parameters else '')
+
         # preserve any unknown section read from an existing card
         for section, content in self.extra_sections.items():
             block = '\n[%s]\n' % section
@@ -7579,7 +8046,8 @@ class RunCardMG7(RunCard):
         if beam_id and beam_id <= leptons:
             # lepton collider: no PDF, lower default energy, no hadronic cuts
             self['beam']['leptonic'] = True
-            self['beam']['e_cm'] = 1000.0
+            self['beam']['ebeam1'] = 500.0
+            self['beam']['ebeam2'] = 500.0
             self['beam']['fixed_fact_scale'] = True
             self.remove_jet_cuts()
         elif beam_id and not (beam_id & hadronic):
@@ -7688,7 +8156,7 @@ class RunCardMG7(RunCard):
         if 'parameter_dict' in model and model['parameter_dict']:
             return complex(model['parameter_dict'][name])
 
-        import models.model_reader as model_reader
+        import madgraph.models.model_reader as model_reader
         namespace = dict(vars(model_reader))
         namespace['ZERO'] = 0.
         for param in model['parameters'][('external',)]:
@@ -7957,6 +8425,8 @@ class RunCardMG7(RunCard):
         'nevents': 'generation.events',
         'gridpack': 'gridpack.save_gridpack',
         'fixed_ren_scale': 'beam.fixed_ren_scale',
+        'ebeam1': 'beam.ebeam1',
+        'ebeam2': 'beam.ebeam2',
         'scalefact': 'beam.scale_factor',
         'scale': 'beam.ren_scale',
         'dsqrt_q2fact1': 'beam.fact_scale1',
@@ -7968,6 +8438,9 @@ class RunCardMG7(RunCard):
     # LO dynamical_scale_choice (int) -> MG7 string
     _LO_DYNSCALE_MAP = {1: 'transverse_energy', 2: 'transverse_mass',
                         3: 'half_transverse_mass', 4: 'partonic_energy'}
+    # the LO run_card's names for some of those codes ('ht' and 'ht/n' are
+    # handled by the launch question itself)
+    _LO_DYNSCALE_SHORTCUTS = {'et': 1, 'shat': 4, 'ckkw': -1}
     # LO cut parameter -> (MG7 cut key, bound)
     _LO_CUT_MAP = {
         'ptj': ('jet-pt', 'min'), 'ptjmax': ('jet-pt', 'max'),
@@ -8030,6 +8503,12 @@ class RunCardMG7(RunCard):
         'e_min_pdg': ('e', 'min'), 'e_max_pdg': ('e', 'max'),
         'eta_min_pdg': ('eta_abs', 'min'), 'eta_max_pdg': ('eta_abs', 'max'),
     }
+    # LO parameters that "set" translates with set_lo_param: not a plain
+    # rename (_LO_SCALAR_MAP) nor a cut (_LO_CUT_MAP) nor a beam setting
+    # (lo_beam_params). A set literal: set() is the method of this class here.
+    _LO_SET_PARAMS = {'fixed_fac_scale', 'fixed_fac_scale1', 'fixed_fac_scale2',
+                      'dynamical_scale_choice', 'sde_strategy', 'maxjetflavor',
+                      'mxx_min_pdg', 'mxx_only_part_antipart', *_LO_PDG_CUT_MAP}
     # built-in LO pdlabel -> LHAPDF set name
     _LO_PDF_LABEL_MAP = {
         'nn23lo': 'NNPDF23_lo_as_0130_qed', 'nn23lo1': 'NNPDF23_lo_as_0130_qed',
@@ -8071,26 +8550,59 @@ class RunCardMG7(RunCard):
     }
 
     @classmethod
-    def _resolve_pdf(cls, lo, dropped):
-        """Map the LO pdlabel/lhaid to an LHAPDF set name (or None to keep the
-        MG7 default, recording the reason in ``dropped``)."""
-        pdlabel = str(lo['pdlabel']).lower() if 'pdlabel' in lo else ''
-        if str(lo['pdlabel1']).lower() != str(lo['pdlabel2']).lower():
-            dropped.append('pdlabel1/pdlabel2 differ (mg7 uses a single pdf)')
+    def _lhaid_to_pdf_name(cls, lhaid, data_paths=()):
+        """LHAPDF set name of the set whose central member is ``lhaid``: the
+        common ids of _LO_LHAID_MAP, else the pdfsets.index of ``data_paths``
+        or $LHAPDF_DATA_PATH; None when neither knows it."""
+        if lhaid in cls._LO_LHAID_MAP:
+            return cls._LO_LHAID_MAP[lhaid]
+        search = list(data_paths)
+        if os.environ.get('LHAPDF_DATA_PATH'):
+            search += os.environ['LHAPDF_DATA_PATH'].split(os.pathsep)
+        for base in search:
+            try:
+                with open(os.path.join(base, 'pdfsets.index')) as fsock:
+                    for line in fsock:
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[0] == str(lhaid):
+                            return parts[1]
+            except OSError:
+                continue
+        return None
+
+    @classmethod
+    def _resolve_pdf_label(cls, pdlabel, lhaid, dropped, data_paths=()):
+        """Map one LO pdlabel (and the lhaid for 'lhapdf') to an LHAPDF set
+        name, or None to keep the MG7 default, recording the reason in
+        ``dropped`` (nothing for 'none': that beam has no PDF)."""
+        pdlabel = str(pdlabel).lower()
         if pdlabel in ('none', '', 'no'):
             return None
         if pdlabel == 'lhapdf':
-            lhaid = lo['lhaid']
             if isinstance(lhaid, list):
                 lhaid = lhaid[0]
-            if lhaid in cls._LO_LHAID_MAP:
-                return cls._LO_LHAID_MAP[lhaid]
-            dropped.append('lhaid=%s (unknown LHAPDF id; keeping mg7 default pdf)' % lhaid)
-            return None
+            name = cls._lhaid_to_pdf_name(lhaid, data_paths)
+            if name is None:
+                dropped.append('lhaid=%s (unknown LHAPDF id; keeping mg7 default pdf)' % lhaid)
+            return name
         if pdlabel in cls._LO_PDF_LABEL_MAP:
             return cls._LO_PDF_LABEL_MAP[pdlabel]
         dropped.append('pdlabel=%s (unknown PDF label; keeping mg7 default pdf)' % pdlabel)
         return None
+
+    @classmethod
+    def _resolve_pdf(cls, lo, dropped):
+        """Map the LO pdlabel/lhaid to an LHAPDF set name per beam, (pdf1,
+        pdf2), None keeping the MG7 default of that beam. pdlabel1/pdlabel2
+        are only read when they differ: pdlabel holds the common value."""
+        lhaid = lo['lhaid'] if 'lhaid' in lo else None
+        labels = [str(lo['pdlabel%d' % i]).lower() if 'pdlabel%d' % i in lo else ''
+                  for i in (1, 2)]
+        if labels[0] == labels[1]:
+            pdlabel = lo['pdlabel'] if 'pdlabel' in lo else ''
+            name = cls._resolve_pdf_label(pdlabel, lhaid, dropped)
+            return name, name
+        return tuple(cls._resolve_pdf_label(label, lhaid, dropped) for label in labels)
 
     @classmethod
     def from_LO(cls, lo, warn=True):
@@ -8114,7 +8626,6 @@ class RunCardMG7(RunCard):
                 mg7.set(mg7key, lo[loname])
 
         # --- beams ---
-        mg7.set('beam.e_cm', float(lo['ebeam1']) + float(lo['ebeam2']))
         lpps = [lo['lpp1'], lo['lpp2']]
         is_lep = lambda l: isinstance(l, int) and abs(l) in (3, 4)
         # lpp 0 = fixed-energy beam with no PDF, typically a lepton collider
@@ -8126,7 +8637,7 @@ class RunCardMG7(RunCard):
             elif isinstance(lpp, int) and lpp < 0:
                 dropped.append('lpp%d=%s (antiparticle beam: mg7 keeps the particle PDF)' % (i, lpp))
             elif lpp == 0:
-                dropped.append('lpp%d=0 (no-PDF fixed-energy beam: check beam.leptonic/beam.pdf)' % i)
+                dropped.append('lpp%d=0 (no-PDF fixed-energy beam: check beam.leptonic/beam.pdf1/beam.pdf2)' % i)
 
         # --- scales ---
         if 'fixed_fac_scale' in lo:
@@ -8161,15 +8672,14 @@ class RunCardMG7(RunCard):
             mg7.set('run.me_frame', list(lo['me_frame']) or [1, 2])
 
         # --- PDF ---
-        pdf_name = cls._resolve_pdf(lo, dropped)
-        if pdf_name:
-            mg7.set('beam.pdf', pdf_name)
+        for beam, pdf_name in zip((1, 2), cls._resolve_pdf(lo, dropped)):
+            if pdf_name:
+                mg7.set('beam.pdf%d' % beam, pdf_name)
 
         # --- maxjetflavor -> jet multiparticle ---
         if 'maxjetflavor' in lo:
-            mjf = int(lo['maxjetflavor'])
             mg7.dynamic_sections['multiparticles']['jet'] = \
-                list(range(1, mjf + 1)) + [-i for i in range(1, mjf + 1)] + [21]
+                cls._lo_jet_group(int(lo['maxjetflavor']))
 
         # --- cuts (rebuild from the LO card) ---
         cuts = collections.OrderedDict()
@@ -8183,9 +8693,9 @@ class RunCardMG7(RunCard):
                 val = max(entry[bound], val) if bound == 'min' else min(entry[bound], val)
             entry[bound] = float(val)
 
-        def is_active(bound, val):
-            # LO: a minimum of 0 and a maximum below 0 switch the cut off
-            return (bound == 'min' and val > 0) or (bound == 'max' and val >= 0)
+        # LO: a minimum of 0 and a maximum below 0 switch the cut off (shared
+        # with set_lo_cut, i.e. "set ptj 0" in the launch question)
+        is_active = cls._lo_cut_is_active
 
         for loname, (cutkey, bound) in cls._LO_CUT_MAP.items():
             if loname in lo and is_active(bound, lo[loname]):
@@ -8194,20 +8704,20 @@ class RunCardMG7(RunCard):
         # cuts on one particle type, given by pdg id: a group [pdg, -pdg] each
         # (the name has no "_<number>", which would select the n-th hardest)
         for loname, (observable, bound) in cls._LO_PDG_CUT_MAP.items():
-            for pdg, val in lo[loname].items() if loname in lo else []:
-                if isinstance(pdg, int) and is_active(bound, val):
-                    group = 'pdg%d' % abs(pdg)
-                    multiparticles[group] = [abs(pdg), -abs(pdg)]
+            for pdg, val in cls._lo_pdg_dict(lo[loname] if loname in lo else {}).items():
+                if pdg != 'default' and is_active(bound, val):
+                    group, pids = cls._lo_pdg_group(pdg)
+                    multiparticles[group] = pids
                     add_cut('%s-%s' % (group, observable), bound, val)
         if 'mxx_min_pdg' in lo:
-            only_pairs = lo['mxx_only_part_antipart'] if 'mxx_only_part_antipart' in lo else {}
-            for pdg, val in lo['mxx_min_pdg'].items():
-                if isinstance(pdg, int) and is_active('min', val):
-                    group = 'pdg%d' % abs(pdg)
-                    multiparticles[group] = [abs(pdg), -abs(pdg)]
+            only_pairs = cls._lo_pdg_dict(
+                lo['mxx_only_part_antipart'] if 'mxx_only_part_antipart' in lo else {})
+            for pdg, val in cls._lo_pdg_dict(lo['mxx_min_pdg']).items():
+                if pdg != 'default' and is_active('min', val):
+                    group, pids = cls._lo_pdg_group(pdg)
+                    multiparticles[group] = pids
                     # X X~ pairs only, or every pair of the group
-                    observable = 'sfos_pair_mass' if only_pairs.get(
-                        pdg, only_pairs.get('default', False)) else 'pair_mass'
+                    observable = cls._lo_pair_observable(pdg, only_pairs)
                     add_cut('%s-%s' % (group, observable), 'min', val)
 
         for group, build in cls._LO_CUT_GROUPS.items():

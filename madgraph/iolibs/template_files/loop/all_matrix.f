@@ -215,6 +215,9 @@ c If the momentum is anything else:
       ENDIF
       END
 
+## if(has_density) {
+C     Only written when at least one process has GET_DENSITY, i.e. was
+C     output with --density and computes its colour flows.
       SUBROUTINE %(f2py_prefix)sF77_DENSITY(PDGS, NPDG, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2, N_CHANGING, N_COMB, INTER)
       IMPLICIT NONE
 CF2PY double precision, intent(in) :: p
@@ -244,3 +247,4 @@ C
 
       return 
       end
+## }

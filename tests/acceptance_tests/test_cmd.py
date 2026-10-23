@@ -1545,6 +1545,185 @@ class TestCmdShell2(unittest.TestCase,
                 self.assertAlmostEqual(value, helicity_sum,
                                        delta=1e-12 * abs(helicity_sum))
 
+    def test_standalone_umami_first_call(self):
+        """the helicities kept, and the |M|^2, do not depend on the first umami call.
+
+        The good helicities are chosen once per library: a helicity is kept if
+        its |M|^2 is not 0 for one of the first events. They were chosen at
+        the first umami_matrix_element call, so that
+        * a first call of special points dropped, for the rest of the run, the
+          helicities that vanish there: after one event in the exact forward
+          direction, u u~ > e+ e- came out wrong by factors 5 to 100;
+        * a first call shorter than a SIMD page was padded with zero events,
+          which evaluate to nan, and every helicity was kept (twice the work
+          for a q q~ initial state).
+        They are now chosen at initialization, on RAMBO points, and the
+        padding events of a batch are copies of real ones.
+
+        p p > e+ e- has two flavor indices (d and u type) and only 4 of its 16
+        helicities do not vanish. For the scalar backend and simd_128 in double
+        and in mixed precision (one and two SIMD pages at a time), with a first
+        call of one generic event, of 16 events, or of one forward event:
+        * the same helicities are kept, fewer than 16
+          (madmatrix_good_helicity_count);
+        * the same |M|^2 come out afterwards, and a batch whose flavors
+          alternate, leaving partial pages, gives the |M|^2 of single-event
+          calls, event by event.
+
+        The helicities are chosen once per loaded library, so each first call
+        runs in its own process.
+        """
+        self._check_umami_first_call([('scalar', 'd', 1e-12),
+                                      ('simd_128', 'd', 1e-12),
+                                      ('simd_128', 'm', 1e-6)])
+
+    def test_standalone_umami_first_call_gpu(self):
+        """test_standalone_umami_first_call on GPUs (BACKEND=cuda, hip).
+
+        There, umami_matrix_element takes device buffers, and umami_initialize
+        copies its RAMBO points over to choose the good helicities. Skipped
+        without nvcc and hipcc on the PATH, or without a device.
+        """
+        builds = [(backend, fptype, rtol)
+                  for backend, compiler in (('cuda', 'nvcc'), ('hip', 'hipcc'))
+                  if misc.which(compiler)
+                  for fptype, rtol in (('d', 1e-12), ('m', 1e-6))]
+        if not builds:
+            raise unittest.SkipTest('neither nvcc nor hipcc on the PATH')
+        self._check_umami_first_call(builds)
+
+    def _check_umami_first_call(self, builds):
+        """test_standalone_umami_first_call for these (backend, fptype, rtol)"""
+        import glob
+        import json
+        import textwrap
+
+        self.do('import model sm')
+        self.do('generate p p > e+ e-')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        helper = pjoin(self.out_dir, 'umami_first_call.py')
+        with open(helper, 'w') as fsock:
+            fsock.write(textwrap.dedent('''\
+                import ctypes, ctypes.util, json, math, subprocess, sys
+                lib = ctypes.CDLL(sys.argv[1])
+                gpu = sys.argv[4] if sys.argv[4] in ('cuda', 'hip') else None
+                if gpu:
+                    # umami takes device buffers: the CUDA/HIP runtime of the library, or
+                    # (cudart is linked statically by default) one sharing its device context
+                    name = 'cudart' if gpu == 'cuda' else 'amdhip64'
+                    ldd = subprocess.run(['ldd', sys.argv[1]], capture_output=True, text=True).stdout
+                    paths = [line.split('=>')[1].split()[0] for line in ldd.splitlines()
+                             if 'lib%s' % name in line and '=>' in line]
+                    runtime = ctypes.CDLL(paths[0] if paths else
+                                          ctypes.util.find_library(name) or 'lib%s.so' % name)
+                    ndevice = ctypes.c_int(0)
+                    if runtime[gpu + 'GetDeviceCount'](ctypes.byref(ndevice)) != 0 or not ndevice.value:
+                        print(json.dumps({'skip': 'no %s device' % gpu}))
+                        sys.exit(0)
+
+                def buffer(host):  # what umami reads or writes: host, or a device copy
+                    if not gpu:
+                        return ctypes.addressof(host)
+                    pointer = ctypes.c_void_p()
+                    size = ctypes.c_size_t(ctypes.sizeof(host))
+                    assert runtime[gpu + 'Malloc'](ctypes.byref(pointer), size) == 0
+                    # cudaMemcpyHostToDevice == hipMemcpyHostToDevice == 1
+                    assert runtime[gpu + 'Memcpy'](pointer, ctypes.c_void_p(ctypes.addressof(host)), size, 1) == 0
+                    return pointer.value
+
+                def release(pointers, output, host):  # output back into host, the device copies freed
+                    if gpu:
+                        assert runtime[gpu + 'DeviceSynchronize']() == 0
+                        # cudaMemcpyDeviceToHost == hipMemcpyDeviceToHost == 2
+                        assert runtime[gpu + 'Memcpy'](ctypes.c_void_p(ctypes.addressof(host)), ctypes.c_void_p(output),
+                                                       ctypes.c_size_t(ctypes.sizeof(host)), 2) == 0
+                        for pointer in pointers:
+                            assert runtime[gpu + 'Free'](ctypes.c_void_p(pointer)) == 0
+
+                handle = ctypes.c_void_p()
+                assert lib.umami_initialize(ctypes.byref(handle), sys.argv[2].encode()) == 0
+                npar = 4
+
+                def point(k):  # q q~ > e+ e- at sqrt(s) = 1 TeV: k-th direction, or forward
+                    e = 500.
+                    ct, phi = (1., 0.) if k == 'forward' else (math.cos(0.3 + 0.37 * k), 0.7 * k)
+                    st = math.sqrt(1 - ct * ct)
+                    p3 = [e * st * math.cos(phi), e * st * math.sin(phi), e * ct]
+                    return [[e, 0, 0, e], [e, 0, 0, -e], [e] + p3, [e] + [-x for x in p3]]
+
+                def evaluate(ks, flavors):
+                    n = len(ks)
+                    mom = (ctypes.c_double * (4 * npar * n))()
+                    for i, k in enumerate(ks):  # momenta[n * (npar * mu + ipart) + i]
+                        for ipart, p in enumerate(point(k)):
+                            for mu in range(4):
+                                mom[n * (npar * mu + ipart) + i] = p[mu]
+                    flav = (ctypes.c_uint * n)(*flavors)
+                    me = (ctypes.c_double * n)()
+                    pointers = [buffer(mom), buffer(flav), buffer(me)]
+                    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_IN_FLAVOR_INDEX = 2,
+                    # UMAMI_OUT_MATRIX_ELEMENT = 0
+                    status = lib.umami_matrix_element(
+                        handle, ctypes.c_size_t(n), ctypes.c_size_t(n), ctypes.c_size_t(0),
+                        ctypes.c_size_t(2), (ctypes.c_int * 2)(0, 2),
+                        (ctypes.c_void_p * 2)(pointers[0], pointers[1]),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(pointers[2]))
+                    assert status == 0, status
+                    release(pointers, pointers[2], me)
+                    return list(me)
+
+                first = {'single': [0], 'batch': list(range(16)), 'forward': ['forward']}[sys.argv[3]]
+                evaluate(first, [k % 2 if k != 'forward' else 1 for k in first])
+                flavors = [0, 1, 1, 0, 1, 0, 0]
+                print(json.dumps({
+                    'good': lib.madmatrix_good_helicity_count(),
+                    'batch': evaluate(range(7), flavors),
+                    'single': [evaluate([k], [f])[0] for k, f in enumerate(flavors)]}))
+                '''))
+
+        devnull = open(os.devnull, 'w')
+        for backend, fptype, rtol in builds:
+            build = 'BACKEND=%s FPTYPE=%s' % (backend, fptype)
+            subprocess.call(['make', 'cleanall'], stdout=devnull,
+                            stderr=devnull, cwd=proc_dir)
+            # the end of the build log in the message (the GPU CI has nothing else)
+            make = subprocess.run(['make', 'BACKEND=' + backend, 'FPTYPE=' + fptype],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  cwd=proc_dir)
+            self.assertEqual(0, make.returncode, 'the %s library did not build:\n%s'
+                             % (build, make.stdout.decode(errors='replace')[-3000:]))
+            lib = glob.glob(pjoin(self.out_dir, 'lib',
+                                  'libmadmatrix_P*_%s.so' % backend))[0]
+            runs = {}
+            for first in ('single', 'batch', 'forward'):
+                out = subprocess.check_output(
+                    [sys.executable, helper, lib, card, first, backend])
+                runs[first] = json.loads(out.decode().strip().splitlines()[-1])
+                if 'skip' in runs[first]:
+                    raise unittest.SkipTest(runs[first]['skip'])
+            reference = runs['single']
+            self.assertGreater(reference['good'], 0, build)
+            self.assertLess(reference['good'], 16,
+                            '%s: no helicity was filtered out' % build)
+            for first, run in runs.items():
+                self.assertEqual(run['good'], reference['good'],
+                                 '%s: a first call of %s events keeps other '
+                                 'helicities' % (build, first))
+                for batch, single, ref in zip(run['batch'], run['single'],
+                                              reference['single']):
+                    self.assertGreater(single, 0, build)
+                    self.assertAlmostEqual(single, ref, delta=rtol * ref,
+                                           msg='%s: the |M|^2 depend on the first '
+                                               'call (%s)' % (build, first))
+                    self.assertAlmostEqual(batch, single, delta=rtol * single,
+                                           msg='%s: batch and single-event '
+                                               '|M|^2 differ' % build)
+
     def test_standalone_cpp(self):
         """test that the scalar C++ standalone exporter is working
 
@@ -2029,7 +2208,7 @@ class TestCmdShell2(unittest.TestCase,
         """
         import array
         import math
-        import models.check_param_card as check_param_card
+        import madgraph.models.check_param_card as check_param_card
 
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
@@ -3131,6 +3310,86 @@ class TestCmdShell2(unittest.TestCase,
             self.assertAlmostEqual(madspin_report_dict[key].real/(ref_val.real * iden_dec**2), 1, places=4)
                                                                              
                                                                              
+    # Run in a fresh interpreter: every output names its module all_matrix2py,
+    # so it must not share a process with one an earlier test imported.
+    _get_all_inter_script = '''
+import itertools, json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, prefix, outfile = sys.argv[1:]
+fct = lambda name: getattr(m, prefix + name)
+fct('initialise')(os.path.join(mdir, 'Cards', 'param_card.dat'))
+E, th, ph = 500., 0.7, 0.3
+k = [E*math.sin(th)*math.cos(ph), E*math.sin(th)*math.sin(ph), E*math.cos(th)]
+p = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + k,
+              [E] + [-x for x in k]]).T.copy()
+kw = dict(pdgs=[2, -2, -11, 11], procid=-1, p=p, pos=[3, 4],
+          allow_hel=[-1, -1, -1, 1, 1, -1, 1, 1])
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {'density': cplx(fct('py_get_density')(alphas=0., scale2=0., **kw)),
+       'inter': [], 'nhel': []}
+for h1, h2 in itertools.product([-1, 1], repeat=2):
+    # the entries at pos are ignored: 0 shows whether they were written to
+    nhel = np.array([h1, h2, 0, 0], dtype=np.int32)
+    res['inter'].append(cplx(fct('py_get_all_inter')(nhel=nhel, **kw)))
+    res['nhel'].append([nhel.tolist(), [h1, h2, 0, 0]])
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def test_standalone_f2py_get_all_inter(self):
+        """py_get_all_inter, summed over the helicities of the legs not in
+        pos, must give py_get_density.
+
+        It could not be called at all: f2py gave INTER the dimension (*), so
+        every call raised a ValueError; the dispatch in all_matrix.f did not
+        pass the NHEL the per-process GET_ALL_INTER takes; and with
+        --prefixf2py the wrapper called the unprefixed f77_get_all_inter, so
+        the whole module failed to import.
+        """
+        import json
+        self.do('import model sm')
+        self.do('generate p p > e+ e-')
+        prefixed_dir = self.out_dir + '_prefixf2py'
+        self.addCleanup(shutil.rmtree, prefixed_dir, ignore_errors=True)
+        for out_dir, option, prefix in [(self.out_dir, '', ''),
+                                        (prefixed_dir, ' --prefixf2py=1', 'f1_')]:
+            self.do('output standalone_fortran %s --prefix=int -f%s'
+                    % (out_dir, option))
+            subdir = os.path.join(out_dir, 'SubProcesses')
+            build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                                   capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0,
+                             'make f2py failed:\n' + build.stdout[-2000:]
+                             + build.stderr[-2000:])
+
+            outfile = os.path.join(out_dir, 'get_all_inter.json')
+            run = subprocess.run([sys.executable, '-c',
+                                  self._get_all_inter_script,
+                                  out_dir, prefix, outfile],
+                                 cwd=subdir, capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0,
+                             run.stdout[-2000:] + run.stderr[-2000:])
+            res = json.load(open(outfile))
+
+            # f2py hands the int32 array straight through, and GET_ALL_INTER
+            # writes the pos entries of the NHEL it is given
+            for after, before in res['nhel']:
+                self.assertEqual(after, before)
+
+            dens = res['density']
+            scale = max(abs(complex(*z)) for z in dens)
+            self.assertGreater(scale, 0)
+            # more than one helicity of the other legs contributes, so the
+            # sum below does not reduce to a single call
+            self.assertGreaterEqual(
+                sum(any(re_ or im_ for re_, im_ in inter)
+                    for inter in res['inter']), 2)
+            for i, (re_, im_) in enumerate(dens):
+                self.assertAlmostEqual(sum(inter[i][0] for inter in res['inter']),
+                                       re_, delta=1e-12 * scale)
+                self.assertAlmostEqual(sum(inter[i][1] for inter in res['inter']),
+                                       im_, delta=1e-12 * scale)
+
     def test_standalone_density_f2py(self):       
 
         ############################################################################
@@ -3386,6 +3645,89 @@ class TestCmdShell2(unittest.TestCase,
         for k in range(9):
             np.testing.assert_array_equal(batch[k],
                                           mm['dec'].density(pdgs[k], points[k], [1], two, 0.118))
+
+    # Run in a fresh interpreter: every output names its module all_matrix2py,
+    # so it must not share a process with one an earlier test imported.
+    _pdgs_not_modified_script = '''
+import json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, outfile = sys.argv[1:]
+m.initialise(os.path.join(mdir, 'Cards', 'param_card.dat'))
+E, th, ph = 500., 0.7, 0.3
+k = [E*math.sin(th)*math.cos(ph), E*math.sin(th)*math.sin(ph), E*math.cos(th)]
+p = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + k,
+              [E] + [-x for x in k]]).T.copy()
+uu, dd = [2, -2, -11, 11], [1, -1, -11, 11]
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {}
+res['fresh_u'] = m.smatrixhel(uu, -1, p, 0.118, 0., -1)
+res['fresh_d'] = m.smatrixhel(dd, -1, p, 0.118, 0., -1)
+arr = np.array(uu, dtype=np.int32)
+res['reused'] = [m.smatrixhel(arr, -1, p, 0.118, 0., -1) for _ in range(2)]
+res['after'] = arr.tolist()
+kw = dict(procid=-1, p=p, pos=[3], allow_hel=[-1, 1], alphas=0.118, scale2=0.)
+res['dens_fresh_u'] = cplx(m.py_get_density(pdgs=uu, **kw))
+res['dens_fresh_d'] = cplx(m.py_get_density(pdgs=dd, **kw))
+arr = np.array(uu, dtype=np.int32)
+res['dens_reused'] = [cplx(m.py_get_density(pdgs=arr, **kw)) for _ in range(2)]
+res['dens_after'] = arr.tolist()
+batch = np.asfortranarray(np.array([uu, uu], dtype=np.int32).T)
+pb = np.asfortranarray(np.stack([p, p], axis=-1))
+res['batch_reused'] = []
+for _ in range(2):
+    inter = m.py_get_density_batch(pdgs=batch, procid=-1, p=pb, pos=[3],
+                                   allow_hel=[-1, 1], alphas=[0.118]*2,
+                                   scale2=[0.]*2, nbatch=2, next=4)
+    res['batch_reused'] += [cplx(inter[:, 0]), cplx(inter[:, 1])]
+res['batch_after'] = batch.T.tolist()
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def test_standalone_f2py_pdgs_not_modified(self):
+        """all_matrix2py must not write to the pdgs array it is handed.
+
+        all_matrix.f rewrites every pdg to its merged-particle code (u -> 81)
+        before dispatching. f2py passes an int32 numpy array straight through
+        for intent(in), so while that rewrite was done on PDGS itself a reused
+        [2,-2,-11,11] came back as [81,-81,-82,82] and the next call silently
+        answered for d d~. A python list is copied by f2py and never showed it.
+        """
+        import json
+        self.do('import model sm')
+        self.do('generate p p > e+ e-')
+        self.do('output standalone_fortran %s --prefix=int -f' % self.out_dir)
+        subdir = os.path.join(self.out_dir, 'SubProcesses')
+        build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                               capture_output=True, text=True)
+        self.assertEqual(build.returncode, 0,
+                         'make f2py failed:\n' + build.stdout[-2000:]
+                         + build.stderr[-2000:])
+
+        outfile = os.path.join(self.out_dir, 'pdgs_check.json')
+        run = subprocess.run([sys.executable, '-c',
+                              self._pdgs_not_modified_script,
+                              self.out_dir, outfile],
+                             cwd=subdir, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout[-2000:] + run.stderr[-2000:])
+        res = json.load(open(outfile))
+
+        uu = [2, -2, -11, 11]
+        # u u~ and d d~ differ, so a rewritten array would be caught
+        self.assertNotAlmostEqual(res['fresh_d'] / res['fresh_u'], 1, places=3)
+        self.assertEqual(res['after'], uu)
+        for value in res['reused']:
+            self.assertAlmostEqual(value / res['fresh_u'], 1, places=12)
+
+        ref_u = res['dens_fresh_u']
+        self.assertNotAlmostEqual(res['dens_fresh_d'][0][0] / ref_u[0][0], 1, places=3)
+        self.assertEqual(res['dens_after'], uu)
+        self.assertEqual(res['batch_after'], [uu, uu])
+        for dens in res['dens_reused'] + res['batch_reused']:
+            self.assertEqual(len(dens), len(ref_u))
+            for (re_, im_), (ref_re, ref_im) in zip(dens, ref_u):
+                self.assertAlmostEqual(re_, ref_re, delta=1e-12 * abs(ref_u[0][0]))
+                self.assertAlmostEqual(im_, ref_im, delta=1e-12 * abs(ref_u[0][0]))
 
 
     def test_density_mode_user_interface(self):

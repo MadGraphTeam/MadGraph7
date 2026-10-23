@@ -21,6 +21,7 @@ from __future__ import division
 
 from __future__ import absolute_import
 import ast
+import collections
 import contextlib
 import logging
 import math
@@ -89,7 +90,7 @@ else:
     import madgraph.various.FO_analyse_card as FO_analyse_card 
     import madgraph.iolibs.save_load_object as save_load_object
     import madgraph.madevent.gen_crossxhtml as gen_crossxhtml
-    import models.check_param_card as param_card_mod
+    import madgraph.models.check_param_card as param_card_mod
     import madgraph.madevent.sum_html as sum_html
     import madgraph.various.citation as citation
 #    import madgraph.various.histograms as histograms # imported later to not slow down the loading of the code
@@ -255,8 +256,8 @@ class CheckValidForCmd(object):
         elif MADEVENT:
             sys.path.append(self.options['mg5_path'])
         try:
-            import models.model_reader as model_reader
-            import models.import_ufo as import_ufo
+            import madgraph.models.model_reader as model_reader
+            import madgraph.models.import_ufo as import_ufo
         except ImportError:
             raise self.ConfigurationError('''Can\'t load MG5.
             The variable mg5_path should not be correctly configure.''')
@@ -1084,7 +1085,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
         if self.options['mg5_path']:
             sys.path.append(self.options['mg5_path'])
-            import models.import_ufo as import_ufo
+            import madgraph.models.import_ufo as import_ufo
             complexmass = self.proc_characteristics['complex_mass_scheme']
             with misc.MuteLogger(['madgraph.model'],[50]):
                 out= import_ufo.import_model(pjoin(self.me_dir,'bin','internal','ufomodel'),
@@ -2052,8 +2053,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                         continue
                     key = tuple(float(x) for x in split[:-1])
                     cross= float(split[-1])
-                    if 'event_norm' in self.run_card and \
-                            self.run_card['event_norm'] in ['average', 'unity', 'bias']:
+                    if self.run_card.get_event_norm() in ['average', 'unity', 'bias']:
                         cross *= (event_per_job+1 if i <nb_job_with_plus_one else event_per_job)
                     if len(all_cross) > pos:
                         all_cross[pos] += cross
@@ -2061,8 +2061,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                         all_cross.append(cross)
                     pos+=1
                         
-            if 'event_norm' in self.run_card and \
-                                       self.run_card['event_norm'] in ['unity']:
+            if self.run_card.get_event_norm() in ['unity']:
                 all_cross= [cross/nb_event for cross in all_cross]
 
 
@@ -2264,16 +2263,21 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                 if reweight_mode == 'density':
                     command.append('--mode=density')
                 p = misc.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.STDOUT, cwd=os.getcwd())
-                while p.poll() is None:
-                    line = p.stdout.readline().decode(errors='ignore')
+                # the error message of a failing child is in the lines that
+                # are not printed: keep the last ones for the exception
+                last_lines = collections.deque(maxlen=20)
+                for line in iter(p.stdout.readline, b''):
+                    line = line.decode(errors='ignore')
+                    last_lines.append(line.rstrip('\n'))
                     if any(t in line for t in ['INFO:', 'WARNING:', 'CRITICAL:', 'ERROR:', 'root:','KEEP:']) and \
                        not '***********' in line:
                             print(line[:-1].replace('INFO', 'REWEIGHT').replace('KEEP:',''))
                     elif __debug__ and line:
                         logger.debug(line[:-1])
+                p.wait()
                 if p.returncode !=0:
-                    logger.error("Reweighting failed")
-                    return
+                    raise MadGraph5Error('Reweighting failed (exit status %s). '
+                        'Last lines of its output:\n%s' % (p.returncode, '\n'.join(last_lines)))
                 self.results = self.load_results_db()
                 # forbid this function to create an empty item in results.
                 try:
@@ -2379,7 +2383,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                             raise Exception("Some of the run failed: Please read %s_%s_debug.log" % (f, self.run_tag)) 
                 
                 
-                if 'event_norm' in self.run_card and self.run_card['event_norm'] in ['average','bias']:
+                if self.run_card.get_event_norm() in ['average','bias']:
                     for key, value in cross_sections.items():
                         cross_sections[key] = value / (nb_event+1)
                 lhe.remove()

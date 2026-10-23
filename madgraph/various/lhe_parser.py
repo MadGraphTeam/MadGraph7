@@ -1487,7 +1487,7 @@ class EventFile(object):
             self.alpsrunner = lambda scale: self.pdf.alphasQ(scale)
         else:
             try:
-                from models.model_reader import Alphas_Runner
+                from madgraph.models.model_reader import Alphas_Runner
             except ImportError:
                 root = os.path.dirname(__file__)
                 root_path = pjoin(root, os.pardir, os.pardir)
@@ -1499,7 +1499,7 @@ class EventFile(object):
                     cmd = me_int.Cmd(root_path,force_run=True)                
                 if 'mg5_path' in cmd.options and cmd.options['mg5_path']:
                     sys.path.append(cmd.options['mg5_path'])
-                from models.model_reader import Alphas_Runner
+                from madgraph.models.model_reader import Alphas_Runner
                 
             if not hasattr(banner, 'param_card'):
                 param_card = banner.charge_card('param_card')

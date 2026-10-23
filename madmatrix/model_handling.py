@@ -1919,7 +1919,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     # AV - overload export_cpp.OneProcessExporterCPP constructor (rename gCPPProcess to CPPProcess)
     def __init__(self, *args, **kwargs):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.__init__')
-        for kwarg in kwargs: misc.sprint( 'kwargs[%s] = %s' %( kwarg, kwargs[kwarg] ) )
+        ###for kwarg in kwargs: misc.sprint( 'kwargs[%s] = %s' %( kwarg, kwargs[kwarg] ) )
         super().__init__(*args, **kwargs)
         self.process_class = 'CPPProcess'
         ###if self.in_madevent_mode: proc_id = kwargs['prefix']+1 # madevent+cudacpp (NB: HERE SELF.IN_MADEVENT_MODE DOES NOT WORK!)
@@ -2884,10 +2884,11 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                                     'COUPs[%s], %s' % (alias[coup], '1.0' if not sign else '-1.0')) 
             elif name == 'flvCOUPs_dep':
                 # dependent (running-alphas) flavored coupling: instantiate the vertex
-                # routine with CD_ACCESS (the default in the call is CI_ACCESS, as for the
-                # ordinary running couplings) so get_coupling_def reads the per-event AOSOA
-                # values gathered into flvCOUPs_dep with the right per-flavor stride.
-                call = call.replace('CI_ACCESS', 'CD_ACCESS')
+                # routine with CDPF_ACCESS, the access to the values gathered into
+                # flvCOUPs_dep (each backend's SigmaKin.cc defines it: CD_ACCESS on the
+                # CPU, a one-event buffer on the GPU, where a thread is one event), so
+                # get_coupling_def reads them with the right per-flavor stride.
+                call = call.replace('CI_ACCESS', 'CDPF_ACCESS')
                 call = call.replace('m_pars->%s%s' % (sign, coup),
                                     '%s[%s], %s' % (name, alias[coup], '1.0' if not sign else '-1.0'))
             elif name == 'flvCOUPs':
@@ -2901,6 +2902,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
 
             if newcoup:
                 self.couplings2order = self.couporderdep | self.couporderindep
+        if 'flvCOUPs_dep[' in call and ('CDPF_ACCESS' not in call or re.search(r'\bCOUPs\[|flvCOUPs\[', call)):
+            # one access type per vertex routine: CDPF_ACCESS cannot also read the
+            # all-events buffer of an ordinary running coupling (on the GPU)
+            raise Exception('a vertex mixing a running flavored coupling with another running coupling is not supported: %s' % call)
         model.cudacpp_wanted_ordered_couplings = self.wanted_ordered_dep_couplings + self.wanted_ordered_indep_couplings + self.wanted_ordered_flv_couplings
         return call
 

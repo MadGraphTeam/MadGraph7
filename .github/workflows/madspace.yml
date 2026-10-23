@@ -87,6 +87,8 @@ jobs:
               scipy
               --extra-index-url https://download.pytorch.org/whl/cpu
               torch
+            # the GPU runs of these tests are in gpu_runner_ci.yml (job madspace_tests)
+            CIBW_TEST_ENVIRONMENT: MADSPACE_TEST_DEVICE=cpu
             CIBW_TEST_COMMAND: pytest {project}/madspace/tests
 
       - uses: actions/upload-artifact@v4

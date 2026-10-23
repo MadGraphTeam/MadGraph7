@@ -2,13 +2,11 @@ import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from madspace_testing import default_context, generator, rand, randn
 from pytest import approx
 
 import madspace as ms
 from madspace.torch import FunctionModule
-
-torch.set_default_dtype(torch.float64)
-torch.manual_seed(3210)
 
 
 @pytest.mark.parametrize("inverse", [False, True], ids=["forward", "inverse"])
@@ -42,9 +40,10 @@ def test_block_gradient(inverse):
     fb.output(0, out)
     fb.output(1, fb.reduce_product(det))
     func = fb.function()
-    module = FunctionModule(func)
+    module = FunctionModule(func, default_context())
 
     n_points = 200
-    r_in = torch.rand((n_points, n_dims), requires_grad=True)
-    r_cond = torch.randn((n_points, n_cond), requires_grad=True)
+    g = generator(3210)
+    r_in = rand((n_points, n_dims), generator=g, requires_grad=True)
+    r_cond = randn((n_points, n_cond), generator=g, requires_grad=True)
     torch.autograd.gradcheck(module, [r_in, r_cond], raise_exception=True, rtol=1e-4)

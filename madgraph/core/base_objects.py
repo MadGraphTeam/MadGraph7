@@ -2052,11 +2052,9 @@ class Model(PhysicsObject):
         """ return the list of all coupling which are running for this model """
 
         all_running_coupling = []
-        all_running_type = ['aS'] + self.get_running()
-        not_running_index = [] # to allow to add at the end of the list the non running one
         for type_coup, coup_list in self.get('couplings').items():
-            if any([c in all_running_type for c in type_coup]):
-                all_running_coupling += coup_list
+            if self.depends_on_scale(type_coup):
+                all_running_coupling += [c.name for c in coup_list]
         return all_running_coupling
     
     def is_running_coupling(self, name, reset_cache=False):
@@ -2069,6 +2067,63 @@ class Model(PhysicsObject):
             name = name[1:]
         return name in self.cache_running_coupling
 
+    def get_scale_dependent_parameters(self):
+        """Names of the parameters whose value changes with the event scale:
+        alpha_s and every parameter evolved by the RGE of running.py. A coupling
+        depending on one of them has to be evaluated event by event."""
+
+        n_running = len(self['running_elements'])
+        cache = getattr(self, 'cache_scale_dependent_parameters', None)
+        if cache is None or cache[0] != n_running:
+            names = set(['aS'])
+            for element in self['running_elements']:
+                for param_list in element.run_objects:
+                    names.update(param.name for param in param_list)
+            cache = self.cache_scale_dependent_parameters = (n_running, names)
+        return cache[1]
+
+    def depends_on_scale(self, dependence):
+        """True if a coupling with this dependence key (the tuple of the names
+        of the external parameters it depends on) varies with the event scale."""
+
+        names = self.get_scale_dependent_parameters()
+        return any(name in names for name in dependence)
+
+    def get_rge_parameters_used(self, couplings):
+        """Names of the parameters evolved by the RGE of running.py (aS
+        excluded) on which at least one of these couplings depends. Only the
+        madevent/aMC@NLO Fortran outputs evolve them event by event."""
+
+        names = self.get_scale_dependent_parameters() - set(['aS'])
+        if not names:
+            return set()
+        coupling_dep = self.get('coupling_dep')
+        used = set()
+        for coup in couplings:
+            if not isinstance(coup, str):
+                coup = coup.name if hasattr(coup, 'name') else coup.get('name')
+            dependence = coupling_dep.get(coup.lstrip('-'), ())
+            used.update(name for name in dependence if name in names)
+        return used
+
+    def get_running_blocks(self):
+        """Names (as in running.py) of the param_card blocks for which a
+        reference scale mdl__<block>__scale is needed: the blocks holding at
+        least one external parameter evolved by the RGE. A restriction can
+        remove every parameter of a block while running.py still lists them;
+        such a block is absent from the param_card and is not requested."""
+
+        # model parameters carry the mdl_ prefix: identify them by lha entry
+        external = set((p.lhablock.lower(), tuple(p.lhacode))
+                       for p in self['parameters'].get(('external',), []))
+        blocks = set()
+        for element in self['running_elements']:
+            for param_list in element.run_objects:
+                for param in param_list:
+                    if param.lhablock.upper() != 'SMINPUTS' and \
+                       (param.lhablock.lower(), tuple(param.lhacode)) in external:
+                        blocks.add(param.lhablock)
+        return blocks
 
 
     def check_majoranas(self):
@@ -2284,7 +2339,7 @@ class Model(PhysicsObject):
     def write_param_card(self, filepath=None):
         """Write out the param_card, and return as string."""
         
-        import models.write_param_card as writer
+        import madgraph.models.write_param_card as writer
         if not filepath:
             out = io.StringIO() # it's suppose to be written in a file
         else:

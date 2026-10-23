@@ -2646,7 +2646,7 @@ C
         self.cmd_line.exec_cmd('compute_widths 6 -f')
 
         # check value for the width    
-        import models.check_param_card as check_param_card    
+        import madgraph.models.check_param_card as check_param_card    
         param_card = check_param_card.ParamCard(pjoin(self.run_dir, 'Cards', 'param_card.dat'))
         # NB: the trailing 3 in the original call was assertTrue's *msg*
         # argument, not a precision -- misc.equal's default sig_fig=6 is what
@@ -3992,6 +3992,13 @@ set draw_rivet_plots True
         self.assertTrue(any(abs(pdg) in (1, 2, 3, 4) for pdg in counts),
                         'no light quarks among the MadSpin decay products: %s'
                         % counts)
+        # store_result used to save the madevent results database to
+        # HTML/results.pkl, which the mg7 output does not have
+        proc_dir = pjoin(self.path, 'MG7_madspin')
+        with open(pjoin(proc_dir, 'mg7_postproc.log')) as fsock:
+            self.assertEqual(
+                [line for line in fsock if 'I/O error' in line], [])
+        self.assertFalse(os.path.exists(pjoin(proc_dir, 'crossx.html')))
 
 
 

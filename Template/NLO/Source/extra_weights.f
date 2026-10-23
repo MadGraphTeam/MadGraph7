@@ -1,7 +1,7 @@
       module extra_weights
       
          integer,parameter :: iwgtinfo=-5,maxscales=9,maxPDFs=200
-     $     ,maxPDFsets=25,maxdynscales=10,maxorders=10
+     $     ,maxPDFsets=25,maxdynscales=10,maxorders=20
          integer :: max_mom_str=1,max_mext=1,max_n_ctr=1
          logical :: doreweight,lscalevar(maxdynscales)
      $        ,lpdfvar(maxPDFsets)

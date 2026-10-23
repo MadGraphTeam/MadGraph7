@@ -3,6 +3,7 @@
 #include "madspace/phasespace/channel_weight_network.hpp"
 #include "madspace/phasespace/channel_weights.hpp"
 #include "madspace/phasespace/cross_section.hpp"
+#include "madspace/phasespace/custom_function.hpp"
 #include "madspace/phasespace/discrete_flow.hpp"
 #include "madspace/phasespace/discrete_sampler.hpp"
 #include "madspace/phasespace/flow.hpp"
@@ -45,6 +46,8 @@ namespace madspace {
  *   `float`, shape `(batch,)` – scales and momentum fractions.
  * - `random` – `float`, shape `(batch, mapping.random_dim())` – the underlying
  *   random numbers.
+ * - `bias` – `float`, shape `(batch,)` – the event bias, present only with a
+ *   custom bias. `weight` then includes the bias factor.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -57,6 +60,8 @@ public:
     /// The optional adaptive sampler for a set of discrete choices.
     using AdaptiveDiscrete =
         std::variant<std::monostate, DiscreteSampler, DiscreteFlow>;
+    /// The optional parton density: an LHAPDF grid or a user-supplied library.
+    using PdfSource = std::variant<std::monostate, PdfGrid, CustomPdf>;
 
     /// The @ref MatrixElement inputs an `Integrand` supplies.
     inline static const std::vector<MatrixElement::MatrixElementInput>
@@ -91,7 +96,8 @@ public:
      *                                          the flavour choice.
      * @param pid_options                       Allowed initial-parton flavour
      *                                          combinations.
-     * @param pdf_grid                          Optional shared @ref PdfGrid.
+     * @param pdf_grid                          Optional shared @ref PdfGrid or
+     *                                          @ref CustomPdf.
      * @param running_coupling                  Optional shared
      *                                          @ref RunningCoupling.
      * @param energy_scale                      Optional shared @ref EnergyScale.
@@ -126,6 +132,17 @@ public:
      * @param flavor_per_subproc_remap          Per-sub-process flavour remap.
      * @param compressed_channel_weight_count   Channel-weight entries kept per
      *                                          event.
+     * @param custom_bias                       Optional user-supplied event
+     *                                          bias of type CustomFunction::bias.
+     *                                          Its PDG-id options must match
+     *                                          @p pid_options.
+     * @param pdf_grid2                         PDF of the second beam when it
+     *                                          differs from @p pdf_grid (which
+     *                                          is then the first beam's). Its
+     *                                          globals must be registered with
+     *                                          the prefix @ref pdf2_prefix.
+     *                                          Not allowed with a @ref CustomPdf,
+     *                                          which receives the beam index.
      */
     Integrand(
         const PhaseSpaceMapping& mapping,
@@ -134,7 +151,7 @@ public:
         const AdaptiveDiscrete& discrete_sym = std::monostate{},
         const AdaptiveDiscrete& discrete_flavor = std::monostate{},
         const nested_vector2<me_int_t>& pid_options = {},
-        const std::optional<PdfGrid>& pdf_grid = std::nullopt,
+        const PdfSource& pdf_grid = std::monostate{},
         const std::optional<RunningCoupling>& running_coupling = std::nullopt,
         const std::optional<EnergyScale>& energy_scale = std::nullopt,
         const std::optional<PropagatorChannelWeights>& prop_chan_weights = std::nullopt,
@@ -155,8 +172,13 @@ public:
         const std::vector<std::size_t>& flavor_diff_xs_indices = {},
         const std::vector<std::size_t>& flavor_subproc_indices = {},
         const std::vector<std::size_t>& flavor_per_subproc_remap = {},
-        std::size_t compressed_channel_weight_count = 50
+        std::size_t compressed_channel_weight_count = 50,
+        const std::optional<CustomFunction>& custom_bias = std::nullopt,
+        const std::optional<PdfGrid>& pdf_grid2 = std::nullopt
     );
+    /// Globals prefix under which the second beam's PDF grid is registered
+    /// (PdfGrid::initialize_globals) when `pdf_grid2` is given.
+    inline static const std::string pdf2_prefix = "beam2";
     /// Total number of particles, incoming and outgoing.
     std::size_t particle_count() const { return _mapping.particle_count(); }
     /// Whether the integrand emits the @ref MadnisLoss training quantities.
@@ -232,6 +254,9 @@ private:
     AdaptiveDiscrete _discrete_flavor;
     nested_vector2<me_int_t> _pid_options;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
+    // with different PDFs per beam: each leg's density from the other beam,
+    // for the events whose orientation is mirrored
+    std::array<std::optional<PartonDensity>, 2> _pdfs_swapped;
     std::array<std::vector<me_int_t>, 2> _pdf_indices;
     std::optional<RunningCoupling> _running_coupling;
     std::optional<EnergyScale> _energy_scale;
@@ -253,12 +278,13 @@ private:
     nested_vector2<double> _active_flavors_mask;
     std::vector<me_int_t> _flavor_remap;
     std::vector<double> _flavor_factors;
-    std::vector<me_int_t> _flavor_mirror;
+    std::vector<double> _flavor_mirror_factors;
     bool _has_mirror;
     NamedVector<Type> _channel_part_ret_types;
     std::vector<me_int_t> _flavor_diff_xs_indices;
     std::vector<me_int_t> _flavor_subproc_indices;
     std::vector<me_int_t> _flavor_per_subproc_remap;
+    std::optional<CustomFunction> _custom_bias;
 
     friend class IntegrandProbability;
     friend class IntegrandChannelPart;

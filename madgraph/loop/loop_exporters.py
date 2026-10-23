@@ -52,13 +52,13 @@ import madgraph.various.progressbar as pbar
 import madgraph.various.q_polynomial as q_polynomial
 import madgraph.core.color_amp as color_amp
 import madgraph.iolibs.helas_call_writers as helas_call_writers
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 from madgraph.loop.loop_base_objects import LoopDiagram
 from madgraph.loop.MadLoopBannerStyles import MadLoopBannerStyles
 pjoin = os.path.join
 
 import aloha.create_aloha as create_aloha
-import models.write_param_card as param_writer
+import madgraph.models.write_param_card as param_writer
 from madgraph import MadGraph5Error, MG5DIR, InvalidCmd
 from madgraph.iolibs.files import cp, ln, mv
 pjoin = os.path.join
@@ -247,6 +247,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         super(LoopProcessExporterFortranSA,self).__init__(*args,**opts)
         self.unique_id=0 # to allow collier to distinguish the various loop subprocesses
         self.has_loop_induced = False
+        self.density_prefixes = set() # processes for which GET_DENSITY is written
         
     def copy_template(self, model):
         """Additional actions needed to setup the Template.
@@ -316,34 +317,45 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
             info.append('#PY %s : %s # %s %s' % (tag, key, prefix, pid))
             
 
-        text = []
-        for n_ext in range(min_nexternal, max_nexternal+1):
-            current_id = [ids[0] for ids in allids if len(ids[0])==n_ext]
-            current_pid = [ids[1] for ids in allids if len(ids[0])==n_ext]
-            if not current_id:
-                continue
+        def dispatch(body):
+            """if-chain selecting the process from (pdgs, procid);
+            body(prefix) gives the Fortran lines run for that process"""
+            text = []
+            for n_ext in range(min_nexternal, max_nexternal+1):
+                current_id = [ids[0] for ids in allids if len(ids[0])==n_ext]
+                current_pid = [ids[1] for ids in allids if len(ids[0])==n_ext]
+                if not current_id:
+                    continue
+                if min_nexternal != max_nexternal:
+                    if n_ext == min_nexternal:
+                        text.append('       if (npdg.eq.%i)then' % n_ext)
+                    else:
+                        text.append('       else if (npdg.eq.%i)then' % n_ext)
+                for ii,pdgs in enumerate(current_id):
+                    pid =  current_pid[ii]
+                    condition = '.and.'.join(['%i.eq.pdgs(%i)' %(pdg, i+1) for i, pdg in enumerate(pdgs)])
+                    if ii==0:
+                        text.append( ' if(%s.and.(procid.le.0.or.procid.eq.%d)) then ! %i' % (condition, pid, len(pdgs)))
+                    else:
+                        text.append( ' else if(%s.and.(procid.le.0.or.procid.eq.%d)) then ! %i' % (condition,pid,len(pdgs)))
+                    text.append(body(self.prefix_info[(pdgs,pid)][0]))
+                text.append(' endif')
+            #close the function
             if min_nexternal != max_nexternal:
-                if n_ext == min_nexternal:
-                    text.append('       if (npdg.eq.%i)then' % n_ext)
-                else:
-                    text.append('       else if (npdg.eq.%i)then' % n_ext)
-            for ii,pdgs in enumerate(current_id):
-                pid =  current_pid[ii]
-                condition = '.and.'.join(['%i.eq.pdgs(%i)' %(pdg, i+1) for i, pdg in enumerate(pdgs)])
-                if ii==0:
-                    text.append( ' if(%s.and.(procid.le.0.or.procid.eq.%d)) then ! %i' % (condition, pid, len(pdgs)))
-                else:
-                    text.append( ' else if(%s.and.(procid.le.0.or.procid.eq.%d)) then ! %i' % (condition,pid,len(pdgs)))
-                # text.append(' call %sget_me(p, ALPHAS, DSQRT(SCALES2), NHEL, ANS, RETURNCODE)' % self.prefix_info[(pdgs,pid)][0])
-                text.append(' call %s%%(fct_name)s' % self.prefix_info[(pdgs,pid)][0])
-            # text.append( ' else if(procid.gt.0) then !')
-            # text.append( ' procid = -1' )
-            # text.append( ' goto 1' )
-            text.append(' endif')
-        #close the function
-        if min_nexternal != max_nexternal:
-            text.append('endif')
-            
+                text.append('endif')
+            return '\n'.join(text)
+
+        # MadLoop only writes <prefix>GET_DENSITY (in compute_color_flows.f)
+        # for a process computing its colour flows in an output made with
+        # --density, i.e. never for the virtual of an NLO reweighting
+        # (rw_mevirt). Referencing it anyway leaves the shared library with
+        # an undefined symbol, and importing the f2py module fails.
+        def density_call(prefix):
+            if prefix in self.density_prefixes:
+                return ' call %sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, ALPHAS, SCALE2, INTER)' % prefix
+            return " write(*,*) 'ERROR: no density matrix for %s'\n stop 1" % prefix
+        has_density = any(prefix in self.density_prefixes for prefix in allprefix)
+
         params = self.get_model_parameter(self.model)
         parameter_setup =[]
         for key, var in params.items():
@@ -369,8 +381,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
             all_iden += ' idens(%s) = %s \n' % (i, iden)
 
         formatting = {'python_information':'\n'.join(info), 
-                    #   'smatrixhel': '\n'.join(text) % {'fct_name': 'smatrixhel(p, nhel, ans)'},
-                      'smatrixhel': '\n'.join(text) % {'fct_name': 'get_me(p, ALPHAS, DSQRT(SCALES2), NHEL, ANS, RETURNCODE)'},
+                      'smatrixhel': dispatch(lambda prefix: ' call %sget_me(p, ALPHAS, DSQRT(SCALES2), NHEL, ANS, RETURNCODE)' % prefix),
                       'maxpart': max_nexternal,
                       'nb_me': len(allids),
                       'pdgs': ','.join([str(pdg[i]) if i<len(pdg) else '0' 
@@ -383,18 +394,20 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                       'helreset_setup' : '\n'.join(helreset_setup),
                       'f2py_prefix': f2py_prefix,
                       'idens_value': all_iden,
-                      'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, ALPHAS, SCALE2, INTER)'},
+                      'density_splitter': dispatch(density_call),
                       }
     
         formatting['lenprefix'] = len(formatting['prefix'])
+        # without any GET_DENSITY, PY_GET_DENSITY is left out of the module
+        context = {'has_density': has_density}
         text = template_matrix % formatting
         fsock = writers.FortranWriter(pjoin(self.dir_path, 'SubProcesses', 'all_matrix.f'),'w')
-        fsock.writelines(text)
+        fsock.writelines(text, context=context)
         fsock.close()
         
         text = template_f2py % formatting
         fsock = writers.FortranWriter(pjoin(self.dir_path, 'SubProcesses', 'f2py_wrapper.f'),'w')
-        fsock.writelines(text)
+        fsock.writelines(text, context=context)
         fsock.close()
     
     def loop_additional_template_setup(self, copy_Source_makefile = True):
@@ -2800,7 +2813,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                               'compute_color_flows.inc')).read(),
             replace_dict)
 
-        writer.writelines(file,context=self.get_context(matrix_element))
+        context = self.get_context(matrix_element)
+        writer.writelines(file,context=context)
+        if context['UseDensity']:
+            self.density_prefixes.add(matrix_element.rep_dict['proc_prefix'])
     
     def write_global_specs(self, matrix_element_list, output_path=None):
         """ From the list of matrix element, or the single matrix element, derive
