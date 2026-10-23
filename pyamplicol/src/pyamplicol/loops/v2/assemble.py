@@ -983,6 +983,10 @@ class LoopSlice:
         )
         if request.counterterms not in ("recursion", "sites"):
             raise ValueError(f"unknown counterterm form {request.counterterms!r}")
+        # The block rows are compiled before the CT-lowered model exists:
+        # Symbolica orders terms by symbol creation, so their binary64
+        # rounding then does not depend on the counterterm form.
+        tree_rows = TreeRows(blocks.blocks_dag, compiled)
         program = None
         if request.counterterms == "recursion":
             # Production form of the counterterms (design §6.1): the tree
@@ -1028,13 +1032,13 @@ class LoopSlice:
         catalogue = build_loop_kernel_catalogue(
             compiled, counterterm_entries=list({id(e): e for e in entries}.values())
         )
-        if program is not None:
-            program.bind(ordinary, data, catalogue)
         closure = SiteClosure(blocks, data, catalogue)
         readings = rx.reading_skeletons(plan)
         weights = LeafWeights(data, closure.fermion_ends)
         for skeleton in readings:
             weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
+        if program is not None:
+            program.bind(ordinary, data, catalogue)
         born_terms = _born_terms(blocks, table, closure, ordinary)
         basis = _born_tensors(closure, born_terms)
         seed_table, class_of = build_seed_table(
@@ -1084,7 +1088,7 @@ class LoopSlice:
                 (sector, frozenset(pairs)) for sector, pairs in sorted(sectors.items())
             ),
             normalisation=Normalisation.of(structure.native, incoming, outgoing),
-            tree_rows=TreeRows(blocks.blocks_dag, compiled),
+            tree_rows=tree_rows,
             layout=MonomialLayout.native(
                 native,
                 # The executor bounds a node's rank by its inputs' rank plus
@@ -1297,17 +1301,27 @@ class LoopSlice:
     # -- scalar bindings -------------------------------------------------------
 
     def _scalar_plan(self, powers: tuple[int, ...]):
-        """The scalar plan of ``scalars`` and its (name, power) -> ((grade,
-        column), ...) layout; only structurally nonzero grades are kept."""
+        """The scalar plans of ``scalars`` and their (name, power) -> ((grade,
+        column), ...) layout over the concatenated columns; only structurally
+        nonzero grades are kept.
 
-        from pyamplicol.loops.scalar_bindings import prepare_scalar_bindings
+        The Born couplings have a program of their own: the common
+        subexpressions of a scalar program, and so the binary64 rounding of
+        its outputs, depend on all of them, and the Born (which also weights
+        the bare loop) must not depend on which counterterm or field couplings
+        a request binds.
+        """
 
         from .fields import field_definitions
 
         cached = self._cache.get(("plan", powers))
         if cached is None:
-            structure = self.prepared.structure
             definitions = field_definitions(self.fields)
+            born = {
+                (term.entry.coupling.name, 0)
+                for terms in self.born_terms.values()
+                for term in terms
+            }
             outputs = {
                 (entry.coupling.name, power)
                 for site in self.sites.sites
@@ -1317,11 +1331,6 @@ class LoopSlice:
             }
             outputs.update(
                 (name, power) for name, _ in definitions.values() for power in powers
-            )
-            outputs.update(
-                (term.entry.coupling.name, 0)
-                for terms in self.born_terms.values()
-                for term in terms
             )
             if self.counterterm_program is not None:
                 for term in self.counterterm_program.closure.terms:
@@ -1336,31 +1345,45 @@ class LoopSlice:
                 if isinstance(term, WholeRuleTerm)
                 for name in term.parameters
             )
-            options = {
-                "program": structure.scalars,
-                "fixed_parameters": structure.fixed_parameters,
-                "anonymous_definitions": {
-                    name: source for name, source in definitions.values()
-                },
-            }
-            if self.continuation is None:
-                plan = prepare_scalar_bindings(
-                    structure.raw, sorted(outputs), **options
-                )
-                layout = {output: ((0, i),) for i, output in enumerate(plan.outputs)}
-            else:
-                graded = self.continuation.scalars(sorted(outputs), **options)
-                plan = graded.coefficients
-                layout = defaultdict(list)
-                for degree, columns in zip(graded.grades, graded.columns, strict=True):
-                    for output, column in zip(
-                        graded.formal.outputs, columns, strict=True
-                    ):
-                        if graded.coefficients.expressions[column].value != 0:
-                            layout[output].append((degree, column))
-                layout = {output: tuple(rows) for output, rows in layout.items()}
-            cached = self._cache[("plan", powers)] = (plan, layout)
+            plans: list[Any] = []
+            layout: dict[tuple[str, int], tuple[tuple[int, int], ...]] = {}
+            offset = 0
+            for part in (born, outputs - born):
+                if not part:
+                    continue
+                plan, local = self._scalar_part(sorted(part), definitions)
+                plans.append(plan)
+                for output, rows in local.items():
+                    layout[output] = tuple((g, c + offset) for g, c in rows)
+                offset += len(plan.expressions)
+            cached = self._cache[("plan", powers)] = (tuple(plans), layout)
         return cached
+
+    def _scalar_part(self, outputs, definitions):
+        """One scalar program over ``outputs`` and its local layout."""
+
+        from pyamplicol.loops.scalar_bindings import prepare_scalar_bindings
+
+        structure = self.prepared.structure
+        options = {
+            "program": structure.scalars,
+            "fixed_parameters": structure.fixed_parameters,
+            "anonymous_definitions": {
+                name: source for name, source in definitions.values()
+            },
+        }
+        if self.continuation is None:
+            plan = prepare_scalar_bindings(structure.raw, outputs, **options)
+            return plan, {output: ((0, i),) for i, output in enumerate(plan.outputs)}
+        graded = self.continuation.scalars(outputs, **options)
+        layout = defaultdict(list)
+        for degree, columns in zip(graded.grades, graded.columns, strict=True):
+            for output, column in zip(graded.formal.outputs, columns, strict=True):
+                if graded.coefficients.expressions[column].value != 0:
+                    layout[output].append((degree, column))
+        return graded.coefficients, {
+            output: tuple(rows) for output, rows in layout.items()
+        }
 
     def scalars(
         self, parameters: Mapping[str, str], numbers: _Numbers, poles: bool
@@ -1375,26 +1398,37 @@ class LoopSlice:
 
         from pyamplicol.loops.scalar_bindings import NativeScalarBindings
 
-        plan, layout = self._scalar_plan(LAURENT_POWERS if poles else (0,))
-        arithmetic = "double" if numbers.double else "arbitrary"
-        state = NativeScalarBindings(
-            plan,
-            arithmetic=arithmetic,
-            precision=None if numbers.double else numbers.precision.working_digits,
-            backend=self.native,
-            parameters={
-                name: value
-                for name, value in parameters.items()
-                if name in plan.external_names
-            },
-        )
-        values = [
-            numbers.pair(Decimal(re), Decimal(im))
-            for re, im in state.values.to_decimal()
-        ]
+        # One plan for both modes: the scalar program's common subexpressions,
+        # and so the rounding of the finite couplings, do not depend on
+        # whether the poles are evaluated (finite-only parts stay bitwise
+        # equal to the full ones).
+        plans, layout = self._scalar_plan(LAURENT_POWERS)
+        powers = LAURENT_POWERS if poles else (0,)
+        # binary64 couplings are the correctly rounded values (32 digits,
+        # rounded once): they do not depend on the scalar program's
+        # evaluation order.
+        digits = _COUPLING_DIGITS if numbers.double else numbers.precision.working_digits
+        values = []
+        for plan in plans:
+            state = NativeScalarBindings(
+                plan,
+                arithmetic="arbitrary",
+                precision=digits,
+                backend=self.native,
+                parameters={
+                    name: value
+                    for name, value in parameters.items()
+                    if name in plan.external_names
+                },
+            )
+            values.extend(
+                numbers.pair(Decimal(re), Decimal(im))
+                for re, im in state.values.to_decimal()
+            )
         return {
             output: {degree: values[column] for degree, column in rows}
             for output, rows in layout.items()
+            if output[1] in powers
         }
 
     # -- colour degrees -------------------------------------------------------
@@ -1583,6 +1617,10 @@ class LoopSlice:
 
 
 # --------------------------------------------------------------------- one point
+
+
+# Decimal digits of the binary64 couplings before their single rounding.
+_COUPLING_DIGITS = 32
 
 
 class _PointEvaluation:

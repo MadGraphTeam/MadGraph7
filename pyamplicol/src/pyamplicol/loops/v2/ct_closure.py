@@ -435,9 +435,17 @@ def u1_leaking_structures(program: CountertermBlocks) -> frozenset[Any]:
         for kernel in compiled.ir.oriented_kernels
         if kernel.color_projection_structure == "fundamental-generator"
     }
+    # A root attaches at least two blocks to leg 1, so the currents of all
+    # legs but leg 1 are never read (nor what only they derive from).
+    rest = frozenset(leg.label for leg in dag.process.legs) - {1}
+    interactions = [
+        interaction
+        for interaction in dag.interactions
+        if frozenset(currents[interaction.result_id].index.external_labels) != rest
+    ]
     leaking: set[int] = set()
     producers: dict[int, set[int]] = defaultdict(set)
-    for interaction in dag.interactions:
+    for interaction in interactions:
         kind = int(interaction.vertex_kind)
         if kind not in kinds:
             continue
@@ -449,7 +457,7 @@ def u1_leaking_structures(program: CountertermBlocks) -> frozenset[Any]:
                 leaking.add(kind)
         if colours.get(int(currents[interaction.result_id].index.particle_id)) == 8:
             producers[interaction.result_id].add(kind)
-    for interaction in dag.interactions:
+    for interaction in interactions:
         if int(interaction.vertex_kind) in generator_kinds:
             for input_id in (interaction.left_id, interaction.right_id):
                 leaking |= producers.get(input_id, set())

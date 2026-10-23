@@ -575,9 +575,12 @@ def test_slice_counterterms_from_recursion_equal_sites(
 
     lowered = [n for n, rule in program.recursion.rules.items() if about(rule)]
     if name in SLICE_DEMOTED:
+        # The R2 rules (d*d and delta*delta colours) are demoted; the UV
+        # four-gluon rules (f*f) stay in the recursion.
         demoted = [n for n, rule in rules.items() if about(rule) and n in residual]
-        assert demoted and not lowered, (demoted, lowered)
-        assert all(residual[n] == U1_DEMOTION for n in demoted)
+        assert demoted and all(residual[n] == U1_DEMOTION for n in demoted)
+        assert all(rules[n].kind == "R2" for n in demoted), demoted
+        assert all(rule.kind != "R2" for n, rule in rules.items() if n in lowered)
     else:
         assert lowered and all(program.recursion.admission[n] for n in lowered), (
             lowered

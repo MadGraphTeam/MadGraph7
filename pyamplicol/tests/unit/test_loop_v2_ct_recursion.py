@@ -313,7 +313,12 @@ def _assert_eager_equal_sites_and_legacy(ct, recursion, runtime) -> None:
                     for s in range(len(sectors))
                 )
                 scale = abs(reference) or max(map(abs, references))
-                mine = parts.get((component, power), Decimal(0))
+                # Slots are (component, power, N_c grade); grade 0 without a
+                # colour continuation.
+                mine = sum(
+                    (v for slot, v in parts.items() if slot[:2] == (component, power)),
+                    Decimal(0),
+                )
                 site = sum((_site_value(sites, key) for key in keys), Decimal(0))
                 rest = sum((_site_value(residual, key) for key in keys), Decimal(0))
                 assert abs(mine - site) <= tolerance * scale, (component, power, index)
