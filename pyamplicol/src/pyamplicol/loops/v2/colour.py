@@ -1205,6 +1205,9 @@ class CompressedColour:
         self._vertices: dict[tuple, VertexDecomposition | None] = {}
         self._contents: dict[int, tuple[Content, tuple | None]] = {}
         self._products: dict[tuple, ExactColorCoefficient] = {}
+        # A combination depends only on the kind and the positions' terms
+        # (decomposition ids and descriptors), which many skeletons share.
+        self._combinations: dict[tuple, Combination | None] = {}
 
     def _letters(self, block: Block) -> tuple[int, ...] | None:
         """M_w = tau^w_k ... tau^w_1 of a pure-gluon block, in matrix order."""
@@ -1353,6 +1356,14 @@ class CompressedColour:
         if kind is None:
             return None
         infos = [self._content(content) for content in skeleton.contents]
+        key = (kind, tuple(info[2] for info in infos))
+        if key in self._combinations:
+            return self._combinations[key]
+        found = self._combination(kind, infos)
+        self._combinations[key] = found
+        return found
+
+    def _combination(self, kind: PrimitiveKind, infos) -> Combination | None:
         out: dict[Primitive, ExactColorCoefficient] = {}
         for choice in product(*(info[2] for info in infos)):
             descriptors = tuple(descriptor for _ids, descriptor in choice)
@@ -1849,6 +1860,8 @@ def _extended(
         orders[c].add(order)
         return c, _ratio(scale, scales[c])
 
+    # Rows of shared (memoised) combinations, by identity and loop order.
+    rows: dict[tuple[int, Orders], tuple[SeedCombination, Combination]] = {}
     for skeleton in skeletons:
         combination = combinations.get(skeleton)
         if (
@@ -1859,11 +1872,16 @@ def _extended(
             combination = compressed.combination(skeleton)
         if combination is None:
             combination = ((colour.seed(skeleton), _ONE),)
+        shared = rows.get((id(combination), skeleton.orders))
+        if shared is not None and shared[1] is combination:
+            class_of[skeleton] = shared[0]
+            continue
         merged: dict[int, ExactColorCoefficient] = {}
         for seed, x in combination:
             c, factor = row(seed, skeleton.orders)
             merged[c] = merged.get(c, ExactColorCoefficient()) + x * factor
         class_of[skeleton] = tuple(merged.items())
+        rows[id(combination), skeleton.orders] = (class_of[skeleton], combination)
     classes = tuple(classes)
     cells = list(table.cells)
     # Term-factored (design §7.2): <b|t> once per distinct structure t.

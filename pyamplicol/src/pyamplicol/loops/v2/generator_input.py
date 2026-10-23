@@ -16,10 +16,12 @@ whichever engine produced them.
 
 from __future__ import annotations
 
+import gc
 import itertools
 import json
 from collections import defaultdict
 from collections.abc import Callable, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
@@ -255,6 +257,10 @@ class NativeGeneration:
 
         if self._families is not None:
             return self._families
+        with _no_cyclic_gc():
+            return self._decode_families()
+
+    def _decode_families(self) -> FamilySet:
         tables = self.tables
         raw_positions, parents, labels, species, raw_families, scaleless, rejected = (
             self._native.families()
@@ -383,9 +389,10 @@ class NativeGeneration:
         raw_contents, labels, raw_orders, raw_schedules = self._native.schedules(
             _json(payload)
         )
-        return self._decode(
-            colour, keep, ordered, raw_contents, labels, raw_orders, raw_schedules
-        )
+        with _no_cyclic_gc():
+            return self._decode(
+                colour, keep, ordered, raw_contents, labels, raw_orders, raw_schedules
+            )
 
     def _keep_flags(self, keep, ordered, payload, keys) -> list[list[bool]]:
         """``keep`` evaluated on every skeleton of every family."""
@@ -489,6 +496,20 @@ class NativeGeneration:
                 ),
             )
         return LoopSchedules(families, view, out)
+
+
+@contextmanager
+def _no_cyclic_gc():
+    """Decoding builds millions of acyclic objects; the cyclic collector
+    would traverse the growing heap again and again while they are made."""
+
+    enabled = gc.isenabled()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if enabled:
+            gc.enable()
 
 
 def _json(payload: Mapping[str, Any]) -> str:
