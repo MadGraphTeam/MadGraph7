@@ -437,6 +437,37 @@ def test_slice_request_records_round_trip():
 
 
 @pytest.mark.loop_fast
+def test_particle_veto_is_resolved_to_pdg_codes_and_refuses_the_site_oracle():
+    """``generation.particle_veto`` names resolve to |PDG| codes (a name
+    vetoes its antiparticle); the request keeps them sorted and unsigned;
+    plan v4 refuses the site-closure counterterm oracle."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.api.errors import ArtifactError
+    from pyamplicol.generation.loop_service import particle_veto_codes
+    from pyamplicol.loops.v2.artifact import generate_process
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
+    particles = [
+        {"name": "t", "antiname": "t~", "pdg_code": 6},
+        {"name": "t~", "antiname": "t", "pdg_code": -6},
+        {"name": "Z", "antiname": "Z", "pdg_code": 23},
+    ]
+    model = SimpleNamespace(model={"particles": particles})
+    assert particle_veto_codes(model, ("t~", "Z", "t")) == (6, 23)
+    with pytest.raises(GenerationError, match=r"does not have: \['b'\]"):
+        particle_veto_codes(model, ("b",))
+    request = SliceRequest(
+        "g g > g g", {"QCD": 2}, {"QCD": 4}, particle_veto=(-6, 23, 6)
+    )
+    assert request.particle_veto == (6, 23)
+    with pytest.raises(ArtifactError, match="tree recursion"):
+        generate_process(None, replace(request, counterterms="sites"), None)
+
+
+@pytest.mark.loop_fast
 def test_loop_orders_follow_the_born_amplitude_orders():
     """One exact loop order per Born amplitude order and correction (not the
     Born coupling-order limits raised by two, which for mixed or loose limits
