@@ -373,6 +373,89 @@ def test_native_trees_do_not_depend_on_the_process_history(loop_sm_compiled_mode
         assert output == outputs[0]
 
 
+_ROUTE_ROWS_PROBE = """
+import hashlib, json, sys
+from decimal import Decimal
+
+model, route, process, qcd, fixture = sys.argv[1:6]
+from pyamplicol.loops.native import load_loop_native
+from pyamplicol.loops.v2.assemble import (
+    LoopSlice, Precision, SliceRequest, _fraction, _Numbers,
+)
+from pyamplicol.models.loading import load_compiled_model
+
+qcd = int(qcd)
+request = SliceRequest(
+    process, {"QCD": qcd, "QED": 0}, {"QCD": qcd + 2, "QED": 0},
+    fixed_parameters={"MB": "0"}, counterterms=route,
+)
+slice_ = LoopSlice.generate(load_compiled_model(model), request, load_loop_native())
+# The block rows are built on first use: after the CT-lowered model of the
+# recursion route, before any CT object of the site route.
+assert "tree-rows" not in slice_._cache
+point = json.load(open(fixture))["points"][0]
+precision = Precision.double()
+numbers = _Numbers(precision)
+with numbers.scope():
+    parameters = slice_._point_parameters(
+        {"aS": "0.118", "MT": "173"}, _fraction("10000"), precision
+    )
+    rows = slice_.tree_rows.evaluate(
+        [tuple(Decimal(str(x)) for x in p) for p in point], parameters, numbers
+    )
+print(hashlib.sha256(repr(sorted(rows.items())).encode()).hexdigest())
+"""
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("process", "qcd", "fixture"),
+    [
+        ("g g > g g g", 3, "legacy/uux_ggg.json"),
+        ("u u~ > g g g", 3, "legacy/uux_ggg.json"),
+    ],
+)
+def test_lazy_block_rows_do_not_depend_on_the_counterterm_route(
+    loop_sm_compiled_model, process, qcd, fixture
+):
+    """The slice builds its Python block rows (``LoopSlice.tree_rows``) on
+    first use, after the recursion route's CT-lowered model has created its
+    symbols. Their stages are compiled on canonical symbols
+    (``assemble._stage_evaluator``), so the binary64 rows of a point are
+    bitwise those of the site route (each route in a fresh interpreter):
+    the rounding independence the eager rows protected (RUST-MIGRATION.md
+    §4 item 1(e))."""
+
+    import subprocess
+    import sys
+
+    runs = [
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                _ROUTE_ROWS_PROBE,
+                str(loop_sm_compiled_model),
+                route,
+                process,
+                str(qcd),
+                str(FIXTURES / fixture),
+            ],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for route in ("recursion", "sites")
+    ]
+    digests = []
+    for run in runs:
+        out, err = run.communicate(timeout=900)
+        assert run.returncode == 0, err[-4000:]
+        digests.append(out.strip().splitlines()[-1])
+    assert digests[0] == digests[1]
+
+
 @pytest.mark.loop_physics
 def test_counterterm_roots_outside_the_request_orders_are_not_closed(
     loop_sm_compiled_model, loop_native
