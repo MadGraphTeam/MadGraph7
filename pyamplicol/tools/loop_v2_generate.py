@@ -23,10 +23,9 @@ every provider by the fixture's metric and tolerance. Catani's pole check is
 skipped: its exact dipole matrices cost hours at seven legs (WP3.1 I5c); the
 poles are compared with the providers instead. With ``--inputs python``
 (default) the per-point trees, Born and counterterms are Python inputs; with
-``--inputs native`` the executor forms the trees and the Born itself
-(``native_trees``) and returns the bare virtual without counterterms (WP3.1
-I5), so only the Born and the double pole (no counterterm has one) are
-compared; the bare finite part and single pole are reported.
+``--inputs native`` the executor forms the trees, the Born, the counterterm
+and external-field components itself (``native_trees``; the counterterms
+from the slice's counterterm closure) and every point is native.
 
 ``poles`` validates a process without provider references by other means
 (MASTER_PLAN §0.1): native inputs at ``--points`` exact points
@@ -269,6 +268,10 @@ def measure(args) -> dict[str, Any]:
     return record
 
 
+# The tolerance of the provider fixtures of tests/fixtures/loop/required.
+REQUIRED_TOLERANCE = "2e-8"
+
+
 def _relative(a: float, b: float, floor: float = 0.0) -> float:
     scale = max(abs(a), abs(b), floor)
     return 0.0 if scale == 0 else abs(a - b) / scale
@@ -303,11 +306,15 @@ def _validate(args) -> dict[str, Any]:
     process = " ".join(t for t in process.split() if "=" not in t)
     born = dict(reference["born_orders"])  # bounds: QED=0 excludes EW Borns
     loop = dict(reference["loop_orders"])
+    # NJet's massless five-flavour QCD is loop_sm without the top
+    # (``test_loop_v2_topfree``); its fixtures name the scheme.
+    top_free = reference.get("scheme") == "massless-qcd-nf5"
     request = SliceRequest(
         process,
         born,
         loop,
-        fixed_parameters=dict(reference["fixed_parameters"]),
+        fixed_parameters=dict(reference.get("fixed_parameters", {"MB": "0"})),
+        ignored_particle_ids=(6,) if top_free else (),
     )
     parameters = dict(reference["parameters"])
     record: dict[str, Any] = {"name": args.name, "process": process}
@@ -316,21 +323,27 @@ def _validate(args) -> dict[str, Any]:
         _compiled_model(args.model), request, load_loop_native()
     )
     record["generate_s"] = round(time.perf_counter() - start, 1)
+    record["generate_peak_gb"] = round(_status("VmHWM") / 2**30, 3)
+    _progress(record, "generate_s", "generate_peak_gb")
+    _reset_peak()
     start = time.perf_counter()
     if args.inputs == "native":
         executor = NativeExecutor(slice_, forward=False, inputs="native")
+        trees = executor.exported.trees
+        record["tree_program_mb"] = round(
+            (len(trees.json()) + sum(len(saved) for saved in trees.kernels)) / 1e6, 2
+        )
+        record["counterterm_terms"] = len(trees.program["counterterms"]["terms"])
     else:
         executor = NativeExecutor(
             slice_, forward=False, exported=export_plan(slice_, forward=False)
         )
     record["export_s"] = round(time.perf_counter() - start, 1)
+    record["export_peak_gb"] = round(_status("VmHWM") / 2**30, 3)
+    record["plan_json_mb"] = round(len(executor._plan_json) / 1e6, 2)
+    _progress(record, "export_s", "export_peak_gb", "plan_json_mb")
     record["inputs"] = args.inputs
-    # Native inputs give the bare virtual: no counterterm has a double pole.
-    compared = (
-        ("born", "double_pole")
-        if args.inputs == "native"
-        else ("born", "finite", "single_pole", "double_pole")
-    )
+    compared = ("born", "finite", "single_pole", "double_pole")
     precision = Precision.double_double() if args.precision == "dd" else None
     checks = None
     if args.stability:
@@ -338,7 +351,8 @@ def _validate(args) -> dict[str, Any]:
             rotations=(Rotation.about("z", "3/5", "4/5"),), reduction_direction=True
         )
     indices = args.points or range(len(reference["points"]))
-    tolerance = float(reference["tolerance"])
+    # The required fixtures' tolerance; NJet fixtures state none.
+    tolerance = float(reference.get("tolerance", REQUIRED_TOLERANCE))
     record["tolerance"] = tolerance
     record["points"] = []
     failed = False
@@ -360,11 +374,13 @@ def _validate(args) -> dict[str, Any]:
         errors = {}
         for provider, values in reference["rows"][index]["providers"].items():
             errors[provider] = {
-                key: _relative(value, values[key], 0.0 if key == "born" else floor)
+                key: _relative(
+                    value, float(values[key]), 0.0 if key == "born" else floor
+                )
                 for key, value in zip(
                     ("born", "finite", "single_pole", "double_pole"), mine, strict=True
                 )
-                if key in compared
+                if key in compared and key in values
             }
         worst = max(e for row in errors.values() for e in row.values())
         failed |= worst > tolerance
@@ -381,6 +397,9 @@ def _validate(args) -> dict[str, Any]:
         record["points"].append(entry)
         print(json.dumps(entry), flush=True)
     record["passed"] = not failed
+    record["max_rss_gb"] = round(
+        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20, 3
+    )
     return record
 
 
@@ -423,7 +442,10 @@ def poles(args) -> dict[str, Any]:
     )
     _progress(record, "generate_s", "generate_peak_gb")
     start = time.perf_counter()
-    executor = NativeExecutor(slice_, forward=False, inputs="native")
+    # The bare virtual's double pole is checked: no counterterm closure.
+    executor = NativeExecutor(
+        slice_, forward=False, inputs="native", counterterms=False
+    )
     record["export_with_trees_s"] = round(time.perf_counter() - start, 1)
     record["plan_json_mb"] = round(len(executor._plan_json) / 1e6, 2)
     record["tree_program_mb"] = round(

@@ -194,6 +194,25 @@ def test_native_double_double_equals_the_python_inputs(executors, name):
 
 
 @pytest.mark.loop_physics
+def test_native_finite_only_keeps_every_finite_part(executors):
+    """Finite-only batches skip the pole-only counterterm couplings and the
+    pole outputs: every component's finite part is bitwise that of a batch
+    with poles."""
+
+    native, _python = executors("uux_ddxg")
+    points, scales = _points(PROCESSES["uux_ddxg"][3])
+    points, scales = points[:1], scales[:1]
+    (full,) = native.evaluate(points, scales, parameters=PARAMETERS)
+    (finite,) = native.evaluate(points, scales, parameters=PARAMETERS, poles=False)
+    assert finite.components.keys() == full.components.keys()
+    for name, sectors in full.components.items():
+        for sector, value in sectors.items():
+            assert finite.components[name][sector].coefficients == (
+                value.coefficients[0],
+            ), (name, sector)
+
+
+@pytest.mark.loop_physics
 def test_native_lane_binds_the_external_parameters(executors):
     """A native batch carries momenta, scales and the external parameters
     only; the executor binds the kernel constants, the loop and external

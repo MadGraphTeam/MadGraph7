@@ -461,11 +461,22 @@ def _counterterm_program(
     ket: dict[tuple[int, int, int], int] = {}
     terms = []
 
+    # Ket tensor index per literal tensor (one ``_single`` per distinct one).
+    index_of: dict[Any, int] = {}
+
+    def tensor_index(tensor: Any) -> int:
+        found = index_of.get(tensor)
+        if found is None:
+            found = index_of[tensor] = tensors.setdefault(
+                _single(tensor, legs), len(tensors)
+            )
+            if found == len(literal):
+                literal.append(tensor)
+        return found
+
     def contribute(out, slot, vector, grade, colour, multiplicity) -> None:
         for item in colour.terms:
-            t = tensors.setdefault(_single(item.tensor, legs), len(tensors))
-            if t == len(literal):
-                literal.append(item.tensor)
+            t = tensor_index(item.tensor)
             k = ket.setdefault((t, vector, item.nc_power + grade), len(ket))
             out.append(
                 [
