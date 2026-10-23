@@ -9,7 +9,9 @@
 use super::batch::{Batch, BatchCarrier, Data};
 use super::v2_reduce::{FamilyGroup, ReduceOptions, ReductionFrame, V2Reducer};
 use crate::Complex;
-use rusticol_core::loop_execution::v2::{FamilyLanes, LaneOutcome, Reduced, V2Backend};
+use rusticol_core::loop_execution::v2::{
+    BackendStatistics, FamilyLanes, LaneOutcome, Reduced, V2Backend,
+};
 use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_core::{RusticolError, RusticolResult};
 use symbolica::domains::float::{DoubleFloat, Float};
@@ -67,6 +69,28 @@ fn frame(check: ReductionCheck) -> ReductionFrame {
 impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
     fn begin(&mut self) {
         self.reducer.clear_masters();
+    }
+
+    /// The master integrals inside the `reduction` stage (binary64 fast
+    /// engine: canonicalisation, cache and oneloopmaster; oneloopmaster
+    /// alone) and the master rows requested and evaluated.
+    fn take_statistics(&mut self) -> BackendStatistics {
+        let Some(masters) = self.reducer.take_master_statistics() else {
+            return BackendStatistics::default();
+        };
+        BackendStatistics {
+            seconds: vec![
+                ("reduction: masters", masters.nanoseconds as f64 * 1e-9),
+                (
+                    "reduction: masters (oneloopmaster)",
+                    masters.provider_nanoseconds as f64 * 1e-9,
+                ),
+            ],
+            counts: vec![
+                ("master requests", masters.total_requests()),
+                ("master evaluations", masters.total_evaluated()),
+            ],
+        }
     }
 
     fn reduce(

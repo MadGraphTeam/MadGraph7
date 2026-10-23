@@ -27,6 +27,7 @@
 use ninjars::Result;
 use ninjars::fast::{C64, FastMaster, FastMasters};
 use std::collections::HashMap;
+use std::time::Instant;
 
 const FAMILIES: [FastMaster; 6] = [
     FastMaster::A0,
@@ -52,6 +53,11 @@ pub struct MasterStatistics {
     pub hits: [u64; 6],
     /// Rows evaluated by the provider.
     pub evaluated: [u64; 6],
+    /// Wall time of the cache's `evaluate` calls (canonicalisation, cache
+    /// look-ups and the provider), nanoseconds.
+    pub nanoseconds: u64,
+    /// Wall time inside the provider's `evaluate` calls, nanoseconds.
+    pub provider_nanoseconds: u64,
 }
 
 impl MasterStatistics {
@@ -233,6 +239,34 @@ impl<M: FastMasters> FastMasters for MasterCache<M> {
         out: &mut [[C64; 3]],
         ok: &mut [bool],
     ) -> Result<()> {
+        let start = Instant::now();
+        let result = self.evaluate_rows(family, args, out, ok);
+        self.statistics.nanoseconds += start.elapsed().as_nanos() as u64;
+        result
+    }
+}
+
+impl<M: FastMasters> MasterCache<M> {
+    fn provider(
+        &mut self,
+        family: FastMaster,
+        args: &[C64],
+        out: &mut [[C64; 3]],
+        ok: &mut [bool],
+    ) -> Result<()> {
+        let start = Instant::now();
+        let result = self.inner.evaluate(family, args, out, ok);
+        self.statistics.provider_nanoseconds += start.elapsed().as_nanos() as u64;
+        result
+    }
+
+    fn evaluate_rows(
+        &mut self,
+        family: FastMaster,
+        args: &[C64],
+        out: &mut [[C64; 3]],
+        ok: &mut [bool],
+    ) -> Result<()> {
         let arity = family.arity();
         let width = family.outputs();
         let rows = ok.len();
@@ -259,7 +293,10 @@ impl<M: FastMasters> FastMasters for MasterCache<M> {
         }
         if !self.enabled {
             self.statistics.evaluated[index] += rows as u64;
-            return self.inner.evaluate(family, &self.canonical, out, ok);
+            let canonical = std::mem::take(&mut self.canonical);
+            let result = self.provider(family, &canonical, out, ok);
+            self.canonical = canonical;
+            return result;
         }
         self.sources.clear();
         self.pending.clear();
@@ -288,12 +325,14 @@ impl<M: FastMasters> FastMasters for MasterCache<M> {
         self.miss_ok.clear();
         self.miss_ok.resize(misses, false);
         if misses > 0 {
-            self.inner.evaluate(
-                family,
-                &self.miss_args,
-                &mut self.miss_out,
-                &mut self.miss_ok,
-            )?;
+            let (miss_args, mut miss_out, mut miss_ok) = (
+                std::mem::take(&mut self.miss_args),
+                std::mem::take(&mut self.miss_out),
+                std::mem::take(&mut self.miss_ok),
+            );
+            let result = self.provider(family, &miss_args, &mut miss_out, &mut miss_ok);
+            (self.miss_args, self.miss_out, self.miss_ok) = (miss_args, miss_out, miss_ok);
+            result?;
         }
         for (miss, key) in self.pending_keys.iter().enumerate() {
             if self.miss_ok[miss] {

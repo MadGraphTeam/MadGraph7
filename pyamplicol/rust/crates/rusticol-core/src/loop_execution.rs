@@ -2175,6 +2175,15 @@ pub mod v2 {
     /// vector per group in its lane order.
     pub type Reduced<T> = (Vec<Vec<LaneOutcome<T>>>, Option<Vec<Vec<LaneOutcome<T>>>>);
 
+    /// Development counters a [`V2Backend`] collects inside the executor's
+    /// `reduction` stage: seconds of its sub-stages (e.g. the master
+    /// integrals) and counts. They are added to the run's [`Report`].
+    #[derive(Clone, Debug, Default)]
+    pub struct BackendStatistics {
+        pub seconds: Vec<(&'static str, f64)>,
+        pub counts: Vec<(&'static str, u64)>,
+    }
+
     /// The reduction side of the v2 path: NinjaRS engines and caches.
     pub trait V2Backend<T> {
         /// Start a chunk of points (master caches hold one chunk's masters).
@@ -2185,7 +2194,25 @@ pub mod v2 {
             poles: bool,
             check: Option<ReductionCheck>,
         ) -> RusticolResult<Reduced<T>>;
+        /// The counters collected since the last call (none by default).
+        fn take_statistics(&mut self) -> BackendStatistics {
+            BackendStatistics::default()
+        }
     }
+
+    /// Modelled kernel work of the chosen forms of `steps` (complex
+    /// multiply-adds per lane, as the `loop_v2_schedules` bench counts it).
+    fn modelled_work<'a>(steps: impl Iterator<Item = &'a crate::loop_v2::plan::Step>) -> u64 {
+        steps
+            .map(|step| match (step.split.is_some(), step.costs) {
+                (true, (_, Some(split))) => split.work,
+                (_, (fused, _)) => fused.work,
+            })
+            .sum()
+    }
+
+    /// Report count of the modelled dressing work (complex MAC per lane).
+    const DRESSING_WORK: &str = "dressing work (modelled complex MAC per lane)";
 
     /// One point's family numerators: (family, loop orders, rank, per
     /// column the coefficients in the family's trie frame).
@@ -2453,6 +2480,7 @@ pub mod v2 {
             "split steps",
             steps().filter(|s| s.split.is_some()).count() as u64,
         );
+        report.count(DRESSING_WORK, modelled_work(steps()));
         let numerators: Vec<_> = runs.into_iter().map(|run| run.numerator).collect();
         report.peak(
             "family numerators (one bucket chunk)",
@@ -2655,6 +2683,13 @@ pub mod v2 {
                 self.backend
                     .reduce(&groups, self.options.poles, self.options.check)?;
             report.time("reduction", start);
+            let statistics = self.backend.take_statistics();
+            for (stage, seconds) in statistics.seconds {
+                *report.seconds.entry(stage).or_default() += seconds;
+            }
+            for (name, value) in statistics.counts {
+                report.count(name, value);
+            }
             let sink = &mut *self.sink;
             for (index, group) in groups.iter().enumerate() {
                 for (row, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
@@ -2760,6 +2795,12 @@ pub mod v2 {
                     reduction.reduce(&done, &mut report)
                 })?;
                 merged_report(&mut report, &stats, L);
+                if let Some(merged) = merged {
+                    report.count(
+                        DRESSING_WORK,
+                        modelled_work(merged.states.iter().map(|state| &state.step)),
+                    );
+                }
             }
         }
         let Lanes {
