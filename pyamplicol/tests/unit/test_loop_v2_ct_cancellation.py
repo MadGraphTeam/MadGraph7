@@ -102,9 +102,14 @@ def _vanishes(compiled):
 
 
 # ``name -> (process, Born QCD, QED, leg masses, vertices whose cells cancel)``.
+# u u~ -> e- e+ g g also has the g g g Z R2 inside its blocks and at the root:
+# its vector (d-symbol) cell in the recursion, its axial cell cancelled.
 CANCELLATION_O6 = {
     "uux_emepg": ("u u~ > e- e+ g", 1, 2, (0,) * 5, {"V_GGZ"}),
+    "uux_emepgg": ("u u~ > e- e+ g g", 2, 2, (0,) * 6, {"V_GGZ", "V_GGGZ"}),
 }
+# The Levi-Civita Lorentz structures of loop_sm's g g Z and g g g Z R2.
+LEVI_CIVITA = frozenset({"R2_GGZ", "R2_GGGVa"})
 
 
 @pytest.fixture(scope="module")
@@ -142,9 +147,10 @@ def cancellation_routes(two_point_model, loop_native):  # noqa: F811
 def test_cancelled_counterterms_from_recursion_equal_sites(
     cancellation_routes, monkeypatch, name, carrier
 ):
-    """O6 with the Levi-Civita cells cancelled: the g g Z rules are admitted
-    in the recursion with their cell left out (no rule is residual), the site
-    closure drops the same cells on its own, and every component agrees."""
+    """O6 with the Levi-Civita cells cancelled: the g g Z (and g g g Z)
+    rules are admitted in the recursion with their cell left out (no rule is
+    residual), the site closure drops the same cells on its own, and every
+    component agrees."""
 
     _certify_furry_zeros(monkeypatch)
     recursion = cancellation_routes(name, "recursion")
@@ -159,14 +165,20 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
     }
     assert cancelled == CANCELLATION_O6[name][4]
     sites = cancellation_routes(name, "sites")
-    dropped = {
+    closed = {
         vertex
+        for site in sites.site_terms
+        if site.alternatives
+        for vertex in _vertices(site.rule) & GGZ_VERTICES
+    }
+    assert closed == CANCELLATION_O6[name][4]
+    lorentz = {
+        term.entry.lorentz_name
         for site, terms in sites.site_terms.items()
         if _vertices(site.rule) & GGZ_VERTICES
-        for vertex in _vertices(site.rule)
-        if not terms
+        for term in terms
     }
-    assert dropped == CANCELLATION_O6[name][4]
+    assert not lorentz & LEVI_CIVITA
     worst = _route_differences(
         cancellation_routes,
         name,
@@ -175,6 +187,42 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
         masses=CANCELLATION_O6[name][3],
     )
     assert all(value <= SLICE_TOLERANCE[carrier] for value in worst.values()), worst
+    if carrier == "double" and "V_GGGZ" in CANCELLATION_O6[name][4]:
+        # The vector g g g Z cell counts: the sites without it differ.
+        _assert_vertex_changes_r2(sites, "V_GGGZ", CANCELLATION_O6[name][3])
+
+
+def _assert_vertex_changes_r2(sites, vertex: str, masses) -> None:
+    from dataclasses import replace
+
+    from pyamplicol.loops.v2.assemble import Precision
+
+    from .test_loop_v2_ct_closure import SLICE_SCALE_SQUARED, _slice_point
+
+    without = replace(
+        sites,
+        site_terms={
+            site: terms
+            for site, terms in sites.site_terms.items()
+            if vertex not in _vertices(site.rule)
+        },
+        _cache={},
+    )
+    point = _slice_point(masses)
+    full, rest = (
+        route.evaluate(
+            point,
+            SLICE_SCALE_SQUARED,
+            parameters=SLICE_PARAMETERS,
+            precision=Precision.double(),
+        ).components["r2"]
+        for route in (sites, without)
+    )
+    assert any(
+        abs(float(a) - float(b)) > 1e-6 * abs(float(b))
+        for sector, laurent in rest.items()
+        for a, b in zip(full[sector].coefficients, laurent.coefficients, strict=True)
+    )
 
 
 # The vector-Z model with an anomalous g g Z R2: the down-type loop group's
