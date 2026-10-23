@@ -42,6 +42,7 @@
 use super::Carrier;
 use crate::Complex;
 use ninjars::fast::tensor_layout::{block_offset, homogeneous_index, monomials, ncoeff};
+use std::borrow::Cow;
 
 /// Homogeneous polynomials of every degree up to `max` in the tensor layout:
 /// monomials per degree, the index of `m · q_μ`, and the angular average
@@ -240,6 +241,17 @@ fn lifted<T: Carrier>(value: &Complex<T>, precision: u32) -> Complex<T> {
     value
 }
 
+/// `values` lifted to `precision`, borrowed when none needs it (binary64 and
+/// DoubleFloat always).
+fn lifted_all<T: Carrier>(values: &[Complex<T>], precision: u32) -> Cow<'_, [Complex<T>]> {
+    let low = |c: &Complex<T>| c.re.get_precision() < precision || c.im.get_precision() < precision;
+    if values.iter().any(low) {
+        Cow::Owned(values.iter().map(|c| lifted(c, precision)).collect())
+    } else {
+        Cow::Borrowed(values)
+    }
+}
+
 /// [`uv_residue`] for every lane of one `(n, rank)` bucket: the monomial
 /// tables are built once.
 pub struct UvResidues {
@@ -274,8 +286,8 @@ impl UvResidues {
         let Some(layout) = &self.layout else {
             return zero;
         };
-        let shifts: Vec<_> = shifts.iter().map(|v| lifted(v, precision)).collect();
-        let masses: Vec<_> = masses.iter().map(|m| lifted(m, precision)).collect();
+        let shifts = lifted_all(shifts, precision);
+        let masses = lifted_all(masses, precision);
         let metric = [1, -1, -1, -1];
         let mut walk = Walk {
             layout,
@@ -305,7 +317,7 @@ impl UvResidues {
             if block.iter().all(|c| c.re.is_zero() && c.im.is_zero()) {
                 continue;
             }
-            let block: Vec<_> = block.iter().map(|c| lifted(c, precision)).collect();
+            let block = lifted_all(block, precision);
             let one = walk.integer(1);
             walk.walk(0, r + 4 - 2 * n, &block, r, one);
         }
