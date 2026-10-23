@@ -606,8 +606,12 @@ parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
 Loading a v2 process rebuilds its per-point tree inputs from the artifact, which
 takes about the process's generation time, until those inputs run natively; the
 standalone SDK bundle needs `engine = "legacy"` until then. A v2 artifact holds
-no absolute path of the generating host and can be copied to another location
-or machine.
+no absolute path, user or host name of the generating host, and a copy moved to
+another directory loads with bitwise-identical results. Loading regenerates the
+stored plan and requires it to be identical, so the copy needs the same
+pyAmpliCol build (Python package and native extension) as the one that
+generated it; relocation is tested on the generating host only, not yet on
+another machine.
 
 To evaluate numerical colour/spin requests, set
 `evaluation.correlated_requests = "data/requests.json"`. The file maps output

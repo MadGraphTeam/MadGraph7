@@ -131,9 +131,9 @@ pub fn load_loop_artifact(
             .required_runtime_capabilities
             .iter()
             .any(|capability| capability == LOOP_V2_RUNTIME_CAPABILITY),
-        "plan v4 processes (rusticol.loop-runtime.v4) are admitted by \
-         load_loop_v2_artifact; this runtime evaluates them once trees, Born \
-         amplitudes and counterterm scalars run natively (WP3.1)",
+        "plan v4 processes (rusticol.loop-runtime.v4) are not evaluated by this \
+         runtime yet: their trees, Born amplitudes and counterterm scalars are \
+         computed by the Python runtime (pyamplicol Runtime.load)",
     )?;
     require(
         artifact.manifest().runtime.required_runtime_capabilities == [LOOP_RUNTIME_CAPABILITY]
@@ -384,6 +384,7 @@ pub struct LoopV2StateLeg {
     pub incoming: bool,
 }
 
+#[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ExecutionV4 {
@@ -407,6 +408,7 @@ struct ExecutionV4 {
 /// members; the plan member is unchanged by that addition).
 pub const LOOP_V2_POINT_INPUTS: &str = "regenerated-at-load";
 
+#[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PhysicsV4 {
@@ -421,6 +423,7 @@ struct PhysicsV4 {
 
 /// A plan v4 process admitted from its artifact. `plan_json` is the stored
 /// plan (its SHA-256 is `plan_sha256`); `request` is the generation recipe.
+#[cfg(feature = "loop-v2")]
 pub struct LoadedLoopV2Artifact {
     pub artifact_id: String,
     pub selection: ArtifactSelection,
@@ -430,10 +433,10 @@ pub struct LoadedLoopV2Artifact {
     pub request: serde_json::Value,
     pub plan_sha256: String,
     pub plan_json: Vec<u8>,
-    #[cfg(feature = "loop-v2")]
     pub program: Arc<crate::loop_v2::plan::LoopProgramV4>,
 }
 
+#[cfg(feature = "loop-v2")]
 pub fn open_loop_v2_artifact(
     path: impl AsRef<Path>,
     requested_process: Option<&str>,
@@ -442,9 +445,11 @@ pub fn open_loop_v2_artifact(
 }
 
 /// Admit one plan v4 process: the envelope, its execution and physics
-/// declarations, the authenticated plan member and its digest, and (with the
-/// `loop-v2` feature) the validated program, whose families, reduction
-/// buckets, legs, helicity rows and sectors must equal the declarations.
+/// declarations, the plan member and its digest, and the validated program,
+/// whose families, reduction buckets, legs, helicity rows and sectors must
+/// equal the declarations (the `loop-v2` feature: plan v4 needs the v2
+/// executor, and so does its zlib member).
+#[cfg(feature = "loop-v2")]
 pub fn load_loop_v2_artifact(
     artifact: &VerifiedArtifact,
     requested_process: Option<&str>,
@@ -536,7 +541,6 @@ pub fn load_loop_v2_artifact(
         format!("{:x}", Sha256::digest(&plan_json)) == execution.plan_sha256,
         "the stored plan v4 differs from its declared digest",
     )?;
-    #[cfg(feature = "loop-v2")]
     let program = {
         let program = crate::loop_v2::plan::LoopProgramV4::load(&plan_json)?;
         let buckets: Vec<(usize, usize, usize)> = program
@@ -573,11 +577,11 @@ pub fn load_loop_v2_artifact(
         request: execution.request,
         plan_sha256: execution.plan_sha256,
         plan_json,
-        #[cfg(feature = "loop-v2")]
         program,
     })
 }
 
+#[cfg(feature = "loop-v2")]
 fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()> {
     require(
         metadata.engine == "v2"

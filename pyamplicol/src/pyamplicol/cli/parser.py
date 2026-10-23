@@ -19,6 +19,7 @@ from pyamplicol.config import (
     ConfigResolution,
     ConfigurationError,
     EvaluatorExecutionMode,
+    LoopEngine,
     PoleSelection,
     ProcessGroupAnalysis,
     resolve_config,
@@ -459,7 +460,7 @@ def _add_evaluator_options(
         parser.add_argument(
             "--loop-engine",
             dest="loop.engine",
-            choices=("legacy", "v2"),
+            choices=tuple(LoopEngine),
             default=argparse.SUPPRESS,
             help="one-loop engine of virtual generation (default legacy)",
         )

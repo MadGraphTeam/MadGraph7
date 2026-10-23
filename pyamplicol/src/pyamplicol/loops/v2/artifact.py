@@ -256,11 +256,10 @@ def coloured_widths(
     Source currents (external legs), auxiliary currents and currents of all
     legs but one do not count: the latter carry an external momentum and are
     amputated (a Born root contracts them with the remaining leg; a loop
-    attached to one would be an external self-energy). WP2.2
-    (``work/v2-ct-recursion``, not integrated yet) selects full tree kernels
-    for coloured widths by its own criterion (``blocks.ward_breaking_fields``
-    there, which also counts model-supplied propagators); the integration
-    keeps one criterion (DESIGN WP2.6, "widths")."""
+    attached to one would be an external self-energy). The counterterm
+    recursion (WP2.2) chooses full tree kernels for coloured widths by a
+    criterion of its own that also counts model-supplied propagators; the
+    two are to be one criterion (DESIGN WP2.6, "widths")."""
 
     from pyamplicol.models.compiler_kernels import _is_compile_time_zero_parameter
 
@@ -324,7 +323,7 @@ def require_zero_coloured_widths(
         "correlations and the virtual inconsistent; fix it to zero in "
         f"[loop.preparation] fixed_parameters ({fixed}), the legacy engine's "
         "convention, or use loop.engine='legacy'. A resonant coloured "
-        "particle needs the complex-mass scheme (WP3.2)"
+        "particle needs the complex-mass scheme, which is not available yet"
     )
 
 

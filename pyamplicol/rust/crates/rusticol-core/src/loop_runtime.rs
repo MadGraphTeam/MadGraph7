@@ -1879,6 +1879,7 @@ pub const LOOP_PROGRAM_V4_MEMBER: &str = "schedule/loop-plan-v4.json.zlib";
 /// v4 admission, `loop_artifact::load_loop_v2_artifact`, which validates it as
 /// a `loop_v2::plan::LoopProgramV4`). The member has the plan kind of the v3
 /// runtime; the JSON's schema field selects version 4.
+#[cfg(feature = "loop-v2")]
 pub fn read_loop_program_v4_json(reader: &PacbinReader) -> RusticolResult<Vec<u8>> {
     use std::io::Read;
 
