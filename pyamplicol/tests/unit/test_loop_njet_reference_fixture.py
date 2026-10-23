@@ -20,6 +20,7 @@ from tools.loop_reference.njet import njet_fixture as nf
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "tests" / "fixtures" / "loop" / "required" / "gg_ggggg_njet.json"
+PRIMARY = "njet_dd_oneloop_R1"
 
 pytestmark = pytest.mark.loop_fast
 
@@ -34,8 +35,10 @@ def test_schema_points_and_universal_double_pole(fixture: dict) -> None:
     assert fixture["pdgs"] == [21] * 7
     assert fixture["born_orders"] == {"QCD": 5, "QED": 0}
     assert fixture["normalization_denominator"] == 256 * 120
-    assert fixture["primary_provider"] == "njet_dd"
+    assert fixture["primary_provider"] == PRIMARY
     assert fixture["maximum_universal_double_pole_relative_error"] < 1e-12
+    # Poles against the IR-pole (Catani) prediction from colour-correlated Borns.
+    assert fixture["maximum_catani_single_pole_relative_error"] < 1e-8
 
 
 def test_points_are_pyamplicols_and_read_like_the_required_fixtures(fixture: dict) -> None:
@@ -52,13 +55,17 @@ def test_points_are_pyamplicols_and_read_like_the_required_fixtures(fixture: dic
 
 
 def test_provenance_and_calibration(fixture: dict) -> None:
-    njet = fixture["providers"]["njet"]
-    assert njet["version"] == "NJet 3.1.2"
+    njet = fixture["providers"][PRIMARY]
+    assert njet["tool"] == "NJet 3.1.2"
     assert "-march=native" in njet["build_info"] and "--enable-5jet" in njet["build_info"]
-    assert njet["options_dd"]["prec"] == "dd" and njet["options_dd"]["scaling"] == "1"
-    assert njet["options_dd"]["scheme"] == "cdr" and njet["options_dd"]["nf"] == "5"
+    assert "--with-oneloop" in njet["build_info"]
+    options = njet["options"]
+    assert options["prec"] == "dd" and options["scaling"] == "1"
+    assert options["scheme"] == "cdr" and options["renorm"] == "1" and options["nf"] == "5"
+    assert options["rotation"]["name"] == "R1"
+    assert fixture["evaluation_orientation"]["name"] == "R1"
     for row in fixture["rows"]:
-        assert set(row["providers"]) >= {"njet_dd", "njet_double"}
+        assert set(row["providers"]) >= {PRIMARY, "njet_double_R1", "njet_double_R2", "catani"}
     calibration = fixture["calibration"]
     # Conventions are validated against the provider references with top-free
     # OpenLoops (nf=5) and, through it, the gg_gggg fixture (nf=6).
