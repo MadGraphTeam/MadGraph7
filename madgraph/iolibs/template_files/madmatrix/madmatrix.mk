@@ -409,6 +409,9 @@ else
 endif
 export BACKENDDIR
 
+# Export FPTYPE (used e.g. to name the common library, see MADMATRIX_COMMONLIB below)
+export FPTYPE
+
 #-------------------------------------------------------------------------------
 
 #=== Configure ccache for C++ and CUDA/HIP builds
@@ -449,8 +452,13 @@ else ifeq ($(DEBUG),1)
 endif
 
 # Dependency on src directory
-# The common library name carries the full BACKEND suffix so each vectorisation/GPU variant is distinct.
-MADMATRIX_COMMONLIB = madmatrix_common_$(BACKEND)
+# The common library name carries the model name and the full BACKEND suffix -- see the
+# matching comment in madmatrix_src.mk for why the model name is required (dlopen
+# collisions across process directories regenerated in different models) -- and, purely
+# for naming consistency with MADMATRIX_LIB, the FPTYPE too; unlike MADMATRIX_LIB this
+# isn't consumed by anything outside these madmatrix makefiles (subprocesses.json never
+# references it directly), so no further propagation is needed for this one.
+MADMATRIX_COMMONLIB = madmatrix_common_%(model)s_$(BACKEND)_$(FPTYPE)
 LIBFLAGS = -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB)
 INCFLAGS += -I$(SRC) -I$(SRC)/rambo
 
@@ -791,7 +799,16 @@ override RUNTIME =
 processid_short=$(shell basename $(CURDIR))
 ###$(info processid_short=$(processid_short))
 
-MADMATRIX_LIB = madmatrix_$(processid_short)_$(BACKEND)
+# The process library name carries the model name (same %(model)s substitution,
+# and the same dlopen-collision rationale, as MADMATRIX_COMMONLIB above), the
+# process id, the hardware backend, and the floating-point type -- so that
+# libraries built for different models/precisions/backends out of the same
+# process directory never collide, and so that a loader can tell, from the
+# filename alone, exactly which of those a given library on
+# disk was built with (subprocesses.json itself stays agnostic to BACKEND and
+# FPTYPE -- see me_lib_format in madmatrix/output.py -- since a given process
+# directory can be compiled for several of each without regenerating the JSON).
+MADMATRIX_LIB = madmatrix_%(model)s_$(processid_short)_$(BACKEND)_$(FPTYPE)
 objects_lib=$(BUILDDIR)/CPPProcess.o $(BUILDDIR)/color_sum.o $(BUILDDIR)/MatrixElementKernels.o $(BUILDDIR)/CrossSectionKernels.o $(BUILDDIR)/umami.o $(BUILDDIR)/SigmaKin.o
 
 # Backend-owned sources
@@ -868,7 +885,7 @@ ifeq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
 $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: ;
 else
 $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: $(SRC)/*.h $(SRC)/*.cc $(BUILDDIR)/.build.$(TAG)
-	$(MAKE) -C $(SRC) BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
+	$(MAKE) -C $(SRC) BACKEND=$(BACKEND) FPTYPE=$(FPTYPE) LIBDIR=$(LIBDIR)
 endif
 
 #-------------------------------------------------------------------------------
@@ -971,20 +988,26 @@ $(addprefix commonlib.,$(BLDBACKENDS)): commonlib.%%:
 clean:
 ifeq ($(USEBUILDDIR),1)
 	rm -rf $(BUILDDIR)
+ifneq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
+	$(MAKE) -C $(SRC) clean BACKEND=$(BACKEND) FPTYPE=$(FPTYPE) LIBDIR=$(LIBDIR)
+endif
 else
 	rm -f $(BUILDDIR)/.build.* $(BUILDDIR)/*.o
 	rm -f $(LIBDIR)/lib$(MADMATRIX_LIB).so
 	rm -f $(BACKEND_LOG)
 ifneq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
-	$(MAKE) -C $(SRC) clean BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
+	$(MAKE) -C $(SRC) clean BACKEND=$(BACKEND) FPTYPE=$(FPTYPE) LIBDIR=$(LIBDIR)
 endif
 endif
 
-# cleanall: remove objects and libraries for ALL backends.
+# cleanall: remove objects and libraries for ALL backends and FPTYPEs.
+# (NB: MADMATRIX_LIB itself only names one BACKEND/FPTYPE combination -- see
+# its own definition above -- so this globs for all of them explicitly,
+# rather than just removing $(MADMATRIX_LIB) as 'clean' above does.)
 cleanall:
 	rm -rf build.*
 	rm -f ./.build.* ./*.o
-	rm -f $(LIBDIR)/libmadmatrix_$(processid_short)_*.so
+	rm -f $(LIBDIR)/libmadmatrix_%(model)s_$(processid_short)_*.so
 ifneq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
 	$(MAKE) -C $(SRC) cleanall LIBDIR=$(LIBDIR)
 endif
@@ -993,7 +1016,7 @@ endif
 # for the SubProcesses dispatcher, which owns the common library while the P*
 # directories are cleaned in parallel with MADMATRIX_COMMONLIB_EXTERNAL=1.
 cleancommon:
-	$(MAKE) -C $(SRC) clean BACKEND=$(BACKEND) LIBDIR=$(LIBDIR)
+	$(MAKE) -C $(SRC) clean BACKEND=$(BACKEND) FPTYPE=$(FPTYPE) LIBDIR=$(LIBDIR)
 
 cleanallcommon:
 	$(MAKE) -C $(SRC) cleanall LIBDIR=$(LIBDIR)

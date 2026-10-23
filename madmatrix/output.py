@@ -188,7 +188,18 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # AV (default from OM's tutorial) - add a debug printout
     def __init__(self, *args, **kwargs):
         self.in_madevent_mode = False # see MR #747
-        args[1]["me_lib_format"] = pjoin("lib", "libmadmatrix_{process_id}_{{device}}.so")
+        # {model} is resolved by ProcessExporterMG7.generate_subprocess_directory()
+        # alongside {process_id}, from the matrix element's own model -- same
+        # sanitized name (get_model_name()) used for MADMATRIX_LIB/
+        # MADMATRIX_COMMONLIB's %(model)s in madmatrix.mk. {{device}}/{{fptype}}
+        # stay literal ("{device}"/"{fptype}") in the resulting me_path: which
+        # concrete BACKEND/FPTYPE a given process directory was compiled for is
+        # a per-build choice made when the libraries are compiled and loaded
+        # (see compile_matrix_elements() in mg7/launch.py), not something
+        # subprocesses.json commits to at generation time.
+        args[1]["me_lib_format"] = pjoin(
+            "lib", "libmadmatrix_{model}_{process_id}_{{device}}_{{fptype}}.so"
+        )
         super().__init__(*args, **kwargs)
         # Honor the output command's --mask=True|False (flavor-mask
         # optimization for grouped/merged flavors). Default: enabled.
