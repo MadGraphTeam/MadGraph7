@@ -34,11 +34,16 @@ loop-request mode of the Rust recurrence (WP3.1) moves them native, the
 runtime rebuilds those objects at load time from the artifact's own compiled
 model and the saved request (the recursive generator, no diagram is listed;
 the SymJIT tree kernels are compiled in memory at -O2 and never stored) and
-requires the regenerated plan to equal the saved one byte for byte: the
-Python input tables (block rows, Born components, kernel constants) must
-match the stored program's numbering, or the native executor would read
-wrong inputs. The same process reuses generation objects already built in
-this interpreter (generation and its staged validation). WP3.1 adds native
+requires the regenerated plan to have the stored plan's digest (byte
+equality): the Python input tables (block rows, Born components, kernel
+constants) must match the stored program's numbering, or the native
+executor would read wrong inputs. Regeneration does not depend on the
+interpreter's Symbolica symbol history: tree stages use canonical symbols
+(``assemble._canonical_stage``) and kernel terms a canonical order
+(``reference_executor.ExactKernel``), so plan and binary64 values are
+identical after unrelated symbols were created (tested). The same process
+reuses generation objects already built in this interpreter (generation
+and its staged validation). WP3.1 adds native
 programs for the point inputs as further PACBIN members under a new
 ``point_inputs`` value; the plan member and the declarations stay as they
 are, so loading needs no regeneration then (requirements addendum G).
@@ -115,55 +120,83 @@ ContractionPolicy = Literal["auto", "direct", "fft"]
 # --------------------------------------------------------------------- request
 
 
-def request_record(request: Any, correlators: Any = None) -> dict[str, object]:
-    """The JSON record of a ``SliceRequest`` and its resolved correlator
-    declarations (the artifact's generation recipe)."""
+def _orders_record(orders: Mapping[str, int]) -> dict[str, int]:
+    return dict(sorted(orders.items()))
 
-    declaration = request.colour_declaration
-    return {
-        "process": request.process,
-        "born_orders": dict(sorted(request.born_orders.items())),
-        "loop_orders": dict(sorted(request.loop_orders.items()))
-        if isinstance(request.loop_orders, Mapping)
-        else [dict(sorted(orders.items())) for orders in request.loop_orders],
-        "corrections": list(request.corrections),
-        "fixed_parameters": dict(sorted(request.fixed_parameters.items())),
-        "ignored_particle_ids": list(request.ignored_particle_ids),
-        "accuracy": request.accuracy,
-        "colour_declaration": None if declaration is None else declaration.to_dict(),
-        "scale_parameter": request.scale_parameter,
-        "alpha_s_parameter": request.alpha_s_parameter,
-        "compress_colour": request.compress_colour,
-        "colour_contraction": request.colour_contraction,
-        "correlators": None if correlators is None else correlators.to_json_dict(),
+
+def _encode_field(name: str, value: Any) -> Any:
+    """One ``SliceRequest`` field as JSON: mappings sorted, tuples as lists,
+    the colour declaration as its dictionary; anything else must already be
+    a JSON scalar (a new field of another type fails here, not silently)."""
+
+    if name == "colour_declaration":
+        return None if value is None else value.to_dict()
+    if name == "loop_orders" and not isinstance(value, Mapping):
+        return [_orders_record(orders) for orders in value]
+    if isinstance(value, Mapping):
+        return _orders_record(value)
+    if isinstance(value, tuple):
+        return list(value)
+    if value is None or isinstance(value, str | bool | int | float):
+        return value
+    raise TypeError(f"SliceRequest field {name!r} has no JSON record ({value!r})")
+
+
+def _decode_field(name: str, value: Any) -> Any:
+    """The inverse of ``_encode_field``."""
+
+    if name == "colour_declaration":
+        from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+        return None if value is None else LoopColorDeclaration.from_dict(value)
+    if name == "loop_orders" and isinstance(value, list):
+        return tuple(dict(orders) for orders in value)
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, list):
+        return tuple(value)
+    return value
+
+
+def request_record(request: Any, correlators: Any = None) -> dict[str, object]:
+    """The JSON record of a ``SliceRequest`` (every dataclass field, so a new
+    request field is recorded and restored without an edit here) and its
+    resolved correlator declarations: the artifact's generation recipe."""
+
+    from dataclasses import fields
+
+    record: dict[str, object] = {
+        item.name: _encode_field(item.name, getattr(request, item.name))
+        for item in fields(request)
     }
+    record["correlators"] = None if correlators is None else correlators.to_json_dict()
+    return record
 
 
 def request_from_record(record: Mapping[str, Any]) -> Any:
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    """The ``SliceRequest`` of a request record. A field the record lacks
+    keeps its default (records written before the field existed); a record
+    key the request does not know is refused."""
+
+    from dataclasses import MISSING, fields
 
     from .assemble import SliceRequest
 
-    declaration = record["colour_declaration"]
-    loop_orders = record["loop_orders"]
-    return SliceRequest(
-        record["process"],
-        dict(record["born_orders"]),
-        dict(loop_orders)
-        if isinstance(loop_orders, Mapping)
-        else tuple(dict(orders) for orders in loop_orders),
-        corrections=tuple(record["corrections"]),
-        fixed_parameters=dict(record["fixed_parameters"]),
-        ignored_particle_ids=tuple(record["ignored_particle_ids"]),
-        accuracy=record["accuracy"],
-        colour_declaration=None
-        if declaration is None
-        else LoopColorDeclaration.from_dict(declaration),
-        scale_parameter=record["scale_parameter"],
-        alpha_s_parameter=record["alpha_s_parameter"],
-        compress_colour=record["compress_colour"],
-        colour_contraction=record["colour_contraction"],
-    )
+    known = {item.name: item for item in fields(SliceRequest)}
+    unknown = set(record) - set(known) - {"correlators"}
+    if unknown:
+        raise ArtifactError(
+            f"the loop request record has unknown fields {sorted(unknown)}: it was "
+            "written by a different pyAmpliCol build; regenerate the artifact"
+        )
+    values = {}
+    for name, item in known.items():
+        if name not in record:
+            if item.default is MISSING and item.default_factory is MISSING:
+                raise ArtifactError(f"the loop request record has no {name!r}")
+            continue
+        values[name] = _decode_field(name, record[name])
+    return SliceRequest(**values)
 
 
 def correlators_from_record(record: Mapping[str, Any]) -> Any:
@@ -526,18 +559,15 @@ class V2VirtualRuntime:
         ):
             raise ArtifactError(f"process {process_id!r} is not a v2 virtual process")
         native = load_loop_native()
+        # The native loader checks the plan member against the declared
+        # digest and validates the program against the declarations once;
+        # the regenerated plan is then compared by that digest.
         admission = admit(native, root, process_id)
-        if admission["plan_sha256"] != execution["plan_sha256"]:
-            raise ArtifactError("the native loader admitted a different plan v4")
-        plan_json = read_plan(
-            root / f"processes/{process_id}/{execution['runtime_path']}"
-        )
-        if plan_digest(plan_json) != execution["plan_sha256"]:
-            raise ArtifactError("the stored plan v4 differs from its declared digest")
+        plan_sha256 = str(admission["plan_sha256"])
         model_payload = _json_payload(manifest, "model/compiled-model.json")
         model = model_digest(model_payload)
         request = execution["request"]
-        found = _recall(model, request, execution["plan_sha256"])
+        found = _recall(model, request, plan_sha256)
         if found is None:
             compiled = CompiledModel.from_dict(
                 model_payload, validate_fingerprint=False
@@ -548,7 +578,7 @@ class V2VirtualRuntime:
                 native,
                 correlators_from_record(request),
             )
-            if generated.plan_json != plan_json:
+            if generated.plan_sha256 != plan_sha256:
                 raise ArtifactError(
                     "the plan v4 regenerated from this artifact differs from the "
                     "stored one: it was written by a different pyAmpliCol build; "
@@ -574,8 +604,6 @@ class V2VirtualRuntime:
         self._member = member
         self._group_member = group_member
         self._executor = NativeExecutor(observables.slice, exported=exported)
-        # Constructing the f64 executor validates the stored program natively.
-        self._executor.native("double")
         self._parameters = _real_parameters(model_parameters)
         self._observables = V2ObservablesRuntime(
             observables,
@@ -610,7 +638,6 @@ class V2VirtualRuntime:
             for item in self._metadata["sectors"]
         )
         self._lock = RLock()
-        self._muted = bool(mute_warnings)
 
     # -- identity and metadata ------------------------------------------------
 
@@ -936,7 +963,9 @@ class V2VirtualRuntime:
         arithmetic: str | None = None,
         **options: Any,
     ) -> Any:
-        """Per Born helicity row and Born basis element (design §8.5)."""
+        """Per Born helicity row; the colour axis holds one entry per Born
+        basis element at LC (``basis-<i>``) and one contracted component at
+        NLC and full colour (design §8.5)."""
 
         return self._observables.evaluate_resolved(
             momenta, **self._observable_options(precision, arithmetic, options)
@@ -991,10 +1020,10 @@ class V2VirtualRuntime:
             self._observables.clear()
 
     def mute_warnings(self) -> None:
-        self._muted = True
+        """No effect: v2 runtimes emit no runtime warnings."""
 
     def unmute_warnings(self) -> None:
-        self._muted = False
+        """No effect: v2 runtimes emit no runtime warnings."""
 
 
 def _zero(carrier: str) -> Any:

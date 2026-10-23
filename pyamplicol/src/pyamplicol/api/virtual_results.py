@@ -687,7 +687,9 @@ class ResolvedVirtualEvaluation:
     holds per lane one :class:`VirtualStabilityEstimate` per resolved entry,
     indexed ``[helicity][virtual colour component]``, each relative to its own
     entry (``None`` for failed lanes); it is ``None`` when no check was
-    requested.
+    requested. An entry that vanishes structurally (a helicity row whose Born
+    amplitude is zero) holds rounding noise, so its relative estimate is
+    large (e.g. 1e4): compare such entries on the point's scale.
     """
 
     born_values: ResolvedCoefficients

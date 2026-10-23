@@ -14,7 +14,7 @@ from __future__ import annotations
 import cmath
 import os
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from decimal import Decimal
 from pathlib import Path
@@ -1065,24 +1065,24 @@ def _compare_validation_result(
 
 # --------------------------------------------------------------------- engine v2
 
+# The forced seed FFT is refused (``_v2_blockers``): the native executor
+# contracts the exported seed weights directly.
 _V2_CONTRACTION = {
     ColorContraction.AUTO: "auto",
     ColorContraction.DIRECT: "direct",
-    ColorContraction.SYMMETRIC_GROUP_FFT: "fft",
 }
 
 
-def _v2_blockers(backend, correlators) -> tuple[str, ...]:
-    """Requests the v2 engine does not cover yet; loop.engine='legacy' does."""
+def _v2_blockers(backend) -> tuple[str, ...]:
+    """Requests the v2 engine does not cover yet; loop.engine='legacy' does.
+
+    Several correction orders are not refused here: ``_v2_request`` derives
+    one exact loop order per correction, and the generator admits them or
+    fails closed with its reason (in the SM, QED and electroweak corrections
+    to quark processes stop at the counterterm admission or at chiral
+    loop-fermion vertices: WP3.2)."""
     run = backend._run_config
     reasons = []
-    if len(run.process.loop_coupling_orders) != 1:
-        reasons.append(
-            "v2 virtuals take one correction order (process.loop_coupling_orders): "
-            "QED and electroweak corrections need the v2 electroweak loop "
-            "admission (chiral loop-fermion vertices, massive vector and "
-            "Goldstone loops, generic counterterm admission; WP3.2)"
-        )
     if run.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT:
         reasons.append(
             "the native v2 executor contracts seed columns directly; "
@@ -1100,25 +1100,65 @@ def _v2_blockers(backend, correlators) -> tuple[str, ...]:
     return tuple(reasons)
 
 
-def _blocked(backend, processes, correlators) -> tuple[str, ...]:
-    reasons = _feature_blockers(backend, processes) + _v2_blockers(backend, correlators)
+def _blocked(backend, processes) -> tuple[str, ...]:
+    reasons = _feature_blockers(backend, processes) + _v2_blockers(backend)
     if reasons:
         reasons += ("loop.engine='legacy' remains available for these requests",)
     return reasons
 
 
-def _v2_request(backend, context, index):
-    """The slice request of one expanded process (``loops.v2.assemble``).
+def v2_loop_orders(
+    limits: Mapping[str, int], corrections: Sequence[str]
+) -> dict[str, int] | tuple[dict[str, int], ...]:
+    """The exact loop orders of a v2 request: per correction, the Born
+    coupling-order limits raised by two powers of that correction (one loop
+    order, a mapping, for one correction; a sequence for several, e.g. QCD
+    and QED corrections to the same Born order). They are the loop
+    amplitudes of the Born amplitude order at the limits; a process with
+    several Born amplitude orders is refused after generation
+    (``_require_one_born_order``)."""
 
-    The Born bounds are the process's coupling-order limits; the loop
-    amplitude has exactly those orders raised by two powers of the correction
-    (one Born amplitude order: the generator's Born catalogue then holds that
-    order alone, or the slice refuses the request).
-    """
+    orders = tuple(
+        {**dict(limits), name: limits.get(name, 0) + 2} for name in corrections
+    )
+    if not orders:
+        raise GenerationError("a virtual needs at least one correction order")
+    return orders[0] if len(orders) == 1 else orders
+
+
+def _require_declared_corrections(compiled, corrections) -> None:
+    """Every correction must be a perturbative coupling order of the source
+    model (``perturbative_expansion`` >= 1): the capability boundary the
+    legacy graph generator checks (``loops.graphs.build_loop_process``).
+    Without it the v2 generator would admit no loop species of that order
+    and silently return a vanishing correction."""
+
+    orders = {
+        record["name"]: record["fields"].get("perturbative_expansion", 0)
+        for record in compiled.raw_loop_model.collections["coupling_orders"]
+    }
+    undeclared = [name for name in corrections if orders.get(name, 0) < 1]
+    if undeclared:
+        raise GenerationError(
+            "requested corrections require declared NLO model support: the "
+            f"source model does not expand {undeclared} perturbatively"
+        )
+
+
+def _loop_orders_record(request) -> object:
+    orders = [dict(orders) for orders in request.exact_loop_orders]
+    return orders[0] if len(orders) == 1 else orders
+
+
+def _v2_request(backend, context, index):
+    """The slice request of one expanded process (``loops.v2.assemble``):
+    the Born bounds are the process's coupling-order limits, the loop orders
+    ``v2_loop_orders``."""
     from pyamplicol.loops.v2.assemble import SliceRequest
 
     run = backend._run_config
     limits = context.limits[index]
+    _require_declared_corrections(context.resolved.compiled, context.corrections)
     fixed = {}
     for name, (real, imaginary) in context.preparation.fixed_parameters.items():
         if Decimal(imaginary) != 0:
@@ -1130,10 +1170,7 @@ def _v2_request(backend, context, index):
     return SliceRequest(
         context.expanded[index].process_ir.process,
         dict(limits),
-        {
-            name: value + (2 if name in context.corrections else 0)
-            for name, value in limits.items()
-        },
+        v2_loop_orders(limits, context.corrections),
         corrections=context.corrections,
         fixed_parameters=fixed,
         accuracy=accuracy,
@@ -1143,7 +1180,7 @@ def _v2_request(backend, context, index):
 
 
 def _plan_v2(backend, processes, blockers, *, model=None):
-    blockers = blockers + _v2_blockers(backend, None)
+    blockers = blockers + _v2_blockers(backend)
     context, coverage = None, []
     if not blockers:
         try:
@@ -1165,7 +1202,7 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                         "process": entry.request.expression,
                         "engine": "v2",
                         "born_orders": dict(request.born_orders),
-                        "loop_orders": dict(request.loop_orders),
+                        "loop_orders": _loop_orders_record(request),
                         "corrections": list(request.corrections),
                         "color_accuracy": request.accuracy,
                         "numerator_compilation_deferred": True,
@@ -1190,17 +1227,23 @@ def _plan_v2(backend, processes, blockers, *, model=None):
 
 
 def _require_one_born_order(name, process):
-    """Refuse mixed Born coupling orders: ``_v2_request`` maps the process's
-    limits to one exact loop order, which is the loop amplitude of a single
-    Born amplitude order only."""
+    """Refuse mixed Born coupling orders (``v2_loop_orders``).
+
+    The service derives the exact loop orders from the Born coupling-order
+    limits, i.e. for the Born amplitude order at the limits; deriving one
+    loop order per Born amplitude order needs the generator's Born catalogue,
+    which exists only once the slice is built, so the refusal follows the
+    generation. In the SM such requests also need the v2 electroweak loop
+    admission (chiral loop-fermion vertices, WP3.2)."""
     orders = tuple(process.slice.blocks.born_orders)
     if len(orders) != 1:
         raise GenerationError(
             f"{name!r} has several Born amplitude orders {orders}: v2 virtuals "
-            "currently take one (the slice request admits one exact loop order "
-            "per Born order, which the service does not derive yet; in the SM "
-            "the QCD x electroweak pieces also need the v2 electroweak loop "
-            "admission of WP3.2); loop.engine='legacy' remains available"
+            "take one Born amplitude order (the service derives the loop orders "
+            "from the Born coupling-order limits, the loop amplitudes of the "
+            "Born order at those limits only; in the SM the QCD x electroweak "
+            "interferences also need the v2 electroweak loop admission, WP3.2); "
+            "loop.engine='legacy' remains available"
         )
 
 
@@ -1251,7 +1294,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
 
     from .process_grouping import GroupingBasis, GroupMember, LegMapping
 
-    blockers = _blocked(backend, processes, correlators)
+    blockers = _blocked(backend, processes)
     if blockers:
         raise GenerationError("; ".join(blockers))
     reporter = GenerationPhaseReporter(backend._progress)
@@ -1330,7 +1373,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 "loop_engine": "v2",
                                 "loop_coupling_orders": context.corrections,
                                 "born_orders": dict(request.born_orders),
-                                "loop_orders": dict(request.loop_orders),
+                                "loop_orders": _loop_orders_record(request),
                                 "model_declaration": context.declaration.to_dict(),
                                 **(
                                     {"correlators": correlators.to_json_dict()}
