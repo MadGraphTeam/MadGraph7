@@ -357,6 +357,46 @@ def test_validate_agrees_with_the_providers(
 
 
 @pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("process", "born", "accuracy"),
+    [
+        ("g g > g g g", "QCD=3", "fc"),
+        ("g g > g g g", "QCD=3", "lc"),
+        ("g g > g g g", "QCD=3", "nlc"),
+        ("u u~ > g g g", "QCD=3", "lc"),
+    ],
+)
+def test_poles_double_pole_is_universal(
+    loop_sm_compiled_model, monkeypatch, process, born, accuracy
+):
+    """``tools/loop_v2_generate.py poles``: native trees and Born, the bare
+    double pole over the Born is -(alpha_s/2pi) sum_i C_i, at leading colour
+    with the Casimirs' leading parts (C_F -> N_c/2) over the leading-colour
+    Born of the native component metric (NLC: adjoint legs only)."""
+
+    import argparse
+
+    from tools import loop_v2_generate
+
+    # The tool's stage timers patch the generator's modules for good.
+    monkeypatch.setattr(loop_v2_generate._Timers, "install", lambda self: None)
+    record = loop_v2_generate.poles(
+        argparse.Namespace(
+            process=process,
+            born=born,
+            accuracy=accuracy,
+            ignored="",
+            points=2,
+            rotation=False,
+            alpha_s="0.118",
+            tolerance=1e-10,
+            model=str(loop_sm_compiled_model),
+        )
+    )
+    assert record["passed"], record["points"]
+
+
+@pytest.mark.loop_physics
 def test_reachability_falls_back_where_field_level_families_differ(
     loop_sm_compiled_model, loop_native, monkeypatch
 ):

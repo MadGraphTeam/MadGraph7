@@ -32,8 +32,9 @@ compared; the bare finite part and single pole are reported.
 (MASTER_PLAN §0.1): native inputs at ``--points`` exact points
 (``tools/loop_reference/exact_points``), the double pole of the bare virtual
 over the Born against the universal -(alpha_s/2pi) sum_i C_i of its massless
-coloured legs, and with ``--rotation`` the stability estimate of one
-rotation check.
+coloured legs (at ``--accuracy lc`` the Casimirs' leading-colour parts; NLC
+only with adjoint legs), and with ``--rotation`` the stability estimate of
+one rotation check.
 
 Usage:
     python tools/loop_v2_generate.py measure "g g > g g g g" --born QCD=4
@@ -44,7 +45,8 @@ Usage:
         [--precision double|dd] [--stability] [--inputs python|native]
         [--json OUT.json]
     python tools/loop_v2_generate.py poles "g g > g g g g g" --born QCD=5
-        [--points 3] [--rotation] [--tolerance 1e-8] [--json OUT.json]
+        [--accuracy fc|lc|nlc] [--points 3] [--rotation] [--tolerance 1e-8]
+        [--json OUT.json]
 """
 
 from __future__ import annotations
@@ -372,8 +374,15 @@ def _validate(args) -> dict[str, Any]:
     return record
 
 
-# Quadratic Casimirs of SU(3) by UFO colour representation.
+# Quadratic Casimirs of SU(3) by UFO colour representation, and their
+# leading-colour parts (C_F = N_c/2 - 1/(2 N_c), C_6 = N_c + 1 - 2/N_c, C_A =
+# N_c): the double pole of a leading-colour virtual is -(alpha_s/2pi) times
+# the leading parts' sum times the leading-colour Born, as every Casimir
+# leads with N_c^1. At next-to-leading colour that holds only with adjoint
+# legs (C_A is one power of N_c); a quark's -1/(2 N_c) meets Born powers the
+# virtual's projection drops.
 _CASIMIRS = {1: Fraction(0), 3: Fraction(4, 3), 6: Fraction(10, 3), 8: Fraction(3)}
+_LEADING_CASIMIRS = {1: Fraction(0), 3: Fraction(3, 2), 6: Fraction(3), 8: Fraction(3)}
 
 
 def poles(args) -> dict[str, Any]:
@@ -389,7 +398,11 @@ def poles(args) -> dict[str, Any]:
     timers.install()
     compiled = _compiled_model(args.model)
     request = _request(args)
-    record: dict[str, Any] = {"process": args.process, "born": args.born}
+    record: dict[str, Any] = {
+        "process": args.process,
+        "born": args.born,
+        "accuracy": args.accuracy,
+    }
     start = time.perf_counter()
     slice_ = LoopSlice.generate(compiled, request, load_loop_native())
     record["generate_s"] = round(time.perf_counter() - start, 1)
@@ -400,16 +413,21 @@ def poles(args) -> dict[str, Any]:
     values = _kernel_parameters(compiled, {**parameters, **request.fixed_parameters})
     by_pdg = {int(p["pdg_code"]): p for p in slice_.data["particles"]}
     masses, casimirs = [], Fraction(0)
+    table = _LEADING_CASIMIRS if args.accuracy == "lc" else _CASIMIRS
     for leg in sorted(slice_.blocks.process.legs, key=lambda leg: leg.label):
         particle = by_pdg[int(leg.pdg)]
         mass = particle.get("mass")
         mass = Fraction(0) if mass in (None, "ZERO", "0") else values[mass]
         masses.append(mass)
         colour = abs(int(particle["color"]))
-        if colour not in _CASIMIRS:
+        if colour not in table:
             raise SystemExit(f"no Casimir for colour representation {colour}")
+        if args.accuracy == "nlc" and mass == 0 and colour not in (1, 8):
+            raise SystemExit(
+                "the universal double pole holds at NLC only with massless adjoint legs"
+            )
         if mass == 0:
-            casimirs += _CASIMIRS[colour]
+            casimirs += table[colour]
     expected = -float(Fraction(args.alpha_s) * casimirs) / (2 * 3.141592653589793)
     record["expected_double_pole_over_born"] = expected
     checks = None
