@@ -77,7 +77,6 @@ from pyamplicol.color.connections import (
     ExactColorCoefficient,
     TensorTerm,
     apply_color_connection,
-    contract_connected_tensor_nc_terms,
     evaluate_color_nc_terms,
 )
 from pyamplicol.color.contraction_types import NC
@@ -99,6 +98,7 @@ from .colour import (
     _colour_key,
     _relabelled_colour,
     build_seed_table,
+    contract_colour,
     extend_seed_table,
     kept,
     seed_fourier,
@@ -1493,9 +1493,7 @@ class LoopSlice:
         found = cache.get((left, right))
         if found is None:
             legs = self.basis.legs
-            cells = contract_connected_tensor_nc_terms(
-                _single(left, legs), _single(right, legs)
-            )
+            cells = contract_colour(_single(left, legs), _single(right, legs))
             found = cache[(left, right)] = {
                 power: value for power, value in cells.items() if value
             }
@@ -1646,7 +1644,7 @@ class LoopSlice:
                         if cell is None:
                             cell = cells[pair] = _real_colour(
                                 evaluate_color_nc_terms(
-                                    contract_connected_tensor_nc_terms(
+                                    contract_colour(
                                         image(a, left, term, rename),
                                         image(b, key, other, rename),
                                     )

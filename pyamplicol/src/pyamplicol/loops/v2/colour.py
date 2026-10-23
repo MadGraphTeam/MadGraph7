@@ -86,7 +86,7 @@ from pyamplicol.color.connections import (
     ExactColorCoefficient,
     OpenColorString,
     TensorTerm,
-    contract_connected_tensor_nc_terms,
+    _literal_tensor_overlap_nc_terms,
     overlap_traces,
 )
 from pyamplicol.color.contraction_trace import (
@@ -1546,7 +1546,7 @@ class BornBasis:
                 pair = (key, _relabelled_key(right, rename))
                 found = cells.get(pair)
                 if found is None:
-                    found = cells[pair] = contract_connected_tensor_nc_terms(
+                    found = cells[pair] = contract_colour(
                         _relabelled(left, rename), _relabelled(right, rename)
                     )
                 row.append(found)
@@ -1563,6 +1563,49 @@ class BornBasis:
             for b2, cell in enumerate(row)
             if any((a, a2) in pairs for a in self.orders[b] for a2 in self.orders[b2])
         )
+
+
+def contract_colour(left: ConnectedColorTensor, right: ConnectedColorTensor) -> Laurent:
+    """``contract_connected_tensor_nc_terms`` (the exact Laurent coefficients
+    of ``left.conjugate() * right``) with each literal overlap, a product of
+    adjoint traces, counted natively: the subset sum over the labels that
+    take the U(1) term of their Fierz identity, each term N_c to its index
+    loops (``loop_v2::generate::cycles``). Products with too many labels for
+    the subset sum keep the trace algebra of ``color/contraction_trace.py``,
+    which is the oracle of both."""
+
+    if left.legs != right.legs:
+        raise ValueError(
+            "bra and ket connections must have identical typed output legs"
+        )
+    power = left.normalization_power + right.normalization_power
+    if power % 2:
+        raise ValueError("bra/ket normalization has an odd inverse sqrt(2) power")
+    normalization = Fraction(1, 2 ** (power // 2))
+    pairs = [(a, b) for a in left.terms for b in right.terms]
+    products = [overlap_traces(a.tensor, b.tensor) for a, b in pairs]
+    counted = _trace_overlaps()(products)
+    result: dict[int, ExactColorCoefficient] = {}
+    for (a, b), laurent in zip(pairs, counted, strict=True):
+        terms = (
+            _literal_tensor_overlap_nc_terms(a.tensor, b.tensor).items()
+            if laurent is None
+            else ((p, Fraction(c)) for p, c in laurent)
+        )
+        coefficient = (a.coefficient.conjugate() * b.coefficient).scaled(normalization)
+        for nc_power, factor in terms:
+            exponent = nc_power + a.nc_power + b.nc_power
+            result[exponent] = result.get(
+                exponent, ExactColorCoefficient()
+            ) + coefficient.scaled(factor)
+    return {p: value for p, value in sorted(result.items()) if value}
+
+
+@lru_cache(maxsize=1)
+def _trace_overlaps() -> Callable[[list], list]:
+    from pyamplicol.loops.native import load_loop_native
+
+    return load_loop_native().trace_overlaps
 
 
 ADJOINT = 8
@@ -1979,7 +2022,7 @@ def _extended(
             if term.tensor not in overlaps:
                 ket = ConnectedColorTensor(basis.legs, (TensorTerm(_ONE, term.tensor),))
                 overlaps[term.tensor] = tuple(
-                    contract_connected_tensor_nc_terms(b, ket) for b in basis.tensors
+                    contract_colour(b, ket) for b in basis.tensors
                 )
             for cell, overlap in zip(row_cells, overlaps[term.tensor], strict=True):
                 for power, value in overlap.items():
@@ -2106,8 +2149,8 @@ class _PrimitiveCells:
                 if found is None:
                     if ket is None:
                         ket = canonical.tensor(self.basis.legs)
-                    found = self._ring_cells[ring, bra] = (
-                        contract_connected_tensor_nc_terms(self._bras[bra], ket)
+                    found = self._ring_cells[ring, bra] = contract_colour(
+                        self._bras[bra], ket
                     )
                 out.append(found)
             return tuple(out)
@@ -2149,7 +2192,7 @@ class _PrimitiveCells:
     ) -> Laurent:
         primitive = Primitive(kind, word)
         if kind == "fundamental-trace":
-            return contract_connected_tensor_nc_terms(bra, primitive.tensor(bra.legs))
+            return contract_colour(bra, primitive.tensor(bra.legs))
         if bra.normalization_power % 2:
             raise ValueError("a Born tensor has an odd inverse sqrt(2) power")
         scale = Fraction(1, 2 ** (bra.normalization_power // 2))

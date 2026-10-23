@@ -10,8 +10,11 @@
 //!
 //! - [`families`]: the loop-prefix family recursion (`families.py`);
 //! - [`schedules`]: skeletons, the view, frames and schedule-B tries
-//!   (`skeletons.py`, `schedules.py`).
+//!   (`skeletons.py`, `schedules.py`);
+//! - [`cycles`]: SU(N_c) overlaps of trace products by cycle counting (the
+//!   exact colour contractions of `colour.py`).
 
+pub mod cycles;
 pub mod families;
 pub mod orders;
 pub mod schedules;

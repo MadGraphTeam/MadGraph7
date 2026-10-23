@@ -4,6 +4,7 @@
 //! the JSON tables of `loops/v2/generator_input.py`; outputs are plain tuples
 //! of ids that the module decodes into the Python generator's objects.
 use super::*;
+use rusticol_core::loop_v2::generate::cycles;
 use rusticol_core::loop_v2::generate::families::{FamilyInput, FamilyOutput, generate_families};
 use rusticol_core::loop_v2::generate::schedules::{
     Content, ScheduleInput, build_schedules, build_skeletons,
@@ -183,7 +184,34 @@ fn raw_content(c: Content) -> RawContent {
     )
 }
 
+/// SU(N_c) overlaps of trace products (`loop_v2::generate::cycles`): per
+/// product its nonzero `(N_c power, coefficient)` pairs, or None where it
+/// has more labels than the subset sum takes (the caller's trace algebra
+/// then evaluates it). Products are lists of traces of adjoint labels, each
+/// label twice.
+#[pyfunction]
+fn trace_overlaps(
+    py: Python<'_>,
+    products: Vec<Vec<Vec<i64>>>,
+) -> PyResult<Vec<Option<Vec<(i32, i64)>>>> {
+    py.detach(|| {
+        products
+            .iter()
+            .map(|traces| {
+                let labels: std::collections::BTreeSet<i64> =
+                    traces.iter().flatten().copied().collect();
+                if labels.len() > cycles::MAX_LABELS {
+                    return Ok(None);
+                }
+                cycles::trace_overlap(traces).map(Some)
+            })
+            .collect::<Result<Vec<_>, _>>()
+    })
+    .map_err(error)
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Generation>()?;
+    module.add_function(wrap_pyfunction!(trace_overlaps, module)?)?;
     Ok(())
 }
