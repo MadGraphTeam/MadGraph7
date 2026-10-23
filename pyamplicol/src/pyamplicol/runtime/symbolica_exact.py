@@ -3524,26 +3524,34 @@ def _antiquark_weyl(
     return _complex_zero(), _complex_zero()
 
 
+def _massless_chirality(momentum: Sequence[Decimal], helicity: int) -> int:
+    """Chirality of a massless state: its helicity, reversed for a crossed
+    (negative-energy) momentum, as the native ``ext_quark_dirac_generic``."""
+
+    return helicity if momentum[0] > 0 else -helicity
+
+
+def _chiral_dirac(
+    chirality: int, weyl: Sequence[_ComplexDecimal]
+) -> tuple[_ComplexDecimal, ...]:
+    """A Weyl spinor in the chiral Dirac basis (right-handed block first)."""
+
+    zero = (_complex_zero(), _complex_zero())
+    return (*weyl, *zero) if chirality == 1 else (*zero, *weyl)
+
+
 def _massless_quark_dirac(
     momentum: Sequence[Decimal], helicity: int
 ) -> tuple[_ComplexDecimal, ...]:
-    left, right = _quark_weyl(momentum, helicity, helicity)
-    return (
-        (left, right, _complex_zero(), _complex_zero())
-        if helicity == 1
-        else (_complex_zero(), _complex_zero(), left, right)
-    )
+    chirality = _massless_chirality(momentum, helicity)
+    return _chiral_dirac(chirality, _quark_weyl(momentum, helicity, chirality))
 
 
 def _massless_antiquark_dirac(
     momentum: Sequence[Decimal], helicity: int
 ) -> tuple[_ComplexDecimal, ...]:
-    first, second = _antiquark_weyl(momentum, helicity, helicity)
-    return (
-        (_complex_zero(), _complex_zero(), first, second)
-        if -helicity == 1
-        else (first, second, _complex_zero(), _complex_zero())
-    )
+    chirality = _massless_chirality(momentum, helicity)
+    return _chiral_dirac(chirality, _antiquark_weyl(momentum, helicity, chirality))
 
 
 def _quark_dirac(
