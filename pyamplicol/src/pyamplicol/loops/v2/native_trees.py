@@ -577,17 +577,11 @@ def _counterterm_program(
             term_powers.append(power)
         return found
 
-    def scalar_slot(
-        name: str, power: int, grade: int, scale: str | None, term_power: int
-    ) -> int:
-        """The slot of a coupling's (epsilon power, N_c grade) coefficient,
-        times a Weyl factor (a model expression) if ``scale``."""
+    def scalar_slot(name: str, power: int, grade: int, term_power: int) -> int:
+        """The slot of a coupling's (epsilon power, N_c grade) coefficient
+        weighting terms of epsilon power ``term_power``."""
 
-        spec = (
-            ("scalar", name, power, grade)
-            if scale is None
-            else ("scaled", name, power, grade, scale)
-        )
+        spec = ("scalar", name, power, grade)
         return coupling_slot((*spec, term_power), spec, term_power)
 
     def whole_slot(term: Any, degree: int, expression: Any) -> int:
@@ -659,7 +653,7 @@ def _counterterm_program(
                     (site.component, power, site.orders), len(vectors)
                 )
                 for grade, _column in grades:
-                    slot = scalar_slot(name, power, grade, None, power)
+                    slot = scalar_slot(name, power, grade, power)
                     contribute(contributions, slot, vector, grade, items, power2)
             if contributions:
                 terms.append(closure_term(term, contributions))
@@ -667,8 +661,8 @@ def _counterterm_program(
     for item in () if program is None else program.closure.terms:
         # A root term of the counterterm recursion (``ct_closure.ClosureTerm``)
         # on the counterterm program's blocks: into the vector of its
-        # (component, epsilon power, orders), with its multiplicity, Weyl
-        # factor and coupling N_c grades shifted by the inserted current's.
+        # (component, epsilon power, orders), with its multiplicity and its
+        # coupling's N_c grades shifted by the inserted current's.
         term = item.term
         contributions = []
         items = colour_items(term.colour, item.multiplicity)
@@ -687,9 +681,15 @@ def _counterterm_program(
             if contributions:
                 terms.append(whole_term(term, contributions))
             continue
+        if item.scale is not None:
+            # A Weyl line's kappa (no loop_sm process has one): the writer
+            # then keeps the plan alone and loads regenerate the slice.
+            raise NotImplementedError(
+                "native counterterm root terms with a Weyl-line factor"
+            )
         name, power = item.coupling
         for grade, _column in layout.get(item.coupling, ()):
-            slot = scalar_slot(name, power, grade, item.scale, item.power)
+            slot = scalar_slot(name, power, grade, item.power)
             contribute(contributions, slot, vector, grade + item.grade, items, power2)
         if contributions:
             terms.append(closure_term(term, contributions))
@@ -726,7 +726,7 @@ def _counterterm_program(
                 continue
             for power in LAURENT_POWERS:
                 for grade, _column in layout.get((name, power), ()):
-                    slot = scalar_slot(name, power, grade, None, power)
+                    slot = scalar_slot(name, power, grade, power)
                     out = outputs.setdefault((FIELD_COMPONENT, s, power), len(outputs))
                     entries.append(
                         [
@@ -927,30 +927,6 @@ def _parameter_program(
                     f"a counterterm program model parameter of kind {kind!r}"
                 )
 
-    def weyl_factor(text: str) -> Any:
-        """A Weyl factor (``ct_closure.CloneLine.factor``, a model expression
-        in payload syntax) on the program's inputs, as ``ct_closure.
-        model_value`` evaluates it."""
-
-        from .ct_sites import resolved_internal_parameters
-
-        compiled = counterterm_trees.rows.compiled
-        value = E(text)
-        internal = {
-            record.name
-            for record in compiled.ir.parameters
-            if record.nature == "internal"
-        }
-        for name in {*internal, *compiled.parameter_defaults}:
-            payload = E(f"UFO::{{}}::{name}")
-            if value.contains(payload):
-                value = value.replace(
-                    payload, E(ct_symbols.symbol(name).to_canonical_string())
-                )
-        return resolved_internal_parameters(compiled, value).replace_multiple(
-            ct_externals
-        )
-
     # Born couplings per N_c grade, from the slice's scalar plans (the Born's
     # and the others', their columns concatenated in the layout).
     plans, layout = slice_._scalar_plan(LAURENT_POWERS)
@@ -1015,13 +991,6 @@ def _parameter_program(
             value = scalar(name, power, grade)
             counterterm_outputs.append(
                 output(("counterterm", name, power, grade), lambda v=value: v)
-            )
-            continue
-        if slot[0] == "scaled":
-            _kind, name, power, grade, scale = slot
-            value = scalar(name, power, grade) * weyl_factor(scale)
-            counterterm_outputs.append(
-                output(("scaled", name, power, grade, scale), lambda v=value: v)
             )
             continue
         _kind, degree, coefficient, scalars = slot
