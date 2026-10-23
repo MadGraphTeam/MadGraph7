@@ -35,7 +35,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use symbolica::domains::float::{Complex, DoubleFloat, Float, Real};
 use symbolica::domains::rational::Rational;
-use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain, ExpressionEvaluator};
+use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
 
 /// The tree-program schema this executor runs.
 pub const TREE_SCHEMA: u32 = 1;
@@ -138,7 +138,9 @@ enum TermInput {
 }
 
 struct Stage {
-    exact: ExpressionEvaluator<Complex<Rational>>,
+    /// The saved exact evaluator, decoded per carrier runtime (a decoded
+    /// program holds many times its saved size).
+    saved: Vec<u8>,
     parameters: usize,
     inputs: Vec<(usize, usize)>,
     outputs: Vec<(usize, usize, usize)>,
@@ -238,7 +240,8 @@ impl TreeProgram {
         }
         let mut loaded = Vec::with_capacity(stages.len());
         for (bytes, stage) in stages.iter().zip(file.stages) {
-            let exact = crate::engine::decode_exact_evaluator_state(bytes)?;
+            // Decoded once to validate the payload, then kept saved.
+            drop(crate::engine::decode_exact_evaluator_state(bytes)?);
             for &(parameter, component) in &stage.inputs {
                 require(
                     parameter < stage.parameters && component < file.state_size,
@@ -250,7 +253,7 @@ impl TreeProgram {
                 let _ = start;
             }
             loaded.push(Stage {
-                exact,
+                saved: bytes.clone(),
                 parameters: stage.parameters,
                 inputs: stage.inputs,
                 outputs: stage.outputs,
@@ -429,8 +432,9 @@ impl TreeProgram {
         self.model_count
     }
 
-    /// The program in carrier `T` (stage evaluators and exact weights cast).
-    pub fn runtime<T: Carrier + Real>(&self, zero: &T) -> TreeRuntime<T>
+    /// The program in carrier `T` (stage evaluators and exact weights cast);
+    /// each stage is decoded, cast and dropped in turn.
+    pub fn runtime<T: Carrier + Real>(&self, zero: &T) -> RusticolResult<TreeRuntime<T>>
     where
         Complex<T>: Real + EvaluationDomain,
     {
@@ -441,13 +445,11 @@ impl TreeProgram {
             .stages
             .iter()
             .map(|stage| {
-                stage
-                    .exact
-                    .clone()
+                Ok(crate::engine::decode_exact_evaluator_state(&stage.saved)?
                     .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
-                    .into_batch_evaluator()
+                    .into_batch_evaluator())
             })
-            .collect();
+            .collect::<RusticolResult<Vec<_>>>()?;
         let weights = self
             .terms
             .iter()
@@ -486,14 +488,14 @@ impl TreeProgram {
                 .map(|(_s, _l, _r, [re, im])| complex(re, im))
                 .collect()
         });
-        TreeRuntime {
+        Ok(TreeRuntime {
             evaluators,
             weights,
             factors,
             gram,
             metric,
             average: cast(zero, &self.average),
-        }
+        })
     }
 
     /// The native inputs of a batch: `momenta` are the plan's all-incoming

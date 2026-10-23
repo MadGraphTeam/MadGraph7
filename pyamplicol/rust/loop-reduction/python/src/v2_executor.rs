@@ -198,7 +198,7 @@ impl Trees {
             .as_ref()
             .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>());
         if fresh {
-            *guard = Some(Box::new(self.program.runtime(zero)));
+            *guard = Some(Box::new(self.program.runtime(zero).map_err(error)?));
         }
         let runtime = guard
             .as_mut()
