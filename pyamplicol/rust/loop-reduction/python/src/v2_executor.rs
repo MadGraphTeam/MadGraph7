@@ -768,7 +768,56 @@ fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyRes
     .map_err(error)
 }
 
+/// One point of [`evaluate_v2_artifact`]: (Born per declared Born order,
+/// complete virtual per declared sector), or None with the failures.
+type V2ArtifactPoint = (Option<(Vec<f64>, Vec<Vec<f64>>)>, Vec<String>);
+
+/// Evaluate a plan v4 process with native point inputs through the Rust
+/// runtime the SDKs use (`rusticol_loop_reduction::v2_runtime::V2Runtime`):
+/// no Python generation or assembly, binary64. `momenta` are per point the
+/// physical momenta of every leg (`4 × legs` exact decimal or fraction
+/// strings), `scales` mu_R² per point, `parameters` the caller's model
+/// parameter values (exact strings).
+#[pyfunction]
+#[pyo3(signature = (path, momenta, scales, *, process=None, parameters=None, poles=true, threads=None))]
+#[allow(clippy::too_many_arguments)]
+fn evaluate_v2_artifact(
+    py: Python<'_>,
+    path: &str,
+    momenta: Vec<Vec<String>>,
+    scales: Vec<String>,
+    process: Option<&str>,
+    parameters: Option<BTreeMap<String, String>>,
+    poles: bool,
+    threads: Option<usize>,
+) -> PyResult<Vec<V2ArtifactPoint>> {
+    use rusticol_loop_reduction::v2_runtime::V2Runtime;
+
+    let momenta = momenta
+        .into_iter()
+        .map(rationals)
+        .collect::<PyResult<Vec<_>>>()?;
+    let scales = rationals(scales)?;
+    let points = py
+        .detach(|| {
+            let mut runtime = V2Runtime::open(path, process, threads)?;
+            if let Some(values) = &parameters {
+                runtime.set_parameters(values.iter().map(|(k, v)| (k.as_str(), v.as_str())))?;
+            }
+            runtime.evaluate(&momenta, &scales, poles)
+        })
+        .map_err(error)?;
+    Ok(points
+        .into_iter()
+        .map(|point| match point {
+            Ok(values) => (Some(values), Vec::new()),
+            Err(failures) => (None, failures),
+        })
+        .collect())
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Executor>()?;
-    module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)
+    module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(evaluate_v2_artifact, module)?)
 }

@@ -10,6 +10,7 @@ use rusticol_core::loop_runtime::LoopRuntimePlan;
 pub use rusticol_core::source_bindings::SourceOverrides;
 use rusticol_core::{RusticolError, RusticolResult};
 use rusticol_loop_reduction::runtime::{Batch, Data};
+use rusticol_loop_reduction::v2_runtime::{V2Runtime, is_v2_artifact};
 use rusticol_loop_reduction::verification::VerificationDiagnostic;
 pub use rusticol_loop_reduction::verification::{ArithmeticSpec, VerificationPolicy};
 use rusticol_loop_reduction::virtual_runtime::VirtualRuntime;
@@ -67,8 +68,19 @@ pub struct Evaluation {
     pub diagnostics_json: String,
 }
 
+/// The runtime behind an SDK handle: a plan v1-v3 loop runtime, or a plan v4
+/// process with native point inputs (`v2_runtime`, WP3.1 I6).
+enum Engine {
+    V3(VirtualRuntime),
+    V4(Box<V2Runtime>),
+}
+
+const V4_ONLY_ORDINARY: &str = "plan v4 SDK runtimes serve ordinary (unresolved) \
+    binary64 virtuals with model R2; resolved, correlated, verified and \
+    rescued evaluations go through the Python API";
+
 pub struct Runtime {
-    native: VirtualRuntime,
+    engine: Engine,
     shape: Shape,
     color_components: Vec<String>,
     born_anchored_color: bool,
@@ -94,6 +106,9 @@ impl Runtime {
         r2_strategy: &str,
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Self> {
+        if is_v2_artifact(path.as_ref())? {
+            return Self::open_v4(path, process, parameters, r2_strategy, policy);
+        }
         let native = VirtualRuntime::open_with_policy(
             path,
             process,
@@ -126,7 +141,7 @@ impl Runtime {
             .collect();
         let spin_classes = native.selected_spin_classes().to_vec();
         Ok(Self {
-            native,
+            engine: Engine::V3(native),
             shape,
             color_components,
             born_anchored_color: plan.born_color_components.is_some(),
@@ -134,32 +149,110 @@ impl Runtime {
             spin_classes,
         })
     }
+    /// A plan v4 process: its stored native program evaluates every point
+    /// (no Python, no generation; `rusticol_loop_reduction::v2_runtime`).
+    fn open_v4(
+        path: impl AsRef<Path>,
+        process: Option<&str>,
+        parameters: Option<&SourceOverrides>,
+        r2_strategy: &str,
+        policy: Option<&VerificationPolicy>,
+    ) -> RusticolResult<Self> {
+        if r2_strategy != "model" || policy.is_some() {
+            return Err(invalid(V4_ONLY_ORDINARY));
+        }
+        let mut native = V2Runtime::open(path, process, None)?;
+        if let Some(values) = parameters {
+            native.set_parameters(real_overrides(values)?)?;
+        }
+        let shape = Shape {
+            external_count: native.external_count(),
+            born_orders: native.born_orders(),
+            virtual_orders: native.sectors(),
+            helicities: native.helicities(),
+            born_color_components: 1,
+            virtual_color_components: 1,
+            epsilon_count: 3,
+            resolved_available: 0,
+        };
+        Ok(Self {
+            color_components: vec![native.metadata().color_accuracy.clone()],
+            engine: Engine::V4(Box::new(native)),
+            shape,
+            born_anchored_color: false,
+            history_ids: vec![],
+            spin_classes: vec![],
+        })
+    }
+    /// The plan v1-v3 runtime (plan v4 serves ordinary virtuals only).
+    fn v3(&self) -> RusticolResult<&VirtualRuntime> {
+        match &self.engine {
+            Engine::V3(native) => Ok(native),
+            Engine::V4(_) => Err(invalid(V4_ONLY_ORDINARY)),
+        }
+    }
+    fn v3_mut(&mut self) -> RusticolResult<&mut VirtualRuntime> {
+        match &mut self.engine {
+            Engine::V3(native) => Ok(native),
+            Engine::V4(_) => Err(invalid(V4_ONLY_ORDINARY)),
+        }
+    }
     pub fn shape(&self) -> Shape {
         self.shape
     }
     pub fn verification_policy(&self) -> Option<&VerificationPolicy> {
-        self.native.verification_policy()
+        match &self.engine {
+            Engine::V3(native) => native.verification_policy(),
+            Engine::V4(_) => None,
+        }
     }
     /// Existing artifact metadata includes exact order pairings and schemes.
     pub fn metadata_json(&self) -> RusticolResult<String> {
-        self.native.metadata_json()
+        match &self.engine {
+            Engine::V3(native) => native.metadata_json(),
+            Engine::V4(native) => native.metadata_json(),
+        }
     }
     pub fn capabilities_json(&self) -> RusticolResult<String> {
+        if let Engine::V4(native) = &self.engine {
+            let metadata = native.metadata();
+            return serde_json::to_string(&serde_json::json!({
+                "contribution_kind":"virtual", "execution_mode":"loop_recurrence",
+                "engine":"v2", "plan_sha256":native.plan_sha256(),
+                "point_inputs":"native-v1",
+                "arithmetic":["double"], "epsilon_powers":[0,-1,-2],
+                "resolved":false, "correlations":false,
+                "correlation_histories":Vec::<String>::new(),
+                "spin_correlation_classes":Vec::<Vec<usize>>::new(),
+                "correlated_resolved":false,
+                "color_accuracy":metadata.color_accuracy,
+                "color_contraction":metadata.color_contraction,
+                "color_components":self.color_components,
+                "color_component_semantics":"contracted colour",
+                "available_r2_strategies":["model"],
+                "r2_strategy":"model", "explicit_verification":false,
+                "source_only":true,
+                "retained_verification_policy":serde_json::Value::Null,
+                "normalization":"physical couplings and inclusive initial spin/color average"
+            }))
+            .map_err(serialization);
+        }
+        let native = self.v3()?;
         serde_json::to_string(&serde_json::json!({
             "contribution_kind":"virtual", "execution_mode":"loop_recurrence",
             "arithmetic":["double"], "epsilon_powers":[0,-1,-2],
-            "resolved": self.native.metadata().resolved, "correlations":self.native.metadata().correlations,
+            "resolved": native.metadata().resolved, "correlations":native.metadata().correlations,
             "correlation_histories":self.history_ids,
             "spin_correlation_classes":self.spin_classes,
             "correlated_resolved":false,
             "correlated_layout":"point/history/order/epsilon; complex binary64",
-            "color_accuracy":self.native.metadata().color_accuracy,
-            "color_contraction":self.native.color_contraction_metadata(),
+            "color_accuracy":native.metadata().color_accuracy,
+            "color_contraction":native.color_contraction_metadata(),
             "color_components":self.color_components,
             "color_component_semantics":if self.born_anchored_color {
                 "signed canonical Born tensor groups, potentially overcomplete; not sampling probabilities"
             } else { "contracted colour" },
-            "available_r2_strategies": self.native.metadata().available_r2_strategies,
+            "available_r2_strategies": native.metadata().available_r2_strategies,
             "r2_strategy":"model", "explicit_verification":true,
             "source_only":true,
             "retained_verification_policy":self.verification_policy().map(|p| serde_json::json!({
@@ -170,11 +263,19 @@ impl Runtime {
             "normalization":"physical couplings and inclusive initial spin/color average; resolved helicities retain that average"
         })).map_err(serialization)
     }
-    pub fn update_parameters(&self, values: &SourceOverrides) -> RusticolResult<u64> {
-        self.native.update_parameters(values)
+    pub fn update_parameters(&mut self, values: &SourceOverrides) -> RusticolResult<u64> {
+        match &mut self.engine {
+            Engine::V3(native) => native.update_parameters(values),
+            Engine::V4(native) => {
+                native.set_parameters(real_overrides(values)?)?;
+                Ok(0)
+            }
+        }
     }
     pub fn clear(&mut self) {
-        self.native.clear();
+        if let Engine::V3(native) = &mut self.engine {
+            native.clear();
+        }
     }
     /// Binary64 inputs are encoded as their exact terminating decimal values,
     /// so higher arithmetic retries preserve the original C/Rust input numbers.
@@ -216,18 +317,20 @@ impl Runtime {
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Evaluation> {
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
+        if let Engine::V4(native) = &mut self.engine {
+            if resolved || policy.is_some() || strategy.is_some_and(|s| s != "model") {
+                return Err(invalid(V4_ONLY_ORDINARY));
+            }
+            return Evaluation::from_v4(native, inputs, self.shape);
+        }
         let effective = policy.or_else(|| self.verification_policy()).cloned();
+        let native = self.v3_mut()?;
         let (result, verification) = match effective.as_ref() {
             Some(policy) => {
-                let output = self
-                    .native
-                    .evaluate_verified(inputs, strategy, resolved, policy)?;
+                let output = native.evaluate_verified(inputs, strategy, resolved, policy)?;
                 (output.result, output.diagnostics)
             }
-            None => (
-                self.native.evaluate_partial(inputs, strategy, resolved)?,
-                vec![],
-            ),
+            None => (native.evaluate_partial(inputs, strategy, resolved)?, vec![]),
         };
         Evaluation::from_native(result, verification, self.shape, resolved)
     }
@@ -256,6 +359,24 @@ impl Runtime {
             model_values: vec![],
         })
     }
+}
+
+/// Real model parameter overrides (a plan v4 process takes real external
+/// parameters).
+fn real_overrides(values: &SourceOverrides) -> RusticolResult<Vec<(&str, &str)>> {
+    values
+        .iter()
+        .map(|(name, [re, im])| {
+            let zero = im.trim().trim_start_matches(['-', '+']);
+            if zero.chars().all(|c| c == '0' || c == '.') && !zero.is_empty() {
+                Ok((name.as_str(), re.as_str()))
+            } else {
+                Err(invalid(format!(
+                    "plan v4 model parameter {name:?} must be real"
+                )))
+            }
+        })
+        .collect()
 }
 
 fn exact_double(value: f64) -> RusticolResult<String> {
@@ -315,6 +436,63 @@ fn pack(
 }
 
 impl Evaluation {
+    /// One ordinary binary64 batch of a plan v4 process: Born per order and
+    /// the complete virtual per sector and epsilon power, failed points
+    /// without rows.
+    fn from_v4(native: &mut V2Runtime, inputs: LoopInputs, shape: Shape) -> RusticolResult<Self> {
+        use rusticol_core::loop_v2::dress::parse_rational;
+        let width = 4 * shape.external_count;
+        let momenta = inputs
+            .momenta
+            .chunks(width.max(1))
+            .map(|point| point.iter().map(|x| parse_rational(x)).collect())
+            .collect::<RusticolResult<Vec<Vec<_>>>>()?;
+        let scales = inputs
+            .scales_squared
+            .iter()
+            .map(|x| parse_rational(x))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let points = native.evaluate(&momenta, &scales, true)?;
+        let mut successful_point_ids = Vec::new();
+        let mut statuses = Vec::with_capacity(points.len());
+        let mut failures = BTreeMap::new();
+        let mut born = Vec::new();
+        let mut virtual_values = Vec::new();
+        for (id, point) in inputs.point_ids.iter().zip(points) {
+            match point {
+                Ok((born_values, sectors)) => {
+                    successful_point_ids.push(*id);
+                    statuses.push(PointStatus::AccuracyNotEstablished);
+                    born.extend(born_values);
+                    for laurent in sectors {
+                        virtual_values.extend(laurent);
+                    }
+                }
+                Err(reasons) => {
+                    statuses.push(PointStatus::Failed);
+                    failures.insert(*id, reasons);
+                }
+            }
+        }
+        let diagnostics_json = serde_json::to_string(&serde_json::json!({
+            "requested_point_ids":inputs.point_ids,
+            "successful_point_ids":successful_point_ids,
+            "failures":failures, "verification":[],
+            "r2_strategy":"model", "engine":"v2",
+            "primary_color_contraction":"direct",
+        }))
+        .map_err(serialization)?;
+        Ok(Self {
+            requested_point_ids: inputs.point_ids,
+            successful_point_ids,
+            statuses,
+            born,
+            virtual_values,
+            shape,
+            resolved: false,
+            diagnostics_json,
+        })
+    }
     fn from_native(
         result: CompleteLoopResult<Arc<Batch>>,
         verification: Vec<VerificationDiagnostic>,

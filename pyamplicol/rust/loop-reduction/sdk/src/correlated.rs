@@ -181,17 +181,13 @@ impl Runtime {
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<CorrelatedEvaluation> {
         let effective = policy.or_else(|| self.verification_policy()).cloned();
+        let native = self.v3_mut()?;
         let (result, verification) = match effective.as_ref() {
             Some(policy) => {
-                let output = self
-                    .native
-                    .evaluate_directed_verified(inputs, strategy, policy)?;
+                let output = native.evaluate_directed_verified(inputs, strategy, policy)?;
                 (output.result, output.diagnostics)
             }
-            None => (
-                self.native.evaluate_directed(inputs, strategy, true)?,
-                vec![],
-            ),
+            None => (native.evaluate_directed(inputs, strategy, true)?, vec![]),
         };
         CorrelatedEvaluation::from_native(
             result,
