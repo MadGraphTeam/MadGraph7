@@ -746,24 +746,26 @@ def test_born_rows_missing_from_a_point_are_refused():
 LEGACY_OBSERVABLES = FIXTURES / "legacy" / "observables"
 LEGACY_TOLERANCE = {"double": 1e-12, "arbitrary-200": 1e-40}
 # Binary64 O1 (gate S1): every binary64 value (output, point, executor; the
-# representative and its members, directed and spin) is held to 1e-12 of its
-# 200-bit legacy value, except the values pinned in BINARY64_MISSES, which
-# test_binary64_misses_at_1e12 holds to 1e-12 as strict xfails until the user
-# decides the rule for such points (DESIGN WP2.5). Every binary64 run carries
-# its own stability estimate E (one rotation and the reduction-direction
-# check); every output with E > 1e-12 at some point, and every pinned miss,
-# must also agree natively in DoubleFloat within DOUBLE_DOUBLE_TOLERANCE.
-# Measured in this module's configuration: 284 binary64 values, 28 of them
-# identically zero in both engines; 26 have E > 1e-12, all on u u~ > g g g (20
-# at its first point); apart from the four misses every value is within
-# 8.3e-13 (within 3.4e-14 where E <= 1e-12). The misses are all at that first
-# point, where the legacy engine's own binary64 misses 1e-12 too (T12 3.4e-12,
-# spin 3 3.0e-12). The values are reproducible for a given process history
-# (hash seeds, batch columns and check sets do not change them), but the
-# rounding at this point moves with the Symbolica state of the process: with
-# loop_sm compiled in the same process (conftest, as here) T12 gives native
-# 1.30e-12 and Python 8.73e-12, with the same compiled model only loaded from
-# disk 9.65e-12 and 2.14e-12.
+# representative and its members; directed, spin and helicity-resolved rows)
+# is held to 1e-12 of its 200-bit legacy value, except the values pinned in
+# BINARY64_MISSES, which test_binary64_misses_at_1e12 holds to 1e-12 as strict
+# xfails until the user decides the treatment of such points (DESIGN WP2.5).
+# Every binary64 run carries its own stability estimate E (one rotation and
+# the reduction-direction check); every output with E > 1e-12 at some point,
+# and every pinned miss, must also agree natively in DoubleFloat within
+# DOUBLE_DOUBLE_TOLERANCE. Measured in this module's configuration: directed
+# and spin, 284 values, 28 identically zero in both engines, 26 with
+# E > 1e-12 (all u u~ > g g g, 20 at its first point), the others within
+# 8.3e-13 (3.4e-14 where E <= 1e-12); helicity-resolved, 184 nonzero row
+# values (and 392 structural zeros), 52 with E > 1e-12, the others within
+# 8.8e-13 (4.7e-14 where E <= 1e-12). Every miss is at that first point,
+# where the legacy engine's own binary64 misses 1e-12 too (T12 3.4e-12, spin
+# 3 3.0e-12, three resolved rows up to 1.06e-11). The values are reproducible
+# for a given process history (hash seeds, batch columns and check sets do
+# not change them), but the rounding at this point moves with the Symbolica
+# state of the process: with loop_sm compiled in the same process (conftest,
+# as here) T12 gives native 1.30e-12 and Python 8.73e-12, with the same
+# compiled model only loaded from disk 9.65e-12 and 2.14e-12.
 BINARY64_MISSES = (
     # (fixture, process, output, point, executor)  deviation, E
     ("uux_ggg", "uuggg", "T12", 0, "native"),  # 1.30e-12, 1.21e-10
