@@ -30,7 +30,7 @@ from pathlib import Path
 import pytest
 
 from pyamplicol.api.errors import CompatibilityError
-from pyamplicol.color.connections import EmitGluon
+from pyamplicol.color.connections import EmitGluon, contract_connected_tensor_nc_terms
 from pyamplicol.color.correlator_matrices import ColorCorrelator
 from pyamplicol.correlators import CorrelatorConfig
 from pyamplicol.loops.v2.assemble import (
@@ -328,7 +328,130 @@ def test_resolved_entries_sum_to_the_inclusive_result(generate, control, carrier
             assert _deviation(a, b) <= rel * largest, key
 
 
-def test_directed_history_and_its_swap_are_conjugate(generate):
+@pytest.mark.parametrize(
+    "process,born,loop,histories",
+    [
+        (
+            "g g > g g",
+            QCD2,
+            QCD4,
+            (
+                *(
+                    ColorCorrelator.dipole(f"T{i}{j}", i, j)
+                    for i in range(1, 5)
+                    for j in range(1, 5)
+                ),
+                ORDERED,
+            ),
+        ),
+        (
+            "d d~ > g g",
+            QCD2,
+            QCD4,
+            (
+                ColorCorrelator.dipole("T12", 1, 2),
+                ColorCorrelator.dipole("T23", 2, 3),
+                ColorCorrelator.dipole("casimir", 1, 1),
+                ORDERED,
+            ),
+        ),
+        (
+            "u u~ > g g g",
+            {"QCD": 3, "QED": 0},
+            {"QCD": 5, "QED": 0},
+            (
+                ColorCorrelator.dipole("T12", 1, 2),
+                ColorCorrelator.dipole("T35", 3, 5),
+                ColorCorrelator(
+                    "chain",
+                    (EmitGluon(1, -1), EmitGluon(-1, -2)),
+                    (EmitGluon(5, -1), EmitGluon(4, -2)),
+                ),
+            ),
+        ),
+    ],
+)
+def test_directed_tables_by_seed_cells_equal_generic_contraction(
+    generate, process, born, loop, histories
+):
+    """Directed tables built by the inclusive seed-cell machinery (operator
+    images ket^dagger bra(b) against the classes, design §7.7) equal the
+    generic contraction of the connected bra and ket images exactly, in both
+    directions, for dipoles, Casimirs, ordered histories and emitter chains;
+    so do the directed overlaps of literal Born tensors, and the face-count
+    bound never lies below an exact overlap's N_c degree."""
+
+    from pyamplicol.loops.v2.assemble import _single
+    from pyamplicol.loops.v2.observables import DirectedColour
+
+    observables = generate(process, born=born, loop=loop)
+    table = observables.slice.table
+    literal = [term.tensor for b in table.basis.tensors for term in b.terms]
+    for history in histories:
+        directed = DirectedColour(table, history)
+        for swapped in (False, True):
+            cells = (directed.swapped if swapped else directed.table).cells
+            assert cells == directed.generic_table(swapped).cells, history.id
+            for left in literal[:4]:
+                for right in literal[:4]:
+                    generic = contract_connected_tensor_nc_terms(
+                        directed._image(_single(left, table.basis.legs), not swapped),
+                        directed._image(_single(right, table.basis.legs), swapped),
+                    )
+                    exact = directed.overlap(left, right, swapped)
+                    assert exact == {p: v for p, v in generic.items() if v}
+                    bound = directed.bound(left, right, swapped)
+                    assert not exact or max(exact) <= bound
+
+
+@pytest.mark.parametrize("accuracy", ("lc", "nlc"))
+def test_family_degrees_with_the_face_bound_are_exact(generate, accuracy):
+    """LC/NLC complete-family degrees computed in decreasing order of the
+    face-count bound equal the exhaustive degrees (every overlap computed),
+    for the dipole and the ordered-history families of d d~ > g g."""
+
+    from pyamplicol.loops.v2.observables import DirectedColour
+
+    observables = generate(
+        "d d~ > g g",
+        correlators=CorrelatorConfig(
+            color_correlations=(ColorCorrelator.dipole("T12", 1, 2), ORDERED)
+        ),
+        **_colour_options(accuracy),
+    )
+    slice_ = observables.slice
+    for history in observables.histories:
+        family = observables.family(history)
+        assert len(family) > 1
+        for alpha in family:
+            for beta in family:
+                pair = DirectedColour(
+                    slice_.table,
+                    ColorCorrelator("pair", alpha.emissions, beta.emissions),
+                )
+                fast = slice_.degrees(
+                    overlaps=pair.overlap, table=pair.table, bound=pair.bound
+                )
+                exhaustive = slice_.degrees(overlaps=pair.overlap, table=pair.table)
+                assert fast == exhaustive, history.id
+                for (left, right, swapped), cell in pair._overlaps.items():
+                    assert not cell or max(cell) <= pair.bound(left, right, swapped)
+
+
+def _colour_options(accuracy: str) -> dict:
+    """Slice options of an LC/NLC request (the committed QCD continuation)."""
+
+    if accuracy == "full":
+        return {}
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+    return {
+        "accuracy": accuracy,
+        "colour_declaration": LoopColorDeclaration.from_dict(
+            json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+        ),
+    }
+
     """V(bra, ket) = conj V(ket, bra) for an ordered non-Hermitian history."""
 
     observables = generate(

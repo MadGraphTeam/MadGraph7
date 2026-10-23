@@ -1442,6 +1442,7 @@ class LoopSlice:
         self,
         overlaps: Callable[[Any, Any], Mapping[int, Any]] | None = None,
         table: SeedTable | None = None,
+        bound: Callable[[Any, Any], int | None] | None = None,
     ) -> dict[str, dict[Orders, int | None]]:
         """Leading N_c degrees P per squared-order sector (design §7.4).
 
@@ -1450,6 +1451,10 @@ class LoopSlice:
         field cells (coupling grades included). Structural: no numerics.
         ``overlaps`` and ``table`` replace the Born colour metric and the seed
         table, e.g. by those of a directed colour history (observables).
+        ``bound(left, right)`` is an upper bound of the N_c degree of
+        ``overlaps(left, right)`` (None: the overlap vanishes); with it the
+        exact overlaps are computed in decreasing order of their bounds until
+        no remaining bound exceeds the largest exact degree found.
         """
 
         inclusive = overlaps is None and table is None
@@ -1472,14 +1477,30 @@ class LoopSlice:
             }
 
         def degree(bra: set, ket: set, offset: int = 0) -> int | None:
-            powers = [
-                power + p + q + offset
-                for left, p in bra
-                for right, q in ket
-                for power, value in overlaps(left, right).items()
-                if value
-            ]
-            return max(powers, default=None)
+            if bound is None:
+                powers = [
+                    power + p + q + offset
+                    for left, p in bra
+                    for right, q in ket
+                    for power, value in overlaps(left, right).items()
+                    if value
+                ]
+                return max(powers, default=None)
+            candidates = []
+            for left, p in bra:
+                for right, q in ket:
+                    limit = bound(left, right)
+                    if limit is not None:
+                        candidates.append((limit + p + q + offset, left, right, p + q))
+            candidates.sort(key=lambda candidate: -candidate[0])
+            best = None
+            for limit, left, right, shift in candidates:
+                if best is not None and limit <= best:
+                    break
+                for power, value in overlaps(left, right).items():
+                    if value:
+                        best = _max(best, power + shift + offset)
+            return best
 
         born = {
             order: keys(terms, lambda t: grades(t.entry.coupling.name, (0,)))

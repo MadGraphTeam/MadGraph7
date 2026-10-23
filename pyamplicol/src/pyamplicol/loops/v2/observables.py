@@ -78,6 +78,7 @@ from typing import Any, Literal
 from pyamplicol.color.connections import (
     ColorConnection,
     ConnectedColorTensor,
+    EmitGluon,
     TensorTerm,
     apply_color_connection,
     contract_connected_tensor_nc_terms,
@@ -103,7 +104,14 @@ from .assemble import (
     _single,
     _to_decimal,
 )
-from .colour import SeedTable
+from .colour import (
+    SeedTable,
+    _PrimitiveCells,
+    face_count,
+    literal_network,
+    reduce_network,
+    seed_cells,
+)
 from .conventions import LOOP_FACTOR_DENOMINATOR
 from .ct_sites import LAURENT_POWERS
 from .families import Orders, add_orders
@@ -171,6 +179,47 @@ def connect(
     )
 
 
+# The internal label of an absorbed emission (``absorb``).
+_ABSORBED = ("absorbed",)
+
+
+def absorb(tensor: ConnectedColorTensor, emission: EmitGluon) -> ConnectedColorTensor:
+    """The adjoint of one gluon emission: sum_a T^a_e X_a, the emitted label
+    a of ``tensor`` contracted with a generator on its emitter e, so that
+    <X|E Y> = <absorb(X, E)|Y> for every tensor Y on the emitter's legs.
+
+    The generator is the emission itself (``apply_color_connection``, the
+    colour charge operators are Hermitian) on a fresh label, contracted with
+    the emitted one by SU(N_c) Fierz (``colour.reduce_network``); the
+    emission's 1/sqrt(2) stays in the normalisation power."""
+
+    legs = tensor.legs
+    fresh = min(leg.label for leg in legs) - 1
+    emitted = emission.emitted_label
+    pair = (emitted, fresh)
+    connection = ColorConnection(legs, (EmitGluon(emission.emitter_label, fresh),))
+    network = []
+    for term in tensor.terms:
+        image = apply_color_connection(
+            term.tensor, connection, coefficient=term.coefficient
+        )
+        network.extend(
+            replace(item, nc_power=item.nc_power + term.nc_power)
+            for item in literal_network(
+                image, lambda label: _ABSORBED if label in pair else label
+            )
+        )
+    remaining = tuple(leg for leg in legs if leg.label != emitted)
+    reduced = reduce_network(
+        tuple(network), remaining, {leg.label: leg.label for leg in remaining}
+    )
+    if reduced.normalization_power:
+        raise ArithmeticError("an absorbed emission left a sqrt(2) factor")
+    return ConnectedColorTensor(
+        remaining, reduced.terms, tensor.normalization_power + 1
+    )
+
+
 class DirectedColour:
     """Exact directed overlaps and seed tables of one colour history.
 
@@ -178,9 +227,23 @@ class DirectedColour:
     space tensors as exact Laurent coefficients in N_c; ``table`` is the seed
     table with cells K[c, b] = <bra(b)|ket(kappa_c)>; ``swapped`` is the same
     for the history with bra and ket exchanged (the L^dagger K_LB B term).
+
+    The cells are built by the inclusive seed-cell machinery (design §7.7):
+    with gluon emissions on the ket side, <bra(b)|ket(kappa)> =
+    <ket^dagger bra(b)|kappa> (``absorb``), so the operator images
+    ket^dagger bra(b) replace the Born basis in ``colour.seed_cells``
+    (primitives by integer cycle counting, relabelling caches, generic
+    classes term-factored). ``cells`` shares those caches across the
+    histories of a complete family. A ket with a quark-pair splitting uses
+    the generic contraction of the connected images (``generic_table``).
     """
 
-    def __init__(self, table: SeedTable, history: ColorCorrelator):
+    def __init__(
+        self,
+        table: SeedTable,
+        history: ColorCorrelator,
+        cells: _PrimitiveCells | None = None,
+    ):
         legs = table.basis.legs
         self.history = history
         self._bra = ColorConnection(legs, history.bra)
@@ -191,8 +254,10 @@ class DirectedColour:
             )
         self._legs = legs
         self._images: dict[tuple[bool, Any], ConnectedColorTensor] = {}
+        self._operators: dict[tuple[bool, Any], ConnectedColorTensor] = {}
         self._overlaps: dict[tuple[Any, Any, bool], dict] = {}
         self._seeds = table
+        self._cells = cells
         self.symmetric = history.bra == history.ket
         self.table = self._table(table, swapped=False)
 
@@ -202,6 +267,17 @@ class DirectedColour:
 
         return self.table if self.symmetric else self._table(self._seeds, True)
 
+    def _sides(self, swapped: bool) -> tuple[ColorConnection, ColorConnection]:
+        """(Born side, loop side) connections of one direction."""
+
+        return (self._ket, self._bra) if swapped else (self._bra, self._ket)
+
+    def _absorbable(self, swapped: bool) -> bool:
+        return all(
+            isinstance(emission, EmitGluon)
+            for emission in self._sides(swapped)[1].emissions
+        )
+
     def _image(self, tensor: ConnectedColorTensor, bra: bool) -> ConnectedColorTensor:
         key = (bra, tensor)
         found = self._images.get(key)
@@ -209,7 +285,38 @@ class DirectedColour:
             found = self._images[key] = connect(tensor, self._bra if bra else self._ket)
         return found
 
+    def operator(
+        self, tensor: ConnectedColorTensor, swapped: bool = False
+    ) -> ConnectedColorTensor:
+        """ket^dagger bra |tensor> on the Born legs (bra and ket exchanged
+        when ``swapped``): <bra(t)|ket(k)> = <operator(t)|k> for every k."""
+
+        key = (swapped, tensor)
+        found = self._operators.get(key)
+        if found is None:
+            born, loop = self._sides(swapped)
+            found = connect(tensor, born)
+            for emission in reversed(loop.emissions):
+                found = absorb(found, emission)
+            self._operators[key] = found
+        return found
+
     def _table(self, table: SeedTable, swapped: bool) -> SeedTable:
+        if not self._absorbable(swapped):
+            return self.generic_table(swapped)
+        images = replace(
+            table.basis,
+            tensors=tuple(self.operator(b, swapped) for b in table.basis.tensors),
+        )
+        cells = None if self._cells is None else self._cells.rebased(images)
+        return replace(table, cells=seed_cells(images, table.classes, cells))
+
+    def generic_table(self, swapped: bool = False) -> SeedTable:
+        """The table by generic contraction of the connected bra and ket
+        images of every Born element and class (the reference of the
+        seed-cell route and the route of quark-pair splittings)."""
+
+        table = self._seeds
         bras = [self._image(b, not swapped) for b in table.basis.tensors]
         cells = []
         for c in range(len(table.classes)):
@@ -219,6 +326,29 @@ class DirectedColour:
             )
         return replace(table, cells=tuple(cells))
 
+    def bound(self, left: Any, right: Any, swapped: bool = False) -> int | None:
+        """An upper bound of the N_c degree of ``overlap(left, right)`` (None
+        if it vanishes): the largest U(N_c) index-loop count (``face_count``)
+        plus N_c powers over the term pairs of the bra and ket images. The
+        SU(N_c) value expands every contracted label into its U(N_c) part and
+        -1/N_c times the label deleted; a deletion adds at most one index
+        loop, so no term exceeds the U(N_c) count."""
+
+        if self._absorbable(swapped):
+            bra = self.operator(_single(left, self._legs), swapped)
+            ket = _single(right, self._legs)
+        else:
+            bra = self._image(_single(left, self._legs), not swapped)
+            ket = self._image(_single(right, self._legs), swapped)
+        return max(
+            (
+                x.nc_power + y.nc_power + face_count(x.tensor, y.tensor)
+                for x in bra.terms
+                for y in ket.terms
+            ),
+            default=None,
+        )
+
     def overlap(self, left: Any, right: Any, swapped: bool = False) -> dict:
         """<bra(left)|ket(right)> (bra and ket exchanged when ``swapped``) of
         two literal colour tensors, exact in N_c."""
@@ -226,12 +356,17 @@ class DirectedColour:
         key = (left, right, swapped)
         found = self._overlaps.get(key)
         if found is None:
-            bra = self._image(_single(left, self._legs), not swapped)
-            ket = self._image(_single(right, self._legs), swapped)
+            left, right = _single(left, self._legs), _single(right, self._legs)
+            if self._absorbable(swapped):
+                cell = contract_connected_tensor_nc_terms(
+                    self.operator(left, swapped), right
+                )
+            else:
+                cell = contract_connected_tensor_nc_terms(
+                    self._image(left, not swapped), self._image(right, swapped)
+                )
             found = self._overlaps[key] = {
-                power: value
-                for power, value in contract_connected_tensor_nc_terms(bra, ket).items()
-                if value
+                power: value for power, value in cell.items() if value
             }
         return found
 
@@ -530,13 +665,23 @@ class ObservableSlice:
 
     # -- declarations ---------------------------------------------------------
 
+    @cached_property
+    def _cells(self) -> _PrimitiveCells:
+        """Primitive-cell caches shared by every directed table of the slice
+        (keyed by relabelled operator images, so a complete family's tables
+        reuse each other's overlaps)."""
+
+        return _PrimitiveCells(self.slice.table.basis)
+
     def directed(self, history: ColorCorrelator) -> DirectedColour:
         """The directed colour data of ``history`` (built once)."""
 
         key = (history.bra, history.ket)
         found = self._directed.get(key)
         if found is None:
-            found = self._directed[key] = DirectedColour(self.slice.table, history)
+            found = self._directed[key] = DirectedColour(
+                self.slice.table, history, self._cells
+            )
         return found
 
     def degrees(self, history: ColorCorrelator | None) -> dict[str, dict]:
@@ -583,8 +728,11 @@ class ObservableSlice:
                 pair = DirectedColour(
                     slice_.table,
                     ColorCorrelator("family", alpha.emissions, beta.emissions),
+                    self._cells,
                 )
-                degrees = slice_.degrees(overlaps=pair.overlap, table=pair.table)
+                degrees = slice_.degrees(
+                    overlaps=pair.overlap, table=pair.table, bound=pair.bound
+                )
                 for kind, values in degrees.items():
                     for sector, value in values.items():
                         out[kind][sector] = _max(out[kind].get(sector), value)
@@ -1646,7 +1794,7 @@ class FlavourMember:
     def history(self, history: ColorCorrelator) -> ColorCorrelator:
         """A member colour history on the representative's labels."""
 
-        from pyamplicol.color.connections import EmitGluon, SplitGluon
+        from pyamplicol.color.connections import SplitGluon
 
         def relabel(label: int) -> int:
             return self.label(label) if label > 0 else label
