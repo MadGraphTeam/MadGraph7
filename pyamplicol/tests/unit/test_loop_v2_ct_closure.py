@@ -479,23 +479,12 @@ SLICE_O6 = {
     "uux_ttxgg": ("u u~ > t t~ g g", 4, 0, (2, 2, 21), (0, 0, 173, 173, 0, 0)),
 }
 SLICE_PARAMETERS = {"aS": "0.118", "MT": "173"}
-# A top width breaks the conservation of gluon currents with an internal top
-# propagator, so the transverse Yang-Mills kernels of the slice's tree blocks
-# (design §3.2 item 2) are no longer the Feynman rules: the site closure,
-# which closes the counterterms on those blocks, then differs from the
-# recursion, whose lowered model has the full kernels, by gauge-violating
-# terms of order WT/MT. The two forms agree exactly without the width, the
-# scheme of the provider references (``tests/fixtures/loop/required``: all
-# widths zero), and with the full kernels in the blocks at any width. The
-# six-leg top requests are compared without the width;
-# ``test_slice_counterterms_with_a_top_width_depend_on_the_kernels`` pins the
-# difference at the model's top width and
-# ``test_full_kernel_counterterms_with_a_top_width_equal_sites`` the
-# agreement with the full kernels.
-SLICE_WIDTHS = {
-    "gg_ttxgg": {"WT": "0"},
-    "uux_ttxgg": {"WT": "0"},
-}
+# Requests whose trees propagate a top: its width (a runtime input) breaks the
+# Ward identity of their gluon currents, so their blocks and Born take the
+# full tree kernels (``blocks.with_ward_kernels``), the Feynman rules of the
+# lowered model's recursion; recursion and sites then agree at the model's
+# top width.
+SLICE_FULL_KERNELS = frozenset({"gg_ttxg", "gg_ttxgg", "uux_ttxgg"})
 SLICE_SCALE_SQUARED = "1000000"
 # Recursion and sites differ only by rounding (binary64) or not at all within
 # the 200-bit carrier's working precision; the legacy O1 tolerances.
@@ -646,66 +635,7 @@ def test_slice_counterterms_from_recursion_equal_sites(
     lowered = [n for n, rule in program.recursion.rules.items() if about(rule)]
     assert lowered and all(program.recursion.admission[n] for n in lowered), lowered
     assert not {n for n, rule in rules.items() if about(rule)} & set(residual)
-    parameters = {**SLICE_PARAMETERS, **SLICE_WIDTHS.get(name, {})}
-    worst = _route_differences(slice_routes, name, carrier, parameters)
+    variant = "full" if name in SLICE_FULL_KERNELS else "transverse"
+    assert recursion.blocks.kernel_variant == variant
+    worst = _route_differences(slice_routes, name, carrier, SLICE_PARAMETERS)
     assert all(value <= SLICE_TOLERANCE[carrier] for value in worst.values()), worst
-
-
-@pytest.mark.loop_physics
-@pytest.mark.xfail(
-    strict=True,
-    reason="with a top width the transverse tree kernels of the slice's blocks "
-    "are not the Feynman rules of the recursion's full kernels "
-    "(SLICE_WIDTHS; design §6.1)",
-)
-def test_slice_counterterms_with_a_top_width_depend_on_the_kernels(
-    slice_routes, monkeypatch
-):
-    """At the model's top width the recursion and the site closure of
-    uu~ -> tt~gg differ by terms of order WT/MT (pins ``SLICE_WIDTHS``)."""
-
-    _certify_furry_zeros(monkeypatch)
-    worst = _route_differences(slice_routes, "uux_ttxgg", "double", SLICE_PARAMETERS)
-    assert max(worst.values()) <= SLICE_TOLERANCE["double"], worst
-
-
-@pytest.mark.loop_physics
-def test_full_kernel_counterterms_with_a_top_width_equal_sites(
-    loop_sm_compiled_model, loop_native, monkeypatch
-):
-    """With the full tree kernels in the slice's blocks and Born (the Feynman
-    rules), the recursion equals the site closure of uu~ -> tt~gg at the
-    model's top width: the difference of the transverse kernels is theirs,
-    not the rooting's."""
-
-    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
-    from pyamplicol.loops.v2.catalogue import compile_tree_kernel_variant
-    from pyamplicol.models.loading import load_compiled_model
-
-    _certify_furry_zeros(monkeypatch)
-    compiled = compile_tree_kernel_variant(
-        load_compiled_model(loop_sm_compiled_model), "full"
-    )
-    process, qcd, qed, _rule, _masses = SLICE_O6["uux_ttxgg"]
-    routes = {
-        counterterms: LoopSlice.generate(
-            compiled,
-            SliceRequest(
-                process,
-                {"QCD": qcd, "QED": qed},
-                {"QCD": qcd + 2, "QED": qed},
-                fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-                counterterms=counterterms,
-            ),
-            loop_native,
-        )
-        for counterterms in ("recursion", "sites")
-    }
-    assert routes["sites"].blocks.kernel_variant == "full"
-    worst = _route_differences(
-        lambda _name, counterterms: routes[counterterms],
-        "uux_ttxgg",
-        "double",
-        SLICE_PARAMETERS,
-    )
-    assert all(value <= SLICE_TOLERANCE["double"] for value in worst.values()), worst

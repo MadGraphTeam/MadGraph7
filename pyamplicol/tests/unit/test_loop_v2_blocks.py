@@ -951,6 +951,42 @@ def test_blocks_record_the_compiled_tree_kernel_variant(models):
 
 
 @pytest.mark.loop_fast
+def test_coloured_widths_select_the_full_tree_kernels(models):
+    """Trees that propagate a coloured particle with a width (the top in
+    g g -> t t~ g; WT is a runtime input) take the full kernels on the same
+    DAGs; trees without one (u u~ -> d d~ g: no internal top), or with the
+    width fixed to zero, keep the transverse kernels (design §3.2 item 2)."""
+
+    from pyamplicol.loops.v2.blocks import ward_breaking_fields, with_ward_kernels
+
+    compiled, model, _structure = models
+    limits = {"QCD": 3, "QED": 0}
+
+    def blocks_of(text):
+        return build_tree_blocks(
+            _process(compiled, text),
+            model,
+            born_coupling_orders=limits,
+            block_coupling_orders={"QCD": 5, "QED": 0},
+        )
+
+    tops = blocks_of("g g > t t~ g")
+    dags = (tops.blocks_dag, tops.born_dag)
+    assert ward_breaking_fields(dags, compiled) == {"t", "t~"}
+    assert not ward_breaking_fields(dags, compiled, {"WT": "0"})
+    full, full_compiled = with_ward_kernels(tops, compiled)
+    assert full_compiled.ir.tree_kernel_variant == "full"
+    assert full.kernel_variant == "full"
+    assert {block.kernel_variant for block in full.blocks} == {"full"}
+    assert (full.blocks_dag, full.born_dag) == dags
+    assert [block.key for block in full.blocks] == [b.key for b in tops.blocks]
+    assert with_ward_kernels(tops, compiled, {"WT": "0"}) == (tops, compiled)
+    light = blocks_of("u u~ > d d~ g")
+    assert not ward_breaking_fields((light.blocks_dag, light.born_dag), compiled)
+    assert with_ward_kernels(light, compiled) == (light, compiled)
+
+
+@pytest.mark.loop_fast
 def test_loop_blocks_reject_tree_only_options(models):
     compiled, model, _structure = models
     with pytest.raises(ValueError, match="tree-only options: max_currents"):

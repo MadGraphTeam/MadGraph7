@@ -83,7 +83,7 @@ from pyamplicol.color.connections import (
 from pyamplicol.color.contraction_types import NC
 
 from . import reference_executor as rx
-from .blocks import TreeBlocks, build_tree_blocks
+from .blocks import TreeBlocks, build_tree_blocks, with_ward_kernels
 from .catalogue import build_loop_kernel_catalogue
 from .colour import (
     SYMMETRIC_GROUP_FFT,
@@ -969,6 +969,11 @@ class LoopSlice:
             block_coupling_orders=dict(request.loop_orders),
             ignored_particle_ids=request.ignored_particle_ids,
         )
+        # Trees that propagate a coloured particle with a width (or a
+        # model-supplied propagator) take the full tree kernels: the
+        # transverse Yang-Mills ones are then not the Feynman rules (design
+        # §3.2 item 2, §6.1). Everything below uses that model.
+        blocks, compiled = with_ward_kernels(blocks, compiled, fixed)
         table = blocks.block_table(data)
         loop_catalogue = ModelLoopCatalogue(
             data, species_orders=structure.perturbative_species_orders

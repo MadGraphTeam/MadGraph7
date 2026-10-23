@@ -63,6 +63,13 @@ Conventions a consumer relies on:
 * **Kernel variants.** ``KERNEL_VARIANT_BY_BLOCK_CLASS`` is the tree kernel
   variant a block class requires; a block records the variant of the model's
   compiled kernels (``compile_tree_kernel_variant``), which must satisfy it.
+  The transverse Yang-Mills kernels are exact only for conserved gluon
+  currents. A coloured particle whose propagator breaks the Ward identity of
+  the gluon currents it feeds (a width that is not zero, or a model-supplied
+  propagator; ``ward_breaking_fields``) makes them differ from the Feynman
+  rules, so trees that propagate one take the full kernels
+  (``with_ward_kernels``). The DAGs do not depend on the variant, so the
+  switch keeps them (``TreeBlocks.with_kernels``).
 * **Families.** ``TreeBlocks.block_table`` is the WP1.3 ``BlockTable`` view of
   the blocks in a native model's incoming field names, and
   ``requested_loop_blocks`` turns ``FamilySet.block_requests()`` back into the
@@ -406,6 +413,20 @@ class TreeBlocks:
     def blocks_on(self, mask: int) -> tuple[Block, ...]:
         return tuple(block for block in self.blocks if block.key.external_mask == mask)
 
+    def with_kernels(self, model: Model) -> TreeBlocks:
+        """These trees with the kernels of ``model``, another tree-kernel
+        variant (``compile_tree_kernel_variant``) of the model they were
+        compiled with: only the expressions of the eligible Yang-Mills
+        kernels differ between variants, so the DAGs are the same."""
+
+        variant = model_tree_kernel_variant(model)
+        return replace(
+            self,
+            blocks=_blocks(self.blocks_dag, model, variant),
+            born_roots=_born_roots(self.born_dag, model),
+            kernel_variant=variant,
+        )
+
     def field_blocks(self, mask: int) -> tuple[tuple[int, CouplingOrders], ...]:
         """Distinct (particle id, coupling orders) of the field blocks on ``mask``.
 
@@ -551,6 +572,77 @@ def build_tree_blocks(
         born_roots=_born_roots(born_dag, model),
         kernel_variant=kernel_variant,
     )
+
+
+def ward_breaking_fields(
+    dags: Iterable[GenericDAG],
+    compiled: Any,
+    fixed_parameters: Mapping[str, Any] = MappingProxyType({}),
+) -> frozenset[str]:
+    """Coloured particles propagated by a tree current of ``dags`` whose
+    propagator breaks the Ward identity of the gluon currents it feeds.
+
+    That is a width other than ``ZERO``, a compile-time zero or a parameter
+    that ``fixed_parameters`` fixes to zero (S(q)(q-slash - m) is then not
+    the identity), or a model-supplied propagator. Source currents (on-shell
+    external legs) and auxiliary currents do not count. ``compiled`` is the
+    compiled model of the DAGs.
+    """
+
+    from decimal import Decimal, InvalidOperation
+
+    from pyamplicol.models.compiler_kernels import _is_compile_time_zero_parameter
+
+    ir = compiled.ir
+    particles = {int(record.pdg_code): record for record in ir.particles}
+    parameters = {record.name: record for record in ir.parameters}
+    custom = {record.particle for record in ir.propagators if record.custom}
+
+    def fixed_zero(name: str) -> bool:
+        try:
+            return Decimal(str(fixed_parameters[name])) == 0
+        except (KeyError, InvalidOperation):
+            return False
+
+    out = set()
+    for dag in dags:
+        sources = set(dag.sources)
+        for current_id, current in enumerate(dag.currents):
+            index = current.index
+            if current_id in sources or index.auxiliary_kind is not None:
+                continue
+            record = particles.get(int(index.particle_id))
+            if record is None or abs(int(record.color)) == 1:
+                continue
+            width = str(record.width)
+            if record.name in custom or not (
+                _is_compile_time_zero_parameter(width, parameters) or fixed_zero(width)
+            ):
+                out.add(record.name)
+    return frozenset(out)
+
+
+def with_ward_kernels(
+    blocks: TreeBlocks,
+    compiled: Any,
+    fixed_parameters: Mapping[str, Any] = MappingProxyType({}),
+) -> tuple[TreeBlocks, Any]:
+    """``(blocks, compiled)``, with the full tree kernels when a tree current
+    propagates a coloured particle that breaks the Ward identity of the gluon
+    currents (``ward_breaking_fields``): the transverse Yang-Mills kernels,
+    exact only for conserved inputs (design §3.2 item 2), are then not the
+    Feynman rules. ``compiled`` is the compiled model of ``blocks``."""
+
+    if blocks.kernel_variant == "full" or not ward_breaking_fields(
+        (blocks.blocks_dag, blocks.born_dag), compiled, fixed_parameters
+    ):
+        return blocks, compiled
+    from pyamplicol.models.external import CompiledUFOModel
+
+    from .catalogue import compile_tree_kernel_variant
+
+    full = compile_tree_kernel_variant(compiled, "full")
+    return blocks.with_kernels(CompiledUFOModel(full)), full
 
 
 def _helicity_decoder(dag: GenericDAG):
@@ -807,4 +899,6 @@ __all__ = [
     "identity_pairing_sign",
     "requested_loop_blocks",
     "u1_grades",
+    "ward_breaking_fields",
+    "with_ward_kernels",
 ]
