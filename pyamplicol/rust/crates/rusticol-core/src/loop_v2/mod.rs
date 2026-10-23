@@ -17,6 +17,7 @@
 //! of its tests.
 
 pub mod closure;
+pub mod dipole_orbits;
 pub mod dress;
 pub mod forward;
 pub mod generate;

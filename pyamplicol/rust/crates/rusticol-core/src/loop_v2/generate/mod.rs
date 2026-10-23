@@ -12,8 +12,10 @@
 //! - [`schedules`]: skeletons, the view, frames and schedule-B tries
 //!   (`skeletons.py`, `schedules.py`);
 //! - [`cycles`]: SU(N_c) overlaps of trace products by cycle counting (the
-//!   exact colour contractions of `colour.py`).
+//!   exact colour contractions of `colour.py`);
+//! - [`cells`]: the exact colour-cell engine of the seed tables (package C).
 
+pub mod cells;
 pub mod cycles;
 pub mod families;
 pub mod orders;
