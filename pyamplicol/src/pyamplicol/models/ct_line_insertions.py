@@ -216,7 +216,7 @@ def lower_line_insertions(
                             )
                         ],
                     ),
-                    denominator=f"({source_propagator['denominator']})^2",
+                    denominator=f"({_engine_denominator(source_propagator, record)})^2",
                     pyamplicol_source="model-supplied",
                 )
             out.propagators.append({**line, "particle": clone_name})
@@ -391,6 +391,23 @@ def _composed(numerator: str, insertion: Any) -> str:
         for leg, slot, offset in ((2, 1, _DUMMY_OFFSET[0]), (1, 0, _DUMMY_OFFSET[1]))
     )
     return _momenta_restored(first * insertion * second).to_canonical_string()
+
+
+def _engine_denominator(propagator: Mapping[str, Any], particle: Mapping[str, Any]) -> str:
+    """The denominator the tree engine applies for ``propagator``.
+
+    A model-supplied propagator is applied as written; the record of a
+    default propagator mirrors the engine's standard one, which adds the
+    width, ``p^2 - M^2 + i M W`` (``models.expressions``).
+    """
+
+    denominator = str(propagator["denominator"])
+    if propagator.get("pyamplicol_source") != "default-feynman":
+        return denominator
+    mass, width = str(particle["mass"]), str(particle["width"])
+    if mass.upper() == "ZERO" or width.upper() == "ZERO":
+        return denominator
+    return f"({denominator})+𝑖*UFO::{{}}::{mass}*UFO::{{}}::{width}"
 
 
 def _line_factor(

@@ -21,6 +21,7 @@ from itertools import product
 
 import pytest
 
+from pyamplicol.loops.v2.ct_closure import U1_DEMOTION
 from pyamplicol.loops.v2.ct_sites import LAURENT_POWERS, ColourOverlaps, add_colour
 from pyamplicol.loops.v2.families import add_orders
 from tools.loop_reference import legacy_capture
@@ -448,3 +449,175 @@ def test_closure_equals_site_closure_at_200_bits(ct_slice, closure_ct_model, nam
     _assert_closure_equals_sites_and_legacy(
         ct, closure_ct_model(ct.vetoed), "arbitrary-200"
     )
+
+
+# ------------------------------------------------------------ slice-level O6
+
+# Requests beyond the legacy controls: the gggA R2 (a d-symbol with a
+# colour-singlet leg), the ggAA R2 (two singlet legs) and the four-gluon R2
+# inside five-gluon blocks need the multi-trace colour state and the contact
+# splits of the lowered model; with a gluon at leg 1, a light-quark clone line
+# meets the root with its Weyl factor and a top clone line carries the top
+# width of the tree propagators. ``name -> (process, Born QCD, QED, PDG codes
+# of the rule the request is about, leg masses)``.
+SLICE_O6 = {
+    "uux_agg": ("u u~ > a g g", 2, 1, (21, 21, 21, 22), (0,) * 5),
+    "uux_aag": ("u u~ > a a g", 1, 2, (21, 21, 22, 22), (0,) * 5),
+    "gg_ggg": ("g g > g g g", 3, 0, (21, 21, 21, 21), (0,) * 5),
+    "gg_uuxg": ("g g > u u~ g", 3, 0, (2, 2), (0,) * 5),
+    "gg_ttxg": ("g g > t t~ g", 3, 0, (6, 6), (0, 0, 173, 173, 0)),
+    "uux_ddxgg": ("u u~ > d d~ g g", 4, 0, (21, 21, 21, 21), (0,) * 6),
+}
+# The four-gluon R2 takes the gluon of the d line inside a block: closed as
+# sites until CT vertices have U(1)-subtraction auxiliaries (design §6.1).
+SLICE_DEMOTED = frozenset({"uux_ddxgg"})
+SLICE_PARAMETERS = {"aS": "0.118", "MT": "173"}
+SLICE_SCALE_SQUARED = "1000000"
+# Recursion and sites differ only by rounding (binary64) or not at all within
+# the 200-bit carrier's working precision; the legacy O1 tolerances.
+SLICE_TOLERANCE = {"double": Decimal("1e-12"), "arbitrary-200": Decimal("1e-40")}
+
+
+@pytest.fixture(scope="module")
+def slice_routes(loop_sm_compiled_model, loop_native):
+    """``(name, counterterms) -> LoopSlice`` for the ``SLICE_O6`` requests."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    built = {}
+
+    def build(name: str, counterterms: str):
+        if (name, counterterms) not in built:
+            process, qcd, qed, _rule, _masses = SLICE_O6[name]
+            built[name, counterterms] = LoopSlice.generate(
+                compiled,
+                SliceRequest(
+                    process,
+                    {"QCD": qcd, "QED": qed},
+                    {"QCD": qcd + 2, "QED": qed},
+                    fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+                    counterterms=counterterms,
+                ),
+                loop_native,
+            )
+        return built[name, counterterms]
+
+    return build
+
+
+# The quark triangles with one or two photons and the rest gluons have no rule
+# in loop_sm: they vanish (Furry's theorem; a single gluon's colour trace),
+# which the model certifier of design §6.3 is to certify. Until it exists the
+# O6 requests with photons certify them here; both routes see the same sites.
+FURRY_ZEROS = {("A", "G", "G"), ("A", "A", "G")}
+
+
+def _certify_furry_zeros(monkeypatch) -> None:
+    from pyamplicol.loops.v2 import ct_sites
+
+    coverage = ct_sites._coverage
+
+    def certified(witnesses, rules, names, corrections, partners, zeros):
+        furry = tuple(
+            ct_sites.CertifiedZero(signature, species, "Furry or colour zero (test)")
+            for signature, group in witnesses.items()
+            if signature.fields in FURRY_ZEROS
+            for species in group
+        )
+        return coverage(
+            witnesses, rules, names, corrections, partners, (*zeros, *furry)
+        )
+
+    monkeypatch.setattr(ct_sites, "_coverage", certified)
+
+
+def _slice_point(masses) -> list[list[str]]:
+    from tools.loop_reference import exact_points
+
+    (point,) = exact_points.generate(list(masses), count=1)
+    return [[exact_points.decimal_string(x) for x in p] for p in point]
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("carrier", tuple(SLICE_TOLERANCE))
+@pytest.mark.parametrize("name", tuple(SLICE_O6))
+def test_slice_counterterms_from_recursion_equal_sites(
+    slice_routes, monkeypatch, name, carrier
+):
+    """O6 on the slice: every component of the request with its counterterms
+    from the recursion (production) equals the request with every CT rule
+    closed at sites; the recursion leaves no QCD rule to site closure."""
+
+    from pyamplicol.loops.v2.assemble import COMPONENTS, Precision
+
+    _certify_furry_zeros(monkeypatch)
+    recursion = slice_routes(name, "recursion")
+    sites = slice_routes(name, "sites")
+    program = recursion.counterterm_program
+    assert sites.counterterm_program is None
+    residual = program.recursion.residual
+    # Only the Levi-Civita R2 of the Z with gluons stays a site closure
+    # (design §6.1, WP3.2), and rules whose CT vertices would take the U(1)
+    # part of a fermion line's gluon inside a block (``U1_DEMOTION``).
+    rules = recursion.prepared.counterterms.rules
+    for rule, reason in residual.items():
+        assert reason == U1_DEMOTION or 23 in {
+            abs(int(pdg)) for pdg in rules[rule].particle_pdgs
+        }, (rule, reason)
+    # The rule of interest is lowered and admitted by the request's witnesses
+    # (or demoted, for requests in ``SLICE_DEMOTED``).
+    pdgs = SLICE_O6[name][3]
+
+    def about(rule):
+        return tuple(sorted(abs(int(pdg)) for pdg in rule.particle_pdgs)) == pdgs
+
+    lowered = [n for n, rule in program.recursion.rules.items() if about(rule)]
+    if name in SLICE_DEMOTED:
+        demoted = [n for n, rule in rules.items() if about(rule) and n in residual]
+        assert demoted and not lowered, (demoted, lowered)
+        assert all(residual[n] == U1_DEMOTION for n in demoted)
+    else:
+        assert lowered and all(program.recursion.admission[n] for n in lowered), (
+            lowered
+        )
+    precision = {
+        "double": Precision.double(),
+        "arbitrary-200": Precision.arbitrary(60),
+    }[carrier]
+    tolerance = SLICE_TOLERANCE[carrier]
+    point = _slice_point(SLICE_O6[name][4])
+    mine, reference = (
+        route.evaluate(
+            point,
+            SLICE_SCALE_SQUARED,
+            parameters=SLICE_PARAMETERS,
+            precision=precision,
+        )
+        for route in (recursion, sites)
+    )
+    with localcontext() as context:
+        context.prec = 120
+        assert mine.born.keys() == reference.born.keys()
+        born = max(abs(Decimal(str(value))) for value in reference.born.values())
+        assert born > 0
+        for component in COMPONENTS:
+            assert mine.components[component].keys() == (
+                reference.components[component].keys()
+            ), component
+            for sector, laurent in reference.components[component].items():
+                values = [Decimal(str(x)) for x in laurent.coefficients]
+                ours = [
+                    Decimal(str(x))
+                    for x in mine.components[component][sector].coefficients
+                ]
+                scale = max(map(abs, values)) or born
+                for k, (a, b) in enumerate(zip(ours, values, strict=True)):
+                    assert abs(a - b) <= tolerance * scale, (component, sector, k, a, b)
+        # The counterterm components are not trivially zero.
+        assert any(
+            Decimal(str(x)) != 0
+            for laurent in reference.components["r2"].values()
+            for x in laurent.coefficients
+        )

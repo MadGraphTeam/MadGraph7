@@ -375,7 +375,6 @@ class CountertermClosure:
                             multiplicity=len(site.alternatives),
                         )
                     )
-        _refuse_u1_couplings(program, terms)
         return cls(program, closure, tuple(sites), tuple(terms))
 
 
@@ -398,39 +397,34 @@ def _u1_coupling_kinds(compiled: Any) -> frozenset[int]:
     return frozenset(out)
 
 
-def _refuse_u1_couplings(program: CountertermBlocks, terms: Sequence[ClosureTerm]):
-    """Fail closed where the U(1) part of a gluon line would leak.
+U1_DEMOTION = (
+    "its colour couples to the U(1) part of a gluon that a fermion line supplies "
+    "or absorbs inside a block (U(1)-subtraction auxiliaries of counterterm "
+    "vertices, design §6.1)"
+)
+
+
+def u1_leaking_structures(program: CountertermBlocks) -> frozenset[Any]:
+    """Lowered CT terms whose value would take the U(1) part of a gluon.
 
     The tree engine subtracts the U(1) part of a gluon between fermion lines
     with auxiliaries that only fermion vertices produce and absorb. A CT
     vertex whose colour couples to that part (``_u1_coupling_kinds``) inside
     a block therefore must neither absorb a gluon current of a fermion line
     nor feed its gluon into a fermion line; at the root the exact colour
-    closure projects every block onto SU(N). Only the currents the root
-    terms use (and their derivations) are checked.
+    closure projects every block onto SU(N). Returns the lowered terms
+    (``CountertermStructure``) of every CT vertex of the program that does
+    either.
     """
 
     dag = program.blocks.blocks_dag
-    lowered = program.recursion.model.lowered.compiled
-    kinds = _u1_coupling_kinds(lowered)
+    lowered = program.recursion.model.lowered
+    compiled = lowered.compiled
+    kinds = _u1_coupling_kinds(compiled)
     if not kinds:
-        return
+        return frozenset()
     currents = dag.currents
-    produced = defaultdict(list)
-    for interaction in dag.interactions:
-        produced[interaction.result_id].append(interaction)
-    used: set[int] = set()
-    stack = [
-        row.current_id for term in terms for block in term.term.blocks for row in block.rows
-    ]
-    while stack:
-        current = stack.pop()
-        if current in used:
-            continue
-        used.add(current)
-        for interaction in produced.get(current, ()):
-            stack.extend((interaction.left_id, interaction.right_id))
-    colours = {int(p.pdg_code): int(p.color) for p in lowered.ir.particles}
+    colours = {int(p.pdg_code): int(p.color) for p in compiled.ir.particles}
     fundamental = {
         leg.label
         for leg in dag.process.legs
@@ -438,38 +432,63 @@ def _refuse_u1_couplings(program: CountertermBlocks, terms: Sequence[ClosureTerm
     }
     generator_kinds = {
         int(kernel.kind)
-        for kernel in lowered.ir.oriented_kernels
+        for kernel in compiled.ir.oriented_kernels
         if kernel.color_projection_structure == "fundamental-generator"
     }
-    coupled_outputs: set[int] = set()
+    leaking: set[int] = set()
+    producers: dict[int, set[int]] = defaultdict(set)
     for interaction in dag.interactions:
-        if interaction.result_id not in used:
+        kind = int(interaction.vertex_kind)
+        if kind not in kinds:
             continue
-        if int(interaction.vertex_kind) in kinds:
+        for input_id in (interaction.left_id, interaction.right_id):
+            index = currents[input_id].index
+            if colours.get(int(index.particle_id)) == 8 and (
+                fundamental & set(index.external_labels)
+            ):
+                leaking.add(kind)
+        if colours.get(int(currents[interaction.result_id].index.particle_id)) == 8:
+            producers[interaction.result_id].add(kind)
+    for interaction in dag.interactions:
+        if int(interaction.vertex_kind) in generator_kinds:
             for input_id in (interaction.left_id, interaction.right_id):
-                index = currents[input_id].index
-                if colours.get(int(index.particle_id)) == 8 and (
-                    fundamental & set(index.external_labels)
-                ):
-                    raise NotImplementedError(
-                        "a counterterm vertex coupling to the U(1) part of a "
-                        "gluon absorbs the gluon current of a fermion line "
-                        "inside a block (U(1)-subtraction auxiliaries of "
-                        "counterterm vertices are not implemented)"
-                    )
-            if colours.get(int(currents[interaction.result_id].index.particle_id)) == 8:
-                coupled_outputs.add(interaction.result_id)
-    for interaction in dag.interactions:
-        if interaction.result_id not in used:
-            continue
-        if int(interaction.vertex_kind) in generator_kinds and (
-            {interaction.left_id, interaction.right_id} & coupled_outputs
-        ):
-            raise NotImplementedError(
-                "a counterterm vertex coupling to the U(1) part of a gluon feeds "
-                "a fermion line inside a block (U(1)-subtraction auxiliaries of "
-                "counterterm vertices are not implemented)"
-            )
+                leaking |= producers.get(input_id, set())
+    if not leaking:
+        return frozenset()
+    by_coupling: dict[str, set[Any]] = defaultdict(set)
+    for structure, coupling in lowered.couplings.items():
+        by_coupling[coupling].add(structure)
+    coupling_of = {int(term.id): term.coupling for term in compiled.ir.vertex_terms}
+    out: set[Any] = set()
+    for kernel in compiled.ir.oriented_kernels:
+        if int(kernel.kind) in leaking:
+            for term_id in kernel.term_ids or (kernel.term_id,):
+                out |= by_coupling.get(coupling_of.get(int(term_id), ""), set())
+    return frozenset(out)
+
+
+def _demoted(
+    recursion: CountertermRecursion, structures: frozenset[Any]
+) -> CountertermRecursion:
+    """``recursion`` with every rule holding one of ``structures`` left to
+    site closure (its multiplicity is then 0 in the program)."""
+
+    from .ct_recursion import rule_key
+
+    demoted = {
+        name
+        for name, rule in recursion.rules.items()
+        if set(recursion.model.structures.get(rule_key(rule), ())) & structures
+    }
+    if not demoted:
+        return recursion
+    return replace(
+        recursion,
+        rules={n: r for n, r in recursion.rules.items() if n not in demoted},
+        terms={n: t for n, t in recursion.terms.items() if n not in demoted},
+        admission={n: a for n, a in recursion.admission.items() if n not in demoted},
+        residual={**recursion.residual, **dict.fromkeys(sorted(demoted), U1_DEMOTION)},
+    )
 
 
 def _slot_order(slot: tuple[str, int, int]) -> str:
@@ -535,6 +554,8 @@ def model_value(compiled: Any, expression: str, parameters: Mapping[str, Any], d
     decimal strings.
     """
 
+    from decimal import Decimal
+
     from symbolica import E
 
     from pyamplicol._internal.physics.symbols import symbols
@@ -547,6 +568,13 @@ def model_value(compiled: Any, expression: str, parameters: Mapping[str, Any], d
         for record in compiled.ir.parameters
         if record.nature == "internal"
     }
+    # Payload symbols (``UFO::{}::name``) are the model's parameters.
+    for name in {*internal, *compiled.parameter_defaults}:
+        payload = E(f"UFO::{{}}::{name}")
+        if value.contains(payload):
+            value = value.replace(
+                payload, E(model_symbols.symbol(name).to_canonical_string())
+            )
     for _ in range(64):
         found = False
         for name, definition in internal.items():
@@ -570,7 +598,8 @@ def model_value(compiled: Any, expression: str, parameters: Mapping[str, Any], d
         zip(
             (E(model_symbols.symbol(name).to_canonical_string()) for name in names),
             _upcast_complex_inputs(
-                [(str(external[name]), "0") for name in names], digits
+                [(Decimal(str(external[name])), Decimal(0)) for name in names],
+                digits,
             ),
             strict=True,
         )
@@ -711,6 +740,13 @@ class CountertermProgram:
         program = CountertermBlocks.build(
             recursion, ir, ignored_particle_ids=forbidden
         )
+        # Rules whose CT vertices would take the U(1) part of a fermion
+        # line's gluon inside a block are closed as sites (exact) until CT
+        # vertices have U(1)-subtraction auxiliaries; their currents in the
+        # program vanish with their multiplicities.
+        leaking = u1_leaking_structures(program)
+        if leaking:
+            program = replace(program, recursion=_demoted(recursion, leaking))
         sites = CountertermClosure.root_sites(
             program, families, rules, native_model, selection, forbidden=forbidden
         )

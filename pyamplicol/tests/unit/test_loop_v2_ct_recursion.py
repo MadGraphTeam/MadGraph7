@@ -391,10 +391,18 @@ def test_lowered_couplings_are_exact_model_expressions(lowered_ct_model):
     assert any("log(UFO::{}::MT^2*UFO::{}::MU_R^(-2))" in e for e in lowered)
     assert not any("MB" in e or "value_" in e for e in lowered)
     assert all("PYAMPLICOL_CT_S_" in e and "PYAMPLICOL_CT_M" in e for e in lowered)
-    assert not any("two-point" in reason for reason in model.residual.values())
-    assert {
-        reason.split(":")[0].split(" of ")[0] for reason in model.residual.values()
-    } >= {"no colour-flow contact decomposition"}
+    reasons = set(model.residual.values())
+    assert not any("two-point" in reason for reason in reasons)
+    # The ggVV and ggSS contacts lower (``compiler_contacts`` splits); the
+    # tree vocabulary leaves the d-symbols and colour products to the
+    # multi-trace state of the closure (``ct_closure``) and the Levi-Civita
+    # R2 of the Z with gluons to sites.
+    assert not any("contact decomposition" in reason for reason in reasons)
+    assert any("multi-trace colour state" in reason for reason in reasons)
+    assert all(
+        "multi-trace colour state" in reason or reason.startswith("Lorentz structure")
+        for reason in reasons
+    ), reasons
     model.check_parameters({"MT": 173.0, "MU_R": 91.188})
     with pytest.raises(ValueError, match="vanish"):
         model.check_parameters({"MT": 0.0})
