@@ -1718,9 +1718,9 @@ def admit_member(slice_: LoopSlice, process: str) -> FlavourMember:
 
     from pyamplicol.loops.flavor_mappings import (
         RetainedFlavorPlan,
+        identity_species_candidate,
         prove_flavor_relabeling,
     )
-    from pyamplicol.loops.flavor_transport import identity_species_candidate
     from pyamplicol.processes.model import build_model_process_ir
 
     representative = slice_.blocks.process

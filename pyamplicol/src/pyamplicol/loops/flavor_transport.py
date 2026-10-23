@@ -19,7 +19,10 @@ from pyamplicol.generation.process_grouping import (
     invert_permutation,
 )
 
-from .flavor_mappings import FlavorSymmetry
+from .flavor_mappings import (
+    FlavorSymmetry,
+    identity_species_candidate,  # noqa: F401 (re-export)
+)
 from .physical_source import NativeSourceModelProgram
 from .request import LoopExternalRequest, prepare_loop_external_request
 
@@ -1323,27 +1326,3 @@ class AdmittedFlavorMember:
                 ),
             }
         return result
-
-
-def identity_species_candidate(representative, member):
-    """Complete the port-imposed signed substitution as a candidate permutation.
-
-    This is only request bookkeeping: open chains close into cycles and all
-    untouched species stay fixed. Exact local-rule proof still decides whether
-    this candidate is a symmetry. Failure never removes an independent process.
-    """
-    if len(representative) != len(member):
-        return None
-    mapping = {}
-    inverse = {}
-    for source, target in zip(representative, member, strict=True):
-        for a, b in ((source, target), (-source, -target)):
-            if (a in mapping and mapping[a] != b) or (b in inverse and inverse[b] != a):
-                return None
-            mapping[a], inverse[b] = b, a
-    for start in mapping.keys() - inverse.keys():
-        end = mapping[start]
-        while end in mapping:
-            end = mapping[end]
-        mapping[end] = start
-    return {a: b for a, b in mapping.items() if a != b}
