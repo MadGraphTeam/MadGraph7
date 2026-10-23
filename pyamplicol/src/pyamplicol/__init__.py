@@ -18,37 +18,6 @@ from ._internal.versions import package_version
 if TYPE_CHECKING:
     from types import ModuleType as _ModuleType
 
-
-def _serial_spenso_without_thread_wide_key(symbolica: _ModuleType) -> None:
-    """Keep Spenso's symbolic work on the calling thread unless a key that
-    holds on every thread (personal or application) licenses Symbolica.
-
-    The library key unlocks Symbolica only for frames of this package.
-    Spenso's Rayon workers carry no such frame: the first Symbolica operation
-    of each worker asks for the unlock through the GIL, which the calling
-    thread holds while it waits for them, a deadlock (``LoopSlice`` generation
-    of g g > g g g g, design §6.1). The license is asked on a thread without
-    frames of this package; call this after the registration, so that the
-    calling thread itself is unlocked.
-    """
-
-    from concurrent.futures import ThreadPoolExecutor
-
-    checker = getattr(symbolica, "is_licensed", None)
-    if callable(checker):
-        with ThreadPoolExecutor(max_workers=1) as probe:
-            if probe.submit(checker).result():
-                return
-    try:
-        from symbolica.community.tensor import (
-            SymbolicParallelism,
-            set_symbolica_rayon_enabled,
-        )
-    except ImportError:
-        return
-    set_symbolica_rayon_enabled(SymbolicParallelism.Serial)
-
-
 # Registration precedes symbolic work, including in spawned Python workers.
 # Keep startup quiet before CLI output/banner policy can be resolved, without
 # changing the caller's banner or personal-license environment.
@@ -74,8 +43,6 @@ try:
                 "KJBO3RLZJ3H5FKU5CL756QLKZCURABBCKRGHZRK5OVIUQXZBCLJTOUQPHXYVTANIX"
                 "SCKI6YTZDWGH2NWHQIBCPDUO5GVW2STVMP3MCQ"
             )
-    if _symbolica is not None:
-        _serial_spenso_without_thread_wide_key(_symbolica)
 finally:
     if _previous_banner is None:
         _os.environ.pop("SYMBOLICA_HIDE_BANNER", None)

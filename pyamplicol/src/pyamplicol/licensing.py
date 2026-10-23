@@ -72,6 +72,57 @@ def detect_symbolica_license(
     return SymbolicaLicenseState(licensed=licensed, restricted=not licensed)
 
 
+_SPENSO_POLICY_LOCK = threading.Lock()
+_SPENSO_POLICY_APPLIED = False
+
+
+def ensure_spenso_thread_policy(
+    *, loader: Callable[[], ModuleType] = _load_symbolica
+) -> None:
+    """Keep Spenso's symbolic work on the calling thread unless a key that
+    holds on every thread (personal or application) licenses Symbolica.
+
+    The library key that ``pyamplicol`` registers unlocks Symbolica only for
+    frames of the package. Spenso resolves its ``Auto`` policy once, in the
+    frame of its first operation; inside the package that resolves to Rayon,
+    but the Rayon workers carry no frame of the package. Each worker's first
+    Symbolica operation then asks for the unlock through the GIL, which the
+    calling thread holds while it waits for the workers: a deadlock (design
+    §6.1, ``LoopSlice`` generation of g g > g g g g). The license is asked here
+    on a thread without frames of the package, once per process, lazily: the
+    model-compilation Symbolica namespaces call this before their first tensor
+    network (importing the package checks no license).
+    """
+
+    global _SPENSO_POLICY_APPLIED
+    if _SPENSO_POLICY_APPLIED:
+        return
+    with _SPENSO_POLICY_LOCK:
+        if not _SPENSO_POLICY_APPLIED:
+            _apply_spenso_thread_policy(loader())
+            _SPENSO_POLICY_APPLIED = True
+
+
+def _apply_spenso_thread_policy(symbolica: ModuleType) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    checker = getattr(symbolica, "is_licensed", None)
+    if callable(checker):
+        # The C function runs directly on the probe thread: no Python frame
+        # of this package is on that thread's stack.
+        with ThreadPoolExecutor(max_workers=1) as probe:
+            if probe.submit(checker).result():
+                return
+    try:
+        from symbolica.community.tensor import (
+            SymbolicParallelism,
+            set_symbolica_rayon_enabled,
+        )
+    except ImportError:
+        return
+    set_symbolica_rayon_enabled(SymbolicParallelism.Serial)
+
+
 def _suggest_license(stream: TextIO) -> None:
     global _SUGGESTION_EMITTED
     with _SUGGESTION_LOCK:
