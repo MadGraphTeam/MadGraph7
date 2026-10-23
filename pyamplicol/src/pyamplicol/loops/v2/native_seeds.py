@@ -58,11 +58,12 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from array import array
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
 from fractions import Fraction
-from typing import Any
+from typing import Any, cast
 
 from pyamplicol.color.connections import ConnectedColorTensor, ExactColorCoefficient
 
@@ -72,6 +73,7 @@ from .colour import (
     CompressedColour,
     CompressionCertificate,
     Primitive,
+    PrimitiveKind,
     SeedColour,
     SeedCombination,
     SeedFourier,
@@ -172,7 +174,11 @@ def _tensor(tensor: ConnectedColorTensor) -> list[Any]:
                 _text(term.coefficient.imag),
                 term.nc_power,
                 [
-                    [s.fundamental_label, list(s.adjoint_labels), s.antifundamental_label]
+                    [
+                        s.fundamental_label,
+                        list(s.adjoint_labels),
+                        s.antifundamental_label,
+                    ]
                     for s in term.tensor.open_strings
                 ],
                 [list(trace) for trace in term.tensor.traces],
@@ -213,7 +219,8 @@ class NativeSeedStage:
     """One native seed-table stage (``build`` or ``extend``).
 
     After a stage, ``keep`` evaluates the LC/NLC prune's liveness of
-    ``LoopSlice._prune_colour`` natively on the stage's skeletons.
+    ``LoopSlice._prune_colour`` natively on the stage's skeletons, and
+    ``timings`` holds the wall time of its steps (seconds).
     """
 
     def __init__(self, colour: SeedColour, native: Any = None):
@@ -227,6 +234,14 @@ class NativeSeedStage:
         self._orders: list[Orders] = []
         self._names: list[str] = []
         self._class_orders: list[list[int]] = []
+        self.timings: dict[str, float] = {}
+        self._clock = 0.0
+
+    def _step(self, name: str) -> None:
+        now = time.perf_counter()
+        if name:
+            self.timings[name] = round(now - self._clock, 4)
+        self._clock = now
 
     # -- public stages -----------------------------------------------------
 
@@ -265,8 +280,11 @@ class NativeSeedStage:
         build: bool,
     ) -> tuple[SeedTable, dict[Skeleton, SeedCombination]]:
         colour = self.colour
+        self.timings = {}
+        self._step("")
         compressed = CompressedColour(colour) if compress else None
         contents, offsets, ids = _skeleton_tables(skeletons)
+        self._step("skeleton_tables")
         encoder = _Encoder(self.adjoint, compressed)
         names = sorted(
             {name for content in contents for name, _power in content.orders}
@@ -295,10 +313,12 @@ class NativeSeedStage:
             "existing": existing,
             "tensors": encoder.tensors,
         }
-        builder = self.native.SeedBuilder(
-            json.dumps(spec, separators=(",", ":")), offsets, ids
-        )
+        text = json.dumps(spec, separators=(",", ":"))
+        self._step("content_tables")
+        builder = self.native.SeedBuilder(text, offsets, ids)
+        self._step("native_input")
         candidates = builder.analyse()
+        self._step("native_combinations")
         if compressed is None:
             certified: list[str] = []
         elif build:
@@ -309,17 +329,24 @@ class NativeSeedStage:
             certified = list(certificates)
         else:
             certified = list(table.certificates)
+        self._step("certificates")
         rings, generics = builder.needs(certified)
+        self._step("native_needs")
         legs = table.basis.legs
         ring_tensors = [
             _tensor(canonical_seed(_reduced_primitive(encoder.ring(need), legs)))
             for need in rings
         ]
         generic_seeds = [colour.seed(skeletons[s]) for s in generics]
+        self._step("reductions")
         new_classes, class_orders, raw_rows, skeleton_rows = builder.complete(
             json.dumps(ring_tensors, separators=(",", ":")),
-            json.dumps([_tensor(seed) for seed in generic_seeds], separators=(",", ":")),
+            json.dumps(
+                [encoder.key_tensor(seed) for seed in generic_seeds],
+                separators=(",", ":"),
+            ),
         )
+        self._step("native_classes")
         coefficients = [
             ExactColorCoefficient(Fraction(re), Fraction(im))
             for re, im in builder.coefficients()
@@ -338,8 +365,10 @@ class NativeSeedStage:
         out = dict(class_of)
         for skeleton, row in zip(skeletons, skeleton_rows, strict=True):
             out[skeleton] = rows[row]
+        self._step("decode")
         cells = list(table.cells)
         cells.extend(seed_cells(table.basis, classes[len(cells) :]))
+        self._step("cells")
         self._builder = builder
         self._skeletons = skeletons
         self._orders = order_tuples
@@ -364,7 +393,7 @@ class NativeSeedStage:
         compressed: CompressedColour,
         skeletons: Sequence[Skeleton],
         encoder: _Encoder,
-    ) -> dict[str, CompressionCertificate]:
+    ) -> dict[PrimitiveKind, CompressionCertificate]:
         """``CompressedColour.certificate`` on the native candidates: the
         smallest single-leg instance of each kind (ties by the ``repr`` of
         its contents) has its generic seed compared exactly."""
@@ -373,10 +402,12 @@ class NativeSeedStage:
         trees = _lie_vertices(colour, colour.all_adjoint_rules())
         if trees is None:
             return {}  # pure-gluon blocks are not certified Lie elements
-        out: dict[str, CompressionCertificate] = {}
-        for kind, indices in candidates:
-            instance = skeletons[min(indices, key=lambda s: repr(skeletons[s].contents))]
-            raw = builder.combination(skeletons.index(instance))
+        out: dict[PrimitiveKind, CompressionCertificate] = {}
+        for name, indices in candidates:
+            kind = cast(PrimitiveKind, name)
+            best = min(indices, key=lambda s: repr(skeletons[s].contents))
+            instance = skeletons[best]
+            raw = builder.combination(best)
             combination = tuple(
                 (encoder.primitive(primitive), encoder.coefficient(builder, x))
                 for primitive, x in raw
@@ -388,7 +419,7 @@ class NativeSeedStage:
                     f"{instance.family}"
                 )
             out[kind] = CompressionCertificate(
-                kind,  # type: ignore[arg-type]
+                kind,
                 tuple(
                     key
                     for key, value in compressed._vertices.items()
@@ -396,7 +427,7 @@ class NativeSeedStage:
                 ),
                 trees,
                 instance,
-                COMPRESSION_THEOREMS[kind],  # type: ignore[index]
+                COMPRESSION_THEOREMS[kind],
             )
         return out
 
@@ -458,7 +489,9 @@ class NativeSeedStage:
         live, keep = self._builder.liveness(json.dumps(spec, separators=(",", ":")))
         flags = {
             (c, self._orders[o]): flag
-            for c, (orders, row) in enumerate(zip(self._class_orders, live, strict=True))
+            for c, (orders, row) in enumerate(
+                zip(self._class_orders, live, strict=True)
+            )
             for o, flag in zip(orders, row, strict=True)
         }
         return flags, list(keep)
@@ -490,7 +523,7 @@ class _Encoder:
             self.coefficients.append([_text(value.real), _text(value.imag)])
         return found
 
-    def _descriptor(self, descriptor: tuple) -> int:
+    def _descriptor(self, descriptor: tuple[Any, ...]) -> int:
         kind = descriptor[0]
         if kind == "exact":
             parts, labels = _template(descriptor[1], self.adjoint)
@@ -499,7 +532,7 @@ class _Encoder:
             if template is None:
                 template = self._template_id[text] = len(self.templates)
                 self.templates.append(parts)
-            payload: tuple = (2, tuple(labels), False, template)
+            payload: tuple[Any, ...] = (2, tuple(labels), False, template)
         elif kind == "adjoint":
             payload = (0, tuple(descriptor[1]), False, 0)
         else:
@@ -521,7 +554,7 @@ class _Encoder:
         out = []
         for (vertex, t), descriptor in terms:
             if vertex is None:
-                value = ExactColorCoefficient(1)
+                value = ExactColorCoefficient(Fraction(1))
             else:
                 decomposition = self._decompositions.get(vertex)
                 if decomposition is None:
@@ -538,10 +571,19 @@ class _Encoder:
 
         if isinstance(seed, Primitive):
             if seed.kind == "quark-ring":
-                return [2, [self._descriptor(d) for d in seed.word]]
+                ring = cast(tuple[tuple[Any, ...], ...], seed.word)
+                return [2, [self._descriptor(d) for d in ring]]
             return [0 if seed.kind == "adjoint-ring" else 1, list(seed.word)]
-        self.tensors.append(_tensor(seed))
+        self.tensors.append(self.key_tensor(seed))
         return [3, [len(self.tensors) - 1]]
+
+    def key_tensor(self, seed: ConnectedColorTensor) -> list[Any]:
+        """A generic seed as its class key reads it: ``canonical_seed`` of it
+        when classes merge by proportionality (``_ClassKeys(merge=True)``),
+        itself otherwise."""
+
+        merge = self.compressed is not None
+        return _tensor(canonical_seed(seed) if merge else seed)
 
     def primitive(self, raw: Sequence[Any]) -> Primitive:
         kind, letters, descriptors = raw

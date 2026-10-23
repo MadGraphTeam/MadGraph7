@@ -19,7 +19,7 @@ type RawClass = (&'static str, Option<RawPrimitive>, u32);
 type RawOutput = (Vec<RawClass>, Vec<Vec<u32>>, Vec<Vec<(u32, u32)>>, Vec<u32>);
 
 fn words<const N: usize>(bytes: &[u8]) -> PyResult<Vec<[u8; N]>> {
-    if bytes.len() % N != 0 {
+    if !bytes.len().is_multiple_of(N) {
         return Err(error("seed table: a binary table of partial words"));
     }
     Ok(bytes
@@ -100,7 +100,11 @@ impl SeedBuilder {
 
     /// `(ring needs, generic skeletons)` once `certified` compressions are
     /// known.
-    fn needs(&mut self, py: Python<'_>, certified: Vec<String>) -> PyResult<(Vec<RawRing>, Vec<usize>)> {
+    fn needs(
+        &mut self,
+        py: Python<'_>,
+        certified: Vec<String>,
+    ) -> PyResult<(Vec<RawRing>, Vec<usize>)> {
         let kinds = certified
             .iter()
             .map(|name| Kind::from_name(name))
@@ -142,7 +146,9 @@ impl SeedBuilder {
         };
         let (rings, generics) = (parse(rings)?, parse(generics)?);
         let core = &mut self.core;
-        let output = py.detach(|| core.complete(rings, generics)).map_err(error)?;
+        let output = py
+            .detach(|| core.complete(rings, generics))
+            .map_err(error)?;
         let classes = output
             .classes
             .iter()

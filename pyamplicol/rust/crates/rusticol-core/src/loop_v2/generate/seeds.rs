@@ -351,7 +351,8 @@ impl Descriptors {
     /// (`canonical_primitive("quark-ring", word)`); its offset.
     fn canonical_rotation(&self, ring: &[u32]) -> usize {
         let n = ring.len();
-        let rotated = |k: usize| -> Vec<u32> { ring[k..].iter().chain(&ring[..k]).copied().collect() };
+        let rotated =
+            |k: usize| -> Vec<u32> { ring[k..].iter().chain(&ring[..k]).copied().collect() };
         let mut best = 0;
         let mut best_ring = rotated(0);
         for k in 1..n {
@@ -464,7 +465,8 @@ fn canonical_letters(kind: Kind, word: &[i64]) -> (Vec<i64>, i64) {
     if n == 0 {
         return (Vec::new(), 1);
     }
-    let rotation = |w: &[i64], k: usize| -> Vec<i64> { w[k..].iter().chain(&w[..k]).copied().collect() };
+    let rotation =
+        |w: &[i64], k: usize| -> Vec<i64> { w[k..].iter().chain(&w[..k]).copied().collect() };
     let mut best = (rotation(word, 0), 1i64);
     for k in 1..n {
         let candidate = (rotation(word, k), 1);
@@ -507,7 +509,11 @@ fn ring_word(kind: Kind, descriptors: &[&Descriptor]) -> Option<Vec<i64>> {
             return None;
         };
         let previous = (p + n - 1) % n;
-        let (row, col) = if *forward { (p, previous) } else { (previous, p) };
+        let (row, col) = if *forward {
+            (p, previous)
+        } else {
+            (previous, p)
+        };
         if by_row[row] != usize::MAX {
             return None; // a fundamental index occurs twice as row
         }
@@ -560,7 +566,13 @@ pub struct ColourTensor {
 fn canonical_trace(trace: &[i64]) -> Vec<i64> {
     let n = trace.len();
     (0..n)
-        .map(|k| trace[k..].iter().chain(&trace[..k]).copied().collect::<Vec<_>>())
+        .map(|k| {
+            trace[k..]
+                .iter()
+                .chain(&trace[..k])
+                .copied()
+                .collect::<Vec<_>>()
+        })
         .min()
         .unwrap_or_default()
 }
@@ -612,7 +624,13 @@ type DescriptorSpec = (u8, Vec<i64>, bool, u32);
 /// coupling orders)`; position kind 0 adjoint, 1 fundamental, 2 exact.
 type ContentSpec = (u8, bool, Vec<(u32, u32)>, Vec<(u16, i64)>);
 /// A term of a tensor: `(re, im, N_c power, open strings, traces)`.
-pub type TermSpec = (String, String, i64, Vec<(i64, Vec<i64>, i64)>, Vec<Vec<i64>>);
+pub type TermSpec = (
+    String,
+    String,
+    i64,
+    Vec<(i64, Vec<i64>, i64)>,
+    Vec<Vec<i64>>,
+);
 /// A tensor: `(inverse sqrt(2) power, terms)`.
 pub type TensorSpec = (i64, Vec<TermSpec>);
 /// An existing class: `(tag, items, orders)`; tag 0 adjoint ring, 1
@@ -690,6 +708,10 @@ pub enum Seed {
     /// An existing generic class (`SeedSpec::existing`): its tensor index.
     Tensor(u32),
 }
+
+/// `_ring_relabelling` of a ring: (canonical relabelled ring, the original
+/// descriptors in its rotation, forward map or empty for the identity).
+type Relabelling = (Vec<u32>, Vec<u32>, Vec<(i64, i64)>);
 
 /// Where a skeleton's seed comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -773,7 +795,11 @@ pub struct SeedBuilder {
 impl SeedBuilder {
     /// The stage's input: `spec` and the skeletons as content-id spans
     /// (`offsets` has one more entry than there are skeletons).
-    pub fn new(spec: SeedSpec, offsets: Vec<usize>, skeleton_contents: Vec<u32>) -> RusticolResult<Self> {
+    pub fn new(
+        spec: SeedSpec,
+        offsets: Vec<usize>,
+        skeleton_contents: Vec<u32>,
+    ) -> RusticolResult<Self> {
         if offsets.first() != Some(&0) || offsets.last() != Some(&skeleton_contents.len()) {
             return Err(invalid("skeleton offsets do not span the contents"));
         }
@@ -1019,7 +1045,11 @@ impl SeedBuilder {
 
     /// `CompressedColour._combination`: the primitive expansion of the
     /// product of the position terms (None: a product does not close).
-    fn product_combination(&mut self, kind: Kind, lists: &[u32]) -> RusticolResult<Option<Vec<(u32, u32)>>> {
+    fn product_combination(
+        &mut self,
+        kind: Kind,
+        lists: &[u32],
+    ) -> RusticolResult<Option<Vec<(u32, u32)>>> {
         let sizes: Vec<usize> = lists
             .iter()
             .map(|&l| self.term_lists[l as usize].len())
@@ -1104,16 +1134,20 @@ impl SeedBuilder {
 
     /// `CompressedColour._ring_combination`: through the combination of the
     /// key with its labels renamed 1, 2, ... in reading order.
-    fn ring_combination(&mut self, kind: Kind, lists: &[u32]) -> RusticolResult<Option<Vec<(u32, u32)>>> {
+    fn ring_combination(
+        &mut self,
+        kind: Kind,
+        lists: &[u32],
+    ) -> RusticolResult<Option<Vec<(u32, u32)>>> {
         let mut rename: FastMap<i64, i64> = FastMap::default();
         let mut order: Vec<i64> = Vec::new();
         for &l in lists {
             for &(_, d) in &self.term_lists[l as usize] {
                 for &label in self.descriptors.get(d).labels() {
-                    if !rename.contains_key(&label) {
+                    rename.entry(label).or_insert_with(|| {
                         order.push(label);
-                        rename.insert(label, order.len() as i64);
-                    }
+                        order.len() as i64
+                    });
                 }
             }
         }
@@ -1268,7 +1302,7 @@ impl SeedBuilder {
 
     /// `_ring_relabelling`: (canonical relabelled ring, its rotation of the
     /// original descriptors, forward map, back map).
-    fn ring_relabelling(&mut self, ring: &[u32]) -> RusticolResult<(Vec<u32>, Vec<u32>, Vec<(i64, i64)>)> {
+    fn ring_relabelling(&mut self, ring: &[u32]) -> RusticolResult<Relabelling> {
         let mut seen: Vec<i64> = Vec::new();
         for &d in ring {
             for &label in self.descriptors.get(d).labels() {
@@ -1385,7 +1419,11 @@ impl SeedBuilder {
     /// The rows of `_extended` (after [`Self::needs`]): `rings[k]` is
     /// `canonical_seed(_reduced_primitive(...))` of ring need k, `generics[g]`
     /// the seed of generic need g.
-    pub fn complete(&mut self, rings: Vec<Tensor>, generics: Vec<Tensor>) -> RusticolResult<SeedOutput> {
+    pub fn complete(
+        &mut self,
+        rings: Vec<Tensor>,
+        generics: Vec<Tensor>,
+    ) -> RusticolResult<SeedOutput> {
         if !self.has_needs {
             return Err(invalid("complete runs after needs"));
         }
@@ -1559,7 +1597,10 @@ impl Keys {
         let key = (tensor.normalization, key);
         let next = self.proportional.len() as u32;
         let id = *self.proportional.entry(key).or_insert(next);
-        Ok((ClassKey::Proportional(id), builder.coefficients.intern(first)))
+        Ok((
+            ClassKey::Proportional(id),
+            builder.coefficients.intern(first),
+        ))
     }
 
     /// Exact equality of generic seeds (no merge).
@@ -1567,7 +1608,13 @@ impl Keys {
         let terms: Vec<(u32, u32, i64)> = tensor
             .terms
             .iter()
-            .map(|(c, t, p)| (builder.coefficients.intern(c.clone()), self.colour(t.clone()), *p))
+            .map(|(c, t, p)| {
+                (
+                    builder.coefficients.intern(c.clone()),
+                    self.colour(t.clone()),
+                    *p,
+                )
+            })
             .collect();
         let key = (tensor.normalization, terms);
         let next = self.exact.len() as u32;
@@ -1621,6 +1668,11 @@ impl Keys {
 
 // --------------------------------------------------------------- liveness
 
+/// An order vector: (name id, power), the caller's name ids.
+pub type OrderVector = Vec<(u16, i64)>;
+/// (basis element, Born order, N_c grades of its amplitude).
+pub type BornGrades = (usize, OrderVector, Vec<i64>);
+
 /// One criterion of `_prune_colour`: a seed table's nonzero cell powers per
 /// (class, basis element) and the leading degree P of each sector.
 #[derive(Debug, Deserialize)]
@@ -1639,11 +1691,11 @@ pub struct LivenessSpec {
     pub accuracy: String,
     pub tables: Vec<LivenessTable>,
     /// Per sector its (Born order, loop order) pairs.
-    pub sectors: Vec<Vec<(Vec<(u16, i64)>, Vec<(u16, i64)>)>>,
+    pub sectors: Vec<Vec<(OrderVector, OrderVector)>>,
     /// Per basis element its Born orders.
     pub basis_orders: Vec<Vec<Vec<(u16, i64)>>>,
     /// (basis element, Born order, N_c grades of its amplitude).
-    pub grades: Vec<(usize, Vec<(u16, i64)>, Vec<i64>)>,
+    pub grades: Vec<BornGrades>,
 }
 
 /// `colour.kept`.
@@ -1654,7 +1706,11 @@ fn kept(power: i64, degree: Option<i64>, depth: i64) -> bool {
 impl SeedBuilder {
     /// `_prune_colour`'s `class_live(c, order)` for every class and loop
     /// order of `output`, and `keep` of every skeleton of this stage.
-    pub fn liveness(&mut self, output: &SeedOutput, spec: &LivenessSpec) -> RusticolResult<(Vec<Vec<bool>>, Vec<bool>)> {
+    pub fn liveness(
+        &mut self,
+        output: &SeedOutput,
+        spec: &LivenessSpec,
+    ) -> RusticolResult<(Vec<Vec<bool>>, Vec<bool>)> {
         let depth = match spec.accuracy.as_str() {
             "lc" => 0,
             "nlc" => 2,
@@ -1737,12 +1793,16 @@ mod tests {
     #[test]
     fn tuple_reprs_compare_as_python_strings() {
         let compare = |a: &[&str], b: &[&str]| {
-            compare_chunks(&tuple_chunks(a.iter().copied()), &tuple_chunks(b.iter().copied()))
+            compare_chunks(
+                &tuple_chunks(a.iter().copied()),
+                &tuple_chunks(b.iter().copied()),
+            )
         };
         // "(a, b)" < "(a,)" since ' ' < ')'.
         assert_eq!(compare(&["a", "b"], &["a"]), Ordering::Less);
         assert_eq!(compare(&["a"], &["a"]), Ordering::Equal);
-        assert_eq!(compare(&[], &["a"]), Ordering::Greater);
+        // "()" < "(a,)" since ')' < 'a'.
+        assert_eq!(compare(&[], &["a"]), Ordering::Less);
         assert_eq!(int_tuple_repr(&[1]), "(1,)");
         assert_eq!(int_tuple_repr(&[1, 10]), "(1, 10)");
         assert_eq!(int_tuple_repr(&[]), "()");
@@ -1751,9 +1811,18 @@ mod tests {
     #[test]
     fn canonical_letters_follow_python_min() {
         // Rotations only for traces; reflections with (-1)^n for rings.
-        assert_eq!(canonical_letters(Kind::FundamentalTrace, &[3, 1, 2]), (vec![1, 2, 3], 1));
-        assert_eq!(canonical_letters(Kind::AdjointRing, &[1, 3, 2]), (vec![1, 2, 3], -1));
-        assert_eq!(canonical_letters(Kind::AdjointRing, &[2, 1]), (vec![1, 2], 1));
+        assert_eq!(
+            canonical_letters(Kind::FundamentalTrace, &[3, 1, 2]),
+            (vec![1, 2, 3], 1)
+        );
+        assert_eq!(
+            canonical_letters(Kind::AdjointRing, &[1, 3, 2]),
+            (vec![1, 2, 3], -1)
+        );
+        assert_eq!(
+            canonical_letters(Kind::AdjointRing, &[2, 1]),
+            (vec![1, 2], 1)
+        );
         assert_eq!(canonical_letters(Kind::AdjointRing, &[]), (vec![], 1));
     }
 
@@ -1761,11 +1830,17 @@ mod tests {
     fn fundamental_ring_words_close_one_loop() {
         let f = |letters: Vec<i64>, forward| Descriptor::Fundamental(letters, forward);
         let (a, b, c) = (f(vec![1], true), f(vec![2, 3], true), f(vec![4], true));
-        assert_eq!(ring_word(Kind::FundamentalTrace, &[&a, &b, &c]), Some(vec![1, 4, 2, 3]));
+        assert_eq!(
+            ring_word(Kind::FundamentalTrace, &[&a, &b, &c]),
+            Some(vec![1, 4, 2, 3])
+        );
         let (x, y) = (f(vec![1], true), f(vec![2], false));
         assert_eq!(ring_word(Kind::FundamentalTrace, &[&x, &y]), None);
         let (u, v) = (f(vec![1], false), f(vec![2], false));
-        assert_eq!(ring_word(Kind::FundamentalTrace, &[&u, &v]), Some(vec![1, 2]));
+        assert_eq!(
+            ring_word(Kind::FundamentalTrace, &[&u, &v]),
+            Some(vec![1, 2])
+        );
     }
 
     #[test]

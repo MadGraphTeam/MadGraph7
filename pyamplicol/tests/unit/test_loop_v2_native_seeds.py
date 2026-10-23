@@ -324,10 +324,13 @@ def test_native_seeds_in_the_slice(
     with monkeypatch.context() as patch:
         patch.setattr(assemble, "build_seed_table", build)
         patch.setattr(assemble, "extend_seed_table", extend)
-        native = assemble.LoopSlice.generate(compiled, request, loop_native, prune=False)
+        native = assemble.LoopSlice.generate(
+            compiled, request, loop_native, prune=False
+        )
         built = stages[0]
         if accuracy != "full":
             flags, keep = built.keep(native)
+            assert any(flags.values())
             # The oracle's keep: _prune_colour's callback on the readings.
             seen = {}
 
@@ -339,7 +342,8 @@ def test_native_seeds_in_the_slice(
             with pytest.raises(_Captured):
                 native._prune_colour()
             assert keep == [seen["keep"](s) for s in built._skeletons]
-            assert any(keep) and not all(keep)
+            # LC prunes skeletons of g g > g g g; NLC keeps every u u~ > g g g one.
+            assert any(keep) and all(keep) == (accuracy == "nlc")
     with monkeypatch.context() as patch:
         patch.setattr(assemble, "build_seed_table", build)
         patch.setattr(assemble, "extend_seed_table", extend)
@@ -380,7 +384,9 @@ def test_native_seeds_at_six_legs(
 
     def build(colour, skeletons, basis=None, *, compress=False):
         skeletons = list(skeletons)
-        captured["python"] = build_seed_table(colour, skeletons, basis, compress=compress)
+        captured["python"] = build_seed_table(
+            colour, skeletons, basis, compress=compress
+        )
         captured["native"] = native_seeds.build_seed_table(
             colour, skeletons, basis, compress=compress, native=loop_native
         )
