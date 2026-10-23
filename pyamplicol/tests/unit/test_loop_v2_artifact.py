@@ -808,9 +808,14 @@ def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
     original = artifact.generate_process
 
     def drifted(*args, **kwargs):
+        # Another build's generator: the same process with other plan bytes.
         generated = original(*args, **kwargs)
-        generated.plan_json = generated.plan_json.replace('"schema":4', '"schema": 4')
-        return generated
+        return artifact.GeneratedProcess(
+            generated.observables,
+            generated.exported,
+            generated.request,
+            generated.plan_json.replace('"schema":4', '"schema": 4'),
+        )
 
     monkeypatch.setattr(artifact, "_slices", type(artifact._slices)())
     monkeypatch.setattr(artifact, "generate_process", drifted)
@@ -1909,6 +1914,7 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     assert [sector.order for sector in result.sectors] == sorted(loop_key)
     assert len(result.values) == len(reference["rows"]) == 3
     structural = (("QCD", 2), ("QED", 2))
+    worst = 0.0
     for index, row in enumerate(reference["rows"]):
         borns = dict(zip(result.born_orders, result.born_values[index], strict=True))
         largest = max(abs(value) for value in row["born"].values())
@@ -1922,6 +1928,8 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
             scale = max(map(abs, wanted))
             for actual, target in zip(laurent, wanted, strict=True):
                 assert abs(actual - target) <= 1e-12 * scale, (index, sector.order)
+                worst = max(worst, abs(actual - target) / scale)
+    print(f"mixed Born orders: largest sector deviation {worst:.2e}")
 
 
 def _legacy_results(result) -> dict:
