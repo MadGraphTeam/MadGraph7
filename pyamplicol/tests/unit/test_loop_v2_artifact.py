@@ -20,9 +20,9 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   at full colour (g g > g g; d d~ > g g with s s~ > g g served as an exact
   flavour member) and at leading colour, in binary64 (virtuals held to
   1e-12 unless the value's own stability estimate E exceeds it, then to
-  E <= 1e-9; Borns to 1e-12), in double-double (1e-24) and, for the
-  full-colour records, in arbitrary precision (60 digits, 1e-40); the NLC,
-  LC/NLC member and five-leg records nightly;
+  E <= 1e-9; Borns to 1e-12), in double-double (1e-24) and, for g g > g g,
+  in arbitrary precision (60 digits, 1e-40); the NLC, LC/NLC member and
+  five-leg records nightly, the full-colour ones also in 60 digits;
 * ``poles=False`` returns the finite parts with absent poles, also for
   correlated and resolved outputs, from the same artifact;
 * stability checks (rotations by count or exact specification, the
