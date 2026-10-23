@@ -16,7 +16,6 @@ from .compiler_kernels import (
     _spin_representations,
     _spin_slots,
 )
-from .compiler_records import _replace_evaluator_constants
 from .contracts import U1_SUBTRACTION_AUXILIARY_KIND
 from .expressions import (
     _expr_antifermion_propagator_dirac,
@@ -503,8 +502,7 @@ class ExternalModelEvaluationMixin:
         particle = self._particle_records_by_pdg[int(pdg)]
         custom = self._propagator_record(pdg)
         if custom is not None and custom.custom:
-            _expression, names = self._custom_propagator_expression(int(pdg))
-            return names
+            return self._custom_propagator_expression(int(pdg))[2]
         return tuple(
             name
             for name in (particle.mass, particle.width)
@@ -518,7 +516,17 @@ class ExternalModelEvaluationMixin:
     def _custom_propagator_expression(
         self,
         particle_id: int,
-    ) -> tuple[_sym.Expression, tuple[str, ...]]:
+    ) -> tuple[_sym.Expression, _sym.Expression, tuple[str, ...]]:
+        """Numerator, scalar denominator and runtime parameters of a propagator.
+
+        Numerator and denominator are normalised separately: the denominator
+        is a Lorentz scalar, and a negative power of a momentum square is not
+        a valid tensor network (e.g. the squared denominator of a line with a
+        counterterm insertion). Derived model parameters (e.g. ``G``) stay
+        symbols, listed with the external ones as the propagator's runtime
+        parameters.
+        """
+
         cached = self._custom_propagator_expressions.get(int(particle_id))
         if cached is not None:
             return cached
@@ -526,33 +534,55 @@ class ExternalModelEvaluationMixin:
         if record is None or not record.custom:
             raise ValueError(f"particle {particle_id} has no custom UFO propagator")
         spin = self.spin(particle_id)
-        normalized = normalize_lorentz_expression(
-            f"({record.numerator})/({record.denominator})",
-            (spin, spin),
-            model_symbols=self._model_symbols,
-            vertex=False,
+        numerator, denominator = (
+            self._resolved_parameters(
+                self._model_symbols.expression(
+                    normalize_lorentz_expression(
+                        source,
+                        (spin, spin),
+                        model_symbols=self._model_symbols,
+                        vertex=False,
+                    ).expression
+                )
+            )
+            for source in (record.numerator, record.denominator)
         )
-        expression = self._model_symbols.expression(normalized.expression)
+        symbols = set(numerator.get_all_symbols(False)) | set(
+            denominator.get_all_symbols(False)
+        )
+        names = tuple(
+            sorted(
+                parameter.name
+                for parameter in self._parameter_records.values()
+                if (
+                    parameter.nature == "external"
+                    or parameter.name in self._runtime_derived_definitions
+                )
+                and self._model_symbols.symbol(parameter.name) in symbols
+            )
+        )
+        result = numerator, denominator, names
+        self._custom_propagator_expressions[int(particle_id)] = result
+        return result
+
+    def _resolved_parameters(self, expression: _sym.Expression) -> _sym.Expression:
+        """Internal constants resolved; derived parameters stay runtime inputs.
+
+        Derived parameters are evaluated exactly at every precision, whereas a
+        compiled propagator kernel rounds constants such as pi to binary64.
+        """
+
         for parameter in self._parameter_records.values():
-            if parameter.nature == "external":
+            if (
+                parameter.nature == "external"
+                or parameter.name in self._runtime_derived_definitions
+            ):
                 continue
             expression = expression.replace(
                 self._model_symbols.symbol(parameter.name),
                 self._model_symbols.expression(parameter.resolved_expression),
             )
-        expression = _replace_evaluator_constants(expression)
-        symbols = set(expression.get_all_symbols(False))
-        names = tuple(
-            sorted(
-                parameter.name
-                for parameter in self._parameter_records.values()
-                if parameter.nature == "external"
-                and self._model_symbols.symbol(parameter.name) in symbols
-            )
-        )
-        result = expression, names
-        self._custom_propagator_expressions[int(particle_id)] = result
-        return result
+        return expression
 
     def _custom_propagator_template(
         self,
@@ -561,53 +591,14 @@ class ExternalModelEvaluationMixin:
         cached = self._custom_propagator_templates.get(int(particle_id))
         if cached is not None:
             return cached
-        expression, _names = self._custom_propagator_expression(particle_id)
-        spin = self.spin(particle_id)
-        components = tuple(
-            symbols.custom_propagator_component(self.name, "input", index)
-            for index in range(self.dimension(particle_id))
-        )
-        momenta = tuple(
-            symbols.custom_propagator_component(self.name, "momentum", index)
-            for index in range(4)
-        )
-        library = _sym.TensorLibrary.hep_lib_atom()
-        representations = _spin_representations(spin)
-        if representations:
-            name = _sym.TensorName(symbols.custom_propagator_tensor_name(self.name))
-            library.register(_sym.Tensor.dense(name(*representations), components))
-            expression *= name(*_spin_slots(spin, 1)).to_expression()
-        else:
-            expression *= components[0]
-        minkowski = _sym.Representation.mink(4)
-        for leg in (1, 2):
-            library.register(
-                _sym.Tensor.dense(
-                    _sym.TensorName(self._model_symbols.ufo_momentum_tensor_name(leg))(
-                        minkowski
-                    ),
-                    momenta,
-                )
-            )
-        axis_labels = _spin_axis_labels(spin, 2)
-        network = _sym.TensorNetwork(
-            _sym.as_tensor(expression) if axis_labels else expression, library
-        )
-        network.execute(library=library)
-        tensor = network.result_tensor(library)
-        tensor_components = _ordered_dense_tensor_components(
-            tensor,
-            axis_labels,
-        ).values
-        expected = self.dimension(particle_id)
-        if len(tensor_components) != expected:
-            raise ValueError(
-                f"custom propagator {particle_id} produced {len(tensor_components)} "
-                f"components, expected {expected}"
-            )
-        template = tuple(
-            _replace_evaluator_constants(_as_expression(component))
-            for component in tensor_components
+        numerator, denominator, _names = self._custom_propagator_expression(particle_id)
+        template = custom_propagator_components(
+            self._model_symbols,
+            self.name,
+            self.spin(particle_id),
+            self.dimension(particle_id),
+            numerator,
+            denominator,
         )
         self._custom_propagator_templates[int(particle_id)] = template
         return template
@@ -644,7 +635,7 @@ class ExternalModelEvaluationMixin:
             },
             **{
                 self._model_symbols.symbol(name): self._parameter_value(name)
-                for name in self._custom_propagator_expression(particle_id)[1]
+                for name in self._custom_propagator_expression(particle_id)[2]
             },
         }
         return tuple(
@@ -672,3 +663,99 @@ class ExternalModelEvaluationMixin:
 
     def runtime_parameter_defaults(self) -> dict[str, tuple[float, float]]:
         return dict(self.compiled.parameter_defaults)
+
+
+def _explicit_momentum_squares(
+    expression: _sym.Expression,
+    model_symbols: Any,
+    square: _sym.Expression,
+) -> _sym.Expression:
+    """Self-contracted momentum powers ``p(mu)^(2k)`` as ``square^k``.
+
+    Normalisation writes ``p.p`` as ``p(mu)^2`` with a contracted label, and
+    canonical relabelling merges two such squares of one term into
+    ``p(mu)^4``, which is no valid tensor network; both legs of a propagator
+    carry the same momentum, whose square is the scalar ``square``.
+    """
+
+    odd: list[str] = []
+
+    def power(match: Mapping[_sym.Expression, _sym.Expression]) -> _sym.Expression:
+        exponent = int(str(match[_sym.E("n_")]))
+        if exponent % 2:
+            odd.append(str(exponent))
+        return square ** (exponent // 2)
+
+    for leg in (1, 2):
+        name = model_symbols.ufo_momentum_tensor_name(leg)
+        expression = expression.replace(_sym.E(f"{name}(a_)^n_"), power)
+    if odd:
+        raise ValueError(f"odd powers {odd} of a propagator momentum")
+    return expression
+
+
+def custom_propagator_components(
+    model_symbols: Any,
+    model_name: str,
+    spin: int,
+    dimension: int,
+    numerator: _sym.Expression,
+    denominator: _sym.Expression,
+) -> tuple[_sym.Expression, ...]:
+    """Components of a normalised propagator ``numerator / denominator``.
+
+    Component ``i`` is the propagated current, linear in the input components
+    ``custom_propagator::input::c{j}`` and a function of the momentum
+    components ``custom_propagator::momentum::c{mu}`` (the momentum of both
+    propagator legs). The denominator must be a Lorentz scalar.
+    """
+
+    components = tuple(
+        symbols.custom_propagator_component(model_name, "input", index)
+        for index in range(dimension)
+    )
+    momenta = tuple(
+        symbols.custom_propagator_component(model_name, "momentum", index)
+        for index in range(4)
+    )
+    library = _sym.TensorLibrary.hep_lib_atom()
+    representations = _spin_representations(spin)
+    if representations:
+        name = _sym.TensorName(symbols.custom_propagator_tensor_name(model_name))
+        library.register(_sym.Tensor.dense(name(*representations), components))
+        numerator *= name(*_spin_slots(spin, 1)).to_expression()
+    else:
+        numerator *= components[0]
+    minkowski = _sym.Representation.mink(4)
+    square = momenta[0] ** 2 - momenta[1] ** 2 - momenta[2] ** 2 - momenta[3] ** 2
+    numerator, denominator = (
+        _explicit_momentum_squares(part, model_symbols, square)
+        for part in (numerator, denominator)
+    )
+    for leg in (1, 2):
+        library.register(
+            _sym.Tensor.dense(
+                _sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg))(minkowski),
+                momenta,
+            )
+        )
+    axis_labels = _spin_axis_labels(spin, 2)
+    network = _sym.TensorNetwork(
+        _sym.as_tensor(numerator) if axis_labels else numerator, library
+    )
+    network.execute(library=library)
+    tensor_components = _ordered_dense_tensor_components(
+        network.result_tensor(library),
+        axis_labels,
+    ).values
+    scalar = _sym.TensorNetwork(_sym.as_tensor(denominator), library)
+    scalar.execute(library=library)
+    denominator = _as_expression(scalar.result_scalar())
+    if len(tensor_components) != dimension:
+        raise ValueError(
+            f"custom propagator of {model_name!r} produced {len(tensor_components)} "
+            f"components, expected {dimension}"
+        )
+    return tuple(
+        _as_expression(component) / denominator for component in tensor_components
+    )

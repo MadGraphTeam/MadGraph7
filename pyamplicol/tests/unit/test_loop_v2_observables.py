@@ -1380,6 +1380,13 @@ plan = export_plan(slice_)
 program = plan.program
 reference_executor._term_order = lambda term: 0
 raw = export_plan(slice_).program["kernels"]
+# The tree stages in Symbolica's own term order, before their canonical
+# renaming (``assemble._canonical_stage``).
+stages = [
+    str(expression)
+    for stage in slice_.tree_rows.stages
+    for expression in stage.output_expressions[:400]
+]
 print(
     json.dumps(
         {
@@ -1388,6 +1395,7 @@ print(
             "kernels": digest(program["kernels"]),
             "constants": digest([repr(key) for key in plan.constants]),
             "raw kernels": digest(raw),
+            "raw stages": digest(stages),
         }
     )
 )
@@ -1408,8 +1416,12 @@ def test_generation_does_not_depend_on_the_process_history(loop_sm_compiled_mode
     in a canonical order (``reference_executor._term_order``), 250 unrelated
     symbols changed 685 of the 1594 exported kernel outputs (term order, 517
     of them, and constant numbering) and moved 6 of the 19 totals (up to
-    7.4e-13 relative; measured). The probe's raw kernel records, in
-    Symbolica's order, still differ after 250 (it discriminates)."""
+    7.4e-13 relative; measured). The probe discriminates: the raw tree
+    stages, in Symbolica's order before their canonical renaming, differ
+    after 250. (Since the slice compiles its block rows before the loop
+    kernels, WP2.2, the canonical symbol block's padding absorbs the history
+    for every symbol created later, so the raw kernel records no longer
+    differ either; the canonical kernel order stays the guarantee.)"""
 
     import subprocess
     import sys
@@ -1439,7 +1451,7 @@ def test_generation_does_not_depend_on_the_process_history(loop_sm_compiled_mode
         assert run.returncode == 0, err[-4000:]
         outputs.append(json.loads(out.strip().splitlines()[-1]))
     first, kernel_shift, _tree_shift = outputs
-    assert first["raw kernels"] != kernel_shift["raw kernels"]
+    assert first["raw stages"] != kernel_shift["raw stages"]
     for output in outputs[1:]:
         for item in ("program", "kernels", "constants", "totals"):
             assert output[item] == first[item], item

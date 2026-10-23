@@ -7,6 +7,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from typing import Any
 
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
@@ -14,6 +15,7 @@ from .compiler_auxiliary_components import reduce_contact_auxiliary_components
 from .compiler_color_flow import (
     compile_lc_color_transition_terms,
     synthesize_fundamental_fierz_auxiliaries,
+    synthesize_u1_projections,
 )
 from .compiler_contact_trees import (
     _compile_color_singlet_contact_trees,
@@ -24,11 +26,12 @@ from .compiler_contact_trees import (
 from .compiler_contacts import (
     _build_contact_decomposition_proof,
     _contact_final_component_expressions,
-    _contact_partial_component_expressions,
     _contact_term_has_literal_color_singlet,
     _fuse_contact_finals,
     _record_contact_decomposition_proofs,
     _validated_contact_decomposition_proof,
+    contact_pair_symmetry,
+    projected_contact_partial_components,
 )
 from .compiler_contractions import compile_contraction_records
 from .compiler_gauge import compile_goldstone_partner_records
@@ -87,18 +90,29 @@ _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS = frozenset(
         "adjoint-structure-constant",
     }
 )
+# The d-symbol couples to the U(1) part of a colour-flow gluon, which only
+# fermion lines subtract: it is lowered only on the vertices whose gluon legs
+# are projected onto SU(N) (``u1_projected_vertices``, the counterterm
+# vertices of the counterterm closure), never on an ordinary model vertex.
+_U1_PROJECTED_TRILINEAR_COLOR_PROJECTIONS = frozenset({"adjoint-symmetric-invariant"})
 
 
 def compile_ufo_model_ir(
     model: Mapping[str, object],
     *,
     tree_kernel_variant: TreeKernelVariant = "transverse",
+    u1_projected_vertices: frozenset[str] = frozenset(),
 ) -> CompiledModelIR:
     """Compile one UFO payload; ``tree_kernel_variant`` selects YM lowering.
 
     The variant changes only the component expressions of oriented kernels
     proven eligible for the transverse massless Yang-Mills replacement. Kernel
     kinds, particles and every other record are identical in both variants.
+
+    ``u1_projected_vertices`` names vertex rules whose colour-flow stages get
+    the U(1) projection of their gluon legs
+    (``compiler_color_flow.synthesize_u1_projections``; the counterterm
+    vertices of the counterterm closure, ``models.loading``).
     """
 
     if tree_kernel_variant not in TREE_KERNEL_VARIANTS:
@@ -291,13 +305,21 @@ def compile_ufo_model_ir(
         oriented_kernels,
         particles,
         terms,
+        u1_projected_vertices=frozenset(u1_projected_vertices),
     )
-    particles, oriented_kernels = synthesize_fundamental_fierz_auxiliaries(
+    particles, oriented_kernels, propagators = synthesize_fundamental_fierz_auxiliaries(
         particles,
         oriented_kernels,
         propagators,
         model_symbols=model_symbols,
     )
+    if u1_projected_vertices:
+        particles, oriented_kernels = synthesize_u1_projections(
+            particles,
+            oriented_kernels,
+            projected_vertices=frozenset(u1_projected_vertices),
+            model_symbols=model_symbols,
+        )
     (
         annotated_terms,
         oriented_kernels,
@@ -349,6 +371,8 @@ def _annotate_oriented_kernel_color_projections(
     kernels: Sequence[CompiledOrientedKernel],
     particles: Sequence[CompiledParticleRecord],
     terms: Sequence[CompiledVertexTerm],
+    *,
+    u1_projected_vertices: frozenset[str] = frozenset(),
 ) -> tuple[CompiledOrientedKernel, ...]:
     particle_by_name = {particle.name: particle for particle in particles}
     term_by_id = {term.id: term for term in terms}
@@ -366,7 +390,13 @@ def _annotate_oriented_kernel_color_projections(
                 term.color_expression,
                 representations,
             )
-            if certified_structure not in _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS:
+            if (
+                certified_structure not in _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS
+                and not (
+                    certified_structure in _U1_PROJECTED_TRILINEAR_COLOR_PROJECTIONS
+                    and term.vertex.split("::", 1)[0] in u1_projected_vertices
+                )
+            ):
                 raise ValueError(
                     f"vertex {term.vertex!r} has unsupported trilinear color "
                     f"tensor {term.color_source!r}; pyAmpliCol could not prove it "
@@ -390,6 +420,12 @@ def _annotate_oriented_kernel_color_projections(
                 # oriented recognizer.  The original trilinear term and the
                 # compiler-owned source-leg permutation already certify it.
                 structure = certified_structure
+            if structure == "adjoint-structure-constant":
+                # The projection is f in the term's leg order. An orientation
+                # permutes the legs and f is totally antisymmetric, so its
+                # colour-flow sign is the parity of the permutation (this
+                # matters only for vertices whose f legs are distinct species).
+                coefficient *= _permutation_parity(kernel.source_particle_legs)
             recurrence_structure = certified_structure
             recurrence_proof_source = "exact-trilinear-symbolica-projection-v1"
             recurrence_provenance = (("vertex-term-id", str(term.id)),)
@@ -458,6 +494,16 @@ def _annotate_oriented_kernel_color_projections(
     return tuple(annotated)
 
 
+def _permutation_parity(permutation: Sequence[int]) -> int:
+    inversions = sum(
+        1
+        for index, value in enumerate(permutation)
+        for later in permutation[index + 1 :]
+        if value > later
+    )
+    return -1 if inversions % 2 else 1
+
+
 def _dual_color_representation(representation: int) -> int:
     return -representation if abs(representation) == 3 else representation
 
@@ -520,18 +566,22 @@ def _contact_recurrence_color_contract(
             f"{len(orientation_matches)} exact stage orientations"
         )
     term, proof, split = owner_matches[0]
+    # Deduplicated partials may serve splits of different kinds whose stage
+    # tensors agree (a closing identity of two adjoint legs, say); a final
+    # takes its structure from its own terms' splits, not the auxiliary's
+    # owner.
+    candidates = [match[2] for match in orientation_matches]
+    if stage == "partial":
+        candidates.append(split)
+    recurrence_structure = _contact_stage_structure(candidates[0], stage)
     if any(
-        candidate_split.decomposition_kind != split.decomposition_kind
-        for _term, _proof, candidate_split, _orientation in orientation_matches
+        _contact_stage_structure(candidate, stage) != recurrence_structure
+        for candidate in candidates
     ):
         raise ValueError(
             f"compiler-generated contact kernel {kernel.vertex!r} fuses "
             "incompatible recurrence color decompositions"
         )
-    recurrence_structure = {
-        "literal-color-singlet": "singlet",
-        "two-structure-constants": "adjoint-structure-constant",
-    }[split.decomposition_kind]
     return (
         recurrence_structure,
         f"{proof.algorithm}-recurrence-{stage}-v{proof.algorithm_version}",
@@ -542,6 +592,32 @@ def _contact_recurrence_color_contract(
             ("vertex-term-id", str(term.id)),
         ),
     )
+
+
+def _contact_stage_structure(split: Any, stage: str) -> str:
+    """The recurrence colour structure of one stage of a contact split."""
+
+    kind = split.decomposition_kind
+    if kind in ("two-structure-constants", "trilinear-identity", "identity-singlets"):
+        # Each stage carries its own tensor: a structure constant or a
+        # d-symbol (counterterm contacts, ``ct_color_flow``), an identity, or
+        # nothing (a pair of colour singlets).
+        source = (
+            split.outer_color_source
+            if stage == "partial"
+            else (split.final_color_source)
+        )
+        if "Identity(" in source:
+            return "color-identity"
+        if "d(" in source:
+            return "adjoint-symmetric-invariant"
+        if "f(" in source:
+            return "adjoint-structure-constant"
+        return "singlet"
+    return {
+        "literal-color-singlet": "singlet",
+        "two-identities": "color-identity",
+    }[kind]
 
 
 def _annotate_oriented_kernel_evaluation_equivalence(
@@ -923,7 +999,7 @@ def _compile_four_point_contact_kernels(
             for orientation in partial_orientations:
                 left_leg, right_leg = orientation.input_legs
                 kind = start_kind + len(kernels)
-                components = _contact_partial_component_expressions(
+                components = projected_contact_partial_components(
                     term,
                     particle_by_name,
                     left_leg=left_leg,
@@ -931,6 +1007,9 @@ def _compile_four_point_contact_kernels(
                     open_legs=open_legs,
                     kind=kind,
                     model_symbols=model_symbols,
+                    symmetry=contact_pair_symmetry(
+                        source_particles, split.pair_legs, split.outer_color_source
+                    ),
                 )
                 kernels.append(
                     CompiledOrientedKernel(
@@ -987,6 +1066,15 @@ def _compile_four_point_contact_kernels(
                 combined_color_source = (
                     f"{split.outer_color_source}*{split.final_color_source}"
                     if split.decomposition_kind == "two-structure-constants"
+                    # The identity only passes the summed index on.
+                    else split.outer_color_source
+                    if split.decomposition_kind == "trilinear-identity"
+                    # The pair closed into a singlet; the result takes the
+                    # remaining leg's colour with weight 1 (recurrence:
+                    # ``_contact_recurrence_color_contract``).
+                    else "1"
+                    if split.decomposition_kind
+                    in ("two-identities", "identity-singlets")
                     else term.color_source
                 )
                 kernels.append(
