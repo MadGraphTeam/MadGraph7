@@ -32,7 +32,11 @@ FIXTURE = (
 TOP = 6
 # Relative, per Laurent coefficient with the floor alpha_s / (2 pi) Born (the
 # provider comparisons of test_loop_v2_slice); binary64 against double-double.
-TOLERANCE = 1e-12
+# g g > g g agrees to 3e-14; at six gluons the provider tolerance of
+# test_loop_v2_slice (1e-9) holds, as the references themselves differ by up
+# to 7e-11 there (NJet against OpenLoops, gg_ggggg_njet.json calibration;
+# measured: 1.1e-11 on the finite part, 6e-13 on the poles).
+TOLERANCE = {"gg_gg": 1e-12, "gg_gggg": 1e-9}
 PARAMETERS = {"aS": "0.118", "MT": "173"}
 LAURENT = ("finite", "single_pole", "double_pole")
 
@@ -86,11 +90,12 @@ def _assert_equals_njet(name: str, index: int, result) -> None:
     (born,) = (float(value) for value in result.born.values())
     (laurent,) = result.components["virtual"].values()
     floor = abs(born) * float(PARAMETERS["aS"]) / (2 * math.pi)
-    assert abs(born - float(row["born"])) <= TOLERANCE * abs(born)
+    tolerance = TOLERANCE[name]
+    assert abs(born - float(row["born"])) <= tolerance * abs(born)
     for pole, mine in zip(LAURENT, laurent.coefficients, strict=True):
         reference = float(row[pole])
         scale = max(abs(reference), floor)
-        assert abs(float(mine) - reference) <= TOLERANCE * scale, (index, pole)
+        assert abs(float(mine) - reference) <= tolerance * scale, (index, pole)
 
 
 @pytest.mark.loop_fast
@@ -156,7 +161,8 @@ def test_top_veto_equals_njet_five_flavours_gg_gggg(
     """g g > g g g g with particle_veto = [t] at NJet's first point, the
     complete virtual through the native executor (binary64). Generation and
     the point's Python inputs (the counterterm program's rows) take about
-    half an hour and 8 GB."""
+    an hour and 6.4 GB on the per-point Python inputs (2026-10-23: generation
+    234 s, the point 3,639 s), until WP3.1's native inputs."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice
     from pyamplicol.loops.v2.plan_export import NativeExecutor
