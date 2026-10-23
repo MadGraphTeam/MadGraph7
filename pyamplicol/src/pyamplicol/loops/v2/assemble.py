@@ -2106,9 +2106,13 @@ class _PointEvaluation:
                     )
                 )
         # Catani's operator is the full-colour pole prediction of QCD
-        # corrections (massless and massive coloured legs); in "uv" mode the
-        # renormalised virtual has no IR pole to predict.
-        checked = slice_.request.accuracy == "full" and slice_.alpha_s_parameter
+        # corrections (massless and stable massive coloured legs); in "uv"
+        # mode the renormalised virtual has no IR pole to predict.
+        checked = (
+            slice_.request.accuracy == "full"
+            and slice_.alpha_s_parameter
+            and self._stable_coloured_legs()
+        )
         ir_poles = (
             self._ir_poles() if self.poles and self.mode != "uv" and checked else None
         )
@@ -2185,6 +2189,17 @@ class _PointEvaluation:
         return self._lane_budget(lanes, local)
 
     # -- IR poles ----------------------------------------------------------------------
+
+    def _stable_coloured_legs(self) -> bool:
+        """Whether every massive coloured leg has a zero width: Catani's
+        operator describes stable (real-mass) emitters."""
+
+        values = _kernel_parameters(self.slice.compiled, self.parameters)
+        return all(
+            leg.mass.width == ZERO or values.get(leg.mass.width, 0) == 0
+            for leg in self.slice.families.legs
+            if abs(leg.colour) != 1 and leg.mass.mass != ZERO
+        )
 
     def _ir_poles(self) -> dict[Orders, tuple[Any, Any]]:
         """Catani's single and double poles of the renormalised virtual.

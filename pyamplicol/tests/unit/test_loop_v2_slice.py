@@ -170,7 +170,8 @@ def test_born_and_components_equal_legacy(evaluated, name, carrier):
 def test_massive_quark_line_equals_legacy(slices, carrier):
     """uu~ -> tt~: an open massive fermion line through the loop, read with
     the transposed mass sign (``conventions.TreeReading.mass_signs``), gives
-    the legacy Born and components (no IR-pole prediction with massive legs)."""
+    the legacy Born and components (no IR-pole prediction: the default top
+    width makes the emitters unstable)."""
 
     fixture = _fixture("tt")
     results = fixture["results"]["arbitrary-200"]
