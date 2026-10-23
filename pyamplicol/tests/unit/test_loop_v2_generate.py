@@ -327,8 +327,9 @@ def test_validate_agrees_with_the_providers(
 ):
     """``tools/loop_v2_generate.py validate``: generation with the native
     stages, plan export and native evaluation against every provider of a
-    required reference (the fixture's metric and tolerance); with native
-    per-point trees and Born, the Born and the double pole."""
+    required reference (the fixture's metric and tolerance), all three
+    Laurent coefficients, with Python or native per-point inputs (trees,
+    Born, counterterm and field components)."""
 
     import argparse
 
@@ -348,11 +349,7 @@ def test_validate_agrees_with_the_providers(
     compared = {
         key for p in record["points"] for row in p["errors"].values() for key in row
     }
-    assert compared == (
-        {"born", "double_pole"}
-        if inputs == "native"
-        else {"born", "finite", "single_pole", "double_pole"}
-    )
+    assert compared == {"born", "finite", "single_pole", "double_pole"}
     assert all(p["max_error"] <= 1e-10 for p in record["points"]), record["points"]
 
 
