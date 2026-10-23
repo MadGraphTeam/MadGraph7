@@ -491,6 +491,30 @@ class KernelConstants:
         return found
 
 
+MassFlips = tuple[tuple[str, int], ...]
+
+
+def mass_flips(reading: Any, content: Content) -> MassFlips:
+    """The mass parameters whose sign the tree reading flips in a content's
+    segments, sorted: the outgoing loop line's mass when it is a massive
+    fermion (``conventions.TreeReading.mass_signs``), else none. The Python
+    reference and the native plan (``plan_export``) both read it here."""
+
+    signs = getattr(reading, "mass_signs", None)
+    return tuple(sorted(signs(content.loop_out).items())) if signs else ()
+
+
+def signed_constants(constants: KernelConstants, flips: MassFlips) -> KernelConstants:
+    """``constants`` with the parameters of ``flips`` multiplied by their sign."""
+
+    if not flips:
+        return constants
+    parameters = dict(constants.parameters)
+    for name, sign in flips:
+        parameters[name] = sign * parameters[name]
+    return KernelConstants(parameters, constants.carrier)
+
+
 def _number_expression(value: Complex) -> Any:
     from symbolica import E, Expression
 
@@ -1084,18 +1108,14 @@ class CatalogueKinematics:
 
     def _constants(self, content: Content) -> KernelConstants:
         """Kernel constants of a content's segments: the reading may flip the
-        sign of the outgoing loop line's mass (``TreeReading.mass_signs``)."""
+        sign of the outgoing loop line's mass (``mass_flips``)."""
 
-        signs = getattr(self.reading, "mass_signs", None)
-        flips = tuple(sorted(signs(content.loop_out).items())) if signs else ()
+        flips = mass_flips(self.reading, content)
         if not flips:
             return self.constants
         found = self._signed.get(flips)
         if found is None:
-            parameters = dict(self.constants.parameters)
-            for name, sign in flips:
-                parameters[name] = sign * parameters[name]
-            found = self._signed[flips] = KernelConstants(parameters, self.carrier)
+            found = self._signed[flips] = signed_constants(self.constants, flips)
         return found
 
     def _block_vectors(self, slot: _Slot, row: Row, dimension: int) -> list[Any]:

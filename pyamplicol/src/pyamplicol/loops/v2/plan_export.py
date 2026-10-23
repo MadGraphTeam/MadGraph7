@@ -13,8 +13,13 @@ two run identical programs:
   terms of one routing key), from which the executor runs steps in the split
   form where gate G0's rule prefers it;
 * **kernels**: every catalogue kernel as exact polynomial terms over its
-  inputs (``reference_executor.ExactKernel``); the model factors of its
-  coefficients are numbered kernel constants, valued per batch;
+  inputs (``reference_executor.ExactKernel``), in a canonical term order
+  (monomial, then constant key: Symbolica's ``expand()`` orders terms by
+  symbol ids, which depend on the interpreter's history); the model factors
+  of its coefficients are numbered kernel constants, valued per batch. A
+  content whose tree reading flips the sign of its outgoing loop line's mass
+  (``reference_executor.mass_flips``) binds its own copy of each kernel,
+  whose constants are valued with the flipped mass;
 * **seeds**: per seed key (class combination, loop orders) and observable
   column the exact colour weights sum_c x_c K[c, b] N_c^g of each Born
   component (b, Born order, N_c grade g), projected at the request's colour
@@ -75,6 +80,15 @@ def _complex_text(value: Any) -> list[str]:
     return [_fraction_text(value.real), _fraction_text(value.imag)]
 
 
+def _term_order(term: tuple[Hashable, Any]) -> tuple[Any, str]:
+    """Canonical order of one kernel term (constant key, monomial): the
+    monomial, then the key's text (exact numbers and canonical strings only),
+    independent of Symbolica's symbol ids."""
+
+    key, monomial = term
+    return tuple(monomial), repr(key)
+
+
 def born_rows(slice_: Any) -> tuple[rx.Row, ...]:
     """Born helicity rows in the order of ``assemble`` (the seed rows)."""
 
@@ -102,7 +116,8 @@ class ExportedPlan:
     rows: tuple[rx.Row, ...]
     born_components: tuple[tuple[int, Orders, int], ...]
     block_rows: tuple[tuple[Any, Hashable, int, rx.Row, int], ...]
-    constants: tuple[Hashable, ...]
+    # (constant key, mass flips) of every numbered kernel constant.
+    constants: tuple[tuple[Hashable, rx.MassFlips], ...]
     masses: tuple[Any, ...]
     orders: tuple[Orders, ...]
     families: tuple[FamilyKey, ...]
@@ -133,9 +148,9 @@ class _Exporter:
     rows: tuple[rx.Row, ...]
     contents: dict[Any, int] = field(default_factory=dict)
     content_records: list[dict] = field(default_factory=list)
-    kernels: dict[int, int] = field(default_factory=dict)
+    kernels: dict[tuple[int, rx.MassFlips], int] = field(default_factory=dict)
     kernel_records: list[dict] = field(default_factory=list)
-    constants: dict[Hashable, int] = field(default_factory=dict)
+    constants: dict[tuple[Hashable, rx.MassFlips], int] = field(default_factory=dict)
     block_rows: dict[tuple, int] = field(default_factory=dict)
     factors: dict[tuple[int, int], int] = field(default_factory=dict)
     vertices: dict[Hashable, int] = field(default_factory=dict)
@@ -146,8 +161,11 @@ class _Exporter:
 
     # -- kernels ------------------------------------------------------------
 
-    def _kernel(self, binding) -> int:
-        found = self.kernels.get(binding.kernel_id)
+    def _kernel(self, binding, flips: rx.MassFlips) -> int:
+        """A kernel record per (catalogue kernel, mass flips): the flips are
+        part of its constants' keys (valued by ``NativeExecutor._inputs``)."""
+
+        found = self.kernels.get((binding.kernel_id, flips))
         if found is not None:
             return found
         kernel = self.kinematics._kernel(binding)
@@ -165,12 +183,15 @@ class _Exporter:
                 raise ValueError(f"segment kernel input of role {item.role!r}")
         outputs = [
             [
-                [self.constants.setdefault(key, len(self.constants)), list(monomial)]
-                for key, monomial in terms
+                [
+                    self.constants.setdefault((key, flips), len(self.constants)),
+                    list(monomial),
+                ]
+                for key, monomial in sorted(terms, key=_term_order)
             ]
             for terms in kernel.outputs
         ]
-        found = self.kernels[binding.kernel_id] = len(self.kernel_records)
+        found = self.kernels[(binding.kernel_id, flips)] = len(self.kernel_records)
         self.kernel_records.append({"inputs": inputs, "outputs": outputs})
         return found
 
@@ -180,12 +201,12 @@ class _Exporter:
 
     # -- contents -----------------------------------------------------------
 
-    def _binding(self, binding, index, split: bool) -> dict:
+    def _binding(self, binding, index, split: bool, flips: rx.MassFlips) -> dict:
         """A kernel bound to a routing term's slots: resolved inputs and, per
         kernel output, its fused entry (and, for a split vertex binding, the
         flat block-component index nu it multiplies)."""
 
-        kernel = self._kernel(binding)
+        kernel = self._kernel(binding, flips)
         current_slots, momentum_slots = [], []
         for slot, dimension in enumerate(binding.block_dimensions):
             current_slots += [(slot, k) for k in range(dimension)]
@@ -219,10 +240,11 @@ class _Exporter:
             return found, shape
         index = {entry: i for i, entry in enumerate(shape.fused)}
         row_index = {row: i for i, row in enumerate(shape.rows)}
+        flips = rx.mass_flips(self.kinematics.reading, content)
         terms = []
         for term in self.kinematics.lowered(content):
-            bindings = [self._binding(b, index, False) for b in term.fused]
-            split = [self._binding(b, index, True) for b in term.split]
+            bindings = [self._binding(b, index, False, flips) for b in term.fused]
+            split = [self._binding(b, index, True, flips) for b in term.split]
             dimensions = {tuple(b.block_dimensions) for b in (*term.fused, *term.split)}
             if len(dimensions) != 1:
                 raise ValueError(f"content {content.label} mixes block dimensions")
@@ -947,7 +969,8 @@ class NativeExecutor:
             return [str(x.real), str(x.imag)]
 
         def shared(evaluation):
-            """Kernel constants and squared masses of a point's parameters."""
+            """Kernel constants (with their contents' mass flips) and squared
+            masses of a point's parameters."""
 
             constants = evaluation.constants
             if arithmetic == "exact":
@@ -955,11 +978,19 @@ class NativeExecutor:
                     constants.parameters,
                     rx.Carrier.exact(evaluation.numbers.precision.working_digits),
                 )
+            signed = {(): constants}
+
+            def constant(key, flips):
+                found = signed.get(flips)
+                if found is None:
+                    found = signed[flips] = rx.signed_constants(constants, flips)
+                return found.constant(key)
+
             masses = _mass_values(
                 slice_.compiled, evaluation.parameters, exported.masses
             )
             return (
-                [value(constants.constant(key)) for key in exported.constants],
+                [value(constant(key, flips)) for key, flips in exported.constants],
                 [_fraction_text(masses[m]) for m in exported.masses],
             )
 
