@@ -24,9 +24,10 @@ Per batch only parameter-dependent values cross (``batch_inputs``): the model
 parameters, the masses of massive external particles and the couplings. The
 plan's kernel constants carry the Born kernels' model factors.
 
-The exact carrier has no native trees (wavefunctions are irrational), and
-leading/next-to-leading colour has no native Born metric yet (full colour
-first, WP3.1 plan §4.3); the slice's Python inputs remain their path.
+At leading and next-to-leading colour the Born metric is per Born component
+and squared Born order, keeping the N_c powers the projection keeps
+(``_component_metric``). The exact carrier has no native trees (wavefunctions
+are irrational); the slice's Python inputs remain its path.
 """
 
 from __future__ import annotations
@@ -108,8 +109,6 @@ def export_trees(
 
     from .assemble import LAURENT_POWERS, _BlockRows, _single
 
-    if slice_.request.accuracy != "full" and born_squared:
-        raise ValueError("the native Born metric is full colour (WP3.1 plan §4.3)")
     trees = slice_.tree_rows
     schema = trees.schema
     process = slice_.blocks.process
@@ -257,8 +256,10 @@ def export_trees(
                 [orders_index[left], orders_index[right]]
             )
     squared_orders = tuple(sorted(squared))
-    gram = None
-    if born_squared:
+    gram = metric = None
+    if born_squared and slice_.request.accuracy != "full":
+        metric = _component_metric(slice_, components, squared_orders)
+    elif born_squared:
         gram = []
         for b, row in enumerate(slice_.basis.gram):
             for b2, cell in enumerate(row):
@@ -301,6 +302,7 @@ def export_trees(
             "orders": len(born_orders),
             "squared": [squared[order] for order in squared_orders],
             "gram": gram,
+            "metric": metric,
             "average": str(slice_.normalisation.average),
         },
     }
@@ -434,6 +436,46 @@ def _chunked_stages(dag: Any, schema: Any, limit: int) -> list[dict[str, Any]]:
                     "interaction_ids": ids,
                 }
             )
+    return out
+
+
+def _component_metric(
+    slice_: Any,
+    components: dict[tuple[int, Orders, int], int],
+    squared_orders: Sequence[Orders],
+) -> list[list[Any]]:
+    """The Born colour metric of a leading or next-to-leading colour request
+    over Born components (b, Born order, N_c power), per squared Born order:
+    <b|b'> keeping the N_c powers the projection keeps (``colour.kept``)
+    below the order's leading degree, at N_c = 3, as the Python inputs'
+    Born interference (``assemble._interfere``)."""
+
+    from .colour import kept
+
+    accuracy = slice_.request.accuracy
+    degrees = slice_.degrees()["born"]
+    index = {order: s for s, order in enumerate(squared_orders)}
+    gram = slice_.basis.gram
+    out = []
+    for (b, left, p), j in components.items():
+        for (b2, right, q), j2 in components.items():
+            squared = add_orders(left, right)
+            degree = degrees.get(squared)
+            value = _zero_colour()
+            for power, cell in gram[b][b2].items():
+                exponent = power + p + q
+                if kept(exponent, degree, accuracy):
+                    value = value + cell.scaled(Fraction(NC) ** exponent)
+            if value:
+                out.append(
+                    [
+                        index[squared],
+                        j,
+                        j2,
+                        _fraction_text(value.real),
+                        _fraction_text(value.imag),
+                    ]
+                )
     return out
 
 

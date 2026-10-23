@@ -850,7 +850,8 @@ class NativeExecutor:
     ``inputs="native"`` forms every point's block rows and Born components in
     the executor (``native_trees``, WP3.1) instead of in Python: a batch then
     hands over only parameter-dependent values. Its results hold the Born
-    (with ``born_squared``, full colour) and the ``bare`` component; the
+    (with ``born_squared``, at the request's colour accuracy) and the
+    ``bare`` component; the
     counterterms and external fields join with the native counterterm
     program (WP3.1 I5, after WP2.2), so ``virtual`` is absent until then.
     """
@@ -866,12 +867,10 @@ class NativeExecutor:
         forms: Literal["rule", "fused", "split"] = "rule",
         merged: MergedGraph | bool = False,
         inputs: Literal["python", "native"] = "python",
-        born_squared: bool | None = None,
+        born_squared: bool = True,
     ):
         if inputs not in ("python", "native"):
             raise ValueError(f"unknown input path {inputs!r}")
-        if born_squared is None:
-            born_squared = slice_.request.accuracy == "full"
         self.slice = slice_
         self.inputs = inputs
         if merged is True:

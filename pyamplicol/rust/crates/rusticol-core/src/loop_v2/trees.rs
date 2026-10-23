@@ -103,8 +103,13 @@ struct BornFile {
     orders: usize,
     /// Per squared Born order its (left, right) Born-order pairs.
     squared: Vec<Vec<(usize, usize)>>,
-    /// The exact colour metric <b|b'> at the request's accuracy, sparse.
+    /// The exact full-colour metric <b|b'> at N_c = 3, sparse.
     gram: Option<Vec<(usize, usize, String, String)>>,
+    /// Leading and next-to-leading colour: per squared Born order the metric
+    /// over Born components, (squared order, component, component, re, im),
+    /// each cell's N_c powers kept by the projection (sparse; no `gram`).
+    #[serde(default)]
+    metric: Option<Vec<(usize, usize, usize, String, String)>>,
     average: String,
 }
 
@@ -169,6 +174,7 @@ pub struct TreeProgram {
     orders: usize,
     squared: Vec<Vec<(usize, usize)>>,
     gram: Option<Vec<(usize, usize, [Rational; 2])>>,
+    metric: Option<Vec<(usize, usize, usize, [Rational; 2])>>,
     average: Rational,
 }
 
@@ -201,6 +207,7 @@ pub struct TreeRuntime<T> {
     weights: Vec<Vec<Complex<T>>>,
     factors: Vec<Vec<T>>,
     gram: Option<Vec<Complex<T>>>,
+    metric: Option<Vec<Complex<T>>>,
     average: T,
 }
 
@@ -366,6 +373,27 @@ impl TreeProgram {
                     .collect::<RusticolResult<Vec<_>>>()
             })
             .transpose()?;
+        let metric = born
+            .metric
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|(squared, left, right, re, im)| {
+                        require(
+                            *squared < born.squared.len()
+                                && *left < born.components
+                                && *right < born.components,
+                            "component colour metric entry",
+                        )?;
+                        Ok((*squared, *left, *right, [exact(re)?, exact(im)?]))
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()
+            })
+            .transpose()?;
+        require(
+            gram.is_none() || metric.is_none(),
+            "a Born metric is either full colour or per component",
+        )?;
         Ok(Self {
             legs: file.legs,
             initial: file.initial,
@@ -386,6 +414,7 @@ impl TreeProgram {
             orders: born.orders,
             squared: born.squared,
             gram,
+            metric,
             average: exact(&born.average)?,
         })
     }
@@ -451,11 +480,18 @@ impl TreeProgram {
                 .map(|(_l, _r, [re, im])| complex(re, im))
                 .collect()
         });
+        let metric = self.metric.as_ref().map(|entries| {
+            entries
+                .iter()
+                .map(|(_s, _l, _r, [re, im])| complex(re, im))
+                .collect()
+        });
         TreeRuntime {
             evaluators,
             weights,
             factors,
             gram,
+            metric,
             average: cast(zero, &self.average),
         }
     }
@@ -569,7 +605,8 @@ impl TreeProgram {
             block_rows: Vec::with_capacity(points),
             born: Vec::with_capacity(points),
             amplitudes: Vec::with_capacity(points),
-            born_squared: runtime.gram.as_ref().map(|_| Vec::with_capacity(points)),
+            born_squared: (runtime.gram.is_some() || runtime.metric.is_some())
+                .then(|| Vec::with_capacity(points)),
         };
         for (point, state) in incoming.iter().zip(states.chunks_exact(self.state_size)) {
             let mut rows = Vec::new();
@@ -591,8 +628,16 @@ impl TreeProgram {
                 }
             }
             out.born.push(born);
-            if let (Some(gram), Some(squared)) = (&runtime.gram, &mut out.born_squared) {
-                squared.push(self.squared(runtime, gram, &amplitudes, zero));
+            if let Some(squared) = &mut out.born_squared {
+                squared.push(match &runtime.metric {
+                    Some(metric) => self.squared_by_component(runtime, metric, &amplitudes, zero),
+                    None => self.squared(
+                        runtime,
+                        runtime.gram.as_ref().expect("a runtime Born metric"),
+                        &amplitudes,
+                        zero,
+                    ),
+                });
             }
             out.amplitudes.push(amplitudes);
         }
@@ -675,6 +720,27 @@ impl TreeProgram {
             }
         }
         Ok(out)
+    }
+
+    /// `|A0|²` per squared Born order of one point (divided by the average)
+    /// with a per-component metric (leading and next-to-leading colour).
+    fn squared_by_component<T: Carrier>(
+        &self,
+        runtime: &TreeRuntime<T>,
+        metric: &[Complex<T>],
+        amplitudes: &[Complex<T>],
+        zero: &T,
+    ) -> Vec<T> {
+        let entries = self.metric.as_ref().expect("a runtime metric has entries");
+        let mut out = vec![zero.clone(); self.squared.len()];
+        for row in amplitudes.chunks_exact(self.components) {
+            for ((squared, left, right, _), value) in entries.iter().zip(metric) {
+                out[*squared] += (row[*left].conj() * value.clone() * row[*right].clone()).re;
+            }
+        }
+        out.into_iter()
+            .map(|value| value / runtime.average.clone())
+            .collect()
     }
 
     /// `|A0|²` per squared Born order of one point (divided by the average).

@@ -58,6 +58,12 @@ PROCESSES = {
     ),
     "gg_gg": ("g g > g g", {"QCD": 2, "QED": 0}, "full", "legacy/gg_gg.json"),
     "gg_gg_lc": ("g g > g g", {"QCD": 2, "QED": 0}, "lc", "legacy/gg_gg.json"),
+    "uux_ddxg_nlc": (
+        "u u~ > d d~ g",
+        {"QCD": 3, "QED": 0},
+        "nlc",
+        "required/uux_ddxg.json",
+    ),
     "gg_ttx": ("g g > t t~", {"QCD": 2, "QED": 0}, "full", "required/gg_ttx.json"),
 }
 
@@ -148,38 +154,37 @@ def test_native_rows_in_small_stage_chunks_equal_the_python_inputs(
     theirs = python.evaluate(
         points, scales, parameters=PARAMETERS, precision=DOUBLE_DOUBLE
     )
-    _assert_same(mine, theirs, 1e-26, born=True)
+    _assert_same(mine, theirs, 1e-26)
 
 
-def _assert_same(native, python, tolerance, *, born: bool) -> None:
+def _assert_same(native, python, tolerance) -> None:
     for a, b in zip(native, python, strict=True):
         for sector, value in b.components["bare"].items():
             mine = a.components["bare"][sector].coefficients
             scale = max(abs(complex(x)) for x in value.coefficients) or 1.0
             for x, y in zip(mine, value.coefficients, strict=True):
                 assert abs(complex(x) - complex(y)) <= tolerance * scale, sector
-        if born:
-            assert a.born.keys() == b.born.keys()
-            for order, value in b.born.items():
-                assert abs(float(a.born[order]) - float(value)) <= tolerance * abs(
-                    float(value)
-                )
-        else:
-            assert a.born == {}
+        assert a.born.keys() == b.born.keys()
+        for order, value in b.born.items():
+            assert abs(float(a.born[order]) - float(value)) <= tolerance * abs(
+                float(value)
+            )
         assert "virtual" not in a.components
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("name", ["uux_ddxg", "gg_gg", "gg_ttx", "gg_gg_lc"])
+@pytest.mark.parametrize(
+    "name", ["uux_ddxg", "gg_gg", "gg_ttx", "gg_gg_lc", "uux_ddxg_nlc"]
+)
 def test_native_bare_and_born_equal_the_python_inputs(executors, name):
-    """The bare virtual of every sector and |A0|^2 (full colour) in
-    binary64."""
+    """The bare virtual of every sector and |A0|^2 (at the request's colour
+    accuracy) in binary64."""
 
     native, python = executors(name)
     points, scales = _points(PROCESSES[name][3])
     mine = native.evaluate(points, scales, parameters=PARAMETERS)
     theirs = python.evaluate(points, scales, parameters=PARAMETERS)
-    _assert_same(mine, theirs, 1e-12, born=PROCESSES[name][2] == "full")
+    _assert_same(mine, theirs, 1e-12)
 
 
 @pytest.mark.loop_physics
@@ -196,7 +201,7 @@ def test_native_double_double_equals_the_python_inputs(executors, name):
     theirs = python.evaluate(
         points, scales, parameters=PARAMETERS, precision=DOUBLE_DOUBLE
     )
-    _assert_same(mine, theirs, 1e-26, born=True)
+    _assert_same(mine, theirs, 1e-26)
 
 
 @pytest.mark.loop_physics
@@ -234,4 +239,4 @@ def test_native_massive_sources_carry_the_carrier_precision(executors):
     theirs = python.evaluate(
         points, ["1000000"], parameters=parameters, precision=DOUBLE_DOUBLE
     )
-    _assert_same(mine, theirs, 1e-26, born=True)
+    _assert_same(mine, theirs, 1e-26)
