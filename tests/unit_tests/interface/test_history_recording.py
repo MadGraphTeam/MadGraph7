@@ -224,7 +224,60 @@ class TestQuestionAnswersStayOutOfTheProcCard(unittest.TestCase):
         they start: the MG5 settings, not an earlier run's card edits."""
 
         self.card.append('set nb_core 4')
-        copied = [l for l in self.card if l.strip().startswith('set')
-                  and not extended_cmd.is_question_answer(l)]
+        copied = extended_cmd.set_lines_for_run(self.card)
         self.assertIn('set nb_core 4', copied)
         self.assertNotIn('set width 6 auto', copied)
+
+
+class TestGenerationTimeSetsStayOutOfTheRun(unittest.TestCase):
+    """A launch copies the MG5 `set` history into the run it starts, and the
+    generation-time options have to stay behind.
+
+    The failure this pins: the run interface's check_set rejects
+    `set zerowidth_tchannel` (the T-channel width is compiled into ALOHA at
+    output), so `set zerowidth_tchannel False; generate p p > t t~ [QCD];
+    output X; launch X -i` from MG5 died on the replayed line -- only the
+    aMC@NLO prompt's own launch skipped it.
+    """
+
+    history = ['import model sm',
+               'set zerowidth_tchannel False',
+               'set zerowidth_external False',
+               'set nb_core 4',
+               'generate p p > t t~ [QCD]',
+               'output PROC']
+
+    def test_they_are_not_copied(self):
+        self.assertEqual(extended_cmd.set_lines_for_run(self.history),
+                         ['set zerowidth_external False', 'set nb_core 4'])
+
+    def test_whatever_the_spelling(self):
+        for line in ['set zerowidth_tchannel False',
+                     '  set   zerowidth_tchannel  True',
+                     'set zerowidth_tchannel=False']:
+            self.assertTrue(extended_cmd.is_non_runtime_set(line), line)
+        for line in ['set nb_core 4', 'set', 'zerowidth_tchannel False',
+                     'set zerowidth_external False']:
+            self.assertFalse(extended_cmd.is_non_runtime_set(line), line)
+
+    def test_they_are_what_the_run_rejects(self):
+        """The list and the run interface's check_set agree: what it rejects
+        is left out, and zerowidth_external -- generation-time too, but
+        accepted there, the run's options being a copy of MG5's -- is not."""
+
+        import madgraph
+        import madgraph.interface.common_run_interface as common_run
+        import madgraph.interface.madgraph_interface as mg_interface
+
+        class _Run(common_run.CheckValidForCmd):
+            InvalidCmd = madgraph.InvalidCmd
+            _set_options = []
+            options = dict(mg_interface.MadGraphCmd.options_madgraph)
+
+            def help_set(self):
+                pass
+
+        for name in extended_cmd.non_runtime_set_options:
+            self.assertRaises(madgraph.InvalidCmd, _Run().check_set,
+                              [name, 'False'])
+        _Run().check_set(['zerowidth_external', 'False'])   # must not raise

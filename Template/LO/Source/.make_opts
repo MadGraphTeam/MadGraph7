@@ -6,6 +6,7 @@ MG5AMC_VERSION=SpecifiedByMG5aMCAtRunTime
 STDLIB=-lstdc++
 PYTHIA8_PATH=NotInstalled
 STDLIB_FLAG=
+AMP_FLAG=
 #end_of_make_opts_variables
 
 BIASLIBDIR=../../../lib/
