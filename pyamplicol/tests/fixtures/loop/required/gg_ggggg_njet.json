@@ -2020,6 +2020,207 @@
     }
    ]
   },
+  "gg_gg njet312 blha vs direct": {
+   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-blha-gg_2g.json",
+   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-double-gg_2g.json",
+   "a_tool": "NJet 3.1.2",
+   "b_tool": "NJet 3.1.2",
+   "b_provider": null,
+   "points": 10,
+   "max_relative_deviation": {
+    "born": 0.0,
+    "finite": 2.2137799792372902e-16,
+    "single_pole": 2.2201394080798024e-16,
+    "double_pole": 1.9128264350339958e-16
+   },
+   "per_point": [
+    {
+     "index": 0,
+     "born": 0.0,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0
+    },
+    {
+     "index": 1,
+     "born": 0.0,
+     "finite": 1.794119719627602e-16,
+     "single_pole": 0.0,
+     "double_pole": 1.6665929823884168e-16
+    },
+    {
+     "index": 2,
+     "born": 0.0,
+     "finite": 1.5447899331652303e-16,
+     "single_pole": 0.0,
+     "double_pole": 1.3700341592291252e-16
+    },
+    {
+     "index": 3,
+     "born": 0.0,
+     "finite": 1.921118639103538e-16,
+     "single_pole": 0.0,
+     "double_pole": 1.3762986044016405e-16
+    },
+    {
+     "index": 4,
+     "born": 0.0,
+     "finite": 2.2137799792372902e-16,
+     "single_pole": 0.0,
+     "double_pole": 1.8554546290075232e-16
+    },
+    {
+     "index": 5,
+     "born": 0.0,
+     "finite": 0.0,
+     "single_pole": 1.4854164869031648e-16,
+     "double_pole": 1.9128264350339958e-16
+    },
+    {
+     "index": 6,
+     "born": 0.0,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 1.8356417203439924e-16
+    },
+    {
+     "index": 7,
+     "born": 0.0,
+     "finite": 1.794119719627577e-16,
+     "single_pole": 1.2240028596550158e-16,
+     "double_pole": 0.0
+    },
+    {
+     "index": 8,
+     "born": 0.0,
+     "finite": 1.5447899331652905e-16,
+     "single_pole": 2.1202343468473183e-16,
+     "double_pole": 0.0
+    },
+    {
+     "index": 9,
+     "born": 0.0,
+     "finite": 1.9211186391037696e-16,
+     "single_pole": 2.2201394080798024e-16,
+     "double_pole": 0.0
+    }
+   ]
+  },
+  "gg_gg control njet312 dd R1 vs openloops nf5": {
+   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-R1-gg_2g-control.json",
+   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf5-gg_2g-control.json",
+   "a_tool": "NJet 3.1.2",
+   "b_tool": "OpenLoops 2.1.5",
+   "b_provider": null,
+   "points": 3,
+   "max_relative_deviation": {
+    "born": 4.940088887085218e-16,
+    "finite": 4.3654534772396766e-14,
+    "single_pole": 8.939939882195538e-16,
+    "double_pole": 1.0960273273832974e-15
+   },
+   "max_njet_estimated_relative_accuracy": 1.3736787277752913e-15,
+   "per_point": [
+    {
+     "index": 0,
+     "born": 4.940088887085218e-16,
+     "finite": 1.1348157962969693e-15,
+     "single_pole": 8.939939882195538e-16,
+     "double_pole": 1.0960273273832974e-15,
+     "njet_estimate": 1.3736787277752913e-15
+    },
+    {
+     "index": 1,
+     "born": 2.6741805265381725e-16,
+     "finite": 1.0803796810010978e-14,
+     "single_pole": 4.1350918197007025e-16,
+     "double_pole": 7.41630110923835e-16,
+     "njet_estimate": 1.0773998771274657e-16
+    },
+    {
+     "index": 2,
+     "born": 3.722007985228472e-16,
+     "finite": 4.3654534772396766e-14,
+     "single_pole": 6.454208294426672e-16,
+     "double_pole": 8.257791626409824e-16,
+     "njet_estimate": 6.230304082885557e-16
+    }
+   ]
+  },
+  "gg_gg control openloops nf6 vs madloop": {
+   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf6-gg_2g-control.json",
+   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/madloop-full-gg_2g-control.json",
+   "a_tool": "OpenLoops 2.1.5",
+   "b_tool": "MadLoop (gluon-scattering-component-control, full)",
+   "b_provider": null,
+   "points": 3,
+   "max_relative_deviation": {
+    "born": 8.02254157961451e-16,
+    "finite": 2.6884596213320368e-14,
+    "single_pole": 3.3080734557605592e-15,
+    "double_pole": 1.2330307433062104e-15
+   },
+   "per_point": [
+    {
+     "index": 0,
+     "born": 0.0,
+     "finite": 1.8314382369951783e-14,
+     "single_pole": 1.1174924852744425e-16,
+     "double_pole": 1.2330307433062104e-15
+    },
+    {
+     "index": 1,
+     "born": 8.02254157961451e-16,
+     "finite": 5.77781422673831e-15,
+     "single_pole": 3.3080734557605592e-15,
+     "double_pole": 2.966520443695341e-16
+    },
+    {
+     "index": 2,
+     "born": 2.481338656818981e-16,
+     "finite": 2.6884596213320368e-14,
+     "single_pole": 1.5490099906623995e-15,
+     "double_pole": 9.634090230811463e-16
+    }
+   ]
+  },
+  "gg_gg control njet312 dd R1 + top vs madloop": {
+   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-R1-plus-top-gg_2g-control.json",
+   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/madloop-full-gg_2g-control.json",
+   "a_tool": "NJet 3.1.2 + T(OpenLoops nf=6 - nf=5)",
+   "b_tool": "MadLoop (gluon-scattering-component-control, full)",
+   "b_provider": null,
+   "points": 3,
+   "max_relative_deviation": {
+    "born": 1.069672210615268e-15,
+    "finite": 6.449587475417522e-14,
+    "single_pole": 3.721582637730627e-15,
+    "double_pole": 1.789188185722129e-15
+   },
+   "per_point": [
+    {
+     "index": 0,
+     "born": 4.940088887085218e-16,
+     "finite": 1.722279666578247e-14,
+     "single_pole": 1.0057432367469982e-15,
+     "double_pole": 1.3700341592291242e-16
+    },
+    {
+     "index": 1,
+     "born": 1.069672210615268e-15,
+     "finite": 1.8208869078205585e-14,
+     "single_pole": 3.721582637730627e-15,
+     "double_pole": 4.449780665543014e-16
+    },
+    {
+     "index": 2,
+     "born": 6.203346642047453e-16,
+     "finite": 6.449587475417522e-14,
+     "single_pole": 9.03589161219733e-16,
+     "double_pole": 1.789188185722129e-15
+    }
+   ]
+  },
   "gg_ggg njet211 double nf0 vs openloops nf0": {
    "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet211-double-nf0-gg_3g.json",
    "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/openloops-nf0-gg_3g.json",
@@ -2793,6 +2994,76 @@
      "single_pole": 2.039372906399192e-12,
      "double_pole": 6.200024454471356e-14,
      "njet_estimate": 2.929707884392763e-11
+    }
+   ]
+  },
+  "gg_gggg njet312 blha vs direct": {
+   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-blha-gg_4g.json",
+   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-double-gg_4g.json",
+   "a_tool": "NJet 3.1.2",
+   "b_tool": "NJet 3.1.2",
+   "b_provider": null,
+   "points": 3,
+   "max_relative_deviation": {
+    "born": 0.0,
+    "finite": 1.409224360214599e-16,
+    "single_pole": 0.0,
+    "double_pole": 1.7487365685101708e-16
+   },
+   "per_point": [
+    {
+     "index": 0,
+     "born": 0.0,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 0.0
+    },
+    {
+     "index": 1,
+     "born": 0.0,
+     "finite": 1.409224360214599e-16,
+     "single_pole": 0.0,
+     "double_pole": 0.0
+    },
+    {
+     "index": 2,
+     "born": 0.0,
+     "finite": 0.0,
+     "single_pole": 0.0,
+     "double_pole": 1.7487365685101708e-16
+    }
+   ]
+  },
+  "gg_gggg njet312 oneloop dd vs qcdloop dd": {
+   "a": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312ol-dd-gg_4g-p01.json",
+   "b": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/njet/calibration/njet312-dd-gg_4g.json",
+   "a_tool": "NJet 3.1.2",
+   "b_tool": "NJet 3.1.2",
+   "b_provider": null,
+   "points": 2,
+   "max_relative_deviation": {
+    "born": 0.0,
+    "finite": 4.650440390645096e-15,
+    "single_pole": 8.215807773994289e-16,
+    "double_pole": 1.9598760299545165e-16
+   },
+   "max_njet_estimated_relative_accuracy": 2.9310400782509404e-26,
+   "per_point": [
+    {
+     "index": 0,
+     "born": 0.0,
+     "finite": 3.1864581666574666e-15,
+     "single_pole": 8.215807773994289e-16,
+     "double_pole": 0.0,
+     "njet_estimate": 1.8269862100840736e-27
+    },
+    {
+     "index": 1,
+     "born": 0.0,
+     "finite": 4.650440390645096e-15,
+     "single_pole": 0.0,
+     "double_pole": 1.9598760299545165e-16,
+     "njet_estimate": 2.9310400782509404e-26
     }
    ]
   },

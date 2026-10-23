@@ -82,6 +82,7 @@ def test_provenance_and_calibration(fixture: dict) -> None:
     # OpenLoops (nf=5) and, through it, the gg_gggg fixture (nf=6).
     for label in (
         "gg_gg njet312 dd vs openloops nf5",
+        "gg_gg control njet312 dd R1 + top vs madloop",
         "gg_gggg njet312 dd vs openloops nf5",
         "gg_gggg openloops nf6 vs fixture recola",
     ):
