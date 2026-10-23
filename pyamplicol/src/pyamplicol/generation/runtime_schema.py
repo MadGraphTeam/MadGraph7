@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -77,6 +77,7 @@ def build_runtime_expression_schema(
     *,
     process_id: str | None = None,
     color_contraction: str = "direct",
+    propagated_currents: Iterable[int] = (),
 ) -> RuntimeExpressionSchema:
     return RuntimeExpressionSchema.from_mapping(
         build_runtime_schema(
@@ -84,6 +85,7 @@ def build_runtime_expression_schema(
             model,
             process_id=process_id,
             color_contraction=color_contraction,
+            propagated_currents=propagated_currents,
         )
     )
 
@@ -94,6 +96,7 @@ def build_runtime_schema(
     *,
     process_id: str | None = None,
     color_contraction: str = "direct",
+    propagated_currents: Iterable[int] = (),
 ) -> dict[str, object]:
     """Build the stage compiler and runtime metadata for one concrete process."""
 
@@ -102,6 +105,7 @@ def build_runtime_schema(
         model,
         process_id=process_id,
         color_contraction=color_contraction,
+        propagated_currents=propagated_currents,
     ).runtime_schema
 
 
@@ -111,8 +115,14 @@ def build_runtime_schema_layout(
     *,
     process_id: str | None = None,
     color_contraction: str = "direct",
+    propagated_currents: Iterable[int] = (),
 ) -> RuntimeSchemaLayout:
-    """Build runtime metadata while retaining its typed construction indexes."""
+    """Build runtime metadata while retaining its typed construction indexes.
+
+    ``propagated_currents`` are currents whose propagated value is an output
+    even where no interaction consumes it (the blocks of a loop request:
+    every block current enters a loop vertex with its own propagator).
+    """
 
     public_process_id = process_id or dag.process.key
 
@@ -136,6 +146,7 @@ def build_runtime_schema_layout(
         amplitude_inputs=amplitude_inputs,
         propagators_by_current=propagators_by_current,
         propagator_payloads=propagator_payloads,
+        propagated_currents=frozenset(propagated_currents),
     )
     value_slot_records = value_slot_layout.records
     value_slots = value_slot_layout.by_current_variant
@@ -319,6 +330,7 @@ def _value_slots(
     amplitude_inputs: set[int],
     propagators_by_current: Sequence[Any],
     propagator_payloads: dict[tuple[int, int], dict[str, object]],
+    propagated_currents: frozenset[int] = frozenset(),
 ) -> _ValueSlotLayout:
     records: list[dict[str, object]] = []
     by_current_variant: dict[tuple[int, str], dict[str, object]] = {}
@@ -381,8 +393,8 @@ def _value_slots(
             continue
         propagator = propagators_by_current[current.id]
         needs_propagated = (
-            current.id in interaction_inputs and propagator.applies_propagator
-        )
+            current.id in interaction_inputs or current.id in propagated_currents
+        ) and propagator.applies_propagator
         needs_unpropagated = current.id in amplitude_inputs
         unpropagated_slot_id: int | None = None
         if (

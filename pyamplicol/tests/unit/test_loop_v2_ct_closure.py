@@ -181,7 +181,7 @@ def closure_components(ct, lowered, label: str, index: int) -> dict:
     arithmetic: exact colour at N_c = 3, rows at the carrier's digits)."""
 
     from pyamplicol.loops.scalar_bindings import NativeScalarBindings
-    from pyamplicol.loops.v2.ct_closure import model_value
+    from pyamplicol.loops.v2.ct_closure import model_value, program_propagated_currents
     from pyamplicol.models.external import CompiledUFOModel
 
     recursion, closure, plan = _closure(ct, lowered)
@@ -197,13 +197,15 @@ def closure_components(ct, lowered, label: str, index: int) -> dict:
     model_parameters = {**parameters, **recursion.parameter_values()}
     values, compiled = _program_rows(closure, model_parameters, digits)
     momenta_rows = [[Decimal(x) for x in vector] for vector in point]
+    dag = closure.program.blocks.blocks_dag
     with _exact_u1_weights():
         rows = stage_rows(
-            closure.program.blocks.blocks_dag,
+            dag,
             CompiledUFOModel(compiled),
             momenta_rows,
             values,
             digits,
+            propagated_currents=program_propagated_currents(dag),
         )
     arithmetic, scalar_digits, _, _ = legacy_capture.CARRIERS[label]
     state = NativeScalarBindings(

@@ -72,12 +72,21 @@ ROOT_COUNTERTERM: RootKind = "counterterm"
 @dataclass(frozen=True, slots=True)
 class RootReachability:
     """Loop-request reachability of the currents a leg-1 closure attaches:
-    every leg set of the process that does not hold leg 1 (bit 0)."""
+    every leg set of the process that holds neither leg 1 (bit 0) nor all the
+    other legs. A root attaches leg 1 and at least two currents (a two-point
+    insertion next to leg 1 sits on an external line: field terms), so no
+    root term reads the set of all legs but leg 1; that set would hold most
+    of the program (80 % of its interactions at g g > g g g)."""
 
     full_mask: int
 
     def admits_mask(self, mask: int) -> bool:
-        return mask > 0 and not mask & 1 and mask & self.full_mask == mask
+        return (
+            mask > 0
+            and not mask & 1
+            and mask & self.full_mask == mask
+            and mask != self.full_mask & ~1
+        )
 
     def admits_block(self, index: Any) -> bool:
         return self.admits_mask(index.external_mask)
@@ -603,6 +612,14 @@ def model_value(compiled: Any, expression: str, parameters: Mapping[str, Any], d
     ).to_decimal_tuple()
 
 
+def program_propagated_currents(dag: Any) -> tuple[int, ...]:
+    """The currents of a CT program whose propagated value the closure reads:
+    every current but the sources (the runtime schema's
+    ``propagated_currents``)."""
+
+    return tuple(current.id for current in dag.currents if not current.is_source)
+
+
 # ------------------------------------------------------------------ production
 
 # The lowered models of the most recent (model, fixed parameters, veto,
@@ -739,10 +756,14 @@ class CountertermProgram:
         if self._rows is None:
             from .assemble import TreeRows
 
+            dag = self.blocks.blocks.blocks_dag
             self._rows = TreeRows(
-                self.blocks.blocks.blocks_dag,
+                dag,
                 self.recursion.model.lowered.compiled,
                 jit=False,
+                # The largest leg sets feed no interaction of the program
+                # (``RootReachability``) but the closure reads them propagated.
+                propagated_currents=program_propagated_currents(dag),
             )
         return self._rows
 
@@ -896,6 +917,7 @@ __all__ = [
     "counterterm_closure_entries",
     "lowered_counterterm_model",
     "model_value",
+    "program_propagated_currents",
     "u1_leaking_structures",
     "u1_projected",
 ]

@@ -314,7 +314,14 @@ class TreeRows:
     parameters of overridden inputs at the carrier's precision.
     """
 
-    def __init__(self, dag: Any, compiled: Any, *, jit: bool = True):
+    def __init__(
+        self,
+        dag: Any,
+        compiled: Any,
+        *,
+        jit: bool = True,
+        propagated_currents: Iterable[int] = (),
+    ):
         from pyamplicol.generation.contracts import StageCompilationInput
         from pyamplicol.generation.runtime_schema import (
             build_runtime_expression_schema,
@@ -328,7 +335,10 @@ class TreeRows:
         model = CompiledUFOModel(compiled)
         with _exact_u1_subtraction_weights():
             runtime_schema = build_runtime_expression_schema(
-                dag, model, process_id="loop-v2-blocks"
+                dag,
+                model,
+                process_id="loop-v2-blocks",
+                propagated_currents=propagated_currents,
             )
             blueprint = build_generic_stage_compiler_blueprint(
                 StageCompilationInput(dag, model, runtime_schema)
@@ -1905,6 +1915,8 @@ class LoopSlice:
 
 # Decimal digits of the binary64 couplings before their single rounding.
 _COUPLING_DIGITS = 32
+# A missing cache entry (``_PointEvaluation._closed_counterterms``).
+_UNSET = object()
 
 
 class _PointEvaluation:
@@ -2186,17 +2198,38 @@ class _PointEvaluation:
         powers = LAURENT_POWERS if self.poles else (0,)
         closure = program.closure.closure
         whole = self.__dict__.setdefault("_closure_whole_rules", {})
+        # Each block's rows by helicities (once per slice), and each block's
+        # value at this helicity row (once per row; None: no such row).
+        tables = self.slice._cache.setdefault("counterterm_block_rows", {})
+        at_row: dict[int, Any] = {}
         for item in program.closure.terms:
             if item.power not in powers:
                 continue
             values = []
             for block in item.term.blocks:
-                want = tuple(sorted((leg, helicity[leg]) for leg in block.key.labels))
-                row = next((r for r in block.rows if r.helicities == want), None)
-                if row is None:
+                value = at_row.get(block.id, _UNSET)
+                if value is _UNSET:
+                    table = tables.get(block.id)
+                    if table is None:
+                        table = tables[block.id] = {}
+                        for r in block.rows:
+                            table.setdefault(r.helicities, r)
+                    row = table.get(
+                        tuple(sorted((leg, helicity[leg]) for leg in block.key.labels))
+                    )
+                    value = at_row[block.id] = (
+                        None
+                        if row is None
+                        else rows[
+                            (
+                                row.current_id,
+                                "source" if block.is_source else "propagated",
+                            )
+                        ]
+                    )
+                if value is None:
                     break
-                variant = "source" if block.is_source else "propagated"
-                values.append(rows[(row.current_id, variant)])
+                values.append(value)
             else:
                 if isinstance(item.term, WholeRuleTerm):
                     if item.term not in whole:

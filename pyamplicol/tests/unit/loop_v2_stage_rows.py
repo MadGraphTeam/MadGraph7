@@ -8,7 +8,7 @@ nothing is compiled. Shared by ``test_loop_v2_blocks.py`` and
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import Decimal, localcontext
 from typing import Any
 
@@ -21,12 +21,16 @@ def stage_rows(
     momenta: Sequence[Sequence[Decimal]],
     parameters: Callable[[Sequence[Mapping[str, Any]]], Sequence[Decimal]],
     digits: int,
+    *,
+    propagated_currents: Iterable[int] = (),
 ) -> dict[tuple[int, str], Row]:
     """Every value slot of every current: {(current id, variant): (re, im)s}.
 
     ``parameters`` maps the runtime model-parameter records, sorted by their
     parameter index, to their values. Every stage input is upcast to
     ``digits``, and the stages are evaluated at that precision.
+    ``propagated_currents`` also get their propagated value where no
+    interaction consumes them (the runtime schema's option).
     """
 
     from pyamplicol.evaluators.symbolica_settings import SymbolicaEvaluatorSettings
@@ -46,7 +50,10 @@ def stage_rows(
     )
 
     runtime_schema = build_runtime_expression_schema(
-        dag, model, process_id="loop-v2-oracle"
+        dag,
+        model,
+        process_id="loop-v2-oracle",
+        propagated_currents=propagated_currents,
     )
     schema = runtime_schema.to_mapping()
     blueprint = build_generic_stage_compiler_blueprint(
