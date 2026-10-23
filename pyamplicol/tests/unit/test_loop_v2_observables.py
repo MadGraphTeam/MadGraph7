@@ -1327,8 +1327,13 @@ def _assert_resolved_row(
 
 # A fresh interpreter creates ``argv[2]`` unrelated Symbolica symbols, which
 # shifts the id of every later symbol, then generates u u~ > g g g and prints
-# its binary64 totals at the first legacy point (bit patterns).
+# its binary64 totals at the first legacy point (bit patterns), digests of its
+# exported plan program, of its kernel constants' keys (in their numbering)
+# and of the same program's kernel records with
+# Symbolica's own term order (``_term_order`` replaced by a constant key: the
+# stable sort keeps the expansion's order).
 _HISTORY_PROBE = """
+import hashlib
 import json
 import sys
 
@@ -1339,7 +1344,9 @@ for k in range(unrelated):
     S(f"history::unrelated{k}")
 
 from pyamplicol.loops.native import load_loop_native
+from pyamplicol.loops.v2 import reference_executor
 from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+from pyamplicol.loops.v2.plan_export import export_plan
 from pyamplicol.models.loading import load_compiled_model
 from tools.loop_reference import legacy_capture
 
@@ -1361,19 +1368,46 @@ result = slice_.evaluate(
     precision=Precision.double(),
 )
 values = [complex(x) for x in result.totals]
-print(json.dumps([[z.real.hex(), z.imag.hex()] for z in values]))
+
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value).encode()).hexdigest()
+
+
+plan = export_plan(slice_)
+program = plan.program
+reference_executor._term_order = lambda term: 0
+raw = export_plan(slice_).program["kernels"]
+print(
+    json.dumps(
+        {
+            "totals": [[z.real.hex(), z.imag.hex()] for z in values],
+            "program": digest(program),
+            "kernels": digest(program["kernels"]),
+            "constants": digest([repr(key) for key in plan.constants]),
+            "raw kernels": digest(raw),
+        }
+    )
+)
 """
 
 
 def test_generation_does_not_depend_on_the_process_history(loop_sm_compiled_model):
-    """Two fresh interpreters, one of which first creates 300 unrelated
-    Symbolica symbols, generate u u~ > g g g and evaluate it in binary64 with
-    bitwise identical totals. Symbolica sorts the terms of a sum by the
-    packed bytes of its symbols' ids, so before the tree stages were
-    generated on canonical symbols (``assemble._canonical_stage``) the
-    totals differed after 0, 77 and 300 unrelated symbols (measured), and
-    the binary64 O1 values moved with the earlier generations of a test
-    process."""
+    """Three fresh interpreters, two of which first create 250 and 300
+    unrelated Symbolica symbols, generate u u~ > g g g: the exported plan
+    programs (kernel records included) and kernel constants are identical,
+    and the binary64 totals bitwise identical.
+
+    Symbolica sorts the terms of a sum by the packed bytes of its symbols'
+    ids. Before the tree stages were generated on canonical symbols
+    (``assemble._canonical_stage``) the totals differed after 0, 77 and 300
+    unrelated symbols (measured), and the binary64 O1 values moved with the
+    earlier generations of a test process. Before the kernel terms were put
+    in a canonical order (``reference_executor._term_order``), 250 unrelated
+    symbols changed 685 of the 1594 exported kernel outputs (term order, 517
+    of them, and constant numbering) and moved 6 of the 19 totals (up to
+    7.4e-13 relative; measured). The probe's raw kernel records, in
+    Symbolica's order, still differ after 250 (it discriminates)."""
 
     import subprocess
     import sys
@@ -1395,14 +1429,18 @@ def test_generation_does_not_depend_on_the_process_history(loop_sm_compiled_mode
             stderr=subprocess.PIPE,
             text=True,
         )
-        for unrelated in (0, 300)
+        for unrelated in (0, 250, 300)
     ]
     outputs = []
     for run in runs:
         out, err = run.communicate(timeout=900)
         assert run.returncode == 0, err[-4000:]
-        outputs.append(out.strip().splitlines()[-1])
-    assert outputs[0] == outputs[1]
+        outputs.append(json.loads(out.strip().splitlines()[-1]))
+    first, kernel_shift, _tree_shift = outputs
+    assert first["raw kernels"] != kernel_shift["raw kernels"]
+    for output in outputs[1:]:
+        for item in ("program", "kernels", "constants", "totals"):
+            assert output[item] == first[item], item
 
 
 # ------------------------------------------------------------------ public surface
