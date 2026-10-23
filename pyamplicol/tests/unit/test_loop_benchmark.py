@@ -118,7 +118,7 @@ def test_native_report_counts_dressing_work_and_master_time(
         ["500", "-300", "0", "-400"],
     ]
     executor.evaluate(
-        [point, point], ["1000000"] * 2, parameters={"aS": "0.118"}, poles=False
+        [point, point], ["1000000"] * 2, parameters={"aS": "0.118"}, poles="none"
     )
     report = executor.last_report
     work = report["counts"]["dressing work (modelled complex MAC per lane)"]
