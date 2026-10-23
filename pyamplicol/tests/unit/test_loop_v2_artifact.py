@@ -1155,6 +1155,16 @@ def _spin_vectors(record: dict, legs: str) -> dict[int, tuple]:
 
 
 def _assert_resolved(result, runtime, resolved: dict, carrier: str) -> None:
+    """``_compare_resolved`` with sums at 80 digits (Decimal's default
+    context would round 60-digit values to 28)."""
+
+    from decimal import localcontext
+
+    with localcontext(prec=80):
+        _compare_resolved(result, runtime, resolved, carrier)
+
+
+def _compare_resolved(result, runtime, resolved: dict, carrier: str) -> None:
     """Per helicity row, the Born and the virtual summed over the Born colour
     components against the legacy resolved record (whose colour anchors are
     diagram tensors: the colour axis is compared through its sum). A row is
@@ -1220,47 +1230,72 @@ def _assert_resolved(result, runtime, resolved: dict, carrier: str) -> None:
             )
 
 
+BINARY64_AND_DD = ("double", "double-double")
+ALL_CARRIERS = (*BINARY64_AND_DD, "arbitrary")
+
+
+def _case_id(value) -> str:
+    return value if isinstance(value, str) else "+".join(value)
+
+
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("name", ("gg_gg", "ddgg_ssgg", "gg_gg_lc"))
+@pytest.mark.parametrize(
+    "name,carriers",
+    (
+        ("gg_gg", ALL_CARRIERS),
+        ("ddgg_ssgg", BINARY64_AND_DD),
+        ("gg_gg_lc", BINARY64_AND_DD),
+    ),
+    ids=_case_id,
+)
 def test_public_correlated_and_resolved_calls_equal_legacy_o1(
-    observables_artifact, name
+    observables_artifact, name, carriers
 ):
     """O1 through the public surface: every legacy directed colour history,
     every joint complex spin source and (where recorded) the helicity-resolved
     outputs, for the representative and its exact flavour member (served by
     the representative: one artifact process), in binary64 with one rotation
-    and the reduction-direction check, in double-double and, at full colour,
-    in 60-digit arbitrary precision."""
+    and the reduction-direction check, in double-double and (g g > g g here,
+    the other full-colour records nightly) in 60-digit arbitrary precision."""
 
-    _assert_public_o1(observables_artifact, name)
+    _assert_public_o1(observables_artifact, name, carriers)
 
 
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize(
-    "name",
+    "name,carriers",
     (
-        "gg_gg_nlc",
-        "ddgg_ssgg_lc",
-        "ddgg_ssgg_nlc",
-        "uux_ggg",
-        "uux_ggg_spin",
-        "uux_ggg_lc",
-        "uux_ggg_nlc",
+        ("ddgg_ssgg", ("arbitrary",)),
+        ("gg_gg_nlc", BINARY64_AND_DD),
+        ("ddgg_ssgg_lc", BINARY64_AND_DD),
+        ("ddgg_ssgg_nlc", BINARY64_AND_DD),
+        ("uux_ggg", ALL_CARRIERS),
+        ("uux_ggg_spin", ALL_CARRIERS),
+        ("uux_ggg_lc", BINARY64_AND_DD),
+        ("uux_ggg_nlc", BINARY64_AND_DD),
     ),
+    ids=_case_id,
 )
 def test_public_correlated_and_resolved_calls_equal_legacy_o1_nightly(
-    observables_artifact, name
+    observables_artifact, name, carriers
 ):
     """The same O1 on every other frozen legacy observables record: NLC, LC
     and NLC members, and the five-leg u u~ > g g g (directed and spin) at
     full, leading and next-to-leading colour, whose first point is
     binary64-ill-conditioned (virtuals held to their own estimate there, and
-    to 1e-24 in double-double)."""
+    to 1e-24 in double-double); the full-colour records also in 60 digits."""
 
-    _assert_public_o1(observables_artifact, name)
+    _assert_public_o1(observables_artifact, name, carriers)
 
 
-def _assert_public_o1(observables_artifact, name: str) -> None:
+CARRIER_OPTIONS = {
+    "double": {"stability_checks": BINARY64_CHECKS},
+    "double-double": {"arithmetic": "double-double"},
+    "arbitrary": {"arithmetic": "arbitrary", "precision": ARBITRARY_DIGITS},
+}
+
+
+def _assert_public_o1(observables_artifact, name: str, carriers) -> None:
     from pyamplicol import Runtime
     from pyamplicol.artifacts import load_manifest
     from pyamplicol.correlators import CorrelatedRequest
@@ -1289,18 +1324,8 @@ def _assert_public_o1(observables_artifact, name: str) -> None:
             f"spin:{legs}": CorrelatedRequest("born", _spin_vectors(record, legs))
             for legs in expected.get("spin", {})
         }
-        carriers = [
-            ("double", {"stability_checks": BINARY64_CHECKS}),
-            ("double-double", {"arithmetic": "double-double"}),
-        ]
-        if record.get("accuracy", "full") == "full":
-            carriers.append(
-                (
-                    "arbitrary",
-                    {"arithmetic": "arbitrary", "precision": ARBITRARY_DIGITS},
-                )
-            )
-        for carrier, options in carriers:
+        for carrier in carriers:
+            options = CARRIER_OPTIONS[carrier]
             values = runtime.evaluate_correlated_many(
                 points, requests, mu_r2=scales, **options
             )
