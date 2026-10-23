@@ -337,6 +337,11 @@ pub struct LoopV2Sector {
 /// `LoopV2ExecutionMetadata`, DESIGN.md §12.1). `buckets` lists
 /// `(propagators, rank, families)` per NinjaRS reduction bucket and
 /// `color_degrees` the leading N_c degree kept per sector at LC/NLC.
+/// `color_correlations` are the declared directed colour histories (by id,
+/// besides the Born metric "born"), `spin_correlations` the declared spin
+/// classes (one-based legs) and `resolved` whether helicity/colour resolved
+/// output is served (observable columns are contracted directly, so a
+/// process generated with the forced seed FFT serves neither).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoopV2ExecutionMetadata {
@@ -352,6 +357,9 @@ pub struct LoopV2ExecutionMetadata {
     pub schedule: String,
     pub r2_strategy: String,
     pub arithmetic: Vec<String>,
+    pub color_correlations: Vec<String>,
+    pub spin_correlations: Vec<Vec<usize>>,
+    pub resolved: bool,
     pub poles: String,
     pub stability_checks: Vec<String>,
     pub accuracy_retest: String,
@@ -385,8 +393,16 @@ struct ExecutionV4 {
     required_runtime_capabilities: Vec<String>,
     runtime_path: String,
     plan_sha256: String,
+    point_inputs: String,
     request: serde_json::Value,
 }
+
+/// How a plan v4 process obtains its per-point inputs (trees, Born
+/// amplitudes, counterterm scalars): rebuilt at load from the artifact's
+/// compiled model and generation request (Python, until WP3.1 stores them as
+/// native programs under a new value of this field and further PACBIN
+/// members; the plan member is unchanged by that addition).
+pub const LOOP_V2_POINT_INPUTS: &str = "regenerated-at-load";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -463,6 +479,7 @@ pub fn load_loop_v2_artifact(
             && execution.contribution_kind == "virtual"
             && execution.execution_mode == "loop_recurrence"
             && execution.engine == "v2"
+            && execution.point_inputs == LOOP_V2_POINT_INPUTS
             && execution.request.is_object(),
         "unsupported plan v4 execution declaration",
     )?;
@@ -527,6 +544,11 @@ pub fn load_loop_v2_artifact(
         require(
             program.families.len() == metadata.families
                 && buckets == metadata.buckets
+                && metadata
+                    .spin_correlations
+                    .iter()
+                    .flatten()
+                    .all(|leg| *leg <= program.legs)
                 && program.legs == physics.state_legs.len()
                 && program.rows == physics.helicities.len()
                 && program.columns == metadata.sectors.len()
@@ -575,8 +597,29 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
         "unsupported contribution, convention or feature declaration",
     )?;
     require(
-        metadata.arithmetic == ["double", "arbitrary"],
+        metadata.arithmetic == ["double", "double-double", "arbitrary"],
         "unsupported arithmetic declaration",
+    )?;
+    let observables_contracted = metadata.color_contraction != "fft";
+    require(
+        metadata.resolved == observables_contracted
+            && (metadata.color_correlations.is_empty()
+                && metadata.spin_correlations.is_empty()
+                || observables_contracted),
+        "resolved and correlated outputs exist exactly without the forced seed FFT",
+    )?;
+    let mut histories: Vec<&String> = metadata.color_correlations.iter().collect();
+    histories.sort();
+    histories.dedup();
+    require(
+        histories.len() == metadata.color_correlations.len()
+            && histories.iter().all(|id| !id.is_empty() && id.as_str() != "born")
+            && metadata
+                .spin_correlations
+                .iter()
+                .all(|legs| !legs.is_empty() && legs.windows(2).all(|w| w[0] < w[1]) && legs[0] > 0),
+        "colour histories are distinct non-Born ids; spin classes are increasing \
+         one-based legs",
     )?;
     require(
         metadata.r2_strategy == "model",

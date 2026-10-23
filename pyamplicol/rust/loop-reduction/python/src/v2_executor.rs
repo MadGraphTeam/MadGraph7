@@ -247,6 +247,7 @@ fn export_evaluation<T: Exchanged + Real>(
     }
 }
 
+#[derive(Clone, Copy)]
 enum Carriers {
     Double,
     DoubleDouble,
@@ -266,10 +267,14 @@ struct V2Executor {
     backend: Option<V2ReductionBackend>,
 }
 
-impl V2Executor {
-    fn backend(&mut self) -> PyResult<&mut V2ReductionBackend> {
-        if self.backend.is_none() {
-            let reducer = match self.carrier {
+/// The reduction backend of a carrier, built on first use. A free function
+/// of the backend slot, so an evaluation can borrow the executor alongside.
+fn backend_of(
+    slot: &mut Option<V2ReductionBackend>,
+    carrier: Carriers,
+) -> PyResult<&mut V2ReductionBackend> {
+    if slot.is_none() {
+        let reducer = match carrier {
                 Carriers::Double => runtime::V2Reducer::new("double", None, "fast", true),
                 Carriers::DoubleDouble => {
                     runtime::V2Reducer::new("double-double", None, "generic", true)
@@ -282,11 +287,12 @@ impl V2Executor {
                 }
             }
             .map_err(error)?;
-            self.backend = Some(V2ReductionBackend { reducer });
-        }
-        Ok(self.backend.as_mut().expect("backend"))
+        *slot = Some(V2ReductionBackend { reducer });
     }
+    Ok(slot.as_mut().expect("backend"))
+}
 
+impl V2Executor {
     fn bits(&self) -> PyResult<u32> {
         Ok(match self.carrier {
             Carriers::Double => 53,
@@ -489,18 +495,12 @@ impl V2Executor {
             options.part_chunks = chunks;
         }
         let bits = self.bits()?;
-        let carrier = match self.carrier {
-            Carriers::Double => 0,
-            Carriers::DoubleDouble => 1,
-            Carriers::Arbitrary(_) => 2,
-            Carriers::Exact => 3,
-        };
-        self.backend()?;
-        let backend = self.backend.as_mut().expect("backend");
+        let carrier = self.carrier;
+        let backend = backend_of(&mut self.backend, carrier)?;
         let executor = &self.executor;
         match carrier {
-            0 => evaluate_with(py, executor, backend, inputs, 0.0, bits, options),
-            1 => evaluate_with(
+            Carriers::Double => evaluate_with(py, executor, backend, inputs, 0.0, bits, options),
+            Carriers::DoubleDouble => evaluate_with(
                 py,
                 executor,
                 backend,
@@ -509,7 +509,7 @@ impl V2Executor {
                 bits,
                 options,
             ),
-            _ => evaluate_with(
+            Carriers::Arbitrary(_) => evaluate_with(
                 py,
                 executor,
                 backend,
@@ -518,6 +518,7 @@ impl V2Executor {
                 bits,
                 options,
             ),
+            Carriers::Exact => unreachable!("backend_of refuses the exact carrier"),
         }
     }
 }
