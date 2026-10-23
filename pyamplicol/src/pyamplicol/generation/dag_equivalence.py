@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence, Set
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
@@ -3827,6 +3827,8 @@ def assign_recursive_current_evaluation_reuse(
     This recovers AmpliCol-style reflection fan-out, but also recognizes exact
     reuse across colour sectors and helicity subgraphs.  No approximate
     numerical comparison or process/model-family classification is involved.
+    Classes never cross contracts, so only the currents that share their
+    contract with another current get term vectors.
     """
 
     if not dag.interactions:
@@ -3837,12 +3839,34 @@ def assign_recursive_current_evaluation_reuse(
         dag,
         model,
         equivalence_by_kind=equivalence_by_kind,
+        derived_current_ids=_shared_contract_current_ids(dag),
     )
     return _rewrite_interaction_evaluation_reuse(
         dag,
         model,
         current_equivalences=current_equivalences,
         equivalence_by_kind=equivalence_by_kind,
+    )
+
+
+def _shared_contract_current_ids(dag: GenericDAG) -> frozenset[int]:
+    """Return the currents whose evaluation contract another current shares.
+
+    Every class key of the derivation starts with the evaluation contract:
+    the source key, the exact and opposite term-vector keys and the
+    projective key.  A current whose contract no other current has is
+    therefore always its own representative with factor one, so only the
+    returned currents need their term vectors derived.
+    """
+
+    members_by_contract: dict[_CurrentContract, list[int]] = defaultdict(list)
+    for current in dag.currents:
+        members_by_contract[_current_evaluation_contract(current)].append(current.id)
+    return frozenset(
+        current_id
+        for member_ids in members_by_contract.values()
+        if len(member_ids) > 1
+        for current_id in member_ids
     )
 
 
@@ -4711,9 +4735,24 @@ def _derive_current_value_equivalences(
     authenticated_relations: (
         Mapping[int, _CurrentValueEquivalence] | None
     ) = None,
+    derived_current_ids: Set[int] | None = None,
 ) -> tuple[_CurrentValueEquivalence, ...]:
-    """Derive current classes in increasing external-subset order."""
+    """Derive current classes in increasing external-subset order.
 
+    ``derived_current_ids`` restricts the term-vector derivation to the given
+    currents and makes every other current its own representative.  That is
+    exact when the set contains ``_shared_contract_current_ids(dag)``, because
+    classes never cross evaluation contracts.  The structural checks (source
+    metadata, parents from an earlier subset) still cover every current.
+    """
+
+    if derived_current_ids is not None and (
+        discovery is not None or authenticated_relations is not None
+    ):
+        raise ValueError(
+            "a restricted current-value derivation cannot discover or "
+            "authenticate relations"
+        )
     kernel_equivalences = {} if equivalence_by_kind is None else equivalence_by_kind
     interactions_by_result: dict[int, list[InteractionNode]] = defaultdict(list)
     for interaction in dag.interactions:
@@ -4736,6 +4775,13 @@ def _derive_current_value_equivalences(
         key=lambda current: (len(current.index.external_labels), current.id),
     )
     for current in ordered_currents:
+        if derived_current_ids is not None and current.id not in derived_current_ids:
+            current_equivalences[current.id] = _own_representative_equivalence(
+                current,
+                interactions_by_result[current.id],
+                current_equivalences,
+            )
+            continue
         contract = _current_evaluation_contract(current)
         if current.is_source:
             if current.source_leg_label is None or current.source_helicity is None:
@@ -4818,6 +4864,34 @@ def _derive_current_value_equivalences(
             "current-value equivalence derivation left an unclassified current"
         )
     return tuple(item for item in current_equivalences if item is not None)
+
+
+def _own_representative_equivalence(
+    current: CurrentNode,
+    interactions: list[InteractionNode],
+    current_equivalences: list[_CurrentValueEquivalence | None],
+) -> _CurrentValueEquivalence:
+    """Classify a current with an evaluation contract of its own.
+
+    It keeps the full derivation's structural refusals: a source without
+    physical metadata, and a generated current with a parent that is not yet
+    classified.
+    """
+
+    if current.is_source:
+        if current.source_leg_label is None or current.source_helicity is None:
+            raise ValueError(
+                f"source current {current.id} lacks physical source metadata"
+            )
+    elif any(
+        current_equivalences[interaction.left_id] is None
+        or current_equivalences[interaction.right_id] is None
+        for interaction in interactions
+    ):
+        raise ValueError(
+            "current-value equivalence requires parents from an earlier subset"
+        )
+    return _CurrentValueEquivalence(representative_id=current.id, factor=(1.0, 0.0))
 
 
 def verify_dag_relation_certificates(
