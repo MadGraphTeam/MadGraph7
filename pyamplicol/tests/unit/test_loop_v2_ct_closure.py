@@ -21,7 +21,6 @@ from itertools import product
 
 import pytest
 
-from pyamplicol.loops.v2.ct_closure import U1_DEMOTION
 from pyamplicol.loops.v2.ct_sites import LAURENT_POWERS, ColourOverlaps, add_colour
 from pyamplicol.loops.v2.families import add_orders
 from tools.loop_reference import legacy_capture
@@ -458,8 +457,12 @@ def test_closure_equals_site_closure_at_200_bits(ct_slice, closure_ct_model, nam
 # inside five-gluon blocks need the multi-trace colour state and the contact
 # splits of the lowered model; with a gluon at leg 1, a light-quark clone line
 # meets the root with its Weyl factor and a top clone line carries the top
-# width of the tree propagators. ``name -> (process, Born QCD, QED, PDG codes
-# of the rule the request is about, leg masses)``.
+# width of the tree propagators. In the six-leg requests these R2 vertices
+# take a quark pair's gluon inside a block (uu~ -> dd~gg, gg -> uu~ag) or
+# feed their gluon into the quark line of the block (uu~ -> aggg,
+# uu~ -> aagg): the U(1) projection of their gluon legs (design §6.1).
+# ``name -> (process, Born QCD, QED, PDG codes of the rule the request is
+# about, leg masses)``.
 SLICE_O6 = {
     "uux_agg": ("u u~ > a g g", 2, 1, (21, 21, 21, 22), (0,) * 5),
     "uux_aag": ("u u~ > a a g", 1, 2, (21, 21, 22, 22), (0,) * 5),
@@ -467,10 +470,10 @@ SLICE_O6 = {
     "gg_uuxg": ("g g > u u~ g", 3, 0, (2, 2), (0,) * 5),
     "gg_ttxg": ("g g > t t~ g", 3, 0, (6, 6), (0, 0, 173, 173, 0)),
     "uux_ddxgg": ("u u~ > d d~ g g", 4, 0, (21, 21, 21, 21), (0,) * 6),
+    "gg_uuxag": ("g g > u u~ a g", 3, 1, (21, 21, 21, 22), (0,) * 6),
+    "uux_aggg": ("u u~ > a g g g", 3, 1, (21, 21, 21, 22), (0,) * 6),
+    "uux_aagg": ("u u~ > a a g g", 2, 2, (21, 21, 22, 22), (0,) * 6),
 }
-# The four-gluon R2 takes the gluon of the d line inside a block: closed as
-# sites until CT vertices have U(1)-subtraction auxiliaries (design §6.1).
-SLICE_DEMOTED = frozenset({"uux_ddxgg"})
 SLICE_PARAMETERS = {"aS": "0.118", "MT": "173"}
 SLICE_SCALE_SQUARED = "1000000"
 # Recursion and sites differ only by rounding (binary64) or not at all within
@@ -559,32 +562,23 @@ def test_slice_counterterms_from_recursion_equal_sites(
     assert sites.counterterm_program is None
     residual = program.recursion.residual
     # Only the Levi-Civita R2 of the Z with gluons stays a site closure
-    # (design §6.1, WP3.2), and rules whose CT vertices would take the U(1)
-    # part of a fermion line's gluon inside a block (``U1_DEMOTION``).
+    # (design §6.1, WP3.2); no rule is demoted for the U(1) part of a gluon.
     rules = recursion.prepared.counterterms.rules
     for rule, reason in residual.items():
-        assert reason == U1_DEMOTION or 23 in {
-            abs(int(pdg)) for pdg in rules[rule].particle_pdgs
-        }, (rule, reason)
-    # The rule of interest is lowered and admitted by the request's witnesses
-    # (or demoted, for requests in ``SLICE_DEMOTED``).
+        assert 23 in {abs(int(pdg)) for pdg in rules[rule].particle_pdgs}, (
+            rule,
+            reason,
+        )
+    # The rules of interest are lowered and admitted by the request's
+    # witnesses.
     pdgs = SLICE_O6[name][3]
 
     def about(rule):
         return tuple(sorted(abs(int(pdg)) for pdg in rule.particle_pdgs)) == pdgs
 
     lowered = [n for n, rule in program.recursion.rules.items() if about(rule)]
-    if name in SLICE_DEMOTED:
-        # The R2 rules (d*d and delta*delta colours) are demoted; the UV
-        # four-gluon rules (f*f) stay in the recursion.
-        demoted = [n for n, rule in rules.items() if about(rule) and n in residual]
-        assert demoted and all(residual[n] == U1_DEMOTION for n in demoted)
-        assert all(rules[n].kind == "R2" for n in demoted), demoted
-        assert all(rule.kind != "R2" for n, rule in rules.items() if n in lowered)
-    else:
-        assert lowered and all(program.recursion.admission[n] for n in lowered), (
-            lowered
-        )
+    assert lowered and all(program.recursion.admission[n] for n in lowered), lowered
+    assert not {n for n, rule in rules.items() if about(rule)} & set(residual)
     precision = {
         "double": Precision.double(),
         "arbitrary-200": Precision.arbitrary(60),

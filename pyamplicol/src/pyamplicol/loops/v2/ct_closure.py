@@ -410,11 +410,8 @@ def u1_projected(compiled: Any) -> bool:
     )
 
 
-U1_DEMOTION = (
-    "its colour couples to the U(1) part of a gluon that a fermion line supplies "
-    "or absorbs inside a block (U(1)-subtraction auxiliaries of counterterm "
-    "vertices, design §6.1)"
-)
+class UnprojectedU1Error(NotImplementedError):
+    """A CT vertex would take the U(1) part of a fermion line's gluon."""
 
 
 def u1_leaking_structures(program: CountertermBlocks) -> frozenset[Any]:
@@ -424,10 +421,11 @@ def u1_leaking_structures(program: CountertermBlocks) -> frozenset[Any]:
     with auxiliaries that only fermion vertices produce and absorb. A CT
     vertex whose colour couples to that part (``_u1_coupling_kinds``) inside
     a block therefore must neither absorb a gluon current of a fermion line
-    nor feed its gluon into a fermion line; at the root the exact colour
-    closure projects every block onto SU(N). Returns the lowered terms
-    (``CountertermStructure``) of every CT vertex of the program that does
-    either.
+    nor feed its gluon into a fermion line, unless the lowered model projects
+    its gluon legs onto SU(N) (``u1_projected``); at the root the exact
+    colour closure projects every block onto SU(N). Returns the lowered terms
+    (``CountertermStructure``) of every unprojected CT vertex of the program
+    that does either.
     """
 
     dag = program.blocks.blocks_dag
@@ -488,30 +486,6 @@ def u1_leaking_structures(program: CountertermBlocks) -> frozenset[Any]:
             for term_id in kernel.term_ids or (kernel.term_id,):
                 out |= by_coupling.get(coupling_of.get(int(term_id), ""), set())
     return frozenset(out)
-
-
-def _demoted(
-    recursion: CountertermRecursion, structures: frozenset[Any]
-) -> CountertermRecursion:
-    """``recursion`` with every rule holding one of ``structures`` left to
-    site closure (its multiplicity is then 0 in the program)."""
-
-    from .ct_recursion import rule_key
-
-    demoted = {
-        name
-        for name, rule in recursion.rules.items()
-        if set(recursion.model.structures.get(rule_key(rule), ())) & structures
-    }
-    if not demoted:
-        return recursion
-    return replace(
-        recursion,
-        rules={n: r for n, r in recursion.rules.items() if n not in demoted},
-        terms={n: t for n, t in recursion.terms.items() if n not in demoted},
-        admission={n: a for n, a in recursion.admission.items() if n not in demoted},
-        residual={**recursion.residual, **dict.fromkeys(sorted(demoted), U1_DEMOTION)},
-    )
 
 
 def _slot_order(slot: tuple[str, int, int]) -> str:
@@ -763,13 +737,18 @@ class CountertermProgram:
         program = CountertermBlocks.build(
             recursion, ir, ignored_particle_ids=forbidden
         )
-        # Rules whose CT vertices would take the U(1) part of a fermion
-        # line's gluon inside a block are closed as sites (exact) until CT
-        # vertices have U(1)-subtraction auxiliaries; their currents in the
-        # program vanish with their multiplicities.
+        # The lowered model projects the gluon legs of its CT vertices onto
+        # SU(N) unless a tree vertex of the model couples to the U(1) part of
+        # a gluon itself; the request's blocks are then not exact either.
         leaking = u1_leaking_structures(program)
         if leaking:
-            program = replace(program, recursion=_demoted(recursion, leaking))
+            raise UnprojectedU1Error(
+                "counterterm vertices "
+                + ", ".join(sorted({str(s.particles) for s in leaking}))
+                + " would take the U(1) part of a fermion line's gluon: the "
+                "model's tree vertices couple to it, so its counterterm "
+                "vertices are not projected onto SU(N) (design §6.1)"
+            )
         sites = CountertermClosure.root_sites(
             program, families, rules, native_model, selection, forbidden=forbidden
         )
@@ -825,7 +804,7 @@ __all__ = [
     "ROOT_COUNTERTERM",
     "ROOT_LINE",
     "ROOT_VERTEX",
-    "U1_DEMOTION",
+    "UnprojectedU1Error",
     "CloneLine",
     "ClosureTerm",
     "CountertermBlocks",
@@ -836,4 +815,5 @@ __all__ = [
     "lowered_counterterm_model",
     "model_value",
     "u1_leaking_structures",
+    "u1_projected",
 ]
