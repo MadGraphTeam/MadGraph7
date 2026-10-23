@@ -9,11 +9,12 @@
 //! fraction strings) and carrier values of kernel constants, block rows and
 //! Born components (float pairs in binary64, string pairs otherwise).
 //! With a tree program (`trees=`, WP3.1) the block rows and Born components
-//! are formed natively instead: the batch then carries `parameters`, per
-//! point the exact external parameter values of the program
+//! are formed natively instead: the batch then carries `parameters`, the
+//! exact external parameter values of the program
 //! (`TreeProgram::parameter_names`), from which the kernel constants, masses,
-//! couplings and model parameters are bound natively; it has no `constants`,
-//! `masses`, `block_rows` or `born`.
+//! couplings and model parameters are bound natively (the scale parameter
+//! from each point's mu_R²); it has no `constants`, `masses`, `block_rows`
+//! or `born`.
 use super::*;
 use pyo3::IntoPyObject;
 use pyo3::types::PyDict;
@@ -182,11 +183,7 @@ impl Trees {
         Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
         TreeRuntime<T>: Send,
     {
-        let values = item(inputs, "parameters")?
-            .extract::<Vec<Vec<String>>>()?
-            .into_iter()
-            .map(rationals)
-            .collect::<PyResult<Vec<_>>>()?;
+        let values = rationals(item(inputs, "parameters")?.extract::<Vec<String>>()?)?;
         let mut guard = self
             .runtime
             .lock()
@@ -201,7 +198,10 @@ impl Trees {
             .as_mut()
             .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
             .expect("a runtime of this carrier");
-        let bound = self.program.bind(runtime, &values, zero).map_err(error)?;
+        let bound = self
+            .program
+            .bind(runtime, &values, &batch.scales, zero)
+            .map_err(error)?;
         batch.constants = bound.constants;
         batch.masses = bound.masses;
         let out = self

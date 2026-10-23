@@ -32,8 +32,9 @@
 //! last saved evaluator): the tree program's derived model parameters, the
 //! Born couplings per N_c grade and the plan's kernel constants, in the
 //! carrier; the masses (external spinors, loop propagators) are the exact
-//! mass parameters. A batch therefore hands over only momenta, scales and
-//! per point the external parameter values (`TreeProgram::bind`).
+//! mass parameters, and the renormalisation scale's parameter is sqrt(mu_R²)
+//! of each point. A batch therefore hands over only momenta, scales and the
+//! external parameter values (`TreeProgram::bind`).
 //!
 //! Every value derives from the stored program and the external parameters:
 //! no Python per batch or point.
@@ -115,6 +116,9 @@ struct ParameterFile {
     /// Per plan mass: the external index of its mass parameter (squared),
     /// or none (massless).
     plan_masses: Vec<Option<usize>>,
+    /// The renormalisation scale's parameter, if the program reads it:
+    /// sqrt(mu_R^2) of each point.
+    scale: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -262,6 +266,7 @@ struct Parameters {
     positive: Vec<usize>,
     masses: Vec<(i32, usize)>,
     plan_masses: Vec<Option<usize>>,
+    scale: Option<usize>,
 }
 
 /// A loaded tree program (one process, any carrier).
@@ -465,7 +470,14 @@ fn load_parameters(
             .chain(&file.positive)
             .all(|&o| output(o))
             && file.masses.iter().all(|&(_, i)| i < inputs)
-            && file.plan_masses.iter().flatten().all(|&i| i < inputs),
+            && file.plan_masses.iter().flatten().all(|&i| i < inputs)
+            && file.scale.is_none_or(|i| i < inputs)
+            && file
+                .plan_masses
+                .iter()
+                .flatten()
+                .chain(file.masses.iter().map(|(_, i)| i))
+                .all(|&i| Some(i) != file.scale),
         "parameter program index",
     )?;
     let model = file
@@ -497,6 +509,7 @@ fn load_parameters(
         positive: file.positive,
         masses: file.masses,
         plan_masses: file.plan_masses,
+        scale: file.scale,
     })
 }
 
@@ -715,33 +728,42 @@ impl TreeProgram {
         &self.parameters.defaults
     }
 
-    /// Bind a batch's external parameters (per point, in
-    /// `parameter_names` order, exact): the tree program's model parameters
-    /// per point, and the Born couplings, kernel constants and masses, which
-    /// must be equal at every point of the batch (only parameters that feed
-    /// the trees alone, such as the renormalisation scale, may vary).
+    /// Bind a batch's external parameters (`values`, exact, in
+    /// `parameter_names` order; the scale parameter's entry is ignored) at
+    /// each point's `scales` (mu_R^2): the scale parameter is sqrt(mu_R^2)
+    /// in the carrier. Returns the tree program's model parameters per
+    /// point, and the Born couplings, kernel constants and masses, which
+    /// must not depend on the scale (they are checked equal at every point).
     pub fn bind<T: TreeCarrier + Real>(
         &self,
         runtime: &mut TreeRuntime<T>,
-        values: &[Vec<Rational>],
+        values: &[Rational],
+        scales: &[Rational],
         zero: &T,
     ) -> RusticolResult<BoundParameters<T>>
     where
         Complex<T>: Real + EvaluationDomain,
     {
         let program = &self.parameters;
-        let points = values.len();
+        let points = scales.len();
         let width = program.names.len();
         require(points > 0, "a batch needs points")?;
-        require(
-            values.iter().all(|point| point.len() == width),
-            "external parameter count",
-        )?;
+        require(values.len() == width, "external parameter count")?;
         let czero = Complex::new(zero.clone(), zero.clone());
-        let inputs: Vec<Complex<T>> = values
+        let shared: Vec<T> = values.iter().map(|value| cast(zero, value)).collect();
+        let mut rows_in = Vec::with_capacity(points);
+        for scale in scales {
+            let mut point = shared.clone();
+            if let Some(index) = program.scale {
+                require(*scale > Rational::from(0), "mu_R^2 must be positive")?;
+                point[index] = cast(zero, scale).sqrt();
+            }
+            rows_in.push(point);
+        }
+        let inputs: Vec<Complex<T>> = rows_in
             .iter()
             .flatten()
-            .map(|value| Complex::new(cast(zero, value), zero.clone()))
+            .map(|value| Complex::new(value.clone(), zero.clone()))
             .collect();
         let mut outputs = vec![czero; points * program.outputs];
         runtime
@@ -776,19 +798,7 @@ impl TreeProgram {
             &program.constants,
             "the points of one batch need equal kernel constants",
         )?;
-        let mass_inputs: Vec<usize> = program
-            .masses
-            .iter()
-            .map(|&(_, index)| index)
-            .chain(program.plan_masses.iter().flatten().copied())
-            .collect();
-        for point in &values[1..] {
-            require(
-                mass_inputs.iter().all(|&i| point[i] == values[0][i]),
-                "the points of one batch need equal masses",
-            )?;
-        }
-        let model = values
+        let model = rows_in
             .iter()
             .zip(&rows)
             .map(|(point, row)| {
@@ -796,7 +806,7 @@ impl TreeProgram {
                     .model
                     .iter()
                     .map(|source| match *source {
-                        ModelSource::Input(index) => cast(zero, &point[index]),
+                        ModelSource::Input(index) => point[index].clone(),
                         ModelSource::Output { index, imaginary } => {
                             if imaginary {
                                 row[index].im.clone()
@@ -814,7 +824,7 @@ impl TreeProgram {
                 masses: program
                     .masses
                     .iter()
-                    .map(|&(pdg, index)| (pdg, values[0][index].clone()))
+                    .map(|&(pdg, index)| (pdg, values[index].clone()))
                     .collect(),
                 couplings,
             },
@@ -823,7 +833,7 @@ impl TreeProgram {
                 .plan_masses
                 .iter()
                 .map(|mass| match mass {
-                    Some(index) => &values[0][*index] * &values[0][*index],
+                    Some(index) => &values[*index] * &values[*index],
                     None => Rational::from(0),
                 })
                 .collect(),

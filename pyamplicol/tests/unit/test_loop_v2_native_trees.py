@@ -177,7 +177,8 @@ def test_native_lane_binds_the_external_parameters(executors):
     """A native batch carries momenta, scales and the external parameters
     only; the executor binds the kernel constants, the loop and external
     masses, the Born couplings and the tree program's derived parameters
-    itself (the parameter program of ``native_trees``). Away from the
+    itself (the parameter program of ``native_trees``), and the scale
+    parameter from each point's mu_R^2. Away from the
     defaults (alpha_s and the top mass, which enters the loop propagators,
     the massive spinors and the couplings' dependence) the native results
     equal the Python inputs, and differ from those at the defaults."""
@@ -190,7 +191,7 @@ def test_native_lane_binds_the_external_parameters(executors):
     batch = native._inputs(evaluations, "double")
     assert set(batch) == {"momenta", "scales", "parameters"}
     names = native.exported.trees.parameter_names
-    assert batch["parameters"][0][names.index("aS")] == "0.13"
+    assert batch["parameters"][names.index("aS")] == "0.13"
     mine = native.evaluate(points, scales, parameters=parameters)
     theirs = python.evaluate(points, scales, parameters=parameters)
     _assert_same(mine, theirs, 1e-12)

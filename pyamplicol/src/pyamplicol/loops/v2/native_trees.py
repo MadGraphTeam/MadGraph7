@@ -35,8 +35,9 @@ the same program for the native executor (``rusticol-core``
   propagators. The plan's kernel constants carry the Born kernels' model
   factors.
 
-Per batch only momenta, scales and per point the external parameter values
-cross (``batch_parameters``); the executor binds everything else natively.
+Per batch only momenta, scales (mu_R^2 per point) and the external parameter
+values cross (``batch_parameters``); the executor binds everything else
+natively, the scale parameter from each point's mu_R^2.
 
 At leading and next-to-leading colour the Born metric is per Born component
 and squared Born order, keeping the N_c powers the projection keeps
@@ -492,6 +493,8 @@ def _parameter_program(
     record = {
         "names": names,
         "defaults": defaults,
+        # The renormalisation scale's parameter: sqrt(mu_R^2) per point.
+        "scale": index.get(slice_.scale_parameter),
         "outputs": len(outputs),
         "model": model,
         "couplings": coupling_outputs,
@@ -798,22 +801,29 @@ def _external_masses(slice_: Any) -> tuple[tuple[int, str], ...]:
     return tuple(sorted(out.items()))
 
 
-def batch_parameters(trees: NativeTrees, evaluations: Sequence[Any]) -> list[list[str]]:
-    """Per point the exact values of the tree program's external parameters
-    (``inputs["parameters"]``): the point's own values (``LoopSlice.
-    _point_parameters``: the caller's, the request's fixed parameters and the
-    renormalisation scale), else the parameter's default."""
+def batch_parameters(trees: NativeTrees, evaluations: Sequence[Any]) -> list[str]:
+    """The exact values of the tree program's external parameters for a
+    batch (``inputs["parameters"]``): the points' values (``LoopSlice.
+    _point_parameters``: the caller's and the request's fixed parameters),
+    else the parameter's default. The renormalisation scale's parameter is
+    formed natively from each point's mu_R^2 (``TreeProgram::bind``), so it
+    is the one parameter the points may differ in."""
 
     record = trees.program["parameters"]
-    out = []
+    scale = record["scale"]
+    out = None
     for evaluation in evaluations:
         values = evaluation.parameters
-        out.append(
-            [
-                values.get(name, default)
-                for name, default in zip(
-                    record["names"], record["defaults"], strict=True
-                )
-            ]
-        )
+        point = [
+            "0" if index == scale else values.get(name, default)
+            for index, (name, default) in enumerate(
+                zip(record["names"], record["defaults"], strict=True)
+            )
+        ]
+        if out is None:
+            out = point
+        elif point != out:
+            raise ValueError("the points of one batch need equal model parameters")
+    if out is None:
+        raise ValueError("a batch needs points")
     return out
