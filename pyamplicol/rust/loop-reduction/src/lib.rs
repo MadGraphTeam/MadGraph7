@@ -29,12 +29,12 @@ pub use ninjars::{
     SamplingScaleSource, SamplingScaleStatus,
 };
 use ninjars_graph::{CoefficientEvaluator, PolynomialCoefficientPlan, TensorCoefficientPlan};
+pub use ninjars_symbolica::PoleSelection;
 pub use ninjars_symbolica::SymbolicaSamplingScales;
 use ninjars_symbolica::{
     OneLoopNativeMasters, PolynomialNumerator, SymbolicaAmplitudeKernels, SymbolicaCuts,
     SymbolicaHighCuts, SymbolicaMasters,
 };
-pub use ninjars_symbolica::PoleSelection;
 pub use oneloop::NativeFloat;
 use symbolica::{atom::Atom, evaluate::EvaluationDomain};
 
