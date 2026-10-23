@@ -226,6 +226,14 @@ impl<M: FastMasters> MasterCache<M> {
 }
 
 impl<M: FastMasters> FastMasters for MasterCache<M> {
+    /// Forwarded, so that the fast engine refuses a provider selecting UV or
+    /// IR poles behind the cache. The cache itself holds whatever its provider
+    /// returns; the v2 adapter never changes its provider's selection, so
+    /// every cached row has the combined poles.
+    fn requires_scaleless_bubbles(&self) -> bool {
+        self.inner.requires_scaleless_bubbles()
+    }
+
     fn evaluate(
         &mut self,
         family: FastMaster,

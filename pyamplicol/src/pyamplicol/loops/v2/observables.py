@@ -89,6 +89,7 @@ from pyamplicol.color.connections import (
     contract_connected_tensor_nc_terms,
 )
 from pyamplicol.color.correlator_matrices import ColorCorrelator
+from pyamplicol.config import PoleSelection
 from pyamplicol.correlators import CorrelatorConfig
 
 from . import reference_executor as rx
@@ -127,6 +128,7 @@ from .plan_export import (
     SeedColumn,
     export_plan,
 )
+from .poles import ORIGINS, has_poles, pole_mode, select_sector, split_sector, splits
 from .stability import (
     ROTATION,
     Budget,
@@ -568,6 +570,18 @@ def _sum_results(results: Sequence[PointResult]) -> PointResult:
     for result in results:
         for lane, value in result.families.items():
             families[lane].append(value)
+    origins = None
+    if first.pole_origins is not None:
+        origins = {
+            origin: {
+                name: {
+                    sector: add([r.pole_origins[origin][name][sector] for r in results])
+                    for sector in parts[name]
+                }
+                for name in parts
+            }
+            for origin, parts in first.pole_origins.items()
+        }
     return PointResult(
         born,
         components,
@@ -575,6 +589,8 @@ def _sum_results(results: Sequence[PointResult]) -> PointResult:
         {lane: add(values) for lane, values in families.items()},
         None,
         colour_contraction=first.colour_contraction,
+        poles=first.poles,
+        pole_origins=origins,
     )
 
 
@@ -600,6 +616,9 @@ class ObservableSlice:
     # the family of each history (bra, ket).
     _families: dict[tuple, dict] = field(default_factory=dict, repr=False)
     _family_of: dict[tuple, tuple] = field(default_factory=dict, repr=False)
+    # The observables of the certified-scaleless companion (``scaleless``),
+    # once built: [ObservableSlice or None].
+    _scaleless: list = field(default_factory=list, repr=False)
 
     @classmethod
     def generate(
@@ -687,6 +706,36 @@ class ObservableSlice:
         for history in out.histories:
             out.directed(history)
         return out
+
+    def scaleless(self) -> ObservableSlice | None:
+        """The same observables on the slice's certified-scaleless families
+        (``LoopSlice.scaleless``), which the "uv" and "ir" pole selections
+        dress and reduce for their UV residues (design §12.4), or None
+        without such families. Its column plans (``ColumnPlan``) number
+        their lanes as the slice's do. At LC/NLC with directed histories the
+        companion is rebuilt unpruned and pruned here for them, as ``of``
+        prunes the slice."""
+
+        if not self._scaleless:
+            slice_ = self.slice
+            companion = None
+            if slice_.scaleless is not None:
+                twin = slice_.scaleless
+                if (
+                    slice_.request.accuracy != "full"
+                    and twin.colour_pruned
+                    and any(history.bra for history in self.histories)
+                ):
+                    twin = slice_._scaleless_companion(prune=False)
+                companion = ObservableSlice.of(
+                    twin,
+                    correlators=CorrelatorConfig(
+                        tuple(self.histories), tuple(self.spin_classes)
+                    ),
+                    ward=self.ward,
+                )
+            self._scaleless.append(companion)
+        return self._scaleless[0]
 
     # -- declarations ---------------------------------------------------------
 
@@ -808,7 +857,7 @@ class ObservableSlice:
         ward: WardVector | None = None,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
-        poles: bool = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
         stability: StabilityChecks | None = None,
     ) -> dict[str, PointResult]:
         """Correlated outputs at one point, one ``PointResult`` per history id.
@@ -851,7 +900,7 @@ class ObservableSlice:
         spin: Mapping[int, Any] | None = None,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
-        poles: bool = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
         stability: StabilityChecks | None = None,
     ) -> ResolvedObservables:
         """Helicity- and/or colour-resolved outputs (design §8.5)."""
@@ -879,7 +928,7 @@ class ObservableSlice:
         rows: Iterable[rx.Row] | None = None,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
-        poles: bool = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
     ) -> dict[tuple[rx.Row, int, Orders], Laurent]:
         """Colour projections <T_k|M(h)> of the bare loop amplitude.
 
@@ -889,9 +938,15 @@ class ObservableSlice:
         h with a unit Born, so its numerator is the loop amplitude's colour
         projection, i/(16 pi^2) sum_c K'[c, k] L_c(h), at amplitude level
         (complex, no initial average) per loop-amplitude order. Full colour.
+        ``poles`` is ``"all"`` or ``"none"`` (the bare loop's projections have
+        no counterterms to split against).
         """
 
         from .colour import BornBasis
+
+        mode = pole_mode(poles)
+        if splits(mode):
+            raise ValueError("loop colour projections take poles 'all' or 'none'")
 
         (precision or Precision.double()).require_reference()
         slice_ = self.slice
@@ -919,7 +974,7 @@ class ObservableSlice:
         projection = replace(table, basis=basis, cells=cells)
         loops = sorted({order for orders in table.orders for order in orders})
         rows = tuple(self.rows if rows is None else rows)
-        evaluation = self.point(point, scale_squared, parameters, precision, poles)
+        evaluation = self.point(point, scale_squared, parameters, precision, mode)
         numbers = evaluation.numbers
         columns, labels = [], []
         for row in rows:
@@ -946,7 +1001,7 @@ class ObservableSlice:
             factor = numbers.pair(0, 1) * (
                 1 / (LOOP_FACTOR_DENOMINATOR * numbers.pi * numbers.pi)
             )
-            width = 3 if poles else 1
+            width = 3 if has_poles(mode) else 1
             out = {label: [numbers.zero] * width for label in labels}
             for (_family, _loop, k), value in evaluation.families.items():
                 terms = out[labels[k]]
@@ -1078,10 +1133,21 @@ class ObservableSlice:
         evaluation = self.point(
             point, scale_squared, parameters, precision, poles, spin, ward
         )
+        scaleless = None
+        if splits(evaluation.mode):
+            companion = plan.scaleless()
+            scaleless = (
+                (None, None)
+                if companion is None
+                else (companion.slice, companion.seeds)
+            )
         with evaluation.numbers.scope():
             execution = evaluation.dress(seeds=plan.seeds(evaluation))
             evaluation._reduce(
-                execution.numerators, retest, columns=list(range(plan.width))
+                execution.numerators,
+                retest,
+                columns=list(range(plan.width)),
+                scaleless=scaleless,
             )
         return evaluation
 
@@ -1091,7 +1157,7 @@ class ObservableSlice:
         scale_squared,
         parameters=None,
         precision=None,
-        poles=True,
+        poles=PoleSelection.ALL,
         spin=None,
         ward=None,
     ):
@@ -1269,10 +1335,28 @@ class ColumnPlan:
                         )
                     )
                 self.lanes[column.key, sector] = (indices[0], indices[1])
+        self._scaleless: list[ColumnPlan | None] = []
 
     @property
     def width(self) -> int:
         return len(self.seed_columns)
+
+    def scaleless(self) -> ColumnPlan | None:
+        """The same columns on the certified-scaleless companion
+        (``ObservableSlice.scaleless``; the "uv" and "ir" pole selections),
+        numbering its lanes as this plan does; None without one."""
+
+        if not self._scaleless:
+            companion = self.observables.scaleless()
+            plan = None
+            if companion is not None:
+                plan = ColumnPlan(companion, self.columns)
+                if plan.lanes != self.lanes:
+                    raise ValueError(
+                        "the companion's column plan numbers its lanes differently"
+                    )
+            self._scaleless.append(plan)
+        return self._scaleless[0]
 
     def seeds(self, evaluation) -> ColumnSeeds:
         return ColumnSeeds(
@@ -1473,20 +1557,60 @@ class _Assembly:
                 families[family, loop, sector] = value
         real = not column.directed
         zero = numbers.zero
+        # "uv" and "ir": the combined Laurent and the UV part of every lane
+        # (``assemble._PointEvaluation.set_lanes``), split per sector below.
+        split = evaluation.split_lanes
+        combined: dict[int, list[Any]] = {}
+        ultraviolet: dict[int, list[Any]] = {}
+        if split is not None:
+            for (_family, _loop, k), value in split.items():
+                if k not in index:
+                    continue
+                whole = combined.setdefault(k, [zero] * 3)
+                uv = ultraviolet.setdefault(k, [zero] * 3)
+                for i in range(3):
+                    whole[i] = whole[i] + value[i]
+                uv[0] = uv[0] + value[0]
+                uv[1] = uv[1] + value[3]
+        origins: dict[str, dict[str, dict[Orders, Laurent]]] | None = (
+            None
+            if split is None
+            else {origin: {name: {} for name in COMPONENTS} for origin in ORIGINS}
+        )
+
+        def bare_of(lanes, direct, swapped):
+            a = lanes.get(direct, [zero] * width)
+            b = lanes.get(swapped, [zero] * width)
+            return [
+                factor * x + (factor * y).conjugate() for x, y in zip(a, b, strict=True)
+            ]
+
+        def laurent(values):
+            return Laurent(*[value.real if real else value for value in values])
+
         components: dict[str, dict[Orders, Laurent]] = {name: {} for name in COMPONENTS}
         for sector, _pairs in slice_.sectors:
             direct, swapped = self._lanes[column.key, sector]
-            a = omega.get(direct, [zero] * width)
-            b = omega.get(swapped, [zero] * width)
-            bare = [
-                factor * x + (factor * y).conjugate() for x, y in zip(a, b, strict=True)
-            ]
-            values = {"bare": bare}
+            values = {"bare": bare_of(combined if split else omega, direct, swapped)}
             for name in ("r2", "uv_local", FIELD_COMPONENT):
                 values[name] = [
                     local.get((name, sector, power), zero)
                     for power in LAURENT_POWERS[:width]
                 ]
+            if origins is not None:
+                parts = split_sector(
+                    {name: laurent(value) for name, value in values.items()},
+                    laurent(bare_of(ultraviolet, direct, swapped)),
+                    FIELD_COMPONENT,
+                    Laurent,
+                )
+                for origin, part in parts.items():
+                    for name in COMPONENTS:
+                        origins[origin][name][sector] = part[name]
+                selected = select_sector(parts, evaluation.mode, Laurent)
+                for name in COMPONENTS:
+                    components[name][sector] = selected[name]
+                continue
             values["uv"] = [
                 x + y
                 for x, y in zip(
@@ -1500,9 +1624,7 @@ class _Assembly:
                 )
             ]
             for name in COMPONENTS:
-                components[name][sector] = Laurent(
-                    *[value.real if real else value for value in values[name]]
-                )
+                components[name][sector] = laurent(values[name])
         inverse = 1 / numbers.real(average)
         born = {
             order: value.real * inverse if real else value * inverse
@@ -1528,6 +1650,8 @@ class _Assembly:
             families,
             None,
             colour_contraction="direct",
+            poles=evaluation.mode,
+            pole_origins=origins,
         )
 
     def _local(self, column: Column):
@@ -1674,7 +1798,24 @@ class NativeObservables:
             merged=merged_graph(observables.slice) if schedule == "M" else None,
         )
         self.executor = NativeExecutor(
-            observables.slice, exported=exported, lanes=lanes, threads=threads
+            observables.slice,
+            exported=exported,
+            lanes=lanes,
+            threads=threads,
+            scaleless=lambda: self._scaleless(lanes, threads),
+        )
+
+    def _scaleless(self, lanes: int, threads: int | None) -> NativeExecutor | None:
+        """The native executor of the plan's columns on the certified-scaleless
+        companion (``ColumnPlan.scaleless``; schedule B), which the "uv" and
+        "ir" pole selections run; None without one."""
+
+        plan = self.plan.scaleless()
+        if plan is None:
+            return None
+        exported = export_plan(plan.slice, forward=False, columns=plan.seed_columns)
+        return NativeExecutor(
+            plan.slice, exported=exported, lanes=lanes, threads=threads
         )
 
     @classmethod
@@ -1728,10 +1869,15 @@ class NativeObservables:
         ward: WardVector | None = None,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
-        poles: bool = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
         stability: StabilityChecks | None = None,
     ) -> list[dict[Hashable, PointResult]]:
         """The outputs of every point, dressed and reduced in one native batch.
+        ``poles`` is the pole selection (``PoleSelection`` or its value):
+        "uv" and "ir" also run the columns on the certified-scaleless
+        companion and split every output's poles (``PointResult.pole_origins``;
+        in "uv" each output's virtual poles are its bare loop's UV poles,
+        ``poles.select_sector``).
 
         ``spin`` is one source assignment for every point or one per point
         (``None`` entries: ordinary helicities). ``precision`` selects the
@@ -1828,7 +1974,7 @@ class _Batch:
     scales: tuple[Any, ...]
     parameters: Mapping[str, str] | None
     precision: Precision
-    poles: bool
+    poles: PoleSelection | str
     ward: WardVector | None
 
 
@@ -2100,7 +2246,7 @@ class MemberObservables:
             scale_squared,
             options.get("parameters"),
             options.get("precision"),
-            options.get("poles", True),
+            options.get("poles", PoleSelection.ALL),
             member.spin(spin),
             _relabel_ward(member, ward),
             options.get("stability"),

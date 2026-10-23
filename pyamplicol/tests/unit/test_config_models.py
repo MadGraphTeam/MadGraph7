@@ -46,7 +46,7 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert len(FIELD_REGISTRY) == 114
     assert FIELD_REGISTRY["loop.engine"].default == "legacy"
     assert FIELD_REGISTRY["evaluation.poles"].default == "all"
-    assert FIELD_REGISTRY["evaluation.poles"].choices == ("all", "none")
+    assert FIELD_REGISTRY["evaluation.poles"].choices == ("all", "none", "uv", "ir")
     assert FIELD_REGISTRY["evaluation.stability_checks.rotations"].kind == "list_str"
     assert FIELD_REGISTRY["evaluation.stability_checks.rotation_count"].default == 0
     assert FIELD_REGISTRY["loop.preparation"].nullable

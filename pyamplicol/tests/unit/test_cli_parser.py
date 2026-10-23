@@ -683,6 +683,22 @@ def test_runtime_color_flow_flags_remain_available() -> None:
     assert benchmark.resolve().effective.benchmark.color_flow_ids == ("flow:2,4,1",)
 
 
+@pytest.mark.parametrize("selection", ["all", "none", "uv", "ir"])
+def test_evaluate_pole_selection_takes_every_pole_selection(selection: str) -> None:
+    from pyamplicol.config import PoleSelection
+
+    config = parse_cli(("evaluate", "--poles", selection)).resolve().effective
+    assert config.evaluation.poles is PoleSelection(selection)
+
+
+def test_evaluate_pole_selection_names_its_choices(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit):
+        parse_cli(("evaluate", "--poles", "both"))
+    assert "(choose from 'all', 'none', 'uv', 'ir')" in capsys.readouterr().err
+
+
 def test_profile_is_primary_cli_spelling_for_typed_benchmark_config(
     tmp_path: Path,
 ) -> None:

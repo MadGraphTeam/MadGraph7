@@ -264,18 +264,24 @@ enum Carriers {
 struct V2Executor {
     executor: Executor,
     carrier: Carriers,
+    /// The binary64 reduction engine: `fast` (production) or `generic`
+    /// (oracle and cost reference of selected master poles).
+    engine: String,
     backend: Option<V2ReductionBackend>,
 }
 
 /// The reduction backend of a carrier, built on first use. A free function
 /// of the backend slot, so an evaluation can borrow the executor alongside.
-fn backend_of(
-    slot: &mut Option<V2ReductionBackend>,
+/// `engine` is the binary64 reduction engine; the extended carriers always
+/// reduce with the generic engine.
+fn backend_of<'a>(
+    slot: &'a mut Option<V2ReductionBackend>,
     carrier: Carriers,
-) -> PyResult<&mut V2ReductionBackend> {
+    engine: &str,
+) -> PyResult<&'a mut V2ReductionBackend> {
     if slot.is_none() {
         let reducer = match carrier {
-            Carriers::Double => runtime::V2Reducer::new("double", None, "fast", true),
+            Carriers::Double => runtime::V2Reducer::new("double", None, engine, true),
             Carriers::DoubleDouble => {
                 runtime::V2Reducer::new("double-double", None, "generic", true)
             }
@@ -287,7 +293,10 @@ fn backend_of(
             }
         }
         .map_err(error)?;
-        *slot = Some(V2ReductionBackend { reducer });
+        *slot = Some(V2ReductionBackend {
+            reducer,
+            masters: v2::master_selection("both")?,
+        });
     }
     Ok(slot.as_mut().expect("backend"))
 }
@@ -339,7 +348,8 @@ fn numerators_with<T: Exchanged>(
 #[pymethods]
 impl V2Executor {
     #[new]
-    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule"))]
+    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast"))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         plan: &str,
         arithmetic: &str,
@@ -347,7 +357,11 @@ impl V2Executor {
         lanes: usize,
         threads: Option<usize>,
         forms: &str,
+        engine: &str,
     ) -> PyResult<Self> {
+        if !matches!(engine, "fast" | "generic") {
+            return Err(error("engine must be fast or generic"));
+        }
         let policy = match forms {
             "rule" => FormPolicy::Rule,
             "fused" => FormPolicy::Fused,
@@ -369,6 +383,7 @@ impl V2Executor {
         Ok(Self {
             executor: Executor::new(plan, lanes, threads).map_err(error)?,
             carrier,
+            engine: engine.to_owned(),
             backend: None,
         })
     }
@@ -456,14 +471,16 @@ impl V2Executor {
     /// (the re-test integrals or None), `bare` (per point and column),
     /// `budget` (re-test error budgets), `failures` and `report`. `schedule`
     /// `M` dresses the plan's schedule-M families by M (streamed in parts of
-    /// `part_chunks` chunks) and the others by B.
-    #[pyo3(signature = (inputs, *, poles=true, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None))]
+    /// `part_chunks` chunks) and the others by B. `poles` is `"all"`, `"none"`
+    /// or `"split"` (each lane's UV residue as a fourth column, DESIGN.md
+    /// §12.4); `master_poles` selects the masters' residues (generic engine).
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both"))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
         py: Python<'_>,
         inputs: &Bound<'_, PyDict>,
-        poles: bool,
+        poles: Option<Bound<'_, PyAny>>,
         check: bool,
         reverse: bool,
         rotation: usize,
@@ -472,7 +489,13 @@ impl V2Executor {
         chunk_families: Option<usize>,
         schedule: &str,
         part_chunks: Option<usize>,
+        master_poles: &str,
     ) -> PyResult<Evaluation> {
+        let poles = match poles {
+            Some(value) => v2::poles_option(&value)?,
+            None => V2Options::default().poles,
+        };
+        let masters = v2::master_selection(master_poles)?;
         let mut options = V2Options {
             poles,
             check: check.then_some(ReductionCheck {
@@ -496,7 +519,8 @@ impl V2Executor {
         }
         let bits = self.bits()?;
         let carrier = self.carrier;
-        let backend = backend_of(&mut self.backend, carrier)?;
+        let backend = backend_of(&mut self.backend, carrier, &self.engine)?;
+        backend.masters = masters;
         let executor = &self.executor;
         match carrier {
             Carriers::Double => evaluate_with(py, executor, backend, inputs, 0.0, bits, options),
@@ -526,7 +550,8 @@ impl V2Executor {
 /// Admit one plan v4 process of an artifact through the native loader
 /// (`rusticol_core::loop_artifact::open_loop_v2_artifact`) and describe it as
 /// JSON: identity, plan digest, families, reduction buckets, program shape,
-/// the declared metadata and the generation request.
+/// the declared metadata, the generation request and the companion plan of
+/// certified-scaleless families (digest and families, or null).
 #[pyfunction]
 #[pyo3(signature = (path, process=None))]
 fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
@@ -554,6 +579,8 @@ fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyRes
         "columns": program.columns,
         "metadata": loaded.metadata,
         "request": loaded.request,
+        "scaleless_plan_sha256": loaded.scaleless_plan_sha256,
+        "scaleless_families": loaded.scaleless_program.as_ref().map(|p| p.families.len()),
     }))
     .map_err(error)
 }
