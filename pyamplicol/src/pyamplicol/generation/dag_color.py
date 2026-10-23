@@ -444,8 +444,14 @@ class ColorEngine:
                 if label in self._loop_fundamental_labels
             ]
             if not starts:
-                start = coloured.index(min(coloured))
-                traces = tuple(sorted({*traces, coloured[start:] + coloured[:start]}))
+                # A word a_1 .. a_k is the generator product tau^a_k .. tau^a_1
+                # (``loops.v2.blocks``), so the closed trace tr(M_left M_right)
+                # reads the joined word backwards; a trace (t_1 .. t_n) is
+                # tr(tau^t_1 .. tau^t_n). Traces of two labels are the same
+                # either way; from three labels on the orientation counts.
+                word = coloured[::-1]
+                start = word.index(min(word))
+                traces = tuple(sorted({*traces, word[start:] + word[:start]}))
             else:
                 # Joining the open ends merges the last string (from its
                 # fundamental leg to the open end) with the first: the word,
