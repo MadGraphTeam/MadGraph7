@@ -400,13 +400,13 @@ def test_lowered_couplings_are_exact_model_expressions(lowered_ct_model):
     assert not any("two-point" in reason for reason in reasons)
     # The ggVV and ggSS contacts lower (``compiler_contacts`` splits); the
     # tree vocabulary leaves the d-symbols and colour products to the
-    # multi-trace state of the closure (``ct_closure``) and the Levi-Civita
-    # R2 of the Z with gluons to sites.
+    # multi-trace state of the closure (``ct_closure``). The Levi-Civita
+    # cells of the R2 of the Z with gluons cancel between the quark doublets
+    # (``test_loop_v2_ct_cancellation``): only the g g g Z rules, whose vector
+    # cell is a d-symbol, stay with the four-gluon R2.
     assert not any("contact decomposition" in reason for reason in reasons)
-    assert any("multi-trace colour state" in reason for reason in reasons)
-    assert all(
-        "multi-trace colour state" in reason or reason.startswith("Lorentz structure")
-        for reason in reasons
+    assert reasons and all(
+        "multi-trace colour state" in reason for reason in reasons
     ), reasons
     model.check_parameters({"MT": 173.0, "MU_R": 91.188})
     with pytest.raises(ValueError, match="vanish"):

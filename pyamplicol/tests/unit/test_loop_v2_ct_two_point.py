@@ -300,7 +300,8 @@ def test_two_point_rules_become_clone_lines(two_point_lowering):
 # the u quark's sources and lines as Dirac spinors; with the photon, the
 # chiral and flipping u terms on its internal line. g g -> u u~ g: the u line
 # terms with a gluon at leg 1 (the line can meet the root). A gluon with the
-# photon-Z line would need the Levi-Civita g g Z R2 (WP3.2).
+# photon-Z line adds the g g Z R2, whose Levi-Civita cell cancels between the
+# quark doublets (``test_loop_v2_ct_cancellation``).
 TWO_POINT_O6 = {
     "uux_emep": ("u u~ > e- e+", 0, 2, (0,) * 4, {"AZ"}),
     "uux_emepa": ("u u~ > e- e+ a", 0, 3, (0,) * 5, {"AZ", "UU"}),

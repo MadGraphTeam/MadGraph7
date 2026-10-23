@@ -617,14 +617,11 @@ def test_slice_counterterms_from_recursion_equal_sites(
     assert slice_routes(name, "sites").counterterm_program is None
     program = recursion.counterterm_program
     residual = program.recursion.residual
-    # Only the Levi-Civita R2 of the Z with gluons stays a site closure
-    # (design §6.1, WP3.2); no rule is demoted for the U(1) part of a gluon.
+    # No rule stays a site closure: no rule is demoted for the U(1) part of a
+    # gluon, and the Levi-Civita cells of the R2 of the Z with gluons cancel
+    # between the quark doublets (design §6.1).
     rules = recursion.prepared.counterterms.rules
-    for rule, reason in residual.items():
-        assert 23 in {abs(int(pdg)) for pdg in rules[rule].particle_pdgs}, (
-            rule,
-            reason,
-        )
+    assert not residual, residual
     # The rules of interest are lowered and admitted by the request's
     # witnesses.
     pdgs = SLICE_O6[name][3]
