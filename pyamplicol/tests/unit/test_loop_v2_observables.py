@@ -368,6 +368,59 @@ def test_transverse_source_basis_sums_to_the_helicity_sum(generate, loop_referen
         assert _close(actual, expected, 1e-12, 1e-12)
 
 
+@pytest.mark.parametrize("accuracy", ("full", "lc", "nlc"))
+def test_spin_sources_are_bilinear(generate, accuracy):
+    """A spin source enters the Born bra and the loop ket linearly, so a
+    complex rescaling lambda of the source vector scales every output by
+    |lambda|^2: the inclusive and a dipole output of g g > g g with a complex
+    non-transverse source on gluon 3, at full colour, LC and NLC (spin
+    sources and joint colour x spin outputs at every accuracy, where no
+    provider or legacy record exists)."""
+
+    options = {}
+    if accuracy != "full":
+        from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+        options = {
+            "accuracy": accuracy,
+            "colour_declaration": LoopColorDeclaration.from_dict(
+                json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+            ),
+        }
+    observables = generate(
+        "g g > g g",
+        correlators=CorrelatorConfig(
+            color_correlations=(ColorCorrelator.dipole("T12", 1, 2),),
+            spin_correlations=((3,),),
+        ),
+        **options,
+    )
+    fixture = json.loads((FIXTURES / "legacy/gg_gg.json").read_text())
+    point, scale = fixture["points"][0], fixture["scales_squared"][0]
+    scale_re, scale_im = Decimal("1.2"), Decimal("1.6")  # |lambda|^2 = 4
+    scaled = tuple(
+        (
+            str(Decimal(re) * scale_re - Decimal(im) * scale_im),
+            str(Decimal(re) * scale_im + Decimal(im) * scale_re),
+        )
+        for re, im in VECTORS[0]
+    )
+    runs = [
+        observables.evaluate(
+            point,
+            scale,
+            correlations=(INCLUSIVE, "T12"),
+            spin={3: vector},
+            parameters=PARAMETERS,
+        )
+        for vector in (VECTORS[0], scaled)
+    ]
+    for key, value in runs[0].items():
+        assert any(abs(complex(x)) > 0 for x in value.totals)
+        for a, b in zip(runs[1][key].totals, value.totals, strict=True):
+            assert _close(a, 4 * complex(b), 1e-12, 1e-14), key
+
+
 def test_finite_only_observables(generate):
     """Finite-only mode returns the same finite parts without pole columns."""
 
