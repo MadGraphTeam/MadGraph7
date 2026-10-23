@@ -399,6 +399,58 @@ def test_finite_only_results_have_absent_poles_and_estimates_are_typed():
 
 
 @pytest.mark.loop_fast
+def test_resolved_pole_parts_follow_the_resolved_axes():
+    """Resolved pole parts per sector, helicity and colour component: summed
+    by ``total()``, kept by ``for_order``, rendered per entry."""
+
+    from dataclasses import replace
+
+    import prettytable
+
+    from pyamplicol.api.virtual_results import (
+        ResolvedVirtualEvaluation,
+        VirtualLaneDiagnostic,
+        VirtualPoleParts,
+    )
+    from pyamplicol.config import R2Strategy
+    from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
+    from pyamplicol.loops.strategy import R2Selection
+    from pyamplicol.reporting.virtual import virtual_evaluation_summary
+
+    sector = VirtualOrderSector(
+        (("QCD", 6),), (BornLoopPair((("QCD", 2),), (("QCD", 4),)),)
+    )
+    entries = (((-2.0, 0.25, -1.0),), ((-1.0, 0.75, -3.0),))
+    parts = VirtualPoleParts(
+        *({name: (entries,) for name in POLE_COMPONENTS} for _ in "ui")
+    )
+    result = ResolvedVirtualEvaluation(
+        ((((1.0,), (2.0,)),),),
+        ((entries,),),
+        ((("QCD", 4),),),
+        (sector,),
+        (VirtualLaneDiagnostic("success", "double", 53, False),),
+        R2Selection(R2Strategy.MODEL, R2Strategy.MODEL, "test"),
+        ("h0", "h1"),
+        ("full",),
+        ("full",),
+        "full",
+        poles="ir",
+        pole_parts=(parts,),
+    )
+    total = result.total()
+    assert total.poles is PoleSelection.IR
+    assert total.pole_part("uv", "bare") == ((LaurentCoefficients(-3.0, 1.0, -4.0),),)
+    assert result.pole_part("ir")[0] == ((entries,),)[0]
+    assert result.for_order((("QCD", 6),)).pole_parts == result.pole_parts
+    text = virtual_evaluation_summary(result, prettytable=prettytable)
+    assert "Infrared parts of the poles" in text and "Pole parts by origin" in text
+    assert text.count("uv_external_fields") == 4  # 2 helicities x 2 origins
+    with pytest.raises(ValueError, match="carries its pole parts"):
+        replace(result, pole_parts=None)
+
+
+@pytest.mark.loop_fast
 def test_configuration_selects_the_engine_and_the_runtime_options(tmp_path):
     from pyamplicol.config import ConfigurationError, LoopEngine, resolve_config
 
