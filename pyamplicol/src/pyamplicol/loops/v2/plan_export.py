@@ -294,37 +294,41 @@ class _Exporter:
         slice_ = self.slice_
         accuracy = slice_.request.accuracy
         born_grades = slice_._born_grades()
-        admitted = {
-            (c, order)
-            for column in columns
-            for c, order, _b, _a in column.table.admitted(column.pairs)
-        }
+        admitted: set[tuple[int, Orders]] = set()
+        # Per column, once: its degree and, per (class, loop order), the
+        # nonzero projected weights of its admitted Born entries (table
+        # order, so the Born components are numbered as by a direct scan).
+        indexed = []
+        for column in columns:
+            table, degree = column.table, column.degree
+            if accuracy != "full" and degree is None:
+                degree = table.degree(column.pairs, born_grades)
+            entries: dict[tuple[int, Orders], list] = {}
+            for c, order, b, born_order in table.admitted(column.pairs):
+                admitted.add((c, order))
+                if column.basis is not None and b not in column.basis:
+                    continue
+                found = entries.setdefault((c, order), [])
+                for grade in sorted(born_grades.get((b, born_order), ())):
+                    weight = project(table.cells[c][b], degree, accuracy, grade)
+                    if weight:
+                        found.append(((b, born_order, grade), weight))
+            indexed.append(entries)
         records = []
         for combination, order in self.seeds:
             for c, _x in combination:
                 if (c, order) not in admitted:
                     raise KeyError(f"no sector admits class {c} at {order}")
             weights_of = []
-            for column in columns:
-                table, degree = column.table, column.degree
-                if accuracy != "full" and degree is None:
-                    degree = table.degree(column.pairs, born_grades)
+            for entries in indexed:
                 weights: dict[int, ExactColorCoefficient] = {}
                 for c, x in combination:
-                    for cc, oo, b, born_order in table.admitted(column.pairs):
-                        if (cc, oo) != (c, order):
-                            continue
-                        if column.basis is not None and b not in column.basis:
-                            continue
-                        for grade in sorted(born_grades.get((b, born_order), ())):
-                            weight = project(table.cells[c][b], degree, accuracy, grade)
-                            if not weight:
-                                continue
-                            j = self.born_components.setdefault(
-                                (b, born_order, grade), len(self.born_components)
-                            )
-                            term = x * weight
-                            weights[j] = term + weights[j] if j in weights else term
+                    for component, weight in entries.get((c, order), ()):
+                        j = self.born_components.setdefault(
+                            component, len(self.born_components)
+                        )
+                        term = x * weight
+                        weights[j] = term + weights[j] if j in weights else term
                 weights_of.append(
                     [
                         [j, _fraction_text(w.real), _fraction_text(w.imag)]
