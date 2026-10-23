@@ -965,14 +965,23 @@ class LoopSlice:
         found = self._cache.get("site-terms")
         if found is None:
             found = self._cache["site-terms"] = {
-                site: (
-                    self.closure.terms(site)
-                    if site.rule.whole_rule_continuation is None
-                    else _whole_rule_terms(self.closure, site)
-                )
-                for site in self.sites.sites
+                site: self._terms_of(site) for site in self.sites.sites
             }
         return found
+
+    def _terms_of(self, site: Any) -> tuple[SiteTerm | WholeRuleTerm, ...]:
+        found = self._cache.get("site-terms")
+        if found is not None:
+            return found[site]
+        cache = self._cache.setdefault("terms-of", {})
+        terms = cache.get(site)
+        if terms is None:
+            terms = cache[site] = (
+                self.closure.terms(site)
+                if site.rule.whole_rule_continuation is None
+                else _whole_rule_terms(self.closure, site)
+            )
+        return terms
 
     @property
     def tree_rows(self) -> TreeRows:
@@ -1144,6 +1153,16 @@ class LoopSlice:
         for skeleton in readings:
             weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
         born_terms = _born_terms(blocks, table, closure, ordinary)
+        if missing := set(blocks.born_orders) - set(born_terms):
+            # The Born program has roots there, so their virtual sectors would
+            # be silently zero. Seen for a mixed-order Born whose electroweak
+            # block currents no admitted loop position consumes (loop-aware
+            # reachability does not build them); without reachability its
+            # closure refuses the W and Z vertices.
+            raise NotImplementedError(
+                f"the Born root closure at leg 1 has no terms at the Born "
+                f"orders {sorted(missing)} of the tree program"
+            )
         basis = _born_tensors(closure, born_terms)
         seed_table, class_of = build_seed_table(
             colour, readings, basis, compress=request.compress_colour
@@ -1434,15 +1453,22 @@ class LoopSlice:
                 for term in terms
             )
             # Only whole-rule sites (LC/NLC continuations) have whole-rule
-            # terms; the other site terms are not needed here.
-            outputs.update(
-                (name, 0)
-                for site in self.sites.sites
-                if site.rule.whole_rule_continuation is not None
-                for term in self.site_terms[site]
-                if isinstance(term, WholeRuleTerm)
-                for name in term.parameters
-            )
+            # terms; the other site terms are not needed here. A term's
+            # parameters do not depend on the leg labels, so one site per
+            # relabelling orbit of identical legs is closed.
+            orbits = _AdjointOrbits(self.basis.legs, self.blocks.process, ())
+            closed = set()
+            for site in self.sites.sites:
+                identity = orbits.site_key(site)
+                if site.rule.whole_rule_continuation is None or identity in closed:
+                    continue
+                closed.add(identity)
+                outputs.update(
+                    (name, 0)
+                    for term in self._terms_of(site)
+                    if isinstance(term, WholeRuleTerm)
+                    for name in term.parameters
+                )
             options = {
                 "program": structure.scalars,
                 "fixed_parameters": structure.fixed_parameters,
@@ -1564,23 +1590,46 @@ class LoopSlice:
                 for grade in grade_of(term)
             }
 
-        def degree(bra: set, ket: set, offset: int = 0) -> int | None:
-            powers = [
-                power + p + q + offset
-                for left, p in bra
-                for right, q in ket
-                for power in self.overlaps(left, right)
-            ]
-            return max(powers, default=None)
-
         born = {
-            order: keys(terms, lambda t: grades(t.entry.coupling.name, (0,)))
+            order: frozenset(keys(terms, lambda t: grades(t.entry.coupling.name, (0,))))
             for order, terms in self.born_terms.items()
         }
+        orbits = _AdjointOrbits(self.basis.legs, self.blocks.process, born.values())
+        leading: dict[tuple[frozenset, Hashable], int | None] = {}
+
+        def degree(bra: frozenset, ket: set, offset: int = 0) -> int | None:
+            # max over the bra of a ket tensor's overlap degrees is constant
+            # on the ket tensor's orbit (the bra is invariant): one
+            # representative per orbit is contracted.
+            out = None
+            for right, q in ket:
+                rename = orbits.rename(right)
+                key = (bra, _colour_key(right, rename))
+                if key not in leading:
+                    image = _relabelled_colour(right, rename)
+                    leading[key] = max(
+                        (
+                            power + p
+                            for left, p in bra
+                            for power in self.overlaps(left, image)
+                        ),
+                        default=None,
+                    )
+                if leading[key] is not None:
+                    out = _max(out, leading[key] + q + offset)
+            return out
+
+        # Sites in one orbit of the relabellings have relabelled terms, so
+        # their keys reach the same degrees: one site per orbit is closed.
         counterterms: dict[Orders, set] = defaultdict(set)
-        for site, terms in self.site_terms.items():
+        closed: set[Hashable] = set()
+        for site in self.sites.sites:
+            identity = orbits.site_key(site)
+            if identity in closed:
+                continue
+            closed.add(identity)
             counterterms[site.orders] |= keys(
-                terms,
+                self._terms_of(site),
                 lambda t: (
                     {d for d, _e in t.grades}
                     if isinstance(t, WholeRuleTerm)
@@ -2617,6 +2666,100 @@ def _gamma(representation: int, light: int) -> Fraction:
     if representation == 8:
         return Fraction(11, 6) * NC - Fraction(2, 3) * Fraction(1, 2) * light
     return Fraction(3, 2) * _casimir(representation)
+
+
+class _AdjointOrbits:
+    """Relabellings of identical external adjoint legs (WP3.1; design §7.4).
+
+    A class holds external adjoint legs of one particle (all-outgoing PDG
+    code) whose transpositions leave every given Born key set {(literal
+    tensor, N_c power)} invariant, checked exactly (no sets: every leg of
+    the particle); the relabellings are the permutations within classes.
+    The leading-degree maximum over an invariant key set is then constant
+    on the orbit of the other tensor
+    (``rename`` maps it to a representative), and a counterterm site's terms
+    are those of any site of its orbit, relabelled (``site_key``: its blocks
+    partition the legs, so two sites are related iff each block holds equally
+    many legs of each class and the same other legs).
+    """
+
+    def __init__(
+        self,
+        legs: Sequence[Any],
+        process: Any,
+        born_keys: Iterable[Iterable[tuple]],
+    ):
+        pdg = {leg.label: leg.outgoing_pdg for leg in process.legs}
+        sets = [tuple(keys) for keys in born_keys]
+        adjoint = sorted(leg.label for leg in legs if leg.representation == 8)
+        reference = [
+            frozenset((_colour_key(t, {}), p) for t, p in keys) for keys in sets
+        ]
+        parent = {label: label for label in adjoint}
+
+        def find(label: int) -> int:
+            while parent[label] != label:
+                label = parent[label]
+            return label
+
+        for i, a in enumerate(adjoint):
+            for b in adjoint[i + 1 :]:
+                if pdg[a] != pdg[b] or find(a) == find(b):
+                    continue
+                swap = {a: b, b: a}
+                if all(
+                    frozenset((_colour_key(t, swap), p) for t, p in keys) == ref
+                    for keys, ref in zip(sets, reference, strict=True)
+                ):
+                    parent[find(b)] = find(a)
+        classes: dict[int, list[int]] = defaultdict(list)
+        for label in adjoint:
+            classes[find(label)].append(label)
+        self.classes = tuple(
+            tuple(members) for members in classes.values() if len(members) > 1
+        )
+        self._class = {
+            label: c for c, members in enumerate(self.classes) for label in members
+        }
+
+    def rename(self, tensor: Any) -> dict[int, int]:
+        """A relabelling taking ``tensor`` to its orbit's representative: the
+        members of each class in reading order of its canonical key are given
+        the class's labels in increasing order."""
+
+        if not self.classes:
+            return {}
+        strings, traces = _colour_key(tensor, {})
+        read = [a for _f, labels, _e in strings for a in labels]
+        read += [a for trace in traces for a in trace]
+        out: dict[int, int] = {}
+        for members in self.classes:
+            order = [a for a in dict.fromkeys(read) if a in members]
+            order += [a for a in members if a not in order]
+            out.update(zip(order, members, strict=True))
+        return out
+
+    def site_key(self, site: Any) -> Hashable:
+        def mask_key(mask: int) -> tuple:
+            labels = [i + 1 for i in range(mask.bit_length()) if mask >> i & 1]
+            counts = [0] * len(self.classes)
+            fixed = []
+            for label in labels:
+                c = self._class.get(label)
+                if c is None:
+                    fixed.append(label)
+                else:
+                    counts[c] += 1
+            return tuple(fixed), tuple(counts)
+
+        return (
+            site.rule_name,
+            site.alternatives,
+            tuple(
+                (block.field, block.orders, mask_key(block.mask))
+                for block in site.blocks
+            ),
+        )
 
 
 def _term_key(term: Any, rename: Mapping[int, int]) -> Hashable:
