@@ -253,9 +253,7 @@ def test_trilinear_color_projection_does_not_trust_ufo_source_spelling() -> None
     ) == ("generic-tensor", 1.0 + 0.0j)
 
 
-def test_external_compiler_lowers_the_symmetric_color_tensor_only_projected() -> (
-    None
-):
+def test_external_compiler_lowers_the_symmetric_color_tensor_only_projected() -> None:
     """The d-symbol lowers to both colour orders of its inputs with one sign,
     unlike f, but only on a vertex whose gluon legs are projected onto SU(N)
     (the counterterm vertices, ``models.ct_color_flow``): on an ordinary

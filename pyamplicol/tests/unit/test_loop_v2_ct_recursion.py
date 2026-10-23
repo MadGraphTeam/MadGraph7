@@ -512,7 +512,9 @@ def test_two_point_insertions_are_clone_lines(lowered_ct_model):
 # default and physics tiers (test_loop_v2_ct_closure, test_loop_v2_slice).
 # Each form-1 id takes 5-7 minutes: all are nightly (HANDOFF §0.3 item 6).
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize(("name", "lane"), [(n, lane) for n in CONTROLS for lane in LANES])
+@pytest.mark.parametrize(
+    ("name", "lane"), [(n, lane) for n in CONTROLS for lane in LANES]
+)
 def test_recursion_equals_site_closure(
     ct_slice, lowered_ct_model, loop_native, tmp_path, name, lane
 ):

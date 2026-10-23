@@ -1252,8 +1252,12 @@ def counterterm_lorentz_error(compiled: CompiledModel, name: str) -> str | None:
     return None
 
 
-def _orders_within(orders: Iterable[tuple[str, int]], limits: Mapping[str, int]) -> bool:
-    return all(int(power) <= limits.get(str(name), int(power)) for name, power in orders)
+def _orders_within(
+    orders: Iterable[tuple[str, int]], limits: Mapping[str, int]
+) -> bool:
+    return all(
+        int(power) <= limits.get(str(name), int(power)) for name, power in orders
+    )
 
 
 def _vertex_rules_within(

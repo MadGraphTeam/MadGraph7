@@ -349,7 +349,6 @@ class _LorentzContext:
         return label
 
 
-
 class _ColorContext:
     def __init__(
         self, color_representations: tuple[int, ...], *, dummy_base: int = 1

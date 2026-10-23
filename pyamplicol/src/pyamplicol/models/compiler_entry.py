@@ -390,9 +390,12 @@ def _annotate_oriented_kernel_color_projections(
                 term.color_expression,
                 representations,
             )
-            if certified_structure not in _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS and not (
-                certified_structure in _U1_PROJECTED_TRILINEAR_COLOR_PROJECTIONS
-                and term.vertex.split("::", 1)[0] in u1_projected_vertices
+            if (
+                certified_structure not in _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS
+                and not (
+                    certified_structure in _U1_PROJECTED_TRILINEAR_COLOR_PROJECTIONS
+                    and term.vertex.split("::", 1)[0] in u1_projected_vertices
+                )
             ):
                 raise ValueError(
                     f"vertex {term.vertex!r} has unsupported trilinear color "

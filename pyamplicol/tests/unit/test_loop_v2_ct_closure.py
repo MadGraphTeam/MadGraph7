@@ -984,9 +984,7 @@ def test_spin_and_ward_counterterms_from_recursion_equal_sites(
     point, scale = fixture["points"][0], fixture["scales_squared"][0]
     options = {}
     if "spin" in sources:
-        options["spin"] = {
-            leg: VECTORS[k] for k, leg in enumerate(sources["spin"])
-        }
+        options["spin"] = {leg: VECTORS[k] for k, leg in enumerate(sources["spin"])}
     else:
         options["ward"] = sources["ward"]
     values = {}
