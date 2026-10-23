@@ -719,25 +719,31 @@ class ObservableSlice:
         tables: list[SeedTable] | None = None,
     ) -> dict[str, dict]:
         """The complete-family degrees; ``tables`` collects every pair's
-        seed table (the pruning criteria)."""
+        seed table (the pruning criteria). The diagonal pairs (Casimirs) come
+        first, and every pair's degrees are searched only above the family's
+        running maximum (``LoopSlice.degrees(floor=...)``), so overlaps that
+        cannot raise it are never contracted."""
 
         slice_ = self.slice
         out: dict[str, dict] = {"born": {}, "virtual": {}}
-        for alpha in family:
-            for beta in family:
-                pair = DirectedColour(
-                    slice_.table,
-                    ColorCorrelator("family", alpha.emissions, beta.emissions),
-                    self._cells,
-                )
-                degrees = slice_.degrees(
-                    overlaps=pair.overlap, table=pair.table, bound=pair.bound
-                )
-                for kind, values in degrees.items():
-                    for sector, value in values.items():
-                        out[kind][sector] = _max(out[kind].get(sector), value)
-                if tables is not None:
-                    tables.append(pair.table)
+        pairs = sorted(product(family, repeat=2), key=lambda pair: pair[0] != pair[1])
+        for alpha, beta in pairs:
+            pair = DirectedColour(
+                slice_.table,
+                ColorCorrelator("family", alpha.emissions, beta.emissions),
+                self._cells,
+            )
+            degrees = slice_.degrees(
+                overlaps=pair.overlap,
+                table=pair.table,
+                bound=pair.bound,
+                floor=out,
+            )
+            for kind, values in degrees.items():
+                for sector, value in values.items():
+                    out[kind][sector] = _max(out[kind].get(sector), value)
+            if tables is not None:
+                tables.append(pair.table)
         return out
 
     def history(self, identifier: str) -> ColorCorrelator:

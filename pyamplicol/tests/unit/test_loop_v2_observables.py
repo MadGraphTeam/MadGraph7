@@ -423,8 +423,11 @@ def test_directed_tables_by_seed_cells_equal_generic_contraction(
 def test_family_degrees_with_the_face_bound_are_exact(generate, accuracy):
     """LC/NLC complete-family degrees computed in decreasing order of the
     face-count bound equal the exhaustive degrees (every overlap computed),
-    for the dipole and the ordered-history families of d d~ > g g."""
+    pair by pair and for the whole family (searched above its running
+    maximum, diagonal pairs first), for the dipole and the ordered-history
+    families of d d~ > g g."""
 
+    from pyamplicol.loops.v2.assemble import _max
     from pyamplicol.loops.v2.observables import DirectedColour
 
     observables = generate(
@@ -438,6 +441,7 @@ def test_family_degrees_with_the_face_bound_are_exact(generate, accuracy):
     for history in observables.histories:
         family = observables.family(history)
         assert len(family) > 1
+        expected: dict = {"born": {}, "virtual": {}}
         for alpha in family:
             for beta in family:
                 pair = DirectedColour(
@@ -449,8 +453,12 @@ def test_family_degrees_with_the_face_bound_are_exact(generate, accuracy):
                 )
                 exhaustive = slice_.degrees(overlaps=pair.overlap, table=pair.table)
                 assert fast == exhaustive, history.id
+                for kind, values in exhaustive.items():
+                    for sector, value in values.items():
+                        expected[kind][sector] = _max(expected[kind].get(sector), value)
                 for (left, right, swapped), cell in pair._overlaps.items():
                     assert not cell or max(cell) <= pair.bound(left, right, swapped)
+        assert observables._family_degrees(family) == expected, history.id
 
 
 def _colour_options(accuracy: str) -> dict:
