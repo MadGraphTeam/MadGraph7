@@ -1006,6 +1006,12 @@ For QCD, admission is almost field-level; leg masks enter only through LSZ, orde
 - **Chiral δZ^{L,R} and mixing** (δZ_{Zγ}, CKM): CT-tagged modified external sources in the tree recursion (CT = 1 sources). The field term is then the Born dual times that amplitude, which is generic for the electroweak members.
 - **Tadpole CTs.** The VEV-subtracted scheme has no tadpole CTs; one-point rules raise at preparation, as today (`counterterms.py:259-260` [V-s]).
 
+**Status (WP2.2).** Scalar δZ only (`loops/v2/fields.py`). Chiral and mixing factors are open, and need a format first: the UFO particle `counterterm` attribute carries one scalar per order key (proposal: `ExternalFieldRule.chirality` ∈ {None, L, R} and a `partner` PDG). Plan:
+- *Chiral, massless (Weyl) legs:* a helicity selection. δZ_L multiplies quarks of physical helicity −1 and antiquarks of physical helicity +1, incoming or outgoing (ψ → P_L ψ; ψ̄ → ψ̄ P_R; the tree engine's labels of crossed legs must be mapped), so the scalar mechanism restricted to the leg's helicity rows is exact.
+- *Chiral, massive legs:* the projected source P_χ w (row spinors take the opposite projector), as a CT = 1 source.
+- *Mixing:* the Born with leg i's field replaced by its partner, keeping leg i's wavefunction. For legs other than 1 this is a CT = 1 source of the CT program (a partner source current with the leg's wavefunction values); for leg 1 it is the root closure with the partner's vertex entries.
+- *Tests:* loop_sm has no such rule, so they are synthetic: δZ_L = δZ_R reproduces the scalar term, and a partner with identical couplings reproduces it too.
+
 ### 6.6 Slice form and permanent oracle: CT site closure
 
 In wave 1, before §6.1 exists, CT contributions are computed as **sites**:
@@ -1759,7 +1765,7 @@ Total ≈ 270 agent-days [I].
       - O6 and O1 on all controls (binary64 and 200 bits), O6 at slice level on six further requests.
     - Open:
       - the top-width dependence of the CT trees' rooting with the transverse tree kernels (§6.1, needs a decision);
-      - chiral and mixing δZ sources (needs a field-factor format; no loop_sm rule);
+      - chiral and mixing δZ sources (needs a field-factor format; no loop_sm rule; plan in §6.5 "Status");
       - the Levi-Civita R2 of the Z with gluons (WP3.2);
       - 7-leg CT generation of the closure route < 10 min and < 4 GB: needs the loop-request mode of the Rust recurrence builder (WP3.1; the Python route takes 9 min and 11.8 GB at gg→gggg).
 - **WP2.3 Precision, re-test and rescue.**
