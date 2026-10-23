@@ -1,0 +1,737 @@
+# SPDX-License-Identifier: 0BSD
+from __future__ import annotations
+
+import argparse
+import os
+from collections.abc import Callable
+from copy import deepcopy
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from tools.developer import four_quark_compiled_gate as gate
+
+
+def test_checked_file_identity_rejects_a_symlink(tmp_path: Path) -> None:
+    if not hasattr(os, "O_NOFOLLOW"):
+        pytest.skip("O_NOFOLLOW is unavailable")
+    target = tmp_path / "target.bin"
+    target.write_bytes(b"authenticated")
+    link = tmp_path / "link.bin"
+    link.symlink_to(target)
+    with pytest.raises(gate.GateError, match="checked fd"):
+        gate._regular_file_identity(link)
+
+
+def _source_leaf(
+    *,
+    path: str = "evaluators/stage.symjit",
+    output_len: int = 1,
+    include_plane: bool = True,
+) -> dict[str, object]:
+    leaf: dict[str, object] = {
+        "kind": "symjit-application-evaluator",
+        "backend": "jit",
+        "runtime_capability": gate.SYMJIT_RUNTIME_CAPABILITY,
+        "input_len": 1,
+        "output_len": output_len,
+        "application_path": path,
+        "application_abi": gate.SYMJIT_APPLICATION_ABI,
+        "optimization_level": 3,
+    }
+    if include_plane:
+        leaf["plane_application"] = {
+            "application_path": path.replace(".symjit", ".plane.symjit"),
+            "application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
+            "storage_abi": gate.SYMJIT_APPLICATION_ABI,
+            "translation_mode": "symbolica-structured-instructions",
+            "optimization_level": 3,
+            "direct_arena": True,
+            "source_digest": "1" * 64,
+        }
+    return leaf
+
+
+def _certificate(payload: dict[str, object]) -> dict[str, object]:
+    return {**payload, "digest": gate._canonical_sha256(payload)}
+
+
+def _direct_policies() -> dict[str, object]:
+    return {
+        "kind": gate.COMPILED_STAGE_PLAN_KIND,
+        "schema_version": gate.COMPILED_STAGE_PLAN_SCHEMA_VERSION,
+        "application_abi": gate.COMPILED_PLANE_DIRECT_APPLICATION_ABI,
+        "source_application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
+        "element_layout": "split-complex-component-major",
+        "input_output_aliasing": "forbidden",
+        "output_output_aliasing": "forbidden",
+        "output_operation": "overwrite",
+        "output_factor": "identity",
+        "input_bindings": [
+            {
+                "kind": "value",
+                "parameter_index": 0,
+                "source_id": 0,
+                "component": 0,
+                "global_component": 0,
+                "real_valued": False,
+            }
+        ],
+    }
+
+
+def _stage() -> dict[str, object]:
+    stage: dict[str, object] = {
+        "stage_index": 1,
+        "stage_kind": "amplitude-roots",
+        "interaction_ids": [],
+        "output_length": 1,
+        "output_slots": [
+            {
+                "current_id": -1,
+                "component_start": 0,
+                "component_stop": 1,
+                "output_start": 0,
+                "output_stop": 1,
+            }
+        ],
+        "evaluator": _source_leaf(),
+    }
+    order = {
+        "kind": "whole-current-canonical-order-v1",
+        "current_ids": [],
+        "source_stage_interaction_ids": [],
+        "interaction_ids": [],
+        "evaluation_group_ids": [],
+        "destinations": [
+            {
+                "destination_id": 0,
+                "owner_kind": "amplitude",
+                "owner_id": 0,
+                "output_start": 0,
+                "output_stop": 1,
+                "interaction_ids": [],
+                "evaluation_group_ids": [],
+                "ownership": {"kind": "residual"},
+            }
+        ],
+    }
+    stage["compiled_plane_arena"] = {
+        **_direct_policies(),
+        "output_bindings": [{"arena": "amplitude", "component": 0, "output_index": 0}],
+        "residual_leaves": [
+            {
+                "kind": gate.COMPILED_RESIDUAL_LEAF_KIND,
+                "leaf_id": 0,
+                "application_path": "evaluators/stage.plane.symjit",
+                "source_application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
+                "optimization_level": 3,
+                "direct_codegen_optimization_level": 3,
+                "input_indices": [0],
+                "input_len": 1,
+                "output_len": 1,
+                "output_indices": [0],
+                "output_ranges": [{"output_start": 0, "output_stop": 1}],
+                "selector_domain_ids": [],
+                "color_selector_domain_ids": [],
+            }
+        ],
+        "residual_output_ranges": [{"output_start": 0, "output_stop": 1}],
+        "kernels": [],
+        "islands": [],
+        "order_certificate": _certificate(order),
+        "census": {
+            "schema_version": 1,
+            "stage_kernel_count": 0,
+            "stage_island_count": 0,
+            "stage_invocation_count": 0,
+            "stage_attachment_count": 0,
+            "stage_residual_leaf_count": 1,
+            "stage_table_destination_count": 0,
+            "stage_residual_destination_count": 1,
+        },
+    }
+    return stage
+
+
+def _mixed_current_stage() -> dict[str, object]:
+    stage: dict[str, object] = {
+        "stage_index": 0,
+        "stage_kind": "current-stage",
+        "interaction_ids": [],
+        "output_length": 2,
+        "output_slots": [
+            {
+                "current_id": 10,
+                "component_start": 4,
+                "component_stop": 5,
+                "output_start": 0,
+                "output_stop": 1,
+            },
+            {
+                "current_id": 11,
+                "component_start": 5,
+                "component_stop": 6,
+                "output_start": 1,
+                "output_stop": 2,
+            },
+        ],
+        "evaluator": _source_leaf(path="evaluators/residual.symjit"),
+    }
+    dependency = {
+        "kind": "independent-whole-current-group-v1",
+        "current_ids": [11],
+        "rows": [
+            {
+                "row_index": 0,
+                "current_id": 11,
+                "predecessor_current_ids": [1, 2],
+                "interaction_ids": [],
+                "evaluation_group_ids": [],
+            }
+        ],
+    }
+    order = {
+        "kind": "whole-current-canonical-order-v1",
+        "current_ids": [10, 11],
+        "source_stage_interaction_ids": [],
+        "interaction_ids": [],
+        "evaluation_group_ids": [],
+        "destinations": [
+            {
+                "destination_id": 0,
+                "owner_kind": "current",
+                "owner_id": 10,
+                "output_start": 0,
+                "output_stop": 1,
+                "interaction_ids": [],
+                "evaluation_group_ids": [],
+                "ownership": {"kind": "residual"},
+            },
+            {
+                "destination_id": 1,
+                "owner_kind": "current",
+                "owner_id": 11,
+                "output_start": 1,
+                "output_stop": 2,
+                "interaction_ids": [],
+                "evaluation_group_ids": [],
+                "ownership": {"kind": "table", "island_id": 0, "row_index": 0},
+            },
+        ],
+    }
+    stage["compiled_plane_arena"] = {
+        **_direct_policies(),
+        "output_bindings": [
+            {"arena": "current", "component": 4, "output_index": 0},
+            {"arena": "current", "component": 5, "output_index": 1},
+        ],
+        "residual_leaves": [
+            {
+                "kind": gate.COMPILED_RESIDUAL_LEAF_KIND,
+                "leaf_id": 0,
+                "application_path": "evaluators/residual.plane.symjit",
+                "source_application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
+                "optimization_level": 3,
+                "direct_codegen_optimization_level": 3,
+                "input_indices": [0],
+                "input_len": 1,
+                "output_len": 1,
+                "output_indices": [0],
+                "output_ranges": [{"output_start": 0, "output_stop": 1}],
+                "selector_domain_ids": [],
+                "color_selector_domain_ids": [],
+            }
+        ],
+        "residual_output_ranges": [{"output_start": 0, "output_stop": 1}],
+        "kernels": [
+            {
+                "kernel_id": 0,
+                "motif_digest": "1" * 64,
+                "exact_source_digest": "2" * 64,
+                "source_application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
+                "application_abi": gate.COMPILED_PLANE_DIRECT_APPLICATION_ABI,
+                "descriptor_abi": gate.COMPILED_DIRECT_TABLE_DESCRIPTOR_ABI,
+                "binding_abi": gate.COMPILED_DIRECT_TABLE_BINDING_ABI,
+                "application_path": "evaluators/kernel.plane.symjit",
+                "application_sha256": "3" * 64,
+                "application_size_bytes": 4096,
+                "descriptor_path": "evaluators/kernel.table",
+                "descriptor_sha256": "4" * 64,
+                "descriptor_size_bytes": 256,
+                "optimization_level": 3,
+                "input_complex_count": 1,
+                "output_complex_count": 1,
+                "input_plane_count": 2,
+                "scalar_input_count": 0,
+                "parameter_bindings": [],
+            }
+        ],
+        "islands": [
+            {
+                "island_id": 0,
+                "kernel_id": 0,
+                "current_ids": [11],
+                "selector_domain_ids": [],
+                "invocation_rows": [
+                    {
+                        "plane_ids": [0, 1],
+                        "attachment_start": 0,
+                        "attachment_count": 1,
+                    }
+                ],
+                "attachment_rows": [
+                    {
+                        "destination_plane_ids": [2, 3],
+                        "factor_id": 0,
+                        "operation": "overwrite",
+                    }
+                ],
+                "factors": [[1.0, 0.0]],
+                "plane_bindings": [],
+                "scalar_bindings": [],
+                "dependency_certificate": _certificate(dependency),
+            }
+        ],
+        "order_certificate": _certificate(order),
+        "census": {
+            "schema_version": 1,
+            "stage_kernel_count": 1,
+            "stage_island_count": 1,
+            "stage_invocation_count": 1,
+            "stage_attachment_count": 1,
+            "stage_residual_leaf_count": 1,
+            "stage_table_destination_count": 1,
+            "stage_residual_destination_count": 1,
+        },
+    }
+    return stage
+
+
+def _execution_payload() -> dict[str, object]:
+    return {
+        "required_runtime_capabilities": [
+            gate.COMPILED_PLANE_ARENA_CAPABILITY,
+            gate.SYMJIT_RUNTIME_CAPABILITY,
+        ],
+        "compiled": {
+            "model_parameter_evaluator": {
+                "kind": "model-parameter-evaluator",
+                "evaluator": _source_leaf(include_plane=False),
+            },
+            "stage_evaluators": {
+                "kind": "generic-dag-stage-evaluator-artifacts",
+                "runtime_available": True,
+                "required_runtime_capabilities": [
+                    gate.COMPILED_PLANE_ARENA_CAPABILITY,
+                    gate.SYMJIT_RUNTIME_CAPABILITY,
+                ],
+                "stage_count": 2,
+                "stages": [_mixed_current_stage()],
+                "amplitude_stage": _stage(),
+            },
+        },
+    }
+
+
+def _capture(offset: float = 0.0) -> gate.EvaluationCapture:
+    return gate.EvaluationCapture(
+        physics_axes={
+            "process": gate.PROCESS,
+            "helicities": ["h:one"],
+            "color_flows": ["flow:one"],
+        },
+        f64_total=(complex(1.0 + offset), complex(2.0 + offset)),
+        exact_total=(complex(1.0 + offset), complex(2.0 + offset)),
+        f64_components=(complex(0.25 + offset), complex(0.75)),
+        exact_components=(complex(0.25 + offset), complex(0.75)),
+        color_probe=(complex(0.5 + offset), complex(1.0)),
+        helicity_probe=(complex(0.4 + offset), complex(0.8)),
+    )
+
+
+def test_recursive_direct_arena_audit_accepts_complete_o3_stage() -> None:
+    result = gate._audit_execution_payload(_execution_payload())
+
+    assert result == {
+        "capability": gate.COMPILED_PLANE_ARENA_CAPABILITY,
+        "capability_declaration_count": 2,
+        "stage_set_count": 1,
+        "stage_count": 2,
+        "descriptor_count": 2,
+        "leaf_count": 2,
+        "kernel_count": 1,
+        "island_count": 1,
+        "invocation_count": 1,
+        "attachment_count": 1,
+        "residual_destination_count": 2,
+        "table_destination_count": 1,
+        "model_parameter_slot_count": 1,
+        "model_parameter_evaluator_count": 1,
+        "model_parameter_direct_application_count": 0,
+        "passes": True,
+    }
+
+
+def test_recursive_audit_rejects_v1_and_split_ownership() -> None:
+    payload = _execution_payload()
+    amplitude = payload["compiled"]["stage_evaluators"]["amplitude_stage"]
+    amplitude["compiled_plane_arena"]["schema_version"] = 1
+    with pytest.raises(gate.GateError, match="wrong schema"):
+        gate._audit_execution_payload(payload)
+
+    payload = _execution_payload()
+    current = payload["compiled"]["stage_evaluators"]["stages"][0]
+    descriptor = current["compiled_plane_arena"]
+    order = descriptor["order_certificate"]
+    order["destinations"][0]["ownership"] = {
+        "kind": "table",
+        "island_id": 0,
+        "row_index": 0,
+    }
+    order["digest"] = gate._canonical_sha256(
+        {name: value for name, value in order.items() if name != "digest"}
+    )
+    with pytest.raises(gate.GateError, match="ownership"):
+        gate._audit_execution_payload(payload)
+
+
+def test_table_only_stage_may_omit_the_residual_evaluator() -> None:
+    stage = _mixed_current_stage()
+    stage["evaluator"] = None
+    stage["output_length"] = 1
+    stage["output_slots"] = [
+        {
+            "current_id": 11,
+            "component_start": 5,
+            "component_stop": 6,
+            "output_start": 0,
+            "output_stop": 1,
+        }
+    ]
+    descriptor = stage["compiled_plane_arena"]
+    descriptor["output_bindings"] = [
+        {"arena": "current", "component": 5, "output_index": 0}
+    ]
+    descriptor["residual_leaves"] = []
+    descriptor["residual_output_ranges"] = []
+    order_subject = {
+        "kind": "whole-current-canonical-order-v1",
+        "current_ids": [11],
+        "source_stage_interaction_ids": [],
+        "interaction_ids": [],
+        "evaluation_group_ids": [],
+        "destinations": [
+            {
+                "destination_id": 0,
+                "owner_kind": "current",
+                "owner_id": 11,
+                "output_start": 0,
+                "output_stop": 1,
+                "interaction_ids": [],
+                "evaluation_group_ids": [],
+                "ownership": {"kind": "table", "island_id": 0, "row_index": 0},
+            }
+        ],
+    }
+    descriptor["order_certificate"] = _certificate(order_subject)
+    descriptor["census"].update(
+        {
+            "stage_residual_leaf_count": 0,
+            "stage_residual_destination_count": 0,
+        }
+    )
+
+    result = gate._audit_direct_descriptor(
+        descriptor,
+        stage=stage,
+        label="table-only",
+    )
+
+    assert result["leaf_count"] == 0
+    assert result["table_destination_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "mutation, message",
+    [
+        (
+            lambda payload: payload["compiled"]["stage_evaluators"][
+                "amplitude_stage"
+            ].pop("compiled_plane_arena"),
+            "compiled_plane_arena",
+        ),
+        (
+            lambda payload: payload["compiled"]["stage_evaluators"]["amplitude_stage"][
+                "compiled_plane_arena"
+            ]["residual_leaves"][0].update({"optimization_level": 2}),
+            "not JIT O3",
+        ),
+        (
+            lambda payload: payload["compiled"]["stage_evaluators"]["amplitude_stage"][
+                "compiled_plane_arena"
+            ]["residual_leaves"][0].update({"direct_codegen_optimization_level": 2}),
+            "does not match.*plane",
+        ),
+        (
+            lambda payload: payload["compiled"]["stage_evaluators"]["amplitude_stage"][
+                "compiled_plane_arena"
+            ]["residual_leaves"][0]["output_ranges"][0].update({"output_stop": 2}),
+            "residual",
+        ),
+        (
+            lambda payload: payload["compiled"]["model_parameter_evaluator"].update(
+                {"compiled_plane_arena": {"kind": "compiled-plane-arena-stage"}}
+            ),
+            "model_parameter_evaluator illegally",
+        ),
+        (
+            lambda payload: payload["compiled"]["model_parameter_evaluator"].update(
+                {
+                    "nested": {
+                        "application_abi": (gate.NATIVE_COMPILED_DIRECT_APPLICATION_ABI)
+                    }
+                }
+            ),
+            "direct application ABI",
+        ),
+    ],
+)
+def test_recursive_direct_arena_audit_rejects_descriptor_drift(
+    mutation: Callable[[dict[str, object]], object],
+    message: str,
+) -> None:
+    payload = deepcopy(_execution_payload())
+    mutation(payload)
+
+    with pytest.raises(gate.GateError, match=message):
+        gate._audit_execution_payload(payload)
+
+
+def test_lc_cross_layout_audit_requires_exact_axes_and_pointwise_parity() -> None:
+    result = gate._cross_lc_parity(_capture(), _capture())
+
+    assert result["passes"] is True
+    assert result["physical_axes_match"] is True
+    assert set(result["comparisons"]) == {
+        "f64_totals",
+        "precision32_totals",
+        "f64_resolved_components",
+        "precision32_resolved_components",
+        "color_selector",
+        "helicity_selector",
+    }
+
+    with pytest.raises(gate.GateError, match="physical axes differ"):
+        drift = _capture()
+        drift.physics_axes["color_flows"] = ["flow:other"]
+        gate._cross_lc_parity(_capture(), drift)
+
+    with pytest.raises(gate.GateError, match="f64 totals failed"):
+        gate._cross_lc_parity(_capture(), _capture(offset=1.0e-3))
+
+
+def test_union_rejection_is_checked_through_public_color_config() -> None:
+    result = gate._assert_union_rejections()
+
+    assert [entry["color_accuracy"] for entry in result] == ["nlc", "full"]
+    assert all(entry["rejected"] is True for entry in result)
+    assert all("all-flow-union" in entry["message"] for entry in result)
+
+
+def test_content_identity_addresses_the_complete_evidence_body() -> None:
+    body = {"kind": gate.RESULT_KIND, "passes": True, "lanes": {"lc": [1, 2]}}
+
+    addressed = gate._attach_content_identity(body)
+
+    assert addressed["content_identity"]["sha256"] == gate._canonical_sha256(body)
+    assert gate._attach_content_identity(body) == addressed
+    assert gate._attach_content_identity({**body, "passes": False}) != addressed
+
+
+def test_compiled_profile_requires_direct_calls_and_zero_boundary_traffic() -> None:
+    profile = {
+        "execution_mode": "compiled",
+        "evaluator_backend_call_count": 7,
+        "compiled_direct_arena_engine_count": 2,
+        "compiled_direct_arena_call_count": 7,
+    }
+    profile.update(dict.fromkeys(gate._ZERO_PROFILE_COUNTERS, 0))
+    profile.update(dict.fromkeys(gate._ZERO_PROFILE_TIMES, 0.0))
+
+    evidence = gate._audit_compiled_direct_profile(profile)
+
+    assert evidence["compiled_direct_arena_call_count"] == 7
+    assert evidence["compiled_direct_arena_engine_count"] == 2
+    assert evidence["legacy_boundary_component_total"] == 0
+    with pytest.raises(gate.GateError, match="no backend calls"):
+        gate._audit_compiled_direct_profile(
+            {**profile, "compiled_direct_arena_call_count": 0}
+        )
+    with pytest.raises(gate.GateError, match="legacy boundary traffic"):
+        gate._audit_compiled_direct_profile(
+            {**profile, "stage_input_copy_component_count": 1}
+        )
+    with pytest.raises(gate.GateError, match="every evaluator backend call"):
+        gate._audit_compiled_direct_profile(
+            {**profile, "compiled_direct_arena_call_count": 6}
+        )
+
+
+def test_helicity_probe_is_computed_nonzero_and_self_representing() -> None:
+    def helicity(
+        identifier: str,
+        *,
+        computed: bool,
+        structural_zero: bool,
+        coefficient: float,
+        representative_id: str,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=identifier,
+            computed=computed,
+            structural_zero=structural_zero,
+            coefficient=coefficient,
+            representative_id=representative_id,
+        )
+
+    physics = SimpleNamespace(
+        helicities=(
+            helicity(
+                "zero",
+                computed=False,
+                structural_zero=True,
+                coefficient=0.0,
+                representative_id="zero",
+            ),
+            helicity(
+                "first",
+                computed=True,
+                structural_zero=False,
+                coefficient=1.0,
+                representative_id="first",
+            ),
+            helicity(
+                "alias",
+                computed=False,
+                structural_zero=False,
+                coefficient=1.0,
+                representative_id="first",
+            ),
+            helicity(
+                "second",
+                computed=True,
+                structural_zero=False,
+                coefficient=1.0,
+                representative_id="second",
+            ),
+        )
+    )
+
+    selected, count = gate._select_helicity_probe(physics, lane_name="test")
+
+    assert selected.id == "second"
+    assert count == 2
+
+    with pytest.raises(gate.GateError, match="no executable helicity"):
+        gate._select_helicity_probe(
+            SimpleNamespace(helicities=(physics.helicities[0],)),
+            lane_name="test",
+        )
+
+
+def test_orchestrator_uses_exactly_four_isolated_generation_lanes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    generated: list[str] = []
+    capture = _capture()
+    monkeypatch.setattr(gate, "_source_identity", lambda: {"revision": "a" * 40})
+    monkeypatch.setattr(gate, "_runtime_identity", lambda source: {"bound": source})
+    monkeypatch.setattr(
+        gate,
+        "_file_identity",
+        lambda path: {"path": str(path), "sha256": "c" * 64},
+    )
+    monkeypatch.setattr(
+        gate,
+        "_assert_union_rejections",
+        lambda: [{"color_accuracy": "nlc"}, {"color_accuracy": "full"}],
+    )
+    monkeypatch.setattr(
+        gate,
+        "_prepare_output_root",
+        lambda output_root, replace: tmp_path,
+    )
+    monkeypatch.setattr(gate, "_deterministic_points", lambda count: (((),),) * count)
+    monkeypatch.setattr(
+        gate,
+        "_points_identity",
+        lambda points: {"sha256": "b" * 64, "point_count": len(points)},
+    )
+
+    def generate(
+        artifact: Path,
+        lane: gate.Lane,
+        *,
+        timeout: float,
+        expected_revision: str,
+        expected_runtime_sha256: str,
+        expected_script_sha256: str,
+    ) -> dict[str, object]:
+        generated.append(lane.name)
+        return {
+            "lane": lane.name,
+            "timeout": timeout,
+            "artifact": str(artifact),
+            "expected_revision": expected_revision,
+            "expected_runtime_sha256": expected_runtime_sha256,
+            "expected_script_sha256": expected_script_sha256,
+        }
+
+    monkeypatch.setattr(gate, "_invoke_generation_worker", generate)
+    monkeypatch.setattr(
+        gate,
+        "_artifact_identity_and_audit",
+        lambda artifact, lane: ({"artifact_id": lane.name}, "process"),
+    )
+    monkeypatch.setattr(
+        gate,
+        "_evaluate_artifact",
+        lambda artifact, process_id, lane, points: ({"passes": True}, capture),
+    )
+    monkeypatch.setattr(
+        gate,
+        "_cross_lc_parity",
+        lambda topology, union: {"passes": True},
+    )
+    monkeypatch.setattr(gate, "_peak_rss_gib", lambda: 1.25)
+    arguments = argparse.Namespace(
+        output_root=tmp_path,
+        replace=False,
+        points=2,
+        generation_timeout=123.0,
+    )
+
+    result = gate.run_gate(arguments)
+
+    assert generated == [lane.name for lane in gate.LANES]
+    assert set(result["lanes"]) == {lane.name for lane in gate.LANES}
+    assert result["passes"] is True
+    assert result["status"] == "ok"
+    assert result["source_identity_match"] is True
+    assert result["runtime_identity_match"] is True
+    assert result["gate_script_identity_match"] is True
+    assert result["content_identity"]["sha256"] == gate._canonical_sha256(
+        {key: value for key, value in result.items() if key != "content_identity"}
+    )
+
+
+def test_parser_documents_mandatory_watchdog_and_two_point_default() -> None:
+    parsed = gate.parser().parse_args(["--output-root", "out"])
+
+    assert parsed.points == 2
+    assert parsed.generation_timeout == 10_800.0
+    assert "--limit-gib 30" in gate.WATCHDOG_INVOCATION
+    assert "--output-root" in gate.WATCHDOG_INVOCATION
