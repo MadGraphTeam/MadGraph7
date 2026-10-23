@@ -19,6 +19,7 @@ from pyamplicol.config import (
     ConfigResolution,
     ConfigurationError,
     EvaluatorExecutionMode,
+    PoleSelection,
     ProcessGroupAnalysis,
     resolve_config,
 )
@@ -608,9 +609,9 @@ def _add_evaluation_options(
     parser.add_argument(
         "--poles",
         dest="evaluation.poles",
-        action=argparse.BooleanOptionalAction,
+        choices=tuple(PoleSelection),
         default=argparse.SUPPRESS,
-        help="v2 virtuals: --no-poles evaluates the finite part only",
+        help="v2 virtuals: the poles computed; 'none' evaluates the finite part only",
     )
     parser.add_argument(
         "--stability-rotation",

@@ -5,6 +5,8 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from pyamplicol.config import PoleSelection
+
     from .errors import (
         ArtifactError,
         CompatibilityError,
@@ -129,6 +131,7 @@ __all__ = [
     "ModelSourceKind",
     "Momenta",
     "PhysicsReduction",
+    "PoleSelection",
     "ProcessAlias",
     "ProcessPhysics",
     "ProcessRequest",
@@ -249,6 +252,7 @@ _PUBLIC_EXPORTS = {
     **{name: (".results", name) for name in _RESULT_EXPORTS},
     **{name: (".services", name) for name in _SERVICE_EXPORTS},
     "group_processes": (".process_groups", "group_processes"),
+    "PoleSelection": ("pyamplicol.config", "PoleSelection"),
 }
 
 

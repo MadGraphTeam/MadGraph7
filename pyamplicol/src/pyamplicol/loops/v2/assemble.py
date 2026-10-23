@@ -68,7 +68,7 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
 from itertools import product
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from pyamplicol.color.connections import (
     ColorConnection,
@@ -1005,6 +1005,72 @@ class SliceRequest:
         return bounds
 
 
+class RequestModel(NamedTuple):
+    """The model preparation of one request (``prepare_request_model``)."""
+
+    prepared: Any
+    # The declared source-colour continuation, or None without a declaration.
+    continuation: Any
+    # The request's fixed parameters with the source-colour ones.
+    fixed_parameters: dict[str, Any]
+    scale_parameter: str
+    alpha_s_parameter: str | None
+
+
+def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
+    """The model preparation of ``LoopSlice.generate``, before any tree,
+    family or loop generation: the source-colour fixed parameters (LC and
+    NLC need a colour declaration), the scale and alpha_s parameters,
+    ``prepare_loop_request_model`` and, with a colour declaration,
+    ``prepare_declared_source_color``. The public dry run
+    (``Generator.plan``) runs it alone to report its refusals."""
+
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+
+    declaration = request.colour_declaration
+    fixed: dict[str, Any] = dict(request.fixed_parameters)
+    if declaration is not None:
+        from pyamplicol.loops.source_color_declaration import (
+            source_color_fixed_parameters,
+        )
+
+        fixed = source_color_fixed_parameters(
+            compiled.raw_loop_model, declaration, fixed_parameters=fixed
+        )
+    elif request.accuracy != "full":
+        raise ValueError(
+            f"{request.accuracy.upper()} needs a source-owned formal-N_c "
+            "continuation of the counterterms (design §6.7)"
+        )
+    scale_parameter = _external_parameter(
+        compiled, request.scale_parameter, _LHA_SCALE, fixed
+    )
+    alpha_s_parameter = (
+        _external_parameter(compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed)
+        if set(request.corrections) == {"QCD"}
+        else None
+    )
+    prepared = prepare_loop_request_model(
+        compiled,
+        born_order_bounds=dict(request.born_orders),
+        loop_order_bounds=request.loop_order_bounds,
+        fixed_parameters=fixed,
+        compatibility=request.compatibility,
+    )
+    continuation = None
+    if declaration is not None:
+        from pyamplicol.loops.source_color_declaration import (
+            prepare_declared_source_color,
+        )
+
+        prepared, continuation = prepare_declared_source_color(
+            prepared, declaration, scheme=declaration.scheme
+        )
+    return RequestModel(
+        prepared, continuation, fixed, scale_parameter, alpha_s_parameter
+    )
+
+
 @dataclass
 class LoopSlice:
     """Generation objects of one process and their per-point evaluation."""
@@ -1057,54 +1123,15 @@ class LoopSlice:
         tables of further observables).
         """
 
-        from pyamplicol.loops.compiler import prepare_loop_request_model
         from pyamplicol.loops.wavefunction import prepare_external_field_rules
         from pyamplicol.models.external import CompiledUFOModel
         from pyamplicol.processes.model import build_model_process_ir
 
         if request.accuracy not in ("full", "lc", "nlc"):
             raise ValueError(f"unknown colour accuracy {request.accuracy!r}")
-        declaration = request.colour_declaration
-        fixed: dict[str, Any] = dict(request.fixed_parameters)
-        if declaration is not None:
-            from pyamplicol.loops.source_color_declaration import (
-                source_color_fixed_parameters,
-            )
-
-            fixed = source_color_fixed_parameters(
-                compiled.raw_loop_model, declaration, fixed_parameters=fixed
-            )
-        elif request.accuracy != "full":
-            raise ValueError(
-                f"{request.accuracy.upper()} needs a source-owned formal-N_c "
-                "continuation of the counterterms (design §6.7)"
-            )
-        scale_parameter = _external_parameter(
-            compiled, request.scale_parameter, _LHA_SCALE, fixed
+        prepared, continuation, _fixed, scale_parameter, alpha_s_parameter = (
+            prepare_request_model(compiled, request)
         )
-        alpha_s_parameter = (
-            _external_parameter(
-                compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
-            )
-            if set(request.corrections) == {"QCD"}
-            else None
-        )
-        prepared = prepare_loop_request_model(
-            compiled,
-            born_order_bounds=dict(request.born_orders),
-            loop_order_bounds=request.loop_order_bounds,
-            fixed_parameters=fixed,
-            compatibility=request.compatibility,
-        )
-        continuation = None
-        if declaration is not None:
-            from pyamplicol.loops.source_color_declaration import (
-                prepare_declared_source_color,
-            )
-
-            prepared, continuation = prepare_declared_source_color(
-                prepared, declaration, scheme=declaration.scheme
-            )
         structure = prepared.structure
         data = json.loads(structure.native.to_json())
         selection = LoopOrderSelection(

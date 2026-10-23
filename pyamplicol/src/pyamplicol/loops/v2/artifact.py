@@ -94,8 +94,9 @@ from pyamplicol.api.virtual_results import (
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
     VirtualStabilityPolicy,
+    computes_poles,
 )
-from pyamplicol.config import R2Strategy
+from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.generation.evaluator_container import (
     PacbinMemberKind,
     PacbinMemberSource,
@@ -255,9 +256,11 @@ def coloured_widths(
     Source currents (external legs), auxiliary currents and currents of all
     legs but one do not count: the latter carry an external momentum and are
     amputated (a Born root contracts them with the remaining leg; a loop
-    attached to one would be an external self-energy). This is WP2.2's
-    ``blocks.ward_breaking_fields`` criterion without its model-supplied
-    propagators and on-shell currents."""
+    attached to one would be an external self-energy). WP2.2
+    (``work/v2-ct-recursion``, not integrated yet) selects full tree kernels
+    for coloured widths by its own criterion (``blocks.ward_breaking_fields``
+    there, which also counts model-supplied propagators); the integration
+    keeps one criterion (DESIGN WP2.6, "widths")."""
 
     from pyamplicol.models.compiler_kernels import _is_compile_time_zero_parameter
 
@@ -323,48 +326,6 @@ def require_zero_coloured_widths(
         "convention, or use loop.engine='legacy'. A resonant coloured "
         "particle needs the complex-mass scheme (WP3.2)"
     )
-
-
-def prepare_request_model(compiled: Any, request: Any) -> Any:
-    """The model preparation of ``LoopSlice.generate`` for ``request`` alone,
-    without tree, family or loop generation: source-colour fixed parameters,
-    the scale and alpha_s parameters, ``prepare_loop_request_model`` and,
-    with a colour declaration, ``prepare_declared_source_color``. A dry run
-    (``Generator.plan``) reports the refusals of this stage."""
-
-    from pyamplicol.loops.compiler import prepare_loop_request_model
-
-    from .assemble import _LHA_ALPHA_S, _LHA_SCALE, _external_parameter
-
-    fixed: dict[str, Any] = dict(request.fixed_parameters)
-    declaration = request.colour_declaration
-    if declaration is not None:
-        from pyamplicol.loops.source_color_declaration import (
-            source_color_fixed_parameters,
-        )
-
-        fixed = source_color_fixed_parameters(
-            compiled.raw_loop_model, declaration, fixed_parameters=fixed
-        )
-    _external_parameter(compiled, request.scale_parameter, _LHA_SCALE, fixed)
-    if set(request.corrections) == {"QCD"}:
-        _external_parameter(compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed)
-    prepared = prepare_loop_request_model(
-        compiled,
-        born_order_bounds=dict(request.born_orders),
-        loop_order_bounds=request.loop_order_bounds,
-        fixed_parameters=fixed,
-        compatibility=request.compatibility,
-    )
-    if declaration is not None:
-        from pyamplicol.loops.source_color_declaration import (
-            prepare_declared_source_color,
-        )
-
-        prepared, _continuation = prepare_declared_source_color(
-            prepared, declaration, scheme=declaration.scheme
-        )
-    return prepared
 
 
 # --------------------------------------------------------------------- plan file
@@ -697,22 +658,20 @@ class V2VirtualRuntime:
         stability: VirtualStabilityPolicy | None = None,
     ) -> None:
         from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
-        from pyamplicol.generation.loop_artifact import (
-            LOOP_PHYSICS_KIND,
-            LOOP_RUNTIME_KIND,
-            LOOP_V2_EXECUTION_SCHEMA,
-            LOOP_V2_POINT_INPUTS,
-        )
         from pyamplicol.loops.native import load_loop_native
         from pyamplicol.models.loading import CompiledModel
-        from pyamplicol.runtime.virtual import _NO_RESCUE, V2ObservablesRuntime
+        from pyamplicol.runtime.virtual import (
+            _NO_RESCUE,
+            V2ObservablesRuntime,
+            v2_r2_strategy,
+        )
 
         from .observables import admit_member
         from .plan_export import NativeExecutor
 
         if stability is not None:
             raise CompatibilityError(_NO_RESCUE)
-        self._default_r2 = _r2(r2_strategy)
+        self._default_r2 = v2_r2_strategy(r2_strategy)
         self.default_precision = 16 if precision is None else _digits(precision)
         self.default_arithmetic = _arithmetic(arithmetic) or (
             "double" if self.default_precision == 16 else "arbitrary"
@@ -721,25 +680,17 @@ class V2VirtualRuntime:
         if root.name == MANIFEST_NAME and root.is_file():
             root = root.parent
         started = time.perf_counter()
-        manifest = load_manifest(root, verify_payloads=True)
+        # Payload digests are not recomputed on the runtime path (as for every
+        # artifact, ``runtime.backend``): the native admission below checks
+        # the execution and physics declarations and the plan member against
+        # its declared digest, and the regenerated plan must have that digest.
+        manifest = load_manifest(root)
         selected, group_member = _select(manifest, process)
         process_id = str(selected["id"])
+        native = load_loop_native()
+        admission = admit(native, root, process_id)
         execution = _json_payload(manifest, f"processes/{process_id}/execution.json")
         physics = _json_payload(manifest, str(selected["physics_path"]))
-        if (
-            execution.get("kind") != LOOP_RUNTIME_KIND
-            or execution.get("schema_version") != LOOP_V2_EXECUTION_SCHEMA
-            or execution.get("engine") != ENGINE
-            or execution.get("point_inputs") != LOOP_V2_POINT_INPUTS
-            or physics.get("kind") != LOOP_PHYSICS_KIND
-            or physics.get("process_id") != process_id
-        ):
-            raise ArtifactError(f"process {process_id!r} is not a v2 virtual process")
-        native = load_loop_native()
-        # The native loader checks the plan member against the declared
-        # digest and validates the program against the declarations once;
-        # the regenerated plan is then compared by that digest.
-        admission = admit(native, root, process_id)
         plan_sha256 = str(admission["plan_sha256"])
         model_payload = _json_payload(manifest, "model/compiled-model.json")
         model = model_digest(model_payload)
@@ -911,7 +862,9 @@ class V2VirtualRuntime:
                     "effective_r2_strategy": "model",
                     "parameter_overrides": dict(self._parameters),
                     "scale_input": "explicit positive mu_r2, scalar or per point",
-                    "poles": "computed unless poles=False (finite-only)",
+                    "poles": (
+                        "selected per call: 'all' (default) or 'none' (finite only)"
+                    ),
                     "stability_checks": (
                         "rotations (count or exact rotations) and the "
                         "reduction-direction check; none by default"
@@ -954,13 +907,13 @@ class V2VirtualRuntime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: str | None = None,
         stability: VirtualStabilityPolicy | None = None,
-        poles: bool | None = None,
+        poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
         on_failure: Literal["raise", "return"] = "raise",
     ) -> VirtualEvaluation:
         from pyamplicol.runtime.virtual import _inputs, v2_options
 
-        poles, checks = v2_options(
+        selection, checks = v2_options(
             helicities=helicities,
             color_flows=color_flows,
             r2_strategy=r2_strategy,
@@ -969,7 +922,8 @@ class V2VirtualRuntime:
             stability_checks=stability_checks,
             on_failure=on_failure,
         )
-        r2 = self._default_r2 if r2_strategy is None else _r2(r2_strategy)
+        # v2_options refused direct R2.
+        r2 = self._default_r2 if r2_strategy is None else R2Strategy(r2_strategy)
         carrier, setting = self._carrier(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
         if self._member is not None:
@@ -977,7 +931,7 @@ class V2VirtualRuntime:
         with self._lock:
             parameters = dict(self._parameters)
             results, failures = self._run(
-                points, scales, parameters, setting, poles, checks
+                points, scales, parameters, setting, computes_poles(selection), checks
             )
         if failures and on_failure == "raise":
             index = min(failures)
@@ -985,7 +939,7 @@ class V2VirtualRuntime:
                 f"v2 virtual evaluation failed at point {index}: "
                 + "; ".join(failures[index])
             )
-        return self._result(results, failures, setting, carrier, r2, poles, checks)
+        return self._result(results, failures, setting, carrier, r2, selection, checks)
 
     def _run(
         self,
@@ -993,7 +947,7 @@ class V2VirtualRuntime:
         scales: list[str],
         parameters: dict[str, str],
         setting: Any,
-        poles: bool,
+        with_poles: bool,
         checks: VirtualStabilityChecks,
     ) -> tuple[list[Any], dict[int, list[str]]]:
         """One batch through the native executor: the per-point results
@@ -1012,7 +966,7 @@ class V2VirtualRuntime:
                         scales,
                         parameters=parameters,
                         precision=setting,
-                        poles=poles,
+                        poles=with_poles,
                         stability=checks.to_checks() if checks.enabled else None,
                     )
                 ),
@@ -1028,11 +982,12 @@ class V2VirtualRuntime:
         setting: Any,
         carrier: str,
         r2: R2Strategy,
-        poles: bool,
+        poles: PoleSelection,
         checks: VirtualStabilityChecks,
     ) -> VirtualEvaluation:
         from pyamplicol.runtime.virtual import v2_public_estimate
 
+        with_poles = computes_poles(poles)
         bits = _precision_bits(carrier, setting.digits)
         arithmetic = cast(Literal["double", "double-double", "arbitrary"], carrier)
         contraction = VirtualColorContraction(
@@ -1082,14 +1037,14 @@ class V2VirtualRuntime:
             values.append(
                 tuple(
                     LaurentCoefficients(*virtual[sector.order].coefficients)
-                    if poles
+                    if with_poles
                     else LaurentCoefficients(
                         virtual[sector.order].finite, *_ABSENT_POLES
                     )
                     for sector in self._sectors
                 )
             )
-            estimates.append(v2_public_estimate(result.stability, poles))
+            estimates.append(v2_public_estimate(result.stability, with_poles))
             diagnostics.append(
                 VirtualLaneDiagnostic(
                     "success",
@@ -1180,10 +1135,12 @@ class V2VirtualRuntime:
         self._observables.set_spin_correlation_vectors(vectors)
 
     def _checked_parameters(self, mapping: ModelParameters | None) -> dict[str, str]:
-        """Real values of adjustable external model parameters. Unknown names,
-        the renormalisation scale (``mu_r2`` sets it per point) and a value
-        other than the one a parameter was fixed to at generation are
-        refused: the evaluation would ignore them."""
+        """Real values of external model parameters. Unknown names, the
+        renormalisation scale (``mu_r2`` sets it per point) and a value other
+        than the one a parameter was fixed to at generation are refused.
+        Other known parameters are accepted even where this process does not
+        use them, as by the legacy engine: e.g. a width that only loop
+        propagators carry does not enter (v2 virtuals are real on-shell)."""
 
         parameters = _real_parameters(mapping)
         slice_ = self._generated[0].slice
@@ -1232,13 +1189,6 @@ class V2VirtualRuntime:
 
 def _zero(carrier: str) -> Any:
     return 0.0 if carrier == "double" else Decimal(0)
-
-
-def _r2(value: str | None) -> R2Strategy:
-    strategy = R2Strategy.AUTO if value is None else R2Strategy(value)
-    if strategy is R2Strategy.DIRECT:
-        raise CompatibilityError("v2 virtual artifacts carry model-supplied R2 only")
-    return strategy
 
 
 def _digits(value: int) -> int:

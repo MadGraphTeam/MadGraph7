@@ -1080,7 +1080,7 @@ def _v2_blockers(backend) -> tuple[str, ...]:
     Requests are refused per process, before any loop generation, by
     ``_v2_request`` (no Born amplitude, undeclared corrections, coloured
     widths in the Born currents, an unidentified scale parameter) and
-    ``loops.v2.artifact.prepare_request_model`` (the model preparation);
+    ``loops.v2.assemble.prepare_request_model`` (the model preparation);
     the generator fails closed with its own reason on what it does not
     admit (e.g. chiral loop-fermion vertices, WP3.2)."""
     run = backend._run_config
@@ -1244,7 +1244,8 @@ def _plan_v2(backend, processes, blockers, *, model=None):
     refusals are reported. Loop admission (counterterm sites, fermion signs
     of loop vertices, the loop-side tree currents) is checked only by the
     generation (``loop_admission_checked`` is False)."""
-    from pyamplicol.loops.v2.artifact import prepare_request_model, request_record
+    from pyamplicol.loops.v2.artifact import request_record
+    from pyamplicol.loops.v2.assemble import prepare_request_model
 
     blockers = blockers + _v2_blockers(backend)
     context, coverage = None, []

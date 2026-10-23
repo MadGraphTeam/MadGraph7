@@ -10,6 +10,7 @@ from pyamplicol.api.virtual_results import (
     VirtualEvaluation,
     VirtualScalar,
 )
+from pyamplicol.config import PoleSelection
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.models.base import CouplingOrders
 
@@ -197,7 +198,7 @@ def virtual_evaluation_summary(
             "\nBorn anchors are signed, potentially overcomplete components; "
             "they are not sampling probabilities."
         )
-    if not result.poles:
+    if result.poles is PoleSelection.NONE:
         header += "\nFinite-only evaluation: the poles were not computed."
     tables = [born, virtual, pairs, status]
     stability = _stability_table(result, prettytable)

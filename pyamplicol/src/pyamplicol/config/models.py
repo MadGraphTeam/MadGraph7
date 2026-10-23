@@ -102,6 +102,17 @@ class R2Strategy(StrEnum):
     DIRECT = "direct"
 
 
+class PoleSelection(StrEnum):
+    """Which Laurent poles a one-loop evaluation computes: ``all`` (the
+    default) or ``none`` (the finite part only; the poles are then absent).
+    The finite part is the same under every selection. The UV and IR
+    selections (``uv``, ``ir``) are added with the pole split at the
+    reduction boundary (package poles-uvir)."""
+
+    ALL = "all"
+    NONE = "none"
+
+
 class LoopEngine(StrEnum):
     """One-loop engine: the per-diagram legacy engine (the oracle until gate
     R3) or the shared-recursion engine v2 (plan v4 artifacts)."""
@@ -1114,7 +1125,10 @@ class EvaluationConfig:
     stability: EvaluationStabilityConfig = field(
         default_factory=EvaluationStabilityConfig, metadata=_section()
     )
-    poles: bool = field(default=True, metadata=_setting("bool"))
+    poles: PoleSelection = field(
+        default=PoleSelection.ALL,
+        metadata=_setting("str", choices=tuple(PoleSelection)),
+    )
     stability_checks: EvaluationStabilityChecksConfig = field(
         default_factory=EvaluationStabilityChecksConfig, metadata=_section()
     )
@@ -1171,8 +1185,9 @@ class EvaluationConfig:
             raise ConfigurationError(
                 "evaluation.stability must be an EvaluationStabilityConfig"
             )
-        if not isinstance(self.poles, bool):
-            raise ConfigurationError("evaluation.poles must be a boolean")
+        object.__setattr__(
+            self, "poles", _enum(self.poles, PoleSelection, "evaluation.poles")
+        )
         if not isinstance(self.stability_checks, EvaluationStabilityChecksConfig):
             raise ConfigurationError(
                 "evaluation.stability_checks must be an EvaluationStabilityChecksConfig"
@@ -1627,6 +1642,7 @@ __all__ = [
     "ModelConfig",
     "OutputConfig",
     "OutputFormat",
+    "PoleSelection",
     "ProcessConfig",
     "ProcessEntry",
     "ProcessGroupAnalysis",

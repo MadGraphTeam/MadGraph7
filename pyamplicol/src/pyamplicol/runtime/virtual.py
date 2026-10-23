@@ -46,8 +46,10 @@ from pyamplicol.api.virtual_results import (
     VirtualStabilityPolicy,
     VirtualVerificationAttempt,
     VirtualVerificationDiagnostic,
+    computes_poles,
+    pole_selection,
 )
-from pyamplicol.config import R2Strategy
+from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.correlators import (
     ColorCorrelator,
     CorrelatedRequest,
@@ -1041,7 +1043,9 @@ _NO_RESCUE = (
 )
 
 
-def v2_public_estimate(estimate: Any, poles: bool) -> VirtualStabilityEstimate | None:
+def v2_public_estimate(
+    estimate: Any, with_poles: bool
+) -> VirtualStabilityEstimate | None:
     """The public record of a v2 ``stability.StabilityEstimate``."""
 
     if estimate is None:
@@ -1050,10 +1054,20 @@ def v2_public_estimate(estimate: Any, poles: bool) -> VirtualStabilityEstimate |
     return VirtualStabilityEstimate(
         float(estimate.relative),
         coefficients[0],
-        coefficients[1] if poles else None,
-        coefficients[2] if poles else None,
+        coefficients[1] if with_poles else None,
+        coefficients[2] if with_poles else None,
         tuple((name, float(value)) for name, value in estimate.checks.items()),
     )
+
+
+def v2_r2_strategy(value: R2Strategy | str | None) -> R2Strategy:
+    """The R2 strategy of a v2 virtual runtime: v2 artifacts carry the
+    model-supplied R2 rules only, so ``direct`` is refused."""
+
+    strategy = R2Strategy.AUTO if value is None else R2Strategy(value)
+    if strategy is R2Strategy.DIRECT:
+        raise CompatibilityError("v2 virtual artifacts carry model-supplied R2 only")
+    return strategy
 
 
 def v2_options(
@@ -1062,12 +1076,12 @@ def v2_options(
     color_flows: Sequence[str] | None = None,
     r2_strategy: str | None = None,
     stability: VirtualStabilityPolicy | None = None,
-    poles: bool | None = None,
+    poles: PoleSelection | str | None = None,
     stability_checks: VirtualStabilityChecks | None = None,
     on_failure: str = "raise",
-) -> tuple[bool, VirtualStabilityChecks]:
+) -> tuple[PoleSelection, VirtualStabilityChecks]:
     """Validate the public options a v2 virtual runtime does not forward
-    unchanged; returns (poles, stability checks)."""
+    unchanged; returns (pole selection, stability checks)."""
 
     if on_failure not in ("raise", "return"):
         raise ValueError("on_failure must be 'raise' or 'return'")
@@ -1076,17 +1090,14 @@ def v2_options(
             "v2 virtual runtimes evaluate every helicity and colour; use "
             "evaluate_resolved for per-helicity and per-colour outputs"
         )
-    if r2_strategy is not None and R2Strategy(r2_strategy) is R2Strategy.DIRECT:
-        raise CompatibilityError("v2 virtual artifacts carry model-supplied R2 only")
+    v2_r2_strategy(r2_strategy)
     if stability is not None:
         raise CompatibilityError(_NO_RESCUE)
-    poles = True if poles is None else poles
-    if type(poles) is not bool:
-        raise TypeError("poles must be a boolean")
+    selection = PoleSelection.ALL if poles is None else pole_selection(poles)
     checks = stability_checks or VirtualStabilityChecks()
     if not isinstance(checks, VirtualStabilityChecks):
         raise TypeError("stability_checks requires VirtualStabilityChecks")
-    return poles, checks
+    return selection, checks
 
 
 class V2ObservablesRuntime:
@@ -1111,14 +1122,14 @@ class V2ObservablesRuntime:
     component per row, with the accuracy as its ID (the documented public
     shape of ``Runtime.evaluate_resolved``).
 
-    Every call takes ``poles=False`` (finite part only, poles explicitly
-    absent) and ``stability_checks`` (rotations and/or the reduction-direction
-    check; requirements addendum C): a correlated evaluation then carries one
-    estimate per point and output, a resolved one per point and entry
-    (helicity row and colour component); without checks no estimate exists.
-    ``on_failure="return"`` keeps failed points as ``None`` with their
-    reasons. Accuracy is not otherwise established and
-    nothing is escalated automatically.
+    Every call takes ``poles`` (a ``PoleSelection``; ``"none"`` is the finite
+    part only, poles explicitly absent) and ``stability_checks`` (rotations
+    and/or the reduction-direction check; requirements addendum C): a
+    correlated evaluation then carries one estimate per point and output, a
+    resolved one per point and entry (helicity row and colour component);
+    without checks no estimate exists. ``on_failure="return"`` keeps failed
+    points as ``None`` with their reasons. Accuracy is not otherwise
+    established and nothing is escalated automatically.
     """
 
     contribution_kind = "virtual"
@@ -1296,9 +1307,9 @@ class V2ObservablesRuntime:
         return Decimal(value)
 
     def _laurent(
-        self, laurent: Any, arithmetic: str, correlated: bool, poles: bool = True
+        self, laurent: Any, arithmetic: str, correlated: bool, with_poles: bool = True
     ) -> LaurentCoefficients:
-        if not poles:
+        if not with_poles:
             absent = cast(VirtualScalar, None)
             return LaurentCoefficients(
                 self._scalar(laurent.finite, arithmetic, correlated), absent, absent
@@ -1366,13 +1377,14 @@ class V2ObservablesRuntime:
         arithmetic: str,
         precision: Any,
         correlated: bool,
-        poles: bool = True,
+        poles: PoleSelection = PoleSelection.ALL,
         checks: VirtualStabilityChecks | None = None,
     ) -> VirtualEvaluation:
         from pyamplicol.loops.strategy import R2Selection
 
         born_orders = self._default_born_orders()
         checked = checks is not None and checks.enabled
+        with_poles = computes_poles(poles)
         born_values: list[Any] = []
         values: list[Any] = []
         diagnostics: list[VirtualLaneDiagnostic] = []
@@ -1404,12 +1416,12 @@ class V2ObservablesRuntime:
                         result.components["virtual"][sector.order],
                         arithmetic,
                         correlated,
-                        poles,
+                        with_poles,
                     )
                     for sector in self._sectors
                 )
             )
-            estimates.append(v2_public_estimate(result.stability, poles))
+            estimates.append(v2_public_estimate(result.stability, with_poles))
             diagnostics.append(self._diagnostic(arithmetic, precision, checked))
         return VirtualEvaluation(
             born_values=tuple(born_values),
@@ -1476,7 +1488,7 @@ class V2ObservablesRuntime:
         their seed columns (one dressing per point and source assignment; one
         native batch per source assignment)."""
 
-        poles, checks = v2_options(on_failure=on_failure, **options)
+        selection, checks = v2_options(on_failure=on_failure, **options)
         observables = self._observables
         arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
@@ -1513,7 +1525,7 @@ class V2ObservablesRuntime:
         settings = {
             "parameters": parameters,
             "precision": carrier,
-            "poles": poles,
+            "poles": computes_poles(selection),
             "stability": checks.to_checks() if checks.enabled else None,
         }
         out: dict[str, VirtualEvaluation] = {}
@@ -1522,14 +1534,22 @@ class V2ObservablesRuntime:
                 dict.fromkeys(requests[label].color_correlation for label in labels)
             )
             spins = [spin or None for spin in sources[key]]
-            runner = self._runner() if self._executor != "native" else None
+            runner: Any = self._runner() if self._executor != "native" else None
+
+            def python(
+                point: Any,
+                scale: Any,
+                spin: Any,
+                runner: Any = runner,
+                histories: Any = histories,
+            ) -> Any:
+                return runner.evaluate(
+                    point, scale, correlations=histories, spin=spin, **settings
+                )
+
             per_point, failures = self._run(
                 ("correlated", histories),
-                lambda point, scale, spin, runner=runner, histories=histories: (
-                    runner.evaluate(
-                        point, scale, correlations=histories, spin=spin, **settings
-                    )
-                ),
+                python,
                 points,
                 scales,
                 spins,
@@ -1547,7 +1567,7 @@ class V2ObservablesRuntime:
                     arithmetic,
                     carrier,
                     _correlated,
-                    poles,
+                    selection,
                     checks,
                 )
         return {label: out[label] for label in requests}
@@ -1566,7 +1586,8 @@ class V2ObservablesRuntime:
 
         from pyamplicol.loops.strategy import R2Selection
 
-        poles, checks = v2_options(on_failure=on_failure, **options)
+        selection, checks = v2_options(on_failure=on_failure, **options)
+        with_poles = computes_poles(selection)
         observables = self._observables
         arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
@@ -1584,17 +1605,19 @@ class V2ObservablesRuntime:
         settings = {
             "parameters": parameters,
             "precision": carrier,
-            "poles": poles,
+            "poles": with_poles,
             "stability": checks.to_checks() if checks.enabled else None,
         }
-        runner = self._runner() if self._executor != "native" else None
+        runner: Any = self._runner() if self._executor != "native" else None
+
+        def python(point: Any, scale: Any, _spin: Any) -> Any:
+            return runner.evaluate_resolved(
+                point, scale, resolution=resolution, **settings
+            ).entries
+
         entries, failures = self._run(
             ("resolved", resolution),
-            lambda point, scale, _spin: (
-                runner.evaluate_resolved(
-                    point, scale, resolution=resolution, **settings
-                ).entries
-            ),
+            python,
             points,
             scales,
             [None] * len(points),
@@ -1645,7 +1668,7 @@ class V2ObservablesRuntime:
                                 result[(row, b)].components["virtual"][sector.order],
                                 arithmetic,
                                 False,
-                                poles,
+                                with_poles,
                             )
                             for b in components
                         )
@@ -1658,7 +1681,7 @@ class V2ObservablesRuntime:
             estimates.append(
                 tuple(
                     tuple(
-                        v2_public_estimate(result[(row, b)].stability, poles)
+                        v2_public_estimate(result[(row, b)].stability, with_poles)
                         for b in components
                     )
                     for row in rows
@@ -1682,6 +1705,6 @@ class V2ObservablesRuntime:
             born_color_ids=ids,
             virtual_color_ids=ids,
             color_accuracy=observables.slice.request.accuracy,
-            poles=poles,
+            poles=selection,
             stability=tuple(estimates) if checks.enabled else None,
         )

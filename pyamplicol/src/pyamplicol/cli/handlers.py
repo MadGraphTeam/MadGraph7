@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
 from pyamplicol.api.errors import ConfigurationError
-from pyamplicol.config import ConfigResolution, EvaluatorConfig, RunConfig
+from pyamplicol.config import (
+    ConfigResolution,
+    EvaluatorConfig,
+    PoleSelection,
+    RunConfig,
+)
 from pyamplicol.reporting import (
     ProgressEnd,
     ProgressSink,
@@ -423,11 +428,11 @@ class DefaultCliServices:
         evaluation = config.evaluation
         stability = evaluation.stability.to_policy()
         checks = evaluation.stability_checks.to_checks()
-        # Finite-only and stability-check options exist for v2 virtuals; the
-        # defaults are omitted so other runtimes keep their signatures.
+        # Pole-selection and stability-check options exist for v2 virtuals;
+        # the defaults are omitted so other runtimes keep their signatures.
         v2_options: dict[str, object] = {}
-        if not evaluation.poles:
-            v2_options["poles"] = False
+        if evaluation.poles is not PoleSelection.ALL:
+            v2_options["poles"] = evaluation.poles
         if checks is not None:
             v2_options["stability_checks"] = checks
         requests = None

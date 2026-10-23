@@ -16,6 +16,7 @@ from pyamplicol.config import (
     BenchmarkConfig,
     ConfigResolution,
     GenerationConfig,
+    PoleSelection,
     R2Strategy,
     RunConfig,
 )
@@ -56,6 +57,7 @@ from .virtual_results import (
     VirtualEvaluation,
     VirtualStabilityChecks,
     VirtualStabilityPolicy,
+    pole_selection,
 )
 
 _generator_factory: GeneratorFactory | None = None
@@ -592,7 +594,7 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
-        poles: bool | None = None,
+        poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         """Return tree values or a typed Born-loop interference result.
@@ -614,8 +616,9 @@ class Runtime:
         original point positions, with typed diagnostics; the default raises.
         Invalid inputs and unsupported capabilities still raise.
 
-        Virtual runtimes of the v2 engine also accept ``poles=False``, which
-        computes the finite part only (the poles are then ``None``), and
+        Virtual runtimes of the v2 engine also accept ``poles`` (a
+        :class:`PoleSelection`: ``"all"``, the default, or ``"none"``, which
+        computes the finite part only; the poles are then ``None``), and
         ``stability_checks`` (rotations and/or the reduction-direction check),
         which add a stability estimate per point; without checks no estimate
         is returned.
@@ -739,14 +742,14 @@ class Runtime:
         return options
 
     def _v2_options(
-        self, poles: bool | None, checks: VirtualStabilityChecks | None
+        self,
+        poles: PoleSelection | str | None,
+        checks: VirtualStabilityChecks | None,
     ) -> dict[str, object]:
-        """Finite-only and stability-check options, forwarded only when set."""
+        """Pole-selection and stability-check options, forwarded only when set."""
         options: dict[str, object] = {}
         if poles is not None:
-            if type(poles) is not bool:
-                raise TypeError("poles must be a boolean")
-            options["poles"] = poles
+            options["poles"] = pole_selection(poles)
         if checks is not None:
             if not isinstance(checks, VirtualStabilityChecks):
                 raise TypeError("stability_checks requires VirtualStabilityChecks")
@@ -849,7 +852,7 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
-        poles: bool | None = None,
+        poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         return self.evaluate(
@@ -878,7 +881,7 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
-        poles: bool | None = None,
+        poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
@@ -947,7 +950,7 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
-        poles: bool | None = None,
+        poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
@@ -1133,7 +1136,7 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
-        poles: bool | None = None,
+        poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
     ) -> tuple[_pyamplicol.CorrelatedValue, ...] | VirtualEvaluation:
         """Evaluate a generation-time colour ID with the current spin vectors.
@@ -1201,7 +1204,7 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
-        poles: bool | None = None,
+        poles: PoleSelection | str | None = None,
         stability_checks: VirtualStabilityChecks | None = None,
     ) -> (
         dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]

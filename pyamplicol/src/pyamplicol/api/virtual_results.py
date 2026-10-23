@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Literal, NamedTuple, TypeAlias, cast
 
-from pyamplicol.config import R2Strategy
+from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
@@ -25,7 +25,8 @@ EPSILON_POWERS = (0, -1, -2)
 class LaurentCoefficients(NamedTuple):
     """Physical coefficients in the declared C_epsilon convention.
 
-    The poles are ``None`` in a finite-only evaluation, which never computed them.
+    The poles are ``None`` in a finite-only evaluation (``poles="none"``),
+    which never computed them.
     """
 
     finite: VirtualScalar
@@ -188,21 +189,23 @@ class VirtualStabilityChecks:
     arithmetic is the caller's decision.
     """
 
-    rotations: tuple[Rotation, ...] | int = ()
+    # Normalised to exact ``Rotation`` records by ``__post_init__``.
+    rotations: tuple[Rotation | str, ...] | int = ()
     reduction_direction: bool = False
 
     def __post_init__(self) -> None:
-        rotations = self.rotations
-        if isinstance(rotations, bool):
+        given = self.rotations
+        if isinstance(given, bool):
             raise TypeError("rotations take a count or rotation records")
-        if isinstance(rotations, int):
-            if rotations < 0:
+        rotations: tuple[Rotation, ...]
+        if isinstance(given, int):
+            if given < 0:
                 raise ValueError("the rotation count is nonnegative")
-            rotations = tuple(_default_rotation(k) for k in range(rotations))
+            rotations = tuple(_default_rotation(k) for k in range(given))
         else:
             rotations = tuple(
                 parse_rotation(item) if isinstance(item, str) else item
-                for item in rotations
+                for item in given
             )
         if type(self.reduction_direction) is not bool:
             raise TypeError("reduction_direction must be a boolean")
@@ -389,19 +392,41 @@ def _scalar(value: object, correlated: bool, arithmetic: str) -> VirtualScalar:
     return value
 
 
+def pole_selection(value: object) -> PoleSelection:
+    """The :class:`PoleSelection` of a public ``poles`` argument (the enum or
+    its value text: ``"all"`` or ``"none"``)."""
+
+    if isinstance(value, PoleSelection):
+        return value
+    choices = ", ".join(repr(item.value) for item in PoleSelection)
+    if not isinstance(value, str):
+        raise TypeError(f"poles takes a PoleSelection ({choices}); got {value!r}")
+    try:
+        return PoleSelection(value)
+    except ValueError:
+        message = f"unknown pole selection {value!r}; one of {choices}"
+        raise ValueError(message) from None
+
+
+def computes_poles(selection: PoleSelection) -> bool:
+    """Whether an evaluation under ``selection`` returns pole coefficients."""
+
+    return selection is not PoleSelection.NONE
+
+
 def _freeze_axes(
     values: object,
     dimensions: tuple[int, ...],
     correlated: bool,
     arithmetic: str,
     laurent: bool = False,
-    poles: bool = True,
+    with_poles: bool = True,
 ) -> _FrozenAxis:
     if not dimensions:
         return _scalar(values, correlated, arithmetic)
     if not isinstance(values, (tuple, list)) or len(values) != dimensions[0]:
         raise ValueError("virtual values do not match their declared dimensions")
-    if laurent and dimensions == (3,) and not poles:
+    if laurent and dimensions == (3,) and not with_poles:
         # Finite-only evaluations never computed the poles: explicitly absent.
         if values[1] is not None or values[2] is not None:
             raise ValueError("finite-only results carry no pole coefficients")
@@ -410,7 +435,7 @@ def _freeze_axes(
             _scalar(values[0], correlated, arithmetic), absent, absent
         )
     frozen = tuple(
-        _freeze_axes(value, dimensions[1:], correlated, arithmetic, laurent, poles)
+        _freeze_axes(value, dimensions[1:], correlated, arithmetic, laurent, with_poles)
         for value in values
     )
     # The terminal dimension was checked above and every child has passed the
@@ -486,8 +511,7 @@ def _common(
         raise ValueError("unknown colour accuracy")
     if not isinstance(result.correlated, bool):
         raise TypeError("correlated must be a boolean")
-    if type(result.poles) is not bool:
-        raise TypeError("poles must be a boolean")
+    object.__setattr__(result, "poles", pole_selection(result.poles))
     born_orders, sectors = _orders(result.born_orders, result.sectors)
     diagnostics = tuple(result.diagnostics)
     if not all(isinstance(item, VirtualLaneDiagnostic) for item in diagnostics):
@@ -526,7 +550,7 @@ def _common(
                 result.correlated,
                 diagnostic.arithmetic,
                 True,
-                result.poles,
+                computes_poles(result.poles),
             )
         )
         if any(
@@ -545,7 +569,9 @@ def _common(
 
 
 def _stability(
-    estimates: object, diagnostics: tuple[VirtualLaneDiagnostic, ...], poles: bool
+    estimates: object,
+    diagnostics: tuple[VirtualLaneDiagnostic, ...],
+    with_poles: bool,
 ) -> tuple[VirtualStabilityEstimate | None, ...] | None:
     """Per-lane estimates, or None when the evaluation ran no check."""
     if estimates is None:
@@ -562,7 +588,7 @@ def _stability(
             raise TypeError("stability estimates are VirtualStabilityEstimate records")
         if not diagnostic.valid:
             raise ValueError("failed lanes carry no stability estimate")
-        if (estimate.single_pole is not None) != poles:
+        if (estimate.single_pole is not None) != with_poles:
             raise ValueError("pole estimates exist exactly when poles were computed")
     return cast(tuple[VirtualStabilityEstimate | None, ...], estimates)
 
@@ -576,8 +602,9 @@ class VirtualEvaluation:
     diagnostic-return policy. Each returned coefficient includes physical
     couplings and normalization, without division by the Born amplitude.
 
-    ``poles`` is False for a finite-only evaluation: its pole coefficients
-    were never computed and are ``None``. ``stability`` holds one
+    ``poles`` is the :class:`PoleSelection` of the evaluation; under
+    ``"none"`` (finite only) the pole coefficients were never computed and
+    are ``None``. ``stability`` holds one
     :class:`VirtualStabilityEstimate` per lane (``None`` for failed lanes)
     when stability checks ran, and is ``None`` when none were requested.
     """
@@ -590,13 +617,15 @@ class VirtualEvaluation:
     r2: R2Selection
     correlated: bool = False
     color_accuracy: Literal["lc", "nlc", "full"] = "full"
-    poles: bool = True
+    poles: PoleSelection = PoleSelection.ALL
     stability: tuple[VirtualStabilityEstimate | None, ...] | None = None
 
     def __post_init__(self) -> None:
         _common(self, (len(self.born_orders),), (len(self.sectors), 3))
         object.__setattr__(
-            self, "stability", _stability(self.stability, self.diagnostics, self.poles)
+            self,
+            "stability",
+            _stability(self.stability, self.diagnostics, computes_poles(self.poles)),
         )
 
     @property
@@ -622,7 +651,7 @@ class VirtualEvaluation:
             or epsilon_power not in EPSILON_POWERS
         ):
             raise ValueError("epsilon power must be 0, -1, or -2")
-        if epsilon_power and not self.poles:
+        if epsilon_power and not computes_poles(self.poles):
             raise ValueError("this finite-only evaluation computed no poles")
         index = EPSILON_POWERS.index(epsilon_power)
         return tuple(
@@ -666,7 +695,7 @@ class VirtualEvaluation:
             else LaurentCoefficients(
                 *(
                     _sum(tuple(sector[epsilon] for sector in point))
-                    if epsilon == 0 or self.poles
+                    if epsilon == 0 or computes_poles(self.poles)
                     else cast(VirtualScalar, None)
                     for epsilon in range(3)
                 )
@@ -703,7 +732,7 @@ class ResolvedVirtualEvaluation:
     virtual_color_ids: tuple[str, ...]
     color_accuracy: Literal["lc", "nlc", "full"]
     correlated: bool = False
-    poles: bool = True
+    poles: PoleSelection = PoleSelection.ALL
     stability: (
         tuple[tuple[tuple[VirtualStabilityEstimate, ...], ...] | None, ...] | None
     ) = None
@@ -752,7 +781,7 @@ class ResolvedVirtualEvaluation:
                 raise ValueError("resolved estimates follow the helicity/colour axes")
             for row in rows:
                 for estimate in row:
-                    _stability((estimate,), (diagnostic,), self.poles)
+                    _stability((estimate,), (diagnostic,), computes_poles(self.poles))
             out.append(cast(tuple[tuple[VirtualStabilityEstimate, ...], ...], rows))
         return tuple(out)
 
@@ -790,7 +819,7 @@ class ResolvedVirtualEvaluation:
             or epsilon_power not in EPSILON_POWERS
         ):
             raise ValueError("epsilon power must be 0, -1, or -2")
-        if epsilon_power and not self.poles:
+        if epsilon_power and not computes_poles(self.poles):
             raise ValueError("this finite-only evaluation computed no poles")
         index = EPSILON_POWERS.index(epsilon_power)
         return tuple(
@@ -862,7 +891,7 @@ class ResolvedVirtualEvaluation:
                                 for colour in helicity
                             )
                         )
-                        if epsilon == 0 or self.poles
+                        if epsilon == 0 or computes_poles(self.poles)
                         else cast(VirtualScalar, None)
                         for epsilon in range(3)
                     )
