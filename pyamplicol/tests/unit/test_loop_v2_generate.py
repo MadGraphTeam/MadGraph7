@@ -286,6 +286,18 @@ def test_loop_aware_reachability_changes_no_result(
         # native kernel constants (stable tops, all fixture parameters).
         pytest.param("gg_ttx", [0, 1, 2], "python", marks=pytest.mark.loop_physics),
         pytest.param("gg_gggg", [0], "python", marks=pytest.mark.loop_nightly),
+        # gamma*/Z at seven legs: chiral couplings on loop quark lines, closed
+        # quark loops with the Z, Furry-certified A g g triangles and the
+        # Levi-Civita R2 rules (WP3.1 I-AX).
+        pytest.param("uux_emepddxg", [1], "python", marks=pytest.mark.loop_physics),
+        pytest.param(
+            "uux_emepggg", [0, 1, 2], "python", marks=pytest.mark.loop_nightly
+        ),
+        # Point 2's binary64 finite part is ill-conditioned (5.7e-9, flagged
+        # by the stability estimate; DoubleFloat 1.9e-14 of MadLoop).
+        pytest.param(
+            "gg_ttxemepg_qcd", [0, 1], "python", marks=pytest.mark.loop_nightly
+        ),
     ],
 )
 def test_validate_agrees_with_the_providers(
