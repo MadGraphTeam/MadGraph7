@@ -36,6 +36,15 @@ import json
 import tomllib
 import argparse
 
+_PRECISION_2_FPTYPE = {"all64": "d", "all32": "f", "color32": "m", "denom64": "v"}
+
+
+def fptype_of(precision: str) -> str:
+    """[run] precision -> FPTYPE the matrix elements were compiled with (as
+    fptype_of() in launch.py, which this standalone script can't import)."""
+    return _PRECISION_2_FPTYPE.get(str(precision).lower(), str(precision).lower())
+
+
 def resolve_verbosity(verbosity: str) -> str:
     """Resolve the run_card "auto" verbosity to "pretty"/"log" depending on
     whether stdout is attached to a terminal; other values pass through
@@ -279,6 +288,8 @@ def main() -> None:
     # run-time matrix-element parameters (bwcutoff) of the run that made the
     # gridpack; gridpacks written before they were recorded used the default
     me_parameters = madspace_data.get("me_parameters", {})
+    # the FPTYPE the matrix elements were compiled with ({fptype} in me_path)
+    fptype = fptype_of(run_args["precision"])
     globals_path = os.path.join("data", "globals.tar")
     for context in contexts:
         context.load_globals(globals_path)
@@ -292,7 +303,7 @@ def main() -> None:
     for context, backend in zip(contexts, backends):
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
-                me_path.format(device=backend), param_card_path, me_parameters
+                me_path.format(device=backend, fptype=fptype), param_card_path, me_parameters
             )
 
     # set up generators
@@ -448,7 +459,9 @@ def load_systematics(run_card, backends=(), param_card_path=None,
             if i not in need:
                 matrix_elements.append(None)
                 continue
-            lib = me_path.format(device=backend)
+            lib = me_path.format(
+                device=backend, fptype=fptype_of(run_card["run"]["precision"])
+            )
             if not os.path.exists(lib):
                 print("WARNING systematics: %s not found, mu_R variations of the "
                       "mixed-order subprocesses are dropped" % lib)
