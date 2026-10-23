@@ -4,15 +4,20 @@
 Format. A v2 virtual process is published in the ordinary schema-v3 artifact
 envelope under the runtime capability ``rusticol.loop-runtime.v4``:
 
-* ``processes/<id>/loop-runtime.pacbin`` holds one member of kind
+* ``processes/<id>/loop-runtime.pacbin`` holds a member of kind
   ``LOOP_RUNTIME_PLAN``, ``schedule/loop-plan-v4.json.zlib``: the plan v4
   program of ``plan_export`` (zlib-compressed JSON, schedule B; the forward
   oracle F is not stored) that the native ``V2Executor`` validates and runs.
   Its kernels are exact polynomial term lists interpreted natively
   (``loop_v2/dress.rs``): no compiled code, so nothing depends on the build
-  host's CPU features or paths.
-* ``processes/<id>/execution.json`` (schema 4) records the plan's SHA-256,
-  ``point_inputs`` and the generation request (process, coupling orders,
+  host's CPU features or paths. A process with certified-scaleless families
+  also stores their companion plan (``LoopSlice.scaleless``),
+  ``schedule/loop-plan-v4-scaleless.json.zlib``, which only the ``"uv"``
+  and ``"ir"`` pole selections run (design §12.4): one artifact serves all
+  four selections.
+* ``processes/<id>/execution.json`` (schema 4) records the plan's SHA-256
+  (and the companion's, or null), ``point_inputs`` and the generation
+  request (process, coupling orders,
   corrections, fixed parameters, colour accuracy and continuation, seed
   contraction, the resolved correlator declarations);
   ``processes/<id>/physics.json`` (schema 2) the public catalogue
@@ -94,9 +99,12 @@ from pyamplicol.api.virtual_results import (
     VirtualLaneDiagnostic,
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
+    VirtualPoleParts,
     VirtualStabilityPolicy,
     computes_poles,
+    splits_poles,
 )
+from pyamplicol.api.virtual_results import POLE_COMPONENTS, POLE_ORIGINS
 from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.generation.evaluator_container import (
     PacbinMemberKind,
@@ -110,6 +118,11 @@ from pyamplicol.loops.strategy import R2Selection
 from .families import Orders, add_orders
 
 PLAN_MEMBER = "schedule/loop-plan-v4.json.zlib"
+# The companion plan of the certified-scaleless families (rusticol-core
+# ``loop_runtime::LOOP_PROGRAM_V4_SCALELESS_MEMBER``).
+SCALELESS_PLAN_MEMBER = "schedule/loop-plan-v4-scaleless.json.zlib"
+# The pole selections of artifacts written before the UV/IR split.
+POLES_BEFORE_SPLIT = ("all", "none")
 ENGINE = "v2"
 # Generation objects of recently generated or loaded processes, keyed by the
 # compiled-model payload digest, the request record and the plan digest. A
@@ -335,34 +348,48 @@ def plan_digest(plan_json: str) -> str:
     return hashlib.sha256(plan_json.encode()).hexdigest()
 
 
-def write_plan(plan_json: str, destination: Path) -> None:
+def write_plan(
+    plan_json: str, destination: Path, scaleless_json: str | None = None
+) -> None:
     """Write the plan v4 PACBIN (its digest is ``GeneratedProcess.plan_sha256``,
-    computed once from the same JSON)."""
+    computed once from the same JSON), with the companion plan of the
+    certified-scaleless families when the process has one."""
 
-    payload = zlib.compress(plan_json.encode(), 6)
-    staged = destination.with_name(destination.name + ".member")
-    staged.write_bytes(payload)
+    plans = [(PLAN_MEMBER, plan_json)]
+    if scaleless_json is not None:
+        plans.append((SCALELESS_PLAN_MEMBER, scaleless_json))
+    staged = []
     try:
+        for index, (member, text) in enumerate(plans):
+            path = destination.with_name(f"{destination.name}.member{index}")
+            path.write_bytes(zlib.compress(text.encode(), 6))
+            staged.append(path)
         write_pacbin(
             destination,
-            (
-                PacbinMemberSource(
-                    PLAN_MEMBER, PacbinMemberKind.LOOP_RUNTIME_PLAN, staged
-                ),
+            tuple(
+                PacbinMemberSource(member, PacbinMemberKind.LOOP_RUNTIME_PLAN, path)
+                for (member, _text), path in zip(plans, staged, strict=True)
             ),
         )
     finally:
-        staged.unlink()
+        for path in staged:
+            path.unlink()
 
 
-def read_plan(path: Path) -> str:
-    """The plan v4 JSON of a ``loop-runtime.pacbin`` (payload digests checked)."""
+def read_plan(path: Path, member: str = PLAN_MEMBER) -> str | None:
+    """A plan v4 JSON of a ``loop-runtime.pacbin`` (payload digests checked):
+    the process plan, or with ``member=SCALELESS_PLAN_MEMBER`` the companion
+    plan (None when absent)."""
 
     with PacbinReader.open(path) as reader:
-        member = reader.member(PLAN_MEMBER)
-        if member.kind != PacbinMemberKind.LOOP_RUNTIME_PLAN:
+        if member != PLAN_MEMBER and member not in {
+            item.logical_path for item in reader.members
+        }:
+            return None
+        found = reader.member(member)
+        if found.kind != PacbinMemberKind.LOOP_RUNTIME_PLAN:
             raise ArtifactError("loop runtime member is not a plan v4")
-        compressed = reader.read_member(PLAN_MEMBER, length=member.length)
+        compressed = reader.read_member(member, length=found.length)
     return zlib.decompress(compressed).decode()
 
 
@@ -372,13 +399,16 @@ def read_plan(path: Path) -> str:
 @dataclass(frozen=True)
 class GeneratedProcess:
     """One process generated through v2: its observables (and slice), plan
-    and public catalogue. Frozen: ``plan_sha256`` is cached from
-    ``plan_json``."""
+    and public catalogue, and the companion plan of its certified-scaleless
+    families (``LoopSlice.scaleless``; None without them). Frozen: the
+    digests are cached from the plan JSON."""
 
     observables: Any
     exported: Any
     request: Mapping[str, Any]
     plan_json: str
+    scaleless_exported: Any = None
+    scaleless_plan_json: str | None = None
 
     @property
     def slice(self) -> Any:
@@ -387,6 +417,27 @@ class GeneratedProcess:
     @cached_property
     def plan_sha256(self) -> str:
         return plan_digest(self.plan_json)
+
+    @cached_property
+    def scaleless_plan_sha256(self) -> str | None:
+        if self.scaleless_plan_json is None:
+            return None
+        return plan_digest(self.scaleless_plan_json)
+
+    def executor(self) -> Any:
+        """A native executor of the slice on the stored plans."""
+
+        from .plan_export import NativeExecutor
+
+        scaleless = None
+        if self.scaleless_exported is not None:
+            scaleless = (self.scaleless_exported, cast(str, self.scaleless_plan_json))
+        return NativeExecutor(
+            self.slice,
+            exported=self.exported,
+            plan_json=self.plan_json,
+            scaleless=scaleless,
+        )
 
     def born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
         amplitudes = tuple(self.slice.blocks.born_orders)
@@ -496,11 +547,22 @@ def generate_process(
         request.fixed_parameters,
     )
     exported = export_plan(observables.slice, forward=False)
+    # The companion plan of the certified-scaleless families, which the "uv"
+    # and "ir" pole selections run (design §12.4).
+    companion = observables.slice.scaleless
+    scaleless = None if companion is None else export_plan(companion, forward=False)
     resolved = CorrelatorConfig(
         tuple(observables.histories), tuple(observables.spin_classes)
     )
     record = request_record(request, resolved if declared else None)
-    generated = GeneratedProcess(observables, exported, record, exported.json())
+    generated = GeneratedProcess(
+        observables,
+        exported,
+        record,
+        exported.json(),
+        scaleless,
+        None if scaleless is None else scaleless.json(),
+    )
     _remember(model_digest(compiled.to_dict()) if model is None else model, generated)
     return generated
 
@@ -676,7 +738,6 @@ class V2VirtualRuntime:
         )
 
         from .observables import admit_member
-        from .plan_export import NativeExecutor
 
         if stability is not None:
             raise CompatibilityError(_NO_RESCUE)
@@ -722,6 +783,16 @@ class V2VirtualRuntime:
                     "stored one: it was written by a different pyAmpliCol build; "
                     "regenerate the artifact"
                 )
+        physics_poles = tuple(physics["metadata"]["poles"])
+        if (
+            physics_poles != POLES_BEFORE_SPLIT
+            and generated.scaleless_plan_sha256 != admission["scaleless_plan_sha256"]
+        ):
+            raise ArtifactError(
+                "the companion plan of certified-scaleless families regenerated "
+                "from this artifact differs from the stored one: it was written "
+                "by a different pyAmpliCol build; regenerate the artifact"
+            )
         observables = generated.observables
         member = None
         if group_member is not None:
@@ -740,11 +811,10 @@ class V2VirtualRuntime:
         self._generated = generated
         self._member = member
         self._group_member = group_member
-        self._executor = NativeExecutor(
-            observables.slice,
-            exported=generated.exported,
-            plan_json=generated.plan_json,
-        )
+        # The pole selections the artifact serves (``"all"`` and ``"none"``
+        # only when it was written before the UV/IR split).
+        self._poles = tuple(PoleSelection(item) for item in physics_poles)
+        self._executor = generated.executor()
         self._parameters = self._checked_parameters(model_parameters)
         self._observables = V2ObservablesRuntime(
             observables,
@@ -861,6 +931,7 @@ class V2VirtualRuntime:
                     "engine": ENGINE,
                     **self._metadata,
                     "plan_sha256": self._execution["plan_sha256"],
+                    "scaleless_plan_sha256": self._admission["scaleless_plan_sha256"],
                     "plan_bytes": self._admission["plan_bytes"],
                     "point_inputs": self._execution["point_inputs"],
                     "native_admission": {
@@ -932,6 +1003,12 @@ class V2VirtualRuntime:
             stability_checks=stability_checks,
             on_failure=on_failure,
         )
+        if selection not in self._poles:
+            raise CompatibilityError(
+                f"this artifact serves the pole selections "
+                f"{[item.value for item in self._poles]}: it was written before "
+                "the UV/IR pole split; regenerate it to select 'uv' or 'ir'"
+            )
         # v2_options refused direct R2.
         r2 = self._default_r2 if r2_strategy is None else R2Strategy(r2_strategy)
         carrier, setting = self._carrier(arithmetic, precision)
@@ -941,7 +1018,7 @@ class V2VirtualRuntime:
         with self._lock:
             parameters = dict(self._parameters)
             results, failures = self._run(
-                points, scales, parameters, setting, computes_poles(selection), checks
+                points, scales, parameters, setting, selection, checks
             )
         if failures and on_failure == "raise":
             index = min(failures)
@@ -957,12 +1034,13 @@ class V2VirtualRuntime:
         scales: list[str],
         parameters: dict[str, str],
         setting: Any,
-        with_poles: bool,
+        poles: PoleSelection,
         checks: VirtualStabilityChecks,
     ) -> tuple[list[Any], dict[int, list[str]]]:
-        """One batch through the native executor: the per-point results
-        (``None`` for a failed point) and the failures (a failed point fails
-        alone, ``plan_export.FailedPoints``)."""
+        """One batch through the native executor in the pole mode ``poles``
+        (``loops.v2.poles``): the per-point results (``None`` for a failed
+        point) and the failures (a failed point fails alone,
+        ``plan_export.FailedPoints``)."""
 
         from .plan_export import FailedPoints
 
@@ -976,7 +1054,7 @@ class V2VirtualRuntime:
                         scales,
                         parameters=parameters,
                         precision=setting,
-                        poles=with_poles,
+                        poles=poles.value,
                         stability=checks.to_checks() if checks.enabled else None,
                     )
                 ),
@@ -1012,12 +1090,14 @@ class V2VirtualRuntime:
         values: list[tuple[LaurentCoefficients, ...] | None] = []
         diagnostics: list[VirtualLaneDiagnostic] = []
         estimates: list[VirtualStabilityEstimate | None] = []
+        parts: list[VirtualPoleParts | None] = []
         for index, result in enumerate(results):
             if result is None:
                 reason = "; ".join(failures.get(index, ["failed"]))
                 born_values.append(None)
                 values.append(None)
                 estimates.append(None)
+                parts.append(None)
                 diagnostics.append(
                     VirtualLaneDiagnostic(
                         "failed",
@@ -1055,6 +1135,7 @@ class V2VirtualRuntime:
                 )
             )
             estimates.append(v2_public_estimate(result.stability, with_poles))
+            parts.append(self._pole_parts(result) if splits_poles(poles) else None)
             diagnostics.append(
                 VirtualLaneDiagnostic(
                     "success",
@@ -1077,6 +1158,30 @@ class V2VirtualRuntime:
             ),
             poles=poles,
             stability=tuple(estimates) if checks.enabled else None,
+            pole_parts=tuple(parts) if splits_poles(poles) else None,
+        )
+
+    def _pole_parts(self, result: Any) -> VirtualPoleParts:
+        """Both origins' parts of a split result by component
+        (``PointResult.pole_origins``), per public sector."""
+
+        origins = result.pole_origins
+
+        def sectors(origin: str, name: str) -> tuple[LaurentCoefficients, ...]:
+            laurents = {
+                canonical_order(sector): laurent
+                for sector, laurent in origins[origin][name].items()
+            }
+            return tuple(
+                LaurentCoefficients(*laurents[sector.order].coefficients)
+                for sector in self._sectors
+            )
+
+        return VirtualPoleParts(
+            *(
+                {name: sectors(origin, name) for name in POLE_COMPONENTS}
+                for origin in POLE_ORIGINS
+            )
         )
 
     # -- observables (``runtime.virtual.V2ObservablesRuntime``) -----------------
@@ -1184,14 +1289,7 @@ class V2VirtualRuntime:
     def clear(self) -> None:
         """Drop the native executors (and their master caches)."""
         with self._lock:
-            from .plan_export import NativeExecutor
-
-            generated = self._generated
-            self._executor = NativeExecutor(
-                generated.slice,
-                exported=generated.exported,
-                plan_json=generated.plan_json,
-            )
+            self._executor = self._generated.executor()
             self._observables.clear()
 
     def mute_warnings(self) -> None:

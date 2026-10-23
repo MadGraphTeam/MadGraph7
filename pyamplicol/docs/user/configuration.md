@@ -552,11 +552,49 @@ finite part and, with poles, of each pole, plus each check's own budget).
 Without checks no estimate is returned. Escalating to `arithmetic = "arbitrary"`
 is left to the caller; `[evaluation.stability]` rescue policies belong to the
 legacy engine. `poles` is a pole selection (`PoleSelection` in Python):
-`"all"` (the default) or `"none"`; the finite part is the same under both, and
-`"none"` saves the pole work. The CLI spells these `--loop-engine v2`,
-`--poles none`,
+`"all"` (the default), `"none"`, `"uv"` or `"ir"`; the finite part is the same
+under every selection, and `"none"` saves the pole work. The CLI spells these
+`--loop-engine v2`, `--poles {all,none,uv,ir}`,
 `--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT` and
 `--stability-reduction-direction`.
+
+#### Ultraviolet and infrared poles
+
+With `poles = "uv"` or `"ir"` every pole of the Born-virtual interference is
+split by origin, `P/eps = P_UV/eps_UV + P_IR/eps_IR`; the double pole is
+infrared. The returned coefficients are then those of the selected origin:
+
+- `"ir"`: the infrared poles of the renormalised virtual. They equal the poles
+  of `"all"` (Catani's operator), because the renormalised virtual has no
+  ultraviolet pole.
+- `"uv"`: the ultraviolet poles of the renormalised virtual, zero up to
+  rounding. A model states its external-field factors with one eps, so their
+  ultraviolet part is fixed by this zero; an incomplete ultraviolet
+  renormalisation shows instead in the `"ir"` (and `"all"`) poles, which then
+  miss Catani's operator.
+
+Both selections cost the same and both also return each origin's parts by
+component, `VirtualEvaluation.pole_parts` (per point, `uv` and `ir`, each
+component a Laurent triple per sector; `pole_part(origin, component)` reads one):
+`virtual` (renormalised), `bare` (the bare loop), `r2`, `uv_local` (the model's
+coupling and mass counterterms), `uv_external_fields` (the on-shell field
+factors, whose ultraviolet part follows from the ultraviolet finiteness of the
+renormalised virtual) and `uv` (`uv_local + uv_external_fields`). So `"uv"`
+shows the bare-loop UV poles and their cancellation against the counterterms
+term by term. In Python:
+
+```python
+result = runtime.evaluate(points, mu_r2=scales, poles="uv")
+bare_uv = result.pole_part("uv", "bare")          # [point][sector] (finite, 1/eps_UV, 0)
+counterterms_uv = result.pole_part("uv", "uv")    # the opposite, to rounding
+```
+
+The selection is a runtime option: the same artifact serves all four (it stores
+the companion plan of its certified-scaleless loop families, which only `"uv"`
+and `"ir"` evaluate; at g g > g g g g they cost about 20 % more than `"all"`).
+Artifacts written before the split serve `"all"` and `"none"` and refuse
+`"uv"`/`"ir"` with a request to regenerate. Correlated and resolved outputs
+take `"all"` or `"none"`.
 
 Current v2 scope: model-supplied R2; full, NLC or LC colour (LC/NLC with the
 model's source colour declaration); double, double-double and arbitrary
@@ -565,8 +603,9 @@ correlations declared at generation (`correlators`); helicity-resolved output
 (also per Born colour component at LC; one contracted component at NLC and full
 colour); exact flavour grouping (`process.flavor_blind`: an identity-port member
 such as `s s~ > g g` of `d d~ > g g` is served by its representative). `poles`
-and `[evaluation.stability_checks]` apply to correlated and resolved evaluations
-too (resolved estimates are per helicity row and colour component).
+(`"all"` or `"none"`) and `[evaluation.stability_checks]` apply to correlated
+and resolved evaluations too (resolved estimates are per helicity row and colour
+component).
 
 Coupling orders. The loop orders follow the process's Born amplitude orders:
 one loop amplitude per Born amplitude order (within the process's coupling-order

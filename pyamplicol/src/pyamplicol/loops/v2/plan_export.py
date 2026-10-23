@@ -825,9 +825,12 @@ class NativeExecutor:
         forms: Literal["rule", "fused", "split"] = "rule",
         merged: MergedGraph | bool = False,
         plan_json: str | None = None,
+        scaleless: tuple[ExportedPlan, str] | None = None,
     ):
         if plan_json is not None and exported is None:
             raise ValueError("plan_json is the serialised exported plan")
+        if scaleless is not None and slice_.scaleless is None:
+            raise ValueError("a scaleless companion plan needs the slice's companion")
         if slice_.request.colour_contraction == "fft":
             # The native seeds contract the exported exact weights directly
             # (``seed_records``); an explicit "fft" is refused, not ignored.
@@ -848,6 +851,9 @@ class NativeExecutor:
         self._plan_json = self.exported.json() if plan_json is None else plan_json
         self._native: dict[tuple[str, int | None, int], Any] = {}
         self._scaleless: NativeExecutor | None = None
+        # (exported plan, its JSON) of the companion when the caller holds it
+        # (an artifact's stored companion, ``artifact.GeneratedProcess``).
+        self._scaleless_plan = scaleless
         # Point inputs of the latest ``family_numerators`` calls (oracle
         # comparisons run several schedules and carriers on one batch).
         self._point_inputs: OrderedDict[str, Any] = OrderedDict()
@@ -879,15 +885,19 @@ class NativeExecutor:
     def scaleless(self) -> NativeExecutor | None:
         """The executor of the slice's certified-scaleless families
         (``LoopSlice.scaleless``), which only the "uv" and "ir" pole
-        selections run; built on first use, schedule B only."""
+        selections run; built on first use (from the companion plan given
+        at construction, else exported then), schedule B only."""
 
         if self._scaleless is None and self.slice.scaleless is not None:
+            exported, plan_json = self._scaleless_plan or (None, None)
             self._scaleless = NativeExecutor(
                 self.slice.scaleless,
                 lanes=self.lanes,
                 threads=self.threads,
                 forward=False,
+                exported=exported,
                 forms=self.forms,
+                plan_json=plan_json,
             )
         return self._scaleless
 

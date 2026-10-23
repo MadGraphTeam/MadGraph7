@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
+from types import MappingProxyType
 from typing import Literal, NamedTuple, TypeAlias, cast
 
 from pyamplicol.config import PoleSelection, R2Strategy
@@ -26,7 +27,8 @@ class LaurentCoefficients(NamedTuple):
     """Physical coefficients in the declared C_epsilon convention.
 
     The poles are ``None`` in a finite-only evaluation (``poles="none"``),
-    which never computed them.
+    which never computed them. Under ``poles="uv"`` or ``"ir"`` they are the
+    ultraviolet or infrared parts of the poles (:class:`PoleSelection`).
     """
 
     finite: VirtualScalar
@@ -394,7 +396,7 @@ def _scalar(value: object, correlated: bool, arithmetic: str) -> VirtualScalar:
 
 def pole_selection(value: object) -> PoleSelection:
     """The :class:`PoleSelection` of a public ``poles`` argument (the enum or
-    its value text: ``"all"`` or ``"none"``)."""
+    its value text: ``"all"``, ``"none"``, ``"uv"`` or ``"ir"``)."""
 
     if isinstance(value, PoleSelection):
         return value
@@ -412,6 +414,112 @@ def computes_poles(selection: PoleSelection) -> bool:
     """Whether an evaluation under ``selection`` returns pole coefficients."""
 
     return selection is not PoleSelection.NONE
+
+
+def splits_poles(selection: PoleSelection) -> bool:
+    """Whether an evaluation under ``selection`` splits every pole by origin
+    (``"uv"`` and ``"ir"``; :class:`VirtualPoleParts`)."""
+
+    return selection in (PoleSelection.UV, PoleSelection.IR)
+
+
+# The origins of a split pole and the components whose parts a split
+# evaluation reports (:class:`VirtualPoleParts`).
+POLE_ORIGINS = ("uv", "ir")
+POLE_COMPONENTS = ("virtual", "bare", "uv", "r2", "uv_local", "uv_external_fields")
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualPoleParts:
+    """The ultraviolet and infrared parts of one point's poles by component
+    (evaluations with ``poles="uv"`` or ``"ir"``; design §12.4).
+
+    ``uv[component]`` and ``ir[component]`` hold one
+    :class:`LaurentCoefficients` per virtual sector: the component's finite
+    part (the same under every pole selection) and that origin's single and
+    double poles. Every pole is split as P/eps = P_UV/eps_UV + P_IR/eps_IR,
+    so the two origins add up to the poles of ``poles="all"`` (to rounding);
+    the double pole is infrared. Both origins cost the same, so both are
+    returned whichever of ``"uv"`` and ``"ir"`` was selected. Components:
+
+    * ``virtual``: the renormalised virtual, ``bare + uv + r2``. It has no
+      ultraviolet pole (zero up to rounding); its infrared poles are those
+      of ``poles="all"``, Catani's operator.
+    * ``bare``: the bare loop. Its ultraviolet part is each reduction lane's
+      UV residue (scaleless integrals included, B0(0;0,0) = 1/eps_UV -
+      1/eps_IR), the infrared part the rest.
+    * ``r2``: the rational terms (ultraviolet by origin; finite in
+      ``loop_sm``).
+    * ``uv_local``: the model's ultraviolet counterterms of couplings and
+      masses (ultraviolet by origin).
+    * ``uv_external_fields``: the on-shell external-field factors. A model
+      writes them with one eps (a massive quark's mixes 1/eps_UV and
+      2/eps_IR); their ultraviolet part is fixed by the ultraviolet
+      finiteness of the renormalised virtual, ``-(bare + uv_local + r2)``.
+    * ``uv``: ``uv_local + uv_external_fields``.
+    """
+
+    uv: Mapping[str, tuple[LaurentCoefficients, ...]]
+    ir: Mapping[str, tuple[LaurentCoefficients, ...]]
+
+    def origin(self, origin: str) -> Mapping[str, tuple[LaurentCoefficients, ...]]:
+        if origin not in POLE_ORIGINS:
+            raise ValueError(f"pole origin must be one of {POLE_ORIGINS}")
+        return cast(
+            Mapping[str, tuple[LaurentCoefficients, ...]], getattr(self, origin)
+        )
+
+
+def _pole_parts(
+    parts: object,
+    selection: PoleSelection,
+    diagnostics: tuple[VirtualLaneDiagnostic, ...],
+    sectors: int,
+    correlated: bool,
+) -> tuple[VirtualPoleParts | None, ...] | None:
+    """Validated, frozen per-lane pole parts: present exactly for a split
+    selection, ``None`` for failed lanes."""
+
+    if not splits_poles(selection):
+        if parts is not None:
+            raise ValueError("pole parts exist exactly under poles 'uv' and 'ir'")
+        return None
+    if parts is None:
+        raise ValueError("a uv or ir evaluation carries its pole parts")
+    lanes = tuple(cast(Sequence[object], parts))
+    if len(lanes) != len(diagnostics):
+        raise ValueError("pole parts and diagnostics differ in lane count")
+    out: list[VirtualPoleParts | None] = []
+    for lane, diagnostic in zip(lanes, diagnostics, strict=True):
+        if not diagnostic.valid:
+            if lane is not None:
+                raise ValueError("failed lanes carry no pole parts")
+            out.append(None)
+            continue
+        if not isinstance(lane, VirtualPoleParts):
+            raise TypeError("pole parts are VirtualPoleParts records")
+        frozen = {}
+        for origin in POLE_ORIGINS:
+            components = lane.origin(origin)
+            if set(components) != set(POLE_COMPONENTS):
+                raise ValueError(f"pole parts name the components {POLE_COMPONENTS}")
+            frozen[origin] = MappingProxyType(
+                {
+                    name: cast(
+                        tuple[LaurentCoefficients, ...],
+                        _freeze_axes(
+                            components[name],
+                            (sectors, 3),
+                            correlated,
+                            diagnostic.arithmetic,
+                            True,
+                        ),
+                    )
+                    for name in POLE_COMPONENTS
+                }
+            )
+        out.append(VirtualPoleParts(frozen["uv"], frozen["ir"]))
+    return tuple(out)
 
 
 def _freeze_axes(
@@ -604,7 +712,10 @@ class VirtualEvaluation:
 
     ``poles`` is the :class:`PoleSelection` of the evaluation; under
     ``"none"`` (finite only) the pole coefficients were never computed and
-    are ``None``. ``stability`` holds one
+    are ``None``; under ``"uv"`` and ``"ir"`` they are the ultraviolet or
+    infrared parts of the poles, and ``pole_parts`` holds per lane both
+    origins' parts by component (:class:`VirtualPoleParts`; ``None`` for
+    failed lanes and under ``"all"`` and ``"none"``). ``stability`` holds one
     :class:`VirtualStabilityEstimate` per lane (``None`` for failed lanes)
     when stability checks ran, and is ``None`` when none were requested.
     """
@@ -619,6 +730,7 @@ class VirtualEvaluation:
     color_accuracy: Literal["lc", "nlc", "full"] = "full"
     poles: PoleSelection = PoleSelection.ALL
     stability: tuple[VirtualStabilityEstimate | None, ...] | None = None
+    pole_parts: tuple[VirtualPoleParts | None, ...] | None = None
 
     def __post_init__(self) -> None:
         _common(self, (len(self.born_orders),), (len(self.sectors), 3))
@@ -626,6 +738,17 @@ class VirtualEvaluation:
             self,
             "stability",
             _stability(self.stability, self.diagnostics, computes_poles(self.poles)),
+        )
+        object.__setattr__(
+            self,
+            "pole_parts",
+            _pole_parts(
+                self.pole_parts,
+                self.poles,
+                self.diagnostics,
+                len(self.sectors),
+                self.correlated,
+            ),
         )
 
     @property
@@ -671,6 +794,23 @@ class VirtualEvaluation:
     def double_pole(self) -> OrderCoefficients:
         return self.coefficient(-2)
 
+    def pole_part(self, origin: str, component: str = "virtual") -> VirtualValues:
+        """One origin's (``"uv"`` or ``"ir"``) Laurent coefficients of one
+        component (:data:`POLE_COMPONENTS`) per lane and sector, from an
+        evaluation with ``poles="uv"`` or ``"ir"`` (``None`` for failed
+        lanes)."""
+
+        if self.pole_parts is None:
+            raise ValueError(
+                "only evaluations with poles 'uv' or 'ir' split the poles by origin"
+            )
+        if component not in POLE_COMPONENTS:
+            raise ValueError(f"pole component must be one of {POLE_COMPONENTS}")
+        return tuple(
+            None if parts is None else parts.origin(origin)[component]
+            for parts in self.pole_parts
+        )
+
     def for_order(self, order: CouplingOrders) -> VirtualEvaluation:
         wanted = canonical_order(order)
         for index, sector in enumerate(self.sectors):
@@ -681,6 +821,22 @@ class VirtualEvaluation:
                     values=tuple(
                         None if point is None else (point[index],)
                         for point in self.values
+                    ),
+                    pole_parts=None
+                    if self.pole_parts is None
+                    else tuple(
+                        None
+                        if parts is None
+                        else VirtualPoleParts(
+                            *(
+                                {
+                                    name: (sectors[index],)
+                                    for name, sectors in parts.origin(o).items()
+                                }
+                                for o in POLE_ORIGINS
+                            )
+                        )
+                        for parts in self.pole_parts
                     ),
                 )
         raise ValueError(
@@ -712,7 +868,8 @@ class ResolvedVirtualEvaluation:
     signed interference contributions, never sampling probabilities.
 
     ``poles`` follows :class:`VirtualEvaluation` (a finite-only evaluation
-    has explicitly absent poles). When stability checks ran, ``stability``
+    has explicitly absent poles; resolved outputs take ``"all"`` or
+    ``"none"``). When stability checks ran, ``stability``
     holds per lane one :class:`VirtualStabilityEstimate` per resolved entry,
     indexed ``[helicity][virtual colour component]``, each relative to its own
     entry (``None`` for failed lanes); it is ``None`` when no check was
@@ -754,6 +911,11 @@ class ResolvedVirtualEvaluation:
             (len(self.born_orders), len(self.helicity_ids), len(self.born_color_ids)),
             (len(self.sectors), len(self.helicity_ids), len(self.virtual_color_ids), 3),
         )
+        if splits_poles(self.poles):
+            raise ValueError(
+                "resolved outputs take poles 'all' or 'none'; the uv and ir "
+                "selections serve the inclusive virtual (design §12.4)"
+            )
         object.__setattr__(self, "stability", self._resolved_stability())
 
     def _resolved_stability(

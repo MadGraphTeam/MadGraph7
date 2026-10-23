@@ -48,6 +48,7 @@ from pyamplicol.api.virtual_results import (
     VirtualVerificationDiagnostic,
     computes_poles,
     pole_selection,
+    splits_poles,
 )
 from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.correlators import (
@@ -1100,6 +1101,18 @@ def v2_options(
     return selection, checks
 
 
+def _observable_poles(selection: PoleSelection) -> PoleSelection:
+    """The pole selection of a correlated or resolved v2 call: ``"uv"`` and
+    ``"ir"`` serve the inclusive virtual only (design §12.4)."""
+
+    if splits_poles(selection):
+        raise CompatibilityError(
+            "correlated and resolved v2 virtuals take poles 'all' or 'none'; the "
+            "uv and ir selections serve the inclusive virtual (evaluate)"
+        )
+    return selection
+
+
 class V2ObservablesRuntime:
     """The public virtual-runtime calls over a generated v2 slice's
     observables; the artifact runtime (``loops.v2.artifact.V2VirtualRuntime``)
@@ -1123,7 +1136,9 @@ class V2ObservablesRuntime:
     shape of ``Runtime.evaluate_resolved``).
 
     Every call takes ``poles`` (a ``PoleSelection``; ``"none"`` is the finite
-    part only, poles explicitly absent) and ``stability_checks`` (rotations
+    part only, poles explicitly absent; ``"uv"`` and ``"ir"`` serve the
+    inclusive virtual of ``V2VirtualRuntime.evaluate`` only and are refused
+    here) and ``stability_checks`` (rotations
     and/or the reduction-direction check; requirements addendum C): a
     correlated evaluation then carries one estimate per point and output, a
     resolved one per point and entry (helicity row and colour component);
@@ -1489,6 +1504,7 @@ class V2ObservablesRuntime:
         native batch per source assignment)."""
 
         selection, checks = v2_options(on_failure=on_failure, **options)
+        selection = _observable_poles(selection)
         observables = self._observables
         arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
@@ -1587,7 +1603,7 @@ class V2ObservablesRuntime:
         from pyamplicol.loops.strategy import R2Selection
 
         selection, checks = v2_options(on_failure=on_failure, **options)
-        with_poles = computes_poles(selection)
+        with_poles = computes_poles(_observable_poles(selection))
         observables = self._observables
         arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)

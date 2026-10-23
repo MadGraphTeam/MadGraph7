@@ -68,6 +68,47 @@ def _stability_table(result: Any, prettytable: Any) -> Any:
     return table
 
 
+def _pole_parts_table(result: Any, prettytable: Any) -> Any:
+    """Both origins' pole parts per component (``poles`` "uv" or "ir"), or
+    None."""
+
+    parts = getattr(result, "pole_parts", None)
+    if parts is None:
+        return None
+    table = prettytable.PrettyTable(
+        (
+            "point",
+            "virtual squared order",
+            "origin",
+            "component",
+            "single pole [-1]",
+            "double pole [-2]",
+        )
+    )
+    table.title = "Pole parts by origin (P/eps = P_UV/eps_UV + P_IR/eps_IR)"
+    table.align = "l"
+    table.hrules = prettytable.HRuleStyle.FRAME
+    for point, lane in enumerate(parts):
+        if lane is None:
+            table.add_row((point, "", "", "", "unavailable", ""))
+            continue
+        for index, sector in enumerate(result.sectors):
+            for origin in ("uv", "ir"):
+                for component, values in lane.origin(origin).items():
+                    laurent = values[index]
+                    table.add_row(
+                        (
+                            point,
+                            _order(sector.order),
+                            origin,
+                            component,
+                            _scalar(laurent.single_pole),
+                            _scalar(laurent.double_pole),
+                        )
+                    )
+    return table
+
+
 def virtual_evaluation_summary(
     result: VirtualEvaluation | ResolvedVirtualEvaluation, *, prettytable: Any
 ) -> str:
@@ -200,7 +241,16 @@ def virtual_evaluation_summary(
         )
     if result.poles is PoleSelection.NONE:
         header += "\nFinite-only evaluation: the poles were not computed."
+    elif result.poles in (PoleSelection.UV, PoleSelection.IR):
+        origin = "Ultraviolet" if result.poles is PoleSelection.UV else "Infrared"
+        header += (
+            f"\n{origin} parts of the poles (the double pole is infrared); "
+            "both origins' parts per component follow."
+        )
     tables = [born, virtual, pairs, status]
+    parts = _pole_parts_table(result, prettytable)
+    if parts is not None:
+        tables.append(parts)
     stability = _stability_table(result, prettytable)
     if stability is not None:
         tables.append(stability)

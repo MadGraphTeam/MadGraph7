@@ -195,9 +195,9 @@ class LoopV2ExecutionMetadata:
     columns are contracted directly (``color_contraction`` is "auto" or
     "direct"; generation refuses the forced seed FFT). ``poles`` lists the
     pole selections an evaluation may request (``PoleSelection``: every pole,
-    or none for the finite part only); stability estimates come from the
-    requested checks, and escalating the arithmetic is the caller's decision
-    (``rescue_policy``).
+    none for the finite part only, or their ultraviolet or infrared parts;
+    design §12.4); stability estimates come from the requested checks, and
+    escalating the arithmetic is the caller's decision (``rescue_policy``).
     """
 
     scheme: LoopSchemeDeclaration
@@ -295,11 +295,14 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
 
     ``request`` is the slice request record (``loops.v2.artifact``) from which
     the runtime rebuilds the Python per-point inputs; ``plan_sha256`` is the
-    digest of the stored plan JSON.
+    digest of the stored plan JSON and ``scaleless_plan_sha256`` that of the
+    stored companion plan of the certified-scaleless families (None without
+    them; ``loops.v2.artifact.SCALELESS_PLAN_MEMBER``).
     """
 
     request: dict[str, object] | None = None
     plan_sha256: str = ""
+    scaleless_plan_sha256: str | None = None
     state_legs: tuple[dict[str, object], ...] = ()
     helicities: tuple[tuple[int, ...], ...] = ()
 
@@ -313,6 +316,10 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
             )
         if self.request is None or len(self.plan_sha256) != 64:
             raise ValueError("v2 loop processes record their request and plan digest")
+        if self.scaleless_plan_sha256 is not None and len(
+            self.scaleless_plan_sha256
+        ) != 64:
+            raise ValueError("a companion plan digest is a SHA-256")
         if len(self.state_legs) != len(self.external_pdgs) or not self.helicities:
             raise ValueError("v2 loop processes declare their legs and helicities")
 
@@ -348,6 +355,7 @@ def _v2_process_payloads(
         "required_runtime_capabilities": [LOOP_V2_RUNTIME_CAPABILITY],
         "runtime_path": LOOP_RUNTIME_PATH,
         "plan_sha256": process.plan_sha256,
+        "scaleless_plan_sha256": process.scaleless_plan_sha256,
         "point_inputs": LOOP_V2_POINT_INPUTS,
         "request": process.request,
     }

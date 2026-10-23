@@ -617,8 +617,10 @@ class Runtime:
         Invalid inputs and unsupported capabilities still raise.
 
         Virtual runtimes of the v2 engine also accept ``poles`` (a
-        :class:`PoleSelection`: ``"all"``, the default, or ``"none"``, which
-        computes the finite part only; the poles are then ``None``), and
+        :class:`PoleSelection`: ``"all"``, the default; ``"none"``, which
+        computes the finite part only, the poles are then ``None``; ``"uv"``
+        or ``"ir"``, the ultraviolet or infrared parts of the poles, with both
+        origins' parts by component in ``VirtualEvaluation.pole_parts``), and
         ``stability_checks`` (rotations and/or the reduction-direction check),
         which add a stability estimate per point; without checks no estimate
         is returned.
@@ -896,7 +898,8 @@ class Runtime:
         Omitted precision uses the runtime's load-time default, or 16 when the
         backend has no precision default, as in :meth:`evaluate`.
         ``poles`` and ``stability_checks`` follow :meth:`evaluate` (v2 virtual
-        runtimes; the estimates are per resolved entry).
+        runtimes; the estimates are per resolved entry; resolved outputs take
+        poles ``"all"`` or ``"none"``).
         """
 
         precision = _validate_precision(
@@ -1155,7 +1158,8 @@ class Runtime:
         digits until conversion into the requested arithmetic.
         ``on_failure`` follows :meth:`evaluate`, preserving complex successful
         values and unavailable whole-point entries. ``poles`` and
-        ``stability_checks`` follow :meth:`evaluate` (v2 virtual runtimes).
+        ``stability_checks`` follow :meth:`evaluate` (v2 virtual runtimes;
+        correlated outputs take poles ``"all"`` or ``"none"``).
         """
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
@@ -1225,7 +1229,7 @@ class Runtime:
         With ``on_failure="return"``, distinct source assignments can have
         different failure masks; every labelled result retains input positions.
         ``poles`` and ``stability_checks`` follow :meth:`evaluate` (v2 virtual
-        runtimes).
+        runtimes; correlated outputs take poles ``"all"`` or ``"none"``).
         """
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
