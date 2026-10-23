@@ -1524,15 +1524,34 @@ class BornBasis:
 
     @cached_property
     def gram(self) -> tuple[tuple[Laurent, ...], ...]:
-        """<b|b'> as exact Laurent polynomials (the tree engine's Born metric)."""
+        """<b|b'> as exact Laurent polynomials (the tree engine's Born metric).
 
-        return tuple(
-            tuple(
-                contract_connected_tensor_nc_terms(left, right)
-                for right in self.tensors
-            )
-            for left in self.tensors
+        The external adjoint labels are summed, so <b|b'> = <pi b|pi b'> for
+        every permutation pi of them. Row b is relabelled by the permutation
+        that numbers its adjoint labels in reading order (``_adjoint_rename``),
+        and each distinct relabelled pair is contracted once: a single-trace
+        gluon basis of n legs contracts (n-1)! pairs instead of (n-1)!^2.
+        """
+
+        adjoint = sorted(
+            leg.label for leg in self.legs if leg.representation == ADJOINT
         )
+        cells: dict[tuple[Hashable, Hashable], Laurent] = {}
+        rows = []
+        for left in self.tensors:
+            rename = _adjoint_rename(left, adjoint)
+            key = _relabelled_key(left, rename)
+            row = []
+            for right in self.tensors:
+                pair = (key, _relabelled_key(right, rename))
+                found = cells.get(pair)
+                if found is None:
+                    found = cells[pair] = contract_connected_tensor_nc_terms(
+                        _relabelled(left, rename), _relabelled(right, rename)
+                    )
+                row.append(found)
+            rows.append(tuple(row))
+        return tuple(rows)
 
     def degree(self, pairs: Iterable[SectorPair]) -> int | None:
         """Leading N_c degree of a Born squared-order sector (its own P)."""
@@ -1544,6 +1563,65 @@ class BornBasis:
             for b2, cell in enumerate(row)
             if any((a, a2) in pairs for a in self.orders[b] for a2 in self.orders[b2])
         )
+
+
+ADJOINT = 8
+
+
+def _adjoint_rename(
+    tensor: ConnectedColorTensor, adjoint: Sequence[int]
+) -> dict[int, int]:
+    """The permutation of the adjoint labels ``adjoint`` (sorted) that numbers
+    them in the order ``tensor`` reads them (terms, then open strings, then
+    traces, as stored); labels it does not read keep the remaining ones."""
+
+    order: list[int] = []
+    seen: set[int] = set()
+    members = set(adjoint)
+    for term in tensor.terms:
+        colour = term.tensor
+        labels = [a for string in colour.open_strings for a in string.adjoint_labels]
+        labels += [a for trace in colour.traces for a in trace]
+        for label in labels:
+            if label in members and label not in seen:
+                seen.add(label)
+                order.append(label)
+    order += [label for label in adjoint if label not in seen]
+    return dict(zip(order, adjoint, strict=True))
+
+
+def _relabelled_key(
+    tensor: ConnectedColorTensor, rename: Mapping[int, int]
+) -> Hashable:
+    """A key of ``_relabelled(tensor, rename)``: equal exactly for equal
+    tensors (open strings and traces in canonical order and rotation)."""
+
+    def label(a: int) -> int:
+        return rename.get(a, a)
+
+    return tensor.normalization_power, frozenset(
+        (
+            term.coefficient,
+            term.nc_power,
+            tuple(
+                sorted(
+                    (
+                        string.fundamental_label,
+                        tuple(map(label, string.adjoint_labels)),
+                        string.antifundamental_label,
+                    )
+                    for string in term.tensor.open_strings
+                )
+            ),
+            tuple(
+                sorted(
+                    _canonical_rotation(tuple(map(label, trace)))
+                    for trace in term.tensor.traces
+                )
+            ),
+        )
+        for term in tensor.terms
+    )
 
 
 def born_basis(blocks: TreeBlocks) -> BornBasis:
