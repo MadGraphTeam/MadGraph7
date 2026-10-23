@@ -370,8 +370,43 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
             # their momentum (offshell_mass, backend/*/SigmaKin.cc)
             sorted(wf.get('number_external')
                    for wf in matrix_element.get_external_wavefunctions()
-                   if wf.get('offshell'))))
+                   if wf.get('offshell')),
+            self.scale_dependence(matrix_element)))
         return out
+
+    @staticmethod
+    def scale_dependence(matrix_element):
+        """What makes the matrix element depend on the renormalisation scale
+        beyond alpha_s: the couplings and the masses/widths it uses that depend
+        on MU_R, and the running elements of the model. The libraries compute
+        their couplings from G alone and keep MU_R at its param-card value,
+        while the Fortran output sets MU_R from the event scale
+        (UPDATE_AS_PARAM2): a caller passing per-event scales needs the
+        Fortran one when this is not empty."""
+        model = matrix_element.get('processes')[0].get('model')
+        scale_keys = [key for key in model.get('couplings')
+                      if 'MU_R' in key]
+        scale_coups = set(coup.name for key in scale_keys
+                          for coup in model.get('couplings')[key])
+        used = set()
+        for entry in matrix_element.get_used_couplings():
+            for coup in (entry if isinstance(entry, list) else [entry]):
+                if isinstance(coup, str):
+                    used.add(coup.lstrip('-'))
+                else:
+                    used.add(coup.get('name'))
+                    used.update(str(c).lstrip('-')
+                                for c in coup.get('flavors').values())
+        reasons = sorted(used & scale_coups)
+        scale_params = set(param.name for key, params in model.get('parameters').items()
+                           if 'MU_R' in key for param in params)
+        for wf in matrix_element.get_all_wavefunctions():
+            for name in (wf.get('mass'), wf.get('width')):
+                if name in scale_params and name not in reasons:
+                    reasons.append(name)
+        if model.get('running_elements'):
+            reasons.append('running elements of the model')
+        return reasons
 
     def finalize(self, *args, **kwargs):
         # no subprocesses.json (nor anything else the mg7 launcher needs), only
@@ -383,11 +418,12 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         (with the make variables LIBTAG and BACKEND left as '{libtag}' and
         '{backend}'), its legs, the processes it evaluates, its off-shell legs
         and, per flavor index, every pdg combination (in the leg order of the
-        process) that this index stands for."""
+        process) that this index stands for, and what of it depends on the
+        renormalisation scale beyond alpha_s (scale_dependence)."""
         import json
         subprocesses = []
-        for info, (processes, offshell) in zip(self.process_info,
-                                               getattr(self, 'processes_of_subprocess', [])):
+        for info, (processes, offshell, scale) in zip(self.process_info,
+                                                      getattr(self, 'processes_of_subprocess', [])):
             path = os.path.basename(info['path'])
             flavors = []
             for flavor in info['flavors']:
@@ -401,6 +437,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 'legs': list(info['incoming']) + list(info['outgoing']),
                 'processes': processes,
                 'offshell': offshell,
+                # what depends on MU_R besides alpha_s (scale_dependence)
+                'scale_dependence': scale,
                 'flavors': flavors})
         with open(pjoin(self.dir_path, 'SubProcesses', self.processes_file), 'w') as fsock:
             json.dump({'subprocesses': subprocesses}, fsock, indent=1)

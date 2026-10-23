@@ -5637,6 +5637,14 @@ class decay_all_events_onshell(decay_all_events):
             logger.info(commandline)
             try:
                 self.mgcmd.exec_cmd(commandline, precmd=True)
+                dependent = madmatrix_density.scale_dependence(path)
+                if dependent:
+                    # couplings depending on MU_R: the Fortran output sets it
+                    # from each event's scale, madmatrix keeps the card value
+                    raise madmatrix_density.MadDensityError(
+                        'MU_R-dependent couplings (%s)' % '; '.join(
+                            '%s: %s' % (p, ', '.join(r))
+                            for p, r in sorted(dependent.items())))
                 misc.compile(madmatrix_density.make_variables(
                                  libtag=self.density_libtag(side)),
                              cwd=pjoin(path, 'SubProcesses'), mode='cpp',

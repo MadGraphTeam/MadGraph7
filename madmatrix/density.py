@@ -48,6 +48,18 @@ def is_output(path):
     return os.path.exists(os.path.join(path, 'SubProcesses', PROCESSES_FILE))
 
 
+def scale_dependence(output_dir):
+    """{subprocess: what depends on MU_R besides alpha_s} of the output: the
+    couplings, masses and widths the Fortran output re-evaluates at the event
+    scale (UPDATE_AS_PARAM2) and these libraries keep at the param card's MU_R.
+    Empty when alpha_s is all the scale enters through, i.e. when the alpha_s
+    passed with each point carries the whole scale dependence."""
+    with open(os.path.join(output_dir, 'SubProcesses', PROCESSES_FILE)) as fsock:
+        entries = json.load(fsock)['subprocesses']
+    return dict((entry['path'], entry['scale_dependence']) for entry in entries
+                if entry.get('scale_dependence'))
+
+
 def make_variables(backend='scalar', libtag=''):
     """The make variables building what this module loads (the libraries, not
     the standalone check_sa.exe) when make runs in SubProcesses. DENSITY=1
@@ -195,6 +207,18 @@ class MadDensityLibrary(object):
                                   % (output_dir, table))
         with open(table) as fsock:
             entries = json.load(fsock)['subprocesses']
+        # The libraries take alpha_s per point and nothing else of the scale:
+        # a process whose couplings depend on MU_R as well would silently be
+        # evaluated at the param card's MU_R
+        dependent = dict((entry['path'], entry['scale_dependence'])
+                         for entry in entries if entry.get('scale_dependence'))
+        if dependent:
+            raise MadDensityError(
+                '%s depends on the renormalisation scale beyond alpha_s (%s), which '
+                'madmatrix keeps at its param-card value: evaluate it with the '
+                'Fortran standalone output' % (output_dir, '; '.join(
+                    '%s: %s' % (path, ', '.join(reasons))
+                    for path, reasons in sorted(dependent.items()))))
         if libtag is None:
             libtag = find_libtag(output_dir, backend)
         self.libtag = libtag
@@ -464,7 +488,9 @@ class MadDensityLibrary(object):
 
     # ------------------------------------------------------------------
     # the f2py module's evaluation entry points, Fortran momentum layout
-    # P(0:3, npar), i.e. [4][npar]
+    # P(0:3, npar), i.e. [4][npar]. scale2 is accepted and not needed: an
+    # output loads only when alpha_s is all it takes of the scale (the
+    # scale_dependence check of __init__), and alpha_s comes with each point.
     # ------------------------------------------------------------------
     def py_get_density(self, pdgs, procid, p, pos, allow_hel, alphas, scale2):
         return self.density(pdgs, list(zip(*p)), pos, allow_hel, alphas)

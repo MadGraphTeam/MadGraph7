@@ -7206,8 +7206,9 @@ class TestDensityOutputFallback(unittest.TestCase):
     which does not compile (e.g. a model whose parameters the C++ code
     generation cannot write) is replaced by the Fortran output."""
 
-    def _output(self, compile_error=None):
+    def _output(self, compile_error=None, scale_dependence=()):
         import tempfile
+        import json
         commands, builds = [], []
 
         class Cmd(object):
@@ -7215,6 +7216,14 @@ class TestDensityOutputFallback(unittest.TestCase):
 
             def exec_cmd(self, line, precmd=True):
                 commands.append(line)
+                if line.startswith('output standalone '):
+                    # the process table the madmatrix exporter writes
+                    sub = os.path.join(line.split()[2], 'SubProcesses')
+                    os.makedirs(sub, exist_ok=True)
+                    with open(os.path.join(sub, 'madmatrix_processes.json'), 'w') as f:
+                        json.dump({'subprocesses': [
+                            {'path': 'P1_gg_ttx',
+                             'scale_dependence': list(scale_dependence)}]}, f)
 
         stub = type('Stub', (), {})()
         stub.mgcmd = Cmd()
@@ -7253,6 +7262,16 @@ class TestDensityOutputFallback(unittest.TestCase):
         self.assertEqual(backend, 'fortran')
         self.assertEqual(len(builds), 1)
         self.assertTrue(commands[0].startswith('output standalone '))
+        self.assertTrue(commands[1].startswith('output standalone_fortran '))
+
+    def test_scale_dependence_falls_back_to_fortran(self):
+        """Couplings depending on MU_R: madmatrix would keep the card's MU_R
+        where the Fortran output takes each event's scale, so the Fortran
+        output is written instead, before anything is compiled."""
+        backend, commands, builds, _ = self._output(
+            scale_dependence=['running elements of the model'])
+        self.assertEqual(backend, 'fortran')
+        self.assertEqual(builds, [])
         self.assertTrue(commands[1].startswith('output standalone_fortran '))
 
 

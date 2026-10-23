@@ -13122,7 +13122,9 @@ class MadSpinInterface(extended_cmd.Cmd):
                 if event[0].color1 == 599 and event.aqcd==0:
                     new_value = self.all_f2py[pdir](pdg_for_call, p, 0.113, 0)
                 else:
-                    new_value = self.all_f2py[pdir](pdg_for_call, p, event.aqcd, event.scale)
+                    # SCALE2 is the squared scale (MU_R = sqrt(SCALE2) in
+                    # UPDATE_AS_PARAM2), as get_density and the reweighting pass it
+                    new_value = self.all_f2py[pdir](pdg_for_call, p, event.aqcd, event.scale**2)
                 #if the process is Loop-Induced, smatrixhel returns the tuple (value, returncode), we need to keep only the value
                 if isinstance(new_value, tuple):
                     new_value = new_value[0]
@@ -13214,17 +13216,19 @@ class MadSpinInterface(extended_cmd.Cmd):
 
     @staticmethod
     def _matrix_element_call(module):
-        """(pdgs, momenta, alpha_s, scale) -> the helicity-summed |M|^2 of
+        """(pdgs, momenta, alpha_s, scale2) -> the helicity-summed |M|^2 of
         module, the momenta being (E, px, py, pz) per leg in the leg order of the
-        process."""
+        process and scale2 the squared renormalisation scale (0: keep MU_R)."""
         if isinstance(module, madmatrix_density.MadDensityLibrary):
-            return lambda pdg_list, p, alphas, scale: \
+            # alpha_s is all of the scale a madmatrix output loads with (its
+            # scale_dependence check), so scale2 has nothing left to set
+            return lambda pdg_list, p, alphas, scale2: \
                 module.matrix_element(pdg_list, p, alphas)
         # f2py: momenta as the Fortran P(0:3, NEXTERNAL), and the helicity sum is
         # NHEL = -1
         invert = rwgt_interface.ReweightInterface.invert_momenta
-        return lambda pdg_list, p, alphas, scale: \
-            module.smatrixhel(pdg_list, 0, invert(p), alphas, scale, -1)
+        return lambda pdg_list, p, alphas, scale2: \
+            module.smatrixhel(pdg_list, 0, invert(p), alphas, scale2, -1)
         
         
     def generate_all_matrix_element(self):
