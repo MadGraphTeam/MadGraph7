@@ -43,7 +43,7 @@
 //! it) and is scaled back. This also tests the masters, which no relabelling
 //! of the same invariants (nor a rotation of the point) changes.
 //!
-//! **Finite-only mode.** `poles = false` returns only the finite column; the
+//! **Finite-only mode.** [`Poles::None`] returns only the finite column; the
 //! pole columns are absent, not zero, also in the check.
 //! Nothing else is pole-only on this NinjaRS pin: the reduction coefficients
 //! multiply every Laurent order of the masters, the fast engine contracts
@@ -51,9 +51,20 @@
 //! oneloopmaster returns `[finite, 1/ε, 1/ε²]` from one evaluation of each
 //! master. Numerators are four-dimensional and ε-free here; pole-only ε
 //! sectors, counterterm columns and the IR-pole check belong to their owners.
+//!
+//! **UV and IR poles (DESIGN.md §12.4).** [`Poles::Split`] appends each
+//! lane's ultraviolet residue, `[finite, 1/ε, 1/ε², 1/ε_UV]`, computed exactly
+//! from the lane's own inputs ([`uv_residue`], also in the check's frame);
+//! the combined columns are those of [`Poles::All`] bit for bit, so the
+//! finite part never depends on the selection. NinjaRS 41a4c00 also selects
+//! UV or IR residues at the masters (`ReduceOptions::masters`, oneloopmaster's
+//! `PoleSelection`): its generic engine retains the scaleless bubbles that
+//! carry them, its fast engine refuses a selected provider, and so does this
+//! adapter. The generic engine's selection is the oracle of the residue.
 
 use super::master_cache::{MasterCache, MasterStatistics};
 use super::reduction::{ReductionBatch, Reductions};
+use super::v2_poles::UvResidues;
 use super::*;
 use crate::FourMomentum;
 use ninjars::fast::tensor_layout::{block_offset, monomial_index, monomials, ncoeff};
@@ -61,6 +72,8 @@ use ninjars::fast::{
     C64, FastAmplitude, FastInput, FastOptions, FastResult, FastStatus, RMom, TensorNumerator,
 };
 use ninjars_symbolica::OneLoopNativeMasters;
+pub use ninjars_symbolica::PoleSelection;
+pub use rusticol_core::loop_execution::v2::Poles;
 use std::collections::{BTreeMap, HashMap};
 use symbolica::{domains::float::Real, evaluate::EvaluationDomain};
 
@@ -122,17 +135,23 @@ impl ReductionFrame {
 /// Options of one [`V2Reducer::reduce`] call.
 #[derive(Clone, Copy, Debug)]
 pub struct ReduceOptions {
-    /// Return the 1/ε and 1/ε² coefficients besides the finite part.
-    pub poles: bool,
+    /// The Laurent columns of every lane: finite only, combined, or combined
+    /// plus the ultraviolet residue.
+    pub poles: Poles,
     /// Also reduce every lane in this frame, for a stability estimate.
     pub check: Option<ReductionFrame>,
+    /// Pole residues the masters keep (oneloopmaster's selection, applied
+    /// before the reduction coefficients contract them). Only the generic
+    /// engine accepts a selection other than `BOTH`.
+    pub masters: PoleSelection,
 }
 
 impl Default for ReduceOptions {
     fn default() -> Self {
         Self {
-            poles: true,
+            poles: Poles::All,
             check: None,
+            masters: PoleSelection::BOTH,
         }
     }
 }
@@ -363,14 +382,19 @@ fn rescaling<T: Carrier>(like: &Complex<T>) -> Complex<T> {
 /// Lanes `(group, row)` per (propagators, true rank), in a fixed order.
 type Buckets = BTreeMap<(usize, usize), Vec<(usize, usize)>>;
 
-/// Status and raw Laurent coefficients of one lane.
+/// Status and raw Laurent coefficients of one lane (and its UV residue in
+/// [`Poles::Split`]).
 struct Outcome<T> {
     status: String,
     value: Option<[Complex<T>; 3]>,
+    uv: Option<Complex<T>>,
 }
 
 trait BucketEngine<T> {
     fn reduce(&mut self, input: &BucketInput<T>) -> ExecutionResult<Vec<Outcome<T>>>;
+    /// The carrier's working precision in binary digits (the UV residue
+    /// lifts its inputs to it).
+    fn precision(&self) -> u32;
 }
 
 /// Reduce every lane of `groups` (optionally in `frame`); outcomes per group
@@ -380,11 +404,13 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
     groups: &[Lanes<'_, T>],
     buckets: &Buckets,
     frame: Option<ReductionFrame>,
+    poles: Poles,
 ) -> ExecutionResult<Vec<Vec<Option<Outcome<T>>>>> {
     let mut outcomes: Vec<Vec<Option<Outcome<T>>>> = groups
         .iter()
         .map(|g| (0..g.ids.len()).map(|_| None).collect())
         .collect();
+    let precision = engine.precision();
     for (&(n, rank), members) in buckets {
         let input = BucketInput::gather(groups, n, rank, members, frame);
         // A rescaled frame's integrals are x^(4-2N) times the family's.
@@ -394,10 +420,27 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
             (0..2 * n).fold(x.one(), |power, _| power * &x)
                 * &(0..4).fold(x.one(), |power, _| power * &inverse)
         });
-        for (&(group, row), mut outcome) in members.iter().zip(engine.reduce(&input)?) {
-            if let (Some(factor), Some(value)) = (&undo, &mut outcome.value) {
-                for v in value.iter_mut() {
-                    *v = v.clone() * factor;
+        let width = ncoeff(rank);
+        let residues = (poles == Poles::Split).then(|| UvResidues::new(n, rank));
+        for (lane, (&(group, row), mut outcome)) in
+            members.iter().zip(engine.reduce(&input)?).enumerate()
+        {
+            if let (Some(residues), true) = (&residues, outcome.value.is_some()) {
+                outcome.uv = Some(residues.residue(
+                    &input.shifts[lane * 4 * n..(lane + 1) * 4 * n],
+                    &input.masses[lane * n..(lane + 1) * n],
+                    &input.coefficients[lane * width..(lane + 1) * width],
+                    precision,
+                ));
+            }
+            if let Some(factor) = &undo {
+                if let Some(value) = &mut outcome.value {
+                    for v in value.iter_mut() {
+                        *v = v.clone() * factor;
+                    }
+                }
+                if let Some(uv) = &mut outcome.uv {
+                    *uv = uv.clone() * factor;
                 }
             }
             outcomes[group][row] = Some(outcome);
@@ -433,10 +476,10 @@ fn buckets<T: Carrier>(groups: &[Lanes<'_, T>]) -> ExecutionResult<Buckets> {
 fn output_batches<T: BatchCarrier>(
     groups: &[Lanes<'_, T>],
     outcomes: Vec<Vec<Option<Outcome<T>>>>,
-    poles: bool,
+    poles: Poles,
     bits: u32,
 ) -> ExecutionResult<Vec<ReductionBatch>> {
-    let columns = if poles { 3 } else { 1 };
+    let columns = poles.width();
     groups
         .iter()
         .zip(outcomes)
@@ -448,7 +491,14 @@ fn output_batches<T: BatchCarrier>(
                 let outcome = outcome.ok_or_else(|| error("lane was not reduced"))?;
                 if let Some(value) = outcome.value {
                     ids.push(id);
-                    values.extend(value.into_iter().take(columns));
+                    values.extend(value.into_iter().take(columns.min(3)));
+                    if poles == Poles::Split {
+                        values.push(
+                            outcome
+                                .uv
+                                .ok_or_else(|| error("lane lacks its UV residue"))?,
+                        );
+                    }
                 }
                 statuses.push((id, outcome.status));
             }
@@ -490,6 +540,10 @@ fn real(value: &Complex<f64>, name: &str) -> ExecutionResult<f64> {
 }
 
 impl BucketEngine<f64> for FastEngine {
+    fn precision(&self) -> u32 {
+        f64::MANTISSA_DIGITS
+    }
+
     fn reduce(&mut self, input: &BucketInput<f64>) -> ExecutionResult<Vec<Outcome<f64>>> {
         let (n, rank, lanes) = (input.n, input.rank, input.ids.len());
         let shifts = input
@@ -561,11 +615,13 @@ impl BucketEngine<f64> for FastEngine {
                     Outcome {
                         status: "success".into(),
                         value: Some(result.laurent.map(|z| Complex::new(z.re, z.im))),
+                        uv: None,
                     }
                 } else {
                     Outcome {
                         status: format!("{status:?}"),
                         value: None,
+                        uv: None,
                     }
                 }
             })
@@ -581,6 +637,30 @@ where
 {
     reductions: HashMap<(usize, usize), Reductions<T>>,
     prototype: T,
+    /// The masters' pole selection of every reduction plan.
+    selection: PoleSelection,
+}
+
+impl<T: Carrier> GenericEngine<T>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    fn new(prototype: T) -> Self {
+        Self {
+            reductions: HashMap::new(),
+            prototype,
+            selection: PoleSelection::BOTH,
+        }
+    }
+
+    fn select(&mut self, selection: PoleSelection) {
+        if selection != self.selection {
+            self.selection = selection;
+            for reductions in self.reductions.values_mut() {
+                reductions.set_pole_selection(selection);
+            }
+        }
+    }
 }
 
 fn template(rank: usize) -> (String, Vec<String>) {
@@ -612,17 +692,23 @@ impl<T: Carrier> BucketEngine<T> for GenericEngine<T>
 where
     Complex<T>: Real + EvaluationDomain,
 {
+    fn precision(&self) -> u32 {
+        self.prototype.get_precision()
+    }
+
     fn reduce(&mut self, input: &BucketInput<T>) -> ExecutionResult<Vec<Outcome<T>>> {
         let reductions = match self.reductions.entry((input.n, input.rank)) {
             std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::hash_map::Entry::Vacant(entry) => {
                 let (numerator, parameters) = template(input.rank);
-                entry.insert(Reductions::new(
+                let mut reductions = Reductions::new(
                     &[numerator, "0".into(), "0".into()],
                     &parameters,
                     input.n,
                     self.prototype.clone(),
-                )?)
+                )?;
+                reductions.set_pole_selection(self.selection);
+                entry.insert(reductions)
             }
         };
         let shifts: Vec<_> = input
@@ -649,6 +735,7 @@ where
                         .strip_prefix("epsilon sector 0: ")
                         .map_or(lane.status.clone(), str::to_owned),
                     value: lane.value.map(|v| [v.finite, v.single_pole, v.double_pole]),
+                    uv: None,
                 }
             }));
         }
@@ -687,18 +774,13 @@ impl V2Reducer {
                 Engines::Fast(Box::new(FastEngine::new(cache_masters)?))
             }
             ("fast", _) => return Err(error("fast engine supports only double arithmetic")),
-            ("generic", Arithmetic::Double) => Engines::Double(GenericEngine {
-                reductions: HashMap::new(),
-                prototype: 0_f64,
-            }),
-            ("generic", Arithmetic::DoubleDouble) => Engines::DoubleDouble(GenericEngine {
-                reductions: HashMap::new(),
-                prototype: DoubleFloat::from(0.0),
-            }),
-            ("generic", Arithmetic::Arbitrary) => Engines::Arbitrary(GenericEngine {
-                reductions: HashMap::new(),
-                prototype: Float::with_val(bits, 0),
-            }),
+            ("generic", Arithmetic::Double) => Engines::Double(GenericEngine::new(0_f64)),
+            ("generic", Arithmetic::DoubleDouble) => {
+                Engines::DoubleDouble(GenericEngine::new(DoubleFloat::from(0.0)))
+            }
+            ("generic", Arithmetic::Arbitrary) => {
+                Engines::Arbitrary(GenericEngine::new(Float::with_val(bits, 0)))
+            }
             _ => return Err(error("engine must be fast or generic")),
         };
         Ok(Self {
@@ -756,10 +838,23 @@ impl V2Reducer {
             }};
         }
         match &mut self.engines {
+            Engines::Fast(_) if options.masters != PoleSelection::BOTH => Err(error(
+                "the fast engine keeps every master pole (it drops scaleless bubbles); \
+                 select master poles with the generic engine",
+            )),
             Engines::Fast(engine) => run!(engine.as_mut(), Double),
-            Engines::Double(engine) => run!(engine, Double),
-            Engines::DoubleDouble(engine) => run!(engine, DoubleDouble),
-            Engines::Arbitrary(engine) => run!(engine, Arbitrary),
+            Engines::Double(engine) => {
+                engine.select(options.masters);
+                run!(engine, Double)
+            }
+            Engines::DoubleDouble(engine) => {
+                engine.select(options.masters);
+                run!(engine, DoubleDouble)
+            }
+            Engines::Arbitrary(engine) => {
+                engine.select(options.masters);
+                run!(engine, Arbitrary)
+            }
         }
     }
 }
@@ -771,10 +866,10 @@ fn run<T: BatchCarrier, E: BucketEngine<T>>(
     bits: u32,
 ) -> ExecutionResult<V2Output> {
     let buckets = buckets(groups)?;
-    let direct = reduce_groups(engine, groups, &buckets, None)?;
+    let direct = reduce_groups(engine, groups, &buckets, None, options.poles)?;
     let check = options
         .check
-        .map(|frame| reduce_groups(engine, groups, &buckets, Some(frame)))
+        .map(|frame| reduce_groups(engine, groups, &buckets, Some(frame), options.poles))
         .transpose()?;
     Ok(V2Output {
         direct: output_batches(groups, direct, options.poles, bits)?,
@@ -873,10 +968,7 @@ mod tests {
         let zero = Float::with_val(256, 0);
         let complex = |x: &Float| Complex::new(x.clone(), zero.clone());
         let lanes = masses.len();
-        let engine = GenericEngine {
-            reductions: HashMap::new(),
-            prototype: zero.clone(),
-        };
+        let engine = GenericEngine::new(zero.clone());
         let input = BucketInput {
             n: 1,
             rank: 0,

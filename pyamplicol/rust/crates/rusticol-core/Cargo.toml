@@ -30,7 +30,7 @@ bincode.workspace = true
 flate2 = { workspace = true, optional = true }
 libloading = { version = "0.9", optional = true }
 libc.workspace = true
-ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "aa6a6307dd081dc3714f9accebc0df9e5561ae73", optional = true }
+ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "41a4c00e7635e3ab188fc26bacf0aae6941e8082", optional = true }
 num-complex = { version = "0.4", optional = true }
 rayon.workspace = true
 serde.workspace = true

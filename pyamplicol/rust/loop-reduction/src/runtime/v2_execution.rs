@@ -7,7 +7,9 @@
 //! round trip, and reads back each lane's status and Laurent integrals.
 
 use super::batch::{Batch, BatchCarrier, Data};
-use super::v2_reduce::{FamilyGroup, ReduceOptions, ReductionFrame, V2Reducer};
+use super::v2_reduce::{
+    FamilyGroup, PoleSelection, Poles, ReduceOptions, ReductionFrame, V2Reducer,
+};
 use crate::Complex;
 use rusticol_core::loop_execution::v2::{
     BackendStatistics, FamilyLanes, LaneOutcome, Reduced, V2Backend,
@@ -48,9 +50,13 @@ impl TypedBatch for Float {
     }
 }
 
-/// A [`V2Reducer`] as the executor's reduction backend.
+/// A [`V2Reducer`] as the executor's reduction backend. `masters` is the
+/// masters' pole selection (`BOTH` in production; the generic engine's
+/// selected residues are the oracle and cost reference of the `uv` and `ir`
+/// modes, DESIGN.md §12.4).
 pub struct V2ReductionBackend {
     pub reducer: V2Reducer,
+    pub masters: PoleSelection,
 }
 
 fn failure(error: impl std::fmt::Display) -> RusticolError {
@@ -96,7 +102,7 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
     fn reduce(
         &mut self,
         groups: &[FamilyLanes<T>],
-        poles: bool,
+        poles: Poles,
         check: Option<ReductionCheck>,
     ) -> RusticolResult<Reduced<T>> {
         let bits = self.reducer.precision_bits();
@@ -139,6 +145,7 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
                 ReduceOptions {
                     poles,
                     check: check.map(frame),
+                    masters: self.masters,
                 },
             )
             .map_err(failure)?;
