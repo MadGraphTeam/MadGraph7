@@ -667,6 +667,8 @@ def test_finite_only_and_stability_estimates(full_colour):
     points, scales = fixture["points"], fixture["scales_squared"]
     full = runtime.evaluate(points, mu_r2=scales)
     assert full.poles is PoleSelection.ALL
+    # ``clear`` rebuilds the native executors from the held plan JSON.
+    runtime.clear()
     assert runtime.evaluate(points, mu_r2=scales, poles="all").values == full.values
     finite = runtime.evaluate(points, mu_r2=scales, poles="none")
     assert finite.poles is PoleSelection.NONE and finite.stability is None
