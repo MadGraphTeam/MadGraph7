@@ -87,11 +87,16 @@ _loaded = {}
 
 def _load(path):
     name, real = os.path.basename(path), os.path.realpath(path)
-    if _loaded.setdefault(name, real) != real:
+    if _loaded.get(name, real) != real:
         raise MadDensityError('%s cannot be loaded: %s, a library of the same name, already '
                               'is, and the loader would reuse it. Build the libraries of '
                               'this output with another LIBTAG.' % (path, _loaded[name]))
-    return ctypes.CDLL(path, mode=ctypes.RTLD_LOCAL)
+    if not os.path.exists(path):
+        raise MadDensityError('missing %s: build the libraries first' % path)
+    lib = ctypes.CDLL(path, mode=ctypes.RTLD_LOCAL)
+    # recorded once loaded: a library that failed to load does not hold its name
+    _loaded[name] = real
+    return lib
 
 
 def _address(array_):
@@ -190,13 +195,6 @@ class MadDensityLibrary(object):
                                   % (output_dir, table))
         with open(table) as fsock:
             entries = json.load(fsock)['subprocesses']
-        for entry in entries:
-            if entry.get('offshell') and backend != 'scalar':
-                raise MadDensityError(
-                    '%s has legs marked off-shell (%s), which only the scalar backend '
-                    'evaluates at the invariant mass of their momentum (offshell_mass in '
-                    'backend/*/SigmaKin.cc): build and load BACKEND=scalar'
-                    % (entry['path'], ', '.join(map(str, entry['offshell']))))
         if libtag is None:
             libtag = find_libtag(output_dir, backend)
         self.libtag = libtag

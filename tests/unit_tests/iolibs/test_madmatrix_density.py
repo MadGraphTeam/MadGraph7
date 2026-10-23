@@ -122,16 +122,22 @@ class TestMadMatrixDensityFiles(unittest.TestCase):
             json.dump({'subprocesses': []}, f)
         self.assertTrue(density.is_output(self.tmp))
 
-    def test_offshell_needs_scalar(self):
-        """Only the scalar backend evaluates a '*' leg at the invariant mass of
-        its momentum: a SIMD build of such a process is refused."""
+    def test_offshell_any_backend(self):
+        """Every backend evaluates a '*' leg at the invariant mass of its
+        momentum (per SIMD lane, per GPU thread): a SIMD build of such a
+        process is not refused, it only has to exist."""
         with open(os.path.join(self.tmp, 'SubProcesses', density.PROCESSES_FILE), 'w') as f:
             json.dump({'subprocesses': [{'path': 'P1_t_bLxN', 'legs': [6, 5, -82, 83],
                                          'ninitial': 1, 'offshell': [1], 'processes': [],
                                          'library': 'libmadmatrix{libtag}_P1_t_bLxN_{backend}.so',
                                          'flavors': [[[6, 5, -11, 12]]]}]}, f)
-        self.assertRaisesRegex(density.MadDensityError, 'scalar',
-                               density.MadDensityLibrary, self.tmp, 'simd_128', '')
+        try:
+            density.MadDensityLibrary(self.tmp, 'simd_128', '_none%d' % os.getpid())
+        except density.MadDensityError as error:
+            # refused for the missing build, not for the backend
+            self.assertIn('missing', str(error))
+        else:
+            self.fail('no library was built, yet it loaded')
 
     def test_same_name_twice_is_refused(self):
         """Two libraries of one name: the loader would hand back the first."""

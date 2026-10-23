@@ -8906,8 +8906,9 @@ class TestOffshellRecoilFloor(unittest.TestCase):
             return {'mass': 'ZERO' if abs(pdg) == 21 else 'MZ'}
 
     def test_the_default_floor(self):
+        # opt-in: the floor cuts the off-shell tail, so it is off unless asked
         self.assertEqual(
-            interface_madspin.MadSpinOptions()['offshell_min_recoil'], 0.5)
+            interface_madspin.MadSpinOptions()['offshell_min_recoil'], 0.)
 
     def test_the_floor_option(self):
         self.assertEqual(self._Stub(0.5)._offshell_min_recoil(), 0.5)
@@ -9014,6 +9015,8 @@ class TestOffshellRecoilFloor(unittest.TestCase):
 
         def __init__(self, mass):
             self.options = interface_madspin.MadSpinOptions()
+            # the floor is opt-in: these tests are about what it does when on
+            self.options['offshell_min_recoil'] = 0.5
             self.f2py_module = [0, 0]   # skip the fortran setup
             self._mass = mass
             self.densities = 0

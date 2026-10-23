@@ -359,8 +359,8 @@ class MadSpinOptions(banner.ConfigFile):
         self.add_param('decay_event_mult', 1E0, comment='Produce more events than needed so that MadSpin does not have to regenerate decay events')
         self.add_param('nb_core', 0, comment='Number of cores for the MadSpin parallel unweighting (0 = use the global MG5 nb_core). nb_core>1 enables the process-parallel unweighting path.')
         self.add_param('density_keep_jacobian', True, comment='PA spinmode only: fold the offshell-reshuffling phase-space jacobian into the accept/reject weight (default) instead of applying the reshuffle as a post-acceptance kinematic dressing (False). Ignored by the madspin/full spinmodes, which always include that jacobian.')
-        self.add_param('offshell_min_recoil', 0.5,
-                       comment="madspin/full spinmodes only: the smallest fraction of its momentum the production may keep when it is reshuffled onto the sampled virtualities (RAMBO's chi, the factor every production three-momentum is scaled by in the partonic rest frame). Only applied when a massless particle recoils against the resonances: a virtuality drawn up to sqrt(shat) then pushes that particle soft, far below the cuts the production was generated with, and the weight grows like 1/chi -- its mean over the decay phase space diverges logarithmically, so no maximum weight can bound it. A draw below the floor gets weight zero. The floor never reaches the pole: chi >= 1/2 still allows m^2 up to (shat + M^2)/2. 0 disables it.")
+        self.add_param('offshell_min_recoil', 0.,
+                       comment="madspin/full spinmodes only, OFF by default (0): opt-in cut, which biases the result. The smallest fraction of its momentum the production may keep when it is reshuffled onto the sampled virtualities (RAMBO's chi, the factor every production three-momentum is scaled by in the partonic rest frame). Only applied when a massless particle recoils against the resonances: a virtuality drawn up to sqrt(shat) then pushes that particle soft, far below the cuts the production was generated with, and the weight grows like 1/chi -- its mean over the decay phase space diverges logarithmically, so no maximum weight can bound it. A draw below the floor gets weight zero. The floor never reaches the pole: chi >= 1/2 still allows m^2 up to (shat + M^2)/2. It is a cut on the virtuality: the off-shell tail it removes is missing from the output however many events are generated, so it is no exact method -- only a way to make the unweighting of such a process converge. 0 (default) disables it.")
         self.add_param('unweighting', 'auto',
                        allowed=['auto', 'joint', 'sequential',
                                 'sequential_global_retry',
@@ -8111,7 +8111,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # against 1 at 1.06 once evaluated per draw; on u u~ > z g one
                 # first draw near sqrt(shat) put a whole production event at 172x
                 # the mean weight. Evaluated per draw, the bound is the true one,
-                # which a soft recoil leaves unbounded but for offshell_min_recoil.
+                # which a soft recoil leaves unbounded unless offshell_min_recoil (opt-in) cuts it.
                 if density_matrix_prod is None or offshell_density:
                     _, wgt, density_matrix_prod = self.get_onshell_evt_and_wgt(
                         prod_draw, decays, decay_dict, build_event=False)
@@ -10208,6 +10208,10 @@ class MadSpinInterface(extended_cmd.Cmd):
         rescaled (a t t~ threshold, or t t~ with the top already decayed in the
         event: its decay products move rigidly with it) the weight stays
         bounded, and the floor is not applied.
+
+        Off by default: the draws it removes are a part of the off-shell
+        lineshape that no amount of statistics brings back, i.e. a bias, which
+        a user has to ask for.
         """
         floor = self.options['offshell_min_recoil']
         if not floor or floor <= 0:

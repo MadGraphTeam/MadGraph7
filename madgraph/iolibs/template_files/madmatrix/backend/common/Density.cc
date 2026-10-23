@@ -44,7 +44,8 @@ namespace madmatrix
 
     // A helicity row is evaluated on every event until nscan events have been
     // seen, and afterwards only if one of its jamps was ever non-zero: the
-    // Fortran SMATRIX filter (NTRY < 20).
+    // Fortran SMATRIX filter (NTRY < 20). Only real events count: the copies
+    // padding a page to npage lanes are not new points.
     constexpr int nscan = 20;
 
     struct HelicityFilter
@@ -148,12 +149,14 @@ namespace madmatrix
       return factor;
     }
 
-    // Adds the density of nevt events (whole pages of one flavor each) to inter[nevt][ninter]
+    // Adds the density of nevt events (whole pages of one flavor each) to inter[nevt][ninter],
+    // the first nreal of them real and the others padding
     void
     density_kernel( const fptype_momenta* allmomenta,
                     const fptype* allcouplings,
                     const unsigned int* allflavors,
                     const int nevt,
+                    const int nreal,
                     const int nChanging,
                     const int* pos0, // 0-based
                     const int nComb,
@@ -251,7 +254,7 @@ namespace madmatrix
           }
           if( nonzero ) filter.good[ihel] = 1;
         }
-        filter.ntry += npage;
+        filter.ntry += std::max( 0, std::min( npage, nreal - ievt00 ) );
       }
     }
 
@@ -336,7 +339,7 @@ namespace madmatrix
         s.key.push_back( nComb );
         s.key.insert( s.key.end(), allowHel, allowHel + nComb * nChanging );
         s.inter.assign( nevt * ninter, 0. );
-        density_kernel( allmomenta, couplings, flavors, (int)nevt, nChanging, s.pos0.data(), nComb, allowHel, g_filters[s.key], s, s.inter.data() );
+        density_kernel( allmomenta, couplings, flavors, (int)nevt, (int)nreal, nChanging, s.pos0.data(), nComb, allowHel, g_filters[s.key], s, s.inter.data() );
         for( size_t k = 0; k < nreal; k++ )
           for( int sol = 0; sol < ninter; sol++ )
             out[s.events[k] * ninter + sol] = s.inter[k * ninter + sol] / iden;

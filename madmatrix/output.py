@@ -367,7 +367,7 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
             [[leg.get('id') for leg in process.get_legs_with_decays()]
              for process in matrix_element.get('processes')],
             # the legs marked off-shell ('*'), evaluated at the invariant mass of
-            # their momentum by the scalar backend only (offshell_mass, SigmaKin.cc)
+            # their momentum (offshell_mass, backend/*/SigmaKin.cc)
             sorted(wf.get('number_external')
                    for wf in matrix_element.get_external_wavefunctions()
                    if wf.get('offshell'))))

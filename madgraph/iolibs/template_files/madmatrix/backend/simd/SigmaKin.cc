@@ -174,20 +174,86 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-  //--------------------------------------------------------------------------
-
   // The mass an external leg marked off-shell ('*': MadSpin's decaying particles)
-  // is evaluated with. The Fortran output and the scalar backend take the
-  // invariant mass of its momentum; here one call evaluates several events, whose
-  // invariant masses differ, with a single mass, so the pole mass stays. That is
-  // the same as long as the momenta are on shell, which is all mg7 generates;
-  // off-shell momenta need the scalar backend (madmatrix.density refuses others).
+  // is evaluated with: the invariant mass of its momentum, as in the Fortran
+  // standalone output (SQRT(P(0,i)**2-...)), so that the wavefunction is the one
+  // of the momentum the leg actually has. The pole mass comes first only for the
+  // code generator, which maps it to its parameter. The events of a SIMD page
+  // have different invariant masses: the mass is a vector, which the overloads of
+  // ixxxxx/oxxxxx/vxxxxx below take.
+#ifdef MGONGPU_CPPSIMD
+  template<class M_ACCESS>
+  inline fptype_amp_v
+  offshell_mass( const fptype_amp poleMass, const fptype_momenta* momenta, const int ipar )
+  {
+    (void)poleMass;
+    const fptype_amp_sv e = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 0, ipar ) );
+    const fptype_amp_sv px = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar ) );
+    const fptype_amp_sv py = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar ) );
+    const fptype_amp_sv pz = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar ) );
+    volatile fptype_amp_v m2 = e * e - px * px - py * py - pz * pz;
+    return fpsqrt( m2 ); // 0 for the lanes where m2 <= 0
+  }
+
+  // The wavefunction of an external leg whose mass differs from lane to lane:
+  // the scalar-mass routine (any gauge) evaluated at each distinct mass, each
+  // lane taken from the evaluation at its own mass. Only the external legs
+  // marked off-shell come here, a handful of calls per page.
+  template<class W_ACCESS, class CALL>
+  inline void
+  wavefunction_per_lane_mass( const fptype_amp_v& mass, ALOHAOBJ& obj, const CALL& call )
+  {
+    call( (fptype_amp)mass[0], obj );
+    cxtype_amp_sv* w = W_ACCESS::kernelAccess( obj.w );
+    for( int i = 1; i < neppV; i++ )
+    {
+      bool done = false;
+      for( int j = 0; j < i && !done; j++ ) done = mass[j] == mass[i];
+      if( done ) continue; // evaluated with lane j, at the same mass
+      cxtype_amp_sv wtmp[ALOHAOBJ::nw6] = {};
+      fptype_momenta_sv ptmp[ALOHAOBJ::np4];
+      ALOHAOBJ tmp( ptmp, wtmp, obj.flv_index );
+      call( (fptype_amp)mass[i], tmp );
+      const cxtype_amp_sv* t = W_ACCESS::kernelAccess( tmp.w );
+      const bool_v same = ( mass == (fptype_amp)mass[i] );
+      for( int k = 0; k < ALOHAOBJ::nw6; k++ ) w[k] = cxternary( same, t[k], w[k] );
+    }
+  }
+
+  template<class M_ACCESS, class W_ACCESS>
+  inline void
+  ixxxxx( const fptype_momenta momenta[], const fptype_amp_v fmass, const int nhel, const int nsf, const int flv, ALOHAOBJ& fi, const int ipar )
+  {
+    wavefunction_per_lane_mass<W_ACCESS>( fmass, fi, [&]( const fptype_amp m, ALOHAOBJ& out ) { ixxxxx<M_ACCESS, W_ACCESS>( momenta, m, nhel, nsf, flv, out, ipar ); } );
+  }
+
+  template<class M_ACCESS, class W_ACCESS>
+  inline void
+  oxxxxx( const fptype_momenta momenta[], const fptype_amp_v fmass, const int nhel, const int nsf, const int flv, ALOHAOBJ& fo, const int ipar )
+  {
+    wavefunction_per_lane_mass<W_ACCESS>( fmass, fo, [&]( const fptype_amp m, ALOHAOBJ& out ) { oxxxxx<M_ACCESS, W_ACCESS>( momenta, m, nhel, nsf, flv, out, ipar ); } );
+  }
+
+  template<class M_ACCESS, class W_ACCESS>
+  inline void
+  vxxxxx( const fptype_momenta momenta[], const fptype_amp_v vmass, const int nhel, const int nsv, const int flv, ALOHAOBJ& vc, const int ipar )
+  {
+    wavefunction_per_lane_mass<W_ACCESS>( vmass, vc, [&]( const fptype_amp m, ALOHAOBJ& out ) { vxxxxx<M_ACCESS, W_ACCESS>( momenta, m, nhel, nsv, flv, out, ipar ); } );
+  }
+#else
   template<class M_ACCESS>
   inline fptype_amp
-  offshell_mass( const fptype_amp poleMass, const fptype_momenta*, const int )
+  offshell_mass( const fptype_amp poleMass, const fptype_momenta* momenta, const int ipar )
   {
-    return poleMass;
+    (void)poleMass;
+    const fptype_amp e = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 0, ipar ) );
+    const fptype_amp px = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar ) );
+    const fptype_amp py = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar ) );
+    const fptype_amp pz = fpamp_of_mom( M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar ) );
+    const fptype_amp m2 = e * e - px * px - py * py - pz * pz;
+    return m2 > 0 ? fpsqrt( m2 ) : 0;
   }
+#endif
 
   //--------------------------------------------------------------------------
 

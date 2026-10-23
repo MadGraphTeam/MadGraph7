@@ -261,6 +261,7 @@ shower=OFF
 analysis=OFF
 set nevents 10000
 set iseed 1
+add madspin_card --before_line="launch" set offshell_min_recoil 0.5
 decay w+ > j j
 decay w- > j j
 decay z > l+ l-
@@ -313,8 +314,9 @@ decay z > l+ l-
         # 4.6-152 before the refine normalisation changed: the offshell
         # max-weight scan reused one draw's production density for all the
         # draws of an event, and the weight itself was unbounded -- a Z drawn
-        # up to sqrt(shat) pushes the gluon soft, w ~ 1/chi -- until
-        # offshell_min_recoil. Only sanity-check it is present and in a
+        # up to sqrt(shat) pushes the gluon soft, w ~ 1/chi -- unless
+        # offshell_min_recoil cuts it, which this card opts in to (the option
+        # is off by default: it biases the off-shell tail). Only sanity-check it is present and in a
         # physically reasonable range rather than pinning the exact value: the
         # bound only catches a broken unweighting.
         trials = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*trials\s*/\s*event', log)
