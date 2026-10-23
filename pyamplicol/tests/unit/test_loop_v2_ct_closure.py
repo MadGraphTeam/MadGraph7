@@ -465,7 +465,9 @@ def test_closure_equals_site_closure_at_200_bits(
 # feed their gluon into the quark line of the block (uu~ -> aggg,
 # uu~ -> aagg): the U(1) projection of their gluon legs (design §6.1).
 # uu~ -> dd~ss~ joins three quark lines by gluon exchanges, each with its
-# U(1)-subtraction auxiliary.
+# U(1)-subtraction auxiliary. uu~ -> gggg closes multi-gluon currents into
+# closed traces of three labels (nightly; its CT-level check runs in the
+# physics tier).
 # ``name -> (process, Born QCD, QED, PDG codes of the rule the request is
 # about, leg masses)``.
 SLICE_O6 = {
@@ -481,6 +483,7 @@ SLICE_O6 = {
     "gg_ttxgg": ("g g > t t~ g g", 4, 0, (21, 21, 21, 21), (0, 0, 173, 173, 0, 0)),
     "uux_ttxgg": ("u u~ > t t~ g g", 4, 0, (2, 2, 21), (0, 0, 173, 173, 0, 0)),
     "uux_ddxssx": ("u u~ > d d~ s s~", 4, 0, (1, 1, 21), (0,) * 6),
+    "uux_gggg": ("u u~ > g g g g", 4, 0, (21, 21, 21, 21), (0,) * 6),
 }
 SLICE_PARAMETERS = {"aS": "0.118", "MT": "173"}
 # Requests whose trees propagate a top: its width (a runtime input) breaks the
@@ -500,7 +503,7 @@ SLICE_CARRIERS = (
     "double",
     pytest.param("arbitrary-200", marks=pytest.mark.loop_nightly),
 )
-SLICE_NIGHTLY = frozenset({"gg_ttxgg"})
+SLICE_NIGHTLY = frozenset({"gg_ttxgg", "uux_gggg"})
 
 
 @pytest.fixture(scope="module")
@@ -703,3 +706,215 @@ def test_generation_leaves_the_program_rows_to_the_first_point(
         precision=Precision.double(),
     )
     assert built == [blocks, counterterms]
+
+
+# ------------------------------------------------------- CT-level O6, pure QCD
+
+# Six legs with four gluons: multi-trace CT currents merge with further
+# gluons (an R2 current CT{3,4,5} meeting gluon 6 in an ordinary vertex) and
+# the four-gluon R2 takes multi-gluon currents inside a block, which no
+# five-leg request does. The comparison stops at the Born and the
+# counterterms (``LoopSlice._point``): no loop is reduced.
+CT_LEVEL_TOLERANCE = Decimal("1e-12")
+# MadLoop's binary64 R2 at six legs (sites route: 1.1e-12 off).
+PROVIDER_R2_TOLERANCE = 1e-10
+
+
+def _counterterms_per_route(compiled, native, process, qcd, point, **options):
+    """``route -> (Born, counterterms)`` of ``process`` at one exact point
+    (decimal strings), binary64."""
+
+    from pyamplicol.loops.v2.assemble import (
+        LoopSlice,
+        Precision,
+        SliceRequest,
+        _fraction,
+        _Numbers,
+    )
+
+    exact = tuple(tuple(_fraction(x) for x in momentum) for momentum in point)
+    values = {}
+    for route in ("recursion", "sites"):
+        generated = LoopSlice.generate(
+            compiled,
+            SliceRequest(
+                process,
+                {"QCD": qcd, "QED": 0},
+                {"QCD": qcd + 2, "QED": 0},
+                fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+                counterterms=route,
+                **options,
+            ),
+            native,
+        )
+        if route == "recursion":
+            residual = generated.counterterm_program.recursion.residual
+            assert not residual, residual
+        with _Numbers(Precision.double()).scope():
+            evaluation = generated._point(
+                exact,
+                _fraction(SLICE_SCALE_SQUARED),
+                dict(SLICE_PARAMETERS),
+                Precision.double(),
+                True,
+            )
+        values[route] = (dict(evaluation.born), dict(evaluation.counterterms))
+    return values
+
+
+def _assert_counterterm_routes_agree(values) -> None:
+    """Per (component, sector, Laurent power), relative to the sector's
+    largest coefficient at the sites (a key one route leaves out is zero)."""
+
+    (born, mine), (born_sites, theirs) = values["recursion"], values["sites"]
+    assert born.keys() == born_sites.keys()
+    with localcontext() as context:
+        context.prec = 60
+        for order, value in born.items():
+            reference = Decimal(repr(float(born_sites[order])))
+            difference = abs(Decimal(repr(float(value))) - reference)
+            assert difference <= CT_LEVEL_TOLERANCE * abs(reference), order
+        scales = defaultdict(Decimal)
+        for (component, sector, _power), value in theirs.items():
+            key = (component, sector)
+            scales[key] = max(scales[key], abs(Decimal(repr(float(value)))))
+        for key in mine.keys() | theirs.keys():
+            component, sector, _power = key
+            value = mine.get(key, 0.0)
+            reference = Decimal(repr(float(theirs.get(key, 0.0))))
+            difference = abs(Decimal(repr(float(value))) - reference)
+            scale = scales[component, sector] or abs(
+                Decimal(repr(float(next(iter(born_sites.values())))))
+            )
+            assert difference <= CT_LEVEL_TOLERANCE * scale, (key, value, reference)
+        assert any(value != 0 for (c, _s, _p), value in theirs.items() if c == "r2")
+
+
+@pytest.mark.loop_physics
+def test_six_leg_four_gluon_counterterms_from_recursion_equal_sites(
+    loop_sm_compiled_model, loop_native
+):
+    """O6 at u u~ > g g g g (CT level, full colour)."""
+
+    from pyamplicol.models.loading import load_compiled_model
+
+    values = _counterterms_per_route(
+        load_compiled_model(loop_sm_compiled_model),
+        loop_native,
+        "u u~ > g g g g",
+        4,
+        _slice_point((0,) * 6),
+    )
+    _assert_counterterm_routes_agree(values)
+
+
+# A fresh interpreter whose only Symbolica calls happen inside pyAmpliCol:
+# Spenso's Rayon workers then met the package-scoped Symbolica key without a
+# thread-wide license and waited for the GIL (design §6.1 "Spenso's
+# threads"); in a test process an earlier Symbolica call outside the package
+# hides that.
+_SIX_GLUON_SCRIPT = """
+import json, sys
+from pyamplicol.loops.native import load_loop_native
+from pyamplicol.loops.v2.assemble import (
+    LoopSlice, Precision, SliceRequest, _fraction, _Numbers,
+)
+from pyamplicol.models.loading import load_compiled_model
+model, point, fixed, scale, parameters = sys.argv[1:6]
+compiled, native = load_compiled_model(model), load_loop_native()
+exact = tuple(tuple(_fraction(x) for x in p) for p in json.loads(point))
+out = {}
+for route in ("recursion", "sites"):
+    generated = LoopSlice.generate(compiled, SliceRequest(
+        "g g > g g g g", {"QCD": 4, "QED": 0}, {"QCD": 6, "QED": 0},
+        fixed_parameters=json.loads(fixed), counterterms=route), native)
+    if route == "recursion":
+        assert not generated.counterterm_program.recursion.residual
+    with _Numbers(Precision.double()).scope():
+        evaluation = generated._point(exact, _fraction(scale),
+            json.loads(parameters), Precision.double(), True)
+    out[route] = [[[repr(k), float(v)] for k, v in part.items()]
+                  for part in (evaluation.born, evaluation.counterterms)]
+print(json.dumps(out))
+"""
+
+
+@pytest.mark.loop_nightly
+def test_six_gluon_generation_completes_in_a_fresh_interpreter(
+    loop_sm_compiled_model, loop_reference
+):
+    """g g > g g g g through ``LoopSlice.generate`` (recursion and sites) in a
+    new interpreter; O6 at the CT level at the first point of the
+    three-provider reference, and the R2 component of both routes against
+    MadLoop's (an independent oracle of the four-gluon R2 at six legs)."""
+
+    import ast
+    import json
+    import os
+    import subprocess
+    import sys
+
+    control = loop_reference("gg-gggg-r2-component-control")
+    point = loop_reference("required/gg_gggg")["points"][0]
+    assert point == control["point"]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _SIX_GLUON_SCRIPT,
+            str(loop_sm_compiled_model),
+            json.dumps(point),
+            json.dumps(legacy_capture.FIXED_PARAMETERS),
+            SLICE_SCALE_SQUARED,
+            json.dumps(SLICE_PARAMETERS),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=7200,
+        env={**os.environ, "RAYON_NUM_THREADS": "4"},
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr[-4000:]
+    routes = json.loads(result.stdout.strip().splitlines()[-1])
+    values = {
+        route: tuple(
+            {ast.literal_eval(key): value for key, value in part} for part in pair
+        )
+        for route, pair in routes.items()
+    }
+    _assert_counterterm_routes_agree(values)
+    reference = control["r2"]["finite"]
+    for route, (born, counterterms) in values.items():
+        (value,) = born.values()
+        assert abs(value - control["born"]) <= 1e-12 * abs(control["born"]), route
+        r2 = counterterms[("r2", (("QCD", 10),), 0)]
+        assert abs(r2 - reference) <= PROVIDER_R2_TOLERANCE * abs(reference), route
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("accuracy", ("lc", "nlc"))
+def test_colour_projected_counterterms_from_recursion_equal_sites(
+    loop_sm_compiled_model, loop_native, accuracy
+):
+    """O6 at LC and NLC with the colour declaration (CT level): the
+    four-gluon R2 takes the d line's gluon at u u~ > d d~ g g, graded by N_c
+    in the recursion's couplings and at the sites."""
+
+    import json
+
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+    declaration = LoopColorDeclaration.from_dict(
+        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+    )
+    values = _counterterms_per_route(
+        load_compiled_model(loop_sm_compiled_model),
+        loop_native,
+        "u u~ > d d~ g g",
+        4,
+        _slice_point((0,) * 6),
+        accuracy=accuracy,
+        colour_declaration=declaration,
+    )
+    _assert_counterterm_routes_agree(values)
