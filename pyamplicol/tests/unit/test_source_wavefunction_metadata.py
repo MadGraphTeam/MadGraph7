@@ -18,7 +18,10 @@ from pyamplicol.models.contracts import CompiledParticleRecord
 from pyamplicol.models.external_catalog import ExternalModelCatalogMixin
 from pyamplicol.runtime.symbolica_exact import (
     _antiquark_weyl,
+    _massive_dirac,
     _massive_vector,
+    _massless_antiquark_dirac,
+    _massless_quark_dirac,
     _particle_mass,
     _quark_weyl,
     _source_wavefunction,
@@ -247,6 +250,31 @@ def test_massive_vector_is_transverse_for_both_energy_signs(helicity: int) -> No
         )
         assert abs(contraction[0]) < Decimal("1e-25")
         assert abs(contraction[1]) < Decimal("1e-25")
+
+
+@pytest.mark.parametrize("helicity", [-1, 1])
+@pytest.mark.parametrize("sign", [1, -1])
+def test_massless_dirac_sources_are_the_zero_mass_dirac_states(
+    sign: int, helicity: int
+) -> None:
+    """A massless fermion that is not a Weyl field has Dirac sources: the
+    massive Dirac state at zero mass, for both energy signs. A crossed
+    (initial-state, negative-energy) momentum used to give a vanishing
+    spinor (the chirality of a crossed massless state is minus its
+    helicity, as in the native ``ext_quark_dirac_generic``)."""
+
+    momentum = tuple(sign * Decimal(value) for value in ("13", "4", "-12", "3"))
+    for antiquark, massless in (
+        (False, _massless_quark_dirac),
+        (True, _massless_antiquark_dirac),
+    ):
+        wave = massless(momentum, helicity)
+        expected = _massive_dirac(momentum, helicity, Decimal(0), antiquark=antiquark)
+        assert any(abs(re) + abs(im) > 1 for re, im in wave)
+        assert all(
+            abs(a[0] - b[0]) + abs(a[1] - b[1]) < Decimal("1e-25")
+            for a, b in zip(wave, expected, strict=True)
+        )
 
 
 def test_source_ir_rejects_inconsistent_statistics() -> None:

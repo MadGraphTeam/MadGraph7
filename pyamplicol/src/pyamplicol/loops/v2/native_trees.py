@@ -459,6 +459,12 @@ def _counterterm_program(
     from .colour import _DEPTH, _literal_tensor_overlap_nc_terms, _trace_overlaps
     from .fields import FIELD_COMPONENT
 
+    if slice_.counterterm_program is not None:
+        # The production counterterms come from the tree recursion
+        # (``ct_closure``); its program is not exported natively yet.
+        raise NotImplementedError(
+            "native counterterms from the tree recursion (WP2.2) are not exported"
+        )
     _plan, layout = slice_._scalar_plan(LAURENT_POWERS)
     legs = slice_.basis.legs
     basis = slice_.basis.tensors
@@ -686,7 +692,7 @@ def _parameter_program(
     not depend on the process history.
     """
 
-    from symbolica import E, Expression, FunctionDefinition, Replacement, S
+    from symbolica import E, Expression, FunctionDefinition, Replacement
 
     from pyamplicol._internal.physics.symbols import symbols
 
@@ -699,7 +705,9 @@ def _parameter_program(
         for r in records
         if r["kind"] == "external_parameter"
     ]
-    inputs = [S(f"pyamplicol_v2_parameters::e{i}") for i in range(len(names))]
+    inputs = [
+        symbols.qualified(f"pyamplicol_v2_parameters::e{i}") for i in range(len(names))
+    ]
     index = {name: i for i, name in enumerate(names)}
     symbol_of = dict(zip(names, inputs, strict=True))
     outputs: list[Any] = []
@@ -734,54 +742,70 @@ def _parameter_program(
             model.append(["output", o, record["complex_component"] == "imag"])
         else:
             raise NotImplementedError(f"a tree model parameter of kind {kind!r}")
-    # Born couplings per N_c grade, from the slice's scalar plan.
-    plan, layout = slice_._scalar_plan(LAURENT_POWERS)
+    # Born couplings per N_c grade, from the slice's scalar plans (the Born's
+    # and the others', their columns concatenated in the layout).
+    plans, layout = slice_._scalar_plan(LAURENT_POWERS)
+    located = [
+        (p, column)
+        for p, plan in enumerate(plans)
+        for column in range(len(plan.expressions))
+    ]
     plan_inputs = []
-    for name, symbol in zip(plan.external_names, plan.input_symbols, strict=True):
-        if name not in index:
-            raise NotImplementedError(
-                f"the scalar plan reads {name!r}, which the tree program has not"
-            )
-        plan_inputs.append(Replacement(symbol, symbol_of[name]))
+    for plan in plans:
+        replacements = []
+        for name, symbol in zip(plan.external_names, plan.input_symbols, strict=True):
+            if name not in index:
+                raise NotImplementedError(
+                    f"the scalar plan reads {name!r}, which the tree program has not"
+                )
+            replacements.append(Replacement(symbol, symbol_of[name]))
+        plan_inputs.append(replacements)
+
+    def column_value(column: int, diagnostic: bool = False) -> Any:
+        """A scalar-plan column (or its diagnostic) on the program's inputs."""
+
+        p, local = located[column]
+        expression = plans[p].expressions[local]
+        value = expression.diagnostic if diagnostic else expression.value
+        return value.replace_multiple(plan_inputs[p])
+
     coupling_outputs = []
     for name, grade in couplings:
         (column,) = [c for degree, c in layout[(name, 0)] if degree == grade]
         coupling_outputs.append(
             output(
-                ("coupling", name, grade),
-                lambda column=column: plan.expressions[column].value.replace_multiple(
-                    plan_inputs
-                ),
+                ("coupling", name, grade), lambda column=column: column_value(column)
             )
         )
 
     # Counterterm and field couplings per epsilon power and N_c grade; they
     # may read the renormalisation scale (one value per point).
     counterterm_outputs, finite = [], []
+    used: set[int] = set()
 
     def scalar(name: str, power: int, grade: int) -> Any:
-        """The scalar-plan coefficient (and its diagnostic, checked finite)."""
+        """The scalar-plan coefficient on the program's inputs (and its
+        diagnostic, checked finite)."""
 
         (column,) = [c for degree, c in layout[(name, power)] if degree == grade]
-        expression = plan.expressions[column]
-        if expression.diagnostic != 0:
+        p, local = located[column]
+        used.add(p)
+        if plans[p].expressions[local].diagnostic != 0:
             finite.append(
                 output(
                     ("diagnostic", name, power, grade),
-                    lambda e=expression: e.diagnostic.replace_multiple(plan_inputs),
+                    lambda column=column: column_value(column, diagnostic=True),
                 )
             )
-        return expression.value
+        return column_value(column)
 
+    every_input = [item for replacements in plan_inputs for item in replacements]
     for slot in counterterm_couplings:
         if slot[0] == "scalar":
             _kind, name, power, grade = slot
             value = scalar(name, power, grade)
             counterterm_outputs.append(
-                output(
-                    ("counterterm", name, power, grade),
-                    lambda v=value: v.replace_multiple(plan_inputs),
-                )
+                output(("counterterm", name, power, grade), lambda v=value: v)
             )
             continue
         _kind, degree, coefficient, scalars = slot
@@ -794,10 +818,16 @@ def _parameter_program(
         counterterm_outputs.append(
             output(
                 ("whole", degree, coefficient.to_canonical_string(), scalars),
-                lambda v=bound: v.replace_multiple(plan_inputs),
+                lambda v=bound: v.replace_multiple(every_input),
             )
         )
-    helpers = plan.program.library._bodies if finite or counterterm_outputs else {}
+    # The scalar library's helper functions (e.g. ``cond``, ``reglog``) the
+    # counterterm and field couplings call; every plan shares the library.
+    helpers: dict[Any, Any] = {}
+    for p in sorted(used):
+        for head, body in plans[p].program.library._bodies.items():
+            if helpers.setdefault(head, body) != body:
+                raise ValueError(f"the scalar plans define {head!r} differently")
 
     # Plan kernel constants.
     def base(factor: Any, flips: Mapping[str, int]) -> Any:
@@ -917,8 +947,9 @@ def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]
     evaluators. The program's size is that of the DAG; the saved evaluators
     come first for the kernels, then for the propagators."""
 
-    from symbolica import Expression, FunctionDefinition, S
+    from symbolica import Expression, FunctionDefinition
 
+    from pyamplicol._internal.physics.symbols import symbols as registry
     from pyamplicol.generation.stage_parameters import (
         _logical_model_parameter_symbols,
         _model_symbolica_functions,
@@ -930,7 +961,9 @@ def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]
 
     dag, schema = trees.dag, trees.schema
     records = trees._records
-    model_symbols = [S(f"pyamplicol_v2_trees::m{i}") for i in range(len(records))]
+    model_symbols = [
+        registry.qualified(f"pyamplicol_v2_trees::m{i}") for i in range(len(records))
+    ]
     model = trees.model.with_runtime_parameters(
         _logical_model_parameter_symbols(
             records,
@@ -958,7 +991,9 @@ def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]
     ids: dict[tuple, int] = {}
 
     def symbols(name: str, count: int) -> list[Any]:
-        return [S(f"pyamplicol_v2_trees::{name}{i}") for i in range(count)]
+        return [
+            registry.qualified(f"pyamplicol_v2_trees::{name}{i}") for i in range(count)
+        ]
 
     def compile_kernel(kind: str, key: tuple, build) -> int:
         found = ids.get((kind, key))

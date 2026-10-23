@@ -26,6 +26,10 @@ Conventions a consumer relies on:
   ``(tau^{a_k} ... tau^{a_1})_{e s}`` and an adjoint field closes
   ``out -> in`` with ``tau^X_{in, out}``.
   U(1)-subtraction auxiliaries are separate colour-singlet blocks.
+  A counterterm block may also carry closed components (the multi-trace
+  state of design §6.1; their labels are not in the word): closed traces of
+  adjoint legs (``BlockColourFlow.traces``), each ``tr(tau^a_1 ... tau^a_k)``,
+  and closed lines, which join ``strings`` like the word's inner strings.
 * **N_c grade.** The tree engine weights every U(1)-subtraction auxiliary it
   produces from a fundamental line pair with the numeric 1/N_c of the Fierz
   identity at N_c = 3. A block whose trees produce k auxiliaries has grade
@@ -59,6 +63,13 @@ Conventions a consumer relies on:
 * **Kernel variants.** ``KERNEL_VARIANT_BY_BLOCK_CLASS`` is the tree kernel
   variant a block class requires; a block records the variant of the model's
   compiled kernels (``compile_tree_kernel_variant``), which must satisfy it.
+  The transverse Yang-Mills kernels are exact only for conserved gluon
+  currents. A coloured particle whose propagator breaks the Ward identity of
+  the gluon currents it feeds (a width that is not zero, or a model-supplied
+  propagator; ``ward_breaking_fields``) makes them differ from the Feynman
+  rules, so trees that propagate one take the full kernels
+  (``with_ward_kernels``). The DAGs do not depend on the variant, so the
+  switch keeps them (``TreeBlocks.with_kernels``).
 * **Families.** ``TreeBlocks.block_table`` is the WP1.3 ``BlockTable`` view of
   the blocks in a native model's incoming field names, and
   ``requested_loop_blocks`` turns ``FamilySet.block_requests()`` back into the
@@ -201,19 +212,25 @@ class BlockColourFlow:
     singlet_labels: tuple[int, ...] = ()
     sign: int = 1
     nc_grade: int | None = 0
+    traces: tuple[tuple[int, ...], ...] = ()
 
 
 def block_colour_flow(
     word: Iterable[int],
     representations: Mapping[int, int],
     field_representation: int,
+    *,
+    lines: Iterable[tuple[int, ...]] = (),
+    traces: Iterable[tuple[int, ...]] = (),
 ) -> BlockColourFlow:
     """Split a block word into its colour-flow strings and pairing sign.
 
     ``representations`` maps leg labels to the colour representation of the
     outgoing particle (1, 3, -3 or 8); ``field_representation`` is that of
     the block's field. A new string starts at every fundamental leg that
-    follows an antifundamental one.
+    follows an antifundamental one. ``lines`` and ``traces`` are the block's
+    closed components (``ColorState``): lines join the strings (and their
+    pairing), traces are kept as they are.
     """
 
     word = tuple(word)
@@ -248,12 +265,14 @@ def block_colour_flow(
             f"word {word} does not match a field in representation "
             f"{field_representation}"
         )
+    strings.extend(list(line) for line in lines)
     return BlockColourFlow(
         strings=tuple(tuple(string) for string in strings),
         incoming_open=incoming_open,
         outgoing_open=outgoing_open,
         singlet_labels=tuple(singlets),
         sign=_pairing_sign(strings, representations),
+        traces=tuple(traces),
     )
 
 
@@ -335,7 +354,9 @@ class BlockKey:
 
     @property
     def labels(self) -> tuple[int, ...]:
-        return tuple(sorted(self.word))
+        """Every leg of the block, its word's and its closed traces'."""
+        mask = self.external_mask
+        return tuple(bit + 1 for bit in range(mask.bit_length()) if mask >> bit & 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -361,7 +382,7 @@ class Block:
 
     @property
     def is_source(self) -> bool:
-        return len(self.key.word) == 1
+        return self.key.external_mask.bit_count() == 1
 
     @property
     def wick_sign(self) -> int:
@@ -391,6 +412,20 @@ class TreeBlocks:
 
     def blocks_on(self, mask: int) -> tuple[Block, ...]:
         return tuple(block for block in self.blocks if block.key.external_mask == mask)
+
+    def with_kernels(self, model: Model) -> TreeBlocks:
+        """These trees with the kernels of ``model``, another tree-kernel
+        variant (``compile_tree_kernel_variant``) of the model they were
+        compiled with: only the expressions of the eligible Yang-Mills
+        kernels differ between variants, so the DAGs are the same."""
+
+        variant = model_tree_kernel_variant(model)
+        return replace(
+            self,
+            blocks=_blocks(self.blocks_dag, model, variant),
+            born_roots=_born_roots(self.born_dag, model),
+            kernel_variant=variant,
+        )
 
     def field_blocks(self, mask: int) -> tuple[tuple[int, CouplingOrders], ...]:
         """Distinct (particle id, coupling orders) of the field blocks on ``mask``.
@@ -539,6 +574,77 @@ def build_tree_blocks(
     )
 
 
+def ward_breaking_fields(
+    dags: Iterable[GenericDAG],
+    compiled: Any,
+    fixed_parameters: Mapping[str, Any] = MappingProxyType({}),
+) -> frozenset[str]:
+    """Coloured particles propagated by a tree current of ``dags`` whose
+    propagator breaks the Ward identity of the gluon currents it feeds.
+
+    That is a width other than ``ZERO``, a compile-time zero or a parameter
+    that ``fixed_parameters`` fixes to zero (S(q)(q-slash - m) is then not
+    the identity), or a model-supplied propagator. Source currents (on-shell
+    external legs) and auxiliary currents do not count. ``compiled`` is the
+    compiled model of the DAGs.
+    """
+
+    from decimal import Decimal, InvalidOperation
+
+    from pyamplicol.models.compiler_kernels import _is_compile_time_zero_parameter
+
+    ir = compiled.ir
+    particles = {int(record.pdg_code): record for record in ir.particles}
+    parameters = {record.name: record for record in ir.parameters}
+    custom = {record.particle for record in ir.propagators if record.custom}
+
+    def fixed_zero(name: str) -> bool:
+        try:
+            return Decimal(str(fixed_parameters[name])) == 0
+        except (KeyError, InvalidOperation):
+            return False
+
+    out = set()
+    for dag in dags:
+        sources = set(dag.sources)
+        for current_id, current in enumerate(dag.currents):
+            index = current.index
+            if current_id in sources or index.auxiliary_kind is not None:
+                continue
+            record = particles.get(int(index.particle_id))
+            if record is None or abs(int(record.color)) == 1:
+                continue
+            width = str(record.width)
+            if record.name in custom or not (
+                _is_compile_time_zero_parameter(width, parameters) or fixed_zero(width)
+            ):
+                out.add(record.name)
+    return frozenset(out)
+
+
+def with_ward_kernels(
+    blocks: TreeBlocks,
+    compiled: Any,
+    fixed_parameters: Mapping[str, Any] = MappingProxyType({}),
+) -> tuple[TreeBlocks, Any]:
+    """``(blocks, compiled)``, with the full tree kernels when a tree current
+    propagates a coloured particle that breaks the Ward identity of the gluon
+    currents (``ward_breaking_fields``): the transverse Yang-Mills kernels,
+    exact only for conserved inputs (design §3.2 item 2), are then not the
+    Feynman rules. ``compiled`` is the compiled model of ``blocks``."""
+
+    if blocks.kernel_variant == "full" or not ward_breaking_fields(
+        (blocks.blocks_dag, blocks.born_dag), compiled, fixed_parameters
+    ):
+        return blocks, compiled
+    from pyamplicol.models.external import CompiledUFOModel
+
+    from .catalogue import compile_tree_kernel_variant
+
+    full = compile_tree_kernel_variant(compiled, "full")
+    return blocks.with_kernels(CompiledUFOModel(full)), full
+
+
 def _helicity_decoder(dag: GenericDAG):
     bits: list[tuple[int, int, int]] = []
     for source_id in dag.sources:
@@ -605,7 +711,7 @@ def _blocks(
             else {}
         )
         ends = {
-            **{label: endpoints[label] for label in key.word if label in endpoints},
+            **{label: endpoints[label] for label in key.labels if label in endpoints},
             **open_end,
         }
         parities = {connections[row.current_id] for row in rows}
@@ -617,7 +723,13 @@ def _blocks(
                 id=len(blocks),
                 key=key,
                 colour_flow=replace(
-                    block_colour_flow(key.word, representations, field_representation),
+                    block_colour_flow(
+                        key.word,
+                        representations,
+                        field_representation,
+                        lines=key.color_state.lines,
+                        traces=key.color_state.traces,
+                    ),
                     nc_grade=nc_grades.pop() if len(nc_grades) == 1 else None,
                 ),
                 block_class="plain",
@@ -639,8 +751,17 @@ def _connection_parities(
     """Parity of the colour-octet connections between fermion lines.
 
     A merge connects two lines when both inputs hold coloured fermion
-    endpoints and one of them is a colour-octet current (a gluon, contact or
-    U(1)-subtraction auxiliary). Every derivation of a current must agree.
+    endpoints in their open words and one of them is a colour-octet current
+    (a gluon, contact or U(1)-subtraction auxiliary). Every derivation of a
+    current must agree.
+
+    The closed lines of counterterm currents (design §6.1) are complete:
+    nothing crosses them, so their endpoints do not count, and a colour
+    singlet merged into an adjoint current or a closing leaves its strings
+    as closed lines (``ColorEngine._loop_block_absorbing_sides``), which
+    connects nothing. Its U(1)-subtraction sign is then a colour weight of
+    the stage that replaces the leg
+    (``models.compiler_color_flow.synthesize_u1_projections``).
     """
 
     def octet(index: CurrentIndex) -> bool:
@@ -649,8 +770,17 @@ def _connection_parities(
             or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
         )
 
+    def singlet(index: CurrentIndex) -> bool:
+        return (
+            model.color_rep(index.particle_id) == 1
+            or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
+        )
+
+    def coloured_fermion(particle_id: int) -> bool:
+        return model.is_fermion(particle_id) and abs(model.color_rep(particle_id)) == 3
+
     def has_endpoints(index: CurrentIndex) -> bool:
-        return any(label in endpoints for label in index.external_labels)
+        return any(label in endpoints for label in index.ordered_external_labels)
 
     currents = dag.currents
     parity: list[int | None] = [
@@ -666,6 +796,10 @@ def _connection_parities(
             has_endpoints(left)
             and has_endpoints(right)
             and (octet(left) or octet(right))
+            and (
+                coloured_fermion(currents[interaction.result_id].index.particle_id)
+                or not (singlet(left) or singlet(right))
+            )
         )
         value = parity[interaction.left_id] ^ parity[interaction.right_id] ^ connects
         known = parity[interaction.result_id]
@@ -765,4 +899,6 @@ __all__ = [
     "identity_pairing_sign",
     "requested_loop_blocks",
     "u1_grades",
+    "ward_breaking_fields",
+    "with_ward_kernels",
 ]

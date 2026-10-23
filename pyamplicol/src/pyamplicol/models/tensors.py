@@ -37,6 +37,9 @@ def _ensure_symbolica() -> None:
     with _SYMBOLICA_LOCK:
         if _SYMBOLICA_READY:
             return
+        from pyamplicol.licensing import ensure_spenso_thread_policy
+
+        ensure_spenso_thread_policy()
         from symbolica import E as expression_parser
         from symbolica import Expression as expression_type
         from symbolica.community.tensor import Representation as representation_type
@@ -58,7 +61,7 @@ def _ensure_symbolica() -> None:
         as_tensor = tensor_converter
         _INDEX_PATTERN = E("UFO::idx(component_,leg_)")
         _DUMMY_PATTERN = E("UFO::dummy(label_)")
-        _WILDCARDS = {name: E(name) for name in ("a_", "b_", "c_", "d_")}
+        _WILDCARDS = {name: E(name) for name in ("a_", "b_", "c_", "d_", "n_")}
         _SYMBOLICA_READY = True
 
 
@@ -97,7 +100,7 @@ def normalize_lorentz_expression(
     expression = _replace(expression, "UFO::Identity(a_,b_)", context.identity)
     expression = _replace(expression, "UFO::Metric(a_,b_)", context.metric)
     expression = _replace(expression, "UFO::P(a_,b_)", context.momentum)
-    expression = _replace(expression, "UFO::P(a_)^2", context.momentum_square)
+    expression = _replace(expression, "UFO::P(a_)^n_", context.momentum_power)
     expression = _replace(expression, "UFO::P(a_)", context.propagator_momentum)
     _reject_residual_ufo_tensors(expression, context="Lorentz expression")
     _reject_indeterminate(expression, context="Lorentz expression")
@@ -118,7 +121,10 @@ def normalize_color_expression(
     representations = tuple(int(color) for color in color_representations)
     _validate_color_representations(representations)
     _ensure_symbolica()
-    context = _ColorContext(representations)
+    # Summed indices a d-symbol introduces are numbered after the source's
+    # own dummies (UFO's negative indices).
+    dummies = [int(label) for label in re.findall(r"(?<![\w.])-([0-9]+)", source)]
+    context = _ColorContext(representations, dummy_base=max(dummies, default=0) + 1)
     expression = E(source)
     expression = _replace(expression, "UFO::Identity(a_,b_)", context.identity)
     expression = _replace(expression, "UFO::T(a_,b_,c_)", context.generator)
@@ -263,6 +269,28 @@ class _LorentzContext:
             * self._momentum_tensor(leg, right)
         )
 
+    def momentum_power(
+        self,
+        match: Mapping[Expression, Expression],
+    ) -> Expression:
+        """An even power ``P(a)^(2k)`` of a momentum: ``k`` momentum squares.
+
+        Each square has its own contraction labels, so that powers ``k > 1``
+        (the squared denominators of counterterm-inserted lines) stay valid
+        tensor networks. A negative ``k`` is a non-scalar tensor power, which
+        the tensor normaliser refuses; propagators therefore normalise their
+        numerator and denominator separately.
+        """
+
+        exponent = str(match[_WILDCARDS["n_"]])
+        power = int(exponent) if exponent.lstrip("-").isdigit() else 1
+        if power % 2:
+            raise ValueError(f"momentum power {exponent} is not an even integer")
+        squares = E("1")
+        for _ in range(abs(power) // 2):
+            squares *= self.momentum_square(match)
+        return squares if power > 0 else squares**-1
+
     def propagator_momentum(
         self,
         match: Mapping[Expression, Expression],
@@ -322,7 +350,9 @@ class _LorentzContext:
 
 
 class _ColorContext:
-    def __init__(self, color_representations: tuple[int, ...]) -> None:
+    def __init__(
+        self, color_representations: tuple[int, ...], *, dummy_base: int = 1
+    ) -> None:
         _validate_color_representations(color_representations)
         _ensure_symbolica()
         self.color_representations = color_representations
@@ -331,6 +361,9 @@ class _ColorContext:
         self.generator_tensor = TensorExpression.color_t(8, 3)
         self.f_tensor = TensorExpression.color_f(8)
         self.expanded_symmetric_invariant = False
+        # The first label of the summed indices of a d-symbol expansion:
+        # beyond every dummy of the expression (``normalize_color_expression``).
+        self._dummy_base = dummy_base
         self._dummy_index = 0
 
     def identity(self, match: Mapping[Expression, Expression]) -> Expression:
@@ -394,13 +427,16 @@ class _ColorContext:
         ]
         suffix = self._dummy_index
         self._dummy_index += 1
-        fundamental = [
-            self.fundamental(f"ufo_c_d_{suffix}_{name}") for name in ("i", "j", "k")
+        # Summed fundamental indices of the generator trace, named like UFO
+        # dummies (``ufo_c_dummy_<n>_fundamental``, n beyond the expression's
+        # own dummies) so that vertex terms with d-symbols keep well-formed
+        # index bindings.
+        names = [
+            f"ufo_c_dummy_{self._dummy_base + 3 * suffix + offset}_fundamental"
+            for offset in range(3)
         ]
-        antifundamental = [
-            self.fundamental.dual()(f"ufo_c_d_{suffix}_{name}")
-            for name in ("i", "j", "k")
-        ]
+        fundamental = [self.fundamental(name) for name in names]
+        antifundamental = [self.fundamental.dual()(name) for name in names]
 
         def generator(a: Any, row: int, column: int) -> Expression:
             return self.generator_tensor(
@@ -703,11 +739,19 @@ def _classify_trilinear_color_expression_cached(
         return "fundamental-generator", 1.0 + 0.0j
     if re.fullmatch(tensor + r"f\([^()]+\)", compact_source):
         return "adjoint-structure-constant", 1.0 + 0.0j
+    if re.fullmatch(tensor + r"d\([^()]+\)", compact_source):
+        return "adjoint-symmetric-invariant", 1.0 + 0.0j
     factors = compact_source.split("*")
     if len(factors) > 1 and all(
         re.fullmatch(tensor + r"f\([^()]+\)", factor) for factor in factors
     ):
         return "adjoint-structure-constant-product", 1.0 + 0.0j
+    if len(factors) > 1 and all(
+        re.fullmatch(tensor + r"[df]\([^()]+\)", factor) for factor in factors
+    ):
+        # Counterterm contacts (``models.ct_color_flow``): a product of
+        # adjoint trilinear tensors (structure constants and d-symbols).
+        return "adjoint-trilinear-product", 1.0 + 0.0j
     if compact_source in {"1", "UFO::{}::1"}:
         return "singlet", 1.0 + 0.0j
     return projected
