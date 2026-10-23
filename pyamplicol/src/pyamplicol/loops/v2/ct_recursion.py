@@ -41,7 +41,7 @@ Born x CT interference directly; no CT tree and no site is listed:
   four-gluon R2: the multi-trace colour state, ``models.ct_color_flow``),
   Lorentz structures the tree compiler does not normalise (Levi-Civita),
   contact vertices without a colour-flow decomposition, the two-point terms
-  ``models.ct_line_insertions`` refuses (mixing between fields), whole-rule
+  ``models.ct_line_insertions`` refuses (mixing between spins), whole-rule
   colour continuations, ghost legs and coefficients with UFO helpers other
   than ``cond`` and ``reglog``.
 
