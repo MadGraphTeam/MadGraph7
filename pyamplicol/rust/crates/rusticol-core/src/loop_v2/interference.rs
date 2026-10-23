@@ -1,0 +1,308 @@
+// SPDX-License-Identifier: 0BSD
+
+//! Colour interferences of the native counterterm and external-field
+//! components (WP3.1 I5, `loops/v2/native_trees._counterterm_program`).
+//!
+//! An output (component, sector, epsilon power) sums, over the Born helicity
+//! rows, entries `2 Re(c <A0(order)|M|ket>)`: the bra is the Born amplitude
+//! of one Born order in its components `A0[b, order, p]` (basis element `b`,
+//! N_c power `p`), the ket a counterterm vector in its components
+//! `K[t, vector, q]` (ket tensor `t`) or the Born amplitude of another Born
+//! order (an external-field insertion, coupling `c`, N_c grade `g`). `M` is
+//! the exact overlap `<b|t>` per N_c power, each cell of power `n` kept at
+//! exponent `e = n + p + q + g` as the request's projection keeps it below
+//! the sector's degree `P` (full colour: always; LC: `e = P`; NLC:
+//! `P - 2 <= e <= P`), and weighted `3^e` (`assemble._interfere`).
+//!
+//! Per row, `z[t] = sum_b conj(A0[b, order, p]) M_(P, p+q+g)[b, t]` is formed
+//! once per (bra order, `p`, metric class) and dotted with each ket.
+
+use super::dress::{Carrier, cast};
+use crate::{RusticolError, RusticolResult};
+use rayon::prelude::*;
+use std::collections::BTreeMap;
+use symbolica::domains::float::{Complex, Real};
+use symbolica::domains::rational::Rational;
+
+fn invalid(message: impl Into<String>) -> RusticolError {
+    RusticolError::compatibility(format!("loop v2 interference: {}", message.into()))
+}
+
+/// Components of one amplitude grouped by N_c power: (power, (basis or ket
+/// tensor, component)).
+type Groups = Vec<(i32, Vec<(usize, usize)>)>;
+
+/// Where an entry's ket comes from.
+#[derive(Clone, Copy, Debug)]
+pub enum Ket {
+    /// A counterterm vector.
+    Vector(usize),
+    /// The Born amplitude of a Born order (its components are the bra's).
+    Born(usize),
+}
+
+/// One interference entry: `2 Re(c <A0(bra)|M|ket>)` into `output`.
+#[derive(Clone, Debug)]
+pub struct Entry {
+    pub bra: usize,
+    pub ket: Ket,
+    pub coupling: Option<usize>,
+    pub grade: i32,
+    pub output: usize,
+    pub degree: Option<i32>,
+}
+
+/// The interference program of a process.
+pub struct Interference {
+    basis: usize,
+    tensors: usize,
+    /// (basis element, ket tensor, N_c power, exact cell).
+    cells: Vec<(usize, usize, i32, [Rational; 2])>,
+    /// Per Born order, its Born components by N_c power.
+    bra: Vec<Groups>,
+    /// Per counterterm vector, its ket components by N_c power.
+    vectors: Vec<Groups>,
+    entries: Vec<Entry>,
+    /// Per entry, per (bra group, ket group) the metric class.
+    classes: Vec<Vec<Vec<usize>>>,
+    /// (degree, exponent shift) per metric class.
+    class_keys: Vec<(Option<i32>, i32)>,
+    depth: Option<i32>,
+    /// Epsilon power per output.
+    outputs: Vec<i32>,
+}
+
+/// The metric classes of an interference program in a carrier: per class
+/// and basis element, its nonzero (ket tensor, value) cells.
+pub struct InterferenceRuntime<T> {
+    metrics: Vec<Vec<Vec<(usize, Complex<T>)>>>,
+}
+
+fn kept(exponent: i32, degree: Option<i32>, depth: Option<i32>) -> bool {
+    match depth {
+        None => true,
+        Some(depth) => degree.is_some_and(|degree| degree - depth <= exponent && exponent <= degree),
+    }
+}
+
+fn nc_power(exponent: i32) -> Rational {
+    let three = Rational::from(3);
+    let mut value = Rational::from(1);
+    for _ in 0..exponent.unsigned_abs() {
+        value = if exponent > 0 {
+            &value * &three
+        } else {
+            &value / &three
+        };
+    }
+    value
+}
+
+fn groups(components: impl Iterator<Item = (usize, usize, i32, usize)>, count: usize) -> Vec<Groups> {
+    // (owner, tensor, power, component)
+    let mut out: Vec<BTreeMap<i32, Vec<(usize, usize)>>> = vec![BTreeMap::new(); count];
+    for (owner, tensor, power, component) in components {
+        out[owner].entry(power).or_default().push((tensor, component));
+    }
+    out.into_iter().map(|groups| groups.into_iter().collect()).collect()
+}
+
+impl Interference {
+    /// Validate and index an interference program. `born` is (basis
+    /// element, Born order, N_c power) per Born component, `ket` (ket
+    /// tensor, vector, N_c power) per ket component; `entries` are
+    /// (kind, bra order, vector or Born order, coupling, grade, output,
+    /// degree).
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        basis: usize,
+        orders: usize,
+        tensors: usize,
+        cells: Vec<(usize, usize, i32, [Rational; 2])>,
+        born: &[(usize, usize, i32)],
+        ket: &[(usize, usize, i32)],
+        vectors: usize,
+        entries: Vec<Entry>,
+        outputs: Vec<i32>,
+        couplings: usize,
+        depth: Option<i32>,
+    ) -> RusticolResult<Self> {
+        if tensors < basis {
+            return Err(invalid("the ket tensors start with the Born basis"));
+        }
+        if cells.iter().any(|&(b, t, _, _)| b >= basis || t >= tensors) {
+            return Err(invalid("overlap cell outside the basis or the ket tensors"));
+        }
+        if born.iter().any(|&(b, o, _)| b >= basis || o >= orders) {
+            return Err(invalid("Born component"));
+        }
+        if ket.iter().any(|&(t, v, _)| t >= tensors || v >= vectors) {
+            return Err(invalid("ket component"));
+        }
+        let bra = groups(
+            born.iter().enumerate().map(|(j, &(b, o, p))| (o, b, p, j)),
+            orders,
+        );
+        let vector_groups = groups(
+            ket.iter().enumerate().map(|(k, &(t, v, q))| (v, t, q, k)),
+            vectors,
+        );
+        let mut class_index: BTreeMap<(Option<i32>, i32), usize> = BTreeMap::new();
+        let mut classes = Vec::with_capacity(entries.len());
+        for entry in &entries {
+            let valid = entry.bra < orders
+                && entry.output < outputs.len()
+                && entry.coupling.is_none_or(|c| c < couplings)
+                && match entry.ket {
+                    Ket::Vector(v) => v < vectors && entry.coupling.is_none(),
+                    Ket::Born(o) => o < orders,
+                };
+            if !valid {
+                return Err(invalid("interference entry"));
+            }
+            let kets = match entry.ket {
+                Ket::Vector(v) => &vector_groups[v],
+                Ket::Born(o) => &bra[o],
+            };
+            let per_bra = bra[entry.bra]
+                .iter()
+                .map(|(p, _)| {
+                    kets.iter()
+                        .map(|(q, _)| {
+                            let key = (entry.degree, p + q + entry.grade);
+                            let next = class_index.len();
+                            *class_index.entry(key).or_insert(next)
+                        })
+                        .collect()
+                })
+                .collect();
+            classes.push(per_bra);
+        }
+        let mut class_keys = vec![(None, 0); class_index.len()];
+        for (key, index) in class_index {
+            class_keys[index] = key;
+        }
+        Ok(Self {
+            basis,
+            tensors,
+            cells,
+            bra,
+            vectors: vector_groups,
+            entries,
+            classes,
+            class_keys,
+            depth,
+            outputs,
+        })
+    }
+
+    /// Number of outputs.
+    pub fn outputs(&self) -> &[i32] {
+        &self.outputs
+    }
+
+    /// The metric classes in carrier `T`.
+    pub fn runtime<T: Carrier>(&self, zero: &T) -> InterferenceRuntime<T> {
+        let metrics = self
+            .class_keys
+            .iter()
+            .map(|&(degree, shift)| {
+                let mut rows: Vec<BTreeMap<usize, [Rational; 2]>> = vec![BTreeMap::new(); self.basis];
+                for (b, t, power, [re, im]) in &self.cells {
+                    let exponent = power + shift;
+                    if !kept(exponent, degree, self.depth) {
+                        continue;
+                    }
+                    let scale = nc_power(exponent);
+                    let cell = rows[*b]
+                        .entry(*t)
+                        .or_insert_with(|| [Rational::from(0), Rational::from(0)]);
+                    cell[0] = &cell[0] + &(re * &scale);
+                    cell[1] = &cell[1] + &(im * &scale);
+                }
+                rows.into_iter()
+                    .map(|row| {
+                        row.into_iter()
+                            .filter(|(_, [re, im])| !re.is_zero() || !im.is_zero())
+                            .map(|(t, [re, im])| (t, Complex::new(cast(zero, &re), cast(zero, &im))))
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect();
+        InterferenceRuntime { metrics }
+    }
+
+    /// The outputs of one point: `born` holds `rows x born components`,
+    /// `ket` `rows x ket components`, `couplings` the point's coupling
+    /// slots. Without `poles`, outputs of a nonzero epsilon power stay zero.
+    /// Not divided by the average.
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate<T: Carrier>(
+        &self,
+        runtime: &InterferenceRuntime<T>,
+        born: &[Complex<T>],
+        born_width: usize,
+        ket: &[Complex<T>],
+        ket_width: usize,
+        rows: usize,
+        couplings: &[Complex<T>],
+        poles: bool,
+        zero: &T,
+    ) -> Vec<T>
+    where
+        Complex<T>: Real,
+    {
+        let czero = Complex::new(zero.clone(), zero.clone());
+        let per_row: Vec<Vec<T>> = (0..rows)
+            .into_par_iter()
+            .map(|row| {
+                let a = &born[row * born_width..][..born_width];
+                let k = &ket[row * ket_width..][..ket_width];
+                let mut out = vec![zero.clone(); self.outputs.len()];
+                // z per (bra order, bra group, class).
+                let mut cache: BTreeMap<(usize, usize, usize), Vec<Complex<T>>> = BTreeMap::new();
+                for (entry, classes) in self.entries.iter().zip(&self.classes) {
+                    if !poles && self.outputs[entry.output] != 0 {
+                        continue;
+                    }
+                    let (kets, values) = match entry.ket {
+                        Ket::Vector(v) => (&self.vectors[v], k),
+                        Ket::Born(o) => (&self.bra[o], a),
+                    };
+                    let mut value = czero.clone();
+                    for (g, ((_p, bras), classes)) in self.bra[entry.bra].iter().zip(classes).enumerate() {
+                        for ((_q, components), &class) in kets.iter().zip(classes) {
+                            let z = cache.entry((entry.bra, g, class)).or_insert_with(|| {
+                                let mut z = vec![czero.clone(); self.tensors];
+                                let metric = &runtime.metrics[class];
+                                for &(b, j) in bras {
+                                    let x = a[j].conj();
+                                    for (t, m) in &metric[b] {
+                                        z[*t] += x.clone() * m.clone();
+                                    }
+                                }
+                                z
+                            });
+                            for &(t, c) in components {
+                                value += z[t].clone() * values[c].clone();
+                            }
+                        }
+                    }
+                    if let Some(c) = entry.coupling {
+                        value = couplings[c].clone() * value;
+                    }
+                    out[entry.output] += value.re.clone() + value.re;
+                }
+                out
+            })
+            .collect();
+        let mut out = vec![zero.clone(); self.outputs.len()];
+        for row in per_row {
+            for (total, value) in out.iter_mut().zip(row) {
+                *total += value;
+            }
+        }
+        out
+    }
+}

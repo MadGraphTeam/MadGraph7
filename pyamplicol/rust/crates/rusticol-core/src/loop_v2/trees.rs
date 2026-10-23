@@ -40,9 +40,11 @@
 //! no Python per batch or point.
 
 use super::dress::{Carrier, cast, parse_rational};
+use super::interference::{Entry, Interference, InterferenceRuntime, Ket};
 use super::plan::LoopProgramV4;
 use crate::engine::SchemaSources;
 use crate::{RusticolError, RusticolResult};
+use rayon::prelude::*;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use symbolica::domains::float::{Complex, DoubleFloat, Float, Real};
@@ -89,6 +91,9 @@ struct TreeFile {
     block_rows: Vec<(usize, usize, i32)>,
     born: BornFile,
     parameters: ParameterFile,
+    /// The counterterm and external-field components (none: Born and bare
+    /// virtual only).
+    counterterms: Option<CountertermFile>,
 }
 
 /// The parameter program: one saved exact evaluator (the program's last
@@ -106,6 +111,12 @@ struct ParameterFile {
     model: Vec<(String, usize, bool)>,
     /// Output index per Born coupling slot.
     couplings: Vec<usize>,
+    /// Output index per counterterm or field coupling slot (may depend on
+    /// the renormalisation scale).
+    counterterm_couplings: Vec<usize>,
+    /// Outputs that must be finite (active diagnostics of the scalar
+    /// library's helper functions).
+    finite: Vec<usize>,
     /// Output index per plan kernel constant.
     constants: Vec<usize>,
     /// Outputs that must be real and positive (bases a fractional power
@@ -185,6 +196,36 @@ struct BornFile {
     average: String,
 }
 
+/// The counterterm closure and the interferences of the counterterm and
+/// external-field components (`native_trees._counterterm_program`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CountertermFile {
+    couplings: usize,
+    /// Epsilon power of each coupling slot.
+    coupling_powers: Vec<i32>,
+    /// (ket tensor, vector, N_c power) per ket component.
+    ket: Vec<(usize, usize, i32)>,
+    vectors: usize,
+    /// Ket tensors (the Born basis first).
+    tensors: usize,
+    /// (basis element, ket tensor, N_c power, re, im): exact overlaps.
+    cells: Vec<(usize, usize, i32, String, String)>,
+    /// (basis element, Born order, N_c power) per Born component.
+    born: Vec<(usize, usize, i32)>,
+    /// Counterterm closure terms: contributions (coupling slot, ket
+    /// component, weight re, weight im, sqrt(2) power).
+    terms: Vec<TermFile>,
+    /// (kind "vector" or "born", bra Born order, vector or ket Born order,
+    /// coupling slot, N_c grade, output, sector degree).
+    #[allow(clippy::type_complexity)]
+    entries: Vec<(String, usize, usize, Option<usize>, i32, usize, Option<i32>)>,
+    /// Epsilon power per output.
+    outputs: Vec<i32>,
+    /// Kept N_c powers below the degree: none (full colour), 0 or 2.
+    depth: Option<i32>,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TermFile {
@@ -243,7 +284,8 @@ struct Term {
     kernel: usize,
     inputs: Vec<TermInput>,
     blocks: Vec<usize>,
-    masks: Vec<u64>,
+    /// Per slot its leg mask's index in the program's `masks`.
+    masks: Vec<usize>,
     sign: i32,
     contributions: Vec<(usize, usize, [Rational; 2], i32)>,
 }
@@ -262,11 +304,23 @@ struct Parameters {
     outputs: usize,
     model: Vec<ModelSource>,
     couplings: Vec<usize>,
+    counterterm_couplings: Vec<usize>,
+    finite: Vec<usize>,
     constants: Vec<usize>,
     positive: Vec<usize>,
     masses: Vec<(i32, usize)>,
     plan_masses: Vec<Option<usize>>,
     scale: Option<usize>,
+}
+
+/// The counterterm closure of a program and its interferences.
+struct Counterterms {
+    couplings: usize,
+    /// Per coupling slot: whether it is the epsilon^0 coefficient.
+    finite_slot: Vec<bool>,
+    components: usize,
+    terms: Vec<Term>,
+    interference: Interference,
 }
 
 /// A loaded tree program (one process, any carrier).
@@ -293,6 +347,9 @@ pub struct TreeProgram {
     metric: Option<Vec<(usize, usize, usize, [Rational; 2])>>,
     average: Rational,
     parameters: Parameters,
+    counterterms: Option<Counterterms>,
+    /// The leg masks of the closure terms' slots.
+    masks: Vec<u64>,
 }
 
 /// The parameter-only inputs of one batch.
@@ -304,6 +361,9 @@ pub struct TreeBatch<T> {
     pub masses: BTreeMap<i32, Rational>,
     /// Couplings per (name, N_c grade) slot.
     pub couplings: Vec<Complex<T>>,
+    /// Per point the counterterm and field couplings per (name, epsilon
+    /// power, N_c grade) slot.
+    pub counterterm_couplings: Vec<Vec<Complex<T>>>,
 }
 
 /// The values a batch's external parameters bind (`TreeProgram::bind`).
@@ -326,6 +386,9 @@ pub struct TreeInputs<T> {
     pub amplitudes: Vec<Vec<Complex<T>>>,
     /// `|A0|²` per squared Born order (with a colour metric).
     pub born_squared: Option<Vec<Vec<T>>>,
+    /// The counterterm and external-field outputs (component, sector,
+    /// epsilon power), divided by the average (with counterterms).
+    pub counterterms: Option<Vec<Vec<T>>>,
 }
 
 /// The carrier form of a program: its kernel evaluators and exact weights.
@@ -341,6 +404,8 @@ pub struct TreeRuntime<T> {
     gram: Option<Vec<Complex<T>>>,
     metric: Option<Vec<Complex<T>>>,
     average: T,
+    counterterm_weights: Vec<Vec<Complex<T>>>,
+    interference: Option<InterferenceRuntime<T>>,
 }
 
 /// Validate and group an interaction program (`InteractionFile`); `saved`
@@ -442,6 +507,7 @@ fn load_parameters(
     saved: &[u8],
     model_count: usize,
     couplings: usize,
+    counterterm_couplings: usize,
     plan: &LoopProgramV4,
 ) -> RusticolResult<Parameters> {
     let inputs = file.names.len();
@@ -451,7 +517,8 @@ fn load_parameters(
     )?;
     require(file.model.len() == model_count, "model parameter sources")?;
     require(
-        file.couplings.len() == couplings,
+        file.couplings.len() == couplings
+            && file.counterterm_couplings.len() == counterterm_couplings,
         "parameter program couplings",
     )?;
     require(
@@ -466,6 +533,8 @@ fn load_parameters(
     require(
         file.couplings
             .iter()
+            .chain(&file.counterterm_couplings)
+            .chain(&file.finite)
             .chain(&file.constants)
             .chain(&file.positive)
             .all(|&o| output(o))
@@ -492,6 +561,8 @@ fn load_parameters(
             _ => Err(invalid(format!("model parameter source {kind:?} {index}"))),
         })
         .collect::<RusticolResult<Vec<_>>>()?;
+    // Helper functions call the scalar library's predicates.
+    crate::source_scalar::register_scalar_primitives();
     let evaluator = crate::engine::decode_exact_evaluator_state(saved)?;
     drop(evaluator);
     Ok(Parameters {
@@ -505,11 +576,161 @@ fn load_parameters(
         outputs: file.outputs,
         model,
         couplings: file.couplings,
+        counterterm_couplings: file.counterterm_couplings,
+        finite: file.finite,
         constants: file.constants,
         positive: file.positive,
         masses: file.masses,
         plan_masses: file.plan_masses,
         scale: file.scale,
+    })
+}
+
+/// Validate one closure term (`TermFile`) over `blocks` closure blocks.
+fn load_term(
+    term: TermFile,
+    plan: &LoopProgramV4,
+    blocks: usize,
+    couplings: usize,
+    components: usize,
+    legs: usize,
+    masks: &mut BTreeMap<u64, usize>,
+) -> RusticolResult<Term> {
+    let kernel = plan
+        .kernels
+        .get(term.kernel)
+        .ok_or_else(|| invalid("closure term kernel index"))?;
+    require(
+        kernel.outputs.len() == 1 && kernel.inputs == term.inputs.len(),
+        "a closure kernel has one output and the term's inputs",
+    )?;
+    require(
+        term.blocks.len() == term.masks.len()
+            && term.blocks.iter().all(|&block| block < blocks)
+            && term.masks.iter().all(|&mask| mask >> legs == 0)
+            && term.sign.abs() == 1,
+        "closure term blocks",
+    )?;
+    let inputs = term
+        .inputs
+        .iter()
+        .map(|(kind, slot, component)| {
+            require(*slot < term.blocks.len(), "closure term input slot")?;
+            match kind.as_str() {
+                "current" => Ok(TermInput::Current {
+                    slot: *slot,
+                    component: *component,
+                }),
+                "momentum" if *component < 4 => Ok(TermInput::Momentum {
+                    slot: *slot,
+                    mu: *component,
+                }),
+                _ => Err(invalid(format!("closure term input {kind:?}"))),
+            }
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let contributions = term
+        .contributions
+        .iter()
+        .map(|(coupling, component, re, im, power)| {
+            require(
+                *coupling < couplings && *component < components,
+                "closure term contribution",
+            )?;
+            Ok((*coupling, *component, [exact(re)?, exact(im)?], *power))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let masks = term
+        .masks
+        .iter()
+        .map(|mask| {
+            let next = masks.len();
+            *masks.entry(*mask).or_insert(next)
+        })
+        .collect();
+    Ok(Term {
+        kernel: term.kernel,
+        inputs,
+        blocks: term.blocks,
+        masks,
+        sign: term.sign,
+        contributions,
+    })
+}
+
+/// Validate a counterterm program (`CountertermFile`).
+#[allow(clippy::too_many_arguments)]
+fn load_counterterms(
+    file: CountertermFile,
+    plan: &LoopProgramV4,
+    blocks: usize,
+    born_components: usize,
+    basis: usize,
+    orders: usize,
+    legs: usize,
+    masks: &mut BTreeMap<u64, usize>,
+) -> RusticolResult<Counterterms> {
+    require(
+        file.coupling_powers.len() == file.couplings,
+        "counterterm coupling powers",
+    )?;
+    require(
+        file.born.len() == born_components,
+        "a (basis element, Born order, N_c power) per Born component",
+    )?;
+    let components = file.ket.len();
+    let terms = file
+        .terms
+        .into_iter()
+        .map(|term| load_term(term, plan, blocks, file.couplings, components, legs, masks))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let cells = file
+        .cells
+        .iter()
+        .map(|(b, t, power, re, im)| Ok((*b, *t, *power, [exact(re)?, exact(im)?])))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let entries = file
+        .entries
+        .iter()
+        .map(|(kind, bra, ket, coupling, grade, output, degree)| {
+            let ket = match kind.as_str() {
+                "vector" => Ket::Vector(*ket),
+                "born" => Ket::Born(*ket),
+                _ => return Err(invalid(format!("interference entry {kind:?}"))),
+            };
+            Ok(Entry {
+                bra: *bra,
+                ket,
+                coupling: *coupling,
+                grade: *grade,
+                output: *output,
+                degree: *degree,
+            })
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    require(
+        file.depth.is_none_or(|depth| depth == 0 || depth == 2),
+        "colour projection depth",
+    )?;
+    let interference = Interference::new(
+        basis,
+        orders,
+        file.tensors,
+        cells,
+        &file.born,
+        &file.ket,
+        file.vectors,
+        entries,
+        file.outputs,
+        file.couplings,
+        file.depth,
+    )?;
+    Ok(Counterterms {
+        couplings: file.couplings,
+        finite_slot: file.coupling_powers.iter().map(|&power| power == 0).collect(),
+        components,
+        terms,
+        interference,
     })
 }
 
@@ -552,6 +773,7 @@ impl TreeProgram {
             parameter_evaluator,
             file.model_count,
             file.born.couplings,
+            file.counterterms.as_ref().map_or(0, |ct| ct.couplings),
             plan,
         )?;
         require(
@@ -582,60 +804,23 @@ impl TreeProgram {
                 "closure block row outside the state",
             )?;
         }
-        let mut terms = Vec::with_capacity(born.terms.len());
-        for term in born.terms {
-            let kernel = plan
-                .kernels
-                .get(term.kernel)
-                .ok_or_else(|| invalid("Born term kernel index"))?;
-            require(
-                kernel.outputs.len() == 1 && kernel.inputs == term.inputs.len(),
-                "a Born closure kernel has one output and the term's inputs",
-            )?;
-            require(
-                term.blocks.len() == term.masks.len()
-                    && term.blocks.iter().all(|&block| block < born.blocks.len())
-                    && term.sign.abs() == 1,
-                "Born term blocks",
-            )?;
-            let inputs = term
-                .inputs
-                .iter()
-                .map(|(kind, slot, component)| {
-                    require(*slot < term.blocks.len(), "Born term input slot")?;
-                    match kind.as_str() {
-                        "current" => Ok(TermInput::Current {
-                            slot: *slot,
-                            component: *component,
-                        }),
-                        "momentum" if *component < 4 => Ok(TermInput::Momentum {
-                            slot: *slot,
-                            mu: *component,
-                        }),
-                        _ => Err(invalid(format!("Born term input {kind:?}"))),
-                    }
-                })
-                .collect::<RusticolResult<Vec<_>>>()?;
-            let contributions = term
-                .contributions
-                .iter()
-                .map(|(coupling, component, re, im, power)| {
-                    require(
-                        *coupling < born.couplings && *component < born.components,
-                        "Born term contribution",
-                    )?;
-                    Ok((*coupling, *component, [exact(re)?, exact(im)?], *power))
-                })
-                .collect::<RusticolResult<Vec<_>>>()?;
-            terms.push(Term {
-                kernel: term.kernel,
-                inputs,
-                blocks: term.blocks,
-                masks: term.masks,
-                sign: term.sign,
-                contributions,
-            });
-        }
+        let mut masks = BTreeMap::new();
+        let blocks = born.blocks.len();
+        let terms = born
+            .terms
+            .into_iter()
+            .map(|term| {
+                load_term(
+                    term,
+                    plan,
+                    blocks,
+                    born.couplings,
+                    born.components,
+                    file.legs,
+                    &mut masks,
+                )
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
         require(born.orders > 0, "Born orders")?;
         let amplitudes = born
             .amplitudes
@@ -692,6 +877,21 @@ impl TreeProgram {
             gram.is_none() || metric.is_none(),
             "a Born metric is either full colour or per component",
         )?;
+        let counterterms = file
+            .counterterms
+            .map(|ct| {
+                load_counterterms(
+                    ct,
+                    plan,
+                    blocks,
+                    born.components,
+                    basis,
+                    born.orders,
+                    file.legs,
+                    &mut masks,
+                )
+            })
+            .transpose()?;
         Ok(Self {
             legs: file.legs,
             initial: file.initial,
@@ -715,6 +915,14 @@ impl TreeProgram {
             metric,
             average: exact(&born.average)?,
             parameters,
+            counterterms,
+            masks: {
+                let mut table = vec![0; masks.len()];
+                for (mask, index) in masks {
+                    table[index] = mask;
+                }
+                table
+            },
         })
     }
 
@@ -789,7 +997,25 @@ impl TreeProgram {
                     "a base a fractional power was distributed over is not positive",
                 )?;
             }
+            for &o in &program.finite {
+                let value = &row[o];
+                require(
+                    value.re.is_finite() && value.im.is_finite(),
+                    "a counterterm coupling's diagnostic is not finite \
+                     (a model helper function was evaluated outside its domain)",
+                )?;
+            }
         }
+        let counterterm_couplings = rows
+            .iter()
+            .map(|row| {
+                program
+                    .counterterm_couplings
+                    .iter()
+                    .map(|&o| row[o].clone())
+                    .collect()
+            })
+            .collect();
         let couplings = shared(
             &program.couplings,
             "the points of one batch need equal Born couplings",
@@ -827,6 +1053,7 @@ impl TreeProgram {
                     .map(|&(pdg, index)| (pdg, values[index].clone()))
                     .collect(),
                 couplings,
+                counterterm_couplings,
             },
             constants,
             masses: program
@@ -887,27 +1114,37 @@ impl TreeProgram {
                     .collect()
             })
             .collect();
-        let weights = self
-            .terms
-            .iter()
-            .map(|term| {
-                term.contributions
-                    .iter()
-                    .map(|(_c, _j, [re, im], power)| {
-                        let mut scale = cast(zero, &Rational::from(1));
-                        for _ in 0..power.unsigned_abs() {
-                            scale = if *power > 0 {
-                                scale / root.clone()
-                            } else {
-                                scale * root.clone()
-                            };
-                        }
-                        let w = complex(re, im);
-                        Complex::new(w.re * scale.clone(), w.im * scale)
-                    })
-                    .collect()
-            })
-            .collect();
+        let weights_of = |terms: &[Term]| -> Vec<Vec<Complex<T>>> {
+            terms
+                .iter()
+                .map(|term| {
+                    term.contributions
+                        .iter()
+                        .map(|(_c, _j, [re, im], power)| {
+                            let mut scale = cast(zero, &Rational::from(1));
+                            for _ in 0..power.unsigned_abs() {
+                                scale = if *power > 0 {
+                                    scale / root.clone()
+                                } else {
+                                    scale * root.clone()
+                                };
+                            }
+                            let w = complex(re, im);
+                            Complex::new(w.re * scale.clone(), w.im * scale)
+                        })
+                        .collect()
+                })
+                .collect()
+        };
+        let weights = weights_of(&self.terms);
+        let counterterm_weights = self
+            .counterterms
+            .as_ref()
+            .map_or_else(Vec::new, |ct| weights_of(&ct.terms));
+        let interference = self
+            .counterterms
+            .as_ref()
+            .map(|ct| ct.interference.runtime(zero));
         let factors = self
             .amplitudes
             .iter()
@@ -934,12 +1171,23 @@ impl TreeProgram {
             gram,
             metric,
             average: cast(zero, &self.average),
+            counterterm_weights,
+            interference,
         })
+    }
+
+    /// Whether the program forms the counterterm and external-field
+    /// components.
+    pub fn has_counterterms(&self) -> bool {
+        self.counterterms.is_some()
     }
 
     /// The native inputs of a batch: `momenta` are the plan's all-incoming
     /// momenta per point (initial legs as given, final legs negated) and
-    /// `constants` the plan's kernel constants.
+    /// `constants` the plan's kernel constants. Without `poles` the
+    /// counterterm outputs of a nonzero epsilon power stay zero and the
+    /// pole-only coupling slots are not evaluated.
+    #[allow(clippy::too_many_arguments)]
     pub fn inputs<T: TreeCarrier>(
         &self,
         runtime: &mut TreeRuntime<T>,
@@ -947,6 +1195,7 @@ impl TreeProgram {
         batch: &TreeBatch<T>,
         momenta: &[Vec<Rational>],
         constants: &[Complex<T>],
+        poles: bool,
         zero: &T,
     ) -> RusticolResult<TreeInputs<T>>
     where
@@ -962,6 +1211,16 @@ impl TreeProgram {
             "model parameter count",
         )?;
         require(batch.couplings.len() == self.couplings, "coupling count")?;
+        if let Some(ct) = &self.counterterms {
+            require(
+                batch.counterterm_couplings.len() == points
+                    && batch
+                        .counterterm_couplings
+                        .iter()
+                        .all(|couplings| couplings.len() == ct.couplings),
+                "counterterm coupling count",
+            )?;
+        }
         require(constants.len() == plan.constants, "kernel constant count")?;
         let czero = Complex::new(zero.clone(), zero.clone());
         // Incoming momenta per point and leg, in the carrier.
@@ -1024,8 +1283,16 @@ impl TreeProgram {
             amplitudes: Vec::with_capacity(points),
             born_squared: (runtime.gram.is_some() || runtime.metric.is_some())
                 .then(|| Vec::with_capacity(points)),
+            counterterms: self
+                .counterterms
+                .as_ref()
+                .map(|_| Vec::with_capacity(points)),
         };
-        for (point, state) in incoming.iter().zip(states.chunks_exact(self.state_size)) {
+        for (index, (point, state)) in incoming
+            .iter()
+            .zip(states.chunks_exact(self.state_size))
+            .enumerate()
+        {
             let mut rows = Vec::new();
             for &(start, dimension, sign) in &self.block_rows {
                 for value in &state[start..start + dimension] {
@@ -1037,7 +1304,55 @@ impl TreeProgram {
                 }
             }
             out.block_rows.push(rows);
-            let amplitudes = self.born(runtime, plan, batch, point, state, constants, zero)?;
+            let momenta = self.mask_momenta(point, zero);
+            let amplitudes = self.close(
+                &self.terms,
+                &runtime.weights,
+                &batch.couplings,
+                None,
+                self.components,
+                plan,
+                &momenta,
+                state,
+                constants,
+                zero,
+            );
+            if let (Some(ct), Some(interference), Some(out)) = (
+                &self.counterterms,
+                &runtime.interference,
+                &mut out.counterterms,
+            ) {
+                let couplings = &batch.counterterm_couplings[index];
+                let ket = self.close(
+                    &ct.terms,
+                    &runtime.counterterm_weights,
+                    couplings,
+                    (!poles).then_some(ct.finite_slot.as_slice()),
+                    ct.components,
+                    plan,
+                    &momenta,
+                    state,
+                    constants,
+                    zero,
+                );
+                let values = ct.interference.evaluate(
+                    interference,
+                    &amplitudes,
+                    self.components,
+                    &ket,
+                    ct.components,
+                    self.rows,
+                    couplings,
+                    poles,
+                    zero,
+                );
+                out.push(
+                    values
+                        .into_iter()
+                        .map(|value| value / runtime.average.clone())
+                        .collect(),
+                );
+            }
             let mut born = Vec::with_capacity(self.rows * self.plan_components.len());
             for row in amplitudes.chunks_exact(self.components) {
                 for component in &self.plan_components {
@@ -1161,82 +1476,104 @@ impl TreeProgram {
         Ok(())
     }
 
-    /// `A0` of one point: per Born row every component.
+    /// The incoming momentum sum of each closure slot's leg mask.
+    fn mask_momenta<T: Carrier>(&self, incoming: &[[T; 4]], zero: &T) -> Vec<[T; 4]> {
+        self.masks
+            .iter()
+            .map(|&mask| {
+                [0, 1, 2, 3].map(|mu| {
+                    let mut total = zero.clone();
+                    for (leg, p) in incoming.iter().enumerate() {
+                        if mask >> leg & 1 == 1 {
+                            total += p[mu].clone();
+                        }
+                    }
+                    total
+                })
+            })
+            .collect()
+    }
+
+    /// The root closure of one point: per Born row, every closure term's
+    /// kernel on its blocks' rows and momenta (`momenta`: per leg mask),
+    /// times its sign and per contribution its coupling and colour weight,
+    /// accumulated into `width` components. `active`: the coupling slots
+    /// to evaluate (none: all). Rows run in parallel.
     #[allow(clippy::too_many_arguments)]
-    fn born<T: Carrier>(
+    fn close<T: Carrier>(
         &self,
-        runtime: &TreeRuntime<T>,
+        terms: &[Term],
+        weights: &[Vec<Complex<T>>],
+        couplings: &[Complex<T>],
+        active: Option<&[bool]>,
+        width: usize,
         plan: &LoopProgramV4,
-        batch: &TreeBatch<T>,
-        incoming: &[[T; 4]],
+        momenta: &[[T; 4]],
         state: &[Complex<T>],
         constants: &[Complex<T>],
         zero: &T,
-    ) -> RusticolResult<Vec<Complex<T>>> {
+    ) -> Vec<Complex<T>> {
         let czero = Complex::new(zero.clone(), zero.clone());
-        let mut out = vec![czero.clone(); self.rows * self.components];
-        let mut x = Vec::new();
-        for (term, weights) in self.terms.iter().zip(&runtime.weights) {
-            let kernel = &plan.kernels[term.kernel];
-            let momenta: Vec<[T; 4]> = term
-                .masks
-                .iter()
-                .map(|&mask| {
-                    [0, 1, 2, 3].map(|mu| {
-                        let mut total = zero.clone();
-                        for (leg, p) in incoming.iter().enumerate() {
-                            if mask >> leg & 1 == 1 {
-                                total += p[mu].clone();
+        let mut out = vec![czero.clone(); self.rows * width];
+        if width == 0 {
+            return out;
+        }
+        out.par_chunks_mut(width)
+            .enumerate()
+            .for_each(|(row, target)| {
+                let mut x = Vec::new();
+                let mut starts = Vec::new();
+                for (term, weights) in terms.iter().zip(weights) {
+                    if active.is_some_and(|active| {
+                        term.contributions.iter().all(|(c, ..)| !active[*c])
+                    }) {
+                        continue;
+                    }
+                    starts.clear();
+                    for &block in &term.blocks {
+                        match self.blocks[block][row] {
+                            Some(start) => starts.push(start),
+                            None => break,
+                        }
+                    }
+                    if starts.len() != term.blocks.len() {
+                        continue;
+                    }
+                    x.clear();
+                    for input in &term.inputs {
+                        x.push(match *input {
+                            TermInput::Current { slot, component } => {
+                                state[starts[slot] + component].clone()
+                            }
+                            TermInput::Momentum { slot, mu } => {
+                                Complex::new(momenta[term.masks[slot]][mu].clone(), zero.clone())
+                            }
+                        });
+                    }
+                    let mut value = czero.clone();
+                    for entry in &plan.kernels[term.kernel].outputs[0] {
+                        let mut product = constants[entry.constant].clone();
+                        for &(input, exponent) in &entry.monomial {
+                            for _ in 0..exponent {
+                                product *= x[input].clone();
                             }
                         }
-                        total
-                    })
-                })
-                .collect();
-            for row in 0..self.rows {
-                let mut starts = Vec::with_capacity(term.blocks.len());
-                for &block in &term.blocks {
-                    match self.blocks[block][row] {
-                        Some(start) => starts.push(start),
-                        None => break,
+                        value += product;
+                    }
+                    if term.sign < 0 {
+                        value = -value;
+                    }
+                    for ((coupling, component, _, _), weight) in term.contributions.iter().zip(weights)
+                    {
+                        if active.is_some_and(|active| !active[*coupling]) {
+                            continue;
+                        }
+                        target[*component] +=
+                            couplings[*coupling].clone() * weight.clone() * value.clone();
                     }
                 }
-                if starts.len() != term.blocks.len() {
-                    continue;
-                }
-                x.clear();
-                for input in &term.inputs {
-                    x.push(match *input {
-                        TermInput::Current { slot, component } => {
-                            state[starts[slot] + component].clone()
-                        }
-                        TermInput::Momentum { slot, mu } => {
-                            Complex::new(momenta[slot][mu].clone(), zero.clone())
-                        }
-                    });
-                }
-                let mut value = czero.clone();
-                for term_entry in &kernel.outputs[0] {
-                    let mut product = constants[term_entry.constant].clone();
-                    for &(input, exponent) in &term_entry.monomial {
-                        for _ in 0..exponent {
-                            product *= x[input].clone();
-                        }
-                    }
-                    value += product;
-                }
-                if term.sign < 0 {
-                    value = -value;
-                }
-                let target = &mut out[row * self.components..][..self.components];
-                for ((coupling, component, _, _), weight) in term.contributions.iter().zip(weights)
-                {
-                    target[*component] +=
-                        batch.couplings[*coupling].clone() * weight.clone() * value.clone();
-                }
-            }
-        }
-        Ok(out)
+            });
+        out
     }
 
     /// `|A0|²` per squared Born order of one point (divided by the average)

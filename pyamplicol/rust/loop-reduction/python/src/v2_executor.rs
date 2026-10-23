@@ -177,6 +177,7 @@ impl Trees {
         plan: &LoopProgramV4,
         inputs: &Bound<'_, PyDict>,
         batch: &mut V2Batch<T>,
+        poles: bool,
         zero: &T,
     ) -> PyResult<TreeInputs<T>>
     where
@@ -212,6 +213,7 @@ impl Trees {
                 &bound.trees,
                 &batch.momenta,
                 &batch.constants,
+                poles,
                 zero,
             )
             .map_err(error)?;
@@ -253,6 +255,9 @@ struct Evaluation {
     /// |A0|² per point and squared Born order (native trees with a colour
     /// metric), else None.
     born: Option<Vec<Values>>,
+    /// The counterterm and external-field outputs per point (native trees
+    /// with counterterms), else None.
+    counterterms: Option<Vec<Values>>,
     families: Vec<Lanes>,
     check: Option<Vec<Lanes>>,
     bare: Vec<Vec<Values>>,
@@ -286,6 +291,7 @@ fn export_evaluation<T: Exchanged + Real>(
     report: Report,
     bits: u32,
     born: Option<Vec<Values>>,
+    counterterms: Option<Vec<Values>>,
 ) -> Evaluation {
     let lanes = |values: &[(rusticol_core::loop_execution::v2::LaneKey, Vec<Complex<T>>)]| {
         values
@@ -296,6 +302,7 @@ fn export_evaluation<T: Exchanged + Real>(
     let checked = results.iter().any(|r| r.check.is_some());
     Evaluation {
         born,
+        counterterms,
         families: results.iter().map(|r| lanes(&r.families)).collect(),
         check: checked.then(|| {
             results
@@ -420,25 +427,34 @@ where
 {
     let mut batch = batch(inputs, &zero)?;
     let mut born = None;
+    let mut counterterms = None;
     if inputs.contains("parameters")? {
         let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
-        let native = trees.fill(executor.plan(), inputs, &mut batch, &zero)?;
-        born = native.born_squared.map(|points| {
+        let native = trees.fill(executor.plan(), inputs, &mut batch, options.poles, &zero)?;
+        let export = |points: Vec<Vec<T>>| -> Vec<Values> {
             points
                 .iter()
                 .map(|values| real_values(values, &zero, bits))
                 .collect()
-        });
+        };
+        born = native.born_squared.map(export);
+        counterterms = native.counterterms.map(export);
     }
     let (results, report) = py
         .detach(|| executor.evaluate(&batch, &zero, backend, options))
         .map_err(error)?;
-    Ok(export_evaluation(results, report, bits, born))
+    Ok(export_evaluation(results, report, bits, born, counterterms))
 }
 
 /// Native tree inputs of a batch: (block rows, plan Born components, every
-/// Born component, |A0|² or None) per point.
-type ExportedTreeInputs = (Vec<Values>, Vec<Values>, Vec<Values>, Option<Vec<Values>>);
+/// Born component, |A0|² or None, counterterm outputs or None) per point.
+type ExportedTreeInputs = (
+    Vec<Values>,
+    Vec<Values>,
+    Vec<Values>,
+    Option<Vec<Values>>,
+    Option<Vec<Values>>,
+);
 
 fn tree_inputs_with<T: Exchanged + Real + TreeCarrier>(
     executor: &Executor,
@@ -452,23 +468,25 @@ where
     TreeRuntime<T>: Send,
 {
     let mut batch = batch(inputs, &zero)?;
-    let out = trees.fill(executor.plan(), inputs, &mut batch, &zero)?;
+    let out = trees.fill(executor.plan(), inputs, &mut batch, true, &zero)?;
     let export = |points: &[Vec<Complex<T>>]| -> Vec<Values> {
         points
             .iter()
             .map(|values| T::export(values, bits))
             .collect()
     };
+    let reals = |points: Vec<Vec<T>>| -> Vec<Values> {
+        points
+            .iter()
+            .map(|values| real_values(values, &zero, bits))
+            .collect()
+    };
     Ok((
         export(&out.block_rows),
         export(&out.born),
         export(&out.amplitudes),
-        out.born_squared.map(|points| {
-            points
-                .iter()
-                .map(|values| real_values(values, &zero, bits))
-                .collect()
-        }),
+        out.born_squared.map(reals),
+        out.counterterms.map(reals),
     ))
 }
 
@@ -539,7 +557,8 @@ impl V2Executor {
     }
 
     /// The native tree inputs of a batch (needs a tree program): per point
-    /// `(block_rows, born, amplitudes, born_squared)`, see `TreeInputs`.
+    /// `(block_rows, born, amplitudes, born_squared, counterterms)`, see
+    /// `TreeInputs` (counterterms with poles).
     fn tree_inputs(&mut self, inputs: &Bound<'_, PyDict>) -> PyResult<ExportedTreeInputs> {
         let bits = self.bits()?;
         let executor = &self.executor;

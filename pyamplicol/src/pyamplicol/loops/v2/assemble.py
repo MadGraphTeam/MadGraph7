@@ -679,7 +679,14 @@ def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
 
     def rename(expression: Any) -> Any:
         expression = expression.replace_multiple(symbols)
-        return expression.replace_multiple(calls) if calls else expression
+        # Nor into the arguments of a call another rule replaced: repeat
+        # until nested calls (``value_3(0, 0, value_4(0))``) are renamed too.
+        while calls:
+            renamed_calls = expression.replace_multiple(calls)
+            if renamed_calls == expression:
+                break
+            expression = renamed_calls
+        return expression
 
     return (
         [rename(expression) for expression in stage.output_expressions],
@@ -2700,8 +2707,10 @@ class _NativePoint(_PointEvaluation):
 
     Only parameter-dependent values are prepared here (kernel constants); the
     result holds the Born (when the executor forms |A0|^2) and the ``bare``
-    component per sector. Counterterms and external fields join with the
-    native counterterm program (WP3.1 I5).
+    component per sector, and, when the executor forms the counterterm and
+    external-field components (``native_counterterms``), every component as
+    ``_PointEvaluation`` assembles it, without Catani's pole prediction
+    (WP3.1 I5c).
     """
 
     def __init__(self, slice_, point, scale, parameters, numbers):
@@ -2725,10 +2734,17 @@ class _NativePoint(_PointEvaluation):
         )
         self.born: dict[Orders, Any] = {}
         self.counterterms: dict = {}
+        self.native_counterterms = False
         self.colour_contraction = "direct"
         self.retest_families = None
 
+    def _ir_poles(self) -> None:
+        return None
+
     def _assemble(self) -> None:
+        if self.native_counterterms:
+            super()._assemble()
+            return
         slice_, numbers = self.slice, self.numbers
         width = 3 if self.poles else 1
         zero = numbers.real(0)

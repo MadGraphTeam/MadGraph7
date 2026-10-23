@@ -20,6 +20,7 @@ pub mod closure;
 pub mod dress;
 pub mod forward;
 pub mod generate;
+pub mod interference;
 pub mod kernels;
 pub mod merged;
 pub mod observables;

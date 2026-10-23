@@ -1,17 +1,20 @@
 # SPDX-License-Identifier: 0BSD
-"""Native per-point trees and Born of the v2 executor (WP3.1 I3/I4 part).
+"""Native per-point inputs of the v2 executor (WP3.1 I3/I4/I5).
 
 ``NativeExecutor(inputs="native")`` exports the slice's tree program (the
-interaction program) and its Born root closure (``loops/v2/native_trees.py``)
-and forms every point's block rows and Born components in ``rusticol-core``
-(``loop_v2::trees``), without Python per point. Checks against the slice's
-Python inputs (``inputs="python"``, the same exported plan):
+interaction program), its Born root closure and its counterterm closure with
+the external-field insertions (``loops/v2/native_trees.py``) and forms every
+point's block rows, Born components, counterterm and field components in
+``rusticol-core`` (``loop_v2::trees``, ``loop_v2::interference``), without
+Python per point. Checks against the slice's Python inputs
+(``inputs="python"``, the same exported plan):
 
 * block rows and Born components per point in binary64;
-* the bare virtual per sector and |A0|^2 per squared Born order, in binary64
-  and in double-double, on processes with fixed parameters, massive external
-  tops, and leading and next-to-leading colour (the Born metric per Born
-  component);
+* every component of the virtual per sector (bare, counterterms, external
+  fields, complete) and |A0|^2 per squared Born order, in binary64 and in
+  double-double, on processes with fixed parameters, massive external tops,
+  and leading and next-to-leading colour (the Born metric per Born
+  component; whole-rule colour continuations of the four-gluon R2);
 * per-point renormalisation scales in one batch, and massive external
   spinors in double-double with a mass that is no binary64 number (the
   executor takes exact masses and rounds them to its carrier).
@@ -116,7 +119,9 @@ def test_native_rows_and_born_components_equal_the_python_inputs(executors, name
 
     native, python = executors(name)
     points, scales = _points(PROCESSES[name][3])
-    rows, born, _amplitudes, _squared = native.native_inputs(points, scales, PARAMETERS)
+    rows, born, _amplitudes, _squared, _counterterms = native.native_inputs(
+        points, scales, PARAMETERS
+    )
     _precision, evaluations = python._points(points, scales, PARAMETERS, None, True)
     reference = python._inputs(evaluations, "double")
     for k in range(len(points)):
@@ -125,28 +130,44 @@ def test_native_rows_and_born_components_equal_the_python_inputs(executors, name
         assert _deviation(born[k], reference["born"][k]) <= 1e-13
 
 
+def _real(value) -> Decimal:
+    """A real binary64 or Decimal component value, exactly."""
+
+    if isinstance(value, complex):
+        assert value.imag == 0
+        value = value.real
+    return Decimal(value)
+
+
 def _assert_same(native, python, tolerance) -> None:
+    """Every component per sector, on the scale of the sector's complete
+    virtual, and |A0|^2 per squared Born order."""
+
     for a, b in zip(native, python, strict=True):
-        for sector, value in b.components["bare"].items():
-            mine = a.components["bare"][sector].coefficients
-            scale = max(abs(complex(x)) for x in value.coefficients) or 1.0
-            for x, y in zip(mine, value.coefficients, strict=True):
-                assert abs(complex(x) - complex(y)) <= tolerance * scale, sector
+        assert a.components.keys() == b.components.keys()
+        for name, sectors in b.components.items():
+            for sector, value in sectors.items():
+                mine = a.components[name][sector].coefficients
+                scale = max(
+                    abs(_real(x)) for x in b.components["virtual"][sector].coefficients
+                )
+                for x, y in zip(mine, value.coefficients, strict=True):
+                    deviation = abs(_real(x) - _real(y))
+                    assert deviation <= Decimal(tolerance) * scale, (name, sector)
         assert a.born.keys() == b.born.keys()
         for order, value in b.born.items():
             assert abs(float(a.born[order]) - float(value)) <= tolerance * abs(
                 float(value)
             )
-        assert "virtual" not in a.components
 
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
     "name", ["uux_ddxg", "gg_gg", "gg_ttx", "gg_gg_lc", "uux_ddxg_nlc"]
 )
-def test_native_bare_and_born_equal_the_python_inputs(executors, name):
-    """The bare virtual of every sector and |A0|^2 (at the request's colour
-    accuracy) in binary64."""
+def test_native_virtual_and_born_equal_the_python_inputs(executors, name):
+    """Every component of the virtual per sector and |A0|^2 (at the
+    request's colour accuracy) in binary64."""
 
     native, python = executors(name)
     points, scales = _points(PROCESSES[name][3])
@@ -260,14 +281,14 @@ slice_ = LoopSlice.generate(load_compiled_model(model), request, load_loop_nativ
 executor = NativeExecutor(slice_, forward=False, inputs="native")
 trees = executor.exported.trees
 points = json.load(open(fixture))["points"][:1]
-rows, born, _amplitudes, squared = executor.native_inputs(
+rows, born, _amplitudes, squared, counterterms = executor.native_inputs(
     points, ["10000"], {"aS": "0.118", "MT": "173"}
 )
 digest = lambda data: hashlib.sha256(data).hexdigest()
 print(json.dumps({
     "program": digest(trees.json().encode()),
     "kernels": [digest(saved) for saved in trees.kernels],
-    "inputs": digest(repr((rows, born, squared)).encode()),
+    "inputs": digest(repr((rows, born, squared, counterterms)).encode()),
 }))
 """
 

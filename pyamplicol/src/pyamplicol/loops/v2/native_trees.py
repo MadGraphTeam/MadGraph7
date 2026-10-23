@@ -79,6 +79,9 @@ class NativeTrees:
     components: tuple[tuple[int, Orders, int], ...] = ()
     # The parameter program's saved exact evaluator.
     parameters: bytes = b""
+    # (component, sector, epsilon power) of each native counterterm and
+    # external-field output (``_counterterm_program``); empty without them.
+    counterterm_outputs: tuple[tuple[str, Orders, int], ...] = ()
 
     def json(self) -> str:
         return json.dumps(self.program, separators=(",", ":"))
@@ -102,11 +105,14 @@ def export_trees(
     rows: tuple[tuple[tuple[int, int], ...], ...],
     *,
     born_squared: bool,
+    with_counterterms: bool = True,
 ) -> NativeTrees:
     """The tree program of ``slice_`` for the plan ``exporter`` is lowering.
 
     Call after the exporter's seed records (the plan's Born components are
-    numbered there); the Born kernels and their constants join the plan.
+    numbered there); the Born kernels and their constants join the plan, as
+    do the counterterm closure kernels with ``with_counterterms``
+    (``_counterterm_program``).
     """
 
     from .assemble import LAURENT_POWERS, _BlockRows, _single
@@ -191,26 +197,92 @@ def export_trees(
         block_dimensions.append(dimensions.pop())
         return found
 
+    def closure_term(term: Any, contributions: list[list[Any]]) -> dict[str, Any]:
+        """A root-closure term (``ct_sites.SiteTerm``: a vertex closed on
+        tree blocks) as a plan kernel on its blocks' rows and momenta."""
+
+        kernel = exporter._kernel(term.binding, ())
+        ids = [block_id(block) for block in term.blocks]
+        dimensions = [block_dimensions[ids[i]] for i in term.kernel_legs]
+        current_slots = [
+            (term.kernel_legs[leg], k)
+            for leg, dimension in enumerate(dimensions)
+            for k in range(dimension)
+        ]
+        inputs = []
+        for kind, component, _ in exporter.kernel_records[kernel]["inputs"]:
+            if kind == "current":
+                inputs.append(["current", *current_slots[component]])
+            elif kind == "momentum":
+                inputs.append(["momentum", component // 4, component % 4])
+            else:
+                raise ValueError(f"a closure kernel reads a {kind} input")
+        return {
+            "kernel": kernel,
+            "inputs": inputs,
+            "blocks": ids,
+            "masks": [block.key.external_mask for block in term.blocks],
+            "sign": term.sign,
+            "contributions": contributions,
+        }
+
+    def whole_term(term: Any, contributions: list[list[Any]]) -> dict[str, Any]:
+        """A whole-rule continuation term (``assemble.WholeRuleTerm``): its
+        sum of products of Minkowski contractions of block rows as a plan
+        kernel on the blocks' four components."""
+
+        ids = [block_id(block) for block in term.blocks]
+        if any(block_dimensions[i] != 4 for i in ids):
+            raise NotImplementedError("a whole-rule term on a non-vector block")
+        polynomial: dict[tuple[int, ...], Fraction] = defaultdict(Fraction)
+        for coefficient, pairs in term.pairings:
+            partial = {(): Fraction(coefficient)}
+            for a, b in pairs:
+                expanded: dict[tuple[int, ...], Fraction] = defaultdict(Fraction)
+                for monomial, value in partial.items():
+                    for mu, metric in ((0, 1), (1, -1), (2, -1), (3, -1)):
+                        key = tuple(sorted((*monomial, 4 * a + mu, 4 * b + mu)))
+                        expanded[key] += value * metric
+                partial = expanded
+            for monomial, value in partial.items():
+                polynomial[monomial] += value
+        entries = tuple(
+            (monomial, value) for monomial, value in sorted(polynomial.items()) if value
+        )
+        key = ("whole-rule", len(ids), entries)
+        kernel = exporter.kernels.get(key)
+        if kernel is None:
+            outputs = []
+            for monomial, value in entries:
+                constant = exporter.constants.setdefault(
+                    (((value, Fraction(0)), (), (), ()), ()), len(exporter.constants)
+                )
+                powers: dict[int, int] = defaultdict(int)
+                for index in monomial:
+                    powers[index] += 1
+                outputs.append([constant, [[i, e] for i, e in sorted(powers.items())]])
+            kernel = exporter.kernels[key] = len(exporter.kernel_records)
+            exporter.kernel_records.append(
+                {
+                    "inputs": [["current", k, 0] for k in range(4 * len(ids))],
+                    "outputs": [outputs],
+                }
+            )
+        return {
+            "kernel": kernel,
+            "inputs": [
+                ["current", slot, k] for slot in range(len(ids)) for k in range(4)
+            ],
+            "blocks": ids,
+            "masks": [block.key.external_mask for block in term.blocks],
+            "sign": term.sign,
+            "contributions": contributions,
+        }
+
     terms = []
     born_orders = tuple(sorted(slice_.born_terms))
     for order, order_terms in sorted(slice_.born_terms.items()):
         for term in order_terms:
-            kernel = exporter._kernel(term.binding, ())
-            ids = [block_id(block) for block in term.blocks]
-            dimensions = [block_dimensions[ids[i]] for i in term.kernel_legs]
-            current_slots = [
-                (term.kernel_legs[leg], k)
-                for leg, dimension in enumerate(dimensions)
-                for k in range(dimension)
-            ]
-            inputs = []
-            for kind, component, _ in exporter.kernel_records[kernel]["inputs"]:
-                if kind == "current":
-                    inputs.append(["current", *current_slots[component]])
-                elif kind == "momentum":
-                    inputs.append(["momentum", component // 4, component % 4])
-                else:
-                    raise ValueError(f"a Born closure kernel reads a {kind} input")
             contributions = []
             grades = layout.get((term.entry.coupling.name, 0), ())
             power = term.colour.normalization_power
@@ -232,16 +304,7 @@ def export_trees(
                             power,
                         ]
                     )
-            terms.append(
-                {
-                    "kernel": kernel,
-                    "inputs": inputs,
-                    "blocks": ids,
-                    "masks": [block.key.external_mask for block in term.blocks],
-                    "sign": term.sign,
-                    "contributions": contributions,
-                }
-            )
+            terms.append(closure_term(term, contributions))
     plan_components = [components.get(key) for key in exporter.born_components]
     orders_index = {order: o for o, order in enumerate(born_orders)}
     amplitudes: list[list[list[Any]]] = [
@@ -281,9 +344,19 @@ def export_trees(
                             _fraction_text(value.imag),
                         ]
                     )
+    counterterms = None
+    if with_counterterms:
+        counterterms = _counterterm_program(
+            slice_, closure_term, whole_term, components, born_orders
+        )
     masses = _external_masses(slice_)
     parameters, parameter_evaluator = _parameter_program(
-        slice_, exporter, trees, tuple(couplings), masses
+        slice_,
+        exporter,
+        trees,
+        tuple(couplings),
+        masses,
+        () if counterterms is None else counterterms.couplings,
     )
     program = {
         "schema": TREE_SCHEMA,
@@ -311,6 +384,7 @@ def export_trees(
             "average": str(slice_.normalisation.average),
         },
         "parameters": parameters,
+        "counterterms": None if counterterms is None else counterterms.record,
     }
     return NativeTrees(
         program,
@@ -321,6 +395,219 @@ def export_trees(
         masses,
         tuple(components),
         parameter_evaluator,
+        () if counterterms is None else counterterms.outputs,
+    )
+
+
+@dataclass(frozen=True)
+class _Counterterms:
+    record: dict[str, Any]
+    # Per coupling slot ("scalar", coupling name, epsilon power, N_c grade),
+    # or ("whole", N_c grade, coefficient expression, its scalar names) for
+    # a whole-rule continuation's coefficient (``assemble.WholeRuleTerm``).
+    couplings: tuple[tuple[Any, ...], ...]
+    # (component, sector, epsilon power) per output.
+    outputs: tuple[tuple[str, Orders, int], ...]
+
+
+def _counterterm_program(
+    slice_: Any,
+    closure_term: Any,
+    whole_term: Any,
+    components: Mapping[tuple[int, Orders, int], int],
+    born_orders: Sequence[Orders],
+) -> _Counterterms:
+    """The counterterm and external-field components of the native lane, as
+    ``assemble._PointEvaluation._born_and_counterterms`` forms them.
+
+    * **Counterterm amplitudes**: every term of the slice's counterterm
+      closure (``LoopSlice.site_terms``: a counterterm vertex closed on tree
+      blocks, ``ct_sites.SiteTerm``) is a closure term like the Born's; per
+      epsilon power its coupling's N_c grades (the scalar plan) are coupling
+      slots, and its literal colour tensors accumulate, times the site's
+      multiplicity, into the ket components (tensor, vector, N_c power), one
+      vector per (component, epsilon power, loop orders). The closure is the
+      same for WP2.2's counterterm recursion, whose root terms are site terms
+      on the counterterm program's blocks.
+    * **Interferences**: per output (component, sector, epsilon power) the
+      entries ``2 Re(c <A0(order)|M|ket>)`` of every Born order of the
+      sector: a counterterm vector (c = 1), or an external-field insertion
+      (``LoopSlice.fields``: the loop-side Born of its Born order, c its
+      field coefficient per epsilon power and N_c grade). ``M`` is the exact
+      overlap of the Born basis with the ket tensors, each cell's N_c power
+      kept as the request's projection keeps it (``colour.kept``) below the
+      sector's degree, at N_c = 3 (``assemble._interfere``).
+
+    Whole-rule colour continuations (``assemble.WholeRuleTerm``, leading
+    and next-to-leading colour) are closure terms whose kernel is their
+    polynomial in the block rows (``whole_term``) and whose coupling slots
+    are their N_c-graded coefficients.
+    """
+
+    from .assemble import LAURENT_POWERS, WholeRuleTerm, _single
+    from .colour import _DEPTH
+    from .fields import FIELD_COMPONENT
+
+    _plan, layout = slice_._scalar_plan(LAURENT_POWERS)
+    legs = slice_.basis.legs
+    basis = slice_.basis.tensors
+    whole_expressions: dict[int, Any] = {}
+    tensors: dict[Any, int] = {tensor: b for b, tensor in enumerate(basis)}
+    # The literal tensor of each ket tensor (``LoopSlice.overlaps`` reads
+    # literal tensors).
+    literal = [tensor.terms[0].tensor for tensor in basis]
+    couplings: dict[tuple[Any, ...], int] = {}
+    vectors: dict[tuple[str, int, Orders], int] = {}
+    ket: dict[tuple[int, int, int], int] = {}
+    terms = []
+
+    def contribute(out, slot, vector, grade, colour, multiplicity) -> None:
+        for item in colour.terms:
+            t = tensors.setdefault(_single(item.tensor, legs), len(tensors))
+            if t == len(literal):
+                literal.append(item.tensor)
+            k = ket.setdefault((t, vector, item.nc_power + grade), len(ket))
+            out.append(
+                [
+                    slot,
+                    k,
+                    _fraction_text(item.coefficient.real * multiplicity),
+                    _fraction_text(item.coefficient.imag * multiplicity),
+                    colour.normalization_power,
+                ]
+            )
+
+    for site, site_terms in slice_.site_terms.items():
+        multiplicity = len(site.alternatives)
+        for term in site_terms:
+            contributions: list[list[Any]] = []
+            if isinstance(term, WholeRuleTerm):
+                # Only the eps^0 coefficient exists; its N_c grades are model
+                # expressions of the named scalars' grade-0 values.
+                vector = vectors.setdefault(
+                    (site.component, 0, site.orders), len(vectors)
+                )
+                for degree, expression in term.grades:
+                    key = (
+                        "whole",
+                        degree,
+                        expression.to_canonical_string(),
+                        tuple(term.parameters),
+                    )
+                    slot = couplings.get(key)
+                    if slot is None:
+                        slot = couplings[key] = len(couplings)
+                        whole_expressions[slot] = expression
+                    contribute(
+                        contributions, slot, vector, degree, term.colour, multiplicity
+                    )
+                if contributions:
+                    terms.append(whole_term(term, contributions))
+                continue
+            name = term.entry.coupling.name
+            for power in LAURENT_POWERS:
+                grades = layout.get((name, power), ())
+                if not grades:
+                    continue
+                vector = vectors.setdefault(
+                    (site.component, power, site.orders), len(vectors)
+                )
+                for grade, _column in grades:
+                    slot = couplings.setdefault(
+                        ("scalar", name, power, grade), len(couplings)
+                    )
+                    contribute(
+                        contributions, slot, vector, grade, term.colour, multiplicity
+                    )
+            if contributions:
+                terms.append(closure_term(term, contributions))
+    born_index = {order: o for o, order in enumerate(born_orders)}
+    sector_of = {
+        pair: s for s, (_sector, pairs) in enumerate(slice_.sectors) for pair in pairs
+    }
+    accuracy = slice_.request.accuracy
+    degrees = slice_.degrees()["virtual"] if accuracy != "full" else None
+
+    def degree(s: int) -> int | None:
+        return None if degrees is None else degrees[slice_.sectors[s][0]]
+
+    outputs: dict[tuple[str, int, int], int] = {}
+    entries = []
+    for (component, power, loop_order), vector in vectors.items():
+        for order in born_orders:
+            s = sector_of.get((order, loop_order))
+            if s is None:
+                continue
+            out = outputs.setdefault((component, s, power), len(outputs))
+            entries.append(
+                ["vector", born_index[order], vector, None, 0, out, degree(s)]
+            )
+    field_names = slice_.field_names
+    for insertion in slice_.fields:
+        name = field_names[insertion.identity]
+        ket_order = born_index.get(insertion.born_order)
+        if ket_order is None:
+            continue
+        for order in born_orders:
+            s = sector_of.get((order, insertion.orders))
+            if s is None:
+                continue
+            for power in LAURENT_POWERS:
+                for grade, _column in layout.get((name, power), ()):
+                    slot = couplings.setdefault(
+                        ("scalar", name, power, grade), len(couplings)
+                    )
+                    out = outputs.setdefault((FIELD_COMPONENT, s, power), len(outputs))
+                    entries.append(
+                        [
+                            "born",
+                            born_index[order],
+                            ket_order,
+                            slot,
+                            grade,
+                            out,
+                            degree(s),
+                        ]
+                    )
+    # Exact overlaps of the Born basis with every ket tensor, per N_c power.
+    gram = slice_.basis.gram
+    cells = []
+    for b, left in enumerate(literal[: len(basis)]):
+        for t, right in enumerate(literal):
+            found = gram[b][t] if t < len(basis) else slice_.overlaps(left, right)
+            for power, cell in found.items():
+                if cell:
+                    cells.append(
+                        [
+                            b,
+                            t,
+                            power,
+                            _fraction_text(cell.real),
+                            _fraction_text(cell.imag),
+                        ]
+                    )
+    record = {
+        "couplings": len(couplings),
+        "coupling_powers": [key[2] if key[0] == "scalar" else 0 for key in couplings],
+        "ket": [list(key) for key in ket],
+        "vectors": len(vectors),
+        "tensors": len(tensors),
+        "cells": cells,
+        "born": [[b, born_index[order], grade] for b, order, grade in components],
+        "terms": terms,
+        "entries": entries,
+        "outputs": [power for _component, _s, power in outputs],
+        "depth": None if accuracy == "full" else _DEPTH[accuracy],
+    }
+    return _Counterterms(
+        record,
+        tuple(
+            key if key[0] == "scalar" else (*key[:2], whole_expressions[slot], key[3])
+            for key, slot in couplings.items()
+        ),
+        tuple(
+            (component, slice_.sectors[s][0], power) for component, s, power in outputs
+        ),
     )
 
 
@@ -330,6 +617,7 @@ def _parameter_program(
     trees: Any,
     couplings: Sequence[tuple[str, int]],
     masses: Sequence[tuple[int, str]],
+    counterterm_couplings: Sequence[tuple[Any, ...]] = (),
 ) -> tuple[dict[str, Any], bytes]:
     """The parameter program of the native lane: its record and its saved
     exact evaluator (``loop_v2::trees`` binds a batch with it).
@@ -338,16 +626,23 @@ def _parameter_program(
     in the schema's order. Outputs are complex: per derived model parameter
     of the tree program its definition (``TreeRows._definitions``, as
     ``TreeRows._model_values`` evaluates them in Decimal), per Born coupling
-    slot (name, N_c grade) its scalar-plan coefficient, per plan kernel
-    constant its key's value (coefficient, exact and irrational factors,
-    with the reading's mass flips, as ``reference_executor.KernelConstants``
-    forms it in Python) and every base a fractional power was distributed
-    over (the executor checks it positive, as ``KernelConstants`` does). The
-    evaluator is compiled on canonical symbols (``assemble._canonical_stage``):
-    its term order does not depend on the process history.
+    slot (name, N_c grade) its scalar-plan coefficient, per counterterm or
+    field coupling slot (name, epsilon power, N_c grade) its scalar-plan
+    coefficient and the coefficient's active diagnostic (the executor checks
+    it finite, as ``scalar_bindings.NativeScalarBindings`` does; the model's
+    helper functions, e.g. ``cond`` and ``reglog``, are the scalar library's
+    definitions), per whole-rule coefficient slot its grade expression on the
+    named scalars' grade-0 coefficients (``assemble.WholeRuleTerm
+    .coefficients``), per plan kernel constant its key's value (coefficient,
+    exact and irrational factors, with the reading's mass flips, as
+    ``reference_executor.KernelConstants`` forms it in Python) and every base
+    a fractional power was distributed over (the executor checks it
+    positive, as ``KernelConstants`` does). The evaluator is compiled on
+    canonical symbols (``assemble._canonical_stage``): its term order does
+    not depend on the process history.
     """
 
-    from symbolica import E, Expression, Replacement, S
+    from symbolica import E, Expression, FunctionDefinition, Replacement, S
 
     from pyamplicol._internal.physics.symbols import symbols
 
@@ -416,6 +711,50 @@ def _parameter_program(
             )
         )
 
+    # Counterterm and field couplings per epsilon power and N_c grade; they
+    # may read the renormalisation scale (one value per point).
+    counterterm_outputs, finite = [], []
+
+    def scalar(name: str, power: int, grade: int) -> Any:
+        """The scalar-plan coefficient (and its diagnostic, checked finite)."""
+
+        (column,) = [c for degree, c in layout[(name, power)] if degree == grade]
+        expression = plan.expressions[column]
+        if expression.diagnostic != 0:
+            finite.append(
+                output(
+                    ("diagnostic", name, power, grade),
+                    lambda e=expression: e.diagnostic.replace_multiple(plan_inputs),
+                )
+            )
+        return expression.value
+
+    for slot in counterterm_couplings:
+        if slot[0] == "scalar":
+            _kind, name, power, grade = slot
+            value = scalar(name, power, grade)
+            counterterm_outputs.append(
+                output(
+                    ("counterterm", name, power, grade),
+                    lambda v=value: v.replace_multiple(plan_inputs),
+                )
+            )
+            continue
+        _kind, degree, coefficient, scalars = slot
+        bound = coefficient.replace_multiple(
+            [
+                Replacement(symbols.qualified(f"UFO::{name}"), scalar(name, 0, 0))
+                for name in scalars
+            ]
+        )
+        counterterm_outputs.append(
+            output(
+                ("whole", degree, coefficient.to_canonical_string(), scalars),
+                lambda v=bound: v.replace_multiple(plan_inputs),
+            )
+        )
+    helpers = plan.program.library._bodies if finite or counterterm_outputs else {}
+
     # Plan kernel constants.
     def base(factor: Any, flips: Mapping[str, int]) -> Any:
         kind, value = factor
@@ -482,14 +821,26 @@ def _parameter_program(
             raise NotImplementedError(f"the loop mass {mass.mass!r} is no input")
         else:
             plan_masses.append(index[mass.mass])
-    canonical, parameters, _functions = _canonical_stage(
+    canonical, parameters, functions = _canonical_stage(
         SimpleNamespace(
             output_expressions=outputs,
             parameter_symbols=inputs,
-            symbolica_functions=[],
+            symbolica_functions=[
+                (head, tuple(arguments), body)
+                for head, (arguments, body) in helpers.items()
+            ],
         )
     )
-    evaluator = Expression.evaluator_multiple(canonical, parameters, jit_compile=False)
+    # Helper calls stay calls, as in the scalar library's own evaluator.
+    evaluator = Expression.evaluator_multiple(
+        canonical,
+        parameters,
+        functions=[
+            FunctionDefinition(head, list(arguments), body, inlining="never")
+            for head, arguments, body in functions
+        ],
+        jit_compile=False,
+    )
     record = {
         "names": names,
         "defaults": defaults,
@@ -498,6 +849,8 @@ def _parameter_program(
         "outputs": len(outputs),
         "model": model,
         "couplings": coupling_outputs,
+        "counterterm_couplings": counterterm_outputs,
+        "finite": finite,
         "constants": constants,
         "positive": sorted(set(positive)),
         "masses": [[int(pdg), index[name]] for pdg, name in masses],

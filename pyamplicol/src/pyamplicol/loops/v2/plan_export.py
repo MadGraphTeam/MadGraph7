@@ -749,6 +749,7 @@ def export_plan(
     trees: bool = False,
     born_squared: bool = False,
     links: bool = False,
+    counterterms: bool = True,
 ) -> ExportedPlan:
     """The plan v4 program of a generated slice (structure only, no numerics).
 
@@ -760,7 +761,8 @@ def export_plan(
     are primitive seed keys, so they carry one weight list per column like
     every other seed. ``trees`` exports the tree program of native per-point
     inputs (``native_trees.export_trees``; its Born kernels join the plan's),
-    with the Born colour metric when ``born_squared``. ``links`` writes the
+    with the Born colour metric when ``born_squared`` and the counterterm
+    and external-field components when ``counterterms``. ``links`` writes the
     schedule-B helicity rows and row links, which the native loader otherwise
     derives (and with them checks).
     """
@@ -806,7 +808,13 @@ def export_plan(
     if trees:
         from .native_trees import export_trees
 
-        native_trees = export_trees(slice_, exporter, rows, born_squared=born_squared)
+        native_trees = export_trees(
+            slice_,
+            exporter,
+            rows,
+            born_squared=born_squared,
+            with_counterterms=counterterms,
+        )
     legs = len(slice_.blocks.process.legs)
     row_index = {row: i for i, row in enumerate(rows)}
     program = {
@@ -902,10 +910,12 @@ class NativeExecutor:
     hands over only momenta, scales and the external model parameters, from
     which the executor binds the kernel constants, masses, couplings and the
     tree program's model parameters itself. Its results hold the Born (with
-    ``born_squared``, at the request's colour accuracy) and the ``bare``
-    component; the counterterms and external fields join with the native
-    counterterm program (WP3.1 I5, after WP2.2), so ``virtual`` is absent
-    until then.
+    ``born_squared``, at the request's colour accuracy), the ``bare``
+    component and, with ``counterterms`` (default), the counterterm and
+    external-field components and the complete virtual, formed natively from
+    the slice's counterterm closure (``native_trees._counterterm_program``);
+    without ``counterterms`` ``virtual`` is absent. Catani's pole prediction
+    (``PointResult.ir_poles``) is not formed natively (WP3.1 I5c).
     """
 
     def __init__(
@@ -921,6 +931,7 @@ class NativeExecutor:
         plan_json: str | None = None,
         inputs: Literal["python", "native"] = "python",
         born_squared: bool = True,
+        counterterms: bool = True,
     ):
         if inputs not in ("python", "native"):
             raise ValueError(f"unknown input path {inputs!r}")
@@ -943,6 +954,7 @@ class NativeExecutor:
             merged=merged or None,
             trees=inputs == "native",
             born_squared=born_squared,
+            counterterms=counterterms,
         )
         if inputs == "native" and self.exported.trees is None:
             raise ValueError("native inputs need a plan exported with trees=True")
@@ -1395,6 +1407,16 @@ class NativeExecutor:
                 )
 
             with _Numbers(precision).scope():
+                if output.get("counterterms") is not None:
+                    evaluation.counterterms = {
+                        key: numbers.real(Decimal(str(re)))
+                        for key, (re, _im) in zip(
+                            exported.trees.counterterm_outputs,
+                            output["counterterms"][index],
+                            strict=True,
+                        )
+                    }
+                    evaluation.native_counterterms = True
                 if output.get("born") is not None:
                     evaluation.born = {
                         order: numbers.real(Decimal(str(re)))
