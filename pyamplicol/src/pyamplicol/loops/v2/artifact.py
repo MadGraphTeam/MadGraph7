@@ -6,10 +6,11 @@ envelope under the runtime capability ``rusticol.loop-runtime.v4``:
 
 * ``processes/<id>/loop-runtime.pacbin`` holds one member of kind
   ``LOOP_RUNTIME_PLAN``, ``schedule/loop-plan-v4.json.zlib``: the plan v4
-  program of ``plan_export`` (zlib-compressed JSON) that the native
-  ``V2Executor`` validates and runs. Its kernels are exact polynomial term
-  lists interpreted natively (``loop_v2/dress.rs``): no compiled code, so
-  nothing depends on the build host's CPU features or paths.
+  program of ``plan_export`` (zlib-compressed JSON, schedule B; the forward
+  oracle F is not stored) that the native ``V2Executor`` validates and runs.
+  Its kernels are exact polynomial term lists interpreted natively
+  (``loop_v2/dress.rs``): no compiled code, so nothing depends on the build
+  host's CPU features or paths.
 * ``processes/<id>/execution.json`` (schema 4) records the plan's SHA-256,
   ``point_inputs`` and the generation request (process, coupling orders,
   corrections, fixed parameters, colour accuracy and continuation, seed
@@ -335,7 +336,10 @@ def generate_process(
         )
     else:
         observables = ObservableSlice.of(LoopSlice.generate(compiled, request, native))
-    exported = export_plan(observables.slice)
+    # Schedule F (the forward oracle) is not stored: the runtime dresses by
+    # schedule B, and F's section is over half of the plan (gg -> gggg: 52 of
+    # 98 MB of JSON).
+    exported = export_plan(observables.slice, forward=False)
     resolved = CorrelatorConfig(
         tuple(observables.histories), tuple(observables.spin_classes)
     )

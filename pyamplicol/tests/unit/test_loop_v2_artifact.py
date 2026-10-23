@@ -598,22 +598,54 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
         execution["plan_sha256"] = "0" * 64
         return execution
 
-    for name, edits, reason in (
+    def native_inputs(execution):
+        execution["point_inputs"] = "native"
+        return execution
+
+    def unresolved(physics):
+        physics["metadata"]["resolved"] = False
+        return physics
+
+    def foreign_spin_leg(physics):
+        physics["metadata"]["spin_correlations"] = [[5]]
+        return physics
+
+    for name, edits, reason, loaded in (
         (
             "buckets",
             {"processes/gg/physics.json": shuffle_buckets},
+            "buckets",
             "buckets",
         ),
         (
             "digest",
             {"processes/gg/execution.json": foreign_digest},
             "differs from its declared digest",
+            "differs from its declared digest",
+        ),
+        (
+            "inputs",
+            {"processes/gg/execution.json": native_inputs},
+            "unsupported plan v4 execution declaration",
+            "not a v2 virtual process",
+        ),
+        (
+            "resolved",
+            {"processes/gg/physics.json": unresolved},
+            "without the forced seed FFT",
+            "without the forced seed FFT",
+        ),
+        (
+            "spin",
+            {"processes/gg/physics.json": foreign_spin_leg},
+            "disagree with the declarations",
+            "disagree with the declarations",
         ),
     ):
         tampered = _rewrite_payloads(full_colour, tmp_path / name, edits)
         with pytest.raises(ArtifactError, match=reason):
             admit(loop_native, tampered, "gg")
-        with pytest.raises(ArtifactError, match=reason):
+        with pytest.raises(ArtifactError, match=loaded):
             Runtime.load(tampered, process="gg")
 
 
@@ -1240,7 +1272,9 @@ def test_unsupported_requests_name_the_reason_and_keep_legacy(
 def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
     loop_sm_compiled_model, loop_native, tmp_path
 ):
-    """gg -> gggg (1100 families, 98 MB of plan JSON) publishes < 20 MB."""
+    """gg -> gggg (1100 families, 45 MB of plan JSON without the forward
+    oracle) publishes < 20 MB (8.6 MB when the forward section was stored,
+    5.3 MB of it the compiled model)."""
 
     from pyamplicol.loops.v2.artifact import admit, plan_digest, read_plan
 
