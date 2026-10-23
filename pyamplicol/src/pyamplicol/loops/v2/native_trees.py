@@ -144,11 +144,23 @@ def export_trees(
             key, (int(record["component_start"]), int(record["dimension"]))
         )
 
+    # The counterterm program (WP2.2, ``ct_closure``): a second interaction
+    # program on a state of its own, which follows the trees' state in the
+    # closure's index space (``loop_v2::trees``).
+    ct_program = slice_.counterterm_program if with_counterterms else None
+    ct = None if ct_program is None else _CountertermTrees.of(ct_program, state_size)
+
     def slot(block: Any, entry: Any) -> tuple[int, int]:
-        """(state component start, dimension) of a block row."""
+        """(state component start, dimension) of a block row; a block of the
+        counterterm program reads its state, after the trees' state."""
 
         variant = "source" if block.is_source else "propagated"
-        found = slots.get((entry.current_id, variant))
+        if ct is not None and id(block) in ct.blocks:
+            found = ct.slots.get((entry.current_id, variant))
+            if found is not None:
+                found = (state_size + found[0], found[1])
+        else:
+            found = slots.get((entry.current_id, variant))
         if found is None:
             raise ValueError(f"tree current {entry.current_id} has no {variant} row")
         return found
@@ -184,7 +196,12 @@ def export_trees(
         found = block_ids.get(id(block))
         if found is not None:
             return found
-        by_helicity = {row.helicities: row for row in block.rows}
+        if ct is not None and id(block) in ct.blocks:
+            by_helicity = {}
+            for row in block.rows:
+                by_helicity.setdefault(row.helicities, row)
+        else:
+            by_helicity = {row.helicities: row for row in block.rows}
         starts: list[int | None] = []
         dimensions = set()
         for born_row in rows:
@@ -362,6 +379,7 @@ def export_trees(
         tuple(couplings),
         masses,
         () if counterterms is None else counterterms.couplings,
+        ct,
     )
     program = {
         "schema": TREE_SCHEMA,
@@ -389,6 +407,7 @@ def export_trees(
         },
         "parameters": parameters,
         "counterterms": None if counterterms is None else counterterms.record,
+        "counterterm_trees": None if ct is None else ct.record,
         # Per closure-term layout its kernel inputs: ("current", slot,
         # component) or ("momentum", slot, mu); per colour weight (re, im,
         # sqrt(2) power p): the weight times 2^(-p/2).
@@ -397,7 +416,7 @@ def export_trees(
     }
     return NativeTrees(
         program,
-        saved,
+        saved if ct is None else (*saved, *ct.saved),
         tuple(couplings),
         born_orders,
         squared_orders,
@@ -406,6 +425,83 @@ def export_trees(
         parameter_evaluator,
         () if counterterms is None else counterterms.outputs,
     )
+
+
+@dataclass(frozen=True)
+class _CountertermTrees:
+    """The counterterm program of a slice (``ct_closure.CountertermProgram``,
+    WP2.2) as the native lane's second interaction program.
+
+    Its tree rows (``CountertermProgram.rows``) run like the trees', on a
+    state of their own (sources, momentum slots, model parameters); its
+    model parameters are the model's and the request's CT multiplicities and
+    slot switches (``fixed``, every slot on). Its blocks' rows are read by
+    the counterterm root terms at ``offset`` (the trees' state size) plus
+    their start in its state.
+    """
+
+    rows: Any
+    record: dict[str, Any]
+    saved: tuple[bytes, ...]
+    # (current id, variant) -> (state component start, dimension).
+    slots: Mapping[tuple[int, str], tuple[int, int]]
+    # ``id`` of every block of the program.
+    blocks: frozenset[int]
+    fixed: Mapping[str, int]
+
+    @classmethod
+    def of(cls, program: Any, offset: int) -> _CountertermTrees:
+        rows = program.rows
+        schema = rows.schema
+        value_count = rows._value_count
+        model_count = len(rows._records)
+        slots: dict[tuple[int, str], tuple[int, int]] = {}
+        for record in schema["value_storage"]["value_slots"]:
+            key = (int(record["current_id"]), str(record["variant"]))
+            slots.setdefault(
+                key, (int(record["component_start"]), int(record["dimension"]))
+            )
+        momentum_slots = []
+        for record in schema["momentum_slots"]:
+            mask = 0
+            for label in record["external_labels"]:
+                mask |= 1 << (int(label) - 1)
+            momentum_slots.append([value_count + int(record["component_start"]), mask])
+        # Currents of a pole slot (an epsilon power other than 0): only pole
+        # terms read them, so finite-only evaluations skip them.
+        from pyamplicol.models.loading import counterterm_slot_order
+
+        pole_orders = {
+            counterterm_slot_order(*slot)
+            for slot in program.recursion.slots
+            if slot[1] != 0
+        }
+        pole_currents = frozenset(
+            current.id
+            for current in rows.dag.currents
+            if any(
+                power and name in pole_orders
+                for name, power in current.index.coupling_orders
+            )
+        )
+        interactions, saved = _interaction_program(rows, pole_currents)
+        record = {
+            "offset": offset,
+            "state_size": max(rows._size, rows._offset + model_count),
+            "model_offset": rows._offset,
+            "model_count": model_count,
+            "momentum_slots": momentum_slots,
+            "source_fill": schema["source_fill"],
+            "interactions": interactions,
+        }
+        return cls(
+            rows,
+            record,
+            tuple(saved),
+            slots,
+            frozenset(id(block) for block in program.blocks.blocks.blocks),
+            dict(program.recursion.parameter_values(poles=True)),
+        )
 
 
 @dataclass(frozen=True)
@@ -459,21 +555,48 @@ def _counterterm_program(
     from .colour import _DEPTH, _literal_tensor_overlap_nc_terms, _trace_overlaps
     from .fields import FIELD_COMPONENT
 
-    if slice_.counterterm_program is not None:
-        # The production counterterms come from the tree recursion
-        # (``ct_closure``); its program is not exported natively yet.
-        raise NotImplementedError(
-            "native counterterms from the tree recursion (WP2.2) are not exported"
-        )
     _plan, layout = slice_._scalar_plan(LAURENT_POWERS)
     legs = slice_.basis.legs
     basis = slice_.basis.tensors
-    whole_expressions: dict[int, Any] = {}
     tensors: dict[Any, int] = {tensor: b for b, tensor in enumerate(basis)}
     # The literal tensor of each ket tensor (``LoopSlice.overlaps`` reads
     # literal tensors).
     literal = [tensor.terms[0].tensor for tensor in basis]
+    # Coupling slots: per key its index; per slot its value (``specs``) and
+    # the epsilon power of the terms it weights (finite-only evaluations skip
+    # the others).
     couplings: dict[tuple[Any, ...], int] = {}
+    specs: list[tuple[Any, ...]] = []
+    term_powers: list[int] = []
+
+    def coupling_slot(key: tuple[Any, ...], spec: tuple[Any, ...], power: int) -> int:
+        found = couplings.get(key)
+        if found is None:
+            found = couplings[key] = len(specs)
+            specs.append(spec)
+            term_powers.append(power)
+        return found
+
+    def scalar_slot(
+        name: str, power: int, grade: int, scale: str | None, term_power: int
+    ) -> int:
+        """The slot of a coupling's (epsilon power, N_c grade) coefficient,
+        times a Weyl factor (a model expression) if ``scale``."""
+
+        spec = (
+            ("scalar", name, power, grade)
+            if scale is None
+            else ("scaled", name, power, grade, scale)
+        )
+        return coupling_slot((*spec, term_power), spec, term_power)
+
+    def whole_slot(term: Any, degree: int, expression: Any) -> int:
+        """The slot of a whole-rule coefficient's N_c grade ``degree``."""
+
+        parameters = tuple(term.parameters)
+        key = ("whole", degree, expression.to_canonical_string(), parameters)
+        return coupling_slot(key, ("whole", degree, expression, parameters), 0)
+
     vectors: dict[tuple[str, int, Orders], int] = {}
     ket: dict[tuple[int, int, int], int] = {}
     terms = []
@@ -522,16 +645,7 @@ def _counterterm_program(
                     (site.component, 0, site.orders), len(vectors)
                 )
                 for degree, expression in term.grades:
-                    key = (
-                        "whole",
-                        degree,
-                        expression.to_canonical_string(),
-                        tuple(term.parameters),
-                    )
-                    slot = couplings.get(key)
-                    if slot is None:
-                        slot = couplings[key] = len(couplings)
-                        whole_expressions[slot] = expression
+                    slot = whole_slot(term, degree, expression)
                     contribute(contributions, slot, vector, degree, items, power2)
                 if contributions:
                     terms.append(whole_term(term, contributions))
@@ -545,12 +659,40 @@ def _counterterm_program(
                     (site.component, power, site.orders), len(vectors)
                 )
                 for grade, _column in grades:
-                    slot = couplings.setdefault(
-                        ("scalar", name, power, grade), len(couplings)
-                    )
+                    slot = scalar_slot(name, power, grade, None, power)
                     contribute(contributions, slot, vector, grade, items, power2)
             if contributions:
                 terms.append(closure_term(term, contributions))
+    program = slice_.counterterm_program
+    for item in () if program is None else program.closure.terms:
+        # A root term of the counterterm recursion (``ct_closure.ClosureTerm``)
+        # on the counterterm program's blocks: into the vector of its
+        # (component, epsilon power, orders), with its multiplicity, Weyl
+        # factor and coupling N_c grades shifted by the inserted current's.
+        term = item.term
+        contributions = []
+        items = colour_items(term.colour, item.multiplicity)
+        power2 = term.colour.normalization_power
+        vector = vectors.setdefault(
+            (item.component, item.power, item.orders), len(vectors)
+        )
+        if isinstance(term, WholeRuleTerm):
+            if item.scale is not None or item.power != 0:
+                raise NotImplementedError("a scaled or pole whole-rule CT root term")
+            for degree, expression in term.grades:
+                slot = whole_slot(term, degree, expression)
+                contribute(
+                    contributions, slot, vector, degree + item.grade, items, power2
+                )
+            if contributions:
+                terms.append(whole_term(term, contributions))
+            continue
+        name, power = item.coupling
+        for grade, _column in layout.get(item.coupling, ()):
+            slot = scalar_slot(name, power, grade, item.scale, item.power)
+            contribute(contributions, slot, vector, grade + item.grade, items, power2)
+        if contributions:
+            terms.append(closure_term(term, contributions))
     born_index = {order: o for o, order in enumerate(born_orders)}
     sector_of = {
         pair: s for s, (_sector, pairs) in enumerate(slice_.sectors) for pair in pairs
@@ -584,9 +726,7 @@ def _counterterm_program(
                 continue
             for power in LAURENT_POWERS:
                 for grade, _column in layout.get((name, power), ()):
-                    slot = couplings.setdefault(
-                        ("scalar", name, power, grade), len(couplings)
-                    )
+                    slot = scalar_slot(name, power, grade, None, power)
                     out = outputs.setdefault((FIELD_COMPONENT, s, power), len(outputs))
                     entries.append(
                         [
@@ -637,8 +777,8 @@ def _counterterm_program(
                 if value
             )
     record = {
-        "couplings": len(couplings),
-        "coupling_powers": [key[2] if key[0] == "scalar" else 0 for key in couplings],
+        "couplings": len(specs),
+        "coupling_powers": term_powers,
         "ket": [list(key) for key in ket],
         "vectors": len(vectors),
         "tensors": len(tensors),
@@ -651,10 +791,7 @@ def _counterterm_program(
     }
     return _Counterterms(
         record,
-        tuple(
-            key if key[0] == "scalar" else (*key[:2], whole_expressions[slot], key[3])
-            for key, slot in couplings.items()
-        ),
+        tuple(specs),
         tuple(
             (component, slice_.sectors[s][0], power) for component, s, power in outputs
         ),
@@ -668,6 +805,7 @@ def _parameter_program(
     couplings: Sequence[tuple[str, int]],
     masses: Sequence[tuple[int, str]],
     counterterm_couplings: Sequence[tuple[Any, ...]] = (),
+    counterterm_trees: _CountertermTrees | None = None,
 ) -> tuple[dict[str, Any], bytes]:
     """The parameter program of the native lane: its record and its saved
     exact evaluator (``loop_v2::trees`` binds a batch with it).
@@ -742,6 +880,77 @@ def _parameter_program(
             model.append(["output", o, record["complex_component"] == "imag"])
         else:
             raise NotImplementedError(f"a tree model parameter of kind {kind!r}")
+    # The counterterm program's model parameters: the model's, plus the CT
+    # multiplicities and slot switches of the request (integers fixed per
+    # process; every slot on, finite-only evaluations skip the pole terms).
+    counterterm_model = []
+    if counterterm_trees is not None:
+        ct_rows = counterterm_trees.rows
+        fixed = counterterm_trees.fixed
+        ct_symbols = symbols.model(ct_rows.compiled.name)
+        ct_externals = []
+        for record in ct_rows._records:
+            if record["kind"] != "external_parameter":
+                continue
+            name = str(record["name"])
+            symbol = E(ct_symbols.symbol(name).to_canonical_string())
+            if name in symbol_of:
+                ct_externals.append(Replacement(symbol, symbol_of[name]))
+            elif name in fixed:
+                ct_externals.append(Replacement(symbol, Expression.num(fixed[name])))
+            else:
+                raise NotImplementedError(
+                    f"the counterterm program reads {name!r}, which the trees have not"
+                )
+        for record in ct_rows._records:
+            kind = record["kind"]
+            if kind == "external_parameter":
+                name = str(record["name"])
+                if name in index:
+                    counterterm_model.append(["input", index[name], False])
+                    continue
+                o = output(("ct-fixed", name), lambda v=fixed[name]: Expression.num(v))
+                counterterm_model.append(["output", o, False])
+            elif kind == "derived_parameter_component":
+                name = str(record["runtime_name"])
+                o = output(
+                    ("ct-model", name),
+                    lambda name=name: E(ct_rows._definitions[name]).replace_multiple(
+                        ct_externals
+                    ),
+                )
+                counterterm_model.append(
+                    ["output", o, record["complex_component"] == "imag"]
+                )
+            else:
+                raise NotImplementedError(
+                    f"a counterterm program model parameter of kind {kind!r}"
+                )
+
+    def weyl_factor(text: str) -> Any:
+        """A Weyl factor (``ct_closure.CloneLine.factor``, a model expression
+        in payload syntax) on the program's inputs, as ``ct_closure.
+        model_value`` evaluates it."""
+
+        from .ct_sites import resolved_internal_parameters
+
+        compiled = counterterm_trees.rows.compiled
+        value = E(text)
+        internal = {
+            record.name
+            for record in compiled.ir.parameters
+            if record.nature == "internal"
+        }
+        for name in {*internal, *compiled.parameter_defaults}:
+            payload = E(f"UFO::{{}}::{name}")
+            if value.contains(payload):
+                value = value.replace(
+                    payload, E(ct_symbols.symbol(name).to_canonical_string())
+                )
+        return resolved_internal_parameters(compiled, value).replace_multiple(
+            ct_externals
+        )
+
     # Born couplings per N_c grade, from the slice's scalar plans (the Born's
     # and the others', their columns concatenated in the layout).
     plans, layout = slice_._scalar_plan(LAURENT_POWERS)
@@ -806,6 +1015,13 @@ def _parameter_program(
             value = scalar(name, power, grade)
             counterterm_outputs.append(
                 output(("counterterm", name, power, grade), lambda v=value: v)
+            )
+            continue
+        if slot[0] == "scaled":
+            _kind, name, power, grade, scale = slot
+            value = scalar(name, power, grade) * weyl_factor(scale)
+            counterterm_outputs.append(
+                output(("scaled", name, power, grade, scale), lambda v=value: v)
             )
             continue
         _kind, degree, coefficient, scalars = slot
@@ -922,6 +1138,7 @@ def _parameter_program(
         "scale": index.get(slice_.scale_parameter),
         "outputs": len(outputs),
         "model": model,
+        "counterterm_model": counterterm_model,
         "couplings": coupling_outputs,
         "counterterm_couplings": counterterm_outputs,
         "finite": finite,
@@ -933,7 +1150,9 @@ def _parameter_program(
     return record, bytes(evaluator.save())
 
 
-def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]:
+def _interaction_program(
+    trees: Any, pole_currents: frozenset[int] = frozenset()
+) -> tuple[dict[str, Any], tuple[bytes, ...]]:
     """The blocks DAG of ``trees`` (a ``TreeRows``) as an interaction program.
 
     Per runtime-schema stage, every interaction adds its exact colour weight
@@ -945,7 +1164,12 @@ def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]
     current) on formal inputs ``[left, right, p_left, p_right, model]`` and
     ``[value, p, model]``, one per distinct shape, saved as exact Symbolica
     evaluators. The program's size is that of the DAG; the saved evaluators
-    come first for the kernels, then for the propagators."""
+    come first for the kernels, then for the propagators.
+
+    ``pole_currents`` are currents only epsilon-pole terms read (a
+    counterterm program's pole slots): per step the indices of the
+    interactions and outputs of such currents (``pole_interactions``,
+    ``pole_outputs``), which finite-only evaluations skip."""
 
     from symbolica import Expression, FunctionDefinition
 
@@ -1101,10 +1325,13 @@ def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]
             accumulators[current] = len(dimensions)
             dimensions.append(int(current_slots[current]["dimension"]))
         rows = []
+        pole_rows = []
         for item in stage["interaction_ids"]:
             interaction = dag.interactions[int(item)]
             if complex(*interaction.evaluation_factor) == 0j:
                 continue  # a certified zero attachment (as the stage program)
+            if int(interaction.result_id) in pole_currents:
+                pole_rows.append(len(rows))
             left, right = inputs[interaction.left_id], inputs[interaction.right_id]
             weight = _exact_weight(complex(*interaction.color_weight))
             rows.append(
@@ -1126,9 +1353,12 @@ def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]
                 ]
             )
         outputs = []
+        pole_outputs = []
         for slot_id in stage["output_value_slot_ids"]:
             slot = value_slots[int(slot_id)]
             current = int(slot["current_id"])
+            if current in pole_currents:
+                pole_outputs.append(len(outputs))
             variant = str(slot["variant"])
             if variant not in ("propagated", "unpropagated"):
                 raise ValueError(f"a stage output of variant {variant!r}")
@@ -1141,9 +1371,11 @@ def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]
                     int(slot["dimension"]),
                 ]
             )
-        steps.append(
-            {"interactions": rows, "accumulators": dimensions, "outputs": outputs}
-        )
+        step = {"interactions": rows, "accumulators": dimensions, "outputs": outputs}
+        if pole_rows or pole_outputs:
+            step["pole_interactions"] = pole_rows
+            step["pole_outputs"] = pole_outputs
+        steps.append(step)
     program = {
         "kernels": shapes["kernels"],
         "propagators": shapes["propagators"],

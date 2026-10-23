@@ -98,6 +98,12 @@ struct TreeFile {
     /// The counterterm and external-field components (none: Born and bare
     /// virtual only).
     counterterms: Option<CountertermFile>,
+    /// The counterterm program of the tree recursion (WP2.2), a second
+    /// interaction program on a state of its own; its kernels' saved
+    /// evaluators follow the trees'. Closure blocks at or past `offset` (the
+    /// trees' state size) read its state.
+    #[serde(default)]
+    counterterm_trees: Option<CountertermTreesFile>,
     /// Kernel input layouts of the closure terms: ("current", slot,
     /// component) or ("momentum", slot, mu).
     layouts: Vec<Vec<(String, usize, usize)>>,
@@ -119,6 +125,9 @@ struct ParameterFile {
     /// Per tree-program model parameter: ("input", external index, false)
     /// or ("output", output index, imaginary part).
     model: Vec<(String, usize, bool)>,
+    /// The same per model parameter of the counterterm program.
+    #[serde(default)]
+    counterterm_model: Vec<(String, usize, bool)>,
     /// Output index per Born coupling slot.
     couplings: Vec<usize>,
     /// Output index per counterterm or field coupling slot (may depend on
@@ -140,6 +149,20 @@ struct ParameterFile {
     /// The renormalisation scale's parameter, if the program reads it:
     /// sqrt(mu_R^2) of each point.
     scale: Option<usize>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CountertermTreesFile {
+    /// The trees' state size: closure block starts at or past it are in
+    /// this program's state.
+    offset: usize,
+    state_size: usize,
+    model_offset: usize,
+    model_count: usize,
+    momentum_slots: Vec<(usize, u64)>,
+    source_fill: serde_json::Value,
+    interactions: InteractionFile,
 }
 
 #[derive(Deserialize)]
@@ -177,6 +200,13 @@ struct StepFile {
     /// (accumulator, propagator or -1 to copy, momentum start, state start,
     /// dimension).
     outputs: Vec<(usize, i64, usize, usize, usize)>,
+    /// Interactions and outputs of currents only epsilon-pole terms read
+    /// (indices; a counterterm program's pole slots): finite-only
+    /// evaluations skip them.
+    #[serde(default)]
+    pole_interactions: Vec<usize>,
+    #[serde(default)]
+    pole_outputs: Vec<usize>,
 }
 
 #[derive(Deserialize)]
@@ -269,6 +299,8 @@ struct Edge {
     /// Offset of the result's accumulator in the step's accumulator row.
     accumulator: usize,
     weight: [Rational; 2],
+    /// Whether only epsilon-pole terms read its result.
+    pole: bool,
 }
 
 /// One runtime stage of the interaction program.
@@ -278,14 +310,30 @@ struct Step {
     /// Accumulator components per point.
     width: usize,
     /// (accumulator offset, propagator, momentum start, state start,
-    /// dimension).
-    outputs: Vec<(usize, Option<usize>, usize, usize, usize)>,
+    /// dimension, only epsilon-pole terms read it).
+    outputs: Vec<(usize, Option<usize>, usize, usize, usize, bool)>,
 }
 
 struct Interactions {
     /// Saved exact evaluators: vertex kernels, then propagator kernels.
     saved: Vec<Vec<u8>>,
     steps: Vec<Step>,
+}
+
+/// The state of an interaction program: its size and model parameters.
+#[derive(Clone, Copy)]
+struct StateLayout {
+    size: usize,
+    model_offset: usize,
+    model_count: usize,
+}
+
+/// The counterterm program (`CountertermTreesFile`).
+struct CountertermTrees {
+    layout: StateLayout,
+    momentum_slots: Vec<(usize, u64)>,
+    sources: SchemaSources,
+    interactions: Interactions,
 }
 
 struct Term {
@@ -320,6 +368,7 @@ struct Parameters {
     saved: Vec<u8>,
     outputs: usize,
     model: Vec<ModelSource>,
+    counterterm_model: Vec<ModelSource>,
     couplings: Vec<usize>,
     counterterm_couplings: Vec<usize>,
     finite: Vec<usize>,
@@ -362,6 +411,7 @@ pub struct TreeProgram {
     average: Rational,
     parameters: Parameters,
     counterterms: Option<Counterterms>,
+    counterterm_trees: Option<CountertermTrees>,
     /// The leg masks of the closure terms' slots.
     masks: Vec<u64>,
     /// The closure terms' kernel input layouts.
@@ -382,6 +432,8 @@ pub struct TreeBatch<T> {
     /// Per point the counterterm and field couplings per (name, epsilon
     /// power, N_c grade) slot.
     pub counterterm_couplings: Vec<Vec<Complex<T>>>,
+    /// Per point the counterterm program's model parameter values.
+    pub counterterm_model: Vec<Vec<T>>,
 }
 
 /// The values a batch's external parameters bind (`TreeProgram::bind`).
@@ -417,6 +469,9 @@ pub struct TreeRuntime<T> {
     /// its interactions' weights.
     kernels: Vec<BatchExpressionEvaluator<Complex<T>>>,
     edge_weights: Vec<Vec<Vec<Complex<T>>>>,
+    /// The counterterm program's kernels and interaction weights.
+    counterterm_kernels: Vec<BatchExpressionEvaluator<Complex<T>>>,
+    counterterm_edge_weights: Vec<Vec<Vec<Complex<T>>>>,
     /// The closure terms' colour weights.
     weights: Vec<Complex<T>>,
     metric: Option<Vec<Complex<T>>>,
@@ -449,8 +504,19 @@ fn load_interactions(
             offsets.push(width);
             width += dimension;
         }
+        require(
+            step.pole_interactions.iter().all(|&i| i < step.interactions.len())
+                && step.pole_outputs.iter().all(|&i| i < step.outputs.len()),
+            "pole interaction or output index",
+        )?;
+        let pole_interactions: std::collections::BTreeSet<usize> =
+            step.pole_interactions.iter().copied().collect();
+        let pole_outputs: std::collections::BTreeSet<usize> =
+            step.pole_outputs.iter().copied().collect();
         let mut groups: BTreeMap<usize, Vec<Edge>> = BTreeMap::new();
-        for (kernel, left, ld, right, rd, pl, pr, accumulator, re, im) in step.interactions {
+        for (index, (kernel, left, ld, right, rd, pl, pr, accumulator, re, im)) in
+            step.interactions.into_iter().enumerate()
+        {
             let &(inputs, outputs) = program
                 .kernels
                 .get(kernel)
@@ -474,10 +540,13 @@ fn load_interactions(
                 right_momentum: pr,
                 accumulator: offsets[accumulator],
                 weight: [exact(&re)?, exact(&im)?],
+                pole: pole_interactions.contains(&index),
             });
         }
         let mut outputs = Vec::with_capacity(step.outputs.len());
-        for (accumulator, propagator, momentum, start, dimension) in step.outputs {
+        for (index, (accumulator, propagator, momentum, start, dimension)) in
+            step.outputs.into_iter().enumerate()
+        {
             require(
                 accumulator < step.accumulators.len() && within(start, dimension),
                 "interaction output",
@@ -502,7 +571,14 @@ fn load_interactions(
                 )?;
                 Some(kernels + index)
             };
-            outputs.push((offsets[accumulator], propagator, momentum, start, dimension));
+            outputs.push((
+                offsets[accumulator],
+                propagator,
+                momentum,
+                start,
+                dimension,
+                pole_outputs.contains(&index),
+            ));
         }
         steps.push(Step {
             groups: groups.into_iter().collect(),
@@ -518,10 +594,12 @@ fn load_interactions(
 
 /// Validate a parameter program (`ParameterFile`) against the tree program
 /// and the plan; `saved` is its exact evaluator.
+#[allow(clippy::too_many_arguments)]
 fn load_parameters(
     file: ParameterFile,
     saved: &[u8],
     model_count: usize,
+    counterterm_model_count: usize,
     couplings: usize,
     counterterm_couplings: usize,
     plan: &LoopProgramV4,
@@ -532,6 +610,10 @@ fn load_parameters(
         "a default per external parameter",
     )?;
     require(file.model.len() == model_count, "model parameter sources")?;
+    require(
+        file.counterterm_model.len() == counterterm_model_count,
+        "counterterm program model parameter sources",
+    )?;
     require(
         file.couplings.len() == couplings
             && file.counterterm_couplings.len() == counterterm_couplings,
@@ -565,18 +647,21 @@ fn load_parameters(
                 .all(|&i| Some(i) != file.scale),
         "parameter program index",
     )?;
-    let model = file
-        .model
-        .iter()
-        .map(|(kind, index, imaginary)| match kind.as_str() {
-            "input" if *index < inputs && !imaginary => Ok(ModelSource::Input(*index)),
-            "output" if output(*index) => Ok(ModelSource::Output {
-                index: *index,
-                imaginary: *imaginary,
-            }),
-            _ => Err(invalid(format!("model parameter source {kind:?} {index}"))),
-        })
-        .collect::<RusticolResult<Vec<_>>>()?;
+    let sources = |records: &[(String, usize, bool)]| {
+        records
+            .iter()
+            .map(|(kind, index, imaginary)| match kind.as_str() {
+                "input" if *index < inputs && !imaginary => Ok(ModelSource::Input(*index)),
+                "output" if output(*index) => Ok(ModelSource::Output {
+                    index: *index,
+                    imaginary: *imaginary,
+                }),
+                _ => Err(invalid(format!("model parameter source {kind:?} {index}"))),
+            })
+            .collect::<RusticolResult<Vec<_>>>()
+    };
+    let model = sources(&file.model)?;
+    let counterterm_model = sources(&file.counterterm_model)?;
     // Helper functions call the scalar library's predicates.
     crate::source_scalar::register_scalar_primitives();
     let evaluator = crate::engine::decode_exact_evaluator_state(saved)?;
@@ -591,6 +676,7 @@ fn load_parameters(
         saved: saved.to_vec(),
         outputs: file.outputs,
         model,
+        counterterm_model,
         couplings: file.couplings,
         counterterm_couplings: file.counterterm_couplings,
         finite: file.finite,
@@ -786,16 +872,65 @@ impl TreeProgram {
         let (parameter_evaluator, kernels) = kernels
             .split_last()
             .ok_or_else(|| invalid("the parameter program's evaluator is missing"))?;
+        let own = file.interactions.kernels.len() + file.interactions.propagators.len();
+        require(kernels.len() >= own, "interaction kernel evaluator count")?;
+        let (kernels, counterterm_kernels) = kernels.split_at(own);
         let interactions = load_interactions(
             file.interactions,
             kernels,
             file.state_size,
             file.model_count,
         )?;
+        let counterterm_trees = match file.counterterm_trees {
+            Some(ct) => {
+                require(
+                    ct.offset == file.state_size
+                        && ct.model_offset + ct.model_count <= ct.state_size,
+                    "counterterm program state",
+                )?;
+                for &(start, _mask) in &ct.momentum_slots {
+                    require(
+                        start + 4 <= ct.state_size,
+                        "counterterm program momentum slot outside its state",
+                    )?;
+                }
+                Some(CountertermTrees {
+                    layout: StateLayout {
+                        size: ct.state_size,
+                        model_offset: ct.model_offset,
+                        model_count: ct.model_count,
+                    },
+                    momentum_slots: ct.momentum_slots,
+                    sources: SchemaSources::from_value(&ct.source_fill)?,
+                    interactions: load_interactions(
+                        ct.interactions,
+                        counterterm_kernels,
+                        ct.state_size,
+                        ct.model_count,
+                    )?,
+                })
+            }
+            None => {
+                require(
+                    counterterm_kernels.is_empty(),
+                    "interaction kernel evaluator count",
+                )?;
+                None
+            }
+        };
+        // Closure blocks index the trees' state, then the counterterm
+        // program's.
+        let closure_size = file.state_size
+            + counterterm_trees
+                .as_ref()
+                .map_or(0, |ct| ct.layout.size);
         let parameters = load_parameters(
             file.parameters,
             parameter_evaluator,
             file.model_count,
+            counterterm_trees
+                .as_ref()
+                .map_or(0, |ct| ct.layout.model_count),
             file.born.couplings,
             file.counterterms.as_ref().map_or(0, |ct| ct.couplings),
             plan,
@@ -824,7 +959,7 @@ impl TreeProgram {
         for block in &born.blocks {
             require(block.len() == born.rows, "closure block rows")?;
             require(
-                block.iter().flatten().all(|&start| start < file.state_size),
+                block.iter().flatten().all(|&start| start < closure_size),
                 "closure block row outside the state",
             )?;
         }
@@ -932,6 +1067,7 @@ impl TreeProgram {
             average: exact(&born.average)?,
             parameters,
             counterterms,
+            counterterm_trees,
             layouts: layouts.into_iter().map(|(inputs, _)| inputs).collect(),
             weights,
             masks: {
@@ -1042,26 +1178,29 @@ impl TreeProgram {
             &program.constants,
             "the points of one batch need equal kernel constants",
         )?;
-        let model = rows_in
-            .iter()
-            .zip(&rows)
-            .map(|(point, row)| {
-                program
-                    .model
-                    .iter()
-                    .map(|source| match *source {
-                        ModelSource::Input(index) => point[index].clone(),
-                        ModelSource::Output { index, imaginary } => {
-                            if imaginary {
-                                row[index].im.clone()
-                            } else {
-                                row[index].re.clone()
+        let values_of = |sources: &[ModelSource]| -> Vec<Vec<T>> {
+            rows_in
+                .iter()
+                .zip(&rows)
+                .map(|(point, row)| {
+                    sources
+                        .iter()
+                        .map(|source| match *source {
+                            ModelSource::Input(index) => point[index].clone(),
+                            ModelSource::Output { index, imaginary } => {
+                                if imaginary {
+                                    row[index].im.clone()
+                                } else {
+                                    row[index].re.clone()
+                                }
                             }
-                        }
-                    })
-                    .collect()
-            })
-            .collect();
+                        })
+                        .collect()
+                })
+                .collect()
+        };
+        let model = values_of(&program.model);
+        let counterterm_model = values_of(&program.counterterm_model);
         Ok(BoundParameters {
             trees: TreeBatch {
                 model,
@@ -1072,6 +1211,7 @@ impl TreeProgram {
                     .collect(),
                 couplings,
                 counterterm_couplings,
+                counterterm_model,
             },
             constants,
             masses: program
@@ -1107,31 +1247,40 @@ impl TreeProgram {
         let parameters = crate::engine::decode_exact_evaluator_state(&self.parameters.saved)?
             .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
             .into_batch_evaluator();
-        let program = &self.interactions;
-        let kernels = program
-            .saved
-            .iter()
-            .map(|saved| {
-                Ok(crate::engine::decode_exact_evaluator_state(saved)?
-                    .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
-                    .into_batch_evaluator())
-            })
-            .collect::<RusticolResult<Vec<_>>>()?;
-        let edge_weights = program
-            .steps
-            .iter()
-            .map(|step| {
-                step.groups
-                    .iter()
-                    .map(|(_kernel, edges)| {
-                        edges
-                            .iter()
-                            .map(|edge| complex(&edge.weight[0], &edge.weight[1]))
-                            .collect()
-                    })
-                    .collect()
-            })
-            .collect();
+        let kernels_of = |program: &Interactions| {
+            program
+                .saved
+                .iter()
+                .map(|saved| {
+                    Ok(crate::engine::decode_exact_evaluator_state(saved)?
+                        .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
+                        .into_batch_evaluator())
+                })
+                .collect::<RusticolResult<Vec<_>>>()
+        };
+        let weights_of = |program: &Interactions| -> Vec<Vec<Vec<Complex<T>>>> {
+            program
+                .steps
+                .iter()
+                .map(|step| {
+                    step.groups
+                        .iter()
+                        .map(|(_kernel, edges)| {
+                            edges
+                                .iter()
+                                .map(|edge| complex(&edge.weight[0], &edge.weight[1]))
+                                .collect()
+                        })
+                        .collect()
+                })
+                .collect()
+        };
+        let kernels = kernels_of(&self.interactions)?;
+        let edge_weights = weights_of(&self.interactions);
+        let (counterterm_kernels, counterterm_edge_weights) = match &self.counterterm_trees {
+            Some(ct) => (kernels_of(&ct.interactions)?, weights_of(&ct.interactions)),
+            None => (Vec::new(), Vec::new()),
+        };
         let weights = self
             .weights
             .iter()
@@ -1162,6 +1311,8 @@ impl TreeProgram {
             parameters,
             kernels,
             edge_weights,
+            counterterm_kernels,
+            counterterm_edge_weights,
             weights,
             metric,
             average: cast(zero, &self.average),
@@ -1214,6 +1365,16 @@ impl TreeProgram {
                 "counterterm coupling count",
             )?;
         }
+        if let Some(ct) = &self.counterterm_trees {
+            require(
+                batch.counterterm_model.len() == points
+                    && batch
+                        .counterterm_model
+                        .iter()
+                        .all(|model| model.len() == ct.layout.model_count),
+                "counterterm program model parameter count",
+            )?;
+        }
         require(constants.len() == plan.constants, "kernel constant count")?;
         let czero = Complex::new(zero.clone(), zero.clone());
         // Incoming momenta per point and leg, in the carrier.
@@ -1235,41 +1396,62 @@ impl TreeProgram {
             .map(|(&pdg, mass)| (pdg, cast(zero, mass)))
             .collect();
         // The tree state of every point.
-        let mut states = vec![czero.clone(); points * self.state_size];
-        for ((point, state), model) in incoming
-            .iter()
-            .zip(states.chunks_exact_mut(self.state_size))
-            .zip(&batch.model)
-        {
-            let physical: Vec<[T; 4]> = point
-                .iter()
-                .zip(&self.initial)
-                .map(|(p, &initial)| {
-                    if initial {
-                        p.clone()
-                    } else {
-                        p.clone().map(|x| -x)
-                    }
-                })
-                .collect();
-            T::fill_sources(&self.sources, &masses, &physical, state)?;
-            for &(start, mask) in &self.momentum_slots {
-                // All-outgoing momentum: minus the incoming sum.
-                for mu in 0..4 {
-                    let mut total = zero.clone();
-                    for (leg, p) in point.iter().enumerate() {
-                        if mask >> leg & 1 == 1 {
-                            total -= p[mu].clone();
-                        }
-                    }
-                    state[start + mu] = Complex::new(total, zero.clone());
-                }
+        let layout = StateLayout {
+            size: self.state_size,
+            model_offset: self.model_offset,
+            model_count: self.model_count,
+        };
+        let mut states = Self::states(
+            layout,
+            &self.sources,
+            &self.momentum_slots,
+            &self.initial,
+            &incoming,
+            &masses,
+            &batch.model,
+            zero,
+        )?;
+        run_interactions(
+            &self.interactions,
+            layout,
+            &mut runtime.kernels,
+            &runtime.edge_weights,
+            &mut states,
+            points,
+            true,
+            &czero,
+        )?;
+        // The counterterm program's state of every point (empty without it).
+        let counterterm_states = match &self.counterterm_trees {
+            Some(ct) => {
+                let mut ct_states = Self::states(
+                    ct.layout,
+                    &ct.sources,
+                    &ct.momentum_slots,
+                    &self.initial,
+                    &incoming,
+                    &masses,
+                    &batch.counterterm_model,
+                    zero,
+                )?;
+                run_interactions(
+                    &ct.interactions,
+                    ct.layout,
+                    &mut runtime.counterterm_kernels,
+                    &runtime.counterterm_edge_weights,
+                    &mut ct_states,
+                    points,
+                    poles,
+                    &czero,
+                )?;
+                ct_states
             }
-            for (index, value) in model.iter().enumerate() {
-                state[self.model_offset + index] = Complex::new(value.clone(), zero.clone());
-            }
-        }
-        self.run_interactions(&self.interactions, runtime, &mut states, points, &czero)?;
+            None => Vec::new(),
+        };
+        let counterterm_size = self
+            .counterterm_trees
+            .as_ref()
+            .map_or(0, |ct| ct.layout.size);
         let mut out = TreeInputs {
             block_rows: Vec::with_capacity(points),
             born: Vec::with_capacity(points),
@@ -1286,6 +1468,8 @@ impl TreeProgram {
             .zip(states.chunks_exact(self.state_size))
             .enumerate()
         {
+            let ct_state = &counterterm_states
+                [index * counterterm_size..(index + 1) * counterterm_size];
             let mut rows = Vec::new();
             for &(start, dimension, sign) in &self.block_rows {
                 for value in &state[start..start + dimension] {
@@ -1306,7 +1490,7 @@ impl TreeProgram {
                 self.components,
                 plan,
                 &momenta,
-                state,
+                (state, ct_state),
                 constants,
                 zero,
             );
@@ -1324,7 +1508,7 @@ impl TreeProgram {
                     ct.components,
                     plan,
                     &momenta,
-                    state,
+                    (state, ct_state),
                     constants,
                     zero,
                 );
@@ -1362,104 +1546,56 @@ impl TreeProgram {
         Ok(out)
     }
 
-    /// The interaction program on the states of a batch: per step, each
-    /// vertex kernel runs batched over its interactions and the points,
-    /// weighted sums accumulate per output current, then each output slot
-    /// copies its sum or applies its propagator kernel.
-    fn run_interactions<T: Carrier>(
-        &self,
-        program: &Interactions,
-        runtime: &mut TreeRuntime<T>,
-        states: &mut [Complex<T>],
-        points: usize,
-        czero: &Complex<T>,
-    ) -> RusticolResult<()>
-    where
-        Complex<T>: Real + EvaluationDomain,
-    {
-        // Rows (interaction x point) per kernel call.
-        const ROWS: usize = 4096;
-        let model = self.model_offset..self.model_offset + self.model_count;
-        let mut parameters = Vec::new();
-        let mut outputs = Vec::new();
-        for (step, weights) in program.steps.iter().zip(&runtime.edge_weights) {
-            let mut sums = vec![czero.clone(); points * step.width];
-            for ((kernel, edges), weights) in step.groups.iter().zip(weights) {
-                let evaluator = &mut runtime.kernels[*kernel];
-                let width = evaluator.get_output_len();
-                let per_call = (ROWS / points.max(1)).max(1);
-                for (chunk, chunk_weights) in edges.chunks(per_call).zip(weights.chunks(per_call))
-                {
-                    let rows = chunk.len() * points;
-                    parameters.clear();
-                    for edge in chunk {
-                        for state in states.chunks_exact(self.state_size) {
-                            parameters.extend_from_slice(
-                                &state[edge.left..edge.left + edge.left_dimension],
-                            );
-                            parameters.extend_from_slice(
-                                &state[edge.right..edge.right + edge.right_dimension],
-                            );
-                            parameters.extend_from_slice(
-                                &state[edge.left_momentum..edge.left_momentum + 4],
-                            );
-                            parameters.extend_from_slice(
-                                &state[edge.right_momentum..edge.right_momentum + 4],
-                            );
-                            parameters.extend_from_slice(&state[model.clone()]);
+    /// The states of a batch's points for one interaction program: the
+    /// external wavefunctions, the all-outgoing momentum of every momentum
+    /// slot and the model parameter values (`models`, per point).
+    #[allow(clippy::too_many_arguments)]
+    fn states<T: TreeCarrier>(
+        layout: StateLayout,
+        sources: &SchemaSources,
+        momentum_slots: &[(usize, u64)],
+        initial: &[bool],
+        incoming: &[Vec<[T; 4]>],
+        masses: &BTreeMap<i32, T>,
+        models: &[Vec<T>],
+        zero: &T,
+    ) -> RusticolResult<Vec<Complex<T>>> {
+        let czero = Complex::new(zero.clone(), zero.clone());
+        let mut states = vec![czero; incoming.len() * layout.size];
+        for ((point, state), model) in incoming
+            .iter()
+            .zip(states.chunks_exact_mut(layout.size))
+            .zip(models)
+        {
+            let physical: Vec<[T; 4]> = point
+                .iter()
+                .zip(initial)
+                .map(|(p, &initial)| {
+                    if initial {
+                        p.clone()
+                    } else {
+                        p.clone().map(|x| -x)
+                    }
+                })
+                .collect();
+            T::fill_sources(sources, masses, &physical, state)?;
+            for &(start, mask) in momentum_slots {
+                // All-outgoing momentum: minus the incoming sum.
+                for mu in 0..4 {
+                    let mut total = zero.clone();
+                    for (leg, p) in point.iter().enumerate() {
+                        if mask >> leg & 1 == 1 {
+                            total -= p[mu].clone();
                         }
                     }
-                    outputs.clear();
-                    outputs.resize(rows * width, czero.clone());
-                    evaluator
-                        .evaluate_batch(&parameters, &mut outputs, rows)
-                        .map_err(|e| invalid(format!("interaction kernel: {e}")))?;
-                    let mut row = outputs.chunks_exact(width);
-                    for (edge, weight) in chunk.iter().zip(chunk_weights) {
-                        for point in 0..points {
-                            let values = row.next().expect("a kernel row per point");
-                            let target = &mut sums[point * step.width + edge.accumulator..];
-                            for (sum, value) in target.iter_mut().zip(values) {
-                                *sum += weight.clone() * value.clone();
-                            }
-                        }
-                    }
+                    state[start + mu] = Complex::new(total, zero.clone());
                 }
             }
-            for &(accumulator, propagator, momentum, start, dimension) in &step.outputs {
-                let Some(kernel) = propagator else {
-                    for (point, state) in states.chunks_exact_mut(self.state_size).enumerate() {
-                        state[start..start + dimension].clone_from_slice(
-                            &sums[point * step.width + accumulator..][..dimension],
-                        );
-                    }
-                    continue;
-                };
-                let evaluator = &mut runtime.kernels[kernel];
-                let width = evaluator.get_output_len();
-                let inputs = evaluator.get_input_len();
-                let value = inputs - 4 - self.model_count;
-                parameters.clear();
-                for (point, state) in states.chunks_exact(self.state_size).enumerate() {
-                    parameters
-                        .extend_from_slice(&sums[point * step.width + accumulator..][..value]);
-                    parameters.extend_from_slice(&state[momentum..momentum + 4]);
-                    parameters.extend_from_slice(&state[model.clone()]);
-                }
-                outputs.clear();
-                outputs.resize(points * width, czero.clone());
-                evaluator
-                    .evaluate_batch(&parameters, &mut outputs, points)
-                    .map_err(|e| invalid(format!("propagator kernel: {e}")))?;
-                for (state, row) in states
-                    .chunks_exact_mut(self.state_size)
-                    .zip(outputs.chunks_exact(width))
-                {
-                    state[start..start + dimension].clone_from_slice(&row[..dimension]);
-                }
+            for (index, value) in model.iter().enumerate() {
+                state[layout.model_offset + index] = Complex::new(value.clone(), zero.clone());
             }
         }
-        Ok(())
+        Ok(states)
     }
 
     /// The incoming momentum sum of each closure slot's leg mask.
@@ -1481,7 +1617,8 @@ impl TreeProgram {
     }
 
     /// The root closure of one point: per Born row, every closure term's
-    /// kernel on its blocks' rows and momenta (`momenta`: per leg mask),
+    /// kernel on its blocks' rows (in the trees' or the counterterm
+    /// program's state) and momenta (`momenta`: per leg mask),
     /// times its sign and per contribution its coupling and colour weight,
     /// accumulated into `width` components. `active`: the coupling slots
     /// to evaluate (none: all). Rows run in parallel.
@@ -1495,12 +1632,21 @@ impl TreeProgram {
         width: usize,
         plan: &LoopProgramV4,
         momenta: &[[T; 4]],
-        state: &[Complex<T>],
+        (state, ct_state): (&[Complex<T>], &[Complex<T>]),
         constants: &[Complex<T>],
         zero: &T,
     ) -> Vec<Complex<T>> {
         let czero = Complex::new(zero.clone(), zero.clone());
         let mut out = vec![czero.clone(); self.rows * width];
+        // Closure block starts index the trees' state, then the counterterm
+        // program's.
+        let read = |index: usize| {
+            if index < state.len() {
+                state[index].clone()
+            } else {
+                ct_state[index - state.len()].clone()
+            }
+        };
         if width == 0 {
             return out;
         }
@@ -1529,7 +1675,7 @@ impl TreeProgram {
                     for input in &self.layouts[term.layout] {
                         x.push(match *input {
                             TermInput::Current { slot, component } => {
-                                state[starts[slot] + component].clone()
+                                read(starts[slot] + component)
                             }
                             TermInput::Momentum { slot, mu } => {
                                 Complex::new(momenta[term.masks[slot]][mu].clone(), zero.clone())
@@ -1581,6 +1727,121 @@ impl TreeProgram {
             .map(|value| value / runtime.average.clone())
             .collect()
     }
+}
+
+/// The interaction program on the states of a batch: per step, each
+/// vertex kernel runs batched over its interactions and the points,
+/// weighted sums accumulate per output current, then each output slot
+/// copies its sum or applies its propagator kernel.
+fn run_interactions<T: Carrier>(
+    program: &Interactions,
+    layout: StateLayout,
+    kernels: &mut [BatchExpressionEvaluator<Complex<T>>],
+    edge_weights: &[Vec<Vec<Complex<T>>>],
+    states: &mut [Complex<T>],
+    points: usize,
+    poles: bool,
+    czero: &Complex<T>,
+) -> RusticolResult<()>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    // Rows (interaction x point) per kernel call. Without `poles` the
+    // interactions and outputs of pole-only currents are skipped; no other
+    // current reads them, and kernel rows are independent, so every other
+    // value is bitwise unchanged.
+    const ROWS: usize = 4096;
+    let model = layout.model_offset..layout.model_offset + layout.model_count;
+    let mut parameters = Vec::new();
+    let mut outputs = Vec::new();
+    for (step, weights) in program.steps.iter().zip(edge_weights) {
+        let mut sums = vec![czero.clone(); points * step.width];
+        for ((kernel, edges), weights) in step.groups.iter().zip(weights) {
+            let active: Vec<(&Edge, &Complex<T>)> = edges
+                .iter()
+                .zip(weights)
+                .filter(|(edge, _)| poles || !edge.pole)
+                .collect();
+            if active.is_empty() {
+                continue;
+            }
+            let evaluator = &mut kernels[*kernel];
+            let width = evaluator.get_output_len();
+            let per_call = (ROWS / points.max(1)).max(1);
+            for chunk in active.chunks(per_call) {
+                let rows = chunk.len() * points;
+                parameters.clear();
+                for (edge, _) in chunk {
+                    for state in states.chunks_exact(layout.size) {
+                        parameters.extend_from_slice(
+                            &state[edge.left..edge.left + edge.left_dimension],
+                        );
+                        parameters.extend_from_slice(
+                            &state[edge.right..edge.right + edge.right_dimension],
+                        );
+                        parameters.extend_from_slice(
+                            &state[edge.left_momentum..edge.left_momentum + 4],
+                        );
+                        parameters.extend_from_slice(
+                            &state[edge.right_momentum..edge.right_momentum + 4],
+                        );
+                        parameters.extend_from_slice(&state[model.clone()]);
+                    }
+                }
+                outputs.clear();
+                outputs.resize(rows * width, czero.clone());
+                evaluator
+                    .evaluate_batch(&parameters, &mut outputs, rows)
+                    .map_err(|e| invalid(format!("interaction kernel: {e}")))?;
+                let mut row = outputs.chunks_exact(width);
+                for &(edge, weight) in chunk {
+                    for point in 0..points {
+                        let values = row.next().expect("a kernel row per point");
+                        let target = &mut sums[point * step.width + edge.accumulator..];
+                        for (sum, value) in target.iter_mut().zip(values) {
+                            *sum += weight.clone() * value.clone();
+                        }
+                    }
+                }
+            }
+        }
+        for &(accumulator, propagator, momentum, start, dimension, pole) in &step.outputs {
+            if pole && !poles {
+                continue;
+            }
+            let Some(kernel) = propagator else {
+                for (point, state) in states.chunks_exact_mut(layout.size).enumerate() {
+                    state[start..start + dimension].clone_from_slice(
+                        &sums[point * step.width + accumulator..][..dimension],
+                    );
+                }
+                continue;
+            };
+            let evaluator = &mut kernels[kernel];
+            let width = evaluator.get_output_len();
+            let inputs = evaluator.get_input_len();
+            let value = inputs - 4 - layout.model_count;
+            parameters.clear();
+            for (point, state) in states.chunks_exact(layout.size).enumerate() {
+                parameters
+                    .extend_from_slice(&sums[point * step.width + accumulator..][..value]);
+                parameters.extend_from_slice(&state[momentum..momentum + 4]);
+                parameters.extend_from_slice(&state[model.clone()]);
+            }
+            outputs.clear();
+            outputs.resize(points * width, czero.clone());
+            evaluator
+                .evaluate_batch(&parameters, &mut outputs, points)
+                .map_err(|e| invalid(format!("propagator kernel: {e}")))?;
+            for (state, row) in states
+                .chunks_exact_mut(layout.size)
+                .zip(outputs.chunks_exact(width))
+            {
+                state[start..start + dimension].clone_from_slice(&row[..dimension]);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// A carrier with source wavefunctions: binary64, DoubleFloat or MPFR (the
