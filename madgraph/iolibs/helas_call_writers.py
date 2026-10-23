@@ -38,11 +38,13 @@ class HelasWriterError(Exception):
 #===============================================================================
 # Axial-gauge reference vectors
 #===============================================================================
-def axial_gauge_requested(output_options):
+def axial_gauge_requested(output_options, warn=False):
     """Whether --axial_gauge=True was given on the output line.
 
     The FD gauge has its own five-component vxxxxx and no vxxxxxr, so the
-    option is dropped there (with a warning)."""
+    option is dropped there. This is asked once per matrix element; the
+    exporters ask it once more with warn=True when they are built, so that
+    every output command that drops the option says so, once."""
 
     value = (output_options or {}).get('axial_gauge', False)
     if isinstance(value, str):
@@ -50,13 +52,11 @@ def axial_gauge_requested(output_options):
     if not value:
         return False
     if aloha.unitary_gauge == 3:
-        if not axial_gauge_requested.warned:
+        if warn:
             logger.warning('axial_gauge is not available in the FD gauge: '
                            'the option is ignored.')
-            axial_gauge_requested.warned = True
         return False
     return True
-axial_gauge_requested.warned = False
 
 
 def get_axial_gauge_refs(matrix_element):
@@ -86,6 +86,19 @@ def get_axial_gauge_refs(matrix_element):
     by r.p, which for r on the beam is E * pT * exp(-y) of the gauged leg and
     so is kept away from zero by the usual pT and rapidity cuts (a final-state
     r relies on the separation cuts instead).
+
+    Crossing: the choice is made on the base process and a crossed call keeps
+    it as a base SLOT (fortran P(0,ref), C++ xmom/xperm[ref]), so the crossed
+    amplitude is the analytic continuation of the base one in the same gauge
+    and the gauge zeros are the same for every crossing served (what lets the
+    recycled zero-amplitude scan drop them under crossing). The price: a slot
+    that was initial in the base can be final in a crossing, so the
+    numerical-safety argument above holds for the base only. When a crossed
+    vector and its reference end up on the same beam (g c > g c served by
+    g g > c c~, the outgoing gluon at angle theta from the incoming one) r.p
+    is ~theta**2 and the relative precision is ~1e-16/theta**2 instead of
+    machine precision: below 1e-11 for theta > 1e-2, i.e. for any physical
+    jet cut. --use_crossing=False picks the reference per process.
     """
 
     externals = {}

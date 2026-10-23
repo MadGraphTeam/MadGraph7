@@ -7,6 +7,7 @@
 #include "umami.h"
 
 #include "ProcessData.h"
+#include "ProcessTables.h" // the crossing rows (choose_good_helicities)
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
 #include "SigmaKin.h" // sigmaKin_getGoodHel/setGoodHel
 #include "GpuRuntime.h"
@@ -56,6 +57,17 @@ namespace
   }
 
 
+  // Set by choose_good_helicities where RAMBO has no phase space (a decay below
+  // threshold): the momenta of such a process are off shell, and a first call
+  // cannot choose its good helicities. In its rest frame a scalar to two
+  // off-shell vectors only has the rows of equal helicities, the others are
+  // rounding residuals, but they are not 0 once the decay is boosted: h > w+ w-
+  // at mh < 2 mW kept 3 of its 9 rows after a first call at rest, and |M|^2 in a
+  // boosted frame was then 8.5 times too small. Every row is kept instead, so
+  // that the result does not depend on the first call, at the cost of the
+  // vanishing rows of a low multiplicity.
+  bool g_keep_every_helicity = false;
+
   void* initialize_impl(
     const fptype_momenta* momenta,
     const fptype* couplings,
@@ -67,6 +79,12 @@ namespace
     std::size_t count )
   {
     bool is_good_hel[ProcessData::ncomb];
+    if( g_keep_every_helicity )
+    {
+      for( int ihel = 0; ihel < ProcessData::ncomb; ++ihel ) is_good_hel[ihel] = true;
+      sigmaKin_setGoodHel( is_good_hel );
+      return nullptr;
+    }
     sigmaKin_getGoodHel(
       momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
       color_jamps,
@@ -194,99 +212,100 @@ namespace
 
   std::vector<double> g_externalMasses;
 
-  // The helicity filter (sigmaKin_getGoodHel) runs once per library and keeps a
-  // helicity if its |M|^2 is not 0 for one of the first events. Run at the first
-  // umami_matrix_element call, it depended on what that call held: a first batch of
-  // special points, where some helicities happen to vanish (the forward direction of
-  // u u~ > e+ e-, say), dropped them for the rest of the run, and every later |M|^2
-  // was wrong. It runs instead here, at initialization, on RAMBO points: the matrix
-  // element is evaluated there once (the filter itself scans every flavor). Where
-  // RAMBO has no phase space (2 > 1, a decay below threshold), this does nothing and
-  // the first call still chooses. As in the cpu and simd backends, but the inputs and
-  // outputs of umami_matrix_element are device buffers here: the points are made on
-  // the host and copied over, and everything runs on the default stream.
-  // An incoming quark, gluon or photon comes out of a PDF (or of the photon flux of a
-  // lepton), which sets the partonic centre-of-mass frame in motion along the beams.
-  constexpr bool has_pdf_beams()
+  // The good-helicity scan points: goodHelScanEvents RAMBO points per row of the
+  // crossing table, block K (events K*goodHelScanEvents on) at the masses of
+  // crossing K -- its input slot k carries the mass of the base slot it is fed
+  // to -- and with its extended id K*nmaxflavor, which is how sigmaKin_getGoodHel
+  // finds it. The base points serve a crossing that moves no mass. A crossing
+  // that does needs its own: a massive leg in a massless slot is off shell on the
+  // base points, where a row it needs can vanish to rounding. A crossing with no
+  // phase space at its masses (t > b e+ ve crossed into b~ > t~ e+ ve) is never
+  // evaluated on shell and needs no row: getGoodHel skips it
+  // (sigmaKin_setNoPhaseSpace), as the fortran warm-up does, and its block holds
+  // the base points under the base id. One RAMBO does not converge on gets them
+  // too, which getGoodHel scans the conservative way. Returns the number of
+  // events, 0 when the base process itself has no phase space.
+  std::size_t scan_points( std::vector<double>& momenta, std::vector<unsigned int>& flavor_indices )
   {
-    if( ProcessData::npari != 2 ) return false;
-    for( int iflav = 0; iflav < ProcessData::nmaxflavor; ++iflav )
-      for( int ipar = 0; ipar < ProcessData::npari; ++ipar )
+    constexpr std::size_t nevt = goodHelScanEvents;
+    constexpr int npar = ProcessData::npar;
+    constexpr int nblock = ProcessTables::use_crossing ? ProcessTables::ncross : 1;
+    const std::vector<double> base = rambo::helicity_scan_points( ProcessData::npari, g_externalMasses, nevt );
+    if( base.empty() ) return 0;
+    const std::size_t count = nblock * nevt;
+    momenta.assign( count * npar * 4, 0. );
+    flavor_indices.assign( count, 0 );
+    for( int cross = 0; cross < nblock; ++cross )
+    {
+      std::vector<double> own;
+      if( cross > 0 && !ProcessTables::xonshell_tab[cross] )
       {
-        const int pdg = ProcessData::flavorPDGs[iflav][ipar];
-        const int apdg = pdg < 0 ? -pdg : pdg;
-        if( ( apdg >= 1 && apdg <= 6 ) || apdg == 21 || apdg == 22 ) return true;
+        std::vector<double> masses( npar );
+        for( int k = 0; k < npar; ++k ) masses[k] = g_externalMasses[ProcessTables::xmass_slot_tab[cross * npar + k]];
+        if( rambo::has_phase_space( ProcessData::npari, masses ) )
+          own = rambo::helicity_scan_points( ProcessData::npari, masses, nevt );
+        else
+          sigmaKin_setNoPhaseSpace( cross );
       }
-    return false;
+      const bool use_base = own.empty();
+      const std::vector<double>& points = use_base ? base : own;
+      const bool own_id = cross == 0 || ProcessTables::xonshell_tab[cross] || !use_base;
+      for( std::size_t ievt = 0; ievt < nevt; ++ievt )
+      {
+        const std::size_t jevt = cross * nevt + ievt;
+        flavor_indices[jevt] = own_id ? cross * ProcessData::nmaxflavor : 0;
+        for( int i = 0; i < npar * 4; ++i ) momenta[count * i + jevt] = points[nevt * i + ievt];
+      }
+    }
+    return count;
   }
 
+  // The helicity filter (sigmaKin_getGoodHel) runs once per library and keeps a
+  // helicity if, at one of the scan points, its |M|^2 is above limhel/ncomb of the
+  // sum over helicities (the relative test of madevent, see limhel in SigmaKin.cc),
+  // or not exactly 0 with a massive external leg, closed over the helicities of
+  // the legs whose states mix under a boost.
+  // Run at the first umami_matrix_element call, it depended on what that call held:
+  // a first batch of special points, where some helicities happen to vanish (the
+  // forward direction of u u~ > e+ e-, say), dropped them for the rest of the run,
+  // and every later |M|^2 was wrong. It runs instead here, at initialization, on
+  // RAMBO points, half of them boosted (rambo::helicity_scan_points). The filter
+  // evaluates every flavor and every crossing of the table, into the one
+  // good-helicity list all of them share, each crossing on points of its own masses
+  // (scan_points). A 2 > 1 is scanned with its beams along random axes. Where there
+  // is no phase space (a decay below threshold), every helicity is kept
+  // (g_keep_every_helicity).
+  // As in the cpu and simd backends, but the inputs and outputs of
+  // umami_matrix_element are device buffers here: the points are made on the host
+  // and copied over, and everything runs on the default stream.
   void choose_good_helicities( UmamiHandle handle )
   {
-    constexpr int npar = ProcessData::npar;
-    constexpr int npari = ProcessData::npari;
-    constexpr std::size_t nevt = 16; // the events sigmaKin_getGoodHel looks at
-    std::vector<double> masses( g_externalMasses.begin(), g_externalMasses.end() );
-    double mfinal = 0, mtotal = 0;
-    for( int ipar = 0; ipar < npar; ++ipar )
+    std::vector<double> momenta;
+    std::vector<unsigned int> flavor_indices;
+    const std::size_t count = scan_points( momenta, flavor_indices );
+    if( count == 0 )
     {
-      mtotal += masses[ipar];
-      if( ipar >= npari ) mfinal += masses[ipar];
-    }
-    // rambo exits on a closed phase space: check it first
-    if( npar - npari < 2 || ( npari == 1 && !( masses[0] > mfinal ) ) ) return;
-    const double energy = std::max( 1500., 2 * mtotal ); // a decay is at rest instead
-    // A private generator: the shared one (rambo::rn) makes the points of the check
-    // drivers, which must not move.
-    rambo::Random random;
-    random.rmarin( 1802, 9373 );
-    auto draw = [&random]( int )
-    {
-      double r = random.ranmar();
-      while( r <= 1e-16 ) r = random.ranmar();
-      return r;
-    };
-    std::vector<double> momenta( nevt * npar * 4 ); // momenta[nevt * ( npar * mu + ipar ) + ievt]
-    for( std::size_t ievt = 0; ievt < nevt; ++ievt )
-    {
-      double weight = 0;
-      std::vector<std::vector<double>> p = rambo::get_momenta( npari, energy, masses, weight, draw );
-      // RAMBO points are in the partonic centre-of-mass frame, but with PDFs the matrix
-      // element is called in frames boosted along the beams (madspace's lab frame), and
-      // the helicity of a massive leg is not boost invariant: a helicity can vanish in
-      // the centre-of-mass frame only. Every other point is therefore boosted along z,
-      // with a random rapidity in [-2, 2], so that the choice covers both frames.
-      if( has_pdf_beams() && ievt % 2 == 1 )
-      {
-        const double y = 4 * draw( 0 ) - 2, ch = std::cosh( y ), sh = std::sinh( y );
-        for( std::vector<double>& q : p )
-        {
-          const double e = q[0], pz = q[3];
-          q[0] = e * ch + pz * sh;
-          q[3] = pz * ch + e * sh;
-        }
-      }
-      for( int ipar = 0; ipar < npar; ++ipar )
-      {
-        // on shell, or rambo did not converge: leave the choice to the first call
-        const double m2 = p[ipar][0] * p[ipar][0] - p[ipar][1] * p[ipar][1] - p[ipar][2] * p[ipar][2] - p[ipar][3] * p[ipar][3];
-        if( std::abs( m2 - masses[ipar] * masses[ipar] ) > 1e-6 * energy * energy ) return;
-        for( int mu = 0; mu < 4; ++mu ) momenta[nevt * ( npar * mu + ipar ) + ievt] = p[ipar][mu];
-      }
+      g_keep_every_helicity = true;
+      return;
     }
     double* device_momenta = nullptr;
+    unsigned int* device_flavor_indices = nullptr;
     double* device_matrix_elements = nullptr;
     gpuMalloc( (void**)&device_momenta, momenta.size() * sizeof( double ) );
-    gpuMalloc( (void**)&device_matrix_elements, nevt * sizeof( double ) );
+    gpuMalloc( (void**)&device_flavor_indices, count * sizeof( unsigned int ) );
+    gpuMalloc( (void**)&device_matrix_elements, count * sizeof( double ) );
     gpuMemcpy( device_momenta, momenta.data(), momenta.size() * sizeof( double ), gpuMemcpyHostToDevice );
+    gpuMemcpy( device_flavor_indices, flavor_indices.data(), count * sizeof( unsigned int ), gpuMemcpyHostToDevice );
     // no UMAMI_OUT_GPU_STREAM: the default stream, as the filter's own copies
-    const UmamiInputKey input_keys[] = { UMAMI_IN_MOMENTA };
-    const void* inputs[] = { device_momenta };
+    const UmamiInputKey input_keys[] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX };
+    const void* inputs[] = { device_momenta, device_flavor_indices };
     const UmamiOutputKey output_keys[] = { UMAMI_OUT_MATRIX_ELEMENT };
     void* outputs[] = { device_matrix_elements };
-    umami_matrix_element( handle, nevt, nevt, 0, 1, input_keys, inputs, 1, output_keys, outputs );
+    umami_matrix_element( handle, count, count, 0, 2, input_keys, inputs, 1, output_keys, outputs );
     // umami_matrix_element returns before its kernels end: wait before freeing
     gpuStreamSynchronize( nullptr );
     gpuFree( device_matrix_elements );
+    gpuFree( device_flavor_indices );
     gpuFree( device_momenta );
   }
 
@@ -412,6 +431,19 @@ extern "C"
     return UMAMI_ERROR_NOT_IMPLEMENTED;
   }
 
+  // Numbering of the outputs of a crossed call (crossing on, flavor index
+  // K*nmaxflavor + flavor: row K of the crossing table in ProcessTables.h).
+  // - UMAMI_OUT_HELICITY_INDEX is the crossed process's own helicity code,
+  //   the one its --use_crossing=False output reports (selected_hel_code).
+  // - UMAMI_OUT_COLOR_INDEX, UMAMI_OUT_DIAGRAM_INDEX and UMAMI_OUT_DIAGRAM_AMP2
+  //   number the colour flows and diagrams of the BASE subprocess (this P
+  //   directory's). To read a flow on the crossed legs, input slot k is base
+  //   leg xpinv_tab[K*npar+k], with colour and anticolour exchanged when
+  //   xsgni_tab is -1 (the leg changed side). This is not the numbering of the
+  //   --use_crossing=False output: two rows can serve the same flavours with
+  //   different leg assignments, so one base flow is a different flow of the
+  //   crossed process under each. `output mg7` decodes through the base this
+  //   way (export_mg7.py, get_crossed_subprocess_info).
   UmamiStatus umami_matrix_element(
     UmamiHandle handle,
     size_t count,
@@ -575,9 +607,11 @@ extern "C"
     InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
     if( !instance->initialized )
     {
-      // the helicity filtering runs on the default stream: wait for the inputs copied on
-      // gpu_stream, which need not synchronise with it (a non-blocking stream); its
-      // synchronous copies back to the host finish it before the work below
+      // where umami_initialize could not choose the good helicities (no RAMBO phase
+      // space), every helicity is set good here, on the default stream (otherwise
+      // initialize does nothing): wait for the inputs copied on gpu_stream, which need
+      // not synchronise with it (a non-blocking stream); its synchronous copies back
+      // to the host finish it before the work below
       gpuStreamSynchronize( gpu_stream );
       // the jamp scratch of the helicity filtering (one helicity, njampso jamps, a few
       // events): ghel_jamps, whose size does not depend on ncolor_flow and nampso
@@ -648,10 +682,11 @@ extern "C"
     return UMAMI_SUCCESS;
   }
 
-  // A madmatrix extension, not part of UMAMI: the number of helicity combinations
-  // kept by the good-helicity filter, which runs at the first umami_initialize (at
-  // the first umami_matrix_element call where RAMBO has no phase space; 0 before
-  // it). Like the filter, it is shared by every instance.
+  // A madmatrix extension, not part of UMAMI: the number of rows in the one
+  // good-helicity list shared by every flavor and crossing (the same number as on
+  // CPUs, where it counts both rows of a C-parity pair).
+  // The filter runs at the first umami_initialize (at the first umami_matrix_element
+  // call where RAMBO has no phase space; 0 before it), shared by every instance.
   int madmatrix_good_helicity_count()
   {
     return sigmaKin_getNGoodHel();

@@ -25,6 +25,7 @@ from os.path import join as pjoin
 import madgraph.iolibs.files as files
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.export_cpp as export_cpp
+import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.various.misc as misc
 
 from . import launch_plugin
@@ -201,6 +202,19 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         # Honor the output command's --mask=True|False (flavor-mask
         # optimization for grouped/merged flavors). Default: enabled.
         self.use_flavor_mask = self._parse_flavor_mask_option()
+        # --axial_gauge is read per matrix element by the helas call writer;
+        # say here, once per output, if the FD gauge drops it
+        helas_call_writers.axial_gauge_requested(
+                            self.opt.get('output_options'), warn=True)
+        # --hel_recycling: the warm-ups of this output only (a failed earlier
+        # one must not leave its directories to this finalize), and only the
+        # standalone exporter runs them
+        del model_handling.OneProcessExporterMadMatrix._hr_warmups[:]
+        hel_recycling = (self.opt.get('output_options') or {}).get('hel_recycling', False)
+        if str(hel_recycling).lower() in ('true', '1', 'yes') and \
+                not self.oneprocessclass.runs_hel_recycling_warmup:
+            logger.warning('--hel_recycling=True is only implemented for '
+                           '`output standalone`: ignored here.')
 
     def _parse_flavor_mask_option(self):
         """Read --mask=True|False from the output command line (default True)."""
@@ -369,6 +383,204 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         # the model, e.g. for the widths set to 'auto' in the param_card
         self.write_model_reference(model)
 
+    # What a caller evaluating the libraries one phase-space point at a time
+    # (madmatrix.density, used by MadSpin) needs to find the library and the
+    # flavor index of a given process
+    processes_file = 'madmatrix_processes.json'
+
+    def generate_subprocess_directory(self, matrix_element, cpp_helas_call_writer, proc_number=None):
+        out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
+        if not hasattr(self, 'processes_of_subprocess'):
+            self.processes_of_subprocess = []
+        crossed, crossed_flavors = self.crossed_flavor_ids(
+            matrix_element, os.path.basename(self.process_info[-1]['path']))
+        self.processes_of_subprocess.append((
+            [[leg.get('id') for leg in process.get_legs_with_decays()]
+             for process in matrix_element.get('processes')],
+            # the legs marked off-shell ('*'), evaluated at the invariant mass of
+            # their momentum by the scalar backend only (offshell_mass, SigmaKin.cc)
+            sorted(wf.get('number_external')
+                   for wf in matrix_element.get_external_wavefunctions()
+                   if wf.get('offshell')),
+            # the crossed processes folded onto this one (--use_crossing):
+            # listed nowhere else, and evaluated through the extended flavor
+            # index only
+            crossed, crossed_flavors))
+        return out
+
+    def crossed_flavor_ids(self, matrix_element, proc_dir_name):
+        """The crossed processes folded onto matrix_element, as their leg ids
+        (decays expanded to their leaves, merged labels as they are), and
+        [extended flavor id, pdgs] for every pdg combination of theirs, the pdgs
+        in the leg order of the crossed process: the rows of the crossing table
+        (the one ProcessTables.h was written from, in the coupling-class
+        convention of the C++ flavor index, export_cpp get_crossing_table) that
+        serve them. No flavor id when the directory has no crossing machinery."""
+        folded = self.folded_crossed_processes(matrix_element)
+        legs = [[leg.get('id') for leg in process.get_legs_with_decays()]
+                for process in folded]
+        if not folded:
+            return legs, []
+        tables = pjoin(self.dir_path, 'SubProcesses', proc_dir_name, 'ProcessTables.h')
+        try:
+            with open(tables) as fsock:
+                if 'constexpr bool use_crossing = true;' not in fsock.read():
+                    return legs, []
+        except IOError:
+            return legs, []
+        crossing_all = str((self.opt.get('output_options') or {}).get(
+            'crossing_table', '')).lower() == 'all'
+        table = export_v4.ProcessExporterFortran.get_crossing_table(
+            self, matrix_element, 'classes', all_applicable=crossing_all)
+        nflav = len(matrix_element.get_external_flavors_with_iden())
+        # a decay-chain base records its crossings at the production level:
+        # the table's records carry their leaf ids
+        legs = [list(record.labels) for record in table.records]
+        return legs, [[a.index(nflav), list(a.pdgs)] for a in table.assignments()]
+
     def finalize(self, *args, **kwargs):
-        # We disable this since we don't need subprocesses.json either
-        pass
+        # no subprocesses.json (nor anything else the mg7 launcher needs), only
+        # the process table of the standalone libraries
+        self.write_processes_file()
+        # --hel_recycling still needs its warm-up, which can only run once
+        # every P* directory is complete and buildable ('make cleanall' after
+        # it leaves the process table alone)
+        self._run_hel_recycling_warmups()
+
+    def write_processes_file(self):
+        """SubProcesses/madmatrix_processes.json: per subprocess, its library
+        (with the make variables LIBTAG and BACKEND left as '{libtag}' and
+        '{backend}'), its legs, the processes it evaluates, its off-shell legs,
+        the crossed processes folded onto it, per flavor index, every pdg
+        combination (in the leg order of the process) that this index stands
+        for and, for the crossed processes, [extended flavor id, pdgs] for each
+        of their pdg combinations (crossed_flavor_ids).
+
+        A crossed process is evaluated with an extended flavor index (crossing
+        row K of ProcessTables.h, K*nmaxflavor + flavor). Its selected
+        helicity is the crossed process's own code, but its colour-flow and
+        diagram indices number the BASE subprocess's flows and diagrams: decode
+        them through row K (see the note above umami_matrix_element in
+        umami.cc), as `output mg7` does."""
+        import json
+        subprocesses = []
+        for info, (processes, offshell, crossed, crossed_flavors) in zip(
+                self.process_info, getattr(self, 'processes_of_subprocess', [])):
+            path = os.path.basename(info['path'])
+            flavors = []
+            for flavor in info['flavors']:
+                while len(flavors) <= flavor['index']:
+                    flavors.append([])
+                flavors[flavor['index']].extend(list(pdgs) for pdgs in flavor['options'])
+            subprocesses.append({
+                'path': path,
+                'library': 'libmadmatrix{libtag}_%s_{backend}.so' % path,
+                'ninitial': len(info['incoming']),
+                'legs': list(info['incoming']) + list(info['outgoing']),
+                'processes': processes,
+                'offshell': offshell,
+                'crossed': crossed,
+                'flavors': flavors,
+                'crossed_flavors': crossed_flavors})
+        with open(pjoin(self.dir_path, 'SubProcesses', self.processes_file), 'w') as fsock:
+            json.dump({'subprocesses': subprocesses}, fsock, indent=1)
+
+    def _run_hel_recycling_warmups(self):
+        """For each --hel_recycling P* directory: build a probe of the ordinary
+        code (BACKEND=scalar FPTYPE=d HRPROBE=1), run it once to have its own
+        good-helicity scan print the good helicities and the amplitudes that are
+        only a cancellation zero at each, and write the recycled build for those.
+
+        The scan is the very sigmaKin_getGoodHel the helicity loop uses at run
+        time, so the rows built can never be short of one it asks for (at these
+        parameters). On any failure the directory keeps the ordinary code: correct
+        but not recycled, which is the right way round to fail."""
+        exporters = model_handling.OneProcessExporterMadMatrix._hr_warmups
+        axial = helas_call_writers.axial_gauge_requested(
+                                        self.opt.get('output_options'))
+        for exporter in exporters:
+            dirpath = exporter.path
+            name = os.path.basename(dirpath)
+            try:
+                built = subprocess.run(
+                    ['make', '-j%d' % (os.cpu_count() or 1), 'BACKEND=scalar',
+                     'FPTYPE=d', 'HRPROBE=1'],
+                    cwd=dirpath, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                if built.returncode != 0:
+                    logger.warning('hel_recycling warm-up build failed in %s; it is '
+                        'written without recycling.\n%s', name,
+                        built.stdout.decode(errors='replace')[-1500:])
+                    continue
+                # what the probe records is the good-helicity scan that
+                # umami_initialize runs (goodHelScanEvents: 64 RAMBO points
+                # under MG_HR_PROBE, half of them boosted, per crossing at its
+                # own masses) over every extended flavor id; any perf run
+                # triggers it
+                env = dict(os.environ, MG_DUMP_GOODHEL='1')
+                env.pop('MG_HR_EXACT_ZERO', None)
+                if axial:
+                    # the axial reference-vector zeros are a rounding residual
+                    # the collinear limit needs: drop exact zeros only
+                    env['MG_HR_EXACT_ZERO'] = '1'
+                run = subprocess.run([pjoin(dirpath, 'check_sa.exe'), 'perf',
+                                      '1', '64', '1'],
+                                     cwd=dirpath, env=env, stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT)
+                output = run.stdout.decode(errors='replace')
+                if run.returncode != 0:
+                    logger.warning('hel_recycling warm-up run failed in %s; it is '
+                                   'written without recycling.', name)
+                    continue
+                good_hels, zero_perhel, offshell = self._parse_hel_warmup(output)
+                if offshell:
+                    # its vanishing amplitudes were measured off shell, and the
+                    # recycled build has no fallback for one it dropped (a
+                    # crossing with no phase space at all is not scanned)
+                    logger.warning('hel_recycling warm-up has no points at the '
+                        'masses of crossing %s in %s (RAMBO did not converge); '
+                        'it is written without recycling.',
+                        ', '.join(str(k) for k in offshell), name)
+                    continue
+                if not good_hels:
+                    logger.warning('hel_recycling warm-up found no helicity in %s; '
+                                   'it is written without recycling.', name)
+                    continue
+                nrows = exporter.write_recycled(good_hels, zero_perhel)
+                logger.info('hel_recycling: %s builds %d helicity rows of %d, '
+                    'dropping %d (helicity, amplitude) pairs that vanish', name,
+                    nrows, exporter.matrix_elements[0].get_helicity_combinations(),
+                    len(zero_perhel))
+            except Exception as err:
+                logger.warning('hel_recycling warm-up error in %s (%s); it is '
+                               'written without recycling.', name, err)
+            finally:
+                self._clean_warmup_build(dirpath)
+        del exporters[:]
+
+    @staticmethod
+    def _parse_hel_warmup(output):
+        """The good helicities (1-based rows of cHel), the (row, amplitude)
+        pairs that vanish, as printed by sigmaKin_setGoodHel under MG_HR_PROBE --
+        the protocol madevent's helicity filter prints -- and the crossing rows
+        that were scanned on points off shell for them (HEL/OFFSHELL)."""
+        good, zeros, offshell = [], [], []
+        for line in output.splitlines():
+            if line.startswith('Matrix Element/Good Helicity:'):
+                good.append(int(line.split()[-1]))
+            elif line.startswith('HEL/ZEROAMP:'):
+                _me, hel, amp = line.split()[1:4]
+                zeros.append((int(hel), int(amp)))
+            elif line.startswith('HEL/OFFSHELL:'):
+                offshell.append(int(line.split()[1]))
+        return sorted(set(good)), sorted(set(zeros)), sorted(set(offshell))
+
+    @staticmethod
+    def _clean_warmup_build(dirpath):
+        """Undo the probe build: its objects must not be reused (the probe is not
+        the real thing), and the build tag it leaves makes the next make with any
+        other BACKEND/FPTYPE refuse to run."""
+        try:
+            subprocess.run(['make', 'cleanall'], cwd=dirpath,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass

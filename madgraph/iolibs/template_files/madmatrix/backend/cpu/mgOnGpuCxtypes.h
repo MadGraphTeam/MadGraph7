@@ -69,6 +69,18 @@ namespace mgOnGpu /* clang-format off */
   {
     return cxsmpl<FP>( c.real(), -c.imag() );
   }
+
+  // Principal square root, as std::sqrt( std::complex ) (branch cut along the negative real axis).
+  // The complex-mass scheme needs it in Parameters.cc, e.g. CMASS_mdl_MT = sqrt( MT^2 - i*MT*WT ),
+  // and its complex couplings then feed further sqrt's (e.g. mdl_cw = sqrt( 1 - mdl_sw2 )).
+  // Host only: model parameters are computed once on the host, never event by event on a device.
+  template<typename FP>
+  inline __host__ cxsmpl<FP>
+  sqrt( const cxsmpl<FP>& c )
+  {
+    const std::complex<FP> s = std::sqrt( std::complex<FP>( c.real(), c.imag() ) );
+    return cxsmpl<FP>( s.real(), s.imag() );
+  }
 } /* clang-format on */
 
 // Expose the cxsmpl class outside the namespace
@@ -510,6 +522,17 @@ namespace madmatrix
   // Template version for multi-precision (explicit template parameter required)
   template<typename CX = cxtype>
   inline CX cxzero_sv() { return CX{}; }
+
+  // Denominator p^2 - M^2 + i M W of a massive propagator, with the width
+  // kept only where p^2 > 0 (timelike): a spacelike (t-channel) propagator
+  // has no pole to regulate. Used by the ALOHA routines when the width of a
+  // t-channel propagator is dropped (aloha.t_channel_width False, the
+  // default), lane by lane, as the Fortran routines do event by event.
+  inline __host__ __device__ cxtype_denom_sv
+  propagator_denom( const fptype_denom_sv& p2, const fptype_denom M, const fptype_denom W )
+  {
+    return cxtype_denom_sv( p2 - M * M, ( p2 > 0 ) ? M * W : fptype_denom( 0 ) );
+  }
 
   // Functions and operators for cxtype_sv (and multi-precision variant)
   template<typename CX>

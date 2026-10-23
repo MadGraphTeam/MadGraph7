@@ -254,8 +254,10 @@ jobs:
           if-no-files-found: warn
 
   madmatrix:
-    # the GPU backend of madmatrix against its CPU backend with check_sa.exe: running flavour
-    # couplings (MSSM), a subprocess with no good helicity, a non-blocking stream
+    # the GPU backend of madmatrix against its CPU backend with check_sa.exe (madmatrix_checks.py):
+    # running flavour couplings (MSSM), every crossing of folded subprocesses (extended ids,
+    # helicities, colours; massive, axial-gauge and signed interference crossings),
+    # |M|^2 = 0 with and without good helicities, a non-blocking stream
     needs: [start_runner, build_madspace]
     if: needs.start_runner.outputs.attempt == github.run_attempt
     runs-on: [self-hosted, "${{ inputs.runner_label }}"]

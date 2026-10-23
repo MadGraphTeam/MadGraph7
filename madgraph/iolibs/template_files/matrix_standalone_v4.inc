@@ -325,11 +325,11 @@ C           be halved uniformly -- refuse the reuse for this flavor.
       ENDIF
 %(smatrix_iden_line)s
       IF(USERHEL.NE.-1) THEN
-          ANS=ANS*HELAVGFACTOR
+          ANS=ANS*%(helavg_user)s
       ELSE
         DO J=1,NINITIAL
           IF (POLARIZATIONS(J,0).ne.-1) THEN
-            ANS=ANS*BEAMS_HELAVGFACTOR(J)
+            ANS=ANS*%(helavg_beam)s
             ANS=ANS/POLARIZATIONS(J,0)
           ENDIF
         ENDDO
@@ -449,6 +449,10 @@ C     the raw helicity/color sum -- the natural thing to do, and
 C     what makes two crossings comparable -- is therefore wrong
 C     for every crossed flavor and for every non-representative
 C     one.
+C
+C     NHEL_STAR is the helicity table of the process FLAV_IDX_IN
+C     names, in its own leg order: column C is the code C that
+C     SMATRIXHEL takes for it (the base table when uncrossed).
 C
 C     GET_NHEL is deliberately left alone: its signature and its
 C     value are what existing uncrossed callers expect.
@@ -958,9 +962,12 @@ c     computed) INTER((NCOMB*NCOMB+1)/2: all interference term
 c     (not the symmetric one) FLAV_IDX may carry a crossing: it
 c     is decoded and applied ONCE here, and
 c     GET_ALL_INTER_CROSSED below then only sees crossed arrays.
-c     POS is given in the UNCROSSED (source process) slot
-c     numbering and is mapped through the crossing permutation
-c     here.
+c     P, POS and NHEL all follow the caller's legs (the slot
+c     order of the process FLAV_IDX names, GET_PDG_FOR_FLAVOR)
+c     and are mapped onto the base slots here: base slot XK
+c     takes P(:,PERM(XK)) and NHEL(PERM(XK)) (GET_CROSS_PERM),
+c     with no sign, NHEL(K) being the physical helicity of
+c     caller leg K.
       implicit none
 CF2PY INTENT(IN) :: P(0:3,%(nexternal)d)
 CF2PY INTENT(IN) :: NHEL(%(nexternal)d)

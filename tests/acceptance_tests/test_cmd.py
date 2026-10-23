@@ -1786,6 +1786,153 @@ class TestCmdShell2(unittest.TestCase,
                                       ('simd_128', 'd', 1e-12),
                                       ('simd_128', 'm', 1e-6)])
 
+    def test_standalone_umami_two_to_one(self):
+        """a 2 > 1 keeps the helicities of every frame, whatever the first call.
+
+        RAMBO has no phase space for a 2 > 1, so its good helicities were still
+        chosen at the first umami_matrix_element call. For u d~ > w+ with the
+        beams along z, the W at rest has one J_z: two of its three rows vanish.
+        After a first call there, |M|^2 with the beams along x was 4 times too
+        small. The scan at initialization now draws the beam axis at random.
+        For the scalar backend, after a first call with the beams along z:
+        3 helicities are kept, and |M|^2 is the same with the beams along z, x,
+        y and in a boosted frame.
+        """
+        import glob
+        import json
+        import textwrap
+
+        self.do('import model sm')
+        self.do('generate u d~ > w+')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        make = subprocess.run(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              cwd=proc_dir)
+        self.assertEqual(0, make.returncode, make.stdout.decode(errors='replace')[-3000:])
+        lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_P*_scalar.so'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        helper = pjoin(self.out_dir, 'umami_two_to_one.py')
+        with open(helper, 'w') as fsock:
+            fsock.write(textwrap.dedent('''\
+                import ctypes, json, math, sys
+                lib = ctypes.CDLL(sys.argv[1])
+                handle = ctypes.c_void_p()
+                assert lib.umami_initialize(ctypes.byref(handle), sys.argv[2].encode()) == 0
+                npar = 3
+                masses = (ctypes.c_double * npar)()
+                assert lib.umami_get_meta(5, masses) == 0  # umami.h: UMAMI_META_MASSES = 5
+                mw = masses[2]
+
+                def point(axis, beta=0.):  # beams along axis at sqrt(s) = mw, boosted along x
+                    e = mw / 2
+                    p = [[e] + [e * x for x in axis], [e] + [-e * x for x in axis], [mw, 0, 0, 0]]
+                    g = 1 / math.sqrt(1 - beta * beta)
+                    return [[g * (q[0] + beta * q[1]), g * (q[1] + beta * q[0]), q[2], q[3]] for q in p]
+
+                def evaluate(p):
+                    mom = (ctypes.c_double * (4 * npar))()
+                    for ipart in range(npar):  # momenta[npar * mu + ipart]
+                        for mu in range(4):
+                            mom[npar * mu + ipart] = p[ipart][mu]
+                    me = (ctypes.c_double * 1)()
+                    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_OUT_MATRIX_ELEMENT = 0
+                    assert lib.umami_matrix_element(
+                        handle, ctypes.c_size_t(1), ctypes.c_size_t(1), ctypes.c_size_t(0),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(mom)),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(me))) == 0
+                    return me[0]
+
+                first = evaluate(point((0, 0, 1)))
+                print(json.dumps({
+                    'good': lib.madmatrix_good_helicity_count(),
+                    'me': [first] + [evaluate(point(a, b)) for a, b in
+                                     (((1, 0, 0), 0.), ((0, 1, 0), 0.), ((0, 0, 1), 0.6))]}))
+                '''))
+        out = subprocess.check_output([sys.executable, helper, lib, card])
+        run = json.loads(out.decode().strip().splitlines()[-1])
+        self.assertEqual(run['good'], 3)
+        for me in run['me'][1:]:
+            self.assertAlmostEqual(me, run['me'][0], delta=1e-10 * run['me'][0])
+
+    def test_standalone_umami_below_threshold(self):
+        """a decay below threshold keeps every helicity, whatever the first call.
+
+        RAMBO has no phase space for h > w+ w- (mh < 2 mW), so the good
+        helicities were chosen at the first umami_matrix_element call, on off
+        shell W momenta. At rest only the 3 rows of equal W helicities are
+        above rounding, but the others are not 0 in a boosted frame: after a
+        first call at rest, |M|^2 there was 8.5 times too small. For the scalar
+        backend, every one of the 9 rows is now kept, and the boosted |M|^2
+        is the same after a first call at rest or in the boosted frame.
+        """
+        import glob
+        import json
+        import textwrap
+
+        self.do('import model sm')
+        self.do('generate h > w+ w-')
+        self.do('output standalone %s -f' % self.out_dir)
+        proc_root = pjoin(self.out_dir, 'SubProcesses')
+        proc_dir = [pjoin(proc_root, d) for d in os.listdir(proc_root)
+                    if d.startswith('P') and os.path.isdir(pjoin(proc_root, d))][0]
+        make = subprocess.run(['make', 'BACKEND=scalar', 'FPTYPE=d'],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              cwd=proc_dir)
+        self.assertEqual(0, make.returncode, make.stdout.decode(errors='replace')[-3000:])
+        lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_P*_scalar.so'))[0]
+        card = pjoin(self.out_dir, 'Cards', 'param_card.dat')
+        helper = pjoin(self.out_dir, 'umami_below_threshold.py')
+        with open(helper, 'w') as fsock:
+            fsock.write(textwrap.dedent('''\
+                import ctypes, json, math, sys
+                lib = ctypes.CDLL(sys.argv[1])
+                handle = ctypes.c_void_p()
+                assert lib.umami_initialize(ctypes.byref(handle), sys.argv[2].encode()) == 0
+                npar = 3
+                masses = (ctypes.c_double * npar)()
+                assert lib.umami_get_meta(5, masses) == 0  # umami.h: UMAMI_META_MASSES = 5
+                mh, mv = masses[0], 0.4 * masses[0]  # two W of virtuality 0.4 mh
+
+                def point(beta):  # at rest, W+ along (0.3, 0.4, ...), boosted along x
+                    q = math.sqrt(mh * mh / 4 - mv * mv)
+                    n = [0.3, 0.4, math.sqrt(0.75)]
+                    p = [[mh, 0, 0, 0], [mh / 2] + [q * x for x in n],
+                         [mh / 2] + [-q * x for x in n]]
+                    g = 1 / math.sqrt(1 - beta * beta)
+                    return [[g * (k[0] + beta * k[1]), g * (k[1] + beta * k[0]), k[2], k[3]] for k in p]
+
+                def evaluate(p):
+                    mom = (ctypes.c_double * (4 * npar))()
+                    for ipart in range(npar):  # momenta[npar * mu + ipart]
+                        for mu in range(4):
+                            mom[npar * mu + ipart] = p[ipart][mu]
+                    me = (ctypes.c_double * 1)()
+                    # umami.h: UMAMI_IN_MOMENTA = 0, UMAMI_OUT_MATRIX_ELEMENT = 0
+                    assert lib.umami_matrix_element(
+                        handle, ctypes.c_size_t(1), ctypes.c_size_t(1), ctypes.c_size_t(0),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(mom)),
+                        ctypes.c_size_t(1), (ctypes.c_int * 1)(0),
+                        (ctypes.c_void_p * 1)(ctypes.addressof(me))) == 0
+                    return me[0]
+
+                evaluate(point(float(sys.argv[3])))
+                print(json.dumps({'good': lib.madmatrix_good_helicity_count(),
+                                  'me': evaluate(point(0.6))}))
+                '''))
+        runs = []
+        for first in ('0', '0.6'):  # the helicities are chosen once per library
+            out = subprocess.check_output([sys.executable, helper, lib, card, first])
+            runs.append(json.loads(out.decode().strip().splitlines()[-1]))
+        for run in runs:
+            self.assertEqual(run['good'], 9)
+            self.assertAlmostEqual(run['me'], runs[1]['me'], delta=1e-10 * runs[1]['me'])
+
     def test_standalone_umami_first_call_gpu(self):
         """test_standalone_umami_first_call on GPUs (BACKEND=cuda, hip).
 
@@ -3751,14 +3898,14 @@ int main(int argc, char** argv){
 import itertools, json, math, os, sys
 import numpy as np
 import all_matrix2py as m
-mdir, prefix, outfile = sys.argv[1:]
+mdir, prefix, outfile, pdgs = sys.argv[1:]
 fct = lambda name: getattr(m, prefix + name)
 fct('initialise')(os.path.join(mdir, 'Cards', 'param_card.dat'))
 E, th, ph = 500., 0.7, 0.3
 k = [E*math.sin(th)*math.cos(ph), E*math.sin(th)*math.sin(ph), E*math.cos(th)]
 p = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + k,
               [E] + [-x for x in k]]).T.copy()
-kw = dict(pdgs=[2, -2, -11, 11], procid=-1, p=p, pos=[3, 4],
+kw = dict(pdgs=json.loads(pdgs), procid=-1, p=p, pos=[3, 4],
           allow_hel=[-1, -1, -1, 1, 1, -1, 1, 1])
 cplx = lambda a: [[z.real, z.imag] for z in a]
 res = {'density': cplx(fct('py_get_density')(alphas=0., scale2=0., **kw)),
@@ -3790,40 +3937,55 @@ json.dump(res, open(outfile, 'w'))
                                         (prefixed_dir, ' --prefixf2py=1', 'f1_')]:
             self.do('output standalone_fortran %s --prefix=int -f%s'
                     % (out_dir, option))
-            subdir = os.path.join(out_dir, 'SubProcesses')
-            build = subprocess.run(['make', 'f2py'], cwd=subdir,
-                                   capture_output=True, text=True)
-            self.assertEqual(build.returncode, 0,
-                             'make f2py failed:\n' + build.stdout[-2000:]
-                             + build.stderr[-2000:])
+            self._check_get_all_inter(out_dir, prefix, [2, -2, -11, 11])
 
-            outfile = os.path.join(out_dir, 'get_all_inter.json')
-            run = subprocess.run([sys.executable, '-c',
-                                  self._get_all_inter_script,
-                                  out_dir, prefix, outfile],
-                                 cwd=subdir, capture_output=True, text=True)
-            self.assertEqual(run.returncode, 0,
-                             run.stdout[-2000:] + run.stderr[-2000:])
-            res = json.load(open(outfile))
+        # Split orders: the per-process GET_ALL_INTER fills one INTER per
+        # squared split order (NSQAMPSO=3 here), more than the f2py buffer
+        # holds; the dispatch has to hand back their sum, as the density does.
+        so_dir = self.out_dir + '_splitorders'
+        self.addCleanup(shutil.rmtree, so_dir, ignore_errors=True)
+        self.do('generate u u~ > u u~ QED^2<=4 QCD^2<=4')
+        self.do('output standalone_fortran %s --prefix=int -f' % so_dir)
+        self._check_get_all_inter(so_dir, '', [2, -2, 2, -2])
 
-            # f2py hands the int32 array straight through, and GET_ALL_INTER
-            # writes the pos entries of the NHEL it is given
-            for after, before in res['nhel']:
-                self.assertEqual(after, before)
+    def _check_get_all_inter(self, out_dir, prefix, pdgs):
+        """Build out_dir's f2py module and check that py_get_all_inter summed
+        over the helicities of legs 1 and 2 gives py_get_density."""
+        import json
+        subdir = os.path.join(out_dir, 'SubProcesses')
+        build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                               capture_output=True, text=True)
+        self.assertEqual(build.returncode, 0,
+                         'make f2py failed:\n' + build.stdout[-2000:]
+                         + build.stderr[-2000:])
 
-            dens = res['density']
-            scale = max(abs(complex(*z)) for z in dens)
-            self.assertGreater(scale, 0)
-            # more than one helicity of the other legs contributes, so the
-            # sum below does not reduce to a single call
-            self.assertGreaterEqual(
-                sum(any(re_ or im_ for re_, im_ in inter)
-                    for inter in res['inter']), 2)
-            for i, (re_, im_) in enumerate(dens):
-                self.assertAlmostEqual(sum(inter[i][0] for inter in res['inter']),
-                                       re_, delta=1e-12 * scale)
-                self.assertAlmostEqual(sum(inter[i][1] for inter in res['inter']),
-                                       im_, delta=1e-12 * scale)
+        outfile = os.path.join(out_dir, 'get_all_inter.json')
+        run = subprocess.run([sys.executable, '-c',
+                              self._get_all_inter_script,
+                              out_dir, prefix, outfile, json.dumps(pdgs)],
+                             cwd=subdir, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0,
+                         run.stdout[-2000:] + run.stderr[-2000:])
+        res = json.load(open(outfile))
+
+        # f2py hands the int32 array straight through, and GET_ALL_INTER
+        # writes the pos entries of the NHEL it is given
+        for after, before in res['nhel']:
+            self.assertEqual(after, before)
+
+        dens = res['density']
+        scale = max(abs(complex(*z)) for z in dens)
+        self.assertGreater(scale, 0)
+        # more than one helicity of the other legs contributes, so the
+        # sum below does not reduce to a single call
+        self.assertGreaterEqual(
+            sum(any(re_ or im_ for re_, im_ in inter)
+                for inter in res['inter']), 2)
+        for i, (re_, im_) in enumerate(dens):
+            self.assertAlmostEqual(sum(inter[i][0] for inter in res['inter']),
+                                   re_, delta=1e-12 * scale)
+            self.assertAlmostEqual(sum(inter[i][1] for inter in res['inter']),
+                                   im_, delta=1e-12 * scale)
 
     def test_standalone_density_f2py(self):       
 
@@ -4050,6 +4212,408 @@ json.dump(res, open(outfile, 'w'))
             for (re_, im_), (ref_re, ref_im) in zip(dens, ref_u):
                 self.assertAlmostEqual(re_, ref_re, delta=1e-12 * abs(ref_u[0][0]))
                 self.assertAlmostEqual(im_, ref_im, delta=1e-12 * abs(ref_u[0][0]))
+
+    # p p > e+ e- j folds g u~ > e+ e- u~ (legs 2 and 5 exchanged across)
+    # and u u~ > e+ e- g (a 3-cycle of legs 1, 2 and 5) onto g u > e+ e- u.
+    # Run in a fresh interpreter: every output names its module all_matrix2py.
+    # mode 'pdg': the PDG-keyed entry points; 'idx': the per-process _IDX ones
+    # at the extended index GET_PDG_FOR_FLAVOR names for those PDG codes.
+    _crossed_f2py_script = '''
+import itertools, json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, outfile, mode = sys.argv[1:]
+m.initialise(os.path.join(mdir, 'Cards', 'param_card.dat'))
+# on shell and momentum conserving: E3=300, E4=400, E5=300 in the partonic
+# rest frame (cos(p3,p4) = -2/3), then boosted along z
+a, f, psi = 0.7, 0.3, 1.1
+n3 = np.array([math.sin(a)*math.cos(f), math.sin(a)*math.sin(f), math.cos(a)])
+u = np.cross(n3, [0., 0., 1.])
+u /= np.linalg.norm(u)
+v = np.cross(n3, u)
+c = -2./3.
+n4 = c*n3 + math.sqrt(1 - c*c)*(math.cos(psi)*u + math.sin(psi)*v)
+k3, k4 = 300*n3, 400*n4
+mom = [[500, 0, 0, 500], [500, 0, 0, -500], [300] + list(k3),
+       [400] + list(k4), [300] + list(-k3 - k4)]
+b = 0.3
+g = 1/math.sqrt(1 - b*b)
+p = np.asfortranarray(np.array(
+    [[g*(q[0] + b*q[3]), q[1], q[2], g*(q[3] + b*q[0])] for q in mom]).T)
+pos, allow = [1, 5], [-1, -1, -1, 1, 1, -1, 1, 1]
+nhels = [[0, h2, h3, h4, 0] for h2, h3, h4 in itertools.product([-1, 1], repeat=3)]
+cases = [[21, 2, -11, 11, 2], [21, -2, -11, 11, -2], [2, -2, -11, 11, 21]]
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {'sm': [], 'dens': [], 'inter': [], 'kept': True, 'idx': []}
+for pdgs in cases:
+    arr = np.array(pdgs, dtype=np.int32)
+    res['sm'].append(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
+    if mode == 'pdg':
+        dens = m.py_get_density(pdgs=arr, procid=-1, p=p, pos=pos,
+                                allow_hel=allow, alphas=0.118, scale2=0.)
+        inter = lambda nh: m.py_get_all_inter(pdgs=arr, procid=-1, p=p,
+                                              nhel=nh, pos=pos, allow_hel=allow)
+    else:
+        nflav, next_, ncross = m.py_m0_get_flavor_layout()
+        idx = [i for i in range(1, nflav*ncross + 1)
+               if list(m.py_m0_get_pdg_for_flavor(i)) == pdgs][0]
+        res['idx'].append([idx, int(nflav)])
+        dens = m.py_m0_get_density_idx(p, pos, 2, allow, 4, idx, 0.118, 0.)
+        inter = lambda nh: m.py_m0_get_all_inter_idx(p, nh, pos, 2, allow, 4, idx)
+    res['dens'].append(cplx(dens))
+    res['inter'].append([])
+    for nhel in nhels:
+        nh = np.array(nhel, dtype=np.int32)
+        res['inter'][-1].append(cplx(inter(nh)))
+        res['kept'] &= nh.tolist() == nhel
+    res['kept'] &= arr.tolist() == pdgs
+if mode == 'pdg':
+    # e- e+ swapped: a leg order no matrix element serves
+    arr = np.array([21, 2, 11, -11, 2], dtype=np.int32)
+    res['nomatch'] = cplx(m.py_get_density(pdgs=arr, procid=-1, p=p, pos=pos,
+                          allow_hel=allow, alphas=0.118, scale2=0.)) + \\
+        cplx(m.py_get_all_inter(pdgs=arr, procid=-1, p=p, nhel=nhels[0],
+                                pos=pos, allow_hel=allow))
+    res['nomatch_sm'] = repr(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def _crossed_eej_outputs(self):
+        """p p > e+ e- j with crossing (folded) and without (expanded), both
+        built with make f2py; returns the two output directories."""
+        self.do('import model sm')
+        dirs = []
+        for tag, flag in (('_folded', ''), ('_expanded', ' --use_crossing=False')):
+            out_dir = self.out_dir + tag
+            self.addCleanup(shutil.rmtree, out_dir, ignore_errors=True)
+            self.do('generate p p > e+ e- j%s' % flag)
+            self.do('output standalone_fortran %s --prefix=int -f' % out_dir)
+            build = subprocess.run(['make', 'f2py'],
+                                   cwd=os.path.join(out_dir, 'SubProcesses'),
+                                   capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0, 'make f2py failed:\n' +
+                             build.stdout[-2000:] + build.stderr[-2000:])
+            dirs.append(out_dir)
+        # the folded output really folds: one matrix element, the crossings
+        # of g u > e+ e- u serve the two other subprocesses
+        self.assertEqual(len(misc.glob('P*', os.path.join(dirs[0], 'SubProcesses'))), 1)
+        self.assertEqual(len(misc.glob('P*', os.path.join(dirs[1], 'SubProcesses'))), 3)
+        return dirs
+
+    def _run_crossed_script(self, out_dir, mode):
+        import json
+        outfile = os.path.join(out_dir, 'crossed_%s.json' % mode)
+        run = subprocess.run([sys.executable, '-c', self._crossed_f2py_script,
+                              out_dir, outfile, mode],
+                             cwd=os.path.join(out_dir, 'SubProcesses'),
+                             capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stdout[-2000:] + run.stderr[-2000:])
+        return json.load(open(outfile)), run.stdout
+
+    def _assert_same_inter(self, got, ref, scale):
+        self.assertEqual(len(got), len(ref))
+        for (re_, im_), (ref_re, ref_im) in zip(got, ref):
+            self.assertAlmostEqual(re_, ref_re, delta=1e-12 * scale)
+            self.assertAlmostEqual(im_, ref_im, delta=1e-12 * scale)
+
+    def test_standalone_f2py_crossed_pdg_fallback(self):
+        """py_get_density / py_get_all_inter find a FOLDED crossed subprocess
+        by its PDG codes, as smatrixhel does (f77_crossed_density /
+        f77_crossed_get_all_inter), with P, POS and NHEL in the caller's leg
+        order: the folded output must answer what the expanded one does.
+
+        They used to return zeros for it: the PDG dispatch only knew the
+        uncrossed processes. PDG codes that no process matches now give NaN
+        (and an ERROR line) rather than zeros a caller cannot tell from a
+        vanishing density matrix, in smatrixhel as well.
+        """
+        import math
+        folded_dir, expanded_dir = self._crossed_eej_outputs()
+        folded, out = self._run_crossed_script(folded_dir, 'pdg')
+        expanded, _ = self._run_crossed_script(expanded_dir, 'pdg')
+        self.assertTrue(folded['kept'])
+        self.assertTrue(expanded['kept'])
+        for i in range(3):
+            self.assertAlmostEqual(folded['sm'][i] / expanded['sm'][i], 1,
+                                   places=12)
+            scale = max(abs(complex(*z)) for z in expanded['dens'][i])
+            self.assertGreater(scale, 0)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i], scale)
+            for got, ref in zip(folded['inter'][i], expanded['inter'][i]):
+                self._assert_same_inter(got, ref, scale)
+            # summed over the helicities of the legs not in POS, the
+            # interference terms give the density matrix
+            total = [[sum(inter[k][j] for inter in folded['inter'][i])
+                      for j in range(2)] for k in range(len(folded['dens'][i]))]
+            self._assert_same_inter(total, folded['dens'][i], scale)
+        for res in (folded, expanded):
+            # 4 helicity combinations: 10 entries, density then all_inter
+            self.assertEqual(len(res['nomatch']), 20)
+            self.assertTrue(all(math.isnan(x) for z in res['nomatch'] for x in z))
+            self.assertEqual(res['nomatch_sm'], 'nan')
+        self.assertIn('ERROR: py_get_density: no matrix element', out)
+        self.assertIn('ERROR: smatrixhel: no matrix element', out)
+
+    # every ordering of u~ d~ > u~ d~ and d~ u~ > u~ d~ that only exchanges
+    # legs inside the initial or the final state, at one phase-space point
+    # (momenta moved with their leg); u d > u d (uncrossed) as a control
+    _crossed_leg_order_script = '''
+import itertools, json, math, os, sys
+import numpy as np
+import all_matrix2py as m
+mdir, outfile = sys.argv[1:]
+m.initialise(os.path.join(mdir, 'Cards', 'param_card.dat'))
+E, th, ph, b = 500., 1.1, 0.4, 0.27
+k = E*np.array([math.sin(th)*math.cos(ph), math.sin(th)*math.sin(ph), math.cos(th)])
+mom = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E] + list(k), [E] + list(-k)])
+g = 1/math.sqrt(1 - b*b)
+mom = np.array([[g*(q[0] + b*q[3]), q[1], q[2], g*(q[3] + b*q[0])] for q in mom])
+cplx = lambda a: [[z.real, z.imag] for z in a]
+res = {'sm': [], 'dens': [], 'dens12': [], 'inter12': []}
+allow12 = [-1, -1, -1, 1, 1, -1, 1, 1]
+for pdgs in ([-2, -1, -2, -1], [-1, -2, -2, -1], [2, 1, 2, 1]):
+    for order in ([0, 1, 2, 3], [0, 1, 3, 2], [1, 0, 2, 3], [1, 0, 3, 2]):
+        arr = np.array([pdgs[o] for o in order], dtype=np.int32)
+        p = np.asfortranarray(mom[order].T)
+        res['sm'].append(m.smatrixhel(arr, -1, p, 0.118, 0., -1))
+        # the density of the leg in slot 1, which the repair may move
+        dens = m.py_get_density(pdgs=arr, procid=-1, p=p, pos=[1],
+                                allow_hel=[-1, 1], alphas=0.118, scale2=0.)
+        res['dens'].append(cplx(dens))
+        # the initial legs open, the final ones at fixed helicities
+        res['dens12'].append(cplx(m.py_get_density(
+            pdgs=arr, procid=-1, p=p, pos=[1, 2], allow_hel=allow12,
+            alphas=0.118, scale2=0.)))
+        res['inter12'].append([cplx(m.py_get_all_inter(
+            pdgs=arr, procid=-1, p=p, nhel=np.array([0, 0, h3, h4],
+                                                    dtype=np.int32),
+            pos=[1, 2], allow_hel=allow12))
+            for h3, h4 in itertools.product([-1, 1], repeat=2)])
+json.dump(res, open(outfile, 'w'))
+'''
+
+    def test_standalone_f2py_crossed_pdg_leg_order(self):
+        """smatrixhel and py_get_density reach a FOLDED crossed subprocess
+        whatever the order of its same-code legs inside the initial or the
+        final state, as the uncrossed entries do with FLAVOR_ORDER_REPAIR.
+
+        In p p > j j the all-antiquark subprocesses are crossings of
+        P1_QQ_QQ, and F77_CROSSED_SMATRIXHEL took them only in the leg order
+        of GET_PDG_FOR_FLAVOR: u~ d~ > u~ d~ came back as a silent 0 while
+        the expanded output (P1_QxQx_QxQx) answers it in every order."""
+        import json
+        import math
+        self.do('import model sm')
+        res = []
+        for tag, flag in (('_folded', ''), ('_expanded', ' --use_crossing=False')):
+            out_dir = self.out_dir + tag
+            self.addCleanup(shutil.rmtree, out_dir, ignore_errors=True)
+            self.do('generate p p > j j%s' % flag)
+            self.do('output standalone_fortran %s --prefix=int -f' % out_dir)
+            subdir = os.path.join(out_dir, 'SubProcesses')
+            build = subprocess.run(['make', 'f2py'], cwd=subdir,
+                                   capture_output=True, text=True)
+            self.assertEqual(build.returncode, 0, 'make f2py failed:\n' +
+                             build.stdout[-2000:] + build.stderr[-2000:])
+            outfile = os.path.join(out_dir, 'leg_order.json')
+            run = subprocess.run([sys.executable, '-c',
+                                  self._crossed_leg_order_script, out_dir,
+                                  outfile], cwd=subdir,
+                                 capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0,
+                             run.stdout[-2000:] + run.stderr[-2000:])
+            res.append(json.load(open(outfile)))
+        folded, expanded = res
+        # no P1_QxQx_QxQx: the antiquark processes really are folded
+        self.assertFalse(misc.glob('P*_QxQx_QxQx',
+                                   os.path.join(self.out_dir + '_folded',
+                                                'SubProcesses')))
+        for i, (got, ref) in enumerate(zip(folded['sm'], expanded['sm'])):
+            self.assertGreater(ref, 0)
+            self.assertAlmostEqual(got / ref, 1, places=12, msg=i)
+            # a relabelling: the same |M|^2 in every order of a process
+            self.assertAlmostEqual(got / folded['sm'][4 * (i // 4)], 1,
+                                   places=12, msg=i)
+        # the density matrix against smatrixhel through its trace, in every
+        # order: the open leg (POS) moves with its leg when the repair has
+        # to move it, so the expanded output answers too (it used to freeze
+        # it and return a silent 0 for half of these orders)
+        for out in (folded, expanded):
+            for i, dens in enumerate(out['dens']):
+                self.assertFalse(any(math.isnan(x) for z in dens for x in z), i)
+                self.assertAlmostEqual((dens[0][0] + dens[2][0]) /
+                                       out['sm'][i], 1, places=12, msg=i)
+        # py_get_all_inter summed over the final helicities is the density
+        # in every leg order, d u > u d (final legs repaired) included: its
+        # NHEL moves with the legs. It used to give zeros for every order
+        # the table does not hold.
+        for out in (folded, expanded):
+            nonzero = 0
+            for i, dens in enumerate(out['dens12']):
+                scale = max(abs(complex(*z)) for z in dens)
+                self.assertGreater(scale, 0, i)
+                nonzero += 1
+                for k, (re_, im_) in enumerate(dens):
+                    self.assertAlmostEqual(
+                        sum(inter[k][0] for inter in out['inter12'][i]),
+                        re_, delta=1e-12 * scale, msg=i)
+                    self.assertAlmostEqual(
+                        sum(inter[k][1] for inter in out['inter12'][i]),
+                        im_, delta=1e-12 * scale, msg=i)
+            self.assertEqual(nonzero, 12)
+        # folded and expanded: the same numbers, row by row
+        for i in range(12):
+            scale = max(abs(complex(*z)) for z in expanded['dens12'][i])
+            self._assert_same_inter(folded['dens12'][i],
+                                    expanded['dens12'][i], scale)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i],
+                                    max(abs(complex(*z))
+                                        for z in expanded['dens'][i]))
+            for got, ref in zip(folded['inter12'][i], expanded['inter12'][i]):
+                self._assert_same_inter(got, ref, scale)
+
+    def test_standalone_f2py_crossed_idx_caller_order_nhel(self):
+        """PY_<prefix>GET_ALL_INTER_IDX at a crossed index takes NHEL in the
+        caller's leg order, like P and POS: it must answer what the expanded
+        output's py_get_all_inter does for the same arrays. It used to read
+        NHEL in the base slot order (NHEL(XK) the helicity of caller leg
+        PERM(XK)); an uncrossed index is unaffected."""
+        folded_dir, expanded_dir = self._crossed_eej_outputs()
+        folded, _ = self._run_crossed_script(folded_dir, 'idx')
+        expanded, _ = self._run_crossed_script(expanded_dir, 'pdg')
+        self.assertTrue(folded['kept'])
+        # the first case is uncrossed, the two others carry a crossing
+        (idx0, nflav), (idx1, _), (idx2, _) = folded['idx']
+        self.assertLessEqual(idx0, nflav)
+        self.assertGreater(idx1, nflav)
+        self.assertGreater(idx2, nflav)
+        for i in range(3):
+            scale = max(abs(complex(*z)) for z in expanded['dens'][i])
+            self.assertGreater(scale, 0)
+            self._assert_same_inter(folded['dens'][i], expanded['dens'][i], scale)
+            for got, ref in zip(folded['inter'][i], expanded['inter'][i]):
+                self._assert_same_inter(got, ref, scale)
+
+    def test_madmatrix_density_matches_fortran(self):
+        """The madmatrix density matrices and |M|^2 (madmatrix.density, what
+        MadSpin uses by default) against the Fortran f2py ones MadSpin used
+        before, on the processes MadSpin generates for p p > t t~ with both tops
+        decayed: off-shell ('*') tops, merged quark and lepton flavors, both
+        quark orderings, on- and off-shell momenta. The production folds its
+        crossings as MadSpin's does (u~ u > t* t~* is the beam swap of
+        u u~ > t* t~*, evaluated by its library at an extended flavor index)."""
+        import importlib.util
+        import math
+        import random
+        import numpy as np
+        import madmatrix.density as madmatrix_density
+
+        os.makedirs(self.out_dir)
+        self.do('set apply_flavor_grouping True')
+        self.do('set group_subprocesses False')
+        dirs = {}
+        for name, process in (('prod', 'generate p p > t* t~*'),
+                              ('dec', 'generate t* > b w+, w+ > l+ vl')):
+            self.do(process)
+            dirs[name] = (pjoin(self.out_dir, 'mm_' + name), pjoin(self.out_dir, 'f_' + name))
+            self.do('output standalone %s -f --noeps=True' % dirs[name][0])
+            self.do('output standalone_fortran %s --prefix=int --density=1 -f' % dirs[name][1])
+
+        libtag = '_acc%d' % os.getpid()
+        fortran, mm = {}, {}
+        for menum, name in ((2, 'prod'), (1, 'dec')):
+            mm_dir, f_dir = dirs[name]
+            misc.compile(madmatrix_density.make_variables(libtag=libtag + name),
+                         cwd=pjoin(mm_dir, 'SubProcesses'), mode='cpp', nb_core=4)
+            mm[name] = madmatrix_density.MadDensityLibrary(mm_dir)
+            mm[name].initialise(pjoin(mm_dir, 'Cards', 'param_card.dat'))
+            misc.compile(cwd=pjoin(f_dir, 'Source'), nb_core=4)
+            misc.compile(['MENUM=%d' % menum, 'all_matrix%dpy.so' % menum],
+                         cwd=pjoin(f_dir, 'SubProcesses'))
+            so = max(misc.glob('all_matrix%dpy*.so' % menum, pjoin(f_dir, 'SubProcesses')),
+                     key=os.path.getsize)
+            spec = importlib.util.spec_from_file_location('all_matrix%dpy' % menum, so)
+            fortran[name] = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(fortran[name])
+            fortran[name].initialise(pjoin(f_dir, 'Cards', 'param_card.dat'))
+        self.assertEqual(mm['prod'].get_idens(), list(fortran['prod'].get_idens()))
+        # u~ u > t* t~* is folded: the u u~ library at an extended flavor index
+        sub, flavor_id, _ = mm['prod'].dispatch([-2, 2, 6, -6])
+        self.assertGreaterEqual(flavor_id, sub.nmaxflavor)
+
+        rng = random.Random(3)
+
+        def boost(p, b):
+            m = math.sqrt(b[0]**2 - b[1]**2 - b[2]**2 - b[3]**2)
+            g, n = b[0] / m, [x / m for x in b[1:]]
+            pb = sum(x * y for x, y in zip(p[1:], n))
+            f = pb / (g + 1) + p[0]
+            return (g * p[0] + pb,) + tuple(x + f * y for x, y in zip(p[1:], n))
+
+        def two_body(M, m1, m2):
+            k = math.sqrt((M**2 - (m1 + m2)**2) * (M**2 - (m1 - m2)**2)) / (2 * M)
+            c, phi = rng.uniform(-1, 1), rng.uniform(0, 2 * math.pi)
+            s = math.sqrt(1 - c * c)
+            v = (k * s * math.cos(phi), k * s * math.sin(phi), k * c)
+            return ((math.sqrt(m1**2 + k * k),) + v,
+                    (math.sqrt(m2**2 + k * k),) + tuple(-x for x in v))
+
+        def production(mt1, mt2):
+            shat = rng.uniform(mt1 + mt2 + 10, 1200.)
+            p3, p4 = two_body(shat, mt1, mt2)
+            beta = rng.uniform(-0.5, 0.5)
+            gamma = 1. / math.sqrt(1 - beta**2)
+            b = (gamma, 0., 0., gamma * beta)
+            return [boost(p, b) for p in ((shat / 2, 0, 0, shat / 2),
+                                          (shat / 2, 0, 0, -shat / 2), p3, p4)]
+
+        def decay(mt, mw):
+            w, b = two_body(mt, mw, 4.7)
+            l, v = (boost(q, w) for q in two_body(mw, 0, 0))
+            top = (math.sqrt(mt**2 + 250.**2), 100., -60., math.sqrt(250.**2 - 100.**2 - 60.**2))
+            return [boost(q, top) for q in ((mt, 0, 0, 0), b, l, v)]
+
+        def check(name, pdgs, p, pos, allow):
+            P = np.array(p).T.copy()
+            ref = np.asarray(fortran[name].py_get_density(pdgs=pdgs, procid=-1, p=P, pos=pos,
+                                                          allow_hel=allow, alphas=0.118, scale2=0.))
+            got = mm[name].density(pdgs, p, pos, allow, 0.118)
+            self.assertLess(abs(ref - got).max(), 1e-10 * abs(ref).max(), (name, pdgs, p))
+            ref = fortran[name].smatrixhel(pdgs, 0, P, 0.118, 0., -1)
+            self.assertLess(abs(mm[name].matrix_element(pdgs, p, 0.118) - ref), 1e-10 * ref)
+
+        two = [1, -1]
+        both = [h for a in two for b in two for h in (a, b)]
+        for mt1, mt2 in ((173., 173.), (168.5, 180.)):
+            p = production(mt1, mt2)
+            for pdgs in ([21, 21, 6, -6], [2, -2, 6, -6], [-1, 1, 6, -6], [3, -3, 6, -6],
+                         [-2, 2, 6, -6]):
+                check('prod', pdgs, p, [3, 4], both)
+                check('prod', pdgs, p, [4], two)
+                # an open initial leg: a crossed one takes its own helicity
+                check('prod', pdgs, p, [1], two)
+        for mt, mw in ((173., 80.419), (176., 78.), (165., 84.)):
+            for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
+                check('dec', pdgs, decay(mt, mw), [1], two)
+        # a decay at rest boosted by the library (MadSpin's decays) is the decay
+        # boosted beforehand
+        self.assertTrue(mm['dec'].supports_boost)
+        w, b = two_body(171., 79., 4.7)
+        l, v = (boost(q, w) for q in two_body(79., 0, 0))
+        at_rest = [(171., 0., 0., 0.), b, l, v]
+        top = (math.sqrt(171.**2 + 300.**2), 120., -80., math.sqrt(300.**2 - 120.**2 - 80.**2))
+        lab = [boost(q, top) for q in at_rest]
+        for pdgs in ([6, 5, -11, 12], [6, 5, -13, 14]):
+            ref = mm['dec'].density(pdgs, lab, [1], two, 0.118)
+            got = mm['dec'].density(pdgs, at_rest, [1], two, 0.118, boost=top)
+            self.assertLess(abs(ref - got).max(), 1e-12 * abs(ref).max())
+        # a batch is the same as the points one by one
+        points = [decay(rng.uniform(165., 180.), rng.uniform(75., 85.)) for _ in range(9)]
+        pdgs = [[6, 5, -11, 12] if k % 2 else [6, 5, -13, 14] for k in range(9)]
+        batch = mm['dec'].density_batch(pdgs, points, [1], two, [0.118] * 9)
+        for k in range(9):
+            np.testing.assert_array_equal(batch[k],
+                                          mm['dec'].density(pdgs[k], points[k], [1], two, 0.118))
 
 
     def test_density_mode_user_interface(self):
