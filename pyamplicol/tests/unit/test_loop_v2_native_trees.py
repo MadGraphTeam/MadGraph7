@@ -208,3 +208,77 @@ def test_native_massive_sources_carry_the_carrier_precision(executors):
         points, ["1000000"], parameters=parameters, precision=DOUBLE_DOUBLE
     )
     _assert_same(mine, theirs, 1e-26)
+
+
+# A fresh interpreter creates ``argv[2]`` unrelated Symbolica symbols, then
+# exports u u~ > g g g's native tree program and forms one point's native
+# inputs; it prints digests of the program, the saved kernel evaluators and
+# the binary64 rows and Born.
+_HISTORY_PROBE = """
+import hashlib, json, sys
+from symbolica import S
+
+model, unrelated, fixture = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+for k in range(unrelated):
+    S(f"history::unrelated{k}")
+from pyamplicol.loops.native import load_loop_native
+from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+from pyamplicol.loops.v2.plan_export import NativeExecutor
+from pyamplicol.models.loading import load_compiled_model
+
+request = SliceRequest(
+    "u u~ > g g g", {"QCD": 3}, {"QCD": 5}, fixed_parameters={"MB": "0"}
+)
+slice_ = LoopSlice.generate(load_compiled_model(model), request, load_loop_native())
+executor = NativeExecutor(slice_, forward=False, inputs="native")
+trees = executor.exported.trees
+points = json.load(open(fixture))["points"][:1]
+rows, born, _amplitudes, squared = executor.native_inputs(
+    points, ["10000"], {"aS": "0.118", "MT": "173"}
+)
+digest = lambda data: hashlib.sha256(data).hexdigest()
+print(json.dumps({
+    "program": digest(trees.json().encode()),
+    "kernels": [digest(saved) for saved in trees.kernels],
+    "inputs": digest(repr((rows, born, squared)).encode()),
+}))
+"""
+
+
+@pytest.mark.loop_physics
+def test_native_trees_do_not_depend_on_the_process_history(loop_sm_compiled_model):
+    """Three fresh interpreters, two of which first create 250 and 300
+    unrelated Symbolica symbols, export u u~ > g g g's native tree program:
+    the program, every saved kernel evaluator and the binary64 rows and Born
+    are identical. Before the interaction kernels were compiled on canonical
+    symbols (``assemble._canonical_stage``), 7 of the 15 kernels differed
+    after 300 symbols and so did the rows' last bits (measured)."""
+
+    import subprocess
+    import sys
+
+    fixture = FIXTURES / "legacy" / "uux_ggg.json"
+    runs = [
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                _HISTORY_PROBE,
+                str(loop_sm_compiled_model),
+                str(unrelated),
+                str(fixture),
+            ],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for unrelated in (0, 250, 300)
+    ]
+    outputs = []
+    for run in runs:
+        out, err = run.communicate(timeout=900)
+        assert run.returncode == 0, err[-4000:]
+        outputs.append(json.loads(out.strip().splitlines()[-1]))
+    for output in outputs[1:]:
+        assert output == outputs[0]
