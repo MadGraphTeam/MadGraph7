@@ -27,6 +27,8 @@
 
 use super::poly::{MonomialProductTable, SegmentEntry, SegmentLayout};
 use crate::{RusticolError, RusticolResult};
+
+mod links;
 use ninjars::fast::tensor_layout::ncoeff;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -55,6 +57,9 @@ struct PlanFile {
     schema: u32,
     legs: usize,
     rows: usize,
+    /// Per leg its sorted helicities: the Born rows are their product (last
+    /// leg fastest).
+    helicities: Vec<Vec<i32>>,
     columns: usize,
     average: u64,
     born_components: usize,
@@ -88,6 +93,9 @@ struct ContentFile {
     d_out: usize,
     degree: usize,
     rows: usize,
+    /// The content's legs and, per block row, their helicities (leg order).
+    mask: u64,
+    row_helicities: Vec<Vec<i32>>,
     fused: Vec<[u32; 6]>,
     terms: Vec<TermFile>,
 }
@@ -153,7 +161,11 @@ struct LeafFile {
 struct StepFile {
     seeded: bool,
     trace: i64,
-    rows: usize,
+    /// The legs the step leaves open (its rows are restricted to them).
+    out: u64,
+    /// Derived by the loader (`links`); checked when written.
+    #[serde(default)]
+    rows: Option<usize>,
     d_alpha: usize,
     d_out: usize,
     degree: usize,
@@ -167,7 +179,9 @@ struct EdgeFile {
     leaf: i64,
     child: i64,
     factor: usize,
-    links: Vec<u32>,
+    /// Derived by the loader (`links`); checked when written.
+    #[serde(default)]
+    links: Option<Vec<u32>>,
 }
 
 #[derive(Deserialize)]
@@ -993,6 +1007,8 @@ struct Shared<'a> {
     vertices: &'a [Vertex],
     seeds: usize,
     policy: FormPolicy,
+    rows: &'a links::RowSpace,
+    content_rows: &'a [HashMap<links::Row, u32>],
 }
 
 /// What the kernel-form choice reads of a step.
@@ -1410,12 +1426,20 @@ impl LoopProgramV4 {
         let mut order_count = 0;
         let mut families = Vec::with_capacity(file.families.len());
         let mut split_inputs = SplitInputs::default();
+        let rows = links::RowSpace::new(&file)?;
+        let content_rows = file
+            .contents
+            .iter()
+            .map(|content| rows.content_rows(content))
+            .collect::<RusticolResult<Vec<_>>>()?;
         let shared = Shared {
             file: &file,
             contents: &contents,
             vertices: &vertices,
             seeds: seeds.len(),
             policy,
+            rows: &rows,
+            content_rows: &content_rows,
         };
         for f in &file.families {
             order_count = order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
@@ -1488,24 +1512,34 @@ impl LoopProgramV4 {
                 })
             })
             .collect::<RusticolResult<Vec<_>>>()?;
+        let derived = links::derive(f, file, shared.rows, shared.content_rows)?;
         let mut steps: Vec<Step> = Vec::with_capacity(f.steps.len());
         let mut consumed = vec![false; f.steps.len()];
         let mut factors = BTreeSet::new();
         let mut instances = BTreeSet::new();
         let mut currents = BTreeSet::new();
         for (index, s) in f.steps.iter().enumerate() {
+            let rows = derived.rows[index];
+            require(
+                s.rows.is_none_or(|written| written == rows),
+                "step rows differ from the derived rows",
+            )?;
             let rank_out = s.rank_in + s.degree;
             let trace = usize::try_from(s.trace).ok();
             if let Some(trace) = trace {
                 require(trace < f.orders.len(), "trace accumulator index")?;
                 require(
-                    s.rows == 1 && s.d_alpha == s.d_out,
+                    rows == 1 && s.d_alpha == s.d_out && s.out == 0,
                     "trace of an open object",
                 )?;
                 require(rank_out <= f.rank, "a trace step above the family rank")?;
             }
             let mut edges = Vec::with_capacity(s.edges.len());
-            for e in &s.edges {
+            for (e, links) in s.edges.iter().zip(&derived.links[index]) {
+                require(
+                    e.links.as_ref().is_none_or(|written| written == links),
+                    "row links differ from the derived links",
+                )?;
                 require(e.factor < file.factors.len(), "edge factor index")?;
                 let content = file.factors[e.factor].0;
                 let c = &contents[content];
@@ -1538,10 +1572,10 @@ impl LoopProgramV4 {
                     _ => return Err(invalid("edge needs one leaf or one child")),
                 };
                 require(source_rank <= s.rank_in, "source rank above step rank")?;
-                for link in e.links.chunks(3) {
+                for link in links.chunks(3) {
                     require(
                         link.len() == 3
-                            && (link[0] as usize) < s.rows
+                            && (link[0] as usize) < rows
                             && (link[1] as usize) < source_rows
                             && (link[2] as usize) < c.rows,
                         "row link out of range",
@@ -1553,7 +1587,7 @@ impl LoopProgramV4 {
                     content,
                     source_rank,
                     products: tables.get(source_rank, c.degree),
-                    links: expand_links(&e.links, file.columns)?,
+                    links: expand_links(links, file.columns)?,
                 });
             }
             require(!edges.is_empty(), "a step without edges")?;
@@ -1573,7 +1607,7 @@ impl LoopProgramV4 {
             steps.push(Step {
                 seeded: s.seeded,
                 trace,
-                rows: s.rows,
+                rows,
                 d_alpha: s.d_alpha,
                 d_out: s.d_out,
                 degree: s.degree,
@@ -1946,7 +1980,7 @@ mod tests {
 
     #[test]
     fn rejects_other_schemas() {
-        let text = br#"{"schema":3,"legs":4,"rows":1,"columns":1,"average":1,
+        let text = br#"{"schema":3,"legs":4,"rows":1,"helicities":[],"columns":1,"average":1,
             "born_components":0,"constants":0,"masses":0,"block_rows":[],"kernels":[],
             "contents":[],"factors":[],"seed_classes":[],"seeds":[],"families":[],"forward":null}"#;
         let error = LoopProgramV4::load(text).unwrap_err();

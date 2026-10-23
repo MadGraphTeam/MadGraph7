@@ -23,7 +23,11 @@ two run identical programs:
   conj(A0) and U0 = sum_c x_c U0_c are formed natively;
 * **families**: per family its trie frame reading, rank and loop orders, the
   leaves (seed key, leaf weight) and the schedule-B steps with their edges
-  (child step or leaf, fused factor) and helicity row links;
+  (child step or leaf, fused factor) and the legs each step leaves open; the
+  native loader derives every step's helicity rows and row links from the
+  Born rows (``helicities``: per leg its helicities, rows in product order)
+  and each content's leg mask and row helicities (``links=True`` also writes
+  them, which the loader then checks);
 * **forward**: the schedule-F prefix tree with its row links and closures
   (seed key, weight, exact frame map into the family's trie frame).
 
@@ -76,19 +80,27 @@ def _complex_text(value: Any) -> list[str]:
     return [_fraction_text(value.real), _fraction_text(value.imag)]
 
 
-def born_rows(slice_: Any) -> tuple[rx.Row, ...]:
-    """Born helicity rows in the order of ``assemble`` (the seed rows)."""
+def born_helicities(slice_: Any) -> tuple[tuple[int, ...], ...]:
+    """Per leg (label order) its sorted helicities: the Born rows are their
+    product (``born_rows``)."""
 
     labels = sorted(leg.label for leg in slice_.blocks.process.legs)
+    if labels != list(range(1, len(labels) + 1)):
+        raise ValueError("plan v4 needs legs labelled 1..n")
     helicities: dict[int, set[int]] = defaultdict(set)
     for block in slice_.blocks.blocks:
         if block.is_source:
             for row in block.rows:
                 ((leg, value),) = row.helicities
                 helicities[leg].add(value)
+    return tuple(tuple(sorted(helicities[label])) for label in labels)
+
+
+def born_rows(slice_: Any) -> tuple[rx.Row, ...]:
+    """Born helicity rows in the order of ``assemble`` (the seed rows)."""
+
     return tuple(
-        tuple((label - 1, h) for label, h in zip(labels, choice, strict=True))
-        for choice in product(*(sorted(helicities[label]) for label in labels))
+        tuple(enumerate(choice)) for choice in product(*born_helicities(slice_))
     )
 
 
@@ -144,6 +156,9 @@ class _Exporter:
     born_components: dict[tuple[int, Orders, int], int] = field(default_factory=dict)
     orders: dict[Orders, int] = field(default_factory=dict)
     masses: dict[Any, int] = field(default_factory=dict)
+    # Write the schedule-B row links and step rows (the loader derives them;
+    # written, they are checked against the derivation).
+    links: bool = False
 
     # -- kernels ------------------------------------------------------------
 
@@ -255,12 +270,18 @@ class _Exporter:
                 }
             )
         found = self.contents[content] = len(self.content_records)
+        mask = content.mask
+        for row in shape.rows:
+            if sum(1 << leg for leg, _h in row) != mask or len(row) != mask.bit_count():
+                raise ValueError(f"content {content.label} has a row off its legs")
         self.content_records.append(
             {
                 "d_in": shape.loop_in,
                 "d_out": shape.loop_out,
                 "degree": shape.degree,
                 "rows": len(shape.rows),
+                "mask": mask,
+                "row_helicities": [[h for _leg, h in row] for row in shape.rows],
                 "fused": [[b, b2, *e] for b, b2, e in shape.fused],
                 "terms": terms,
             }
@@ -424,11 +445,17 @@ class _Exporter:
         return self.masses.setdefault(mass, len(self.masses))
 
     def _step(self, steps, edges, out_mask, shift, accumulator) -> _Object:
+        """One schedule-B step. Its helicity rows and row links follow from
+        the source rows and the contents' rows (``rx.restrict``): written only
+        with ``links``, else the native loader derives them."""
+
         (d_alpha,) = {source.d_alpha for _content, source in edges}
         seeded = {source.leaf >= 0 for _content, source in edges}
         if len(seeded) != 1:
             raise AssertionError("a step mixes leaf seeds and open-loop objects")
         (seeded,) = seeded
+        if accumulator is not None and out_mask:
+            raise AssertionError("a closure with undressed legs")
         targets: dict[rx.Row, int] = {}
         records = []
         d_out = set()
@@ -441,38 +468,37 @@ class _Exporter:
             d_out.add(shape.loop_out)
             degree = max(degree, shape.degree)
             storage = max(storage, source.storage)
-            block_index = {row: i for i, row in enumerate(shape.rows)}
-            links = []
-            for position, row in enumerate(source.rows):
-                block = block_index.get(rx.restrict(row, content.mask))
-                if block is not None:
-                    target = targets.setdefault(
-                        rx.restrict(row, out_mask), len(targets)
-                    )
-                    links += [target, position, block]
-            records.append(
-                {
-                    "leaf": source.leaf,
-                    "child": source.step,
-                    "factor": self.factor(index, shift),
-                    "links": links,
-                }
-            )
-        (d_out,) = d_out
-        if accumulator is not None and set(targets) - {()}:
-            raise AssertionError("a closure with undressed legs")
-        steps.append(
-            {
-                "seeded": seeded,
-                "trace": -1 if accumulator is None else accumulator,
-                "rows": len(targets),
-                "d_alpha": d_alpha,
-                "d_out": d_out,
-                "degree": degree,
-                "rank_in": storage,
-                "edges": records,
+            record = {
+                "leaf": source.leaf,
+                "child": source.step,
+                "factor": self.factor(index, shift),
             }
-        )
+            if self.links:
+                block_index = {row: i for i, row in enumerate(shape.rows)}
+                links = []
+                for position, row in enumerate(source.rows):
+                    block = block_index.get(rx.restrict(row, content.mask))
+                    if block is not None:
+                        target = targets.setdefault(
+                            rx.restrict(row, out_mask), len(targets)
+                        )
+                        links += [target, position, block]
+                record["links"] = links
+            records.append(record)
+        (d_out,) = d_out
+        step = {
+            "seeded": seeded,
+            "trace": -1 if accumulator is None else accumulator,
+            "out": out_mask,
+            "d_alpha": d_alpha,
+            "d_out": d_out,
+            "degree": degree,
+            "rank_in": storage,
+            "edges": records,
+        }
+        if self.links:
+            step["rows"] = len(targets)
+        steps.append(step)
         return _Object(
             tuple(targets), d_alpha, d_out, storage + degree, step=len(steps) - 1
         )
@@ -667,6 +693,7 @@ def export_plan(
     merged: MergedGraph | None = None,
     trees: bool = False,
     born_squared: bool = False,
+    links: bool = False,
 ) -> ExportedPlan:
     """The plan v4 program of a generated slice (structure only, no numerics).
 
@@ -674,7 +701,9 @@ def export_plan(
     for its certified families; schedule B keeps every family. ``trees``
     exports the tree program of native per-point inputs
     (``native_trees.export_trees``; its Born kernels join the plan's), with
-    the Born colour metric when ``born_squared``.
+    the Born colour metric when ``born_squared``. ``links`` writes the
+    schedule-B helicity rows and row links, which the native loader otherwise
+    derives (and with them checks).
     """
 
     from .assemble import _BlockRows
@@ -688,8 +717,9 @@ def export_plan(
         rx.KernelConstants({}, rx.Carrier.f64()),
         reading=slice_.reading,
     )
+    helicities = born_helicities(slice_)
     rows = born_rows(slice_)
-    exporter = _Exporter(slice_, kinematics, rows)
+    exporter = _Exporter(slice_, kinematics, rows, links=links)
     families, keys = [], []
     for key, schedule in slice_.plan.schedules.items():
         keys.append(key)
@@ -719,6 +749,7 @@ def export_plan(
         "schema": PLAN_SCHEMA,
         "legs": legs,
         "rows": len(rows),
+        "helicities": [list(h) for h in helicities],
         "columns": len(slice_.sectors),
         "average": slice_.normalisation.average,
         "born_components": len(exporter.born_components),
