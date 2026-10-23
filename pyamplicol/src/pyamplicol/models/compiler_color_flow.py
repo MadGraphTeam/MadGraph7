@@ -543,9 +543,10 @@ def synthesize_u1_projections(
     keeps the pattern whose replaced input has the larger first label.
 
     Returns the inputs unchanged when a stage outside ``projected_vertices``
-    couples to the U(1) part of a ``G`` leg: the invariant
-    ``tr(G_U) = -N alpha`` the closings rely on then fails, and callers keep
-    their exact fallback (``loops.v2.ct_closure``).
+    couples to the U(1) part of a ``G`` leg (the invariant
+    ``tr(G_U) = -N alpha`` the closings rely on then fails) or a stage of a
+    ``G`` leg has a colour rule this projection does not know; callers fail
+    closed where the U(1) part would then leak (``loops.v2.ct_closure``).
     """
 
     particle_by_name = {particle.name: particle for particle in particles}
@@ -572,11 +573,11 @@ def synthesize_u1_projections(
         return "adjoint" if particle.color == 8 else "other"
 
     for kernel in kernels:
+        rule = kernel.lc_recurrence_color_rule_kind
+        known = _U1_FREE_RULES
         if base(kernel) in projected_vertices:
-            continue
-        if any(name in auxiliary_of for name in kernel.particles) and (
-            kernel.lc_recurrence_color_rule_kind not in _U1_FREE_RULES
-        ):
+            known = _U1_FREE_RULES | _U1_COUPLING_RULES
+        if any(name in auxiliary_of for name in kernel.particles) and rule not in known:
             return tuple(particles), tuple(kernels)
 
     used_pdgs = {abs(particle.pdg_code) for particle in particles}
@@ -742,9 +743,7 @@ def synthesize_u1_projections(
                 index for index in (0, 1) if kernel.particles[index] != name
             )
             weight = _vertex_weight(kernel)
-            if role(kernel.particles[other]) == "gluon" or (
-                role(kernel.particles[other]) == "adjoint"
-            ):
+            if role(kernel.particles[other]) in {"gluon", "adjoint"}:
                 copy(kernel, tuple(names), weight)  # type: ignore[arg-type]
                 if role(kernel.particles[2]) == "gluon":
                     produced = list(names)
