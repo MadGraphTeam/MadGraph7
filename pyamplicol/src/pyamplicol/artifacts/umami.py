@@ -886,6 +886,10 @@ def _build_provider(
     data["grouping"]["exported_contributions"] = sum(
         len(c["processes"]) for c in data["channels"]
     )
+
+    # Convert to plain lists; the interning indices are only needed while building.
+    for name in ("pdg_ids", "color_orders", "color_flows", "helicities"):
+        data[name] = list(data[name])
     return data
 
 
