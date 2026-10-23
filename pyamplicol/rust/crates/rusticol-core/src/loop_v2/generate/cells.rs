@@ -1656,13 +1656,16 @@ pub fn overlap_degrees(
         .collect())
 }
 
+/// One liveness criterion: a table's cells and its degree per sector.
+pub type Criterion<'a> = (&'a [Vec<Arc<Laurent>>], Vec<Option<i32>>);
+
 /// `LoopSlice._prune_colour`'s liveness: whether a class at a loop order has
 /// a nonzero cell kept by the projection in any criterion table and sector.
 /// `criteria` are (table cells, degree per sector); `sectors` are the
 /// (Born rank, loop rank) pairs of each sector; `basis_orders` the Born
 /// ranks of each basis element; `grades` the Born grades per (b, Born rank).
 pub fn live_classes(
-    criteria: &[(&[Vec<Arc<Laurent>>], Vec<Option<i32>>)],
+    criteria: &[Criterion<'_>],
     sectors: &[Vec<(u32, u32)>],
     basis_orders: &[Vec<u32>],
     grades: &FastMap<(usize, u32), Vec<i32>>,

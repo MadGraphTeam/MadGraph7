@@ -26,6 +26,10 @@ type RawTensor = (Vec<(i64, i32)>, Vec<RawTerm>, u32);
 type RawClass = (u8, Vec<i64>, usize, Vec<(i64, i64)>, Option<RawTensor>);
 /// One Laurent cell: (N_c power, re, im) per nonzero coefficient.
 type RawLaurent = Vec<(i32, String, String)>;
+/// Born grades per (basis element, Born-order rank).
+type RawGrades = Vec<((usize, u32), Vec<i32>)>;
+/// Dipole operators per (i, j) leg pair: rows of fraction texts.
+type RawDipoles = Vec<((i64, i64), Vec<Vec<String>>)>;
 
 fn structure(raw: RawStructure) -> Structure {
     let (strings, traces) = raw;
@@ -184,7 +188,7 @@ impl NativeCellTable {
         class_orders: Vec<Vec<u32>>,
         basis_orders: Vec<Vec<u32>>,
         pairs: Vec<(u32, u32)>,
-        born_grades: Option<Vec<((usize, u32), Vec<i32>)>>,
+        born_grades: Option<RawGrades>,
     ) -> Option<i32> {
         let table = OrderedTable {
             cells: &self.rows,
@@ -421,7 +425,7 @@ fn overlap_degrees(
 
 /// `_prune_colour`'s class liveness per (class, loop rank) query.
 #[pyfunction]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments)]
 #[pyo3(signature = (criteria, sectors, basis_orders, grades, accuracy, queries, threads=None))]
 fn live_classes(
     py: Python<'_>,
@@ -434,7 +438,7 @@ fn live_classes(
     threads: Option<usize>,
 ) -> PyResult<Vec<bool>> {
     let accuracy = self::accuracy(accuracy)?;
-    let tables: Vec<(&[Vec<Arc<Laurent>>], Vec<Option<i32>>)> = criteria
+    let tables: Vec<cells::Criterion<'_>> = criteria
         .iter()
         .map(|(table, degrees)| (table.rows.as_slice(), degrees.clone()))
         .collect();
@@ -511,7 +515,7 @@ impl NativeDipoleOrbits {
 
     /// Every entry as fraction texts: `{(i, j): rows}` over coloured leg
     /// labels i != j (`LoopSlice.dipoles`).
-    fn expand(&self, py: Python<'_>) -> PyResult<Vec<((i64, i64), Vec<Vec<String>>)>> {
+    fn expand(&self, py: Python<'_>) -> PyResult<RawDipoles> {
         let c = self.orbits.coloured.len();
         let n = self.orbits.basis;
         let mut dense: Vec<Vec<Vec<String>>> = vec![vec![vec![String::new(); n]; n]; c * c];
