@@ -1398,10 +1398,13 @@ class LoopSlice:
                 for terms in self.born_terms.values()
                 for term in terms
             )
+            # Only whole-rule sites (LC/NLC continuations) have whole-rule
+            # terms; the other site terms are not needed here.
             outputs.update(
                 (name, 0)
-                for terms in self.site_terms.values()
-                for term in terms
+                for site in self.sites.sites
+                if site.rule.whole_rule_continuation is not None
+                for term in self.site_terms[site]
                 if isinstance(term, WholeRuleTerm)
                 for name in term.parameters
             )
