@@ -247,6 +247,55 @@ def test_uv_and_ir_parts_add_up_to_the_combined_poles(modes, name):
         assert abs(ir.components["bare"][sector].single_pole) > 0
 
 
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("accuracy", ("lc", "nlc"))
+def test_leading_colour_selections_split_the_projected_poles(
+    loop_sm_compiled_model, loop_native, accuracy
+):
+    """LC and NLC (committed QCD continuation): the scaleless companion is
+    pruned like the slice, the parts add up and the finite part is shared."""
+
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    from tools.loop_reference import legacy_capture
+
+    declaration = LoopColorDeclaration.from_dict(
+        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+    )
+    slice_ = LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model),
+        SliceRequest(
+            "g g > g g",
+            {"QCD": 2, "QED": 0},
+            {"QCD": 4, "QED": 0},
+            fixed_parameters=FIXED,
+            accuracy=accuracy,
+            colour_declaration=declaration,
+        ),
+        loop_native,
+    )
+    assert slice_.scaleless is not None
+    executor = NativeExecutor(slice_)
+    point, scale = PROCESSES["gg_gg"][2]()
+    results = {
+        mode: executor.evaluate([point], [scale], parameters=PARAMETERS, poles=mode)[0]
+        for mode in ("all", "uv", "ir")
+    }
+    combined = results["all"].components["virtual"]
+    for sector, whole in combined.items():
+        uv = results["uv"].virtual(sector)
+        ir = results["ir"].virtual(sector)
+        assert uv.finite == ir.finite == whole.finite
+        assert abs(uv.single_pole) <= SPLIT_TOLERANCE * _scale(whole)
+        assert abs(ir.single_pole - whole.single_pole) <= SPLIT_TOLERANCE * _scale(
+            whole
+        )
+        bare = {m: results[m].components["bare"][sector] for m in results}
+        assert abs(
+            bare["uv"].single_pole + bare["ir"].single_pole - bare["all"].single_pole
+        ) <= SPLIT_TOLERANCE * _scale(whole)
+
+
 # ----------------------------------------------------------------- physics
 
 

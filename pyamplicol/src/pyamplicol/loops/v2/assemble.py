@@ -1111,11 +1111,18 @@ class LoopSlice:
         """
 
         families = self.families
-        if not families.scaleless_families:
+        # A massless tadpole (N = 1) has neither a UV nor an IR pole: after
+        # the shift q -> q - V its integrand has no term of degree -4.
+        kept = {
+            key: family
+            for key, family in families.scaleless_families.items()
+            if len(key) >= 2
+        }
+        if not kept:
             return None
         twin_families = replace(
             families,
-            families=dict(families.scaleless_families),
+            families=kept,
             scaleless=(),
             rejected=(),
             scaleless_families={},
