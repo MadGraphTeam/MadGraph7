@@ -126,3 +126,21 @@ relocation with the same native build. A dedicated acceptance test covers this.
   is reported only, without a gate. It must come with sanity checks:
   rotational invariance, and Ward identities probed by replacing one external
   gluon's polarisation vector by its momentum.
+
+## J. Counterterms as plain tree-level insertions; no loop matching (user, 2026-10-23)
+
+- R2 and UV counterterm vertices, two-point ones included, are ordinary
+  tree-level vertices of the recursion, with the constraint that each
+  contribution contains exactly one counterterm insertion. They are not mapped
+  onto their loop counterparts. MadLoop-style matching of R2/UV to the loop
+  (witness tables of divergent loop routings, admitted alternatives per
+  routing, leg-mask admission, fallbacks to site closures) is not used in
+  production: it is complicated and costly. Site closure and similar machinery
+  may remain only as test oracles.
+- Admission of counterterm terms = the requested coupling orders, plus the
+  exactly-once constraint, plus a `particle_veto` filter: a coupling term whose
+  `loop_particles` contain a vetoed particle is dropped.
+- `particle_veto` is a public generation option (TOML, CLI, Python API; stored
+  in the artifact). A vetoed particle is also removed from every tree-level
+  vertex in all generation steps (Born, blocks, loop content and propagators),
+  so loops and counterterms stay consistent.
