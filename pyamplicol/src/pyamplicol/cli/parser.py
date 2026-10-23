@@ -460,7 +460,7 @@ def _add_evaluator_options(
         parser.add_argument(
             "--loop-engine",
             dest="loop.engine",
-            choices=tuple(LoopEngine),
+            choices=tuple(engine.value for engine in LoopEngine),
             default=argparse.SUPPRESS,
             help="one-loop engine of virtual generation (default legacy)",
         )
@@ -610,7 +610,7 @@ def _add_evaluation_options(
     parser.add_argument(
         "--poles",
         dest="evaluation.poles",
-        choices=tuple(PoleSelection),
+        choices=tuple(selection.value for selection in PoleSelection),
         default=argparse.SUPPRESS,
         help="v2 virtuals: the poles computed; 'none' evaluates the finite part only",
     )
