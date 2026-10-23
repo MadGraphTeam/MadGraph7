@@ -1308,7 +1308,9 @@ class LoopSlice:
     def _terms_of(self, site: Any) -> tuple[SiteTerm | WholeRuleTerm, ...]:
         found = self._cache.get("site-terms")
         if found is not None:
-            return found[site]
+            # A slice whose terms were set (a copy without some sites, in
+            # tests) has none for the sites left out.
+            return found.get(site, ())
         cache = self._cache.setdefault("terms-of", {})
         terms = cache.get(site)
         if terms is None:
@@ -1404,10 +1406,13 @@ class LoopSlice:
             )
 
         reachable = None
-        if LOOP_BLOCK_REACHABILITY:
+        if LOOP_BLOCK_REACHABILITY and request.counterterms == "recursion":
             # Loop-aware reachability (design §3.2 item 1): the tree program
             # builds only the block currents the admitted positions of the
-            # field-level families consume.
+            # field-level families consume. Site closure attaches counterterm
+            # vertices to the tree currents of every leg partition, which
+            # loop positions need not consume (a two-point counterterm on an
+            # electroweak line), so the site route builds every current.
             reachable = _field_level_families(
                 data,
                 process,
@@ -1426,16 +1431,16 @@ class LoopSlice:
             # build split closed-loop flavour classes, ``families.
             # _closed_loop_classes``): every block current is built.
             blocks, compiled, table, generation, families = tree_program(None)
-        colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
-        if generation is not None and "schedules" in generator_input.NATIVE_STAGES:
-            plan = generation.schedules(colour, model=_FRAME_MODEL)
-        else:
-            plan = build_schedules(
-                families,
-                loop_catalogue,
-                colour,
-                policy=_FRAME_POLICY,
+
+        def schedules():
+            colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
+            if generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+                return colour, generation.schedules(colour, model=_FRAME_MODEL)
+            return colour, build_schedules(
+                families, loop_catalogue, colour, policy=_FRAME_POLICY
             )
+
+        colour, plan = schedules()
         program = None
         if request.counterterms == "recursion":
             # Production form of the counterterms (design §6.1): the tree
@@ -1465,6 +1470,11 @@ class LoopSlice:
                     request.compatibility,
                 ),
             )
+            if program.residual and reachable is not None:
+                # The rules left to site closure need every leg partition's
+                # tree currents (above); the families do not change.
+                blocks, compiled, table, generation, families = tree_program(None)
+                colour, plan = schedules()
         sites = generate_counterterm_sites(
             families,
             table,

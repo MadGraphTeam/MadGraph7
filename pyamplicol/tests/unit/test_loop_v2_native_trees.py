@@ -379,11 +379,15 @@ from decimal import Decimal
 
 model, route, process, qcd, fixture = sys.argv[1:6]
 from pyamplicol.loops.native import load_loop_native
+from pyamplicol.loops.v2 import assemble
 from pyamplicol.loops.v2.assemble import (
     LoopSlice, Precision, SliceRequest, _fraction, _Numbers,
 )
 from pyamplicol.models.loading import load_compiled_model
 
+# Both routes build every block current (the site route always does), so
+# their DAGs and current ids are the same.
+assemble.LOOP_BLOCK_REACHABILITY = False
 qcd = int(qcd)
 request = SliceRequest(
     process, {"QCD": qcd, "QED": 0}, {"QCD": qcd + 2, "QED": 0},

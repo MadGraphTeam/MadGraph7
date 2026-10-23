@@ -372,14 +372,17 @@ def test_two_point_counterterms_from_recursion_equal_sites(
     if carrier != "double":
         return
     sites = two_point_routes(name, "sites")
+    # The site terms are built on first use (``LoopSlice.site_terms``): a
+    # copy with a fresh cache holding the terms without the synthetic rules.
     plain = replace(
         sites,
-        site_terms={
-            site: terms
-            for site, terms in sites.site_terms.items()
-            if site.rule_name not in synthetic
+        _cache={
+            "site-terms": {
+                site: terms
+                for site, terms in sites.site_terms.items()
+                if site.rule_name not in synthetic
+            }
         },
-        _cache={},
     )
     point = _slice_point(masses)
     mine, without = (
