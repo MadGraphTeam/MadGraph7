@@ -224,25 +224,26 @@ def born_amplitude_orders(
     compiled: Any,
     process: str,
     bounds: Mapping[str, int],
-    ignored_particle_ids: Sequence[int] = (),
+    particle_veto: Sequence[int] = (),
 ) -> tuple[tuple[Orders, ...], Any]:
     """The Born amplitude orders of ``process`` within the coupling-order
     ``bounds`` and the Born DAG they are read from, before any loop
     generation: one tree DAG, compiled as ``blocks.build_tree_blocks``
-    compiles the Born of a slice."""
+    compiles the Born of a slice (without the vetoed |PDG| codes
+    ``particle_veto``)."""
 
     from pyamplicol.generation.dag_compiler import compile_generic_dag
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.processes.model import build_model_process_ir
 
-    from .blocks import _born_roots
+    from .blocks import _born_roots, vetoed_particle_ids
 
     model = CompiledUFOModel(compiled)
     dag = compile_generic_dag(
         build_model_process_ir(process, compiled.ir, color_accuracy="full"),
         model=model,
         max_coupling_orders=dict(bounds),
-        ignored_particle_ids=tuple(ignored_particle_ids),
+        ignored_particle_ids=vetoed_particle_ids(particle_veto),
     )
     orders = {root.coupling_orders for root in _born_roots(dag, model)}
     return tuple(sorted(orders)), dag

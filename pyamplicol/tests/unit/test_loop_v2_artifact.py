@@ -407,7 +407,7 @@ def test_slice_request_records_round_trip():
         ({"QCD": 4, "QED": 0}, {"QCD": 2, "QED": 2}),
         corrections=("QCD", "QED"),
         fixed_parameters={"MB": "0"},
-        ignored_particle_ids=(23,),
+        particle_veto=(23,),
         accuracy="lc",
         colour_declaration=declaration,
         scale_parameter="MU_R",
@@ -575,8 +575,23 @@ def test_public_generation_publishes_plan_v4(full_colour):
     assert info["families"] == 42
     assert sum(count for _n, _r, count in info["buckets"]) == 42
     assert info["poles"] == ["all", "none"] and not info["rescue_available"]
-    # The public path takes its counterterms from the tree recursion (WP2.2).
+    # The public path takes its counterterms from the tree recursion (WP2.2):
+    # no counterterm site closure, no veto unless requested (ADDENDUM J).
     assert info["request"]["counterterms"] == "recursion"
+    assert info["request"]["particle_veto"] == []
+    from pyamplicol.loops.v2 import artifact
+
+    with artifact._slices_lock:
+        generated = [
+            item.slice
+            for item in artifact._slices.values()
+            if item.request["process"] == "u u~ > d d~ g"
+        ]
+    assert generated
+    for slice_ in generated:
+        assert slice_.counterterm_program is not None
+        assert slice_.sites.sites == () and not slice_.site_terms
+        assert slice_.counterterm_program.closure.terms
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
 
@@ -1895,7 +1910,7 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     monkeypatch.setattr(
         loop_service,
         "_v2_request",
-        lambda *args: replace(request(*args), ignored_particle_ids=PHOTON_ONLY),
+        lambda *args: replace(request(*args), particle_veto=PHOTON_ONLY),
     )
     generator.generate(processes, tmp_path / "b")
     reference = loop_reference("mixed-uudd-qcd-control")

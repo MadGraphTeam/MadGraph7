@@ -204,7 +204,7 @@ def _request(name: str, **options) -> SliceRequest:
         control.born_order_bounds,
         control.loop_order_bounds,
         fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-        ignored_particle_ids=ignored,
+        particle_veto=ignored,
         **options,
     )
 

@@ -46,8 +46,13 @@ from pyamplicol.models.loading import (
     counterterm_slot_order,
 )
 
-from .blocks import TreeBlocks, _blocks
-from .ct_recursion import CountertermRecursion, _physical
+from .blocks import TreeBlocks, _blocks, vetoed_particle_ids
+from .ct_recursion import (
+    CountertermRecursion,
+    UnloweredCountertermError,
+    _physical,
+    rule_key,
+)
 from .ct_sites import (
     COMPONENT_BY_KIND,
     CountertermSite,
@@ -56,7 +61,6 @@ from .ct_sites import (
     resolved_internal_parameters,
 )
 from .families import (
-    FamilySet,
     LoopOrderSelection,
     Orders,
     _set_partitions,
@@ -250,32 +254,23 @@ class CountertermClosure:
     @staticmethod
     def root_sites(
         program: CountertermBlocks,
-        families: FamilySet,
-        rules: Mapping[str, Any],
         native_model: Any,
         selection: LoopOrderSelection,
-        *,
-        forbidden: Iterable[int] = (),
     ) -> tuple[CountertermSite, ...]:
-        """Sites of the recursion's rules with leg 1 as one block (CT roots).
-
-        ``rules`` are all rules of the request, for the completeness check.
-        """
+        """Sites of the recursion's rules with leg 1 as one block (CT roots),
+        with the recursion's own admission."""
 
         recursion = program.recursion
         table = _PlainTable(program.blocks.block_table(native_model))
         sites = generate_counterterm_sites(
-            families,
+            None,
             table,
-            rules,
+            recursion.rules,
             native_model,
             selection,
-            forbidden=forbidden,
             whole_rules=True,
-            closed_rules=recursion.rules,
             root_mask=1,
-            # The request's own site generation checks completeness.
-            check_coverage=False,
+            admission=recursion.admission,
         )
         return sites.sites
 
@@ -376,7 +371,7 @@ class CountertermClosure:
                 )
                 continue
             # Cells the lowered model leaves out cancel here too.
-            cancelled = recursion.cancelled.get(site.rule_name, ())
+            cancelled = recursion.model.unlowered.get(rule_key(site.rule), {})
             for term in closure.terms(site, cancelled):
                 for power in _powers(recursion, site):
                     terms.append(
@@ -650,7 +645,8 @@ def lowered_counterterm_model(
     compiled: Any,
     fixed_parameters: Mapping[str, Any],
     *,
-    forbidden: Iterable[int] = (),
+    veto: Iterable[int] = (),
+    corrections: Iterable[str] | None = None,
     declaration: Any = None,
     request: tuple[Any, Any, Any] | None = None,
     order_limits: Mapping[str, int] | None = None,
@@ -658,8 +654,9 @@ def lowered_counterterm_model(
     """The CT-lowered model of ``compiled`` for the closure, cached.
 
     The rules of a preparation with the request's ``fixed_parameters`` are
-    lowered once per model, fixed parameters, vetoed |PDG| codes, colour
-    ``declaration`` and request scope, with the multi-trace colours. A
+    lowered once per model, fixed parameters, vetoed |PDG| codes
+    (``particle_veto``), corrections, colour ``declaration`` and request
+    scope, with the multi-trace colours. A
     declaration (``LoopColorDeclaration``) grades the couplings by N_c and
     replaces fixed-SU(3) rules by their whole-rule continuations (design
     §6.7), as ``LoopSlice.generate`` prepares a declared request.
@@ -679,7 +676,8 @@ def lowered_counterterm_model(
     key = (
         id(compiled),
         tuple(sorted((str(k), str(v)) for k, v in fixed_parameters.items())),
-        tuple(sorted({abs(int(pdg)) for pdg in forbidden})),
+        tuple(sorted({abs(int(pdg)) for pdg in veto})),
+        None if corrections is None else tuple(sorted(corrections)),
         None if declaration is None else repr(declaration),
         None if request is None else request[0],
         None if order_limits is None else tuple(sorted(order_limits.items())),
@@ -707,7 +705,8 @@ def lowered_counterterm_model(
             compiled,
             prepared.counterterms.rules,
             fixed_parameters=prepared.structure.fixed_parameters,
-            forbidden=key[2],
+            veto=key[2],
+            corrections=key[3],
             multi_trace=True,
             continuation=continuation,
             order_limits=order_limits,
@@ -724,8 +723,7 @@ class CountertermProgram:
     """The CT amplitudes of one loop request in production (design §6.1).
 
     ``blocks`` is the CT program (``CountertermBlocks``), ``root_sites`` its
-    CT-root sites; ``residual`` names the request's rules left to site
-    closure. ``bind`` attaches the root terms (``closure``); ``point``
+    CT-root sites. ``bind`` attaches the root terms (``closure``); ``point``
     evaluates the program's tree rows (``rows``) and Weyl factors at one
     point.
     """
@@ -767,22 +765,17 @@ class CountertermProgram:
             )
         return self._rows
 
-    @property
-    def residual(self) -> tuple[str, ...]:
-        return tuple(sorted(self.recursion.residual))
-
     @classmethod
     def build(
         cls,
         compiled: Any,
         prepared: Any,
         process: str,
-        families: FamilySet,
         native_model: Any,
         selection: LoopOrderSelection,
         born_orders: Iterable[Orders],
         *,
-        forbidden: Iterable[int] = (),
+        veto: Iterable[int] = (),
         fixed_parameters: Mapping[str, Any] | None = None,
         declaration: Any = None,
         continuation: Any = None,
@@ -790,8 +783,8 @@ class CountertermProgram:
     ) -> CountertermProgram:
         """The CT program of a request (``prepared`` its loop-request model).
 
-        ``process`` is the request's process text, ``families`` and
-        ``native_model`` its family set and native model; ``fixed_parameters``
+        ``process`` is the request's process text, ``native_model`` its
+        native model and ``veto`` its vetoed |PDG| codes; ``fixed_parameters``
         the request's fixed parameters (those of ``prepared``) and
         ``declaration`` its colour declaration, if any, with the
         ``continuation`` it gave ``prepared``. ``scope`` (hashable: the
@@ -803,32 +796,36 @@ class CountertermProgram:
 
         from pyamplicol.processes.model import build_model_process_ir
 
-        forbidden = tuple(forbidden)
+        veto = tuple(sorted({abs(int(pdg)) for pdg in veto}))
         born_orders = tuple(born_orders)
         lowered = lowered_counterterm_model(
             compiled,
             dict(fixed_parameters or {}),
-            forbidden=forbidden,
+            veto=veto,
+            corrections=selection.corrections,
             declaration=declaration,
             request=None if scope is None else (scope, prepared, continuation),
             order_limits=None
             if scope is None
             else program_order_limits(compiled, born_orders, selection.loop_orders),
         )
-        rules = prepared.counterterms.rules
         recursion = CountertermRecursion.build(
-            lowered,
-            rules,
-            families,
-            native_model,
-            selection,
-            born_orders,
-            forbidden=forbidden,
+            lowered, prepared.counterterms.rules, selection, born_orders
         )
+        if recursion.residual:
+            raise UnloweredCountertermError(
+                "counterterm rules the tree recursion cannot lower: "
+                + "; ".join(
+                    f"{name} ({reason})"
+                    for name, reason in sorted(recursion.residual.items())
+                )
+            )
         ir = build_model_process_ir(
             process, lowered.lowered.compiled.ir, color_accuracy="full"
         )
-        program = CountertermBlocks.build(recursion, ir, ignored_particle_ids=forbidden)
+        program = CountertermBlocks.build(
+            recursion, ir, ignored_particle_ids=vetoed_particle_ids(veto)
+        )
         # The lowered model projects the gluon legs of its CT vertices onto
         # SU(N) unless a tree vertex of the model couples to the U(1) part of
         # a gluon itself; the request's blocks are then not exact either.
@@ -841,10 +838,9 @@ class CountertermProgram:
                 "model's tree vertices couple to it, so its counterterm "
                 "vertices are not projected onto SU(N) (design §6.1)"
             )
-        sites = CountertermClosure.root_sites(
-            program, families, rules, native_model, selection, forbidden=forbidden
+        return cls(
+            program, CountertermClosure.root_sites(program, native_model, selection)
         )
-        return cls(program, sites)
 
     def bind(
         self, ordinary: Sequence[Sequence[Any]], native_model: Any, catalogue: Any

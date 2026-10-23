@@ -43,8 +43,10 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 114
+    assert len(FIELD_REGISTRY) == 115
     assert FIELD_REGISTRY["loop.engine"].default == "legacy"
+    assert FIELD_REGISTRY["generation.particle_veto"].kind == "list_str"
+    assert FIELD_REGISTRY["generation.particle_veto"].default == ()
     assert FIELD_REGISTRY["evaluation.poles"].default == "all"
     assert FIELD_REGISTRY["evaluation.poles"].choices == ("all", "none")
     assert FIELD_REGISTRY["evaluation.stability_checks.rotations"].kind == "list_str"
@@ -446,6 +448,36 @@ def test_recurrence_evaluator_sizes_must_be_positive_integers(
         ConfigurationError, match=rf"evaluator\.recurrence\.{field_name}"
     ):
         RecurrenceEvaluatorConfig(**{field_name: value})  # type: ignore[arg-type]
+
+
+def test_particle_veto_is_a_v2_virtual_generation_option() -> None:
+    from pyamplicol.config import (
+        GenerationConfig,
+        LoopConfig,
+        LoopEngine,
+        ProcessConfig,
+    )
+
+    veto = GenerationConfig(particle_veto=["t"])
+    assert veto.particle_veto == ("t",)
+    virtual = ProcessConfig(loop_coupling_orders=("QCD",))
+    config = RunConfig(
+        action="generate",
+        process=virtual,
+        loop=LoopConfig(engine=LoopEngine.V2),
+        generation=veto,
+    )
+    assert config.generation.particle_veto == ("t",)
+    for process, loop in (
+        (ProcessConfig(), LoopConfig(engine=LoopEngine.V2)),
+        (virtual, LoopConfig()),
+    ):
+        with pytest.raises(ConfigurationError, match="particle_veto requires"):
+            RunConfig(action="generate", process=process, loop=loop, generation=veto)
+    with pytest.raises(ConfigurationError, match="non-empty strings"):
+        GenerationConfig(particle_veto=[""])
+    with pytest.raises(ConfigurationError, match="list of strings"):
+        GenerationConfig(particle_veto="t")
 
 
 def test_cpp_flags_cannot_hide_target_cpu_requirements() -> None:

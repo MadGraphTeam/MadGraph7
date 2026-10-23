@@ -252,7 +252,7 @@ def test_mixed_sectors_match_madloop_split_orders(generate, loop_reference):
         correlators=CorrelatorConfig(
             color_correlations=(ColorCorrelator.dipole("casimir", 1, 1),)
         ),
-        ignored_particle_ids=(23, 24, -24, 25, 250, 251, -251),
+        particle_veto=(23, 24, 25, 250, 251),
     )
     point = _points("uudd_qcd")[0]
     histories = (INCLUSIVE, "casimir")

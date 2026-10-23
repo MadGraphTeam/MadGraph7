@@ -185,7 +185,7 @@ def slices(loop_sm_compiled_model, loop_native):
                 born,
                 loop,
                 fixed_parameters=FIXED,
-                ignored_particle_ids=IGNORED.get(name, ()),
+                particle_veto=IGNORED.get(name, ()),
             )
             with pytest.MonkeyPatch.context() as patch:
                 if born["QED"]:

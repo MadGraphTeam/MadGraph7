@@ -44,7 +44,7 @@ def ct_slice(loop_sm_compiled_model):
 
 @pytest.fixture(scope="module")
 def lowered_ct_model(loop_sm_compiled_model, tmp_path_factory):
-    """``forbidden |PDG| codes -> LoweredSource``: loop_sm with every
+    """``vetoed |PDG| codes -> LoweredSource``: loop_sm with every
     lowerable CT rule in its tree model, once per veto; the prepared model
     source of the tree generator is built on first use."""
 
@@ -58,14 +58,14 @@ def lowered_ct_model(loop_sm_compiled_model, tmp_path_factory):
     )
     built = {}
 
-    def build(forbidden=()):
-        key = tuple(sorted(forbidden))
+    def build(veto=()):
+        key = tuple(sorted(veto))
         if key not in built:
             model = lower_model_counterterms(
                 compiled,
                 prepared.counterterms.rules,
                 fixed_parameters=prepared.structure.fixed_parameters,
-                forbidden=key,
+                veto=key,
             )
             built[key] = LoweredSource(model, tmp_path_factory)
         return built[key]
@@ -105,13 +105,7 @@ def _recursion(ct, lowered):
     from pyamplicol.loops.v2.ct_recursion import CountertermRecursion
 
     return CountertermRecursion.build(
-        lowered,
-        ct.rules,
-        ct.families,
-        ct.data,
-        ct.selection,
-        ct.blocks.born_orders,
-        forbidden=ct.vetoed,
+        lowered, ct.rules, ct.selection, ct.blocks.born_orders
     )
 
 
@@ -415,9 +409,10 @@ def test_lowered_couplings_are_exact_model_expressions(lowered_ct_model):
 
 @pytest.mark.loop_fast
 def test_rules_split_between_recursion_and_sites(ct_slice, lowered_ct_model):
-    """Only the fixed-SU(3) four-gluon R2 stays a site; every two-point,
-    three-gluon, quark-gluon and four-gluon rule is in the recursion with its
-    admitted alternatives."""
+    """Only the fixed-SU(3) four-gluon R2 stays out of the tree-route program
+    (its multi-trace colour); every two-point, three-gluon, quark-gluon and
+    four-gluon rule is in the recursion with every loop-content alternative
+    (the plain rule: no veto, no matching to the process's loops)."""
 
     ct = ct_slice("gg_gg")
     recursion = _recursion(ct, lowered_ct_model().model)
@@ -427,13 +422,10 @@ def test_rules_split_between_recursion_and_sites(ct_slice, lowered_ct_model):
         assert {e.vertex_name for e in rule.entries} == {"V_R2RGA"}, reason
         assert "multi-trace" in reason
     assert any(len(rule.particle_pdgs) == 2 for rule in recursion.rules.values())
-    # Pure-gluon rules are admitted with all their alternatives (every quark
-    # flavour, the top and the gluon run in the loops of g g > g g); rules
-    # with quark legs have no witness in this process.
+    # Every rule is admitted with all its alternatives, also the rules with
+    # quark legs, which no tree of g g > g g holds.
     for name, rule in recursion.rules.items():
-        gluons = set(rule.particle_pdgs) == {21}
-        expected = tuple(range(len(rule.alternatives))) if gluons else ()
-        assert recursion.admission[name] == expected, name
+        assert recursion.admission[name] == tuple(range(len(rule.alternatives)))
     assert recursion.slots == (("r2", 0, 0), ("uv_local", -1, 0), ("uv_local", 0, 0))
     assert recursion.coupling_order_limits() == {
         "QCD": 4,

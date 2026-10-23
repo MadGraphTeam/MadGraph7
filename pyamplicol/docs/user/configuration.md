@@ -528,7 +528,10 @@ profiling or generation.
 one-loop engine (no loop diagram is listed) and publishes them as plan v4
 processes (runtime capability `rusticol.loop-runtime.v4`). Its UV and R2
 counterterms come from the same tree recursion as the Born, over the model's
-counterterm vertices (no counterterm diagram is listed either). The
+counterterm vertices (no counterterm diagram is listed either): every
+counterterm vertex of the model, two-point ones included, is an ordinary tree
+vertex inserted exactly once per contribution, within the requested coupling
+orders, and is not matched to the loops. The
 default `engine = "legacy"` keeps the per-diagram engine, which remains
 available as an oracle. A v2 evaluation can skip the poles and return stability
 estimates:
@@ -580,8 +583,12 @@ does not admit yet fails at generation with the reason, for example:
   Born orders in the SM: "not a pure vector coupling; its sign needs the
   electroweak oracles"), and electroweak bosons in the final state with QCD
   corrections (`u u~ > e- e+ g g`);
-- QED corrections to quark processes (`u u~ > d d~` with QCD and QED corrections:
-  "divergent witnesses without a counterterm rule or certified zero").
+- counterterm vertices the tree recursion cannot lower, for example a
+  Levi-Civita R2 cell that does not cancel between the loop flavours ("counterterm
+  rules the tree recursion cannot lower").
+
+The model's UV and R2 counterterms are taken as declared (`uv_complete`,
+`model_r2_complete`): the engine does not check them against the loops.
 
 MG5_aMC's `loop_qcd_qed_sm` needs
 `[loop.preparation] compatibility = "gmu_particle_anti"` with either engine (its
@@ -590,6 +597,18 @@ goldstoneboson"); `loop.preparation.covariant_multiplets` and
 `color.contraction = "symmetric-group-fft"` need `engine = "legacy"`. A dry run
 (`generate --dry-run`) reports what the model preparation refuses; loop
 admission is checked by the generation only.
+
+Particle veto. `[generation] particle_veto = ["t"]` (CLI `--particle-veto t`,
+repeatable; Python `GenerationConfig(particle_veto=("t",))`) removes the named
+particles, with their antiparticles, from every tree vertex of the v2
+generation: the Born, the trees attached to the loops, the loop vertices and
+propagators, and the counterterm program; every counterterm term whose loop
+content (the UFO `loop_particles`) holds a vetoed particle is dropped, and so is
+its external-field renormalisation. With loop_sm, `particle_veto = ["t"]` gives
+massless five-flavour QCD (no top loop, no top decoupling term), the convention
+of NJet. A vetoed particle cannot be external. The veto is stored with the
+artifact's generation request and in its generation filters; it is available
+with `loop.engine = "v2"` only.
 
 Widths. v2 virtuals use real on-shell masses: loop propagators carry no width and
 the model counterterms renormalise the real mass. A coloured particle that a

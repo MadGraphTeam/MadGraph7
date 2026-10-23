@@ -55,6 +55,29 @@ def test_generate_accepts_on_the_fly_execution_mode_override() -> None:
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
 
 
+def test_generate_accepts_a_repeated_particle_veto() -> None:
+    config = (
+        parse_cli(
+            (
+                "generate",
+                "--loop-coupling-order",
+                "QCD",
+                "--loop-engine",
+                "v2",
+                "--particle-veto",
+                "t",
+                "--particle-veto",
+                "b",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert config.generation.particle_veto == ("t", "b")
+    with pytest.raises(ConfigurationError, match="particle_veto requires"):
+        parse_cli(("generate", "--particle-veto", "t")).resolve()
+
+
 def test_generate_defaults_to_recurrence_execution() -> None:
     config = parse_cli(("generate",)).resolve().effective
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE

@@ -13,9 +13,10 @@ remains and enters the recursion.
 Oracles: the exact cancellation of the coefficients; the slice with its
 counterterms from the recursion equals the slice with every rule closed at
 sites (O6), each route checking the cancellation on its own (the lowered
-model with the request's admission, the site closure per block assignment);
-where the cell does not cancel (a synthetic anomalous coupling) both routes
-refuse the request. The slice requests use the synthetic model of
+model with the rules' multiplicities, the site closure per block
+assignment); where the cell does not cancel (a synthetic anomalous coupling,
+or a ``particle_veto`` breaking a quark doublet) both routes refuse the
+request. The slice requests use the synthetic model of
 ``test_loop_v2_ct_two_point``, whose Z couples to quarks through the vector
 structure only (axial loop couplings need the electroweak sign oracles,
 WP3.2); its counterterm vertices are loop_sm's.
@@ -53,10 +54,15 @@ def test_levi_civita_cells_cancel_between_quark_doublets(
     Levi-Civita cells of the g g Z and g g g Z R2 are left out with their
     exact coefficients, opposite between the up- and down-type loop groups,
     and the vector d-symbol cell of g g g Z is lowered. The cancellation
-    needs equal numbers of admitted up- and down-type flavours."""
+    needs equal numbers of admitted up- and down-type flavours, which a top
+    veto breaks."""
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
-    from pyamplicol.loops.v2.ct_recursion import rule_key, uncancelled_rules
+    from pyamplicol.loops.v2.ct_recursion import (
+        admitted_alternatives,
+        rule_key,
+        uncancelled_rules,
+    )
     from pyamplicol.loops.v2.ct_sites import vanishes_identically
     from pyamplicol.models.loading import load_compiled_model
 
@@ -83,8 +89,12 @@ def test_levi_civita_cells_cancel_between_quark_doublets(
         assert vanishes_identically(compiled, up[0] + down[0])
         assert not vanishes_identically(compiled, up[0])
         weights = dict.fromkeys(unlowered, 3)
+        assert {model.weights[rule_key(rules[name])] for name in members} == {3}
         assert not uncancelled_rules(unlowered, weights, _vanishes(compiled))
-        weights[members[0]] = 2  # one flavour fewer in one loop group
+        # particle_veto = [t]: the u, c, t group keeps two flavours.
+        top = {name: admitted_alternatives(rules[name], (6,)) for name in members}
+        assert sorted(map(len, top.values())) == [2, 3]
+        weights.update({name: len(top[name]) for name in members})
         assert uncancelled_rules(unlowered, weights, _vanishes(compiled)) == set(
             members
         )
@@ -153,6 +163,8 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
     residual), the site closure drops the same cells on its own, and every
     component agrees."""
 
+    from pyamplicol.loops.v2.ct_recursion import rule_key
+
     _certify_furry_zeros(monkeypatch)
     recursion = cancellation_routes(name, "recursion")
     program = recursion.counterterm_program.recursion
@@ -160,8 +172,9 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
     assert not program.residual
     cancelled = {
         vertex
-        for rule, cells in program.cancelled.items()
-        if cells and program.admission[rule]
+        for rule in program.rules
+        if program.model.unlowered.get(rule_key(rules[rule]))
+        and program.admission[rule]
         for vertex in _vertices(rules[rule])
     }
     assert cancelled == CANCELLATION_O6[name][4]
@@ -279,25 +292,22 @@ def test_uncancelled_levi_civita_cells_fail_closed(
     anomalous_model, loop_native, monkeypatch, counterterms
 ):
     """Where the g g Z cell does not cancel (an anomalous model) it has no
-    kernel: the lowering leaves its rules to sites, and both routes refuse
-    the request rather than drop the cell."""
+    kernel: the lowering cannot lower its rules and the recursion refuses the
+    request (no site fallback); the site oracle refuses it for want of a
+    kernel. Neither drops the cell."""
 
-    from pyamplicol.loops.v2 import ct_closure
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.ct_recursion import UnloweredCountertermError
     from pyamplicol.models.loading import load_compiled_model
 
     _certify_furry_zeros(monkeypatch)
-    residual = {}
-    build = ct_closure.CountertermProgram.build.__func__
-
-    def recorded(cls, *args, **kwargs):
-        program = build(cls, *args, **kwargs)
-        residual.update(program.recursion.residual)
-        return program
-
-    monkeypatch.setattr(ct_closure.CountertermProgram, "build", classmethod(recorded))
     compiled = load_compiled_model(anomalous_model)
-    with pytest.raises(ValueError, match="no ct-site kernel"):
+    error, match = (
+        (UnloweredCountertermError, r"R2_GGZ.*does not cancel")
+        if counterterms == "recursion"
+        else (ValueError, "no ct-site kernel")
+    )
+    with pytest.raises(error, match=match):
         LoopSlice.generate(
             compiled,
             SliceRequest(
@@ -309,9 +319,3 @@ def test_uncancelled_levi_civita_cells_fail_closed(
             ),
             loop_native,
         )
-    if counterterms == "recursion":
-        rules = {
-            name: reason for name, reason in residual.items() if "R2_GGZ" in reason
-        }
-        assert len(rules) == 2, residual
-        assert all("does not cancel" in reason for reason in rules.values())

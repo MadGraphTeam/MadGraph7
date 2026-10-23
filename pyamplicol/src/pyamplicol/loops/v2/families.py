@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from collections.abc import Hashable, Iterator, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from itertools import combinations, product
@@ -863,6 +863,10 @@ class ModelLoopCatalogue:
     rules by the same rule as the diagram oracle (a species is perturbative in
     an order when it enters a vertex of that single order), which production
     modules may not import.
+
+    ``veto`` (|PDG| codes, ``particle_veto``) removes those particles from the
+    loops: they are no loop species, and no vertex with one of them is a loop
+    vertex.
     """
 
     def __init__(
@@ -870,8 +874,11 @@ class ModelLoopCatalogue:
         model: Any,
         *,
         species_orders: Mapping[int, frozenset[str]] | None = None,
+        veto: Iterable[int] = (),
     ):
         data = model_data(model)
+        veto = frozenset(abs(int(pdg)) for pdg in veto)
+        vetoed = {p["name"] for p in data["particles"] if abs(p["pdg_code"]) in veto}
         self._species: dict[str, LoopSpecies] = {}
         coupling_orders = {
             entry["name"]: tuple(
@@ -887,6 +894,8 @@ class ModelLoopCatalogue:
         }
         rules = []
         for rule in data["vertex_rules"]:
+            if vetoed.intersection(rule["particles"]):
+                continue
             orders = {
                 add_orders(coupling_orders[name])
                 for row in rule["couplings"]
@@ -907,7 +916,7 @@ class ModelLoopCatalogue:
         for particle in data["particles"]:
             name = particle["name"]
             self._conjugate[name] = particle["antiname"]
-            if not particle.get("propagating", True):
+            if not particle.get("propagating", True) or name in vetoed:
                 continue
             self._species[name] = LoopSpecies(
                 name,
