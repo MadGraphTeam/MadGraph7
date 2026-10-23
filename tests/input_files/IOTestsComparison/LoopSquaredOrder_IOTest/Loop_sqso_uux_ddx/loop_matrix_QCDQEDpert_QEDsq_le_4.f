@@ -462,12 +462,6 @@ C      reading the parameters
      $ ,COLLIER_UV_POLE_COMPUTATION_CHOICE
      $ ,COLLIER_IR_POLE_COMPUTATION_CHOICE
 
-C     Preserve a generic selector set before the first parameter-card
-C      read.
-      INTEGER FORCED_LOOP_POLE_MODE
-      DATA FORCED_LOOP_POLE_MODE/-2/
-      COMMON/ML5_0_LOOPPOLEFORCEDCHOICE/FORCED_LOOP_POLE_MODE
-
 C     This variable controls the general initialization which is
 C      *common* between all MadLoop SubProcesses.
 C     For example setting the MadLoopPath or reading the ML runtime
@@ -524,8 +518,7 @@ C      pmass.inc
         CALL SETMADLOOPPATH(TMP)
         CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
         CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
-        IF(FORCED_LOOP_POLE_MODE.NE.-2)
-     $    LOOPPOLEMODE=FORCED_LOOP_POLE_MODE
+        CALL ML_APPLY_LOOP_POLE_MODE()
         IF (FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION) THEN
           COLLIERCOMPUTEUVPOLES = COLLIER_UV_POLE_COMPUTATION_CHOICE
         ENDIF
@@ -2746,15 +2739,9 @@ C     --=========================================--
 C     Select bare loop poles: -1 legacy, 0 both, 1 UV, 2 IR, 3 none.
 C     Counterterms and rational R2 contributions are not changed.
       IMPLICIT NONE
-      INTEGER MODE,FORCED_LOOP_POLE_MODE
-      INCLUDE 'MadLoopParams.inc'
-      COMMON/ML5_0_LOOPPOLEFORCEDCHOICE/FORCED_LOOP_POLE_MODE
-      IF(MODE.LT.-1.OR.MODE.GT.3) THEN
-        WRITE(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
-        STOP 1
-      ENDIF
-      LOOPPOLEMODE=MODE
-      FORCED_LOOP_POLE_MODE=MODE
+      INTEGER MODE
+C     All subprocesses share MadLoop's card and initialization state.
+      CALL ML_SET_LOOP_POLE_MODE(MODE)
       END SUBROUTINE
 
       SUBROUTINE ML5_0_COLLIER_COMPUTE_UV_POLES(ONOFF)

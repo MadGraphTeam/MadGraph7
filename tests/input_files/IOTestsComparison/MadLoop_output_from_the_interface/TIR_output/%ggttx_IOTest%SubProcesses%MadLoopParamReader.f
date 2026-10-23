@@ -359,6 +359,40 @@ C     a non existing or malformed parameter file
 
       end
 
+      SUBROUTINE ML_SET_LOOP_POLE_MODE(MODE)
+C     Pending requests have the same global scope as /MADLOOP/ and ML_INIT.
+C     A setter from any subprocess overrides the card for all subprocesses.
+      IMPLICIT NONE
+      INTEGER MODE,REQUESTED_LOOP_POLE_MODE
+      INCLUDE 'MadLoopParams.inc'
+      COMMON/ML_LOOP_POLE_REQUEST/REQUESTED_LOOP_POLE_MODE
+      IF(MODE.LT.-1.OR.MODE.GT.3) THEN
+        WRITE(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
+        STOP 1
+      ENDIF
+      REQUESTED_LOOP_POLE_MODE=MODE
+      LoopPoleMode=MODE
+      END
+
+      SUBROUTINE ML_APPLY_LOOP_POLE_MODE()
+C     Restore the most recent request after the first global card read.
+      IMPLICIT NONE
+      INTEGER REQUESTED_LOOP_POLE_MODE
+      INCLUDE 'MadLoopParams.inc'
+      COMMON/ML_LOOP_POLE_REQUEST/REQUESTED_LOOP_POLE_MODE
+      IF(REQUESTED_LOOP_POLE_MODE.NE.-2) THEN
+        LoopPoleMode=REQUESTED_LOOP_POLE_MODE
+      ENDIF
+      END
+
+      BLOCK DATA ML_LOOP_POLE_REQUEST_INIT
+C     The shared reader is linked once, even in a multi-subprocess library.
+      IMPLICIT NONE
+      INTEGER REQUESTED_LOOP_POLE_MODE
+      COMMON/ML_LOOP_POLE_REQUEST/REQUESTED_LOOP_POLE_MODE
+      DATA REQUESTED_LOOP_POLE_MODE/-2/
+      END
+
       SUBROUTINE ML_LOOP_POLE_FLAGS(COMPUTE_UV,COMPUTE_IR)
 C     The generic selector affects bare loop integrals only.  The legacy
 C     COLLIER switches remain effective when LoopPoleMode is -1.

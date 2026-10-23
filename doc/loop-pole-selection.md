@@ -55,9 +55,12 @@ Generated optimized processes also expose the process-prefixed
 
 Call it before evaluating the desired sample. It accepts the same five card
 values and preserves the requested choice through MadLoop initialization.
-Use the prefix of the actual generated subprocess. Call it with `0` to restore
-combined poles or `-1` to restore the legacy backend policy. The reduction
-and rescue list must still satisfy the selected mode's requirements.
+Use the prefix of an actual generated subprocess. The choice is global within
+a shared MadLoop library: the most recent setter call applies to every
+subprocess, including when another subprocess performs the first evaluation.
+Call it with `0` to restore combined poles or `-1` to restore the legacy backend
+policy. The reduction and rescue list must still satisfy the selected mode's
+requirements.
 
 ## Interpretation and cost
 
@@ -120,11 +123,15 @@ compares each mode between backends; it does not assume additivity of squared
 outputs. The [retained receipt](../vendor/ninjars/tests/poles/madloop-validation.json)
 records the precise run matrix, inputs and tolerances.
 
-Local regression qualification passed 106 Python/compiled-Fortran tests,
+Local regression qualification passed 107 Python/compiled-Fortran tests,
 30 ordinary Rust tests, and nine export IO tests. Seven pre-existing opt-in Rust
 diagnostics remain excluded. The real CLI `install ninjars --update` passed its
 compiled DP/QP smoke check, including a binary128 perturbation below DP
-resolution. The Python/Fortran regression modules can be run with:
+resolution. A compiled two-subprocess regression checks that the latest global
+selector survives the first card read and subsequent runtime changes.
+A generated shared library containing both `u u~ > z` and `d d~ > z` also
+passed these checks with NinjaRS and COLLIER, including 40 amplitude evaluations.
+The Python/Fortran regression modules can be run with:
 
 ```sh
 python3 -B -m unittest discover -s tests/unit_tests -p 'test_ninjars*.py'

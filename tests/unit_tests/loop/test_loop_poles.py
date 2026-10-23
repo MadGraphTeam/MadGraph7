@@ -281,6 +281,85 @@ C     Legacy choices remain active after returning from an explicit mode.
                     self.assertIn('LoopPoleMode must be', result.stdout)
                     self.assertNotIn('INVALID MODE ACCEPTED', result.stdout)
 
+    def test_two_subprocesses_share_pending_and_runtime_selector(self):
+        source = (TEMPLATES / 'loop_matrix_standalone.inc').read_text()
+        setter = source[source.index(
+            '      SUBROUTINE %(proc_prefix)sSET_LOOP_POLE_MODE(MODE)'):]
+        setter = setter[:setter.index(
+            '\t  SUBROUTINE %(proc_prefix)sCOLLIER_COMPUTE_UV_POLES')]
+        start = source.index('  CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)')
+        first_read = source[start:source.index(
+            '  IF (FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION)', start)]
+        # Compile two independently prefixed entry points using the production
+        # setter and first-card-read path, linked to one shared parameter reader.
+        for prefix in ('A_', 'B_'):
+            with FortranWriter(str(self.work / (prefix + '.f'))) as writer:
+                writer.writelines(setter % {'proc_prefix': prefix} + '''
+      SUBROUTINE ''' + prefix + '''EVALUATE(SELECTED)
+      IMPLICIT NONE
+      INCLUDE 'MadLoopParams.inc'
+      INTEGER SELECTED
+      LOGICAL ML_INIT
+      COMMON/ML_INIT/ML_INIT
+      CHARACTER*512 PARAMFN
+      IF(ML_INIT) THEN
+        ML_INIT=.FALSE.
+        PARAMFN='card.dat'
+''' + first_read + '''
+      ENDIF
+      SELECTED=LoopPoleMode
+      END
+''')
+        (self.work / 'card.dat').write_text('#LoopPoleMode\n2\n')
+        (self.work / 'two_processes.f').write_text('''
+      PROGRAM CHECK
+      IMPLICIT NONE
+      INTEGER SCENARIO,SELECTED,EXPECTED
+      LOGICAL ML_INIT
+      COMMON/ML_INIT/ML_INIT
+      CHARACTER*1 ARG
+      CALL DEFAULTPARAM()
+      ML_INIT=.TRUE.
+      CALL GET_COMMAND_ARGUMENT(1,ARG)
+      READ(ARG,*) SCENARIO
+      EXPECTED=2
+      IF(SCENARIO.EQ.1) THEN
+        CALL B_SET_LOOP_POLE_MODE(1)
+        EXPECTED=1
+      ELSEIF(SCENARIO.EQ.2) THEN
+        CALL A_SET_LOOP_POLE_MODE(1)
+        CALL B_SET_LOOP_POLE_MODE(2)
+      ELSEIF(SCENARIO.EQ.3) THEN
+        CALL B_SET_LOOP_POLE_MODE(-1)
+        EXPECTED=-1
+      ELSEIF(SCENARIO.EQ.4) THEN
+        CALL B_SET_LOOP_POLE_MODE(0)
+        EXPECTED=0
+      ENDIF
+      CALL A_EVALUATE(SELECTED)
+      IF(SELECTED.NE.EXPECTED) STOP 41
+      CALL B_EVALUATE(SELECTED)
+      IF(SELECTED.NE.EXPECTED) STOP 42
+C     Runtime changes share the same global scope and the latest call wins.
+      CALL B_SET_LOOP_POLE_MODE(0)
+      CALL A_EVALUATE(SELECTED)
+      IF(SELECTED.NE.0) STOP 43
+      CALL B_EVALUATE(SELECTED)
+      IF(SELECTED.NE.0) STOP 44
+      CALL A_SET_LOOP_POLE_MODE(-1)
+      CALL B_EVALUATE(SELECTED)
+      IF(SELECTED.NE.-1) STOP 45
+      CALL A_EVALUATE(SELECTED)
+      IF(SELECTED.NE.-1) STOP 46
+      WRITE(*,*) 'SHARED POLE SELECTOR PASSED'
+      END
+''')
+        self.compile('A_.f', 'B_.f', 'two_processes.f')
+        for scenario in range(5):
+            with self.subTest(scenario=scenario):
+                result = self.run_command(str(self.work / 'check'), str(scenario))
+                self.assertIn('SHARED POLE SELECTOR PASSED', result.stdout)
+
     def test_nonoptimized_output_rejects_selected_poles(self):
         source = (TEMPLATES.parent / 'loop/loop_matrix_standalone.inc').read_text()
         guard = source[source.index(
