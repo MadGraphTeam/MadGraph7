@@ -1030,6 +1030,31 @@ class LoopSlice:
             data, species_orders=structure.perturbative_species_orders
         )
         native_families = "families" in generator_input.NATIVE_STAGES
+
+        def tree_program(reachable):
+            blocks = build_tree_blocks(
+                process,
+                CompiledUFOModel(compiled),
+                born_coupling_orders=dict(request.born_orders),
+                block_coupling_orders=dict(request.loop_orders),
+                ignored_particle_ids=request.ignored_particle_ids,
+                reachability=(
+                    None
+                    if reachable is None
+                    else requested_loop_blocks(reachable.block_requests(), data)
+                ),
+            )
+            table = blocks.block_table(data)
+            if native_families:
+                generation = NativeGeneration(table, loop_catalogue, selection, native)
+                return blocks, table, generation, generation.families()
+            return (
+                blocks,
+                table,
+                None,
+                generate_families(table, loop_catalogue, selection),
+            )
+
         reachable = None
         if LOOP_BLOCK_REACHABILITY:
             # Loop-aware reachability (design §3.2 item 1): the tree program
@@ -1043,34 +1068,17 @@ class LoopSlice:
                 request,
                 native if native_families else None,
             )
-        blocks = build_tree_blocks(
-            process,
-            CompiledUFOModel(compiled),
-            born_coupling_orders=dict(request.born_orders),
-            block_coupling_orders=dict(request.loop_orders),
-            ignored_particle_ids=request.ignored_particle_ids,
-            reachability=(
-                None
-                if reachable is None
-                else requested_loop_blocks(reachable.block_requests(), data)
-            ),
-        )
-        table = blocks.block_table(data)
-        colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
-        generation = None
-        if native_families:
-            generation = NativeGeneration(table, loop_catalogue, selection, native)
-            families = generation.families()
-        else:
-            families = generate_families(table, loop_catalogue, selection)
+        blocks, table, generation, families = tree_program(reachable)
         if reachable is not None and (
             families.families != reachable.families
             or families.scaleless != reachable.scaleless
         ):
-            raise ValueError(
-                "the families of the reachable tree blocks differ from the "
-                "field-level families"
-            )
+            # The field-level table does not predict this process's tree
+            # blocks (e.g. electroweak currents the tree compiler does not
+            # build split closed-loop flavour classes, ``families.
+            # _closed_loop_classes``): every block current is built.
+            blocks, table, generation, families = tree_program(None)
+        colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
         if generation is not None and "schedules" in generator_input.NATIVE_STAGES:
             plan = generation.schedules(colour, model=_FRAME_MODEL)
         else:

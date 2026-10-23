@@ -304,3 +304,40 @@ def test_validate_agrees_with_the_providers(loop_sm_compiled_model, name, points
     )
     assert record["passed"], record["points"]
     assert all(p["max_error"] <= 1e-10 for p in record["points"]), record["points"]
+
+
+@pytest.mark.loop_physics
+def test_reachability_falls_back_where_field_level_families_differ(
+    loop_sm_compiled_model, loop_native, monkeypatch
+):
+    """With a photon, the field-level block table has currents the tree
+    compiler does not build, and the pruned tree table splits fewer
+    closed-loop flavour classes: the generator then builds every block
+    current, so the families equal those without reachability."""
+
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+
+    class Stop(Exception):
+        pass
+
+    def capture(families, *args, **kwargs):
+        raise Stop(families)
+
+    monkeypatch.setattr(assemble, "generate_counterterm_sites", capture)
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request = SliceRequest(
+        "u u~ > e- e+ d d~ g",
+        {"QCD": 3, "QED": 2},
+        {"QCD": 5, "QED": 2},
+        fixed_parameters={"MB": "0"},
+        ignored_particle_ids=(23,),
+    )
+    found = {}
+    for reachability in (True, False):
+        monkeypatch.setattr(assemble, "LOOP_BLOCK_REACHABILITY", reachability)
+        with pytest.raises(Stop) as stop:
+            LoopSlice.generate(compiled, request, loop_native)
+        found[reachability] = stop.value.args[0]
+    assert_same_families(found[True], found[False])
