@@ -29,6 +29,7 @@ from pyamplicol.models.compiler_tensor_ordering import (
     compile_tensor_ordering_metadata,
 )
 from pyamplicol.models.contracts import (
+    U1_SUBTRACTION_AUXILIARY_KIND,
     CompiledModelIR,
     CompiledOrientedKernel,
     CompiledParticleRecord,
@@ -560,7 +561,7 @@ def test_external_sm_derives_fundamental_fierz_auxiliary(external_sm) -> None:
     auxiliaries = tuple(
         particle
         for particle in compiled.ir.particles
-        if particle.auxiliary_kind == "u1-subtraction-color-flow-vector"
+        if particle.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
     )
 
     assert len(auxiliaries) == 1

@@ -34,6 +34,7 @@ from pyamplicol.loops.v2.families import (
     add_orders,
     generate_families,
 )
+from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
 
 from .loop_v2_stage_rows import stage_rows
 
@@ -881,7 +882,7 @@ def test_generic_reachability_is_every_attachable_proper_subset(models):
     assert not dag.amplitude_roots
     # The U(1)-subtraction piece of a closed quark line is a block too.
     assert any(
-        current.index.auxiliary_kind == "u1-subtraction-color-flow-vector"
+        current.index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
         and current.index.ordered_external_labels == (2, 1)
         for current in dag.currents
     )
