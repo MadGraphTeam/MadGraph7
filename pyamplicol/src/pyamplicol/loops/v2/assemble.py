@@ -499,14 +499,129 @@ class TreeRows:
 
 
 def _stage_evaluator(stage: Any) -> Any:
+    """The Symbolica evaluator of one tree stage, independent of the process
+    history (``_canonical_stage``)."""
+
     from symbolica import Expression, FunctionDefinition
 
+    outputs, parameters, functions = _canonical_stage(stage)
     return Expression.evaluator_multiple(
-        list(stage.output_expressions),
-        list(stage.parameter_symbols),
+        outputs,
+        parameters,
         functions=[
             FunctionDefinition(function, arguments, body, inlining="always")
-            for function, arguments, body in stage.symbolica_functions
+            for function, arguments, body in functions
+        ],
+    )
+
+
+# Canonical evaluator symbols (``_canonical_symbols``), allocated in blocks of
+# 2^16 whose first id is a multiple of 2^16.
+_CANONICAL_SYMBOLS: list[Any] = []
+_CANONICAL_BLOCK = 1 << 16
+
+
+def _canonical_symbols(count: int) -> list[Any]:
+    """The first ``count`` canonical symbols ``pyamplicol_v2_canonical::c<k>``,
+    ordered the same way by Symbolica in every process.
+
+    Symbolica numbers symbols in creation order and sorts the terms of a sum
+    by the bytes of their packed symbol ids (``AtomView::cmp_terms``; ids are
+    packed little-endian, in 1, 2 or 4 bytes by size). The term order of a
+    normalised expression, and with it the evaluator built from it, therefore
+    depends on the absolute ids of its symbols, i.e. on every symbol created
+    earlier in the interpreter (the model compile, earlier generations). The
+    canonical symbols are created in whole blocks of 2^16 starting at an id
+    that is a multiple of 2^16 (unrelated padding symbols fill the gap; the
+    next id is the number of symbols defined so far): every canonical id is
+    then packed in four bytes as (k mod 256, k div 256 mod 256, block), so
+    symbol k sorts by k's own bytes in every process history. (Two blocks
+    order by their block numbers' low byte, which wraps only beyond 2^24
+    symbols.) Creating a block costs about 0.2 s."""
+
+    from symbolica import Expression, S
+
+    while len(_CANONICAL_SYMBOLS) < count:
+        start = len(_CANONICAL_SYMBOLS)
+        padding = -len(Expression.get_all_symbol_names()) % _CANONICAL_BLOCK
+        for k in range(padding):
+            S(f"pyamplicol_v2_canonical::pad{start}_{k}")
+        _CANONICAL_SYMBOLS.extend(
+            S(f"pyamplicol_v2_canonical::c{start + k}") for k in range(_CANONICAL_BLOCK)
+        )
+    return _CANONICAL_SYMBOLS[:count]
+
+
+def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
+    """A stage's outputs, parameters and function definitions on canonical
+    symbols (``_canonical_symbols``).
+
+    The stage's own symbols (model parameters, momentum and value slots, the
+    model functions and their arguments) got their ids when the process
+    history first needed them, so the same stage generated after other
+    generations in one interpreter normalised its sums in another order and
+    its evaluator rounded differently in binary64 (DESIGN WP2.5). Renamed
+    positionally (parameters in input order, then the function heads without
+    symbol attributes and the function arguments in definition order), the
+    stage normalises and compiles identically in every process. The renaming
+    is exact: values do not change beyond rounding."""
+
+    from symbolica import E, Replacement, S
+
+    parameters = list(stage.parameter_symbols)
+    definitions = list(stage.symbolica_functions)
+    if not definitions and parameters:
+        # Positional stage inputs (``ParamBuilder.add_parameter_list``) map to
+        # the canonical symbols of the same index: swap the namespace in the
+        # id-independent canonical string and parse it back, linear in the
+        # stage's size (a replacement per input is quadratic: 100 s for the
+        # 5763 inputs of a g g > g g g stage).
+        canonical = _canonical_symbols(len(parameters))
+        source = parameters[0].to_canonical_string()[:-1]
+        target = canonical[0].to_canonical_string()[:-1]
+        if all(
+            symbol.to_canonical_string() == f"{source}{index}"
+            for index, symbol in enumerate(parameters)
+        ):
+            return (
+                [
+                    E(expression.to_canonical_string().replace(source, target))
+                    for expression in stage.output_expressions
+                ],
+                canonical,
+                [],
+            )
+    heads = [
+        function
+        for function, _arguments, _body in definitions
+        if not function.get_attributes()
+    ]
+    arguments = list(
+        dict.fromkeys(
+            argument for _function, items, _body in definitions for argument in items
+        )
+    )
+    old = [*parameters, *heads, *arguments]
+    renamed = dict(zip(old, _canonical_symbols(len(old)), strict=True))
+    tail = S("pyamplicol_v2_canonical::args___")
+    replacements = [
+        *(Replacement(symbol, renamed[symbol]) for symbol in (*parameters, *arguments)),
+        *(Replacement(head(tail), renamed[head](tail)) for head in heads),
+    ]
+
+    def rename(expression: Any) -> Any:
+        return expression.replace_multiple(replacements)
+
+    return (
+        [rename(expression) for expression in stage.output_expressions],
+        [renamed[parameter] for parameter in parameters],
+        [
+            (
+                renamed.get(head, head),
+                tuple(renamed[argument] for argument in items),
+                rename(body),
+            )
+            for head, items, body in definitions
         ],
     )
 

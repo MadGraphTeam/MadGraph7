@@ -28,12 +28,16 @@ colour-basis elements on the Born (bra) side.
   "full")``.
 * **Asymmetric Ward mode** (§8.4, oracle O10). The Born bra keeps physical
   polarisations; blocks, counterterm currents and the field insertions' Born
-  amplitudes (the loop side) read epsilon_j -> p_j for one vector leg j, with
-  full kernels. The renormalised interference of a gauge-invariant amplitude
-  vanishes. On the QCD controls the R2 and UV counterterm parts vanish on
-  their own, so the mode checks the gauge invariance of the bare loop
-  amplitude (whose family lanes cancel across families at five legs) and of
-  each counterterm part, not the completeness of UV and R2.
+  amplitudes (the loop side) read epsilon_j -> c p_j for one vector leg j and
+  a complex factor c (``ward=(j, c)``; c = 1 by default), with full kernels.
+  The renormalised interference of a gauge-invariant amplitude vanishes as a
+  complex number; an inclusive output projects it to its real part, so c = 1
+  and c = i together check all of it. The bare loop amplitude alone is not
+  gauge invariant: on u u~ > g g g its interference with c = i is of the
+  order of the physical scale and the R2 part cancels it (UV + R2
+  completeness). The UV parts are built on the Ward-sourced trees and vanish
+  with the tree Ward identity. ``ward=(j, v)`` with a literal complex
+  four-vector v is the non-gauge control, where neither cancels.
 * **Resolved outputs** (§8.5). Per Born helicity row (one-hot seed columns)
   and per Born colour component, a component being one element of the tree
   engine's Born colour basis (decision 3 of §1.6: the anchor is a Born basis
@@ -801,7 +805,7 @@ class ObservableSlice:
         *,
         correlations: Sequence[str] = (INCLUSIVE,),
         spin: Mapping[int, Any] | None = None,
-        ward: int | None = None,
+        ward: WardVector | None = None,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
         poles: bool = True,
@@ -811,7 +815,12 @@ class ObservableSlice:
 
         ``spin`` maps source legs (a declared spin class) to literal complex
         four-vectors: four real decimals or (real, imaginary) pairs.
-        ``ward`` is the vector leg of the asymmetric Ward mode. Directed
+        ``ward`` is the vector leg j of the asymmetric Ward mode, or a pair
+        (j, c): the loop side then reads epsilon_j -> c p_j for a complex
+        scalar c (``_scalar``; c = i probes the imaginary part of the
+        interference, which the real projection of an inclusive output
+        otherwise drops), or (j, v) with a literal complex four-vector v (a
+        non-gauge control; it rotates with the momenta). Directed
         outputs are complex; the others real. ``stability`` runs rotation
         and reduction-direction checks per output (``stability``; spin
         vectors rotate with the momenta); without checks no estimate exists.
@@ -1043,7 +1052,7 @@ class ObservableSlice:
                 precision,
                 poles,
                 _rotated_spin(rotation, spin),
-                ward,
+                _rotated_ward(rotation, ward),
                 None,
             )
             rotated.append((evaluation, plan.results(evaluation)))
@@ -1099,13 +1108,10 @@ class ObservableSlice:
             sources = {leg: _vector(value) for leg, value in spin.items()}
             loop_sources = None
             if ward is not None:
-                if ward in spin:
+                leg, _value = _ward(ward)
+                if leg in spin:
                     raise ValueError("the Ward leg cannot also be a spin source")
-                loop_sources = {
-                    ward: tuple(
-                        (_to_decimal(x), Decimal(0)) for x in exact_point[ward - 1]
-                    )
-                }
+                loop_sources = {leg: _ward_vector(ward, exact_point[leg - 1])}
             return self.slice._point(
                 exact_point,
                 _fraction(scale_squared),
@@ -1124,16 +1130,67 @@ def _components(value: Any) -> list[tuple[Fraction, Fraction]]:
     components = list(value)
     if len(components) != 4:
         raise ValueError("a spin source is a complex four-vector")
-    out = []
-    for component in components:
-        if isinstance(component, complex):
-            re, im = component.real, component.imag
-        elif isinstance(component, (tuple, list)):
-            re, im = component
-        else:
-            re, im = component, 0
-        out.append((_fraction(re), _fraction(im)))
-    return out
+    return [_scalar(component) for component in components]
+
+
+def _scalar(value: Any) -> tuple[Fraction, Fraction]:
+    """A literal complex number (a number, a decimal string or a (real,
+    imaginary) pair) as exact (real, imaginary) parts."""
+
+    if isinstance(value, complex):
+        re, im = value.real, value.imag
+    elif isinstance(value, (tuple, list)):
+        re, im = value
+    else:
+        re, im = value, 0
+    return _fraction(re), _fraction(im)
+
+
+WardVector = int | tuple[int, Any]
+
+
+def _ward(ward: WardVector) -> tuple[int, Any]:
+    """The Ward leg j and its loop-side value: the complex factor c of
+    epsilon_j -> c p_j ((real, imaginary) parts; ``ward`` is the leg, c = 1,
+    or a (leg, c) pair), or a literal complex four-vector (a (leg, vector)
+    pair; four components) replacing epsilon_j on the loop side, which the
+    O10 test uses as its non-gauge control."""
+
+    if isinstance(ward, int):
+        return ward, (Fraction(1), Fraction(0))
+    leg, value = ward
+    if isinstance(value, (tuple, list)) and len(value) == 4:
+        return int(leg), tuple(_components(value))
+    return int(leg), _scalar(value)
+
+
+def _ward_vector(ward: WardVector, momentum) -> tuple[ComplexPair, ...]:
+    """The loop-side vector of the Ward leg at a point (``_ward``)."""
+
+    _leg, value = _ward(ward)
+    if len(value) == 4:
+        return tuple((_to_decimal(re), _to_decimal(im)) for re, im in value)
+    re, im = value
+    return tuple((_to_decimal(re * x), _to_decimal(im * x)) for x in momentum)
+
+
+def _relabel_ward(member: FlavourMember, ward: WardVector | None) -> Any:
+    """A member's Ward leg on the representative's labels (value kept)."""
+
+    if ward is None:
+        return None
+    leg, value = _ward(ward)
+    return (member.label(leg), value)
+
+
+def _rotated_ward(rotation: Any, ward: WardVector | None) -> Any:
+    """A literal loop-side vector rotated with the momenta (c p_j rotates
+    with p_j by itself)."""
+
+    if ward is None:
+        return None
+    leg, value = _ward(ward)
+    return (leg, _rotated(rotation, value)) if len(value) == 4 else ward
 
 
 def _rotated(rotation: Any, value: Any) -> list[tuple[Fraction, Fraction]]:
@@ -1665,7 +1722,7 @@ class NativeObservables:
         scales: Sequence[Any],
         *,
         spin: Mapping[int, Any] | Sequence[Mapping[int, Any] | None] | None = None,
-        ward: int | None = None,
+        ward: WardVector | None = None,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
         poles: bool = True,
@@ -1696,7 +1753,7 @@ class NativeObservables:
         if member is not None:
             points = [member.point(point) for point in points]
             spins = [member.spin(value) for value in spins]
-            ward = None if ward is None else member.label(ward)
+            ward = _relabel_ward(member, ward)
         batch = _Batch(
             tuple(scales), parameters, precision or Precision.double(), poles, ward
         )
@@ -1708,6 +1765,7 @@ class NativeObservables:
                 [_rotated_point(rotation, point) for point in points],
                 [_rotated_spin(rotation, value) for value in spins],
                 None,
+                _rotated_ward(rotation, batch.ward),
             )
             runs.append(evaluations)
             for index, reasons in failed.items():
@@ -1736,10 +1794,11 @@ class NativeObservables:
         return out
 
     def _evaluations(
-        self, batch: _Batch, points, spins, retest: str | None
+        self, batch: _Batch, points, spins, retest: str | None, ward: Any = None
     ) -> tuple[list, dict[int, list[str]]]:
         """Point evaluations with the plan's lanes reduced natively (and
-        re-reduced in the frame ``retest``); also the failures per point."""
+        re-reduced in the frame ``retest``); also the failures per point.
+        ``ward`` replaces the batch's Ward value (rotated checks)."""
 
         evaluations = [
             self.observables.point(
@@ -1749,7 +1808,7 @@ class NativeObservables:
                 batch.precision,
                 batch.poles,
                 spin,
-                batch.ward,
+                batch.ward if ward is None else ward,
             )
             for point, scale, spin in zip(points, batch.scales, spins, strict=True)
         ]
@@ -1767,7 +1826,7 @@ class _Batch:
     parameters: Mapping[str, str] | None
     precision: Precision
     poles: bool
-    ward: int | None
+    ward: WardVector | None
 
 
 def _member_key(member: FlavourMember, key: Hashable) -> Hashable:
@@ -2040,7 +2099,7 @@ class MemberObservables:
             options.get("precision"),
             options.get("poles", True),
             member.spin(spin),
-            None if ward is None else member.label(ward),
+            _relabel_ward(member, ward),
             options.get("stability"),
         )
         return {column.key: results[column.key] for column in columns}
