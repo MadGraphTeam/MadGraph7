@@ -1031,9 +1031,10 @@ def test_stability_estimates_bracket_out_of_sample(slices, name):
 
 
 def _assert_brackets(f64, ap, quantile=None):
-    """Every check configuration's estimate bounds the true binary64 error;
-    a configuration in ``quantile`` is held to estimate/error at least its
-    calibrated q01 instead (DESIGN §10.4)."""
+    """Every check configuration's estimate bounds the true binary64 error,
+    as a whole and per Laurent coefficient; a configuration in ``quantile``
+    is held to estimate/error at least its calibrated q01 instead (DESIGN
+    §10.4), as a whole and per coefficient alike."""
 
     truth = {
         sector: Laurent(*[float(x) for x in value.coefficients])
@@ -1044,18 +1045,12 @@ def _assert_brackets(f64, ap, quantile=None):
     assert error > 0
     for names in CONFIGURATIONS:
         estimate = f64.stability.subset(names)
-        if quantile and names in quantile:
-            assert quantile[names] * error <= estimate.relative < 1e-10, (
-                names,
-                error,
-                estimate,
-            )
-            continue
-        assert error <= estimate.relative < 1e-10, (names, error, estimate)
+        factor = (quantile or {}).get(names, 1.0)
+        assert factor * error <= estimate.relative < 1e-10, (names, error, estimate)
         for k, (mine, bound) in enumerate(
             zip(errors, estimate.coefficients, strict=True)
         ):
-            assert mine <= bound, (names, LAURENT[k], mine, bound)
+            assert factor * mine <= bound, (names, LAURENT[k], mine, bound)
 
 
 @pytest.mark.loop_fast
