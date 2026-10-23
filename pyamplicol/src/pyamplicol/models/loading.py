@@ -10,11 +10,12 @@ import shutil
 import sys
 import threading
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -36,6 +37,7 @@ from .contracts import (
     PROPAGATOR_SOURCE_FIELD,
     TENSOR_ORDERING_CONTRACT_VERSION,
     CompiledModelIR,
+    TreeKernelVariant,
 )
 
 COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
@@ -1084,6 +1086,567 @@ def _distribution_version(name: str, default: str) -> str:
         return importlib.metadata.version(name)
     except importlib.metadata.PackageNotFoundError:
         return default
+
+
+# ----------------------------------------------------------- counterterm lowering
+
+# Pseudo-order of a counterterm (CT) insertion. One insertion carries it
+# COUNTERTERM_INSERTION_WEIGHT times: a CT vertex twice, a two-point insertion
+# once on each of the two vertices around its clone line
+# (``models.ct_line_insertions``). The order limit 2 therefore interns the
+# currents without and with one insertion in one tree recursion.
+COUNTERTERM_INSERTION_ORDER = "PYAMPLICOL_CT_INSERTION"
+COUNTERTERM_INSERTION_WEIGHT = 2
+COUNTERTERM_COMPONENTS = ("r2", "uv_local")
+COUNTERTERM_POWERS = (0, -1, -2)
+_COUNTERTERM_PARAMETER_BLOCK = "PYAMPLICOL_CT"
+
+
+def counterterm_slot_order(component: str, power: int, grade: int = 0) -> str:
+    """Pseudo-order of one CT slot (component x epsilon power, design §6.1).
+
+    Each insertion carries the order of its slot (``COUNTERTERM_INSERTION_WEIGHT``
+    times, like the insertion order), so currents and roots with one
+    insertion stay separate per slot and the squared-order partials of the
+    tree runtime split the Born x CT interference into components and
+    Laurent coefficients. ``grade`` is the N_c power of a coupling graded by
+    a formal-N_c continuation (design §6.7); grade 0 keeps the plain name.
+    """
+
+    if component not in COUNTERTERM_COMPONENTS or power not in COUNTERTERM_POWERS:
+        raise ValueError(f"unknown counterterm slot ({component!r}, {power})")
+    name = f"{_COUNTERTERM_PARAMETER_BLOCK}_{component.upper()}_EPS{-power}"
+    if grade:
+        name += f"_NC{grade}" if grade > 0 else f"_NCM{-grade}"
+    return name
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class CountertermStructure:
+    """One CT vertex term of one slot: what the tree recursion lowers.
+
+    ``particles`` are the UFO particle names in vertex-leg order, ``colour``
+    the CT entry's UFO colour (``models.ct_color_flow``), ``lorentz`` the name
+    of a Lorentz structure of the model, ``orders`` the physical coupling
+    orders of the entry, ``component`` ``"r2"`` or ``"uv_local"`` and
+    ``power`` the epsilon power of the slot and ``grade`` the N_c power of a
+    coupling graded by a formal-N_c continuation (0 without one).
+    """
+
+    particles: tuple[str, ...]
+    colour: str
+    lorentz: str
+    orders: tuple[tuple[str, int], ...]
+    component: str
+    power: int
+    grade: int = 0
+
+    @property
+    def slot_order(self) -> str:
+        return counterterm_slot_order(self.component, self.power, self.grade)
+
+
+class CountertermLoweringError(ValueError):
+    """CT vertex terms the tree compiler compiled but cannot decompose.
+
+    ``refused`` maps each such ``CountertermStructure`` to the reason.
+    """
+
+    def __init__(self, refused: Mapping[CountertermStructure, str]):
+        self.refused = dict(refused)
+        super().__init__(
+            "counterterm vertices the tree compiler cannot lower: "
+            + "; ".join(sorted({reason for reason in self.refused.values()}))
+        )
+
+
+@dataclass(frozen=True)
+class CountertermLoweredModel:
+    """A compiled model whose tree vertices include lowered CT vertices.
+
+    ``couplings`` names the model coupling of every lowered CT vertex term
+    (arity >= 3) and ``insertions`` the clone particle of every lowered
+    two-point term (``models.ct_line_insertions``); ``line_fields`` maps
+    every clone particle to the field whose current it is read as and
+    ``line_factors`` the clone particle whose vertex copies carry a Weyl
+    line's factor ``kappa`` to ``kappa`` (``LineInsertions.factors``);
+    ``dirac_fields`` are the Weyl fields of the model that the lowered model
+    propagates as Dirac fields (``LineInsertions.dirac_fields``);
+    ``parameters`` are the real external runtime parameters the coupling
+    expressions introduced. CT vertices carry the physical orders of their
+    entry and ``COUNTERTERM_INSERTION_ORDER`` and the order of their slot
+    ``COUNTERTERM_INSERTION_WEIGHT`` times. ``refused`` lists terms the tree
+    compiler could not lower (``CountertermLoweringError``).
+    """
+
+    compiled: CompiledModel
+    couplings: Mapping[CountertermStructure, str]
+    parameters: tuple[str, ...]
+    insertions: Mapping[CountertermStructure, str] = field(default_factory=dict)
+    refused: Mapping[CountertermStructure, str] = field(default_factory=dict)
+    line_factors: Mapping[str, str] = field(default_factory=dict)
+    line_fields: Mapping[str, str] = field(default_factory=dict)
+    dirac_fields: frozenset[str] = frozenset()
+
+    @property
+    def slot_orders(self) -> tuple[str, ...]:
+        return tuple(
+            sorted({s.slot_order for s in (*self.couplings, *self.insertions)})
+        )
+
+
+_METRIC_LORENTZ_PREFIX = f"{_COUNTERTERM_PARAMETER_BLOCK}_METRIC"
+
+
+def counterterm_metric_lorentz_name(pairs: Iterable[tuple[int, int]]) -> str:
+    """Name of the Lorentz structure ``prod Metric(a, b)`` over 1-based legs
+    ``pairs`` that ``lower_counterterm_vertices`` adds to the payload."""
+
+    canonical = sorted(tuple(sorted(pair)) for pair in pairs)
+    return _METRIC_LORENTZ_PREFIX + "".join(f"_{a}{b}" for a, b in canonical)
+
+
+def counterterm_metric_lorentz(name: str) -> dict[str, Any] | None:
+    """The payload record of a ``counterterm_metric_lorentz_name``, or None."""
+
+    if not name.startswith(_METRIC_LORENTZ_PREFIX + "_"):
+        return None
+    pairs = [
+        (int(text[0]), int(text[1]))
+        for text in name.removeprefix(_METRIC_LORENTZ_PREFIX + "_").split("_")
+    ]
+    legs = sorted(leg for pair in pairs for leg in pair)
+    if legs != list(range(1, len(legs) + 1)):
+        return None
+    return {
+        "name": name,
+        "spins": [3] * len(legs),
+        "structure": "*".join(
+            f"UFO::{{}}::Metric(UFO::{{}}::idx(1,{a}),UFO::{{}}::idx(1,{b}))"
+            for a, b in pairs
+        ),
+    }
+
+
+def counterterm_lorentz_error(compiled: CompiledModel, name: str) -> str | None:
+    """Why the tree compiler cannot normalise Lorentz structure ``name``.
+
+    ``None`` when it can. The tree vocabulary has no Levi-Civita tensor, which
+    some CT vertices (e.g. the gluon-gluon-Z R2) use.
+    """
+
+    from .._internal.physics.symbols import symbols
+    from .tensors import normalize_lorentz_expression
+
+    (record,) = (
+        item for item in compiled.model["lorentz_structures"] if item["name"] == name
+    )
+    try:
+        normalize_lorentz_expression(
+            str(record["structure"]),
+            tuple(int(value) for value in record["spins"]),
+            model_symbols=symbols.model(compiled.name),
+        )
+    except (NotImplementedError, ValueError) as error:
+        return str(error)
+    return None
+
+
+def _orders_within(
+    orders: Iterable[tuple[str, int]], limits: Mapping[str, int]
+) -> bool:
+    return all(
+        int(power) <= limits.get(str(name), int(power)) for name, power in orders
+    )
+
+
+def _vertex_rules_within(
+    rules: Sequence[Mapping[str, Any]],
+    couplings: Sequence[Mapping[str, Any]],
+    limits: Mapping[str, int],
+) -> list[dict[str, Any]]:
+    """The vertex rules of a payload restricted to couplings within ``limits``:
+    cells above them are emptied, colour rows and Lorentz columns left
+    without a cell are removed, and so are rules left without any."""
+
+    within = {
+        str(item["name"]): _orders_within(
+            (tuple(pair) for pair in item.get("orders", ())), limits
+        )
+        for item in couplings
+    }
+    kept: list[dict[str, Any]] = []
+    for rule in rules:
+        cells = [
+            [
+                name if name is not None and within.get(str(name), True) else None
+                for name in row
+            ]
+            for row in rule["couplings"]
+        ]
+        rows = [i for i, row in enumerate(cells) if any(n is not None for n in row)]
+        columns = [
+            j
+            for j in range(len(rule["lorentz_structures"]))
+            if any(cells[i][j] is not None for i in rows)
+        ]
+        if not rows:
+            continue
+        if len(rows) == len(cells) and len(columns) == len(rule["lorentz_structures"]):
+            kept.append(rule)
+            continue
+        kept.append(
+            {
+                **rule,
+                "color_structures": [rule["color_structures"][i] for i in rows],
+                "lorentz_structures": [rule["lorentz_structures"][j] for j in columns],
+                "couplings": [[cells[i][j] for j in columns] for i in rows],
+            }
+        )
+    return kept
+
+
+def lower_counterterm_vertices(
+    compiled: CompiledModel,
+    couplings: Mapping[CountertermStructure, str],
+    *,
+    parameters: Mapping[str, float] = MappingProxyType({}),
+    excluded_particles: Iterable[str] = (),
+    tree_kernel_variant: TreeKernelVariant = "full",
+    multi_trace: bool = False,
+    dirac_fields: Iterable[str] = (),
+    order_limits: Mapping[str, int] | None = None,
+) -> CountertermLoweredModel:
+    """Lower CT vertex terms into the tree model of ``compiled`` (design §6.1).
+
+    The CT vertices become ordinary UFO vertex rules of a copy of the compiled
+    payload: one rule per (particles, orders, slot) with a coupling matrix
+    over its colour and Lorentz structures. They go through the ordinary
+    tree compiler (``compile_ufo_model_ir``), so Lorentz normalisation,
+    oriented kernels and contact decompositions are those of tree vertices,
+    in the model's kernel variant. Two-point terms become clone lines
+    (``models.ct_line_insertions``): a clone of the field with the
+    propagator ``P Pi P`` and copies of the field's vertices. Colours
+    outside the tree colour flow need the multi-trace colour state and are
+    refused here. Terms the tree compiler cannot lower (contact vertices
+    without a colour-flow decomposition, e.g. two gluons and two
+    colour-singlet bosons, and the two-point terms
+    ``ct_line_insertions`` refuses) raise ``CountertermLoweringError``
+    naming them, so that a caller can close their rules as sites.
+
+    ``couplings`` maps every vertex term to its coupling expression in the
+    payload's canonical syntax; terms of one slot and orders with the same
+    expression share one model coupling, so that cells with a common
+    coupling (the three colour-Lorentz cells of the four-gluon UV
+    counterterm) fuse into one contact kernel as the ordinary quartic vertex
+    does. The expressions are derived model couplings: the runtime evaluates
+    them from the model parameters in every carrier, exactly in arbitrary
+    precision. ``parameters`` declares the real external parameters they
+    introduce, with their defaults. A coupling that vanishes at the defaults
+    is a structural zero to the tree compiler, so defaults must not make a
+    lowered coupling vanish.
+
+    ``excluded_particles`` (UFO names, both charge states) removes every
+    vertex, ordinary or CT, with such a leg: the tree model of a process that
+    forbids those particles (MadGraph's ``/ z``), which the tree generator
+    has no option for. Terms whose coupling the model's restriction makes
+    vanish are dropped (absent from ``couplings`` of the result).
+
+    The tree kernels are compiled in the ``"full"`` variant by default: a
+    CT = 1 current is not conserved, so the transverse Yang-Mills shortcut,
+    exact only for conserved inputs, does not apply to it (design §3.2).
+
+    ``multi_trace`` admits the colours whose currents carry closed traces
+    (``ct_color_flow``): only loop-request blocks carry those, so a model
+    lowered with it serves the counterterm closure (``loops.v2.ct_closure``),
+    not complete tree programs.
+
+    ``dirac_fields`` (UFO names) are Weyl fields to propagate as Dirac fields
+    in the lowered model, besides those its two-point terms require (a
+    chiral or chirality-flipping two-point term, or mixing with a Dirac
+    field; ``ct_line_insertions``): their standard propagators become
+    model-supplied, so that their sources, currents and clone lines are
+    Dirac spinors.
+
+    ``order_limits`` (physical coupling order -> largest power; an unlisted
+    order is unbounded) are the order limits of the tree program the model
+    serves: a coupling above them can be in no tree of that program, so the
+    ordinary vertex cells it holds are dropped (a vertex with none left is
+    dropped), and a CT term above them is refused as a ``ValueError`` (the
+    caller bounds its rules first). With ``None`` the whole model is kept.
+    """
+
+    from .compiler_entry import compile_ufo_model_ir
+    from .ct_color_flow import tree_colour_source
+    from .ct_line_insertions import lower_line_insertions
+
+    dirac_fields = frozenset(dirac_fields)
+    payload = json.loads(json.dumps(compiled.model))
+    particles = {str(item["name"]): item for item in payload["particles"]}
+    excluded = set(excluded_particles)
+    excluded |= {str(particles[name]["antiname"]) for name in excluded}
+    payload["vertex_rules"] = [
+        rule
+        for rule in payload["vertex_rules"]
+        if not excluded & set(rule["particles"])
+    ]
+    if order_limits is not None:
+        payload["vertex_rules"] = _vertex_rules_within(
+            payload["vertex_rules"], payload["couplings"], order_limits
+        )
+        beyond = [s for s in couplings if not _orders_within(s.orders, order_limits)]
+        if beyond:
+            raise ValueError(
+                f"counterterm terms beyond the order limits {dict(order_limits)}: "
+                + ", ".join(sorted(str(s.particles) for s in beyond))
+            )
+    lorentz_names = {str(item["name"]) for item in payload["lorentz_structures"]}
+    groups: dict[tuple[object, ...], list[CountertermStructure]] = {}
+    structures = tuple(sorted(s for s in couplings if not excluded & set(s.particles)))
+    for structure in structures:
+        if structure.lorentz not in lorentz_names:
+            record = counterterm_metric_lorentz(structure.lorentz)
+            if record is None:
+                raise ValueError(f"unknown Lorentz structure {structure.lorentz!r}")
+            payload["lorentz_structures"].append(record)
+            lorentz_names.add(structure.lorentz)
+        if len(structure.particles) < 3:
+            continue
+        groups.setdefault(
+            (
+                structure.particles,
+                structure.orders,
+                structure.component,
+                structure.power,
+                structure.grade,
+            ),
+            [],
+        ).append(structure)
+    defaults = dict(compiled.parameter_defaults)
+    known = {str(item["name"]) for item in payload["parameters"]}
+    for index, (name, default) in enumerate(sorted(parameters.items())):
+        if name in known:
+            raise ValueError(f"counterterm parameter {name!r} already exists")
+        payload["parameters"].append(
+            {
+                "expression": None,
+                "lhablock": _COUNTERTERM_PARAMETER_BLOCK,
+                "lhacode": [index + 1],
+                "name": name,
+                "nature": "external",
+                "parameter_type": "real",
+                "value": [float(default), 0.0],
+            }
+        )
+        defaults[name] = (float(default), 0.0)
+    lines = lower_line_insertions(
+        payload,
+        {s: couplings[s] for s in structures if len(s.particles) == 2},
+        prefix=_COUNTERTERM_PARAMETER_BLOCK,
+        insertion_order=COUNTERTERM_INSERTION_ORDER,
+        slot_order=lambda structure: structure.slot_order,
+        weyl_fields=_weyl_fields(compiled),
+        dirac_fields=dirac_fields,
+    )
+    if lines.refused:
+        raise CountertermLoweringError(lines.refused)
+    # Weyl fields the clone lines need as Dirac fields: a model-supplied
+    # standard propagator makes every current of the field a Dirac spinor.
+    for propagator in payload["propagators"]:
+        if propagator.get("particle") in lines.dirac_fields:
+            propagator[PROPAGATOR_SOURCE_FIELD] = MODEL_SUPPLIED_PROPAGATOR_SOURCE
+    classes: dict[tuple[object, ...], list[CountertermStructure]] = {}
+    for structure in (s for s in structures if len(s.particles) > 2):
+        classes.setdefault(
+            (
+                structure.orders,
+                structure.component,
+                structure.power,
+                structure.grade,
+                couplings[structure],
+            ),
+            [],
+        ).append(structure)
+    names: dict[CountertermStructure, str] = {}
+    for index, ((orders, *_slot, expression), members) in enumerate(classes.items()):
+        coupling = f"{_COUNTERTERM_PARAMETER_BLOCK}C_{index}"
+        for member in members:
+            names[member] = coupling
+        payload["couplings"].append(
+            {
+                "expression": expression,
+                "name": coupling,
+                "orders": [
+                    *([name, value] for name, value in orders),
+                    [COUNTERTERM_INSERTION_ORDER, COUNTERTERM_INSERTION_WEIGHT],
+                    [members[0].slot_order, COUNTERTERM_INSERTION_WEIGHT],
+                ],
+                "value": [1.0, 0.0],
+            }
+        )
+    vertex_members: dict[str, list[CountertermStructure]] = {}
+    for number, ((legs, *_slot), members) in enumerate(sorted(groups.items())):
+        representations = [int(particles[name]["color"]) for name in legs]
+        colours = sorted({member.colour for member in members})
+        lorentz = sorted({member.lorentz for member in members})
+        cells = {(member.colour, member.lorentz): names[member] for member in members}
+        vertex_members[f"{_COUNTERTERM_PARAMETER_BLOCK}_V{number}"] = members
+        payload["vertex_rules"].append(
+            {
+                "name": f"{_COUNTERTERM_PARAMETER_BLOCK}_V{number}",
+                "particles": list(legs),
+                "color_structures": [
+                    tree_colour_source(colour, representations, multi_trace=multi_trace)
+                    for colour in colours
+                ],
+                "lorentz_structures": lorentz,
+                "couplings": [
+                    [cells.get((colour, name)) for name in lorentz]
+                    for colour in colours
+                ],
+            }
+        )
+    payload["parameters"].extend(lines.parameters)
+    payload["particles"].extend(lines.particles)
+    payload["propagators"].extend(lines.propagators)
+    payload["couplings"].extend(lines.couplings)
+    payload["vertex_rules"].extend(lines.vertex_rules)
+    vertex_members.update(lines.members)
+    hierarchy = max((int(item["hierarchy"]) for item in payload["orders"]), default=0)
+    for offset, name in enumerate(
+        sorted(
+            {COUNTERTERM_INSERTION_ORDER}
+            | {structure.slot_order for structure in structures}
+        ),
+        start=1,
+    ):
+        payload["orders"].append(
+            {"expansion_order": -1, "hierarchy": hierarchy + offset, "name": name}
+        )
+    started = time.perf_counter()
+    # The multi-trace currents project the gluon legs of the counterterm
+    # vertices onto SU(N) (U(1)-subtraction auxiliaries, design §6.1).
+    ir = compile_ufo_model_ir(
+        payload,
+        tree_kernel_variant=tree_kernel_variant,
+        u1_projected_vertices=frozenset(vertex_members) if multi_trace else frozenset(),
+    )
+    # Couplings the model's restriction makes vanish (e.g. off-diagonal CKM
+    # entries) are structural zeros: their terms are dropped, not lowered.
+    vanishing = {
+        term.coupling
+        for term in ir.vertex_terms
+        if term.coupling.startswith(f"{_COUNTERTERM_PARAMETER_BLOCK}C_")
+        and term.coupling_expression == "0"
+    }
+    if vanishing:
+        return lower_counterterm_vertices(
+            compiled,
+            {s: e for s, e in couplings.items() if names.get(s) not in vanishing},
+            parameters=parameters,
+            excluded_particles=excluded,
+            tree_kernel_variant=tree_kernel_variant,
+            multi_trace=multi_trace,
+            dirac_fields=dirac_fields,
+            order_limits=order_limits,
+        )
+    lowered_vertices = {
+        rule["name"]
+        for rule in payload["vertex_rules"]
+        if str(rule["name"]).startswith(_COUNTERTERM_PARAMETER_BLOCK)
+    }
+    contact = {
+        term.id
+        for term in ir.vertex_terms
+        if term.valence > 3 and term.vertex in lowered_vertices
+    }
+    lowered_contact = {
+        term_id
+        for kernel in ir.oriented_kernels
+        if "::contact-" in kernel.vertex and "final" in kernel.vertex
+        for term_id in (kernel.term_ids or (kernel.term_id,))
+    }
+    if contact - lowered_contact:
+        failed = {
+            term.vertex
+            for term in ir.vertex_terms
+            if term.id in contact - lowered_contact
+        }
+        legs = {
+            str(rule["name"]): "-".join(rule["particles"])
+            for rule in payload["vertex_rules"]
+        }
+        raise CountertermLoweringError(
+            {
+                structure: f"no colour-flow contact decomposition of {legs[vertex]}"
+                for vertex, members in vertex_members.items()
+                if vertex in failed
+                for structure in members
+            }
+        )
+    digest = hashlib.sha256(
+        json.dumps(
+            [
+                sorted(excluded),
+                multi_trace,
+                sorted(lines.dirac_fields),
+                sorted(parameters.items()),
+                [
+                    [
+                        list(s.particles),
+                        s.colour,
+                        s.lorentz,
+                        s.orders,
+                        s.component,
+                        s.power,
+                        s.grade,
+                        couplings[s],
+                    ]
+                    for s in structures
+                ],
+            ],
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    lowered = CompiledModel(
+        source={**compiled.source, "counterterm_lowering": digest},
+        producer=compiled.producer,
+        model=payload,
+        ir=ir,
+        parameter_defaults=defaults,
+        capabilities={
+            **compiled.capabilities,
+            "counterterm_vertex_term_count": len(structures),
+        },
+        issues=compiled.issues,
+        phase_timings={
+            **compiled.phase_timings,
+            "counterterm_lowering": time.perf_counter() - started,
+        },
+        conversion_seconds=compiled.conversion_seconds,
+    )
+    return CountertermLoweredModel(
+        lowered,
+        names,
+        tuple(sorted(parameters)),
+        insertions=lines.clones,
+        line_factors=lines.factors,
+        line_fields=lines.reads_as,
+        dirac_fields=lines.dirac_fields,
+    )
+
+
+def _weyl_fields(compiled: CompiledModel) -> frozenset[str]:
+    """Fermions whose tree currents are Weyl currents (``is_chiral_eligible``)."""
+
+    from .external import CompiledUFOModel
+
+    model = CompiledUFOModel(compiled)
+    return frozenset(
+        particle.name
+        for particle in compiled.ir.particles
+        if model.is_chiral_eligible(particle.pdg_code)
+    )
 
 
 def _raise_for_unsupported(

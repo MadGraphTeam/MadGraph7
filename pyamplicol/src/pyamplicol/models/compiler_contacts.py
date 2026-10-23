@@ -62,11 +62,15 @@ def _fuse_contact_finals(
         if not kernel.vertex.endswith("::contact-final"):
             passthrough.append(kernel)
             continue
+        # Finals fuse per coupling: a fused kernel binds one runtime coupling
+        # (the generic stage lowering reads one per vertex), which cells with
+        # different couplings (counterterm contacts) would break.
         key = (
             kernel.particles,
             kernel.coupling_orders,
             kernel.color_source,
             kernel.lc_color_normalization_power,
+            coupling_by_term.get(kernel.term_id),
         )
         groups.setdefault(key, []).append(kernel)
 
@@ -209,6 +213,82 @@ def _contact_partial_component_expressions(
     )
 
 
+def contact_pair_symmetry(
+    particles: Sequence[CompiledParticleRecord],
+    pair_legs: tuple[int, int],
+    outer_color_source: str,
+) -> int | None:
+    """Exchange symmetry of a contact's pair colour, for identical pair legs.
+
+    A pair of identical species gets one partial orientation, which the
+    recursion applies in both input orders: its Lorentz contraction must then
+    carry the pair colour's symmetry (antisymmetric for a structure constant,
+    symmetric for a d-symbol or an identity). Vertices whose individual
+    colour-Lorentz cells lack it (only their sum is Bose symmetric, e.g. the
+    four-gluon R2 counterterm) are projected onto it; the dropped part cancels
+    in the vertex (``projected_contact_partial_components``). ``None`` for
+    distinct species or a colour-singlet pair.
+    """
+
+    left, right = pair_legs
+    if particles[left].name != particles[right].name:
+        return None
+    if "f(" in outer_color_source:
+        return -1
+    if "d(" in outer_color_source or "Identity(" in outer_color_source:
+        return 1
+    return None
+
+
+def projected_contact_partial_components(
+    term: CompiledVertexTerm,
+    particle_by_name: Mapping[str, CompiledParticleRecord],
+    *,
+    left_leg: int,
+    right_leg: int,
+    open_legs: tuple[int, ...],
+    kind: int,
+    model_symbols: ModelSymbolRegistry,
+    symmetry: int | None,
+) -> tuple[str, ...]:
+    """Partial components projected onto the pair colour's exchange symmetry.
+
+    ``(L(a, b) + symmetry * L(b, a)) / 2`` of the pair legs; the unprojected
+    components when ``symmetry`` is ``None`` or the projection changes
+    nothing (every tree vertex whose cells carry their colour's symmetry).
+    """
+
+    direct = _contact_partial_component_expressions(
+        term,
+        particle_by_name,
+        left_leg=left_leg,
+        right_leg=right_leg,
+        open_legs=open_legs,
+        kind=kind,
+        model_symbols=model_symbols,
+    )
+    if symmetry is None:
+        return direct
+    swapped = _contact_partial_component_expressions(
+        term,
+        particle_by_name,
+        left_leg=right_leg,
+        right_leg=left_leg,
+        open_legs=open_legs,
+        kind=kind,
+        model_symbols=model_symbols,
+    )
+    projected = tuple(
+        ((_sym.E(a) + symmetry * _sym.E(b)) / 2).expand().to_canonical_string()
+        for a, b in zip(direct, swapped, strict=True)
+    )
+    unchanged = all(
+        (_sym.E(a) - _sym.E(b)).expand() == _sym.E("0")
+        for a, b in zip(direct, projected, strict=True)
+    )
+    return direct if unchanged else projected
+
+
 def _contact_final_component_expressions(
     particles: Sequence[CompiledParticleRecord],
     auxiliary: CompiledParticleRecord,
@@ -331,8 +411,8 @@ def _contact_auxiliary_color(
     colors = tuple(particle.color for particle in particles)
     if all(color == 1 for color in colors):
         return 1
-    if "f(" in term.color_source or "::f(" in term.color_source:
-        return 8
+    if "f(" in term.color_source or "d(" in term.color_source:
+        return 8  # the summed adjoint index of a contact split
     remaining = abs(colors[remaining_leg])
     result = abs(colors[result_leg])
     if remaining == 1:
@@ -577,7 +657,7 @@ def _contact_decomposition_split_proof(
         min(remaining_leg, result_leg),
         max(remaining_leg, result_leg),
     )
-    canonical_components = _contact_partial_component_expressions(
+    canonical_components = projected_contact_partial_components(
         term,
         particle_by_name,
         left_leg=pair_legs[0],
@@ -585,6 +665,7 @@ def _contact_decomposition_split_proof(
         open_legs=open_legs,
         kind=term.id,
         model_symbols=model_symbols,
+        symmetry=contact_pair_symmetry(source_particles, pair_legs, outer_color_source),
     )
     representative_indices, component_expansion = _compress_contact_components(
         canonical_components
@@ -599,12 +680,21 @@ def _contact_decomposition_split_proof(
         if source_particles[pair_legs[0]].name == source_particles[pair_legs[1]].name
         else (pair_legs, tuple(reversed(pair_legs)))
     )
+    singlets = {outer_color_source, final_color_source} == {
+        "1",
+        "UFO::{}::Identity(1,2)",
+    }
+    identities = "Identity(" in outer_color_source and not singlets
+    trilinear = "Identity(" in final_color_source and not identities and not singlets
+    # A d-symbol (counterterm contacts) is totally symmetric: no parity.
+    outer_signed = bool(outer_color_factor) and "f(" in outer_color_source
+    final_signed = bool(final_color_factor) and "f(" in final_color_source
     canonical_outer_parity = (
         _permutation_sign(
             outer_color_factor,
             (color_dummy, pair_legs[0] + 1, pair_legs[1] + 1),
         )
-        if outer_color_factor
+        if outer_signed
         else 1
     )
     orientations: list[CompiledContactOrientationProof] = []
@@ -614,7 +704,7 @@ def _contact_decomposition_split_proof(
                 outer_color_factor,
                 (color_dummy, left_leg + 1, right_leg + 1),
             )
-            if outer_color_factor
+            if outer_signed
             else 1
         )
         orientations.append(
@@ -639,7 +729,7 @@ def _contact_decomposition_split_proof(
                 final_color_factor,
                 (result_leg + 1, *final_input_tokens),
             )
-            if final_color_factor
+            if final_signed
             else 1
         )
         orientations.append(
@@ -665,12 +755,20 @@ def _contact_decomposition_split_proof(
             outer_slot=outer_color_factor.index(color_dummy),
             final_slot=final_color_factor.index(color_dummy),
         )
-        if outer_color_factor
+        if outer_color_factor and not identities and not trilinear and not singlets
         else None
     )
     return CompiledContactDecompositionSplit(
         decomposition_kind=(
-            "two-structure-constants" if outer_color_factor else "literal-color-singlet"
+            "identity-singlets"
+            if singlets
+            else "two-identities"
+            if identities
+            else "trilinear-identity"
+            if trilinear
+            else "two-structure-constants"
+            if outer_color_factor
+            else "literal-color-singlet"
         ),
         result_leg=result_leg,
         pair_legs=pair_legs,
@@ -852,6 +950,9 @@ def _four_point_contact_color_split(
     | None
 ):
     active_symbols = model_symbols or symbols.model("contact_color_parser")
+    counterterm_split = _counterterm_contact_color_split(term, result_leg)
+    if counterterm_split is not None:
+        return counterterm_split
     factors = _normalized_structure_constant_factors(term.color_expression)
     color_coefficient = _source_structure_constant_product_coefficient(
         term.color_source,
@@ -913,6 +1014,242 @@ def _four_point_contact_color_split(
             "1",
         )
     return None
+
+
+_COUNTERTERM_COLOUR_FACTOR = re.compile(
+    r"(?P<head>[df]|Identity)\((?P<args>-?\d+(?:,-?\d+)*)\)"
+)
+
+
+def _counterterm_contact_color_split(
+    term: CompiledVertexTerm,
+    result_leg: int,
+) -> (
+    tuple[
+        tuple[int, int],
+        int,
+        str,
+        str,
+        int,
+        int,
+        tuple[int, ...],
+        tuple[int, ...],
+        int,
+        str,
+    ]
+    | None
+):
+    """Split the colours of four-adjoint counterterm contacts from their source.
+
+    Counterterm vertices lowered into the tree model (``models.ct_color_flow``)
+    use two colours the structure-constant split does not cover:
+
+    * a product of two adjoint trilinear tensors sharing one summed index of
+      which at least one is a d-symbol (``d*d``, ``d*f``). The auxiliary
+      current carries the summed index; it is a U(N) colour-flow line, so the
+      split sums over U(N) (the caller compensates the U(1) term of ``d*d``);
+    * ``Identity(a,b)*Identity(c,d)``: the pair closes into a colour-singlet
+      auxiliary (a closed trace) and the remaining leg's colour passes to the
+      result.
+
+    Products of structure constants alone keep the normalized-expression split
+    below. Returns ``None`` for any other colour.
+    """
+
+    trilinear = _trilinear_singlet_contact_split(term, result_leg)
+    if trilinear is not None:
+        return trilinear
+    compact = re.sub(r"\s+|UFO::(?:\{\}::)?", "", term.color_source)
+    factors: list[tuple[str, tuple[int, ...]]] = []
+    numbers: list[str] = []
+    for text in compact.split("*"):
+        match = _COUNTERTERM_COLOUR_FACTOR.fullmatch(text)
+        if match is not None:
+            factors.append(
+                (match["head"], tuple(int(value) for value in match["args"].split(",")))
+            )
+        elif re.fullmatch(r"-?\d+(?:/\d+)?", text):
+            numbers.append(text)
+        else:
+            return None
+    coefficient = "*".join(numbers) if numbers else "1"
+    heads = sorted(head for head, _ in factors)
+    result_index = result_leg + 1
+    if len(factors) == 2 and heads == ["Identity", "Identity"]:
+        if any(len(indices) != 2 or min(indices) < 1 for _, indices in factors):
+            return None
+        if sorted(i for _, indices in factors for i in indices) != [1, 2, 3, 4]:
+            return None
+        (_, final), (_, outer) = sorted(
+            factors, key=lambda factor: result_index not in factor[1]
+        )
+        remaining = next(index for index in final if index != result_index)
+        identity = "UFO::{}::Identity(1,2)"
+        return (
+            (outer[0] - 1, outer[1] - 1),
+            remaining - 1,
+            identity,
+            identity,
+            0,
+            0,
+            outer,
+            final,
+            -1,
+            coefficient,
+        )
+    if len(factors) != 2 or "d" not in heads or "Identity" in heads:
+        return None
+    dummies = [{i for i in indices if i < 0} for _, indices in factors]
+    shared = dummies[0] & dummies[1]
+    positives = sorted(i for _, indices in factors for i in indices if i > 0)
+    if (
+        len(shared) != 1
+        or any(len(values) != 1 for values in dummies)
+        or positives != [1, 2, 3, 4]
+    ):
+        return None
+    (dummy,) = shared
+    (final_head, final), (outer_head, outer) = sorted(
+        factors, key=lambda factor: result_index not in factor[1]
+    )
+    pair = tuple(index - 1 for index in outer if index > 0)
+    remaining = tuple(
+        index - 1 for index in final if index > 0 and index != result_index
+    )
+    if len(pair) != 2 or len(remaining) != 1:
+        return None
+    return (
+        (pair[0], pair[1]),
+        remaining[0],
+        f"UFO::{{}}::{outer_head}(1,2,3)",
+        f"UFO::{{}}::{final_head}(1,2,3)",
+        1,
+        1,
+        outer,
+        final,
+        dummy,
+        coefficient,
+    )
+
+
+def _trilinear_singlet_contact_split(
+    term: CompiledVertexTerm,
+    result_leg: int,
+) -> (
+    tuple[
+        tuple[int, int],
+        int,
+        str,
+        str,
+        int,
+        int,
+        tuple[int, ...],
+        tuple[int, ...],
+        int,
+        str,
+    ]
+    | None
+):
+    """Split one adjoint trilinear tensor on a contact with a singlet leg.
+
+    ``d(a,b,c)`` or ``f(a,b,c)`` on three adjoint legs of a four-point
+    counterterm whose fourth leg is a colour singlet (the gluon-gluon-gluon-
+    vector R2): the pair following the result leg in the tensor's cyclic order
+    (the first two legs for a singlet result) joins an auxiliary carrying the
+    summed index ``d(p, q, X)``, and ``Identity(X, r)`` passes it to the
+    remaining adjoint leg or closes it with that leg into the singlet result.
+    """
+
+    compact = re.sub(r"\s+|UFO::(?:\{\}::)?", "", term.color_source)
+    numbers, factors = [], []
+    for text in compact.split("*"):
+        match = _COUNTERTERM_COLOUR_FACTOR.fullmatch(text)
+        if match is not None and match["head"] in ("d", "f"):
+            factors.append(
+                (match["head"], tuple(int(value) for value in match["args"].split(",")))
+            )
+        elif re.fullmatch(r"-?\d+(?:/\d+)?", text):
+            numbers.append(text)
+        elif match is None or match["head"] != "Identity":
+            return None
+    if len(factors) != 1:
+        return _identity_singlet_contact_split(compact, result_leg, numbers)
+    ((head, legs),) = factors
+    if len(legs) != 3 or len(set(legs)) != 3 or not set(legs) < {1, 2, 3, 4}:
+        return None
+    (singlet,) = {1, 2, 3, 4} - set(legs)
+    result = result_leg + 1
+    if result == singlet:
+        pair, remaining, final_legs = (legs[0], legs[1]), legs[2], (legs[2],)
+    else:
+        k = legs.index(result)
+        pair = (legs[(k + 1) % 3], legs[(k + 2) % 3])
+        remaining, final_legs = singlet, (result,)
+    dummy = -1
+    identity = "UFO::{}::Identity(1,2)"
+    return (
+        (pair[0] - 1, pair[1] - 1),
+        remaining - 1,
+        f"UFO::{{}}::{head}(1,2,3)",
+        identity,
+        1,
+        0,
+        (pair[0], pair[1], dummy),
+        (dummy, *final_legs),
+        dummy,
+        "*".join(numbers) if numbers else "1",
+    )
+
+
+def _identity_singlet_contact_split(compact: str, result_leg: int, numbers):
+    """Split ``Identity(a,b)`` between two adjoint legs of a contact whose
+    other two legs are colour singlets (counterterms such as gluon-gluon-
+    vector-vector R2): a singlet result closes the adjoint pair into a colour
+    singlet joined with the other singlet; an adjoint result joins the two
+    singlets and takes the other adjoint leg's colour."""
+
+    identities = [
+        tuple(int(value) for value in match["args"].split(","))
+        for text in compact.split("*")
+        if (match := _COUNTERTERM_COLOUR_FACTOR.fullmatch(text)) is not None
+        and match["head"] == "Identity"
+    ]
+    if len(identities) != 1 or len(identities[0]) != 2:
+        return None
+    (adjoint,) = identities
+    singlets = tuple(sorted({1, 2, 3, 4} - set(adjoint)))
+    if len(singlets) != 2 or min(adjoint) < 1:
+        return None
+    result = result_leg + 1
+    identity, singlet = "UFO::{}::Identity(1,2)", "1"
+    coefficient = "*".join(numbers) if numbers else "1"
+    if result in singlets:
+        (remaining,) = (leg for leg in singlets if leg != result)
+        return (
+            (adjoint[0] - 1, adjoint[1] - 1),
+            remaining - 1,
+            identity,
+            singlet,
+            0,
+            0,
+            tuple(adjoint),
+            (),
+            -1,
+            coefficient,
+        )
+    (remaining,) = (leg for leg in adjoint if leg != result)
+    return (
+        (singlets[0] - 1, singlets[1] - 1),
+        remaining - 1,
+        singlet,
+        identity,
+        0,
+        0,
+        (),
+        (remaining, result),
+        -1,
+        coefficient,
+    )
 
 
 def _source_structure_constant_product_coefficient(

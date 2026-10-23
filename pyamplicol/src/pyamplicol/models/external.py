@@ -136,7 +136,7 @@ class CompiledUFOModel(
         self._weyl_projection_support: dict[tuple[int, int, int, int], bool] = {}
         self._custom_propagator_expressions: dict[
             int,
-            tuple[_sym.Expression, tuple[str, ...]],
+            tuple[_sym.Expression, _sym.Expression, tuple[str, ...]],
         ] = {}
         self._custom_propagator_templates: dict[int, tuple[_sym.Expression, ...]] = {}
         self._color_projection_cache: dict[int, tuple[str, complex]] = {}

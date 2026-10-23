@@ -526,9 +526,9 @@ profiling or generation.
 
 `[loop] engine = "v2"` generates virtual processes with the shared-recursion
 one-loop engine (no loop diagram is listed) and publishes them as plan v4
-processes (runtime capability `rusticol.loop-runtime.v4`). Until the counterterm
-recursion is integrated, this development build closes the counterterms of a v2
-process per site (a development stage, not the final production path). The
+processes (runtime capability `rusticol.loop-runtime.v4`). Its UV and R2
+counterterms come from the same tree recursion as the Born, over the model's
+counterterm vertices (no counterterm diagram is listed either). The
 default `engine = "legacy"` keeps the per-diagram engine, which remains
 available as an oracle. A v2 evaluation can skip the poles and return stability
 estimates:

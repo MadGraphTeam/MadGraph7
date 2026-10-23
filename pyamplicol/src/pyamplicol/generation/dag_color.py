@@ -8,7 +8,7 @@ from itertools import pairwise
 
 from ..color.plan import GenericColorPlan
 from ..models.base import Model, Vertex
-from ..models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
+from ..models.contracts import U1_IDENTITY_SUFFIX, U1_SUBTRACTION_AUXILIARY_KIND
 from ..processes.ir import ProcessLegIR
 from .dag_ordering import (
     _closure_combination_matches_word,
@@ -195,6 +195,7 @@ class ColorEngine:
             self._external_fundamental_fermion_pair_count()
         )
         self._vertex_has_colour_cache: dict[tuple[int, int, int, int], bool] = {}
+        self._absorbing_sides_cache: dict[Vertex, tuple[bool, bool] | None] = {}
         self._ordered_combination_labels_cache: dict[
             tuple[int, tuple[int, ...], tuple[int, ...], int, int, int, int],
             tuple[int, ...] | None,
@@ -354,6 +355,11 @@ class ColorEngine:
             for label, representation in self._color_rep_by_label.items()
             if representation == -3
         )
+        self._loop_adjoint_labels = frozenset(
+            label
+            for label, representation in self._color_rep_by_label.items()
+            if representation == 8
+        )
         self._shared_single_trace = False
         self._shared_lc_orderings = bool(self._shared_lc_coloured_labels)
 
@@ -383,14 +389,80 @@ class ColorEngine:
             if result in self._fundamental_line_auxiliary_ids
             else _known_color_representation(self.model, result)
         )
-        open_ends = self._loop_block_word_open_ends(
-            tuple(
-                label
-                for label in ordered_external_labels
-                if label in self._shared_lc_coloured_labels
+        coloured = tuple(
+            label
+            for label in ordered_external_labels
+            if label in self._shared_lc_coloured_labels
+        )
+        traces = tuple(sorted({*left.traces, *right.traces}))
+        lines = tuple(sorted({*left.lines, *right.lines}))
+        absorbing = self._loop_block_absorbing_sides(vertex)
+        if absorbing is not None:
+            # A colour-singlet input of an adjoint merge or of a closing (a
+            # U(1)-subtraction auxiliary, a boson of a quark pair, an
+            # identity contact line) keeps its complete strings as closed
+            # lines; the word is that of the coloured input.
+            split = self._loop_block_split_singlet_strings(coloured, absorbing)
+            if split is None:
+                return ()
+            strings, coloured = split
+            lines = tuple(sorted({*lines, *strings}))
+            if not coloured:
+                # The identity alone: projected out (an adjoint output) or
+                # never generated (a closing, ``synthesize_u1_projections``).
+                return ()
+            if (
+                representation == 1
+                and not set(coloured) & self._loop_fundamental_labels
+                and self._is_physical_adjoint(vertex.particles[absorbing.index(False)])
+            ):
+                # The trace of one gluon current vanishes unless it holds a
+                # quark line (structure constants and SU(N) external legs).
+                return ()
+        open_ends = self._loop_block_word_open_ends(coloured)
+        closing = (
+            open_ends == (True, True)
+            and representation == 1
+            and (
+                absorbing is not None
+                or all(
+                    _known_color_representation(self.model, pdg) == 8
+                    for pdg in vertex.particles[:2]
+                )
             )
         )
-        if open_ends is None or open_ends != _LOOP_BLOCK_OPEN_ENDS.get(
+        if closing:
+            # A colour-identity vertex closing two adjoint currents into a
+            # colour singlet: the joined word becomes a closed trace (the
+            # multi-trace state of counterterm currents, design §6.1). Both
+            # input orders give the same trace; one is kept
+            # (``_loop_block_trace_orientation_allowed``).
+            starts = [
+                index
+                for index, label in enumerate(coloured)
+                if label in self._loop_fundamental_labels
+            ]
+            if not starts:
+                # A word a_1 .. a_k is the generator product tau^a_k .. tau^a_1
+                # (``loops.v2.blocks``), so the closed trace tr(M_left M_right)
+                # reads the joined word backwards; a trace (t_1 .. t_n) is
+                # tr(tau^t_1 .. tau^t_n). Traces of two labels are the same
+                # either way; from three labels on the orientation counts.
+                word = coloured[::-1]
+                start = word.index(min(word))
+                traces = tuple(sorted({*traces, word[start:] + word[:start]}))
+            else:
+                # Joining the open ends merges the last string (from its
+                # fundamental leg to the open end) with the first: the word,
+                # rotated to that leg, is a sequence of closed lines.
+                rotated = coloured[starts[-1] :] + coloured[: starts[-1]]
+                closed: list[tuple[int, ...]] = []
+                for label in rotated:
+                    if label in self._loop_fundamental_labels:
+                        closed.append(())
+                    closed[-1] = (*closed[-1], label)
+                lines = tuple(sorted({*lines, *closed}))
+        elif open_ends is None or open_ends != _LOOP_BLOCK_OPEN_ENDS.get(
             representation  # type: ignore[arg-type]
         ):
             return ()
@@ -400,8 +472,101 @@ class ColorEngine:
                     accuracy=left.accuracy,
                     sector_id=0,
                     line_groups=groups,
+                    traces=traces,
+                    lines=lines,
                 )
             ),
+        )
+
+    def _loop_representation(self, pdg: int) -> int | None:
+        if pdg in self._fundamental_line_auxiliary_ids:
+            return 1
+        return _known_color_representation(self.model, pdg)
+
+    def _loop_block_absorbing_sides(self, vertex: Vertex) -> tuple[bool, bool] | None:
+        """Which input of a loop-block merge is a colour singlet whose complete
+        strings become closed lines, or ``None``.
+
+        That is a merge of one colour-singlet and one adjoint input into an
+        adjoint current or a colour singlet (a closing): the word grammar
+        has no place for complete strings in an open adjoint word. Merges
+        into coloured fermions keep complete strings as inner strings of
+        their word, and merges of two colour singlets concatenate them.
+        """
+
+        cached = self._absorbing_sides_cache.get(vertex)
+        if cached is not None or vertex in self._absorbing_sides_cache:
+            return cached
+        left, right, result = (
+            self._loop_representation(pdg) for pdg in vertex.particles
+        )
+        sides: tuple[bool, bool] | None = None
+        if {left, right} == {1, 8} and result in (1, 8):
+            sides = (left == 1, right == 1)
+        self._absorbing_sides_cache[vertex] = sides
+        return sides
+
+    def _loop_block_split_singlet_strings(
+        self, coloured: tuple[int, ...], sides: tuple[bool, bool]
+    ) -> tuple[tuple[tuple[int, ...], ...], tuple[int, ...]] | None:
+        """Split a merged word into the singlet input's complete strings and
+        the adjoint input's word (``_loop_block_absorbing_sides``).
+
+        The singlet's word is a sequence of complete strings and the
+        adjoint word starts and ends open, so the split is unique: complete
+        strings are read from the front (singlet on the left) or the back.
+        """
+
+        fundamental = self._loop_fundamental_labels
+        antifundamental = self._loop_antifundamental_labels
+        word = list(coloured)
+        strings: list[tuple[int, ...]] = []
+        if sides[0]:
+            start = 0
+            while start < len(word) and word[start] in fundamental:
+                stop = start
+                while word[stop] not in antifundamental:
+                    stop += 1
+                    if stop == len(word):
+                        return None
+                strings.append(tuple(word[start : stop + 1]))
+                start = stop + 1
+            word = word[start:]
+        else:
+            stop = len(word)
+            while stop > 0 and word[stop - 1] in antifundamental:
+                start = stop - 1
+                while word[start] not in fundamental:
+                    start -= 1
+                    if start < 0:
+                        return None
+                strings.append(tuple(word[start:stop]))
+                stop = start
+            word = word[:stop]
+        return tuple(strings), tuple(word)
+
+    def _is_physical_adjoint(self, pdg: int) -> bool:
+        """An adjoint field (not a contact line of a vertex decomposition)."""
+
+        try:
+            auxiliary_kind = self.model.auxiliary_kind(pdg)
+        except (KeyError, NotImplementedError, TypeError, ValueError):
+            return False
+        return auxiliary_kind is None and self._loop_representation(pdg) == 8
+
+    def _is_u1_projection_singlet(self, pdg: int) -> bool:
+        """The U(1)-subtraction auxiliary or an identity contact line
+        (``models.compiler_color_flow.synthesize_u1_projections``): both
+        input orders of their merges are distinct colour-flow terms."""
+
+        if pdg in self._fundamental_line_auxiliary_ids:
+            return True
+        try:
+            auxiliary_kind = self.model.auxiliary_kind(pdg)
+        except (KeyError, NotImplementedError, TypeError, ValueError):
+            return False
+        return auxiliary_kind is not None and auxiliary_kind.endswith(
+            U1_IDENTITY_SUFFIX
         )
 
     def _color_plan_matches_model_roles(self) -> bool:
@@ -1329,6 +1494,27 @@ class ColorEngine:
             labels = segment if segment in self._shared_single_trace_segments else None
             self._ordered_combination_labels_cache[cache_key] = labels
             return labels
+        if self._loop_blocks and not self._loop_block_trace_orientation_allowed(
+            left_index, right_index, vertex
+        ):
+            self._ordered_combination_labels_cache[cache_key] = None
+            return None
+        if self._loop_blocks and self._loop_block_absorbing_sides(vertex) is not None:
+            # The singlet's complete strings become closed lines
+            # (``_loop_block_flows``), so only the coloured input's word must
+            # be a block word.
+            labels = (
+                proposed
+                if set(proposed)
+                <= self._shared_lc_coloured_labels | self._shared_lc_singlet_labels
+                else None
+            )
+            if labels is not None:
+                coloured = self._coloured(proposed)
+                extras = tuple(sorted(set(proposed) - set(coloured)))
+                labels = (*coloured, *extras)
+            self._ordered_combination_labels_cache[cache_key] = labels
+            return labels
         if self._shared_lc_orderings:
             labels = (
                 self._shared_lc_ordered_combination_labels(left_index, right_index)
@@ -1366,6 +1552,67 @@ class ColorEngine:
             return labels
         self._ordered_combination_labels_cache[cache_key] = None
         return None
+
+    def _loop_block_trace_orientation_allowed(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+        vertex: Vertex,
+    ) -> bool:
+        """One input order of merges whose two orders give one colour state.
+
+        Closing two adjoint words into a colour singlet gives the same trace
+        in both orders; a closed colour singlet carrying traces (an empty open
+        word) inherits the other input's word in both orders. Like colour
+        singlets (``_singlet_order_allowed``), such merges keep one order: the
+        closing with the smaller first label on the left, a closed singlet on
+        the right of a coloured input.
+
+        So do the merges of a colour singlet whose complete strings become
+        closed lines (``_loop_block_absorbing_sides``): the singlet on the
+        right. U(1)-projection singlets (the U(1)-subtraction auxiliary and
+        the identity contact lines) are the exception, as both orders are
+        distinct terms of the stage they replace a leg of; a closing that
+        takes the auxiliary on the right keeps the pattern whose replaced
+        input has the larger first label (``synthesize_u1_projections``).
+        """
+
+        left = self._coloured(left_index.ordered_external_labels)
+        right = self._coloured(right_index.ordered_external_labels)
+        state = left_index.color_state
+        if (state.traces or state.lines) and not left and right:
+            return False
+        result = vertex.particles[2]
+        absorbing = self._loop_block_absorbing_sides(vertex)
+        if absorbing is not None:
+            singlet = vertex.particles[0 if absorbing[0] else 1]
+            if not self._is_u1_projection_singlet(singlet):
+                return not absorbing[0]
+            if (
+                absorbing[1]
+                and result not in self._fundamental_line_auxiliary_ids
+                and self._loop_representation(result) == 1
+                and self._is_physical_adjoint(vertex.particles[0])
+            ):
+                return bool(left and right) and min(left) < min(right)
+            return True
+        if (
+            left
+            and right
+            and result not in self._fundamental_line_auxiliary_ids
+            and _known_color_representation(self.model, result) == 1
+            and all(
+                _known_color_representation(self.model, pdg) == 8
+                for pdg in vertex.particles[:2]
+            )
+        ):
+            return min(left) < min(right)
+        return True
+
+    def _coloured(self, labels: Iterable[int]) -> tuple[int, ...]:
+        return tuple(
+            label for label in labels if label in self._shared_lc_coloured_labels
+        )
 
     def _singlet_order_allowed(
         self,
