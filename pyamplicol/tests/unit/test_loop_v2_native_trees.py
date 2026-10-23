@@ -173,6 +173,32 @@ def test_native_double_double_equals_the_python_inputs(executors, name):
 
 
 @pytest.mark.loop_physics
+def test_native_lane_binds_the_external_parameters(executors):
+    """A native batch carries momenta, scales and the external parameters
+    only; the executor binds the kernel constants, the loop and external
+    masses, the Born couplings and the tree program's derived parameters
+    itself (the parameter program of ``native_trees``). Away from the
+    defaults (alpha_s and the top mass, which enters the loop propagators,
+    the massive spinors and the couplings' dependence) the native results
+    equal the Python inputs, and differ from those at the defaults."""
+
+    native, python = executors("gg_ttx")
+    points, scales = _points(PROCESSES["gg_ttx"][3])
+    points, scales = points[:1], scales[:1]
+    parameters = {"aS": "0.13", "MT": "171.5"}
+    evaluations = native._native_points(points, scales, parameters, Precision.double())
+    batch = native._inputs(evaluations, "double")
+    assert set(batch) == {"momenta", "scales", "parameters"}
+    names = native.exported.trees.parameter_names
+    assert batch["parameters"][0][names.index("aS")] == "0.13"
+    mine = native.evaluate(points, scales, parameters=parameters)
+    theirs = python.evaluate(points, scales, parameters=parameters)
+    _assert_same(mine, theirs, 1e-12)
+    (default,) = native.evaluate(points, scales, parameters=PARAMETERS)
+    assert default.born != mine[0].born
+
+
+@pytest.mark.loop_physics
 def test_native_scales_may_change_per_point(executors):
     """One batch at two scales equals the two single-scale batches."""
 
