@@ -517,7 +517,7 @@ def test_native_virtual_equals_the_slice(slices, name):
 
     slice_, executor = slices(name)
     points, scales = PROCESSES[name][2]()
-    poles = name not in FINITE_ONLY
+    poles = "none" if name in FINITE_ONLY else "all"
     natives = executor.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
     for native, point, scale in zip(natives, points, scales, strict=True):
         reference = slice_.evaluate(point, scale, parameters=PARAMETERS, poles=poles)
@@ -530,12 +530,12 @@ def test_native_virtual_equals_the_slice(slices, name):
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", ["gg_gg", "uux_ddxg", "uux_ggg"])
 def test_native_finite_only_equals_the_finite_part(slices, name):
-    """poles=False: one artifact, finite parts bitwise equal, poles absent."""
+    """poles="none": one artifact, finite parts bitwise equal, poles absent."""
 
     _slice, executor = slices(name)
     points, scales = PROCESSES[name][2]()
     full = executor.evaluate(points, scales, parameters=PARAMETERS)
-    finite = executor.evaluate(points, scales, parameters=PARAMETERS, poles=False)
+    finite = executor.evaluate(points, scales, parameters=PARAMETERS, poles="none")
     for a, b in zip(finite, full, strict=True):
         assert a.ir_poles is None and len(a.totals) == 7
         for component in COMPONENTS:

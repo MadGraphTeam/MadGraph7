@@ -23,13 +23,14 @@ space point and in binary64 or arbitrary precision (design §5.1):
 
 Runtime options (REQUIREMENTS_ADDENDUM B and C):
 
-* ``poles=False`` (``"none"``) evaluates the same generated slice in
-  finite-only mode: the reducer returns no pole columns, counterterm and field
-  couplings are bound only at eps^0, and the IR-pole check is skipped. Pole
-  coefficients are then absent (``None``), not zero. ``poles="uv"`` and
-  ``poles="ir"`` return only the ultraviolet or infrared pole parts of every
-  component (``poles``, design §12.4); the finite part is the same in all
-  four modes.
+* ``poles="none"`` evaluates the same generated slice in finite-only mode:
+  the reducer returns no pole columns, counterterm and field couplings are
+  bound only at eps^0, and the IR-pole check is skipped. Pole coefficients
+  are then absent (``None``), not zero. ``poles="uv"`` returns the bare
+  loop's UV poles as the virtual's (the counterterms' UV poles in their
+  components) and ``poles="ir"`` the renormalised virtual's IR poles, both
+  with every component's UV and IR parts (``poles``, design §12.4); the
+  finite part is the same in all four modes.
 * ``stability`` requests estimates (``stability.StabilityChecks``): rotation
   checks re-evaluate the point with rotated momenta, the reduction-direction
   check re-reduces every lane in the reversed frame; each check's error budget
@@ -85,6 +86,7 @@ from pyamplicol.color.connections import (
     evaluate_color_nc_terms,
 )
 from pyamplicol.color.contraction_types import NC
+from pyamplicol.config import PoleSelection
 
 from . import reference_executor as rx
 from .blocks import TreeBlocks, build_tree_blocks
@@ -135,13 +137,15 @@ from .families import (
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
 from .poles import (
-    PoleMode,
+    ORIGINS,
     catani_poles,
     has_poles,
     pole_mode,
     reducer_poles,
     select_lane,
+    select_sector,
     split_sector,
+    splits,
 )
 from .poly_affine import MonomialLayout, leg_momentum
 from .schedules import LoopSchedules, SkeletonView, build_schedules, cheapest
@@ -978,10 +982,14 @@ class PointResult:
     unless checks were asked. ``colour_contraction`` is the seed contraction
     used ("direct" or "symmetric-group-fft").
 
-    ``poles`` is the evaluation's pole mode (``poles.MODES``): in ``"uv"``
-    and ``"ir"`` the components, totals and families carry the selected
-    pole parts, and ``pole_origins[origin][component][sector]`` gives both
-    parts (``Laurent`` with the combined finite part), ``None`` otherwise.
+    ``poles`` is the evaluation's pole selection (``PoleSelection``). In
+    ``"uv"`` and ``"ir"`` the components, totals and families carry the
+    selected pole parts (``poles.select_sector``: in ``"uv"`` the virtual's
+    poles are the bare loop's UV poles, the unrenormalised amplitude's), and
+    ``pole_origins[origin][component][sector]`` gives both origins' parts of
+    every renormalised component (``Laurent`` with the combined finite part;
+    ``pole_origins["uv"]["virtual"]`` is the renormalised virtual's UV
+    part), ``None`` otherwise.
     """
 
     born: Mapping[Orders, Any]
@@ -991,7 +999,7 @@ class PointResult:
     ir_poles: Mapping[Orders, tuple[Any, Any]] | None
     stability: StabilityEstimate | None = None
     colour_contraction: str = "direct"
-    poles: PoleMode = "all"
+    poles: PoleSelection = PoleSelection.ALL
     pole_origins: Mapping[str, Mapping[str, Mapping[Orders, Laurent]]] | None = None
 
     def virtual(self, sector: Orders) -> Laurent:
@@ -1464,7 +1472,7 @@ class LoopSlice:
         *,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
-        poles: bool | PoleMode = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
         stability: StabilityChecks | None = None,
     ) -> PointResult:
         """The complete virtual at one exact point (decimal strings or rationals).
@@ -1472,8 +1480,9 @@ class LoopSlice:
         ``point`` lists the physical momenta (E, px, py, pz) of the legs in
         process order, incoming momenta as given; ``scale_squared`` is mu_R^2.
         ``parameters`` overrides external model parameters (decimal strings).
-        ``poles`` is ``"all"`` (``True``, default), ``"none"`` (``False``,
-        finite only), ``"uv"`` or ``"ir"`` (``poles``, design §12.4).
+        ``poles`` is a ``PoleSelection`` or its value: ``"all"`` (default),
+        ``"none"`` (finite only), ``"uv"`` or ``"ir"`` (``poles``, design
+        §12.4).
         """
 
         precision = precision or Precision.double()
@@ -2216,7 +2225,7 @@ class _PointEvaluation:
         (companion slice or None, its seeds of an evaluation;
         ``observables.ColumnPlan``)."""
         slice_, numbers = self.slice, self.numbers
-        split = self.mode in ("uv", "ir")
+        split = splits(self.mode)
         lanes, groups = self._groups(numerators, 0, columns)
         twin_lanes: list = []
         companion, seeds = slice_.scaleless, None
@@ -2341,7 +2350,7 @@ class _PointEvaluation:
         dimensional regularisation, so only their UV residues are kept.
         """
 
-        split = self.mode in ("uv", "ir")
+        split = splits(self.mode)
         zero = self.numbers.zero
 
         def laurent(values) -> Laurent:
@@ -2398,9 +2407,7 @@ class _PointEvaluation:
             bare_uv = self._bare(
                 {lane: Laurent(v[0], v[3], numbers.zero) for lane, v in split.items()}
             )
-            origins = {
-                origin: {name: {} for name in COMPONENTS} for origin in ("uv", "ir")
-            }
+            origins = {origin: {name: {} for name in COMPONENTS} for origin in ORIGINS}
         components: dict[str, dict[Orders, Laurent]] = {name: {} for name in COMPONENTS}
         for sector, _pairs in slice_.sectors:
             values = {
@@ -2421,11 +2428,9 @@ class _PointEvaluation:
                     Laurent,
                 )
                 for origin, part in parts.items():
-                    part["uv"] = part["uv_local"] + part[FIELD_COMPONENT]
-                    part["virtual"] = part["bare"] + part["uv"] + part["r2"]
                     for name in COMPONENTS:
                         origins[origin][name][sector] = part[name]
-                values = parts[self.mode]
+                values = select_sector(parts, self.mode, Laurent)
             else:
                 values["uv"] = values["uv_local"] + values[FIELD_COMPONENT]
                 values["virtual"] = values["bare"] + values["uv"] + values["r2"]

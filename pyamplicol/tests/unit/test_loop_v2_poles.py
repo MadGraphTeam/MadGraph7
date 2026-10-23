@@ -8,20 +8,25 @@ Checks, one phase-space point per process (HANDOFF §0.3):
   modes (native binary64, DoubleFloat and, for g g > g g, MPFR at 32
   digits), and ``"all"`` is the default;
 * the UV and IR parts of every component and of the virtual add up to the
-  combined poles; the double pole is infrared; ``"uv"`` leaves the
-  renormalised virtual without poles and ``"ir"`` keeps those of ``"all"``;
+  combined poles; the double pole is infrared; ``"uv"`` returns the bare
+  loop's UV poles, which the counterterms' UV poles cancel, and ``"ir"`` the
+  renormalised virtual's IR poles, those of ``"all"`` (user decision
+  2026-10-23);
 * the IR poles of the renormalised virtual equal Catani's operator, massless
   (g g > g g, u u~ > g g g, and g g > b b~ with a symbolic mass bound to 0 at
   rounded momenta) and massive (g g > t t~, u u~ > t t~), and the provider
   poles of g g > t t~;
-* the bare-loop UV poles cancel the UV_local counterterm poles up to the
-  textbook Feynman-gauge field renormalisation of the external legs,
-  independently of the reduction: -(bare_UV + uv_local) = sum_legs Z_i^UV
-  Born with Z_g^UV = (alpha_s/4pi)(5/3 C_A - 4/3 T_F n_f) and Z_q^UV =
-  -(alpha_s/4pi) C_F (massless and massive quarks);
+* the ``"uv"`` values (the bare-loop UV poles) cancel the UV_local
+  counterterm poles up to the textbook Feynman-gauge field renormalisation of
+  the external legs, independently of the reduction: -(bare_UV + uv_local)
+  = sum_legs Z_i^UV Born with Z_g^UV = (alpha_s/4pi)(5/3 C_A - 4/3 T_F n_f)
+  and Z_q^UV = -(alpha_s/4pi) C_F (massless and massive quarks), with and
+  without delta g_s (Drell-Yan), with four quarks and a massive pair. This
+  is the falsifiable form of bare-UV + counterterm-UV = 0: the field
+  factors' UV part in the result is fixed by UV finiteness (design §12.4);
 * the Python reference path (``LoopSlice.evaluate``) and the native executor
   agree in split mode (also at massive external legs), and the stability
-  estimates exist in every mode.
+  estimates exist in every mode and carrier.
 
 The lane-level residue is checked against NinjaRS's generic engine with
 oneloopmaster's UV- and IR-selected masters in
@@ -38,6 +43,7 @@ from pathlib import Path
 
 import pytest
 
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.v2.assemble import (
     COMPONENTS,
     LoopSlice,
@@ -47,17 +53,19 @@ from pyamplicol.loops.v2.assemble import (
 from pyamplicol.loops.v2.fields import FIELD_COMPONENT
 from pyamplicol.loops.v2.plan_export import NativeExecutor
 from pyamplicol.loops.v2.poles import (
-    MODES,
     pole_mode,
     reducer_poles,
     select_lane,
-    slot_switches,
+    select_sector,
     split_sector,
 )
 from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "loop"
 PARAMETERS = {"aS": "0.118", "MT": "173"}
+# Drell-Yan, the photon-only control (the Z excluded from the request).
+DRELL_YAN_PARAMETERS = {"aS": "0.118", "aEWM1": "132.507"}
+MODES = tuple(PoleSelection)
 # The providers' loop_sm-no_b_mass scheme; a stable top (a top width enters
 # the loop propagators as a complex mass, whose CMS counterterms are WP3.2).
 FIXED = {"MB": "0", "WT": "0"}
@@ -81,7 +89,8 @@ def _required_point(name: str, index: int = 0):
     return data["points"][index], format(mu * mu, "f"), data["rows"][index]
 
 
-# name: process, Born orders, point, external legs (gluons, quarks)
+# name: process, Born orders, point, external legs (gluons, quarks)[,
+# ignored particle ids, parameters]
 PROCESSES = {
     "gg_gg": (
         "g g > g g",
@@ -107,7 +116,26 @@ PROCESSES = {
         lambda: _legacy_point("tt"),
         (0, 4),
     ),
+    "uux_uux": (
+        "u u~ > u u~",
+        {"QCD": 2, "QED": 0},
+        lambda: _legacy_point("uux_uux"),
+        (0, 4),
+    ),
+    "dy": (
+        "u u~ > e- e+",
+        {"QCD": 0, "QED": 2},
+        lambda: _legacy_point("dy"),
+        (0, 2),
+        (23,),
+        DRELL_YAN_PARAMETERS,
+    ),
 }
+
+
+def _parameters(name: str) -> dict[str, str]:
+    entry = PROCESSES[name]
+    return entry[5] if len(entry) > 5 else PARAMETERS
 
 
 @pytest.fixture(scope="module")
@@ -119,11 +147,18 @@ def slices(loop_sm_compiled_model, loop_native):
 
     def build(name: str) -> tuple[LoopSlice, NativeExecutor]:
         if name not in built:
-            process, born, _point, _legs = PROCESSES[name]
+            process, born, _point, _legs, *rest = PROCESSES[name]
+            ignored = rest[0] if rest else ()
             loop = {k: v + (2 if k == "QCD" else 0) for k, v in born.items()}
             slice_ = LoopSlice.generate(
                 compiled,
-                SliceRequest(process, born, loop, fixed_parameters=FIXED),
+                SliceRequest(
+                    process,
+                    born,
+                    loop,
+                    fixed_parameters=FIXED,
+                    ignored_particle_ids=ignored,
+                ),
                 loop_native,
             )
             built[name] = slice_, NativeExecutor(slice_)
@@ -135,7 +170,8 @@ def slices(loop_sm_compiled_model, loop_native):
 @pytest.fixture(scope="module")
 def modes(slices):
     """One point per process and carrier in every pole mode through the
-    native executor (binary64, DoubleFloat, MPFR at 32 digits)."""
+    native executor (binary64, DoubleFloat, MPFR at 32 digits); ``None`` is
+    the default (no ``poles`` argument)."""
 
     cache: dict = {}
 
@@ -150,13 +186,14 @@ def modes(slices):
                 "arbitrary": lambda: Precision.arbitrary(32),
             }[carrier]()
             out = {}
-            for mode in (True, *MODES):
+            for mode in (None, *MODES):
+                options = {} if mode is None else {"poles": mode}
                 (out[mode],) = executor.evaluate(
                     [point],
                     [scale],
-                    parameters=PARAMETERS,
+                    parameters=_parameters(name),
                     precision=precision,
-                    poles=mode,
+                    **options,
                 )
             cache[key] = out
         return cache[key]
@@ -166,6 +203,24 @@ def modes(slices):
 
 def _scale(laurent) -> float:
     return max(abs(complex(x)) for x in laurent.coefficients)
+
+
+def _assert_selection(result) -> None:
+    """The selected components of a "uv" or "ir" result
+    (``poles.select_sector``): the origin's parts, except that the virtual's
+    poles in "uv" are the bare loop's UV poles, with the renormalised
+    virtual's finite part."""
+
+    parts = result.pole_origins[result.poles]
+    for component in COMPONENTS:
+        if component != "virtual" or result.poles == "ir":
+            assert result.components[component] == parts[component], component
+    if result.poles == "uv":
+        for sector, virtual in result.components["virtual"].items():
+            bare = parts["bare"][sector]
+            assert virtual.finite == parts["virtual"][sector].finite
+            assert virtual.single_pole == bare.single_pole
+            assert virtual.double_pole == bare.double_pole == 0
 
 
 # ----------------------------------------------------------------- modes
@@ -184,7 +239,7 @@ def _scale(laurent) -> float:
 )
 def test_finite_parts_are_identical_in_every_mode(modes, name, carrier):
     results = modes(name, carrier)
-    default, combined = results[True], results["all"]
+    default, combined = results[None], results["all"]
     assert default.poles == combined.poles == "all"
     assert default.pole_origins is None
     # "all" is the default, bit for bit.
@@ -211,12 +266,13 @@ def test_uv_and_ir_parts_add_up_to_the_combined_poles(modes, name):
     results = modes(name)
     combined, uv, ir = results["all"], results["uv"], results["ir"]
     assert uv.ir_poles is None and ir.ir_poles == combined.ir_poles
-    for origin, result in (("uv", uv), ("ir", ir)):
-        # The selected components are the origin's parts.
-        assert result.pole_origins[origin] == result.components
+    assert uv.pole_origins == ir.pole_origins
+    for result in (uv, ir):
+        _assert_selection(result)
+    origins = uv.pole_origins
     for component in COMPONENTS:
         for sector, whole in combined.components[component].items():
-            u, i = uv.components[component][sector], ir.components[component][sector]
+            u, i = origins["uv"][component][sector], origins["ir"][component][sector]
             scale = max(_scale(whole), _scale(combined.virtual(sector)))
             assert abs(u.single_pole + i.single_pole - whole.single_pole) <= (
                 SPLIT_TOLERANCE * scale
@@ -225,12 +281,23 @@ def test_uv_and_ir_parts_add_up_to_the_combined_poles(modes, name):
             assert abs(i.double_pole - whole.double_pole) <= SPLIT_TOLERANCE * scale
     for sector, whole in combined.components["virtual"].items():
         scale = _scale(whole)
-        # The renormalised virtual is UV finite; its IR poles are all of them.
-        assert abs(uv.virtual(sector).single_pole) <= SPLIT_TOLERANCE * scale
+        # "ir": the renormalised virtual's IR poles, all of its poles.
         assert abs(ir.virtual(sector).single_pole - whole.single_pole) <= (
             SPLIT_TOLERANCE * scale
         )
         assert ir.virtual(sector).double_pole == whole.double_pole
+        # "uv": the bare loop's UV poles; the counterterms' UV poles cancel
+        # them (the renormalised virtual's UV part).
+        bare_uv = uv.virtual(sector).single_pole
+        counterterms = (
+            uv.components["uv"][sector].single_pole
+            + uv.components["r2"][sector].single_pole
+        )
+        assert abs(bare_uv) > 1e-3 * scale
+        assert abs(bare_uv + counterterms) <= SPLIT_TOLERANCE * scale
+        assert abs(origins["uv"]["virtual"][sector].single_pole) <= (
+            SPLIT_TOLERANCE * scale
+        )
         # UV_local and R2 poles are ultraviolet.
         for component in ("uv_local", "r2"):
             assert ir.components[component][sector].single_pole == 0
@@ -275,11 +342,14 @@ def test_leading_colour_selections_split_the_projected_poles(
         for mode in ("all", "uv", "ir")
     }
     combined = results["all"].components["virtual"]
+    for mode in ("uv", "ir"):
+        _assert_selection(results[mode])
     for sector, whole in combined.items():
         uv = results["uv"].virtual(sector)
         ir = results["ir"].virtual(sector)
         assert uv.finite == ir.finite == whole.finite
-        assert abs(uv.single_pole) <= SPLIT_TOLERANCE * _scale(whole)
+        renormalised = results["uv"].pole_origins["uv"]["virtual"][sector]
+        assert abs(renormalised.single_pole) <= SPLIT_TOLERANCE * _scale(whole)
         assert abs(ir.single_pole - whole.single_pole) <= SPLIT_TOLERANCE * _scale(
             whole
         )
@@ -334,29 +404,32 @@ def _observables(model, native, accuracy: str):
 
 def _assert_split_outputs(results, scales):
     """Per output: the finite part is that of "all" bit for bit, the UV and
-    IR parts of every component add up to the poles of "all", the
-    renormalised virtual has no UV pole and its IR poles are those of "all"
-    (``scales`` per output and sector)."""
+    IR parts of every component add up to the poles of "all", "uv" selects
+    the output's bare-loop UV poles (the renormalised virtual has no UV
+    pole) and "ir" the renormalised IR poles, those of "all" (``scales`` per
+    output and sector)."""
 
     for key, whole in results["all"].items():
         uv, ir = results["uv"][key], results["ir"][key]
         assert uv.pole_origins == ir.pole_origins
-        for origin, result in (("uv", uv), ("ir", ir)):
-            assert result.pole_origins[origin] == result.components
+        for result in (uv, ir):
+            _assert_selection(result)
         for component in COMPONENTS:
             for sector, laurent in whole.components[component].items():
                 bound = SPLIT_TOLERANCE * scales[key, sector]
                 u, i = (
-                    uv.components[component][sector],
-                    ir.components[component][sector],
+                    uv.pole_origins["uv"][component][sector],
+                    ir.pole_origins["ir"][component][sector],
                 )
                 assert u.finite == i.finite == laurent.finite, (key, component)
+                assert uv.components[component][sector].finite == laurent.finite
                 for k in (1, 2):
                     total = u.coefficients[k] + i.coefficients[k]
                     assert abs(total - laurent.coefficients[k]) <= bound
         for sector, laurent in whole.components["virtual"].items():
             bound = SPLIT_TOLERANCE * scales[key, sector]
-            assert abs(uv.virtual(sector).single_pole) <= bound
+            renormalised = uv.pole_origins["uv"]["virtual"][sector]
+            assert abs(renormalised.single_pole) <= bound
             for k in (1, 2):
                 difference = (
                     ir.virtual(sector).coefficients[k] - laurent.coefficients[k]
@@ -480,26 +553,35 @@ def test_massive_catani_equals_the_gg_ttx_provider_poles(modes):
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("name", ("gg_gg", "uux_ggg", "gg_ttx"))
+@pytest.mark.parametrize(
+    "name", ("gg_gg", "uux_ggg", "gg_ttx", "uux_ttx", "uux_uux", "dy")
+)
 def test_bare_uv_poles_cancel_the_counterterms_up_to_field_renormalisation(modes, name):
-    """Independent of the reduction's residue: the textbook Feynman-gauge
-    Z^UV of every external leg times the Born (the field factor multiplies
-    the Born once per leg, delta-Z / 2 in the amplitude)."""
+    """The "uv" values are the bare loop's UV poles. Independently of the
+    reduction's residue, the UV_local counterterms and the textbook
+    Feynman-gauge Z^UV of every external leg times the Born (the field factor
+    multiplies the Born once per leg, delta-Z / 2 in the amplitude) cancel
+    them: with delta g_s (gluons, four quarks), without it (Drell-Yan, the
+    photon vertex), and with a massive pair (delta m_t, the top's field
+    factor mixing UV and IR)."""
 
     gluons, quarks = PROCESSES[name][3]
     a = ALPHA_S / (4 * math.pi)
     z_gluon = a * (5 / 3 * CA - 4 / 3 * TF * LOOP_FLAVOURS)
     z_quark = -a * CF
     result = modes(name)["uv"]
-    ((sector, bare),) = result.components["bare"].items()
+    ((sector, virtual),) = result.components["virtual"].items()
+    bare = result.pole_origins["uv"]["bare"][sector]
+    assert (virtual.single_pole, virtual.double_pole) == (bare.single_pole, 0)
     local = result.components["uv_local"][sector]
     fields = result.components[FIELD_COMPONENT][sector]
     born = float(result.born[next(iter(result.born))])
     expected = (gluons * z_gluon + quarks * z_quark) * born
-    got = -(float(bare.single_pole.real) + float(local.single_pole.real))
-    assert abs(got - expected) <= POLE_TOLERANCE * abs(float(bare.single_pole.real))
+    bare_uv = float(virtual.single_pole.real)
+    got = -(bare_uv + float(local.single_pole.real))
+    assert abs(got - expected) <= POLE_TOLERANCE * abs(bare_uv)
     assert abs(float(fields.single_pole.real) - expected) <= POLE_TOLERANCE * abs(
-        float(bare.single_pole.real)
+        bare_uv
     )
 
 
@@ -542,20 +624,46 @@ def test_native_estimates_exist_in_every_mode(slices):
             assert result.stability.finite < 1e-10
 
 
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("carrier", ("extended", "arbitrary"))
+def test_split_estimates_in_the_extended_carriers(slices, carrier):
+    """ "uv" and "ir" with a rotation and the rescaled reduction check in
+    DoubleFloat and MPFR (32 digits): the estimates exist and bound the
+    finite part and the selected single pole far below binary64."""
+
+    _slice, executor = slices("gg_gg")
+    point, scale = PROCESSES["gg_gg"][2]()
+    precision = (
+        Precision.double_double() if carrier == "extended" else Precision.arbitrary(32)
+    )
+    checks = StabilityChecks((Rotation.about("z", "3/5", "4/5"),), True, True)
+    for mode in ("uv", "ir"):
+        (result,) = executor.evaluate(
+            [point],
+            [scale],
+            parameters=PARAMETERS,
+            precision=precision,
+            poles=mode,
+            stability=checks,
+        )
+        estimate = result.stability
+        assert len(estimate.coefficients) == 3
+        assert estimate.finite < 1e-20 and estimate.coefficients[1] < 1e-20, mode
+
+
 # ----------------------------------------------------------------- unit
 
 
 @pytest.mark.loop_fast
 def test_pole_mode_options():
-    assert pole_mode(True) == "all" and pole_mode(False) == "none"
-    assert [pole_mode(m) for m in MODES] == list(MODES)
-    with pytest.raises(ValueError):
-        pole_mode("both")
-    assert [reducer_poles(m) for m in MODES] == [True, False, "split", "split"]
-    on = slot_switches("none")
-    assert on("uv_local", 0) and not on("uv_local", -1) and not on("r2", -2)
-    for mode in ("all", "uv", "ir"):
-        assert all(slot_switches(mode)("uv_local", p) for p in (0, -1, -2))
+    """One spelling: a ``PoleSelection`` or its value; no bool."""
+
+    assert [pole_mode(m.value) for m in MODES] == list(MODES)
+    assert all(pole_mode(m) is m for m in MODES)
+    for bad in ("both", True, False, None):
+        with pytest.raises(ValueError, match="poles must be one of"):
+            pole_mode(bad)
+    assert [reducer_poles(m) for m in MODES] == ["all", "none", "split", "split"]
 
 
 @pytest.mark.loop_fast
@@ -580,9 +688,18 @@ def test_lane_and_sector_splits_are_exact_for_exact_numbers():
         assert u.finite == i.finite == whole.finite
         assert u.single_pole + i.single_pole == whole.single_pole
         assert u.double_pole + i.double_pole == whole.double_pole
-    total = {o: sum((p.single_pole for p in parts[o].values()), q(0)) for o in parts}
-    assert total["uv"] == 0
-    assert total["ir"] == sum(v.single_pole for v in values.values())
+    # The sums: uv = uv_local + fields; virtual = bare + uv + r2, UV finite.
+    assert parts["uv"]["virtual"] == Laurent(q(17, 2), q(0), q(0))
+    assert parts["ir"]["virtual"] == Laurent(q(17, 2), q(4), q(-2))
+    assert parts["uv"]["uv"] == Laurent(q(1, 2), q(-3), q(0))
+    # "ir" selects the IR parts; "uv" the UV parts, with the bare loop's UV
+    # poles as the virtual's (the unrenormalised amplitude).
+    assert select_sector(parts, PoleSelection.IR, Laurent) == parts["ir"]
+    uv = select_sector(parts, PoleSelection.UV, Laurent)
+    assert uv["virtual"] == Laurent(q(17, 2), q(3), q(0))
+    assert {k: v for k, v in uv.items() if k != "virtual"} == {
+        k: v for k, v in parts["uv"].items() if k != "virtual"
+    }
 
 
 @pytest.mark.loop_fast
@@ -667,8 +784,9 @@ def test_symbolic_mass_bound_to_zero_at_rounded_momenta(
     p3 = [Fraction(v) for v in point[2]]
     assert p3[0] ** 2 - p3[1] ** 2 - p3[2] ** 2 - p3[3] ** 2 != 0
     parameters = {**PARAMETERS, "MB": "0"}
+    executor = NativeExecutor(slice_)
     results = {
-        mode: NativeExecutor(slice_).evaluate(
+        mode: executor.evaluate(
             [point], ["1000000"], parameters=parameters, poles=mode
         )[0]
         for mode in MODES

@@ -142,33 +142,43 @@ relocation with the same native build. A dedicated acceptance test covers this.
   ultraviolet or only the infrared pole parts. The finite part is identical in
   all four modes. The option reaches TOML, CLI, the Python API and the result
   accessors (and the SDKs where they evaluate loop virtuals).
-- Semantics of the renormalised virtual (design §12.4, for the coordinator's
-  confirmation): every component's poles are split by origin (bare loop by its
-  integrals, counterterms ultraviolet, external-field factors by the UV
-  finiteness of the renormalised virtual), so `"uv"` leaves the renormalised
-  virtual pole free and lists the bare-loop and counterterm UV poles separately,
-  and `"ir"` gives Catani's poles of the renormalised virtual with the bare
-  loop's IR part; both parts are accessible together.
+- Semantics, decided by the user (~19:20 UTC, relayed by the coordinator's
+  DECISIONS 2026-10-23; binding): "poles='uv' should return the UV poles of
+  the bare (unrenormalised) one-loop amplitude, with the counterterms' UV
+  poles also accessible separately so I can check renormalisation;
+  poles='ir' returns the IR (Catani) poles of the renormalised virtual."
+  - `"uv"`: the selected values (`VirtualEvaluation.values` and the
+    per-order, correlated and resolved outputs) are the UV poles of the bare
+    loop amplitude interfered with the Born, the double pole zero. The
+    counterterms' UV poles (`uv_local`, `uv_external_fields`, their sum `uv`,
+    and `r2`) are in `pole_parts`; bare + counterterm UV poles = 0 per
+    Laurent coefficient where renormalisation is complete.
+  - `"ir"`: the IR poles of the renormalised virtual, equal to Catani's
+    operator.
+  - The finite part is identical in all four modes; `"all"` stays the default
+    and `"none"` the finite-only mode.
+  - Design §12.4 states what is a definition and what is evidence: a UFO
+    model writes the external-field factors with one eps, so their UV part is
+    fixed by the UV finiteness of the renormalised virtual and the bare +
+    counterterm cancellation in `pole_parts` holds by construction. The
+    independent evidence is the bare-loop UV residue against the generic
+    engine's UV-selected masters, bare UV + UV_local + the textbook
+    Feynman-gauge field renormalisation of every leg = 0, and the `"ir"`
+    poles against Catani's operator.
+- Companion plan (coordinator decision under the user's relaxed generation
+  budget, DECISIONS 2026-10-23): kept as built, always generated and stored,
+  so one artifact serves every mode. Its generation cost (about 11 % of the
+  slice generation at five legs and 15 % at six, plus export) is paid by
+  every process; its evaluation cost only by `"uv"` and `"ir"`: +1 %
+  (u u~ > e- e+ g g, six legs with a photon), +7 % (g g > g g g, five legs)
+  and +13 % (g g > g g g g, six legs) over `"all"` (design §12.4).
 - As built (WP2.10 after WP2.6, design §12.2 and §12.4): TOML
   `evaluation.poles`, CLI `--poles` and the API `poles=` take all four values
   (`PoleSelection.UV`, `.IR`); one artifact serves them all (it stores the
   companion plan of the certified-scaleless families that `"uv"`/`"ir"` run;
   artifacts written before the split are refused at load with a regeneration
-  message, no backward compatibility). `VirtualEvaluation.values` holds
-  the selected origin's parts of the renormalised virtual and
-  `VirtualEvaluation.pole_parts` both origins by component (virtual, bare, uv,
-  r2, uv_local, uv_external_fields), also for correlated and resolved
-  outputs. The SDKs evaluate legacy plan-v3 artifacts only; v4 SDK
-  evaluation (WP3.1) takes the same option.
-- Open decision for the coordinator or the user. Under `"uv"` the
-  renormalised virtual's poles vanish by construction, because the field
-  factors' UV part is fixed by UV finiteness. A missing UV counterterm
-  therefore shows only as a Catani mismatch in `"ir"`/`"all"`, and in the
-  per-component `pole_parts` (bare-loop UV against UV_local), not in the `"uv"`
-  values. `"ir"` returns the poles of `"all"`, at +1 % (five legs) to +15 %
-  (gg→gggg) evaluation cost and a 15 % share of the generation at six legs
-  (design §12.4). Two alternatives remain open:
-  - `"uv"` returning the bare-loop UV poles, as the masters' selection does
-    for the unrenormalised integrals;
-  - generating the companion only on request, in which case its artifacts
-    refuse `"uv"`/`"ir"`.
+  message, no backward compatibility). `VirtualEvaluation.pole_parts` holds
+  both origins by component (virtual, bare, uv, r2, uv_local,
+  uv_external_fields), also for correlated and resolved outputs. The SDKs
+  evaluate legacy plan-v3 artifacts only; v4 SDK evaluation (WP3.1) takes
+  the same option.

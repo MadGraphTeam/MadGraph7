@@ -899,7 +899,7 @@ def test_schedules_agree_exactly_on_physical_rows(slices, name):
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
 @pytest.mark.parametrize("name", SLICE)
 def test_finite_only_equals_the_finite_part(slices, evaluated, name, carrier):
-    """poles=False: the same slice, finite parts equal, pole parts absent."""
+    """poles="none": the same slice, finite parts equal, pole parts absent."""
 
     fixture = _fixture(name)
     for full, point, scale in zip(
@@ -913,7 +913,7 @@ def test_finite_only_equals_the_finite_part(slices, evaluated, name, carrier):
             scale,
             parameters=PARAMETERS,
             precision=CARRIERS[carrier],
-            poles=False,
+            poles="none",
         )
         assert finite.ir_poles is None and finite.stability is None
         assert len(finite.totals) == 7
@@ -970,7 +970,7 @@ def test_stability_checks_are_optional_and_combinable(slices, evaluated):
     assert full.families and all(
         float(x) >= 0 for errors in full.families.values() for x in errors
     )
-    finite = run(StabilityChecks(ROTATIONS[:1], True), poles=False)
+    finite = run(StabilityChecks(ROTATIONS[:1], True), poles="none")
     assert len(finite.coefficients) == 1 and finite.finite == finite.coefficients[0]
 
 

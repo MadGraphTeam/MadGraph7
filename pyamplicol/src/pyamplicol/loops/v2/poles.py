@@ -1,18 +1,28 @@
 # SPDX-License-Identifier: 0BSD
 """Pole selection of the v2 virtual: ``poles = "all" | "none" | "uv" | "ir"``
-(design §12.4, user request 2026-10-23).
+(design §12.4; user request and decision 2026-10-23, REQUIREMENTS_ADDENDUM I).
 
 Every pole coefficient of the Born-virtual interference is split by origin
 with two regulators, ``P/eps = P_UV/eps_UV + P_IR/eps_IR`` and
-``D/eps^2 = D/eps_IR^2`` (at one loop the double pole is always infrared):
+``D/eps^2 = D/eps_IR^2`` (at one loop the double pole is always infrared).
+The selected virtual (``PointResult.components["virtual"]``, the public
+``values``) is, per mode:
 
-* ``"all"`` (default) returns ``P_UV + P_IR`` and ``D`` (eps_UV = eps_IR, the
-  existing result);
-* ``"none"`` is the finite-only mode (no pole is computed; absent, not zero);
-* ``"uv"`` returns the ultraviolet parts, ``"ir"`` the infrared parts.
+* ``"all"`` (default): the renormalised virtual's poles ``P_UV + P_IR`` and
+  ``D`` (eps_UV = eps_IR, the existing result);
+* ``"none"``: the finite-only mode (no pole is computed; absent, not zero);
+* ``"uv"``: the UV poles of the BARE (unrenormalised) loop amplitude, the
+  reduction's UV poles (``P_UV`` of ``bare``; the double pole is 0). The
+  counterterms' UV poles are the selected ``uv`` (UV_local plus the
+  external-field factors' UV part) and ``r2`` components, and both origins of
+  every component are in ``PointResult.pole_origins``: bare + counterterm UV
+  poles = the renormalised virtual's UV poles, zero where renormalisation is
+  complete;
+* ``"ir"``: the IR poles of the RENORMALISED virtual, which Catani's operator
+  predicts (``catani_poles``).
 
-The finite part is identical in all four modes: the selection never touches a
-finite term. Origins per component (``assemble.COMPONENTS``):
+The finite part is identical in all four modes: the selection never touches
+a finite term. Origins per component (``assemble.COMPONENTS``):
 
 * ``bare``: every reduction lane carries, besides its combined Laurent
   integrals, the UV residue of its integral (``V2Reducer`` ``poles="split"``,
@@ -24,17 +34,16 @@ finite term. Origins per component (``assemble.COMPONENTS``):
 * ``uv_external_fields``: the model's on-shell external-field factors are
   written with one eps (UFO ``particle.counterterm``; a massless delta-Z,
   Z_UV (1/eps_UV - 1/eps_IR), vanishes and is omitted, a massive one mixes
-  1/eps_UV and 2/eps_IR). Their ultraviolet part follows from the ultraviolet
-  finiteness of the renormalised virtual: ``fields_UV = -(bare_UV + uv_local
-  + r2)`` per sector and pole coefficient, and ``fields_IR = fields -
-  fields_UV``. For loop_sm this is the textbook Feynman-gauge field
-  renormalisation of every external leg (``tests/unit/test_loop_v2_poles.py``
-  checks it against those constants, independently of the reduction).
-
-Consequently the renormalised virtual has no UV pole (``"uv"``: zero up to
-rounding; the components report the bare-loop UV poles and the counterterm
-UV poles separately), and its IR poles equal those of ``"all"``, which
-Catani's operator predicts (``catani_poles``; massless and massive emitters).
+  1/eps_UV and 2/eps_IR). A UFO model does not state the origin, so their
+  ultraviolet part is fixed by the ultraviolet finiteness of the renormalised
+  virtual: ``fields_UV = -(bare_UV + uv_local + r2)`` per sector and pole
+  coefficient, and ``fields_IR = fields - fields_UV``. The bare-plus-
+  counterterm UV cancellation is therefore exact by construction; what is
+  tested is ``fields_UV`` against the textbook Feynman-gauge field
+  renormalisation of every external leg of loop_sm, the residue against the
+  generic engine's UV-selected masters and the ``"ir"`` poles against
+  Catani's operator (``tests/unit/test_loop_v2_poles.py``,
+  ``rust/loop-reduction/tests/runtime_v2_reduce.rs``).
 
 ``catani_poles`` is the IR-pole prediction of the renormalised virtual
 (Catani, Dittmaier, Trocsanyi, Phys. Lett. B500 (2001) 149): per ordered pair
@@ -48,45 +57,55 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from fractions import Fraction
-from typing import Any, Literal
+from typing import Any
 
-PoleMode = Literal["all", "none", "uv", "ir"]
-MODES: tuple[PoleMode, ...] = ("all", "none", "uv", "ir")
+from pyamplicol.config import PoleSelection
+
+# The origins of a split pole (``PointResult.pole_origins``, the public
+# ``VirtualPoleParts``).
 ORIGINS = ("uv", "ir")
 # Components whose poles are ultraviolet by origin (local counterterms).
 LOCAL_UV = ("r2", "uv_local")
 
 
-def pole_mode(poles: bool | str) -> PoleMode:
-    """The pole mode of an evaluation option: ``True`` is ``"all"``,
-    ``False`` is ``"none"`` (finite only)."""
+def pole_mode(poles: PoleSelection | str) -> PoleSelection:
+    """The pole selection of an evaluation option: a ``PoleSelection`` or its
+    value (one spelling; a bool is refused)."""
 
-    if poles is True:
+    if isinstance(poles, str):
+        try:
+            return PoleSelection(poles)
+        except ValueError:
+            pass
+    choices = ", ".join(repr(item.value) for item in PoleSelection)
+    raise ValueError(f"poles must be one of {choices}, not {poles!r}")
+
+
+def reducer_poles(mode: PoleSelection) -> str:
+    """The ``poles`` option of the native reducer for a selection: the
+    combined Laurent integrals (``"all"``), the finite part (``"none"``) or
+    ``"split"`` (combined Laurent plus each lane's UV residue)."""
+
+    if mode == PoleSelection.ALL:
         return "all"
-    if poles is False:
+    if mode == PoleSelection.NONE:
         return "none"
-    if isinstance(poles, str) and poles in MODES:
-        return poles  # type: ignore[return-value]
-    raise ValueError(f"poles must be one of {MODES} (or a bool), not {poles!r}")
-
-
-def reducer_poles(mode: PoleMode) -> bool | str:
-    """The ``poles`` option of the native reducer for a mode: the combined
-    Laurent integrals (True), the finite part (False) or ``"split"``
-    (combined Laurent plus each lane's UV residue)."""
-
-    if mode == "all":
-        return True
-    if mode == "none":
-        return False
     return "split"
 
 
-def has_poles(mode: PoleMode) -> bool:
-    return mode != "none"
+def has_poles(mode: PoleSelection) -> bool:
+    return mode != PoleSelection.NONE
 
 
-def select_lane(values: Sequence[Any], mode: PoleMode, zero: Any) -> tuple[Any, ...]:
+def splits(mode: PoleSelection) -> bool:
+    """Whether ``mode`` splits the poles by origin (``"uv"`` and ``"ir"``)."""
+
+    return mode in (PoleSelection.UV, PoleSelection.IR)
+
+
+def select_lane(
+    values: Sequence[Any], mode: PoleSelection, zero: Any
+) -> tuple[Any, ...]:
     """A lane's ``[finite, 1/eps, 1/eps^2]`` in ``mode`` from the reducer's
     split columns ``[finite, 1/eps, 1/eps^2, 1/eps_UV]``."""
 
@@ -104,14 +123,16 @@ def split_sector(
     field_component: str,
     laurent: Callable[..., Any],
 ) -> dict[str, dict[str, Any]]:
-    """UV and IR parts of the local components of one sector.
+    """UV and IR parts of every component of one sector (or output column).
 
     ``components`` maps ``bare``, ``r2``, ``uv_local`` and the field
     component to their combined Laurent values (``finite, single_pole,
     double_pole``); ``bare_uv`` is the bare loop's UV Laurent (finite part
-    unused, double pole zero). Returns ``{origin: {component: Laurent}}``:
-    each part keeps the combined finite part, and the two parts' poles add up
-    to the combined poles (to rounding).
+    unused, double pole zero). Returns ``{origin: {component: Laurent}}``
+    for those four components and the sums ``uv`` (UV_local plus fields) and
+    ``virtual`` (bare + uv + r2, the renormalised virtual): each part keeps
+    the combined finite part, and the two parts' poles add up to the
+    combined poles (to rounding).
     """
 
     def poles(value) -> tuple[Any, Any]:
@@ -125,28 +146,43 @@ def split_sector(
         -(ultraviolet["bare"][k] + ultraviolet["uv_local"][k] + ultraviolet["r2"][k])
         for k in (0, 1)
     )
-    out: dict[str, dict[str, Any]] = {"uv": {}, "ir": {}}
+    out: dict[str, dict[str, Any]] = {origin: {} for origin in ORIGINS}
     for name, (single, double) in ultraviolet.items():
         value = components[name]
         out["uv"][name] = laurent(value.finite, single, double)
         out["ir"][name] = laurent(
             value.finite, value.single_pole - single, value.double_pole - double
         )
+    for part in out.values():
+        part["uv"] = part["uv_local"] + part[field_component]
+        part["virtual"] = part["bare"] + part["uv"] + part["r2"]
     return out
 
 
-def slot_switches(mode: PoleMode) -> Callable[[str, int], bool]:
-    """Which counterterm slots (component, eps power) an evaluation needs.
+def select_sector(
+    parts: Mapping[str, Mapping[str, Any]],
+    mode: PoleSelection,
+    laurent: Callable[..., Any],
+) -> dict[str, Any]:
+    """The components an evaluation in ``mode`` (``"uv"`` or ``"ir"``)
+    returns for one sector, from ``split_sector``'s parts.
 
-    ``"none"`` drops every pole slot (finite-only). ``"all"``, ``"uv"`` and
-    ``"ir"`` need every slot: in ``"ir"`` the UV_local pole slots fix the IR
-    part of the external-field factors (``split_sector``)."""
+    ``"ir"``: every component's IR part; the virtual's are the IR poles of
+    the renormalised virtual (Catani's operator). ``"uv"``: every
+    component's UV part, except the virtual, whose poles are the bare
+    loop's UV poles (the unrenormalised amplitude) with the renormalised
+    virtual's finite part, as in every mode. The counterterms' UV poles are
+    then the ``uv`` and ``r2`` components, and virtual + uv + r2 poles are
+    the renormalised virtual's UV poles (``parts["uv"]["virtual"]``).
+    """
 
-    def on(component: str, power: int) -> bool:
-        del component
-        return power == 0 or mode != "none"
-
-    return on
+    selected = dict(parts[mode])
+    if mode == "uv":
+        virtual, bare = selected["virtual"], selected["bare"]
+        selected["virtual"] = laurent(
+            virtual.finite, bare.single_pole, bare.double_pole
+        )
+    return selected
 
 
 # --------------------------------------------------------------- Catani
@@ -224,14 +260,13 @@ def _minkowski_dot(a: Sequence[Fraction], b: Sequence[Fraction]) -> Fraction:
 
 __all__ = [
     "LOCAL_UV",
-    "MODES",
     "ORIGINS",
-    "PoleMode",
     "catani_poles",
     "has_poles",
     "pole_mode",
     "reducer_poles",
     "select_lane",
-    "slot_switches",
+    "select_sector",
     "split_sector",
+    "splits",
 ]

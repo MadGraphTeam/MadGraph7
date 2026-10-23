@@ -109,15 +109,16 @@ class PoleSelection(StrEnum):
       regulator (eps_UV = eps_IR);
     * ``none``: the finite part only; the poles are absent and never
       computed;
-    * ``uv``: the ultraviolet parts of the poles (the renormalised virtual
-      has none: zero up to rounding; the bare-loop and counterterm UV poles
-      are returned separately, ``VirtualEvaluation.pole_parts``);
-    * ``ir``: the infrared parts (for the renormalised virtual, the poles of
-      ``all``, i.e. Catani's operator).
+    * ``uv``: the UV poles of the bare (unrenormalised) one-loop amplitude
+      interfered with the Born (the reduction's UV poles; the double pole is
+      zero); the counterterms' UV poles are accessible separately
+      (``VirtualEvaluation.pole_parts``), so that bare + counterterm UV poles
+      can be checked to cancel;
+    * ``ir``: the IR poles of the renormalised virtual (Catani's operator).
 
     Every pole is split by origin, P/eps = P_UV/eps_UV + P_IR/eps_IR; the
-    double pole is infrared. The finite part is the same under every
-    selection.
+    double pole is infrared. The finite part is the renormalised virtual's,
+    the same under every selection.
     """
 
     ALL = "all"

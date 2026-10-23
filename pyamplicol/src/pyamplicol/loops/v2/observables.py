@@ -89,6 +89,7 @@ from pyamplicol.color.connections import (
     contract_connected_tensor_nc_terms,
 )
 from pyamplicol.color.correlator_matrices import ColorCorrelator
+from pyamplicol.config import PoleSelection
 from pyamplicol.correlators import CorrelatorConfig
 
 from . import reference_executor as rx
@@ -127,7 +128,7 @@ from .plan_export import (
     SeedColumn,
     export_plan,
 )
-from .poles import split_sector
+from .poles import ORIGINS, has_poles, pole_mode, select_sector, split_sector, splits
 from .stability import (
     ROTATION,
     Budget,
@@ -856,7 +857,7 @@ class ObservableSlice:
         ward: WardVector | None = None,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
-        poles: bool | str = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
         stability: StabilityChecks | None = None,
     ) -> dict[str, PointResult]:
         """Correlated outputs at one point, one ``PointResult`` per history id.
@@ -899,7 +900,7 @@ class ObservableSlice:
         spin: Mapping[int, Any] | None = None,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
-        poles: bool | str = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
         stability: StabilityChecks | None = None,
     ) -> ResolvedObservables:
         """Helicity- and/or colour-resolved outputs (design §8.5)."""
@@ -927,7 +928,7 @@ class ObservableSlice:
         rows: Iterable[rx.Row] | None = None,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
-        poles: bool = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
     ) -> dict[tuple[rx.Row, int, Orders], Laurent]:
         """Colour projections <T_k|M(h)> of the bare loop amplitude.
 
@@ -937,9 +938,15 @@ class ObservableSlice:
         h with a unit Born, so its numerator is the loop amplitude's colour
         projection, i/(16 pi^2) sum_c K'[c, k] L_c(h), at amplitude level
         (complex, no initial average) per loop-amplitude order. Full colour.
+        ``poles`` is ``"all"`` or ``"none"`` (the bare loop's projections have
+        no counterterms to split against).
         """
 
         from .colour import BornBasis
+
+        mode = pole_mode(poles)
+        if splits(mode):
+            raise ValueError("loop colour projections take poles 'all' or 'none'")
 
         (precision or Precision.double()).require_reference()
         slice_ = self.slice
@@ -967,7 +974,7 @@ class ObservableSlice:
         projection = replace(table, basis=basis, cells=cells)
         loops = sorted({order for orders in table.orders for order in orders})
         rows = tuple(self.rows if rows is None else rows)
-        evaluation = self.point(point, scale_squared, parameters, precision, poles)
+        evaluation = self.point(point, scale_squared, parameters, precision, mode)
         numbers = evaluation.numbers
         columns, labels = [], []
         for row in rows:
@@ -994,7 +1001,7 @@ class ObservableSlice:
             factor = numbers.pair(0, 1) * (
                 1 / (LOOP_FACTOR_DENOMINATOR * numbers.pi * numbers.pi)
             )
-            width = 3 if poles else 1
+            width = 3 if has_poles(mode) else 1
             out = {label: [numbers.zero] * width for label in labels}
             for (_family, _loop, k), value in evaluation.families.items():
                 terms = out[labels[k]]
@@ -1127,7 +1134,7 @@ class ObservableSlice:
             point, scale_squared, parameters, precision, poles, spin, ward
         )
         scaleless = None
-        if evaluation.mode in ("uv", "ir"):
+        if splits(evaluation.mode):
             companion = plan.scaleless()
             scaleless = (
                 (None, None)
@@ -1150,7 +1157,7 @@ class ObservableSlice:
         scale_squared,
         parameters=None,
         precision=None,
-        poles=True,
+        poles=PoleSelection.ALL,
         spin=None,
         ward=None,
     ):
@@ -1568,7 +1575,7 @@ class _Assembly:
         origins: dict[str, dict[str, dict[Orders, Laurent]]] | None = (
             None
             if split is None
-            else {origin: {name: {} for name in COMPONENTS} for origin in ("uv", "ir")}
+            else {origin: {name: {} for name in COMPONENTS} for origin in ORIGINS}
         )
 
         def bare_of(lanes, direct, swapped):
@@ -1598,12 +1605,11 @@ class _Assembly:
                     Laurent,
                 )
                 for origin, part in parts.items():
-                    part["uv"] = part["uv_local"] + part[FIELD_COMPONENT]
-                    part["virtual"] = part["bare"] + part["uv"] + part["r2"]
                     for name in COMPONENTS:
                         origins[origin][name][sector] = part[name]
+                selected = select_sector(parts, evaluation.mode, Laurent)
                 for name in COMPONENTS:
-                    components[name][sector] = parts[evaluation.mode][name]
+                    components[name][sector] = selected[name]
                 continue
             values["uv"] = [
                 x + y
@@ -1863,13 +1869,15 @@ class NativeObservables:
         ward: WardVector | None = None,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
-        poles: bool | str = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
         stability: StabilityChecks | None = None,
     ) -> list[dict[Hashable, PointResult]]:
         """The outputs of every point, dressed and reduced in one native batch.
-        ``poles`` is the pole mode (``poles.MODES``; True/False are "all" and
-        "none"): "uv" and "ir" also run the columns on the certified-scaleless
-        companion and split every output's poles (``PointResult.pole_origins``).
+        ``poles`` is the pole selection (``PoleSelection`` or its value):
+        "uv" and "ir" also run the columns on the certified-scaleless
+        companion and split every output's poles (``PointResult.pole_origins``;
+        in "uv" each output's virtual poles are its bare loop's UV poles,
+        ``poles.select_sector``).
 
         ``spin`` is one source assignment for every point or one per point
         (``None`` entries: ordinary helicities). ``precision`` selects the
@@ -1966,7 +1974,7 @@ class _Batch:
     scales: tuple[Any, ...]
     parameters: Mapping[str, str] | None
     precision: Precision
-    poles: bool | str
+    poles: PoleSelection | str
     ward: WardVector | None
 
 

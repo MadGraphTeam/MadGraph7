@@ -14,6 +14,7 @@ from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
+from pyamplicol.loops.v2.poles import ORIGINS
 from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
 from pyamplicol.models.base import CouplingOrders
 
@@ -27,8 +28,10 @@ class LaurentCoefficients(NamedTuple):
     """Physical coefficients in the declared C_epsilon convention.
 
     The poles are ``None`` in a finite-only evaluation (``poles="none"``),
-    which never computed them. Under ``poles="uv"`` or ``"ir"`` they are the
-    ultraviolet or infrared parts of the poles (:class:`PoleSelection`).
+    which never computed them. Under ``poles="uv"`` they are the bare loop's
+    UV poles, under ``"ir"`` the renormalised virtual's IR poles
+    (:class:`PoleSelection`); the finite part is the renormalised virtual's
+    under every selection.
     """
 
     finite: VirtualScalar
@@ -425,7 +428,7 @@ def splits_poles(selection: PoleSelection) -> bool:
 
 # The origins of a split pole and the components whose parts a split
 # evaluation reports (:class:`VirtualPoleParts`).
-POLE_ORIGINS = ("uv", "ir")
+POLE_ORIGINS = ORIGINS
 POLE_COMPONENTS = ("virtual", "bare", "uv", "r2", "uv_local", "uv_external_fields")
 
 
@@ -439,14 +442,19 @@ class VirtualPoleParts:
     sector; for resolved output per sector, helicity and virtual colour
     component): its finite part (the same under every pole selection) and
     that origin's single and double poles. Every pole is split as P/eps =
-    P_UV/eps_UV + P_IR/eps_IR, so the two origins add up to the poles of
-    ``poles="all"`` (to rounding); the double pole is infrared. Both
-    origins cost the same, so both are returned whichever of ``"uv"`` and
-    ``"ir"`` was selected. Components:
+    P_UV/eps_UV + P_IR/eps_IR, so the two origins of each component add up
+    to its poles under ``poles="all"`` (to rounding); the double pole is
+    infrared. Both origins cost the same, so both are returned whichever of
+    ``"uv"`` and ``"ir"`` was selected. The values of ``poles="uv"`` are
+    ``uv["bare"]``'s poles (the unrenormalised amplitude), those of
+    ``"ir"`` are ``ir["virtual"]``'s; the counterterms' UV poles are
+    ``uv["uv"]`` (``uv_local`` plus ``uv_external_fields``) and ``uv["r2"]``.
+    Components:
 
-    * ``virtual``: the renormalised virtual, ``bare + uv + r2``. It has no
-      ultraviolet pole (zero up to rounding); its infrared poles are those
-      of ``poles="all"``, Catani's operator.
+    * ``virtual``: the renormalised virtual, ``bare + uv + r2``. Its
+      ultraviolet part is the bare loop's UV poles plus the counterterms'
+      (zero up to rounding where renormalisation is complete); its infrared
+      poles are those of ``poles="all"``, Catani's operator.
     * ``bare``: the bare loop. Its ultraviolet part is each reduction lane's
       UV residue (scaleless integrals included, B0(0;0,0) = 1/eps_UV -
       1/eps_IR), the infrared part the rest.
@@ -455,9 +463,13 @@ class VirtualPoleParts:
     * ``uv_local``: the model's ultraviolet counterterms of couplings and
       masses (ultraviolet by origin).
     * ``uv_external_fields``: the on-shell external-field factors. A model
-      writes them with one eps (a massive quark's mixes 1/eps_UV and
-      2/eps_IR); their ultraviolet part is fixed by the ultraviolet
-      finiteness of the renormalised virtual, ``-(bare + uv_local + r2)``.
+      writes them with one eps (a massless leg's Z_UV (1/eps_UV - 1/eps_IR)
+      vanishes, a massive quark's mixes 1/eps_UV and 2/eps_IR) and does not
+      state the origin, so their ultraviolet part is fixed by the
+      ultraviolet finiteness of the renormalised virtual, ``-(bare +
+      uv_local + r2)``: the bare-plus-counterterm UV cancellation holds by
+      construction, and the field UV part is what to compare with a
+      textbook field renormalisation (design §12.4).
     * ``uv``: ``uv_local + uv_external_fields``.
     """
 
@@ -836,7 +848,9 @@ class VirtualEvaluation:
         """One origin's (``"uv"`` or ``"ir"``) Laurent coefficients of one
         component (``POLE_COMPONENTS``) per lane and sector, from an
         evaluation with ``poles="uv"`` or ``"ir"`` (``None`` for failed
-        lanes)."""
+        lanes). ``pole_part("uv", "bare")`` holds the poles of the
+        ``"uv"`` values, ``pole_part("uv", "uv")`` the counterterms' UV
+        poles, ``pole_part("ir")`` the poles of the ``"ir"`` values."""
 
         return cast(VirtualValues, _pole_part(self.pole_parts, origin, component))
 

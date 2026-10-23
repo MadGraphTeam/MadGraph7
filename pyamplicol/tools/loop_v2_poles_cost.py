@@ -57,11 +57,11 @@ from tools.loop_v2_schedules import (  # noqa: E402
 
 # name: (engine, poles, master poles)
 CONFIGURATIONS = {
-    "none": ("fast", False, "both"),
-    "all": ("fast", True, "both"),
+    "none": ("fast", "none", "both"),
+    "all": ("fast", "all", "both"),
     "split": ("fast", "split", "both"),
-    "generic-both": ("generic", True, "both"),
-    "generic-uv": ("generic", True, "uv"),
+    "generic-both": ("generic", "all", "both"),
+    "generic-uv": ("generic", "all", "uv"),
 }
 
 

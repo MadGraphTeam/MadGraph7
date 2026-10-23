@@ -49,6 +49,7 @@ from itertools import product
 from typing import Any, Literal
 
 from pyamplicol.color.connections import ExactColorCoefficient
+from pyamplicol.config import PoleSelection
 
 from . import reference_executor as rx
 from .colour import project
@@ -1128,14 +1129,15 @@ class NativeExecutor:
         *,
         parameters: Mapping[str, str] | None = None,
         precision: Any = None,
-        poles: bool | str = True,
+        poles: PoleSelection | str = PoleSelection.ALL,
         stability: Any = None,
         schedule: Literal["B", "M"] = "B",
     ) -> list[Any]:
         """The complete virtual of every point (``LoopSlice.evaluate``), with
         dressing and reduction in the native executor (``schedule`` B, or M
-        for the plan's schedule-M families). ``poles`` is the pole mode
-        (``"all"``/True, ``"none"``/False, ``"uv"``, ``"ir"``; ``poles``).
+        for the plan's schedule-M families). ``poles`` is the pole selection
+        (``PoleSelection`` or its value: ``"all"``, ``"none"``, ``"uv"``,
+        ``"ir"``; ``poles``).
 
         Rotation checks re-evaluate the rotated points natively; the
         reduction check is the native re-test pass. A failed point fails
@@ -1215,7 +1217,7 @@ class NativeExecutor:
         self,
         evaluations,
         precision,
-        poles: bool | str,
+        poles: PoleSelection | str,
         retest: str | None,
         schedule: Literal["B", "M"] = "B",
     ) -> dict[int, list[str]]:
@@ -1231,12 +1233,12 @@ class NativeExecutor:
         for the plan's observable columns)."""
 
         from .assemble import _Numbers
-        from .poles import pole_mode, reducer_poles
+        from .poles import pole_mode, reducer_poles, splits
 
         mode = pole_mode(poles)
         sectors = tuple(sector for sector, _pairs in self.slice.sectors)
         if (
-            mode in ("uv", "ir")
+            splits(mode)
             and tuple(self.exported.columns) != sectors
             and not callable(self._scaleless_plan)
         ):
@@ -1259,7 +1261,7 @@ class NativeExecutor:
         self.last_bare = output["bare"]
         # The certified-scaleless families carry part of the bare UV and IR
         # poles; only the "uv" and "ir" selections dress them (schedule B).
-        twin = self.scaleless if mode in ("uv", "ir") else None
+        twin = self.scaleless if splits(mode) else None
         extra = None
         if twin is not None:
             extra = twin.native(arithmetic, digits, len(evaluations)).evaluate(

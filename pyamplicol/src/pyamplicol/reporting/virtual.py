@@ -254,11 +254,15 @@ def virtual_evaluation_summary(
         )
     if result.poles is PoleSelection.NONE:
         header += "\nFinite-only evaluation: the poles were not computed."
-    elif result.poles in (PoleSelection.UV, PoleSelection.IR):
-        origin = "Ultraviolet" if result.poles is PoleSelection.UV else "Infrared"
+    elif result.poles is PoleSelection.UV:
         header += (
-            f"\n{origin} parts of the poles (the double pole is infrared); "
-            "both origins' parts per component follow."
+            "\nPoles: the ultraviolet poles of the bare loop amplitude; both "
+            "origins' parts per component, counterterms included, follow."
+        )
+    elif result.poles is PoleSelection.IR:
+        header += (
+            "\nPoles: the infrared poles of the renormalised virtual (the "
+            "double pole is infrared); both origins' parts per component follow."
         )
     tables = [born, virtual, pairs, status]
     parts = _pole_parts_table(result, prettytable)

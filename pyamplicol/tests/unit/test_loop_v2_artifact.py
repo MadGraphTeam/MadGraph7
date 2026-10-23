@@ -91,7 +91,7 @@ from pyamplicol.api.errors import (
     EvaluationError,
     GenerationError,
 )
-from pyamplicol.api.virtual_results import POLE_COMPONENTS, parse_rotation
+from pyamplicol.api.virtual_results import POLE_COMPONENTS, POLE_ORIGINS, parse_rotation
 from pyamplicol.config import PoleSelection
 from pyamplicol.loops.v2.stability import Rotation
 
@@ -444,7 +444,10 @@ def test_resolved_pole_parts_follow_the_resolved_axes():
     assert result.pole_part("ir")[0] == ((entries,),)[0]
     assert result.for_order((("QCD", 6),)).pole_parts == result.pole_parts
     text = virtual_evaluation_summary(result, prettytable=prettytable)
-    assert "Infrared parts of the poles" in text and "Pole parts by origin" in text
+    assert (
+        "infrared poles of the renormalised virtual" in text
+        and "Pole parts by origin" in text
+    )
     assert text.count("uv_external_fields") == 4  # 2 helicities x 2 origins
     with pytest.raises(ValueError, match="carries its pole parts"):
         replace(result, pole_parts=None)
@@ -818,11 +821,12 @@ def test_finite_only_and_stability_estimates(full_colour):
         runtime.evaluate(points[:1], mu_r2=scales[:1], poles=False)
     with pytest.raises(ValueError, match="poles 'uv' or 'ir'"):
         full.pole_part("uv")
-    # The UV and IR selections (design §12.4) from the same artifact: the
-    # finite part bitwise that of "all"; both origins' parts per component,
-    # adding up to the poles of "all"; the renormalised virtual's UV poles
-    # vanish and its IR poles are those of "all". ``clear`` rebuilds the
-    # companion executor too (same bits).
+    # The UV and IR selections (design §12.4, user decision 2026-10-23) from
+    # the same artifact: the finite part bitwise that of "all"; "uv" gives
+    # the bare loop's UV poles, which the counterterms' UV poles cancel, and
+    # "ir" the renormalised virtual's IR poles, those of "all"; both origins'
+    # parts per component. ``clear`` rebuilds the companion executor too
+    # (same bits).
     split = {}
     for selection in (PoleSelection.UV, PoleSelection.IR):
         split[selection] = runtime.evaluate(points, mu_r2=scales, poles=selection)
@@ -839,10 +843,11 @@ def test_finite_only_and_stability_estimates(full_colour):
         scale = max(abs(x) for x in whole)
         assert uv.values[index][0].finite == ir.values[index][0].finite == whole.finite
         assert ir.values[index] == ir.pole_part("ir")[index]
-        assert uv.values[index] == uv.pole_part("uv")[index]
         (u,) = uv.values[index]
         (i,) = ir.values[index]
-        assert abs(u.single_pole) <= 1e-12 * scale and u.double_pole == 0
+        (bare_uv,) = uv.pole_part("uv", "bare")[index]
+        assert u == (whole.finite, bare_uv.single_pole, bare_uv.double_pole)
+        assert u.double_pole == 0
         assert abs(i.single_pole - whole.single_pole) <= 1e-12 * scale
         assert abs(i.double_pole - whole.double_pole) <= 1e-12 * scale
         parts = uv.pole_parts[index]
@@ -850,9 +855,10 @@ def test_finite_only_and_stability_estimates(full_colour):
             (a,) = parts.uv[component]
             (b,) = parts.ir[component]
             assert a.finite == b.finite and a.double_pole == 0
-        bare = parts.uv["bare"][0].single_pole
         counterterms = parts.uv["uv"][0].single_pole + parts.uv["r2"][0].single_pole
-        assert abs(bare) > 1e-3 * scale and abs(bare + counterterms) <= 1e-12 * scale
+        assert abs(u.single_pole) > 1e-3 * scale
+        assert abs(u.single_pole + counterterms) <= 1e-12 * scale
+        assert abs(parts.uv["virtual"][0].single_pole) <= 1e-12 * scale
     # Stability estimates exist in the split selections too.
     (estimate,) = runtime.evaluate(
         points[:1],
@@ -1117,6 +1123,11 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
         execution["scaleless_plan_sha256"] = "0" * 64
         return execution
 
+    def absent_companion_key(execution):
+        # Required, also when null: an absent key is not read as null.
+        del execution["scaleless_plan_sha256"]
+        return execution
+
     def before_split(physics):
         physics["metadata"]["poles"] = ["all", "none"]
         return physics
@@ -1163,6 +1174,12 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
             {"processes/gg/execution.json": foreign_companion},
             "companion plan v4 differs from its declared digest",
             "companion plan v4 differs from its declared digest",
+        ),
+        (
+            "companion-key",
+            {"processes/gg/execution.json": absent_companion_key},
+            "missing field `scaleless_plan_sha256`",
+            "missing field `scaleless_plan_sha256`",
         ),
         (
             # The declaration before the UV/IR split: refused (no backward
@@ -1419,7 +1436,7 @@ def test_cli_generates_and_evaluates_through_v2(
     )
     assert code == 0, stderr.getvalue()
     text = stdout.getvalue()
-    assert "Ultraviolet parts of the poles" in text
+    assert "ultraviolet poles of the bare loop amplitude" in text
     assert "Pole parts by origin" in text and "uv_external_fields" in text
 
 
@@ -2031,9 +2048,15 @@ def test_artifacts_hold_no_host_paths_and_load_relocated(
             "from pyamplicol import Runtime",
             "r = Runtime.load(sys.argv[1], process='gg', model_parameters=PARAMETERS)",
             "v = r.evaluate(POINTS, mu_r2='1000000')",
-            "print(json.dumps([r.inspect()['plan_sha256'], v.born_values, v.values]))",
+            "s = [r.evaluate(POINTS, mu_r2='1000000', poles=p) for p in ('uv', 'ir')]",
+            "s = [[e.values, [e.pole_part(o, c) for o in ORIGINS for c in PARTS]]"
+            " for e in s]",
+            "d = r.inspect()['plan_sha256']",
+            "print(json.dumps([d, v.born_values, v.values, s]))",
         )
     )
+    script = script.replace("ORIGINS", repr(POLE_ORIGINS))
+    script = script.replace("PARTS", repr(POLE_COMPONENTS))
     script = script.replace("PARAMETERS", repr(GG_PARAMETERS))
     script = script.replace("POINTS", repr(points))
     # A fresh interpreter in another working directory regenerates the point
@@ -2045,12 +2068,20 @@ def test_artifacts_hold_no_host_paths_and_load_relocated(
         check=True,
         cwd=tmp_path,
     )
-    digest, born, values = json.loads(process.stdout.strip().splitlines()[-1])
+    digest, born, values, split = json.loads(process.stdout.strip().splitlines()[-1])
     here = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
     original = here.evaluate(points, mu_r2="1000000")
     assert digest == here.inspect()["plan_sha256"]
     assert born == [list(point) for point in original.born_values]
     assert values == [[list(laurent) for laurent in point] for point in original.values]
+    # The "uv" and "ir" selections run the stored companion plan: bitwise too.
+    for selection, (got, parts) in zip(("uv", "ir"), split, strict=True):
+        local = here.evaluate(points, mu_r2="1000000", poles=selection)
+        expected = [
+            local.values,
+            [local.pole_part(o, c) for o in POLE_ORIGINS for c in POLE_COMPONENTS],
+        ]
+        assert [got, parts] == json.loads(json.dumps(expected)), selection
 
 
 @pytest.mark.loop_physics

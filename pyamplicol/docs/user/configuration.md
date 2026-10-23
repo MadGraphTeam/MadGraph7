@@ -562,36 +562,43 @@ under every selection, and `"none"` saves the pole work. The CLI spells these
 
 With `poles = "uv"` or `"ir"` every pole of the Born-virtual interference is
 split by origin, `P/eps = P_UV/eps_UV + P_IR/eps_IR`; the double pole is
-infrared. The returned coefficients are then those of the selected origin:
+infrared. The finite part is always that of the renormalised virtual; the
+returned poles are:
 
-- `"ir"`: the infrared poles of the renormalised virtual. They equal the poles
-  of `"all"` (Catani's operator), because the renormalised virtual has no
-  ultraviolet pole.
-- `"uv"`: the ultraviolet poles of the renormalised virtual, zero up to
-  rounding. A model states its external-field factors with one eps, so their
-  ultraviolet part is fixed by this zero; an incomplete ultraviolet
-  renormalisation shows instead in the `"ir"` (and `"all"`) poles, which then
-  miss Catani's operator.
+- `"uv"`: the ultraviolet poles of the bare (unrenormalised) one-loop
+  amplitude interfered with the Born, i.e. the reduction's UV poles (the
+  double pole is zero). The counterterms' UV poles are returned separately
+  (below), so that their cancellation can be checked.
+- `"ir"`: the infrared poles of the renormalised virtual, which Catani's
+  operator predicts. Where the ultraviolet renormalisation is complete they
+  equal the poles of `"all"`.
 
 Both selections cost the same and both also return each origin's parts by
 component, `VirtualEvaluation.pole_parts` (per point, `uv` and `ir`, each
 component a Laurent triple per sector; `pole_part(origin, component)` reads one):
 `virtual` (renormalised), `bare` (the bare loop), `r2`, `uv_local` (the model's
 coupling and mass counterterms), `uv_external_fields` (the on-shell field
-factors, whose ultraviolet part follows from the ultraviolet finiteness of the
-renormalised virtual) and `uv` (`uv_local + uv_external_fields`). So `"uv"`
-shows the bare-loop UV poles and their cancellation against the counterterms
-term by term. In Python:
+factors) and `uv` (`uv_local + uv_external_fields`). A model states its
+external-field factors with one eps (a massless leg's vanishes), so their
+ultraviolet part is fixed by the ultraviolet finiteness of the renormalised
+virtual: the bare and counterterm UV poles then cancel by construction, and
+the field factors' UV part is the quantity to compare with a field
+renormalisation of your own (for loop_sm in Feynman gauge it equals the
+textbook constants of the external legs). An incomplete ultraviolet
+renormalisation shows in the `"ir"` (and `"all"`) poles, which then miss
+Catani's operator. In Python:
 
 ```python
 result = runtime.evaluate(points, mu_r2=scales, poles="uv")
-bare_uv = result.pole_part("uv", "bare")          # [point][sector] (finite, 1/eps_UV, 0)
-counterterms_uv = result.pole_part("uv", "uv")    # the opposite, to rounding
+bare_uv = result.values                           # [point][sector] (finite, 1/eps_UV, 0)
+counterterms_uv = result.pole_part("uv", "uv")    # UV_local + field factors' UV part
+local_uv = result.pole_part("uv", "uv_local")     # the model's coupling and mass CTs
 ```
 
 The selection is a runtime option: the same artifact serves all four (it stores
 the companion plan of its certified-scaleless loop families, which only `"uv"`
-and `"ir"` evaluate; at g g > g g g g they cost about 10–15 % more than `"all"`).
+and `"ir"` evaluate; they cost about 1 % (u u~ > e- e+ g g), 7 % (g g > g g g)
+and 13 % (g g > g g g g) more than `"all"`).
 An artifact written before the split is refused at load with a request to
 regenerate it. Correlated and resolved outputs
 take every selection too; their `pole_parts` follow their own axes (resolved:
