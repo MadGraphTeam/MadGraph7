@@ -253,9 +253,14 @@ def test_trilinear_color_projection_does_not_trust_ufo_source_spelling() -> None
     ) == ("generic-tensor", 1.0 + 0.0j)
 
 
-def test_external_compiler_lowers_the_symmetric_color_tensor() -> None:
-    """The d-symbol (counterterm vertices, ``models.ct_color_flow``) lowers to
-    both colour orders of its inputs with one sign, unlike f."""
+def test_external_compiler_lowers_the_symmetric_color_tensor_only_projected() -> (
+    None
+):
+    """The d-symbol lowers to both colour orders of its inputs with one sign,
+    unlike f, but only on a vertex whose gluon legs are projected onto SU(N)
+    (the counterterm vertices, ``models.ct_color_flow``): on an ordinary
+    vertex it would read the U(1) part of a fermion line's gluon, so the
+    compiler refuses it there."""
 
     particles = tuple(
         CompiledParticleRecord(
@@ -305,8 +310,13 @@ def test_external_compiler_lowers_the_symmetric_color_tensor() -> None:
         color_expression=term.color_expression,
     )
 
+    with pytest.raises(ValueError, match="unsupported trilinear color tensor"):
+        _annotate_oriented_kernel_color_projections((kernel,), particles, (term,))
     (annotated,) = _annotate_oriented_kernel_color_projections(
-        (kernel,), particles, (term,)
+        (kernel,),
+        particles,
+        (term,),
+        u1_projected_vertices=frozenset({"symmetric-adjoint"}),
     )
     assert annotated.color_projection_structure == "adjoint-symmetric-invariant"
     terms = annotated.lc_color_transition_terms

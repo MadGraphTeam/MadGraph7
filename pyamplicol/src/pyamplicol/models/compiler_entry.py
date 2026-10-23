@@ -88,9 +88,13 @@ _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS = frozenset(
         "color-identity",
         "fundamental-generator",
         "adjoint-structure-constant",
-        "adjoint-symmetric-invariant",
     }
 )
+# The d-symbol couples to the U(1) part of a colour-flow gluon, which only
+# fermion lines subtract: it is lowered only on the vertices whose gluon legs
+# are projected onto SU(N) (``u1_projected_vertices``, the counterterm
+# vertices of the counterterm closure), never on an ordinary model vertex.
+_U1_PROJECTED_TRILINEAR_COLOR_PROJECTIONS = frozenset({"adjoint-symmetric-invariant"})
 
 
 def compile_ufo_model_ir(
@@ -301,6 +305,7 @@ def compile_ufo_model_ir(
         oriented_kernels,
         particles,
         terms,
+        u1_projected_vertices=frozenset(u1_projected_vertices),
     )
     particles, oriented_kernels, propagators = synthesize_fundamental_fierz_auxiliaries(
         particles,
@@ -366,6 +371,8 @@ def _annotate_oriented_kernel_color_projections(
     kernels: Sequence[CompiledOrientedKernel],
     particles: Sequence[CompiledParticleRecord],
     terms: Sequence[CompiledVertexTerm],
+    *,
+    u1_projected_vertices: frozenset[str] = frozenset(),
 ) -> tuple[CompiledOrientedKernel, ...]:
     particle_by_name = {particle.name: particle for particle in particles}
     term_by_id = {term.id: term for term in terms}
@@ -383,7 +390,10 @@ def _annotate_oriented_kernel_color_projections(
                 term.color_expression,
                 representations,
             )
-            if certified_structure not in _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS:
+            if certified_structure not in _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS and not (
+                certified_structure in _U1_PROJECTED_TRILINEAR_COLOR_PROJECTIONS
+                and term.vertex.split("::", 1)[0] in u1_projected_vertices
+            ):
                 raise ValueError(
                     f"vertex {term.vertex!r} has unsupported trilinear color "
                     f"tensor {term.color_source!r}; pyAmpliCol could not prove it "

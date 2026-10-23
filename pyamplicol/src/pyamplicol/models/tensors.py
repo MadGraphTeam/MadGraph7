@@ -121,7 +121,10 @@ def normalize_color_expression(
     representations = tuple(int(color) for color in color_representations)
     _validate_color_representations(representations)
     _ensure_symbolica()
-    context = _ColorContext(representations)
+    # Summed indices a d-symbol introduces are numbered after the source's
+    # own dummies (UFO's negative indices).
+    dummies = [int(label) for label in re.findall(r"(?<![\w.])-([0-9]+)", source)]
+    context = _ColorContext(representations, dummy_base=max(dummies, default=0) + 1)
     expression = E(source)
     expression = _replace(expression, "UFO::Identity(a_,b_)", context.identity)
     expression = _replace(expression, "UFO::T(a_,b_,c_)", context.generator)
@@ -346,11 +349,11 @@ class _LorentzContext:
         return label
 
 
-_D_SYMBOL_DUMMY_OFFSET = 9000
-
 
 class _ColorContext:
-    def __init__(self, color_representations: tuple[int, ...]) -> None:
+    def __init__(
+        self, color_representations: tuple[int, ...], *, dummy_base: int = 1
+    ) -> None:
         _validate_color_representations(color_representations)
         _ensure_symbolica()
         self.color_representations = color_representations
@@ -359,6 +362,9 @@ class _ColorContext:
         self.generator_tensor = TensorExpression.color_t(8, 3)
         self.f_tensor = TensorExpression.color_f(8)
         self.expanded_symmetric_invariant = False
+        # The first label of the summed indices of a d-symbol expansion:
+        # beyond every dummy of the expression (``normalize_color_expression``).
+        self._dummy_base = dummy_base
         self._dummy_index = 0
 
     def identity(self, match: Mapping[Expression, Expression]) -> Expression:
@@ -423,10 +429,11 @@ class _ColorContext:
         suffix = self._dummy_index
         self._dummy_index += 1
         # Summed fundamental indices of the generator trace, named like UFO
-        # dummies (``ufo_c_dummy_<n>_fundamental``, n beyond UFO's range) so
-        # that vertex terms with d-symbols keep well-formed index bindings.
+        # dummies (``ufo_c_dummy_<n>_fundamental``, n beyond the expression's
+        # own dummies) so that vertex terms with d-symbols keep well-formed
+        # index bindings.
         names = [
-            f"ufo_c_dummy_{_D_SYMBOL_DUMMY_OFFSET + 3 * suffix + offset}_fundamental"
+            f"ufo_c_dummy_{self._dummy_base + 3 * suffix + offset}_fundamental"
             for offset in range(3)
         ]
         fundamental = [self.fundamental(name) for name in names]
@@ -476,12 +483,6 @@ class _ColorContext:
                     f"UFO color index {label} has type {actual}, expected {expected}"
                 )
             return slot
-        if abs(label) >= _D_SYMBOL_DUMMY_OFFSET:
-            # The d-symbol expansion names its summed indices from the offset.
-            raise ValueError(
-                f"UFO color dummy {label} reaches the d-symbol dummies "
-                f"(from -{_D_SYMBOL_DUMMY_OFFSET})"
-            )
         name = f"ufo_c_dummy_{abs(label)}_{expected}"
         if expected == "adjoint":
             return self.adjoint(name)
