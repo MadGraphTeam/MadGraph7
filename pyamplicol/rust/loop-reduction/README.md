@@ -325,7 +325,9 @@ canonicalising cache (`runtime::MasterCache`), or by the generic engine from
 one exponent-array template per bucket in DoubleFloat/arbitrary precision.
 `check=True` re-reduces every lane in a dihedrally relabelled frame (default:
 loop direction reversed) with the same coefficients and cached masters and
-returns both results; `poles=False` returns the finite column only. Families
+returns both results; `poles="none"` returns the finite column only and
+`poles="split"` adds each lane's UV residue (`"all"` is the default; the
+binding refuses any other value, a bool included). Families
 must be in loop-cycle order.
 The main workspace excludes this experimental workspace and has no NinjaRS path
 dependency, so its normal builds do not require the `upstream` symlink.

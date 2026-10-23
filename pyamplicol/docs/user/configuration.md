@@ -600,7 +600,18 @@ the companion plan of its certified-scaleless loop families, which only `"uv"`
 and `"ir"` evaluate; they cost about 1 % (u u~ > e- e+ g g), 7 % (g g > g g g)
 and 13–18 % (g g > g g g g) more than `"all"`).
 An artifact written before the split is refused at load with a request to
-regenerate it. Correlated and resolved outputs
+regenerate it.
+
+Stability estimates follow the selection. With `"uv"`, request at least one
+rotation check (`rotations` or `rotation_count`) to bracket the selected single
+pole: it is the bare loop's UV residue, which does not depend on the reduction
+frame, so `reduction_direction` alone (also rescaled) sees only its rounding
+and not the error of the loop numerators (at a `u u~ > d d~ g` point in
+double precision it underestimated that error about 8 times; a rotation
+bracketed it). With `"all"`, `"ir"` and `"none"` either check works. The
+`"uv"` double pole is exactly zero, and so is its estimate.
+
+Correlated and resolved outputs
 take every selection too; their `pole_parts` follow their own axes (resolved:
 per sector, helicity and colour component).
 
