@@ -69,6 +69,25 @@ ORDERED = ColorCorrelator(
     (EmitGluon(2, -1), EmitGluon(3, -2)),
 )
 SWAPPED = ColorCorrelator("swapped", ORDERED.ket, ORDERED.bra)
+# Correlator declarations shared by the tests of one process, so that the
+# module's ``generate`` cache generates each process once.
+DD_DECLARATIONS = CorrelatorConfig(
+    color_correlations=(
+        ColorCorrelator.dipole("T12", 1, 2),
+        ColorCorrelator.dipole("casimir", 1, 1),
+        ORDERED,
+    ),
+    spin_correlations=((3,), (3, 4)),
+)
+UUGG_DECLARATIONS = CorrelatorConfig(
+    color_correlations=(ColorCorrelator.dipole("T12", 1, 2),),
+    spin_correlations=((3,), (3, 4)),
+)
+RECOLA_DIPOLES = CorrelatorConfig(
+    color_correlations=tuple(
+        ColorCorrelator.dipole(f"T1{j}", 1, j) for j in range(1, 5)
+    )
+)
 # Two literal complex four-vectors (neither transverse nor normalised).
 VECTORS = (
     (("0.1", "0.2"), ("0.8", "-0.3"), ("0.4", "1"), ("-0.6", "0.5")),
@@ -167,12 +186,7 @@ def test_directed_dipoles_match_recola(generate, loop_reference):
 
 
 def assert_dipoles_match_recola(generate, loop_reference, carrier: str) -> None:
-    declarations = CorrelatorConfig(
-        color_correlations=tuple(
-            ColorCorrelator.dipole(f"T1{j}", 1, j) for j in range(1, 5)
-        )
-    )
-    observables = generate("u u~ > d d~", correlators=declarations)
+    observables = generate("u u~ > d d~", correlators=RECOLA_DIPOLES)
     rows = loop_reference("directed-recola-control")["rows"]
     for row in rows:
         results = observables.evaluate(
@@ -201,9 +215,7 @@ def test_singleton_spin_source_matches_recola(generate, loop_reference):
 
 
 def assert_spin_source_matches_recola(generate, loop_reference, carrier: str) -> None:
-    observables = generate(
-        "u u~ > g g", correlators=CorrelatorConfig(spin_correlations=((3,),))
-    )
+    observables = generate("u u~ > g g", correlators=UUGG_DECLARATIONS)
     for row in loop_reference("spin-recola-control")["rows"]:
         (result,) = observables.evaluate(
             row["point"],
@@ -283,13 +295,16 @@ RESOLVED_CONTROLS = {
 }
 
 
-# The default tier's resolved-sum controls; every other (control, carrier)
+# The default tier's resolved-sum control; every other (control, carrier)
 # runs nightly (``test_loop_v2_observables_nightly.py`` for u u~ > g g g,
-# ``test_loop_v2_observables_native_nightly.py`` for the 200-bit ones).
-RESOLVED_SUM_DEFAULT = (
-    ("gg_gg", "double"),
-    ("gg_gg_lc", "double"),
-    ("gg_gg_nlc", "double"),
+# ``test_loop_v2_observables_native_nightly.py`` for g g > g g).
+RESOLVED_SUM_DEFAULT = (("gg_gg_nlc", "double"),)
+RESOLVED_SUM_NIGHTLY = tuple(
+    (control, carrier)
+    for control in RESOLVED_CONTROLS
+    if control != "uux_ggg"
+    for carrier in CARRIERS
+    if (control, carrier) not in RESOLVED_SUM_DEFAULT
 )
 
 
@@ -299,7 +314,7 @@ def test_resolved_entries_sum_to_the_inclusive_result(generate, control, carrier
     bits) sum exactly (to rounding) to the inclusive Born, components and
     totals, at full colour on g g > g g and u u~ > g g g and at LC and NLC on
     g g > g g; in binary64 the native resolved columns equal the Python
-    entries. Default tier: g g > g g in binary64."""
+    entries. Default tier: g g > g g at NLC in binary64."""
 
     assert_resolved_entries_sum(generate, control, carrier)
 
@@ -461,9 +476,7 @@ def test_transverse_source_basis_sums_to_the_helicity_sum(generate, loop_referen
     """Two real transverse vectors on each of gluons 3 and 4 of uu~ -> gg:
     the four joint sources sum to the ordinary helicity sum."""
 
-    observables = generate(
-        "u u~ > g g", correlators=CorrelatorConfig(spin_correlations=((3, 4),))
-    )
+    observables = generate("u u~ > g g", correlators=UUGG_DECLARATIONS)
     row = loop_reference("spin-recola-control")["rows"][0]
     point, scale = row["point"], row["mu_r2"]
     a, b = row["vector"], ["0", "0", "1", "0"]
@@ -527,12 +540,7 @@ def assert_spin_sources_bilinear(generate, accuracy: str) -> None:
 def test_finite_only_observables(generate):
     """Finite-only mode returns the same finite parts without pole columns."""
 
-    observables = generate(
-        "u u~ > d d~",
-        correlators=CorrelatorConfig(
-            color_correlations=(ColorCorrelator.dipole("T12", 1, 2),)
-        ),
-    )
+    observables = generate("u u~ > d d~", correlators=RECOLA_DIPOLES)
     point = _points("uudd_qcd")[1]
     full = observables.evaluate(
         point, "1000000", correlations=("T12",), parameters=PARAMETERS
@@ -611,13 +619,14 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
     currents, field insertions; full kernels), c = 1 and c = i, the
     renormalised interference with the physical Born (bare + UV + R2)
     vanishes per Laurent coefficient and sector, on every gluon leg, in the
-    Python reference executor and natively (the Ward vector changes only the
-    batch inputs). At 200 bits (Python and native MPFR) within 1e-45 of the
-    largest physical component, natively in DoubleFloat within 1e-25 of it.
+    Python reference executor (on the first gluon leg) and natively (every
+    leg; the Ward vector changes only the batch inputs). At 200 bits (Python
+    and native MPFR) within 1e-45 of the largest physical component,
+    natively in DoubleFloat within 1e-25 of it.
 
     Binary64 (both executors, one bound): 1e-11 of the physical scale plus
-    1e-12 of the family lanes' absolute sum (the conditioning of the
-    cancellation, measured per run). On u u~ > g g g the lanes cancel across
+    1e-12 of the run's own family lanes' absolute sum (the conditioning of
+    the cancellation). On u u~ > g g g the lanes cancel across
     families (their absolute sum is 1.2e3 to 2.7e3 times the physical scale
     at this point) and binary64 leaves up to 3.5e-10 of the physical scale
     (Python, leg 5, c = 1); on g g > g g the lanes vanish on their own and
@@ -654,23 +663,27 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
     average = observables.slice.normalisation.average
     r2 = 0.0  # the largest |R2| over legs and factors, in physical units
 
-    def runs(ward):
-        (python,) = observables.evaluate(
-            point, scale, ward=ward, parameters=PARAMETERS, precision=precision
-        ).values()
+    def binary64_bound(run):
+        lanes = _lane_scale(run, average)
+        return [1e-11 * a + 1e-12 * b for a, b in zip(physical, lanes, strict=True)]
+
+    def runs(ward, python: bool):
+        """(result, bound) of the native runs and, with ``python``, the
+        Python reference run first."""
+
+        out = []
+        if python:
+            (result,) = observables.evaluate(
+                point, scale, ward=ward, parameters=PARAMETERS, precision=precision
+            ).values()
+            out.append((result, None))
         if carrier == "double":
-            lanes = _lane_scale(python, average)
-            bound = [
-                1e-11 * a + 1e-12 * b for a, b in zip(physical, lanes, strict=True)
-            ]
-            natives = [(Precision.double(), bound)]
+            natives = [(Precision.double(), None)]
         else:
-            bound = [1e-45 * a for a in physical]
             natives = [
                 (Precision.double_double(), [1e-25 * a for a in physical]),
-                (precision, bound),
+                (precision, None),
             ]
-        out = [(python, bound)]
         for native_precision, native_bound in natives:
             (result,) = native.evaluate(
                 [point],
@@ -680,11 +693,24 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
                 precision=native_precision,
             )
             out.append((result[INCLUSIVE], native_bound))
-        return out
+        return [
+            (
+                run,
+                bound
+                if bound is not None
+                else binary64_bound(run)
+                if carrier == "double"
+                else [1e-45 * a for a in physical],
+            )
+            for run, bound in out
+        ]
 
+    # The Python reference executor on the first leg; natively every leg (the
+    # executors share the Python-side Ward trees, and native = Python is
+    # checked on its own).
     for leg in legs:
         for factor in WARD_FACTORS:
-            for k, (run, bound) in enumerate(runs((leg, factor))):
+            for run, bound in runs((leg, factor), python=leg == legs[0]):
                 for part in ("virtual", "uv_local", FIELD_COMPONENT):
                     for sector, laurent in run.components[part].items():
                         for i, value in enumerate(laurent.coefficients):
@@ -700,8 +726,7 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
                 for laurent in run.components["r2"].values():
                     for i, value in enumerate(laurent.coefficients):
                         size = abs(complex(value))
-                        if k == 0:
-                            r2 = max(r2, size / physical[i])
+                        r2 = max(r2, size / physical[i])
                         if not r2_nonzero:
                             assert size <= bound[i], (leg, factor, "r2", i)
     if r2_nonzero:
@@ -709,7 +734,7 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
     if carrier != "double":
         return
     # Non-gauge control: every part sees the loop-side source.
-    for run, _bound in runs((legs[0], VECTORS[0])):
+    for run, _bound in runs((legs[0], VECTORS[0]), python=True):
         largest = {
             part: max(
                 abs(complex(value)) / physical[i]
@@ -734,17 +759,11 @@ def test_members_and_aliases_equal_direct_generation(generate):
     assert_members_equal_direct(generate, (("s s~ > g g", False), ("s~ s > g g", True)))
 
 
-MEMBER_DECLARATIONS = CorrelatorConfig(
-    color_correlations=(ColorCorrelator.dipole("casimir", 1, 1), ORDERED),
-    spin_correlations=((3,), (3, 4)),
-)
-
-
 def assert_members_equal_direct(generate, processes) -> None:
     """Members and aliases (process, alias) through d d~ > g g against the
     processes generated directly."""
 
-    declarations = MEMBER_DECLARATIONS
+    declarations = DD_DECLARATIONS
     representative = generate("d d~ > g g", correlators=declarations)
     point = _points("uudd_qcd")[0]
     histories = (INCLUSIVE, "casimir", "ordered")
@@ -765,7 +784,7 @@ def assert_members_equal_direct(generate, processes) -> None:
 
 
 def test_member_admission_refuses_unproved_substitutions(generate):
-    representative = generate("d d~ > g g", correlators=MEMBER_DECLARATIONS)
+    representative = generate("d d~ > g g", correlators=DD_DECLARATIONS)
     with pytest.raises(ValueError, match="neither a proved flavour member"):
         admit_member(representative.slice, "t t~ > g g")
     with pytest.raises(ValueError):
@@ -892,11 +911,15 @@ FIVE_LEG_RECORDS = ("uux_ggg", "uux_ggg_spin", "uux_ggg_lc", "uux_ggg_nlc")
 LEGACY_NAMES = FOUR_LEG_RECORDS + FIVE_LEG_RECORDS
 RESOLVED_RECORDS = ("gg_gg", "gg_gg_lc", "gg_gg_nlc", "ddgg_ssgg_lc", "ddgg_ssgg_nlc")
 # O1 configurations (record, carrier, Python executor's points). The default
-# tier runs the four-leg records in binary64 (one 200-bit record), with the
-# Python executor at the first point; the native binary64 batch keeps every
-# point. ``o1_nightly`` lists every other configuration (the nightly files).
+# tier runs one four-leg record per colour accuracy in binary64 (full colour,
+# LC with the flavour member, NLC) and one at 200 bits (NLC with the member),
+# with the Python executor at the first point; the native binary64 batch
+# keeps every point. ``o1_nightly`` lists every other configuration (the
+# nightly files).
 DIRECTED_DEFAULT = (
-    *((name, "double", (0,)) for name in FOUR_LEG_RECORDS),
+    ("gg_gg", "double", (0,)),
+    ("ddgg_ssgg_lc", "double", (0,)),
+    ("gg_gg_nlc", "double", (0,)),
     ("ddgg_ssgg_nlc", "arbitrary-200", (0,)),
 )
 RESOLVED_DEFAULT = (
@@ -1347,11 +1370,7 @@ def test_public_runtime_surface(generate, loop_reference, executor):
     from pyamplicol.correlators import CorrelatedRequest
     from pyamplicol.runtime.virtual import V2ObservablesRuntime
 
-    declarations = CorrelatorConfig(
-        color_correlations=(ColorCorrelator.dipole("T12", 1, 2),),
-        spin_correlations=((3,),),
-    )
-    observables = generate("u u~ > g g", correlators=declarations)
+    observables = generate("u u~ > g g", correlators=UUGG_DECLARATIONS)
     runtime = V2ObservablesRuntime(
         observables, model_parameters=PARAMETERS, executor=executor
     )
@@ -1412,10 +1431,7 @@ def test_public_runtime_members_run_natively(generate):
     from pyamplicol.correlators import CorrelatedRequest
     from pyamplicol.runtime.virtual import V2ObservablesRuntime
 
-    declarations = CorrelatorConfig(
-        color_correlations=(ColorCorrelator.dipole("casimir", 1, 1), ORDERED),
-        spin_correlations=((3, 4),),
-    )
+    declarations = DD_DECLARATIONS
     representative = generate("d d~ > g g", correlators=declarations)
     points = _points("uudd_qcd")[:2]
     scales = ["1000000"] * 2
@@ -1497,11 +1513,7 @@ def assert_native_equals_python(generate, carrier: str) -> None:
 
     from pyamplicol.loops.v2.observables import NativeObservables
 
-    declarations = CorrelatorConfig(
-        color_correlations=(ColorCorrelator.dipole("casimir", 1, 1), ORDERED),
-        spin_correlations=((3,),),
-    )
-    observables = generate("d d~ > g g", correlators=declarations)
+    observables = generate("d d~ > g g", correlators=DD_DECLARATIONS)
     points = _points("uudd_qcd")[:2]
     scales = ["1000000"] * 2
     reference_precision = CARRIERS["double" if carrier == "double" else "arbitrary-200"]
@@ -1546,11 +1558,18 @@ def assert_native_equals_python(generate, carrier: str) -> None:
 
 
 def test_native_observables_run_schedule_m(generate):
+    """``assert_schedule_m`` in binary64 (32 digits nightly)."""
+
+    assert_schedule_m(generate, ((Precision.double(), Decimal("1e-12")),))
+
+
+def assert_schedule_m(generate, carriers) -> None:
     """Observable columns on a plan with a schedule-M section (WP2.8): on
     g g > g g, whose families schedule M certifies, a dipole, an ordered
     directed history (direct and swapped columns) and the helicity-resolved
-    columns (``column_rows``) run with M as with B, at 32 digits to 1e-25
-    and in binary64 to 1e-12 of the point's largest output."""
+    columns (``column_rows``) run with M as with B, per (precision,
+    tolerance) of ``carriers`` relative to the point's largest output (32
+    digits to 1e-25, binary64 to 1e-12)."""
 
     from pyamplicol.loops.v2.merged import merged_graph
     from pyamplicol.loops.v2.observables import NativeObservables
@@ -1563,10 +1582,7 @@ def test_native_observables_run_schedule_m(generate):
     points = _points("gluon_scattering_qcd")[:1]
     scales = ["1000000"]
     histories = (INCLUSIVE, "T12", "ordered")
-    for precision, tolerance in (
-        (Precision.arbitrary(32), Decimal("1e-25")),
-        (Precision.double(), Decimal("1e-12")),
-    ):
+    for precision, tolerance in carriers:
         options = {"parameters": PARAMETERS, "precision": precision}
         runs = {}
         for schedule in "BM":
@@ -1601,11 +1617,7 @@ def test_native_members_per_point_sources_and_stability(generate):
     from pyamplicol.loops.v2.observables import NativeObservables
     from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
 
-    declarations = CorrelatorConfig(
-        color_correlations=(ColorCorrelator.dipole("casimir", 1, 1), ORDERED),
-        spin_correlations=((3,),),
-    )
-    representative = generate("d d~ > g g", correlators=declarations)
+    representative = generate("d d~ > g g", correlators=DD_DECLARATIONS)
     member = admit_member(representative.slice, "s~ s > g g")
     python = MemberObservables(representative, member)
     points = _points("uudd_qcd")[:2]
@@ -1696,12 +1708,13 @@ def _assert_brackets(result, exact, ceiling: float) -> None:
 
 
 def test_observable_stability_estimates_bracket_the_true_error(generate):
-    """``assert_estimates_bracket`` in binary64 (40 digits nightly)."""
+    """``assert_estimates_bracket`` in binary64 at the first point (the second
+    point and 40 digits nightly)."""
 
-    assert_estimates_bracket(generate, "double")
+    assert_estimates_bracket(generate, "double", (0,))
 
 
-def assert_estimates_bracket(generate, carrier: str) -> None:
+def assert_estimates_bracket(generate, carrier: str, points=(0, 1)) -> None:
     """Rotation and reduction-direction checks per observable output
     (REQUIREMENTS_ADDENDUM C) in the Python reference executor: the estimate
     of a directed ordered history, a dipole and a rotated complex spin source
@@ -1711,11 +1724,7 @@ def assert_estimates_bracket(generate, carrier: str) -> None:
 
     from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
 
-    declarations = CorrelatorConfig(
-        color_correlations=(ColorCorrelator.dipole("T12", 1, 2), ORDERED),
-        spin_correlations=((3,),),
-    )
-    observables = generate("d d~ > g g", correlators=declarations)
+    observables = generate("d d~ > g g", correlators=DD_DECLARATIONS)
     precision = NATIVE_CARRIERS[carrier]
     checks = StabilityChecks(
         (
@@ -1724,7 +1733,7 @@ def assert_estimates_bracket(generate, carrier: str) -> None:
         ),
         True,
     )
-    for point in _points("uudd_qcd")[:2]:
+    for point in [_points("uudd_qcd")[k] for k in points]:
         for options in (
             {"correlations": ("T12", "ordered")},
             {"spin": {3: VECTORS[0]}},
@@ -1817,10 +1826,7 @@ def assert_native_estimates_follow_the_api(generate, carrier: str) -> None:
         StabilityChecks,
     )
 
-    declarations = CorrelatorConfig(
-        color_correlations=(ColorCorrelator.dipole("T12", 1, 2),)
-    )
-    observables = generate("d d~ > g g", correlators=declarations)
+    observables = generate("d d~ > g g", correlators=DD_DECLARATIONS)
     points = _points("uudd_qcd")[:2]
     scales = ["1000000"] * 2
     precision = NATIVE_CARRIERS[carrier]
@@ -1924,13 +1930,6 @@ class _ShiftedRotation:
         return getattr(self.inner, name)
 
 
-def test_rotation_budgets_resolve_deviations_below_binary64(generate):
-    """``assert_rotation_budgets_below_binary64`` in DoubleFloat (40 digits
-    nightly)."""
-
-    assert_rotation_budgets_below_binary64(generate, "double-double")
-
-
 def assert_rotation_budgets_below_binary64(generate, carrier: str) -> None:
     """Outside binary64 the rotation budgets of the observables and of the
     inclusive API (``assemble._PointEvaluation.rotation_budget``) subtract
@@ -1943,10 +1942,7 @@ def assert_rotation_budgets_below_binary64(generate, carrier: str) -> None:
     from pyamplicol.loops.v2.plan_export import NativeExecutor
     from pyamplicol.loops.v2.stability import ROTATION, Rotation, StabilityChecks
 
-    declarations = CorrelatorConfig(
-        color_correlations=(ColorCorrelator.dipole("T12", 1, 2),)
-    )
-    observables = generate("d d~ > g g", correlators=declarations)
+    observables = generate("d d~ > g g", correlators=DD_DECLARATIONS)
     points = _points("uudd_qcd")[:1]
     precision = NATIVE_CARRIERS[carrier]
     options = {
@@ -1990,11 +1986,7 @@ def test_a_failed_observable_point_fails_alone(generate, after):
     from pyamplicol.loops.v2.plan_export import FailedPoints
     from pyamplicol.loops.v2.stability import ROTATION, Rotation, StabilityChecks
 
-    declarations = CorrelatorConfig(
-        color_correlations=(ColorCorrelator.dipole("T12", 1, 2),),
-        spin_correlations=((3,),),
-    )
-    observables = generate("d d~ > g g", correlators=declarations)
+    observables = generate("d d~ > g g", correlators=DD_DECLARATIONS)
     points = _points("uudd_qcd")[:2]
     scales = ["1000000"] * 2
     native = NativeObservables.correlated(observables, (INCLUSIVE, "T12"), lanes=4)

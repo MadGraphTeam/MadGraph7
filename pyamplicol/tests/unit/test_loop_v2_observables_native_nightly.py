@@ -3,18 +3,22 @@
 
 The 200-bit, DoubleFloat and 40-digit variants of the default tier's checks
 in ``test_loop_v2_observables.py``: the asymmetric Ward identity (O10),
-Recola's dipoles and spin source, native = Python, the stability estimates
-and budgets, the resolved-sum identity of g g > g g, spin bilinearity at LC
-and NLC, and the pure permutation alias d~ d > g g.
+Recola's dipoles and spin source, native = Python, schedule M = B at 32
+digits, the stability estimates (and the second point in binary64) and the
+rotation budgets outside binary64, the resolved-sum identity of g g > g g,
+spin bilinearity at LC and NLC, and the pure permutation alias d~ d > g g.
 """
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 
+from pyamplicol.loops.v2.assemble import Precision
+
 from .test_loop_v2_observables import (
-    RESOLVED_CONTROLS,
-    RESOLVED_SUM_DEFAULT,
+    RESOLVED_SUM_NIGHTLY,
     WARD_CONTROLS,
     assert_dipoles_match_recola,
     assert_estimates_bracket,
@@ -23,6 +27,7 @@ from .test_loop_v2_observables import (
     assert_native_estimates_follow_the_api,
     assert_resolved_entries_sum,
     assert_rotation_budgets_below_binary64,
+    assert_schedule_m,
     assert_spin_source_matches_recola,
     assert_spin_sources_bilinear,
     assert_ward_identity,
@@ -64,6 +69,16 @@ def test_observable_stability_estimates_bracket_the_true_error_at_40_digits(
     assert_estimates_bracket(generate, "arbitrary-40")
 
 
+def test_observable_stability_estimates_bracket_the_true_error_second_point(
+    generate,
+):
+    assert_estimates_bracket(generate, "double", (1,))
+
+
+def test_native_observables_run_schedule_m_at_32_digits(generate):
+    assert_schedule_m(generate, ((Precision.arbitrary(32), Decimal("1e-25")),))
+
+
 @pytest.mark.parametrize("carrier", ("double-double", "arbitrary-40"))
 def test_native_observable_estimates_follow_the_stability_api_precisely(
     generate, carrier
@@ -71,16 +86,14 @@ def test_native_observable_estimates_follow_the_stability_api_precisely(
     assert_native_estimates_follow_the_api(generate, carrier)
 
 
-def test_rotation_budgets_resolve_deviations_below_binary64_at_40_digits(generate):
-    assert_rotation_budgets_below_binary64(generate, "arbitrary-40")
+@pytest.mark.parametrize("carrier", ("double-double", "arbitrary-40"))
+def test_rotation_budgets_resolve_deviations_below_binary64(generate, carrier):
+    assert_rotation_budgets_below_binary64(generate, carrier)
 
 
-@pytest.mark.parametrize(
-    "control",
-    sorted({control for control, _ in RESOLVED_SUM_DEFAULT} & set(RESOLVED_CONTROLS)),
-)
-def test_resolved_entries_sum_to_the_inclusive_result_at_200_bits(generate, control):
-    assert_resolved_entries_sum(generate, control, "arbitrary-200")
+@pytest.mark.parametrize(("control", "carrier"), RESOLVED_SUM_NIGHTLY)
+def test_resolved_entries_sum_to_the_inclusive_result(generate, control, carrier):
+    assert_resolved_entries_sum(generate, control, carrier)
 
 
 @pytest.mark.parametrize("accuracy", ("lc", "nlc"))
