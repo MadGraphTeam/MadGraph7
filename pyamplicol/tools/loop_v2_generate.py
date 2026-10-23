@@ -93,6 +93,13 @@ def _status(key: str) -> int:
     return 0
 
 
+def _progress(record: dict[str, Any], *keys: str) -> None:
+    """Print some record entries to stderr as soon as they are known (a long
+    run that fails later keeps them)."""
+
+    print(json.dumps({key: record[key] for key in keys}), file=sys.stderr, flush=True)
+
+
 def _reset_peak() -> None:
     try:
         with open("/proc/self/clear_refs", "w") as handle:
@@ -370,6 +377,7 @@ def _validate(args) -> dict[str, Any]:
         }
         if result.stability is not None:
             entry["stability_relative"] = result.stability.relative
+        entry["rss_gb"] = round(_status("VmRSS") / 2**30, 3)
         record["points"].append(entry)
         print(json.dumps(entry), flush=True)
     record["passed"] = not failed
@@ -408,9 +416,23 @@ def poles(args) -> dict[str, Any]:
     start = time.perf_counter()
     slice_ = LoopSlice.generate(compiled, request, load_loop_native())
     record["generate_s"] = round(time.perf_counter() - start, 1)
+    record["generate_peak_gb"] = round(_status("VmHWM") / 2**30, 3)
+    _progress(record, "generate_s", "generate_peak_gb")
     start = time.perf_counter()
     executor = NativeExecutor(slice_, forward=False, inputs="native")
     record["export_with_trees_s"] = round(time.perf_counter() - start, 1)
+    record["plan_json_mb"] = round(len(executor._plan_json) / 1e6, 2)
+    record["tree_program_mb"] = round(
+        (
+            len(executor.exported.trees.json())
+            + sum(len(saved) for saved in executor.exported.trees.stages)
+        )
+        / 1e6,
+        2,
+    )
+    record["rss_after_export_gb"] = round(_status("VmRSS") / 2**30, 3)
+    _progress(record, "export_with_trees_s", "plan_json_mb", "tree_program_mb")
+    _progress(record, "rss_after_export_gb")
     parameters = {"aS": args.alpha_s, "MT": "173"}
     values = _kernel_parameters(compiled, {**parameters, **request.fixed_parameters})
     by_pdg = {int(p["pdg_code"]): p for p in slice_.data["particles"]}
@@ -458,6 +480,7 @@ def poles(args) -> dict[str, Any]:
         }
         if result.stability is not None:
             entry["stability_relative"] = result.stability.relative
+        entry["rss_gb"] = round(_status("VmRSS") / 2**30, 3)
         record["points"].append(entry)
         print(json.dumps(entry), flush=True)
     record["max_deviation"] = worst
