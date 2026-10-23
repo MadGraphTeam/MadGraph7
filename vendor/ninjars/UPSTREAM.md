@@ -2,8 +2,8 @@ The bridge uses the pinned NinjaRS and Symbolica revisions in `Cargo.toml` and
 `Cargo.lock`. NinjaRS is GPL-3.0-or-later; this bridge uses the same license.
 
 The final dependency cohort pins NinjaRS
-`aa6a6307dd081dc3714f9accebc0df9e5561ae73`, oneloopmaster
-`8ec256fc26cb361b20e10f59c19beb35717ef32c`, and the coupled
+`41a4c00e7635e3ab188fc26bacf0aae6941e8082`, oneloopmaster
+`5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5`, and the coupled
 Symbolica/numerica/graphica revision
 `9cdc2949cdb153478c1eca0d40690dc0abfc616e`. The consuming bridge owns the
 Symbolica patches because Cargo does not inherit dependency workspace patches.
@@ -14,6 +14,8 @@ Both native binary64 masters and generic higher-precision masters come from
 this oneloopmaster revision. NinjaRS includes the matching generic soft-box
 relabelling and precision-provider changes; a pin-only oneloopmaster update
 against the earlier NinjaRS revision is not equivalent.
+The benchmark report retains its original measured dependency cohort; this
+upstream pole-selection update is qualified separately in `tests/poles`.
 
 Every new installation records its exact manifest and resolved lock hashes and
 all transitive Git sources in `lib/ninjars-config.json`, alongside copies of
@@ -45,9 +47,11 @@ including `COLLIERComputeUVpoles` and `COLLIERComputeIRpoles` for COLLIER.
 Modes `1`, `2`, and `3` require a reduction/rescue list containing only NinjaRS
 and/or COLLIER; other backends cannot provide the requested pole selection.
 Finite coefficients and rational terms are unchanged; model counterterms are
-outside this selection. With NinjaRS, a master-provider adapter around the
-pinned oneloopmaster-backed providers selects the residues before contraction
-with the reduction coefficients. UV-only and IR-only modes use the generic NinjaRS
+outside this selection. MadLoop forwards the selection to the upstream
+NinjaRS master providers, which use oneloopmaster's public pole-selection API
+before contraction with the reduction coefficients. The bridge retains only
+ABI mode validation, with no local numerical pole-projection formulas.
+UV-only and IR-only modes use the generic NinjaRS
 engine in both double precision and higher-precision rescue, retaining the
 scaleless-bubble coefficients whose UV and IR residues cancel in the combined
 result. Their compensated-DP entry uses the same generic DP path, without the
@@ -56,8 +60,8 @@ available. Combined-pole and no-pole DP calculations retain the fast engine.
 All explicit modes (`0`–`3`) bypass existing helicity/loop-filter decisions so
 that cancelled combined-pole contributions remain available for separation;
 default mode `-1` keeps the usual filtering policy. Explicit modes can
-therefore incur additional numerator and reduction costs. This extension
-changes neither dependency pins nor the upstream reference clones.
+therefore incur additional numerator and reduction costs. The committed
+dependency revisions and lockfile include the upstream pole-selection APIs.
 See [Selecting UV and IR poles in MadLoop](../../doc/loop-pole-selection.md)
 for card examples, the Fortran setter, and the scope of the returned poles.
 

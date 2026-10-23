@@ -12,7 +12,7 @@ mod pole_bridge_tests;
 mod poles;
 mod tensor;
 
-use poles::{PoleMasters, PoleSelection};
+use poles::PoleSelection;
 
 use ninjars::{
     Amplitude, AmplitudeInput, Complex, EvaluationStatus, Float, FloatLike, FourMomentum, Real,
@@ -404,7 +404,7 @@ pub unsafe extern "C" fn ninjars_evaluate_dp_with_poles(
     pole_mode: i32,
 ) -> i32 {
     guard(|| {
-        let selection = PoleSelection::from_mode(pole_mode)?;
+        let selection = poles::from_mode(pole_mode)?;
         let (n, rank) = dimensions(n, rank, count)?;
         length("S matrix", s_length, n * n)?;
         length("momenta", p_length, n * 4)?;
@@ -517,7 +517,7 @@ pub unsafe extern "C" fn ninjars_evaluate_dp_compensated_with_poles(
     pole_mode: i32,
 ) -> i32 {
     guard(|| {
-        let selection = PoleSelection::from_mode(pole_mode)?;
+        let selection = poles::from_mode(pole_mode)?;
         let (n, rank) = dimensions(n, rank, count)?;
         length("S matrix", s_length, n * n)?;
         length("momenta", p_length, n * 4)?;
@@ -611,7 +611,7 @@ struct MpState {
     entries: HashMap<(usize, usize), MpEntry>,
     low: SymbolicaCuts<Float>,
     high: SymbolicaHighCuts<Float>,
-    masters: PoleMasters<SymbolicaMasters<Float>>,
+    masters: SymbolicaMasters<Float>,
 }
 impl MpState {
     fn new() -> Result<Self> {
@@ -628,14 +628,11 @@ impl MpState {
             entries: HashMap::new(),
             low: SymbolicaCuts::new(prototype.clone()).map_err(|e| e.to_string())?,
             high: SymbolicaHighCuts::new(prototype.clone()).map_err(|e| e.to_string())?,
-            masters: PoleMasters::new(
-                SymbolicaMasters::new(prototype).with_onshell_threshold(Some(threshold)),
-                PoleSelection::BOTH,
-            ),
+            masters: SymbolicaMasters::new(prototype).with_onshell_threshold(Some(threshold)),
         })
     }
     fn evaluate(&mut self, request: &MpRequest) -> Result<(i32, Vec<u8>)> {
-        self.masters.set_selection(request.selection);
+        self.masters.set_pole_selection(request.selection);
         let precision = self.precision;
         let n = request.n;
         let rank = request.rank;
@@ -734,7 +731,7 @@ struct SelectedDpState {
     entries: HashMap<(usize, usize), SelectedDpEntry>,
     low: SymbolicaCuts<f64>,
     high: SymbolicaHighCuts<f64>,
-    masters: PoleMasters<SymbolicaMasters<f64>>,
+    masters: SymbolicaMasters<f64>,
 }
 struct SelectedDpRequest {
     context_id: u64,
@@ -755,13 +752,13 @@ impl SelectedDpState {
             low: SymbolicaCuts::new(0.).map_err(|e| e.to_string())?,
             high: SymbolicaHighCuts::new(0.).map_err(|e| e.to_string())?,
             // Match OneLoopNativeMasters' default absolute threshold.
-            masters: PoleMasters::new(SymbolicaMasters::new(0.), PoleSelection::BOTH),
+            masters: SymbolicaMasters::new(0.),
         })
     }
     fn evaluate(&mut self, request: &SelectedDpRequest) -> Result<(i32, FastResult)> {
         let n = request.n;
         let rank = request.rank;
-        self.masters.set_selection(request.selection);
+        self.masters.set_pole_selection(request.selection);
         if !self.entries.contains_key(&(n, rank)) {
             let kernels = SymbolicaAmplitudeKernels::new(n, rank, 0.).map_err(|e| e.to_string())?;
             self.entries.insert(
@@ -1094,7 +1091,7 @@ pub unsafe extern "C" fn ninjars_evaluate_mp_with_poles(
     pole_mode: i32,
 ) -> i32 {
     guard(|| {
-        let selection = PoleSelection::from_mode(pole_mode)?;
+        let selection = poles::from_mode(pole_mode)?;
         let (n, rank) = dimensions(n, rank, count)?;
         length(
             "MP coefficients",

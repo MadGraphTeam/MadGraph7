@@ -8,6 +8,15 @@ complex-mass bubble. The largest tested rank is four. The scaleless bubble has
 separate nonzero UV and IR residues even though their sum vanishes. Tensor
 triangles and boxes also include nonzero UV residues.
 
+The current qualification uses upstream NinjaRS
+[`41a4c00e`](https://github.com/alphal00p/ninjars/commit/41a4c00e7635e3ab188fc26bacf0aae6941e8082)
+and oneloopmaster
+[`5b710437`](https://github.com/alphal00p/oneloopmaster/commit/5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5).
+Pole selection is provided by those upstream libraries.
+`upstream-migration-validation.json` binds the installed archive and dependency
+pins to the fresh numerical campaign, production installation smoke, 31 passing
+bridge Rust tests (7 ignored), and upstream provider/core test commands and counts.
+
 Run from the MadGraph repository root after `install ninjars --update`:
 
 ```sh
@@ -41,15 +50,21 @@ check requires:
 Ordinary DP uses the unchanged fast engine. The original ABI-3 library already
 returns `UNSTABLE` for the wholly spacelike massive-box case. Fourteen rank-four
 massive-triangle components also miss the strict COLLIER tolerance in the native
-combined result, by at most 4.09 times its bound. The original and new combined
-DP outputs were identical for all 455 components, including statuses. The new
-selected DP path passes all components, and the rescue passes all modes. These
+combined result, by at most 4.09 times its bound. The historical ABI-3 to first
+ABI-4 comparison found identical combined DP outputs for all 455 components,
+including statuses. The current selected DP path passes all components, and the
+rescue passes all modes. These
 ordinary-DP diagnostics remain visible in the JSON results. To make them fatal
 as well, use `--diagnostic-all`; this intentionally fails on the recorded native
 DP controls. They are not counted as newly validated native-DP accuracy results.
-`tensor-validation.json` records the final eight-mode-cycle qualification;
-`native-dp-baseline.json` binds the original/new combined-output comparison to
-the library, input and result hashes.
+`tensor-validation.json` records the current eight-mode-cycle qualification.
+`native-dp-baseline.json` preserves the historical ABI-3 to first ABI-4
+combined-output comparison. The subsequent migration to upstream pole APIs
+reproduces **all 7,280 prior ABI-4 DP/MP output records exactly**, across all four
+modes and their repeats, including Laurent coefficients, rational terms and
+statuses. This includes 910 combined-mode records in each precision. The
+baseline and current library, input and output hashes are bound in
+`upstream-migration-validation.json`.
 
 The numerical comparison uses
 `abs(a-b) <= 1e-7*max(abs(a),abs(b)) + 1e-10*S` for each complex coefficient.
@@ -151,8 +166,10 @@ The complete campaign and comparator reject missing configurations, missing or
 duplicate point/order rows, nonfinite values, unexpected return codes, and
 incomplete runtime-switch sequences.
 
-After making these harness paths portable, a fresh `qcd-z` export was rebuilt
-and tested in 12 configurations: COLLIER DP and NinjaRS DP/QP, each in all four
-modes. Its 72 result rows and statuses were identical to the original campaign.
-This one-process path check is recorded separately from the 74-configuration
-qualification.
+The current campaign regenerated and compiled **all four processes** through
+the portable harness against the upstream installation. Every one of its 74
+configuration result records agrees exactly with the earlier ABI-4 campaign,
+including statuses. The earlier 12-configuration `qcd-z` portability smoke is
+retained as historical provenance in `madloop-validation.json`; the current
+qualification uses the full fresh campaign. No new timing claim is made by
+this numerical migration check.

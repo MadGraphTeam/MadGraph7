@@ -13,8 +13,8 @@ name = "madloop_ninjars"
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-ninjars = { git = "https://github.com/alphal00p/ninjars", rev = "aa6a6307dd081dc3714f9accebc0df9e5561ae73" }
-ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars", rev = "aa6a6307dd081dc3714f9accebc0df9e5561ae73", features = ["native-masters"] }
+ninjars = { git = "https://github.com/alphal00p/ninjars", rev = "41a4c00e7635e3ab188fc26bacf0aae6941e8082" }
+ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars", rev = "41a4c00e7635e3ab188fc26bacf0aae6941e8082", features = ["native-masters"] }
 symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "bincode", "serde", "tracing_max_level_info"] }
 
 [patch.crates-io]

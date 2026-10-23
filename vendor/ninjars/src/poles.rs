@@ -1,130 +1,19 @@
-//! Select the UV and IR poles at the one-loop master-provider boundary.
+//! Map the MadLoop ABI selector to the upstream master-provider option.
 //!
-//! The generic NinjaRS engine retains the coefficients of scaleless bubbles.
-//! Their usual zero is `1/eps_UV - 1/eps_IR`, so the separation must happen
-//! here, before reduced coefficients are contracted with the masters. In
-//! particular, projecting an already summed amplitude cannot recover them.
-//!
-//! All finite and explicit rational contributions retain their usual values.
-//! The bubble coefficients use OneLOop's `(q + K)` convention: the UV residue
-//! of B with `n` longitudinal indices is integral_0^1 (-x)^n dx. Tadpole
-//! poles are entirely UV; scalar triangles, boxes and the derivative dB0
-//! have no UV pole. These statements also hold for complex squared masses.
+//! Numerical UV/IR separation belongs to oneloopmaster and is forwarded by
+//! NinjaRS's master providers. Keep only ABI validation in this module.
 
-use ninjars::{FloatLike, Laurent, MasterIntegral, MasterProvider, MasterRequest, MasterStatus};
+pub(crate) use ninjars_symbolica::PoleSelection;
 
-/// Independent pole switches, with the combined result as the default.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct PoleSelection {
-    pub uv: bool,
-    pub ir: bool,
-}
-
-impl PoleSelection {
-    pub const BOTH: Self = Self { uv: true, ir: true };
-    pub const UV: Self = Self {
-        uv: true,
-        ir: false,
-    };
-    pub const IR: Self = Self {
-        uv: false,
-        ir: true,
-    };
-    pub const NONE: Self = Self {
-        uv: false,
-        ir: false,
-    };
-
-    pub fn from_mode(mode: i32) -> std::result::Result<Self, String> {
-        match mode {
-            0 => Ok(Self::BOTH),
-            1 => Ok(Self::UV),
-            2 => Ok(Self::IR),
-            3 => Ok(Self::NONE),
-            _ => Err(format!(
-                "invalid loop pole mode {mode}: expected 0, 1, 2, or 3"
-            )),
-        }
-    }
-}
-
-/// A pole selector around an ordinary oneloopmaster-backed provider.
-///
-/// This adapter preserves the provider's structural-error and row-failure
-/// contract: no failed output is projected, overwritten, or reused as success.
-/// It has no numerical cache of its own, so changing the switches is immediate.
-pub(crate) struct PoleMasters<M> {
-    inner: M,
-    selection: PoleSelection,
-}
-
-impl<M> PoleMasters<M> {
-    pub fn new(inner: M, selection: PoleSelection) -> Self {
-        Self { inner, selection }
-    }
-
-    pub fn set_selection(&mut self, selection: PoleSelection) {
-        self.selection = selection;
-    }
-}
-
-fn select<T: FloatLike>(
-    integral: MasterIntegral,
-    selection: PoleSelection,
-    value: &mut Laurent<T>,
-) {
-    if selection == PoleSelection::BOTH {
-        return;
-    }
-    let zero = value[1].zero();
-    let uv = match integral {
-        MasterIntegral::A0 | MasterIntegral::An { .. } => value[1].clone(),
-        MasterIntegral::B0 => value[1].one(),
-        MasterIntegral::B1 => -value[1].one() / value[1].from_i64(2),
-        MasterIntegral::B11 => value[1].one() / value[1].from_i64(3),
-        MasterIntegral::B111 => -value[1].one() / value[1].from_i64(4),
-        MasterIntegral::B1111 => value[1].one() / value[1].from_i64(5),
-        MasterIntegral::C0 | MasterIntegral::D0 | MasterIntegral::DB0 => zero.clone(),
-    };
-    value[1] = match (selection.uv, selection.ir) {
-        (true, false) => uv,
-        (false, true) => value[1].clone() - uv,
-        (false, false) => zero.clone(),
-        (true, true) => unreachable!("combined poles return above"),
-    };
-    if !selection.ir {
-        value[2] = zero;
-    }
-}
-
-impl<T: FloatLike, M: MasterProvider<T>> MasterProvider<T> for PoleMasters<M> {
-    fn evaluate(
-        &mut self,
-        request: MasterRequest<'_, T>,
-        output: &mut [Laurent<T>],
-    ) -> ninjars::Result<()> {
-        let integral = request.integral;
-        self.inner.evaluate(request, output)?;
-        for value in output {
-            select(integral, self.selection, value);
-        }
-        Ok(())
-    }
-
-    fn evaluate_batch(
-        &mut self,
-        request: MasterRequest<'_, T>,
-        output: &mut [Laurent<T>],
-        statuses: &mut [MasterStatus],
-    ) -> ninjars::Result<()> {
-        let integral = request.integral;
-        self.inner.evaluate_batch(request, output, statuses)?;
-        for (value, status) in output.iter_mut().zip(statuses) {
-            if *status == MasterStatus::Success {
-                select(integral, self.selection, value);
-            }
-        }
-        Ok(())
+pub(crate) fn from_mode(mode: i32) -> std::result::Result<PoleSelection, String> {
+    match mode {
+        0 => Ok(PoleSelection::BOTH),
+        1 => Ok(PoleSelection::UV),
+        2 => Ok(PoleSelection::IR),
+        3 => Ok(PoleSelection::NONE),
+        _ => Err(format!(
+            "invalid loop pole mode {mode}: expected 0, 1, 2, or 3"
+        )),
     }
 }
 
@@ -132,7 +21,10 @@ impl<T: FloatLike, M: MasterProvider<T>> MasterProvider<T> for PoleMasters<M> {
 mod tests {
     use super::*;
     use crate::tensor::TensorGenericNumerator;
-    use ninjars::{AmplitudeInput, Complex, EvaluationStatus, Float, FourMomentum, MasterFailure};
+    use ninjars::{
+        AmplitudeInput, Complex, EvaluationStatus, Float, FloatLike, FourMomentum, MasterFailure,
+        MasterIntegral, MasterProvider, MasterRequest, MasterStatus,
+    };
     use ninjars_symbolica::{
         SymbolicaAmplitudeKernels, SymbolicaCuts, SymbolicaHighCuts, SymbolicaMasters,
     };
@@ -151,7 +43,7 @@ mod tests {
 
     #[test]
     fn scaleless_bubble_poles_survive_the_provider_in_every_tensor_rank() {
-        let mut provider = PoleMasters::new(SymbolicaMasters::new(0.), PoleSelection::BOTH);
+        let mut provider = SymbolicaMasters::new(0.).with_pole_selection(PoleSelection::BOTH);
         for (rank, integral) in [
             MasterIntegral::B0,
             MasterIntegral::B1,
@@ -170,7 +62,7 @@ mod tests {
                 (PoleSelection::NONE, 0.),
                 (PoleSelection::BOTH, 0.),
             ] {
-                provider.set_selection(selection);
+                provider.set_pole_selection(selection);
                 let mut output = [[c(91.); 3]];
                 provider
                     .evaluate(
@@ -192,7 +84,7 @@ mod tests {
 
     #[test]
     fn selected_master_poles_add_to_the_total_without_changing_finite_parts() {
-        let mut provider = PoleMasters::new(SymbolicaMasters::new(0.), PoleSelection::BOTH);
+        let mut provider = SymbolicaMasters::new(0.).with_pole_selection(PoleSelection::BOTH);
         for (integral, invariants, masses) in [
             (MasterIntegral::A0, vec![], vec![Complex::new(4., -0.2)]),
             (MasterIntegral::An { rank: 2 }, vec![], vec![c(4.)]),
@@ -223,7 +115,7 @@ mod tests {
             .into_iter()
             .zip(&mut results)
             {
-                provider.set_selection(selection);
+                provider.set_pole_selection(selection);
                 provider
                     .evaluate(
                         MasterRequest {
@@ -264,7 +156,7 @@ mod tests {
 
     #[test]
     fn failed_master_rows_and_structural_errors_preserve_outputs() {
-        let mut provider = PoleMasters::new(SymbolicaMasters::new(0.), PoleSelection::UV);
+        let mut provider = SymbolicaMasters::new(0.).with_pole_selection(PoleSelection::UV);
         let sentinel = [c(67.); 3];
         let mut output = [sentinel; 2];
         let mut statuses = [MasterStatus::Success; 2];
@@ -328,11 +220,11 @@ mod tests {
         let prototype = Float::new(256);
         let z = Complex::new(prototype.clone(), prototype.clone());
         let one = Complex::new(Float::with_val(256, 1), prototype.clone());
-        let mut provider = PoleMasters::new(SymbolicaMasters::new(prototype), PoleSelection::UV);
+        let mut provider = SymbolicaMasters::new(prototype).with_pole_selection(PoleSelection::UV);
         let mut results = [std::array::from_fn::<_, 3, _>(|_| z.clone())];
         let mut poles = Vec::new();
         for selection in [PoleSelection::UV, PoleSelection::IR, PoleSelection::BOTH] {
-            provider.set_selection(selection);
+            provider.set_pole_selection(selection);
             provider
                 .evaluate(
                     MasterRequest {
@@ -357,7 +249,7 @@ mod tests {
         use ninjars::fast::tensor_layout::{monomial_index, ncoeff};
         let mut low = SymbolicaCuts::new(0.).unwrap();
         let mut high = SymbolicaHighCuts::new(0.).unwrap();
-        let mut masters = PoleMasters::new(SymbolicaMasters::new(0.), PoleSelection::BOTH);
+        let mut masters = SymbolicaMasters::new(0.).with_pole_selection(PoleSelection::BOTH);
         let shifts = [
             FourMomentum::from([c(0.); 4]),
             FourMomentum::from([c(2.), c(0.), c(0.), c(2.)]),
@@ -380,7 +272,7 @@ mod tests {
                 (PoleSelection::IR, -uv),
             ] {
                 amplitude.reset_batch(1);
-                masters.set_selection(selection);
+                masters.set_pole_selection(selection);
                 amplitude
                     .evaluate_batch_with_inputs(
                         AmplitudeInput {

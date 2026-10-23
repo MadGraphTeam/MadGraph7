@@ -66,8 +66,10 @@ requirements.
 
 The selector acts on loop-integral poles before the reduced coefficients are
 contracted. In particular, a scaleless bubble has cancelling UV and IR
-single-pole residues that must be retained separately. The NinjaRS bridge
-selects these residues at its oneloopmaster-backed master-provider boundary.
+single-pole residues that must be retained separately. MadLoop forwards the
+selection through NinjaRS's public master-provider API to oneloopmaster,
+which computes the selected residues. The MadLoop bridge contains no separate
+UV/IR residue formulas.
 UV-only and IR-only evaluations use the generic NinjaRS engine in double
 precision and in higher-precision rescue so that scaleless-bubble coefficients
 are retained. These modes share the Symbolica worker and licensing requirements
@@ -99,7 +101,7 @@ settings.
 
 The independent [COLLIER comparison](../vendor/ninjars/tests/poles/README.md)
 covers 455 tensor components through rank four, including scaleless bubbles,
-complex masses, and UV-divergent tensor triangles and boxes. All selected DP
+complex masses, and UV-divergent tensor triangles and boxes. All UV-only and IR-only DP
 results and all higher-precision modes agree with COLLIER at the documented
 tolerance. Repeated mode changes reproduce fresh results. Ordinary fast-DP
 diagnostics are recorded separately and reproduce the pre-feature library.
@@ -123,14 +125,18 @@ compares each mode between backends; it does not assume additivity of squared
 outputs. The [retained receipt](../vendor/ninjars/tests/poles/madloop-validation.json)
 records the precise run matrix, inputs and tolerances.
 
-Local regression qualification passed 107 Python/compiled-Fortran tests,
-30 ordinary Rust tests, and nine export IO tests. Seven pre-existing opt-in Rust
-diagnostics remain excluded. The real CLI `install ninjars --update` passed its
-compiled DP/QP smoke check, including a binary128 perturbation below DP
-resolution. A compiled two-subprocess regression checks that the latest global
-selector survives the first card read and subsequent runtime changes.
-A generated shared library containing both `u u~ > z` and `d d~ > z` also
-passed these checks with NinjaRS and COLLIER, including 40 amplitude evaluations.
+The unchanged Python/Fortran layer passed 107 regression tests. Against the
+updated dependency pins, the bridge passed 31 ordinary Rust tests. Seven
+pre-existing opt-in Rust diagnostics remain excluded. The real CLI `install ninjars --update` passed its compiled DP/QP
+smoke check, including a binary128 perturbation below DP resolution. Its
+production archive contains no test-only floating-point mutators.
+A compiled two-subprocess regression checks that the latest global selector
+survives the first card read and subsequent runtime changes. The unchanged
+Fortran/export layer was additionally qualified before this dependency update
+with nine export IO tests and a generated shared library containing both
+`u u~ > z` and `d d~ > z`: 40 amplitude evaluations passed with NinjaRS and
+COLLIER. The [upstream migration receipt](../vendor/ninjars/tests/poles/upstream-migration-validation.json)
+records the published revisions and the new native qualification separately.
 The Python/Fortran regression modules can be run with:
 
 ```sh

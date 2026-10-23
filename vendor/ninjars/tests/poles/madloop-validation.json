@@ -1,7 +1,7 @@
 {
   "schema": "madloop-bare-uv-ir-validation-v1",
   "scope": "Bare loop contribution only; UFO UV and R2 counterterms removed in disposable generated validation copies.",
-  "source_base_revision": "d816e1b92ead3cde8cf89c3bc3786f08b938e4b2",
+  "source_base_revision": "3ed442f0444b7e3367da123690b00e12c9d068dc",
   "passed": true,
   "tolerance": "abs(a-b) <= 1e-7*max(abs(a),abs(b)) + 1e-10*S; S is the largest Born/Laurent magnitude for the same process point across compared modes and tools.",
   "points_per_process": 3,
@@ -49,15 +49,16 @@
       "generated_bare_patch": [
         {
           "path": "loop_matrix.f",
-          "original_sha256": "0195478b56968fcd13e1f75ad515845ec1c51cdfef248dd35c31cccf9dc0455c",
-          "bare_sha256": "027c8a98a6c1863a15f4593b17e8d65e4444106e849df5fcc0c1ba653fdc4417"
+          "original_sha256": "de647f1de1d5bc407d0ad2617ebb19da47cd24a06944e9c172cac633c163605b",
+          "bare_sha256": "740454f0f35baf95ce3f63c4aefa2986126af5942efea1ad116074e45265c008"
         },
         {
           "path": "mp_compute_loop_coefs.f",
           "original_sha256": "4892330f3322cde75680e46dc66a97890e5a9cab46c4658bd85f52cf655c63cd",
           "bare_sha256": "ee3ebc4634b587ba416d89d658b0904118ade184ae404da94e6763c636bb8afc"
         }
-      ]
+      ],
+      "compiled_driver_sha256": "33e07ad3a9bc23ac1f9d8c04f588c398c366af80977f8ba21d274ae2b6a16f6c"
     },
     {
       "case": "qcd-tt",
@@ -86,15 +87,16 @@
       "generated_bare_patch": [
         {
           "path": "loop_matrix.f",
-          "original_sha256": "44536303025bbb9c0e17ed3a54cbef2c60418056fa3870105d9b12c0071ffc92",
-          "bare_sha256": "10821a87212e6d1d547e3f61f33308cf6b6d83e2c50f95554b4b9dd6619ada92"
+          "original_sha256": "4bcb87f4e89e4b0d4188adfbebe91798d4a099f789f2b85d7966d6206645cb5d",
+          "bare_sha256": "3b416eac3a5296d1c9e200f9d8478f906071a42d23bcd338a6e8d640cf464c92"
         },
         {
           "path": "mp_compute_loop_coefs.f",
           "original_sha256": "b6f3cbcd902b3b5ee167eb01ee95fa6d6fab30ba6ace4dece0d70513be90659b",
           "bare_sha256": "528abc3a8a7e13d4a566b91a8bb20ff7fbe5973fa895bb1ee76e021532083f02"
         }
-      ]
+      ],
+      "compiled_driver_sha256": "a6cab82adcfab402b522726f7b0298a3944eb914a92f7778a112b0d28ac54378"
     },
     {
       "case": "ew-mumu",
@@ -120,15 +122,16 @@
       "generated_bare_patch": [
         {
           "path": "loop_matrix.f",
-          "original_sha256": "026cafb7e834fe27021eb21ca8d197ad9cd7c254b01450ea9411251ff798381e",
-          "bare_sha256": "3372ad3444147d584f269647b1c6588a098662550e244cd5c5f3ebb64ffa17b4"
+          "original_sha256": "50ffd7bd313842514eceb33ea3cfa49ec5a70a735edda4bb508380cc95da57b5",
+          "bare_sha256": "ad04f8d5cff82814fcee3dd05c7a0a864e2fed1b0268a3ea88f8935ce4bc3500"
         },
         {
           "path": "mp_compute_loop_coefs.f",
           "original_sha256": "b86e5f23ade56534c6126394b25916160c5853f37d5913ca8d2eb88e8f19fc4b",
           "bare_sha256": "9c6e42dc1f91cfe246a09d3af56b97f24e7839365b4f3b812746f48b8bc21aa0"
         }
-      ]
+      ],
+      "compiled_driver_sha256": "9bd58cff0ff7ed7c4f4bdb631fe76717c8e175dbbab43bc0bdb433e1c6345e52"
     },
     {
       "case": "li-h",
@@ -154,15 +157,16 @@
       "generated_bare_patch": [
         {
           "path": "loop_matrix.f",
-          "original_sha256": "0122dd390fd15c15978fe61f227c63857fcb4718be6796b7bda445904329c898",
-          "bare_sha256": "212505ad65d2bb5a14f40a999aa8b71008f2075f584b1323cec4b7493d31aa22"
+          "original_sha256": "180d611d1c277766ded79121d37cd3e86d4a1de2054874f80d99dc97a56390e8",
+          "bare_sha256": "c8ed46db87c93964819fc89103f32b70971e795377f764ede19cd128e1db3c92"
         },
         {
           "path": "mp_compute_loop_coefs.f",
           "original_sha256": "fdc2eb1c9590dbb7534cfb1a7b98c1348457889dfb6a95d28db4712af8f071bf",
           "bare_sha256": "d2185aedd173867f36978ca0ff3a6bdee15d4a7b8e93dae62fc21f78379c1e6f"
         }
-      ]
+      ],
+      "compiled_driver_sha256": "a3837b26811f3169fc37ca24d59f5062557b8036c6ab16334ab09940fe4d1023"
     }
   ],
   "status_rows": {
@@ -260,8 +264,13 @@
   },
   "ninjars_candidate": {
     "abi_version": 4,
-    "library_sha256": "51fc066b71fd26132cc3da53b2cfbab4c7f2ec896c22df3fdcb0dfc15f81467f",
-    "configuration_sha256": "a924184de8f4ef03ac86c477c0925fa77e8e13711ff615d76a1b2372232831dc"
+    "library_sha256": "43ed42c237412a81838a6c4c0b4f89015a0785b4f331bdb2fbf01020124c67c7",
+    "configuration_sha256": "45b48d5991cef9b669c2942abb9020a864f462103c4943cb7e307235f84ba25c",
+    "upstream_pins": {
+      "ninjars": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082",
+      "ninjars-symbolica": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082",
+      "oneloop": "git+https://github.com/alphal00p/oneloopmaster.git?rev=5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5#5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5"
+    }
   },
   "input_and_harness_sha256": {
     "bare_driver.f": "5412bd1e19ae0744e856cd88b39071f2ef0b937f8b4ba4e3d4c426af26b4eb24",
@@ -269,88 +278,27 @@
     "compare_madloop.py": "42a7218d1cf3bdae0f25f8a5f6bbc6371f11579ca7ec93dde77807a5f42eee1b"
   },
   "raw_receipt_sha256": {
-    "process-run-summary.json": "2f7c79680e3938b95dd8c1b37770abe3b78e9c12de693e5234ef1732bd2df774",
-    "process_comparison.json": "f5145c4e4029724fde9bfc936c89654202d95731a0b8872adf2ee8cf0188d116"
+    "process_comparison.json": "f5145c4e4029724fde9bfc936c89654202d95731a0b8872adf2ee8cf0188d116",
+    "tensor-summary.json": "0c833553435e39c7358e9453636c120aa4a66dc300f2828b69d82c9e953b8472",
+    "combined-baseline-comparison.json": "ed4dcbc6c214a63ae54a5d2b830f937b6fd8cbda9aae885a73a255d948054ac4"
   },
   "portable_path_reproduction": {
     "passed": true,
-    "scope": "Fresh portable-path reproduction of qcd-z only, separate from the full 74-configuration campaign.",
+    "scope": "Fresh CLI generation and compilation of all four processes through the retained portable campaign after the upstream dependency update.",
+    "configurations": 74,
+    "result_rows": 444,
+    "runtime_switch_rows": 144,
+    "values_and_statuses_exactly_equal_to_pre_upstream_campaign": true
+  },
+  "validation_revision_note": "Upstream migration applied to this source revision; exact compiled bridge and generation-source hashes are recorded in upstream-migration-validation.json.",
+  "recorded_evaluation_count_note": "Count refers to unique recorded configurations; warmup and repeat switch calls are additional.",
+  "historical_portable_path_smoke": {
+    "source_revision": "3ed442f0444b7e3367da123690b00e12c9d068dc",
+    "case": "qcd-z",
     "configurations": 12,
     "rows": 72,
-    "values_and_statuses_exactly_equal_to_original_campaign": true,
-    "matrix": [
-      {
-        "backend": 7,
-        "mode": 0,
-        "CTModeRun": 1,
-        "rows": 6
-      },
-      {
-        "backend": 7,
-        "mode": 1,
-        "CTModeRun": 1,
-        "rows": 6
-      },
-      {
-        "backend": 7,
-        "mode": 2,
-        "CTModeRun": 1,
-        "rows": 6
-      },
-      {
-        "backend": 7,
-        "mode": 3,
-        "CTModeRun": 1,
-        "rows": 6
-      },
-      {
-        "backend": 8,
-        "mode": 0,
-        "CTModeRun": 1,
-        "rows": 6
-      },
-      {
-        "backend": 8,
-        "mode": 0,
-        "CTModeRun": 4,
-        "rows": 6
-      },
-      {
-        "backend": 8,
-        "mode": 1,
-        "CTModeRun": 1,
-        "rows": 6
-      },
-      {
-        "backend": 8,
-        "mode": 1,
-        "CTModeRun": 4,
-        "rows": 6
-      },
-      {
-        "backend": 8,
-        "mode": 2,
-        "CTModeRun": 1,
-        "rows": 6
-      },
-      {
-        "backend": 8,
-        "mode": 2,
-        "CTModeRun": 4,
-        "rows": 6
-      },
-      {
-        "backend": 8,
-        "mode": 3,
-        "CTModeRun": 1,
-        "rows": 6
-      },
-      {
-        "backend": 8,
-        "mode": 3,
-        "CTModeRun": 4,
-        "rows": 6
-      }
-    ]
-  }
+    "passed": true,
+    "scope": "Earlier one-process portability smoke; superseded for current-library qualification by the full fresh campaign."
+  },
+  "migration_receipt": "upstream-migration-validation.json"
 }
