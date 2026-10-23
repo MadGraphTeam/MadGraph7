@@ -233,7 +233,7 @@ class TestValidCmd(unittest.TestCase):
 
         self.assertEqual(cmd._curr_model.get('name'), 'sm')
 
-        import models as ufomodels
+        import madgraph.models as ufomodels
         ufomodel = ufomodels.load_model(cmd._curr_model.get('name'))
         for key in target:
             try:
@@ -1226,13 +1226,6 @@ class LaunchCopiesOnlyRunTimeSetsTest(unittest.TestCase):
         import madgraph.interface.amcatnlo_run_interface as amcatnlo_run
         sent = self.replayed(mg_interface.MadGraphCmd.do_launch, 'aMC@NLO',
                              amcatnlo_run, 'aMCatNLOCmd')
-        self.assertEqual(sent, ['set nb_core 4'])
-
-    def test_from_mg5_for_madweight(self):
-        import madgraph.interface.madgraph_interface as mg_interface
-        import madgraph.interface.madweight_interface as madweight
-        sent = self.replayed(mg_interface.MadGraphCmd.do_launch, 'madweight',
-                             madweight, 'MadWeightCmd')
         self.assertEqual(sent, ['set nb_core 4'])
 
     def test_from_the_amcatnlo_prompt(self):

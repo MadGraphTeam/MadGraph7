@@ -254,7 +254,8 @@ def check_mg7(repo, backend, events):
             (r'(?m)^output_format = \S+', 'output_format = "lhe"'),
             (r'(?m)^fixed_ren_scale = false', 'fixed_ren_scale = true'),
             (r'(?m)^fixed_fact_scale = false', 'fixed_fact_scale = true'),
-            (r'(?m)^pdf = ".*"$', 'pdf = "%s"' % UUX_MG7_PDF),
+            (r'(?m)^pdf1 = ".*"$', 'pdf1 = "%s"' % UUX_MG7_PDF),
+            (r'(?m)^pdf2 = ".*"$', 'pdf2 = "%s"' % UUX_MG7_PDF),
             (r'(?m)^(\[systematics\]\n(?:#.*\n)*)enable = \S+', r'\1enable = false')):
         card, count = re.subn(pattern, value, card, count=1)
         if count != 1:

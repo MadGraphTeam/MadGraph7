@@ -40,7 +40,7 @@ import madgraph.core.diagram_generation as diagram_generation
 import madgraph.loop.loop_base_objects as loop_base_objects
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.iolibs.save_load_object as save_load_object
-import models.import_ufo as models
+import madgraph.models.import_ufo as models
 from madgraph import MadGraph5Error
 
 _file_path = os.path.dirname(os.path.realpath(__file__))

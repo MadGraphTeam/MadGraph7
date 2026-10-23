@@ -478,7 +478,7 @@ class ParamCard(dict):
         if restrict_rule:
             _, modify = restrict_rule.check_param_card(self, modify=True, log=loglevel)
         
-        import models.model_reader as model_reader
+        import madgraph.models.model_reader as model_reader
         import madgraph.core.base_objects as base_objects
         if not isinstance(model, model_reader.ModelReader):
             model = model_reader.ModelReader(model)
@@ -640,6 +640,19 @@ class ParamCard(dict):
             self['fralpha'].rename_keys({(): (1,)})
             self.write(param_card.input_path)
         
+    def get_block_scale(self, block, defaultcard=None):
+        """reference scale (Q=) of a block of running parameters: the one of
+        this card, else the one of the default card, else 91.188 GeV."""
+
+        for card in [self, defaultcard]:
+            if card is not None and block in card and card[block].scale:
+                if card is not self:
+                    logger.warning('information about scale of \"%s\" is missing using default value: %s.' %\
+                                   (block, card[block].scale))
+                return card[block].scale
+        logger.warning('information about scale of \"%s\" is missing (block absent from the param_card) using 91.188 GeV.' % block)
+        return 91.188
+
     def write_inc_file(self, outpath, identpath, default, need_mp=False):
         """ write a fortran file which hardcode the param value"""
 
@@ -656,6 +669,7 @@ class ParamCard(dict):
             
         fout = file_writers.FortranWriter(outpath+'.tmp')
         defaultcard = ParamCard(default)
+        written = set()
         for line in open(identpath):
             if line.startswith('c  ') or line.startswith('ccccc'):
                 continue
@@ -672,16 +686,14 @@ class ParamCard(dict):
                     value = self[block].get(tuple(lhaid)).value
                 except KeyError:
                     if lhaid == [0]:
-                        try:
-                            value = self[block].scale
-                        except KeyError:
-                            value = defaultcard[block].scale
-                            logger.warning('information about scale of \"%s\" is missing using default value: %s.' %\
-                                                          (block, value))
+                        value = self.get_block_scale(block, defaultcard)
                     else:
                         value =defaultcard[block].get(tuple(lhaid)).value
                         logger.warning('information about \"%s %s" is missing using default value: %s.' %\
                                                           (block, lhaid, value))
+            elif lhaid == [0]:
+                # reference scale of a block of running parameters
+                value = self.get_block_scale(block, defaultcard)
             else:
                
                 if block != 'loop':
@@ -700,11 +712,14 @@ class ParamCard(dict):
                     value = '-%s' % value
 
             fout.writelines(' %s = %s' % (variable, ('%e'%float(value)).replace('e','d')))
+            written.add(variable.lower())
             if need_mp:
                 fout.writelines(' mp__%s = %s_16' % (variable, value))
                 
         for block in scales:
-            value = self[block].scale
+            if ('mdl__%s__scale' % block).lower() in written:
+                continue
+            value = self.get_block_scale(block, defaultcard)
             fout.writelines(' mdl__%s__scale = %s' % (block, ('%e'%float(value)).replace('e','d')))
 
         fout.close()

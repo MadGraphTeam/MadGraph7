@@ -59,7 +59,7 @@ import madgraph.core.helas_objects as helas_objects
 import madgraph.various.cluster as cluster
 import madgraph.various.misc as misc
 import madgraph.various.banner as banner_mod
-import models.model_reader as model_reader
+import madgraph.models.model_reader as model_reader
 #usefull shortcut
 pjoin = os.path.join
 
@@ -636,6 +636,16 @@ generating the process (see arXiv:1804.10017).""" % (corr, ', '.join(resonances)
                         args.remove(a)
                         break
 
+            if any(a.startswith('--diagram_filter') for a in args):
+                raise self.InvalidCmd("--diagram_filter is not supported for "
+                    "NLO (FKS) generation: use --tree_diagram_filter (Born "
+                    "and real emission diagrams) and/or --loop_diagram_filter "
+                    "(loop diagrams).")
+            tree_diagram_filter = self.extract_diagram_filter(args,
+                                                       '--tree_diagram_filter')
+            loop_diagram_filter = self.extract_diagram_filter(args,
+                                                       '--loop_diagram_filter')
+
             line = ' '.join(args[1:])
 
         # convert the single $ to $$ automatically
@@ -712,7 +722,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         if not myprocdef['squared_orders'] and not myprocdef['orders']:
             # find the minimum weighted order, then extract the values for the varius
             # couplings in the model
-            weighted = diagram_generation.MultiProcess.find_optimal_process_orders(myprocdef)
+            weighted = diagram_generation.MultiProcess.find_optimal_process_orders(myprocdef,
+                                                           tree_diagram_filter)
             if not weighted:
                 raise MadGraph5Error('\nProcess orders cannot be determined automatically. \n' + \
                                       'Please specify them from the command line.')
@@ -875,7 +886,9 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                        'ncores_for_proc_gen': self.ncores_for_proc_gen,
                        'ewsudakov': self.ewsudakov,
                        'nlo_mixed_expansion': self.options['nlo_mixed_expansion'],
-                       'loop_filter':self._fks_multi_proc['loop_filter'] if hasattr(self, '_fks_multi_proc') else None}
+                       'loop_filter':self._fks_multi_proc['loop_filter'] if hasattr(self, '_fks_multi_proc') else None,
+                       'diagram_filter': tree_diagram_filter,
+                       'loop_diagram_filter': loop_diagram_filter}
 
         fksproc =fks_base.FKSMultiProcess(myprocdef,fks_options)
         try:

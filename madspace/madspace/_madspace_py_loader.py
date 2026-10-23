@@ -16,6 +16,7 @@ ctypes.CDLL(
 )
 
 from ._madspace_py import *
+from .python_function import PythonFunction
 
 
 @contextlib.contextmanager

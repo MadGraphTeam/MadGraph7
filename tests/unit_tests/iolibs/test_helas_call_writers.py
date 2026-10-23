@@ -1301,3 +1301,39 @@ class AxialGaugeReferenceTest(unittest.TestCase):
                     self.assertFalse(requested({'axial_gauge': 'True'}, warn=True))
         finally:
             aloha.unitary_gauge = old
+
+
+class CombineNameHashTest(unittest.TestCase):
+    """The name of a long combined ALOHA routine is a hash of the names of
+    the combined Lorentz structures: the call site (an amplitude, with the
+    '%(tags)s' placeholder still to be filled) and ALOHA (which writes the
+    routine) must hash the same string."""
+
+    def test_long_amplitude_name_matches_the_routine(self):
+        from aloha.aloha_writers import combine_name
+
+        others = ['FFVV%d' % i for i in (110, 1110, 111, 114, 115, 131, 132, 141, 142, 193, 194)]
+        # name written by ALOHA for the amplitude routine
+        written = combine_name('FFVV1010', others, 0, [])
+        self.assertTrue(written.startswith('ALOHA_'))
+        # name of the call, the tags being known only when the call is written
+        call = combine_name('FFVV1010', others, 0, [], unknown_tag=True)
+        self.assertIn('%(tags)s', call)
+        self.assertEqual(call % {'tags': '', 'propa': ''}, written)
+
+    def test_short_amplitude_name_is_not_hashed(self):
+        from aloha.aloha_writers import combine_name
+
+        others = ['FFV2']
+        written = combine_name('FFV1', others, 0, [])
+        call = combine_name('FFV1', others, 0, [], unknown_tag=True)
+        self.assertEqual(call % {'tags': '', 'propa': ''}, written)
+        self.assertNotIn('ALOHA_', written)
+
+    def test_long_wavefunction_name_matches_the_routine(self):
+        from aloha.aloha_writers import combine_name
+
+        others = ['FFVV%d' % i for i in (110, 1110, 111, 114, 115, 131, 132, 141, 142, 193, 194)]
+        written = combine_name('FFVV1010', others, 3, [])
+        call = combine_name('FFVV1010', others, 3, [], unknown_tag=True)
+        self.assertEqual(call % {'tags': '', 'propa': ''}, written)

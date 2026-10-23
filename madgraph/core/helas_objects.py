@@ -1903,7 +1903,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
             else:
                 onec = next(iter(c['flavors'].values()))
 
-            if onec in coupling_dep and 'aS' in coupling_dep[onec]:
+            if onec in coupling_dep and self.model.depends_on_scale(coupling_dep[onec]):
                 output['vec%d'%i] = "(ivec)"
             else:
                 output['vec%d'%i] = ""
@@ -3701,7 +3701,7 @@ class HelasAmplitude(base_objects.PhysicsObject):
             if c.startswith('-'):
                 c = c[1:]
 
-            if coupling_dep and 'aS' in coupling_dep[c]:
+            if coupling_dep and self.model.depends_on_scale(coupling_dep[c]):
                 output['vec%d'%i] = "(ivec)"
             else:
                 output['vec%d'%i] = ""

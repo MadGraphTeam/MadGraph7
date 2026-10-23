@@ -2,6 +2,7 @@
 
 #include "madspace/compgraphs.hpp"
 #include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/custom_function.hpp"
 #include "madspace/phasespace/observable.hpp"
 
 #include <functional>
@@ -18,7 +19,9 @@ namespace madspace {
  * a list of @ref Cuts::CutItem "cut items" [1]. Each item evaluates one
  * @ref Observable for its particle selection and requires the result to lie in
  * `[min, max]`. When the selection yields several values, @ref CutMode decides
- * whether all or any of them must pass. See Sec. 3.2.4 of [1].
+ * whether all or any of them must pass. See Sec. 3.2.4 of [1]. An optional
+ * @ref CustomFunction of type CustomFunction::cut multiplies its value into the
+ * mask.
  *
  * The accessors re-expose the active lower bounds in the layout the
  * phase-space mappings consume. `pt_min()` and `eta_max()` are indexed by
@@ -58,11 +61,19 @@ public:
         CutMode mode = CutMode::all;
     };
 
-    /// @param cut_data  The cut items to apply.
-    Cuts(const std::vector<CutItem>& cut_data);
-    /// Build a pass-through mask with no cuts.
+    /// @param cut_data    The cut items to apply.
+    /// @param custom_cut  Optional user-supplied cut function.
+    Cuts(
+        const std::vector<CutItem>& cut_data,
+        const std::optional<CustomFunction>& custom_cut = std::nullopt
+    );
+    /// Build a mask with no cut items.
     /// @param particle_count  Number of external particles.
-    Cuts(std::size_t particle_count);
+    /// @param custom_cut      Optional user-supplied cut function.
+    Cuts(
+        std::size_t particle_count,
+        const std::optional<CustomFunction>& custom_cut = std::nullopt
+    );
     /// Largest required partonic center-of-mass energy, or 0 if unconstrained.
     double sqrt_s_min() const;
     /// Per-outgoing-particle maximum pseudorapidity (infinity where inactive).
@@ -97,6 +108,7 @@ private:
     ) const;
 
     std::vector<CutItem> _cut_data;
+    std::optional<CustomFunction> _custom_cut;
 };
 
 } // namespace madspace

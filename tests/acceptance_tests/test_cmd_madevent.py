@@ -2614,7 +2614,7 @@ C
         self.cmd_line.exec_cmd('compute_widths 6 -f')
 
         # check value for the width    
-        import models.check_param_card as check_param_card    
+        import madgraph.models.check_param_card as check_param_card    
         param_card = check_param_card.ParamCard(pjoin(self.run_dir, 'Cards', 'param_card.dat'))
         # NB: the trailing 3 in the original call was assertTrue's *msg*
         # argument, not a precision -- misc.equal's default sig_fig=6 is what

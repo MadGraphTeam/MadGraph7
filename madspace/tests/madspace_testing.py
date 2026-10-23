@@ -64,4 +64,4 @@ def randint(*args, **kwargs):
 
 def to_numpy(tensor):
     """A tensor as a numpy array on the host, e.g. for scipy."""
-    return tensor.detach().cpu().numpy()
+    return torch.as_tensor(tensor).detach().cpu().numpy()

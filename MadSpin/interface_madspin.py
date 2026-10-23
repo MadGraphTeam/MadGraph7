@@ -49,8 +49,8 @@ import madgraph.iolibs.export_v4 as export_v4
 import madgraph.various.banner as banner
 import madgraph.various.lhe_parser as lhe_parser
 
-import models.import_ufo as import_ufo
-import models.check_param_card as check_param_card
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.check_param_card as check_param_card
 import MadSpin.decay as madspin
 import madmatrix.density as madmatrix_density
 

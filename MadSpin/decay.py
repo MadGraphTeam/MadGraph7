@@ -53,7 +53,7 @@ import madgraph.core.base_objects as base_objects
 #import madgraph.core.helas_objects as helas_objects
 #import madgraph.core.diagram_generation as diagram_generation
 
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 #import madgraph.various.process_checks as process_checks
 #from time import strftime
 #from madgraph.interface.madgraph_interface import MadGraphCmd
@@ -2043,7 +2043,7 @@ class width_estimate(object):
             'br' : value of the branching fraction"""        
         
         if isinstance(param_card, str):
-            import models.check_param_card as check_param_card
+            import madgraph.models.check_param_card as check_param_card
             param_card = check_param_card.ParamCard(param_card)
         
         if 'decay' not in param_card or not hasattr(param_card['decay'], 'decay_table'):
@@ -2401,7 +2401,7 @@ class decay_all_events(object):
         param.close()   
         if model_name == 'mssm' or model_name.startswith('mssm-'):
             #need to convert to SLHA2 format
-            import models.check_param_card as check_param_card
+            import madgraph.models.check_param_card as check_param_card
             check_param_card.convert_to_mg5card(pjoin(self.path_me,'param_card.dat'))
   
         

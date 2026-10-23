@@ -27,10 +27,10 @@ _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
 
 import madgraph.core.base_objects as base_objects
 
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 
 sys.path.append('%s/../../Template/bin/internal' % _file_path)
-import models.check_param_card as writter
+import madgraph.models.check_param_card as writter
 
 
 class TestBlock(unittest.TestCase):
@@ -149,6 +149,42 @@ class TestParamCard(unittest.TestCase):
         self.assertNotIn('new', list(card.keys()))
         
                 
+
+    def test_write_inc_file_running_scale(self):
+        """ the reference scale of a block of running parameters is taken from
+        the param_card, and falls back to a default with a warning when the
+        block is absent (e.g. all its parameters removed by a restriction)
+        instead of stopping on a KeyError """
+
+        tmpdir = tempfile.mkdtemp(prefix='mg5_test_runscale')
+        try:
+            card_text = 'Block dim62f Q= 2.000000e+03\n   19 1.000000e+00 # ctp\n'
+            card_path = os.path.join(tmpdir, 'param_card.dat')
+            default_path = os.path.join(tmpdir, 'param_card_default.dat')
+            for path in [card_path, default_path]:
+                with open(path, 'w') as fsock:
+                    fsock.write(card_text)
+            ident_path = os.path.join(tmpdir, 'ident_card.dat')
+            with open(ident_path, 'w') as fsock:
+                fsock.write('dim62f 19 mdl_ctp\n'
+                            'dim62f 0 mdl__dim62f__scale\n'
+                            'dim64f 0 mdl__dim64f__scale\n')
+            os.mkdir(os.path.join(tmpdir, 'MODEL'))
+            with open(os.path.join(tmpdir, 'MODEL', 'input.inc'), 'w') as fsock:
+                fsock.write('double precision mdl_ctp,mdl__dim62f__scale,mdl__dim64f__scale\n')
+
+            out_path = os.path.join(tmpdir, 'param_card.inc')
+            card = writter.ParamCard(card_path)
+            with self.assertLogs('madgraph.models', level='WARNING') as log:
+                card.write_inc_file(out_path, ident_path, default_path)
+            self.assertTrue(any('dim64f' in line for line in log.output))
+
+            lines = [l.strip().lower() for l in open(out_path) if l.strip()]
+            self.assertIn('mdl__dim62f__scale = 2.000000d+03', lines)
+            self.assertIn('mdl__dim64f__scale = 9.118800d+01', lines)
+            self.assertEqual(len([l for l in lines if l.startswith('mdl__dim62f__scale')]), 1)
+        finally:
+            shutil.rmtree(tmpdir)
 
     def test_mod_card(self):
         """ test that we can modify a param card """

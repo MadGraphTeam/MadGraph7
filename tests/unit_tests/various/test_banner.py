@@ -22,7 +22,7 @@ import tempfile
 import madgraph.various.banner as bannermod
 import madgraph.various.misc as misc
 import os
-import models
+import madgraph.models as models
 import io
 import re
 import sys
@@ -1544,6 +1544,34 @@ c
 class TestRunCardMG7(unittest.TestCase):
     """Test the TOML run_card (RunCardMG7) used by the mg7/madnis mode."""
 
+    def test_gridpack_pigz_setting(self):
+        import io
+        import tomllib
+        for value in ("auto", True, False):
+            card = bannermod.RunCardMG7()
+            card.set("run.use_pigz", value)
+            output = io.StringIO()
+            card.write_gridpack_card(output)
+            parsed = tomllib.loads(output.getvalue())
+            self.assertEqual(parsed["run"]["use_pigz"], value)
+            full_output = io.StringIO()
+            card.write(full_output)
+            self.assertEqual(
+                tomllib.loads(full_output.getvalue())["run"]["use_pigz"], value)
+
+    def test_gzip_configuration(self):
+        card = bannermod.RunCardMG7()
+        card.set("run.use_pigz", "auto")
+        card.set("run.cpu_thread_pool_size", -1)
+        self.assertEqual(card.gzip_configuration(),
+                         {'use_pigz': None, 'nb_core': None})
+        card.set("run.use_pigz", True)
+        card.set("run.cpu_thread_pool_size", 4)
+        self.assertEqual(card.gzip_configuration(),
+                         {'use_pigz': True, 'nb_core': 4})
+        card.set("run.use_pigz", False)
+        self.assertEqual(card.gzip_configuration()['use_pigz'], False)
+
     template = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
                      'mg7', 'run_card.toml')
 
@@ -2168,7 +2196,7 @@ class TestRunCardMG7Histograms(unittest.TestCase):
         PhysicsObjectError, and a Model gave 0. MW is an internal parameter
         of sm-full, so it has to be evaluated from the external ones.
         """
-        import models.import_ufo as import_ufo
+        import madgraph.models.import_ufo as import_ufo
         import madgraph.core.base_objects as base_objects
         import madgraph.loop.loop_base_objects as loop_base_objects
 

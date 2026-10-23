@@ -285,7 +285,7 @@ class MadDensityLibrary(object):
             sub.initialise(param_card)
         # alpha_s = 0 asks for the value of the param card, as in the Fortran
         try:
-            import models.check_param_card as check_param_card
+            import madgraph.models.check_param_card as check_param_card
             self._card_alphas = float(check_param_card.ParamCard(param_card)
                                       ['sminputs'].get(3).value)
         except Exception:

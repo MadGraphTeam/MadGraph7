@@ -45,8 +45,8 @@ import MadSpin.decay as madspin
 import madgraph.various.lhe_parser as lhe_parser
 import MadSpin.interface_madspin as interface_madspin
 import madmatrix.density as madmatrix_density
-import models.check_param_card as check_param_card
-import models.import_ufo as import_ufo
+import madgraph.models.check_param_card as check_param_card
+import madgraph.models.import_ufo as import_ufo
 
 
 from madgraph import MG5DIR, MadGraph5Error

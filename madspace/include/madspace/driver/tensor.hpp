@@ -287,6 +287,8 @@ public:
     virtual void sync_barrier() const {}
     /// The kind of device this is.
     virtual DeviceType device_type() const = 0;
+    /// Index of the device among those of its type, 0 for the CPU.
+    virtual int device_index() const { return 0; }
     /// Make this device current for the calling thread.
     virtual void activate() const = 0;
     /// One Adam optimizer update step; see @ref AdamOptimizer.
@@ -747,7 +749,8 @@ public:
         return copy(*impl->device, hint);
     }
 
-    /// Whether the elements are stored without gaps in row-major order.
+    /// Whether the elements are stored without gaps in column-major (Fortran)
+    /// order, i.e. the first index varies fastest.
     bool is_contiguous() const { return impl->contiguous_dims == impl->shape.size(); }
 
     /// Number of leading dimensions that are contiguous.
