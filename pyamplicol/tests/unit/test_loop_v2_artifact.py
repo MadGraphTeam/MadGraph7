@@ -2169,8 +2169,8 @@ def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
     loop_sm_compiled_model, loop_native, tmp_path
 ):
     """gg -> gggg (1100 families, 45 MB of plan JSON without the forward
-    oracle) publishes < 20 MB (7.4 MB measured, 5.3 MB of it the compiled
-    model)."""
+    oracle) publishes < 20 MB (8.8 MB measured with the native point inputs,
+    7.4 MB without; 5.3 MB of it the compiled model)."""
 
     from pyamplicol.loops.v2.artifact import admit, plan_digest, read_plan
 
