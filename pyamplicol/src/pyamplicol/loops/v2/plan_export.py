@@ -770,6 +770,7 @@ class NativeExecutor:
         self.forms = forms
         self._plan_json = self.exported.json()
         self._native: dict[tuple[str, int | None, int], Any] = {}
+        self._scaleless: NativeExecutor | None = None
         # Point inputs of the latest ``family_numerators`` calls (oracle
         # comparisons run several schedules and carriers on one batch).
         self._point_inputs: OrderedDict[str, Any] = OrderedDict()
@@ -796,6 +797,22 @@ class NativeExecutor:
                 forms=self.forms,
             )
         return found
+
+    @property
+    def scaleless(self) -> NativeExecutor | None:
+        """The executor of the slice's certified-scaleless families
+        (``LoopSlice.scaleless``), which only the "uv" and "ir" pole
+        selections run; built on first use, schedule B only."""
+
+        if self._scaleless is None and self.slice.scaleless is not None:
+            self._scaleless = NativeExecutor(
+                self.slice.scaleless,
+                lanes=self.lanes,
+                threads=self.threads,
+                forward=False,
+                forms=self.forms,
+            )
+        return self._scaleless
 
     def lanes_for(self, arithmetic: Arithmetic, points: int | None) -> int:
         """Lanes per chunk: the configured count in binary64 (SIMD lanes);
@@ -1078,18 +1095,28 @@ class NativeExecutor:
         precision, evaluations = self._points(
             points, scales, parameters, precision, poles
         )
+        mode = pole_mode(poles)
         arithmetic, digits = self._arithmetic(precision, False)
         native = self.native(arithmetic, digits, len(evaluations))
+        options = {
+            "poles": reducer_poles(mode),
+            "check": retest is not None,
+            "rescale": retest == "rescaled",
+        }
         output = native.evaluate(
-            self._inputs(evaluations, arithmetic),
-            poles=reducer_poles(pole_mode(poles)),
-            check=retest is not None,
-            rescale=retest == "rescaled",
-            schedule=schedule,
+            self._inputs(evaluations, arithmetic), schedule=schedule, **options
         )
         exported = self.exported
         self.last_report = output["report"]
         self.last_bare = output["bare"]
+        # The certified-scaleless families carry part of the bare UV and IR
+        # poles; only the "uv" and "ir" selections dress them (schedule B).
+        twin = self.scaleless if mode in ("uv", "ir") else None
+        extra = None
+        if twin is not None:
+            extra = twin.native(arithmetic, digits, len(evaluations)).evaluate(
+                twin._inputs(evaluations, arithmetic), schedule="B", **options
+            )
         failed: dict[int, list[str]] = {}
         for index, (evaluation, lanes, checks, failures) in enumerate(
             zip(
@@ -1100,6 +1127,8 @@ class NativeExecutor:
                 strict=True,
             )
         ):
+            if extra is not None and extra["failures"][index]:
+                failures = [*failures, *extra["failures"][index]]
             if failures:
                 failed[index] = [str(failure) for failure in failures]
                 continue
@@ -1110,7 +1139,7 @@ class NativeExecutor:
                     return [complex(float(re), float(im)) for re, im in values]
                 return [numbers.pair(Decimal(re), Decimal(im)) for re, im in values]
 
-            def label(lane):
+            def label(lane, exported=exported):
                 family, order, column = lane
                 return (
                     exported.families[family],
@@ -1118,12 +1147,19 @@ class NativeExecutor:
                     exported.sectors[column],
                 )
 
+            def read(runs, exported=exported):
+                if runs is None:
+                    return None
+                return {label(lane, exported): carrier(values) for lane, values in runs}
+
+            scaleless = scaleless_check = None
+            if extra is not None:
+                scaleless = read(extra["families"][index], twin.exported)
+                if extra["check"] is not None:
+                    scaleless_check = read(extra["check"][index], twin.exported)
             with _Numbers(precision).scope():
                 evaluation.set_lanes(
-                    {label(lane): carrier(values) for lane, values in lanes},
-                    None
-                    if checks is None
-                    else {label(lane): carrier(values) for lane, values in checks},
+                    read(lanes), read(checks), scaleless, scaleless_check
                 )
                 # The native seeds contract the exported exact weights K[c, b]
                 # with the Born components directly (``seed_records``).

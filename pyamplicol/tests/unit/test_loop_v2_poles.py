@@ -55,7 +55,9 @@ from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "loop"
 PARAMETERS = {"aS": "0.118", "MT": "173"}
-FIXED = {"MB": "0"}
+# The providers' loop_sm-no_b_mass scheme; a stable top (a top width enters
+# the loop propagators as a complex mass, whose CMS counterterms are WP3.2).
+FIXED = {"MB": "0", "WT": "0"}
 ALPHA_S = 0.118
 NC = 3
 CA, CF, TF = 3.0, 4.0 / 3.0, 0.5
@@ -127,29 +129,50 @@ def slices(loop_sm_compiled_model, loop_native):
     return build
 
 
+# Massive external legs run on the Python reference path: the native
+# executor's family numerators of g g > t t~ and u u~ > t t~ differ from it
+# (``test_native_executor_massive_external_legs``).
+PYTHON_PATH = ("gg_ttx", "uux_ttx")
+
+
 @pytest.fixture(scope="module")
 def modes(slices):
-    """One point per process and carrier, native, in every pole mode."""
+    """One point per process and carrier in every pole mode: the native
+    executor (binary64, DoubleFloat), or for ``PYTHON_PATH`` the slice's
+    reference path (binary64, 32 digits)."""
 
     cache: dict = {}
 
     def evaluate(name: str, carrier: str = "double"):
         key = (name, carrier)
         if key not in cache:
-            _slice, executor = slices(name)
+            slice_, executor = slices(name)
             point, scale = PROCESSES[name][2]()
-            precision = (
-                Precision.double() if carrier == "double" else Precision.double_double()
-            )
+            python = name in PYTHON_PATH
+            if carrier == "double":
+                precision = Precision.double()
+            else:
+                precision = (
+                    Precision.arbitrary(32) if python else Precision.double_double()
+                )
             out = {}
             for mode in (True, *MODES):
-                (out[mode],) = executor.evaluate(
-                    [point],
-                    [scale],
-                    parameters=PARAMETERS,
-                    precision=precision,
-                    poles=mode,
-                )
+                if python:
+                    out[mode] = slice_.evaluate(
+                        point,
+                        scale,
+                        parameters=PARAMETERS,
+                        precision=precision,
+                        poles=mode,
+                    )
+                else:
+                    (out[mode],) = executor.evaluate(
+                        [point],
+                        [scale],
+                        parameters=PARAMETERS,
+                        precision=precision,
+                        poles=mode,
+                    )
             cache[key] = out
         return cache[key]
 
@@ -164,7 +187,7 @@ def _scale(laurent) -> float:
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("carrier", ("double", "double-double"))
+@pytest.mark.parametrize("carrier", ("double", "extended"))
 @pytest.mark.parametrize("name", ("gg_gg", "gg_ttx"))
 def test_finite_parts_are_identical_in_every_mode(modes, name, carrier):
     results = modes(name, carrier)
@@ -364,3 +387,22 @@ def test_lane_and_sector_splits_are_exact_for_exact_numbers():
     total = {o: sum((p.single_pole for p in parts[o].values()), q(0)) for o in parts}
     assert total["uv"] == 0
     assert total["ir"] == sum(v.single_pole for v in values.values())
+
+
+@pytest.mark.loop_physics
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="pre-existing (slice 2a56a0e7, native bda5e256): the native executor's "
+    "family integrals of g g > t t~ differ from the reference path's at massive "
+    "external legs (the reference path equals MadLoop); not a pole-selection defect",
+)
+def test_native_executor_massive_external_legs(slices):
+    slice_, executor = slices("gg_ttx")
+    point, scale = PROCESSES["gg_ttx"][2]()
+    python = slice_.evaluate(point, scale, parameters=PARAMETERS)
+    (native,) = executor.evaluate([point], [scale], parameters=PARAMETERS)
+    for sector, laurent in python.components["virtual"].items():
+        other = native.components["virtual"][sector]
+        for x, y in zip(laurent.coefficients, other.coefficients, strict=True):
+            assert abs(complex(x) - complex(y)) <= 1e-12 * _scale(laurent)

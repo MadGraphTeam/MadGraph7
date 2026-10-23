@@ -63,6 +63,7 @@ This is the Python reference path of the slice (gate S1); the native executor
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 from collections import defaultdict
@@ -906,6 +907,10 @@ class LoopSlice:
     alpha_s_parameter: str | None
     loop_catalogue: Any = None
     fourier: SeedFourier | None = None
+    # The certified-scaleless families as a slice of their own (same blocks,
+    # Born, counterterms and degrees): dressed only by the "uv" and "ir" pole
+    # selections, whose bare UV and IR parts they carry (design §12.4).
+    scaleless: LoopSlice | None = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     # -- generation ------------------------------------------------------------
@@ -1091,7 +1096,51 @@ class LoopSlice:
         if request.accuracy != "full":
             slice_._prune_colour()
         slice_._plan_contraction()
+        slice_.scaleless = slice_._scaleless_companion()
         return slice_
+
+    def _scaleless_companion(self) -> LoopSlice | None:
+        """The certified-scaleless families (``FamilySet.scaleless_families``)
+        as a slice sharing this one's blocks, Born, counterterms, kernels and
+        colour degrees, with its own schedules and seed table (contracted
+        directly), or None without such families.
+
+        Their integrals vanish (scaleless), so the combined Laurent never needs
+        them; their UV residues, e.g. B0(0;0,0) = 1/eps_UV - 1/eps_IR, are part
+        of the bare loop's UV and IR poles (``poles``).
+        """
+
+        families = self.families
+        if not families.scaleless_families:
+            return None
+        twin_families = replace(
+            families,
+            families=dict(families.scaleless_families),
+            scaleless=(),
+            rejected=(),
+            scaleless_families={},
+        )
+        plan = build_schedules(
+            twin_families, self.loop_catalogue, self.colour, policy=_FRAME_POLICY
+        )
+        readings = rx.reading_skeletons(plan)
+        for skeleton in readings:
+            self.weights.fermion_sign(skeleton)
+        table, class_of = build_seed_table(
+            self.colour, readings, self.basis, compress=self.request.compress_colour
+        )
+        twin = replace(
+            self,
+            families=twin_families,
+            plan=plan,
+            table=table,
+            class_of=class_of,
+            fourier=None,
+            scaleless=None,
+        )
+        if self.request.accuracy != "full":
+            twin._prune_colour()
+        return twin
 
     def _plan_contraction(self) -> None:
         """Certify the seed FFT's orbits per ``colour_contraction``."""
@@ -1839,7 +1888,48 @@ class _PointEvaluation:
 
     def _reduce(self, numerators, retest: str | None) -> None:
         """Reduce every lane; ``retest`` re-reduces them in that frame
-        (``stability.FRAMES``: "reversed" or "rescaled")."""
+        (``stability.FRAMES``: "reversed" or "rescaled"). The "uv" and "ir"
+        pole selections also dress and reduce the certified-scaleless
+        families (``LoopSlice.scaleless``) for their UV residues."""
+        slice_, numbers = self.slice, self.numbers
+        lanes, groups = self._groups(numerators, 0)
+        twin_lanes: list = []
+        if self.mode in ("uv", "ir") and slice_.scaleless is not None:
+            twin = copy.copy(self)
+            twin.slice = slice_.scaleless
+            twin_lanes, twin_groups = twin._groups(twin.dress().numerators, len(lanes))
+            groups = groups + twin_groups
+        arithmetic = "double" if numbers.double else "arbitrary"
+        digits = None if numbers.double else numbers.precision.digits
+        reducer = slice_.native.V2Reducer(
+            arithmetic, digits, "fast" if numbers.double else "generic"
+        )
+        direct, check = reducer.reduce(
+            groups,
+            poles=reducer_poles(self.mode),
+            check=retest is not None,
+            rescale=retest == "rescaled",
+        )
+        everything = lanes + twin_lanes
+
+        def values(batches, chosen):
+            return {
+                lane: self._values(batch, lane)
+                for lane, batch in zip(everything, batches, strict=True)
+                if lane in chosen
+            }
+
+        main, extra = set(lanes), set(twin_lanes)
+        self.set_lanes(
+            values(direct, main),
+            None if check is None else values(check, main),
+            values(direct, extra) if extra else None,
+            None if check is None or not extra else values(check, extra),
+        )
+
+    def _groups(self, numerators, offset: int) -> tuple[list, list]:
+        """Reduction lanes ``(family, loop order, sector)`` and their native
+        groups, with batch row ids from ``offset``."""
         slice_, numbers = self.slice, self.numbers
         native = slice_.native
         arithmetic = "double" if numbers.double else "arbitrary"
@@ -1872,7 +1962,7 @@ class _PointEvaluation:
             for column, coefficients in enumerate(numerator.columns):
                 if not any(coefficients):
                     continue
-                lane = len(lanes)
+                lane = offset + len(lanes)
                 lanes.append((family, loop_order, slice_.sectors[column][0]))
                 groups.append(
                     (
@@ -1884,27 +1974,7 @@ class _PointEvaluation:
                         batch([numbers.strings(c) for c in coefficients], lane),
                     )
                 )
-        reducer = native.V2Reducer(
-            arithmetic, digits, "fast" if numbers.double else "generic"
-        )
-        direct, check = reducer.reduce(
-            groups,
-            poles=reducer_poles(self.mode),
-            check=retest is not None,
-            rescale=retest == "rescaled",
-        )
-        self.set_lanes(
-            {
-                lane: self._values(batch, lane)
-                for lane, batch in zip(lanes, direct, strict=True)
-            },
-            None
-            if check is None
-            else {
-                lane: self._values(batch, lane)
-                for lane, batch in zip(lanes, check, strict=True)
-            },
-        )
+        return lanes, groups
 
     def _values(self, batch, lane) -> list[Any]:
         ((_row, status),) = batch.statuses
@@ -1915,21 +1985,42 @@ class _PointEvaluation:
             for re, im in batch.values.to_decimal()
         ]
 
-    def set_lanes(self, direct: Mapping, check: Mapping | None) -> None:
+    def set_lanes(
+        self,
+        direct: Mapping,
+        check: Mapping | None,
+        scaleless: Mapping | None = None,
+        scaleless_check: Mapping | None = None,
+    ) -> None:
         """Each lane's raw integrals in the evaluation's pole mode.
 
         In ``"uv"`` and ``"ir"`` mode the reducer returns ``[finite, 1/eps,
         1/eps^2, 1/eps_UV]`` per lane; ``families`` (and the re-test's) keep
         the selected parts and ``split_lanes`` the reducer's columns, from
         which ``_assemble`` takes the combined and UV parts of ``bare``.
+        ``scaleless`` are the lanes of the certified-scaleless families
+        (``LoopSlice.scaleless``): their combined integrals vanish exactly in
+        dimensional regularisation, so only their UV residues are kept.
         """
 
+        split = self.mode in ("uv", "ir")
+        zero = self.numbers.zero
+
         def laurent(values) -> Laurent:
-            if self.mode in ("uv", "ir"):
-                return Laurent(*select_lane(values, self.mode, self.numbers.zero))
+            if split:
+                return Laurent(*select_lane(values, self.mode, zero))
             return Laurent(*values)
 
-        self.split_lanes = dict(direct) if self.mode in ("uv", "ir") else None
+        def vanishing(lanes: Mapping) -> dict:
+            return {lane: [zero, zero, zero, v[3]] for lane, v in lanes.items()}
+
+        direct = dict(direct)
+        check = None if check is None else dict(check)
+        if split and scaleless:
+            direct.update(vanishing(scaleless))
+            if check is not None and scaleless_check is not None:
+                check.update(vanishing(scaleless_check))
+        self.split_lanes = direct if split else None
         self.families = {lane: laurent(values) for lane, values in direct.items()}
         self.retest_families = (
             None
