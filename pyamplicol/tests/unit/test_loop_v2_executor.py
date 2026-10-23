@@ -34,6 +34,7 @@ from pathlib import Path
 
 import pytest
 
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.v2 import assemble, ct_sites
 from pyamplicol.loops.v2 import reference_executor as rx
 from pyamplicol.loops.v2.assemble import (
@@ -424,7 +425,11 @@ def _exact_reference(slice_: LoopSlice, point, scale):
     exact_point = tuple(tuple(_fraction(x) for x in p) for p in point)
     with _Numbers(precision).scope():
         evaluation = slice_._point(
-            exact_point, _fraction(scale), dict(PARAMETERS), precision, True
+            exact_point,
+            _fraction(scale),
+            dict(PARAMETERS),
+            precision,
+            PoleSelection.ALL,
         )
     carrier = rx.Carrier.exact(precision.working_digits)
     constants = rx.KernelConstants(evaluation.constants.parameters, carrier)

@@ -965,7 +965,7 @@ class NativeExecutor:
                 [scales[k] for k in missing],
                 parameters,
                 precision,
-                True,
+                PoleSelection.ALL,
             )
             for k, evaluation in zip(missing, fresh, strict=True):
                 cache[keys[k]] = evaluation

@@ -44,6 +44,7 @@ from pathlib import Path
 
 import pytest
 
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.v2.assemble import (
     COMPONENTS,
     Laurent,
@@ -573,7 +574,11 @@ def test_born_closure_is_the_tree_runtime_born(slices, name):
     assert not any(tensor.normalization_power for tensor in basis.tensors)
     with numbers.scope():
         closure = slice_._point(
-            point, Fraction(fixture["scales_squared"][0]), PARAMETERS, precision, True
+            point,
+            Fraction(fixture["scales_squared"][0]),
+            PARAMETERS,
+            precision,
+            PoleSelection.ALL,
         )
         roots = assemble.TreeRows(slice_.blocks.born_dag, slice_.compiled).evaluate(
             [[assemble._to_decimal(x) for x in leg] for leg in point],
