@@ -62,9 +62,11 @@ PHYSICS = {
     "uux_uuxg": ("u u~ > u u~ g", 3, "full"),
     "uux_ggg_nlc": ("u u~ > g g g", 3, "nlc"),
 }
+# Six legs with site closure (rule 6: the recursion's CT program costs
+# minutes there and enters only the counterterm keys, covered above).
 NIGHTLY = {
-    "uux_gggg": ("u u~ > g g g g", 4, "full"),
-    "gg_gggg_lc": ("g g > g g g g", 4, "lc"),
+    "uux_gggg": ("u u~ > g g g g", 4, "full", "sites"),
+    "gg_gggg_lc": ("g g > g g g g", 4, "lc", "sites"),
 }
 CONTROLS = {**DEFAULT, **PHYSICS, **NIGHTLY}
 
