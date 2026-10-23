@@ -33,10 +33,16 @@ pure-electroweak (its own export, all colour-flow amplitudes assigned, also at
 NLC and with identical quarks), with at most two gluons and at all orders, and
 on relabelled processes; the recurrence lane per squared order at all orders.
 
-A massless fermion line through a massive internal fermion (the t channel of
-v_tau v_tau~ > W+ W-) leaves a Dirac current that no closure contraction joins
-to the line's Weyl sink: the eager lane refuses it, and the recurrence lane
-drops those diagrams (strict xfail).
+A fermion line that a chiral vertex takes between massive and massless
+fermions (the tau t channel of v_tau v_tau~ > W+ W-; with a massless b,
+``sm-no_b_mass``, the top t channel of b b~ > W+ W-, the W exchange of
+t t~ > b b~, single top and tW) can reach its massless sink as a Dirac
+current, which no closure contraction joins to the sink's Weyl state. The
+eager lane refuses those processes where it would close such a line and builds
+the others (b u > d t); the recurrence lane drops the diagrams of the massive
+fermion's exchange (strict xfails). The massless-b references come from the
+``sm-no_b_mass`` restriction (``madgraph-split-orders-no-b-mass.json``), all at
+on-shell points.
 """
 
 from __future__ import annotations
@@ -75,6 +81,7 @@ REFERENCE = (
     Path(__file__).resolve().parents[1] / "fixtures/tree/madgraph-split-orders.json"
 )
 LC_REFERENCE = REFERENCE.with_name("madgraph-split-orders-lc.json")
+NO_B_MASS_REFERENCE = REFERENCE.with_name("madgraph-split-orders-no-b-mass.json")
 ORDER_LIMITS = {"QCD": 99, "QED": 99}
 
 
@@ -99,6 +106,22 @@ def sm_bundle(madgraph_source: Path, tmp_path_factory: pytest.TempPathFactory) -
 @pytest.fixture(scope="module")
 def sm_model(sm_bundle: Path) -> ModelSource:
     return ModelSource.from_path(sm_bundle)
+
+
+@pytest.fixture(scope="module")
+def sm_no_b_mass_model(
+    madgraph_source: Path, tmp_path_factory: pytest.TempPathFactory
+) -> ModelSource:
+    root = tmp_path_factory.mktemp("madgraph-sm-no-b-mass")
+    bundle = root / "sm-no_b_mass.pyamplicol-model"
+    ModelSource.from_path(
+        madgraph_source / "models/sm", restriction="no_b_mass"
+    ).compile(
+        cache_dir=root / "cache",
+        prepared_output=bundle,
+        evaluator=EvaluatorConfig(),
+    )
+    return ModelSource.from_path(bundle)
 
 
 def _runtime(
@@ -532,20 +555,38 @@ def test_recurrence_lane_refuses_flows_without_roots(
         )
 
 
-# A massless fermion line through a massive internal fermion: the tau t channel
-# of v_tau v_tau~ > W+ W- (b b~ > W+ W- with a massless b, or five quark lines
-# whose b line turns into a top) leaves a Dirac (chirality-0) current on a line
-# of Weyl (chirality +-1) external states, and models install no Dirac-Weyl
-# closure contraction. The eager lane dropped those roots wherever the line
-# closes on its own sink (the gauge cancellation of the t channel lost:
-# b b~ > W+ W- 150x MadGraph, five lines labelling-dependent); it now refuses.
+# A chiral vertex that takes a fermion line between massive and massless
+# fermions leaves a Dirac (chirality-0) current on the line, while its massless
+# external fermions are Weyl (chirality +-1) states, and models install no
+# Dirac-Weyl closure contraction. The massive fermion is internal (the tau t
+# channel of v_tau v_tau~ > W+ W-; the top t channel of b b~ > W+ W- with a
+# massless b) or external (t t~ > b b~, single top and tW with a massless b).
+# The eager lane dropped the roots of such a line wherever it closed on its
+# massless sink (the gauge cancellation of the t channel lost); it now refuses
+# those processes. The recurrence lane drops the diagrams of the massive
+# fermion's exchange: it equals MadGraph with that exchange removed
+# ("b b~ > w+ w- / t t~", "t t~ > b b~ / w+ w-", "vt vt~ > w+ w- / ta- ta+").
 _MASSLESS_LINE_THROUGH_A_MASSIVE_FERMION = "vt vt~ > w+ w-"
+# With a massless b (sm-no_b_mass): the eager lane refuses these ...
+_MASSLESS_B_EAGER_REFUSALS = (
+    "b b~ > w+ w-",
+    "t t~ > b b~",
+    "g b > t w-",
+    "u b > d t",
+)
+# ... and the recurrence lane is silently wrong on these.
+_MASSLESS_B_RECURRENCE_DROPS = (
+    "b b~ > w+ w-",
+    "t t~ > b b~",
+    "e+ e- > b b~ w+ w-",
+)
+_DIRAC_WEYL_CLOSURE = r"Dirac \(chirality-0\) current cannot close on a Weyl"
 
 
 def test_eager_lane_refuses_a_massless_line_through_a_massive_fermion(
     sm_model: ModelSource, tmp_path: Path
 ) -> None:
-    with pytest.raises(GenerationError, match=r"Dirac \(chirality-0\) current"):
+    with pytest.raises(GenerationError, match=_DIRAC_WEYL_CLOSURE):
         _runtime(
             sm_model,
             _MASSLESS_LINE_THROUGH_A_MASSIVE_FERMION,
@@ -556,8 +597,9 @@ def test_eager_lane_refuses_a_massless_line_through_a_massive_fermion(
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason="WP2.9: the recurrence drops the tau t channel of a massless line "
-    "(Dirac current, Weyl sink): 58 against MadGraph's 0.0116 at the first point",
+    "(Dirac current, Weyl sink): 72 against MadGraph's 0.030 at the first point",
 )
 def test_recurrence_lane_keeps_a_massless_line_through_a_massive_fermion(
     sm_model: ModelSource, tmp_path: Path
@@ -566,6 +608,47 @@ def test_recurrence_lane_keeps_a_massless_line_through_a_massive_fermion(
     runtime = _runtime(
         sm_model, _MASSLESS_LINE_THROUGH_A_MASSIVE_FERMION, tmp_path / "artifact"
     )
+
+    _assert_total_matches_madgraph(runtime.evaluate(reference["points"]), reference)
+
+
+@pytest.mark.parametrize("process", _MASSLESS_B_EAGER_REFUSALS)
+def test_eager_lane_refuses_dirac_weyl_closures_with_a_massless_b(
+    sm_no_b_mass_model: ModelSource, tmp_path: Path, process: str
+) -> None:
+    with pytest.raises(GenerationError, match=_DIRAC_WEYL_CLOSURE):
+        _runtime(
+            sm_no_b_mass_model, process, tmp_path / "artifact", execution_mode="eager"
+        )
+
+
+def test_eager_lane_builds_single_top_where_no_dirac_current_meets_a_weyl_sink(
+    sm_no_b_mass_model: ModelSource, tmp_path: Path
+) -> None:
+    """b u > d t builds: none of its closures joins a Dirac current to the
+    massless b. u b > d t, the same process relabelled, is refused above."""
+
+    reference = _reference("b u > d t", NO_B_MASS_REFERENCE)
+    runtime = _runtime(
+        sm_no_b_mass_model, "b u > d t", tmp_path / "artifact", execution_mode="eager"
+    )
+
+    _assert_total_matches_madgraph(runtime.evaluate(reference["points"]), reference)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="WP2.9: the recurrence drops the diagrams of the massive fermion's "
+    "exchange with a massless b (b b~ > w+ w- 400x MadGraph, t t~ > b b~ 1.2x, "
+    "e+ e- > b b~ w+ w- 0.24x at the first point)",
+)
+@pytest.mark.parametrize("process", _MASSLESS_B_RECURRENCE_DROPS)
+def test_recurrence_lane_keeps_the_massive_exchange_with_a_massless_b(
+    sm_no_b_mass_model: ModelSource, tmp_path: Path, process: str
+) -> None:
+    reference = _reference(process, NO_B_MASS_REFERENCE)
+    runtime = _runtime(sm_no_b_mass_model, process, tmp_path / "artifact")
 
     _assert_total_matches_madgraph(runtime.evaluate(reference["points"]), reference)
 
