@@ -18,23 +18,33 @@
 use symbolica::domains::float::{Complex, Real};
 
 /// A relabelled reduction frame: propagator `j` of the frame is propagator
-/// `rotation ± j` of the family, `reverse` flips the loop momentum and
+/// `rotation ± j` of the family, `reverse` flips the loop momentum,
 /// `shift` moves the origin onto the frame's first propagator (exact
-/// re-expansion).
+/// re-expansion) and `rescale` scales every dimensionful input by a
+/// non-dyadic factor, so that the masters are evaluated anew (and tested)
+/// instead of hitting the cache.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ReductionCheck {
     pub reverse: bool,
     pub rotation: usize,
     pub shift: bool,
+    pub rescale: bool,
 }
 
 impl ReductionCheck {
     /// The default check: loop direction reversed from the second
-    /// propagator, coefficients reused exactly.
+    /// propagator, coefficients reused exactly, cached masters.
     pub const REVERSED: Self = Self {
         reverse: true,
         rotation: 1,
         shift: false,
+        rescale: false,
+    };
+
+    /// The reversed frame at rescaled inputs: masters recomputed.
+    pub const RESCALED: Self = Self {
+        rescale: true,
+        ..Self::REVERSED
     };
 }
 

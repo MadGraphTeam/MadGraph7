@@ -36,7 +36,7 @@ slice's assembly turns into the six components and 19 totals.
 from __future__ import annotations
 
 import json
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
@@ -49,12 +49,16 @@ from pyamplicol.color.connections import ExactColorCoefficient
 from . import reference_executor as rx
 from .colour import project
 from .families import FamilyKey, Orders
+from .merged import MergedGraph, merged_graph
 from .poly_affine import size
 from .schedules import forward_graph
 
 PLAN_SCHEMA = 4
+_ONE = ExactColorCoefficient(1)
 # Lanes of the native executor's SIMD batches (gate G0, design §5.4).
 DEFAULT_LANES = 16
+# Distinct points whose slice inputs ``NativeExecutor.family_numerators`` keeps.
+_POINT_CACHE = 16
 
 Arithmetic = Literal["double", "double-double", "arbitrary", "exact"]
 
@@ -517,9 +521,122 @@ class _Exporter:
             del record["_rows"]
         return {"states": states}
 
+    # -- schedule M -----------------------------------------------------------
 
-def export_plan(slice_: Any, *, forward: bool = True) -> ExportedPlan:
-    """The plan v4 program of a generated slice (structure only, no numerics)."""
+    def merged(
+        self, graph: MergedGraph, family_index: Mapping[FamilyKey, int], accumulator_of
+    ) -> dict:
+        """The planar state graph of schedule M (``merged.merged_graph``):
+        entries (seed key, exact weight), states in execution order with
+        their edges (entry or earlier state, fused factor, exact weight,
+        helicity row links) and closures (family accumulator, frame map into
+        the family's trie frame), and the end of every chunk."""
+
+        entries = []
+        objects: list[_Object] = []
+        for c, order, weight, content in graph.entries:
+            dimension = self.kinematics.shape(content).loop_in
+            seed = self.seeds.setdefault((((c, _ONE),), order), len(self.seeds))
+            entries.append({"seed": seed, "weight": _complex_text(weight)})
+            objects.append(
+                _Object(self.rows, dimension, dimension, 0, leaf=len(entries) - 1)
+            )
+        states: list[dict] = []
+        outputs: list[_Object] = []
+        for state in graph.states:
+            edges = []
+            weights = []
+            for source, step, weight in state.edges:
+                edges.append(
+                    (
+                        step.content,
+                        objects[-1 - source] if source < 0 else outputs[source],
+                    )
+                )
+                weights.append(weight)
+            record = self._state(edges, state.out_mask, state.shift)
+            for edge, weight in zip(record["edges"], weights, strict=True):
+                edge["weight"] = None if weight == _ONE else _complex_text(weight)
+            closure = None
+            if state.closure is not None:
+                family_key, orders, relabelled = state.closure
+                family = family_index[family_key]
+                closure = {
+                    "family": family,
+                    "accumulator": accumulator_of[family][orders],
+                    "relabel": None
+                    if relabelled is None
+                    else [relabelled.sign, relabelled.shift_mask],
+                }
+            record["closure"] = closure
+            output = record.pop("_object")
+            output.step = len(states)
+            outputs.append(output)
+            states.append(record)
+        return {
+            "families": sorted(family_index[key] for key in graph.families),
+            "entries": entries,
+            "states": states,
+            "chunks": list(graph.chunks),
+        }
+
+    def _state(self, edges, out_mask, shift) -> dict:
+        """One M state: the row links of its edges (as ``_step``)."""
+
+        (d_alpha,) = {source.d_alpha for _content, source in edges}
+        (seeded,) = {source.leaf >= 0 for _content, source in edges}
+        targets: dict[rx.Row, int] = {}
+        records = []
+        d_out = set()
+        degree = 0
+        storage = 0
+        for content, source in edges:
+            index, shape = self.content(content)
+            if shape.loop_in != source.d_beta:
+                raise AssertionError("a segment does not fit its open-loop current")
+            d_out.add(shape.loop_out)
+            degree = max(degree, shape.degree)
+            storage = max(storage, source.storage)
+            block_index = {row: i for i, row in enumerate(shape.rows)}
+            links = []
+            for position, row in enumerate(source.rows):
+                block = block_index.get(rx.restrict(row, content.mask))
+                if block is not None:
+                    target = targets.setdefault(
+                        rx.restrict(row, out_mask), len(targets)
+                    )
+                    links += [target, position, block]
+            records.append(
+                {
+                    "entry": source.leaf,
+                    "parent": source.step,
+                    "factor": self.factor(index, shift),
+                    "links": links,
+                }
+            )
+        (d_out,) = d_out
+        return {
+            "seeded": seeded,
+            "rows": len(targets),
+            "d_alpha": d_alpha,
+            "d_out": d_out,
+            "degree": degree,
+            "rank_in": storage,
+            "edges": records,
+            "_object": _Object(
+                tuple(targets), d_alpha, d_out, storage + degree, step=-1
+            ),
+        }
+
+
+def export_plan(
+    slice_: Any, *, forward: bool = True, merged: MergedGraph | None = None
+) -> ExportedPlan:
+    """The plan v4 program of a generated slice (structure only, no numerics).
+
+    ``merged`` adds schedule M's planar state graph (``merged.merged_graph``)
+    for its certified families; schedule B keeps every family.
+    """
 
     from .assemble import _BlockRows
 
@@ -547,6 +664,11 @@ def export_plan(slice_: Any, *, forward: bool = True) -> ExportedPlan:
         if forward
         else None
     )
+    merged_program = (
+        exporter.merged(merged, {key: i for i, key in enumerate(keys)}, accumulator_of)
+        if merged is not None
+        else None
+    )
     seeds = exporter.seed_records()
     legs = len(slice_.blocks.process.legs)
     program = {
@@ -565,6 +687,7 @@ def export_plan(slice_: Any, *, forward: bool = True) -> ExportedPlan:
         "seeds": seeds,
         "families": families,
         "forward": forward_program,
+        "merged": merged_program,
     }
     return ExportedPlan(
         program=program,
@@ -593,6 +716,25 @@ class NativeNumerator:
     columns: tuple[tuple[Any, ...], ...]
 
 
+class FailedPoints(ArithmeticError):
+    """Some points of a native batch failed (a reduction lane's status, an
+    ``ImpreciseResult`` master or a non-finite numerator, also in a rotation
+    check's evaluation); the others are complete.
+
+    ``results`` lists every point's ``PointResult`` in input order, ``None``
+    for a failed point; ``failures`` maps a failed point's index to its
+    reasons. The caller decides how to re-evaluate the failed points (e.g. in
+    a higher-precision carrier); nothing is escalated automatically.
+    """
+
+    def __init__(self, results: list[Any], failures: Mapping[int, list[str]]):
+        self.results = results
+        self.failures = dict(failures)
+        super().__init__(
+            f"{len(self.failures)} of {len(results)} points failed: {self.failures}"
+        )
+
+
 class NativeExecutor:
     """The native v2 executor of a generated slice (one plan, many batches).
 
@@ -601,7 +743,9 @@ class NativeExecutor:
     precision's working digits, the generic engine) or ``exact`` (rational
     numerators only, the algebraic oracle of the Python exact run).
     ``forms`` picks each schedule-B step's kernel form: gate G0's rule,
-    or every step fused or split (where it can).
+    or every step fused or split (where it can). ``merged`` adds schedule M
+    (``merged.merged_graph``; True builds it with its default chunks), which
+    ``schedule="M"`` runs for its certified families, and B for the others.
     """
 
     def __init__(
@@ -613,30 +757,57 @@ class NativeExecutor:
         forward: bool = True,
         exported: ExportedPlan | None = None,
         forms: Literal["rule", "fused", "split"] = "rule",
+        merged: MergedGraph | bool = False,
     ):
         self.slice = slice_
-        self.exported = exported or export_plan(slice_, forward=forward)
+        if merged is True:
+            merged = merged_graph(slice_)
+        self.exported = exported or export_plan(
+            slice_, forward=forward, merged=merged or None
+        )
         self.lanes = lanes
         self.threads = threads
         self.forms = forms
         self._plan_json = self.exported.json()
-        self._native: dict[tuple[str, int | None], Any] = {}
+        self._native: dict[tuple[str, int | None, int], Any] = {}
+        # Point inputs of the latest ``family_numerators`` calls (oracle
+        # comparisons run several schedules and carriers on one batch).
+        self._point_inputs: OrderedDict[str, Any] = OrderedDict()
 
-    def native(self, arithmetic: Arithmetic, digits: int | None = None) -> Any:
-        """The native executor of one carrier (``digits`` for ``arbitrary``)."""
+    def native(
+        self,
+        arithmetic: Arithmetic,
+        digits: int | None = None,
+        points: int | None = None,
+    ) -> Any:
+        """The native executor of one carrier (``digits`` for ``arbitrary``)
+        for batches of ``points`` points (``lanes_for``)."""
 
-        key = (arithmetic, digits)
+        lanes = self.lanes_for(arithmetic, points)
+        key = (arithmetic, digits, lanes)
         found = self._native.get(key)
         if found is None:
             found = self._native[key] = self.slice.native.V2Executor(
                 self._plan_json,
                 arithmetic,
                 digits,
-                lanes=self.lanes,
+                lanes=lanes,
                 threads=self.threads,
                 forms=self.forms,
             )
         return found
+
+    def lanes_for(self, arithmetic: Arithmetic, points: int | None) -> int:
+        """Lanes per chunk: the configured count in binary64 (SIMD lanes);
+        in the other carriers, whose lanes are scalar loops that cost as much
+        padded as filled, the smallest supported count holding the batch."""
+
+        if arithmetic == "double" or points is None:
+            return self.lanes
+        lanes = 1
+        while lanes < min(points, self.lanes):
+            lanes *= 2
+        return lanes
 
     # -- inputs ---------------------------------------------------------------
 
@@ -657,6 +828,39 @@ class NativeExecutor:
                         poles,
                     )
                 )
+        return precision, evaluations
+
+    def _cached_points(self, points, scales, parameters, precision):
+        """``_points`` with poles, through a cache of the inputs of the last
+        ``_POINT_CACHE`` distinct points (read only: ``family_numerators``
+        never changes an evaluation)."""
+
+        from .assemble import Precision
+
+        precision = precision or Precision.double()
+        common = repr((sorted((parameters or {}).items()), precision))
+        keys = [
+            repr((point, scale)) + common
+            for point, scale in zip(points, scales, strict=True)
+        ]
+        cache = self._point_inputs
+        missing = [k for k, key in enumerate(keys) if key not in cache]
+        if missing:
+            _precision, fresh = self._points(
+                [points[k] for k in missing],
+                [scales[k] for k in missing],
+                parameters,
+                precision,
+                True,
+            )
+            for k, evaluation in zip(missing, fresh, strict=True):
+                cache[keys[k]] = evaluation
+        evaluations = []
+        for key in keys:
+            cache.move_to_end(key)
+            evaluations.append(cache[key])
+        while len(cache) > max(_POINT_CACHE, len(keys)):
+            cache.popitem(last=False)
         return precision, evaluations
 
     def _inputs(self, evaluations, arithmetic: Arithmetic) -> dict[str, Any]:
@@ -735,8 +939,8 @@ class NativeExecutor:
     def _arithmetic(precision, exact: bool) -> tuple[Arithmetic, int | None]:
         if exact:
             return "exact", None
-        if precision.arithmetic == "double":
-            return "double", None
+        if precision.arithmetic in ("double", "double-double"):
+            return precision.arithmetic, None
         return "arbitrary", precision.working_digits
 
     # -- runs -------------------------------------------------------------------
@@ -748,7 +952,7 @@ class NativeExecutor:
         *,
         parameters: Mapping[str, str] | None = None,
         precision: Any = None,
-        schedule: Literal["B", "F"] = "B",
+        schedule: Literal["B", "F", "M"] = "B",
         exact: bool = False,
         double_double: bool = False,
     ) -> list[dict[tuple[FamilyKey, Orders], NativeNumerator]]:
@@ -759,11 +963,13 @@ class NativeExecutor:
         and Born amplitudes read as exact rationals and the exact kernel
         constants (``reference_executor.KernelConstants`` stand-ins);
         ``double_double`` runs the native DoubleFloat carrier on the inputs
-        of an arbitrary ``precision``.
+        of an arbitrary ``precision``. Calls on the same points, scales,
+        parameters and precision share the slice's point inputs
+        (``_cached_points``).
         """
 
-        precision, evaluations = self._points(
-            points, scales, parameters, precision, True
+        precision, evaluations = self._cached_points(
+            points, scales, parameters, precision
         )
         arithmetic, digits = self._arithmetic(precision, exact)
         inputs = self._inputs(evaluations, arithmetic)
@@ -771,7 +977,7 @@ class NativeExecutor:
             if arithmetic != "arbitrary":
                 raise ValueError("double-double reads arbitrary-precision inputs")
             arithmetic, digits = "double-double", None
-        native = self.native(arithmetic, digits)
+        native = self.native(arithmetic, digits, len(evaluations))
         raw = native.numerators(inputs, schedule)
         return [self._numerators(point, arithmetic) for point in raw]
 
@@ -801,40 +1007,51 @@ class NativeExecutor:
         precision: Any = None,
         poles: bool = True,
         stability: Any = None,
+        schedule: Literal["B", "M"] = "B",
     ) -> list[Any]:
         """The complete virtual of every point (``LoopSlice.evaluate``), with
-        dressing and reduction in the native executor.
+        dressing and reduction in the native executor (``schedule`` B, or M
+        for the plan's schedule-M families).
 
         Rotation checks re-evaluate the rotated points natively; the
-        reduction-direction check is the native re-test pass.
+        reduction check is the native re-test pass. A failed point fails
+        alone: ``FailedPoints`` carries the complete results of the others.
         """
 
-        from .stability import REDUCTION, ROTATION, StabilityChecks, StabilityEstimate
+        from .assemble import _fraction
+        from .stability import ROTATION, StabilityChecks, StabilityEstimate
 
         stability = stability or StabilityChecks()
-        precision, evaluations = self._evaluated(
-            points, scales, parameters, precision, poles, stability.reduction_direction
+        precision, evaluations, failures = self._evaluated(
+            points, scales, parameters, precision, poles, stability.frame, schedule
         )
-        if not stability.enabled:
-            return [evaluation.result for evaluation in evaluations]
         rotated = []
-        for rotation in stability.rotations:
-            from .assemble import _fraction
-
+        for k, rotation in enumerate(stability.rotations):
             moved = [
                 rotation.apply(tuple(tuple(_fraction(x) for x in p) for p in point))
                 for point in points
             ]
-            rotated.append(
-                self._evaluated(moved, scales, parameters, precision, poles, False)[1]
+            _, runs, failed = self._evaluated(
+                moved, scales, parameters, precision, poles, None, schedule
             )
-        out = []
+            rotated.append(runs)
+            for index, reasons in failed.items():
+                failures.setdefault(index, []).extend(
+                    f"{ROTATION.format(k)}: {reason}" for reason in reasons
+                )
+        out: list[Any] = []
         for index, reference in enumerate(evaluations):
+            if index in failures:
+                out.append(None)
+                continue
+            if not stability.enabled:
+                out.append(reference.result)
+                continue
             budgets = {}
             for k, runs in enumerate(rotated):
                 budgets[ROTATION.format(k)] = reference.rotation_budget(runs[index])
-            if stability.reduction_direction:
-                budgets[REDUCTION] = reference.retest_budget
+            if stability.reduction:
+                budgets[stability.reduction] = reference.retest_budget
             estimate = StabilityEstimate.from_checks(
                 reference.result.components["virtual"],
                 budgets,
@@ -843,31 +1060,47 @@ class NativeExecutor:
                 families=reference.family_deviations,
             )
             out.append(replace(reference.result, stability=estimate))
+        if failures:
+            raise FailedPoints(out, failures)
         return out
 
-    def _evaluated(self, points, scales, parameters, precision, poles, retest):
+    def _evaluated(
+        self, points, scales, parameters, precision, poles, retest, schedule="B"
+    ):
+        """Evaluate a batch natively; returns the precision, the per-point
+        evaluations (failed points unassembled) and the failures per point
+        index."""
+
         from .assemble import Laurent, _Numbers
 
         precision, evaluations = self._points(
             points, scales, parameters, precision, poles
         )
         arithmetic, digits = self._arithmetic(precision, False)
-        native = self.native(arithmetic, digits)
+        native = self.native(arithmetic, digits, len(evaluations))
         output = native.evaluate(
-            self._inputs(evaluations, arithmetic), poles=poles, check=retest
+            self._inputs(evaluations, arithmetic),
+            poles=poles,
+            check=retest is not None,
+            rescale=retest == "rescaled",
+            schedule=schedule,
         )
         exported = self.exported
         self.last_report = output["report"]
         self.last_bare = output["bare"]
-        for evaluation, lanes, checks, failures in zip(
-            evaluations,
-            output["families"],
-            output["check"] or [None] * len(evaluations),
-            output["failures"],
-            strict=True,
+        failed: dict[int, list[str]] = {}
+        for index, (evaluation, lanes, checks, failures) in enumerate(
+            zip(
+                evaluations,
+                output["families"],
+                output["check"] or [None] * len(evaluations),
+                output["failures"],
+                strict=True,
+            )
         ):
             if failures:
-                raise ArithmeticError(f"native reduction lanes failed: {failures}")
+                failed[index] = [str(failure) for failure in failures]
+                continue
             numbers = evaluation.numbers
 
             def laurent(values, numbers=numbers):
@@ -900,7 +1133,7 @@ class NativeExecutor:
                 # with the Born components directly (``seed_records``).
                 evaluation.colour_contraction = "direct"
                 evaluation._assemble()
-        return precision, evaluations
+        return precision, evaluations, failed
 
 
 def _carrier_value(z, arithmetic: Arithmetic) -> Any:

@@ -210,9 +210,16 @@ class LeafWeights:
         self._require_vector_couplings(skeleton.contents)
         spins = [int(self._particles[name]["spin"]) for name in skeleton.species]
         sign = -1 if all(spin == GHOST_SPIN for spin in spins) else 1
-        if spins.count(FERMION_SPIN) % 2:
-            sign = -sign
+        for content in skeleton.contents:
+            sign *= self.propagator_sign(content)
         return sign * self._line_parity(skeleton.contents)
+
+    def propagator_sign(self, content: Content) -> int:
+        """The factor of eps_s owned by the loop propagator after a position:
+        -1 for a fermion (the transposed tree reading, module docstring).
+        Schedule M carries it on the position's dressing step."""
+
+        return -1 if self._fermion(content.loop_out) else 1
 
     def _fermion(self, name: str) -> bool:
         return int(self._particles[name]["spin"]) == FERMION_SPIN

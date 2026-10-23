@@ -35,6 +35,16 @@ from .dag_types import (
 )
 
 _LC_SECTOR_SUPPORT_PREFIX = "lc-sector-support:"
+# Auxiliary kinds of contact vertices: ``ufo-contact:`` and
+# ``ufo-contact-tree:`` (``models/compiler_entry.py``,
+# ``models/compiler_contact_trees.py``). A four-point vertex is a partial
+# merge into one auxiliary and a final merge out of it; larger colour-singlet
+# contacts merge auxiliaries with each other.
+_CONTACT_AUXILIARY_PREFIX = "ufo-contact"
+# Basis key of a colour-singlet contact auxiliary built from two inputs that
+# carry complete quark lines: the line groups of its left input, so that the
+# final merge sees all four legs of the vertex.
+_SINGLET_CONTACT_PARTIAL_PREFIX = "singlet-contact-partial:"
 
 
 def _lc_sector_support_key(sector_ids: Iterable[int]) -> str:
@@ -109,6 +119,20 @@ def _cyclically_increasing(first: int, second: int, third: int) -> bool:
     return first < second < third or second < third < first or third < first < second
 
 
+def _singlet_contact_partial_key(left_groups: Iterable[int]) -> str:
+    return _SINGLET_CONTACT_PARTIAL_PREFIX + ",".join(
+        str(group) for group in sorted(left_groups)
+    )
+
+
+def _singlet_contact_partial_groups(basis_keys: Iterable[str]) -> frozenset[int] | None:
+    for key in basis_keys:
+        if key.startswith(_SINGLET_CONTACT_PARTIAL_PREFIX):
+            payload = key.removeprefix(_SINGLET_CONTACT_PARTIAL_PREFIX)
+            return frozenset(int(group) for group in payload.split(","))
+    return None
+
+
 class ColorEngine:
     """Local colour-flow engine used by the process-generic recursion."""
 
@@ -162,6 +186,11 @@ class ColorEngine:
         self._fundamental_line_auxiliary_ids = (
             self._find_fundamental_line_auxiliary_ids()
         )
+        (
+            self._singlet_contact_auxiliary_ids,
+            self._nested_singlet_contact_auxiliary_ids,
+        ) = self._find_singlet_contact_auxiliary_ids()
+        self._distinguished_line_by_sector: dict[int, int | None] = {}
         self._fundamental_fermion_pair_count = (
             self._external_fundamental_fermion_pair_count()
         )
@@ -437,6 +466,34 @@ class ColorEngine:
                     auxiliary_ids.add(particle_id)
         return frozenset(auxiliary_ids)
 
+    def _find_singlet_contact_auxiliary_ids(
+        self,
+    ) -> tuple[frozenset[int], frozenset[int]]:
+        """Colour-singlet contact auxiliaries of four-point vertices, and those
+        of larger contacts, which share a model vertex with another one."""
+
+        auxiliary_ids: set[int] = set()
+        for vertex in self.model.vertices:
+            for particle_id in vertex.particles:
+                try:
+                    auxiliary_kind = self.model.auxiliary_kind(particle_id)
+                except (KeyError, NotImplementedError, TypeError, ValueError):
+                    continue
+                if (
+                    auxiliary_kind is not None
+                    and auxiliary_kind.startswith(_CONTACT_AUXILIARY_PREFIX)
+                    and _known_color_representation(self.model, particle_id) == 1
+                ):
+                    auxiliary_ids.add(particle_id)
+        nested = {
+            particle_id
+            for vertex in self.model.vertices
+            if sum(particle in auxiliary_ids for particle in vertex.particles) > 1
+            for particle_id in vertex.particles
+            if particle_id in auxiliary_ids
+        }
+        return frozenset(auxiliary_ids - nested), frozenset(nested)
+
     def _external_fundamental_fermion_pair_count(self) -> int:
         fundamental_count = 0
         antifundamental_count = 0
@@ -560,6 +617,12 @@ class ColorEngine:
             )
         if left.sector_id != right.sector_id:
             return ()
+        self._require_four_point_singlet_contact(left, right, vertex)
+        partial_key = self._singlet_contact_partial(left, right, vertex)
+        final = partial_key is None and (
+            _singlet_contact_partial_groups(left.basis_key) is not None
+            or _singlet_contact_partial_groups(right.basis_key) is not None
+        )
         groups = self._lc_combined_line_groups(
             left,
             right,
@@ -568,8 +631,11 @@ class ColorEngine:
                 left.sector_id, ordered_external_labels
             ),
             sector_id=left.sector_id,
+            singlet_orientation=partial_key is None and not final,
         )
         if groups is None:
+            return ()
+        if final and not self._singlet_contact_orientation_allowed(left, right, vertex):
             return ()
         projections = self._lc_projected_basis_and_weights(
             left,
@@ -586,7 +652,17 @@ class ColorEngine:
                     accuracy=left.accuracy,
                     sector_id=left.sector_id,
                     line_groups=groups,
-                    basis_key=basis_key,
+                    basis_key=(
+                        tuple(sorted((*basis_key, partial_key)))
+                        if partial_key is not None
+                        else tuple(
+                            key
+                            for key in basis_key
+                            if not key.startswith(_SINGLET_CONTACT_PARTIAL_PREFIX)
+                        )
+                        if final
+                        else basis_key
+                    ),
                 ),
                 weight=weight,
             )
@@ -843,6 +919,158 @@ class ColorEngine:
             return True
         return _cyclically_increasing(first, second, rest)
 
+    def _singlet_contact_partial(
+        self,
+        left: ColorState,
+        right: ColorState,
+        vertex: Vertex,
+    ) -> str | None:
+        """The basis key of a partial colour-singlet contact merge, or ``None``.
+
+        A merge of two colour-singlet inputs with disjoint complete lines into
+        a four-point contact auxiliary records the left input's lines, so that
+        the final merge out of the auxiliary knows all four legs
+        (``_singlet_contact_orientation_allowed``).
+        """
+
+        if (
+            vertex.particles[2] not in self._singlet_contact_auxiliary_ids
+            or not left.line_groups
+            or not right.line_groups
+            or not set(left.line_groups).isdisjoint(right.line_groups)
+            or self._particle_has_colour(vertex.particles[0])
+            or self._particle_has_colour(vertex.particles[1])
+        ):
+            return None
+        return _singlet_contact_partial_key(left.line_groups)
+
+    def _require_four_point_singlet_contact(
+        self,
+        left: ColorState,
+        right: ColorState,
+        vertex: Vertex,
+    ) -> None:
+        """Refuse a larger colour-singlet contact vertex joining quark lines.
+
+        Its merges would keep the three-leg orientation each, which depends
+        on the closure sink as it did for four-point vertices
+        (``_singlet_contact_orientation_allowed``); no such vertex has been
+        checked against a reference, so it fails closed instead of building
+        some diagrams twice or not at all.
+        """
+
+        if not self._nested_singlet_contact_auxiliary_ids.intersection(
+            vertex.particles
+        ):
+            return
+        left_groups = set(left.line_groups)
+        right_groups = set(right.line_groups)
+        sector = self._sector_by_id.get(left.sector_id)
+        if (
+            sector is not None
+            and left_groups
+            and right_groups
+            and left_groups.isdisjoint(right_groups)
+            and len(left_groups | right_groups) < len(sector.line_label_groups)
+        ):
+            raise ValueError(
+                "colour-singlet contact vertices with more than four legs that "
+                "join three or more quark lines are not supported at NLC or "
+                f"full colour (vertex {vertex.kind}, particles {vertex.particles})"
+            )
+
+    def _distinguished_line(self, sector_id: int) -> int | None:
+        """The line group that starts the sector's closure traversal."""
+
+        if sector_id in self._distinguished_line_by_sector:
+            return self._distinguished_line_by_sector[sector_id]
+        sector = self._sector_by_id[sector_id]
+        line: int | None = None
+        if sector.kind == "open-lines":
+            word = sector.canonical_closure_traversal_word(self.color_plan.process)
+            line = next(
+                (
+                    index
+                    for index, group in enumerate(sector.line_label_groups)
+                    if word and word[0] in group
+                ),
+                None,
+            )
+        self._distinguished_line_by_sector[sector_id] = line
+        return line
+
+    def _singlet_contact_orientation_allowed(
+        self,
+        left: ColorState,
+        right: ColorState,
+        vertex: Vertex,
+    ) -> bool:
+        """Whether the final merge of a colour-singlet contact vertex is kept.
+
+        A four-point colour-singlet vertex (WWZA, WWZZ, ...) is built by a
+        partial merge of two legs ``x`` and ``y`` into the contact auxiliary
+        and a final merge with a third leg ``z``; the fourth leg is the rest
+        of the process, which holds the closure sink. In a line order the
+        legs appear cyclically as (x, y, z, rest) or (z, x, y, rest), so a
+        vertex whose four legs carry disjoint complete lines has the same
+        colour factor in every order in which ``z`` is next to the rest, and
+        the traversal sectors of one set of lines close on different sinks.
+
+        While the line that starts the sector's traversal (the distinguished
+        line) lies in the rest, the rest is the same leg in every traversal:
+        the partial and the final merge each keep the cyclic orientation of a
+        three-leg vertex (``_singlet_vertex_orientation_allowed``), and one of
+        these orders remains. Otherwise the vertex is on the path from the
+        distinguished line to the sink and the rest is the leg whose lines
+        precede the distinguished line in the traversal. The order is then
+        kept only if the rest has the largest smallest line label of the four
+        legs, as the three-leg rule keeps it, and, where the distinguished
+        line is the final leg, only with increasing labels inside the
+        auxiliary. Every diagram is so built once over all traversal sectors;
+        a vertex with a leg without coloured lines keeps the three-leg rule
+        of both merges.
+        """
+
+        sector_id = left.sector_id
+        partial = _singlet_contact_partial_groups(left.basis_key)
+        auxiliary_first = partial is not None
+        if partial is None:
+            partial = _singlet_contact_partial_groups(right.basis_key)
+        if partial is None:
+            raise ValueError("colour-singlet contact merge without its partial legs")
+        auxiliary, other = (left, right) if auxiliary_first else (right, left)
+        x = set(partial)
+        y = set(auxiliary.line_groups) - x
+        z = (
+            set()
+            if self._particle_has_colour(vertex.particles[1 if auxiliary_first else 0])
+            else set(other.line_groups)
+        )
+        kept = self._singlet_vertex_orientation_allowed(sector_id, x, y)
+        if z and z.isdisjoint(x | y):
+            kept = kept and (
+                self._singlet_vertex_orientation_allowed(sector_id, x | y, z)
+                if auxiliary_first
+                else self._singlet_vertex_orientation_allowed(sector_id, z, x | y)
+            )
+        sector = self._sector_by_id.get(sector_id)
+        if sector is None or not z or not z.isdisjoint(x | y):
+            return kept
+        lines = sector.line_label_groups
+        rest = set(range(len(lines))) - x - y - z
+        distinguished = self._distinguished_line(sector_id)
+        if not rest or distinguished is None or distinguished in rest:
+            return kept
+
+        def first_label(groups: Iterable[int]) -> int:
+            return min(label for group in groups for label in lines[group])
+
+        if first_label(rest) < max(first_label(x), first_label(y), first_label(z)):
+            return False
+        if auxiliary_first:
+            return distinguished in x
+        return distinguished in z and first_label(x) < first_label(y)
+
     def _shared_lc_singlet_vertex_orientation_allowed(
         self,
         left_index: CurrentIndex,
@@ -878,6 +1106,7 @@ class ColorEngine:
         *,
         closed_groups: frozenset[int] = frozenset(),
         sector_id: int | None = None,
+        singlet_orientation: bool = True,
     ) -> tuple[int, ...] | None:
         """Line groups of a merge, or ``None`` if the colour flow forbids it.
 
@@ -890,7 +1119,10 @@ class ColorEngine:
         open lines keeps both lines' ends in place, and a singlet result of
         a line that absorbed such an exchange closes both lines. Two singlet
         inputs with disjoint complete lines keep one cyclic orientation
-        (``_singlet_vertex_orientation_allowed``).
+        (``_singlet_vertex_orientation_allowed``) unless
+        ``singlet_orientation`` is false: the two merges of a colour-singlet
+        contact vertex decide theirs together at the final merge
+        (``_singlet_contact_orientation_allowed``).
         """
 
         left_colored = self._particle_has_colour(vertex.particles[0])
@@ -920,7 +1152,8 @@ class ColorEngine:
             if not groups.issubset(closed_groups):
                 return None
             if (
-                not left_colored
+                singlet_orientation
+                and not left_colored
                 and left_groups.isdisjoint(right_groups)
                 and not self._singlet_vertex_orientation_allowed(
                     sector_id, left_groups, right_groups
