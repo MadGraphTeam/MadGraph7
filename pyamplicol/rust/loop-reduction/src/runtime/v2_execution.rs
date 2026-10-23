@@ -130,7 +130,7 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
                     batch
                         .statuses
                         .iter()
-                        .map(|(id, status)| {
+                        .map(|(id, status)| -> RusticolResult<LaneOutcome<T>> {
                             let value = match next {
                                 Some((&row, value)) if row == *id => {
                                     next = successes.next();
@@ -138,9 +138,9 @@ impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
                                 }
                                 _ => None,
                             };
-                            Ok(LaneOutcome {
-                                status: status.clone(),
-                                value,
+                            Ok(match value {
+                                Some(value) if status == "success" => Ok(value),
+                                _ => Err(status.clone()),
                             })
                         })
                         .collect::<RusticolResult<Vec<_>>>()

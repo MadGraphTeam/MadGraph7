@@ -2083,17 +2083,17 @@ pub mod v2 {
     use crate::loop_v2::closure::FamilyNumerator;
     use crate::loop_v2::dress::{Carrier, ChunkInputs, LaneData, Reads, V2Batch};
     use crate::loop_v2::forward::{forward_factors, run_forward};
-    use crate::loop_v2::plan::LoopProgramV4;
+    use crate::loop_v2::merged::{DEFAULT_PART_CHUNKS, MergedStats, parts, run_merged};
+    use crate::loop_v2::plan::{LoopProgramV4, Merged};
     use crate::loop_v2::retest::{ReductionCheck, add_to_budget, deviation};
     use crate::loop_v2::seeds::seeds;
     use crate::loop_v2::trie::run_family;
     use crate::{RusticolError, RusticolResult};
     use rayon::prelude::*;
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::BTreeMap;
     use std::sync::Arc;
     use std::time::Instant;
     use symbolica::domains::float::{Complex, Real};
-    use symbolica::domains::rational::Rational;
 
     /// Default SIMD lanes per chunk (gate G0, DESIGN.md §5.4).
     pub const DEFAULT_LANES: usize = 16;
@@ -2108,6 +2108,11 @@ pub mod v2 {
         B,
         /// The forward prefix tree (oracle).
         F,
+        /// The merged planar state graph for the plan's certified families,
+        /// schedule B for the others (all of them when the plan's graph is
+        /// empty: no certified family). Plans exported without a graph
+        /// refuse it (WP2.8).
+        M,
     }
 
     /// Options of one evaluation.
@@ -2118,6 +2123,11 @@ pub mod v2 {
         /// Reduce every lane a second time in this frame (stability estimate).
         pub check: Option<ReductionCheck>,
         pub chunk_families: usize,
+        /// Schedule B, or M where the plan has it (F is an oracle of
+        /// numerators only).
+        pub schedule: Schedule,
+        /// Schedule-M chunks per streamed part.
+        pub part_chunks: usize,
     }
 
     impl Default for V2Options {
@@ -2126,6 +2136,8 @@ pub mod v2 {
                 poles: true,
                 check: None,
                 chunk_families: DEFAULT_CHUNK_FAMILIES,
+                schedule: Schedule::B,
+                part_chunks: DEFAULT_PART_CHUNKS,
             }
         }
     }
@@ -2155,13 +2167,9 @@ pub mod v2 {
         pub coefficients: Vec<Complex<T>>,
     }
 
-    /// The reducer status of one lane and, on success, its raw Laurent
-    /// integrals `[finite, 1/ε, 1/ε²]` (finite only without poles).
-    #[derive(Clone)]
-    pub struct LaneOutcome<T> {
-        pub status: String,
-        pub value: Option<Vec<Complex<T>>>,
-    }
+    /// One reduction lane: its raw Laurent integrals `[finite, 1/ε, 1/ε²]`
+    /// (finite only without poles), or the reducer status of a failed lane.
+    pub type LaneOutcome<T> = Result<Vec<Complex<T>>, String>;
 
     /// Direct outcomes, and the re-test outcomes when a check was asked; one
     /// vector per group in its lane order.
@@ -2336,12 +2344,46 @@ pub mod v2 {
         live: Reads,
     }
 
-    /// Bucket chunks of at most `size` families in bucket order.
-    fn bucket_chunks(plan: &LoopProgramV4, size: usize) -> Vec<BucketChunk> {
+    /// The schedule-M graph an evaluation runs: the plan's under schedule M
+    /// (possibly empty: no certified family), none otherwise.
+    fn merged_of(plan: &LoopProgramV4, schedule: Schedule) -> RusticolResult<Option<&Merged>> {
+        match schedule {
+            Schedule::M => plan.merged.as_ref().map(Some).ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "the plan has no schedule M (it was exported without a merged graph)",
+                )
+            }),
+            _ => Ok(None),
+        }
+    }
+
+    /// The families schedule B dresses: all, or those schedule M leaves.
+    fn b_families(plan: &LoopProgramV4, merged: Option<&Merged>) -> Vec<usize> {
+        (0..plan.families.len())
+            .filter(|f| merged.is_none_or(|m| m.families.binary_search(f).is_err()))
+            .collect()
+    }
+
+    /// Bucket chunks of at most `size` of `families` (ascending) in bucket
+    /// order.
+    fn bucket_chunks(plan: &LoopProgramV4, size: usize, families: &[usize]) -> Vec<BucketChunk> {
         let parts: Vec<Vec<usize>> = plan
             .buckets()
             .values()
-            .flat_map(|members| members.chunks(size.max(1)).map(<[usize]>::to_vec))
+            .map(|members| {
+                members
+                    .iter()
+                    .copied()
+                    .filter(|f| families.binary_search(f).is_ok())
+                    .collect::<Vec<_>>()
+            })
+            .filter(|members| !members.is_empty())
+            .flat_map(|members| {
+                members
+                    .chunks(size.max(1))
+                    .map(<[usize]>::to_vec)
+                    .collect::<Vec<_>>()
+            })
             .collect();
         let reads: Vec<Reads> = parts.iter().map(|part| Reads::of(plan, part)).collect();
         let last = |count: usize, ids: &dyn Fn(&Reads) -> &[usize]| {
@@ -2428,20 +2470,30 @@ pub mod v2 {
     ) -> RusticolResult<Vec<PointNumerators<T>>> {
         let mut out: Vec<PointNumerators<T>> = vec![Vec::new(); batch.points()];
         let mut report = Report::default();
+        let merged = merged_of(plan, schedule)?;
         for points in chunks(batch.points(), L) {
             let data = LaneData::<T, L>::new(plan, batch, &points, zero)?;
             let seeds = seeds(plan, &data);
             let mut inputs = ChunkInputs::new(plan);
             let numerators = match schedule {
-                Schedule::B => {
-                    let families: Vec<usize> = (0..plan.families.len()).collect();
+                Schedule::B | Schedule::M => {
+                    let families = b_families(plan, merged);
                     let reads = Reads::of(plan, &families);
                     let chunk = BucketChunk {
                         families,
                         live: reads.clone(),
                         reads,
                     };
-                    dress_families(plan, &chunk, &mut inputs, &seeds, &data, &mut report)?
+                    let mut numerators =
+                        dress_families(plan, &chunk, &mut inputs, &seeds, &data, &mut report)?;
+                    if let Some(merged) = merged {
+                        let parts = parts(merged, DEFAULT_PART_CHUNKS, plan);
+                        run_merged(plan, &parts, &mut inputs, &seeds, &data, |done| {
+                            numerators.extend(done);
+                            Ok(())
+                        })?;
+                    }
+                    numerators
                 }
                 Schedule::F => {
                     let needed = Reads {
@@ -2467,53 +2519,29 @@ pub mod v2 {
         Ok(out)
     }
 
-    /// Invariants of one lane: `p(mask)` and `s[mask] = p(mask)²`, exact and
-    /// cast once per mask.
-    struct Invariants<'a, T, const L: usize> {
-        data: &'a LaneData<T, L>,
-        lane: usize,
-        scale: Complex<T>,
-        momenta: HashMap<u64, [Complex<T>; 4]>,
-        squares: HashMap<u64, Complex<T>>,
-    }
-
-    impl<T: Carrier, const L: usize> Invariants<'_, T, L> {
-        fn complex(&self, value: &Rational) -> Complex<T> {
-            Complex::new(self.data.cast(value), self.data.zero.clone())
-        }
-
-        fn momentum(&mut self, mask: u64) -> &[Complex<T>; 4] {
-            if !self.momenta.contains_key(&mask) {
-                let p = self.data.exact_momentum(self.lane, mask);
-                let value = std::array::from_fn(|mu| self.complex(&p[mu]));
-                self.momenta.insert(mask, value);
-            }
-            &self.momenta[&mask]
-        }
-
-        fn square(&mut self, mask: u64) -> Complex<T> {
-            if let Some(found) = self.squares.get(&mask) {
-                return found.clone();
-            }
-            let value = self.complex(&self.data.exact_square(self.lane, mask));
-            self.squares.insert(mask, value.clone());
-            value
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
+    /// The reduction lanes of one family numerator on a chunk of lanes,
+    /// skipping points that failed already (a non-finite numerator fails its
+    /// point here). Shifts `p(mask)` and invariants `s[mask] = p(mask)²` are
+    /// the chunk's exact invariants cast once per mask ([`LaneData`]).
     fn lanes_of<T: Carrier, const L: usize>(
         plan: &LoopProgramV4,
         masses: &[Complex<T>],
+        scales: &[Complex<T>],
         numerator: &FamilyNumerator<T>,
         data: &LaneData<T, L>,
-        invariants: &mut [Invariants<'_, T, L>],
-        failed: &[bool],
         failures: &mut [Vec<String>],
     ) -> FamilyLanes<T> {
         let family = &plan.families[numerator.family];
         let n = family.propagators();
         let masks = family.shift_masks();
+        let v = 2 * L;
+        let real = |x: &T| Complex::new(x.clone(), data.zero.clone());
+        let shifts: Vec<_> = masks.iter().map(|&mask| data.momentum(mask)).collect();
+        let squares: Vec<_> = masks
+            .iter()
+            .flat_map(|&a| masks.iter().map(move |&b| a ^ b))
+            .map(|mask| data.square(mask))
+            .collect();
         let mut lanes = FamilyLanes {
             family: numerator.family,
             propagators: n,
@@ -2526,9 +2554,9 @@ pub mod v2 {
             s_matrix: Vec::new(),
             coefficients: Vec::new(),
         };
-        for (lane, invariants) in invariants.iter_mut().enumerate().take(data.active) {
+        for lane in 0..data.active {
             let point = data.points[lane];
-            if failed[point] {
+            if !failures[point].is_empty() {
                 continue;
             }
             if !numerator.finite::<L>(lane) {
@@ -2550,10 +2578,10 @@ pub mod v2 {
                         order,
                         column,
                     });
-                    for &mask in &masks {
+                    for shift in &shifts {
                         lanes
                             .shifts
-                            .extend(invariants.momentum(mask).iter().cloned());
+                            .extend((0..4).map(|mu| real(&shift[mu * v + lane])));
                     }
                     lanes.masses.extend(
                         family
@@ -2561,17 +2589,109 @@ pub mod v2 {
                             .iter()
                             .map(|&(_, mass)| masses[mass].clone()),
                     );
-                    lanes.scales.push(invariants.scale.clone());
-                    for &a in &masks {
-                        for &b in &masks {
-                            lanes.s_matrix.push(invariants.square(a ^ b));
-                        }
-                    }
+                    lanes.scales.push(scales[lane].clone());
+                    lanes
+                        .s_matrix
+                        .extend(squares.iter().map(|square| real(&square[lane])));
                     lanes.coefficients.extend(coefficients);
                 }
             }
         }
         lanes
+    }
+
+    /// What the reductions of one evaluation collect per point.
+    struct Lanes<T> {
+        failures: Vec<Vec<String>>,
+        families: Vec<Vec<(LaneKey, Vec<Complex<T>>)>>,
+        checks: Vec<Vec<(LaneKey, Vec<Complex<T>>)>>,
+    }
+
+    /// The reduction side of one chunk of lanes: scatters family numerators
+    /// into NinjaRS lanes (skipping failed points), reduces them and records
+    /// each lane's outcome.
+    struct Reduction<'a, T, B, const L: usize> {
+        plan: &'a LoopProgramV4,
+        masses: &'a [Complex<T>],
+        /// `mu_R²` per lane.
+        scales: &'a [Complex<T>],
+        data: &'a LaneData<T, L>,
+        backend: &'a mut B,
+        options: V2Options,
+        sink: &'a mut Lanes<T>,
+    }
+
+    impl<T: Carrier, B: V2Backend<T>, const L: usize> Reduction<'_, T, B, L> {
+        fn reduce(
+            &mut self,
+            numerators: &[FamilyNumerator<T>],
+            report: &mut Report,
+        ) -> RusticolResult<()> {
+            let start = Instant::now();
+            let groups: Vec<FamilyLanes<T>> = numerators
+                .iter()
+                .map(|numerator| {
+                    lanes_of(
+                        self.plan,
+                        self.masses,
+                        self.scales,
+                        numerator,
+                        self.data,
+                        &mut self.sink.failures,
+                    )
+                })
+                .filter(|group| !group.keys.is_empty())
+                .collect();
+            report.time("scatter", start);
+            report.count(
+                "reduction lanes",
+                groups.iter().map(|g| g.keys.len() as u64).sum(),
+            );
+            if groups.is_empty() {
+                return Ok(());
+            }
+            let start = Instant::now();
+            let (direct, check) =
+                self.backend
+                    .reduce(&groups, self.options.poles, self.options.check)?;
+            report.time("reduction", start);
+            let sink = &mut *self.sink;
+            for (index, group) in groups.iter().enumerate() {
+                for (row, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
+                    match &direct[index][row] {
+                        Ok(value) => sink.families[point].push((key, value.clone())),
+                        Err(status) => sink.failures[point]
+                            .push(format!("family {} lane {key:?}: {status}", group.family)),
+                    }
+                    if let Some(check) = &check {
+                        match &check[index][row] {
+                            Ok(value) => sink.checks[point].push((key, value.clone())),
+                            Err(status) => sink.failures[point].push(format!(
+                                "re-test of family {} lane {key:?}: {status}",
+                                group.family
+                            )),
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+
+    /// Record a schedule-M run in the report (reals per lane).
+    fn merged_report(report: &mut Report, stats: &MergedStats, lanes: usize) {
+        *report.seconds.entry("factors").or_default() += stats.seconds_inputs;
+        *report.seconds.entry("dressing").or_default() += stats.seconds_dressing;
+        report.count("merged states", stats.states);
+        report.count("merged split states", stats.split_states);
+        report.count("merged chunks", stats.chunks);
+        report.peak(
+            "chunk inputs (factors, vertex tensors, currents)",
+            stats.peak_inputs,
+            lanes,
+        );
+        report.peak("open objects (one merged chunk)", stats.peak_objects, lanes);
+        report.peak("merged family accumulators", stats.peak_accumulators, lanes);
     }
 
     fn evaluate_lanes<T: Carrier + Real, const L: usize>(
@@ -2588,10 +2708,22 @@ pub mod v2 {
             real_bytes: std::mem::size_of::<T>(),
             ..Report::default()
         };
-        let mut failures: Vec<Vec<String>> = vec![Vec::new(); points];
-        let mut families: Vec<Vec<(LaneKey, Vec<Complex<T>>)>> = vec![Vec::new(); points];
-        let mut checks: Vec<Vec<(LaneKey, Vec<Complex<T>>)>> = vec![Vec::new(); points];
-        let chunks_of_buckets = bucket_chunks(plan, options.chunk_families);
+        if options.schedule == Schedule::F {
+            return Err(RusticolError::invalid_argument(
+                "schedule F is an oracle of family numerators only",
+            ));
+        }
+        let merged = merged_of(plan, options.schedule)?;
+        let b_families = b_families(plan, merged);
+        let chunks_of_buckets = bucket_chunks(plan, options.chunk_families, &b_families);
+        let merged_parts = merged
+            .map(|merged| parts(merged, options.part_chunks, plan))
+            .unwrap_or_default();
+        let mut sink = Lanes {
+            failures: vec![Vec::new(); points],
+            families: vec![Vec::new(); points],
+            checks: vec![Vec::new(); points],
+        };
         for chunk in chunks(points, L) {
             backend.begin();
             let start = Instant::now();
@@ -2604,77 +2736,37 @@ pub mod v2 {
                 .iter()
                 .map(|m| Complex::new(data.cast(m), data.zero.clone()))
                 .collect();
-            let mut invariants: Vec<_> = (0..L)
-                .map(|lane| Invariants {
-                    data: &data,
-                    lane,
-                    scale: Complex::new(data.cast(&data.scales[lane]), data.zero.clone()),
-                    momenta: HashMap::new(),
-                    squares: HashMap::new(),
-                })
+            let scales: Vec<Complex<T>> = data
+                .scales
+                .iter()
+                .map(|scale| Complex::new(data.cast(scale), data.zero.clone()))
                 .collect();
+            let mut reduction = Reduction {
+                plan,
+                masses: &masses,
+                scales: &scales,
+                data: &data,
+                backend: &mut *backend,
+                options,
+                sink: &mut sink,
+            };
             for part in &chunks_of_buckets {
                 let numerators =
                     dress_families(plan, part, &mut inputs, &seeds, &data, &mut report)?;
-                let start = Instant::now();
-                let mut failed = vec![false; points];
-                for (point, list) in failures.iter().enumerate() {
-                    failed[point] = !list.is_empty();
-                }
-                let groups: Vec<FamilyLanes<T>> = numerators
-                    .iter()
-                    .map(|numerator| {
-                        lanes_of(
-                            plan,
-                            &masses,
-                            numerator,
-                            &data,
-                            &mut invariants,
-                            &failed,
-                            &mut failures,
-                        )
-                    })
-                    .filter(|group| !group.keys.is_empty())
-                    .collect();
-                report.time("scatter", start);
-                report.count(
-                    "reduction lanes",
-                    groups.iter().map(|g| g.keys.len() as u64).sum(),
-                );
-                if groups.is_empty() {
-                    continue;
-                }
-                let start = Instant::now();
-                let (direct, check) = backend.reduce(&groups, options.poles, options.check)?;
-                report.time("reduction", start);
-                for (index, group) in groups.iter().enumerate() {
-                    for (row, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
-                        let outcome = &direct[index][row];
-                        match &outcome.value {
-                            Some(value) if outcome.status == "success" => {
-                                families[point].push((key, value.clone()));
-                            }
-                            _ => failures[point].push(format!(
-                                "family {} lane {key:?}: {}",
-                                group.family, outcome.status
-                            )),
-                        }
-                        if let Some(check) = &check {
-                            let outcome = &check[index][row];
-                            match &outcome.value {
-                                Some(value) if outcome.status == "success" => {
-                                    checks[point].push((key, value.clone()));
-                                }
-                                _ => failures[point].push(format!(
-                                    "re-test of family {} lane {key:?}: {}",
-                                    group.family, outcome.status
-                                )),
-                            }
-                        }
-                    }
-                }
+                reduction.reduce(&numerators, &mut report)?;
+            }
+            if !merged_parts.is_empty() {
+                let stats = run_merged(plan, &merged_parts, &mut inputs, &seeds, &data, |done| {
+                    reduction.reduce(&done, &mut report)
+                })?;
+                merged_report(&mut report, &stats, L);
             }
         }
+        let Lanes {
+            mut failures,
+            mut families,
+            mut checks,
+        } = sink;
         let zero = zero.zero();
         let pi = zero.pi();
         let factor = Complex::new(
@@ -2744,6 +2836,7 @@ pub mod v2 {
     mod tests {
         use super::*;
         use crate::loop_v2::dress::V2Batch;
+        use symbolica::domains::rational::Rational;
 
         /// Two scalar bubble families of a two-leg "process": one seeded
         /// trace step each, the factor a constant, so each family numerator
@@ -2789,18 +2882,12 @@ pub mod v2 {
                             .points
                             .iter()
                             .zip(group.coefficients.iter())
-                            .map(|(&point, c)| {
+                            .map(|(&point, c)| -> LaneOutcome<f64> {
                                 if first && point == 0 {
-                                    LaneOutcome {
-                                        status: "ImpreciseResult".into(),
-                                        value: None,
-                                    }
+                                    Err("ImpreciseResult".into())
                                 } else {
                                     let zero = Complex::new(0.0, 0.0);
-                                    LaneOutcome {
-                                        status: "success".into(),
-                                        value: Some(vec![*c, zero, zero]),
-                                    }
+                                    Ok(vec![*c, zero, zero])
                                 }
                             })
                             .collect()
@@ -2846,6 +2933,53 @@ pub mod v2 {
                 assert_eq!(value[0], Complex::new(6.0, 0.0));
             }
             assert_eq!(report.counts["reduction lanes"], 3);
+        }
+
+        /// Schedule M needs a plan exported with a merged graph; an empty
+        /// graph (no certified family) runs every family on schedule B.
+        #[test]
+        fn schedule_m_falls_back_to_b_without_certified_families() {
+            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
+            let batch = V2Batch {
+                momenta: vec![[1, 0, 0, 1, 1, 0, 0, -1].map(Rational::from).to_vec()],
+                scales: vec![Rational::from(1)],
+                masses: vec![Rational::from(0)],
+                constants: vec![Complex::new(2.0, 0.0)],
+                block_rows: vec![Vec::new()],
+                born: vec![vec![Complex::new(1.0, 1.0)]],
+            };
+            let executor = |text: &str| {
+                let plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+                V2Executor::new(Arc::new(plan), 2, Some(1)).unwrap()
+            };
+            let without = executor(&text);
+            let error = without
+                .numerators(&batch, &0.0, Schedule::M)
+                .expect_err("schedule M without a merged graph");
+            assert!(error.message().contains("no schedule M"), "{error}");
+            let options = V2Options {
+                schedule: Schedule::M,
+                ..V2Options::default()
+            };
+            assert!(
+                without
+                    .evaluate(&batch, &0.0, &mut Failing::default(), options)
+                    .is_err()
+            );
+            let empty = text.replace(
+                r#""forward":null}"#,
+                r#""forward":null,"merged":{"families":[],"entries":[],"states":[],"chunks":[]}}"#,
+            );
+            let with = executor(&empty);
+            assert_eq!(with.plan().merged.as_ref().unwrap().families.len(), 0);
+            let b = with.numerators(&batch, &0.0, Schedule::B).unwrap();
+            let m = with.numerators(&batch, &0.0, Schedule::M).unwrap();
+            assert_eq!(m.len(), 1);
+            assert_eq!(m[0].len(), 2);
+            for (mine, theirs) in m[0].iter().zip(&b[0]) {
+                assert_eq!((mine.0, mine.1, mine.2), (theirs.0, theirs.1, theirs.2));
+                assert_eq!(mine.3, theirs.3);
+            }
         }
     }
 }

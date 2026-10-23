@@ -39,12 +39,40 @@ def _direct_contraction_ir(
     left: CurrentIndex,
     right: CurrentIndex,
 ) -> ContractionIR | None:
-    return model.direct_contraction_ir(
+    """The closure contraction of two colour-compatible currents, or ``None``.
+
+    A fermion current whose line passed a massive fermion, an internal
+    propagator or a massive external state, is a Dirac (chirality-0) current,
+    while a massless external fermion is a Weyl (chirality +-1) state. Where
+    a chiral vertex joins massive and massless fermions on one line (b -> t
+    or t -> b through a W with a massless b, nu_tau -> tau), the line's
+    current can reach a massless sink as a Dirac current. Models install no
+    Dirac-Weyl contraction, so such a closure would silently drop its
+    diagrams (b b~ > w+ w- without the t channel, t t~ > b b~ without the W
+    exchange); it fails closed instead.
+    """
+
+    contraction = model.direct_contraction_ir(
         left.particle_id,
         right.particle_id,
         left_chirality=left.chirality,
         right_chirality=right.chirality,
     )
+    if (
+        contraction is None
+        and (left.chirality == 0) != (right.chirality == 0)
+        and model.direct_contraction_ir(left.particle_id, right.particle_id) is not None
+    ):
+        raise ValueError(
+            "a Dirac (chirality-0) current cannot close on a Weyl "
+            f"(chirality {left.chirality or right.chirality}) current: particles "
+            f"{left.particle_id} and {right.particle_id}, external labels "
+            f"{left.external_labels} and {right.external_labels}; a fermion line "
+            "that joins massive and massless fermions through a chiral vertex "
+            "(a massive internal or external fermion on a line with a massless "
+            "sink) has no Dirac-Weyl closure contraction"
+        )
+    return contraction
 
 
 def _sector_group_indices_for_label(
