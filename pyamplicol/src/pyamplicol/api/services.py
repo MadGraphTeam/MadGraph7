@@ -16,6 +16,7 @@ from pyamplicol.config import (
     BenchmarkConfig,
     ConfigResolution,
     GenerationConfig,
+    PoleSelection,
     R2Strategy,
     RunConfig,
 )
@@ -54,7 +55,9 @@ from .results import (
 from .virtual_results import (
     ResolvedVirtualEvaluation,
     VirtualEvaluation,
+    VirtualStabilityChecks,
     VirtualStabilityPolicy,
+    pole_selection,
 )
 
 _generator_factory: GeneratorFactory | None = None
@@ -591,6 +594,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: PoleSelection | str | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         """Return tree values or a typed Born-loop interference result.
 
@@ -610,6 +615,13 @@ class Runtime:
         ``on_failure="return"`` retains numerical failures as ``None`` at their
         original point positions, with typed diagnostics; the default raises.
         Invalid inputs and unsupported capabilities still raise.
+
+        Virtual runtimes of the v2 engine also accept ``poles`` (a
+        :class:`PoleSelection`: ``"all"``, the default, or ``"none"``, which
+        computes the finite part only; the poles are then ``None``), and
+        ``stability_checks`` (rotations and/or the reduction-direction check),
+        which add a stability estimate per point; without checks no estimate
+        is returned.
         """
 
         helicity_ids = _selector_ids(
@@ -647,6 +659,7 @@ class Runtime:
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
+        options.update(self._v2_options(poles, stability_checks))
         self._require_evaluation_options(self._backend.evaluate, options)
         if point_helicity_ids is None and point_color_ids is None:
             values = self._backend.evaluate(
@@ -726,6 +739,23 @@ class Runtime:
             raise CompatibilityError(
                 "mu_r2, r2_strategy and stability require a virtual runtime"
             )
+        return options
+
+    def _v2_options(
+        self,
+        poles: PoleSelection | str | None,
+        checks: VirtualStabilityChecks | None,
+    ) -> dict[str, object]:
+        """Pole-selection and stability-check options, forwarded only when set."""
+        options: dict[str, object] = {}
+        if poles is not None:
+            options["poles"] = pole_selection(poles)
+        if checks is not None:
+            if not isinstance(checks, VirtualStabilityChecks):
+                raise TypeError("stability_checks requires VirtualStabilityChecks")
+            options["stability_checks"] = checks
+        if options and self.contribution_kind != "virtual":
+            raise CompatibilityError("poles and stability_checks are virtual options")
         return options
 
     @staticmethod
@@ -822,6 +852,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: PoleSelection | str | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         return self.evaluate(
             momenta,
@@ -833,6 +865,8 @@ class Runtime:
             r2_strategy=r2_strategy,
             stability=stability,
             on_failure=on_failure,
+            poles=poles,
+            stability_checks=stability_checks,
         )
 
     def evaluate_resolved(
@@ -847,6 +881,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: PoleSelection | str | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
 
@@ -859,6 +895,8 @@ class Runtime:
         through that sum, as in :meth:`evaluate`.
         Omitted precision uses the runtime's load-time default, or 16 when the
         backend has no precision default, as in :meth:`evaluate`.
+        ``poles`` and ``stability_checks`` follow :meth:`evaluate` (v2 virtual
+        runtimes; the estimates are per resolved entry).
         """
 
         precision = _validate_precision(
@@ -870,6 +908,7 @@ class Runtime:
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
+        options.update(self._v2_options(poles, stability_checks))
         self._require_evaluation_options(self._backend.evaluate_resolved, options)
         result = self._backend.evaluate_resolved(
             momenta,
@@ -911,6 +950,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: PoleSelection | str | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
             momenta,
@@ -922,6 +963,8 @@ class Runtime:
             r2_strategy=r2_strategy,
             stability=stability,
             on_failure=on_failure,
+            poles=poles,
+            stability_checks=stability_checks,
         )
 
     def evaluate_orders(
@@ -1093,6 +1136,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: PoleSelection | str | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> tuple[_pyamplicol.CorrelatedValue, ...] | VirtualEvaluation:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
@@ -1109,11 +1154,13 @@ class Runtime:
         Decimal spin inputs (including complex-component pairs) retain their
         digits until conversion into the requested arithmetic.
         ``on_failure`` follows :meth:`evaluate`, preserving complex successful
-        values and unavailable whole-point entries.
+        values and unavailable whole-point entries. ``poles`` and
+        ``stability_checks`` follow :meth:`evaluate` (v2 virtual runtimes).
         """
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
+        options.update(self._v2_options(poles, stability_checks))
         if self.contribution_kind == "virtual":
             operation = self._virtual_correlation_operation("evaluate_correlated")
             self._require_evaluation_options(operation, options)
@@ -1157,6 +1204,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: PoleSelection | str | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> (
         dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]
         | dict[str, VirtualEvaluation]
@@ -1175,10 +1224,13 @@ class Runtime:
         Arithmetic and Decimal spin inputs follow :meth:`evaluate_correlated`.
         With ``on_failure="return"``, distinct source assignments can have
         different failure masks; every labelled result retains input positions.
+        ``poles`` and ``stability_checks`` follow :meth:`evaluate` (v2 virtual
+        runtimes).
         """
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
+        options.update(self._v2_options(poles, stability_checks))
         if self.contribution_kind == "virtual":
             operation = self._virtual_correlation_operation("evaluate_correlated_many")
             self._require_evaluation_options(operation, options)

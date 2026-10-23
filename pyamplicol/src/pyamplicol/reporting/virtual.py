@@ -10,6 +10,7 @@ from pyamplicol.api.virtual_results import (
     VirtualEvaluation,
     VirtualScalar,
 )
+from pyamplicol.config import PoleSelection
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.models.base import CouplingOrders
 
@@ -18,11 +19,53 @@ def _order(order: CouplingOrders) -> str:
     return ", ".join(f"{name}^{power}" for name, power in order) or "1"
 
 
-def _scalar(value: VirtualScalar) -> str:
+def _scalar(value: VirtualScalar | None) -> str:
     # Decimal.__str__ preserves its stored digits without using the active context.
+    if value is None:
+        return "absent"  # a finite-only evaluation computed no poles
     if isinstance(value, CorrelatedValue):
         return f"({value.real}) + ({value.imag})i"
     return str(value)
+
+
+def _estimate_row(estimate: Any) -> tuple[str, ...]:
+    def text(value: float | None) -> str:
+        return "absent" if value is None else f"{value:.3e}"
+
+    return (
+        text(estimate.relative),
+        text(estimate.finite),
+        text(estimate.single_pole),
+        text(estimate.double_pole),
+        ", ".join(f"{name} {value:.2e}" for name, value in estimate.checks),
+    )
+
+
+def _stability_table(result: Any, prettytable: Any) -> Any:
+    """Per-point (resolved: per-entry) stability estimates, or None."""
+
+    if result.stability is None:
+        return None
+    resolved = isinstance(result, ResolvedVirtualEvaluation)
+    axes = ("helicity", "colour component") if resolved else ()
+    table = prettytable.PrettyTable(
+        ("point", *axes, "relative", "finite", "single pole", "double pole", "checks")
+    )
+    table.title = "Stability estimates (relative; requested checks only)"
+    table.align = "l"
+    table.hrules = prettytable.HRuleStyle.FRAME
+    for point, estimate in enumerate(result.stability):
+        if estimate is None:
+            table.add_row((point, *("",) * len(axes), "unavailable", "", "", "", ""))
+        elif resolved:
+            for h, helicity in enumerate(result.helicity_ids):
+                for c, component in enumerate(result.virtual_color_ids):
+                    table.add_row(
+                        (point, helicity, component, *_estimate_row(estimate[h][c]))
+                    )
+        else:
+            table.add_row((point, *_estimate_row(estimate)))
+    return table
 
 
 def virtual_evaluation_summary(
@@ -155,6 +198,10 @@ def virtual_evaluation_summary(
             "\nBorn anchors are signed, potentially overcomplete components; "
             "they are not sampling probabilities."
         )
-    return "\n\n".join(
-        (header, *(str(table.get_string()) for table in (born, virtual, pairs, status)))
-    )
+    if result.poles is PoleSelection.NONE:
+        header += "\nFinite-only evaluation: the poles were not computed."
+    tables = [born, virtual, pairs, status]
+    stability = _stability_table(result, prettytable)
+    if stability is not None:
+        tables.append(stability)
+    return "\n\n".join((header, *(str(table.get_string()) for table in tables)))

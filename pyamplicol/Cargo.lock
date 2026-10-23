@@ -2320,6 +2320,7 @@ name = "rusticol-core"
 version = "1.0.1"
 dependencies = [
  "bincode",
+ "flate2",
  "libc",
  "libloading",
  "ninjars",
