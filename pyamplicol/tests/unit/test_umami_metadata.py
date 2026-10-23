@@ -409,7 +409,10 @@ def test_identical_orbit_matches_full_key_minimum(pdgs):
                 ),
                 tuple(edges),
                 tuple(
-                    sorted(tuple(h["values"][slot] for slot in candidate) for h in helicities)
+                    sorted(
+                        tuple(h["values"][slot] for slot in candidate)
+                        for h in helicities
+                    )
                 ),
             )
 
