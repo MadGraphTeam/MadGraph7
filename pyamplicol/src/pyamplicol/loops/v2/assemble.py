@@ -851,6 +851,10 @@ class SliceRequest:
     # refuses a request without such orbits, "direct" never uses it. Other
     # carriers and LC always contract directly.
     colour_contraction: ContractionPolicy = "auto"
+    # Counterterms (design §6.1, §6.6): "recursion" takes them from the tree
+    # recursion over the CT-lowered model (``ct_closure``), "sites" from the
+    # site closure of every rule, the permanent oracle (O6).
+    counterterms: Literal["recursion", "sites"] = "recursion"
 
 
 @dataclass
@@ -977,23 +981,27 @@ class LoopSlice:
             colour,
             policy=_FRAME_POLICY,
         )
-        # Production form of the counterterms (design §6.1): the tree
-        # recursion over the CT-lowered model, closed at leg 1; graded by N_c
-        # with a colour declaration (design §6.7).
-        from .ct_closure import CountertermProgram
+        if request.counterterms not in ("recursion", "sites"):
+            raise ValueError(f"unknown counterterm form {request.counterterms!r}")
+        program = None
+        if request.counterterms == "recursion":
+            # Production form of the counterterms (design §6.1): the tree
+            # recursion over the CT-lowered model, closed at leg 1; graded by
+            # N_c with a colour declaration (design §6.7).
+            from .ct_closure import CountertermProgram
 
-        program = CountertermProgram.build(
-            compiled,
-            prepared,
-            request.process,
-            families,
-            data,
-            selection,
-            blocks.born_orders,
-            forbidden=request.ignored_particle_ids,
-            fixed_parameters=fixed,
-            declaration=declaration,
-        )
+            program = CountertermProgram.build(
+                compiled,
+                prepared,
+                request.process,
+                families,
+                data,
+                selection,
+                blocks.born_orders,
+                forbidden=request.ignored_particle_ids,
+                fixed_parameters=fixed,
+                declaration=declaration,
+            )
         sites = generate_counterterm_sites(
             families,
             table,

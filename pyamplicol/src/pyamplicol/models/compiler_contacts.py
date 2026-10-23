@@ -412,7 +412,7 @@ def _contact_auxiliary_color(
     if all(color == 1 for color in colors):
         return 1
     if "f(" in term.color_source or "d(" in term.color_source:
-        return 8
+        return 8  # the summed adjoint index of a contact split
     remaining = abs(colors[remaining_leg])
     result = abs(colors[result_leg])
     if remaining == 1:
@@ -682,7 +682,12 @@ def _contact_decomposition_split_proof(
         if source_particles[pair_legs[0]].name == source_particles[pair_legs[1]].name
         else (pair_legs, tuple(reversed(pair_legs)))
     )
-    identities = "Identity(" in outer_color_source
+    singlets = {outer_color_source, final_color_source} == {
+        "1",
+        "UFO::{}::Identity(1,2)",
+    }
+    identities = "Identity(" in outer_color_source and not singlets
+    trilinear = "Identity(" in final_color_source and not identities and not singlets
     # A d-symbol (counterterm contacts) is totally symmetric: no parity.
     outer_signed = bool(outer_color_factor) and "f(" in outer_color_source
     final_signed = bool(final_color_factor) and "f(" in final_color_source
@@ -752,13 +757,17 @@ def _contact_decomposition_split_proof(
             outer_slot=outer_color_factor.index(color_dummy),
             final_slot=final_color_factor.index(color_dummy),
         )
-        if outer_color_factor and not identities
+        if outer_color_factor and not identities and not trilinear and not singlets
         else None
     )
     return CompiledContactDecompositionSplit(
         decomposition_kind=(
-            "two-identities"
+            "identity-singlets"
+            if singlets
+            else "two-identities"
             if identities
+            else "trilinear-identity"
+            if trilinear
             else "two-structure-constants"
             if outer_color_factor
             else "literal-color-singlet"
@@ -1049,6 +1058,9 @@ def _counterterm_contact_color_split(
     below. Returns ``None`` for any other colour.
     """
 
+    trilinear = _trilinear_singlet_contact_split(term, result_leg)
+    if trilinear is not None:
+        return trilinear
     compact = re.sub(r"\s+|UFO::(?:\{\}::)?", "", term.color_source)
     factors: list[tuple[str, tuple[int, ...]]] = []
     numbers: list[str] = []
@@ -1118,6 +1130,126 @@ def _counterterm_contact_color_split(
         outer,
         final,
         dummy,
+        coefficient,
+    )
+
+
+def _trilinear_singlet_contact_split(
+    term: CompiledVertexTerm,
+    result_leg: int,
+) -> (
+    tuple[
+        tuple[int, int],
+        int,
+        str,
+        str,
+        int,
+        int,
+        tuple[int, ...],
+        tuple[int, ...],
+        int,
+        str,
+    ]
+    | None
+):
+    """Split one adjoint trilinear tensor on a contact with a singlet leg.
+
+    ``d(a,b,c)`` or ``f(a,b,c)`` on three adjoint legs of a four-point
+    counterterm whose fourth leg is a colour singlet (the gluon-gluon-gluon-
+    vector R2): the pair following the result leg in the tensor's cyclic order
+    (the first two legs for a singlet result) joins an auxiliary carrying the
+    summed index ``d(p, q, X)``, and ``Identity(X, r)`` passes it to the
+    remaining adjoint leg or closes it with that leg into the singlet result.
+    """
+
+    compact = re.sub(r"\s+|UFO::(?:\{\}::)?", "", term.color_source)
+    numbers, factors = [], []
+    for text in compact.split("*"):
+        match = _COUNTERTERM_COLOUR_FACTOR.fullmatch(text)
+        if match is not None and match["head"] in ("d", "f"):
+            factors.append(
+                (match["head"], tuple(int(value) for value in match["args"].split(",")))
+            )
+        elif re.fullmatch(r"-?\d+(?:/\d+)?", text):
+            numbers.append(text)
+        elif match is None or match["head"] != "Identity":
+            return None
+    if len(factors) != 1:
+        return _identity_singlet_contact_split(compact, result_leg, numbers)
+    ((head, legs),) = factors
+    if len(legs) != 3 or len(set(legs)) != 3 or not set(legs) < {1, 2, 3, 4}:
+        return None
+    (singlet,) = {1, 2, 3, 4} - set(legs)
+    result = result_leg + 1
+    if result == singlet:
+        pair, remaining, final_legs = (legs[0], legs[1]), legs[2], (legs[2],)
+    else:
+        k = legs.index(result)
+        pair = (legs[(k + 1) % 3], legs[(k + 2) % 3])
+        remaining, final_legs = singlet, (result,)
+    dummy = -1
+    identity = "UFO::{}::Identity(1,2)"
+    return (
+        (pair[0] - 1, pair[1] - 1),
+        remaining - 1,
+        f"UFO::{{}}::{head}(1,2,3)",
+        identity,
+        1,
+        0,
+        (pair[0], pair[1], dummy),
+        (dummy, *final_legs),
+        dummy,
+        "*".join(numbers) if numbers else "1",
+    )
+
+
+def _identity_singlet_contact_split(compact: str, result_leg: int, numbers):
+    """Split ``Identity(a,b)`` between two adjoint legs of a contact whose
+    other two legs are colour singlets (counterterms such as gluon-gluon-
+    vector-vector R2): a singlet result closes the adjoint pair into a colour
+    singlet joined with the other singlet; an adjoint result joins the two
+    singlets and takes the other adjoint leg's colour."""
+
+    identities = [
+        tuple(int(value) for value in match["args"].split(","))
+        for text in compact.split("*")
+        if (match := _COUNTERTERM_COLOUR_FACTOR.fullmatch(text)) is not None
+        and match["head"] == "Identity"
+    ]
+    if len(identities) != 1 or len(identities[0]) != 2:
+        return None
+    (adjoint,) = identities
+    singlets = tuple(sorted({1, 2, 3, 4} - set(adjoint)))
+    if len(singlets) != 2 or min(adjoint) < 1:
+        return None
+    result = result_leg + 1
+    identity, singlet = "UFO::{}::Identity(1,2)", "1"
+    coefficient = "*".join(numbers) if numbers else "1"
+    if result in singlets:
+        (remaining,) = (leg for leg in singlets if leg != result)
+        return (
+            (adjoint[0] - 1, adjoint[1] - 1),
+            remaining - 1,
+            identity,
+            singlet,
+            0,
+            0,
+            tuple(adjoint),
+            (),
+            -1,
+            coefficient,
+        )
+    (remaining,) = (leg for leg in adjoint if leg != result)
+    return (
+        (singlets[0] - 1, singlets[1] - 1),
+        remaining - 1,
+        singlet,
+        identity,
+        0,
+        0,
+        (),
+        (remaining, result),
+        -1,
         coefficient,
     )
 

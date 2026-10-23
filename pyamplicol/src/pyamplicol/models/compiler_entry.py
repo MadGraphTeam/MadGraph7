@@ -539,30 +539,22 @@ def _contact_recurrence_color_contract(
             f"{len(orientation_matches)} exact stage orientations"
         )
     term, proof, split = owner_matches[0]
+    # Deduplicated partials may serve splits of different kinds whose stage
+    # tensors agree (a closing identity of two adjoint legs, say); a final
+    # takes its structure from its own terms' splits, not the auxiliary's
+    # owner.
+    candidates = [match[2] for match in orientation_matches]
+    if stage == "partial":
+        candidates.append(split)
+    recurrence_structure = _contact_stage_structure(candidates[0], stage)
     if any(
-        candidate_split.decomposition_kind != split.decomposition_kind
-        for _term, _proof, candidate_split, _orientation in orientation_matches
+        _contact_stage_structure(candidate, stage) != recurrence_structure
+        for candidate in candidates
     ):
         raise ValueError(
             f"compiler-generated contact kernel {kernel.vertex!r} fuses "
             "incompatible recurrence color decompositions"
         )
-    if split.decomposition_kind == "two-structure-constants":
-        # Each stage carries its own adjoint trilinear tensor: a structure
-        # constant or a d-symbol (counterterm contacts, ``ct_color_flow``).
-        source = split.outer_color_source if stage == "partial" else (
-            split.final_color_source
-        )
-        recurrence_structure = (
-            "adjoint-symmetric-invariant"
-            if "d(" in source
-            else "adjoint-structure-constant"
-        )
-    else:
-        recurrence_structure = {
-            "literal-color-singlet": "singlet",
-            "two-identities": "color-identity",
-        }[split.decomposition_kind]
     return (
         recurrence_structure,
         f"{proof.algorithm}-recurrence-{stage}-v{proof.algorithm_version}",
@@ -573,6 +565,30 @@ def _contact_recurrence_color_contract(
             ("vertex-term-id", str(term.id)),
         ),
     )
+
+
+def _contact_stage_structure(split: Any, stage: str) -> str:
+    """The recurrence colour structure of one stage of a contact split."""
+
+    kind = split.decomposition_kind
+    if kind in ("two-structure-constants", "trilinear-identity", "identity-singlets"):
+        # Each stage carries its own tensor: a structure constant or a
+        # d-symbol (counterterm contacts, ``ct_color_flow``), an identity, or
+        # nothing (a pair of colour singlets).
+        source = split.outer_color_source if stage == "partial" else (
+            split.final_color_source
+        )
+        if "Identity(" in source:
+            return "color-identity"
+        if "d(" in source:
+            return "adjoint-symmetric-invariant"
+        if "f(" in source:
+            return "adjoint-structure-constant"
+        return "singlet"
+    return {
+        "literal-color-singlet": "singlet",
+        "two-identities": "color-identity",
+    }[kind]
 
 
 def _annotate_oriented_kernel_evaluation_equivalence(
@@ -1021,11 +1037,15 @@ def _compile_four_point_contact_kernels(
                 combined_color_source = (
                     f"{split.outer_color_source}*{split.final_color_source}"
                     if split.decomposition_kind == "two-structure-constants"
+                    # The identity only passes the summed index on.
+                    else split.outer_color_source
+                    if split.decomposition_kind == "trilinear-identity"
                     # The pair closed into a singlet; the result takes the
                     # remaining leg's colour with weight 1 (recurrence:
                     # ``_contact_recurrence_color_contract``).
                     else "1"
-                    if split.decomposition_kind == "two-identities"
+                    if split.decomposition_kind
+                    in ("two-identities", "identity-singlets")
                     else term.color_source
                 )
                 kernels.append(

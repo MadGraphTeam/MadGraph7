@@ -269,6 +269,8 @@ class CompiledContactDecompositionSplit:
             "literal-color-singlet",
             "two-structure-constants",
             "two-identities",
+            "trilinear-identity",
+            "identity-singlets",
         }:
             raise ValueError(
                 f"unknown contact decomposition kind {self.decomposition_kind!r}"
@@ -353,6 +355,28 @@ class CompiledContactDecompositionSplit:
             ):
                 raise ValueError(
                     "contact dummy-index mapping disagrees with the chosen factors"
+                )
+        elif self.decomposition_kind == "identity-singlets":
+            # Identity(a, b) on the adjoint legs: either the pair or the
+            # remaining-result legs.
+            factors = (self.outer_color_factor, self.final_color_factor)
+            if sum(bool(f) for f in factors) != 1 or self.dummy_index_mapping:
+                raise ValueError(
+                    "identity-singlet contact proof requires one identity factor"
+                )
+        elif self.decomposition_kind == "trilinear-identity":
+            # tensor(pair, X) delta(X, r): one trilinear on the pair and the
+            # summed index, an identity to the remaining or result leg.
+            if (
+                len(self.outer_color_factor) != 3
+                or len(self.final_color_factor) != 2
+                or tuple(sorted(i for i in self.outer_color_factor if i > 0))
+                != tuple(sorted(leg + 1 for leg in self.pair_legs))
+                or self.dummy_index_mapping is not None
+            ):
+                raise ValueError(
+                    "trilinear-identity contact proof requires a trilinear on the "
+                    "pair and an identity on its summed index"
                 )
         elif self.decomposition_kind == "two-identities":
             # delta^{pair} delta^{remaining result}: the pair closes into a

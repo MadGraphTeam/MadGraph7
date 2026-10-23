@@ -387,6 +387,7 @@ def generate_counterterm_sites(
     whole_rules: bool = False,
     closed_rules: Iterable[str] | None = None,
     root_mask: int | None = None,
+    check_coverage: bool = True,
 ) -> CountertermSites:
     """Admitted CT sites of a process, after the completeness check.
 
@@ -402,6 +403,8 @@ def generate_counterterm_sites(
     ``loops.v2.ct_recursion``); completeness is still checked on all rules.
     ``root_mask`` keeps only the sites with that leg set as one block (the
     CT vertices at the root of the counterterm closure, ``ct_closure``).
+    ``check_coverage=False`` skips the completeness check, for a caller that
+    has made it already for the same request.
     """
 
     data = model_data(native_model)
@@ -422,8 +425,10 @@ def generate_counterterm_sites(
     corrections = frozenset(selection.corrections)
     forbidden = frozenset(abs(int(pdg)) for pdg in forbidden)
     witnesses = divergent_witnesses(families, data)
-    coverage = _coverage(
-        witnesses, rules, names, corrections, ghost_partners(data), zeros
+    coverage = (
+        _coverage(witnesses, rules, names, corrections, ghost_partners(data), zeros)
+        if check_coverage
+        else ()
     )
     full = (1 << len(blocks.legs)) - 1
     sites = []

@@ -126,10 +126,16 @@ def tree_colour_source(
             )
     if multi_trace and any(factor.head == "d" for factor in tensors):
         adjoint = all(value == 8 for value in representations)
-        if len(tensors) == 1 and not (adjoint and len(representations) == 3):
+        # A d-symbol on three adjoint legs, alone (a trilinear vertex) or with
+        # one colour-singlet leg (a contact split by ``compiler_contacts``).
+        trilinear = len(representations) == 3 and adjoint
+        singlet_contact = len(representations) == 4 and sorted(
+            abs(value) for value in representations
+        ) == [1, 8, 8, 8]
+        if len(tensors) == 1 and not (trilinear or singlet_contact):
             raise UnloweredCountertermColour(
-                f"counterterm colour {source!r}: a d-symbol on a vertex with "
-                "colour-singlet legs has no contact split"
+                f"counterterm colour {source!r}: no colour-flow form of a "
+                "d-symbol on these legs"
             )
         if len(tensors) == 2 and not (adjoint and _adjoint_trilinears(tensors)):
             raise UnloweredCountertermColour(

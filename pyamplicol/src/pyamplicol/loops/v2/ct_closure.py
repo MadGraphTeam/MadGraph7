@@ -268,6 +268,8 @@ class CountertermClosure:
             whole_rules=True,
             closed_rules=recursion.rules,
             root_mask=1,
+            # The request's own site generation checks completeness.
+            check_coverage=False,
         )
         return sites.sites
 
