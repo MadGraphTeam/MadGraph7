@@ -1863,6 +1863,7 @@ Total ≈ 270 agent-days [I].
       - gg→gg ≤ 2.1×10⁻¹⁴ at 10 points;
       - gg→ggg ≤ 2.3×10⁻¹³ at the stable points; one ill-conditioned binary64 point is flagged by the rotation check and gives 3×10⁻¹⁴ in DoubleFloat;
       - gg→gggg 1.0×10⁻¹¹ at point 0 (estimate 1.4×10⁻¹⁰); point 1 is 1.6×10⁻⁷ in binary64 (estimate 2.7×10⁻⁶) and 4.7×10⁻¹⁵ in DoubleFloat.
+      - gg→ggggg top-free, bare virtual on the native trees (binary64, three fixture points) against `gg_ggggg_njet.json`: Born ≤ 4.9×10⁻¹⁴ and double pole ≤ 5.4×10⁻¹². The single pole, minus the counterterm pole (α_s/4π)(n−2)β₀(5)B of a top-free request, agrees to 3.4×10⁻⁹ and 5.2×10⁻⁹ at points 0 and 1 (rotation estimates 1.4×10⁻⁸ and 5.0×10⁻⁸) and to 1.4×10⁻¹¹ at point 2.
       The gg→ggggg finite part against `gg_ggggg_njet.json` now needs only the native counterterms (I5).
     - **LC/NLC degrees per relabelling orbit** (`assemble._AdjointOrbits`). Identical external adjoint legs whose transpositions leave the Born key sets invariant (checked exactly) form classes. Two consequences:
       - the leading degree over the Born keys is constant on the orbit of the other tensor, so one relabelled representative is contracted;
