@@ -357,8 +357,9 @@ def test_native_seeds_in_the_slice(
 ):
     """``LoopSlice.generate`` with the native stages in place of
     ``build_seed_table`` and ``extend_seed_table`` (the phase-1 switch) has
-    the Python run's S5 digest, at FC, LC and NLC (prune included); the
-    native prune liveness equals ``_prune_colour``'s on every reading."""
+    the Python run's S5 digest at FC, LC and NLC (prune included), and with
+    ``colour_contraction="direct"`` the same plan bytes (S8); the native
+    prune liveness equals ``_prune_colour``'s on every reading."""
 
     from pyamplicol.loops.v2 import assemble, snapshot
     from pyamplicol.models.loading import load_compiled_model
@@ -373,7 +374,9 @@ def test_native_seeds_in_the_slice(
                 json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
             ),
         }
-    request = _slice_request(process, born, loop, **options)
+    request = _slice_request(
+        process, born, loop, colour_contraction="direct", **options
+    )
     python = assemble.LoopSlice.generate(compiled, request, loop_native)
     stages: list = []
 
@@ -418,6 +421,12 @@ def test_native_seeds_in_the_slice(
         snapshot.seeds_records(python)
     )
     assert len(stages) == 2 + (accuracy != "full")
+    from pyamplicol.loops.v2.plan_export import export_plan
+
+    assert (
+        export_plan(native, forward=False).json()
+        == export_plan(python, forward=False).json()
+    )
 
 
 class _Captured(Exception):

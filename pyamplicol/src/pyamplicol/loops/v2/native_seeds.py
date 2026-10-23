@@ -219,8 +219,9 @@ class NativeSeedStage:
     """One native seed-table stage (``build`` or ``extend``).
 
     After a stage, ``keep`` evaluates the LC/NLC prune's liveness of
-    ``LoopSlice._prune_colour`` natively on the stage's skeletons, and
-    ``timings`` holds the wall time of its steps (seconds).
+    ``LoopSlice._prune_colour`` natively on the stage's skeletons,
+    ``timings`` holds the wall time of its steps (seconds) and ``counts`` its
+    sizes (skeletons, distinct contents, reductions, classes, rows).
     """
 
     def __init__(self, colour: SeedColour, native: Any = None):
@@ -235,6 +236,7 @@ class NativeSeedStage:
         self._names: list[str] = []
         self._class_orders: list[list[int]] = []
         self.timings: dict[str, float] = {}
+        self.counts: dict[str, int] = {}
         self._clock = 0.0
 
     def _step(self, name: str) -> None:
@@ -366,6 +368,14 @@ class NativeSeedStage:
         for skeleton, row in zip(skeletons, skeleton_rows, strict=True):
             out[skeleton] = rows[row]
         self._step("decode")
+        self.counts = {
+            "skeletons": len(skeletons),
+            "contents": len(contents),
+            "ring_reductions": len(rings),
+            "generic_seeds": len(generic_seeds),
+            "new_classes": len(new_classes),
+            "rows": len(raw_rows),
+        }
         cells = list(table.cells)
         cells.extend(seed_cells(table.basis, classes[len(cells) :]))
         self._step("cells")
