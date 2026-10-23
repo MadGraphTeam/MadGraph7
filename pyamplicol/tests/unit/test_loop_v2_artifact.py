@@ -1024,6 +1024,25 @@ def test_public_correlated_and_resolved_calls_equal_legacy_o1(
     the representative: one artifact process), in binary64 with one rotation
     and the reduction-direction check, and in double-double."""
 
+    _assert_public_o1(observables_artifact, name)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize(
+    "name", ("gg_gg_nlc", "ddgg_ssgg_lc", "ddgg_ssgg_nlc", "uux_ggg", "uux_ggg_spin")
+)
+def test_public_correlated_and_resolved_calls_equal_legacy_o1_nightly(
+    observables_artifact, name
+):
+    """The same O1 on the other frozen legacy observables: NLC, LC and NLC
+    members, and the five-leg u u~ > g g g (directed and spin) at full colour,
+    whose first point is binary64-ill-conditioned (values held to their own
+    estimate there, and to 1e-24 in double-double)."""
+
+    _assert_public_o1(observables_artifact, name)
+
+
+def _assert_public_o1(observables_artifact, name: str) -> None:
     from pyamplicol import Runtime
     from pyamplicol.artifacts import load_manifest
     from pyamplicol.correlators import CorrelatedRequest
@@ -1041,7 +1060,7 @@ def test_public_correlated_and_resolved_calls_equal_legacy_o1(
         )
         assert runtime.physics.process_id == process
         assert runtime.representative_process_key == representative
-        histories = tuple(expected["directed"])
+        histories = tuple(expected.get("directed", {}))
         assert [item.id for item in runtime.available_color_correlations()] == [
             "born",
             *(history["id"] for history in record["histories"]),
