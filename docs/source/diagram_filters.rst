@@ -31,9 +31,9 @@ propagator:
 .. code-block:: python
 
     # versions of MadGraph7 this plugin works with
-    minimal_mg5amcnlo_version = (0, 2, 0)
-    maximal_mg5amcnlo_version = (1000, 0, 0)
-    latest_validated_version = (0, 2, 1)
+    minimal_mg7_version = (0, 2, 0)
+    maximal_mg7_version = (1000, 0, 0)
+    latest_validated_mg7_version = (0, 2, 1)
 
     def remove_diag(diag, model):
         """Remove the diagrams with a photon propagator."""
@@ -46,8 +46,12 @@ propagator:
 
     new_diagram_filter = remove_diag
 
-The three version attributes are required, as for every plugin. A plugin without them
-is ignored.
+Every plugin gives the range of MadGraph7 versions it supports with
+``minimal_mg7_version`` and ``maximal_mg7_version``. ``latest_validated_mg7_version``
+is optional: MadGraph7 warns when it is more recent than that version. A plugin without
+the version range is ignored. The ``minimal_mg5amcnlo_version`` and
+``maximal_mg5amcnlo_version`` of MG5_aMC@NLO plugins refer to the MG5_aMC@NLO
+numbering. A plugin with only those is used without version check, with a warning.
 
 The filter is then used with:
 

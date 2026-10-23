@@ -8772,9 +8772,9 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                 plugin = sys.modules['PLUGIN.%s' % name] 
                 new_interface = plugin.new_interface
                 new_output = plugin.new_output
-                latest_validated_version = plugin.latest_validated_version
-                minimal_mg5amcnlo_version = plugin.minimal_mg5amcnlo_version
-                maximal_mg5amcnlo_version = plugin.maximal_mg5amcnlo_version
+                latest_validated_version = getattr(plugin,
+                                         'latest_validated_mg7_version',
+                                         getattr(plugin, 'latest_validated_version', ''))
             except Exception as error:
                 print(error)
                 logger.warning('Plugin not python3 compatible! It will run with python2')
@@ -8786,8 +8786,6 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                     misc.sprint(text)
                 new_output = []
                 latest_validated_version = ''
-                minimal_mg5amcnlo_version = ''
-                maximal_mg5amcnlo_version = ''
                 misc.sprint(pyvers)
                     
             logger.info('Plugin %s correctly interfaced. Latest official validition for MadGraph7 version %s.' % (name, '.'.join(repr(i) for i in latest_validated_version)))

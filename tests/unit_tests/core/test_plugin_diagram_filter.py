@@ -36,9 +36,9 @@ from madgraph import InvalidCmd, MadGraph5Error
 NoDiagram = diagram_generation.NoDiagramException
 
 HEADER = """
-minimal_mg5amcnlo_version = (2, 0, 0)
-maximal_mg5amcnlo_version = (99, 0, 0)
-latest_validated_version = (99, 0, 0)
+minimal_mg7_version = (0, 0, 0)
+maximal_mg7_version = (99, 0, 0)
+latest_validated_mg7_version = (99, 0, 0)
 """
 
 KEEP_ALL = "def remove_diag(diag, model=None):\n    return False\n"
@@ -284,3 +284,27 @@ class PluginDiagramFilterTest(unittest.TestCase):
         interface.exec_cmd('output %s' % os.path.join(self.tmp, 'OUT'),
                            printcmd=False, precmd=True, errorhandling=False)
         self.assertIn('LoopDiagram', self.record('rec'))
+
+    def test_plugin_version_attributes(self):
+        """a plugin gives its MadGraph7 version range with minimal_mg7_version
+        and maximal_mg7_version; the MG5_aMC@NLO attributes alone are accepted
+        without check; a plugin with neither (or only one bound) is
+        discarded"""
+        import types
+        def plugin(name, **attributes):
+            module = types.ModuleType('%s.%s' % (self.dirname, name))
+            for key, value in attributes.items():
+                setattr(module, key, value)
+            return module
+        cases = [
+            ('mg7', dict(minimal_mg7_version=(0, 0, 0),
+                         maximal_mg7_version=(1000, 0, 0)), True),
+            ('mg5only', dict(minimal_mg5amcnlo_version=(3, 6, 0),
+                             maximal_mg5amcnlo_version=(1000, 0, 0),
+                             latest_validated_version=(3, 6, 0)), True),
+            ('onebound', dict(minimal_mg7_version=(0, 0, 0)), False),
+            ('noversion', dict(), False)]
+        for name, attributes, expected in cases:
+            self.assertEqual(bool(misc.is_plugin_supported(
+                                        plugin(name, **attributes))), expected,
+                             name)
