@@ -336,7 +336,9 @@ def test_production_pruning_keeps_the_appendix_b_leading_families(declared, name
     histogram = collections.Counter(
         f"{size}:{rank}" for size, rank in (s.bucket for s in schedules)
     )
-    assert dict(histogram) == expected.get("families_by_N_rank", dict(histogram))
+    # Appendix B lists the leading-colour histogram of all-gluon rows only.
+    if "families_by_N_rank" in expected:
+        assert dict(histogram) == expected["families_by_N_rank"]
 
 
 @pytest.mark.loop_physics
