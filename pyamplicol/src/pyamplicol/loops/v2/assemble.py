@@ -914,7 +914,6 @@ class LoopSlice:
     fields: tuple[FieldInsertion, ...]
     field_names: Mapping[tuple[int, str, int], str]
     born_terms: Mapping[Orders, tuple[SiteTerm, ...]]
-    site_terms: Mapping[Any, tuple[SiteTerm | WholeRuleTerm, ...]]
     continuation: Any
     basis: BornBasis
     table: SeedTable
@@ -932,6 +931,23 @@ class LoopSlice:
     # The native generator stages of this process (WP3.1), if they ran.
     generation: NativeGeneration | None = None
     _cache: dict = field(default_factory=dict, repr=False)
+
+    @property
+    def site_terms(self) -> Mapping[Any, tuple[SiteTerm | WholeRuleTerm, ...]]:
+        """The terms of every counterterm site (the slice's counterterm form,
+        design §6.6), built on first use: generation and the plan need none."""
+
+        found = self._cache.get("site-terms")
+        if found is None:
+            found = self._cache["site-terms"] = {
+                site: (
+                    self.closure.terms(site)
+                    if site.rule.whole_rule_continuation is None
+                    else _whole_rule_terms(self.closure, site)
+                )
+                for site in self.sites.sites
+            }
+        return found
 
     @property
     def tree_rows(self) -> TreeRows:
@@ -1125,14 +1141,6 @@ class LoopSlice:
             fields=insertions,
             field_names=names,
             born_terms=born_terms,
-            site_terms={
-                site: (
-                    closure.terms(site)
-                    if site.rule.whole_rule_continuation is None
-                    else _whole_rule_terms(closure, site)
-                )
-                for site in sites.sites
-            },
             continuation=continuation,
             basis=basis,
             table=seed_table,
