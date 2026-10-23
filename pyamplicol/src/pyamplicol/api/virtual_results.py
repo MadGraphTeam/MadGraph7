@@ -681,6 +681,12 @@ class ResolvedVirtualEvaluation:
 
     Born colour components have their own independent axis. LC components are
     signed interference contributions, never sampling probabilities.
+
+    ``poles`` and ``stability`` follow :class:`VirtualEvaluation`: a
+    finite-only evaluation has explicitly absent poles, and when stability
+    checks ran, each lane's estimate bounds every one of its resolved entries
+    relative to that entry's own magnitude (``None`` for failed lanes, and
+    ``stability is None`` when no check was requested).
     """
 
     born_values: ResolvedCoefficients
@@ -694,6 +700,8 @@ class ResolvedVirtualEvaluation:
     virtual_color_ids: tuple[str, ...]
     color_accuracy: Literal["lc", "nlc", "full"]
     correlated: bool = False
+    poles: bool = True
+    stability: tuple[VirtualStabilityEstimate | None, ...] | None = None
 
     def __post_init__(self) -> None:
         if self.color_accuracy not in {"lc", "nlc", "full"}:
@@ -712,11 +720,9 @@ class ResolvedVirtualEvaluation:
             (len(self.born_orders), len(self.helicity_ids), len(self.born_color_ids)),
             (len(self.sectors), len(self.helicity_ids), len(self.virtual_color_ids), 3),
         )
-
-    @property
-    def poles(self) -> bool:
-        """Resolved evaluations always carry every Laurent coefficient."""
-        return True
+        object.__setattr__(
+            self, "stability", _stability(self.stability, self.diagnostics, self.poles)
+        )
 
     @property
     def epsilon_powers(self) -> tuple[int, int, int]:
@@ -752,6 +758,8 @@ class ResolvedVirtualEvaluation:
             or epsilon_power not in EPSILON_POWERS
         ):
             raise ValueError("epsilon power must be 0, -1, or -2")
+        if epsilon_power and not self.poles:
+            raise ValueError("this finite-only evaluation computed no poles")
         index = EPSILON_POWERS.index(epsilon_power)
         return tuple(
             None
@@ -794,7 +802,12 @@ class ResolvedVirtualEvaluation:
         )
 
     def total(self) -> VirtualEvaluation:
-        """Sum helicities and colour components, preserving orders and epsilon."""
+        """Sum helicities and colour components, preserving orders and epsilon.
+
+        The sum carries no stability estimate: per-entry estimates do not
+        bound a sum whose entries cancel (the inclusive evaluation returns
+        its own estimate).
+        """
         born = tuple(
             None
             if point is None
@@ -817,6 +830,8 @@ class ResolvedVirtualEvaluation:
                                 for colour in helicity
                             )
                         )
+                        if epsilon == 0 or self.poles
+                        else cast(VirtualScalar, None)
                         for epsilon in range(3)
                     )
                 )
@@ -833,4 +848,5 @@ class ResolvedVirtualEvaluation:
             self.r2,
             self.correlated,
             color_accuracy=self.color_accuracy,
+            poles=self.poles,
         )

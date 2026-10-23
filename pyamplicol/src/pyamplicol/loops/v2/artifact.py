@@ -1,29 +1,55 @@
 # SPDX-License-Identifier: 0BSD
 """Plan v4 loop artifacts and their public runtime (design §12, WP2.6).
 
-A v2 virtual process is published in the ordinary schema-v3 artifact
-envelope under the runtime capability ``rusticol.loop-runtime.v4``. Its
-``loop-runtime.pacbin`` holds one member of kind ``LOOP_RUNTIME_PLAN``: the
-plan v4 program of ``plan_export`` (zlib-compressed JSON), which the native
-``V2Executor`` validates and runs. The execution record keeps the slice
-request (process, coupling orders, corrections, fixed parameters, colour
-accuracy and continuation, seed contraction) and the plan's SHA-256.
+Format. A v2 virtual process is published in the ordinary schema-v3 artifact
+envelope under the runtime capability ``rusticol.loop-runtime.v4``:
 
-Trees, Born amplitudes and counterterm scalars are still evaluated per point
-in Python (design §5.5), from the generation objects of ``LoopSlice``. Until
-the loop-request mode of the Rust recurrence (WP3.1) moves them native, the
+* ``processes/<id>/loop-runtime.pacbin`` holds one member of kind
+  ``LOOP_RUNTIME_PLAN``, ``schedule/loop-plan-v4.json.zlib``: the plan v4
+  program of ``plan_export`` (zlib-compressed JSON) that the native
+  ``V2Executor`` validates and runs. Its kernels are exact polynomial term
+  lists interpreted natively (``loop_v2/dress.rs``): no compiled code, so
+  nothing depends on the build host's CPU features or paths.
+* ``processes/<id>/execution.json`` (schema 4) records the plan's SHA-256,
+  ``point_inputs`` and the generation request (process, coupling orders,
+  corrections, fixed parameters, colour accuracy and continuation, seed
+  contraction, the resolved correlator declarations);
+  ``processes/<id>/physics.json`` (schema 2) the public catalogue
+  (``generation.loop_artifact.LoopV2ExecutionMetadata``: Born orders,
+  sectors, families and reduction buckets, colour degrees, declared colour
+  histories and spin classes, carriers, legs and helicity rows).
+* ``model/compiled-model.json`` is the compiled loop model; flavour members
+  served by a representative are listed in ``process-groups.json``
+  (basis ``exact-loop-flavor``).
+
+The artifact is relocatable: every reference is relative to its root, and no
+absolute path, user or host name is stored (``tests/unit/test_loop_v2_artifact
+.py`` scans it).
+
+Point inputs (``point_inputs = "regenerated-at-load"``). Trees, Born
+amplitudes and counterterm scalars are still evaluated per point in Python
+(design §5.5), from the generation objects of ``LoopSlice``. Until the
+loop-request mode of the Rust recurrence (WP3.1) moves them native, the
 runtime rebuilds those objects at load time from the artifact's own compiled
-model and the saved request (the recursive generator, no diagram is listed)
-and requires the regenerated plan to equal the saved one byte for byte: the
+model and the saved request (the recursive generator, no diagram is listed;
+the SymJIT tree kernels are compiled in memory at -O2 and never stored) and
+requires the regenerated plan to equal the saved one byte for byte: the
 Python input tables (block rows, Born components, kernel constants) must
 match the stored program's numbering, or the native executor would read
 wrong inputs. The same process reuses generation objects already built in
-this interpreter (generation and its staged validation).
+this interpreter (generation and its staged validation). WP3.1 adds native
+programs for the point inputs as further PACBIN members under a new
+``point_inputs`` value; the plan member and the declarations stay as they
+are, so loading needs no regeneration then (requirements addendum G).
 
-Evaluation returns the public ``VirtualEvaluation``: Born per squared Born
-order, the complete virtual per squared coupling-order sector with its three
-Laurent coefficients (finite only on request), and, when stability checks
-were asked for, one ``VirtualStabilityEstimate`` per point. Escalation of the
+Evaluation returns the public result types: Born per squared Born order, the
+complete virtual per squared coupling-order sector with its three Laurent
+coefficients (finite only on request), and, when stability checks were asked
+for, one ``VirtualStabilityEstimate`` per point. Correlated (colour and spin)
+and resolved outputs and flavour members run through the observables package
+(``runtime.virtual.V2ObservablesRuntime`` over ``observables.ObservableSlice``),
+whose column plans are exported from the same regenerated slice. Binary64,
+double-double and arbitrary precision run natively. Escalation of the
 arithmetic is the caller's decision (requirements addendum C).
 """
 
@@ -88,14 +114,17 @@ ContractionPolicy = Literal["auto", "direct", "fft"]
 # --------------------------------------------------------------------- request
 
 
-def request_record(request: Any) -> dict[str, object]:
-    """The JSON record of a ``SliceRequest`` (the artifact's generation recipe)."""
+def request_record(request: Any, correlators: Any = None) -> dict[str, object]:
+    """The JSON record of a ``SliceRequest`` and its resolved correlator
+    declarations (the artifact's generation recipe)."""
 
     declaration = request.colour_declaration
     return {
         "process": request.process,
         "born_orders": dict(sorted(request.born_orders.items())),
-        "loop_orders": dict(sorted(request.loop_orders.items())),
+        "loop_orders": dict(sorted(request.loop_orders.items()))
+        if isinstance(request.loop_orders, Mapping)
+        else [dict(sorted(orders.items())) for orders in request.loop_orders],
         "corrections": list(request.corrections),
         "fixed_parameters": dict(sorted(request.fixed_parameters.items())),
         "ignored_particle_ids": list(request.ignored_particle_ids),
@@ -105,6 +134,7 @@ def request_record(request: Any) -> dict[str, object]:
         "alpha_s_parameter": request.alpha_s_parameter,
         "compress_colour": request.compress_colour,
         "colour_contraction": request.colour_contraction,
+        "correlators": None if correlators is None else correlators.to_json_dict(),
     }
 
 
@@ -114,10 +144,13 @@ def request_from_record(record: Mapping[str, Any]) -> Any:
     from .assemble import SliceRequest
 
     declaration = record["colour_declaration"]
+    loop_orders = record["loop_orders"]
     return SliceRequest(
         record["process"],
         dict(record["born_orders"]),
-        dict(record["loop_orders"]),
+        dict(loop_orders)
+        if isinstance(loop_orders, Mapping)
+        else tuple(dict(orders) for orders in loop_orders),
         corrections=tuple(record["corrections"]),
         fixed_parameters=dict(record["fixed_parameters"]),
         ignored_particle_ids=tuple(record["ignored_particle_ids"]),
@@ -130,6 +163,15 @@ def request_from_record(record: Mapping[str, Any]) -> Any:
         compress_colour=record["compress_colour"],
         colour_contraction=record["colour_contraction"],
     )
+
+
+def correlators_from_record(record: Mapping[str, Any]) -> Any:
+    """The resolved ``CorrelatorConfig`` of a request record, or ``None``."""
+
+    from pyamplicol.correlators import CorrelatorConfig
+
+    value = record.get("correlators")
+    return None if value is None else CorrelatorConfig.from_json_dict(value)
 
 
 def _record_key(record: Mapping[str, Any]) -> str:
@@ -186,12 +228,17 @@ def read_plan(path: Path) -> str:
 
 @dataclass
 class GeneratedProcess:
-    """One process generated through v2: its slice, plan and public catalogue."""
+    """One process generated through v2: its observables (and slice), plan
+    and public catalogue."""
 
-    slice: Any
+    observables: Any
     exported: Any
     request: Mapping[str, Any]
     plan_json: str
+
+    @property
+    def slice(self) -> Any:
+        return self.observables.slice
 
     @property
     def plan_sha256(self) -> str:
@@ -245,21 +292,55 @@ class GeneratedProcess:
     def helicities(self) -> list[list[int]]:
         return [[h for _leg, h in row] for row in self.exported.rows]
 
+    def color_correlations(self) -> tuple[str, ...]:
+        return tuple(history.id for history in self.observables.histories)
+
+    def spin_correlations(self) -> tuple[tuple[int, ...], ...]:
+        return tuple(tuple(legs) for legs in self.observables.spin_classes)
+
 
 def _order_text(order: Orders) -> str:
     return " ".join(f"{name}^{power}" for name, power in canonical_order(order))
 
 
-def generate_process(compiled: Any, request: Any, native: Any) -> GeneratedProcess:
-    """Generate one process through v2 and remember its generation objects."""
+def generate_process(
+    compiled: Any, request: Any, native: Any, correlators: Any = None
+) -> GeneratedProcess:
+    """Generate one process through v2 with its declared observables and
+    remember its generation objects.
+
+    Without colour histories or spin classes this is the inclusive slice
+    (``LoopSlice.generate``, colour-pruned at LC/NLC for the inclusive table);
+    with them, ``ObservableSlice.generate`` (full tree kernels for spin
+    sources; LC/NLC pruning keeps every skeleton live in the declared
+    histories' complete-family tables). The stored plan is the inclusive plan
+    of that slice; correlated and resolved column plans are exported from the
+    same slice at run time.
+    """
+
+    from pyamplicol.correlators import CorrelatorConfig
 
     from .assemble import LoopSlice
+    from .observables import ObservableSlice
     from .plan_export import export_plan
 
-    slice_ = LoopSlice.generate(compiled, request, native)
-    exported = export_plan(slice_)
-    record = request_record(request)
-    generated = GeneratedProcess(slice_, exported, record, exported.json())
+    declared = correlators is not None and bool(
+        correlators.color_correlations
+        or correlators.spin_correlations
+        or correlators.all_color_through_order is not None
+    )
+    if declared:
+        observables = ObservableSlice.generate(
+            compiled, request, native, correlators=correlators
+        )
+    else:
+        observables = ObservableSlice.of(LoopSlice.generate(compiled, request, native))
+    exported = export_plan(observables.slice)
+    resolved = CorrelatorConfig(
+        tuple(observables.histories), tuple(observables.spin_classes)
+    )
+    record = request_record(request, resolved if declared else None)
+    generated = GeneratedProcess(observables, exported, record, exported.json())
     _remember(model_digest(compiled.to_dict()), generated)
     return generated
 
@@ -267,7 +348,7 @@ def generate_process(compiled: Any, request: Any, native: Any) -> GeneratedProce
 def _remember(model: str, generated: GeneratedProcess) -> None:
     key = (model, _record_key(generated.request), generated.plan_sha256)
     with _slices_lock:
-        _slices[key] = (generated.slice, generated.exported)
+        _slices[key] = (generated.observables, generated.exported)
         _slices.move_to_end(key)
         while len(_slices) > _SLICE_CACHE_SIZE:
             _slices.popitem(last=False)
@@ -304,24 +385,42 @@ def admit(native: Any, root: Path, process_id: str) -> dict[str, Any]:
         raise ArtifactError(f"plan v4 admission failed: {error}") from error
 
 
-def _select(manifest: Any, process: str | None) -> Mapping[str, Any]:
+def _select(manifest: Any, process: str | None) -> tuple[Mapping[str, Any], Any]:
+    """The selected process record and, for a flavour member served by a
+    representative (``process-groups.json``, basis ``exact-loop-flavor``),
+    its group member (else ``None``)."""
+
     records = cast(tuple[Mapping[str, Any], ...], manifest.processes)
     if process is None:
         if manifest.default_process_id is not None:
             process = manifest.default_process_id
         elif len(records) == 1:
-            return records[0]
+            return records[0], None
         else:
             raise EvaluationError(
                 "this artifact holds several processes; select one with process="
             )
-    for record in records:
-        if record["id"] == process:
-            return record
     normalized = " ".join(process.split())
     for record in records:
+        if record["id"] == process:
+            return record, None
+    for record in records:
         if " ".join(str(record["expression"]).split()) == normalized:
-            return record
+            return record, None
+    from pyamplicol.artifacts.process_groups import read_process_groups
+
+    groups = read_process_groups(manifest.root)
+    for representative, group in (groups.groups if groups else {}).items():
+        for member in group.members:
+            if member.process_id != representative and (
+                member.process_id == process
+                or " ".join(member.expression.split()) == normalized
+            ):
+                if str(member.basis) != "exact-loop-flavor":
+                    break
+                for record in records:
+                    if record["id"] == representative:
+                        return record, member
     raise EvaluationError(f"artifact has no process {process!r}")
 
 
@@ -350,12 +449,23 @@ def _real_parameters(mapping: ModelParameters | None) -> dict[str, str]:
     return out
 
 
-def _precision_bits(digits: int | None) -> int:
-    return 53 if digits is None else math.ceil(digits * math.log2(10))
+def _precision_bits(carrier: str, digits: int | None) -> int:
+    if carrier == "double":
+        return 53
+    if carrier == "double-double":
+        return 106
+    return math.ceil(cast(int, digits) * math.log2(10))
 
 
 class V2VirtualRuntime:
-    """Runtime of one v2 virtual process (the public ``Runtime`` backend)."""
+    """Runtime of one v2 virtual process (the public ``Runtime`` backend).
+
+    ``process`` selects a process record or a flavour member that the
+    artifact serves through its representative (``process-groups.json``):
+    the member's momenta, colour histories, spin legs and helicity rows are
+    read on the representative (``observables.admit_member`` re-proves the
+    substitution at load).
+    """
 
     contribution_kind = "virtual"
     execution_mode = "loop_recurrence"
@@ -377,23 +487,28 @@ class V2VirtualRuntime:
             LOOP_PHYSICS_KIND,
             LOOP_RUNTIME_KIND,
             LOOP_V2_EXECUTION_SCHEMA,
+            LOOP_V2_POINT_INPUTS,
         )
         from pyamplicol.loops.native import load_loop_native
         from pyamplicol.models.loading import CompiledModel
+        from pyamplicol.runtime.virtual import _NO_RESCUE, V2ObservablesRuntime
 
+        from .observables import admit_member
         from .plan_export import NativeExecutor
 
         if stability is not None:
             raise CompatibilityError(_NO_RESCUE)
         self._default_r2 = _r2(r2_strategy)
         self.default_precision = 16 if precision is None else _digits(precision)
-        self.default_arithmetic = _arithmetic(arithmetic)
+        self.default_arithmetic = _arithmetic(arithmetic) or (
+            "double" if self.default_precision == 16 else "arbitrary"
+        )
         root = Path(path)
         if root.name == MANIFEST_NAME and root.is_file():
             root = root.parent
         started = time.perf_counter()
         manifest = load_manifest(root, verify_payloads=True)
-        selected = _select(manifest, process)
+        selected, group_member = _select(manifest, process)
         process_id = str(selected["id"])
         execution = _json_payload(manifest, f"processes/{process_id}/execution.json")
         physics = _json_payload(manifest, str(selected["physics_path"]))
@@ -401,6 +516,7 @@ class V2VirtualRuntime:
             execution.get("kind") != LOOP_RUNTIME_KIND
             or execution.get("schema_version") != LOOP_V2_EXECUTION_SCHEMA
             or execution.get("engine") != ENGINE
+            or execution.get("point_inputs") != LOOP_V2_POINT_INPUTS
             or physics.get("kind") != LOOP_PHYSICS_KIND
             or physics.get("process_id") != process_id
         ):
@@ -422,19 +538,48 @@ class V2VirtualRuntime:
             compiled = CompiledModel.from_dict(
                 model_payload, validate_fingerprint=False
             )
-            generated = generate_process(compiled, request_from_record(request), native)
+            generated = generate_process(
+                compiled,
+                request_from_record(request),
+                native,
+                correlators_from_record(request),
+            )
             if generated.plan_json != plan_json:
                 raise ArtifactError(
                     "the plan v4 regenerated from this artifact differs from the "
                     "stored one: it was written by a different pyAmpliCol build; "
                     "regenerate the artifact"
                 )
-            found = generated.slice, generated.exported
-        slice_, exported = found
-        self._generated = slice_, exported
-        self._executor = NativeExecutor(slice_, exported=exported)
+            found = generated.observables, generated.exported
+        observables, exported = found
+        member = None
+        if group_member is not None:
+            try:
+                member = admit_member(observables.slice, group_member.expression)
+            except ValueError as error:
+                raise ArtifactError(
+                    f"flavour member {group_member.process_id!r} is not admitted "
+                    f"by its representative: {error}"
+                ) from error
+            if member.alias or tuple(member.legs) != tuple(group_member.permutation):
+                raise ArtifactError(
+                    f"flavour member {group_member.process_id!r} is not an "
+                    "identity-port member of its representative"
+                )
+        self._generated = observables, exported
+        self._member = member
+        self._group_member = group_member
+        self._executor = NativeExecutor(observables.slice, exported=exported)
         # Constructing the f64 executor validates the stored program natively.
         self._executor.native("double")
+        self._parameters = _real_parameters(model_parameters)
+        self._observables = V2ObservablesRuntime(
+            observables,
+            member=member,
+            arithmetic=self.default_arithmetic,
+            precision=self.default_precision,
+        )
+        self._observables.set_model_parameters(self._parameters)
         self._load_seconds = time.perf_counter() - started
         self._admission = admission
         self._manifest = manifest
@@ -461,7 +606,6 @@ class V2VirtualRuntime:
             for item in self._metadata["sectors"]
         )
         self._lock = RLock()
-        self._parameters = _real_parameters(model_parameters)
         self._muted = bool(mute_warnings)
 
     # -- identity and metadata ------------------------------------------------
@@ -475,6 +619,11 @@ class V2VirtualRuntime:
         return self._process_id
 
     @property
+    def _public_id(self) -> str:
+        member = self._group_member
+        return self._process_id if member is None else str(member.process_id)
+
+    @property
     def external_count(self) -> int:
         return len(self._physics["state_legs"])
 
@@ -485,9 +634,15 @@ class V2VirtualRuntime:
     @property
     def physics(self) -> ProcessPhysics:
         accuracy = cast(Literal["lc", "nlc", "full"], self._metadata["color_accuracy"])
+        member = self._group_member
+        pdgs = (
+            [int(leg["pdg"]) for leg in self._physics["state_legs"]]
+            if member is None
+            else list(member.pdgs)
+        )
         return ProcessPhysics(
-            process_id=self._process_id,
-            process=self._expression,
+            process_id=self._public_id,
+            process=self._expression if member is None else str(member.expression),
             color_accuracy=accuracy,
             helicity_coverage="all",
             color_coverage="all",
@@ -497,12 +652,14 @@ class V2VirtualRuntime:
                 ExternalParticle(
                     index=i,
                     label=i + 1,
-                    name=str(leg["pdg"]),
-                    pdg_id=leg["pdg"],
+                    name=str(pdg),
+                    pdg_id=pdg,
                     state="incoming" if leg["incoming"] else "outgoing",
                     momentum_slot=i,
                 )
-                for i, leg in enumerate(self._physics["state_legs"])
+                for i, (leg, pdg) in enumerate(
+                    zip(self._physics["state_legs"], pdgs, strict=True)
+                )
             ),
             helicities=tuple(
                 HelicityConfiguration(f"h{i}", i, tuple(h), True, False, f"h{i}", 1.0)
@@ -526,12 +683,14 @@ class V2VirtualRuntime:
             return deepcopy(
                 {
                     "artifact_id": self.artifact_id,
-                    "process_id": self._process_id,
+                    "process_id": self._public_id,
+                    "representative_process_id": self._process_id,
                     "process": self._expression,
                     "engine": ENGINE,
                     **self._metadata,
                     "plan_sha256": self._execution["plan_sha256"],
                     "plan_bytes": self._admission["plan_bytes"],
+                    "point_inputs": self._execution["point_inputs"],
                     "native_admission": {
                         key: self._admission[key]
                         for key in ("runtime_capability", "legs", "rows", "columns")
@@ -556,6 +715,26 @@ class V2VirtualRuntime:
 
     # -- evaluation ---------------------------------------------------------------
 
+    def _carrier(
+        self, arithmetic: str | None, precision: int | None
+    ) -> tuple[str, Any]:
+        """(public arithmetic, v2 ``Precision``) of one call: an explicit
+        arithmetic, else the load-time default at the default precision, else
+        binary64 at 16 digits and arbitrary precision otherwise."""
+
+        from .assemble import Precision
+
+        digits = self.default_precision if precision is None else _digits(precision)
+        carrier = _arithmetic(arithmetic) or (
+            self.default_arithmetic if digits == self.default_precision else None
+        )
+        carrier = carrier or ("double" if digits == 16 else "arbitrary")
+        if carrier == "double":
+            return carrier, Precision.double()
+        if carrier == "double-double":
+            return carrier, Precision.double_double()
+        return carrier, Precision.arbitrary(digits)
+
     def evaluate(
         self,
         momenta: Momenta,
@@ -571,54 +750,34 @@ class V2VirtualRuntime:
         stability_checks: VirtualStabilityChecks | None = None,
         on_failure: Literal["raise", "return"] = "raise",
     ) -> VirtualEvaluation:
-        from pyamplicol.runtime.virtual import _inputs
+        from pyamplicol.runtime.virtual import _inputs, v2_options
 
-        from .assemble import Precision
-
-        if on_failure not in ("raise", "return"):
-            raise ValueError("on_failure must be 'raise' or 'return'")
-        if helicities or color_flows:
-            raise CompatibilityError(
-                "helicity and colour selectors of v2 virtuals await the "
-                "observables package (WP2.5)"
-            )
-        if stability is not None:
-            raise CompatibilityError(_NO_RESCUE)
-        r2 = self._default_r2 if r2_strategy is None else _r2(r2_strategy)
-        poles = True if poles is None else poles
-        if type(poles) is not bool:
-            raise TypeError("poles must be a boolean")
-        checks = stability_checks or VirtualStabilityChecks()
-        if not isinstance(checks, VirtualStabilityChecks):
-            raise TypeError("stability_checks requires VirtualStabilityChecks")
-        digits = self.default_precision if precision is None else _digits(precision)
-        carrier = _arithmetic(arithmetic) or self.default_arithmetic
-        carrier = carrier or ("double" if digits == 16 else "arbitrary")
-        setting = (
-            Precision.double()
-            if carrier == "double"
-            else Precision("arbitrary", digits)
+        poles, checks = v2_options(
+            helicities=helicities,
+            color_flows=color_flows,
+            r2_strategy=r2_strategy,
+            stability=stability,
+            poles=poles,
+            stability_checks=stability_checks,
+            on_failure=on_failure,
         )
+        r2 = self._default_r2 if r2_strategy is None else _r2(r2_strategy)
+        carrier, setting = self._carrier(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
+        if self._member is not None:
+            points = [self._member.point(point) for point in points]
         with self._lock:
             parameters = dict(self._parameters)
-            results = self._run(points, scales, parameters, setting, poles, checks)
-        failed = [
-            index for index, result in enumerate(results) if isinstance(result, str)
-        ]
-        if failed and on_failure == "raise":
-            raise EvaluationError(
-                f"v2 virtual evaluation failed at point {failed[0]}: "
-                f"{results[failed[0]]}"
+            results, failures = self._run(
+                points, scales, parameters, setting, poles, checks
             )
-        return self._result(
-            results,
-            setting,
-            cast(Literal["double", "arbitrary"], carrier),
-            r2,
-            poles,
-            checks,
-        )
+        if failures and on_failure == "raise":
+            index = min(failures)
+            raise EvaluationError(
+                f"v2 virtual evaluation failed at point {index}: "
+                + "; ".join(failures[index])
+            )
+        return self._result(results, failures, setting, carrier, r2, poles, checks)
 
     def _run(
         self,
@@ -628,48 +787,46 @@ class V2VirtualRuntime:
         setting: Any,
         poles: bool,
         checks: VirtualStabilityChecks,
-    ) -> list[Any]:
-        """One batch through the native executor; on a failed lane, every point
-        alone, so a failure stays with its point. A failed point is its error
-        text."""
+    ) -> tuple[list[Any], dict[int, list[str]]]:
+        """One batch through the native executor: the per-point results
+        (``None`` for a failed point) and the failures (a failed point fails
+        alone, ``plan_export.FailedPoints``)."""
 
-        def batch(
-            selected_points: list[list[list[str]]], selected_scales: list[str]
-        ) -> list[Any]:
-            return self._executor.evaluate(
-                selected_points,
-                selected_scales,
-                parameters=parameters,
-                precision=setting,
-                poles=poles,
-                stability=checks.to_checks(),
-            )
+        from .plan_export import FailedPoints
 
         if not points:
-            return []
+            return [], {}
         try:
-            return list(batch(points, scales))
-        except ArithmeticError as error:
-            if len(points) == 1:
-                return [str(error)]
-        out: list[Any] = []
-        for point, scale in zip(points, scales, strict=True):
-            try:
-                out.extend(batch([point], [scale]))
-            except ArithmeticError as error:
-                out.append(str(error))
-        return out
+            return (
+                list(
+                    self._executor.evaluate(
+                        points,
+                        scales,
+                        parameters=parameters,
+                        precision=setting,
+                        poles=poles,
+                        stability=checks.to_checks() if checks.enabled else None,
+                    )
+                ),
+                {},
+            )
+        except FailedPoints as failed:
+            return list(failed.results), dict(failed.failures)
 
     def _result(
         self,
         results: list[Any],
+        failures: Mapping[int, Sequence[str]],
         setting: Any,
-        carrier: Literal["double", "arbitrary"],
+        carrier: str,
         r2: R2Strategy,
         poles: bool,
         checks: VirtualStabilityChecks,
     ) -> VirtualEvaluation:
-        bits = _precision_bits(None if carrier == "double" else setting.working_digits)
+        from pyamplicol.runtime.virtual import v2_public_estimate
+
+        bits = _precision_bits(carrier, setting.digits)
+        arithmetic = cast(Literal["double", "double-double", "arbitrary"], carrier)
         contraction = VirtualColorContraction(
             _requested_contraction(self._execution["request"]["colour_contraction"]),
             "direct",
@@ -680,20 +837,21 @@ class V2VirtualRuntime:
         diagnostics: list[VirtualLaneDiagnostic] = []
         estimates: list[VirtualStabilityEstimate | None] = []
         for index, result in enumerate(results):
-            if isinstance(result, str):
+            if result is None:
+                reason = "; ".join(failures.get(index, ["failed"]))
                 born_values.append(None)
                 values.append(None)
                 estimates.append(None)
                 diagnostics.append(
                     VirtualLaneDiagnostic(
                         "failed",
-                        carrier,
+                        arithmetic,
                         bits,
                         False,
-                        result,
+                        reason,
                         failures=(
                             VirtualFailureDiagnostic(
-                                index, None, None, None, "v2-evaluation", result
+                                index, None, None, None, "v2-evaluation", reason
                             ),
                         ),
                         primary_color_contraction=contraction,
@@ -720,11 +878,11 @@ class V2VirtualRuntime:
                     for sector in self._sectors
                 )
             )
-            estimates.append(_estimate(result.stability, poles))
+            estimates.append(v2_public_estimate(result.stability, poles))
             diagnostics.append(
                 VirtualLaneDiagnostic(
                     "success",
-                    carrier,
+                    arithmetic,
                     bits,
                     False,
                     "accuracy is estimated only by the requested stability checks",
@@ -745,52 +903,94 @@ class V2VirtualRuntime:
             stability=tuple(estimates) if checks.enabled else None,
         )
 
-    def evaluate_resolved(self, momenta: Momenta, **kwargs: Any) -> Any:
-        raise CompatibilityError(_AWAITS_OBSERVABLES.format("resolved output"))
+    # -- observables (``runtime.virtual.V2ObservablesRuntime``) -----------------
 
-    def evaluate_correlated(self, momenta: Momenta, **kwargs: Any) -> Any:
-        raise CompatibilityError(_AWAITS_OBSERVABLES.format("colour/spin correlations"))
+    def _observable_options(
+        self, precision: int | None, arithmetic: str | None, options: dict[str, Any]
+    ) -> dict[str, Any]:
+        """The arithmetic of one observable call (``_carrier``'s rule) and the
+        options ``V2ObservablesRuntime`` validates itself."""
+
+        if not self._metadata.get("resolved", False):
+            raise CompatibilityError(
+                "this v2 process serves no correlated or resolved output (it was "
+                "generated with the forced seed FFT)"
+            )
+        carrier, setting = self._carrier(arithmetic, precision)
+        digits = None if carrier != "arbitrary" else setting.digits
+        return {
+            **options,
+            "arithmetic": carrier,
+            "precision": 16 if digits is None else digits,
+        }
+
+    def evaluate_resolved(
+        self,
+        momenta: Momenta,
+        *,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+        **options: Any,
+    ) -> Any:
+        """Per Born helicity row and Born basis element (design §8.5)."""
+
+        return self._observables.evaluate_resolved(
+            momenta, **self._observable_options(precision, arithmetic, options)
+        )
+
+    def evaluate_correlated(
+        self,
+        momenta: Momenta,
+        *,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+        **options: Any,
+    ) -> VirtualEvaluation:
+        return self._observables.evaluate_correlated(
+            momenta, **self._observable_options(precision, arithmetic, options)
+        )
 
     def evaluate_correlated_many(
-        self, momenta: Momenta, requests: Any, **kwargs: Any
-    ) -> Any:
-        raise CompatibilityError(_AWAITS_OBSERVABLES.format("colour/spin correlations"))
+        self,
+        momenta: Momenta,
+        requests: Any,
+        *,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+        **options: Any,
+    ) -> dict[str, VirtualEvaluation]:
+        return self._observables.evaluate_correlated_many(
+            momenta,
+            requests,
+            **self._observable_options(precision, arithmetic, options),
+        )
 
     def available_color_correlations(self) -> tuple[Any, ...]:
-        raise CompatibilityError(_AWAITS_OBSERVABLES.format("colour/spin correlations"))
+        return self._observables.available_color_correlations()
 
     def set_spin_correlation_vectors(self, vectors: Any) -> None:
-        raise CompatibilityError(_AWAITS_OBSERVABLES.format("colour/spin correlations"))
+        self._observables.set_spin_correlation_vectors(vectors)
 
     def set_model_parameters(self, mapping: ModelParameters) -> None:
         parameters = _real_parameters(mapping)
         with self._lock:
             self._parameters.update(parameters)
+            self._observables.set_model_parameters(parameters)
 
     def clear(self) -> None:
         """Drop the native executors (and their master caches)."""
         with self._lock:
             from .plan_export import NativeExecutor
 
-            slice_, exported = self._generated
-            self._executor = NativeExecutor(slice_, exported=exported)
+            observables, exported = self._generated
+            self._executor = NativeExecutor(observables.slice, exported=exported)
+            self._observables.clear()
 
     def mute_warnings(self) -> None:
         self._muted = True
 
     def unmute_warnings(self) -> None:
         self._muted = False
-
-
-_NO_RESCUE = (
-    "v2 loop runtimes return stability estimates (stability_checks) and leave "
-    "precision escalation to the caller; a VirtualStabilityPolicy rescue is "
-    "available with the legacy engine only"
-)
-_AWAITS_OBSERVABLES = (
-    "{} of v2 virtuals await the observables package (WP2.5); generate with "
-    "loop.engine='legacy' for them"
-)
 
 
 def _zero(carrier: str) -> Any:
@@ -815,11 +1015,6 @@ def _arithmetic(value: str | None) -> str | None:
         return None
     if value not in ("double", "double-double", "arbitrary"):
         raise ValueError("unknown virtual arithmetic")
-    if value == "double-double":
-        raise CompatibilityError(
-            "double-double v2 evaluations await the precision package (WP2.3); "
-            "use arithmetic='arbitrary' with precision=32"
-        )
     return value
 
 
@@ -836,16 +1031,3 @@ def _requested_contraction(
     policy: str,
 ) -> Literal["auto", "direct", "symmetric-group-fft"]:
     return _CONTRACTIONS[policy]
-
-
-def _estimate(estimate: Any, poles: bool) -> VirtualStabilityEstimate | None:
-    if estimate is None:
-        return None
-    coefficients = tuple(float(x) for x in estimate.coefficients)
-    return VirtualStabilityEstimate(
-        float(estimate.relative),
-        coefficients[0],
-        coefficients[1] if poles else None,
-        coefficients[2] if poles else None,
-        tuple((name, float(value)) for name, value in estimate.checks.items()),
-    )

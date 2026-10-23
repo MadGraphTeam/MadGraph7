@@ -38,6 +38,11 @@ ORDINARY_INTERFERENCE = "2*Re(conj(Born)*loop)"
 DIRECTED_INTERFERENCE = "Bdagger K_BL L + Ldagger K_LB B"
 LOOP_V2_EXECUTION_SCHEMA = 4
 LOOP_V2_PHYSICS_SCHEMA = 2
+# How a plan v4 process obtains its per-point inputs (trees, Born amplitudes,
+# counterterm scalars): rebuilt at load from the artifact's compiled model and
+# generation request until WP3.1 stores native programs for them under a new
+# value (rusticol-core ``loop_artifact::LOOP_V2_POINT_INPUTS``).
+LOOP_V2_POINT_INPUTS = "regenerated-at-load"
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,9 +187,15 @@ class LoopV2ExecutionMetadata:
     amplitude orders: every sector is a separately returned partial result.
     ``buckets`` lists (propagators N, rank R, families) per reduction bucket;
     ``color_degrees`` the leading N_c degree P kept per sector at LC/NLC.
-    Poles are computed unless an evaluation asks for the finite part only;
-    stability estimates come from the requested checks, and escalating the
-    arithmetic is the caller's decision (``rescue_policy``).
+    ``color_correlations`` are the declared directed colour histories (ids;
+    the Born metric ``"born"`` is always available) and ``spin_correlations``
+    the declared spin classes (one-based legs); ``resolved`` is whether
+    helicity/colour-resolved output is served. Observable columns are
+    contracted directly, so a process generated with the forced seed FFT
+    (``color_contraction="fft"``) serves neither resolved nor correlated
+    output. Poles are computed unless an evaluation asks for the finite part
+    only; stability estimates come from the requested checks, and escalating
+    the arithmetic is the caller's decision (``rescue_policy``).
     """
 
     scheme: LoopSchemeDeclaration
@@ -198,7 +209,10 @@ class LoopV2ExecutionMetadata:
     engine: Literal["v2"] = "v2"
     schedule: Literal["backward"] = "backward"
     r2_strategy: Literal["model"] = "model"
-    arithmetic: tuple[str, ...] = ("double", "arbitrary")
+    arithmetic: tuple[str, ...] = ("double", "double-double", "arbitrary")
+    color_correlations: tuple[str, ...] = ()
+    spin_correlations: tuple[tuple[int, ...], ...] = ()
+    resolved: bool = True
     poles: Literal["runtime-optional"] = "runtime-optional"
     stability_checks: tuple[str, ...] = ("rotation", "reduction-direction")
     accuracy_retest: Literal["reduction-direction"] = "reduction-direction"
@@ -222,6 +236,23 @@ class LoopV2ExecutionMetadata:
             raise ValueError("colour degrees exist exactly at LC and NLC")
         if sum(count for _n, _r, count in self.buckets) != self.families:
             raise ValueError("reduction buckets must cover every family once")
+        contracted = self.color_contraction != "fft"
+        if self.resolved is not contracted or (
+            not contracted and (self.color_correlations or self.spin_correlations)
+        ):
+            raise ValueError(
+                "resolved and correlated outputs exist exactly without the "
+                "forced seed FFT"
+            )
+        if len(set(self.color_correlations)) != len(self.color_correlations) or (
+            "born" in self.color_correlations
+        ):
+            raise ValueError("declared colour histories are distinct non-Born ids")
+        if any(
+            not legs or list(legs) != sorted(set(legs)) or legs[0] < 1
+            for legs in self.spin_correlations
+        ):
+            raise ValueError("spin classes are increasing one-based leg labels")
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,6 +341,7 @@ def _v2_process_payloads(
         "required_runtime_capabilities": [LOOP_V2_RUNTIME_CAPABILITY],
         "runtime_path": LOOP_RUNTIME_PATH,
         "plan_sha256": process.plan_sha256,
+        "point_inputs": LOOP_V2_POINT_INPUTS,
         "request": process.request,
     }
     return physics, execution
