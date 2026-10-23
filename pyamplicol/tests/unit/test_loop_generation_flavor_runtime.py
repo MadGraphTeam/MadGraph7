@@ -19,7 +19,7 @@ from pyamplicol.artifacts.process_groups import (
 from pyamplicol.color.connections import EmitGluon
 from pyamplicol.color.correlator_matrices import ColorCorrelator
 from pyamplicol.config import resolve_config
-from pyamplicol.loops.flavor_transport import identity_species_candidate
+from pyamplicol.loops.flavor_mappings import identity_species_candidate
 from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.models.loading import compile_model_source
 

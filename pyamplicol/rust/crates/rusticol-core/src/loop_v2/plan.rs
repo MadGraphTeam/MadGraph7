@@ -23,6 +23,7 @@
 //! forms), product tables per (input rank, degree), per-family factor sets
 //! and row links expanded over the observable columns.
 
+use super::observables::ColumnRows;
 use super::poly::{MonomialProductTable, SegmentEntry, SegmentLayout};
 use crate::{RusticolError, RusticolResult};
 use ninjars::fast::tensor_layout::ncoeff;
@@ -66,6 +67,10 @@ struct PlanFile {
     families: Vec<FamilyFile>,
     forward: Option<ForwardFile>,
     merged: Option<MergedFile>,
+    /// Per observable column its Born helicity rows (helicity-resolved
+    /// columns); absent when every column keeps every row.
+    #[serde(default)]
+    column_rows: Option<Vec<Option<Vec<usize>>>>,
 }
 
 /// One exported kernel term: (constant id, monomial as (input, power)).
@@ -754,8 +759,10 @@ pub struct LoopProgramV4 {
     pub legs: usize,
     /// Born helicity rows (seed rows).
     pub rows: usize,
-    /// Observable columns (squared-order sectors).
+    /// Observable columns (per squared-order sector and observable).
     pub columns: usize,
+    /// The Born helicity rows each column seeds.
+    pub column_rows: ColumnRows,
     pub average: u64,
     pub born_components: usize,
     pub constants: usize,
@@ -1402,6 +1409,7 @@ impl LoopProgramV4 {
             legs: file.legs,
             rows: file.rows,
             columns,
+            column_rows: ColumnRows::new(file.rows, columns, file.column_rows.as_deref())?,
             average: file.average,
             born_components: file.born_components,
             constants: file.constants,
