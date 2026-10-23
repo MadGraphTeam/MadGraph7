@@ -94,14 +94,20 @@ class TestRealChannelJobs(unittest.TestCase):
         with self.assertRaisesRegex(amcatnlo.aMCatNLOError, 'Missing hard real-emission'):
             self.create_jobs()
 
-    def test_enabled_rejects_matching_lo_and_merging(self):
+    def test_enabled_ignored_for_matching_lo_and_merging(self):
+        # the default run_card of a process can enable them: switched off
+        # for this run, not refused
         for mode in ('LO', 'aMC@LO', 'noshowerLO', 'aMC@NLO', 'noshower'):
-            with self.assertRaisesRegex(self.command.InvalidCmd, 'fixed-order NLO'):
-                self.command.check_real_channels_mode(mode)
+            self.command.run_card['real_channels_x0'] = 0.1
+            self.assertEqual(self.command.check_real_channels_mode(mode), -1.0)
+            self.assertEqual(self.command.run_card['real_channels_x0'], -1.0)
         for ickkw in (-1, 3, 4):
+            self.command.run_card['real_channels_x0'] = 0.1
             self.command.run_card['ickkw'] = ickkw
-            with self.assertRaisesRegex(self.command.InvalidCmd, 'ickkw=0'):
-                self.command.check_real_channels_mode('NLO')
+            self.assertEqual(self.command.check_real_channels_mode('NLO'), -1.0)
+        self.command.run_card['ickkw'] = 0
+        self.command.run_card['real_channels_x0'] = 0.1
+        self.assertEqual(self.command.check_real_channels_mode('NLO'), 0.1)
         self.command.run_card['real_channels_x0'] = 1.0
         self.assertEqual(self.command.check_real_channels_mode('aMC@NLO'), -1.0)
 
