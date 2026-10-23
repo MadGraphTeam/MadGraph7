@@ -160,3 +160,15 @@ relocation with the same native build. A dedicated acceptance test covers this.
   r2, uv_local, uv_external_fields), also for correlated and resolved
   outputs. The SDKs evaluate legacy plan-v3 artifacts only; v4 SDK
   evaluation (WP3.1) takes the same option.
+- Open decision for the coordinator or the user. Under `"uv"` the
+  renormalised virtual's poles vanish by construction, because the field
+  factors' UV part is fixed by UV finiteness. A missing UV counterterm
+  therefore shows only as a Catani mismatch in `"ir"`/`"all"`, and in the
+  per-component `pole_parts` (bare-loop UV against UV_local), not in the `"uv"`
+  values. `"ir"` returns the poles of `"all"`, at +1 % (five legs) to +15 %
+  (gg→gggg) evaluation cost and a 15 % share of the generation at six legs
+  (design §12.4). Two alternatives remain open:
+  - `"uv"` returning the bare-loop UV poles, as the masters' selection does
+    for the unrenormalised integrals;
+  - generating the companion only on request, in which case its artifacts
+    refuse `"uv"`/`"ir"`.
