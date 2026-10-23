@@ -473,8 +473,24 @@ SLICE_O6 = {
     "gg_uuxag": ("g g > u u~ a g", 3, 1, (21, 21, 21, 22), (0,) * 6),
     "uux_aggg": ("u u~ > a g g g", 3, 1, (21, 21, 21, 22), (0,) * 6),
     "uux_aagg": ("u u~ > a a g g", 2, 2, (21, 21, 22, 22), (0,) * 6),
+    "gg_ttxgg": ("g g > t t~ g g", 4, 0, (21, 21, 21, 21), (0, 0, 173, 173, 0, 0)),
+    "uux_ttxgg": ("u u~ > t t~ g g", 4, 0, (2, 2, 21), (0, 0, 173, 173, 0, 0)),
 }
 SLICE_PARAMETERS = {"aS": "0.118", "MT": "173"}
+# A top width breaks the conservation of gluon currents with an internal top
+# propagator, so the transverse Yang-Mills kernels of the tree blocks (design
+# §3.2 item 2) make a tree's value depend on where it is rooted: the site
+# closure roots the counterterm trees at the counterterm vertex, the
+# recursion at leg 1. The two forms then differ by gauge-violating terms of
+# order WT/MT and agree exactly without the width, the scheme of the provider
+# references (``tests/fixtures/loop/required``: all widths zero). The
+# six-leg top requests are compared that way;
+# ``test_slice_counterterms_with_a_top_width_depend_on_the_rooting`` pins the
+# difference at the model's top width.
+SLICE_WIDTHS = {
+    "gg_ttxgg": {"WT": "0"},
+    "uux_ttxgg": {"WT": "0"},
+}
 SLICE_SCALE_SQUARED = "1000000"
 # Recursion and sites differ only by rounding (binary64) or not at all within
 # the 200-bit carrier's working precision; the legacy O1 tolerances.
@@ -543,6 +559,55 @@ def _slice_point(masses) -> list[list[str]]:
     return [[exact_points.decimal_string(x) for x in p] for p in point]
 
 
+def _route_differences(slice_routes, name, carrier, parameters):
+    """Largest |recursion - sites| per component over the slice's sectors and
+    Laurent coefficients, relative to the sites value (the Born if it is
+    zero), at one exact point."""
+
+    from pyamplicol.loops.v2.assemble import COMPONENTS, Precision
+
+    recursion = slice_routes(name, "recursion")
+    sites = slice_routes(name, "sites")
+    precision = {
+        "double": Precision.double(),
+        "arbitrary-200": Precision.arbitrary(60),
+    }[carrier]
+    point = _slice_point(SLICE_O6[name][4])
+    mine, reference = (
+        route.evaluate(
+            point, SLICE_SCALE_SQUARED, parameters=parameters, precision=precision
+        )
+        for route in (recursion, sites)
+    )
+    worst = {}
+    with localcontext() as context:
+        context.prec = 120
+        assert mine.born.keys() == reference.born.keys()
+        born = max(abs(Decimal(str(value))) for value in reference.born.values())
+        assert born > 0
+        for component in COMPONENTS:
+            assert mine.components[component].keys() == (
+                reference.components[component].keys()
+            ), component
+            worst[component] = Decimal(0)
+            for sector, laurent in reference.components[component].items():
+                values = [Decimal(str(x)) for x in laurent.coefficients]
+                ours = [
+                    Decimal(str(x))
+                    for x in mine.components[component][sector].coefficients
+                ]
+                scale = max(map(abs, values)) or born
+                for a, b in zip(ours, values, strict=True):
+                    worst[component] = max(worst[component], abs(a - b) / scale)
+        # The counterterm components are not trivially zero.
+        assert any(
+            Decimal(str(x)) != 0
+            for laurent in reference.components["r2"].values()
+            for x in laurent.coefficients
+        )
+    return worst
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("carrier", tuple(SLICE_TOLERANCE))
 @pytest.mark.parametrize("name", tuple(SLICE_O6))
@@ -553,13 +618,10 @@ def test_slice_counterterms_from_recursion_equal_sites(
     from the recursion (production) equals the request with every CT rule
     closed at sites; the recursion leaves no QCD rule to site closure."""
 
-    from pyamplicol.loops.v2.assemble import COMPONENTS, Precision
-
     _certify_furry_zeros(monkeypatch)
     recursion = slice_routes(name, "recursion")
-    sites = slice_routes(name, "sites")
+    assert slice_routes(name, "sites").counterterm_program is None
     program = recursion.counterterm_program
-    assert sites.counterterm_program is None
     residual = program.recursion.residual
     # Only the Levi-Civita R2 of the Z with gluons stays a site closure
     # (design §6.1, WP3.2); no rule is demoted for the U(1) part of a gluon.
@@ -579,42 +641,23 @@ def test_slice_counterterms_from_recursion_equal_sites(
     lowered = [n for n, rule in program.recursion.rules.items() if about(rule)]
     assert lowered and all(program.recursion.admission[n] for n in lowered), lowered
     assert not {n for n, rule in rules.items() if about(rule)} & set(residual)
-    precision = {
-        "double": Precision.double(),
-        "arbitrary-200": Precision.arbitrary(60),
-    }[carrier]
-    tolerance = SLICE_TOLERANCE[carrier]
-    point = _slice_point(SLICE_O6[name][4])
-    mine, reference = (
-        route.evaluate(
-            point,
-            SLICE_SCALE_SQUARED,
-            parameters=SLICE_PARAMETERS,
-            precision=precision,
-        )
-        for route in (recursion, sites)
-    )
-    with localcontext() as context:
-        context.prec = 120
-        assert mine.born.keys() == reference.born.keys()
-        born = max(abs(Decimal(str(value))) for value in reference.born.values())
-        assert born > 0
-        for component in COMPONENTS:
-            assert mine.components[component].keys() == (
-                reference.components[component].keys()
-            ), component
-            for sector, laurent in reference.components[component].items():
-                values = [Decimal(str(x)) for x in laurent.coefficients]
-                ours = [
-                    Decimal(str(x))
-                    for x in mine.components[component][sector].coefficients
-                ]
-                scale = max(map(abs, values)) or born
-                for k, (a, b) in enumerate(zip(ours, values, strict=True)):
-                    assert abs(a - b) <= tolerance * scale, (component, sector, k, a, b)
-        # The counterterm components are not trivially zero.
-        assert any(
-            Decimal(str(x)) != 0
-            for laurent in reference.components["r2"].values()
-            for x in laurent.coefficients
-        )
+    parameters = {**SLICE_PARAMETERS, **SLICE_WIDTHS.get(name, {})}
+    worst = _route_differences(slice_routes, name, carrier, parameters)
+    assert all(value <= SLICE_TOLERANCE[carrier] for value in worst.values()), worst
+
+
+@pytest.mark.loop_physics
+@pytest.mark.xfail(
+    strict=True,
+    reason="a top width makes the transverse tree kernels depend on the rooting "
+    "of a counterterm tree (SLICE_WIDTHS; design §6.1)",
+)
+def test_slice_counterterms_with_a_top_width_depend_on_the_rooting(
+    slice_routes, monkeypatch
+):
+    """At the model's top width the recursion and the site closure of
+    uu~ -> tt~gg differ by terms of order WT/MT (pins ``SLICE_WIDTHS``)."""
+
+    _certify_furry_zeros(monkeypatch)
+    worst = _route_differences(slice_routes, "uux_ttxgg", "double", SLICE_PARAMETERS)
+    assert max(worst.values()) <= SLICE_TOLERANCE["double"], worst

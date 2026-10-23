@@ -632,7 +632,10 @@ def synthesize_u1_projections(
         source_legs = tuple(
             -1 if new != old else leg
             for new, old, leg in zip(
-                new_particles, kernel.particles, kernel.source_particle_legs, strict=True
+                new_particles,
+                kernel.particles,
+                kernel.source_particle_legs,
+                strict=True,
             )
         )
         synthetic_kernel = CompiledOrientedKernel(
@@ -695,7 +698,7 @@ def synthesize_u1_projections(
         if not any(value == "gluon" for value in roles):
             continue
         weight = _vertex_weight(kernel)
-        left, right, output = kernel.particles
+        output = kernel.particles[2]
         coloured_inputs = [
             index
             for index in (0, 1)
@@ -757,7 +760,10 @@ def _vertex_weight(kernel: CompiledOrientedKernel) -> complex:
 
     coefficient = complex(*(kernel.color_projection_coefficient or (1.0, 0.0)))
     structure = kernel.color_projection_structure
-    if structure in {"adjoint-structure-constant", "adjoint-structure-constant-product"}:
+    if structure in {
+        "adjoint-structure-constant",
+        "adjoint-structure-constant-product",
+    }:
         return coefficient * (-1j) ** kernel.lc_color_normalization_power
     if structure == "adjoint-trilinear-product":
         return coefficient * (-1j) ** kernel.color_source.count("f(")
