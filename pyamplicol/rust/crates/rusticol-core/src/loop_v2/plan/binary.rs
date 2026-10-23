@@ -1116,6 +1116,30 @@ mod tests {
     }
 
     #[test]
+    fn cursors_refuse_exhausted_and_overflowing_columns() {
+        let cursor = |payload: &'static [u8], width, base, delta, count| Cursor {
+            payload,
+            width,
+            base,
+            delta,
+            count,
+            position: 0,
+            previous: 0,
+        };
+        let mut plain = cursor(&[0, 255], 1, -3, false, 2);
+        assert!(matches!(plain.next(), Ok(-3)));
+        assert!(matches!(plain.next(), Ok(252)));
+        assert!(matches!(plain.next(), Err(Short::Exhausted)));
+        let mut wide = cursor(&[1], 1, i64::MAX, false, 1);
+        assert!(matches!(wide.next(), Err(Short::Overflow)));
+        let mut deltas = cursor(&[0, 0, 1, 0], 2, i64::MAX - 1, true, 2);
+        assert!(matches!(deltas.next(), Ok(v) if v == i64::MAX - 1));
+        assert!(matches!(deltas.next(), Err(Short::Overflow)));
+        let mut words = cursor(&[1, 0, 0, 0, 0, 0, 0, 128], 8, i64::MIN, false, 1);
+        assert!(matches!(words.next(), Ok(1)));
+    }
+
+    #[test]
     fn refuses_other_members() {
         assert!(PlanModel::from_binary(b"LOOPPLAX").is_err());
         let mut member = MAGIC.to_vec();
