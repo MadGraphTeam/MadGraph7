@@ -641,12 +641,15 @@ def test_source_selftest_compiled_model_matches_active_compiler_sources() -> Non
 
 
 def test_staged_selftest_fixture_loads_with_the_current_native_runtime() -> None:
+    """The staged target fixture, or in a source tree the portable one it is
+    staged from, reproduces its recorded total with the current runtime."""
+
     native = pytest.importorskip("pyamplicol._rusticol")
     from pyamplicol import Runtime
 
     fixture = FIXTURE.parent / str(native.target_info().triple)
     if not fixture.is_dir():
-        pytest.skip("the source runtime has not staged its target self-test fixture")
+        fixture = FIXTURE
     expected = json.loads((fixture / "expected.json").read_text(encoding="utf-8"))
     runtime = Runtime.load(fixture / expected["artifact_path"], mute_warnings=True)
 
