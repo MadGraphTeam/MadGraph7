@@ -566,10 +566,31 @@ def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
     stage normalises and compiles identically in every process. The renaming
     is exact: values do not change beyond rounding."""
 
-    from symbolica import Replacement, S
+    from symbolica import E, Replacement, S
 
     parameters = list(stage.parameter_symbols)
     definitions = list(stage.symbolica_functions)
+    if not definitions and parameters:
+        # Positional stage inputs (``ParamBuilder.add_parameter_list``) map to
+        # the canonical symbols of the same index: swap the namespace in the
+        # id-independent canonical string and parse it back, linear in the
+        # stage's size (a replacement per input is quadratic: 100 s for the
+        # 5763 inputs of a g g > g g g stage).
+        canonical = _canonical_symbols(len(parameters))
+        source = parameters[0].to_canonical_string()[:-1]
+        target = canonical[0].to_canonical_string()[:-1]
+        if all(
+            symbol.to_canonical_string() == f"{source}{index}"
+            for index, symbol in enumerate(parameters)
+        ):
+            return (
+                [
+                    E(expression.to_canonical_string().replace(source, target))
+                    for expression in stage.output_expressions
+                ],
+                canonical,
+                [],
+            )
     heads = [
         function
         for function, _arguments, _body in definitions
