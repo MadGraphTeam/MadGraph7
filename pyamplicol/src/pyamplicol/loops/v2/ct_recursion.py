@@ -41,13 +41,13 @@ Born x CT interference directly; no CT tree and no site is listed:
   coefficients with UFO helpers other than ``cond`` and ``reglog``; no
   loop_sm rule is among them. A request that admits such a rule is refused
   (``UnloweredCountertermError``); there is no site fallback. Rules that can
-  be in no tree of the program (ghost legs; orders above its limits) are
-  ``inert`` and contribute nothing. With ``multi_trace`` (the production
-  closure, ``ct_closure``) the d-symbol, d·d, d·f and δδ colours of the
-  four-gluon and gggV R2 (``models.ct_color_flow``) and the whole-rule colour
-  continuations (``whole_rule_rows``) are lowered; without it (the tree-route
-  form kept as a test of the lowering) they stay residual, as the tree
-  runtime has no multi-trace colour sectors.
+  be in no tree of the program (ghost legs; orders above its limits) or have
+  no admitted loop content are ``inert`` and contribute nothing. With
+  ``multi_trace`` (the production closure, ``ct_closure``) the d-symbol, d·d,
+  d·f and δδ colours of the four-gluon and gggV R2 (``models.ct_color_flow``)
+  and the whole-rule colour continuations (``whole_rule_rows``) are lowered;
+  without it (the tree-route form kept as a test of the lowering) they stay
+  residual, as the tree runtime has no multi-trace colour sectors.
 * **Cancelling cells.** A colour or Lorentz cell of a UFO vertex the tree
   compiler cannot lower does not make its rule residual when it cancels
   exactly between the rules of that cell (the loop groups of one vertex):
@@ -414,9 +414,10 @@ class CountertermModel:
     ``assumptions`` are model-parameter expressions the lowered couplings
     assume non-zero (``CoefficientLowering``); ``residual`` maps every rule
     the lowering cannot lower to the reason, and ``inert`` names those of
-    them that can be in no tree of the program (ghost legs, orders above its
-    limits); ``structures`` are the lowered vertex terms of every lowered
-    rule (graded with a continuation); ``unlowered`` holds, per lowered rule,
+    them that contribute nothing (ghost legs and orders above the program's
+    limits: in no tree of it; no admitted loop content); ``structures`` are
+    the lowered vertex terms of every lowered rule (graded with a
+    continuation); ``unlowered`` holds, per lowered rule,
     the cells the lowered model leaves out because they cancel between rules
     with the multiplicities ``weights`` (module docstring): cell -> (why it is
     not lowered, {Laurent power: exact coefficient}). ``veto`` are the
@@ -1022,9 +1023,11 @@ class CountertermRecursion:
             admitted = admitted_alternatives(rule, model.veto, selection.corrections)
             if key in model.multiplicities:
                 cells = model.unlowered.get(key, {})
-                if cells and len(admitted) != model.weights[key]:
+                if cells and admitted and len(admitted) != model.weights[key]:
                     # The left-out cells cancel only with the multiplicities
-                    # the lowering assumed.
+                    # the lowering assumed (the loop groups of one vertex
+                    # share its correction type, so they are all selected or
+                    # none is).
                     residual[name] = _uncancelled_reason(cells).replace(
                         "its vertex)", "its vertex in this request)"
                     )
