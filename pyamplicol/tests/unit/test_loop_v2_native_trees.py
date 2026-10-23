@@ -119,6 +119,38 @@ def test_native_rows_and_born_components_equal_the_python_inputs(executors, name
         assert _deviation(born[k], reference["born"][k]) <= 1e-13
 
 
+@pytest.mark.loop_physics
+def test_native_rows_in_small_stage_chunks_equal_the_python_inputs(
+    executors, monkeypatch
+):
+    """Stages compiled in chunks of whole currents (``CHUNK_OUTPUTS``; every
+    stage of u u~ > d d~ g in several chunks) give the same rows, in
+    binary64 and DoubleFloat."""
+
+    from pyamplicol.loops.v2 import native_trees
+
+    native, python = executors("uux_ddxg")
+    points, scales = _points(PROCESSES["uux_ddxg"][3])
+    points, scales = points[:1], scales[:1]
+    monkeypatch.setattr(native_trees, "CHUNK_OUTPUTS", 48)
+    chunked = NativeExecutor(python.slice, forward=False, inputs="native")
+    assert len(chunked.exported.trees.stages) > 2 * len(native.exported.trees.stages)
+    rows, born, _amplitudes, _squared = chunked.native_inputs(
+        points, scales, PARAMETERS
+    )
+    _precision, evaluations = python._points(points, scales, PARAMETERS, None, True)
+    reference = python._inputs(evaluations, "double")
+    assert _deviation(rows[0], reference["block_rows"][0]) <= 1e-14
+    assert _deviation(born[0], reference["born"][0]) <= 1e-13
+    mine = chunked.evaluate(
+        points, scales, parameters=PARAMETERS, precision=DOUBLE_DOUBLE
+    )
+    theirs = python.evaluate(
+        points, scales, parameters=PARAMETERS, precision=DOUBLE_DOUBLE
+    )
+    _assert_same(mine, theirs, 1e-26, born=True)
+
+
 def _assert_same(native, python, tolerance, *, born: bool) -> None:
     for a, b in zip(native, python, strict=True):
         for sector, value in b.components["bare"].items():

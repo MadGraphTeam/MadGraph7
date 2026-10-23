@@ -326,36 +326,27 @@ class TreeRows:
     """
 
     def __init__(self, dag: Any, compiled: Any, *, blocks: bool = True):
-        from pyamplicol.generation.contracts import StageCompilationInput
         from pyamplicol.generation.runtime_schema import (
             build_runtime_expression_schema,
-        )
-        from pyamplicol.generation.stage_planning import (
-            build_generic_stage_compiler_blueprint,
         )
         from pyamplicol.models.external import CompiledUFOModel
 
         self.compiled = compiled
-        model = CompiledUFOModel(compiled)
+        self.dag = dag
+        self.model = CompiledUFOModel(compiled)
         with _exact_u1_subtraction_weights():
             # Every block enters a loop vertex with its own propagator, also
             # where no tree interaction consumes it (reachability-pruned DAGs).
-            runtime_schema = build_runtime_expression_schema(
+            self.runtime_schema = build_runtime_expression_schema(
                 dag,
-                model,
+                self.model,
                 process_id="loop-v2-blocks",
                 propagated_currents=(current.id for current in dag.currents if blocks),
             )
-            blueprint = build_generic_stage_compiler_blueprint(
-                StageCompilationInput(dag, model, runtime_schema)
-            )
-        if not blueprint.expression_ready:
-            raise ValueError(
-                f"tree blocks are not expression ready: {blueprint.blockers}"
-            )
-        self.schema = runtime_schema.to_mapping()
-        self.stages = blueprint.stages
-        self._amplitude_stage = blueprint.amplitude_stage
+        self.schema = self.runtime_schema.to_mapping()
+        # The stage expressions are built on first use (``stages``): native
+        # per-point trees compile their own, stage by stage (``native_trees``).
+        self._blueprint = None
         self._roots = {
             int(root["output_index"]): int(root["root_id"])
             for root in self.schema["amplitude_stage"]["roots"]
@@ -385,6 +376,32 @@ class TreeRows:
                 for term in compiled.ir.vertex_terms
             }
         )
+
+    def _built(self) -> Any:
+        from pyamplicol.generation.contracts import StageCompilationInput
+        from pyamplicol.generation.stage_planning import (
+            build_generic_stage_compiler_blueprint,
+        )
+
+        if self._blueprint is None:
+            with _exact_u1_subtraction_weights():
+                blueprint = build_generic_stage_compiler_blueprint(
+                    StageCompilationInput(self.dag, self.model, self.runtime_schema)
+                )
+            if not blueprint.expression_ready:
+                raise ValueError(
+                    f"tree blocks are not expression ready: {blueprint.blockers}"
+                )
+            self._blueprint = blueprint
+        return self._blueprint
+
+    @property
+    def stages(self) -> tuple[Any, ...]:
+        return self._built().stages
+
+    @property
+    def _amplitude_stage(self) -> Any:
+        return self._built().amplitude_stage
 
     def _model_values(self, parameters: Mapping[str, str], digits: int) -> list:
         from symbolica import E

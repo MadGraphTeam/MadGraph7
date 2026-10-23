@@ -7,10 +7,12 @@ Decimal, the Born root closure runs per helicity row). This module exports
 the same program for the native executor (``rusticol-core``
 ``loop_v2::trees``), which then forms them without Python per point:
 
-* **trees**: the slice's own tree stage program (``assemble.TreeRows``),
-  each stage as a saved exact Symbolica evaluator (any carrier), with the
-  runtime schema's sources, momentum slots and model-parameter layout; a
-  plan block row is the Wick-signed state slice of its tree current;
+* **trees**: the slice's own tree stage program (``assemble.TreeRows``'
+  runtime schema), each stage compiled in chunks of whole currents of at
+  most ``CHUNK_OUTPUTS`` outputs and saved as exact Symbolica evaluators
+  (any carrier), so only one chunk's expressions are alive at a time; with
+  the runtime schema's sources, momentum slots and model-parameter layout.
+  A plan block row is the Wick-signed state slice of its tree current;
 * **Born**: every root-closure term (``assemble._born_terms``: an ordinary
   vertex holding leg 1 closed on 2-3 blocks) as a plan kernel on its blocks'
   rows and momenta, with its sign, its coupling per N_c grade and the exact
@@ -41,6 +43,12 @@ from pyamplicol.color.contraction_types import NC
 from .families import Orders, add_orders
 
 TREE_SCHEMA = 1
+
+# Outputs of one saved stage evaluator. The currents of a stage depend only on
+# earlier stages, so a stage splits into chunks of whole currents, compiled
+# and saved one at a time: the peak memory is one chunk's expressions, not
+# the program's (g g > g g g g g: 475,440 outputs in four stages).
+CHUNK_OUTPUTS = 1 << 15
 
 
 @dataclass(frozen=True)
@@ -137,25 +145,7 @@ def export_trees(
         for label in record["external_labels"]:
             mask |= 1 << (int(label) - 1)
         momentum_slots.append([value_count + int(record["component_start"]), mask])
-    stages = []
-    for stage in trees.stages:
-        stages.append(
-            {
-                "parameters": int(stage.parameter_count),
-                "inputs": [
-                    [int(c.parameter_index), int(c.global_component)]
-                    for c in stage.input_components
-                ],
-                "outputs": [
-                    [
-                        int(s.output_start),
-                        int(s.output_stop - s.output_start),
-                        int(s.component_start),
-                    ]
-                    for s in stage.output_slots
-                ],
-            }
-        )
+    stages, saved = _stream_stages(trees)
     index = _BlockRows(slice_, None)._index
     block_rows = []
     for current, word, chirality, row, dimension in exporter.block_rows:
@@ -316,13 +306,135 @@ def export_trees(
     }
     return NativeTrees(
         program,
-        tuple(_saved_stage(stage) for stage in trees.stages),
+        saved,
         tuple(couplings),
         born_orders,
         squared_orders,
         masses,
         tuple(components),
     )
+
+
+def _stream_stages(trees: Any) -> tuple[list[dict[str, Any]], tuple[bytes, ...]]:
+    """The stage records and saved evaluators of ``trees`` (a ``TreeRows``),
+    compiled chunk by chunk (``CHUNK_OUTPUTS``) and released after saving."""
+
+    from pyamplicol.generation.contracts import StageCompilationInput
+    from pyamplicol.generation.stage_planning import (
+        build_generic_stage_compiler_blueprint,
+    )
+
+    from .assemble import _exact_u1_subtraction_weights
+
+    schema = dict(trees.schema)
+    count = len(schema["stages"])
+    schema["stages"] = _chunked_stages(trees.dag, trees.schema, CHUNK_OUTPUTS)
+    records: list[dict[str, Any]] = []
+    saved: list[bytes] = []
+    blockers: list[str] = []
+
+    def consume(stage: Any, index: int, total: int) -> None:
+        if index == total:
+            return  # the amplitude stage: the Born is the root closure
+        if stage.blockers:
+            blockers.extend(stage.blockers)
+            return
+        saved.append(_saved_stage(stage))
+        records.append(
+            {
+                "parameters": int(stage.parameter_count),
+                "inputs": [
+                    [int(c.parameter_index), int(c.global_component)]
+                    for c in stage.input_components
+                ],
+                "outputs": [
+                    [
+                        int(s.output_start),
+                        int(s.output_stop - s.output_start),
+                        int(s.component_start),
+                    ]
+                    for s in stage.output_slots
+                ],
+            }
+        )
+
+    with _exact_u1_subtraction_weights():
+        build_generic_stage_compiler_blueprint(
+            StageCompilationInput(trees.dag, trees.model, trees.runtime_schema),
+            runtime_schema=schema,
+            stage_consumer=consume,
+            release_consumed_expressions=True,
+        )
+    if blockers:
+        raise ValueError(f"tree blocks are not expression ready: {blockers}")
+    if count and not records:
+        raise ValueError("the tree program has no stage")
+    return records, tuple(saved)
+
+
+def _chunked_stages(dag: Any, schema: Any, limit: int) -> list[dict[str, Any]]:
+    """The runtime schema's stages split into chunks of whole output currents
+    of at most ``limit`` components (a larger current is a chunk alone),
+    each with the interactions, inputs and slots of its currents."""
+
+    slots = {
+        int(slot["value_slot_id"]): slot
+        for slot in schema["value_storage"]["value_slots"]
+    }
+    out: list[dict[str, Any]] = []
+    for stage in schema["stages"]:
+        if not stage.get("interactions_compacted"):
+            raise ValueError("native trees chunk compacted runtime stages only")
+        outputs: dict[int, list[int]] = defaultdict(list)
+        for slot in stage["output_value_slot_ids"]:
+            outputs[int(slots[int(slot)]["current_id"])].append(int(slot))
+        inputs = {
+            int(slots[int(slot)]["current_id"]): int(slot)
+            for slot in stage["input_value_slot_ids"]
+        }
+        chunks: list[list[int]] = [[]]
+        size = 0
+        for current in sorted(outputs):
+            dimension = sum(
+                int(slots[slot]["component_stop"]) - int(slots[slot]["component_start"])
+                for slot in outputs[current]
+            )
+            if chunks[-1] and size + dimension > limit:
+                chunks.append([])
+                size = 0
+            chunks[-1].append(current)
+            size += dimension
+        chunk_of = {current: c for c, chunk in enumerate(chunks) for current in chunk}
+        interactions: list[list[int]] = [[] for _ in chunks]
+        for item in stage["interaction_ids"]:
+            interactions[chunk_of[int(dag.interactions[int(item)].result_id)]].append(
+                int(item)
+            )
+        for chunk, ids in zip(chunks, interactions, strict=True):
+            used = sorted(
+                {
+                    current
+                    for item in ids
+                    for current in (
+                        dag.interactions[item].left_id,
+                        dag.interactions[item].right_id,
+                    )
+                }
+            )
+            out.append(
+                {
+                    **stage,
+                    "input_current_ids": used,
+                    "output_current_ids": list(chunk),
+                    "input_value_slot_ids": sorted(inputs[c] for c in used),
+                    "output_value_slot_ids": sorted(
+                        slot for current in chunk for slot in outputs[current]
+                    ),
+                    "interaction_count": len(ids),
+                    "interaction_ids": ids,
+                }
+            )
+    return out
 
 
 def _zero_colour():
