@@ -878,6 +878,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: bool | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         """Return physical values resolved by helicity and color component.
 
@@ -890,6 +892,8 @@ class Runtime:
         through that sum, as in :meth:`evaluate`.
         Omitted precision uses the runtime's load-time default, or 16 when the
         backend has no precision default, as in :meth:`evaluate`.
+        ``poles`` and ``stability_checks`` follow :meth:`evaluate` (v2 virtual
+        runtimes; the estimates are per resolved entry).
         """
 
         precision = _validate_precision(
@@ -901,6 +905,7 @@ class Runtime:
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
+        options.update(self._v2_options(poles, stability_checks))
         self._require_evaluation_options(self._backend.evaluate_resolved, options)
         result = self._backend.evaluate_resolved(
             momenta,
@@ -942,6 +947,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: bool | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> ResolvedEvaluation | ResolvedVirtualEvaluation:
         return self.evaluate_resolved(
             momenta,
@@ -953,6 +960,8 @@ class Runtime:
             r2_strategy=r2_strategy,
             stability=stability,
             on_failure=on_failure,
+            poles=poles,
+            stability_checks=stability_checks,
         )
 
     def evaluate_orders(
@@ -1124,6 +1133,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: bool | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> tuple[_pyamplicol.CorrelatedValue, ...] | VirtualEvaluation:
         """Evaluate a generation-time colour ID with the current spin vectors.
 
@@ -1140,11 +1151,13 @@ class Runtime:
         Decimal spin inputs (including complex-component pairs) retain their
         digits until conversion into the requested arithmetic.
         ``on_failure`` follows :meth:`evaluate`, preserving complex successful
-        values and unavailable whole-point entries.
+        values and unavailable whole-point entries. ``poles`` and
+        ``stability_checks`` follow :meth:`evaluate` (v2 virtual runtimes).
         """
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
+        options.update(self._v2_options(poles, stability_checks))
         if self.contribution_kind == "virtual":
             operation = self._virtual_correlation_operation("evaluate_correlated")
             self._require_evaluation_options(operation, options)
@@ -1188,6 +1201,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: bool | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> (
         dict[str, tuple[_pyamplicol.CorrelatedValue, ...]]
         | dict[str, VirtualEvaluation]
@@ -1206,10 +1221,13 @@ class Runtime:
         Arithmetic and Decimal spin inputs follow :meth:`evaluate_correlated`.
         With ``on_failure="return"``, distinct source assignments can have
         different failure masks; every labelled result retains input positions.
+        ``poles`` and ``stability_checks`` follow :meth:`evaluate` (v2 virtual
+        runtimes).
         """
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
+        options.update(self._v2_options(poles, stability_checks))
         if self.contribution_kind == "virtual":
             operation = self._virtual_correlation_operation("evaluate_correlated_many")
             self._require_evaluation_options(operation, options)

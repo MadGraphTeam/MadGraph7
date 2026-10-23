@@ -1056,29 +1056,6 @@ def v2_public_estimate(estimate: Any, poles: bool) -> VirtualStabilityEstimate |
     )
 
 
-def _worst_estimate(
-    estimates: Sequence[VirtualStabilityEstimate],
-) -> VirtualStabilityEstimate:
-    """One estimate bounding each of several outputs (every field and check
-    its maximum over the outputs, each relative to its own output)."""
-
-    def worst(values: Iterable[float | None]) -> float | None:
-        present = [value for value in values if value is not None]
-        return max(present) if present else None
-
-    checks: dict[str, float] = {}
-    for estimate in estimates:
-        for name, value in estimate.checks:
-            checks[name] = max(checks.get(name, 0.0), value)
-    return VirtualStabilityEstimate(
-        cast(float, worst(e.relative for e in estimates)),
-        cast(float, worst(e.finite for e in estimates)),
-        worst(e.single_pole for e in estimates),
-        worst(e.double_pole for e in estimates),
-        tuple(checks.items()),
-    )
-
-
 def v2_options(
     *,
     helicities: Sequence[str] | None = None,
@@ -1134,10 +1111,10 @@ class V2ObservablesRuntime:
     Every call takes ``poles=False`` (finite part only, poles explicitly
     absent) and ``stability_checks`` (rotations and/or the reduction-direction
     check; requirements addendum C): a correlated evaluation then carries one
-    estimate per point and output, a resolved one per point the worst
-    estimate of its entries (each relative to its own entry); without checks
-    no estimate exists. ``on_failure="return"`` keeps failed points as
-    ``None`` with their reasons. Accuracy is not otherwise established and
+    estimate per point and output, a resolved one per point and entry
+    (helicity row and colour component); without checks no estimate exists.
+    ``on_failure="return"`` keeps failed points as ``None`` with their
+    reasons. Accuracy is not otherwise established and
     nothing is escalated automatically.
     """
 
@@ -1626,7 +1603,7 @@ class V2ObservablesRuntime:
         born_values: list[Any] = []
         values: list[Any] = []
         diagnostics: list[VirtualLaneDiagnostic] = []
-        estimates: list[VirtualStabilityEstimate | None] = []
+        estimates: list[Any] = []
         for index, result in enumerate(entries):
             if result is None:
                 born_values.append(None)
@@ -1671,13 +1648,14 @@ class V2ObservablesRuntime:
                 )
             )
             diagnostics.append(self._diagnostic(arithmetic, carrier, checks.enabled))
-            found = [
-                v2_public_estimate(entry.stability, poles)
-                for entry in result.values()
-                if entry.stability is not None
-            ]
             estimates.append(
-                _worst_estimate(cast(list[VirtualStabilityEstimate], found))
+                tuple(
+                    tuple(
+                        v2_public_estimate(result[(row, b)].stability, poles)
+                        for b in components
+                    )
+                    for row in rows
+                )
                 if checks.enabled
                 else None
             )

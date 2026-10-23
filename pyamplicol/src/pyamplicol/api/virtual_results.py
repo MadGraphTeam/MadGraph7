@@ -682,11 +682,12 @@ class ResolvedVirtualEvaluation:
     Born colour components have their own independent axis. LC components are
     signed interference contributions, never sampling probabilities.
 
-    ``poles`` and ``stability`` follow :class:`VirtualEvaluation`: a
-    finite-only evaluation has explicitly absent poles, and when stability
-    checks ran, each lane's estimate bounds every one of its resolved entries
-    relative to that entry's own magnitude (``None`` for failed lanes, and
-    ``stability is None`` when no check was requested).
+    ``poles`` follows :class:`VirtualEvaluation` (a finite-only evaluation
+    has explicitly absent poles). When stability checks ran, ``stability``
+    holds per lane one :class:`VirtualStabilityEstimate` per resolved entry,
+    indexed ``[helicity][virtual colour component]``, each relative to its own
+    entry (``None`` for failed lanes); it is ``None`` when no check was
+    requested.
     """
 
     born_values: ResolvedCoefficients
@@ -701,7 +702,9 @@ class ResolvedVirtualEvaluation:
     color_accuracy: Literal["lc", "nlc", "full"]
     correlated: bool = False
     poles: bool = True
-    stability: tuple[VirtualStabilityEstimate | None, ...] | None = None
+    stability: (
+        tuple[tuple[tuple[VirtualStabilityEstimate, ...], ...] | None, ...] | None
+    ) = None
 
     def __post_init__(self) -> None:
         if self.color_accuracy not in {"lc", "nlc", "full"}:
@@ -720,9 +723,36 @@ class ResolvedVirtualEvaluation:
             (len(self.born_orders), len(self.helicity_ids), len(self.born_color_ids)),
             (len(self.sectors), len(self.helicity_ids), len(self.virtual_color_ids), 3),
         )
-        object.__setattr__(
-            self, "stability", _stability(self.stability, self.diagnostics, self.poles)
-        )
+        object.__setattr__(self, "stability", self._resolved_stability())
+
+    def _resolved_stability(
+        self,
+    ) -> tuple[tuple[tuple[VirtualStabilityEstimate, ...], ...] | None, ...] | None:
+        """Per-lane [helicity][colour] estimates, or None without checks."""
+        if self.stability is None:
+            return None
+        lanes = tuple(cast(Sequence[object], self.stability))
+        if len(lanes) != len(self.diagnostics):
+            raise ValueError("stability estimates and diagnostics differ in lane count")
+        out: list[tuple[tuple[VirtualStabilityEstimate, ...], ...] | None] = []
+        for lane, diagnostic in zip(lanes, self.diagnostics, strict=True):
+            if lane is None:
+                if diagnostic.valid:
+                    raise ValueError("a checked successful lane has estimates")
+                out.append(None)
+                continue
+            if not diagnostic.valid:
+                raise ValueError("failed lanes carry no stability estimate")
+            rows = tuple(tuple(row) for row in cast(Sequence[Sequence[object]], lane))
+            if len(rows) != len(self.helicity_ids) or any(
+                len(row) != len(self.virtual_color_ids) for row in rows
+            ):
+                raise ValueError("resolved estimates follow the helicity/colour axes")
+            for row in rows:
+                for estimate in row:
+                    _stability((estimate,), (diagnostic,), self.poles)
+            out.append(cast(tuple[tuple[VirtualStabilityEstimate, ...], ...], rows))
+        return tuple(out)
 
     @property
     def epsilon_powers(self) -> tuple[int, int, int]:

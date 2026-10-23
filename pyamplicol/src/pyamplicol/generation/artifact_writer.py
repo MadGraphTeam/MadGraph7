@@ -1033,6 +1033,12 @@ def write_schema_v3_artifact(
                 else "no root API-bundle emitter is installed",
             }
         )
+    if v2_loop:
+        # Prepared v2 virtual artifacts are relocatable (requirements addendum
+        # G): the recorded configuration keeps file names, not the generating
+        # host's absolute paths (model source, output, caches).
+        requested_config = cast(dict[str, object], _portable_paths(requested_config))
+        effective_config = cast(dict[str, object], _portable_paths(effective_config))
     requested_bytes = _toml_bytes(requested_config)
     effective_bytes = _toml_bytes(effective_config)
     required_runtime_capabilities = set(
@@ -5873,6 +5879,19 @@ def _effective_config_payload(
             raise ValueError("generation configuration section is missing")
         generation["emit_api_bundle"] = False
     return result
+
+
+def _portable_paths(value: object) -> object:
+    """``value`` with every absolute filesystem path replaced by its final
+    component (provenance only: no loader reads these configuration paths)."""
+
+    if isinstance(value, Mapping):
+        return {key: _portable_paths(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return type(value)(_portable_paths(item) for item in value)
+    if isinstance(value, str) and os.path.isabs(value):
+        return os.path.basename(os.path.normpath(value))
+    return value
 
 
 def _bundle_requested(config: GenerationConfig | RunConfig) -> bool:

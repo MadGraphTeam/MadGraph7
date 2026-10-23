@@ -6,9 +6,18 @@ engine and publishes them as plan v4 processes (``rusticol.loop-runtime.v4``).
 Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 
 * gg -> gg and u u~ -> d d~ g at full colour and gg -> gg at leading colour
-  equal the frozen 200-bit legacy values (oracle O1) in binary64 and in
-  arbitrary precision, per squared coupling order and Laurent coefficient;
-* ``poles=False`` returns the finite parts with absent poles;
+  equal the frozen 200-bit legacy values (oracle O1) in binary64,
+  double-double and arbitrary precision, per squared coupling order and
+  Laurent coefficient;
+* colour correlations (dipoles, Casimirs, ordered two-emission histories and
+  their swaps), complex spin sources and helicity-resolved outputs through
+  the public generator and runtime equal the frozen legacy observables (O1)
+  at full colour (g g > g g; d d~ > g g with s s~ > g g served as an exact
+  flavour member) and at leading colour, in binary64 (held to 1e-12 unless
+  the value's own stability estimate E exceeds it, then to E <= 1e-9) and in
+  double-double (1e-24);
+* ``poles=False`` returns the finite parts with absent poles, also for
+  correlated and resolved outputs, from the same artifact;
 * stability checks (rotations by count or exact specification, the
   reduction-direction check) return one estimate per point that bounds the
   true error, and no estimate without checks;
@@ -21,6 +30,9 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   its reason;
 * ``pyamplicol inspect`` summarizes v2 and legacy loop artifacts (engine,
   sectors, families, buckets, colour degrees, plan digest);
+* the artifact holds no absolute path, user or host name (relocatable,
+  requirements addendum G) and loads from a copy at another path with
+  bitwise-identical binary64 values;
 * requests v2 does not cover yet fail with the reason and leave
   ``loop.engine = "legacy"`` (the default) selectable;
 * a six-gluon plan v4 artifact stays below 20 MB (nightly).
@@ -50,8 +62,15 @@ from pyamplicol.loops.v2.stability import Rotation
 ROOT = Path(__file__).resolve().parents[2]
 LEGACY = ROOT / "tests" / "fixtures" / "loop" / "legacy"
 DOUBLE_TOLERANCE = Decimal("1e-12")
+DOUBLE_DOUBLE_TOLERANCE = Decimal("1e-24")
+# Binary64 O1 rule (user, 2026-10-23): a value whose own stability estimate E
+# exceeds 1e-12 is held to E, which must not exceed 1e-9 (and the value must
+# then agree in double-double, which every comparison here runs anyway).
+ESTIMATE_CAP = 1e-9
 ARBITRARY_DIGITS = 60
 ARBITRARY_TOLERANCE = Decimal("1e-40")
+OBSERVABLES = LEGACY / "observables"
+BINARY64_CHECKS = VirtualStabilityChecks(("z:3/5:4/5",), True)
 GG_PARAMETERS = {"aS": "0.118", "MT": "173"}
 POINT = [[500, 0, 0, 500], [500, 0, 0, -500], [500, 300, 0, 400], [500, -300, 0, -400]]
 
@@ -71,7 +90,9 @@ model_convention = "loop_sm lhv=1 supplied QCD rules"
 """
 
 
-def _card(model, output, entries, *, accuracy="full", declared=True, extra=""):
+def _card(
+    model, output, entries, *, accuracy="full", declared=True, extra="", process=""
+):
     processes = ", ".join(
         f"{{expression={json.dumps(expression)}, name={json.dumps(name)}}}"
         for name, expression in entries
@@ -84,6 +105,7 @@ source = {json.dumps(str(model))}
 entries = [{processes}]
 loop_coupling_orders = ["QCD"]
 coupling_order_policy = "minimal"
+{process}
 [color]
 accuracy = "{accuracy}"
 contraction = "direct"
@@ -103,7 +125,7 @@ samples = 1
 """
 
 
-def _generate(card_text, tmp: Path, entries):
+def _generate(card_text, tmp: Path, entries, correlators=None):
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
 
@@ -115,7 +137,7 @@ def _generate(card_text, tmp: Path, entries):
         )
     )
     output = tmp / "artifact"
-    Generator(resolve_config(card)).generate(processes, output)
+    Generator(resolve_config(card)).generate(processes, output, correlators=correlators)
     return output
 
 
@@ -344,6 +366,10 @@ def test_public_evaluation_equals_legacy_o1(full_colour, name, process):
     )
     assert isinstance(arbitrary.values[0][0].finite, Decimal)
     _assert_legacy(arbitrary, results, ARBITRARY_TOLERANCE)
+    double_double = runtime.evaluate(points, mu_r2=scales, arithmetic="double-double")
+    assert {item.precision_bits for item in double_double.diagnostics} == {106}
+    assert isinstance(double_double.values[0][0].finite, Decimal)
+    _assert_legacy(double_double, results, DOUBLE_DOUBLE_TOLERANCE)
     # One squared coupling order per partial result; the sector names its pairs.
     (sector,) = double.sectors
     assert double.for_order(sector.order).values == double.values
@@ -398,18 +424,36 @@ def test_finite_only_and_stability_estimates(full_colour):
 
 @pytest.mark.loop_physics
 def test_v2_runtime_refuses_what_it_does_not_provide(full_colour):
+    """Undeclared colour histories and spin classes, helicity selectors, direct
+    R2 and a rescue policy are refused; the Born metric ("born") and resolved
+    output need no declaration."""
+
     from pyamplicol import Runtime
     from pyamplicol.api.virtual_results import (
         VirtualArithmeticSpec,
         VirtualStabilityPolicy,
     )
 
-    runtime = Runtime.load(full_colour, process="gg")
+    runtime = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
     point = POINT
+    assert [item.id for item in runtime.available_color_correlations()] == ["born"]
+    born = runtime.evaluate_correlated([point], mu_r2="1000000")
+    inclusive = runtime.evaluate([point], mu_r2="1000000")
+    assert born.correlated and born.shape == inclusive.shape
+    for a, b in zip(born.values[0][0], inclusive.values[0][0], strict=True):
+        assert abs(complex(a) - b) <= 1e-12 * abs(b)
+    resolved = runtime.evaluate_resolved([point], mu_r2="1000000")
+    assert resolved.shape == (1, 1, 16, 1, 3) and resolved.stability is None
+    total = resolved.total()
+    for a, b in zip(total.values[0][0], inclusive.values[0][0], strict=True):
+        assert abs(a - b) <= 1e-12 * abs(b)
+    with pytest.raises(ValueError, match="spin"):
+        runtime.set_spin_correlation_vectors({3: [1, 0, 0, 0]})
     for call in (
-        lambda: runtime.evaluate_correlated([point], mu_r2="1000000"),
-        lambda: runtime.evaluate_resolved([point], mu_r2="1000000"),
-        lambda: runtime.evaluate([point], mu_r2="1000000", arithmetic="double-double"),
+        lambda: runtime.evaluate_correlated(
+            [point], mu_r2="1000000", color_correlation="T12"
+        ),
+        lambda: runtime.evaluate([point], mu_r2="1000000", helicities=["h0"]),
         lambda: runtime.evaluate([point], mu_r2="1000000", r2_strategy="direct"),
         lambda: runtime.evaluate(
             [point],
@@ -730,21 +774,413 @@ def test_leading_colour_through_v2_equals_legacy_o1(
     _assert_legacy(result, reference["results"]["arbitrary-200"], DOUBLE_TOLERANCE)
 
 
+# ------------------------------------------------------------------ observables
+
+
+def _observables_record(name: str) -> dict:
+    return json.loads((OBSERVABLES / f"{name}.json").read_text())
+
+
+def _parts(value) -> tuple[Decimal, Decimal]:
+    """(real, imaginary) of a public value or a legacy ``[re, im]`` pair."""
+
+    if isinstance(value, list | tuple) and len(value) == 2:
+        return Decimal(value[0]), Decimal(value[1])
+    if isinstance(value, complex):
+        return Decimal(repr(value.real)), Decimal(repr(value.imag))
+    if isinstance(value, Decimal | float | int):
+        return Decimal(repr(value) if isinstance(value, float) else value), Decimal(0)
+    return Decimal(value.real), Decimal(value.imag)  # CorrelatedValue
+
+
+def _deviation(actual, expected) -> Decimal:
+    from decimal import localcontext
+
+    with localcontext(prec=80):
+        (a, b), (c, d) = _parts(actual), _parts(expected)
+        return ((a - c) ** 2 + (b - d) ** 2).sqrt()
+
+
+def _magnitude(value) -> Decimal:
+    return _deviation(value, (0, 0))
+
+
+def _tolerance(result, index: int, carrier: str) -> Decimal:
+    """The O1 tolerance of one evaluated point (module docstring)."""
+
+    if carrier == "double-double":
+        return DOUBLE_DOUBLE_TOLERANCE
+    assert result.stability is not None
+    estimate = result.stability[index].relative
+    assert estimate <= ESTIMATE_CAP, estimate
+    return max(DOUBLE_TOLERANCE, Decimal(repr(estimate)))
+
+
+def _assert_record(result, expected, index: int, tolerance: Decimal, label) -> None:
+    """Born per order and virtual per sector against one legacy record."""
+
+    borns = expected["born"][index]
+    scale = max(_magnitude(x) for x in borns)
+    for actual, value in zip(result.born_values[index], borns, strict=True):
+        assert _deviation(actual, value) <= tolerance * scale, (label, index)
+    sectors = expected["virtual"][index]
+    for laurent, values in zip(result.values[index], sectors, strict=True):
+        scale = max(_magnitude(x) for x in values)
+        for actual, value in zip(laurent, values, strict=True):
+            assert _deviation(actual, value) <= tolerance * scale, (label, index)
+
+
+def _correlators(record: dict):
+    from pyamplicol.correlators import CorrelatorConfig
+
+    return CorrelatorConfig.from_json_dict(
+        {
+            "color_correlations": record["histories"],
+            "spin_correlations": record["spin_classes"],
+        }
+    )
+
+
+@pytest.fixture(scope="module")
+def observables_artifact(
+    loop_sm_compiled_model, loop_sm_colour_model, loop_native, tmp_path_factory
+):
+    """The public v2 artifact of one legacy observables record (generated with
+    its colour histories and spin classes; members by exact flavour
+    grouping), built once per module."""
+
+    built: dict[str, Path] = {}
+
+    def build(name: str) -> Path:
+        if name not in built:
+            record = _observables_record(name)
+            accuracy = record.get("accuracy", "full")
+            entries = tuple(
+                (key, expression) for key, expression in record["processes"]
+            )
+            tmp = tmp_path_factory.mktemp(name)
+            card = _card(
+                loop_sm_colour_model if accuracy != "full" else loop_sm_compiled_model,
+                tmp / "artifact",
+                entries,
+                accuracy=accuracy,
+                declared=accuracy == "full",
+                process="flavor_blind = true" if len(entries) > 1 else "",
+            )
+            built[name] = _generate(card, tmp, entries, _correlators(record))
+        return built[name]
+
+    return build
+
+
+def _spin_vectors(record: dict, legs: str) -> dict[int, tuple]:
+    """The literal (real, imaginary) source vectors of one legacy spin class."""
+
+    return {
+        int(leg): tuple(
+            (Decimal(re), Decimal(im)) for re, im in record["spin_vectors"][k]
+        )
+        for k, leg in enumerate(legs.split(","))
+    }
+
+
+def _assert_resolved(result, runtime, resolved: dict, carrier: str) -> None:
+    """Per helicity row, the Born and the virtual summed over the Born colour
+    components against the legacy resolved record (whose colour anchors are
+    diagram tensors: the colour axis is compared through its sum). A row is
+    held relative to its own scale, a structural zero relative to the
+    point's largest; a binary64 row to its own entries' estimates."""
+
+    rows = [tuple(h.values) for h in runtime.physics.helicities]
+    legacy = [tuple(row) for row in resolved["helicities"]]
+    floor = ARBITRARY_TOLERANCE
+    for index in range(len(result.values)):
+        born_scale = max(
+            _magnitude(x) for order in resolved["born"][index] for x in order
+        )
+        virtual_scale = max(
+            _magnitude(x)
+            for sector in resolved["virtual"][index]
+            for row in sector
+            for x in row
+        )
+        for h, row in enumerate(rows):
+            target = legacy.index(row)
+            tolerance = DOUBLE_DOUBLE_TOLERANCE
+            if carrier == "double":
+                estimates = [e.relative for e in result.stability[index][h]]
+                tolerance = max(DOUBLE_TOLERANCE, Decimal(repr(max(estimates))))
+            born = [order[target] for order in resolved["born"][index]]
+            scale = max(map(_magnitude, born))
+            scale = born_scale if scale <= floor * born_scale else scale
+            if carrier == "double" and scale == born_scale:
+                tolerance = DOUBLE_TOLERANCE  # a structural zero
+            for order, value in enumerate(born):
+                mine = sum(
+                    (_parts(x)[0] for x in result.born_values[index][order][h]),
+                    Decimal(0),
+                )
+                assert _deviation(mine, value) <= tolerance * scale, (index, row)
+            for sector, values in enumerate(resolved["virtual"][index]):
+                targets = values[target]
+                scale = max(map(_magnitude, targets))
+                scale = virtual_scale if scale <= floor * virtual_scale else scale
+                for k, value in enumerate(targets):
+                    mine = sum(
+                        (
+                            _parts(laurent[k])[0]
+                            for laurent in result.values[index][sector][h]
+                        ),
+                        Decimal(0),
+                    )
+                    assert _deviation(mine, value) <= tolerance * scale, (
+                        index,
+                        row,
+                        k,
+                    )
+        # Every legacy row v2 does not generate is a structural zero.
+        for row in set(legacy) - set(rows):
+            target = legacy.index(row)
+            assert all(
+                _magnitude(order[target]) <= floor * born_scale
+                for order in resolved["born"][index]
+            )
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ("gg_gg", "ddgg_ssgg", "gg_gg_lc"))
+def test_public_correlated_and_resolved_calls_equal_legacy_o1(
+    observables_artifact, name
+):
+    """O1 through the public surface: every legacy directed colour history,
+    every joint complex spin source and (where recorded) the helicity-resolved
+    outputs, for the representative and its exact flavour member (served by
+    the representative: one artifact process), in binary64 with one rotation
+    and the reduction-direction check, and in double-double."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.artifacts import load_manifest
+    from pyamplicol.correlators import CorrelatedRequest
+
+    record = _observables_record(name)
+    output = observables_artifact(name)
+    manifest = load_manifest(output)
+    representative = record["processes"][0][0]
+    assert [process["id"] for process in manifest.processes] == [representative]
+    points, scales = record["points"], record["scales_squared"]
+    for process, _expression in record["processes"]:
+        expected = record["results"]["arbitrary-200"][process]
+        runtime = Runtime.load(
+            output, process=process, model_parameters=record["parameters"]
+        )
+        assert runtime.physics.process_id == process
+        assert runtime.representative_process_key == representative
+        histories = tuple(expected["directed"])
+        assert [item.id for item in runtime.available_color_correlations()] == [
+            "born",
+            *(history["id"] for history in record["histories"]),
+        ]
+        requests = {
+            history: CorrelatedRequest(history, {}) for history in histories
+        } | {
+            f"spin:{legs}": CorrelatedRequest("born", _spin_vectors(record, legs))
+            for legs in expected.get("spin", {})
+        }
+        for carrier, options in (
+            ("double", {"stability_checks": BINARY64_CHECKS}),
+            ("double-double", {"arithmetic": "double-double"}),
+        ):
+            values = runtime.evaluate_correlated_many(
+                points, requests, mu_r2=scales, **options
+            )
+            for label, result in values.items():
+                assert result.correlated and result.poles
+                assert (result.stability is not None) == (carrier == "double")
+                target = (
+                    expected["spin"][label.removeprefix("spin:")]
+                    if label.startswith("spin:")
+                    else expected["directed"][label]
+                )
+                for index in range(len(points)):
+                    tolerance = _tolerance(result, index, carrier)
+                    _assert_record(result, target, index, tolerance, (process, label))
+            if "resolved" in expected:
+                resolved = runtime.evaluate_resolved(points, mu_r2=scales, **options)
+                assert (resolved.stability is not None) == (carrier == "double")
+                _assert_resolved(resolved, runtime, expected["resolved"], carrier)
+
+
+@pytest.mark.loop_physics
+def test_finite_only_correlated_and_resolved_from_the_same_artifact(
+    observables_artifact,
+):
+    """``poles=False`` on correlated and resolved calls of the artifact that
+    computed them with poles: equal finite parts, absent poles, estimates per
+    point (correlated) and per resolved entry only when checks ran."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.correlators import CorrelatedRequest
+
+    record = _observables_record("gg_gg")
+    runtime = Runtime.load(
+        observables_artifact("gg_gg"), model_parameters=record["parameters"]
+    )
+    points, scales = record["points"], record["scales_squared"]
+    requests = {"T12": CorrelatedRequest("T12", {})}
+    full = runtime.evaluate_correlated_many(points, requests, mu_r2=scales)["T12"]
+    finite = runtime.evaluate_correlated_many(
+        points, requests, mu_r2=scales, poles=False
+    )["T12"]
+    assert finite.poles is False and finite.stability is None
+    for a, b in zip(finite.values, full.values, strict=True):
+        assert a[0] == LaurentCoefficients(b[0].finite, None, None)
+    checked = runtime.evaluate_correlated(
+        points,
+        color_correlation="T12",
+        mu_r2=scales,
+        poles=False,
+        stability_checks=VirtualStabilityChecks(reduction_direction=True),
+    )
+    assert [dict(e.checks).keys() for e in checked.stability] == [
+        {"reduction-direction"}
+    ] * len(points)
+    assert all(e.single_pole is None for e in checked.stability)
+    resolved = runtime.evaluate_resolved(points, mu_r2=scales)
+    finite = runtime.evaluate_resolved(
+        points, mu_r2=scales, poles=False, stability_checks=VirtualStabilityChecks(1)
+    )
+    assert finite.poles is False and resolved.stability is None
+    with pytest.raises(ValueError, match="finite-only"):
+        finite.single_pole  # noqa: B018
+    for a, b in zip(finite.values, resolved.values, strict=True):
+        for sector_a, sector_b in zip(a, b, strict=True):
+            for row_a, row_b in zip(sector_a, sector_b, strict=True):
+                for x, y in zip(row_a, row_b, strict=True):
+                    assert x == LaurentCoefficients(y.finite, None, None)
+    (point_estimates, *_rest) = finite.stability
+    assert len(point_estimates) == len(finite.helicity_ids)
+    assert all(
+        dict(estimate.checks).keys() == {"rotation-0"}
+        for row in point_estimates
+        for estimate in row
+    )
+    total = finite.total()
+    assert total.poles is False and total.stability is None
+
+
+# ------------------------------------------------------------------ portability
+
+
+def _strings(path: Path) -> str:
+    """The text of one artifact file; a PACBIN's plan member decompressed."""
+
+    from pyamplicol.loops.v2.artifact import read_plan
+
+    if path.name == "loop-runtime.pacbin":
+        return read_plan(path) + path.read_bytes().decode("latin-1")
+    return path.read_bytes().decode("latin-1")
+
+
+@pytest.mark.loop_physics
+def test_artifacts_hold_no_host_paths_and_load_relocated(
+    full_colour, observables_artifact, tmp_path
+):
+    """Requirements addendum G within WP2.6: no absolute path of the
+    generating host (working directories, the model source, the output, the
+    home directory), no user or host name in any file of a plan v4 artifact
+    (the plan member decompressed); a copy under another path loads without
+    the original and gives bitwise-identical binary64 values."""
+
+    import getpass
+    import shutil
+    import socket
+
+    from pyamplicol import Runtime
+
+    forbidden = {
+        str(Path.home()),
+        str(ROOT),
+        str(Path.cwd()),
+        str(full_colour.parent),
+        f"/{getpass.getuser()}/",
+        f"{getpass.getuser()}@",
+        socket.gethostname(),
+    }
+    roots = (full_colour, observables_artifact("ddgg_ssgg"))
+    for root in roots:
+        forbidden.add(str(root.resolve().parent))
+    for root in roots:
+        for path in sorted(p for p in root.rglob("*") if p.is_file()):
+            text = _strings(path)
+            for item in forbidden:
+                assert item not in text, (path.relative_to(root), item)
+            assert "/shared/" not in text and "/home/" not in text, path
+    moved = tmp_path / "elsewhere" / "copy"
+    shutil.copytree(full_colour, moved)
+    points = [
+        POINT,
+        [[500, 0, 0, 500], [500, 0, 0, -500], [500, 0, 300, 400], [500, 0, -300, -400]],
+    ]
+    script = "\n".join(
+        (
+            "import json, sys",
+            "from pyamplicol import Runtime",
+            "r = Runtime.load(sys.argv[1], process='gg', model_parameters=PARAMETERS)",
+            "v = r.evaluate(POINTS, mu_r2='1000000')",
+            "print(json.dumps([r.inspect()['plan_sha256'], v.born_values, v.values]))",
+        )
+    )
+    script = script.replace("PARAMETERS", repr(GG_PARAMETERS))
+    script = script.replace("POINTS", repr(points))
+    # A fresh interpreter in another working directory regenerates the point
+    # inputs from the copy alone.
+    process = subprocess.run(
+        [sys.executable, "-c", script, str(moved)],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=tmp_path,
+    )
+    digest, born, values = json.loads(process.stdout.strip().splitlines()[-1])
+    here = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
+    original = here.evaluate(points, mu_r2="1000000")
+    assert digest == here.inspect()["plan_sha256"]
+    assert born == [list(point) for point in original.born_values]
+    assert values == [[list(laurent) for laurent in point] for point in original.values]
+
+
 @pytest.mark.loop_physics
 def test_unsupported_requests_name_the_reason_and_keep_legacy(
     loop_sm_compiled_model, loop_native, tmp_path
 ):
+    """Joint QCD+QED corrections (v2 electroweak loops are WP3.2) and the
+    forced seed FFT are refused with their reasons before any generation;
+    the legacy engine stays selectable."""
+
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
-    from pyamplicol.correlators import CorrelatorConfig
 
     entries = (("gg", "g g > g g"),)
     card = tmp_path / "card.toml"
-    card.write_text(_card(loop_sm_compiled_model, tmp_path / "a", entries))
-    generator = Generator(resolve_config(card))
     processes = ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),))
-    with pytest.raises(GenerationError, match=r"WP2\.5.*loop\.engine='legacy'"):
-        generator.generate(processes, tmp_path / "a", correlators=CorrelatorConfig())
+    for edit, reason in (
+        (
+            ('loop_coupling_orders = ["QCD"]', 'loop_coupling_orders = ["QCD", "QED"]'),
+            r"one correction order.*WP3\.2.*loop\.engine='legacy'",
+        ),
+        (
+            ('contraction = "direct"', 'contraction = "symmetric-group-fft"'),
+            r"contracts seed columns directly.*loop\.engine='legacy'",
+        ),
+    ):
+        card.write_text(
+            _card(loop_sm_compiled_model, tmp_path / "a", entries).replace(*edit)
+        )
+        generator = Generator(resolve_config(card))
+        with pytest.raises(GenerationError, match=reason):
+            generator.generate(processes, tmp_path / "a")
+        assert not (tmp_path / "a").exists()
+        assert generator.plan(processes).unsupported_features
     card.write_text(
         _card(loop_sm_compiled_model, tmp_path / "b", entries).replace(
             'engine = "v2"', 'engine = "legacy"'
