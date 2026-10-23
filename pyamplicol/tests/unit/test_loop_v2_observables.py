@@ -822,14 +822,17 @@ ESTIMATE_CAP = 1e-9
 DOUBLE_DOUBLE_TOLERANCE = 1e-24
 
 
-def _o1_bounds(result, carrier: str) -> tuple[float, float]:
-    """(Born, virtual) relative bounds of one O1 value (the rule above)."""
+def _o1_bounds(result, carrier: str, estimate=None) -> tuple[float, float]:
+    """(Born, virtual) relative bounds of one O1 value (the rule above);
+    ``estimate`` replaces the value's own E (a resolved row's E over its
+    sectors that are not structural zeros, ``_resolved_estimate``)."""
 
     tolerance = LEGACY_TOLERANCE[carrier]
     if carrier != "double":
         return tolerance, tolerance
     assert result.stability is not None, "every binary64 O1 run carries checks"
-    estimate = result.stability.relative
+    if estimate is None:
+        estimate = result.stability.relative
     if estimate <= tolerance:
         return tolerance, tolerance
     return tolerance, min(estimate, ESTIMATE_CAP)
@@ -1151,8 +1154,12 @@ def assert_helicity_resolved_legacy(
     NLC, for the representative and a flavour member (s s~ > g g through
     d d~ > g g). Each row is held relative to its own scale (per Born order
     set and per virtual sector), a structural-zero row relative to the
-    point's largest; where a row's estimate exceeds 1e-12 every row runs
-    natively in DoubleFloat within 1e-24. The legacy colour anchors are
+    point's largest and within the carrier's tolerance whatever the row's
+    estimate (its relative E is measured against the row's rounding residue
+    and says nothing; the option the user signed off). A row's E is taken
+    over its sectors that are not structural zeros; where it exceeds 1e-12
+    every row runs natively in DoubleFloat within 1e-24. The legacy colour
+    anchors are
     diagram colour tensors, v2's are Born basis elements, so the colour axis
     is compared through its sum (design §1.6 decision 3, open)."""
 
@@ -1169,9 +1176,12 @@ def assert_helicity_resolved_legacy(
                 observables, record, runner, executor, CARRIERS[carrier], points
             ):
                 generated.setdefault(index, set()).add(row)
-                born, virtual = _o1_bounds(value, carrier)
-                if virtual > born and not _structural_zero(resolved_record, row, index):
-                    ill = True
+                born, virtual = _o1_bounds(
+                    value,
+                    carrier,
+                    _resolved_estimate(value, resolved_record, row, index),
+                )
+                ill = ill or virtual > born
                 _assert_resolved_row(value, resolved_record, row, index, born, virtual)
             for index in generated:
                 rows = generated[index]
@@ -1242,6 +1252,34 @@ def _resolved_targets(resolved_record, row, index) -> tuple[list, list]:
     return born, virtual
 
 
+def _resolved_estimate(value, resolved_record, row, index):
+    """A binary64 row's own E over its virtual sectors that are not structural
+    zeros (None outside binary64): a structural-zero sector's relative E is
+    measured against its rounding residue (measured up to 3e16), so it would
+    neither bound that sector (``_assert_resolved_row`` holds it to the
+    carrier's tolerance of the point's largest) nor say anything about the
+    row's other sectors."""
+
+    from pyamplicol.loops.v2.stability import relative
+
+    if value.stability is None:
+        return None
+    _born, virtual = _resolved_targets(resolved_record, row, index)
+    _born_scale, virtual_scale = _resolved_scales(resolved_record, index)
+    floor = Decimal(str(LEGACY_TOLERANCE["arbitrary-200"]))
+    stability = value.stability
+    keys = list(value.components["virtual"])
+    assert len(keys) == len(virtual)
+    return max(
+        (
+            relative({key: stability.reference[key]}, {key: stability.absolute[key]})
+            for key, targets in zip(keys, virtual, strict=True)
+            if max(map(_magnitude, targets)) > floor * virtual_scale
+        ),
+        default=0.0,
+    )
+
+
 def _structural_zero(resolved_record, row, index) -> bool:
     """A row whose 200-bit legacy Born and virtual are below 1e-40 of the
     point's largest (the legacy rounding residue of an exact zero)."""
@@ -1261,7 +1299,8 @@ def _assert_resolved_row(
     row's largest Born order (within ``born_tolerance``), each virtual sector
     relative to its largest coefficient on the row (within
     ``virtual_tolerance``, default ``born_tolerance``); a structural zero (Born
-    or sector) relative to the point's largest instead."""
+    or sector) relative to the point's largest and within ``born_tolerance``
+    (the carrier's own tolerance: no estimate applies to it)."""
 
     born, virtual = _resolved_targets(resolved_record, row, index)
     born_scale, virtual_scale = _resolved_scales(resolved_record, index)
@@ -1273,7 +1312,7 @@ def _assert_resolved_row(
         tolerance = Decimal(str(tolerance))
         scale = max(map(_magnitude, targets))
         if scale <= floor * point_scale:
-            scale = point_scale
+            scale, tolerance = point_scale, Decimal(str(born_tolerance))
         for actual, target in zip(actuals, targets, strict=True):
             assert _deviation(actual, target) <= tolerance * scale, (row, index)
 
