@@ -314,7 +314,7 @@ class TreeRows:
     parameters of overridden inputs at the carrier's precision.
     """
 
-    def __init__(self, dag: Any, compiled: Any):
+    def __init__(self, dag: Any, compiled: Any, *, jit: bool = True):
         from pyamplicol.generation.contracts import StageCompilationInput
         from pyamplicol.generation.runtime_schema import (
             build_runtime_expression_schema,
@@ -344,7 +344,10 @@ class TreeRows:
             int(root["output_index"]): int(root["root_id"])
             for root in self.schema["amplitude_stage"]["roots"]
         }
-        self._evaluators = tuple(_stage_evaluator(stage) for stage in self.stages)
+        self._jit = jit
+        self._evaluators = tuple(
+            _stage_evaluator(stage, jit=jit) for stage in self.stages
+        )
         self._amplitude_evaluator = None
         layout = self.schema["parameter_layout"]
         self._value_count = int(layout["value_component_count"])
@@ -451,7 +454,7 @@ class TreeRows:
         if amplitudes:
             stage = self._amplitude_stage
             if self._amplitude_evaluator is None:
-                self._amplitude_evaluator = _stage_evaluator(stage)
+                self._amplitude_evaluator = _stage_evaluator(stage, jit=self._jit)
             _outputs, converted = self._replay(
                 stage, self._amplitude_evaluator, state, numbers
             )
@@ -487,7 +490,10 @@ class TreeRows:
         return outputs, [numbers.pair(*z) for z in outputs]
 
 
-def _stage_evaluator(stage: Any) -> Any:
+def _stage_evaluator(stage: Any, *, jit: bool = True) -> Any:
+    """The stage's Symbolica evaluator; ``jit=False`` keeps it interpreted
+    (one point at a time costs the same, without the JIT compile)."""
+
     from symbolica import Expression, FunctionDefinition
 
     return Expression.evaluator_multiple(
@@ -497,6 +503,7 @@ def _stage_evaluator(stage: Any) -> Any:
             FunctionDefinition(function, arguments, body, inlining="always")
             for function, arguments, body in stage.symbolica_functions
         ],
+        jit_compile=jit,
     )
 
 

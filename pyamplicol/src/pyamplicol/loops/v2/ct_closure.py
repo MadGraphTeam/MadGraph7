@@ -691,13 +691,17 @@ class CountertermProgram:
         """The program's tree rows (``assemble.TreeRows``), compiled on first
         use: generation and a native evaluation of the program do not need
         this Python evaluator (at gg -> gggg it takes most of the bind's
-        6 minutes and 11.8 GB)."""
+        6 minutes and 11.8 GB). Its stage evaluators stay interpreted: one
+        point costs the same as with Symbolica's JIT, whose compile took
+        69 s of a 115 s point at gg -> ggg and over an hour at gg -> gggg."""
 
         if self._rows is None:
             from .assemble import TreeRows
 
             self._rows = TreeRows(
-                self.blocks.blocks.blocks_dag, self.recursion.model.lowered.compiled
+                self.blocks.blocks.blocks_dag,
+                self.recursion.model.lowered.compiled,
+                jit=False,
             )
         return self._rows
 
