@@ -266,6 +266,72 @@ def test_lazy_fourier_is_the_eager_certification(controls):
     assert lazy.get() == seed_fourier(smaller)
 
 
+@pytest.mark.loop_physics
+def test_lazy_seed_fourier_keeps_points_and_the_reported_contraction(
+    loop_sm_compiled_model, loop_native, monkeypatch
+):
+    """The phase-1 edit of the design note, emulated by a subclass: under
+    "auto" ``_plan_contraction`` installs the lazy cache instead of certifying
+    the FFT. Generation then makes no ``seed_fourier`` call; the first
+    binary64 point makes one, and every point result (values and the
+    reported ``colour_contraction``) is identical to the eager slice's, as is
+    the certified ``fourier`` and a ``dataclasses.replace`` copy."""
+
+    import dataclasses
+
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.models.loading import load_compiled_model
+    from tests.unit.test_loop_v2_slice import PARAMETERS, _fixture, _request
+
+    calls = []
+    eager_fourier = assemble.seed_fourier
+
+    def counted(table):
+        calls.append(len(table.classes))
+        return eager_fourier(table)
+
+    monkeypatch.setattr(assemble, "seed_fourier", counted)
+    monkeypatch.setattr(native_seeds, "seed_fourier", counted)
+
+    class LazySlice(assemble.LoopSlice):
+        _lazy: native_seeds.LazyFourier | None = None
+        _stored = None
+
+        @property  # type: ignore[override]
+        def fourier(self):
+            return self._lazy.get() if self._lazy is not None else self._stored
+
+        @fourier.setter
+        def fourier(self, value):
+            self._stored = value
+
+        def _plan_contraction(self) -> None:
+            if self.request.colour_contraction == "auto" and (
+                self.request.accuracy != "lc"
+            ):
+                self._lazy = native_seeds.LazyFourier(lambda: self.table)
+                return
+            super()._plan_contraction()
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request = _request("gg_gg")
+    eager = assemble.LoopSlice.generate(compiled, request, loop_native)
+    assert len(calls) == 1
+    lazy = LazySlice.generate(compiled, request, loop_native)
+    assert len(calls) == 1  # generation certifies nothing
+    fixture = _fixture("gg_gg")
+    for point, scale in zip(fixture["points"], fixture["scales_squared"], strict=True):
+        mine = lazy.evaluate(point, scale, parameters=PARAMETERS)
+        theirs = eager.evaluate(point, scale, parameters=PARAMETERS)
+        assert mine.colour_contraction == theirs.colour_contraction
+        assert mine.colour_contraction == "symmetric-group-fft"
+        assert repr(mine) == repr(theirs)
+    assert len(calls) == 2  # one certification, at the first point
+    assert lazy.fourier == eager.fourier
+    copy = dataclasses.replace(lazy, request=lazy.request)
+    assert copy.fourier == eager.fourier
+
+
 # ------------------------------------------------------------------ the slice
 
 
@@ -356,6 +422,72 @@ def test_native_seeds_in_the_slice(
 
 class _Captured(Exception):
     pass
+
+
+@pytest.mark.loop_physics
+def test_native_prune_liveness_with_directed_colour_tables(
+    loop_sm_compiled_model, loop_native, monkeypatch
+):
+    """The observables' LC prune (``ObservableSlice.of`` passes the directed
+    colour tables of a dipole as extra criteria): native ``keep`` with those
+    criteria equals ``_prune_colour``'s callback on every reading."""
+
+    from pyamplicol.color.correlator_matrices import ColorCorrelator
+    from pyamplicol.correlators import CorrelatorConfig
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.observables import ObservableSlice
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+    stages: list = []
+
+    def build(colour, skeletons, basis=None, *, compress=False):
+        stage = native_seeds.NativeSeedStage(colour, loop_native)
+        stages.append(stage)
+        return stage.build(skeletons, basis, compress=compress)
+
+    checked = []
+    prune = assemble.LoopSlice._prune_colour
+
+    def checking(self, observables=()):
+        observables = list(observables)
+        assert observables  # the directed tables are passed
+        _flags, keep = stages[0].keep(self, observables)
+        seen = {}
+
+        def capture(colour, *, frames=None, keep=None, **kw):
+            seen["keep"] = keep
+            raise _Captured
+
+        original = self.generation.schedules
+        self.generation.schedules = capture
+        with pytest.raises(_Captured):
+            prune(self, observables)
+        self.generation.schedules = original
+        checked.append(keep == [seen["keep"](s) for s in stages[0]._skeletons])
+        assert any(keep) and not all(keep)
+        prune(self, observables)
+
+    monkeypatch.setattr(assemble, "build_seed_table", build)
+    monkeypatch.setattr(assemble.LoopSlice, "_prune_colour", checking)
+    request = _slice_request(
+        "g g > g g g",
+        {"QCD": 3, "QED": 0},
+        {"QCD": 5, "QED": 0},
+        accuracy="lc",
+        colour_declaration=LoopColorDeclaration.from_dict(
+            json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+        ),
+    )
+    ObservableSlice.generate(
+        load_compiled_model(loop_sm_compiled_model),
+        request,
+        loop_native,
+        correlators=CorrelatorConfig(
+            color_correlations=(ColorCorrelator.dipole("T12", 1, 2),)
+        ),
+    )
+    assert checked == [True]
 
 
 # ------------------------------------------------------------------ six legs
