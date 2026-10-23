@@ -123,7 +123,7 @@ mod tests {
         // Tr(τ^a τ^a) = N^2 - 1.
         assert_eq!(overlap(&[&[1, 1]]), [(0, -1), (2, 1)]);
         // Tr(τ^a) Tr(τ^a) = 0.
-        assert_eq!(overlap(&[&[1], &[1]]), []);
+        assert!(overlap(&[&[1], &[1]]).is_empty());
         // Tr(τ^a τ^b) Tr(τ^a τ^b) = N^2 - 1 (δ^{ab} δ^{ab}).
         assert_eq!(overlap(&[&[1, 2], &[1, 2]]), [(0, -1), (2, 1)]);
         // Tr(τ^a τ^b τ^a τ^b) = Tr(-τ^b τ^b / N) = -N + 1/N.
