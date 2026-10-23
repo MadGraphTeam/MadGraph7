@@ -1660,6 +1660,66 @@ class TESTLHEParserNLO(unittest.TestCase):
             self.assertIn(len(cevent), (4,5))
 
 
+class TestEventCopyAndText(unittest.TestCase):
+    """Event.copy() is Event(str(event)) without the text round trip, and
+    Event.__str__ collapses blank lines in its free-text parts only."""
+
+    _event = """<event>
+ 5      1 +1.2345678e+00 9.11880000e+01 7.54677100e-03 1.18000000e-01
+       21 -1    0    0  501  502 +0.0000000000e+00 +0.0000000000e+00 +3.1415926535e+02 3.1415926535e+02 0.0000000000e+00 0.0000e+00 -1.0000e+00
+       21 -1    0    0  503  501 -0.0000000000e+00 -0.0000000000e+00 -2.7182818284e+02 2.7182818284e+02 0.0000000000e+00 0.0000e+00 1.0000e+00
+        6  2    1    2  503    0 +1.0000000000e+01 +2.0000000000e+01 +3.0000000000e+01 2.5000000000e+02 1.7300000000e+02 0.0000e+00 0.0000e+00
+        6  1    3    3  503    0 +1.0000000000e+01 +2.0000000000e+01 +3.0000000000e+01 2.5000000000e+02 1.7300000000e+02 0.0000e+00 1.0000e+00
+       -6  1    1    2    0  502 -1.0000000000e+01 -2.0000000000e+01 +1.2329108251e+01 3.3598745187e+02 1.7300000000e+02 0.0000e+00 -1.0000e+00
+# a comment
+
+<mgrwt>
+<rscale>  0 0.91188000E+02</rscale>
+</mgrwt>
+<rwgt>
+<wgt id='1001'> +1.2345678e+00 </wgt>
+<wgt id='1002'> +2.3456789e+00 </wgt>
+</rwgt>
+</event>"""
+
+    def test_copy_is_the_round_trip(self):
+        event = lhe_parser.Event(self._event)
+        event.parse_reweight()
+        event[3].new_mass = 170.          # not in the text: not copied
+        event._ms_cache = 'cached'
+        copy = event.copy()
+        self.assertEqual(str(copy), str(lhe_parser.Event(str(event))))
+        self.assertFalse(hasattr(copy[3], 'new_mass'))
+        self.assertFalse(hasattr(copy, '_ms_cache'))
+        # mothers point inside the copy, which owns its particles
+        self.assertIs(copy[2].mother1, copy[0])
+        self.assertIs(copy[2].mother2, copy[1])
+        self.assertIs(copy[3].mother1, copy[2])
+        self.assertTrue(all(p.event is copy for p in copy))
+        # and nothing is shared with the original
+        copy[3].px += 1.
+        copy.reweight_data['1001'] = 0.
+        copy.eventflag['x'] = '1'
+        self.assertEqual(event[3].px, 10.)
+        self.assertAlmostEqual(event.reweight_data['1001'], 1.2345678)
+        self.assertNotIn('x', event.eventflag)
+        # full precision, where the text keeps 11 digits
+        event[3].px = 1. / 3.
+        self.assertEqual(event.copy()[3].px, 1. / 3.)
+
+    def test_str_collapses_blank_lines(self):
+        event = lhe_parser.Event(self._event)
+        event.parse_reweight()            # rendered from reweight_data
+        event.tag = '\n\n<scales pt_clust_1="10"></scales>\n\n\n<other/>\n'
+        event.comment = '# one\n\n# two\n'
+        text = str(event)
+        self.assertNotIn('\n\n', text)
+        self.assertTrue(text.startswith('<event>\n 5      1'))
+        self.assertTrue(text.endswith('</event>\n'))
+        self.assertIn('# one\n# two\n<scales pt_clust_1="10"></scales>\n<other/>\n<rwgt>', text)
+        self.assertEqual(text, re.sub('[\n]+', '\n', text))
+
+
 class TestBasicEventCompatibility(unittest.TestCase):
     """Compatibility tests for NLO_PARTIALWEIGHT.BasicEvent in reweight paths."""
 
