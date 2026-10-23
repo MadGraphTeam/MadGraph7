@@ -12,12 +12,15 @@
 //! - [`schedules`]: skeletons, the view, frames and schedule-B tries
 //!   (`skeletons.py`, `schedules.py`);
 //! - [`cycles`]: SU(N_c) overlaps of trace products by cycle counting (the
-//!   exact colour contractions of `colour.py`).
+//!   exact colour contractions of `colour.py`);
+//! - [`seeds`]: seed combinations and seed classes (`colour.py`
+//!   `build_seed_table` / `extend_seed_table`).
 
 pub mod cycles;
 pub mod families;
 pub mod orders;
 pub mod schedules;
+pub mod seeds;
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasherDefault, Hasher};
