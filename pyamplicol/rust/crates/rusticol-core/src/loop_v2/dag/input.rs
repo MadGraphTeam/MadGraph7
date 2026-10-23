@@ -69,8 +69,12 @@ struct RawVertex {
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum RawBlockRule {
     Mask,
-    Particles { particles: Vec<i64> },
-    Requests { requests: Vec<(u64, i64, Vec<(String, i64)>)> },
+    Particles {
+        particles: Vec<i64>,
+    },
+    Requests {
+        requests: Vec<(u64, i64, Vec<(String, i64)>)>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -164,12 +168,15 @@ pub struct Vertex {
 
 impl Vertex {
     pub fn flows(&self, left: i8, right: i8) -> DagResult<&[Flow]> {
-        self.flows.get(&(left, right)).map(Vec::as_slice).ok_or_else(|| {
-            DagError::Malformed(format!(
-                "vertex {} has no quantum-flow entry for input chiralities ({left}, {right})",
-                self.kind
-            ))
-        })
+        self.flows
+            .get(&(left, right))
+            .map(Vec::as_slice)
+            .ok_or_else(|| {
+                DagError::Malformed(format!(
+                    "vertex {} has no quantum-flow entry for input chiralities ({left}, {right})",
+                    self.kind
+                ))
+            })
     }
 }
 
@@ -242,7 +249,10 @@ impl DagInput {
         let raw: RawInput = serde_json::from_str(text)
             .map_err(|error| DagError::Malformed(format!("input tables: {error}")))?;
         if raw.schema != INPUT_SCHEMA {
-            return Err(DagError::Malformed(format!("input schema {:?}", raw.schema)));
+            return Err(DagError::Malformed(format!(
+                "input schema {:?}",
+                raw.schema
+            )));
         }
         let mut by_pdg = HashMap::new();
         let mut particles = Vec::with_capacity(raw.particles.len());
@@ -350,7 +360,10 @@ impl DagInput {
         for (left, rights) in raw.right_particles {
             right_particles.insert(
                 particle(left)?,
-                rights.into_iter().map(particle).collect::<DagResult<Vec<_>>>()?,
+                rights
+                    .into_iter()
+                    .map(particle)
+                    .collect::<DagResult<Vec<_>>>()?,
             );
         }
         let mut label_rep = [None; 256];
@@ -431,7 +444,9 @@ impl DagInput {
             .collect::<DagResult<Vec<_>>>()?;
         let block_rule = match raw.block_rule {
             RawBlockRule::Mask => BlockRule::Mask,
-            RawBlockRule::Particles { particles: admitted } => {
+            RawBlockRule::Particles {
+                particles: admitted,
+            } => {
                 let mut table = vec![false; particles.len()];
                 for pdg in admitted {
                     if let Some(id) = by_pdg.get(&pdg) {

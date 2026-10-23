@@ -30,7 +30,11 @@ fn finite(value: [f64; 2]) -> bool {
 
 /// `_canonical_kernel_evaluation`: canonical representative inputs and the
 /// concrete kernel's factor.
-pub fn canonical_kernel_evaluation(vertex: &Vertex, left: u32, right: u32) -> ((u32, u32), [f64; 2]) {
+pub fn canonical_kernel_evaluation(
+    vertex: &Vertex,
+    left: u32,
+    right: u32,
+) -> ((u32, u32), [f64; 2]) {
     let mut inputs = (left, right);
     if vertex.swap {
         inputs = (inputs.1, inputs.0);

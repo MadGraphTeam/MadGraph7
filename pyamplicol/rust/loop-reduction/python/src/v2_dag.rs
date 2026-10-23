@@ -19,7 +19,14 @@ fn dag_error(error: DagError) -> PyErr {
     PyValueError::new_err(error.to_string())
 }
 
-type ColourTuple = (String, i64, Vec<i64>, Vec<String>, Vec<Vec<u8>>, Vec<Vec<u8>>);
+type ColourTuple = (
+    String,
+    i64,
+    Vec<i64>,
+    Vec<String>,
+    Vec<Vec<u8>>,
+    Vec<Vec<u8>>,
+);
 
 /// One block for Python (`dag_input._python_blocks`).
 #[derive(IntoPyObject)]

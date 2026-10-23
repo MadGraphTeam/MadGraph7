@@ -45,7 +45,10 @@ impl BlockInput {
         let raw: RawBlockInput = serde_json::from_str(text)
             .map_err(|error| DagError::Malformed(format!("block tables: {error}")))?;
         if raw.schema != BLOCK_INPUT_SCHEMA {
-            return Err(DagError::Malformed(format!("block schema {:?}", raw.schema)));
+            return Err(DagError::Malformed(format!(
+                "block schema {:?}",
+                raw.schema
+            )));
         }
         let label_reps: HashMap<u8, Option<i32>> = raw.label_reps.into_iter().collect();
         let endpoints = raw
@@ -264,7 +267,10 @@ fn block_colour_flow(
 }
 
 /// `identity_pairing_sign`.
-fn identity_pairing_sign(fundamentals: &[Option<u8>], antifundamentals: &[Option<u8>]) -> DagResult<i32> {
+fn identity_pairing_sign(
+    fundamentals: &[Option<u8>],
+    antifundamentals: &[Option<u8>],
+) -> DagResult<i32> {
     let key = |item: &Option<u8>| (item.is_none(), item.unwrap_or(0));
     let mut starts = fundamentals.to_vec();
     let mut ends = antifundamentals.to_vec();
@@ -341,7 +347,9 @@ impl ColumnarDag {
                 species.pdg,
             ));
         }
-        let mut parity: Vec<Option<bool>> = (0..n).map(|id| (self.c_source[id] == 1).then_some(false)).collect();
+        let mut parity: Vec<Option<bool>> = (0..n)
+            .map(|id| (self.c_source[id] == 1).then_some(false))
+            .collect();
         let mut order: Vec<usize> = (0..self.interaction_count()).collect();
         order.sort_by_key(|id| self.c_mask[self.i_result[*id] as usize].count_ones());
         for id in order {
@@ -380,7 +388,9 @@ impl ColumnarDag {
     fn u1_grades(&self, tables: &BlockInput) -> Vec<Option<i64>> {
         let n = self.current_count();
         let u1 = tables.u1_subtraction_kind.as_str();
-        let mut grade: Vec<Option<i64>> = (0..n).map(|id| (self.c_source[id] == 1).then_some(0)).collect();
+        let mut grade: Vec<Option<i64>> = (0..n)
+            .map(|id| (self.c_source[id] == 1).then_some(0))
+            .collect();
         let mut mixed = vec![false; n];
         let mut order: Vec<usize> = (0..self.interaction_count()).collect();
         order.sort_by_key(|id| self.c_mask[self.i_result[*id] as usize].count_ones());
@@ -416,7 +426,11 @@ impl ColumnarDag {
             if self.c_leg[id] < 0 || self.c_helicity[id] == super::NO_HELICITY {
                 return invalid("block source has no leg or helicity");
             }
-            bits.push((self.c_ancestry[id], self.c_leg[id] as u8, self.c_helicity[id]));
+            bits.push((
+                self.c_ancestry[id],
+                self.c_leg[id] as u8,
+                self.c_helicity[id],
+            ));
         }
         let decode = |ancestry: u64| -> Vec<(u8, i32)> {
             let mut helicities: Vec<(u8, i32)> = bits
@@ -480,7 +494,8 @@ impl ColumnarDag {
                     python_tuple(self.word(first_id))
                 ));
             }
-            let nc_grades: BTreeSet<Option<i64>> = ids.iter().map(|id| grades[*id as usize]).collect();
+            let nc_grades: BTreeSet<Option<i64>> =
+                ids.iter().map(|id| grades[*id as usize]).collect();
             let colour = &self.tables.colours[self.c_colour[first_id] as usize];
             let colour_flow = block_colour_flow(
                 self.word(first_id),

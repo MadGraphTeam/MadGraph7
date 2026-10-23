@@ -14,8 +14,8 @@ use super::colour::ColourEngine;
 use super::input::{DagInput, FlavourOp};
 use super::reuse::canonical_kernel_evaluation;
 use super::{
-    ColourState, ColumnarDag, DagError, DagResult, NO_HELICITY, NO_LEG, Orders, Species,
-    Tables, VertexKey, invalid, unsupported,
+    ColourState, ColumnarDag, DagError, DagResult, NO_HELICITY, NO_LEG, Orders, Species, Tables,
+    VertexKey, invalid, unsupported,
 };
 use std::collections::HashMap;
 use std::hash::{BuildHasherDefault, Hash, Hasher};
@@ -178,7 +178,9 @@ fn ordered_splits(mask: u64) -> Vec<(u64, u64)> {
 fn loop_block_masks(input: &DagInput) -> std::collections::HashSet<u64> {
     let full = input.full_mask;
     let mut allowed = std::collections::HashSet::new();
-    let legs: Vec<u64> = (0..64 - full.leading_zeros()).map(|bit| 1u64 << bit).collect();
+    let legs: Vec<u64> = (0..64 - full.leading_zeros())
+        .map(|bit| 1u64 << bit)
+        .collect();
     for mask in masks_by_size(full).into_iter().rev() {
         if mask & (mask - 1) == 0 || mask == full {
             continue;
@@ -426,27 +428,31 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                         if !vertex.usable {
                             continue;
                         }
-                        let orders = match order_cache.get(&(left.key.orders, right.key.orders, row))
-                        {
-                            Some(orders) => *orders,
-                            None => {
-                                let mut totals = std::collections::BTreeMap::<String, i64>::new();
-                                for (name, value) in dag
-                                    .orders
-                                    .get(left.key.orders)
-                                    .iter()
-                                    .chain(dag.orders.get(right.key.orders).iter())
-                                    .chain(vertex.orders.iter())
-                                {
-                                    *totals.entry(name.to_uppercase()).or_insert(0) += value;
+                        let orders =
+                            match order_cache.get(&(left.key.orders, right.key.orders, row)) {
+                                Some(orders) => *orders,
+                                None => {
+                                    let mut totals =
+                                        std::collections::BTreeMap::<String, i64>::new();
+                                    for (name, value) in dag
+                                        .orders
+                                        .get(left.key.orders)
+                                        .iter()
+                                        .chain(dag.orders.get(right.key.orders).iter())
+                                        .chain(vertex.orders.iter())
+                                    {
+                                        *totals.entry(name.to_uppercase()).or_insert(0) += value;
+                                    }
+                                    let combined: Orders = totals
+                                        .into_iter()
+                                        .filter(|(_, value)| *value != 0)
+                                        .collect();
+                                    let id = dag.orders.intern(combined);
+                                    order_cache
+                                        .insert((left.key.orders, right.key.orders, row), id);
+                                    id
                                 }
-                                let combined: Orders =
-                                    totals.into_iter().filter(|(_, value)| *value != 0).collect();
-                                let id = dag.orders.intern(combined);
-                                order_cache.insert((left.key.orders, right.key.orders, row), id);
-                                id
-                            }
-                        };
+                            };
                         let within = *limit_cache
                             .entry(orders)
                             .or_insert_with(|| input.orders_within_limits(dag.orders.get(orders)));
@@ -502,7 +508,8 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                                 .copied()
                                 .filter(|label| closed.binary_search(label).is_err())
                                 .collect();
-                            let mut all: Vec<u8> = open.iter().chain(closed.iter()).copied().collect();
+                            let mut all: Vec<u8> =
+                                open.iter().chain(closed.iter()).copied().collect();
                             all.sort_unstable();
                             if all != labels {
                                 return invalid(
@@ -546,15 +553,12 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                                 orders,
                                 word,
                             };
-                            let result = dag.add_or_get(&mut table, key, false, NO_LEG, NO_HELICITY);
-                            let vertex_weight = vertex
-                                .colour_weight
-                                .clone()
-                                .map_err(DagError::Invalid)?;
-                            let weight = complex_mul(
-                                complex_mul([1.0, 0.0], vertex_weight),
-                                [1.0, 0.0],
-                            );
+                            let result =
+                                dag.add_or_get(&mut table, key, false, NO_LEG, NO_HELICITY);
+                            let vertex_weight =
+                                vertex.colour_weight.clone().map_err(DagError::Invalid)?;
+                            let weight =
+                                complex_mul(complex_mul([1.0, 0.0], vertex_weight), [1.0, 0.0]);
                             if !interaction_keys.insert((
                                 row,
                                 left_id,

@@ -16,10 +16,7 @@ use super::recursion::Dag;
 use super::{DagError, DagResult, invalid};
 
 /// `_fermion_input_orientation_sign`.
-fn orientation_sign(
-    left: &(bool, String, bool),
-    right: &(bool, String, bool),
-) -> DagResult<f64> {
+fn orientation_sign(left: &(bool, String, bool), right: &(bool, String, bool)) -> DagResult<f64> {
     let (left_fermion, left_orientation, left_owned) = left;
     let (right_fermion, right_orientation, right_owned) = right;
     if !(left_fermion & right_fermion) {
@@ -85,7 +82,8 @@ pub fn apply_colour_flow_signs(input: &DagInput, dag: &mut Dag) -> DagResult<()>
         let mut sign = if inversions % 2 == 1 { -1.0 } else { 1.0 };
         sign *= orientation_sign(left_contract, right_contract)?;
         if sign < 0.0 {
-            interaction.colour_weight = [-interaction.colour_weight[0], -interaction.colour_weight[1]];
+            interaction.colour_weight =
+                [-interaction.colour_weight[0], -interaction.colour_weight[1]];
         }
     }
     Ok(())

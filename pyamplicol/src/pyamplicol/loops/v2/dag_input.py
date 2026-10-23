@@ -47,7 +47,7 @@ interaction (vertex kind and particles, inputs, result, coupling and colour
 weight bits, backend, full-network flag, evaluation group, factor bits),
 resolved through the tables so interning order does not enter.
 ``blocks_digest`` does the same for ``Block`` records (and the clone lines of
-the CT program). S1′ (loop-block DAG + blocks) and S1″ (CT DAG + blocks +
+the CT program). S1' (loop-block DAG + blocks) and S1'' (CT DAG + blocks +
 clone lines) are ``stage_digest`` of those parts; the Python side gets its
 DAG digest by encoding its ``GenericDAG`` (``NativeDag.from_dag``).
 """
@@ -138,8 +138,14 @@ def _call(operation: Any, *args: Any) -> Any:
         raise
 
 
+def _pdg(leg: Any) -> int:
+    if leg.outgoing_pdg is None:
+        raise NativeDagUnsupported("legs without an outgoing particle id")
+    return int(leg.outgoing_pdg)
+
+
 def _bits(value: float) -> int:
-    return struct.unpack("<Q", struct.pack("<d", float(value)))[0]
+    return int(struct.unpack("<Q", struct.pack("<d", float(value)))[0])
 
 
 def _pair_bits(pair: Sequence[float]) -> list[int]:
@@ -479,7 +485,7 @@ def dag_input(
             "loop-request blocks of a process without coloured external legs"
         )
     rights = _right_particles_by_left(model, color_accuracy="full")
-    vertex_rows: dict[tuple[int, tuple[int, int, int]], int] = {}
+    vertex_rows: dict[tuple[int, tuple[int, ...]], int] = {}
     vertices: list[Any] = []
     accepting = []
     for left in sorted(rights):
@@ -495,7 +501,7 @@ def dag_input(
     pdgs = sorted(
         {int(pdg) for pdg in model.particles}
         | {int(p) for vertex in vertices for p in vertex.particles}
-        | {int(leg.outgoing_pdg) for leg in process.legs}
+        | {_pdg(leg) for leg in process.legs}
     )
     coupling_identities: dict[Any, int] = {}
     masks, rule = _reachability_tables(
@@ -508,7 +514,7 @@ def dag_input(
     colours: list[list[Any]] = []
     sources = []
     for leg in process.legs:
-        pdg = int(leg.outgoing_pdg)
+        pdg = _pdg(leg)
         source = model._source_ir(pdg)
         states = []
         for declared in source.states:
@@ -533,11 +539,11 @@ def dag_input(
         "legs": [
             {
                 "label": int(leg.label),
-                "pdg": int(leg.outgoing_pdg),
+                "pdg": _pdg(leg),
                 "initial": bool(leg.is_initial),
                 "statistics": str(leg.statistics),
                 "colour_role": str(leg.color_role),
-                "rep": _known_color_representation(model, int(leg.outgoing_pdg)),
+                "rep": _known_color_representation(model, _pdg(leg)),
             }
             for leg in process.legs
         ],
@@ -569,7 +575,7 @@ def dag_input(
         "admitted_masks": masks,
         "block_rule": rule,
         "early_sources_only": any(
-            int(leg.outgoing_pdg) in ignored_particles for leg in process.legs
+            _pdg(leg) in ignored_particles for leg in process.legs
         ),
     }
     return json.dumps(payload, separators=(",", ":"))
@@ -583,7 +589,7 @@ def block_input(process: CanonicalProcessIR, model: Any) -> str:
     for leg in process.legs:
         if leg.outgoing_pdg is None:
             continue
-        pdg = int(leg.outgoing_pdg)
+        pdg = _pdg(leg)
         rep = _known(model.color_rep, pdg)
         label_reps.append([int(leg.label), None if rep is None else int(rep)])
         if rep is not None and abs(int(rep)) == 3 and model.is_fermion(pdg):
@@ -614,7 +620,7 @@ def block_input(process: CanonicalProcessIR, model: Any) -> str:
 # ------------------------------------------------------------------ columns
 
 
-def _column(values: Iterable[Any], dtype: str) -> array:
+def _column(values: Iterable[Any], dtype: str) -> array[Any]:
     column = array(_TYPECODES[dtype], values)
     if sys.byteorder != "little":
         column.byteswap()
@@ -803,7 +809,7 @@ def encode_dag(dag: GenericDAG) -> bytes:
     return _MAGIC + struct.pack("<Q", len(encoded)) + encoded + bytes(payload)
 
 
-def _read_container(data: bytes) -> tuple[dict[str, Any], dict[str, array]]:
+def _read_container(data: bytes) -> tuple[dict[str, Any], dict[str, array[Any]]]:
     if data[:8] != _MAGIC:
         raise ValueError("not a native DAG container")
     (length,) = struct.unpack_from("<Q", data, 8)
@@ -963,7 +969,7 @@ class NativeDag:
         return bytes(self._handle.columns())
 
     def digest(self) -> str:
-        """Flat-record SHA-256 of the DAG (the DAG part of S1′/S1″)."""
+        """Flat-record SHA-256 of the DAG (the DAG part of S1'/S1'')."""
 
         return str(self._handle.digest())
 
@@ -978,7 +984,7 @@ class NativeDag:
         from .blocks import _checked_kernel_variant
 
         variant = _checked_kernel_variant("plain", kernel_variant)  # type: ignore[arg-type]
-        out = []
+        out: list[Block] = []
         for block in _call(self._handle.blocks, self._tables()):
             colour = block["colour"]
             key = BlockKey(
@@ -1018,9 +1024,7 @@ class NativeDag:
                     block_class="plain",
                     kernel_variant=variant,
                     rows=tuple(
-                        BlockRow(
-                            tuple(tuple(pair) for pair in helicities), current_id
-                        )
+                        BlockRow(tuple(tuple(pair) for pair in helicities), current_id)
                         for helicities, current_id in block["rows"]
                     ),
                     connection_sign=block["connection_sign"],
@@ -1112,12 +1116,12 @@ def blocks_digest(
         out += struct.pack("<qI", state.sector_id, len(state.line_groups))
         out += b"".join(struct.pack("<q", group) for group in state.line_groups)
         out += struct.pack("<I", len(state.basis_key))
-        for part in state.basis_key:
-            _put_str(out, part)
+        for basis in state.basis_key:
+            _put_str(out, basis)
         for parts in (state.traces, state.lines):
             out += struct.pack("<I", len(parts))
-            for part in parts:
-                _put_labels(out, part)
+            for labels in parts:
+                _put_labels(out, labels)
         if not isinstance(key.spin_state, int):
             raise NativeDagUnsupported(f"tuple spin state {key.spin_state!r}")
         out += struct.pack("<bi", key.chirality, key.spin_state)
@@ -1151,7 +1155,8 @@ def blocks_digest(
         for row in block.rows:
             out += struct.pack("<I", len(row.helicities))
             out += b"".join(
-                struct.pack("<Bi", label, helicity) for label, helicity in row.helicities
+                struct.pack("<Bi", label, helicity)
+                for label, helicity in row.helicities
             )
             out += struct.pack("<I", row.current_id)
         out += struct.pack("<bb", block.connection_sign, block.pairing_sign)
@@ -1172,7 +1177,7 @@ def blocks_digest(
 
 
 def stage_digest(stage: str, dag_digest: str, blocks_digest_: str) -> str:
-    """S1′ (``stage="S1'"``) or S1″ (``"S1''"``) of a DAG and its blocks."""
+    """S1' (``stage="S1'"``) or S1'' (``"S1''"``) of a DAG and its blocks."""
 
     if stage not in ("S1'", "S1''"):
         raise ValueError(f"unknown stage {stage!r}")

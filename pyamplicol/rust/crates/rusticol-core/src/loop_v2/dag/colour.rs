@@ -169,10 +169,18 @@ impl<'a> ColourEngine<'a> {
         let particles = &self.input.particles;
         let representation = particles[vertex.particles[2] as usize].loop_rep;
         let mut coloured = self.coloured(ordered);
-        let mut traces: BTreeSet<Vec<u8>> =
-            left.traces.iter().chain(right.traces.iter()).cloned().collect();
-        let mut lines: BTreeSet<Vec<u8>> =
-            left.lines.iter().chain(right.lines.iter()).cloned().collect();
+        let mut traces: BTreeSet<Vec<u8>> = left
+            .traces
+            .iter()
+            .chain(right.traces.iter())
+            .cloned()
+            .collect();
+        let mut lines: BTreeSet<Vec<u8>> = left
+            .lines
+            .iter()
+            .chain(right.lines.iter())
+            .cloned()
+            .collect();
         if let Some(sides) = vertex.absorbing {
             let (strings, word) = self.split_singlet_strings(&coloured, sides)?;
             lines.extend(strings);
@@ -210,13 +218,19 @@ impl<'a> ColourEngine<'a> {
                     if self.is_fundamental(label) {
                         closed.push(Vec::new());
                     }
-                    closed.last_mut().expect("rotated starts at a fundamental").push(label);
+                    closed
+                        .last_mut()
+                        .expect("rotated starts at a fundamental")
+                        .push(label);
                 }
                 lines.extend(closed);
             } else {
                 let word: Vec<u8> = coloured.iter().rev().copied().collect();
                 let smallest = *word.iter().min().expect("closing word is not empty");
-                let start = word.iter().position(|label| *label == smallest).expect("min");
+                let start = word
+                    .iter()
+                    .position(|label| *label == smallest)
+                    .expect("min");
                 let mut trace = word[start..].to_vec();
                 trace.extend_from_slice(&word[..start]);
                 traces.insert(trace);
