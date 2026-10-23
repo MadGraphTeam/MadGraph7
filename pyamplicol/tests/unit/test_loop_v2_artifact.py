@@ -21,9 +21,12 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   at full colour (g g > g g; d d~ > g g with s s~ > g g served as an exact
   flavour member) and at leading colour, in binary64 (virtuals held to
   1e-12 unless the value's own stability estimate E exceeds it, then to
-  E <= 1e-9; Borns to 1e-12), in double-double (1e-24) and, for g g > g g,
-  in arbitrary precision (60 digits, 1e-40); the NLC, LC/NLC member and
-  five-leg records nightly, the full-colour ones also in 60 digits;
+  E <= 1e-9; Borns to 1e-12) and in double-double (1e-24); the NLC, LC/NLC
+  member and five-leg records nightly, the full-colour ones also in
+  arbitrary precision (60 digits, 1e-40);
+* at non-default model parameters (aS = 0.13, MT = 150) g g > g g (inclusive,
+  colour histories, spin classes) equals a legacy artifact at the same
+  parameters, whether they are passed at load or set afterwards;
 * the pole selection (``PoleSelection``, TOML/CLI/API/results/artifact):
   ``poles="none"`` returns the finite parts with absent poles, also for
   correlated and resolved outputs, from the same artifact that serves
@@ -882,7 +885,7 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
 
     # The legacy virtual runtime, which the standalone SDK wraps, names the
     # plan v4 loader instead of misreading the artifact.
-    with pytest.raises(ValueError, match="load_loop_v2_artifact"):
+    with pytest.raises(ValueError, match=r"loop-runtime\.v4\) are not evaluated by this"):
         loop_native.NativeVirtualRuntime(str(full_colour), process="gg")
 
     def shuffle_buckets(physics):
@@ -1396,7 +1399,7 @@ def _case_id(value) -> str:
 @pytest.mark.parametrize(
     "name,carriers",
     (
-        ("gg_gg", ALL_CARRIERS),
+        ("gg_gg", BINARY64_AND_DD),
         ("ddgg_ssgg", BINARY64_AND_DD),
         ("gg_gg_lc", BINARY64_AND_DD),
     ),
@@ -1409,16 +1412,131 @@ def test_public_correlated_and_resolved_calls_equal_legacy_o1(
     every joint complex spin source and (where recorded) the helicity-resolved
     outputs, for the representative and its exact flavour member (served by
     the representative: one artifact process), in binary64 with one rotation
-    and the reduction-direction check, in double-double and (g g > g g here,
-    the other full-colour records nightly) in 60-digit arbitrary precision."""
+    and the reduction-direction check and in double-double (the full-colour
+    records in 60-digit arbitrary precision nightly)."""
 
     _assert_public_o1(observables_artifact, name, carriers)
+
+
+NON_DEFAULT_PARAMETERS = {"aS": "0.13", "MT": "150"}
+LEGACY_REFERENCE = {"arithmetic": "arbitrary", "precision": 40}
+
+
+@pytest.mark.loop_physics
+def test_public_v2_runtime_at_non_default_model_parameters(
+    observables_artifact, loop_sm_compiled_model, loop_native, tmp_path
+):
+    """Every other public-path test runs at loop_sm's defaults (aS = 0.118,
+    MT = 173, also the frozen fixtures' values), where a runtime that ignored
+    its parameters would pass. At aS = 0.13 and MT = 150, g g > g g at full
+    colour through the v2 artifact of its observables record equals a legacy
+    artifact generated here and evaluated at the same parameters in 40
+    digits, at the record's first point: the inclusive virtual, every
+    declared colour history and both spin classes, in binary64 (the user's
+    rule) and double-double (1e-24). Parameters passed at load and through
+    ``set_model_parameters`` give bitwise-identical binary64 values; the
+    resolved rows (double-double) sum to the inclusive value; the Born
+    scales as aS^2 against the defaults."""
+
+    from decimal import localcontext
+
+    from pyamplicol import Runtime
+    from pyamplicol.correlators import CorrelatedRequest
+
+    record = _observables_record("gg_gg")
+    entries = (("gg", "g g > g g"),)
+    # The legacy engine's own post-build validation fails on these
+    # correlators at the default tolerances (a known oracle limitation,
+    # DESIGN WP2.6); the reference is evaluated in 40 digits instead.
+    card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries).replace(
+        'engine = "v2"', 'engine = "legacy"'
+    )
+    legacy_artifact = _generate(
+        card.replace("post_build_validation = true", "post_build_validation = false"),
+        tmp_path,
+        entries,
+        _correlators(record),
+    )
+    points, scales = record["points"][:1], record["scales_squared"][:1]
+    requests = {
+        name: CorrelatedRequest(name, {})
+        for name in ("born", *(history["id"] for history in record["histories"]))
+    } | {
+        f"spin:{legs}": CorrelatedRequest("born", _spin_vectors(record, legs))
+        for legs in ("3", "3,4")
+    }
+    legacy = Runtime.load(
+        legacy_artifact, process="gg", model_parameters=NON_DEFAULT_PARAMETERS
+    )
+    expected = {
+        "inclusive": legacy.evaluate(points, mu_r2=scales, **LEGACY_REFERENCE),
+        **legacy.evaluate_correlated_many(
+            points, requests, mu_r2=scales, **LEGACY_REFERENCE
+        ),
+    }
+    output = observables_artifact("gg_gg")
+    runtime = Runtime.load(
+        output, process="gg", model_parameters=NON_DEFAULT_PARAMETERS
+    )
+    later = Runtime.load(output, process="gg")
+    later.set_model_parameters(NON_DEFAULT_PARAMETERS)
+    for carrier in BINARY64_AND_DD:
+        options = CARRIER_OPTIONS[carrier]
+        results = {
+            "inclusive": runtime.evaluate(points, mu_r2=scales, **options),
+            **runtime.evaluate_correlated_many(points, requests, mu_r2=scales, **options),
+        }
+        for label, result in results.items():
+            target = {
+                "born": expected[label].born_values,
+                "virtual": expected[label].values,
+            }
+            _assert_record(result, target, 0, carrier, label)
+        if carrier == "double":
+            again = {
+                "inclusive": later.evaluate(points, mu_r2=scales, **options),
+                **later.evaluate_correlated_many(
+                    points, requests, mu_r2=scales, **options
+                ),
+            }
+            for label, result in results.items():
+                assert again[label].born_values == result.born_values, label
+                assert again[label].values == result.values, label
+    inclusive = runtime.evaluate(points, mu_r2=scales, arithmetic="double-double")
+    resolved = runtime.evaluate_resolved(
+        points, mu_r2=scales, arithmetic="double-double"
+    )
+    default = Runtime.load(output, process="gg", model_parameters=GG_PARAMETERS)
+    born = default.evaluate(points, mu_r2=scales, arithmetic="double-double")
+    with localcontext(prec=80):
+        ((value,),) = inclusive.born_values
+        ((reference,),) = born.born_values
+        ratio = (Decimal("0.13") / Decimal("0.118")) ** 2
+        assert abs(value / reference - ratio) <= DOUBLE_DOUBLE_TOLERANCE * ratio
+        rows = sum(
+            (_parts(x)[0] for row in resolved.born_values[0][0] for x in row),
+            Decimal(0),
+        )
+        assert abs(rows - value) <= DOUBLE_DOUBLE_TOLERANCE * value
+        ((laurent,),) = inclusive.values
+        scale = max(abs(Decimal(c)) for c in laurent)
+        for k, coefficient in enumerate(laurent):
+            summed = sum(
+                (
+                    _parts(entry[k])[0]
+                    for row in resolved.values[0][0]
+                    for entry in row
+                ),
+                Decimal(0),
+            )
+            assert abs(summed - Decimal(coefficient)) <= DOUBLE_DOUBLE_TOLERANCE * scale
 
 
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize(
     "name,carriers",
     (
+        ("gg_gg", ("arbitrary",)),
         ("ddgg_ssgg", ("arbitrary",)),
         ("gg_gg_nlc", BINARY64_AND_DD),
         ("ddgg_ssgg_lc", BINARY64_AND_DD),
