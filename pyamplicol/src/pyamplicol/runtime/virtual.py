@@ -1724,7 +1724,9 @@ class V2ObservablesRuntime:
             )
             if split:
 
-                def entry(origin: str, name: str, sector: Any, result=result) -> Any:
+                def entry(
+                    origin: str, name: str, sector: Any, result: Any = result
+                ) -> Any:
                     return tuple(
                         tuple(
                             self._laurent(

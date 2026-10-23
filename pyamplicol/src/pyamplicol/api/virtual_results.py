@@ -1096,7 +1096,9 @@ class ResolvedVirtualEvaluation:
         )
         with_poles = computes_poles(self.poles)
 
-        def summed(point):
+        def summed(
+            point: tuple[tuple[tuple[LaurentCoefficients, ...], ...], ...],
+        ) -> tuple[LaurentCoefficients, ...]:
             return tuple(
                 LaurentCoefficients(
                     *(
