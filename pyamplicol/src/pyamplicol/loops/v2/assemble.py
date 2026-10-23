@@ -537,7 +537,10 @@ def _canonical_symbols(count: int) -> list[Any]:
     then packed in four bytes as (k mod 256, k div 256 mod 256, block), so
     symbol k sorts by k's own bytes in every process history. (Two blocks
     order by their block numbers' low byte, which wraps only beyond 2^24
-    symbols.) Creating a block costs about 0.2 s."""
+    symbols.) Creating a block costs about 0.2 s. Each new block is checked
+    (``_check_canonical_block``): a misaligned block, or a Symbolica whose
+    term order no longer follows those bytes, raises instead of silently
+    making generation depend on the process history again."""
 
     from symbolica import Expression, S
 
@@ -546,10 +549,34 @@ def _canonical_symbols(count: int) -> list[Any]:
         padding = -len(Expression.get_all_symbol_names()) % _CANONICAL_BLOCK
         for k in range(padding):
             S(f"pyamplicol_v2_canonical::pad{start}_{k}")
-        _CANONICAL_SYMBOLS.extend(
+        block = [
             S(f"pyamplicol_v2_canonical::c{start + k}") for k in range(_CANONICAL_BLOCK)
-        )
+        ]
+        _check_canonical_block(block)
+        _CANONICAL_SYMBOLS.extend(block)
     return _CANONICAL_SYMBOLS[:count]
+
+
+# Block offsets whose relative order changes under every misalignment of the
+# block by 1 to 2^16 - 1 ids (both byte boundaries and the block's end).
+_ALIGNMENT_PROBE = (0, 1, 255, 256, 257, 511, 65280, 65535)
+
+
+def _check_canonical_block(block: list[Any]) -> None:
+    """Raise unless a sum of the probe symbols of a fresh canonical block
+    normalises in the order of their offsets' bytes (low byte first): the
+    order of an aligned block in every process history."""
+
+    from symbolica import Expression
+
+    probe = sum((block[k] for k in _ALIGNMENT_PROBE), Expression.num(0))
+    expected = sorted(_ALIGNMENT_PROBE, key=lambda k: (k % 256, k // 256))
+    if [str(term) for term in probe] != [str(block[k]) for k in expected]:
+        raise RuntimeError(
+            "canonical Symbolica symbols are not ordered by their block offset "
+            f"(got {probe}): the symbol ids are misaligned or Symbolica's term "
+            "order changed, so tree stages would depend on the process history"
+        )
 
 
 def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
@@ -604,13 +631,17 @@ def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
     old = [*parameters, *heads, *arguments]
     renamed = dict(zip(old, _canonical_symbols(len(old)), strict=True))
     tail = S("pyamplicol_v2_canonical::args___")
-    replacements = [
-        *(Replacement(symbol, renamed[symbol]) for symbol in (*parameters, *arguments)),
-        *(Replacement(head(tail), renamed[head](tail)) for head in heads),
+    # Two passes: a single ``replace_multiple`` does not descend into a call
+    # its head rule replaced, so the arguments of a model-function call kept
+    # their old symbols (the evaluator then refused them).
+    symbols = [
+        Replacement(symbol, renamed[symbol]) for symbol in (*parameters, *arguments)
     ]
+    calls = [Replacement(head(tail), renamed[head](tail)) for head in heads]
 
     def rename(expression: Any) -> Any:
-        return expression.replace_multiple(replacements)
+        expression = expression.replace_multiple(symbols)
+        return expression.replace_multiple(calls) if calls else expression
 
     return (
         [rename(expression) for expression in stage.output_expressions],
@@ -2292,7 +2323,9 @@ class _PointEvaluation:
                         strict=True,
                     )
                 )
-                for lane in self.families.keys() | rotated.families.keys()
+                # Insertion order, not a set (the budget's summation order;
+                # a set's follows PYTHONHASHSEED).
+                for lane in dict.fromkeys([*self.families, *rotated.families])
             }
             local = [
                 differences(

@@ -1392,7 +1392,10 @@ class ColumnPlan:
                         strict=True,
                     )
                 )
-                for lane in reference.families.keys() | evaluation.families.keys()
+                # Insertion order, not a set: the budget sums its lanes in
+                # this order, and a set's follows the string hashes
+                # (PYTHONHASHSEED moved E in the last ulp).
+                for lane in dict.fromkeys([*reference.families, *evaluation.families])
             }
             changes = [
                 differences(result.components[name], other.components[name])

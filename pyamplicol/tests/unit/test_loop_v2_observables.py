@@ -667,7 +667,7 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
     average = observables.slice.normalisation.average
     r2 = 0.0  # the largest |R2| over legs and factors, in physical units
 
-    def bound(run, relative: float | None) -> list[float]:
+    def ward_bound(run, relative: float | None) -> list[float]:
         """Per Laurent coefficient: ``relative`` (None: binary64, 1e-11) of
         the cancellation's scale, the physical scale or the R2 part where
         it cancels a larger bare part (c = i on u u~ > g g g); in binary64
@@ -713,7 +713,7 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
                 precision=native_precision,
             )
             out.append((result[INCLUSIVE], relative))
-        return [(run, bound(run, relative)) for run, relative in out]
+        return [(run, ward_bound(run, relative)) for run, relative in out]
 
     # The Python reference executor on the first leg; natively every leg (the
     # executors share the Python-side Ward trees, and native = Python is
@@ -817,19 +817,24 @@ LEGACY_TOLERANCE = {"double": 1e-12, "arbitrary-200": 1e-40}
 # held to 1e-12 always (E estimates the virtual). The rule applies to every
 # value alike, so the outcome does not depend on which values are
 # ill-conditioned in a given build or on the process history (tree stages
-# are generated history-independently, ``assemble._canonical_stage``).
+# are generated history-independently, ``assemble._canonical_stage``, and
+# the loop kernels' terms are in a canonical order,
+# ``reference_executor._term_order``).
 ESTIMATE_CAP = 1e-9
 DOUBLE_DOUBLE_TOLERANCE = 1e-24
 
 
-def _o1_bounds(result, carrier: str) -> tuple[float, float]:
-    """(Born, virtual) relative bounds of one O1 value (the rule above)."""
+def _o1_bounds(result, carrier: str, estimate=None) -> tuple[float, float]:
+    """(Born, virtual) relative bounds of one O1 value (the rule above);
+    ``estimate`` replaces the value's own E (a resolved row's E over its
+    sectors that are not structural zeros, ``_resolved_estimate``)."""
 
     tolerance = LEGACY_TOLERANCE[carrier]
     if carrier != "double":
         return tolerance, tolerance
     assert result.stability is not None, "every binary64 O1 run carries checks"
-    estimate = result.stability.relative
+    if estimate is None:
+        estimate = result.stability.relative
     if estimate <= tolerance:
         return tolerance, tolerance
     return tolerance, min(estimate, ESTIMATE_CAP)
@@ -1151,8 +1156,12 @@ def assert_helicity_resolved_legacy(
     NLC, for the representative and a flavour member (s s~ > g g through
     d d~ > g g). Each row is held relative to its own scale (per Born order
     set and per virtual sector), a structural-zero row relative to the
-    point's largest; where a row's estimate exceeds 1e-12 every row runs
-    natively in DoubleFloat within 1e-24. The legacy colour anchors are
+    point's largest and within the carrier's tolerance whatever the row's
+    estimate (its relative E is measured against the row's rounding residue
+    and says nothing; the option the user signed off). A row's E is taken
+    over its sectors that are not structural zeros; where it exceeds 1e-12
+    every row runs natively in DoubleFloat within 1e-24. The legacy colour
+    anchors are
     diagram colour tensors, v2's are Born basis elements, so the colour axis
     is compared through its sum (design §1.6 decision 3, open)."""
 
@@ -1169,9 +1178,12 @@ def assert_helicity_resolved_legacy(
                 observables, record, runner, executor, CARRIERS[carrier], points
             ):
                 generated.setdefault(index, set()).add(row)
-                born, virtual = _o1_bounds(value, carrier)
-                if virtual > born and not _structural_zero(resolved_record, row, index):
-                    ill = True
+                born, virtual = _o1_bounds(
+                    value,
+                    carrier,
+                    _resolved_estimate(value, resolved_record, row, index),
+                )
+                ill = ill or virtual > born
                 _assert_resolved_row(value, resolved_record, row, index, born, virtual)
             for index in generated:
                 rows = generated[index]
@@ -1242,6 +1254,34 @@ def _resolved_targets(resolved_record, row, index) -> tuple[list, list]:
     return born, virtual
 
 
+def _resolved_estimate(value, resolved_record, row, index):
+    """A binary64 row's own E over its virtual sectors that are not structural
+    zeros (None outside binary64): a structural-zero sector's relative E is
+    measured against its rounding residue (measured up to 3e16), so it would
+    neither bound that sector (``_assert_resolved_row`` holds it to the
+    carrier's tolerance of the point's largest) nor say anything about the
+    row's other sectors."""
+
+    from pyamplicol.loops.v2.stability import relative
+
+    if value.stability is None:
+        return None
+    _born, virtual = _resolved_targets(resolved_record, row, index)
+    _born_scale, virtual_scale = _resolved_scales(resolved_record, index)
+    floor = Decimal(str(LEGACY_TOLERANCE["arbitrary-200"]))
+    stability = value.stability
+    keys = list(value.components["virtual"])
+    assert len(keys) == len(virtual)
+    return max(
+        (
+            relative({key: stability.reference[key]}, {key: stability.absolute[key]})
+            for key, targets in zip(keys, virtual, strict=True)
+            if max(map(_magnitude, targets)) > floor * virtual_scale
+        ),
+        default=0.0,
+    )
+
+
 def _structural_zero(resolved_record, row, index) -> bool:
     """A row whose 200-bit legacy Born and virtual are below 1e-40 of the
     point's largest (the legacy rounding residue of an exact zero)."""
@@ -1261,7 +1301,8 @@ def _assert_resolved_row(
     row's largest Born order (within ``born_tolerance``), each virtual sector
     relative to its largest coefficient on the row (within
     ``virtual_tolerance``, default ``born_tolerance``); a structural zero (Born
-    or sector) relative to the point's largest instead."""
+    or sector) relative to the point's largest and within ``born_tolerance``
+    (the carrier's own tolerance: no estimate applies to it)."""
 
     born, virtual = _resolved_targets(resolved_record, row, index)
     born_scale, virtual_scale = _resolved_scales(resolved_record, index)
@@ -1273,7 +1314,7 @@ def _assert_resolved_row(
         tolerance = Decimal(str(tolerance))
         scale = max(map(_magnitude, targets))
         if scale <= floor * point_scale:
-            scale = point_scale
+            scale, tolerance = point_scale, Decimal(str(born_tolerance))
         for actual, target in zip(actuals, targets, strict=True):
             assert _deviation(actual, target) <= tolerance * scale, (row, index)
 
@@ -1288,8 +1329,13 @@ def _assert_resolved_row(
 
 # A fresh interpreter creates ``argv[2]`` unrelated Symbolica symbols, which
 # shifts the id of every later symbol, then generates u u~ > g g g and prints
-# its binary64 totals at the first legacy point (bit patterns).
+# its binary64 totals at the first legacy point (bit patterns), digests of its
+# exported plan program, of its kernel constants' keys (in their numbering)
+# and of the same program's kernel records with
+# Symbolica's own term order (``_term_order`` replaced by a constant key: the
+# stable sort keeps the expansion's order).
 _HISTORY_PROBE = """
+import hashlib
 import json
 import sys
 
@@ -1300,7 +1346,9 @@ for k in range(unrelated):
     S(f"history::unrelated{k}")
 
 from pyamplicol.loops.native import load_loop_native
+from pyamplicol.loops.v2 import reference_executor
 from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+from pyamplicol.loops.v2.plan_export import export_plan
 from pyamplicol.models.loading import load_compiled_model
 from tools.loop_reference import legacy_capture
 
@@ -1322,19 +1370,46 @@ result = slice_.evaluate(
     precision=Precision.double(),
 )
 values = [complex(x) for x in result.totals]
-print(json.dumps([[z.real.hex(), z.imag.hex()] for z in values]))
+
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value).encode()).hexdigest()
+
+
+plan = export_plan(slice_)
+program = plan.program
+reference_executor._term_order = lambda term: 0
+raw = export_plan(slice_).program["kernels"]
+print(
+    json.dumps(
+        {
+            "totals": [[z.real.hex(), z.imag.hex()] for z in values],
+            "program": digest(program),
+            "kernels": digest(program["kernels"]),
+            "constants": digest([repr(key) for key in plan.constants]),
+            "raw kernels": digest(raw),
+        }
+    )
+)
 """
 
 
 def test_generation_does_not_depend_on_the_process_history(loop_sm_compiled_model):
-    """Two fresh interpreters, one of which first creates 300 unrelated
-    Symbolica symbols, generate u u~ > g g g and evaluate it in binary64 with
-    bitwise identical totals. Symbolica sorts the terms of a sum by the
-    packed bytes of its symbols' ids, so before the tree stages were
-    generated on canonical symbols (``assemble._canonical_stage``) the
-    totals differed after 0, 77 and 300 unrelated symbols (measured), and
-    the binary64 O1 values moved with the earlier generations of a test
-    process."""
+    """Three fresh interpreters, two of which first create 250 and 300
+    unrelated Symbolica symbols, generate u u~ > g g g: the exported plan
+    programs (kernel records included) and kernel constants are identical,
+    and the binary64 totals bitwise identical.
+
+    Symbolica sorts the terms of a sum by the packed bytes of its symbols'
+    ids. Before the tree stages were generated on canonical symbols
+    (``assemble._canonical_stage``) the totals differed after 0, 77 and 300
+    unrelated symbols (measured), and the binary64 O1 values moved with the
+    earlier generations of a test process. Before the kernel terms were put
+    in a canonical order (``reference_executor._term_order``), 250 unrelated
+    symbols changed 685 of the 1594 exported kernel outputs (term order, 517
+    of them, and constant numbering) and moved 6 of the 19 totals (up to
+    7.4e-13 relative; measured). The probe's raw kernel records, in
+    Symbolica's order, still differ after 250 (it discriminates)."""
 
     import subprocess
     import sys
@@ -1356,14 +1431,18 @@ def test_generation_does_not_depend_on_the_process_history(loop_sm_compiled_mode
             stderr=subprocess.PIPE,
             text=True,
         )
-        for unrelated in (0, 300)
+        for unrelated in (0, 250, 300)
     ]
     outputs = []
     for run in runs:
         out, err = run.communicate(timeout=900)
         assert run.returncode == 0, err[-4000:]
-        outputs.append(out.strip().splitlines()[-1])
-    assert outputs[0] == outputs[1]
+        outputs.append(json.loads(out.strip().splitlines()[-1]))
+    first, kernel_shift, _tree_shift = outputs
+    assert first["raw kernels"] != kernel_shift["raw kernels"]
+    for output in outputs[1:]:
+        for item in ("program", "kernels", "constants", "totals"):
+            assert output[item] == first[item], item
 
 
 # ------------------------------------------------------------------ public surface
