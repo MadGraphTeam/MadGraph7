@@ -64,7 +64,7 @@
 
 use super::master_cache::{MasterCache, MasterStatistics};
 use super::reduction::{ReductionBatch, Reductions};
-use super::v2_poles::uv_residue;
+use super::v2_poles::UvResidues;
 use super::*;
 use crate::FourMomentum;
 pub use ninjars_symbolica::PoleSelection;
@@ -417,13 +417,12 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
                 * &(0..4).fold(x.one(), |power, _| power * &inverse)
         });
         let width = ncoeff(rank);
+        let residues = (poles == Poles::Split).then(|| UvResidues::new(n, rank));
         for (lane, (&(group, row), mut outcome)) in
             members.iter().zip(engine.reduce(&input)?).enumerate()
         {
-            if poles == Poles::Split && outcome.value.is_some() {
-                outcome.uv = Some(uv_residue(
-                    n,
-                    rank,
+            if let (Some(residues), true) = (&residues, outcome.value.is_some()) {
+                outcome.uv = Some(residues.residue(
                     &input.shifts[lane * 4 * n..(lane + 1) * 4 * n],
                     &input.masses[lane * n..(lane + 1) * n],
                     &input.coefficients[lane * width..(lane + 1) * width],

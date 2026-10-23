@@ -14,13 +14,15 @@ points, as ``loop_v2_schedules.py measure``) with
   (``generic-both``, ``generic-uv``): the upstream route to separated poles,
   which retains the scaleless bubbles the fast engine drops.
 
-Per plan and configuration it records the best of ``--reps`` runs (after one
-untimed run) of the native seconds per point and of the reduction stage, and
-writes them as JSON. The ``uv`` and ``ir`` selections also dress the
-certified-scaleless families (``LoopSlice.scaleless``, a plan of their own):
-``export`` writes that plan, ``<stem>.scaleless.json``, for the processes of
-``loop_v2_schedules.py``, and ``measure --scaleless DIR`` times it (``split``)
-next to each plan.
+The points are exactly light-like rational momenta (every on-shell invariant is
+exactly zero, which the generic engine's masters need); block rows, Born
+components and kernel constants are random. Per plan and configuration it
+records the best of ``--reps`` runs (after one untimed run) of the native
+seconds per point and of the reduction stage, and writes them as JSON. The
+``uv`` and ``ir`` selections also dress the certified-scaleless families
+(``LoopSlice.scaleless``, a plan of their own): ``export`` writes that plan,
+``<stem>.scaleless.json``, for the processes of ``loop_v2_schedules.py``, and
+``measure --scaleless DIR`` times it (``split``) next to each plan.
 
 Usage:
     python tools/loop_v2_poles_cost.py export --output DIR [--process KEY ...]
@@ -32,8 +34,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 import time
+from fractions import Fraction
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,7 +49,8 @@ from tools.loop_v2_schedules import (  # noqa: E402
     NATIVE_STAGES,
     PARAMETERS,
     PROCESSES,
-    _inputs,
+    SCALE_SQUARED,
+    _text,
     compile_loop_sm,
     generate,
 )
@@ -58,6 +63,67 @@ CONFIGURATIONS = {
     "generic-both": ("generic", True, "both"),
     "generic-uv": ("generic", True, "uv"),
 }
+
+
+def _light_like_point(outgoing: int, rng: random.Random) -> list[list[Fraction]]:
+    """A 2 -> ``outgoing`` point of exactly light-like rational momenta
+    (rational unit directions by stereographic projection), so that every
+    on-shell invariant is exactly zero in every carrier: the generic engine's
+    masters take the invariants as given (no on-shell snapping)."""
+
+    def direction() -> tuple[Fraction, Fraction, Fraction]:
+        u = Fraction(rng.randint(-40, 40), rng.randint(5, 40))
+        v = Fraction(rng.randint(-40, 40), rng.randint(5, 40))
+        d = 1 + u * u + v * v
+        return 2 * u / d, 2 * v / d, (1 - u * u - v * v) / d
+
+    while True:
+        final = []
+        for _ in range(outgoing - 1):
+            energy = Fraction(rng.randint(100, 400))
+            x, y, z = direction()
+            final.append([energy, energy * x, energy * y, energy * z])
+        a = -sum(p[0] for p in final)
+        c = -sum(p[3] for p in final)
+        bx = -sum(p[1] for p in final)
+        by = -sum(p[2] for p in final)
+        # p_n = (E1 + E2 + a, bx, by, E1 - E2 + c) is light-like if
+        # (2 E1 + a + c)(2 E2 + a - c) = bx^2 + by^2.
+        t = Fraction(rng.randint(100, 400))
+        e1 = -(a + c) / 2 + t
+        e2 = ((bx * bx + by * by) / (2 * t) - a + c) / 2
+        last = [e1 + e2 + a, bx, by, e1 - e2 + c]
+        if e1 > 0 and e2 > 0 and last[0] > 0:
+            return [[e1, 0, 0, e1], [e2, 0, 0, -e2], *final, last]
+
+
+def _inputs(program: dict, masses: list[str], points: int, seed: int) -> dict:
+    """``loop_v2_schedules._inputs`` at light-like rational points."""
+
+    rng = random.Random(seed)
+
+    def value() -> list[float]:
+        return [rng.uniform(-1, 1), rng.uniform(-1, 1)]
+
+    momenta = []
+    for _ in range(points):
+        point = _light_like_point(program["legs"] - 2, rng)
+        incoming = [*point[:2], *[[-x for x in p] for p in point[2:]]]
+        if any(sum(p[mu] for p in incoming) != 0 for mu in range(4)):
+            raise AssertionError("a point that does not conserve momentum")
+        if any(p[0] ** 2 != p[1] ** 2 + p[2] ** 2 + p[3] ** 2 for p in incoming):
+            raise AssertionError("a momentum that is not light-like")
+        momenta.append([_text(Fraction(x)) for p in incoming for x in p])
+    block = sum(program["block_rows"])
+    born = program["rows"] * program["born_components"]
+    return {
+        "momenta": momenta,
+        "scales": [SCALE_SQUARED] * points,
+        "masses": masses,
+        "constants": [value() for _ in range(program["constants"])],
+        "block_rows": [[value() for _ in range(block)] for _ in range(points)],
+        "born": [[value() for _ in range(born)] for _ in range(points)],
+    }
 
 
 def export(options: argparse.Namespace) -> int:

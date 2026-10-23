@@ -207,46 +207,74 @@ pub fn uv_residue<T: Carrier>(
     masses: &[Complex<T>],
     coefficients: &[Complex<T>],
 ) -> Complex<T> {
-    let zero = Complex::new(coefficients[0].re.zero(), coefficients[0].re.zero());
-    let lowest = (2 * n).saturating_sub(4);
-    if rank < lowest {
-        return zero;
-    }
-    // Degrees reached: r + Σ a_i <= rank + j = 2 rank − 2n + 4.
-    let layout = Layout::new(2 * rank + 4 - 2 * n);
-    let metric = [1, -1, -1, -1];
-    let mut walk = Walk {
-        layout: &layout,
-        covariant: (0..n)
-            .map(|i| {
-                std::array::from_fn(|mu| {
-                    let v = shifts[4 * i + mu].clone();
-                    if metric[mu] > 0 { v } else { -v }
-                })
-            })
-            .collect(),
-        constants: (0..n)
-            .map(|i| {
-                let v = &shifts[4 * i..4 * i + 4];
-                let square = v[0].clone() * &v[0]
-                    - v[1].clone() * &v[1]
-                    - v[2].clone() * &v[2]
-                    - v[3].clone() * &v[3];
-                square - &masses[i]
-            })
-            .collect(),
-        zero: zero.clone(),
-        total: zero.clone(),
-    };
-    for r in lowest..=rank {
-        let block = &coefficients[block_offset(r)..ncoeff(r)];
-        if block.iter().all(|c| c.re.is_zero() && c.im.is_zero()) {
-            continue;
+    UvResidues::new(n, rank).residue(shifts, masses, coefficients)
+}
+
+/// [`uv_residue`] for every lane of one `(n, rank)` bucket: the monomial
+/// tables are built once.
+pub struct UvResidues {
+    n: usize,
+    rank: usize,
+    layout: Option<Layout>,
+}
+
+impl UvResidues {
+    pub fn new(n: usize, rank: usize) -> Self {
+        let divergent = rank + 4 >= 2 * n;
+        Self {
+            n,
+            rank,
+            // Degrees reached: r + Σ a_i <= rank + j = 2 rank − 2n + 4.
+            layout: divergent.then(|| Layout::new(2 * rank + 4 - 2 * n)),
         }
-        let one = walk.integer(1);
-        walk.walk(0, r + 4 - 2 * n, block, r, one);
     }
-    walk.total
+
+    /// The residue of one lane (inputs as [`uv_residue`]).
+    pub fn residue<T: Carrier>(
+        &self,
+        shifts: &[Complex<T>],
+        masses: &[Complex<T>],
+        coefficients: &[Complex<T>],
+    ) -> Complex<T> {
+        let (n, rank) = (self.n, self.rank);
+        let zero = Complex::new(coefficients[0].re.zero(), coefficients[0].re.zero());
+        let Some(layout) = &self.layout else {
+            return zero;
+        };
+        let metric = [1, -1, -1, -1];
+        let mut walk = Walk {
+            layout,
+            covariant: (0..n)
+                .map(|i| {
+                    std::array::from_fn(|mu| {
+                        let v = shifts[4 * i + mu].clone();
+                        if metric[mu] > 0 { v } else { -v }
+                    })
+                })
+                .collect(),
+            constants: (0..n)
+                .map(|i| {
+                    let v = &shifts[4 * i..4 * i + 4];
+                    let square = v[0].clone() * &v[0]
+                        - v[1].clone() * &v[1]
+                        - v[2].clone() * &v[2]
+                        - v[3].clone() * &v[3];
+                    square - &masses[i]
+                })
+                .collect(),
+            zero: zero.clone(),
+            total: zero.clone(),
+        };
+        for r in (2 * n).saturating_sub(4)..=rank {
+            let block = &coefficients[block_offset(r)..ncoeff(r)];
+            if block.iter().all(|c| c.re.is_zero() && c.im.is_zero()) {
+                continue;
+            }
+            let one = walk.integer(1);
+            walk.walk(0, r + 4 - 2 * n, block, r, one);
+        }
+        walk.total
+    }
 }
 
 #[cfg(test)]
