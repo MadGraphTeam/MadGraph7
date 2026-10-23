@@ -104,6 +104,7 @@ from .colour import SeedTable
 from .conventions import LOOP_FACTOR_DENOMINATOR
 from .ct_sites import LAURENT_POWERS
 from .families import Orders, add_orders
+from .merged import merged_graph
 from .plan_export import (
     DEFAULT_LANES,
     FailedPoints,
@@ -1410,6 +1411,9 @@ class NativeObservables:
     Born basis masks) and, for helicity-resolved columns, their helicity rows
     (``column_rows``); spin sources and the Ward vector change only the batch
     inputs (Born components and block rows). Assembly is ``ColumnPlan``'s.
+    ``schedule`` "M" adds schedule M's planar state graph to the plan and
+    runs it for its certified families (B for the others); its entries are
+    seeds like B's leaves, so every column applies unchanged.
     """
 
     def __init__(
@@ -1420,12 +1424,17 @@ class NativeObservables:
         member: FlavourMember | None = None,
         lanes: int = DEFAULT_LANES,
         threads: int | None = None,
+        schedule: Literal["B", "M"] = "B",
     ):
         self.observables = observables
         self.member = member
+        self.schedule = schedule
         self.plan = ColumnPlan(observables, columns)
         exported = export_plan(
-            observables.slice, forward=False, columns=self.plan.seed_columns
+            observables.slice,
+            forward=False,
+            columns=self.plan.seed_columns,
+            merged=merged_graph(observables.slice) if schedule == "M" else None,
         )
         self.executor = NativeExecutor(
             observables.slice, exported=exported, lanes=lanes, threads=threads
@@ -1568,7 +1577,7 @@ class NativeObservables:
             for point, scale, spin in zip(points, batch.scales, spins, strict=True)
         ]
         failures = self.executor.reduce(
-            evaluations, batch.precision, batch.poles, retest
+            evaluations, batch.precision, batch.poles, retest, self.schedule
         )
         return evaluations, failures
 

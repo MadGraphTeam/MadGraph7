@@ -1203,6 +1203,53 @@ def test_native_observables_equal_python(generate, carrier):
             assert _deviation(a, b) <= Decimal(str(tolerance)) * largest, key
 
 
+def test_native_observables_run_schedule_m(generate):
+    """Observable columns on a plan with a schedule-M section (WP2.8): on
+    g g > g g, whose families schedule M certifies, a dipole, an ordered
+    directed history (direct and swapped columns) and the helicity-resolved
+    columns (``column_rows``) run with M as with B, at 32 digits to 1e-25
+    and in binary64 to 1e-12 of the point's largest output."""
+
+    from pyamplicol.loops.v2.merged import merged_graph
+    from pyamplicol.loops.v2.observables import NativeObservables
+
+    declarations = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("T12", 1, 2), ORDERED)
+    )
+    observables = generate("g g > g g", correlators=declarations)
+    assert merged_graph(observables.slice).families
+    points = _points("gluon_scattering_qcd")[:1]
+    scales = ["1000000"]
+    histories = (INCLUSIVE, "T12", "ordered")
+    for precision, tolerance in (
+        (Precision.arbitrary(32), Decimal("1e-25")),
+        (Precision.double(), Decimal("1e-12")),
+    ):
+        options = {"parameters": PARAMETERS, "precision": precision}
+        runs = {}
+        for schedule in "BM":
+            correlated = NativeObservables.correlated(
+                observables, histories, lanes=4, schedule=schedule
+            )
+            resolved = NativeObservables.resolved(
+                observables, "helicity", lanes=4, schedule=schedule
+            )
+            runs[schedule] = [
+                {**c, **r}
+                for c, r in zip(
+                    correlated.evaluate(points, scales, **options),
+                    resolved.evaluate(points, scales, **options),
+                    strict=True,
+                )
+            ]
+        for b, m in zip(runs["B"], runs["M"], strict=True):
+            assert set(b) == set(m) and len(b) > len(histories)
+            largest = max(_magnitude(x) for value in b.values() for x in value.totals)
+            for key, value in b.items():
+                for x, y in zip(m[key].totals, value.totals, strict=True):
+                    assert _deviation(x, y) <= tolerance * largest, (key, precision)
+
+
 def test_native_members_per_point_sources_and_stability(generate):
     """Natively: a permutation alias through its representative equals the
     Python member evaluation (directed histories, one spin source per point,
