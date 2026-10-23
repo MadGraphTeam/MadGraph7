@@ -63,7 +63,7 @@ from __future__ import annotations
 import json
 import math
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
@@ -414,7 +414,14 @@ class TreeRows:
         numbers: _Numbers,
         *,
         amplitudes: bool = False,
+        sources: Mapping[int, Sequence[tuple[Decimal, Decimal]]] | None = None,
     ) -> dict[tuple[int, str], tuple[Any, ...]]:
+        """The rows at one point; ``sources`` replaces the wavefunction of
+        every helicity source of a vector leg (1-based label) by a literal
+        complex four-vector (spin sources, Ward vectors; design §8.4), with
+        the source's crossing phase and nothing else applied."""
+
+        from pyamplicol.runtime.correlated_exact import _fill_correlated_sources
         from pyamplicol.runtime.symbolica_exact import _fill_momenta, _fill_sources
 
         digits = numbers.precision.working_digits
@@ -423,7 +430,12 @@ class TreeRows:
         state = [zero] * max(self._size, self._offset + len(values))
         with localcontext() as context:
             context.prec = digits + 10
-            _fill_sources(state, point, self.schema, tuple(values))
+            if sources:
+                _fill_correlated_sources(
+                    state, point, self.schema, tuple(values), dict(sources)
+                )
+            else:
+                _fill_sources(state, point, self.schema, tuple(values))
             _fill_momenta(state, point, self.schema)
         for index, value in enumerate(values):
             state[self._offset + index] = (value, Decimal(0))
@@ -826,11 +838,13 @@ class PointResult:
 @dataclass(frozen=True)
 class SliceRequest:
     """A loop request of the slice: a process, the bounds of its Born coupling
-    orders and the exact coupling orders of its loop amplitude."""
+    orders and the exact coupling orders of its loop amplitude, or a sequence
+    of several (mixed squared-order sectors, e.g. QCD corrections to QCD and
+    electroweak Born currents)."""
 
     process: str
     born_orders: Mapping[str, int]
-    loop_orders: Mapping[str, int]
+    loop_orders: Mapping[str, int] | Sequence[Mapping[str, int]]
     corrections: tuple[str, ...] = ("QCD",)
     fixed_parameters: Mapping[str, str] = field(default_factory=dict)
     ignored_particle_ids: tuple[int, ...] = ()
@@ -847,10 +861,29 @@ class SliceRequest:
     # fundamental loops seeded by primitives; False keeps every generic seed.
     compress_colour: bool = True
     # Seed contraction (design §7.3): "auto" uses the native symmetric-group
-    # FFT on certified orbits in binary64 at NLC and full colour, "fft" also
-    # refuses a request without such orbits, "direct" never uses it. Other
-    # carriers and LC always contract directly.
+    # FFT on certified orbits in binary64 at NLC and full colour (other
+    # carriers, exact dressing and LC contract directly), "direct" never uses
+    # it. "fft" requires it: it refuses LC and a table without such orbits at
+    # generation, and an evaluation in any other carrier when it dresses.
     colour_contraction: ContractionPolicy = "auto"
+
+    @property
+    def exact_loop_orders(self) -> tuple[Mapping[str, int], ...]:
+        """The exact coupling orders of every admitted loop amplitude."""
+
+        if isinstance(self.loop_orders, Mapping):
+            return (self.loop_orders,)
+        return tuple(self.loop_orders)
+
+    @property
+    def loop_order_bounds(self) -> dict[str, int]:
+        """Per coupling the largest power of any loop amplitude."""
+
+        bounds: dict[str, int] = {}
+        for orders in self.exact_loop_orders:
+            for name, power in orders.items():
+                bounds[name] = max(bounds.get(name, 0), power)
+        return bounds
 
 
 @dataclass
@@ -887,16 +920,22 @@ class LoopSlice:
     alpha_s_parameter: str | None
     loop_catalogue: Any = None
     fourier: SeedFourier | None = None
+    # Whether LC/NLC pruning dropped skeletons (``_prune_colour``).
+    colour_pruned: bool = False
     _cache: dict = field(default_factory=dict, repr=False)
 
     # -- generation ------------------------------------------------------------
 
     @classmethod
-    def generate(cls, compiled: Any, request: SliceRequest, native: Any) -> LoopSlice:
+    def generate(
+        cls, compiled: Any, request: SliceRequest, native: Any, *, prune: bool = True
+    ) -> LoopSlice:
         """Build every generation object of ``request`` (no diagram is listed).
 
         ``compiled`` is the compiled loop model and ``native`` the staged loop
-        core (``loops.native.load_loop_native``).
+        core (``loops.native.load_loop_native``). ``prune=False`` defers the
+        LC/NLC colour pruning to the caller (``_prune_colour`` with the seed
+        tables of further observables).
         """
 
         from pyamplicol.loops.compiler import prepare_loop_request_model
@@ -934,7 +973,7 @@ class LoopSlice:
         prepared = prepare_loop_request_model(
             compiled,
             born_order_bounds=dict(request.born_orders),
-            loop_order_bounds=dict(request.loop_orders),
+            loop_order_bounds=request.loop_order_bounds,
             fixed_parameters=fixed,
         )
         continuation = None
@@ -948,9 +987,9 @@ class LoopSlice:
             )
         structure = prepared.structure
         data = json.loads(structure.native.to_json())
-        loop = add_orders(tuple(request.loop_orders.items()))
         selection = LoopOrderSelection(
-            frozenset(request.corrections), frozenset({loop})
+            frozenset(request.corrections),
+            frozenset(add_orders(tuple(o.items())) for o in request.exact_loop_orders),
         )
         process = build_model_process_ir(
             request.process, compiled.ir, color_accuracy="full"
@@ -959,7 +998,7 @@ class LoopSlice:
             process,
             CompiledUFOModel(compiled),
             born_coupling_orders=dict(request.born_orders),
-            block_coupling_orders=dict(request.loop_orders),
+            block_coupling_orders=request.loop_order_bounds,
             ignored_particle_ids=request.ignored_particle_ids,
         )
         table = blocks.block_table(data)
@@ -1069,7 +1108,7 @@ class LoopSlice:
             alpha_s_parameter=alpha_s_parameter,
             loop_catalogue=loop_catalogue,
         )
-        if request.accuracy != "full":
+        if request.accuracy != "full" and prune:
             slice_._prune_colour()
         slice_._plan_contraction()
         return slice_
@@ -1092,33 +1131,34 @@ class LoopSlice:
                 "the seed table has no certified symmetric-group orbit pair"
             )
 
-    def _prune_colour(self) -> None:
+    def _prune_colour(
+        self, observables: Iterable[tuple[SeedTable, Mapping[Orders, Any]]] = ()
+    ) -> None:
         """LC and NLC: drop, before any numerics, every skeleton whose seed
         cells all lie below the N_c powers the projection keeps (design §7.5,
         §7.6). Structural: exact seed cells, Born grades and the sector
-        degrees P; the projection itself is unchanged.
+        degrees P; the projection itself is unchanged. ``observables`` adds
+        the seed tables of further outputs (directed colour histories) with
+        their virtual sector degrees: a skeleton live in any table is kept.
         """
 
-        degrees = self.degrees()["virtual"]
         accuracy = self.request.accuracy
         grades = self._born_grades()
-        pairs = [
-            (degrees[sector], a, loop)
-            for sector, sector_pairs in self.sectors
-            for a, loop in sector_pairs
-        ]
+        criteria = [(self.table, self.degrees()["virtual"]), *observables]
         live: dict[tuple[int, Orders], bool] = {}
 
         def class_live(c: int, order: Orders) -> bool:
             found = live.get((c, order))
             if found is None:
                 found = live[c, order] = any(
-                    value and kept(power + grade, degree, accuracy)
-                    for degree, a, loop in pairs
+                    value and kept(power + grade, degrees[sector], accuracy)
+                    for table, degrees in criteria
+                    for sector, sector_pairs in self.sectors
+                    for a, loop in sector_pairs
                     if loop == order
                     for b, born_orders in enumerate(self.basis.orders)
                     if a in born_orders
-                    for power, value in self.table.cells[c][b].items()
+                    for power, value in table.cells[c][b].items()
                     for grade in grades.get((b, a), ())
                 )
             return found
@@ -1156,6 +1196,7 @@ class LoopSlice:
             rx.reading_skeletons(self.plan),
             compress=self.request.compress_colour,
         )
+        self.colour_pruned = True
 
     # -- evaluation ------------------------------------------------------------
 
@@ -1219,7 +1260,9 @@ class LoopSlice:
                 retest
             )
 
-    def _point(self, point, scale, parameters, precision, poles) -> _PointEvaluation:
+    def _point(
+        self, point, scale, parameters, precision, poles, **sources
+    ) -> _PointEvaluation:
         numbers = _Numbers(precision)
         values = dict(parameters)
         values.update(self.request.fixed_parameters)
@@ -1227,7 +1270,7 @@ class LoopSlice:
         values[self.scale_parameter] = _decimal_string(
             _sqrt_fraction(scale, digits), digits
         )
-        return _PointEvaluation(self, point, scale, values, numbers, poles)
+        return _PointEvaluation(self, point, scale, values, numbers, poles, **sources)
 
     def family_numerators(
         self,
@@ -1395,17 +1438,26 @@ class LoopSlice:
         self._cache["born-grades"] = out
         return out
 
-    def degrees(self) -> dict[str, dict[Orders, int | None]]:
+    def degrees(
+        self,
+        overlaps: Callable[[Any, Any], Mapping[int, Any]] | None = None,
+        table: SeedTable | None = None,
+    ) -> dict[str, dict[Orders, int | None]]:
         """Leading N_c degrees P per squared-order sector (design §7.4).
 
         ``"born"`` per squared Born order; ``"virtual"`` per virtual sector, the
         largest degree of a nonzero exact cell among the seed, counterterm and
         field cells (coupling grades included). Structural: no numerics.
+        ``overlaps`` and ``table`` replace the Born colour metric and the seed
+        table, e.g. by those of a directed colour history (observables).
         """
 
-        found = self._cache.get("degrees")
+        inclusive = overlaps is None and table is None
+        found = self._cache.get("degrees") if inclusive else None
         if found is not None:
             return found
+        overlaps = overlaps or self.overlaps
+        table = table or self.table
         _plan, layout = self._scalar_plan(LAURENT_POWERS)
 
         def grades(name: str, powers=LAURENT_POWERS) -> set[int]:
@@ -1424,7 +1476,8 @@ class LoopSlice:
                 power + p + q + offset
                 for left, p in bra
                 for right, q in ket
-                for power in self.overlaps(left, right)
+                for power, value in overlaps(left, right).items()
+                if value
             ]
             return max(powers, default=None)
 
@@ -1449,7 +1502,7 @@ class LoopSlice:
             out["born"][squared] = _max(out["born"].get(squared), value)
         born_grades = self._born_grades()
         for sector, pairs in self.sectors:
-            value = self.table.degree(pairs, born_grades)
+            value = table.degree(pairs, born_grades)
             for a, b in pairs:
                 value = _max(value, degree(born[a], counterterms.get(b, set())))
             for insertion in self.fields:
@@ -1462,7 +1515,8 @@ class LoopSlice:
                         value, degree(born[a], born[insertion.born_order], grade)
                     )
             out["virtual"][sector] = value
-        self._cache["degrees"] = out
+        if inclusive:
+            self._cache["degrees"] = out
         return out
 
     # -- colour correlations (IR-pole check) ------------------------------------
@@ -1532,7 +1586,26 @@ class LoopSlice:
 class _PointEvaluation:
     """All per-point work of ``LoopSlice.evaluate`` in one carrier."""
 
-    def __init__(self, slice_, point, scale, parameters, numbers, poles):
+    def __init__(
+        self,
+        slice_,
+        point,
+        scale,
+        parameters,
+        numbers,
+        poles,
+        *,
+        sources=None,
+        loop_sources=None,
+        fixed=None,
+    ):
+        """``sources`` replaces the wavefunctions of vector legs (1-based
+        label -> literal complex four-vector) in the Born and the blocks,
+        ``loop_sources`` in the blocks and counterterm currents only (the
+        loop side, e.g. the asymmetric Ward mode), and ``fixed`` keeps one
+        helicity row per listed leg (label -> helicity): the row that carries
+        a source (``observables``, design §8.4)."""
+
         self.slice = slice_
         self.numbers = numbers
         self.poles = poles
@@ -1549,12 +1622,24 @@ class _PointEvaluation:
             decimal_point = [
                 tuple(_to_decimal(x) for x in momentum) for momentum in point
             ]
-        rows = slice_.tree_rows.evaluate(decimal_point, parameters, numbers)
+        rows = slice_.tree_rows.evaluate(
+            decimal_point, parameters, numbers, sources=sources
+        )
+        loop_rows = rows
+        if loop_sources:
+            loop_rows = slice_.tree_rows.evaluate(
+                decimal_point,
+                parameters,
+                numbers,
+                sources={**(sources or {}), **loop_sources},
+            )
         scalars = slice_.scalars(parameters, numbers, poles)
         self.parameters = parameters
         self.scale = scale
-        self._born_and_counterterms(rows, scalars, labels)
-        self.rows = rows
+        self.scalars = scalars
+        self.fixed = dict(fixed or {})
+        self._born_and_counterterms(rows, scalars, labels, loop_rows)
+        self.rows = loop_rows
 
     def finish(self, retest: str | None) -> _PointEvaluation:
         """Dress (schedule B), reduce and assemble the complete virtual."""
@@ -1577,14 +1662,22 @@ class _PointEvaluation:
 
         return SiteCarrier(numbers.colour, kernel, numbers.zero)
 
-    def _born_and_counterterms(self, rows, scalars, labels) -> None:
+    def _born_and_counterterms(self, rows, scalars, labels, loop_rows=None) -> None:
         """Born colour vectors per helicity row, their square and the
         counterterm and field components, projected per sector (design §7.4).
 
         Colour vectors keep each literal tensor's N_c power (plus the coupling
         grade), so leading colour keeps exactly the sector's degree P before
         N_c = 3 is substituted; full colour keeps every power.
+
+        The Born (the bra) reads ``rows``; counterterm currents and the field
+        insertions' Born amplitudes (the loop side, the ket) read
+        ``loop_rows``. Per helicity row the amplitude-level vectors stay
+        available to the observables (``born_vectors``, ``loop_vectors``,
+        ``site_vectors``).
         """
+
+        loop_rows = rows if loop_rows is None else loop_rows
 
         slice_, numbers = self.slice, self.numbers
         self.constants = rx.KernelConstants(
@@ -1603,7 +1696,7 @@ class _PointEvaluation:
                     ((leg, value),) = row.helicities
                     helicities[leg].add(value)
 
-        def block_rows(term, helicity):
+        def block_rows(term, helicity, rows):
             values = []
             for block in term.blocks:
                 want = tuple(sorted((leg, helicity[leg]) for leg in block.key.labels))
@@ -1614,8 +1707,8 @@ class _PointEvaluation:
                 values.append(rows[(row.current_id, variant)])
             return values
 
-        def kinematic(term, helicity) -> Any:
-            values = block_rows(term, helicity)
+        def kinematic(term, helicity, rows=rows) -> Any:
+            values = block_rows(term, helicity, rows)
             if values is None:
                 return None
             if isinstance(term, WholeRuleTerm):
@@ -1652,14 +1745,16 @@ class _PointEvaluation:
         counterterms = defaultdict(lambda: numbers.zero)
         self.amplitudes: dict[rx.Row, dict[tuple[int, Orders], Any]] = {}
         self.born_vectors: dict[rx.Row, dict[Orders, dict]] = {}
+        self.loop_vectors: dict[rx.Row, dict[Orders, dict]] = {}
+        self.site_vectors: dict[rx.Row, dict[tuple[str, int, Orders], dict]] = {}
         sectors = {pair: sector for sector, pairs in slice_.sectors for pair in pairs}
-        for choice in product(*(sorted(helicities[label]) for label in labels)):
-            helicity = dict(zip(labels, choice, strict=True))
+
+        def born_vectors(helicity, rows) -> dict[Orders, dict]:
             vectors: dict[Orders, dict] = {}
             for order, terms in slice_.born_terms.items():
                 vector: dict = {}
                 for term in terms:
-                    value = kinematic(term, helicity)
+                    value = kinematic(term, helicity, rows)
                     if value is None:
                         continue
                     for grade, coupling in scalars[term.entry.coupling.name, 0].items():
@@ -1667,8 +1762,22 @@ class _PointEvaluation:
                             vector, term.colour, coupling * value, grade, numbers
                         )
                 vectors[order] = vector
+            return vectors
+
+        choices = [
+            sorted(helicities[label])
+            if label not in self.fixed
+            else [self.fixed[label]]
+            for label in labels
+        ]
+        for choice in product(*choices):
+            helicity = dict(zip(labels, choice, strict=True))
+            vectors = born_vectors(helicity, rows)
             row = tuple((label - 1, helicity[label]) for label in labels)
             self.born_vectors[row] = vectors
+            self.loop_vectors[row] = (
+                vectors if loop_rows is rows else born_vectors(helicity, loop_rows)
+            )
             self.amplitudes[row] = self._amplitudes(vectors, index)
             for left, right in product(vectors, repeat=2):
                 squared = add_orders(left, right)
@@ -1678,7 +1787,7 @@ class _PointEvaluation:
             loops: dict[tuple[str, int, Orders], dict] = defaultdict(dict)
             for site, terms in slice_.site_terms.items():
                 for term in terms:
-                    value = kinematic(term, helicity)
+                    value = kinematic(term, helicity, loop_rows)
                     if value is None:
                         continue
                     value = len(site.alternatives) * value
@@ -1695,6 +1804,7 @@ class _PointEvaluation:
                                 grade,
                                 numbers,
                             )
+            self.site_vectors[row] = dict(loops)
             for (component, power, loop_order), vector in loops.items():
                 for order, amplitude in vectors.items():
                     sector = sectors.get((order, loop_order))
@@ -1704,7 +1814,7 @@ class _PointEvaluation:
                     counterterms[component, sector, power] += value + value.conjugate()
             for insertion in slice_.fields:
                 name = slice_.field_names[insertion.identity]
-                ket = vectors.get(insertion.born_order)
+                ket = self.loop_vectors[row].get(insertion.born_order)
                 if ket is None:
                     continue
                 for order, amplitude in vectors.items():
@@ -1745,13 +1855,18 @@ class _PointEvaluation:
     # -- loop numerators -----------------------------------------------------------
 
     def dress(
-        self, schedule: Literal["B", "F"] = "B", *, exact: bool = False
+        self,
+        schedule: Literal["B", "F"] = "B",
+        *,
+        exact: bool = False,
+        seeds: rx.SeedSource | None = None,
     ) -> rx.Execution:
         """Family numerators of one schedule (F in the B tries' frames).
 
         ``exact`` dresses the carrier's tree rows and seeds, read as exact
         rationals, in exact arithmetic (kernel constants to the carrier's
-        digits): schedules then agree exactly (O4).
+        digits): schedules then agree exactly (O4). ``seeds`` replaces the
+        sector seeds by other observable columns (``observables``).
         """
 
         slice_, numbers = self.slice, self.numbers
@@ -1771,18 +1886,31 @@ class _PointEvaluation:
         degrees = (
             slice_.degrees()["virtual"] if slice_.request.accuracy != "full" else {}
         )
-        seeds = SectorSeeds(
-            slice_.table,
-            slice_.class_of,
-            self.amplitudes,
-            [pairs for _sector, pairs in slice_.sectors],
-            numbers,
-            slice_.request.accuracy,
-            [degrees.get(sector) for sector, _pairs in slice_.sectors],
-            fourier=None if exact else slice_.fourier,
-            native=slice_.native,
-        )
-        self.colour_contraction = seeds.algorithm
+        if seeds is None:
+            seeds = SectorSeeds(
+                slice_.table,
+                slice_.class_of,
+                self.amplitudes,
+                [pairs for _sector, pairs in slice_.sectors],
+                numbers,
+                slice_.request.accuracy,
+                [degrees.get(sector) for sector, _pairs in slice_.sectors],
+                fourier=None if exact else slice_.fourier,
+                native=slice_.native,
+            )
+        self.colour_contraction = getattr(seeds, "algorithm", "direct")
+        if (
+            slice_.request.colour_contraction == "fft"
+            and self.colour_contraction != SYMMETRIC_GROUP_FFT
+        ):
+            # An explicit "fft" requires the FFT: the exact dressing,
+            # DoubleFloat and arbitrary precision (and observable columns)
+            # contract directly, so they refuse instead of falling back.
+            raise ValueError(
+                "colour contraction 'fft' contracts binary64 sector seeds only; "
+                "exact, arbitrary-precision and observable seeds are contracted "
+                "directly (request 'auto' or 'direct')"
+            )
         kinematics = rx.CatalogueKinematics(
             slice_.catalogue,
             slice_.compiled.ir.vertex_terms,
@@ -1811,10 +1939,15 @@ class _PointEvaluation:
 
     # -- reduction -----------------------------------------------------------------
 
-    def _reduce(self, numerators, retest: str | None) -> None:
-        """Reduce every lane; ``retest`` re-reduces them in that frame
-        (``stability.FRAMES``: "reversed" or "rescaled")."""
+    def _reduce(self, numerators, retest: str | None, columns=None) -> None:
+        """Reduce every nonzero (family, loop order, column) lane; lanes are
+        labelled by ``columns[column]`` (by default the column's sector).
+        ``retest`` re-reduces them in that frame (``stability.FRAMES``:
+        "reversed" or "rescaled")."""
+
         slice_, numbers = self.slice, self.numbers
+        if columns is None:
+            columns = [sector for sector, _pairs in slice_.sectors]
         native = slice_.native
         arithmetic = "double" if numbers.double else "arbitrary"
         digits = None if numbers.double else numbers.precision.digits
@@ -1847,7 +1980,7 @@ class _PointEvaluation:
                 if not any(coefficients):
                     continue
                 lane = len(lanes)
-                lanes.append((family, loop_order, slice_.sectors[column][0]))
+                lanes.append((family, loop_order, columns[column]))
                 groups.append(
                     (
                         n,
@@ -1994,24 +2127,32 @@ class _PointEvaluation:
 
     def rotation_budget(self, rotated: _PointEvaluation) -> dict[Orders, Budget]:
         """The error budget of one rotation check: every reduction lane's
-        integral and every local component is rotation invariant."""
+        integral and every local component is rotation invariant.
+
+        The differences are taken at the carrier's working digits: a
+        Decimal negation outside that context rounds the subtrahend to the
+        default 28 digits, which put a spurious 1e-28 relative floor under
+        every double-double and arbitrary-precision rotation budget."""
 
         zero = Laurent(*[self.numbers.zero] * (3 if self.poles else 1))
-        lanes = {
-            lane: tuple(
-                a - b
-                for a, b in zip(
-                    rotated.families.get(lane, zero).coefficients,
-                    self.families.get(lane, zero).coefficients,
-                    strict=True,
+        with self.numbers.scope():
+            lanes = {
+                lane: tuple(
+                    a - b
+                    for a, b in zip(
+                        rotated.families.get(lane, zero).coefficients,
+                        self.families.get(lane, zero).coefficients,
+                        strict=True,
+                    )
                 )
-            )
-            for lane in self.families.keys() | rotated.families.keys()
-        }
-        local = [
-            differences(self.result.components[name], rotated.result.components[name])
-            for name in LOCAL_COMPONENTS
-        ]
+                for lane in self.families.keys() | rotated.families.keys()
+            }
+            local = [
+                differences(
+                    self.result.components[name], rotated.result.components[name]
+                )
+                for name in LOCAL_COMPONENTS
+            ]
         return self._lane_budget(lanes, local)
 
     # -- IR poles ----------------------------------------------------------------------

@@ -430,12 +430,12 @@ def _group_exact_flavors(context, programs, projections=None):
     )
     from pyamplicol.loops.flavor_mappings import (
         RetainedFlavorPlan,
+        identity_species_candidate,
         prove_flavor_relabeling,
     )
     from pyamplicol.loops.flavor_transport import (
         AdmittedFlavorMember,
         IdentityFlavorTransport,
-        identity_species_candidate,
     )
 
     from .process_grouping import GroupingBasis, GroupMember, LegMapping

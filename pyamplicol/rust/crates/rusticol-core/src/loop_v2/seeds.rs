@@ -3,8 +3,10 @@
 //! Born-weighted seeds (DESIGN.md §7.3): `U0[k][o][h] = Σ_b K[k, b]
 //! conj(A0_b(h))` per seed key `k` (colour class, loop orders), observable
 //! column `o` and Born helicity row `h`, from the plan's exact weights and the
-//! batch's Born components; and the leaf objects `w_s U0[k]` that schedule B
-//! dresses (a seed times `δ_ab`, one lane vector per object row).
+//! batch's Born components (zero on the rows a helicity-resolved column does
+//! not keep, [`super::observables::ColumnRows`]); and the leaf objects
+//! `w_s U0[k]` that schedule B dresses (a seed times `δ_ab`, one lane vector
+//! per object row).
 
 use super::dress::{Carrier, LaneData};
 use super::kernels::lane_vector_len;
@@ -41,6 +43,9 @@ pub fn seeds<T: Carrier, const L: usize>(plan: &LoopProgramV4, data: &LaneData<T
             let mut out = vec![data.zero.clone(); plan.rows * columns * v];
             for h in 0..plan.rows {
                 for (o, terms) in weights.iter().enumerate() {
+                    if !plan.column_rows.keeps(h, o) {
+                        continue;
+                    }
                     let target = &mut out[(h * columns + o) * v..][..v];
                     for (component, re, im) in terms {
                         let born = &data.born[(h * plan.born_components + component) * v..][..v];
