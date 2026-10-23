@@ -956,6 +956,24 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
         logger.info("   can still handle these.")
         self._log_interference_syntax()
+        self._log_diagram_filter_syntax()
+
+    def _log_diagram_filter_syntax(self):
+        """The diagram filter options, for 'help generate' and 'help add'."""
+        logger.info("Diagram filter syntax:",'$MG:BOLD')
+        logger.info(" o process --diagram_filter=PLUGINNAME")
+        logger.info(" o NLO process [QCD] --tree_diagram_filter=PLUGINNAME --loop_diagram_filter=PLUGINNAME")
+        logger.info(" o Example: generate u u~ > d d~ QED=2 --diagram_filter=no_photon",'$MG:color:GREEN')
+        logger.info(" > Removes the diagrams for which the function new_diagram_filter of the plugin")
+        logger.info("   PLUGINNAME (in its __init__.py) returns True. It is called as")
+        logger.info("   new_diagram_filter(diagram, model).")
+        logger.info(" > --diagram_filter applies to tree-level and MadLoop ([virt=], [noborn=])")
+        logger.info("   processes, to the Born and the loop diagrams. For NLO processes with FKS")
+        logger.info("   subtraction, --tree_diagram_filter filters the Born and real-emission")
+        logger.info("   diagrams and --loop_diagram_filter the loop diagrams of the virtual.")
+        logger.info(" > Without =PLUGINNAME, the function remove_diag of PLUGIN/user_filter.py is used.")
+        logger.info(" > Removing diagrams usually breaks gauge invariance.")
+        logger.info(" > See the 'Diagram filters' page of the documentation.")
 
     def _log_interference_syntax(self):
         """The interference syntax, for 'help generate' and 'help add'."""
@@ -1019,6 +1037,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
         logger.info("   can still handle these.")
         self._log_interference_syntax()
+        self._log_diagram_filter_syntax()
 
         logger.info("--  merge two model to create a new one", '$MG:color:BLUE')
         logger.info("syntax:",'$MG:BOLD')
