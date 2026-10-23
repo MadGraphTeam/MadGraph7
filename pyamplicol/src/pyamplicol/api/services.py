@@ -898,8 +898,7 @@ class Runtime:
         Omitted precision uses the runtime's load-time default, or 16 when the
         backend has no precision default, as in :meth:`evaluate`.
         ``poles`` and ``stability_checks`` follow :meth:`evaluate` (v2 virtual
-        runtimes; the estimates are per resolved entry; resolved outputs take
-        poles ``"all"`` or ``"none"``).
+        runtimes; the estimates and the pole parts are per resolved entry).
         """
 
         precision = _validate_precision(
@@ -1158,8 +1157,7 @@ class Runtime:
         digits until conversion into the requested arithmetic.
         ``on_failure`` follows :meth:`evaluate`, preserving complex successful
         values and unavailable whole-point entries. ``poles`` and
-        ``stability_checks`` follow :meth:`evaluate` (v2 virtual runtimes;
-        correlated outputs take poles ``"all"`` or ``"none"``).
+        ``stability_checks`` follow :meth:`evaluate` (v2 virtual runtimes).
         """
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
@@ -1229,7 +1227,7 @@ class Runtime:
         With ``on_failure="return"``, distinct source assignments can have
         different failure masks; every labelled result retains input positions.
         ``poles`` and ``stability_checks`` follow :meth:`evaluate` (v2 virtual
-        runtimes; correlated outputs take poles ``"all"`` or ``"none"``).
+        runtimes).
         """
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure

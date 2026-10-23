@@ -278,6 +278,160 @@ def test_leading_colour_selections_split_the_projected_poles(
         ) <= SPLIT_TOLERANCE * _scale(whole)
 
 
+# ----------------------------------------------------------- observables
+
+
+ORDERED = (((1, -1), (1, -2)), ((2, -1), (3, -2)))
+
+
+def _observables(model, native, accuracy: str):
+    """g g > g g with a dipole and a directed (not symmetric) colour history
+    (``ObservableSlice.generate``)."""
+
+    from pyamplicol.color.connections import EmitGluon
+    from pyamplicol.color.correlator_matrices import ColorCorrelator
+    from pyamplicol.correlators import CorrelatorConfig
+    from pyamplicol.loops.v2.observables import ObservableSlice
+    from pyamplicol.models.loading import load_compiled_model
+
+    declaration = None
+    if accuracy != "full":
+        from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+        from tools.loop_reference import legacy_capture
+
+        declaration = LoopColorDeclaration.from_dict(
+            json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+        )
+    bra, ket = (tuple(EmitGluon(*step) for step in side) for side in ORDERED)
+    histories = (ColorCorrelator("ordered", bra, ket),)
+    if accuracy == "full":
+        histories = (ColorCorrelator.dipole("T12", 1, 2), *histories)
+    return ObservableSlice.generate(
+        load_compiled_model(model),
+        SliceRequest(
+            "g g > g g",
+            {"QCD": 2, "QED": 0},
+            {"QCD": 4, "QED": 0},
+            fixed_parameters=FIXED,
+            accuracy=accuracy,
+            colour_declaration=declaration,
+        ),
+        native,
+        correlators=CorrelatorConfig(color_correlations=histories),
+    )
+
+
+def _assert_split_outputs(results, scales):
+    """Per output: the finite part is that of "all" bit for bit, the UV and
+    IR parts of every component add up to the poles of "all", the
+    renormalised virtual has no UV pole and its IR poles are those of "all"
+    (``scales`` per output and sector)."""
+
+    for key, whole in results["all"].items():
+        uv, ir = results["uv"][key], results["ir"][key]
+        assert uv.pole_origins == ir.pole_origins
+        for origin, result in (("uv", uv), ("ir", ir)):
+            assert result.pole_origins[origin] == result.components
+        for component in COMPONENTS:
+            for sector, laurent in whole.components[component].items():
+                bound = SPLIT_TOLERANCE * scales[key, sector]
+                u, i = (
+                    uv.components[component][sector],
+                    ir.components[component][sector],
+                )
+                assert u.finite == i.finite == laurent.finite, (key, component)
+                for k in (1, 2):
+                    total = u.coefficients[k] + i.coefficients[k]
+                    assert abs(total - laurent.coefficients[k]) <= bound
+        for sector, laurent in whole.components["virtual"].items():
+            bound = SPLIT_TOLERANCE * scales[key, sector]
+            assert abs(uv.virtual(sector).single_pole) <= bound
+            for k in (1, 2):
+                difference = (
+                    ir.virtual(sector).coefficients[k] - laurent.coefficients[k]
+                )
+                assert abs(difference) <= bound
+
+
+@pytest.mark.loop_physics
+def test_correlated_and_resolved_outputs_split_their_poles(
+    loop_sm_compiled_model, loop_native
+):
+    """Observable columns in "uv" and "ir" (full colour): the inclusive
+    column, a dipole and a directed history, natively and on the Python
+    path (agreeing to 1e-11), and the helicity-resolved outputs, whose sum
+    is the inclusive column's split (both include the certified-scaleless
+    companion's column plan, ``ColumnPlan.scaleless``)."""
+
+    from pyamplicol.loops.v2.observables import INCLUSIVE, NativeObservables
+
+    observables = _observables(loop_sm_compiled_model, loop_native, "full")
+    point, scale = PROCESSES["gg_gg"][2]()
+    histories = (INCLUSIVE, "T12", "ordered")
+    native = NativeObservables.correlated(observables, histories, lanes=4)
+    results = {
+        mode: native.evaluate([point], [scale], parameters=PARAMETERS, poles=mode)[0]
+        for mode in ("all", "uv", "ir")
+    }
+    scales = {
+        (key, sector): _scale(result.virtual(sector))
+        for key, result in results["all"].items()
+        for sector in result.components["virtual"]
+    }
+    _assert_split_outputs(results, scales)
+    python = observables.evaluate(
+        point, scale, correlations=histories, parameters=PARAMETERS, poles="uv"
+    )
+    for key, result in results["uv"].items():
+        for component in COMPONENTS:
+            for sector, laurent in result.components[component].items():
+                other = python[key].components[component][sector]
+                for x, y in zip(laurent.coefficients, other.coefficients, strict=True):
+                    assert abs(complex(x) - complex(y)) <= 1e-11 * scales[key, sector]
+    resolved = NativeObservables.resolved(observables, "helicity", lanes=4)
+    (entries,) = resolved.evaluate([point], [scale], parameters=PARAMETERS, poles="ir")
+    inclusive = results["ir"][INCLUSIVE]
+    for origin in ("uv", "ir"):
+        for component in COMPONENTS:
+            for sector, laurent in inclusive.pole_origins[origin][component].items():
+                total = sum(
+                    (
+                        e.pole_origins[origin][component][sector]
+                        for e in entries.values()
+                    ),
+                    start=type(laurent)(*[0.0] * 3),
+                )
+                for x, y in zip(total.coefficients, laurent.coefficients, strict=True):
+                    assert abs(x - y) <= 1e-12 * scales[INCLUSIVE, sector]
+
+
+@pytest.mark.loop_physics
+def test_leading_colour_directed_history_splits_its_poles(
+    loop_sm_compiled_model, loop_native
+):
+    """At LC a directed history needs the slice unpruned at generation; its
+    certified-scaleless companion is rebuilt unpruned and pruned for the
+    history (``ObservableSlice.scaleless``)."""
+
+    from pyamplicol.loops.v2.observables import INCLUSIVE, NativeObservables
+
+    observables = _observables(loop_sm_compiled_model, loop_native, "lc")
+    companion = observables.scaleless()
+    assert companion is not None and companion.slice is not observables.slice.scaleless
+    point, scale = PROCESSES["gg_gg"][2]()
+    native = NativeObservables.correlated(observables, (INCLUSIVE, "ordered"), lanes=4)
+    results = {
+        mode: native.evaluate([point], [scale], parameters=PARAMETERS, poles=mode)[0]
+        for mode in ("all", "uv", "ir")
+    }
+    scales = {
+        (key, sector): _scale(result.virtual(sector))
+        for key, result in results["all"].items()
+        for sector in result.components["virtual"]
+    }
+    _assert_split_outputs(results, scales)
+
+
 # ----------------------------------------------------------------- physics
 
 
@@ -455,7 +609,7 @@ def test_catani_takes_massless_legs_from_the_model():
 
     expected = poles(exact, ())
     got = poles(rounded, (1, 2, 3, 4))
-    assert all(abs(a - b) <= 1e-12 * abs(b) for a, b in zip(got, expected))
+    assert all(abs(a - b) <= 1e-12 * abs(b) for a, b in zip(got, expected, strict=True))
     with pytest.raises(ValueError):
         poles(rounded, ())
 
@@ -478,8 +632,6 @@ def test_native_executor_at_massive_external_legs(slices):
         for component in COMPONENTS:
             for sector, laurent in python.components[component].items():
                 other = native.components[component][sector]
-                bound = 1e-12 * _scale(python.virtual(sector)) + 1e-12 * _scale(
-                    laurent
-                )
+                bound = 1e-12 * _scale(python.virtual(sector)) + 1e-12 * _scale(laurent)
                 for x, y in zip(laurent.coefficients, other.coefficients, strict=True):
                     assert abs(complex(x) - complex(y)) <= bound, (mode, component)

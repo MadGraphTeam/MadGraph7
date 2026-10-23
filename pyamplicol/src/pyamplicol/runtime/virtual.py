@@ -33,6 +33,8 @@ from pyamplicol.api.results import (
     ProcessPhysics,
 )
 from pyamplicol.api.virtual_results import (
+    POLE_COMPONENTS,
+    POLE_ORIGINS,
     LaurentCoefficients,
     ResolvedVirtualEvaluation,
     VirtualArithmeticSpec,
@@ -40,6 +42,7 @@ from pyamplicol.api.virtual_results import (
     VirtualEvaluation,
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
+    VirtualPoleParts,
     VirtualScalar,
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
@@ -1101,18 +1104,6 @@ def v2_options(
     return selection, checks
 
 
-def _observable_poles(selection: PoleSelection) -> PoleSelection:
-    """The pole selection of a correlated or resolved v2 call: ``"uv"`` and
-    ``"ir"`` serve the inclusive virtual only (design §12.4)."""
-
-    if splits_poles(selection):
-        raise CompatibilityError(
-            "correlated and resolved v2 virtuals take poles 'all' or 'none'; the "
-            "uv and ir selections serve the inclusive virtual (evaluate)"
-        )
-    return selection
-
-
 class V2ObservablesRuntime:
     """The public virtual-runtime calls over a generated v2 slice's
     observables; the artifact runtime (``loops.v2.artifact.V2VirtualRuntime``)
@@ -1136,9 +1127,9 @@ class V2ObservablesRuntime:
     shape of ``Runtime.evaluate_resolved``).
 
     Every call takes ``poles`` (a ``PoleSelection``; ``"none"`` is the finite
-    part only, poles explicitly absent; ``"uv"`` and ``"ir"`` serve the
-    inclusive virtual of ``V2VirtualRuntime.evaluate`` only and are refused
-    here) and ``stability_checks`` (rotations
+    part only, poles explicitly absent; ``"uv"`` and ``"ir"`` return the
+    ultraviolet or infrared parts, with both origins by component in
+    ``pole_parts``) and ``stability_checks`` (rotations
     and/or the reduction-direction check; requirements addendum C): a
     correlated evaluation then carries one estimate per point and output, a
     resolved one per point and entry (helicity row and colour component);
@@ -1404,11 +1395,14 @@ class V2ObservablesRuntime:
         values: list[Any] = []
         diagnostics: list[VirtualLaneDiagnostic] = []
         estimates: list[VirtualStabilityEstimate | None] = []
+        split = splits_poles(poles)
+        parts: list[VirtualPoleParts | None] = []
         for index, result in enumerate(results):
             if result is None:
                 born_values.append(None)
                 values.append(None)
                 estimates.append(None)
+                parts.append(None)
                 diagnostics.append(
                     self._diagnostic(
                         arithmetic,
@@ -1437,6 +1431,26 @@ class V2ObservablesRuntime:
                 )
             )
             estimates.append(v2_public_estimate(result.stability, with_poles))
+            if split:
+                origins = result.pole_origins
+                parts.append(
+                    VirtualPoleParts(
+                        *(
+                            {
+                                name: tuple(
+                                    self._laurent(
+                                        origins[origin][name][sector.order],
+                                        arithmetic,
+                                        correlated,
+                                    )
+                                    for sector in self._sectors
+                                )
+                                for name in POLE_COMPONENTS
+                            }
+                            for origin in POLE_ORIGINS
+                        )
+                    )
+                )
             diagnostics.append(self._diagnostic(arithmetic, precision, checked))
         return VirtualEvaluation(
             born_values=tuple(born_values),
@@ -1449,6 +1463,7 @@ class V2ObservablesRuntime:
             color_accuracy=self._observables.slice.request.accuracy,
             poles=poles,
             stability=tuple(estimates) if checked else None,
+            pole_parts=tuple(parts) if split else None,
         )
 
     def _default_born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
@@ -1504,7 +1519,6 @@ class V2ObservablesRuntime:
         native batch per source assignment)."""
 
         selection, checks = v2_options(on_failure=on_failure, **options)
-        selection = _observable_poles(selection)
         observables = self._observables
         arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
@@ -1541,7 +1555,7 @@ class V2ObservablesRuntime:
         settings = {
             "parameters": parameters,
             "precision": carrier,
-            "poles": computes_poles(selection),
+            "poles": selection.value,
             "stability": checks.to_checks() if checks.enabled else None,
         }
         out: dict[str, VirtualEvaluation] = {}
@@ -1603,7 +1617,8 @@ class V2ObservablesRuntime:
         from pyamplicol.loops.strategy import R2Selection
 
         selection, checks = v2_options(on_failure=on_failure, **options)
-        with_poles = computes_poles(_observable_poles(selection))
+        with_poles = computes_poles(selection)
+        split = splits_poles(selection)
         observables = self._observables
         arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
@@ -1621,7 +1636,7 @@ class V2ObservablesRuntime:
         settings = {
             "parameters": parameters,
             "precision": carrier,
-            "poles": with_poles,
+            "poles": selection.value,
             "stability": checks.to_checks() if checks.enabled else None,
         }
         runner: Any = self._runner() if self._executor != "native" else None
@@ -1650,11 +1665,13 @@ class V2ObservablesRuntime:
         values: list[Any] = []
         diagnostics: list[VirtualLaneDiagnostic] = []
         estimates: list[Any] = []
+        parts: list[VirtualPoleParts | None] = []
         for index, result in enumerate(entries):
             if result is None:
                 born_values.append(None)
                 values.append(None)
                 estimates.append(None)
+                parts.append(None)
                 diagnostics.append(
                     self._diagnostic(
                         arithmetic,
@@ -1705,6 +1722,35 @@ class V2ObservablesRuntime:
                 if checks.enabled
                 else None
             )
+            if split:
+
+                def entry(origin: str, name: str, sector: Any, result=result) -> Any:
+                    return tuple(
+                        tuple(
+                            self._laurent(
+                                result[(row, b)].pole_origins[origin][name][sector],
+                                arithmetic,
+                                False,
+                            )
+                            for b in components
+                        )
+                        for row in rows
+                    )
+
+                parts.append(
+                    VirtualPoleParts(
+                        *(
+                            {
+                                name: tuple(
+                                    entry(origin, name, sector.order)
+                                    for sector in self._sectors
+                                )
+                                for name in POLE_COMPONENTS
+                            }
+                            for origin in POLE_ORIGINS
+                        )
+                    )
+                )
         ids = (
             tuple(f"basis-{b}" for b in components)
             if accuracy == "lc"
@@ -1723,4 +1769,5 @@ class V2ObservablesRuntime:
             color_accuracy=observables.slice.request.accuracy,
             poles=selection,
             stability=tuple(estimates) if checks.enabled else None,
+            pole_parts=tuple(parts) if split else None,
         )

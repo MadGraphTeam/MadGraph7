@@ -157,6 +157,6 @@ relocation with the same native build. A dedicated acceptance test covers this.
   `"uv"`/`"ir"` with a regeneration message). `VirtualEvaluation.values` holds
   the selected origin's parts of the renormalised virtual and
   `VirtualEvaluation.pole_parts` both origins by component (virtual, bare, uv,
-  r2, uv_local, uv_external_fields). Correlated and resolved outputs take
-  `"all"`/`"none"` for now (refused otherwise). The SDKs evaluate legacy
-  plan-v3 artifacts only; v4 SDK evaluation (WP3.1) takes the same option.
+  r2, uv_local, uv_external_fields), also for correlated and resolved
+  outputs. The SDKs evaluate legacy plan-v3 artifacts only; v4 SDK
+  evaluation (WP3.1) takes the same option.

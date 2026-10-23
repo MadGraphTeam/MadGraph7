@@ -70,15 +70,18 @@ def _stability_table(result: Any, prettytable: Any) -> Any:
 
 def _pole_parts_table(result: Any, prettytable: Any) -> Any:
     """Both origins' pole parts per component (``poles`` "uv" or "ir"), or
-    None."""
+    None; resolved results per helicity and colour component."""
 
     parts = getattr(result, "pole_parts", None)
     if parts is None:
         return None
+    resolved = isinstance(result, ResolvedVirtualEvaluation)
+    axes = ("helicity", "colour component") if resolved else ()
     table = prettytable.PrettyTable(
         (
             "point",
             "virtual squared order",
+            *axes,
             "origin",
             "component",
             "single pole [-1]",
@@ -88,24 +91,34 @@ def _pole_parts_table(result: Any, prettytable: Any) -> Any:
     table.title = "Pole parts by origin (P/eps = P_UV/eps_UV + P_IR/eps_IR)"
     table.align = "l"
     table.hrules = prettytable.HRuleStyle.FRAME
+
+    def entries(value: Any) -> Any:
+        if not resolved:
+            yield (), value
+            return
+        for h, helicity in enumerate(result.helicity_ids):
+            for c, component in enumerate(result.virtual_color_ids):
+                yield (helicity, component), value[h][c]
+
     for point, lane in enumerate(parts):
         if lane is None:
-            table.add_row((point, "", "", "", "unavailable", ""))
+            table.add_row((point, "", *("",) * len(axes), "", "", "unavailable", ""))
             continue
         for index, sector in enumerate(result.sectors):
             for origin in ("uv", "ir"):
                 for component, values in lane.origin(origin).items():
-                    laurent = values[index]
-                    table.add_row(
-                        (
-                            point,
-                            _order(sector.order),
-                            origin,
-                            component,
-                            _scalar(laurent.single_pole),
-                            _scalar(laurent.double_pole),
+                    for labels, laurent in entries(values[index]):
+                        table.add_row(
+                            (
+                                point,
+                                _order(sector.order),
+                                *labels,
+                                origin,
+                                component,
+                                _scalar(laurent.single_pole),
+                                _scalar(laurent.double_pole),
+                            )
                         )
-                    )
     return table
 
 

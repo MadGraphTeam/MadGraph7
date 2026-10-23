@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import json
 from collections import OrderedDict, defaultdict
-from collections.abc import Hashable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from fractions import Fraction
@@ -825,11 +825,11 @@ class NativeExecutor:
         forms: Literal["rule", "fused", "split"] = "rule",
         merged: MergedGraph | bool = False,
         plan_json: str | None = None,
-        scaleless: tuple[ExportedPlan, str] | None = None,
+        scaleless: tuple[ExportedPlan, str] | Callable[[], Any] | None = None,
     ):
         if plan_json is not None and exported is None:
             raise ValueError("plan_json is the serialised exported plan")
-        if scaleless is not None and slice_.scaleless is None:
+        if isinstance(scaleless, tuple) and slice_.scaleless is None:
             raise ValueError("a scaleless companion plan needs the slice's companion")
         if slice_.request.colour_contraction == "fft":
             # The native seeds contract the exported exact weights directly
@@ -850,9 +850,11 @@ class NativeExecutor:
         # ``plan_json``: ``exported.json()`` when the caller already holds it.
         self._plan_json = self.exported.json() if plan_json is None else plan_json
         self._native: dict[tuple[str, int | None, int], Any] = {}
-        self._scaleless: NativeExecutor | None = None
+        self._scaleless: list[NativeExecutor | None] = []
         # (exported plan, its JSON) of the companion when the caller holds it
-        # (an artifact's stored companion, ``artifact.GeneratedProcess``).
+        # (an artifact's stored companion, ``artifact.GeneratedProcess``), or
+        # a builder of the companion's executor (observable columns,
+        # ``observables.NativeObservables``).
         self._scaleless_plan = scaleless
         # Point inputs of the latest ``family_numerators`` calls (oracle
         # comparisons run several schedules and carriers on one batch).
@@ -885,21 +887,28 @@ class NativeExecutor:
     def scaleless(self) -> NativeExecutor | None:
         """The executor of the slice's certified-scaleless families
         (``LoopSlice.scaleless``), which only the "uv" and "ir" pole
-        selections run; built on first use (from the companion plan given
-        at construction, else exported then), schedule B only."""
+        selections run; built on first use (from the companion plan or the
+        builder given at construction, else exported then), schedule B
+        only; None without such families."""
 
-        if self._scaleless is None and self.slice.scaleless is not None:
-            exported, plan_json = self._scaleless_plan or (None, None)
-            self._scaleless = NativeExecutor(
-                self.slice.scaleless,
-                lanes=self.lanes,
-                threads=self.threads,
-                forward=False,
-                exported=exported,
-                forms=self.forms,
-                plan_json=plan_json,
-            )
-        return self._scaleless
+        if not self._scaleless:
+            source = self._scaleless_plan
+            built = None
+            if callable(source):
+                built = source()
+            elif self.slice.scaleless is not None:
+                exported, plan_json = source or (None, None)
+                built = NativeExecutor(
+                    self.slice.scaleless,
+                    lanes=self.lanes,
+                    threads=self.threads,
+                    forward=False,
+                    exported=exported,
+                    forms=self.forms,
+                    plan_json=plan_json,
+                )
+            self._scaleless.append(built)
+        return self._scaleless[0]
 
     def lanes_for(self, arithmetic: Arithmetic, points: int | None) -> int:
         """Lanes per chunk: the configured count in binary64 (SIMD lanes);
@@ -1218,17 +1227,22 @@ class NativeExecutor:
         orders, column label). Returns the failures per point index; a failed
         point's evaluation is left without families. ``poles`` is the pole
         mode (``poles``): "uv" and "ir" also run the scaleless companion
-        (``scaleless``) for the inclusive virtual's sector columns."""
+        (``scaleless``: the slice's on the sector columns, or the one built
+        for the plan's observable columns)."""
 
         from .assemble import _Numbers
         from .poles import pole_mode, reducer_poles
 
         mode = pole_mode(poles)
         sectors = tuple(sector for sector, _pairs in self.slice.sectors)
-        if mode in ("uv", "ir") and tuple(self.exported.columns) != sectors:
-            raise NotImplementedError(
-                "the uv and ir pole selections serve the inclusive virtual; "
-                "observable columns take poles all or none"
+        if (
+            mode in ("uv", "ir")
+            and tuple(self.exported.columns) != sectors
+            and not callable(self._scaleless_plan)
+        ):
+            raise ValueError(
+                "observable columns in the uv and ir pole selections need the "
+                "companion of their column plan (observables.NativeObservables)"
             )
         arithmetic, digits = self._arithmetic(precision, False)
         native = self.native(arithmetic, digits, len(evaluations))

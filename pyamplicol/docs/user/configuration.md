@@ -594,7 +594,8 @@ the companion plan of its certified-scaleless loop families, which only `"uv"`
 and `"ir"` evaluate; at g g > g g g g they cost about 20 % more than `"all"`).
 Artifacts written before the split serve `"all"` and `"none"` and refuse
 `"uv"`/`"ir"` with a request to regenerate. Correlated and resolved outputs
-take `"all"` or `"none"`.
+take every selection too; their `pole_parts` follow their own axes (resolved:
+per sector, helicity and colour component).
 
 Current v2 scope: model-supplied R2; full, NLC or LC colour (LC/NLC with the
 model's source colour declaration); double, double-double and arbitrary
@@ -603,9 +604,8 @@ correlations declared at generation (`correlators`); helicity-resolved output
 (also per Born colour component at LC; one contracted component at NLC and full
 colour); exact flavour grouping (`process.flavor_blind`: an identity-port member
 such as `s s~ > g g` of `d d~ > g g` is served by its representative). `poles`
-(`"all"` or `"none"`) and `[evaluation.stability_checks]` apply to correlated
-and resolved evaluations too (resolved estimates are per helicity row and colour
-component).
+and `[evaluation.stability_checks]` apply to correlated and resolved evaluations
+too (resolved estimates are per helicity row and colour component).
 
 Coupling orders. The loop orders follow the process's Born amplitude orders:
 one loop amplitude per Born amplitude order (within the process's coupling-order

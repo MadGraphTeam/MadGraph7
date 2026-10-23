@@ -92,19 +92,20 @@ from pyamplicol.api.results import (
     ProcessPhysics,
 )
 from pyamplicol.api.virtual_results import (
+    POLE_COMPONENTS,
+    POLE_ORIGINS,
     LaurentCoefficients,
     VirtualColorContraction,
     VirtualEvaluation,
     VirtualFailureDiagnostic,
     VirtualLaneDiagnostic,
+    VirtualPoleParts,
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
-    VirtualPoleParts,
     VirtualStabilityPolicy,
     computes_poles,
     splits_poles,
 )
-from pyamplicol.api.virtual_results import POLE_COMPONENTS, POLE_ORIGINS
 from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.generation.evaluator_container import (
     PacbinMemberKind,
@@ -360,7 +361,7 @@ def write_plan(
         plans.append((SCALELESS_PLAN_MEMBER, scaleless_json))
     staged = []
     try:
-        for index, (member, text) in enumerate(plans):
+        for index, (_member, text) in enumerate(plans):
             path = destination.with_name(f"{destination.name}.member{index}")
             path.write_bytes(zlib.compress(text.encode(), 6))
             staged.append(path)

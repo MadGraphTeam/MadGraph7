@@ -764,6 +764,38 @@ def test_finite_only_and_stability_estimates(full_colour):
 
 
 @pytest.mark.loop_physics
+def test_correlated_and_resolved_calls_split_the_poles(full_colour):
+    """``poles="uv"``/``"ir"`` on correlated and resolved calls (design
+    §12.4): finite parts bitwise those of ``"all"``; the resolved sum and the
+    Born-metric correlated output carry the inclusive evaluation's pole parts
+    for every component; ``for_order`` keeps them."""
+
+    from pyamplicol import Runtime
+
+    runtime = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
+    options = {"mu_r2": "1000000"}
+    inclusive = runtime.evaluate([POINT], poles="ir", **options)
+    born = runtime.evaluate_correlated([POINT], poles="uv", **options)
+    resolved = runtime.evaluate_resolved([POINT], poles="ir", **options)
+    full = runtime.evaluate_resolved([POINT], **options)
+    assert resolved.poles is PoleSelection.IR and born.poles is PoleSelection.UV
+    assert resolved.finite == full.finite
+    assert resolved.pole_part("ir") == resolved.values
+    total = resolved.total()
+    scale = max(abs(x) for x in inclusive.values[0][0])
+    for origin in ("uv", "ir"):
+        for component in POLE_COMPONENTS:
+            expected = inclusive.pole_part(origin, component)[0][0]
+            for other in (total, born):
+                got = other.pole_part(origin, component)[0][0]
+                for x, y in zip(got, expected, strict=True):
+                    assert abs(complex(x) - y) <= 1e-12 * scale, (origin, component)
+    order = resolved.sectors[0].order
+    assert resolved.for_order(order).pole_parts == resolved.pole_parts
+    assert born.for_order(order).pole_parts == born.pole_parts
+
+
+@pytest.mark.loop_physics
 def test_v2_runtime_refuses_what_it_does_not_provide(full_colour):
     """Undeclared colour histories and spin classes, helicity selectors, direct
     R2 and a rescue policy are refused; the Born metric ("born") and resolved

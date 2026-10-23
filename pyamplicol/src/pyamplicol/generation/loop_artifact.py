@@ -316,9 +316,10 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
             )
         if self.request is None or len(self.plan_sha256) != 64:
             raise ValueError("v2 loop processes record their request and plan digest")
-        if self.scaleless_plan_sha256 is not None and len(
-            self.scaleless_plan_sha256
-        ) != 64:
+        if (
+            self.scaleless_plan_sha256 is not None
+            and len(self.scaleless_plan_sha256) != 64
+        ):
             raise ValueError("a companion plan digest is a SHA-256")
         if len(self.state_legs) != len(self.external_pdgs) or not self.helicities:
             raise ValueError("v2 loop processes declare their legs and helicities")

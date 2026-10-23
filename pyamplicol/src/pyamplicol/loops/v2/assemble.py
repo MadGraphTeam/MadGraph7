@@ -1316,11 +1316,14 @@ class LoopSlice:
         slice_.scaleless = slice_._scaleless_companion()
         return slice_
 
-    def _scaleless_companion(self) -> LoopSlice | None:
+    def _scaleless_companion(self, prune: bool | None = None) -> LoopSlice | None:
         """The certified-scaleless families (``FamilySet.scaleless_families``)
         as a slice sharing this one's blocks, Born, counterterms, kernels and
         colour degrees, with its own schedules and seed table (contracted
-        directly), or None without such families.
+        directly), or None without such families. At LC/NLC it is pruned for
+        the inclusive virtual unless ``prune`` is False (the observables'
+        companion, ``ObservableSlice.scaleless``, prunes it for its declared
+        histories).
 
         Their integrals vanish (scaleless), so the combined Laurent never needs
         them; their UV residues, e.g. B0(0;0,0) = 1/eps_UV - 1/eps_IR, are part
@@ -1360,9 +1363,10 @@ class LoopSlice:
             table=table,
             class_of=class_of,
             fourier=None,
+            colour_pruned=False,
             scaleless=None,
         )
-        if self.request.accuracy != "full":
+        if self.request.accuracy != "full" and prune is not False:
             twin._prune_colour()
         return twin
 
@@ -2199,26 +2203,37 @@ class _PointEvaluation:
 
     # -- reduction -----------------------------------------------------------------
 
-    def _reduce(self, numerators, retest: str | None, columns=None) -> None:
+    def _reduce(
+        self, numerators, retest: str | None, columns=None, scaleless=None
+    ) -> None:
         """Reduce every nonzero (family, loop order, column) lane; lanes are
         labelled by ``columns[column]`` (by default the column's sector).
         ``retest`` re-reduces them in that frame (``stability.FRAMES``:
         "reversed" or "rescaled"). The "uv" and "ir" pole selections also
-        dress and reduce the certified-scaleless families
-        (``LoopSlice.scaleless``) for their UV residues."""
+        dress and reduce the certified-scaleless families for their UV
+        residues: the slice's companion (``LoopSlice.scaleless``) on the
+        sector columns, or for observable ``columns`` ``scaleless`` =
+        (companion slice or None, its seeds of an evaluation;
+        ``observables.ColumnPlan``)."""
         slice_, numbers = self.slice, self.numbers
         split = self.mode in ("uv", "ir")
-        if split and columns is not None:
-            raise NotImplementedError(
-                "the uv and ir pole selections serve the inclusive virtual; "
-                "observable columns take poles all or none"
-            )
         lanes, groups = self._groups(numerators, 0, columns)
         twin_lanes: list = []
-        if split and slice_.scaleless is not None:
+        companion, seeds = slice_.scaleless, None
+        if split and columns is not None:
+            if scaleless is None:
+                raise ValueError(
+                    "observable columns in the uv and ir pole selections need "
+                    "their companion column plan"
+                )
+            companion, seeds = scaleless
+        if split and companion is not None:
             twin = copy.copy(self)
-            twin.slice = slice_.scaleless
-            twin_lanes, twin_groups = twin._groups(twin.dress().numerators, len(lanes))
+            twin.slice = companion
+            dressed = twin.dress(seeds=None if seeds is None else seeds(twin))
+            twin_lanes, twin_groups = twin._groups(
+                dressed.numerators, len(lanes), columns
+            )
             groups = groups + twin_groups
         arithmetic = "double" if numbers.double else "arbitrary"
         digits = None if numbers.double else numbers.precision.digits
