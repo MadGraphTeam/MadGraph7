@@ -2,8 +2,10 @@
 """v2 observables (WP2.5): checks that need no slice and no native runtime.
 
 Flavour-member leg matching against the factorial permutation search (the
-test oracle) and the native batch's refusal of a missing Born row. The
-physics checks are in ``test_loop_v2_observables.py``.
+test oracle), the native batch's refusal of a missing Born row, and the
+canonical tree stages (``assemble._canonical_stage``: independent of the
+process history on both renaming paths; misaligned symbol blocks refused).
+The physics checks are in ``test_loop_v2_observables.py``.
 """
 
 from __future__ import annotations
