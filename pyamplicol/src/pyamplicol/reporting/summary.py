@@ -2473,7 +2473,9 @@ def _loop_inspection_rows(loop: Mapping[str, object]) -> list[tuple[str, str]]:
         ),
         (
             "Born orders",
-            ", ".join(str(order) for order in cast(Sequence[object], loop["born_orders"])),
+            ", ".join(
+                str(order) for order in cast(Sequence[object], loop["born_orders"])
+            ),
         ),
         (
             "virtual sectors",
@@ -2488,7 +2490,9 @@ def _loop_inspection_rows(loop: Mapping[str, object]) -> list[tuple[str, str]]:
         ),
         (
             "arithmetic",
-            ", ".join(str(value) for value in cast(Sequence[object], loop["arithmetic"])),
+            ", ".join(
+                str(value) for value in cast(Sequence[object], loop["arithmetic"])
+            ),
         ),
     ]
     families = loop.get("families")
@@ -2527,7 +2531,32 @@ def _loop_inspection_rows(loop: Mapping[str, object]) -> list[tuple[str, str]]:
                     )
                     + f"; escalation by the {loop['rescue_policy']}",
                 ),
-                ("plan v4", f"sha256 {loop['plan_sha256']}"),
+                (
+                    "observables",
+                    "colour histories "
+                    + (
+                        ", ".join(
+                            map(str, cast(Sequence[object], loop["color_correlations"]))
+                        )
+                        or "none"
+                    )
+                    + "; spin classes "
+                    + (
+                        ", ".join(
+                            "(" + ",".join(map(str, legs)) + ")"
+                            for legs in cast(
+                                Sequence[Sequence[object]], loop["spin_correlations"]
+                            )
+                        )
+                        or "none"
+                    )
+                    + f"; resolved {'yes' if loop['resolved'] else 'no'}",
+                ),
+                (
+                    "plan v4",
+                    f"sha256 {loop['plan_sha256']}; point inputs "
+                    f"{loop['point_inputs']}",
+                ),
             )
         )
     else:

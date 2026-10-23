@@ -1306,7 +1306,9 @@ def test_public_runtime_surface(generate, loop_reference, executor):
             tuple(complex(x) for x in sector) for sector in ordinary.values[index]
         )
     resolved = runtime.evaluate_resolved(points[:1], mu_r2=scales[:1])
-    assert resolved.shape == (1, 1, 16, len(observables.components), 3)
+    # Full colour: one contracted colour component per helicity row.
+    assert resolved.shape == (1, 1, 16, 1, 3)
+    assert resolved.virtual_color_ids == ("full",)
     for a, b in zip(resolved.total().values[0][0], ordinary.values[0][0], strict=True):
         assert _close(a, b, 1e-12, 1e-14)
     carriers = [("arbitrary", 40)]

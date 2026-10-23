@@ -55,7 +55,11 @@ from pyamplicol.api import (
     VirtualStabilityChecks,
     VirtualStabilityEstimate,
 )
-from pyamplicol.api.errors import CompatibilityError, GenerationError
+from pyamplicol.api.errors import (
+    CompatibilityError,
+    EvaluationError,
+    GenerationError,
+)
 from pyamplicol.api.virtual_results import parse_rotation
 from pyamplicol.loops.v2.stability import Rotation
 
@@ -447,7 +451,7 @@ def test_v2_runtime_refuses_what_it_does_not_provide(full_colour):
     total = resolved.total()
     for a, b in zip(total.values[0][0], inclusive.values[0][0], strict=True):
         assert abs(a - b) <= 1e-12 * abs(b)
-    with pytest.raises(ValueError, match="spin"):
+    with pytest.raises(EvaluationError, match="spin-correlation class was not"):
         runtime.set_spin_correlation_vectors({3: [1, 0, 0, 0]})
     for call in (
         lambda: runtime.evaluate_correlated(
@@ -631,6 +635,10 @@ def test_inspect_summarizes_v2_loop_artifacts(full_colour):
     assert loop.color_degrees is None and loop.schedule == "backward"
     assert loop.poles == "runtime-optional"
     assert loop.stability_checks == ("rotation", "reduction-direction")
+    assert loop.arithmetic == ("double", "double-double", "arbitrary")
+    assert loop.resolved and not loop.correlations
+    assert loop.color_correlations == () and loop.spin_correlations == ()
+    assert loop.point_inputs == "regenerated-at-load"
     execution = json.loads((full_colour / "processes/gg/execution.json").read_text())
     assert loop.plan_sha256 == execution["plan_sha256"]
     assert by_id["uux_ddxg"].loop.families == 42
@@ -1066,6 +1074,14 @@ def test_finite_only_correlated_and_resolved_from_the_same_artifact(
     )
     total = finite.total()
     assert total.poles is False and total.stability is None
+
+    from pyamplicol.artifacts import inspect_artifact
+
+    (process,) = inspect_artifact(observables_artifact("gg_gg")).processes
+    loop = process.loop
+    assert loop.correlations and loop.resolved
+    assert loop.color_correlations == ("casimir", "T12", "T34")
+    assert loop.spin_correlations == ((3,), (3, 4))
 
 
 # ------------------------------------------------------------------ portability

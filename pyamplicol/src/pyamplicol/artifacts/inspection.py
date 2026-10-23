@@ -106,8 +106,10 @@ class ArtifactLoopInspection:
     virtual, each a separately returned partial result, with its (Born, loop)
     amplitude orders. Families, reduction buckets ``(propagators, rank,
     families)``, the leading N_c degree kept per sector at LC/NLC, the
-    schedule, the runtime options and the plan digest are declared by v2
-    processes only; ``runtime_bytes`` is the stored runtime PACBIN.
+    schedule, the runtime options, the declared colour histories and spin
+    classes, how point inputs are obtained (``point_inputs``) and the plan
+    digest are declared by v2 processes only; ``runtime_bytes`` is the stored
+    runtime PACBIN.
     """
 
     engine: str
@@ -129,6 +131,9 @@ class ArtifactLoopInspection:
     stability_checks: tuple[str, ...] = ()
     rescue_policy: str | None = None
     plan_sha256: str | None = None
+    color_correlations: tuple[str, ...] = ()
+    spin_correlations: tuple[tuple[int, ...], ...] = ()
+    point_inputs: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -3090,13 +3095,15 @@ def _loop_process_inspection(
             scheme_status=_string(metadata.get("scheme_status"), context),
             r2_strategy=_string(metadata.get("r2_strategy"), context),
             arithmetic=tuple(
-                str(value)
-                for value in _sequence(metadata.get("arithmetic"), context)
+                str(value) for value in _sequence(metadata.get("arithmetic"), context)
             ),
             born_orders=born,
             sectors=sectors,
-            correlations=False,
-            resolved=False,
+            correlations=bool(
+                _sequence(metadata.get("color_correlations"), context)
+                or _sequence(metadata.get("spin_correlations"), context)
+            ),
+            resolved=metadata.get("resolved") is True,
             runtime_bytes=runtime[0].size_bytes,
             families=_integer(metadata.get("families"), f"{context}.families"),
             buckets=tuple(
@@ -3129,6 +3136,20 @@ def _loop_process_inspection(
             ),
             rescue_policy=_string(metadata.get("rescue_policy"), context),
             plan_sha256=_string(execution.get("plan_sha256"), str(execution_path)),
+            color_correlations=tuple(
+                _string(value, f"{context}.color_correlations")
+                for value in _sequence(metadata.get("color_correlations"), context)
+            ),
+            spin_correlations=tuple(
+                tuple(
+                    _integer(leg, f"{context}.spin_correlations")
+                    for leg in _sequence(legs, f"{context}.spin_correlations")
+                )
+                for legs in _sequence(metadata.get("spin_correlations"), context)
+            ),
+            point_inputs=_string(
+                execution.get("point_inputs"), f"{execution_path}.point_inputs"
+            ),
         )
     else:
         orders = _mapping(metadata.get("orders"), f"{context}.orders")
@@ -3145,8 +3166,7 @@ def _loop_process_inspection(
             scheme_status=_string(metadata.get("scheme_status"), context),
             r2_strategy=_string(metadata.get("r2_strategy"), context),
             arithmetic=tuple(
-                str(value)
-                for value in _sequence(metadata.get("arithmetic"), context)
+                str(value) for value in _sequence(metadata.get("arithmetic"), context)
             ),
             born_orders=born,
             sectors=_loop_sectors(orders.get("virtual"), f"{context}.orders.virtual"),
@@ -3203,9 +3223,7 @@ def _artifact_process_inspection(
     return _process_inspection(
         manifest,
         process,
-        _execution_inspection(
-            manifest, execution_path, capabilities, process=process
-        ),
+        _execution_inspection(manifest, execution_path, capabilities, process=process),
     )
 
 

@@ -1103,10 +1103,13 @@ class V2ObservablesRuntime:
     every batch in the native v2 executor (binary64, ``double-double`` or
     MPFR arbitrary precision; one native plan per output column set, built
     once); ``"python"`` runs the Python reference executor (binary64 or
-    arbitrary precision). Resolved colour components are the Born basis
-    elements (``born-basis-anchored-interference``, design §1.6 decision 3),
-    with IDs ``basis-<index>``; a member's are its representative's elements
-    on the member's labels.
+    arbitrary precision). Resolved output is per Born helicity row; at
+    leading colour also per Born colour component, a Born basis element
+    (``born-basis-anchored-interference``, design §1.6 decision 3) with ID
+    ``basis-<index>`` (a member's are its representative's elements on the
+    member's labels). At NLC and full colour the colour is contracted: one
+    component per row, with the accuracy as its ID (the documented public
+    shape of ``Runtime.evaluate_resolved``).
 
     Every call takes ``poles=False`` (finite part only, poles explicitly
     absent) and ``stability_checks`` (rotations and/or the reduction-direction
@@ -1205,7 +1208,7 @@ class V2ObservablesRuntime:
 
     def _native_columns(self, key: tuple[Any, ...]) -> Any:
         """The native executor of one output column set (built once):
-        ``("correlated", histories)`` or ``("resolved", spin legs)``."""
+        ``("correlated", histories)`` or ``("resolved", resolution)``."""
 
         from pyamplicol.loops.v2.observables import NativeObservables
 
@@ -1217,9 +1220,7 @@ class V2ObservablesRuntime:
                 found = self._native[key] = (
                     NativeObservables.correlated(self._observables, value, **options)
                     if kind == "correlated"
-                    else NativeObservables.resolved(
-                        self._observables, spin_legs=value, **options
-                    )
+                    else NativeObservables.resolved(self._observables, value, **options)
                 )
             return found
 
@@ -1573,7 +1574,11 @@ class V2ObservablesRuntime:
         if self._member is not None:
             # The member's rows in its own catalogue order.
             rows = tuple(sorted(self._member.row(row) for row in rows))
-        components = observables.components
+        accuracy = observables.slice.request.accuracy
+        resolution = "helicity-colour" if accuracy == "lc" else "helicity"
+        components: tuple[Any, ...] = (
+            observables.components if accuracy == "lc" else (None,)
+        )
         with self._lock:
             parameters = dict(self._parameters)
         settings = {
@@ -1584,9 +1589,11 @@ class V2ObservablesRuntime:
         }
         runner = self._runner() if self._executor != "native" else None
         entries, failures = self._run(
-            ("resolved", ()),
+            ("resolved", resolution),
             lambda point, scale, _spin: (
-                runner.evaluate_resolved(point, scale, **settings).entries
+                runner.evaluate_resolved(
+                    point, scale, resolution=resolution, **settings
+                ).entries
             ),
             points,
             scales,
@@ -1659,7 +1666,11 @@ class V2ObservablesRuntime:
                 if checks.enabled
                 else None
             )
-        ids = tuple(f"basis-{b}" for b in components)
+        ids = (
+            tuple(f"basis-{b}" for b in components)
+            if accuracy == "lc"
+            else (str(accuracy),)
+        )
         return ResolvedVirtualEvaluation(
             born_values=tuple(born_values),
             values=tuple(values),
