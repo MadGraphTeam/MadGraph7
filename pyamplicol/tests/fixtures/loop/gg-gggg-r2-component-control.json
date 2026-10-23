@@ -1,0 +1,64 @@
+{
+  "process": "g g > g g g g",
+  "component": "r2",
+  "source": "MadLoop standalone export of the three-provider reference tests/fixtures/loop/required/gg_gggg.json (MG5_aMC 3.7.0 loop_sm-no_b_mass, Feynman gauge)",
+  "provenance": "tools/loop_reference/madloop_ct_component.py --component r2: the generated SKIPLOOPEVAL switch and R2 counterterm-amplitude selection in a copy of loop_matrix.f (export unchanged); first point of the reference",
+  "convention": "MadLoop finite part, Cepsilon=(4pi)^epsilon/Gamma(1-epsilon); physical couplings; initial spin/colour average and final identical-particle factor included; aS fixed (no running) at MU_R",
+  "parameters": {
+    "aS": "0.118",
+    "MT": "173",
+    "MU_R": "1000"
+  },
+  "fixed_parameters": {
+    "MB": "0"
+  },
+  "point": [
+    [
+      "655.36",
+      "0",
+      "0",
+      "655.36"
+    ],
+    [
+      "655.36",
+      "0",
+      "0",
+      "-655.36"
+    ],
+    [
+      "94.921241505625212928",
+      "-9.8231381331968",
+      "-81.649264541008135520256",
+      "47.401958251720287633408"
+    ],
+    [
+      "465.154064623758787072",
+      "147.8911877331968",
+      "439.851352191836167520256",
+      "32.051340094941536366592"
+    ],
+    [
+      "495.284693870616",
+      "-138.0680496",
+      "-448.088807650828032",
+      "159.563661653338176"
+    ],
+    [
+      "255.36",
+      "0",
+      "89.88672",
+      "-239.01696"
+    ]
+  ],
+  "born": 0.00043554152382562617,
+  "r2": {
+    "finite": -0.0002625658292293035,
+    "single_pole": 0.0,
+    "double_pole": 0.0
+  },
+  "ct_amplitude_counts": {
+    "r2": 27465,
+    "uv": 12360,
+    "wf": 1020
+  }
+}

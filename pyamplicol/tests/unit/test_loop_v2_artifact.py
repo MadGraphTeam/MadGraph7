@@ -415,6 +415,7 @@ def test_slice_request_records_round_trip():
         compress_colour=False,
         colour_contraction="direct",
         compatibility="gmu_particle_anti",
+        counterterms="sites",
     )
     default = SliceRequest("g g > g g", {"QCD": 2}, {"QCD": 4})
     for item in fields(SliceRequest):
@@ -574,6 +575,8 @@ def test_public_generation_publishes_plan_v4(full_colour):
     assert info["families"] == 42
     assert sum(count for _n, _r, count in info["buckets"]) == 42
     assert info["poles"] == ["all", "none"] and not info["rescue_available"]
+    # The public path takes its counterterms from the tree recursion (WP2.2).
+    assert info["request"]["counterterms"] == "recursion"
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
 
@@ -2081,9 +2084,13 @@ def test_qed_declaring_model_names_its_blockers(
     without a rule or certified zero (WP3.2/WP3.5)."""
 
     from pyamplicol.api import ProcessRequest, ProcessSet
+    from pyamplicol.models.loading import compile_model_source
 
     entries = (("uudd", "u u~ > d d~"),)
     processes = ProcessSet((ProcessRequest.parse("u u~ > d d~", name="uudd"),))
+    # The dry run reads compiled models from the model cache only: populate it
+    # (keyed by the model compiler's sources, so a compiler change empties it).
+    compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
     plain = _qed_model_generator(
         loop_qcd_qed_sm_ufo, tmp_path, "a", entries, engine=None
     )

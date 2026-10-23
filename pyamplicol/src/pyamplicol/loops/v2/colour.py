@@ -591,6 +591,7 @@ def block_colour_network(
         ColourProduct(
             ExactColorCoefficient(Fraction(NC) ** -grade),
             strings=tuple(strings),
+            traces=flow.traces,
             nc_power=grade,
         ),
     )
@@ -658,6 +659,11 @@ class SeedColour:
             key = block.key
             if key.auxiliary_kind is not None:
                 continue
+            if block.colour_flow.traces or key.color_state.lines:
+                raise NotImplementedError(
+                    f"loop seeds of block {key.word} with closed colour traces "
+                    "(a colour-singlet vertex of two adjoint currents)"
+                )
             field_name = self._fields.incoming(key.particle_id)["name"]
             self._words.setdefault(
                 (key.external_mask, field_name, key.coupling_orders), {}
@@ -1242,6 +1248,7 @@ class CompressedColour:
             self.colour.field_colour(block) != 8
             or flow.nc_grade != 0
             or flow.singlet_labels
+            or flow.traces
             or len(flow.strings) != 1
             or not (flow.incoming_open and flow.outgoing_open)
             or any(self.colour._representations[a] != 8 for a in flow.strings[0])

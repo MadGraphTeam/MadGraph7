@@ -40,6 +40,16 @@ SUPPORTED_COLOR_REPRESENTATIONS = frozenset({-3, 1, 3, 8})
 # a colour-flow gluon removes, which colour-flow compilation adds as a synthetic
 # vector particle.
 U1_SUBTRACTION_AUXILIARY_KIND = "u1-subtraction-color-flow-vector"
+# Names of the colour-flow U(1) bookkeeping (``compiler_color_flow``): the
+# prefixes of the synthetic subtraction and identity particles, the auxiliary
+# kind suffix of the identity contact lines (their contact line's kind, so
+# that contact bookkeeping keeps reading their origin) and the vertex suffix
+# of the U(1)-projection copies. Here, not in the compiler, so that DAG colour
+# code reads them without importing the model compilers.
+U1_SUBTRACTION_PREFIX = "__pyamplicol_u1_subtraction_"
+U1_IDENTITY_PREFIX = "__pyamplicol_u1_identity_"
+U1_IDENTITY_SUFFIX = ":u1-identity"
+U1_PROJECTION_SUFFIX = "::u1-projection"
 
 # Tree kernels exist in two variants. ``transverse`` is the compile-time
 # default: proven massless Yang-Mills vertices drop the terms proportional to

@@ -83,7 +83,7 @@ from pyamplicol.color.connections import (
 from pyamplicol.color.contraction_types import NC
 
 from . import reference_executor as rx
-from .blocks import TreeBlocks, build_tree_blocks
+from .blocks import TreeBlocks, build_tree_blocks, with_ward_kernels
 from .catalogue import build_loop_kernel_catalogue
 from .colour import (
     SYMMETRIC_GROUP_FFT,
@@ -112,6 +112,7 @@ from .ct_sites import (
     SiteClosure,
     SiteTerm,
     generate_counterterm_sites,
+    vanishes_identically,
 )
 from .ct_sites import (
     Carrier as SiteCarrier,
@@ -313,7 +314,14 @@ class TreeRows:
     parameters of overridden inputs at the carrier's precision.
     """
 
-    def __init__(self, dag: Any, compiled: Any):
+    def __init__(
+        self,
+        dag: Any,
+        compiled: Any,
+        *,
+        jit: bool = True,
+        propagated_currents: Iterable[int] = (),
+    ):
         from pyamplicol.generation.contracts import StageCompilationInput
         from pyamplicol.generation.runtime_schema import (
             build_runtime_expression_schema,
@@ -327,7 +335,10 @@ class TreeRows:
         model = CompiledUFOModel(compiled)
         with _exact_u1_subtraction_weights():
             runtime_schema = build_runtime_expression_schema(
-                dag, model, process_id="loop-v2-blocks"
+                dag,
+                model,
+                process_id="loop-v2-blocks",
+                propagated_currents=propagated_currents,
             )
             blueprint = build_generic_stage_compiler_blueprint(
                 StageCompilationInput(dag, model, runtime_schema)
@@ -343,7 +354,10 @@ class TreeRows:
             int(root["output_index"]): int(root["root_id"])
             for root in self.schema["amplitude_stage"]["roots"]
         }
-        self._evaluators = tuple(_stage_evaluator(stage) for stage in self.stages)
+        self._jit = jit
+        self._evaluators = tuple(
+            _stage_evaluator(stage, jit=jit) for stage in self.stages
+        )
         self._amplitude_evaluator = None
         layout = self.schema["parameter_layout"]
         self._value_count = int(layout["value_component_count"])
@@ -462,7 +476,7 @@ class TreeRows:
         if amplitudes:
             stage = self._amplitude_stage
             if self._amplitude_evaluator is None:
-                self._amplitude_evaluator = _stage_evaluator(stage)
+                self._amplitude_evaluator = _stage_evaluator(stage, jit=self._jit)
             _outputs, converted = self._replay(
                 stage, self._amplitude_evaluator, state, numbers
             )
@@ -498,9 +512,10 @@ class TreeRows:
         return outputs, [numbers.pair(*z) for z in outputs]
 
 
-def _stage_evaluator(stage: Any) -> Any:
+def _stage_evaluator(stage: Any, *, jit: bool = True) -> Any:
     """The Symbolica evaluator of one tree stage, independent of the process
-    history (``_canonical_stage``)."""
+    history (``_canonical_stage``); ``jit=False`` keeps it interpreted (one
+    point at a time costs the same, without the JIT compile)."""
 
     from symbolica import Expression, FunctionDefinition
 
@@ -512,6 +527,7 @@ def _stage_evaluator(stage: Any) -> Any:
             FunctionDefinition(function, arguments, body, inlining="always")
             for function, arguments, body in functions
         ],
+        jit_compile=jit,
     )
 
 
@@ -852,6 +868,29 @@ def _number_expression(value: Any) -> Any:
     return E(str(Decimal(value.real))) + E(str(Decimal(value.imag))) * Expression.I
 
 
+def _site_coefficient(compiled: Any, fixed: Mapping[str, Any], continuation: Any):
+    """``(rule, entry, power) -> exact Laurent coefficient`` of a CT entry in
+    the payload's symbols (``ct_recursion.CoefficientLowering``, built on
+    first use)."""
+
+    lowering: list[Any] = []
+
+    def coefficient(_rule: Any, entry: Any, power: int) -> Any:
+        if not lowering:
+            from .ct_recursion import CoefficientLowering, _payload_identities
+
+            lowering.append(
+                CoefficientLowering(
+                    compiled,
+                    fixed,
+                    None if continuation is None else _payload_identities(continuation),
+                )
+            )
+        return lowering[0](entry, power)
+
+    return coefficient
+
+
 def _whole_rule_terms(closure: SiteClosure, site) -> tuple[WholeRuleTerm, ...]:
     """The replacement terms of a whole-rule site, closed on every block choice."""
 
@@ -1021,6 +1060,10 @@ class SliceRequest:
     # preparation (``loop.preparation.compatibility``; e.g. "gmu_particle_anti"
     # restores the Goldstone flag MG5_aMC's loop_qcd_qed_sm loses on G-).
     compatibility: str | None = None
+    # Counterterms (design §6.1, §6.6): "recursion" takes them from the tree
+    # recursion over the CT-lowered model (``ct_closure``), "sites" from the
+    # site closure of every rule, the permanent oracle (O6).
+    counterterms: Literal["recursion", "sites"] = "recursion"
 
     @property
     def exact_loop_orders(self) -> tuple[Mapping[str, int], ...]:
@@ -1141,6 +1184,9 @@ class LoopSlice:
     alpha_s_parameter: str | None
     loop_catalogue: Any = None
     fourier: SeedFourier | None = None
+    # The CT amplitudes from the tree recursion (``ct_closure``); the sites
+    # then hold only the rules it leaves to site closure.
+    counterterm_program: Any = None
     # Whether LC/NLC pruning dropped skeletons (``_prune_colour``).
     colour_pruned: bool = False
     _cache: dict = field(default_factory=dict, repr=False)
@@ -1165,9 +1211,10 @@ class LoopSlice:
 
         if request.accuracy not in ("full", "lc", "nlc"):
             raise ValueError(f"unknown colour accuracy {request.accuracy!r}")
-        prepared, continuation, _fixed, scale_parameter, alpha_s_parameter = (
+        prepared, continuation, fixed, scale_parameter, alpha_s_parameter = (
             prepare_request_model(compiled, request)
         )
+        declaration = request.colour_declaration
         structure = prepared.structure
         data = json.loads(structure.native.to_json())
         selection = LoopOrderSelection(
@@ -1184,6 +1231,11 @@ class LoopSlice:
             block_coupling_orders=request.loop_order_bounds,
             ignored_particle_ids=request.ignored_particle_ids,
         )
+        # Trees that propagate a coloured particle with a width (or a
+        # model-supplied propagator) take the full tree kernels: the
+        # transverse Yang-Mills ones are then not the Feynman rules (design
+        # §3.2 item 2, §6.1). Everything below uses that model.
+        blocks, compiled = with_ward_kernels(blocks, compiled, fixed)
         table = blocks.block_table(data)
         loop_catalogue = ModelLoopCatalogue(
             data, species_orders=structure.perturbative_species_orders
@@ -1196,6 +1248,38 @@ class LoopSlice:
             colour,
             policy=_FRAME_POLICY,
         )
+        if request.counterterms not in ("recursion", "sites"):
+            raise ValueError(f"unknown counterterm form {request.counterterms!r}")
+        # The block rows are compiled before the CT-lowered model exists:
+        # Symbolica orders terms by symbol creation, so their binary64
+        # rounding then does not depend on the counterterm form.
+        tree_rows = TreeRows(blocks.blocks_dag, compiled)
+        program = None
+        if request.counterterms == "recursion":
+            # Production form of the counterterms (design §6.1): the tree
+            # recursion over the CT-lowered model, closed at leg 1; graded by
+            # N_c with a colour declaration (design §6.7).
+            from .ct_closure import CountertermProgram
+
+            program = CountertermProgram.build(
+                compiled,
+                prepared,
+                request.process,
+                families,
+                data,
+                selection,
+                blocks.born_orders,
+                forbidden=request.ignored_particle_ids,
+                fixed_parameters=fixed,
+                declaration=declaration,
+                continuation=continuation,
+                # What determines ``prepared`` besides the arguments above.
+                scope=(
+                    tuple(sorted(request.born_orders.items())),
+                    tuple(sorted(request.loop_order_bounds.items())),
+                    request.compatibility,
+                ),
+            )
         sites = generate_counterterm_sites(
             families,
             table,
@@ -1204,6 +1288,7 @@ class LoopSlice:
             selection,
             forbidden=request.ignored_particle_ids,
             whole_rules=continuation is not None,
+            closed_rules=None if program is None else program.residual,
         )
         insertions = external_field_insertions(
             table.legs,
@@ -1215,15 +1300,27 @@ class LoopSlice:
         )
         ordinary = _ordinary_entries(prepared, data)
         entries = [e for site in sites.sites for e in site.rule.entries]
+        if program is not None:
+            entries += [e for site in program.root_sites for e in site.rule.entries]
         entries += [e for rows in ordinary for e in rows]
         catalogue = build_loop_kernel_catalogue(
             compiled, counterterm_entries=list({id(e): e for e in entries}.values())
         )
         closure = SiteClosure(blocks, data, catalogue)
+        # Cells without a site kernel that cancel between the rules closed on
+        # the same blocks (the Levi-Civita R2 of a Z with gluons over complete
+        # quark doublets) are left out; any other such cell fails below.
+        cancelled = closure.cancelled_cells(
+            sites.sites,
+            _site_coefficient(compiled, structure.fixed_parameters, continuation),
+            lambda expression: vanishes_identically(compiled, expression),
+        )
         readings = rx.reading_skeletons(plan)
         weights = LeafWeights(data, closure.fermion_ends)
         for skeleton in readings:
             weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
+        if program is not None:
+            program.bind(ordinary, data, catalogue)
         born_terms = _born_terms(blocks, table, closure, ordinary)
         basis = _born_tensors(closure, born_terms)
         seed_table, class_of = build_seed_table(
@@ -1259,7 +1356,7 @@ class LoopSlice:
             born_terms=born_terms,
             site_terms={
                 site: (
-                    closure.terms(site)
+                    closure.terms(site, cancelled.get(site, ()))
                     if site.rule.whole_rule_continuation is None
                     else _whole_rule_terms(closure, site)
                 )
@@ -1273,7 +1370,7 @@ class LoopSlice:
                 (sector, frozenset(pairs)) for sector, pairs in sorted(sectors.items())
             ),
             normalisation=Normalisation.of(structure.native, incoming, outgoing),
-            tree_rows=TreeRows(blocks.blocks_dag, compiled),
+            tree_rows=tree_rows,
             layout=MonomialLayout.native(
                 native,
                 # The executor bounds a node's rank by its inputs' rank plus
@@ -1290,6 +1387,7 @@ class LoopSlice:
             scale_parameter=scale_parameter,
             alpha_s_parameter=alpha_s_parameter,
             loop_catalogue=loop_catalogue,
+            counterterm_program=program,
         )
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
@@ -1489,17 +1587,27 @@ class LoopSlice:
     # -- scalar bindings -------------------------------------------------------
 
     def _scalar_plan(self, powers: tuple[int, ...]):
-        """The scalar plan of ``scalars`` and its (name, power) -> ((grade,
-        column), ...) layout; only structurally nonzero grades are kept."""
+        """The scalar plans of ``scalars`` and their (name, power) -> ((grade,
+        column), ...) layout over the concatenated columns; only structurally
+        nonzero grades are kept.
 
-        from pyamplicol.loops.scalar_bindings import prepare_scalar_bindings
+        The Born couplings have a program of their own: the common
+        subexpressions of a scalar program, and so the binary64 rounding of
+        its outputs, depend on all of them, and the Born (which also weights
+        the bare loop) must not depend on which counterterm or field couplings
+        a request binds.
+        """
 
         from .fields import field_definitions
 
         cached = self._cache.get(("plan", powers))
         if cached is None:
-            structure = self.prepared.structure
             definitions = field_definitions(self.fields)
+            born = {
+                (term.entry.coupling.name, 0)
+                for terms in self.born_terms.values()
+                for term in terms
+            }
             outputs = {
                 (entry.coupling.name, power)
                 for site in self.sites.sites
@@ -1510,11 +1618,12 @@ class LoopSlice:
             outputs.update(
                 (name, power) for name, _ in definitions.values() for power in powers
             )
-            outputs.update(
-                (term.entry.coupling.name, 0)
-                for terms in self.born_terms.values()
-                for term in terms
-            )
+            if self.counterterm_program is not None:
+                for term in self.counterterm_program.closure.terms:
+                    if term.coupling is None:
+                        outputs.update((name, 0) for name in term.term.parameters)
+                    elif term.coupling[1] in powers:
+                        outputs.add(term.coupling)
             outputs.update(
                 (name, 0)
                 for terms in self.site_terms.values()
@@ -1522,31 +1631,45 @@ class LoopSlice:
                 if isinstance(term, WholeRuleTerm)
                 for name in term.parameters
             )
-            options = {
-                "program": structure.scalars,
-                "fixed_parameters": structure.fixed_parameters,
-                "anonymous_definitions": {
-                    name: source for name, source in definitions.values()
-                },
-            }
-            if self.continuation is None:
-                plan = prepare_scalar_bindings(
-                    structure.raw, sorted(outputs), **options
-                )
-                layout = {output: ((0, i),) for i, output in enumerate(plan.outputs)}
-            else:
-                graded = self.continuation.scalars(sorted(outputs), **options)
-                plan = graded.coefficients
-                layout = defaultdict(list)
-                for degree, columns in zip(graded.grades, graded.columns, strict=True):
-                    for output, column in zip(
-                        graded.formal.outputs, columns, strict=True
-                    ):
-                        if graded.coefficients.expressions[column].value != 0:
-                            layout[output].append((degree, column))
-                layout = {output: tuple(rows) for output, rows in layout.items()}
-            cached = self._cache[("plan", powers)] = (plan, layout)
+            plans: list[Any] = []
+            layout: dict[tuple[str, int], tuple[tuple[int, int], ...]] = {}
+            offset = 0
+            for part in (born, outputs - born):
+                if not part:
+                    continue
+                plan, local = self._scalar_part(sorted(part), definitions)
+                plans.append(plan)
+                for output, rows in local.items():
+                    layout[output] = tuple((g, c + offset) for g, c in rows)
+                offset += len(plan.expressions)
+            cached = self._cache[("plan", powers)] = (tuple(plans), layout)
         return cached
+
+    def _scalar_part(self, outputs, definitions):
+        """One scalar program over ``outputs`` and its local layout."""
+
+        from pyamplicol.loops.scalar_bindings import prepare_scalar_bindings
+
+        structure = self.prepared.structure
+        options = {
+            "program": structure.scalars,
+            "fixed_parameters": structure.fixed_parameters,
+            "anonymous_definitions": {
+                name: source for name, source in definitions.values()
+            },
+        }
+        if self.continuation is None:
+            plan = prepare_scalar_bindings(structure.raw, outputs, **options)
+            return plan, {output: ((0, i),) for i, output in enumerate(plan.outputs)}
+        graded = self.continuation.scalars(outputs, **options)
+        layout = defaultdict(list)
+        for degree, columns in zip(graded.grades, graded.columns, strict=True):
+            for output, column in zip(graded.formal.outputs, columns, strict=True):
+                if graded.coefficients.expressions[column].value != 0:
+                    layout[output].append((degree, column))
+        return graded.coefficients, {
+            output: tuple(rows) for output, rows in layout.items()
+        }
 
     def scalars(
         self, parameters: Mapping[str, str], numbers: _Numbers, poles: bool
@@ -1561,26 +1684,39 @@ class LoopSlice:
 
         from pyamplicol.loops.scalar_bindings import NativeScalarBindings
 
-        plan, layout = self._scalar_plan(LAURENT_POWERS if poles else (0,))
-        arithmetic = "double" if numbers.double else "arbitrary"
-        state = NativeScalarBindings(
-            plan,
-            arithmetic=arithmetic,
-            precision=None if numbers.double else numbers.precision.working_digits,
-            backend=self.native,
-            parameters={
-                name: value
-                for name, value in parameters.items()
-                if name in plan.external_names
-            },
+        # One plan for both modes: the scalar program's common subexpressions,
+        # and so the rounding of the finite couplings, do not depend on
+        # whether the poles are evaluated (finite-only parts stay bitwise
+        # equal to the full ones).
+        plans, layout = self._scalar_plan(LAURENT_POWERS)
+        powers = LAURENT_POWERS if poles else (0,)
+        # binary64 couplings are the correctly rounded values (32 digits,
+        # rounded once): they do not depend on the scalar program's
+        # evaluation order.
+        digits = (
+            _COUPLING_DIGITS if numbers.double else numbers.precision.working_digits
         )
-        values = [
-            numbers.pair(Decimal(re), Decimal(im))
-            for re, im in state.values.to_decimal()
-        ]
+        values = []
+        for plan in plans:
+            state = NativeScalarBindings(
+                plan,
+                arithmetic="arbitrary",
+                precision=digits,
+                backend=self.native,
+                parameters={
+                    name: value
+                    for name, value in parameters.items()
+                    if name in plan.external_names
+                },
+            )
+            values.extend(
+                numbers.pair(Decimal(re), Decimal(im))
+                for re, im in state.values.to_decimal()
+            )
         return {
             output: {degree: values[column] for degree, column in rows}
             for output, rows in layout.items()
+            if output[1] in powers
         }
 
     # -- colour degrees -------------------------------------------------------
@@ -1678,6 +1814,22 @@ class LoopSlice:
                     else grades(t.entry.coupling.name)
                 ),
             )
+        if self.counterterm_program is not None:
+            for item in self.counterterm_program.closure.terms:
+                term = item.term
+                if isinstance(term, WholeRuleTerm):
+                    found = {d + item.grade for d, _e in term.grades}
+                else:
+                    found = {
+                        g + item.grade
+                        for g, _c in layout.get(item.coupling, ())
+                        if item.coupling[1] in LAURENT_POWERS
+                    }
+                counterterms[item.orders] |= {
+                    (part.tensor, part.nc_power + grade)
+                    for part in term.colour.terms
+                    for grade in found
+                }
         out = {"born": {}, "virtual": {}}
         for a, b in product(born, repeat=2):
             squared = add_orders(a, b)
@@ -1766,6 +1918,12 @@ class LoopSlice:
 # --------------------------------------------------------------------- one point
 
 
+# Decimal digits of the binary64 couplings before their single rounding.
+_COUPLING_DIGITS = 32
+# A missing cache entry (``_PointEvaluation._closed_counterterms``).
+_UNSET = object()
+
+
 class _PointEvaluation:
     """All per-point work of ``LoopSlice.evaluate`` in one carrier."""
 
@@ -1817,6 +1975,19 @@ class _PointEvaluation:
                 sources={**(sources or {}), **loop_sources},
             )
         scalars = slice_.scalars(parameters, numbers, poles)
+        program = slice_.counterterm_program
+        # CT amplitudes are loop side: they take the loop sources too.
+        self.counterterm_rows = (
+            None
+            if program is None
+            else program.point(
+                decimal_point,
+                parameters,
+                numbers,
+                poles,
+                sources={**(sources or {}), **(loop_sources or {})} or None,
+            )
+        )
         self.parameters = parameters
         self.scale = scale
         self.scalars = scalars
@@ -1987,6 +2158,8 @@ class _PointEvaluation:
                                 grade,
                                 numbers,
                             )
+            if self.counterterm_rows is not None:
+                self._closed_counterterms(loops, helicity, momenta, scalars, carrier)
             self.site_vectors[row] = dict(loops)
             for (component, power, loop_order), vector in loops.items():
                 for order, amplitude in vectors.items():
@@ -2018,6 +2191,87 @@ class _PointEvaluation:
         self.counterterms = {
             key: value.real / average for key, value in counterterms.items()
         }
+
+    def _closed_counterterms(self, loops, helicity, momenta, scalars, carrier) -> None:
+        """CT amplitudes of the tree recursion at one helicity row, into
+        ``loops`` (component, power, loop orders) -> colour vector
+        (``ct_closure``: root terms on the CT program's blocks)."""
+
+        program = self.slice.counterterm_program
+        rows, scales = self.counterterm_rows
+        numbers = self.numbers
+        powers = LAURENT_POWERS if self.poles else (0,)
+        closure = program.closure.closure
+        whole = self.__dict__.setdefault("_closure_whole_rules", {})
+        # Each block's rows by helicities (once per slice), and each block's
+        # value at this helicity row (once per row; None: no such row).
+        tables = self.slice._cache.setdefault("counterterm_block_rows", {})
+        at_row: dict[int, Any] = {}
+        for item in program.closure.terms:
+            if item.power not in powers:
+                continue
+            values = []
+            for block in item.term.blocks:
+                value = at_row.get(block.id, _UNSET)
+                if value is _UNSET:
+                    table = tables.get(block.id)
+                    if table is None:
+                        table = tables[block.id] = {}
+                        for r in block.rows:
+                            table.setdefault(r.helicities, r)
+                    row = table.get(
+                        tuple(sorted((leg, helicity[leg]) for leg in block.key.labels))
+                    )
+                    value = at_row[block.id] = (
+                        None
+                        if row is None
+                        else rows[
+                            (
+                                row.current_id,
+                                "source" if block.is_source else "propagated",
+                            )
+                        ]
+                    )
+                if value is None:
+                    break
+                values.append(value)
+            else:
+                if isinstance(item.term, WholeRuleTerm):
+                    if item.term not in whole:
+                        whole[item.term] = item.term.coefficients(
+                            {
+                                name: scalars[name, 0][0]
+                                for name in item.term.parameters
+                            },
+                            numbers,
+                        )
+                    value = item.multiplicity * item.term.kinematic(values, numbers)
+                    for grade, coupling in whole[item.term].items():
+                        _add_graded(
+                            loops[item.component, item.power, item.orders],
+                            item.term.colour,
+                            coupling * value,
+                            grade + item.grade,
+                            numbers,
+                        )
+                    continue
+                vectors = [
+                    momenta[block.key.external_mask] for block in item.term.blocks
+                ]
+                value = item.term.sign * closure.value(
+                    item.term, values, vectors, carrier
+                )
+                value = item.multiplicity * value
+                if item.scale is not None:
+                    value = scales[item.scale] * value
+                for grade, coupling in scalars.get(item.coupling, {}).items():
+                    _add_graded(
+                        loops[item.component, item.power, item.orders],
+                        item.term.colour,
+                        coupling * value,
+                        grade + item.grade,
+                        numbers,
+                    )
 
     def _amplitudes(self, vectors, index) -> dict[tuple[int, Orders], dict[int, Any]]:
         """A0 per (Born tensor, Born order) split into N_c grades (seeds).
