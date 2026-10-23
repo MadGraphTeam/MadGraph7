@@ -1239,11 +1239,40 @@ def test_native_members_per_point_sources_and_stability(generate):
 # ------------------------------------------------------------------ stability
 
 
-def test_observable_stability_estimates_bracket_the_true_error(generate):
+NATIVE_CARRIERS = {
+    "double": Precision.double(),
+    "double-double": Precision.double_double(),
+    "arbitrary-40": Precision.arbitrary(40),
+}
+# Largest relative estimate a well-conditioned 2 -> 2 point may report.
+ESTIMATE_CEILING = {"double": 1e-9, "double-double": 1e-24, "arbitrary-40": 1e-30}
+
+
+def _assert_brackets(result, exact, ceiling: float) -> None:
+    """Every output's estimate is positive, below ``ceiling`` and bounds the
+    deviation from the 200-bit value (measured in Decimal arithmetic)."""
+
+    for key, value in result.items():
+        estimate = value.stability
+        assert estimate is not None and 0 < estimate.relative < ceiling, key
+        for sector, laurent in value.components["virtual"].items():
+            target = exact[key].components["virtual"][sector].coefficients
+            size = max(_magnitude(x) for x in target)
+            error = max(
+                _deviation(a, b)
+                for a, b in zip(laurent.coefficients, target, strict=True)
+            )
+            assert error <= Decimal(estimate.relative) * size, (key, error / size)
+
+
+@pytest.mark.parametrize("carrier", ("double", "arbitrary-40"))
+def test_observable_stability_estimates_bracket_the_true_error(generate, carrier):
     """Rotation and reduction-direction checks per observable output
-    (REQUIREMENTS_ADDENDUM C): the binary64 estimate of a directed ordered
-    history, a dipole and a rotated complex spin source bounds the deviation
-    from the 200-bit evaluation; without checks no estimate exists."""
+    (REQUIREMENTS_ADDENDUM C) in the Python reference executor: the estimate
+    of a directed ordered history, a dipole and a rotated complex spin source
+    bounds the deviation from the 200-bit evaluation, in binary64 and at 40
+    digits (where it stays near the carrier's roundoff); without checks no
+    estimate exists."""
 
     from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
 
@@ -1252,6 +1281,7 @@ def test_observable_stability_estimates_bracket_the_true_error(generate):
         spin_correlations=((3,),),
     )
     observables = generate("d d~ > g g", correlators=declarations)
+    precision = NATIVE_CARRIERS[carrier]
     checks = StabilityChecks(
         (
             Rotation.about("z", "3/5", "4/5"),
@@ -1265,11 +1295,16 @@ def test_observable_stability_estimates_bracket_the_true_error(generate):
             {"spin": {3: VECTORS[0]}},
         ):
             plain = observables.evaluate(
-                point, "1000000", parameters=PARAMETERS, **options
+                point, "1000000", parameters=PARAMETERS, precision=precision, **options
             )
             assert all(value.stability is None for value in plain.values())
             checked = observables.evaluate(
-                point, "1000000", parameters=PARAMETERS, stability=checks, **options
+                point,
+                "1000000",
+                parameters=PARAMETERS,
+                precision=precision,
+                stability=checks,
+                **options,
             )
             exact = observables.evaluate(
                 point,
@@ -1278,17 +1313,7 @@ def test_observable_stability_estimates_bracket_the_true_error(generate):
                 precision=CARRIERS["arbitrary-200"],
                 **options,
             )
-            for key, value in checked.items():
-                estimate = value.stability
-                assert estimate is not None and 0 < estimate.relative < 1e-9
-                for sector, laurent in value.components["virtual"].items():
-                    reference = exact[key].components["virtual"][sector].coefficients
-                    scale = max(abs(complex(x)) for x in reference)
-                    error = max(
-                        abs(complex(a) - complex(b))
-                        for a, b in zip(laurent.coefficients, reference, strict=True)
-                    )
-                    assert error <= estimate.relative * scale, (key, error / scale)
+            _assert_brackets(checked, exact, ESTIMATE_CEILING[carrier])
 
 
 class _FailingPoint:
@@ -1315,14 +1340,30 @@ class _FailingPoint:
         return getattr(self.inner, name)
 
 
-@pytest.mark.parametrize("carrier", ("double", "double-double"))
+def _assert_budgets_equal(mine, theirs, unit=None) -> None:
+    """Two absolute budgets (sector -> ``Budget``) agree coefficient by
+    coefficient to 1e-12, plus ``unit`` (sector -> ``Budget``) where given."""
+
+    assert set(mine) == set(theirs)
+    for sector, budget in theirs.items():
+        width = len(budget.coefficients)
+        slack = (0.0,) * width if unit is None else unit[sector].coefficients
+        for a, b, c in zip(
+            mine[sector].coefficients, budget.coefficients, slack, strict=True
+        ):
+            assert abs(a - b) <= 1e-12 * abs(b) + c, (sector, a, b)
+
+
+@pytest.mark.parametrize("carrier", tuple(NATIVE_CARRIERS))
 def test_native_observable_estimates_follow_the_stability_api(generate, carrier):
-    """The native observables share the integrated stability API (WP2.3):
-    for every combination of a rotation and the cached or rescaled
-    reduction check, the inclusive column's estimate has the check names,
-    absolute sums S and unit roundoff of the native inclusive evaluation,
-    and the inclusive and directed estimates bracket the deviation from 200
-    bits; zero checks give no estimate (explicitly absent)."""
+    """The native observables share the integrated stability API (WP2.3)
+    in every carrier: for every combination of a rotation and the cached or
+    rescaled reduction check, an inclusive observable column has the
+    estimate of the native inclusive evaluation (check names, absolute sums
+    S, every check's budget per sector and Laurent coefficient, the combined
+    estimate, the unit roundoff and the reduction lanes), and the inclusive
+    and directed estimates of a two-column plan bracket the deviation from
+    200 bits; zero checks give no estimate (explicitly absent)."""
 
     from pyamplicol.loops.v2.observables import NativeObservables
     from pyamplicol.loops.v2.plan_export import NativeExecutor
@@ -1330,6 +1371,7 @@ def test_native_observable_estimates_follow_the_stability_api(generate, carrier)
         REDUCTION,
         RESCALED,
         ROTATION,
+        Budget,
         Rotation,
         StabilityChecks,
     )
@@ -1340,21 +1382,9 @@ def test_native_observable_estimates_follow_the_stability_api(generate, carrier)
     observables = generate("d d~ > g g", correlators=declarations)
     points = _points("uudd_qcd")[:2]
     scales = ["1000000"] * 2
-    precision = (
-        Precision.double_double() if carrier == "double-double" else Precision.double()
-    )
-    native = NativeObservables.correlated(observables, (INCLUSIVE, "T12"), lanes=4)
+    precision = NATIVE_CARRIERS[carrier]
+    alone = NativeObservables.correlated(observables, (INCLUSIVE,), lanes=4)
     inclusive = NativeExecutor(observables.slice, lanes=4)
-    exact = [
-        observables.evaluate(
-            point,
-            scale,
-            correlations=(INCLUSIVE, "T12"),
-            parameters=PARAMETERS,
-            precision=CARRIERS["arbitrary-200"],
-        )
-        for point, scale in zip(points, scales, strict=True)
-    ]
     rotation = Rotation.about("z", "3/5", "4/5")
     for checks, names in (
         (StabilityChecks((rotation,)), {ROTATION.format(0)}),
@@ -1370,33 +1400,136 @@ def test_native_observable_estimates_follow_the_stability_api(generate, carrier)
             "precision": precision,
             "stability": checks,
         }
-        results = native.evaluate(points, scales, **options)
+        results = alone.evaluate(points, scales, **options)
         references = inclusive.evaluate(points, scales, **options)
-        for result, reference, truth in zip(results, references, exact, strict=True):
+        for result, reference in zip(results, references, strict=True):
             mine, theirs = result[INCLUSIVE].stability, reference.stability
             assert set(mine.checks) == set(theirs.checks) == names
             assert mine.roundoff == theirs.roundoff == precision.unit_roundoff
-            for sector, budget in theirs.scale.items():
-                for a, b in zip(
-                    mine.scale[sector].coefficients, budget.coefficients, strict=True
-                ):
-                    assert abs(a - b) <= 1e-12 * b
-            for key, value in result.items():
-                estimate = value.stability
-                assert 0 < estimate.relative < 1e-9
-                for sector, laurent in value.components["virtual"].items():
-                    target = truth[key].components["virtual"][sector].coefficients
-                    size = max(abs(complex(x)) for x in target)
-                    error = max(
-                        abs(complex(a) - complex(b))
-                        for a, b in zip(laurent.coefficients, target, strict=True)
-                    )
-                    assert error <= estimate.relative * size, (key, checks)
+            _assert_budgets_equal(mine.scale, theirs.scale)
+            # The reduction lanes are the same native lanes; the local
+            # components are assembled by two Python paths in different
+            # orders, so their rotation differences (of roundoff size) may
+            # differ by one unit roundoff of the absolute sums S.
+            unit = {
+                sector: Budget(
+                    tuple(precision.unit_roundoff * x for x in budget.coefficients)
+                )
+                for sector, budget in theirs.scale.items()
+            }
+            for name in names:
+                _assert_budgets_equal(mine.budgets[name], theirs.budgets[name], unit)
+            _assert_budgets_equal(mine.absolute, theirs.absolute, unit)
+            assert (mine.families is None) == (theirs.families is None)
+            if theirs.families is not None:
+                assert len(mine.families) == len(theirs.families)
+    exact = [
+        observables.evaluate(
+            point,
+            scale,
+            correlations=(INCLUSIVE, "T12"),
+            parameters=PARAMETERS,
+            precision=CARRIERS["arbitrary-200"],
+        )
+        for point, scale in zip(points, scales, strict=True)
+    ]
+    native = NativeObservables.correlated(observables, (INCLUSIVE, "T12"), lanes=4)
+    checked = native.evaluate(
+        points,
+        scales,
+        parameters=PARAMETERS,
+        precision=precision,
+        stability=StabilityChecks((rotation,), True, rescaled=True),
+    )
+    for result, truth in zip(checked, exact, strict=True):
+        _assert_brackets(result, truth, ESTIMATE_CEILING[carrier])
     for checks in (None, StabilityChecks()):
         plain = native.evaluate(
             points, scales, parameters=PARAMETERS, precision=precision, stability=checks
         )
         assert all(v.stability is None for result in plain for v in result.values())
+
+
+class _ShiftedRotation:
+    """A native executor whose evaluations after the first scale every
+    reduced lane by 1 + 1e-20, far below one binary64 unit of its value."""
+
+    FACTOR = Decimal("1e-20") + 1
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.calls = 0
+
+    def evaluate(self, inputs, **options):
+        output = self.inner.evaluate(inputs, **options)
+        self.calls += 1
+        if self.calls == 1:
+            return output
+
+        def shifted(value) -> str:
+            with localcontext(prec=COMPARISON_DIGITS):
+                return str(Decimal(str(value)) * self.FACTOR)
+
+        families = [
+            [
+                (lane, [(shifted(re), shifted(im)) for re, im in values])
+                for lane, values in lanes
+            ]
+            for lanes in output["families"]
+        ]
+        return dict(output, families=families)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+@pytest.mark.parametrize("carrier", ("double-double", "arbitrary-40"))
+def test_rotation_budgets_resolve_deviations_below_binary64(generate, carrier):
+    """Outside binary64 the rotation budgets of the observables and of the
+    inclusive API (``assemble._PointEvaluation.rotation_budget``) subtract
+    in the carrier at its working digits: without a deviation a rotation
+    check stays near the carrier's roundoff (no binary64 rounding, no
+    28-digit Decimal floor), and a relative shift of 1e-20 of every rotated
+    lane, invisible in binary64, shows as a budget of order 1e-20."""
+
+    from pyamplicol.loops.v2.observables import NativeObservables
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from pyamplicol.loops.v2.stability import ROTATION, Rotation, StabilityChecks
+
+    declarations = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("T12", 1, 2),)
+    )
+    observables = generate("d d~ > g g", correlators=declarations)
+    points = _points("uudd_qcd")[:1]
+    precision = NATIVE_CARRIERS[carrier]
+    options = {
+        "parameters": PARAMETERS,
+        "precision": precision,
+        "stability": StabilityChecks((Rotation.about("z", "3/5", "4/5"),)),
+    }
+    native = NativeObservables.correlated(observables, (INCLUSIVE, "T12"), lanes=4)
+    inclusive = NativeExecutor(observables.slice, lanes=4)
+    runs = (
+        (native.executor, lambda: native.evaluate(points, ["1000000"], **options)[0]),
+        (
+            inclusive,
+            lambda: {INCLUSIVE: inclusive.evaluate(points, ["1000000"], **options)[0]},
+        ),
+    )
+    name = ROTATION.format(0)
+    for executor, run in runs:
+        for value in run().values():
+            assert value.stability.checks[name] < 1e-29
+        arithmetic, digits = executor._arithmetic(precision, False)
+        key = (arithmetic, digits, executor.lanes_for(arithmetic, 1))
+        inner = executor.native(arithmetic, digits, 1)
+        executor._native[key] = _ShiftedRotation(inner)
+        try:
+            shifted = run()
+        finally:
+            executor._native[key] = inner
+        for value in shifted.values():
+            assert 1e-21 < value.stability.checks[name] < 1e-18
 
 
 @pytest.mark.parametrize("after", [0, 1], ids=["reference", "rotation"])

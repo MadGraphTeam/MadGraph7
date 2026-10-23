@@ -2127,24 +2127,32 @@ class _PointEvaluation:
 
     def rotation_budget(self, rotated: _PointEvaluation) -> dict[Orders, Budget]:
         """The error budget of one rotation check: every reduction lane's
-        integral and every local component is rotation invariant."""
+        integral and every local component is rotation invariant.
+
+        The differences are taken at the carrier's working digits: a
+        Decimal negation outside that context rounds the subtrahend to the
+        default 28 digits, which put a spurious 1e-28 relative floor under
+        every double-double and arbitrary-precision rotation budget."""
 
         zero = Laurent(*[self.numbers.zero] * (3 if self.poles else 1))
-        lanes = {
-            lane: tuple(
-                a - b
-                for a, b in zip(
-                    rotated.families.get(lane, zero).coefficients,
-                    self.families.get(lane, zero).coefficients,
-                    strict=True,
+        with self.numbers.scope():
+            lanes = {
+                lane: tuple(
+                    a - b
+                    for a, b in zip(
+                        rotated.families.get(lane, zero).coefficients,
+                        self.families.get(lane, zero).coefficients,
+                        strict=True,
+                    )
                 )
-            )
-            for lane in self.families.keys() | rotated.families.keys()
-        }
-        local = [
-            differences(self.result.components[name], rotated.result.components[name])
-            for name in LOCAL_COMPONENTS
-        ]
+                for lane in self.families.keys() | rotated.families.keys()
+            }
+            local = [
+                differences(
+                    self.result.components[name], rotated.result.components[name]
+                )
+                for name in LOCAL_COMPONENTS
+            ]
         return self._lane_budget(lanes, local)
 
     # -- IR poles ----------------------------------------------------------------------

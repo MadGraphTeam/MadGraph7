@@ -116,6 +116,7 @@ from .stability import (
     Budget,
     StabilityChecks,
     StabilityEstimate,
+    differences,
 )
 
 Resolution = Literal["helicity", "colour", "helicity-colour"]
@@ -1069,7 +1070,9 @@ class ColumnPlan:
     def _budget(self, key, lanes, width: int, local=()) -> dict[Orders, Budget]:
         """Per sector sum_lanes m |delta Omega| / (16 pi^2 average) plus the
         absolute local components (``assemble._PointEvaluation._lane_budget``
-        for observable columns)."""
+        for observable columns). Differences arrive in the carrier and are
+        rounded to binary64 only as magnitudes, so deviations below one
+        binary64 unit of the values survive outside binary64."""
 
         factor = 1 / (
             LOOP_FACTOR_DENOMINATOR * math.pi**2 * self.slice.normalisation.average
@@ -1082,11 +1085,11 @@ class ColumnPlan:
                 continue
             sector, multiplicity = found
             for k, error in enumerate(errors):
-                budget[sector][k] += multiplicity * factor * abs(complex(error))
+                budget[sector][k] += multiplicity * factor * float(abs(error))
         for components in local:
             for sector, laurent in components.items():
                 for k, value in enumerate(laurent.coefficients):
-                    budget[sector][k] += abs(complex(value))
+                    budget[sector][k] += float(abs(value))
         return {sector: Budget(tuple(values)) for sector, values in budget.items()}
 
     def checked(
@@ -1102,15 +1105,18 @@ class ColumnPlan:
         reduction check ``reduction`` (``StabilityChecks.reduction``), the
         reference's re-test lanes."""
 
-        return {
-            key: replace(
-                result,
-                stability=self.estimate(
-                    key, reference, result, rotated, roundoff, reduction
-                ),
-            )
-            for key, result in results.items()
-        }
+        # Differences at the carrier's working digits (a Decimal negation
+        # outside them rounds to the default 28 digits).
+        with reference.numbers.scope():
+            return {
+                key: replace(
+                    result,
+                    stability=self.estimate(
+                        key, reference, result, rotated, roundoff, reduction
+                    ),
+                )
+                for key, result in results.items()
+            }
 
     def estimate(
         self,
@@ -1124,7 +1130,11 @@ class ColumnPlan:
         """The stability estimate of output ``key`` (``stability``): rotation
         budgets from the rotated evaluations' lanes and local components, the
         budget of the reduction check ``reduction`` (reversed or rescaled
-        frame) from the re-test lanes."""
+        frame) from the re-test lanes. As the inclusive estimate
+        (``assemble._PointEvaluation.rotation_budget``), every difference is
+        taken in the carrier at its working digits (``checked`` holds the
+        context); ``families`` holds the output's own reduction lanes (keyed
+        by numerator column)."""
 
         width = 3 if reference.poles else 1
         local = [result.components[name] for name in LOCAL_COMPONENTS]
@@ -1135,12 +1145,12 @@ class ColumnPlan:
             local,
         )
         budgets = {}
-        zero = Laurent(*[0] * width)
+        zero = Laurent(*[reference.numbers.zero] * width)
         for index, (evaluation, results) in enumerate(rotated):
             other = results[key]
             lanes = {
                 lane: tuple(
-                    complex(a) - complex(b)
+                    a - b
                     for a, b in zip(
                         evaluation.families.get(lane, zero).coefficients,
                         reference.families.get(lane, zero).coefficients,
@@ -1150,19 +1160,7 @@ class ColumnPlan:
                 for lane in reference.families.keys() | evaluation.families.keys()
             }
             changes = [
-                {
-                    sector: Budget(
-                        tuple(
-                            abs(complex(a) - complex(b))
-                            for a, b in zip(
-                                laurent.coefficients,
-                                other.components[name][sector].coefficients,
-                                strict=True,
-                            )
-                        )
-                    )
-                    for sector, laurent in result.components[name].items()
-                }
+                differences(result.components[name], other.components[name])
                 for name in LOCAL_COMPONENTS
             ]
             budgets[ROTATION.format(index)] = self._budget(key, lanes, width, changes)
@@ -1170,9 +1168,10 @@ class ColumnPlan:
         if reduction is not None:
             if reference.retest_families is None:
                 raise ValueError(f"the {reduction} check did not run")
+            mine = self._lanes_of(key)
             deviations = {
                 lane: tuple(
-                    abs(complex(a) - complex(b))
+                    abs(a - b)
                     for a, b in zip(
                         value.coefficients,
                         reference.retest_families[lane].coefficients,
@@ -1180,10 +1179,11 @@ class ColumnPlan:
                     )
                 )
                 for lane, value in reference.families.items()
+                if lane[2] in mine
             }
             budgets[reduction] = self._budget(key, deviations, width)
         magnitudes = {
-            sector: Laurent(*[abs(complex(x)) for x in laurent.coefficients])
+            sector: Laurent(*[float(abs(x)) for x in laurent.coefficients])
             for sector, laurent in result.components["virtual"].items()
         }
         return StabilityEstimate.from_checks(
