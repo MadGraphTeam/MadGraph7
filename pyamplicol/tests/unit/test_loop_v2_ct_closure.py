@@ -846,7 +846,9 @@ def test_six_gluon_generation_completes_in_a_fresh_interpreter(
     """g g > g g g g through ``LoopSlice.generate`` (recursion and sites) in a
     new interpreter; O6 at the CT level at the first point of the
     three-provider reference, and the R2 component of both routes against
-    MadLoop's (an independent oracle of the four-gluon R2 at six legs)."""
+    MadLoop's (an independent oracle of the four-gluon R2 at six legs).
+    About two hours: the per-point Python closure of the CT program takes
+    over 80 minutes at six gluons, the sites 21 (2026-10-23)."""
 
     import ast
     import json
@@ -870,7 +872,7 @@ def test_six_gluon_generation_completes_in_a_fresh_interpreter(
         ],
         capture_output=True,
         text=True,
-        timeout=7200,
+        timeout=4 * 3600,
         env={**os.environ, "RAYON_NUM_THREADS": "4"},
         check=False,
     )
