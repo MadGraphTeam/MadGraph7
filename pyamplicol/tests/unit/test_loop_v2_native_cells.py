@@ -328,6 +328,7 @@ def test_degrees_and_liveness_equal_python(slices, name):
 def _dipoles_equal(slice_) -> None:
     orbits = native_cells.dipole_orbits(slice_)
     assert native_cells.dipoles(slice_, orbits) == slice_.dipoles()
+    assert orbits.digest() == native_cells.dipoles_digest(slice_.dipoles())
     # The stored form reloads to the same operators; one thread or several.
     stored = type(orbits).from_json(orbits.to_json())
     assert stored.to_json() == orbits.to_json()

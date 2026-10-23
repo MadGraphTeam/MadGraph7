@@ -534,6 +534,11 @@ impl NativeDipoleOrbits {
             .collect())
     }
 
+    /// SHA-256 of the expanded entries in `LoopSlice.dipoles` order.
+    fn digest(&self, py: Python<'_>) -> PyResult<String> {
+        py.detach(|| self.orbits.digest()).map_err(error)
+    }
+
     /// Dense binary64 operators `[i][j][b][b']`.
     fn expand_f64(&self, py: Python<'_>) -> PyResult<Vec<f64>> {
         py.detach(|| self.orbits.expand_f64()).map_err(error)

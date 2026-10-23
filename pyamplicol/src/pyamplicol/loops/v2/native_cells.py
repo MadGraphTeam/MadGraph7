@@ -30,6 +30,7 @@ thread count (``threads`` selects a private pool; None the global one).
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import defaultdict
 from collections.abc import Hashable, Iterable, Mapping, Sequence
@@ -63,6 +64,7 @@ __all__ = [
     "degrees",
     "dipole_orbits",
     "dipoles",
+    "dipoles_digest",
     "face_count",
     "gram",
     "live_classes",
@@ -687,3 +689,19 @@ def dipoles(
         pair: tuple(tuple(value(v) for v in row) for row in rows)
         for pair, rows in orbits.expand()
     }
+
+
+def dipoles_digest(
+    dipoles: Mapping[tuple[int, int], Sequence[Sequence[Fraction]]],
+) -> str:
+    """SHA-256 of a ``LoopSlice.dipoles()`` output, one exact entry per line
+    in its order: equal to ``NativeDipoleOrbits.digest()`` iff every entry
+    is."""
+
+    hasher = hashlib.sha256()
+    for rows in dipoles.values():
+        for row in rows:
+            for value in row:
+                hasher.update(str(value).encode())
+                hasher.update(b"\n")
+    return hasher.hexdigest()

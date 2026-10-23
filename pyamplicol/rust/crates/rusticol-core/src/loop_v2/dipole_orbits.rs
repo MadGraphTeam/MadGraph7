@@ -514,6 +514,40 @@ impl DipoleOrbits {
         Ok(())
     }
 
+    /// SHA-256 of every entry's exact text (`fraction_text`, one per line)
+    /// in the order of `LoopSlice.dipoles`: pairs (i, j != i) over coloured
+    /// legs in leg order, then rows b and columns b'. A dense value index
+    /// (four bytes per entry) keeps the 7-leg comparison cheap.
+    pub fn digest(&self) -> RusticolResult<String> {
+        use sha2::{Digest, Sha256};
+        let mut ids = vec![u32::MAX; self.tuple_count()];
+        let mut values: Vec<Rational> = Vec::new();
+        let mut index: FastMap<Rational, u32> = FastMap::default();
+        let (c, n) = (self.coloured.len(), self.basis);
+        self.expand(|i, j, b, b2, value| {
+            let id = *index.entry(value.clone()).or_insert_with(|| {
+                values.push(value.clone());
+                (values.len() - 1) as u32
+            });
+            ids[((i * c + j) * n + b) * n + b2] = id;
+        })?;
+        let texts: Vec<String> = values.iter().map(fraction_text).collect();
+        let mut hasher = Sha256::new();
+        for (k, &id) in ids.iter().enumerate() {
+            let (i, j) = (k / (n * n) / c, k / (n * n) % c);
+            if i == j {
+                continue;
+            }
+            hasher.update(texts[id as usize].as_bytes());
+            hasher.update(b"\n");
+        }
+        Ok(hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect())
+    }
+
     /// Dense binary64 operators, `[i][j][b][b']` over coloured-leg indices
     /// (zero on i = j), each entry one correct rounding of its exact value.
     pub fn expand_f64(&self) -> RusticolResult<Vec<f64>> {
