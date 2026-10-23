@@ -148,7 +148,11 @@ def _random_tensor(rng: random.Random, legs, labels, quarks) -> ConnectedColorTe
             Fraction(rng.randint(-2, 2), rng.randint(1, 3)),
         )
         terms.append(
-            TensorTerm(coefficient, ColorTensor(tuple(strings), tuple(traces)), rng.randint(-1, 1))
+            TensorTerm(
+                coefficient,
+                ColorTensor(tuple(strings), tuple(traces)),
+                rng.randint(-1, 1),
+            )
         )
     return ConnectedColorTensor(legs, tuple(terms), 2 * rng.randint(0, 1))
 
@@ -157,7 +161,9 @@ def _random_tensor(rng: random.Random, legs, labels, quarks) -> ConnectedColorTe
 def test_contractions_and_faces_equal_python():
     rng = random.Random(20261023)
     for quarks, gluons in (((), 5), (((1, 2),), 3), (((1, 2), (3, 4)), 2)):
-        legs = [ColorLeg(q, 3) for q, _ in quarks] + [ColorLeg(b, -3) for _, b in quarks]
+        legs = [ColorLeg(q, 3) for q, _ in quarks] + [
+            ColorLeg(b, -3) for _, b in quarks
+        ]
         labels = list(range(10, 10 + gluons))
         legs += [ColorLeg(a, 8) for a in labels]
         pairs = [
@@ -297,24 +303,15 @@ def _degrees_equal(slice_, kept) -> None:
 def test_degrees_and_liveness_equal_python(slices, name):
     slice_, kept = slices(name)
     _degrees_equal(slice_, kept)
-    orbits = native_cells.adjoint_orbits(
-        slice_.basis.legs,
-        slice_.blocks.process,
-        [
-            frozenset((item.tensor, item.nc_power) for t in terms for item in t.colour.terms)
-            for terms in slice_.born_terms.values()
-        ],
-    )
     from pyamplicol.loops.v2.assemble import _AdjointOrbits
 
-    python = _AdjointOrbits(
-        slice_.basis.legs,
-        slice_.blocks.process,
-        [
-            frozenset((item.tensor, item.nc_power) for t in terms for item in t.colour.terms)
-            for terms in slice_.born_terms.values()
-        ],
-    )
+    born_keys = [
+        frozenset((i.tensor, i.nc_power) for t in terms for i in t.colour.terms)
+        for terms in slice_.born_terms.values()
+    ]
+    legs, process = slice_.basis.legs, slice_.blocks.process
+    orbits = native_cells.adjoint_orbits(legs, process, born_keys)
+    python = _AdjointOrbits(legs, process, born_keys)
     assert orbits.classes == python.classes
     for tensor in slice_.basis.tensors:
         for term in tensor.terms:

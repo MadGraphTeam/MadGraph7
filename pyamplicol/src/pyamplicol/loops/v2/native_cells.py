@@ -73,6 +73,13 @@ __all__ = [
 
 _KINDS = {"adjoint-ring": 0, "fundamental-trace": 1}
 
+# The binding's plain-tuple encodings (``v2_colour.rs``).
+RawStructure = tuple[list[tuple[int, list[int], int]], list[list[int]]]
+RawTensor = tuple[list[tuple[int, int]], list[tuple[str, str, int, RawStructure]], int]
+RawClass = tuple[int, list[int], int, list[tuple[int, int]], RawTensor | None]
+Cells = tuple[tuple[Laurent, ...], ...]
+KeySet = Iterable[tuple[ColorTensor, int]]
+
 
 @cache
 def _native() -> Any:
@@ -84,7 +91,7 @@ def _native() -> Any:
 # ------------------------------------------------------------------ encoding
 
 
-def _structure(tensor: ColorTensor) -> tuple[list, list]:
+def _structure(tensor: ColorTensor) -> RawStructure:
     return (
         [
             (s.fundamental_label, list(s.adjoint_labels), s.antifundamental_label)
@@ -98,7 +105,7 @@ def _legs(legs: Iterable[Any]) -> list[tuple[int, int]]:
     return [(leg.label, leg.representation) for leg in legs]
 
 
-def _tensor(tensor: ConnectedColorTensor) -> tuple[list, list, int]:
+def _tensor(tensor: ConnectedColorTensor) -> RawTensor:
     return (
         _legs(tensor.legs),
         [
@@ -137,7 +144,7 @@ class _Decoder:
         return {power: self.coefficient(re, im) for power, re, im in raw}
 
 
-def decode(table: Any, start: int = 0, stop: int | None = None) -> tuple:
+def decode(table: Any, start: int = 0, stop: int | None = None) -> Cells:
     """The cells of a ``NativeCellTable`` (rows ``start:stop``) as
     ``seed_cells`` returns them."""
 
@@ -156,7 +163,13 @@ class NativeCells:
     relabelling caches; ``rebased`` shares them with an engine against
     another basis on the same legs."""
 
-    def __init__(self, basis: BornBasis, *, _engine: Any = None, _rings=None):
+    def __init__(
+        self,
+        basis: BornBasis,
+        *,
+        _engine: Any = None,
+        _rings: Mapping[Primitive, int] | None = None,
+    ):
         self.basis = basis
         self._engine = (
             _native().NativeCellEngine(
@@ -176,7 +189,7 @@ class NativeCells:
         engine = self._engine.rebased([_tensor(b) for b in basis.tensors])
         return NativeCells(basis, _engine=engine, _rings=self._rings)
 
-    def _class(self, seed: ConnectedColorTensor | Primitive) -> tuple:
+    def _class(self, seed: ConnectedColorTensor | Primitive) -> RawClass:
         if not isinstance(seed, Primitive):
             return (3, [], 0, [], _tensor(seed))
         if seed.kind != "quark-ring":
@@ -186,9 +199,7 @@ class NativeCells:
         ring = self._rings.get(canonical)
         if ring is None:
             reduced = _reduced_primitive(canonical, self.basis.legs)
-            ring = self._rings[canonical] = self._engine.register_ring(
-                _tensor(reduced)
-            )
+            ring = self._rings[canonical] = self._engine.register_ring(_tensor(reduced))
         return (2, [], ring, [(b, a) for a, b in back.items()], None)
 
     def table(
@@ -255,10 +266,10 @@ def face_count(left: ColorTensor, right: ColorTensor) -> int:
     """``colour.face_count``, natively."""
 
     (faces,) = _native().face_counts([(_structure(left), _structure(right))])
-    return faces
+    return int(faces)
 
 
-def gram(basis: BornBasis, threads: int | None = None) -> tuple:
+def gram(basis: BornBasis, threads: int | None = None) -> Cells:
     """``BornBasis.gram``, natively."""
 
     return decode(_native().colour_gram([_tensor(b) for b in basis.tensors], threads))
@@ -278,7 +289,7 @@ class _Ranks:
         return self.rank[order]
 
 
-def _table_orders(table: Any, ranks: _Ranks) -> tuple[list, list]:
+def _table_orders(table: Any, ranks: _Ranks) -> tuple[list[list[int]], list[list[int]]]:
     return (
         [sorted(ranks[o] for o in orders) for orders in table.orders],
         [sorted(ranks[o] for o in orders) for orders in table.basis.orders],
@@ -300,7 +311,7 @@ def _table_handle(table: Any, handles: Mapping[int, Any] | None) -> Any:
 def project_records(
     slice_: Any,
     columns: Sequence[Any],
-    seeds: Iterable[tuple[tuple, Orders]],
+    seeds: Iterable[tuple[tuple[Any, ...], Orders]],
     born_components: dict[tuple[int, Orders, int], int],
     tables: Mapping[int, Any] | None = None,
 ) -> tuple[bytes, bytes]:
@@ -368,10 +379,10 @@ def project_records(
 def seed_records(
     slice_: Any,
     columns: Sequence[Any],
-    seeds: Iterable[tuple[tuple, Orders]],
+    seeds: Iterable[tuple[tuple[Any, ...], Orders]],
     born_components: dict[tuple[int, Orders, int], int],
     tables: Mapping[int, Any] | None = None,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """``_Exporter.seed_records``'s output (decoded ``project_records``)."""
 
     class_json, records_json = project_records(
@@ -400,7 +411,7 @@ def table_degree(
     ranks = _Ranks(orders)
     handle = _table_handle(table, None) if handle is None else handle
     class_orders, basis_orders = _table_orders(table, ranks)
-    return handle.degree(
+    degree: int | None = handle.degree(
         class_orders,
         basis_orders,
         [(ranks[a], ranks[b]) for a, b in pairs],
@@ -408,12 +419,13 @@ def table_degree(
         if born_grades is None
         else [((b, ranks[a]), sorted(g)) for (b, a), g in born_grades.items()],
     )
+    return degree
 
 
 class _Orbits:
     """``assemble._AdjointOrbits`` with its classes built natively."""
 
-    def __init__(self, legs: Sequence[Any], process: Any, born_keys: Iterable):
+    def __init__(self, legs: Sequence[Any], process: Any, born_keys: Iterable[KeySet]):
         pdg = {leg.label: leg.outgoing_pdg for leg in process.legs}
         adjoint = sorted(leg.label for leg in legs if leg.representation == 8)
         self.native = _native().NativeAdjointOrbits(
@@ -431,7 +443,7 @@ class _Orbits:
         return dict(self.native.rename(_structure(tensor)))
 
     def site_key(self, site: Any) -> Hashable:
-        def mask_key(mask: int) -> tuple:
+        def mask_key(mask: int) -> tuple[tuple[int, ...], tuple[int, ...]]:
             labels = [i + 1 for i in range(mask.bit_length()) if mask >> i & 1]
             counts = [0] * len(self.classes)
             fixed = []
@@ -453,7 +465,9 @@ class _Orbits:
         )
 
 
-def adjoint_orbits(legs: Sequence[Any], process: Any, born_keys: Iterable) -> _Orbits:
+def adjoint_orbits(
+    legs: Sequence[Any], process: Any, born_keys: Iterable[KeySet]
+) -> _Orbits:
     """``assemble._AdjointOrbits``, with the classes built natively."""
 
     return _Orbits(legs, process, born_keys)
@@ -472,14 +486,15 @@ def degrees(
     ``table_handle`` is the slice table's ``NativeCellTable`` (default: its
     cells built natively from its classes)."""
 
-    from .assemble import LAURENT_POWERS, WholeRuleTerm
+    from .assemble import WholeRuleTerm
+    from .ct_sites import LAURENT_POWERS
 
     _plan, layout = slice_._scalar_plan(LAURENT_POWERS)
 
-    def grades(name: str, powers=LAURENT_POWERS) -> set[int]:
+    def grades(name: str, powers: Iterable[int] = LAURENT_POWERS) -> set[int]:
         return {g for power in powers for g, _c in layout.get((name, power), ())}
 
-    def keys(terms, grade_of) -> set:
+    def keys(terms: Iterable[Any], grade_of: Any) -> set[tuple[ColorTensor, int]]:
         return {
             (item.tensor, item.nc_power + grade)
             for term in terms
@@ -492,7 +507,7 @@ def degrees(
         for order, terms in slice_.born_terms.items()
     }
     orbits = _Orbits(slice_.basis.legs, slice_.blocks.process, born.values())
-    counterterms: dict[Orders, set] = defaultdict(set)
+    counterterms: dict[Orders, set[tuple[ColorTensor, int]]] = defaultdict(set)
     closed: set[Hashable] = set()
     for site in slice_.sites.sites:
         identity = orbits.site_key(site)
@@ -524,10 +539,10 @@ def degrees(
                 for grade in found
             }
     # Key sets and queries (bra set, ket set, offset).
-    sets: list[list] = []
+    sets: list[list[tuple[RawStructure, int]]] = []
     set_ids: dict[Any, int] = {}
 
-    def set_id(key: Any, values: Iterable) -> int:
+    def set_id(key: Any, values: KeySet) -> int:
         found = set_ids.get(key)
         if found is None:
             found = set_ids[key] = len(sets)
@@ -536,7 +551,7 @@ def degrees(
 
     queries: list[tuple[int, int, int]] = []
 
-    def query(bra: Orders, ket_key: Any, ket: Iterable, offset: int = 0) -> int:
+    def query(bra: Orders, ket_key: Any, ket: KeySet, offset: int = 0) -> int:
         queries.append((set_id(("born", bra), born[bra]), set_id(ket_key, ket), offset))
         return len(queries) - 1
 
@@ -550,9 +565,8 @@ def degrees(
         table_handle = cell_table(slice_.basis, table.classes, threads=threads)
     sector_queries = []
     for sector, pairs in slice_.sectors:
-        found = [
-            query(a, ("ct", b), counterterms.get(b, set()))
-            for a, b in pairs
+        found_queries = [
+            query(a, ("ct", b), counterterms.get(b, set())) for a, b in pairs
         ]
         for insertion in slice_.fields:
             if (
@@ -560,7 +574,7 @@ def degrees(
             ) is None or insertion.born_order not in born:
                 continue
             for grade in grades(slice_.field_names[insertion.identity]):
-                found.append(
+                found_queries.append(
                     query(
                         a,
                         ("born", insertion.born_order),
@@ -568,16 +582,16 @@ def degrees(
                         grade,
                     )
                 )
-        sector_queries.append((sector, pairs, found))
+        sector_queries.append((sector, pairs, found_queries))
     values = _native().overlap_degrees(
         _legs(slice_.basis.legs), sets, queries, orbits.native, threads
     )
     out: dict[str, dict[Orders, int | None]] = {"born": {}, "virtual": {}}
     for squared, q in born_queries:
         out["born"][squared] = _max(out["born"].get(squared), values[q])
-    for sector, pairs, found in sector_queries:
+    for sector, pairs, sector_found in sector_queries:
         value = table_degree(table, pairs, born_grades, table_handle)
-        for q in found:
+        for q in sector_found:
             value = _max(value, values[q])
         out["virtual"][sector] = value
     return out
