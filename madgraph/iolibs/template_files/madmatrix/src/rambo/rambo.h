@@ -88,7 +88,7 @@ namespace rambo
     static Random rand;
     double ran;
     static int init = 1;
-    if( false ) idummy = idummy; // prevent unused variable warning
+    (void)idummy; // prevent unused variable warning
     if( init == 1 )
     {
       init = 0;
@@ -102,7 +102,11 @@ namespace rambo
     return ran;
   }
 
-  inline std::vector<std::vector<double>> rambo( double et, std::vector<double>& xm, double& wt )
+  // draw( i ) (i = 1 to 4, unused) returns the next random number in ]0,1[: the
+  // shared generator rn for the 'check' drivers, a private one otherwise (so that
+  // the points of the check drivers do not move).
+  template<class Draw>
+  inline std::vector<std::vector<double>> rambo( double et, std::vector<double>& xm, double& wt, Draw&& draw )
   {
 	/**********************************************************************
 	 *                       rambo                                         *
@@ -161,12 +165,12 @@ namespace rambo
     // generate n massless momenta in infinite phase space
     for( int i = 0; i < n; i++ )
     {
-      double r1 = rn( 1 );
+      double r1 = draw( 1 );
       double c = 2. * r1 - 1.;
       double s = sqrt( 1. - c * c );
-      double f = twopi * rn( 2 );
-      r1 = rn( 3 );
-      double r2 = rn( 4 );
+      double f = twopi * draw( 2 );
+      r1 = draw( 3 );
+      double r2 = draw( 4 );
       q[i][0] = -log( r1 * r2 );
       q[i][3] = q[i][0] * c;
       q[i][2] = q[i][0] * s * cos( f );
@@ -277,10 +281,16 @@ namespace rambo
     return p;
   }
 
+  inline std::vector<std::vector<double>> rambo( double et, std::vector<double>& xm, double& wt )
+  {
+    return rambo( et, xm, wt, rn );
+  }
+
   // Build the full external momenta (initial + final), changing convention between
   // MadGraph7 and rambo. `masses` has one entry per external particle.
+  template<class Draw>
   inline std::vector<std::vector<double>> get_momenta( int ninitial, double energy,
-                                                       std::vector<double> masses, double& wgt )
+                                                       std::vector<double> masses, double& wgt, Draw&& draw )
   {
     int nexternal = masses.size();
     int nfinal = nexternal - ninitial;
@@ -293,7 +303,7 @@ namespace rambo
       std::vector<std::vector<double>> p;
       p.push_back( { m1, 0., 0., 0. } );
       std::vector<double> finalmasses( masses.begin() + 1, masses.end() );
-      std::vector<std::vector<double>> p_rambo = rambo( m1, finalmasses, wgt );
+      std::vector<std::vector<double>> p_rambo = rambo( m1, finalmasses, wgt, draw );
       for( auto& pf : p_rambo ) p.push_back( pf );
       return p;
     }
@@ -326,9 +336,15 @@ namespace rambo
       return p;
     }
     std::vector<double> finalmasses( masses.begin() + 2, masses.end() );
-    std::vector<std::vector<double>> p_rambo = rambo( energy, finalmasses, wgt );
+    std::vector<std::vector<double>> p_rambo = rambo( energy, finalmasses, wgt, draw );
     for( auto& pf : p_rambo ) p.push_back( pf );
     return p;
+  }
+
+  inline std::vector<std::vector<double>> get_momenta( int ninitial, double energy,
+                                                       std::vector<double> masses, double& wgt )
+  {
+    return get_momenta( ninitial, energy, masses, wgt, rn );
   }
 
 } // namespace rambo
