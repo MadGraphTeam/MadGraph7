@@ -15,6 +15,9 @@ Python per point. Checks against the slice's Python inputs
   double-double, on processes with fixed parameters, massive external tops,
   and leading and next-to-leading colour (the Born metric per Born
   component; whole-rule colour continuations of the four-gluon R2);
+* the counterterms of the tree recursion's program (production, a second
+  native interaction program whose pole-slot currents finite-only batches
+  skip) and of the site closure (the oracle route);
 * per-point renormalisation scales in one batch, and massive external
   spinors in double-double with a mass that is no binary64 number (the
   executor takes exact masses and rounds them to its carrier).
@@ -68,6 +71,15 @@ PROCESSES = {
         "required/uux_ddxg.json",
     ),
     "gg_ttx": ("g g > t t~", {"QCD": 2, "QED": 0}, "full", "required/gg_ttx.json"),
+    # The site closure of every counterterm rule (the oracle route) instead of
+    # the tree recursion's counterterm program (production, WP2.2).
+    "uux_ddxg_sites": (
+        "u u~ > d d~ g",
+        {"QCD": 3, "QED": 0},
+        "full",
+        "required/uux_ddxg.json",
+        {"counterterms": "sites"},
+    ),
 }
 
 
@@ -85,7 +97,7 @@ def executors(loop_sm_compiled_model, loop_native):
 
     def build(name: str) -> tuple[NativeExecutor, NativeExecutor]:
         if name not in built:
-            process, born, accuracy, _source = PROCESSES[name]
+            process, born, accuracy, _source, *options = PROCESSES[name]
             loop = {k: v + (2 if k == "QCD" else 0) for k, v in born.items()}
             request = SliceRequest(
                 process,
@@ -94,6 +106,7 @@ def executors(loop_sm_compiled_model, loop_native):
                 accuracy=accuracy,
                 fixed_parameters=FIXED,
                 colour_declaration=None if accuracy == "full" else declaration,
+                **(options[0] if options else {}),
             )
             slice_ = LoopSlice.generate(compiled, request, loop_native)
             native = NativeExecutor(slice_, forward=False, inputs="native")
@@ -163,13 +176,18 @@ def _assert_same(native, python, tolerance) -> None:
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
-    "name", ["uux_ddxg", "gg_gg", "gg_ttx", "gg_gg_lc", "uux_ddxg_nlc"]
+    "name",
+    ["uux_ddxg", "gg_gg", "gg_ttx", "gg_gg_lc", "uux_ddxg_nlc", "uux_ddxg_sites"],
 )
 def test_native_virtual_and_born_equal_the_python_inputs(executors, name):
     """Every component of the virtual per sector and |A0|^2 (at the
-    request's colour accuracy) in binary64."""
+    request's colour accuracy) in binary64, with the counterterms of the
+    tree recursion's program (a second native interaction program) or of
+    the site closure."""
 
     native, python = executors(name)
+    program = native.exported.trees.program
+    assert (program["counterterm_trees"] is None) == name.endswith("_sites")
     points, scales = _points(PROCESSES[name][3])
     mine = native.evaluate(points, scales, parameters=PARAMETERS)
     theirs = python.evaluate(points, scales, parameters=PARAMETERS)
@@ -200,6 +218,10 @@ def test_native_finite_only_keeps_every_finite_part(executors):
     with poles."""
 
     native, _python = executors("uux_ddxg")
+    # The counterterm program flags the currents of its pole slots, which
+    # finite-only batches skip.
+    steps = native.exported.trees.program["counterterm_trees"]["interactions"]["steps"]
+    assert any(step.get("pole_interactions") for step in steps)
     points, scales = _points(PROCESSES["uux_ddxg"][3])
     points, scales = points[:1], scales[:1]
     (full,) = native.evaluate(points, scales, parameters=PARAMETERS)

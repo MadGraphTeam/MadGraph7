@@ -317,7 +317,11 @@ def _validate(args) -> dict[str, Any]:
         ignored_particle_ids=(6,) if top_free else (),
     )
     parameters = dict(reference["parameters"])
-    record: dict[str, Any] = {"name": args.name, "process": process}
+    record: dict[str, Any] = {
+        "name": args.name,
+        "process": process,
+        "counterterms": request.counterterms,
+    }
     start = time.perf_counter()
     slice_ = LoopSlice.generate(
         _compiled_model(args.model), request, load_loop_native()
@@ -334,6 +338,12 @@ def _validate(args) -> dict[str, Any]:
             (len(trees.json()) + sum(len(saved) for saved in trees.kernels)) / 1e6, 2
         )
         record["counterterm_terms"] = len(trees.program["counterterms"]["terms"])
+        program = trees.program.get("counterterm_trees")
+        if program is not None:
+            # The tree recursion's counterterm program (WP2.2), natively.
+            record["counterterm_interactions"] = sum(
+                len(step["interactions"]) for step in program["interactions"]["steps"]
+            )
     else:
         executor = NativeExecutor(
             slice_, forward=False, exported=export_plan(slice_, forward=False)
