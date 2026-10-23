@@ -13,6 +13,7 @@ mod stability;
 mod states;
 mod v2;
 mod v2_executor;
+mod v2_generate;
 mod virtual_runtime;
 use batch::NativeBatch;
 
@@ -250,6 +251,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PolynomialPlan>()?;
     v2::register(module)?;
     v2_executor::register(module)?;
+    v2_generate::register(module)?;
     module.add_function(wrap_pyfunction!(massless_spinors_decimal, module)?)?;
     Ok(())
 }

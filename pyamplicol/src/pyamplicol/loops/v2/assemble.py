@@ -82,6 +82,7 @@ from pyamplicol.color.connections import (
 )
 from pyamplicol.color.contraction_types import NC
 
+from . import generator_input
 from . import reference_executor as rx
 from .blocks import TreeBlocks, build_tree_blocks
 from .catalogue import build_loop_kernel_catalogue
@@ -130,8 +131,15 @@ from .families import (
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
+from .generator_input import NativeGeneration
 from .poly_affine import MonomialLayout, leg_momentum
-from .schedules import LoopSchedules, SkeletonView, build_schedules, cheapest
+from .schedules import (
+    STRUCTURED,
+    LoopSchedules,
+    SkeletonView,
+    build_schedules,
+    cheapest,
+)
 from .stability import (
     ROTATION,
     Budget,
@@ -522,8 +530,10 @@ def _exact_u1_subtraction_weights():
 
 # --------------------------------------------------------------------- seeds
 
-# Schedule-B frame policy of the slice: the cheapest frame by undressed rows.
-_FRAME_POLICY = cheapest(lambda mask: 2 ** mask.bit_count())
+# Schedule-B frame policy of the slice: the cheapest frame by undressed rows
+# (``NativeGeneration.schedules`` runs the same policy natively).
+_FRAME_MODEL = STRUCTURED
+_FRAME_POLICY = cheapest(lambda mask: 2 ** mask.bit_count(), _FRAME_MODEL)
 
 
 class SectorSeeds:
@@ -887,6 +897,8 @@ class LoopSlice:
     alpha_s_parameter: str | None
     loop_catalogue: Any = None
     fourier: SeedFourier | None = None
+    # The native generator stages of this process (WP3.1), if they ran.
+    generation: NativeGeneration | None = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     # -- generation ------------------------------------------------------------
@@ -966,14 +978,22 @@ class LoopSlice:
         loop_catalogue = ModelLoopCatalogue(
             data, species_orders=structure.perturbative_species_orders
         )
-        families = generate_families(table, loop_catalogue, selection)
         colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
-        plan = build_schedules(
-            families,
-            loop_catalogue,
-            colour,
-            policy=_FRAME_POLICY,
-        )
+        generation = None
+        if "families" in generator_input.NATIVE_STAGES:
+            generation = NativeGeneration(table, loop_catalogue, selection, native)
+            families = generation.families()
+        else:
+            families = generate_families(table, loop_catalogue, selection)
+        if generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+            plan = generation.schedules(colour, model=_FRAME_MODEL)
+        else:
+            plan = build_schedules(
+                families,
+                loop_catalogue,
+                colour,
+                policy=_FRAME_POLICY,
+            )
         sites = generate_counterterm_sites(
             families,
             table,
@@ -1068,6 +1088,7 @@ class LoopSlice:
             scale_parameter=scale_parameter,
             alpha_s_parameter=alpha_s_parameter,
             loop_catalogue=loop_catalogue,
+            generation=generation,
         )
         if request.accuracy != "full":
             slice_._prune_colour()
@@ -1142,13 +1163,16 @@ class LoopSlice:
                 trie for frame, trie in candidates if frame == frames[family.key]
             )
 
-        self.plan = build_schedules(
-            self.families,
-            self.loop_catalogue,
-            self.colour,
-            policy=same_frame,
-            view=SkeletonView(self.loop_catalogue, self.colour, keep=keep),
-        )
+        if self.generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+            self.plan = self.generation.schedules(self.colour, frames=frames, keep=keep)
+        else:
+            self.plan = build_schedules(
+                self.families,
+                self.loop_catalogue,
+                self.colour,
+                policy=same_frame,
+                view=SkeletonView(self.loop_catalogue, self.colour, keep=keep),
+            )
         self.table, self.class_of = extend_seed_table(
             self.table,
             self.class_of,
