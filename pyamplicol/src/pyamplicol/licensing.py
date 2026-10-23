@@ -74,6 +74,8 @@ def detect_symbolica_license(
 
 _SPENSO_POLICY_LOCK = threading.Lock()
 _SPENSO_POLICY_APPLIED = False
+# Whether the policy set Spenso serial (None before it was applied).
+_SPENSO_SERIAL: bool | None = None
 
 
 def ensure_spenso_thread_policy(
@@ -90,20 +92,25 @@ def ensure_spenso_thread_policy(
     calling thread holds while it waits for the workers: a deadlock (design
     §6.1, ``LoopSlice`` generation of g g > g g g g). The license is asked here
     on a thread without frames of the package, once per process, lazily: the
-    model-compilation Symbolica namespaces call this before their first tensor
-    network (importing the package checks no license).
+    model-compilation Symbolica namespaces (``compiler_symbolica``,
+    ``tensors``) call this before their first tensor network; importing the
+    package checks no license. The built-in SM lowering builds only small
+    networks, which Spenso's workload heuristic keeps serial.
     """
 
-    global _SPENSO_POLICY_APPLIED
+    global _SPENSO_POLICY_APPLIED, _SPENSO_SERIAL
     if _SPENSO_POLICY_APPLIED:
         return
     with _SPENSO_POLICY_LOCK:
         if not _SPENSO_POLICY_APPLIED:
-            _apply_spenso_thread_policy(loader())
+            _SPENSO_SERIAL = _apply_spenso_thread_policy(loader())
             _SPENSO_POLICY_APPLIED = True
 
 
-def _apply_spenso_thread_policy(symbolica: ModuleType) -> None:
+def _apply_spenso_thread_policy(symbolica: ModuleType) -> bool:
+    """Set Spenso serial unless a thread-wide key licenses Symbolica;
+    whether it did."""
+
     from concurrent.futures import ThreadPoolExecutor
 
     checker = getattr(symbolica, "is_licensed", None)
@@ -112,15 +119,16 @@ def _apply_spenso_thread_policy(symbolica: ModuleType) -> None:
         # of this package is on that thread's stack.
         with ThreadPoolExecutor(max_workers=1) as probe:
             if probe.submit(checker).result():
-                return
+                return False
     try:
         from symbolica.community.tensor import (
             SymbolicParallelism,
             set_symbolica_rayon_enabled,
         )
     except ImportError:
-        return
+        return False
     set_symbolica_rayon_enabled(SymbolicParallelism.Serial)
+    return True
 
 
 def _suggest_license(stream: TextIO) -> None:

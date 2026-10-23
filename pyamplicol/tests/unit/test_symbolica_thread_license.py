@@ -44,7 +44,10 @@ def _policy_calls(monkeypatch, licensed: bool) -> tuple[list, list]:
         set_symbolica_rayon_enabled=calls.append,
     )
     monkeypatch.setitem(sys.modules, "symbolica.community.tensor", tensor)
-    licensing._apply_spenso_thread_policy(SimpleNamespace(is_licensed=is_licensed))
+    serial = licensing._apply_spenso_thread_policy(
+        SimpleNamespace(is_licensed=is_licensed)
+    )
+    assert serial is (not licensed)
     return calls, frames
 
 
@@ -87,7 +90,7 @@ def test_the_policy_is_applied_by_model_compilation_not_by_the_import():
         compiler_symbolica._ensure_symbolica()
         tensors._ensure_symbolica()
         assert calls == [tensor.SymbolicParallelism.Serial], calls
-        assert licensing._SPENSO_POLICY_APPLIED
+        assert licensing._SPENSO_POLICY_APPLIED and licensing._SPENSO_SERIAL
         print("policy applied lazily")
         """
     )

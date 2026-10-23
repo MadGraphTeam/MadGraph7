@@ -53,9 +53,6 @@ def _as_dirac_current(
 
 class BuiltinSMLoweringMixin:
     def build_tensor_library(self) -> Any:
-        from pyamplicol.licensing import ensure_spenso_thread_policy
-
-        ensure_spenso_thread_policy()
         from symbolica.community.tensor import (
             Representation,
             Tensor,

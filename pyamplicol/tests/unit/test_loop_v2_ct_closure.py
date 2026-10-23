@@ -814,17 +814,13 @@ def test_six_leg_four_gluon_counterterms_from_recursion_equal_sites(
 # inside pyAmpliCol: Spenso's Rayon workers then met the package-scoped
 # Symbolica key without a thread-wide license and waited for the GIL (design
 # §6.1 "Spenso's threads"); a personal key in the environment, or an earlier
-# Symbolica call outside the package, hides that. The script records the
-# Spenso policies the package sets.
+# Symbolica call outside the package, hides that. (No Symbolica call may run
+# outside the package here: without a key it would take the user's one
+# restricted Symbolica thread, which the native loop module's own Symbolica
+# then cannot start.) The script reports the package's Spenso policy.
 _SIX_GLUON_SCRIPT = """
 import json, sys
-import symbolica.community.tensor as tensor
-policies = []
-_set_policy = tensor.set_symbolica_rayon_enabled
-def _record(policy):
-    policies.append(str(policy))
-    _set_policy(policy)
-tensor.set_symbolica_rayon_enabled = _record
+from pyamplicol import licensing
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.v2.assemble import (
     LoopSlice, Precision, SliceRequest, _fraction, _Numbers,
@@ -845,7 +841,7 @@ for route in ("recursion", "sites"):
             json.loads(parameters), Precision.double(), True)
     out[route] = [[[repr(k), float(v)] for k, v in part.items()]
                   for part in (evaluation.born, evaluation.counterterms)]
-out["policies"] = policies
+out["serial"] = (licensing._SPENSO_POLICY_APPLIED, licensing._SPENSO_SERIAL)
 print(json.dumps(out))
 """
 
@@ -897,8 +893,8 @@ def test_six_gluon_generation_completes_without_a_personal_key(
     )
     assert result.returncode == 0, result.stderr[-4000:]
     routes = json.loads(result.stdout.strip().splitlines()[-1])
-    # The package kept Spenso serial (no thread-wide key), once.
-    assert routes.pop("policies") == ["SymbolicParallelism.Serial"]
+    # The package set Spenso serial (no thread-wide key).
+    assert routes.pop("serial") == [True, True]
     values = {
         route: tuple(
             {ast.literal_eval(key): value for key, value in part} for part in pair
