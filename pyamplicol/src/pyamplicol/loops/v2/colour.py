@@ -1596,31 +1596,34 @@ def _relabelled_key(
     """A key of ``_relabelled(tensor, rename)``: equal exactly for equal
     tensors (open strings and traces in canonical order and rotation)."""
 
+    return tensor.normalization_power, frozenset(
+        (term.coefficient, term.nc_power, _colour_key(term.tensor, rename))
+        for term in tensor.terms
+    )
+
+
+def _colour_key(colour: ColorTensor, rename: Mapping[int, int]) -> Hashable:
+    """A key of ``_relabelled_colour(colour, rename)``."""
+
     def label(a: int) -> int:
         return rename.get(a, a)
 
-    return tensor.normalization_power, frozenset(
-        (
-            term.coefficient,
-            term.nc_power,
-            tuple(
-                sorted(
-                    (
-                        string.fundamental_label,
-                        tuple(map(label, string.adjoint_labels)),
-                        string.antifundamental_label,
-                    )
-                    for string in term.tensor.open_strings
+    return (
+        tuple(
+            sorted(
+                (
+                    string.fundamental_label,
+                    tuple(map(label, string.adjoint_labels)),
+                    string.antifundamental_label,
                 )
-            ),
-            tuple(
-                sorted(
-                    _canonical_rotation(tuple(map(label, trace)))
-                    for trace in term.tensor.traces
-                )
-            ),
-        )
-        for term in tensor.terms
+                for string in colour.open_strings
+            )
+        ),
+        tuple(
+            sorted(
+                _canonical_rotation(tuple(map(label, trace))) for trace in colour.traces
+            )
+        ),
     )
 
 

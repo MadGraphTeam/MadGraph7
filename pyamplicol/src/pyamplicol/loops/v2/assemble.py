@@ -63,7 +63,7 @@ from __future__ import annotations
 import json
 import math
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
@@ -95,6 +95,9 @@ from .colour import (
     SeedCombination,
     SeedFourier,
     SeedTable,
+    _adjoint_rename,
+    _colour_key,
+    _relabelled_colour,
     build_seed_table,
     extend_seed_table,
     kept,
@@ -1592,47 +1595,69 @@ class LoopSlice:
     # -- colour correlations (IR-pole check) ------------------------------------
 
     def dipoles(self) -> dict[tuple[int, int], tuple[tuple[Fraction, ...], ...]]:
-        """<t|T_i.T_j|t'> at N_c = 3 over the Born tensors, for coloured i != j."""
+        """<t|T_i.T_j|t'> at N_c = 3 over the Born tensors, for coloured i != j.
+
+        The external adjoint labels are summed, so a cell is unchanged when one
+        permutation of them relabels both tensors and the legs i, j it moves:
+        row t is relabelled by the permutation that numbers its adjoint labels
+        in reading order (``colour._adjoint_rename``) and each distinct
+        relabelled cell is contracted once (as ``BornBasis.gram``).
+        """
 
         found = self._cache.get("dipoles")
         if found is not None:
             return found
         legs = self.basis.legs
         coloured = [leg.label for leg in legs if leg.representation != 1]
-        images = {}
-        for label in coloured:
-            connection = ColorConnection(legs, (EmitGluon(label, -1),))
-            images[label] = [
-                apply_color_connection(
-                    term.tensor, connection, coefficient=term.coefficient
+        adjoint = sorted(leg.label for leg in legs if leg.representation == 8)
+        items = [
+            (tensor, term) for tensor in self.basis.tensors for term in tensor.terms
+        ]
+        images: dict[tuple[int, Hashable], Any] = {}
+
+        def image(label: int, key: Hashable, term: Any, rename) -> Any:
+            found = images.get((label, key))
+            if found is None:
+                connection = ColorConnection(legs, (EmitGluon(label, -1),))
+                found = images[label, key] = apply_color_connection(
+                    _relabelled_colour(term.tensor, rename),
+                    connection,
+                    coefficient=term.coefficient,
                 )
-                for tensor in self.basis.tensors
-                for term in tensor.terms
-            ]
-        out = {}
-        for i in coloured:
-            for j in coloured:
-                if i == j:
-                    continue
-                out[(i, j)] = tuple(
-                    tuple(
-                        _real_colour(
-                            evaluate_color_nc_terms(
-                                contract_connected_tensor_nc_terms(left, right)
+            return found
+
+        cells: dict[tuple, Fraction] = {}
+        out: dict[tuple[int, int], list[list[Fraction]]] = {
+            (i, j): [] for i in coloured for j in coloured if i != j
+        }
+        for tensor, term in items:
+            rename = _adjoint_rename(tensor, adjoint)
+            keys = [_term_key(other, rename) for _tensor, other in items]
+            left = _term_key(term, rename)
+            for i in coloured:
+                for j in coloured:
+                    if i == j:
+                        continue
+                    a, b = rename.get(i, i), rename.get(j, j)
+                    row = []
+                    for (_other_tensor, other), key in zip(items, keys, strict=True):
+                        pair = (a, b, left, key)
+                        cell = cells.get(pair)
+                        if cell is None:
+                            cell = cells[pair] = _real_colour(
+                                evaluate_color_nc_terms(
+                                    contract_connected_tensor_nc_terms(
+                                        image(a, left, term, rename),
+                                        image(b, key, other, rename),
+                                    )
+                                )
                             )
-                        )
-                        for right in images[j]
-                    )
-                    for left in images[i]
-                )
+                        row.append(cell)
+                    out[(i, j)].append(row)
+        out = {pair: tuple(map(tuple, rows)) for pair, rows in out.items()}
         gram = tuple(
-            tuple(
-                _real_colour(
-                    evaluate_color_nc_terms(contract_connected_tensor_nc_terms(a, b))
-                )
-                for b in self.basis.tensors
-            )
-            for a in self.basis.tensors
+            tuple(_real_colour(evaluate_color_nc_terms(cell)) for cell in row)
+            for row in self.basis.gram
         )
         # Colour conservation: sum_{j != i} T_i.T_j = -C_i on every Born vector.
         for i in coloured:
@@ -2574,6 +2599,12 @@ def _gamma(representation: int, light: int) -> Fraction:
     if representation == 8:
         return Fraction(11, 6) * NC - Fraction(2, 3) * Fraction(1, 2) * light
     return Fraction(3, 2) * _casimir(representation)
+
+
+def _term_key(term: Any, rename: Mapping[int, int]) -> Hashable:
+    """A key of one Born tensor term with its adjoint labels renamed."""
+
+    return term.coefficient, term.nc_power, _colour_key(term.tensor, rename)
 
 
 def _real_colour(value: ExactColorCoefficient) -> Fraction:

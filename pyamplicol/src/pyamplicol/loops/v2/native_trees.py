@@ -53,6 +53,9 @@ class NativeTrees:
     born_orders: tuple[Orders, ...]
     squared_orders: tuple[Orders, ...]
     masses: tuple[tuple[int, str], ...]
+    # Every Born component (basis element, Born order, N_c grade), in the
+    # order of the executor's ``amplitudes`` per Born row.
+    components: tuple[tuple[int, Orders, int], ...] = ()
 
     def json(self) -> str:
         return json.dumps(self.program, separators=(",", ":"))
@@ -318,6 +321,7 @@ def export_trees(
         born_orders,
         squared_orders,
         masses,
+        tuple(components),
     )
 
 
