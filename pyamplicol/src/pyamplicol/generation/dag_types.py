@@ -82,12 +82,24 @@ class ColorState:
     The LC implementation stores the warmup sector and the open-line/trace
     groups touched by the current.  NLC/full colour will replace ``basis_key``
     with Idenso basis components without changing the current-index contract.
+
+    ``traces`` and ``lines`` are the closed colour components the current
+    carries besides its open word (the multi-trace state of counterterm
+    currents, design §6.1): a trace is a cyclic word of adjoint labels rotated
+    to start at its smallest label, a line a closed colour-flow string from a
+    fundamental through adjoint to an antifundamental label; each sorted.
+    Only loop-request blocks produce them (a colour-identity vertex closing
+    two adjoint currents into a colour singlet,
+    ``ColorEngine._loop_block_flows``); their labels are not part of the
+    current's ``ordered_external_labels``.
     """
 
     accuracy: str
     sector_id: int = 0
     line_groups: tuple[int, ...] = ()
     basis_key: tuple[str, ...] = ()
+    traces: tuple[tuple[int, ...], ...] = ()
+    lines: tuple[tuple[int, ...], ...] = ()
     _key: tuple[object, ...] = field(init=False, repr=False, compare=False)
     _hash: int = field(init=False, repr=False, compare=False)
 
@@ -98,8 +110,17 @@ class ColorState:
             self.line_groups,
             self.basis_key,
         )
+        if self.traces or self.lines:
+            key = (*key, self.traces, self.lines)
         object.__setattr__(self, "_key", key)
         object.__setattr__(self, "_hash", hash(key))
+
+    @property
+    def closed_labels(self) -> frozenset[int]:
+        """Labels of the closed traces and lines."""
+        return frozenset(
+            label for part in (*self.traces, *self.lines) for label in part
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ColorState):
@@ -110,12 +131,17 @@ class ColorState:
         return self._hash
 
     def to_json_dict(self) -> dict[str, object]:
-        return {
+        out: dict[str, object] = {
             "accuracy": self.accuracy,
             "sector_id": self.sector_id,
             "line_groups": list(self.line_groups),
             "basis_key": list(self.basis_key),
         }
+        if self.traces:
+            out["traces"] = [list(trace) for trace in self.traces]
+        if self.lines:
+            out["lines"] = [list(line) for line in self.lines]
+        return out
 
 
 @dataclass(frozen=True)
@@ -158,7 +184,18 @@ class CurrentIndex:
         labels = tuple(sorted(self.external_labels))
         if labels != self.external_labels:
             object.__setattr__(self, "external_labels", labels)
-        if not self.ordered_external_labels:
+        closed = self.color_state.closed_labels
+        if closed:
+            # The open word holds every label outside the closed components.
+            source = self.ordered_external_labels or labels
+            word = tuple(label for label in source if label not in closed)
+            object.__setattr__(self, "ordered_external_labels", word)
+            if tuple(sorted((*word, *closed))) != labels:
+                raise ValueError(
+                    "ordered_external_labels and the closed colour components "
+                    "must contain the same labels as external_labels"
+                )
+        elif not self.ordered_external_labels:
             object.__setattr__(self, "ordered_external_labels", labels)
         elif tuple(sorted(self.ordered_external_labels)) != labels:
             raise ValueError(

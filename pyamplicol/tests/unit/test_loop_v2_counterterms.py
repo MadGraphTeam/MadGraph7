@@ -100,7 +100,7 @@ class CountertermSlice:
     def rules(self):
         return self.prepared.counterterms.rules
 
-    def sites(self, rules=None, zeros=()):
+    def sites(self, rules=None, zeros=(), closed_rules=None):
         return generate_counterterm_sites(
             self.families,
             self.table,
@@ -109,6 +109,7 @@ class CountertermSlice:
             self.selection,
             forbidden=self.vetoed,
             zeros=zeros,
+            closed_rules=closed_rules,
         )
 
     def fields(self):
@@ -126,6 +127,12 @@ class CountertermSlice:
 
 @pytest.fixture(scope="module")
 def ct_slice(loop_sm_compiled_model):
+    return counterterm_slices(loop_sm_compiled_model)
+
+
+def counterterm_slices(loop_sm_compiled_model):
+    """``name -> CountertermSlice`` of the O1 controls, built once per name."""
+
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.v2.blocks import build_tree_blocks
     from pyamplicol.models.external import CompiledUFOModel
@@ -527,21 +534,28 @@ def _born_terms(ct: CountertermSlice, closure: SiteClosure):
     return out
 
 
-def _components(ct: CountertermSlice, label: str, index: int):
-    """Born and the CT components at one fixture point, by squared order."""
+def _components(ct: CountertermSlice, label: str, index: int, closed_rules=None):
+    """Born and the CT components at one fixture point, by squared order.
+
+    ``closed_rules`` restricts the sites to the named rules (O6 against the
+    CT recursion, ``test_loop_v2_ct_recursion.py``).
+    """
 
     from pyamplicol.loops.request import prepare_loop_external_request
     from pyamplicol.loops.v2.catalogue import build_loop_kernel_catalogue
 
-    if "closure" not in ct._caches:
-        sites, fields = ct.sites(), ct.fields()
-        entries = [e for site in sites.sites for e in site.rule.entries]
+    key = ("closure", None if closed_rules is None else frozenset(closed_rules))
+    if key not in ct._caches:
+        sites, fields = ct.sites(closed_rules=closed_rules), ct.fields()
+        # The catalogue (loop species) is that of every admitted site.
+        every = sites if closed_rules is None else ct.sites()
+        entries = [e for site in every.sites for e in site.rule.entries]
         entries += [e for rows in _ordinary_entries(ct) for e in rows]
         unique = list({id(e): e for e in entries}.values())
         catalogue = build_loop_kernel_catalogue(ct.compiled, counterterm_entries=unique)
         closure = SiteClosure(ct.blocks, ct.data, catalogue)
         plan, names = counterterm_scalar_plan(ct.prepared.structure, sites, fields)
-        ct._caches["closure"] = (
+        ct._caches[key] = (
             sites,
             fields,
             closure,
@@ -550,7 +564,7 @@ def _components(ct: CountertermSlice, label: str, index: int):
             plan,
             names,
         )
-    sites, fields, closure, born_terms, site_terms, plan, names = ct._caches["closure"]
+    sites, fields, closure, born_terms, site_terms, plan, names = ct._caches[key]
     fixture, control = ct.fixture, ct.control
     point = fixture["points"][index]
     scale = DecimalComplex.CONTEXT.sqrt(Decimal(fixture["scales_squared"][index]))
