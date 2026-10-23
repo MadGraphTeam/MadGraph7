@@ -23,13 +23,19 @@ the same program for the native executor (``rusticol-core``
   rows and momenta, with its sign, its coupling per N_c grade and the exact
   colour weights of its literal tensors, accumulated per Born helicity row
   into the components A0[b, Born order, grade]; with ``born_squared`` the
-  full-colour metric of the Born basis gives |A0|^2 per squared order.
+  Born metric per pair of components gives |A0|^2 per squared order.
+* **counterterms and external fields** (``_counterterm_program``): the
+  counterterm closure's terms like the Born's, into ket vectors per
+  (component, epsilon power, loop orders), and the field insertions, each
+  interfered with the Born per sector (``loop_v2::interference``).
 
 * **parameters**: one saved exact evaluator from the external model
   parameters to every parameter-dependent value of the native lane
   (``_parameter_program``): the tree program's derived model parameters (the
-  model's own definitions), the Born couplings per N_c grade (the slice's
-  scalar plan, ``LoopSlice._scalar_plan``) and the plan's kernel constants
+  model's own definitions), the Born, counterterm and field couplings per
+  N_c grade (the slice's scalar plan, ``LoopSlice._scalar_plan``; the
+  counterterm couplings per point, they read the scale) and the plan's
+  kernel constants
   (``reference_executor.KernelConstants`` keys, with their mass flips),
   plus the exact mass parameters of the external spinors and the loop
   propagators. The plan's kernel constants carry the Born kernels' model
@@ -39,10 +45,11 @@ Per batch only momenta, scales (mu_R^2 per point) and the external parameter
 values cross (``batch_parameters``); the executor binds everything else
 natively, the scale parameter from each point's mu_R^2.
 
-At leading and next-to-leading colour the Born metric is per Born component
-and squared Born order, keeping the N_c powers the projection keeps
-(``_component_metric``). The exact carrier has no native trees (wavefunctions
-are irrational); the slice's Python inputs remain its path.
+The Born metric is per pair of Born components and squared Born order, each
+weight exact (at leading and next-to-leading colour keeping the N_c powers the
+projection keeps, ``_component_metric``). The exact carrier has no native
+trees (wavefunctions are irrational); the slice's Python inputs remain its
+path.
 """
 
 from __future__ import annotations
@@ -334,29 +341,14 @@ def export_trees(
                 [orders_index[left], orders_index[right]]
             )
     squared_orders = tuple(sorted(squared))
-    gram = metric = None
-    if born_squared and slice_.request.accuracy != "full":
-        metric = _component_metric(slice_, components, squared_orders)
-    elif born_squared:
-        gram = []
-        for b, row in enumerate(slice_.basis.gram):
-            for b2, cell in enumerate(row):
-                value = sum(
-                    (
-                        value.scaled(Fraction(NC) ** power)
-                        for power, value in cell.items()
-                    ),
-                    start=_zero_colour(),
-                )
-                if value:
-                    gram.append(
-                        [
-                            b,
-                            b2,
-                            _fraction_text(value.real),
-                            _fraction_text(value.imag),
-                        ]
-                    )
+    # The Born metric per pair of Born components, each weight exact (the
+    # Gram cell times N_c to the components' powers, at N_c = 3): a colour-
+    # orthogonal interference (u u~ > d d~'s QCD x QED order) cancels
+    # exactly, as in ``assemble._interfere``, instead of leaving the rounding
+    # of N_c^-1 folded into an amplitude.
+    metric = (
+        _component_metric(slice_, components, squared_orders) if born_squared else None
+    )
     counterterms = None
     if with_counterterms:
         counterterms = _counterterm_program(
@@ -392,7 +384,6 @@ def export_trees(
             "amplitudes": amplitudes,
             "orders": len(born_orders),
             "squared": [squared[order] for order in squared_orders],
-            "gram": gram,
             "metric": metric,
             "average": str(slice_.normalisation.average),
         },
@@ -1152,16 +1143,16 @@ def _component_metric(
     components: dict[tuple[int, Orders, int], int],
     squared_orders: Sequence[Orders],
 ) -> list[list[Any]]:
-    """The Born colour metric of a leading or next-to-leading colour request
-    over Born components (b, Born order, N_c power), per squared Born order:
-    <b|b'> keeping the N_c powers the projection keeps (``colour.kept``)
-    below the order's leading degree, at N_c = 3, as the Python inputs'
-    Born interference (``assemble._interfere``)."""
+    """The Born colour metric over Born components (b, Born order, N_c
+    power), per squared Born order: <b|b'> keeping the N_c powers the
+    projection keeps (``colour.kept``: every power at full colour) below the
+    order's leading degree, at N_c = 3, as the Python inputs' Born
+    interference (``assemble._interfere``)."""
 
     from .colour import kept
 
     accuracy = slice_.request.accuracy
-    degrees = slice_.degrees()["born"]
+    degrees = slice_.degrees()["born"] if accuracy != "full" else {}
     index = {order: s for s, order in enumerate(squared_orders)}
     gram = slice_.basis.gram
     out = []

@@ -71,7 +71,7 @@ class NativeProcess:
 
         trees = exported.trees
         born = None if trees is None else trees.program["born"]
-        if born is None or (born["gram"] is None and born["metric"] is None):
+        if born is None or born["metric"] is None:
             raise ValueError(
                 "a native process needs a plan exported with trees and |A0|^2"
             )

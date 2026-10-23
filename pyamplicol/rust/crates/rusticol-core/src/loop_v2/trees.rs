@@ -24,8 +24,12 @@
 //! coupling per N_c grade and the exact colour weights of its literal
 //! tensors, accumulated per Born helicity row into the components
 //! `A0[b, Born order, grade]`. The plan's Born components (the seeds' inputs)
-//! are a subset. With a colour metric (full colour), `|A0|²` per squared
-//! Born order is formed as well.
+//! are a subset. With a colour metric (exact weights per pair of Born
+//! components), `|A0|²` per squared Born order is formed as well.
+//!
+//! **Counterterms and fields.** The counterterm closure's terms run like the
+//! Born's into ket vectors, interfered with the Born per sector
+//! (`super::interference`).
 //!
 //! **Parameters.** Every parameter-dependent value derives from the external
 //! model parameters through one saved exact evaluator of the program (its
@@ -192,12 +196,10 @@ struct BornFile {
     orders: usize,
     /// Per squared Born order its (left, right) Born-order pairs.
     squared: Vec<Vec<(usize, usize)>>,
-    /// The exact full-colour metric <b|b'> at N_c = 3, sparse.
-    gram: Option<Vec<(usize, usize, String, String)>>,
-    /// Leading and next-to-leading colour: per squared Born order the metric
-    /// over Born components, (squared order, component, component, re, im),
-    /// each cell's N_c powers kept by the projection (sparse; no `gram`).
-    #[serde(default)]
+    /// Per squared Born order the metric over Born components, (squared
+    /// order, component, component, re, im): the exact Gram cell times N_c
+    /// to the components' powers at N_c = 3, the powers a leading or
+    /// next-to-leading colour projection keeps (sparse; none: no |A0|²).
     metric: Option<Vec<(usize, usize, usize, String, String)>>,
     average: String,
 }
@@ -355,10 +357,7 @@ pub struct TreeProgram {
     blocks: Vec<Vec<Option<usize>>>,
     couplings: usize,
     terms: Vec<Term>,
-    amplitudes: Vec<Vec<(usize, Rational)>>,
-    orders: usize,
     squared: Vec<Vec<(usize, usize)>>,
-    gram: Option<Vec<(usize, usize, [Rational; 2])>>,
     metric: Option<Vec<(usize, usize, usize, [Rational; 2])>>,
     average: Rational,
     parameters: Parameters,
@@ -420,8 +419,6 @@ pub struct TreeRuntime<T> {
     edge_weights: Vec<Vec<Vec<Complex<T>>>>,
     /// The closure terms' colour weights.
     weights: Vec<Complex<T>>,
-    factors: Vec<Vec<T>>,
-    gram: Option<Vec<Complex<T>>>,
     metric: Option<Vec<Complex<T>>>,
     average: T,
     interference: Option<InterferenceRuntime<T>>,
@@ -882,18 +879,6 @@ impl TreeProgram {
             )?;
         }
         let basis = amplitudes.len() / born.orders;
-        let gram = born
-            .gram
-            .map(|entries| {
-                entries
-                    .iter()
-                    .map(|(left, right, re, im)| {
-                        require(*left < basis && *right < basis, "colour metric entry")?;
-                        Ok((*left, *right, [exact(re)?, exact(im)?]))
-                    })
-                    .collect::<RusticolResult<Vec<_>>>()
-            })
-            .transpose()?;
         let metric = born
             .metric
             .map(|entries| {
@@ -911,10 +896,6 @@ impl TreeProgram {
                     .collect::<RusticolResult<Vec<_>>>()
             })
             .transpose()?;
-        require(
-            gram.is_none() || metric.is_none(),
-            "a Born metric is either full colour or per component",
-        )?;
         let counterterms = file
             .counterterms
             .map(|ct| {
@@ -946,10 +927,7 @@ impl TreeProgram {
             blocks: born.blocks,
             couplings: born.couplings,
             terms,
-            amplitudes,
-            orders: born.orders,
             squared: born.squared,
-            gram,
             metric,
             average: exact(&born.average)?,
             parameters,
@@ -1174,17 +1152,6 @@ impl TreeProgram {
             .counterterms
             .as_ref()
             .map(|ct| ct.interference.runtime(zero));
-        let factors = self
-            .amplitudes
-            .iter()
-            .map(|row| row.iter().map(|(_j, f)| cast(zero, f)).collect())
-            .collect();
-        let gram = self.gram.as_ref().map(|entries| {
-            entries
-                .iter()
-                .map(|(_l, _r, [re, im])| complex(re, im))
-                .collect()
-        });
         let metric = self.metric.as_ref().map(|entries| {
             entries
                 .iter()
@@ -1196,8 +1163,6 @@ impl TreeProgram {
             kernels,
             edge_weights,
             weights,
-            factors,
-            gram,
             metric,
             average: cast(zero, &self.average),
             interference,
@@ -1309,7 +1274,7 @@ impl TreeProgram {
             block_rows: Vec::with_capacity(points),
             born: Vec::with_capacity(points),
             amplitudes: Vec::with_capacity(points),
-            born_squared: (runtime.gram.is_some() || runtime.metric.is_some())
+            born_squared: runtime.metric.is_some()
                 .then(|| Vec::with_capacity(points)),
             counterterms: self
                 .counterterms
@@ -1389,15 +1354,8 @@ impl TreeProgram {
             }
             out.born.push(born);
             if let Some(squared) = &mut out.born_squared {
-                squared.push(match &runtime.metric {
-                    Some(metric) => self.squared_by_component(runtime, metric, &amplitudes, zero),
-                    None => self.squared(
-                        runtime,
-                        runtime.gram.as_ref().expect("a runtime Born metric"),
-                        &amplitudes,
-                        zero,
-                    ),
-                });
+                let metric = runtime.metric.as_ref().expect("a runtime Born metric");
+                squared.push(self.squared(runtime, metric, &amplitudes, zero));
             }
             out.amplitudes.push(amplitudes);
         }
@@ -1603,9 +1561,9 @@ impl TreeProgram {
         out
     }
 
-    /// `|A0|²` per squared Born order of one point (divided by the average)
-    /// with a per-component metric (leading and next-to-leading colour).
-    fn squared_by_component<T: Carrier>(
+    /// `|A0|²` per squared Born order of one point (divided by the average):
+    /// the metric over pairs of Born components.
+    fn squared<T: Carrier>(
         &self,
         runtime: &TreeRuntime<T>,
         metric: &[Complex<T>],
@@ -1617,52 +1575,6 @@ impl TreeProgram {
         for row in amplitudes.chunks_exact(self.components) {
             for ((squared, left, right, _), value) in entries.iter().zip(metric) {
                 out[*squared] += (row[*left].conj() * value.clone() * row[*right].clone()).re;
-            }
-        }
-        out.into_iter()
-            .map(|value| value / runtime.average.clone())
-            .collect()
-    }
-
-    /// `|A0|²` per squared Born order of one point (divided by the average).
-    fn squared<T: Carrier>(
-        &self,
-        runtime: &TreeRuntime<T>,
-        gram: &[Complex<T>],
-        amplitudes: &[Complex<T>],
-        zero: &T,
-    ) -> Vec<T> {
-        let czero = Complex::new(zero.clone(), zero.clone());
-        let entries = self.gram.as_ref().expect("a runtime gram has entries");
-        let mut out = vec![zero.clone(); self.squared.len()];
-        for row in amplitudes.chunks_exact(self.components) {
-            // a[b * orders + o] = sum_g A0[(b, o, g)] N_c^g.
-            let a: Vec<Complex<T>> = self
-                .amplitudes
-                .iter()
-                .zip(&runtime.factors)
-                .map(|(terms, factors)| {
-                    let mut total = czero.clone();
-                    for ((component, _), factor) in terms.iter().zip(factors) {
-                        let value = &row[*component];
-                        total += Complex::new(
-                            value.re.clone() * factor.clone(),
-                            value.im.clone() * factor.clone(),
-                        );
-                    }
-                    total
-                })
-                .collect();
-            for (target, pairs) in out.iter_mut().zip(&self.squared) {
-                let mut total = czero.clone();
-                for &(left, right) in pairs {
-                    for ((b, b2, _), metric) in entries.iter().zip(gram) {
-                        let bra = &a[b * self.orders + left];
-                        let ket = &a[b2 * self.orders + right];
-                        total += bra.conj() * metric.clone() * ket.clone();
-                    }
-                }
-                *target += total.re;
             }
         }
         out.into_iter()
