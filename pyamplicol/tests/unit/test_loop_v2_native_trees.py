@@ -235,6 +235,37 @@ def test_native_finite_only_keeps_every_finite_part(executors):
 
 
 @pytest.mark.loop_physics
+@pytest.mark.parametrize("poles", ["uv", "ir"])
+def test_native_split_pole_selections_equal_the_python_inputs(executors, poles):
+    """The "uv" and "ir" selections natively: the reducer's split columns
+    and the companion of the certified-scaleless families, whose block rows
+    its own native tree program forms, give every component and both
+    origins' pole parts of the Python inputs (u u~ > d d~ g, binary64)."""
+
+    native, python = executors("uux_ddxg")
+    assert native.slice.scaleless is not None
+    points, scales = _points(PROCESSES["uux_ddxg"][3])
+    points, scales = points[:1], scales[:1]
+    (mine,) = native.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
+    (theirs,) = python.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
+    assert native.scaleless.inputs == "native"
+    _assert_same([mine], [theirs], 1e-12)
+    for origin, components in theirs.pole_origins.items():
+        for name, sectors in components.items():
+            for sector, value in sectors.items():
+                scale = max(
+                    abs(_real(x))
+                    for x in theirs.components["virtual"][sector].coefficients
+                )
+                for x, y in zip(
+                    mine.pole_origins[origin][name][sector].coefficients,
+                    value.coefficients,
+                    strict=True,
+                ):
+                    assert abs(_real(x) - _real(y)) <= Decimal("1e-12") * scale
+
+
+@pytest.mark.loop_physics
 def test_native_lane_binds_the_external_parameters(executors):
     """A native batch carries momenta, scales and the external parameters
     only; the executor binds the kernel constants, the loop and external
