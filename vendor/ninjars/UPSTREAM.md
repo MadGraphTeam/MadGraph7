@@ -20,8 +20,9 @@ all transitive Git sources in `lib/ninjars-config.json`, alongside copies of
 `Cargo.toml` and `Cargo.lock`. Explicit local overrides additionally record the
 source revision and a digest of the copied source files, so a modified checkout
 is distinguished from the same clean revision. Reference checkouts are copied
-before building. Existing compatible ABI-3 installations remain readable;
-after updating the MadGraph checkout with `git pull`, run
+before building. The pole-selector interface requires bridge ABI 4; older
+ABI-3 installations are rejected before export or linking. After updating the
+MadGraph checkout with `git pull`, run
 `install ninjars --update` to rebuild an older installation with that checkout's
 current pins. This uses the committed dependency revisions and lockfile;
 it does not select unpinned upstream `main` revisions. The installer validates
@@ -36,6 +37,29 @@ NinjaRS by default, or Ninja when NinjaRS is unavailable. Explicit reduction
 options such as `--reduction=6` and active parameter-card choices take
 precedence. Loop-induced exports retain their existing `7|6|1` selection and
 scalar-integral pole settings.
+
+`LoopPoleMode` selects the poles of the bare loop contribution through a common
+card option: `0` returns both origins, `1` UV poles, `2` IR poles,
+and `3` no poles. Its default, `-1`, preserves the existing backend behavior,
+including `COLLIERComputeUVpoles` and `COLLIERComputeIRpoles` for COLLIER.
+Modes `1`, `2`, and `3` require a reduction/rescue list containing only NinjaRS
+and/or COLLIER; other backends cannot provide the requested pole selection.
+Finite coefficients and rational terms are unchanged; model counterterms are
+outside this selection. With NinjaRS, a master-provider adapter around the
+pinned oneloopmaster-backed providers selects the residues before contraction
+with the reduction coefficients. UV-only and IR-only modes use the generic NinjaRS
+engine in both double precision and higher-precision rescue, retaining the
+scaleless-bubble coefficients whose UV and IR residues cancel in the combined
+result. Their compensated-DP entry uses the same generic DP path, without the
+fast-engine compensated numerator callback; higher-precision rescue remains
+available. Combined-pole and no-pole DP calculations retain the fast engine.
+All explicit modes (`0`–`3`) bypass existing helicity/loop-filter decisions so
+that cancelled combined-pole contributions remain available for separation;
+default mode `-1` keeps the usual filtering policy. Explicit modes can
+therefore incur additional numerator and reduction costs. This extension
+changes neither dependency pins nor the upstream reference clones.
+See [Selecting UV and IR poles in MadLoop](../../doc/loop-pole-selection.md)
+for card examples, the Fortran setter, and the scope of the returned poles.
 
 `src/guarded.rs` adapts the tensor indexing and transposed recurrence traversal
 from NinjaRS commit `0d0d7e7a8033431b60a8580731084742e0655cda`,

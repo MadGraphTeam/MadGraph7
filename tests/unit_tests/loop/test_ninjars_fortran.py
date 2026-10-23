@@ -247,8 +247,13 @@ end subroutine
         switch = (TEMPLATE / 'TIR_interface.inc').read_text()
         switch = switch[switch.index('      SUBROUTINE %(proc_prefix)sSWITCH_ORDER'):]
         switch = switch[:switch.index('\t  SUBROUTINE %(proc_prefix)sINITTIR')]
+        matrix = (TEMPLATE / 'loop_matrix_standalone.inc').read_text()
+        setter = matrix[matrix.index(
+            '      SUBROUTINE %(proc_prefix)sSET_LOOP_POLE_MODE(MODE)'):]
+        setter = setter[:setter.index(
+            '\t  SUBROUTINE %(proc_prefix)sCOLLIER_COMPUTE_UV_POLES')]
         with FortranWriter(str(self.work / 'wrapper.f')) as writer:
-            writer.writelines((source + helpers + switch) % replacements,
+            writer.writelines((source + helpers + switch + setter) % replacements,
                               context={'ninjars_available': True,
                                        'ninjars_supports_quad_prec': True,
                                        'AmplitudeReduction': amplitude})
@@ -266,7 +271,7 @@ integer,parameter :: KI_NRS=kind(1d0),KI_QNRS=selected_real_kind(33,4931)
 integer,parameter :: NINJARS_SUCCESS=0
 integer :: failure_mode=0
 logical :: seen_mp_extra=.false.
-integer :: compensated_calls=0
+integer :: compensated_calls=0,last_pole_mode=-99
 real(8) :: last_shift(0:3),last_s
 complex(8) :: last_mass
 interface ninjars_tensor_evaluate
@@ -275,10 +280,13 @@ end interface
 contains
 '''
         for precision, kind in [('dp', 'KI_NRS'), ('mp', 'KI_QNRS')]:
-            module += f'''subroutine eval_{precision}(c,n,r,s,p,m,mu,res,r1,status)
+            module += f'''subroutine eval_{precision}(c,n,r,s,p,m,mu,res,r1,status,pole_mode)
 integer :: n,r,status,i
+integer,optional :: pole_mode
 complex({kind}) :: c(:),m(n),res(0:2),r1
 real({kind}) :: s(n,n),p(0:3,n),mu
+if (.not.present(pole_mode)) stop 58
+last_pole_mode=pole_mode
 if (size(c)/=(r+1)*(r+2)*(r+3)*(r+4)/24) stop 31
 if (abs(mu-49)>1.e-12_{kind}) stop 32
 last_shift=real(p(:,2),kind=8)
@@ -296,12 +304,13 @@ if (failure_mode==1) status=2
 if (failure_mode==2) res(0)=ieee_value(0.0_{kind},ieee_quiet_nan)
 end subroutine
 '''
-        module += '''subroutine ninjars_tensor_evaluate_compensated(c,n,r,s,p,m,mu,res,r1,status)
+        module += '''subroutine ninjars_tensor_evaluate_compensated(c,n,r,s,p,m,mu,res,r1,status,pole_mode)
 integer :: n,r,status
+integer,optional :: pole_mode
 complex(KI_NRS) :: c(:),m(n),res(0:2),r1
 real(KI_NRS) :: s(n,n),p(0:3,n),mu
 compensated_calls=compensated_calls+1
-call eval_dp(c,n,r,s,p,m,mu,res,r1,status)
+call eval_dp(c,n,r,s,p,m,mu,res,r1,status,pole_mode)
 end subroutine
 end module
 '''
@@ -372,6 +381,21 @@ MPCOEF=0
 call TEST_MP_NINJARS_LOOP(3,MP,M,R,RES,STABLE)
 if (.not.STABLE.or.FQP.or..not.seen_mp_extra) stop 49
 if (abs(RES(1)/NOR-{expected_mp})>1d-12) stop 50
+! Check the actual generic setter and all three precision paths.
+if(last_pole_mode/=0) stop 59
+do I=-1,3
+  call TEST_SET_LOOP_POLE_MODE(I)
+  CTMODE=1
+  call TEST_NINJARS_LOOP(3,P,M,R,RES,STABLE)
+  if(last_pole_mode/=max(0,I).or..not.STABLE) stop 60
+  NRS_RETRY_MODE=.true.
+  call TEST_NINJARS_LOOP(3,P,M,R,RES,STABLE)
+  if(last_pole_mode/=max(0,I).or..not.STABLE) stop 61
+  NRS_RETRY_MODE=.false.
+  CTMODE=4
+  call TEST_MP_NINJARS_LOOP(3,MP,M,R,RES,STABLE)
+  if(last_pole_mode/=max(0,I).or..not.STABLE) stop 62
+enddo
 failure_mode=1
 call TEST_NINJARS_LOOP(3,P,M,R,RES,STABLE)
 if (STABLE.or..not.FDP.or.any(RES/=0)) stop 51

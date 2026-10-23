@@ -232,7 +232,7 @@ C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
       DATA NEPS/0/
 C     Below are variables to bypass the checkphase and insure
 C      stability check to take place
-      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED
+      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED,BYPASS_FILTERS
       INTEGER OLD_GOODHEL(NCOMB)
       LOGICAL OLD_GOODAMP(NSQUAREDSO,NLOOPGROUPS)
       LOGICAL BYPASS_CHECK, ALWAYS_TEST_STABILITY
@@ -464,6 +464,12 @@ C      reading the parameters
      $ ,COLLIER_UV_POLE_COMPUTATION_CHOICE
      $ ,COLLIER_IR_POLE_COMPUTATION_CHOICE
 
+C     Preserve a generic selector set before the first parameter-card
+C      read.
+      INTEGER FORCED_LOOP_POLE_MODE
+      DATA FORCED_LOOP_POLE_MODE/-2/
+      COMMON/ML5_0_LOOPPOLEFORCEDCHOICE/FORCED_LOOP_POLE_MODE
+
 C     This variable controls the general initialization which is
 C      *common* between all MadLoop SubProcesses.
 C     For example setting the MadLoopPath or reading the ML runtime
@@ -519,6 +525,8 @@ C      pmass.inc
         CALL SETMADLOOPPATH(TMP)
         CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
         CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
+        IF(FORCED_LOOP_POLE_MODE.NE.-2)
+     $    LOOPPOLEMODE=FORCED_LOOP_POLE_MODE
         IF (FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION) THEN
           COLLIERCOMPUTEUVPOLES = COLLIER_UV_POLE_COMPUTATION_CHOICE
         ENDIF
@@ -574,6 +582,15 @@ C        if AUTOMATIC_CACHE_CLEARING is disabled.
         ENDIF
 
       ENDIF
+
+C     Check every evaluation because callers may change the mode at
+C      runtime.
+      CALL ML_CHECK_LOOP_POLE_MODE()
+C     Learned zero and equivalent-helicity filters belong to the pole
+C      convention
+C     that produced them.  Diagnostic modes must include cancelling
+C      UV/IR loops.
+      BYPASS_FILTERS=BYPASS_CHECK.OR.LOOPPOLEMODE.GE.0
 
       IF (LOCAL_ML_INIT) THEN
         LOCAL_ML_INIT = .FALSE.
@@ -824,7 +841,7 @@ C     For loop-induced processes, we should make sure not to use the
 C      first points
 C     to set the filters because it doesn't have a reasonable REF
 C      scale yet.
-      IF(.NOT.BYPASS_CHECK.AND.NPSPOINTS.GE.1) THEN
+      IF(.NOT.BYPASS_FILTERS.AND.NPSPOINTS.GE.1) THEN
         NTRY=NTRY+1
       ENDIF
 
@@ -850,7 +867,7 @@ C        trust the evaluation for checks.
       CHECKPHASE=(NTRY.LE.CHECKCYCLE).AND.(((.NOT.FOUNDLOOPFILTER)
      $ .AND.USELOOPFILTER).OR.(.NOT.FOUNDHELFILTER))
 
-      IF (WRITEOUTFILTERS) THEN
+      IF (WRITEOUTFILTERS.AND.LOOPPOLEMODE.LT.0) THEN
         IF ((HELICITYFILTERLEVEL.NE.0).AND.(.NOT. CHECKPHASE)
      $   .AND.(.NOT.FOUNDHELFILTER)) THEN
           OPEN(1, FILE=HELFILTERFN, ERR=110, STATUS='NEW'
@@ -876,7 +893,7 @@ C        trust the evaluation for checks.
         ENDIF
       ENDIF
 
-      IF (BYPASS_CHECK) THEN
+      IF (BYPASS_FILTERS) THEN
         OLD_CHECKPHASE = CHECKPHASE
         OLD_HELDOUBLECHECKED = HELDOUBLECHECKED
         CHECKPHASE = .FALSE.
@@ -2020,7 +2037,7 @@ C      spin-2 particles are in the external states.
 
 C     Reinitialize the check phase logicals and the filters if check
 C      bypassed
-      IF (BYPASS_CHECK) THEN
+      IF (BYPASS_FILTERS) THEN
         CHECKPHASE = OLD_CHECKPHASE
         HELDOUBLECHECKED = OLD_HELDOUBLECHECKED
         DO I=1,NCOMB
@@ -2743,6 +2760,21 @@ C
 C     --=========================================--
 C     Definition of additional access routines
 C     --=========================================--
+
+      SUBROUTINE ML5_0_SET_LOOP_POLE_MODE(MODE)
+C     Select bare loop poles: -1 legacy, 0 both, 1 UV, 2 IR, 3 none.
+C     Counterterms and rational R2 contributions are not changed.
+      IMPLICIT NONE
+      INTEGER MODE,FORCED_LOOP_POLE_MODE
+      INCLUDE 'MadLoopParams.inc'
+      COMMON/ML5_0_LOOPPOLEFORCEDCHOICE/FORCED_LOOP_POLE_MODE
+      IF(MODE.LT.-1.OR.MODE.GT.3) THEN
+        WRITE(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
+        STOP 1
+      ENDIF
+      LOOPPOLEMODE=MODE
+      FORCED_LOOP_POLE_MODE=MODE
+      END SUBROUTINE
 
       SUBROUTINE ML5_0_COLLIER_COMPUTE_UV_POLES(ONOFF)
 C     

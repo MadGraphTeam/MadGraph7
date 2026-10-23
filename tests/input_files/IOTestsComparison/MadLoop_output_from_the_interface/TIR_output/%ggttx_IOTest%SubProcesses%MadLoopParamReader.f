@@ -33,6 +33,13 @@
                stop 'CTModeRun must be >= -1 and <=6.'
              endif 
 
+           else if (buff .eq. '#LoopPoleMode') then
+             read(666,*,end=999) LoopPoleMode
+             if (LoopPoleMode.lt.-1.or.LoopPoleMode.gt.3) then
+               write(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
+               stop 1
+             endif
+
            else if (buff .eq. '#COLLIERGlobalCache') then
              read(666,*,end=999) COLLIERGlobalCache
              if (COLLIERGlobalCache .lt. -1) then
@@ -260,6 +267,7 @@ C     a non existing or malformed parameter file
       write(*,*) ' > MLReductionLib            = '
      $     //TRIM(MLReductionLib_str_save)
       write(*,*) ' > CTModeRun                 = ',CTModeRun
+      write(*,*) ' > LoopPoleMode              = ',LoopPoleMode
       write(*,*) ' > MLStabThres               = ',MLStabThres
       write(*,*) ' > NRotations_DP             = ',NRotations_DP
       write(*,*) ' > NRotations_QP             = ',NRotations_QP
@@ -316,6 +324,7 @@ C     a non existing or malformed parameter file
       MLReductionLib(2)=7
       MLReductionLib(3)=1
       MLReductionLib(4:9)=0
+      LoopPoleMode=-1
       IREGIMODE=2
       IREGIRECY=.TRUE.
       COLLIERComputeIRpoles = .TRUE.
@@ -349,3 +358,39 @@ C     a non existing or malformed parameter file
       UseQPIntegrandForNinjaRS=.True.
 
       end
+
+      SUBROUTINE ML_LOOP_POLE_FLAGS(COMPUTE_UV,COMPUTE_IR)
+C     The generic selector affects bare loop integrals only.  The legacy
+C     COLLIER switches remain effective when LoopPoleMode is -1.
+      IMPLICIT NONE
+      LOGICAL COMPUTE_UV,COMPUTE_IR
+      INCLUDE 'MadLoopParams.inc'
+      COMPUTE_UV=COLLIERComputeUVpoles
+      COMPUTE_IR=COLLIERComputeIRpoles
+      IF(LoopPoleMode.GE.0) THEN
+        COMPUTE_UV=LoopPoleMode.EQ.0.OR.LoopPoleMode.EQ.1
+        COMPUTE_IR=LoopPoleMode.EQ.0.OR.LoopPoleMode.EQ.2
+      ENDIF
+      END
+
+      SUBROUTINE ML_CHECK_LOOP_POLE_MODE()
+C     Reject unsupported rescue chains rather than silently returning
+C     combined poles after a UV-only or IR-only reduction fails.
+      IMPLICIT NONE
+      INTEGER I
+      INCLUDE 'MadLoopParams.inc'
+      IF(LoopPoleMode.LT.-1.OR.LoopPoleMode.GT.3) THEN
+        WRITE(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
+        STOP 1
+      ENDIF
+      IF(LoopPoleMode.LE.0) RETURN
+      DO I=1,9
+        IF(MLReductionLib(I).EQ.0) EXIT
+        IF(MLReductionLib(I).NE.7.AND.MLReductionLib(I).NE.8) THEN
+          WRITE(*,*) 'LoopPoleMode=1, 2 or 3 requires NinjaRS/COLLIER.'
+          WRITE(*,*) 'Set MLReductionLib to 8, 7 or 8|7, including',
+     &               ' only supported rescue backends.'
+          STOP 1
+        ENDIF
+      ENDDO
+      END

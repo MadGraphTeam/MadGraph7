@@ -1,0 +1,18 @@
+{
+  "compared_mode0_evaluations": 910,
+  "identical": true,
+  "baseline_tree_revision": "d816e1b92ead3cde8cf89c3bc3786f08b938e4b2",
+  "baseline": {
+    "libninjars.a": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+    "ninjars-config.json": "a2b427c4e1c766180cec068ca716e2ff3d035226b06864c50156202bcfa4617f",
+    "mninjars.mod": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec"
+  },
+  "candidate": {
+    "libninjars.a": "51fc066b71fd26132cc3da53b2cfbab4c7f2ec896c22df3fdcb0dfc15f81467f",
+    "ninjars-config.json": "a924184de8f4ef03ac86c477c0925fa77e8e13711ff615d76a1b2372232831dc",
+    "mninjars.mod": "bdbdea4365d04be8693de8ff10d9594137cca6ceaaf9ce2de3e6991467a625ec"
+  },
+  "baseline_values_sha256": "3002bd2e9c5cfa34f3fa9be74f35c993fe114f40992aba6e8d3d81b6b0c28519",
+  "candidate_values_sha256": "b431b23330834bc4be29d4979b6a580936558ab7d855b2a6229714f5011a4e1b",
+  "jobs_sha256": "4598f2e39ba45e05650161a7686f8a646bdad9920788e6bc4fc6643057809bc1"
+}

@@ -68,7 +68,7 @@ class TestNinjaRSIntegrationBoundaries(unittest.TestCase):
 
     def test_available_backend_rejects_incompatible_metadata_instead_of_claiming_qp(self):
         (self.lib/'libninjars.a').write_bytes(b'archive')
-        for changes in ({'abi_version':2}, {'native_libs':['-lgmp\nBAD=1']},
+        for changes in ({'abi_version':2}, {'abi_version':3}, {'native_libs':['-lgmp\nBAD=1']},
                         {'link_before':[]}, {'link_before':['-lgcc_s\rBAD=1']},
                         {'link_order_version':0}):
             self.metadata(**changes)

@@ -1,6 +1,7 @@
 ! ISO C interface to the pinned NinjaRS bridge. No compiler-specific quad ABI.
 ! res(0) contains the complete finite result. r1 is an engine-basis diagnostic;
-! the MP generic engine's rational/CC split can differ from the DP Ninja basis.
+! the generic engine (MP and selected-pole DP) may use a different rational/CC split.
+! Optional pole_mode: 0 combined (default), 1 UV, 2 IR, 3 neither.
 module mninjars
   use, intrinsic :: iso_c_binding
   implicit none
@@ -10,6 +11,10 @@ module mninjars
   integer, parameter, public :: NINJARS_SUCCESS = 0
   integer, parameter, public :: NINJARS_UNSTABLE_KINEMATICS = 1
   integer, parameter, public :: NINJARS_ERROR = 2
+  integer, parameter, public :: NINJARS_POLES_BOTH = 0
+  integer, parameter, public :: NINJARS_POLES_UV = 1
+  integer, parameter, public :: NINJARS_POLES_IR = 2
+  integer, parameter, public :: NINJARS_POLES_NONE = 3
   integer, parameter :: record_size = 64
   type(c_ptr), save :: context = c_null_ptr
   public :: ninjars_tensor_evaluate_compensated
@@ -30,11 +35,11 @@ module mninjars
       type(c_ptr), value :: handle
       integer(c_int) :: status
     end function
-    function evaluate_dp(handle,n,r,count,coeff,s,slen,p,plen,m,mlen,mu2,res,reslen,r1,r1len) &
-        bind(C,name="ninjars_evaluate_dp") result(status)
+    function evaluate_dp(handle,n,r,count,coeff,s,slen,p,plen,m,mlen,mu2,res,reslen,r1,r1len,pole_mode) &
+        bind(C,name="ninjars_evaluate_dp_with_poles") result(status)
       import
       type(c_ptr), value :: handle
-      integer(c_int), value :: n,r
+      integer(c_int), value :: n,r,pole_mode
       integer(c_size_t), value :: count,slen,plen,mlen,reslen,r1len
       complex(c_double_complex), intent(in) :: coeff(*),m(*)
       real(c_double), intent(in) :: s(*),p(*)
@@ -42,11 +47,11 @@ module mninjars
       complex(c_double_complex), intent(out) :: res(*),r1
       integer(c_int) :: status
     end function
-    function evaluate_dp_compensated(handle,n,r,count,coeff,s,slen,p,plen,m,mlen,mu2,res,reslen,r1,r1len) &
-        bind(C,name="ninjars_evaluate_dp_compensated") result(status)
+    function evaluate_dp_compensated(handle,n,r,count,coeff,s,slen,p,plen,m,mlen,mu2,res,reslen,r1,r1len,pole_mode) &
+        bind(C,name="ninjars_evaluate_dp_compensated_with_poles") result(status)
       import
       type(c_ptr), value :: handle
-      integer(c_int), value :: n,r
+      integer(c_int), value :: n,r,pole_mode
       integer(c_size_t), value :: count,slen,plen,mlen,reslen,r1len
       complex(c_double_complex), intent(in) :: coeff(*),m(*)
       real(c_double), intent(in) :: s(*),p(*)
@@ -54,11 +59,11 @@ module mninjars
       complex(c_double_complex), intent(out) :: res(*),r1
       integer(c_int) :: status
     end function
-    function evaluate_mp(handle,n,r,count,coeff,clen,s,slen,p,plen,m,mlen,mu2,scalelen,res,reslen) &
-        bind(C,name="ninjars_evaluate_mp") result(status)
+    function evaluate_mp(handle,n,r,count,coeff,clen,s,slen,p,plen,m,mlen,mu2,scalelen,res,reslen,pole_mode) &
+        bind(C,name="ninjars_evaluate_mp_with_poles") result(status)
       import
       type(c_ptr), value :: handle
-      integer(c_int), value :: n,r
+      integer(c_int), value :: n,r,pole_mode
       integer(c_size_t), value :: count,clen,slen,plen,mlen,scalelen,reslen
       character(c_char), intent(in) :: coeff(*),s(*),p(*),m(*),mu2(*)
       character(c_char), intent(out) :: res(*)
@@ -75,7 +80,7 @@ contains
   subroutine ensure_context(status)
     integer, intent(out) :: status
     status = NINJARS_SUCCESS
-    if (.not.c_associated(context)) status = create_context(3_c_int,context)
+    if (.not.c_associated(context)) status = create_context(4_c_int,context)
   end subroutine
 
   subroutine ninjars_finalize(status)
@@ -91,36 +96,44 @@ contains
     count = (rank+1)*(rank+2)*(rank+3)*(rank+4)/24
   end function
 
-  subroutine tensor_dp(coeff,n,rank,s,p,m,mu2,res,r1,status)
+  subroutine tensor_dp(coeff,n,rank,s,p,m,mu2,res,r1,status,pole_mode)
     integer, intent(in) :: n,rank
     complex(KI_NRS), intent(in) :: coeff(coefficient_count(rank)),m(n)
     real(KI_NRS), intent(in) :: s(n,n),p(0:3,n),mu2
     complex(KI_NRS), intent(out) :: res(0:2),r1
     integer, intent(out) :: status
+    integer, intent(in), optional :: pole_mode
+    integer(c_int) :: selected_poles
     res = cmplx(0,0,kind=KI_NRS)
     r1 = cmplx(0,0,kind=KI_NRS)
+    selected_poles = 0_c_int
+    if (present(pole_mode)) selected_poles = int(pole_mode,c_int)
     call ensure_context(status)
     if (status /= NINJARS_SUCCESS) return
     status = evaluate_dp(context,int(n,c_int),int(rank,c_int), &
                          int(coefficient_count(rank),c_size_t),coeff, &
                          s,size(s,kind=c_size_t),p,size(p,kind=c_size_t), &
-                         m,size(m,kind=c_size_t),mu2,res,3_c_size_t,r1,1_c_size_t)
+                         m,size(m,kind=c_size_t),mu2,res,3_c_size_t,r1,1_c_size_t,selected_poles)
   end subroutine
 
-  subroutine ninjars_tensor_evaluate_compensated(coeff,n,rank,s,p,m,mu2,res,r1,status)
+  subroutine ninjars_tensor_evaluate_compensated(coeff,n,rank,s,p,m,mu2,res,r1,status,pole_mode)
     integer, intent(in) :: n,rank
     complex(KI_NRS), intent(in) :: coeff(coefficient_count(rank)),m(n)
     real(KI_NRS), intent(in) :: s(n,n),p(0:3,n),mu2
     complex(KI_NRS), intent(out) :: res(0:2),r1
     integer, intent(out) :: status
+    integer, intent(in), optional :: pole_mode
+    integer(c_int) :: selected_poles
     res = cmplx(0,0,kind=KI_NRS)
     r1 = cmplx(0,0,kind=KI_NRS)
+    selected_poles = 0_c_int
+    if (present(pole_mode)) selected_poles = int(pole_mode,c_int)
     call ensure_context(status)
     if (status /= NINJARS_SUCCESS) return
     status = evaluate_dp_compensated(context,int(n,c_int),int(rank,c_int), &
                          int(coefficient_count(rank),c_size_t),coeff, &
                          s,size(s,kind=c_size_t),p,size(p,kind=c_size_t), &
-                         m,size(m,kind=c_size_t),mu2,res,3_c_size_t,r1,1_c_size_t)
+                         m,size(m,kind=c_size_t),mu2,res,3_c_size_t,r1,1_c_size_t,selected_poles)
   end subroutine
 
   subroutine pack(value,record)
@@ -146,12 +159,14 @@ contains
     read(text,*,iostat=io_status) value
   end subroutine
 
-  subroutine tensor_mp(coeff,n,rank,s,p,m,mu2,res,r1,status)
+  subroutine tensor_mp(coeff,n,rank,s,p,m,mu2,res,r1,status,pole_mode)
     integer, intent(in) :: n,rank
     complex(KI_QNRS), intent(in) :: coeff(coefficient_count(rank)),m(n)
     real(KI_QNRS), intent(in) :: s(n,n),p(0:3,n),mu2
     complex(KI_QNRS), intent(out) :: res(0:2),r1
     integer, intent(out) :: status
+    integer, intent(in), optional :: pole_mode
+    integer(c_int) :: selected_poles
     character(c_char) :: coeff_text(record_size,2*coefficient_count(rank))
     character(c_char) :: s_text(record_size,n*n),p_text(record_size,4*n)
     character(c_char) :: m_text(record_size,2*n),scale_text(record_size),output(record_size,8)
@@ -161,6 +176,8 @@ contains
     r1 = cmplx(0,0,kind=KI_QNRS)
     status = NINJARS_ERROR
     if (radix(mu2) /= 2 .or. digits(mu2) /= 113) return
+    selected_poles = 0_c_int
+    if (present(pole_mode)) selected_poles = int(pole_mode,c_int)
     call ensure_context(status)
     if (status /= NINJARS_SUCCESS) return
     do i=1,coefficient_count(rank)
@@ -181,7 +198,7 @@ contains
     status = evaluate_mp(context,int(n,c_int),int(rank,c_int),int(coefficient_count(rank),c_size_t), &
                          coeff_text,size(coeff_text,kind=c_size_t),s_text,size(s_text,kind=c_size_t), &
                          p_text,size(p_text,kind=c_size_t),m_text,size(m_text,kind=c_size_t), &
-                         scale_text,size(scale_text,kind=c_size_t),output,size(output,kind=c_size_t))
+                         scale_text,size(scale_text,kind=c_size_t),output,size(output,kind=c_size_t),selected_poles)
     if (status /= NINJARS_SUCCESS) return
     do k=1,8
       call unpack(output(:,k),values(k),ios)

@@ -17,6 +17,7 @@ fn pack(values: &Value) -> Vec<u8> {
 fn request(input: &Value) -> MpRequest {
     let (reply, _) = mpsc::sync_channel(1);
     MpRequest {
+        selection: PoleSelection::BOTH,
         context_id: 0,
         n: input["n"].as_u64().unwrap() as usize,
         rank: input["rank"].as_u64().unwrap() as usize,

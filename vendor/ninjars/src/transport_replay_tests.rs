@@ -33,7 +33,7 @@ fn all_stored_requests_retain_outputs_after_transport_fix() {
             let n=record["n"].as_u64().unwrap() as usize;
             let rank=record["rank"].as_u64().unwrap() as usize;
             let (reply,_)=std::sync::mpsc::sync_channel(1);
-            let request=MpRequest { context_id:0,n,rank,coefficients:packed(&record["coefficients"]),
+            let request=MpRequest { selection: PoleSelection::BOTH, context_id:0,n,rank,coefficients:packed(&record["coefficients"]),
                 s_matrix:packed(&record["s_matrix"]),momenta:packed(&record["momenta"]),
                 masses:packed(&record["masses"]),scale:packed(&record["scale"]),reply };
             assert_eq!(request.coefficients.len(),RECORD*2*ninjars::fast::tensor_layout::ncoeff(rank));

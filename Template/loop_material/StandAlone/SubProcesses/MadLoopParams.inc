@@ -9,7 +9,7 @@
 	  integer CTModeInit,CTModeRun,CheckCycle,MaxAttempts,
      &CTLoopLibrary,NRotations_DP,NRotations_QP,ImprovePSPoint,
      &MLReductionLib(9),IREGIMODE,HelicityFilterLevel,COLLIERMode,
-     &COLLIERGlobalCache
+     &COLLIERGlobalCache,LoopPoleMode
 
       real*8 MLStabThres,CTStabThres,ZeroThres,OSThres,COLLIERRequiredAccuracy
 
@@ -21,7 +21,7 @@
 	  logical COLLIERUseCacheForPoles,COLLIERUseInternalStabilityTest
 
       common /MADLOOP/CTModeInit,CTModeRun,NRotations_DP,NRotations_QP,
-     &COLLIERMode,COLLIERGlobalCache,
+     &COLLIERMode,COLLIERGlobalCache,LoopPoleMode,
      &ImprovePSPoint,CheckCycle, MaxAttempts,UseLoopFilter,MLStabThres,
      &COLLIERRequiredAccuracy,
      &CTStabThres,CTLoopLibrary,LoopInitStartOver,

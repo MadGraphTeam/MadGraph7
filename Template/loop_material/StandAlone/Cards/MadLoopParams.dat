@@ -21,6 +21,18 @@
 !     Notice that any reduction tool not avaialble on the system will be automatically
 !     skipped. 
 
+#LoopPoleMode
+!-1
+! Default :: -1
+!     Select poles of the bare loop integral, leaving finite terms and
+!     counterterms/R2 unchanged: -1 = legacy backend behavior, 0 = UV+IR,
+!     1 = UV only, 2 = IR only, 3 = no poles.
+!     Modes 1, 2 and 3 require MLReductionLib containing only NinjaRS (8)
+!     and/or COLLIER (7), including all rescue backends.
+!     An explicit mode overrides COLLIERComputeUVpoles/IRpoles; -1 keeps
+!     those legacy switches active for COLLIER and both poles for NinjaRS.
+!     For example, use MLReductionLib=8|7 and LoopPoleMode=1 for UV poles.
+
 !     When using quadruple precision with Ninja, NinjaRS or CutTools, the reduction will
 !     always be done in quadruple precision, but the parameters below allow you to
 !     chose if you want to also recompute the *integrand* in quadruple precision.

@@ -8506,6 +8506,7 @@ class MadLoopParam(ConfigFile):
         """initialize the directory to the default value"""
         
         self.add_param("MLReductionLib", "6|7|1")
+        self.add_param("LoopPoleMode", -1, allowed=[-1, 0, 1, 2, 3])
         self.add_param("IREGIMODE", 2)
         self.add_param("IREGIRECY", True)
         self.add_param("CTModeRun", -1)

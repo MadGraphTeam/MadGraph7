@@ -271,7 +271,7 @@ C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
 	  INTEGER NEPS
 	  DATA NEPS/0/
 C     Below are variables to bypass the checkphase and insure stability check to take place
-      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED
+      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED,BYPASS_FILTERS
 	  INTEGER OLD_GOODHEL(NCOMB)
 	  LOGICAL OLD_GOODAMP(NSQUAREDSO,NLOOPGROUPS)
 	  LOGICAL BYPASS_CHECK, ALWAYS_TEST_STABILITY
@@ -497,6 +497,11 @@ C     using the MadLoop subroutine, we don't overwrite his choice when reading t
 	  DATA  FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION,FORCED_CHOICE_OF_COLLIER_IR_POLE_COMPUTATION/.FALSE.,.FALSE./
 	  COMMON/%(proc_prefix)sCOLLIERPOLESFORCEDCHOICE/FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION, FORCED_CHOICE_OF_COLLIER_IR_POLE_COMPUTATION,COLLIER_UV_POLE_COMPUTATION_CHOICE,COLLIER_IR_POLE_COMPUTATION_CHOICE
 
+C     Preserve a generic selector set before the first parameter-card read.
+      INTEGER FORCED_LOOP_POLE_MODE
+      DATA FORCED_LOOP_POLE_MODE/-2/
+      COMMON/%(proc_prefix)sLOOPPOLEFORCEDCHOICE/FORCED_LOOP_POLE_MODE
+
 C     This variable controls the general initialization which is *common* between all MadLoop SubProcesses.
 C     For example setting the MadLoopPath or reading the ML runtime parameters.
 	  LOGICAL ML_INIT
@@ -539,6 +544,7 @@ IF(ML_INIT) THEN
   CALL setMadLoopPath(TMP)
   CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
   CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
+  IF(FORCED_LOOP_POLE_MODE.NE.-2) LoopPoleMode=FORCED_LOOP_POLE_MODE
   IF (FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION) THEN
     COLLIERComputeUVpoles = COLLIER_UV_POLE_COMPUTATION_CHOICE
   ENDIF
@@ -582,6 +588,12 @@ C Make sure that NROTATIONS_QP and NROTATIONS_DP are set to zero if AUTOMATIC_CA
   ENDIF
 
 ENDIF
+
+C Check every evaluation because callers may change the mode at runtime.
+CALL ML_CHECK_LOOP_POLE_MODE()
+C Learned zero and equivalent-helicity filters belong to the pole convention
+C that produced them.  Diagnostic modes must include cancelling UV/IR loops.
+BYPASS_FILTERS=BYPASS_CHECK.OR.LoopPoleMode.GE.0
 
 IF (LOCAL_ML_INIT) THEN
   LOCAL_ML_INIT = .FALSE.
@@ -831,9 +843,9 @@ ENDDO
 ## if(LoopInduced) {
 C For loop-induced processes, we should make sure not to use the first points
 C to set the filters because it doesn't have a reasonable REF scale yet.
-IF(.NOT.BYPASS_CHECK.AND.NPSPOINTS.GE.1) THEN
+IF(.NOT.BYPASS_FILTERS.AND.NPSPOINTS.GE.1) THEN
 ## } else {
-IF(.NOT.BYPASS_CHECK) THEN
+IF(.NOT.BYPASS_FILTERS) THEN
 ## }
   NTRY=NTRY+1
 ENDIF
@@ -856,7 +868,7 @@ ENDIF
 
 CHECKPHASE=(NTRY.LE.CHECKCYCLE).AND.(((.NOT.FOUNDLOOPFILTER).AND.USELOOPFILTER).OR.(.NOT.FOUNDHELFILTER))
 
-IF (WriteOutFilters) THEN
+IF (WriteOutFilters.AND.LoopPoleMode.LT.0) THEN
 IF ((HelicityFilterLevel.ne.0).AND.(.NOT. CHECKPHASE).AND.(.NOT.FOUNDHELFILTER)) THEN
 OPEN(1, FILE=HelFilterFN, err=110, status='NEW',action='WRITE')
   DO I=1,NCOMB
@@ -878,7 +890,7 @@ FOUNDLOOPFILTER=.TRUE.
 ENDIF
 ENDIF
 
-IF (BYPASS_CHECK) THEN
+IF (BYPASS_FILTERS) THEN
   OLD_CHECKPHASE = CHECKPHASE
   OLD_HELDOUBLECHECKED = HELDOUBLECHECKED
   CHECKPHASE = .FALSE.
@@ -2002,7 +2014,7 @@ NROTATIONS_DP = NROTATIONS_DP_BU
 NROTATIONS_QP = NROTATIONS_QP_BU
 
 C Reinitialize the check phase logicals and the filters if check bypassed
-IF (BYPASS_CHECK) THEN
+IF (BYPASS_FILTERS) THEN
   CHECKPHASE = OLD_CHECKPHASE
   HELDOUBLECHECKED = OLD_HELDOUBLECHECKED
   DO I=1,NCOMB
@@ -2676,6 +2688,21 @@ C
 C --=========================================--
 C   Definition of additional access routines
 C --=========================================--
+
+      SUBROUTINE %(proc_prefix)sSET_LOOP_POLE_MODE(MODE)
+C     Select bare loop poles: -1 legacy, 0 both, 1 UV, 2 IR, 3 none.
+C     Counterterms and rational R2 contributions are not changed.
+      IMPLICIT NONE
+      INTEGER MODE,FORCED_LOOP_POLE_MODE
+      INCLUDE 'MadLoopParams.inc'
+      COMMON/%(proc_prefix)sLOOPPOLEFORCEDCHOICE/FORCED_LOOP_POLE_MODE
+      IF(MODE.LT.-1.OR.MODE.GT.3) THEN
+        WRITE(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
+        STOP 1
+      ENDIF
+      LoopPoleMode=MODE
+      FORCED_LOOP_POLE_MODE=MODE
+      END SUBROUTINE
 
 	  SUBROUTINE %(proc_prefix)sCOLLIER_COMPUTE_UV_POLES(ONOFF)
 C

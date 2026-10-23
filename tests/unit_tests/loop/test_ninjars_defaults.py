@@ -37,7 +37,7 @@ class NinjaRSDefault(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir=ROOT, prefix='.test-nrs-default-')
         self.addCleanup(self.temp.cleanup); self.root = Path(self.temp.name)
         self.lib = self.root / 'installed/lib'; self.lib.mkdir(parents=True)
-        self.config = {'abi_version': 3, 'native_libs': ['-ldl', '-lm'], 'link_order_version': 1,
+        self.config = {'abi_version': install.ABI_VERSION, 'native_libs': ['-ldl', '-lm'], 'link_order_version': 1,
             'link_before': ['-Wl,--push-state,--no-as-needed', '-lquadmath', '-Wl,--pop-state']}
         (self.lib / 'libninjars.a').write_bytes(b'!<arch>\nsynthetic archive metadata')
         (self.lib / 'mninjars.mod').write_bytes(b'synthetic nonempty module')
@@ -85,7 +85,7 @@ class NinjaRSDefault(unittest.TestCase):
         self.assertFalse(install.is_available(self.lib))
 
     def test_invalid_abi_or_native_metadata_are_not_usable(self):
-        for config in ({**self.config, 'abi_version': 2}, {**self.config, 'native_libs': 'invalid'},
+        for config in ({**self.config, 'abi_version': 3}, {**self.config, 'native_libs': 'invalid'},
                 {**self.config, 'link_before': []}):
             (self.lib / 'ninjars-config.json').write_text(json.dumps(config))
             with self.subTest(config=config): self.assertFalse(install.is_available(self.lib))

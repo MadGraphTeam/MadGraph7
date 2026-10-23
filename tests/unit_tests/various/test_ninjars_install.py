@@ -14,6 +14,7 @@ from unittest import mock
 
 from madgraph import MadGraph5Error
 from madgraph.interface.madgraph_interface import MadGraphCmd
+from madgraph.iolibs.export_fks import ProcessOptimizedExporterFortranFKS
 from madgraph.loop.loop_exporters import LoopProcessOptimizedExporterFortranSA
 from madgraph.various import banner, ninjars_install
 
@@ -143,6 +144,25 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
         self.assertEqual(provenance['lock_sha256'], hashlib.sha256(lock.read_bytes()).hexdigest())
         self.assertIn('#'+'c'*40, provenance['git_dependencies'][0]['source'])
         self.assertEqual(len(run.call_args_list), 3)
+
+    def test_previous_abi_requires_update_and_is_replaced_after_validation(self):
+        previous = self.previous_install()
+        metadata = previous / 'lib' / ninjars_install.CONFIG_NAME
+        config = json.loads(metadata.read_text())
+        config['abi_version'] = 3
+        metadata.write_text(json.dumps(config))
+        before = self.snapshot(previous)
+        with mock.patch.object(ninjars_install, '_run') as run:
+            with self.assertRaisesRegex(MadGraph5Error, 'ABI.*install ninjars --update'):
+                ninjars_install.install(self.root, self.prefix)
+        run.assert_not_called()
+        self.assertEqual(self.snapshot(previous), before)
+        with mock.patch.object(ninjars_install.shutil, 'which', return_value='/bin/tool'), \
+                mock.patch.object(ninjars_install, '_run', side_effect=self.fake_build) as run:
+            libdir = ninjars_install.install(self.root, self.prefix, ['--update'])
+        self.assertEqual(ninjars_install.read_config(libdir)['abi_version'], 4)
+        self.assertEqual(len(run.call_args_list), 3)
+        self.assertTrue(run.call_args_list[-1].args[0][0].endswith('/smoke'))
         parser = ninjars_install.build_parser()
         self.assertTrue(parser.parse_args(['--update']).force)
         self.assertTrue(parser.parse_args(['--force']).force)
@@ -413,10 +433,10 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
         lib = self.root / 'lib'
         lib.mkdir()
         config = lib / ninjars_install.CONFIG_NAME
-        for version in (1, 2, 99):
+        for version in (1, 2, 3, 99):
             config.write_text(json.dumps({'abi_version': version, 'native_libs': []}))
             with self.subTest(version=version), self.assertRaisesRegex(
-                    MadGraph5Error, 'ABI'):
+                    MadGraph5Error, 'ABI.*install ninjars --update'):
                 ninjars_install.read_config(lib)
         config.write_text(json.dumps({'abi_version': ninjars_install.ABI_VERSION,
                                      'native_libs': 'bad'}))
@@ -481,14 +501,51 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
         copied = self.root / 'export' / 'lib'
         self.assertEqual(exporter.link_TIR(
             str(copied), str(lib), 'libninjars.a', 'ninjars'), str(copied))
+        fks = object.__new__(ProcessOptimizedExporterFortranFKS)
+        fks.tir_available_dict = {'ninjars': True}
+        fks.dependencies = 'internal'
+        fks_copied = self.root / 'export-fks' / 'lib'
+        self.assertEqual(fks.link_TIR(
+            str(fks_copied), str(lib), 'libninjars.a', 'ninjars'), str(fks_copied))
         shutil.rmtree(lib)
         shutil.rmtree(include)
-        self.assertTrue(ninjars_install.supports_quad_precision(copied))
-        for name in ('libninjars.a', 'mninjars.mod', 'ninjars-config.json',
-                     'ninjars-native-libs.txt', 'ninjars-link-before.txt',
-                     'ninjars.h', 'mninjars.f90'):
-            self.assertTrue((copied / name).is_file(), name)
-            self.assertFalse((copied / name).is_symlink(), name)
+        for exported in (copied, fks_copied):
+            with self.subTest(exported=exported):
+                self.assertTrue(ninjars_install.is_available(exported))
+                self.assertTrue(ninjars_install.supports_quad_precision(exported))
+                self.assertEqual(ninjars_install.read_config(exported)['abi_version'], 4)
+                for name in ('libninjars.a', 'mninjars.mod', 'ninjars-config.json',
+                             'ninjars-native-libs.txt', 'ninjars-link-before.txt',
+                             'ninjars.h', 'mninjars.f90'):
+                    self.assertTrue((exported / name).is_file(), name)
+                    self.assertFalse((exported / name).is_symlink(), name)
+
+    def test_standalone_and_fks_exports_reject_previous_abi_before_copy_or_link(self):
+        lib = self.root / 'previous-abi'
+        lib.mkdir()
+        (lib / 'libninjars.a').write_bytes(b'!<arch>\nprevious archive metadata')
+        (lib / 'mninjars.mod').write_bytes(b'previous Fortran module')
+        (lib / ninjars_install.CONFIG_NAME).write_text(json.dumps({
+            'abi_version': 3, 'native_libs': ['-lgmp'],
+            'link_before': ['-lgcc_s'], 'link_order_version': 1,
+            'quad_precision': True}))
+        (lib / 'ninjars-native-libs.txt').write_text('-lgmp\n')
+        (lib / 'ninjars-link-before.txt').write_text('-lgcc_s\n')
+        self.assertFalse(ninjars_install.is_available(lib))
+        for exporter_type in (LoopProcessOptimizedExporterFortranSA,
+                              ProcessOptimizedExporterFortranFKS):
+            for dependencies in ('external', 'internal'):
+                with self.subTest(exporter=exporter_type.__name__, dependencies=dependencies):
+                    exporter = object.__new__(exporter_type)
+                    exporter.tir_available_dict = {'ninjars': True}
+                    exporter.dependencies = dependencies
+                    target = self.root / exporter_type.__name__ / dependencies
+                    with self.assertLogs('madgraph.loop_exporter', level='WARNING') as logged:
+                        self.assertEqual(exporter.link_TIR(
+                            str(target), str(lib), 'libninjars.a', 'ninjars'), '')
+                    self.assertFalse(exporter.tir_available_dict['ninjars'])
+                    self.assertFalse(target.exists())
+                    self.assertIn('install ninjars --update', '\n'.join(logged.output))
 
     def test_madloop_card_round_trip_keeps_id8_and_qp_option(self):
         card = banner.MadLoopParam()

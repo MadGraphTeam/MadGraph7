@@ -1,11 +1,18 @@
 //! MadLoop's dimensioned C ABI for the pinned NinjaRS reduction engines.
 //!
-//! DP uses the binary64 fast engine directly. MP input records contain actual
-//! Fortran binary128 values; reduction uses 256-bit Float on a retained worker
-//! with the stack required by Symbolica expression construction.
+//! Combined-pole DP uses the binary64 fast engine directly. UV/IR selection
+//! retains scaleless-bubble coefficients through the generic binary64 engine.
+//! MP input records contain actual Fortran binary128 values; reduction uses
+//! 256-bit Float. Generic kernels share one retained worker with the stack
+//! required by Symbolica expression construction.
 
-mod tensor;
 mod guarded;
+#[cfg(test)]
+mod pole_bridge_tests;
+mod poles;
+mod tensor;
+
+use poles::{PoleMasters, PoleSelection};
 
 use ninjars::{
     Amplitude, AmplitudeInput, Complex, EvaluationStatus, Float, FloatLike, FourMomentum, Real,
@@ -30,7 +37,7 @@ const UNSTABLE: i32 = 1;
 const ERROR: i32 = 2;
 const RECORD: usize = 64;
 const MP_BITS: u32 = 256;
-const ABI_VERSION: u32 = 3;
+const ABI_VERSION: u32 = 4;
 type Result<T> = std::result::Result<T, String>;
 type Z = Complex<Float>;
 type MpAmplitude = Amplitude<Z, SymbolicaAmplitudeKernels<Float>>;
@@ -349,7 +356,55 @@ pub unsafe extern "C" fn ninjars_evaluate_dp(
     rational: *mut C64,
     rational_length: usize,
 ) -> i32 {
+    unsafe {
+        ninjars_evaluate_dp_with_poles(
+            handle,
+            n,
+            rank,
+            count,
+            coefficients,
+            s_matrix,
+            s_length,
+            momenta,
+            p_length,
+            masses,
+            m_length,
+            scale_squared,
+            laurent,
+            laurent_length,
+            rational,
+            rational_length,
+            0,
+        )
+    }
+}
+
+/// Evaluate with an explicit pole mode: 0 combined, 1 UV, 2 IR, 3 none.
+///
+/// # Safety
+/// The buffer contract is identical to the corresponding combined-pole entry point.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ninjars_evaluate_dp_with_poles(
+    handle: *mut Context,
+    n: i32,
+    rank: i32,
+    count: usize,
+    coefficients: *const C64,
+    s_matrix: *const f64,
+    s_length: usize,
+    momenta: *const f64,
+    p_length: usize,
+    masses: *const C64,
+    m_length: usize,
+    scale_squared: f64,
+    laurent: *mut C64,
+    laurent_length: usize,
+    rational: *mut C64,
+    rational_length: usize,
+    pole_mode: i32,
+) -> i32 {
     guard(|| {
+        let selection = PoleSelection::from_mode(pole_mode)?;
         let (n, rank) = dimensions(n, rank, count)?;
         length("S matrix", s_length, n * n)?;
         length("momenta", p_length, n * 4)?;
@@ -366,15 +421,25 @@ pub unsafe extern "C" fn ninjars_evaluate_dp(
         let s = unsafe { read(s_matrix, n * n) }?;
         let p = unsafe { read(momenta, n * 4) }?;
         let m = unsafe { read(masses, n) }?;
-        let mut state = context.dp.lock().map_err(|_| "DP context poisoned")?;
-        if state.is_none() {
-            *state = Some(DpState::new()?);
-        }
-        let (status, result) =
-            state
+        let (status, mut result) = if selection == PoleSelection::UV
+            || selection == PoleSelection::IR
+        {
+            evaluate_selected_dp(context, n, rank, coeff, s, p, m, scale_squared, selection)?
+        } else {
+            let mut state = context.dp.lock().map_err(|_| "DP context poisoned")?;
+            if state.is_none() {
+                *state = Some(DpState::new()?);
+            }
+            let value = state
                 .as_mut()
                 .unwrap()
                 .evaluate(n, rank, coeff, s, p, m, scale_squared)?;
+            value
+        };
+        if selection == PoleSelection::NONE {
+            result.laurent[1] = C64::real(0.);
+            result.laurent[2] = C64::real(0.);
+        }
         if status == SUCCESS {
             unsafe {
                 write(laurent, &result.laurent)?;
@@ -404,7 +469,55 @@ pub unsafe extern "C" fn ninjars_evaluate_dp_compensated(
     rational: *mut C64,
     rational_length: usize,
 ) -> i32 {
+    unsafe {
+        ninjars_evaluate_dp_compensated_with_poles(
+            handle,
+            n,
+            rank,
+            count,
+            coefficients,
+            s_matrix,
+            s_length,
+            momenta,
+            p_length,
+            masses,
+            m_length,
+            scale_squared,
+            laurent,
+            laurent_length,
+            rational,
+            rational_length,
+            0,
+        )
+    }
+}
+
+/// Evaluate with an explicit pole mode: 0 combined, 1 UV, 2 IR, 3 none.
+///
+/// # Safety
+/// The buffer contract is identical to the corresponding combined-pole entry point.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ninjars_evaluate_dp_compensated_with_poles(
+    handle: *mut Context,
+    n: i32,
+    rank: i32,
+    count: usize,
+    coefficients: *const C64,
+    s_matrix: *const f64,
+    s_length: usize,
+    momenta: *const f64,
+    p_length: usize,
+    masses: *const C64,
+    m_length: usize,
+    scale_squared: f64,
+    laurent: *mut C64,
+    laurent_length: usize,
+    rational: *mut C64,
+    rational_length: usize,
+    pole_mode: i32,
+) -> i32 {
     guard(|| {
+        let selection = PoleSelection::from_mode(pole_mode)?;
         let (n, rank) = dimensions(n, rank, count)?;
         length("S matrix", s_length, n * n)?;
         length("momenta", p_length, n * 4)?;
@@ -421,15 +534,28 @@ pub unsafe extern "C" fn ninjars_evaluate_dp_compensated(
         let s = unsafe { read(s_matrix, n * n) }?;
         let p = unsafe { read(momenta, n * 4) }?;
         let m = unsafe { read(masses, n) }?;
-        let mut state = context.compensated_dp.lock().map_err(|_| "DP context poisoned")?;
-        if state.is_none() {
-            *state = Some(CompensatedDpState::new()?);
-        }
-        let (status, result) =
-            state
+        let (status, mut result) = if selection == PoleSelection::UV
+            || selection == PoleSelection::IR
+        {
+            evaluate_selected_dp(context, n, rank, coeff, s, p, m, scale_squared, selection)?
+        } else {
+            let mut state = context
+                .compensated_dp
+                .lock()
+                .map_err(|_| "DP context poisoned")?;
+            if state.is_none() {
+                *state = Some(CompensatedDpState::new()?);
+            }
+            let value = state
                 .as_mut()
                 .unwrap()
                 .evaluate(n, rank, coeff, s, p, m, scale_squared)?;
+            value
+        };
+        if selection == PoleSelection::NONE {
+            result.laurent[1] = C64::real(0.);
+            result.laurent[2] = C64::real(0.);
+        }
         if status == SUCCESS {
             unsafe {
                 write(laurent, &result.laurent)?;
@@ -485,7 +611,7 @@ struct MpState {
     entries: HashMap<(usize, usize), MpEntry>,
     low: SymbolicaCuts<Float>,
     high: SymbolicaHighCuts<Float>,
-    masters: SymbolicaMasters<Float>,
+    masters: PoleMasters<SymbolicaMasters<Float>>,
 }
 impl MpState {
     fn new() -> Result<Self> {
@@ -502,10 +628,14 @@ impl MpState {
             entries: HashMap::new(),
             low: SymbolicaCuts::new(prototype.clone()).map_err(|e| e.to_string())?,
             high: SymbolicaHighCuts::new(prototype.clone()).map_err(|e| e.to_string())?,
-            masters: SymbolicaMasters::new(prototype).with_onshell_threshold(Some(threshold)),
+            masters: PoleMasters::new(
+                SymbolicaMasters::new(prototype).with_onshell_threshold(Some(threshold)),
+                PoleSelection::BOTH,
+            ),
         })
     }
     fn evaluate(&mut self, request: &MpRequest) -> Result<(i32, Vec<u8>)> {
+        self.masters.set_selection(request.selection);
         let precision = self.precision;
         let n = request.n;
         let rank = request.rank;
@@ -592,8 +722,173 @@ impl MpState {
     }
 }
 
+// Selected-pole DP needs the generic engine: its bubble coefficients survive
+// even when the combined scaleless master vanishes. Keep its Symbolica kernels
+// on the same worker as MP, but use actual binary64 arithmetic and independent
+// cached plans. The ordinary fast path does not enter this worker.
+struct SelectedDpEntry {
+    amplitude: Amplitude<Complex<f64>, SymbolicaAmplitudeKernels<f64>>,
+    tensor: TensorGenericNumerator<f64>,
+}
+struct SelectedDpState {
+    entries: HashMap<(usize, usize), SelectedDpEntry>,
+    low: SymbolicaCuts<f64>,
+    high: SymbolicaHighCuts<f64>,
+    masters: PoleMasters<SymbolicaMasters<f64>>,
+}
+struct SelectedDpRequest {
+    context_id: u64,
+    n: usize,
+    rank: usize,
+    selection: PoleSelection,
+    coefficients: Vec<C64>,
+    s_matrix: Vec<f64>,
+    momenta: Vec<f64>,
+    masses: Vec<C64>,
+    scale: f64,
+    reply: mpsc::SyncSender<Result<(i32, FastResult)>>,
+}
+impl SelectedDpState {
+    fn new() -> Result<Self> {
+        Ok(Self {
+            entries: HashMap::new(),
+            low: SymbolicaCuts::new(0.).map_err(|e| e.to_string())?,
+            high: SymbolicaHighCuts::new(0.).map_err(|e| e.to_string())?,
+            // Match OneLoopNativeMasters' default absolute threshold.
+            masters: PoleMasters::new(SymbolicaMasters::new(0.), PoleSelection::BOTH),
+        })
+    }
+    fn evaluate(&mut self, request: &SelectedDpRequest) -> Result<(i32, FastResult)> {
+        let n = request.n;
+        let rank = request.rank;
+        self.masters.set_selection(request.selection);
+        if !self.entries.contains_key(&(n, rank)) {
+            let kernels = SymbolicaAmplitudeKernels::new(n, rank, 0.).map_err(|e| e.to_string())?;
+            self.entries.insert(
+                (n, rank),
+                SelectedDpEntry {
+                    amplitude: kernels.into_amplitude(1).map_err(|e| e.to_string())?,
+                    tensor: TensorGenericNumerator::new(rank, 0, &0.).map_err(|e| e.to_string())?,
+                },
+            );
+        }
+        let entry = self.entries.get_mut(&(n, rank)).unwrap();
+        entry
+            .tensor
+            .set_coefficients(
+                request
+                    .coefficients
+                    .iter()
+                    .map(|v| Complex::new(v.re, v.im))
+                    .collect(),
+                1,
+            )
+            .map_err(|e| e.to_string())?;
+        entry.amplitude.reset_batch(1);
+        let real = |v: f64| Complex::new(v, 0.);
+        let shifts: Vec<_> = request
+            .momenta
+            .chunks_exact(4)
+            .map(|v| FourMomentum::from(std::array::from_fn(|k| real(v[k]))))
+            .collect();
+        let masses: Vec<_> = request
+            .masses
+            .iter()
+            .map(|v| Complex::new(v.re, v.im))
+            .collect();
+        let smat: Vec<_> = request.s_matrix.iter().map(|v| real(*v)).collect();
+        let scales = [real(request.scale)];
+        let sampling = [real(
+            request
+                .s_matrix
+                .iter()
+                .copied()
+                .chain(request.masses.iter().map(|v| v.re))
+                .map(f64::abs)
+                .fold(1., f64::max),
+        )];
+        entry
+            .amplitude
+            .evaluate_batch_with_inputs(
+                AmplitudeInput {
+                    shifts: &shifts,
+                    masses_squared: &masses,
+                    scales_squared: &scales,
+                    sampling_scales: &sampling,
+                    s_matrix: Some(&smat),
+                },
+                &mut entry.tensor,
+                &mut self.low,
+                &mut self.high,
+                &mut self.masters,
+            )
+            .map_err(|e| e.to_string())?;
+        if entry.amplitude.statuses()[0] != EvaluationStatus::Success {
+            return Ok((UNSTABLE, FastResult::default()));
+        }
+        let values = &entry.amplitude.results()[0];
+        if [0, 1, 2, 4]
+            .iter()
+            .any(|&k| !values[k].re.is_finite() || !values[k].im.is_finite())
+        {
+            return Ok((UNSTABLE, FastResult::default()));
+        }
+        Ok((
+            SUCCESS,
+            FastResult {
+                laurent: std::array::from_fn(|k| C64::new(values[k].re, values[k].im)),
+                cut_constructible: C64::new(values[3].re, values[3].im),
+                rational: C64::new(values[4].re, values[4].im),
+            },
+        ))
+    }
+}
+fn evaluate_selected_dp(
+    context: &Context,
+    n: usize,
+    rank: usize,
+    coeff: &[C64],
+    s: &[f64],
+    p: &[f64],
+    m: &[C64],
+    scale: f64,
+    selection: PoleSelection,
+) -> Result<(i32, FastResult)> {
+    if !scale.is_finite()
+        || scale <= 0.
+        || p.iter().chain(s).any(|v| !v.is_finite())
+        || coeff.iter().any(|v| !v.is_finite())
+        || m.iter().any(|v| !v.is_finite() || v.im > 0.)
+    {
+        return Err("nonfinite input, invalid mass width, or nonpositive squared scale".into());
+    }
+    let (reply, receive) = mpsc::sync_channel(1);
+    let mut worker = context.mp.lock().map_err(|_| "MP context poisoned")?;
+    if worker.is_none() {
+        *worker = Some(MpContext::new()?);
+    }
+    let worker = worker.as_ref().unwrap();
+    worker
+        .sender
+        .send(MpMessage::EvaluateDp(SelectedDpRequest {
+            context_id: worker.id,
+            n,
+            rank,
+            selection,
+            coefficients: coeff.to_vec(),
+            s_matrix: s.to_vec(),
+            momenta: p.to_vec(),
+            masses: m.to_vec(),
+            scale,
+            reply,
+        }))
+        .map_err(|_| "rescue worker disconnected")?;
+    receive.recv().map_err(|_| "rescue worker disconnected")?
+}
+
 struct MpRequest {
     context_id: u64,
+    selection: PoleSelection,
     n: usize,
     rank: usize,
     coefficients: Vec<u8>,
@@ -612,6 +907,7 @@ struct MpContext {
 }
 enum MpMessage {
     Evaluate(MpRequest),
+    EvaluateDp(SelectedDpRequest),
     Remove(u64, mpsc::SyncSender<()>),
     Shutdown,
 }
@@ -675,6 +971,7 @@ impl MpWorker {
             .stack_size(128 * 1024 * 1024)
             .spawn(move || {
                 let mut states = HashMap::new();
+                let mut dp_states = HashMap::new();
                 while let Ok(message) = recv.recv() {
                     match message {
                         MpMessage::Evaluate(request) => {
@@ -693,8 +990,25 @@ impl MpWorker {
                             });
                             let _ = request.reply.send(result);
                         }
+                        MpMessage::EvaluateDp(request) => {
+                            let result = catch_unwind(AssertUnwindSafe(|| {
+                                if !dp_states.contains_key(&request.context_id) {
+                                    dp_states.insert(request.context_id, SelectedDpState::new()?);
+                                }
+                                dp_states
+                                    .get_mut(&request.context_id)
+                                    .unwrap()
+                                    .evaluate(&request)
+                            }))
+                            .unwrap_or_else(|_| {
+                                dp_states.remove(&request.context_id);
+                                Err("NinjaRS selected-pole DP panic contained in worker".into())
+                            });
+                            let _ = request.reply.send(result);
+                        }
                         MpMessage::Remove(id, reply) => {
                             states.remove(&id);
+                            dp_states.remove(&id);
                             let _ = reply.send(());
                         }
                         MpMessage::Shutdown => break,
@@ -732,7 +1046,55 @@ pub unsafe extern "C" fn ninjars_evaluate_mp(
     output: *mut u8,
     output_bytes: usize,
 ) -> i32 {
+    unsafe {
+        ninjars_evaluate_mp_with_poles(
+            handle,
+            n,
+            rank,
+            count,
+            coefficients,
+            coefficient_bytes,
+            s_matrix,
+            s_bytes,
+            momenta,
+            p_bytes,
+            masses,
+            m_bytes,
+            scale_squared,
+            scale_bytes,
+            output,
+            output_bytes,
+            0,
+        )
+    }
+}
+
+/// Evaluate with an explicit pole mode: 0 combined, 1 UV, 2 IR, 3 none.
+///
+/// # Safety
+/// The buffer contract is identical to the corresponding combined-pole entry point.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ninjars_evaluate_mp_with_poles(
+    handle: *mut Context,
+    n: i32,
+    rank: i32,
+    count: usize,
+    coefficients: *const u8,
+    coefficient_bytes: usize,
+    s_matrix: *const u8,
+    s_bytes: usize,
+    momenta: *const u8,
+    p_bytes: usize,
+    masses: *const u8,
+    m_bytes: usize,
+    scale_squared: *const u8,
+    scale_bytes: usize,
+    output: *mut u8,
+    output_bytes: usize,
+    pole_mode: i32,
+) -> i32 {
     guard(|| {
+        let selection = PoleSelection::from_mode(pole_mode)?;
         let (n, rank) = dimensions(n, rank, count)?;
         length(
             "MP coefficients",
@@ -751,6 +1113,7 @@ pub unsafe extern "C" fn ninjars_evaluate_mp(
         let (reply, receive) = mpsc::sync_channel(1);
         let mut request = MpRequest {
             context_id: 0,
+            selection,
             n,
             rank,
             coefficients: unsafe {
@@ -1289,6 +1652,7 @@ mod tests {
                 let (reply, _) = mpsc::sync_channel(1);
                 let request = MpRequest {
                     context_id: 0,
+                    selection: PoleSelection::BOTH,
                     n: 5,
                     rank: 5,
                     coefficients,
