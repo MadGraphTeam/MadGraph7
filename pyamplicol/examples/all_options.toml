@@ -307,9 +307,10 @@ color_flow_ids = []
 model_parameters = "data/model_parameters.json"
 # evaluation.momenta: Optional JSON phase-space points path. Default null.
 momenta = "data/pp_zjj_momenta.json"
-# evaluation.poles: v2 virtuals: also compute the 1/eps and 1/eps^2 coefficients.
-# false evaluates the finite part only (poles are absent). Default true.
-poles = true
+# evaluation.poles: v2 virtuals: the pole selection. "all" also computes the
+# 1/eps and 1/eps^2 coefficients; "none" evaluates the finite part only (the
+# poles are absent). Default "all".
+poles = "all"
 
 [evaluation.stability]
 # evaluation.stability.higher: Optional virtual evaluate rescue carriers, in

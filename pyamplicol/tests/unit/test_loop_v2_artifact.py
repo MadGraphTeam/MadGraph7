@@ -9,8 +9,9 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   equals the frozen 200-bit legacy values per squared coupling order and
   Laurent coefficient: gg -> gg, u u~ -> d d~ g and u u~ -> t t~ (an open
   massive quark line through the loop) at full colour in binary64,
-  double-double and arbitrary precision, u u~ -> d d~ and u u~ -> u u~
-  (identical-flavour signs) likewise, gg -> gg and u u~ -> t t~ at leading
+  double-double and (nightly) arbitrary precision, u u~ -> d d~ and
+  u u~ -> u u~ (identical-flavour signs) likewise, gg -> gg and u u~ -> t t~
+  at leading
   colour and u u~ -> d d~ g at next-to-leading colour in binary64 and
   double-double, and u u~ -> u u~ g and u u~ -> g g g at full colour
   (nightly); Born values are held to 1e-12 in binary64;
@@ -23,8 +24,10 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   E <= 1e-9; Borns to 1e-12), in double-double (1e-24) and, for g g > g g,
   in arbitrary precision (60 digits, 1e-40); the NLC, LC/NLC member and
   five-leg records nightly, the full-colour ones also in 60 digits;
-* ``poles=False`` returns the finite parts with absent poles, also for
-  correlated and resolved outputs, from the same artifact;
+* the pole selection (``PoleSelection``, TOML/CLI/API/results/artifact):
+  ``poles="none"`` returns the finite parts with absent poles, also for
+  correlated and resolved outputs, from the same artifact that serves
+  ``"all"``; booleans and unserved selections are refused;
 * stability checks (rotations by count or exact specification, the
   reduction-direction check) return one estimate per point that bounds the
   true error, and no estimate without checks;
@@ -53,8 +56,9 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   corrections equals legacy (nightly);
 * a coloured particle with a width in a tree current (g g > t t~ at the
   default top width) is refused with the fix; with the width fixed to zero
-  g g > t t~ equals the legacy engine at the model's default parameters;
-  evaluations refuse parameters they would ignore;
+  g g > t t~ equals the legacy engine at the model's default parameters
+  (60 digits nightly); evaluations refuse unknown parameters, the scale
+  parameter and values other than a generation-fixed one;
 * requests v2 does not cover yet fail with the reason and leave
   ``loop.engine = "legacy"`` (the default) selectable; the slice request
   records every ``SliceRequest`` field; a generation run's staged
@@ -85,6 +89,7 @@ from pyamplicol.api.errors import (
     GenerationError,
 )
 from pyamplicol.api.virtual_results import parse_rotation
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.v2.stability import Rotation
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -193,10 +198,12 @@ def _assert_legacy(result, results, tolerance, virtual_tolerance=None):
             assert abs(Decimal(a) - b) <= held * scale, (index, k, a, b)
 
 
-def _assert_inclusive_o1(artifact, name: str, process: str, arbitrary=True) -> None:
-    """The public inclusive virtual of one full-colour legacy control in
-    binary64 (1e-12, no checks requested), double-double (1e-24) and, if
-    ``arbitrary``, 60-digit arbitrary precision (1e-40)."""
+def _assert_inclusive_o1(
+    artifact, name: str, process: str, carriers=("double", "double-double")
+) -> None:
+    """The public inclusive virtual of one full-colour legacy control in the
+    given carriers: binary64 (1e-12, no checks requested), double-double
+    (1e-24), 60-digit arbitrary precision (1e-40)."""
 
     from pyamplicol import Runtime
 
@@ -207,23 +214,26 @@ def _assert_inclusive_o1(artifact, name: str, process: str, arbitrary=True) -> N
         artifact, process=process, model_parameters=_parameters(fixture)
     )
     points, scales = fixture["points"], fixture["scales_squared"]
-    double = runtime.evaluate(points, mu_r2=scales)
-    assert double.shape == (len(points), 1, 3) and double.stability is None
-    assert all(item.precision_bits == 53 for item in double.diagnostics)
-    _assert_legacy(double, results, DOUBLE_TOLERANCE)
-    if arbitrary:
+    if "double" in carriers:
+        double = runtime.evaluate(points, mu_r2=scales)
+        assert double.shape == (len(points), 1, 3) and double.stability is None
+        assert all(item.precision_bits == 53 for item in double.diagnostics)
+        _assert_legacy(double, results, DOUBLE_TOLERANCE)
+        # One squared coupling order per partial result; the sector names its
+        # pairs.
+        (sector,) = double.sectors
+        assert double.for_order(sector.order).values == double.values
+    if "double-double" in carriers:
+        value = runtime.evaluate(points, mu_r2=scales, arithmetic="double-double")
+        assert {item.precision_bits for item in value.diagnostics} == {106}
+        assert isinstance(value.values[0][0].finite, Decimal)
+        _assert_legacy(value, results, DOUBLE_DOUBLE_TOLERANCE)
+    if "arbitrary" in carriers:
         value = runtime.evaluate(
             points, mu_r2=scales, arithmetic="arbitrary", precision=ARBITRARY_DIGITS
         )
         assert isinstance(value.values[0][0].finite, Decimal)
         _assert_legacy(value, results, ARBITRARY_TOLERANCE)
-    double_double = runtime.evaluate(points, mu_r2=scales, arithmetic="double-double")
-    assert {item.precision_bits for item in double_double.diagnostics} == {106}
-    assert isinstance(double_double.values[0][0].finite, Decimal)
-    _assert_legacy(double_double, results, DOUBLE_DOUBLE_TOLERANCE)
-    # One squared coupling order per partial result; the sector names its pairs.
-    (sector,) = double.sectors
-    assert double.for_order(sector.order).values == double.values
 
 
 # ------------------------------------------------------------------ fast checks
@@ -279,9 +289,10 @@ def test_finite_only_results_have_absent_poles_and_estimates_are_typed():
         (sector,),
         (lane,),
         r2,
-        poles=False,
+        poles="none",
         stability=(estimate,),
     )
+    assert result.poles is PoleSelection.NONE
     assert result.values[0][0] == LaurentCoefficients(-2.0, None, None)
     assert result.finite == ((-2.0,),)
     with pytest.raises(ValueError, match="no poles"):
@@ -296,8 +307,21 @@ def test_finite_only_results_have_absent_poles_and_estimates_are_typed():
             (sector,),
             (lane,),
             r2,
-            poles=False,
+            poles=PoleSelection.NONE,
         )
+    # The selection is a PoleSelection (poles-uvir adds "uv" and "ir"), never
+    # a boolean.
+    for bad, error in ((False, TypeError), ("uv", ValueError)):
+        with pytest.raises(error, match=r"pole selection|PoleSelection"):
+            VirtualEvaluation(
+                ((1.0,),),
+                (((-2.0, 1.0, 3.0),),),
+                ((("QCD", 4),),),
+                (sector,),
+                (lane,),
+                r2,
+                poles=bad,
+            )
     with pytest.raises(ValueError, match="pole estimates"):
         VirtualEvaluation(
             ((1.0,),),
@@ -330,19 +354,24 @@ def test_configuration_selects_the_engine_and_the_runtime_options(tmp_path):
 
     card = tmp_path / "card.toml"
     card.write_text(
-        'action = "generate"\n[loop]\nengine = "v2"\n[evaluation]\npoles = false\n'
+        'action = "generate"\n[loop]\nengine = "v2"\n[evaluation]\npoles = "none"\n'
         '[evaluation.stability_checks]\nrotations = ["z:3/5:4/5"]\n'
         "reduction_direction = true\n"
     )
     config = resolve_config(card).effective
     assert config.loop.engine is LoopEngine.V2
-    assert config.evaluation.poles is False
+    assert config.evaluation.poles is PoleSelection.NONE
     checks = config.evaluation.stability_checks.to_checks()
     assert checks.rotations == (Rotation.about("z", "3/5", "4/5"),)
     assert checks.reduction_direction
     default = resolve_config(None, action="generate").effective
     assert default.loop.engine is LoopEngine.LEGACY
+    assert default.evaluation.poles is PoleSelection.ALL
     assert default.evaluation.stability_checks.to_checks() is None
+    for value in ("false", '"uv"'):
+        card.write_text(f'action = "generate"\n[evaluation]\npoles = {value}\n')
+        with pytest.raises(ConfigurationError, match=r"evaluation\.poles"):
+            resolve_config(card)
     card.write_text(
         'action = "generate"\n[evaluation.stability_checks]\n'
         'rotations = ["z:3/5:4/5"]\nrotation_count = 2\n'
@@ -541,7 +570,7 @@ def test_public_generation_publishes_plan_v4(full_colour):
     assert info["engine"] == "v2" and info["schedule"] == "backward"
     assert info["families"] == 42
     assert sum(count for _n, _r, count in info["buckets"]) == 42
-    assert info["poles"].startswith("computed") and not info["rescue_available"]
+    assert info["poles"] == ["all", "none"] and not info["rescue_available"]
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
 
@@ -561,6 +590,27 @@ def test_public_evaluation_equals_legacy_o1(full_colour, name, process):
 @pytest.mark.parametrize("name", ["uudd", "uux_uux"])
 def test_public_quark_controls_equal_legacy_o1(quark_controls, name):
     _assert_inclusive_o1(quark_controls, name, name)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize(
+    "artifact,name,process",
+    [
+        ("full_colour", "gg_gg", "gg"),
+        ("full_colour", "uux_ddxg", "uux_ddxg"),
+        ("full_colour", "tt", "tt"),
+        ("quark_controls", "uudd", "uudd"),
+        ("quark_controls", "uux_uux", "uux_uux"),
+    ],
+)
+def test_public_controls_equal_legacy_o1_at_sixty_digits(
+    request, artifact, name, process
+):
+    """The default-tier controls in 60-digit arbitrary precision (1e-40)."""
+
+    _assert_inclusive_o1(
+        request.getfixturevalue(artifact), name, process, carriers=("arbitrary",)
+    )
 
 
 @pytest.mark.loop_nightly
@@ -613,8 +663,10 @@ def test_finite_only_and_stability_estimates(full_colour):
     )
     points, scales = fixture["points"], fixture["scales_squared"]
     full = runtime.evaluate(points, mu_r2=scales)
-    finite = runtime.evaluate(points, mu_r2=scales, poles=False)
-    assert finite.poles is False and finite.stability is None
+    assert full.poles is PoleSelection.ALL
+    assert runtime.evaluate(points, mu_r2=scales, poles="all").values == full.values
+    finite = runtime.evaluate(points, mu_r2=scales, poles="none")
+    assert finite.poles is PoleSelection.NONE and finite.stability is None
     for a, b in zip(finite.values, full.values, strict=True):
         assert a[0] == LaurentCoefficients(b[0].finite, None, None)
     checked = runtime.evaluate(
@@ -640,13 +692,18 @@ def test_finite_only_and_stability_estimates(full_colour):
     reduction_only = runtime.evaluate(
         points[:1],
         mu_r2=scales[:1],
-        poles=False,
+        poles=PoleSelection.NONE,
         stability_checks=VirtualStabilityChecks(reduction_direction=True),
     )
     (estimate,) = reduction_only.stability
     assert estimate.single_pole is None and dict(estimate.checks).keys() == {
         "reduction-direction"
     }
+    # Selections this build does not serve and booleans are refused.
+    with pytest.raises(ValueError, match="unknown pole selection 'uv'"):
+        runtime.evaluate(points[:1], mu_r2=scales[:1], poles="uv")
+    with pytest.raises(TypeError, match="PoleSelection"):
+        runtime.evaluate(points[:1], mu_r2=scales[:1], poles=False)
 
 
 @pytest.mark.loop_physics
@@ -850,6 +907,10 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
         physics["metadata"]["spin_correlations"] = [[5]]
         return physics
 
+    def unserved_poles(physics):
+        physics["metadata"]["poles"] = ["all", "none", "uv"]
+        return physics
+
     for name, edits, reason, loaded in (
         (
             "buckets",
@@ -867,7 +928,13 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
             "inputs",
             {"processes/gg/execution.json": native_inputs},
             "unsupported plan v4 execution declaration",
-            "not a v2 virtual process",
+            "unsupported plan v4 execution declaration",
+        ),
+        (
+            "poles",
+            {"processes/gg/physics.json": unserved_poles},
+            "unsupported contribution, convention or feature declaration",
+            "unsupported contribution, convention or feature declaration",
         ),
         (
             "resolved",
@@ -906,7 +973,7 @@ def test_inspect_summarizes_v2_loop_artifacts(full_colour):
     assert loop.sectors == (("QCD^6", (("QCD^2", "QCD^4"),)),)
     assert loop.families == 24 and sum(b[2] for b in loop.buckets) == 24
     assert loop.color_degrees is None and loop.schedule == "backward"
-    assert loop.poles == "runtime-optional"
+    assert loop.poles == ("all", "none")
     assert loop.stability_checks == ("rotation", "reduction-direction")
     assert loop.arithmetic == ("double", "double-double", "arbitrary")
     assert loop.resolved and not loop.correlations
@@ -1005,7 +1072,8 @@ def test_cli_generates_and_evaluates_through_v2(
             "--json",
             "--progress",
             "off",
-            "--no-poles",
+            "--poles",
+            "none",
             "--stability-rotation",
             "z:3/5:4/5",
             "--stability-reduction-direction",
@@ -1015,7 +1083,7 @@ def test_cli_generates_and_evaluates_through_v2(
     )
     assert code == 0, stderr.getvalue()
     payload = json.loads(stdout.getvalue())
-    assert payload["poles"] is False and payload["shape"] == [2, 1, 3]
+    assert payload["poles"] == "none" and payload["shape"] == [2, 1, 3]
     assert payload["values"][0][0][1:] == [None, None]
     assert [name for name, _ in payload["stability"][0]["checks"]] == [
         "rotation-0",
@@ -1041,7 +1109,7 @@ def test_cli_generates_and_evaluates_through_v2(
     )
     assert code == 0, stderr.getvalue()
     payload = json.loads(stdout.getvalue())
-    assert payload["poles"] is True and payload["stability"] is None
+    assert payload["poles"] == "all" and payload["stability"] is None
     stdout = io.StringIO()
     code = run_cli(
         (
@@ -1054,7 +1122,8 @@ def test_cli_generates_and_evaluates_through_v2(
             "--mu-r2",
             "1000000",
             "--resolved",
-            "--no-poles",
+            "--poles",
+            "none",
             "--stability-reduction-direction",
             "--color",
             "never",
@@ -1418,7 +1487,7 @@ def _assert_public_o1(observables_artifact, name: str, carriers) -> None:
                 points, requests, mu_r2=scales, **options
             )
             for label, result in values.items():
-                assert result.correlated and result.poles
+                assert result.correlated and result.poles is PoleSelection.ALL
                 assert (result.stability is not None) == (carrier == "double")
                 target = (
                     expected["spin"][label.removeprefix("spin:")]
@@ -1437,7 +1506,7 @@ def _assert_public_o1(observables_artifact, name: str, carriers) -> None:
 def test_finite_only_correlated_and_resolved_from_the_same_artifact(
     observables_artifact,
 ):
-    """``poles=False`` on correlated and resolved calls of the artifact that
+    """``poles="none"`` on correlated and resolved calls of the artifact that
     computed them with poles: equal finite parts, absent poles, estimates per
     point (correlated) and per resolved entry only when checks ran."""
 
@@ -1452,16 +1521,16 @@ def test_finite_only_correlated_and_resolved_from_the_same_artifact(
     requests = {"T12": CorrelatedRequest("T12", {})}
     full = runtime.evaluate_correlated_many(points, requests, mu_r2=scales)["T12"]
     finite = runtime.evaluate_correlated_many(
-        points, requests, mu_r2=scales, poles=False
+        points, requests, mu_r2=scales, poles="none"
     )["T12"]
-    assert finite.poles is False and finite.stability is None
+    assert finite.poles is PoleSelection.NONE and finite.stability is None
     for a, b in zip(finite.values, full.values, strict=True):
         assert a[0] == LaurentCoefficients(b[0].finite, None, None)
     checked = runtime.evaluate_correlated(
         points,
         color_correlation="T12",
         mu_r2=scales,
-        poles=False,
+        poles="none",
         stability_checks=VirtualStabilityChecks(reduction_direction=True),
     )
     assert [dict(e.checks).keys() for e in checked.stability] == [
@@ -1470,9 +1539,9 @@ def test_finite_only_correlated_and_resolved_from_the_same_artifact(
     assert all(e.single_pole is None for e in checked.stability)
     resolved = runtime.evaluate_resolved(points, mu_r2=scales)
     finite = runtime.evaluate_resolved(
-        points, mu_r2=scales, poles=False, stability_checks=VirtualStabilityChecks(1)
+        points, mu_r2=scales, poles="none", stability_checks=VirtualStabilityChecks(1)
     )
-    assert finite.poles is False and resolved.stability is None
+    assert finite.poles is PoleSelection.NONE and resolved.stability is None
     with pytest.raises(ValueError, match="finite-only"):
         finite.single_pole  # noqa: B018
     for a, b in zip(finite.values, resolved.values, strict=True):
@@ -1488,7 +1557,7 @@ def test_finite_only_correlated_and_resolved_from_the_same_artifact(
         for estimate in row
     )
     total = finite.total()
-    assert total.poles is False and total.stability is None
+    assert total.poles is PoleSelection.NONE and total.stability is None
 
     from pyamplicol.artifacts import inspect_artifact
 
@@ -1518,13 +1587,16 @@ def test_artifacts_hold_no_host_paths_and_load_relocated(
 ):
     """Requirements addendum G within WP2.6: no absolute path of the
     generating host (working directories, the model source, the output, the
-    home directory), no user or host name in any file of a plan v4 artifact
-    (the plan member decompressed); a copy under another path loads without
-    the original and gives bitwise-identical binary64 values."""
+    home and temporary directories, any path under a common root), no user
+    or host name in any file of a plan v4 artifact (the plan member
+    decompressed); a copy under another path loads without the original and
+    gives bitwise-identical binary64 values."""
 
     import getpass
+    import re
     import shutil
     import socket
+    import tempfile
 
     from pyamplicol import Runtime
 
@@ -1533,10 +1605,17 @@ def test_artifacts_hold_no_host_paths_and_load_relocated(
         str(ROOT),
         str(Path.cwd()),
         str(full_colour.parent),
+        tempfile.gettempdir(),
+        "pyamplicol-loop-v2-",  # the generation's staging directories
         f"/{getpass.getuser()}/",
         f"{getpass.getuser()}@",
         socket.gethostname(),
     }
+    # Any absolute POSIX path under a common root, or a Windows drive path.
+    absolute = re.compile(
+        r"(?<![\w.])/(?:tmp|var|home|shared|nix|usr|opt|root|Users|private|mnt"
+        r"|scratch|srv|data|run)/|\b[A-Za-z]:[\\/](?:Users|Windows|tmp)\b"
+    )
     roots = (full_colour, observables_artifact("ddgg_ssgg"))
     for root in roots:
         forbidden.add(str(root.resolve().parent))
@@ -1545,7 +1624,8 @@ def test_artifacts_hold_no_host_paths_and_load_relocated(
             text = _strings(path)
             for item in forbidden:
                 assert item not in text, (path.relative_to(root), item)
-            assert "/shared/" not in text and "/home/" not in text, path
+            found = absolute.search(text)
+            assert found is None, (path.relative_to(root), found and found.group())
     moved = tmp_path / "elsewhere" / "copy"
     shutil.copytree(full_colour, moved)
     points = [
@@ -1651,9 +1731,11 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     chiral Z vertex of a loop quark line (WP3.2). With photon exchange only
     (Z, W and scalars excluded through the slice request) the public
     generator and runtime, regenerating at load, equal MadLoop's split-order
-    control in every squared order: Borns and each sector's Laurent
-    coefficients within 1e-12 of the point's largest Born and the sector's
-    largest coefficient (MadLoop binary64)."""
+    control in every squared order (MadLoop binary64): each Born order within
+    1e-12 of its own value (the colour-forbidden QCD^2 QED^2 interference, a
+    structural zero, within 1e-12 of the point's largest Born) and each
+    sector's Laurent coefficients within 1e-12 of the sector's largest
+    coefficient."""
 
     from dataclasses import replace
 
@@ -1708,11 +1790,14 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     assert set(result.born_orders) == set(born_key)
     assert [sector.order for sector in result.sectors] == sorted(loop_key)
     assert len(result.values) == len(reference["rows"]) == 3
+    structural = (("QCD", 2), ("QED", 2))
     for index, row in enumerate(reference["rows"]):
         borns = dict(zip(result.born_orders, result.born_values[index], strict=True))
-        scale = max(abs(value) for value in row["born"].values())
+        largest = max(abs(value) for value in row["born"].values())
         for order, key in born_key.items():
-            assert abs(borns[order] - row["born"][key]) <= 1e-12 * scale, order
+            expected = row["born"][key]
+            scale = largest if order == structural else abs(expected)
+            assert abs(borns[order] - expected) <= 1e-12 * scale, (index, order)
         for sector, laurent in zip(result.sectors, result.values[index], strict=True):
             expected = row["full"][loop_key[sector.order]]
             wanted = [expected[k] for k in ("finite", "single_pole", "double_pole")]
@@ -1730,6 +1815,46 @@ def _legacy_results(result) -> dict:
     }
 
 
+GGTT = (("ggtt", "g g > t t~"),)
+WT_ZERO = ('fixed_parameters = {MB = "0"}', 'fixed_parameters = {MB = "0", WT = "0"}')
+
+
+def _ggtt_generator(model: Path, tmp_path: Path, output: str, edit=None):
+    from pyamplicol.api import Generator
+    from pyamplicol.config import resolve_config
+
+    text = _card(model, tmp_path / output, GGTT)
+    card = tmp_path / f"{output}.toml"
+    card.write_text(text.replace(*edit) if edit else text)
+    return Generator(resolve_config(card))
+
+
+def _ggtt_runtimes(model: Path, tmp_path: Path):
+    """g g > t t~ through v2 with WT fixed to zero and through the legacy
+    engine at the model defaults, with the provider reference's exact
+    on-shell points and scales."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import ProcessRequest, ProcessSet
+
+    processes = ProcessSet((ProcessRequest.parse("g g > t t~", name="ggtt"),))
+    _ggtt_generator(model, tmp_path, "v2", WT_ZERO).generate(processes, tmp_path / "v2")
+    _ggtt_generator(
+        model, tmp_path, "legacy", ('engine = "v2"', 'engine = "legacy"')
+    ).generate(processes, tmp_path / "legacy")
+    required = json.loads(
+        (ROOT / "tests/fixtures/loop/required/gg_ttx.json").read_text()
+    )
+    scales = [str(Decimal(mu) ** 2) for mu in required["mu_r"]]
+    runtimes = {
+        engine: Runtime.load(
+            tmp_path / engine, process="ggtt", model_parameters=GG_PARAMETERS
+        )
+        for engine in ("v2", "legacy")
+    }
+    return runtimes, required["points"], scales
+
+
 @pytest.mark.loop_physics
 def test_coloured_widths_in_tree_currents_are_fixed_to_zero(
     loop_sm_compiled_model, loop_native, tmp_path
@@ -1742,65 +1867,37 @@ def test_coloured_widths_in_tree_currents_are_fixed_to_zero(
     virtual equals the legacy engine's, whose propagators carry no width,
     evaluated at the model's default parameters (WT = 1.4915 included) at
     the three exact on-shell points and scales of the provider reference:
-    binary64 1e-12, double-double 1e-24, 60 digits 1e-40 (legacy at 60
-    digits). An evaluation refuses what it would ignore: a WT other than the
-    fixed zero, the scale parameter and unknown names."""
+    binary64 1e-12 and double-double 1e-24, against legacy in double-double
+    (60 digits nightly). An evaluation refuses a WT other than the fixed
+    zero, the scale parameter and unknown names."""
 
     import re
 
     from pyamplicol import Runtime
-    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
-    from pyamplicol.config import resolve_config
+    from pyamplicol.api import ProcessRequest, ProcessSet
 
-    entries = (("ggtt", "g g > t t~"),)
     processes = ProcessSet((ProcessRequest.parse("g g > t t~", name="ggtt"),))
-    card = tmp_path / "card.toml"
-
-    def generator(output: str, edit=None) -> Generator:
-        text = _card(loop_sm_compiled_model, tmp_path / output, entries)
-        card.write_text(text.replace(*edit) if edit else text)
-        return Generator(resolve_config(card))
-
     reason = (
         r"'ggtt' \([^)]*\): tree currents propagate coloured particles whose "
         r"width is not fixed to zero: t \(WT\)\..*real on-shell.*"
         r'fixed_parameters \(WT = "0"\)'
     )
-    refused = generator("a")
+    refused = _ggtt_generator(loop_sm_compiled_model, tmp_path, "a")
     (blocker,) = refused.plan(processes).unsupported_features
     assert re.search(reason, blocker), blocker
     with pytest.raises(GenerationError, match=reason):
         refused.generate(processes, tmp_path / "a")
     assert not (tmp_path / "a").exists()
-    fixed = ('fixed_parameters = {MB = "0"}', 'fixed_parameters = {MB = "0", WT = "0"}')
-    generator("v2", fixed).generate(processes, tmp_path / "v2")
-    generator("legacy", ('engine = "v2"', 'engine = "legacy"')).generate(
-        processes, tmp_path / "legacy"
+    runtimes, points, scales = _ggtt_runtimes(loop_sm_compiled_model, tmp_path)
+    results = _legacy_results(
+        runtimes["legacy"].evaluate(points, mu_r2=scales, arithmetic="double-double")
     )
-    required = json.loads(
-        (ROOT / "tests/fixtures/loop/required/gg_ttx.json").read_text()
-    )
-    points = required["points"]
-    scales = [str(Decimal(mu) ** 2) for mu in required["mu_r"]]
-    legacy = Runtime.load(
-        tmp_path / "legacy", process="ggtt", model_parameters=GG_PARAMETERS
-    ).evaluate(points, mu_r2=scales, arithmetic="arbitrary", precision=ARBITRARY_DIGITS)
-    results = _legacy_results(legacy)
-    runtime = Runtime.load(
-        tmp_path / "v2", process="ggtt", model_parameters=GG_PARAMETERS
-    )
+    runtime = runtimes["v2"]
     _assert_legacy(runtime.evaluate(points, mu_r2=scales), results, DOUBLE_TOLERANCE)
     _assert_legacy(
         runtime.evaluate(points, mu_r2=scales, arithmetic="double-double"),
         results,
         DOUBLE_DOUBLE_TOLERANCE,
-    )
-    _assert_legacy(
-        runtime.evaluate(
-            points, mu_r2=scales, arithmetic="arbitrary", precision=ARBITRARY_DIGITS
-        ),
-        results,
-        ARBITRARY_TOLERANCE,
     )
     runtime.set_model_parameters({"WT": "0"})
     for parameters, refusal in (
@@ -1812,6 +1909,25 @@ def test_coloured_widths_in_tree_currents_are_fixed_to_zero(
             runtime.set_model_parameters(parameters)
         with pytest.raises(ValueError, match=refusal):
             Runtime.load(tmp_path / "v2", process="ggtt", model_parameters=parameters)
+
+
+@pytest.mark.loop_nightly
+def test_coloured_width_fixed_to_zero_equals_legacy_at_sixty_digits(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """g g > t t~ with WT fixed to zero against legacy at the model defaults,
+    both at 60 digits (1e-40)."""
+
+    runtimes, points, scales = _ggtt_runtimes(loop_sm_compiled_model, tmp_path)
+    options = {"arithmetic": "arbitrary", "precision": ARBITRARY_DIGITS}
+    results = _legacy_results(
+        runtimes["legacy"].evaluate(points, mu_r2=scales, **options)
+    )
+    _assert_legacy(
+        runtimes["v2"].evaluate(points, mu_r2=scales, **options),
+        results,
+        ARBITRARY_TOLERANCE,
+    )
 
 
 def _qed_model_generator(model: Path, tmp_path: Path, name: str, entries, *, engine):

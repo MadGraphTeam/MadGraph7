@@ -862,9 +862,6 @@ class V2VirtualRuntime:
                     "effective_r2_strategy": "model",
                     "parameter_overrides": dict(self._parameters),
                     "scale_input": "explicit positive mu_r2, scalar or per point",
-                    "poles": (
-                        "selected per call: 'all' (default) or 'none' (finite only)"
-                    ),
                     "stability_checks": (
                         "rotations (count or exact rotations) and the "
                         "reduction-direction check; none by default"

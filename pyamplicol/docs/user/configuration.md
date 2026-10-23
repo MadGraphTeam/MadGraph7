@@ -517,17 +517,20 @@ profiling or generation.
 ### The v2 loop engine
 
 `[loop] engine = "v2"` generates virtual processes with the shared-recursion
-one-loop engine (no loop or counterterm diagram is listed) and publishes them as
-plan v4 processes (runtime capability `rusticol.loop-runtime.v4`). The default
-`engine = "legacy"` keeps the per-diagram engine, which remains available as an
-oracle. A v2 evaluation can skip the poles and return stability estimates:
+one-loop engine (no loop diagram is listed) and publishes them as plan v4
+processes (runtime capability `rusticol.loop-runtime.v4`). Until the counterterm
+recursion is integrated, this development build closes the counterterms of a v2
+process per site (a development stage, not the final production path). The
+default `engine = "legacy"` keeps the per-diagram engine, which remains
+available as an oracle. A v2 evaluation can skip the poles and return stability
+estimates:
 
 ```toml
 [evaluation]
 artifact = "artifacts/virtual-v2"
 momenta = "data/points.json"
 mu_r2 = "1000000"
-poles = false                  # finite part only; poles are absent (null)
+poles = "none"                 # finite part only; poles are absent (null)
 
 [evaluation.stability_checks]
 rotations = ["z:3/5:4/5"]      # exact "<x|y|z>:<cos>:<sin>" or "<ax>,<ay>,<az>:<radians>"
@@ -540,7 +543,10 @@ Each check re-evaluates or re-reduces every point; the result then carries one
 finite part and, with poles, of each pole, plus each check's own budget).
 Without checks no estimate is returned. Escalating to `arithmetic = "arbitrary"`
 is left to the caller; `[evaluation.stability]` rescue policies belong to the
-legacy engine. The CLI spells these `--loop-engine v2`, `--no-poles`,
+legacy engine. `poles` is a pole selection (`PoleSelection` in Python):
+`"all"` (the default) or `"none"`; the finite part is the same under both, and
+`"none"` saves the pole work. The CLI spells these `--loop-engine v2`,
+`--poles none`,
 `--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT` and
 `--stability-reduction-direction`.
 
@@ -590,9 +596,11 @@ fixed_parameters = {MB = "0", WT = "0"}
 
 The legacy engine takes every propagator without width; a resonant coloured
 particle needs the complex-mass scheme (not available yet). An evaluation refuses
-model parameters the run would ignore: unknown names, the renormalisation-scale
-parameter (`mu_r2` sets it per point) and a value other than the one a parameter
-was fixed to at generation. The renormalisation-scale parameter is the external
+unknown parameter names, the renormalisation-scale parameter (`mu_r2` sets it
+per point) and a value other than the one a parameter was fixed to at
+generation. Other known parameters are accepted even where the process does not
+use them (for example a width only loop propagators would carry), as with the
+legacy engine. The renormalisation-scale parameter is the external
 parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
 
 Loading a v2 process rebuilds its per-point tree inputs from the artifact, which
