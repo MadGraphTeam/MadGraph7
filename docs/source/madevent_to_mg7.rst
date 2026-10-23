@@ -19,6 +19,21 @@ and ``use_syst``. The shortcuts ``set lhc``, ``set lep``, ``set fixed_scale``,
 ``lpp2``, ``pdlabel``, ``pdlabel1``, ``pdlabel2`` and ``lhaid`` are translated as in the
 table below. MadEvent draws a random seed for ``iseed = 0``. MG7 does the same for
 ``seed = -1`` and treats ``0`` as an ordinary fixed seed, so ``set iseed 0`` is translated.
+
+The cut names of the `Cuts`_ table are translated as well, so ``set mmll 200`` sets
+``lepton-sfos_pair_mass.min`` and ``set ptj1min 50`` sets ``jet_1-pt.min``. As in
+``run_card.dat``, a minimum of zero or a negative maximum removes that bound. A cut on the
+``parton`` or ``alllepton`` group also adds the group to ``[multiparticles]`` if it is not
+there yet. The per-pdg cuts are written as in ``run_card.dat``, for example
+``set pt_min_pdg {6: 100}``, and put on a group ``pdg6 = [6, -6]``. ``ptheavy`` is not
+translated, because it needs a group of your own.
+
+``fixed_fac_scale``, ``fixed_fac_scale1``, ``fixed_fac_scale2`` and ``maxjetflavor`` are
+translated as in the tables below, and so are the numbers of ``dynamical_scale_choice``
+(``set dynamical_scale_choice 3``) and ``sde_strategy``. MG7 has one
+``beam.fixed_fact_scale`` for both beams, so different ``fixed_fac_scale1`` and
+``fixed_fac_scale2`` are reported once the launch question closes.
+
 All other settings must use their new names.
 
 Beams and PDFs
