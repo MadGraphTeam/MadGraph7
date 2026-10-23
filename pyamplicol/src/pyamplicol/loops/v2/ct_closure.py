@@ -298,12 +298,18 @@ class CountertermClosure:
         terms: list[ClosureTerm] = []
         for entries in ordinary:
             fields = entries[0].particle_names
+            wanted, need = frozenset(fields), sorted(fields)
             order = add_orders(tuple(entries[0].order))
-            # Leg 1 alone is one block, the rest is partitioned directly.
+            # Leg 1 alone is one block, the rest is partitioned directly; only
+            # currents of the vertex's fields are combined.
             for rest in _set_partitions(full & ~1, len(fields) - 1, len(fields) - 1):
                 parts = (1, *rest)
-                for choice in product(*(table.currents(part) for part in parts)):
-                    if sorted(b.field for b in choice) != sorted(fields):
+                pools = [
+                    [b for b in table.currents(part) if b.field in wanted]
+                    for part in parts
+                ]
+                for choice in product(*pools):
+                    if sorted(b.field for b in choice) != need:
                         continue
                     inserted = [b for b in choice if _insertions(b.orders)]
                     if len(inserted) != 1:
@@ -600,9 +606,27 @@ def model_value(compiled: Any, expression: str, parameters: Mapping[str, Any], d
 # ------------------------------------------------------------------ production
 
 # The lowered models of the most recent (model, fixed parameters, veto,
-# declaration) keys; a request of another key evicts the oldest.
+# declaration, request scope) keys; a request of another key evicts the oldest.
 _LOWERED: OrderedDict[tuple[object, ...], tuple[Any, Any]] = OrderedDict()
 _LOWERED_KEPT = 4
+
+
+def program_order_limits(
+    compiled: Any, born_orders: Iterable[Orders], loop_orders: Iterable[Orders]
+) -> dict[str, int]:
+    """Order limits of a request's CT program: every physical order of the
+    model bounded by its largest Born or loop power (0 when none carries it;
+    the tree generator leaves an unlisted order unbounded)."""
+
+    limits = {
+        str(item["name"]): 0
+        for item in compiled.model["orders"]
+        if not str(item["name"]).startswith("PYAMPLICOL_")
+    }
+    for orders in (*born_orders, *loop_orders):
+        for name, power in orders:
+            limits[name] = max(limits.get(name, 0), int(power))
+    return limits
 
 
 def lowered_counterterm_model(
@@ -611,18 +635,27 @@ def lowered_counterterm_model(
     *,
     forbidden: Iterable[int] = (),
     declaration: Any = None,
+    request: tuple[Any, Any, Any] | None = None,
+    order_limits: Mapping[str, int] | None = None,
 ) -> Any:
     """The CT-lowered model of ``compiled`` for the closure, cached.
 
-    Every rule of the model (an unbounded preparation with the request's
-    ``fixed_parameters``) is lowered once per model, fixed parameters, vetoed
-    |PDG| codes and colour ``declaration``, with the multi-trace colours. A
+    The rules of a preparation with the request's ``fixed_parameters`` are
+    lowered once per model, fixed parameters, vetoed |PDG| codes, colour
+    ``declaration`` and request scope, with the multi-trace colours. A
     declaration (``LoopColorDeclaration``) grades the couplings by N_c and
     replaces fixed-SU(3) rules by their whole-rule continuations (design
     §6.7), as ``LoopSlice.generate`` prepares a declared request.
-    """
 
-    from pyamplicol.loops.compiler import prepare_loop_request_model
+    ``request`` is ``(scope, prepared, continuation)``: the request's own
+    loop-request model (``prepared``, after the declaration's
+    ``continuation``) and a hashable ``scope`` naming what determines it
+    besides the arguments above (its order bounds and compatibility profile).
+    Its rules are then lowered, into a tree model kept within the program's
+    ``order_limits`` (``program_order_limits``): at g g > g g g g, 9 of
+    loop_sm's 96 vertices and only its QCD counterterms. Without ``request``
+    the whole model is prepared without bounds and lowered.
+    """
 
     from .ct_recursion import lower_model_counterterms
 
@@ -631,21 +664,28 @@ def lowered_counterterm_model(
         tuple(sorted((str(k), str(v)) for k, v in fixed_parameters.items())),
         tuple(sorted({abs(int(pdg)) for pdg in forbidden})),
         None if declaration is None else repr(declaration),
+        None if request is None else request[0],
+        None if order_limits is None else tuple(sorted(order_limits.items())),
     )
     found = _LOWERED.get(key)
     if found is None or found[0] is not compiled:
-        prepared = prepare_loop_request_model(
-            compiled, fixed_parameters=dict(fixed_parameters)
-        )
-        continuation = None
-        if declaration is not None:
-            from pyamplicol.loops.source_color_declaration import (
-                prepare_declared_source_color,
-            )
+        if request is not None:
+            _scope, prepared, continuation = request
+        else:
+            from pyamplicol.loops.compiler import prepare_loop_request_model
 
-            prepared, continuation = prepare_declared_source_color(
-                prepared, declaration, scheme=declaration.scheme
+            prepared = prepare_loop_request_model(
+                compiled, fixed_parameters=dict(fixed_parameters)
             )
+            continuation = None
+            if declaration is not None:
+                from pyamplicol.loops.source_color_declaration import (
+                    prepare_declared_source_color,
+                )
+
+                prepared, continuation = prepare_declared_source_color(
+                    prepared, declaration, scheme=declaration.scheme
+                )
         lowered = lower_model_counterterms(
             compiled,
             prepared.counterterms.rules,
@@ -653,6 +693,7 @@ def lowered_counterterm_model(
             forbidden=key[2],
             multi_trace=True,
             continuation=continuation,
+            order_limits=order_limits,
         )
         found = _LOWERED[key] = (compiled, lowered)
         while len(_LOWERED) > _LOWERED_KEPT:
@@ -723,23 +764,35 @@ class CountertermProgram:
         forbidden: Iterable[int] = (),
         fixed_parameters: Mapping[str, Any] | None = None,
         declaration: Any = None,
+        continuation: Any = None,
+        scope: Any = None,
     ) -> CountertermProgram:
         """The CT program of a request (``prepared`` its loop-request model).
 
         ``process`` is the request's process text, ``families`` and
         ``native_model`` its family set and native model; ``fixed_parameters``
         the request's fixed parameters (those of ``prepared``) and
-        ``declaration`` its colour declaration, if any.
+        ``declaration`` its colour declaration, if any, with the
+        ``continuation`` it gave ``prepared``. ``scope`` (hashable: the
+        request's order bounds and compatibility profile) lets the lowered
+        model of this request's rules, within its order limits, be reused by
+        requests of the same scope; without it every rule of the model is
+        lowered.
         """
 
         from pyamplicol.processes.model import build_model_process_ir
 
         forbidden = tuple(forbidden)
+        born_orders = tuple(born_orders)
         lowered = lowered_counterterm_model(
             compiled,
             dict(fixed_parameters or {}),
             forbidden=forbidden,
             declaration=declaration,
+            request=None if scope is None else (scope, prepared, continuation),
+            order_limits=None
+            if scope is None
+            else program_order_limits(compiled, born_orders, selection.loop_orders),
         )
         rules = prepared.counterterms.rules
         recursion = CountertermRecursion.build(

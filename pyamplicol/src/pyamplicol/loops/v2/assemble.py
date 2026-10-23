@@ -1257,6 +1257,13 @@ class LoopSlice:
                 forbidden=request.ignored_particle_ids,
                 fixed_parameters=fixed,
                 declaration=declaration,
+                continuation=continuation,
+                # What determines ``prepared`` besides the arguments above.
+                scope=(
+                    tuple(sorted(request.born_orders.items())),
+                    tuple(sorted(request.loop_order_bounds.items())),
+                    request.compatibility,
+                ),
             )
         sites = generate_counterterm_sites(
             families,

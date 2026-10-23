@@ -492,6 +492,7 @@ def lower_model_counterterms(
     multi_trace: bool = False,
     continuation: Any = None,
     dirac_fields: Iterable[str] = (),
+    order_limits: Mapping[str, int] | None = None,
 ) -> CountertermModel:
     """The tree model of ``compiled`` with every lowerable rule's CT vertices.
 
@@ -518,6 +519,12 @@ def lower_model_counterterms(
     ``dirac_fields`` (UFO names) are Weyl fields the lowered model propagates
     as Dirac fields regardless of its two-point terms
     (``lower_counterterm_vertices``).
+
+    ``order_limits`` (physical coupling order -> largest power) bound the
+    tree program the model serves (``CountertermRecursion.coupling_order_limits``
+    of a request): the model then keeps only the vertices and rules within
+    them, and a rule above them stays residual. ``None`` lowers the whole
+    model.
     """
 
     dirac_fields = frozenset(dirac_fields)
@@ -539,6 +546,14 @@ def lower_model_counterterms(
     for rule in rules.values():
         key = rule_key(rule)
         reason = vocabulary.rule_reason(rule)
+        if reason is None and order_limits is not None:
+            beyond = [
+                orders
+                for orders in {add_orders(tuple(e.order)) for e in rule.entries}
+                if any(power > order_limits.get(name, power) for name, power in orders)
+            ]
+            if beyond:
+                reason = f"its orders {beyond[0]} exceed the program's limits"
         if reason is not None:
             residual[key] = reason
             continue
@@ -623,6 +638,7 @@ def lower_model_counterterms(
                 excluded_particles=excluded,
                 multi_trace=multi_trace,
                 dirac_fields=dirac_fields,
+                order_limits=order_limits,
             )
         except CountertermLoweringError as error:
             if not error.refused or set(error.refused) <= set(refused):

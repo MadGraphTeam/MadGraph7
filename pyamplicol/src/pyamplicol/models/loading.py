@@ -10,7 +10,7 @@ import shutil
 import sys
 import threading
 import time
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field, replace
@@ -1252,6 +1252,56 @@ def counterterm_lorentz_error(compiled: CompiledModel, name: str) -> str | None:
     return None
 
 
+def _orders_within(orders: Iterable[tuple[str, int]], limits: Mapping[str, int]) -> bool:
+    return all(int(power) <= limits.get(str(name), int(power)) for name, power in orders)
+
+
+def _vertex_rules_within(
+    rules: Sequence[Mapping[str, Any]],
+    couplings: Sequence[Mapping[str, Any]],
+    limits: Mapping[str, int],
+) -> list[dict[str, Any]]:
+    """The vertex rules of a payload restricted to couplings within ``limits``:
+    cells above them are emptied, colour rows and Lorentz columns left
+    without a cell are removed, and so are rules left without any."""
+
+    within = {
+        str(item["name"]): _orders_within(
+            (tuple(pair) for pair in item.get("orders", ())), limits
+        )
+        for item in couplings
+    }
+    kept: list[dict[str, Any]] = []
+    for rule in rules:
+        cells = [
+            [
+                name if name is not None and within.get(str(name), True) else None
+                for name in row
+            ]
+            for row in rule["couplings"]
+        ]
+        rows = [i for i, row in enumerate(cells) if any(n is not None for n in row)]
+        columns = [
+            j
+            for j in range(len(rule["lorentz_structures"]))
+            if any(cells[i][j] is not None for i in rows)
+        ]
+        if not rows:
+            continue
+        if len(rows) == len(cells) and len(columns) == len(rule["lorentz_structures"]):
+            kept.append(rule)
+            continue
+        kept.append(
+            {
+                **rule,
+                "color_structures": [rule["color_structures"][i] for i in rows],
+                "lorentz_structures": [rule["lorentz_structures"][j] for j in columns],
+                "couplings": [[cells[i][j] for j in columns] for i in rows],
+            }
+        )
+    return kept
+
+
 def lower_counterterm_vertices(
     compiled: CompiledModel,
     couplings: Mapping[CountertermStructure, str],
@@ -1261,6 +1311,7 @@ def lower_counterterm_vertices(
     tree_kernel_variant: TreeKernelVariant = "full",
     multi_trace: bool = False,
     dirac_fields: Iterable[str] = (),
+    order_limits: Mapping[str, int] | None = None,
 ) -> CountertermLoweredModel:
     """Lower CT vertex terms into the tree model of ``compiled`` (design §6.1).
 
@@ -1312,6 +1363,13 @@ def lower_counterterm_vertices(
     field; ``ct_line_insertions``): their standard propagators become
     model-supplied, so that their sources, currents and clone lines are
     Dirac spinors.
+
+    ``order_limits`` (physical coupling order -> largest power; an unlisted
+    order is unbounded) are the order limits of the tree program the model
+    serves: a coupling above them can be in no tree of that program, so the
+    ordinary vertex cells it holds are dropped (a vertex with none left is
+    dropped), and a CT term above them is refused as a ``ValueError`` (the
+    caller bounds its rules first). With ``None`` the whole model is kept.
     """
 
     from .compiler_entry import compile_ufo_model_ir
@@ -1328,6 +1386,16 @@ def lower_counterterm_vertices(
         for rule in payload["vertex_rules"]
         if not excluded & set(rule["particles"])
     ]
+    if order_limits is not None:
+        payload["vertex_rules"] = _vertex_rules_within(
+            payload["vertex_rules"], payload["couplings"], order_limits
+        )
+        beyond = [s for s in couplings if not _orders_within(s.orders, order_limits)]
+        if beyond:
+            raise ValueError(
+                f"counterterm terms beyond the order limits {dict(order_limits)}: "
+                + ", ".join(sorted(str(s.particles) for s in beyond))
+            )
     lorentz_names = {str(item["name"]) for item in payload["lorentz_structures"]}
     groups: dict[tuple[object, ...], list[CountertermStructure]] = {}
     structures = tuple(sorted(s for s in couplings if not excluded & set(s.particles)))
@@ -1476,6 +1544,7 @@ def lower_counterterm_vertices(
             tree_kernel_variant=tree_kernel_variant,
             multi_trace=multi_trace,
             dirac_fields=dirac_fields,
+            order_limits=order_limits,
         )
     lowered_vertices = {
         rule["name"]
