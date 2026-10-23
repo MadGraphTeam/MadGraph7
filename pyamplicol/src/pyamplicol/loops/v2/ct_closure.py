@@ -223,9 +223,14 @@ def _insertions(orders: Orders) -> int:
 
 def _slot(
     orders: Orders, slots: Mapping[str, tuple[str, int, int]]
-) -> tuple[str, int, int]:
-    (slot,) = (slots[name] for name, _power in orders if name in slots)
-    return slot
+) -> tuple[str, int, int] | None:
+    """The slot of a CT = 1 current, ``None`` if no rule of the request has
+    it (a lowered rule of other requests: multiplicity 0)."""
+
+    found = [slots[name] for name, _power in orders if name in slots]
+    if len(found) > 1:
+        raise ValueError(f"CT current orders {orders!r} hold several slots")
+    return found[0] if found else None
 
 
 @dataclass(frozen=True)
@@ -318,7 +323,10 @@ class CountertermClosure:
                     physical = add_orders(order, *(_physical(b.orders) for b in choice))
                     if not clone and physical not in loop:
                         continue
-                    component, power, grade = _slot(current.orders, slots)
+                    slot = _slot(current.orders, slots)
+                    if slot is None:
+                        continue
+                    component, power, grade = slot
                     attachments = _assigned(fields, choice)
                     index = attachments.index(current)
                     for term in closure.vertex_terms(entries, attachments):
