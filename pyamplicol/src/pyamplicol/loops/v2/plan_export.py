@@ -824,7 +824,10 @@ class NativeExecutor:
         exported: ExportedPlan | None = None,
         forms: Literal["rule", "fused", "split"] = "rule",
         merged: MergedGraph | bool = False,
+        plan_json: str | None = None,
     ):
+        if plan_json is not None and exported is None:
+            raise ValueError("plan_json is the serialised exported plan")
         if slice_.request.colour_contraction == "fft":
             # The native seeds contract the exported exact weights directly
             # (``seed_records``); an explicit "fft" is refused, not ignored.
@@ -841,7 +844,8 @@ class NativeExecutor:
         self.lanes = lanes
         self.threads = threads
         self.forms = forms
-        self._plan_json = self.exported.json()
+        # ``plan_json``: ``exported.json()`` when the caller already holds it.
+        self._plan_json = self.exported.json() if plan_json is None else plan_json
         self._native: dict[tuple[str, int | None, int], Any] = {}
         # Point inputs of the latest ``family_numerators`` calls (oracle
         # comparisons run several schedules and carriers on one batch).

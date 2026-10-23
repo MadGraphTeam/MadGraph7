@@ -369,10 +369,11 @@ def read_plan(path: Path) -> str:
 # --------------------------------------------------------------------- generation
 
 
-@dataclass
+@dataclass(frozen=True)
 class GeneratedProcess:
     """One process generated through v2: its observables (and slice), plan
-    and public catalogue."""
+    and public catalogue. Frozen: ``plan_sha256`` is cached from
+    ``plan_json``."""
 
     observables: Any
     exported: Any
@@ -447,10 +448,16 @@ def _order_text(order: Orders) -> str:
 
 
 def generate_process(
-    compiled: Any, request: Any, native: Any, correlators: Any = None
+    compiled: Any,
+    request: Any,
+    native: Any,
+    correlators: Any = None,
+    *,
+    model: str | None = None,
 ) -> GeneratedProcess:
     """Generate one process through v2 with its declared observables and
-    remember its generation objects.
+    remember its generation objects (under ``model``, the compiled model's
+    ``model_digest`` when the caller already has it).
 
     Without colour histories or spin classes this is the inclusive slice
     (``LoopSlice.generate``, colour-pruned at LC/NLC for the inclusive table);
@@ -494,14 +501,14 @@ def generate_process(
     )
     record = request_record(request, resolved if declared else None)
     generated = GeneratedProcess(observables, exported, record, exported.json())
-    _remember(model_digest(compiled.to_dict()), generated)
+    _remember(model_digest(compiled.to_dict()) if model is None else model, generated)
     return generated
 
 
 def _remember(model: str, generated: GeneratedProcess) -> None:
     key = (model, _record_key(generated.request), generated.plan_sha256)
     with _slices_lock:
-        _slices[key] = (generated.observables, generated.exported)
+        _slices[key] = generated
         _slices.move_to_end(key)
         _trim()
 
@@ -529,7 +536,9 @@ def retained(count: int) -> Iterator[None]:
             _trim()
 
 
-def _recall(model: str, record: Mapping[str, Any], plan: str) -> Any:
+def _recall(
+    model: str, record: Mapping[str, Any], plan: str
+) -> GeneratedProcess | None:
     key = (model, _record_key(record), plan)
     with _slices_lock:
         found = _slices.get(key)
@@ -695,8 +704,8 @@ class V2VirtualRuntime:
         model_payload = _json_payload(manifest, "model/compiled-model.json")
         model = model_digest(model_payload)
         request = execution["request"]
-        found = _recall(model, request, plan_sha256)
-        if found is None:
+        generated = _recall(model, request, plan_sha256)
+        if generated is None:
             compiled = CompiledModel.from_dict(
                 model_payload, validate_fingerprint=False
             )
@@ -705,6 +714,7 @@ class V2VirtualRuntime:
                 request_from_record(request),
                 native,
                 correlators_from_record(request),
+                model=model,
             )
             if generated.plan_sha256 != plan_sha256:
                 raise ArtifactError(
@@ -712,8 +722,7 @@ class V2VirtualRuntime:
                     "stored one: it was written by a different pyAmpliCol build; "
                     "regenerate the artifact"
                 )
-            found = generated.observables, generated.exported
-        observables, exported = found
+        observables = generated.observables
         member = None
         if group_member is not None:
             try:
@@ -728,10 +737,14 @@ class V2VirtualRuntime:
                     f"flavour member {group_member.process_id!r} is not an "
                     "identity-port member of its representative"
                 )
-        self._generated = observables, exported
+        self._generated = generated
         self._member = member
         self._group_member = group_member
-        self._executor = NativeExecutor(observables.slice, exported=exported)
+        self._executor = NativeExecutor(
+            observables.slice,
+            exported=generated.exported,
+            plan_json=generated.plan_json,
+        )
         self._parameters = self._checked_parameters(model_parameters)
         self._observables = V2ObservablesRuntime(
             observables,
@@ -1140,7 +1153,7 @@ class V2VirtualRuntime:
         propagators carry does not enter (v2 virtuals are real on-shell)."""
 
         parameters = _real_parameters(mapping)
-        slice_ = self._generated[0].slice
+        slice_ = self._generated.slice
         externals = {
             record.name
             for record in slice_.compiled.ir.parameters
@@ -1173,8 +1186,12 @@ class V2VirtualRuntime:
         with self._lock:
             from .plan_export import NativeExecutor
 
-            observables, exported = self._generated
-            self._executor = NativeExecutor(observables.slice, exported=exported)
+            generated = self._generated
+            self._executor = NativeExecutor(
+                generated.slice,
+                exported=generated.exported,
+                plan_json=generated.plan_json,
+            )
             self._observables.clear()
 
     def mute_warnings(self) -> None:
