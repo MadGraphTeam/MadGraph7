@@ -418,20 +418,6 @@ pub const LOOP_V2_NATIVE_POINT_INPUTS: &str = "native-v1";
 pub const LOOP_V2_NATIVE_RECORD_MEMBER: &str = "point-inputs/native-process.json.zlib";
 pub const LOOP_V2_NATIVE_TREES_MEMBER: &str = "point-inputs/tree-program.json.zlib";
 pub const LOOP_V2_NATIVE_PARAMETERS_MEMBER: &str = "point-inputs/parameters.state";
-/// The interaction kernels' saved evaluators, `kernel-0.state` onwards.
-pub const LOOP_V2_NATIVE_KERNEL_PREFIX: &str = "point-inputs/kernel-";
-
-/// The native point inputs of a plan v4 process
-/// ([`LOOP_V2_NATIVE_POINT_INPUTS`]): the assembly record and the tree
-/// program (JSON), the parameter program's and the interaction kernels'
-/// saved exact evaluators (`loop_v2::trees::TreeProgram::load` order: the
-/// kernels, then the parameter program).
-#[cfg(feature = "loop-v2")]
-pub struct LoopV2NativeInputs {
-    pub record_json: Vec<u8>,
-    pub trees_json: Vec<u8>,
-    pub evaluators: Vec<Vec<u8>>,
-}
 
 #[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
@@ -459,9 +445,6 @@ pub struct LoadedLoopV2Artifact {
     pub plan_sha256: String,
     pub plan_json: Vec<u8>,
     pub program: Arc<crate::loop_v2::plan::LoopProgramV4>,
-    /// The stored native point inputs (`point_inputs = "native-v1"`), else
-    /// `None` (the process regenerates its inputs at load, in Python).
-    pub native: Option<LoopV2NativeInputs>,
 }
 
 #[cfg(feature = "loop-v2")]
@@ -566,9 +549,8 @@ pub fn load_loop_v2_artifact(
     )?;
     let reader = store.source(&execution.runtime_path)?.pacbin()?;
     let plan_json = crate::loop_runtime::read_loop_program_v4_json(&reader)?;
-    let native = if execution.point_inputs == LOOP_V2_NATIVE_POINT_INPUTS {
+    if execution.point_inputs == LOOP_V2_NATIVE_POINT_INPUTS {
         use crate::pacbin::PacbinMemberKind;
-        use std::io::Read;
         for (member, kind) in [
             (LOOP_V2_NATIVE_RECORD_MEMBER, PacbinMemberKind::LoopRuntimePlan),
             (LOOP_V2_NATIVE_TREES_MEMBER, PacbinMemberKind::LoopRuntimePlan),
@@ -582,40 +564,7 @@ pub fn load_loop_v2_artifact(
                 "native point inputs member of the wrong kind",
             )?;
         }
-        let inflate = |member: &str| -> RusticolResult<Vec<u8>> {
-            let mut json = Vec::new();
-            flate2::read::ZlibDecoder::new(reader.member_bytes(member)?)
-                .read_to_end(&mut json)
-                .map_err(|error| {
-                    RusticolError::integrity(format!("{member} is not a zlib stream: {error}"))
-                })?;
-            Ok(json)
-        };
-        let mut evaluators = Vec::new();
-        loop {
-            let member = format!("{LOOP_V2_NATIVE_KERNEL_PREFIX}{}.state", evaluators.len());
-            let Ok(found) = reader.member(&member) else {
-                break;
-            };
-            require(
-                found.kind() == PacbinMemberKind::SymbolicaExactState,
-                "native point inputs member of the wrong kind",
-            )?;
-            evaluators.push(reader.member_bytes(&member)?.to_vec());
-        }
-        evaluators.push(
-            reader
-                .member_bytes(LOOP_V2_NATIVE_PARAMETERS_MEMBER)?
-                .to_vec(),
-        );
-        Some(LoopV2NativeInputs {
-            record_json: inflate(LOOP_V2_NATIVE_RECORD_MEMBER)?,
-            trees_json: inflate(LOOP_V2_NATIVE_TREES_MEMBER)?,
-            evaluators,
-        })
-    } else {
-        None
-    };
+    }
     require(
         format!("{:x}", Sha256::digest(&plan_json)) == execution.plan_sha256,
         "the stored plan v4 differs from its declared digest",
@@ -657,7 +606,6 @@ pub fn load_loop_v2_artifact(
         plan_sha256: execution.plan_sha256,
         plan_json,
         program,
-        native,
     })
 }
 
