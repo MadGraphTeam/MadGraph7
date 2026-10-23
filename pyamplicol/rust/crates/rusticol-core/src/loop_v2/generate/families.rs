@@ -13,9 +13,9 @@
 //! positions consume block currents (sums of all trees on their leg sets) and
 //! only prefixes that can still close are visited (memoised closability).
 
+use super::FastMap as HashMap;
 use super::orders::{OrderSpace, OrderVec};
 use serde::Deserialize;
-use std::collections::HashMap;
 
 pub type LegSet = u64;
 
@@ -209,7 +209,7 @@ impl<'a> Recursion<'a> {
             .iter()
             .map(|order| orders.intern(order.clone()))
             .collect();
-        let mut currents_by_mask: HashMap<LegSet, (usize, usize)> = HashMap::new();
+        let mut currents_by_mask: HashMap<LegSet, (usize, usize)> = HashMap::default();
         for (index, current) in input.currents.iter().enumerate() {
             let entry = currents_by_mask
                 .entry(current.mask)
@@ -242,10 +242,10 @@ impl<'a> Recursion<'a> {
             vertex_orders,
             positions: Vec::new(),
             position_data: Vec::new(),
-            position_index: HashMap::new(),
-            attachments: HashMap::new(),
-            by_mask_species: HashMap::new(),
-            closable: HashMap::new(),
+            position_index: HashMap::default(),
+            attachments: HashMap::default(),
+            by_mask_species: HashMap::default(),
+            closable: HashMap::default(),
         })
     }
 
@@ -542,8 +542,8 @@ pub fn generate_families(input: &FamilyInput) -> Result<FamilyOutput, String> {
     let full = recursion.full;
     let first = full & full.wrapping_neg();
     // Admitted routings per key in discovery order; keys are sorted later.
-    let mut admitted: HashMap<FamilyKey, Vec<(u32, Vec<u32>, bool)>> = HashMap::new();
-    let mut rejected: HashMap<FamilyKey, Rejection> = HashMap::new();
+    let mut admitted: HashMap<FamilyKey, Vec<(u32, Vec<u32>, bool)>> = HashMap::default();
+    let mut rejected: HashMap<FamilyKey, Rejection> = HashMap::default();
     // Prefix arena: (parent node, position); the stack holds node indices.
     let mut nodes: Vec<(u32, u32)> = Vec::new();
     const ROOT: u32 = u32::MAX;
@@ -586,7 +586,7 @@ pub fn generate_families(input: &FamilyInput) -> Result<FamilyOutput, String> {
     let mut keys: Vec<FamilyKey> = admitted.keys().cloned().collect();
     keys.sort_unstable();
     let mut output = FamilyOutput::default();
-    let mut states: HashMap<(i64, u32), u32> = HashMap::new();
+    let mut states: HashMap<(i64, u32), u32> = HashMap::default();
     let mut intern = |output: &mut FamilyOutput, parent: i64, label: u32, species: u32| -> u32 {
         *states.entry((parent, label)).or_insert_with(|| {
             output.state_parent.push(parent);

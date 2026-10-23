@@ -18,10 +18,10 @@ use super::families::{
     certified_scaleless,
 };
 use super::orders::{OrderSpace, OrderVec};
+use super::{FastMap as HashMap, FastSet};
 use rayon::prelude::*;
 use serde::Deserialize;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 
 /// The colour model's states and the frame policy.
 #[derive(Debug, Clone, Deserialize)]
@@ -159,6 +159,8 @@ struct Builder<'a> {
     position_mask: Vec<LegSet>,
     contents: Vec<Content>,
     content_index: HashMap<Content, u32>,
+    /// Per content id: its reflection (`u32::MAX` until computed).
+    reflection: Vec<u32>,
 }
 
 fn content_cmp(space: &OrderSpace, a: &Content, b: &Content) -> Ordering {
@@ -197,7 +199,8 @@ impl<'a> Builder<'a> {
             position_orders,
             position_mask,
             contents: Vec::new(),
-            content_index: HashMap::new(),
+            content_index: HashMap::default(),
+            reflection: Vec::new(),
         }
     }
 
@@ -221,6 +224,11 @@ impl<'a> Builder<'a> {
     }
 
     fn reflect_content(&mut self, id: u32) -> Result<u32, String> {
+        if let Some(&found) = self.reflection.get(id as usize)
+            && found != u32::MAX
+        {
+            return Ok(found);
+        }
         let content = self.contents[id as usize].clone();
         let mut terms: Vec<Position> = content
             .terms
@@ -244,7 +252,12 @@ impl<'a> Builder<'a> {
                 .unwrap_or(0),
             terms,
         };
-        Ok(self.intern(reflected))
+        let mirror = self.intern(reflected);
+        if self.reflection.len() < self.contents.len() {
+            self.reflection.resize(self.contents.len(), u32::MAX);
+        }
+        self.reflection[id as usize] = mirror;
+        Ok(mirror)
     }
 
     /// `reflect_ring`: read a ring backwards from its first position.
@@ -283,16 +296,10 @@ impl<'a> Builder<'a> {
     fn family_skeletons(&mut self, family: usize) -> Result<Vec<Skeleton>, String> {
         type Label = (u32, u32, u32, LegSet, u32);
         let record = &self.output.families[family];
-        let mut ring_index: HashMap<Vec<Label>, usize> = HashMap::new();
+        let mut ring_index: HashMap<Vec<Label>, usize> = HashMap::default();
         // Per ring: per-slot positions (insertion order, distinct), the
         // distinct position combinations, symmetric flag and multiplicity.
-        let mut rings: Vec<(
-            Vec<Label>,
-            Vec<Vec<u32>>,
-            std::collections::HashSet<Vec<u32>>,
-            bool,
-            u32,
-        )> = Vec::new();
+        let mut rings: Vec<(Vec<Label>, Vec<Vec<u32>>, FastSet<Vec<u32>>, bool, u32)> = Vec::new();
         for closure in &record.closures {
             let positions = self.path(closure.state);
             let mut options = Vec::with_capacity(positions.len());
@@ -371,7 +378,7 @@ impl<'a> Builder<'a> {
             }
         }
         let mut out: Vec<Skeleton> = Vec::new();
-        let mut seen: HashMap<Vec<u32>, ()> = HashMap::new();
+        let mut seen: HashMap<Vec<u32>, ()> = HashMap::default();
         for (labels, slots, combos, symmetric, multiplicity) in rings {
             let count: usize = slots.iter().map(Vec::len).product();
             if count != combos.len() {
@@ -487,7 +494,7 @@ fn master_keys(key: &FamilyKey, families: &FamilyInput) -> Vec<(FamilyKey, bool)
     let masks: Vec<LegSet> = key.iter().map(|&(mask, _)| mask).collect();
     let masses: Vec<u32> = key.iter().map(|&(_, mass)| mass).collect();
     let count = masks.len();
-    let mut found: HashMap<FamilyKey, bool> = HashMap::new();
+    let mut found: HashMap<FamilyKey, bool> = HashMap::default();
     for lines in 1..=count.min(4) {
         let mut kept: Vec<usize> = (0..lines).collect();
         loop {
@@ -540,15 +547,15 @@ fn build_trie(
 ) -> (Vec<TrieNode>, i64) {
     let count = key.len();
     let mut nodes: Vec<TrieNode> = Vec::new();
-    let mut previous: HashMap<(u32, Vec<u32>), u32> = HashMap::new();
+    let mut previous: HashMap<(u32, Vec<u32>), u32> = HashMap::default();
     for (leaf, (skeleton, ring)) in oriented.iter().enumerate() {
         previous
             .entry((orders[*skeleton], ring.clone()))
             .or_insert(leaf as u32);
     }
     for depth in 1..=count {
-        let mut edges: HashMap<(u32, Vec<u32>), HashMap<u32, u32>> = HashMap::new();
-        let mut rank_in: HashMap<(u32, Vec<u32>), i64> = HashMap::new();
+        let mut edges: HashMap<(u32, Vec<u32>), HashMap<u32, u32>> = HashMap::default();
+        let mut rank_in: HashMap<(u32, Vec<u32>), i64> = HashMap::default();
         for (skeleton, ring) in oriented {
             let order = orders[*skeleton];
             let key = (order, ring[depth..].to_vec());
@@ -571,7 +578,8 @@ fn build_trie(
                 .cmp(space.get(b.0))
                 .then_with(|| a.1.cmp(&b.1))
         });
-        let mut current = HashMap::with_capacity(keys.len());
+        let mut current: HashMap<(u32, Vec<u32>), u32> =
+            HashMap::with_capacity_and_hasher(keys.len(), Default::default());
         for key in keys {
             let mut node_edges: Vec<(u32, u32)> =
                 edges[&key].iter().map(|(&s, &c)| (s, c)).collect();
@@ -666,11 +674,11 @@ pub fn build_schedules(
         all.push(builder.family_skeletons(family)?);
     }
     // The view: labels first-seen across families, in family order.
-    let mut label_of: HashMap<u32, u32> = HashMap::new();
+    let mut label_of: HashMap<u32, u32> = HashMap::default();
     let mut labels: Vec<u32> = Vec::new();
     let mut viewed_all: Vec<(Vec<usize>, Viewed)> = Vec::with_capacity(all.len());
     for (family, skeletons) in all.iter().enumerate() {
-        let mut seen: HashMap<Vec<u32>, ()> = HashMap::new();
+        let mut seen: HashMap<Vec<u32>, ()> = HashMap::default();
         let mut viewed = Vec::new();
         let mut data = Viewed {
             readings: Vec::new(),
@@ -777,30 +785,53 @@ pub fn build_schedules(
                 i64,
                 u128,
             )> = None;
-            for (target, frame) in &targets {
-                // orient: the readings of every skeleton that fit the frame.
-                let mut oriented = Vec::with_capacity(data.readings.len());
-                for (index, readings) in data.readings.iter().enumerate() {
-                    let fitting: Vec<&Vec<u32>> = readings
+            // orient: per skeleton and frame, the fitting reading that
+            // `shared_suffix` picks (first minimum of (ring[1:], ring)).
+            let target_index: HashMap<&FamilyKey, usize> = targets
+                .iter()
+                .enumerate()
+                .map(|(i, (target, _))| (target, i))
+                .collect();
+            let mut chosen: Vec<Vec<Option<usize>>> =
+                vec![vec![None; targets.len()]; data.readings.len()];
+            for (index, readings) in data.readings.iter().enumerate() {
+                for (r, ring) in readings.iter().enumerate() {
+                    let sequence: FamilyKey = ring
                         .iter()
-                        .filter(|ring| {
-                            ring.len() == target.len()
-                                && ring.iter().zip(target).all(|(&label, &(mask, mass))| {
-                                    let segment = segments[label as usize];
-                                    segment.0 == mask && segment.1 == mass
-                                })
+                        .map(|&label| {
+                            let segment = segments[label as usize];
+                            (segment.0, segment.1)
                         })
                         .collect();
-                    if fitting.is_empty() {
-                        return Err(format!("skeleton does not belong to family {family}"));
+                    let Some(&t) = target_index.get(&sequence) else {
+                        continue;
+                    };
+                    let better = match chosen[index][t] {
+                        None => true,
+                        Some(previous) => {
+                            let old = &readings[previous];
+                            (&ring[1..], ring) < (&old[1..], old)
+                        }
+                    };
+                    if better {
+                        chosen[index][t] = Some(r);
                     }
-                    // shared_suffix: min by (ring[1:], ring).
-                    let chosen = fitting
-                        .into_iter()
-                        .min_by(|a, b| a[1..].cmp(&b[1..]).then_with(|| a.cmp(b)))
-                        .expect("non-empty");
-                    oriented.push((index, chosen.clone()));
                 }
+            }
+            if chosen.iter().any(|row| row.iter().any(Option::is_none)) {
+                return Err(format!("skeleton does not belong to family {family}"));
+            }
+            for (t, (_target, frame)) in targets.iter().enumerate() {
+                let oriented: Vec<(usize, Vec<u32>)> = chosen
+                    .iter()
+                    .enumerate()
+                    .map(|(index, row)| {
+                        (
+                            index,
+                            data.readings[index][row[t].expect("checked")].clone(),
+                        )
+                    })
+                    .collect();
                 if let Some(frame_wanted) = wanted
                     && *frame != frame_wanted
                 {

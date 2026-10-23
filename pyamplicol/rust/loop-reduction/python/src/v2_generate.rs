@@ -20,7 +20,7 @@ type RawFamilies = (
     Vec<Key>,
     Vec<(Key, &'static str)>,
 );
-type RawContent = (u32, u32, u32, u64, u32, Vec<(u32, Vec<u32>)>);
+type RawContent = (u32, u32, u32, u64, u32, Vec<(u32, Vec<u32>)>, i64);
 type RawNode = (usize, u32, Vec<u32>, i64, Vec<(u32, u32)>);
 type RawSchedule = (
     usize,
@@ -179,6 +179,7 @@ fn raw_content(c: Content) -> RawContent {
             .into_iter()
             .map(|term| (term.vertex, term.blocks))
             .collect(),
+        c.q_degree,
     )
 }
 

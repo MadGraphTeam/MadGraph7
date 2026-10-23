@@ -208,7 +208,12 @@ def family_input(
 
 
 def _key(tables: _Tables, raw) -> tuple[tuple[int, MassId], ...]:
-    return tuple((mask, tables.masses[mass]) for mask, mass in raw)
+    masses = tables.masses
+    return tuple([(mask, masses[mass]) for mask, mass in raw])
+
+
+_ONE = Fraction(1)
+_HALF = Fraction(1, 2)
 
 
 class NativeGeneration:
@@ -398,15 +403,16 @@ class NativeGeneration:
         return [tuple((names[n], power) for n, power in o) for o in raw_orders]
 
     def _content(self, states, orders, raw) -> Content:
-        state, loop_in, loop_out, mask, order, terms = raw
+        state, loop_in, loop_out, mask, order, terms, _q_degree = raw
         fields = self.tables.fields
+        position = self._position
         return Content(
             states[state],
             fields[loop_in],
             fields[loop_out],
             mask,
             orders[order],
-            tuple(self._position(vertex, blocks) for vertex, blocks in terms),
+            tuple(position(vertex, blocks) for vertex, blocks in terms),
         )
 
     @staticmethod
@@ -414,8 +420,8 @@ class NativeGeneration:
         ids, half, multiplicity = raw
         return Skeleton(
             key,
-            tuple(contents[i] for i in ids),
-            Fraction(1, 2) if half else Fraction(1),
+            tuple(map(contents.__getitem__, ids)),
+            _HALF if half else _ONE,
             multiplicity,
         )
 
@@ -434,10 +440,13 @@ class NativeGeneration:
                 label,
                 content.mask,
                 catalogue.species(content.loop_out).mass,
-                content.q_degree,
+                raw_contents[c][6],
             )
-            for label, content in enumerate(view._contents)
+            for label, (c, content) in enumerate(
+                zip(labels, view._contents, strict=True)
+            )
         ]
+        segment = segments.__getitem__
         keys = list(families.families)
         out = {}
         for (
@@ -457,15 +466,12 @@ class NativeGeneration:
             trie = SuffixTrie(
                 key,
                 frame,
-                tuple(
-                    (chosen[i], tuple(segments[label] for label in ring))
-                    for i, ring in leaves
-                ),
+                tuple((chosen[i], tuple(map(segment, ring))) for i, ring in leaves),
                 tuple(
                     TrieNode(
                         depth,
                         orders[order],
-                        tuple(segments[label] for label in suffix),
+                        tuple(map(segment, suffix)),
                         rank_in,
                         tuple((segments[label], child) for label, child in edges),
                     )

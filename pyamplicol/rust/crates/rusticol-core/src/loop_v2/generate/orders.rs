@@ -8,7 +8,7 @@
 //! the vectors themselves (`Vec<(u16, i64)>`) follow Python's tuple order
 //! because name ids are ranks of the sorted names.
 
-use std::collections::HashMap;
+use super::FastMap;
 
 pub type OrderVec = Vec<(u16, i64)>;
 
@@ -16,8 +16,8 @@ pub type OrderVec = Vec<(u16, i64)>;
 #[derive(Debug, Default)]
 pub struct OrderSpace {
     vectors: Vec<OrderVec>,
-    index: HashMap<OrderVec, u32>,
-    sums: HashMap<(u32, u32), u32>,
+    index: FastMap<OrderVec, u32>,
+    sums: FastMap<(u32, u32), u32>,
 }
 
 impl OrderSpace {
