@@ -493,8 +493,10 @@ impl TreeProgram {
             require(point.len() == 4 * self.legs, "momentum components")?;
             incoming.push(
                 point
-                    .chunks_exact(4)
-                    .map(|p| [0, 1, 2, 3].map(|mu| cast(zero, &p[mu])))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|p| p.each_ref().map(|x| cast(zero, x)))
                     .collect::<Vec<[T; 4]>>(),
             );
         }
@@ -656,7 +658,7 @@ impl TreeProgram {
                     let mut product = constants[term_entry.constant].clone();
                     for &(input, exponent) in &term_entry.monomial {
                         for _ in 0..exponent {
-                            product = product * x[input].clone();
+                            product *= x[input].clone();
                         }
                     }
                     value += product;

@@ -189,11 +189,11 @@ fn raw_content(c: Content) -> RawContent {
 /// has more labels than the subset sum takes (the caller's trace algebra
 /// then evaluates it). Products are lists of traces of adjoint labels, each
 /// label twice.
+/// Per product its `(N_c power, coefficient)` pairs, or None.
+type Overlaps = Vec<Option<Vec<(i32, i64)>>>;
+
 #[pyfunction]
-fn trace_overlaps(
-    py: Python<'_>,
-    products: Vec<Vec<Vec<i64>>>,
-) -> PyResult<Vec<Option<Vec<(i32, i64)>>>> {
+fn trace_overlaps(py: Python<'_>, products: Vec<Vec<Vec<i64>>>) -> PyResult<Overlaps> {
     py.detach(|| {
         products
             .iter()
