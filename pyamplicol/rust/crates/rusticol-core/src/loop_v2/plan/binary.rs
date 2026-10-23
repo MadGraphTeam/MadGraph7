@@ -112,20 +112,12 @@ impl LoopProgramV4 {
     pub fn load_binary_with(bytes: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
         PlanModel::from_binary(bytes)?.program(policy)
     }
-
-    /// [`Self::load_with`] from either encoding (binary member or JSON).
-    pub fn load_any_with(bytes: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
-        if is_binary(bytes) {
-            Self::load_binary_with(bytes, policy)
-        } else {
-            Self::load_with(bytes, policy)
-        }
-    }
 }
 
 /// SHA-256 of a loaded program's validated and derived tables (its `Debug`
-/// form, streamed): two loads are equal exactly when their digests are. A
-/// test tool for comparing the JSON and binary loads; no artifact carries it.
+/// form, streamed, every field included): equal tables give equal digests
+/// and any differing value changes it. A test tool for comparing the JSON and
+/// binary loads; no artifact carries it.
 pub fn program_digest(program: &LoopProgramV4) -> String {
     struct Hashing(Sha256);
     impl std::fmt::Write for Hashing {
@@ -1094,7 +1086,7 @@ mod tests {
         encode_column(&mut out, &[1_000_000, 1_000_001, 1_000_002, 1_000_003]);
         assert_eq!((out[0], out[1]), (1, 0), "values above their minimum");
         out.clear();
-        encode_column(&mut out, &[0, 70_000, 140_000, 210_001]);
+        encode_column(&mut out, &[70_000, 140_000, 210_000, 280_001]);
         assert_eq!((out[0], out[1]), (1, 1), "differences of an arithmetic run");
         out.clear();
         encode_column(&mut out, &[i64::MIN, i64::MAX]);

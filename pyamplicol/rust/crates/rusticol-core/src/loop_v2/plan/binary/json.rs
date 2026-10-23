@@ -477,10 +477,10 @@ mod tests {
     #[test]
     fn strings_follow_ensure_ascii() {
         let mut out = Out(Vec::new());
-        out.string("a\"b\\c\n\r\t\u{8}\u{c}\u{1}\u{7f}é\u{1f600}/~ ");
+        out.string("a\"b\\c\n\r\t\u{8}\u{c}\u{1}\u{7f}\u{e9}\u{1f600}/~ ");
         assert_eq!(
             String::from_utf8(out.0).unwrap(),
-            r#""a\"b\\c\n\r\t\b\f\u0001\u007fé😀/~ ""#
+            r#""a\"b\\c\n\r\t\b\f\u0001\u007f\u00e9\ud83d\ude00/~ ""#
         );
     }
 
