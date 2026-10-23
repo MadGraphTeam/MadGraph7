@@ -892,13 +892,21 @@ def test_six_gluon_generation_completes_in_a_fresh_interpreter(
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("accuracy", ("lc", "nlc"))
+@pytest.mark.parametrize(
+    ("process", "accuracy"),
+    (
+        ("u u~ > d d~ g g", "lc"),
+        ("u u~ > d d~ g g", "nlc"),
+        pytest.param("u u~ > g g g g", "nlc", marks=pytest.mark.loop_nightly),
+    ),
+)
 def test_colour_projected_counterterms_from_recursion_equal_sites(
-    loop_sm_compiled_model, loop_native, accuracy
+    loop_sm_compiled_model, loop_native, process, accuracy
 ):
     """O6 at LC and NLC with the colour declaration (CT level): the
-    four-gluon R2 takes the d line's gluon at u u~ > d d~ g g, graded by N_c
-    in the recursion's couplings and at the sites."""
+    four-gluon R2 (the general-N_c asset) takes the d line's gluon at
+    u u~ > d d~ g g, and multi-gluon currents at u u~ > g g g g, graded by
+    N_c in the recursion's couplings and at the sites."""
 
     import json
 
@@ -911,7 +919,7 @@ def test_colour_projected_counterterms_from_recursion_equal_sites(
     values = _counterterms_per_route(
         load_compiled_model(loop_sm_compiled_model),
         loop_native,
-        "u u~ > d d~ g g",
+        process,
         4,
         _slice_point((0,) * 6),
         accuracy=accuracy,
