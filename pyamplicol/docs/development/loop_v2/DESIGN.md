@@ -1559,7 +1559,7 @@ The massless arithmetic is unchanged. The massive form reproduces the provider p
 
 **Validation** (one point per process; `tests/unit/test_loop_v2_poles.py`, `rust/loop-reduction/tests/runtime_v2_reduce.rs`):
 
-- `"all"` is bitwise the result before the re-pin. Checked on g g > g g, u u~ > d d~ g and u u~ > t t~: Python path, native binary64 and DoubleFloat, finite only, and the re-test estimates.
+- `"all"` is bitwise the result before the re-pin. Checked on g g > g g, u u~ > d d~ g and u u~ > t t~: Python path, native binary64 and DoubleFloat, finite only, and the re-test estimates. After merging the slice tip `42c6117d` (observables), `"all"` is again bitwise that tip's result with its own native.
 - The finite parts are identical in all four modes, in binary64, DoubleFloat and 32 digits.
 - UV + IR parts give the combined poles of every component, to 10⁻¹². The double pole is IR. The renormalised virtual's UV poles vanish, and its IR poles are those of `"all"`, also at LC and NLC.
 - `"ir"` equals Catani's operator on g g > g g and u u~ > g g g (massless) and on g g > t t~ and u u~ > t t~ (massive, stable top), to 10⁻¹⁰. The massive operator and the virtual reproduce the provider poles of g g > t t~ (MadLoop, Recola, OpenLoops) to 2·10⁻¹⁵.
