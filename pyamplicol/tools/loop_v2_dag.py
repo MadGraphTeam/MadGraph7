@@ -301,6 +301,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cache", type=Path, help="model cache directory")
     parser.add_argument("--out", type=Path, help="JSON record")
     parser.add_argument("--log", type=Path, help="stage progress log")
+    parser.add_argument(
+        "--repeat", type=int, default=1, help="runs in this process (warm: 2+)"
+    )
     args = parser.parse_args(argv)
     if args.model is None and (args.ufo is None or args.cache is None):
         parser.error("give --model, or --ufo with --cache")
@@ -327,13 +330,28 @@ def main(argv: list[str] | None = None) -> int:
         ).strip()
     except (OSError, subprocess.CalledProcessError):
         record["commit"] = None
+    stage = _s1p if args.stage == "s1p" else _s1pp
     clock = _Clock(args.log)
     start = time.perf_counter()
-    (_s1p if args.stage == "s1p" else _s1pp)(args, clock, record)
-    from pyamplicol.loops.v2 import dag_input
-
+    stage(args, clock, record)
     record["seconds"] = clock.seconds
     record["wall_seconds"] = round(time.perf_counter() - start, 3)
+    # Warm runs: the same stage again in this process (model caches warm);
+    # their records must reproduce the cold one.
+    warm = []
+    for _run in range(args.repeat - 1):
+        again: dict[str, Any] = dict(record)
+        clock = _Clock(args.log)
+        begin = time.perf_counter()
+        stage(args, clock, again)
+        if again["digests"] != record["digests"]:
+            raise SystemExit("a warm run changed the stage digests")
+        warm.append(
+            {"seconds": clock.seconds, "wall": round(time.perf_counter() - begin, 3)}
+        )
+    record["warm"] = warm
+    from pyamplicol.loops.v2 import dag_input
+
     record["peak_rss_gb"] = round(_peak_gb(), 3)
     record["decodes"] = dag_input.decode_count()
     text = json.dumps(record, indent=2, sort_keys=True)

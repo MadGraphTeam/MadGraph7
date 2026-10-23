@@ -56,6 +56,14 @@ impl Hasher for FxHasher {
 }
 
 pub type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
+pub type FxSet<K> = std::collections::HashSet<K, BuildHasherDefault<FxHasher>>;
+
+/// The oracle's interaction deduplication key: vertex, inputs, result and
+/// colour weight (variant 0).
+type InteractionKey = (u32, u32, u32, u32, [u64; 2]);
+/// The compile-time evaluation group key: kernel class, canonical inputs,
+/// result particle and chirality, coupling.
+type GroupKey = (u32, u32, u32, u32, i8, [u64; 2]);
 
 /// An interning table: ids in first-seen order.
 pub struct Interner<T: Eq + Hash + Clone> {
@@ -394,9 +402,10 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
     // The oracle's `ordered_combination_labels` cache, keyed as it is
     // (sector, left word, right word, vertex), first value kept.
     let mut label_cache: FxMap<(i64, u32, u32, u32), Option<u32>> = FxMap::default();
-    let mut interaction_keys: std::collections::HashSet<(u32, u32, u32, u32, [u64; 2]), _> =
-        std::collections::HashSet::with_hasher(BuildHasherDefault::<FxHasher>::default());
-    let mut compile_groups: FxMap<(u32, u32, u32, u32, i8, [u64; 2]), i64> = FxMap::default();
+    let mut interaction_keys: FxSet<InteractionKey> = FxSet::default();
+    let mut compile_groups: FxMap<GroupKey, i64> = FxMap::default();
+    let mut combine_cache: FxMap<(u32, u32, u32, u32), Option<(u32, u32)>> = FxMap::default();
+    let mut flavour_cache: FxMap<(u32, u32, u32), u32> = FxMap::default();
     let mut candidates: Vec<u32> = Vec::new();
     for mask in recursive {
         let labels = mask_labels(mask);
@@ -420,8 +429,7 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                         candidates.extend_from_slice(ids);
                     }
                 }
-                for index in 0..candidates.len() {
-                    let right_id = candidates[index];
+                for &right_id in &candidates {
                     let right = dag.currents[right_id as usize];
                     for &row in input.vertices_accepting(left.key.particle, right.key.particle) {
                         let vertex = &input.vertices[row as usize];
@@ -485,57 +493,84 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                         if flows.is_empty() {
                             continue;
                         }
-                        let Some(state) = engine.combine(
-                            dag.colours.get(left.key.colour),
-                            dag.colours.get(right.key.colour),
-                            vertex,
-                            dag.words.get(ordered),
-                        ) else {
+                        // The merged colour state and open word, deterministic
+                        // in their inputs (cached; the oracle recomputes them).
+                        let combined_key = (left.key.colour, right.key.colour, row, ordered);
+                        let combined = match combine_cache.get(&combined_key) {
+                            Some(found) => *found,
+                            None => {
+                                let found = match engine.combine(
+                                    dag.colours.get(left.key.colour),
+                                    dag.colours.get(right.key.colour),
+                                    vertex,
+                                    dag.words.get(ordered),
+                                ) {
+                                    None => None,
+                                    Some(state) => {
+                                        // `CurrentIndex.__post_init__`: the open word
+                                        // holds every label outside the closed
+                                        // components.
+                                        let closed = state.closed_labels();
+                                        let word = if closed.is_empty() {
+                                            ordered
+                                        } else {
+                                            let open: Vec<u8> = dag
+                                                .words
+                                                .get(ordered)
+                                                .iter()
+                                                .copied()
+                                                .filter(|label| {
+                                                    closed.binary_search(label).is_err()
+                                                })
+                                                .collect();
+                                            let mut all: Vec<u8> =
+                                                open.iter().chain(closed.iter()).copied().collect();
+                                            all.sort_unstable();
+                                            if all != labels {
+                                                return invalid(
+                                                    "ordered_external_labels and the closed colour \
+                                                     components must contain the same labels as \
+                                                     external_labels",
+                                                );
+                                            }
+                                            dag.words.intern(open)
+                                        };
+                                        Some((dag.colours.intern(state), word))
+                                    }
+                                };
+                                combine_cache.insert(combined_key, found);
+                                found
+                            }
+                        };
+                        let Some((colour, word)) = combined else {
                             continue;
                         };
                         let result_particle = vertex.particles[2];
                         let result_pdg = vertex.pdgs[2];
-                        // `CurrentIndex.__post_init__`: the open word holds
-                        // every label outside the closed components.
-                        let closed = state.closed_labels();
-                        let word = if closed.is_empty() {
-                            ordered
-                        } else {
-                            let open: Vec<u8> = dag
-                                .words
-                                .get(ordered)
-                                .iter()
-                                .copied()
-                                .filter(|label| closed.binary_search(label).is_err())
-                                .collect();
-                            let mut all: Vec<u8> =
-                                open.iter().chain(closed.iter()).copied().collect();
-                            all.sort_unstable();
-                            if all != labels {
-                                return invalid(
-                                    "ordered_external_labels and the closed colour components \
-                                     must contain the same labels as external_labels",
-                                );
-                            }
-                            dag.words.intern(open)
-                        };
-                        let colour = dag.colours.intern(state);
-                        let flavour = match vertex.flavour {
-                            FlavourOp::Constant => dag.flavours.intern(vec![result_pdg]),
-                            FlavourOp::Left | FlavourOp::Right => {
-                                let source = if vertex.flavour == FlavourOp::Left {
-                                    left.key.flavour
-                                } else {
-                                    right.key.flavour
+                        let flavour_key = (row, left.key.flavour, right.key.flavour);
+                        let flavour = match flavour_cache.get(&flavour_key) {
+                            Some(flavour) => *flavour,
+                            None => {
+                                let flavour = match vertex.flavour {
+                                    FlavourOp::Constant => dag.flavours.intern(vec![result_pdg]),
+                                    FlavourOp::Left | FlavourOp::Right => {
+                                        let source = if vertex.flavour == FlavourOp::Left {
+                                            left.key.flavour
+                                        } else {
+                                            right.key.flavour
+                                        };
+                                        let flow = dag.flavours.get(source);
+                                        if flow.last() == Some(&result_pdg) {
+                                            source
+                                        } else {
+                                            let mut flow = flow.clone();
+                                            flow.push(result_pdg);
+                                            dag.flavours.intern(flow)
+                                        }
+                                    }
                                 };
-                                let flow = dag.flavours.get(source);
-                                if flow.last() == Some(&result_pdg) {
-                                    source
-                                } else {
-                                    let mut flow = flow.clone();
-                                    flow.push(result_pdg);
-                                    dag.flavours.intern(flow)
-                                }
+                                flavour_cache.insert(flavour_key, flavour);
+                                flavour
                             }
                         };
                         for flow in flows {

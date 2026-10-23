@@ -17,6 +17,11 @@ use std::collections::HashMap;
 
 pub const INPUT_SCHEMA: &str = "pyamplicol.loop-v2.dag-input/1";
 
+/// `(is fermion, orientation, requires the exterior sign)`.
+pub type SignContract = (bool, String, bool);
+/// `(chirality, spin state, coupling re bits, im bits, coupling identity)`.
+type RawFlow = (i8, i32, u64, u64, u32);
+
 #[derive(Deserialize)]
 struct RawLeg {
     label: u8,
@@ -40,7 +45,7 @@ struct RawParticle {
     quantum_numbers: Vec<(String, String)>,
     dimension: [i32; 3],
     allowed: [bool; 3],
-    sign_contract: Option<(bool, String, bool)>,
+    sign_contract: Option<SignContract>,
     sign_contract_error: Option<String>,
     block_rep: Option<i32>,
     block_fermion: Option<bool>,
@@ -61,7 +66,7 @@ struct RawVertex {
     factor: [u64; 2],
     swap: bool,
     exchange: Option<[u64; 2]>,
-    flows: Vec<(i8, i8, Vec<(i8, i32, u64, u64, u32)>)>,
+    flows: Vec<(i8, i8, Vec<RawFlow>)>,
     flavour: String,
 }
 
@@ -69,12 +74,8 @@ struct RawVertex {
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum RawBlockRule {
     Mask,
-    Particles {
-        particles: Vec<i64>,
-    },
-    Requests {
-        requests: Vec<(u64, i64, Vec<(String, i64)>)>,
-    },
+    Particles { particles: Vec<i64> },
+    Requests { requests: Vec<(u64, i64, Orders)> },
 }
 
 #[derive(Deserialize)]
@@ -130,7 +131,7 @@ pub struct Particle {
     pub allowed: [bool; 3],
     /// `FermionOrderingSign._particle_contract`: (is fermion, orientation,
     /// requires the exterior sign), or the error the oracle raises.
-    pub sign_contract: Result<(bool, String, bool), String>,
+    pub sign_contract: Result<SignContract, String>,
     /// `model.color_rep` / `model.is_fermion` as `_blocks` reads them.
     pub block_rep: Option<i32>,
     pub block_fermion: Option<bool>,

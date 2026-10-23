@@ -313,9 +313,9 @@ impl ColumnarDag {
     pub fn coloured_propagated(&self, tables: &BlockInput) -> Vec<i64> {
         let sources = self.sources_set();
         let mut out = BTreeSet::new();
-        for id in 0..self.current_count() {
+        for (id, source) in sources.iter().enumerate() {
             let species = &self.tables.species[self.c_species[id] as usize];
-            if sources[id] || species.auxiliary.is_some() {
+            if *source || species.auxiliary.is_some() {
                 continue;
             }
             if let Some((Some(rep), _)) = tables.particles.get(&species.pdg)

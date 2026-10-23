@@ -11,12 +11,12 @@
 //! inputs are the recurrence template's, so the merge sign is restated here
 //! on the DAG's own tables.
 
-use super::input::DagInput;
+use super::input::{DagInput, SignContract};
 use super::recursion::Dag;
 use super::{DagError, DagResult, invalid};
 
 /// `_fermion_input_orientation_sign`.
-fn orientation_sign(left: &(bool, String, bool), right: &(bool, String, bool)) -> DagResult<f64> {
+fn orientation_sign(left: &SignContract, right: &SignContract) -> DagResult<f64> {
     let (left_fermion, left_orientation, left_owned) = left;
     let (right_fermion, right_orientation, right_owned) = right;
     if !(left_fermion & right_fermion) {
@@ -56,7 +56,7 @@ pub fn apply_colour_flow_signs(input: &DagInput, dag: &mut Dag) -> DagResult<()>
     if !active {
         return Ok(());
     }
-    let contract = |particle: u32| -> DagResult<&(bool, String, bool)> {
+    let contract = |particle: u32| -> DagResult<&SignContract> {
         input.particles[particle as usize]
             .sign_contract
             .as_ref()
