@@ -1,17 +1,19 @@
 # SPDX-License-Identifier: 0BSD
 """Native per-point trees and Born of the v2 executor (WP3.1 I3/I4 part).
 
-``NativeExecutor(inputs="native")`` exports the slice's tree stage program
-and its Born root closure (``loops/v2/native_trees.py``) and forms every
-point's block rows and Born components in ``rusticol-core``
-(``loop_v2::trees``), without Python per point. Checks against the slice's
-Python inputs (``inputs="python"``, the same exported plan):
+``NativeExecutor(inputs="native")`` exports the slice's tree program (the
+interaction program by default, the stage lane on request) and its Born root
+closure (``loops/v2/native_trees.py``) and forms every point's block rows and
+Born components in ``rusticol-core`` (``loop_v2::trees``), without Python per
+point. Checks against the slice's Python inputs (``inputs="python"``, the
+same exported plan):
 
 * block rows and Born components per point in binary64;
 * the bare virtual per sector and |A0|^2 per squared Born order, in binary64
-  and in double-double, on processes with fixed parameters, an
-  electroweak-QCD interference sector, massive external tops and the leading
-  colour accuracy (no native Born metric: the Born is absent);
+  and in double-double, on processes with fixed parameters, massive external
+  tops, and leading and next-to-leading colour (the Born metric per Born
+  component);
+* the stage lane in small chunks;
 * per-point renormalisation scales in one batch, and massive external
   spinors in double-double with a mass that is no binary64 number (the
   executor takes exact masses and rounds them to its carrier).
@@ -126,21 +128,25 @@ def test_native_rows_and_born_components_equal_the_python_inputs(executors, name
 
 
 @pytest.mark.loop_physics
-def test_native_rows_in_small_stage_chunks_equal_the_python_inputs(
+def test_native_stage_lane_in_small_chunks_equals_the_python_inputs(
     executors, monkeypatch
 ):
-    """Stages compiled in chunks of whole currents (``CHUNK_OUTPUTS``; every
-    stage of u u~ > d d~ g in several chunks) give the same rows, in
-    binary64 and DoubleFloat."""
+    """The stage lane (``TREE_LANE = "stages"``), its stages compiled in
+    chunks of whole currents (``CHUNK_OUTPUTS``; every stage of u u~ > d d~ g
+    in several chunks), gives the same rows as the Python inputs (and so as
+    the interaction lane of the other tests), in binary64 and DoubleFloat."""
 
     from pyamplicol.loops.v2 import native_trees
 
-    native, python = executors("uux_ddxg")
+    _native, python = executors("uux_ddxg")
     points, scales = _points(PROCESSES["uux_ddxg"][3])
     points, scales = points[:1], scales[:1]
+    monkeypatch.setattr(native_trees, "TREE_LANE", "stages")
+    whole = NativeExecutor(python.slice, forward=False, inputs="native")
     monkeypatch.setattr(native_trees, "CHUNK_OUTPUTS", 48)
     chunked = NativeExecutor(python.slice, forward=False, inputs="native")
-    assert len(chunked.exported.trees.stages) > 2 * len(native.exported.trees.stages)
+    assert chunked.exported.trees.program["interactions"] is None
+    assert len(chunked.exported.trees.stages) > 2 * len(whole.exported.trees.stages)
     rows, born, _amplitudes, _squared = chunked.native_inputs(
         points, scales, PARAMETERS
     )
