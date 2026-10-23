@@ -12,9 +12,10 @@ processes (``loops/v2/artifact.py``; design §12).
 from __future__ import annotations
 
 import cmath
+import json
 import os
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from decimal import Decimal
 from pathlib import Path
@@ -1074,13 +1075,14 @@ _V2_CONTRACTION = {
 
 
 def _v2_blockers(backend) -> tuple[str, ...]:
-    """Requests the v2 engine does not cover yet; loop.engine='legacy' does.
+    """Configurations the v2 engine does not cover; loop.engine='legacy' does.
 
-    Several correction orders are not refused here: ``_v2_request`` derives
-    one exact loop order per correction, and the generator admits them or
-    fails closed with its reason (in the SM, QED and electroweak corrections
-    to quark processes stop at the counterterm admission or at chiral
-    loop-fermion vertices: WP3.2)."""
+    Requests are refused per process, before any loop generation, by
+    ``_v2_request`` (no Born amplitude, undeclared corrections, coloured
+    widths in the Born currents, an unidentified scale parameter) and
+    ``loops.v2.artifact.prepare_request_model`` (the model preparation);
+    the generator fails closed with its own reason on what it does not
+    admit (e.g. chiral loop-fermion vertices, WP3.2)."""
     run = backend._run_config
     reasons = []
     if run.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT:
@@ -1090,13 +1092,8 @@ def _v2_blockers(backend) -> tuple[str, ...]:
             "loop.engine='v2' (use 'auto' or 'direct')"
         )
     preparation = run.loop.preparation
-    if preparation is not None and (
-        preparation.compatibility is not None or preparation.covariant_multiplets
-    ):
-        reasons.append(
-            "v2 virtuals take no loop.preparation compatibility profile or "
-            "covariant multiplets"
-        )
+    if preparation is not None and preparation.covariant_multiplets:
+        reasons.append("v2 virtuals take no loop.preparation covariant multiplets")
     return tuple(reasons)
 
 
@@ -1108,22 +1105,33 @@ def _blocked(backend, processes) -> tuple[str, ...]:
 
 
 def v2_loop_orders(
-    limits: Mapping[str, int], corrections: Sequence[str]
+    born_orders: Sequence[Sequence[tuple[str, int]]],
+    corrections: Sequence[str],
+    names: Iterable[str] = (),
 ) -> dict[str, int] | tuple[dict[str, int], ...]:
-    """The exact loop orders of a v2 request: per correction, the Born
-    coupling-order limits raised by two powers of that correction (one loop
-    order, a mapping, for one correction; a sequence for several, e.g. QCD
-    and QED corrections to the same Born order). They are the loop
-    amplitudes of the Born amplitude order at the limits; a process with
-    several Born amplitude orders is refused after generation
-    (``_require_one_born_order``)."""
+    """The exact loop orders of a v2 request: one per Born amplitude order
+    and correction, the Born order raised by two powers of that correction
+    (a mapping for one, else a sequence in Born-order, then correction
+    order: e.g. QCD corrections to QCD and photon Born currents, or QCD and
+    QED corrections to one Born order). Every mapping names ``names``, the
+    corrections and the Born orders' couplings (zero powers kept)."""
 
-    orders = tuple(
-        {**dict(limits), name: limits.get(name, 0) + 2} for name in corrections
+    keys = sorted(
+        {*names, *corrections, *(name for order in born_orders for name, _ in order)}
     )
+    orders: list[dict[str, int]] = []
+    for born in born_orders:
+        for correction in corrections:
+            loop = dict.fromkeys(keys, 0)
+            loop.update(dict(born))
+            loop[correction] += 2
+            if loop not in orders:
+                orders.append(loop)
     if not orders:
-        raise GenerationError("a virtual needs at least one correction order")
-    return orders[0] if len(orders) == 1 else orders
+        raise GenerationError(
+            "a virtual needs at least one Born amplitude order and one correction"
+        )
+    return orders[0] if len(orders) == 1 else tuple(orders)
 
 
 def _require_declared_corrections(compiled, corrections) -> None:
@@ -1145,20 +1153,61 @@ def _require_declared_corrections(compiled, corrections) -> None:
         )
 
 
+def _v2_scale_parameter(compiled, fixed: Mapping[str, str]) -> str:
+    """The model's renormalisation-scale parameter: the adjustable external
+    parameter at UFO/SLHA code (LOOP, 1), as in NLOCT models and MG5_aMC's
+    loop_sm, else the only adjustable external parameter of block LOOP
+    (MG5_aMC's loop_qcd_qed_sm keeps MU_R at LOOP 666)."""
+
+    externals = [
+        record
+        for record in compiled.ir.parameters
+        if record.nature == "external"
+        and (record.lhablock or "").upper() == "LOOP"
+        and record.name not in fixed
+    ]
+    found = [record.name for record in externals if tuple(record.lhacode) == (1,)]
+    if len(found) != 1:
+        found = [record.name for record in externals]
+    if len(found) != 1:
+        raise GenerationError(
+            "the model's renormalisation-scale parameter is not identified: v2 "
+            "takes the adjustable external parameter at UFO/SLHA code (LOOP, 1) "
+            "or the only one of block LOOP, and this model has "
+            f"{sorted(found) or 'none'} there"
+        )
+    return str(found[0])
+
+
 def _loop_orders_record(request) -> object:
     orders = [dict(orders) for orders in request.exact_loop_orders]
     return orders[0] if len(orders) == 1 else orders
 
 
 def _v2_request(backend, context, index):
-    """The slice request of one expanded process (``loops.v2.assemble``):
-    the Born bounds are the process's coupling-order limits, the loop orders
-    ``v2_loop_orders``."""
+    """The slice request of one expanded process (``loops.v2.assemble``),
+    checked before any loop generation.
+
+    The Born bounds are the process's coupling-order limits. The loop orders
+    follow its Born amplitude orders (``v2_loop_orders``), read from the Born
+    DAG (``artifact.born_amplitude_orders``), which must exist and propagate
+    no coloured particle with a width (``artifact.require_zero_coloured_widths``;
+    the slice re-checks its loop-side tree currents after generation). The
+    renormalisation-scale parameter is resolved here
+    (``_v2_scale_parameter``)."""
+    from pyamplicol.loops.v2.artifact import (
+        born_amplitude_orders,
+        require_zero_coloured_widths,
+    )
     from pyamplicol.loops.v2.assemble import SliceRequest
 
     run = backend._run_config
+    compiled = context.resolved.compiled
     limits = context.limits[index]
-    _require_declared_corrections(context.resolved.compiled, context.corrections)
+    entry = context.expanded[index]
+    process = entry.process_ir.process
+    label = f"{entry.request.name} ({entry.request.expression})"
+    _require_declared_corrections(compiled, context.corrections)
     fixed = {}
     for name, (real, imaginary) in context.preparation.fixed_parameters.items():
         if Decimal(imaginary) != 0:
@@ -1166,20 +1215,37 @@ def _v2_request(backend, context, index):
                 f"v2 virtuals take real fixed parameters; {name!r} is complex"
             )
         fixed[name] = str(real)
+    born, dag = born_amplitude_orders(compiled, process, limits)
+    if not born:
+        raise GenerationError(
+            f"{label} has no Born amplitude within the coupling-order limits "
+            f"{dict(sorted(limits.items()))}: v2 virtuals interfere one-loop and "
+            "Born amplitudes (loop-induced processes are not covered)"
+        )
+    require_zero_coloured_widths(label, (dag,), compiled, fixed)
     accuracy = run.color.accuracy
     return SliceRequest(
-        context.expanded[index].process_ir.process,
+        process,
         dict(limits),
-        v2_loop_orders(limits, context.corrections),
+        v2_loop_orders(born, context.corrections, limits),
         corrections=context.corrections,
         fixed_parameters=fixed,
         accuracy=accuracy,
         colour_declaration=context.color_declaration if accuracy != "full" else None,
+        scale_parameter=_v2_scale_parameter(compiled, fixed),
         colour_contraction=_V2_CONTRACTION[run.color.contraction],
+        compatibility=context.preparation.compatibility,
     )
 
 
 def _plan_v2(backend, processes, blockers, *, model=None):
+    """The v2 dry run: per process the slice request (``_v2_request``) and
+    the model preparation of the slice (``prepare_request_model``), whose
+    refusals are reported. Loop admission (counterterm sites, fermion signs
+    of loop vertices, the loop-side tree currents) is checked only by the
+    generation (``loop_admission_checked`` is False)."""
+    from pyamplicol.loops.v2.artifact import prepare_request_model, request_record
+
     blockers = blockers + _v2_blockers(backend)
     context, coverage = None, []
     if not blockers:
@@ -1194,8 +1260,15 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                 ),
                 prepare_models=False,
             )
+            prepared = set()
             for index, entry in enumerate(context.expanded):
                 request = _v2_request(backend, context, index)
+                recipe = request_record(request)
+                del recipe["process"]
+                key = json.dumps(recipe, sort_keys=True)
+                if key not in prepared:
+                    prepare_request_model(context.resolved.compiled, request)
+                    prepared.add(key)
                 coverage.append(
                     {
                         "key": entry.request.name,
@@ -1205,7 +1278,9 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                         "loop_orders": _loop_orders_record(request),
                         "corrections": list(request.corrections),
                         "color_accuracy": request.accuracy,
+                        "scale_parameter": request.scale_parameter,
                         "numerator_compilation_deferred": True,
+                        "loop_admission_checked": False,
                     }
                 )
         except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
@@ -1224,27 +1299,6 @@ def _plan_v2(backend, processes, blockers, *, model=None):
         runtime_capability=LOOP_V2_RUNTIME_CAPABILITY,
     )
     return replace(result, estimated_coverage=estimated)
-
-
-def _require_one_born_order(name, process):
-    """Refuse mixed Born coupling orders (``v2_loop_orders``).
-
-    The service derives the exact loop orders from the Born coupling-order
-    limits, i.e. for the Born amplitude order at the limits; deriving one
-    loop order per Born amplitude order needs the generator's Born catalogue,
-    which exists only once the slice is built, so the refusal follows the
-    generation. In the SM such requests also need the v2 electroweak loop
-    admission (chiral loop-fermion vertices, WP3.2)."""
-    orders = tuple(process.slice.blocks.born_orders)
-    if len(orders) != 1:
-        raise GenerationError(
-            f"{name!r} has several Born amplitude orders {orders}: v2 virtuals "
-            "take one Born amplitude order (the service derives the loop orders "
-            "from the Born coupling-order limits, the loop amplitudes of the "
-            "Born order at those limits only; in the SM the QCD x electroweak "
-            "interferences also need the v2 electroweak loop admission, WP3.2); "
-            "loop.engine='legacy' remains available"
-        )
 
 
 def _v2_member(generated, request, expression):
@@ -1290,7 +1344,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
         initial_process_groups,
     )
     from pyamplicol.loops.native import load_loop_native
-    from pyamplicol.loops.v2.artifact import generate_process, write_plan
+    from pyamplicol.loops.v2.artifact import generate_process, retained, write_plan
 
     from .process_grouping import GroupingBasis, GroupMember, LegMapping
 
@@ -1320,7 +1374,10 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
         native = load_loop_native()
         compiled = context.resolved.compiled
         validation = backend._generation_config.validation
-        with TemporaryDirectory(prefix="pyamplicol-loop-v2-") as temporary:
+        with (
+            retained(len(context.expanded)),
+            TemporaryDirectory(prefix="pyamplicol-loop-v2-") as temporary,
+        ):
             artifacts, generated, members = [], {}, {}
             with reporter.phase(
                 "loop-compile",
@@ -1340,7 +1397,6 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         phase.update(index + 1, message=f"{name} (flavour member)")
                         continue
                     process = generate_process(compiled, request, native, correlators)
-                    _require_one_born_order(name, process)
                     generated[name] = process
                     path = Path(temporary) / f"{name}.pacbin"
                     write_plan(process.plan_json, path)

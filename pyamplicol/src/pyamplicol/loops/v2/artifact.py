@@ -67,7 +67,8 @@ import math
 import time
 import zlib
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal
@@ -109,10 +110,13 @@ from .families import Orders, add_orders
 PLAN_MEMBER = "schedule/loop-plan-v4.json.zlib"
 ENGINE = "v2"
 # Generation objects of recently generated or loaded processes, keyed by the
-# compiled-model payload digest, the request record and the plan digest.
+# compiled-model payload digest, the request record and the plan digest. A
+# generation run retains all of its processes until its staged validation
+# loaded them (``retained``).
 _SLICE_CACHE_SIZE = 4
 _slices: OrderedDict[tuple[str, str, str], tuple[Any, Any]] = OrderedDict()
 _slices_lock = RLock()
+_retained = [0]
 
 
 # --------------------------------------------------------------------- request
@@ -209,6 +213,150 @@ def model_digest(payload: Mapping[str, Any]) -> str:
 
     text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(text.encode()).hexdigest()
+
+
+# --------------------------------------------------------------------- preflight
+
+
+def born_amplitude_orders(
+    compiled: Any,
+    process: str,
+    bounds: Mapping[str, int],
+    ignored_particle_ids: Sequence[int] = (),
+) -> tuple[tuple[Orders, ...], Any]:
+    """The Born amplitude orders of ``process`` within the coupling-order
+    ``bounds`` and the Born DAG they are read from, before any loop
+    generation: one tree DAG, compiled as ``blocks.build_tree_blocks``
+    compiles the Born of a slice."""
+
+    from pyamplicol.generation.dag_compiler import compile_generic_dag
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.processes.model import build_model_process_ir
+
+    from .blocks import _born_roots
+
+    model = CompiledUFOModel(compiled)
+    dag = compile_generic_dag(
+        build_model_process_ir(process, compiled.ir, color_accuracy="full"),
+        model=model,
+        max_coupling_orders=dict(bounds),
+        ignored_particle_ids=tuple(ignored_particle_ids),
+    )
+    orders = {root.coupling_orders for root in _born_roots(dag, model)}
+    return tuple(sorted(orders)), dag
+
+
+def coloured_widths(
+    dags: Sequence[Any], compiled: Any, fixed_parameters: Mapping[str, str]
+) -> dict[str, str]:
+    """``{particle: width parameter}`` of the coloured particles that a tree
+    current of ``dags`` propagates with a width that is not zero: neither
+    ``ZERO``, a compile-time zero nor fixed to zero by ``fixed_parameters``.
+    Source currents (on-shell external legs) and auxiliary currents do not
+    count (WP2.2's ``blocks.ward_breaking_fields`` criterion, which also
+    counts model-supplied propagators)."""
+
+    from pyamplicol.models.compiler_kernels import _is_compile_time_zero_parameter
+
+    particles = {int(record.pdg_code): record for record in compiled.ir.particles}
+    parameters = {record.name: record for record in compiled.ir.parameters}
+    out: dict[str, str] = {}
+    for dag in dags:
+        sources = set(dag.sources)
+        for current_id, current in enumerate(dag.currents):
+            index = current.index
+            if current_id in sources or index.auxiliary_kind is not None:
+                continue
+            record = particles.get(int(index.particle_id))
+            if record is None or abs(int(record.color)) == 1:
+                continue
+            width = str(record.width)
+            if _is_compile_time_zero_parameter(width, parameters):
+                continue
+            fixed = fixed_parameters.get(width)
+            if fixed is not None and Decimal(str(fixed)) == 0:
+                continue
+            out[str(record.name)] = width
+    return out
+
+
+def require_zero_coloured_widths(
+    process: str,
+    dags: Sequence[Any],
+    compiled: Any,
+    fixed_parameters: Mapping[str, str],
+) -> None:
+    """Refuse a request whose tree currents propagate a coloured particle
+    with a width (``coloured_widths``).
+
+    v2 virtuals are real on-shell: loop propagators carry no width and the
+    model counterterms renormalise the real mass, so a width in the tree
+    currents (Born and the blocks feeding the loop) would mix two schemes;
+    for g g > t t~ at loop_sm's default top width the single pole then no
+    longer follows the colour-correlated Borns (O(Gamma), not O(Gamma^2)).
+    Fixing the width to zero is the legacy engine's convention (its
+    propagators carry no width); a resonant coloured particle needs the
+    complex-mass scheme (WP3.2)."""
+
+    from pyamplicol.api.errors import GenerationError
+
+    widths = coloured_widths(dags, compiled, fixed_parameters)
+    if not widths:
+        return
+    named = ", ".join(f"{name} ({width})" for name, width in sorted(widths.items()))
+    fixed = ", ".join(f'{width} = "0"' for width in sorted(set(widths.values())))
+    raise GenerationError(
+        f"{process}: tree currents propagate coloured particles whose width "
+        f"is not fixed to zero: {named}. v2 virtuals are real on-shell (loop "
+        "propagators carry no width and the model counterterms renormalise "
+        "the real mass), so such a width makes the Born, its colour "
+        "correlations and the virtual inconsistent; fix it to zero in "
+        f"[loop.preparation] fixed_parameters ({fixed}), the legacy engine's "
+        "convention, or use loop.engine='legacy'. A resonant coloured "
+        "particle needs the complex-mass scheme (WP3.2)"
+    )
+
+
+def prepare_request_model(compiled: Any, request: Any) -> Any:
+    """The model preparation of ``LoopSlice.generate`` for ``request`` alone,
+    without tree, family or loop generation: source-colour fixed parameters,
+    the scale and alpha_s parameters, ``prepare_loop_request_model`` and,
+    with a colour declaration, ``prepare_declared_source_color``. A dry run
+    (``Generator.plan``) reports the refusals of this stage."""
+
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+
+    from .assemble import _LHA_ALPHA_S, _LHA_SCALE, _external_parameter
+
+    fixed: dict[str, Any] = dict(request.fixed_parameters)
+    declaration = request.colour_declaration
+    if declaration is not None:
+        from pyamplicol.loops.source_color_declaration import (
+            source_color_fixed_parameters,
+        )
+
+        fixed = source_color_fixed_parameters(
+            compiled.raw_loop_model, declaration, fixed_parameters=fixed
+        )
+    _external_parameter(compiled, request.scale_parameter, _LHA_SCALE, fixed)
+    if set(request.corrections) == {"QCD"}:
+        _external_parameter(compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed)
+    prepared = prepare_loop_request_model(
+        compiled,
+        born_order_bounds=dict(request.born_orders),
+        loop_order_bounds=request.loop_order_bounds,
+        fixed_parameters=fixed,
+        compatibility=request.compatibility,
+    )
+    if declaration is not None:
+        from pyamplicol.loops.source_color_declaration import (
+            prepare_declared_source_color,
+        )
+
+        prepared, _continuation = prepare_declared_source_color(
+            prepared, declaration, scheme=declaration.scheme
+        )
+    return prepared
 
 
 # --------------------------------------------------------------------- plan file
@@ -364,6 +512,13 @@ def generate_process(
     # Schedule F (the forward oracle) is not stored: the runtime dresses by
     # schedule B, and F's section is over half of the plan (gg -> gggg: 52 of
     # 98 MB of JSON).
+    blocks = observables.slice.blocks
+    require_zero_coloured_widths(
+        repr(request.process),
+        (blocks.blocks_dag, blocks.born_dag),
+        observables.slice.compiled,
+        request.fixed_parameters,
+    )
     exported = export_plan(observables.slice, forward=False)
     resolved = CorrelatorConfig(
         tuple(observables.histories), tuple(observables.spin_classes)
@@ -379,8 +534,30 @@ def _remember(model: str, generated: GeneratedProcess) -> None:
     with _slices_lock:
         _slices[key] = (generated.observables, generated.exported)
         _slices.move_to_end(key)
-        while len(_slices) > _SLICE_CACHE_SIZE:
-            _slices.popitem(last=False)
+        _trim()
+
+
+def _trim() -> None:
+    while len(_slices) > _SLICE_CACHE_SIZE + _retained[0]:
+        _slices.popitem(last=False)
+
+
+@contextmanager
+def retained(count: int) -> Iterator[None]:
+    """Keep ``count`` more generated processes in the generation cache while
+    the block runs: a generation run holds every process it generated, and
+    its staged validation loads them through ``Runtime.load``, which then
+    reuses them instead of regenerating the processes evicted beyond
+    ``_SLICE_CACHE_SIZE``."""
+
+    with _slices_lock:
+        _retained[0] += count
+    try:
+        yield
+    finally:
+        with _slices_lock:
+            _retained[0] -= count
+            _trim()
 
 
 def _recall(model: str, record: Mapping[str, Any], plan: str) -> Any:
@@ -596,7 +773,7 @@ class V2VirtualRuntime:
         self._member = member
         self._group_member = group_member
         self._executor = NativeExecutor(observables.slice, exported=exported)
-        self._parameters = _real_parameters(model_parameters)
+        self._parameters = self._checked_parameters(model_parameters)
         self._observables = V2ObservablesRuntime(
             observables,
             member=member,
@@ -994,8 +1171,37 @@ class V2VirtualRuntime:
     def set_spin_correlation_vectors(self, vectors: Any) -> None:
         self._observables.set_spin_correlation_vectors(vectors)
 
-    def set_model_parameters(self, mapping: ModelParameters) -> None:
+    def _checked_parameters(self, mapping: ModelParameters | None) -> dict[str, str]:
+        """Real values of adjustable external model parameters. Unknown names,
+        the renormalisation scale (``mu_r2`` sets it per point) and a value
+        other than the one a parameter was fixed to at generation are
+        refused: the evaluation would ignore them."""
+
         parameters = _real_parameters(mapping)
+        slice_ = self._generated[0].slice
+        externals = {
+            record.name
+            for record in slice_.compiled.ir.parameters
+            if record.nature == "external"
+        }
+        fixed = slice_.request.fixed_parameters
+        for name, value in parameters.items():
+            if name not in externals:
+                raise ValueError(f"unknown external parameter {name!r}")
+            if name == slice_.scale_parameter:
+                raise ValueError(
+                    f"{name!r} is the renormalisation scale: pass it per point as mu_r2"
+                )
+            if name in fixed and Decimal(value) != Decimal(fixed[name]):
+                raise ValueError(
+                    f"parameter {name!r} was fixed to {fixed[name]} at generation "
+                    "([loop.preparation] fixed_parameters); regenerate the "
+                    "artifact to change it"
+                )
+        return parameters
+
+    def set_model_parameters(self, mapping: ModelParameters) -> None:
+        parameters = self._checked_parameters(mapping)
         with self._lock:
             self._parameters.update(parameters)
             self._observables.set_model_parameters(parameters)

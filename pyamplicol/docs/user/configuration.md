@@ -544,27 +544,62 @@ legacy engine. The CLI spells these `--loop-engine v2`, `--no-poles`,
 `--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT` and
 `--stability-reduction-direction`.
 
-Current v2 scope: one Born coupling order per process and the corrections the
-model expands perturbatively (`process.loop_coupling_orders`; each correction
-adds its own exact loop order; QED corrections to quark processes are refused
-at counterterm admission until the electroweak loop admission exists),
-model-supplied R2, full, NLC or LC colour (LC/NLC with the model's
-source colour declaration), double, double-double and arbitrary arithmetic,
-inclusive results per squared coupling order, colour and spin correlations
-declared at generation (`correlators`), helicity-resolved output (also per Born
-colour component at LC; one contracted component at NLC and full colour), and
-exact flavour grouping (`process.flavor_blind`: an identity-port member such as
-`s s~ > g g` of `d d~ > g g` is served by its representative). `poles` and
-`[evaluation.stability_checks]` apply to correlated and resolved evaluations
-too (resolved estimates are per helicity row and colour component). Mixed Born
-orders, electroweak bosons in the final state with QCD corrections (such as
-`u u~ > e- e+ g g`), `color.contraction = "symmetric-group-fft"` and the
-standalone SDK bundle still require `engine = "legacy"`; such v2 requests are
-refused with the reason. Loading a v2
-process rebuilds its per-point tree inputs from the artifact, which takes about
-the process's generation time, until those inputs run natively. A v2 artifact
-holds no absolute path of the generating host and can be copied to another
-location or machine.
+Current v2 scope: model-supplied R2; full, NLC or LC colour (LC/NLC with the
+model's source colour declaration); double, double-double and arbitrary
+arithmetic; inclusive results per squared coupling order; colour and spin
+correlations declared at generation (`correlators`); helicity-resolved output
+(also per Born colour component at LC; one contracted component at NLC and full
+colour); exact flavour grouping (`process.flavor_blind`: an identity-port member
+such as `s s~ > g g` of `d d~ > g g` is served by its representative). `poles`
+and `[evaluation.stability_checks]` apply to correlated and resolved evaluations
+too (resolved estimates are per helicity row and colour component).
+
+Coupling orders. The loop orders follow the process's Born amplitude orders:
+one loop amplitude per Born amplitude order (within the process's coupling-order
+limits) and correction in `process.loop_coupling_orders`, so mixed Born orders
+(e.g. `u u~ > d d~` with QCD and QED Born amplitudes) and several corrections are
+generated together, each squared coupling order a separate partial result. A
+correction the model does not expand perturbatively is refused. What the engine
+does not admit yet fails at generation with the reason, for example:
+
+- Z or W couplings on a quark line inside a QCD loop (`u u~ > d d~` with mixed
+  Born orders in the SM: "not a pure vector coupling; its sign needs the
+  electroweak oracles"), and electroweak bosons in the final state with QCD
+  corrections (`u u~ > e- e+ g g`);
+- QED corrections to quark processes (`u u~ > d d~` with QCD and QED corrections:
+  "divergent witnesses without a counterterm rule or certified zero").
+
+MG5_aMC's `loop_qcd_qed_sm` needs
+`[loop.preparation] compatibility = "gmu_particle_anti"` with either engine (its
+`G-` loses the Goldstone flag of `G+`: "antiparticle metadata mismatch for G+:
+goldstoneboson"); `loop.preparation.covariant_multiplets` and
+`color.contraction = "symmetric-group-fft"` need `engine = "legacy"`. A dry run
+(`generate --dry-run`) reports what the model preparation refuses; loop
+admission is checked by the generation only.
+
+Widths. v2 virtuals use real on-shell masses: loop propagators carry no width and
+the model counterterms renormalise the real mass. A coloured particle that a
+tree current propagates (the top in `g g > t t~`) must therefore have a zero
+width, fixed in the card, otherwise generation and the dry run refuse the
+request:
+
+```toml
+[loop.preparation]
+fixed_parameters = {MB = "0", WT = "0"}
+```
+
+The legacy engine takes every propagator without width; a resonant coloured
+particle needs the complex-mass scheme (not available yet). An evaluation refuses
+model parameters the run would ignore: unknown names, the renormalisation-scale
+parameter (`mu_r2` sets it per point) and a value other than the one a parameter
+was fixed to at generation. The renormalisation-scale parameter is the external
+parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
+
+Loading a v2 process rebuilds its per-point tree inputs from the artifact, which
+takes about the process's generation time, until those inputs run natively; the
+standalone SDK bundle needs `engine = "legacy"` until then. A v2 artifact holds
+no absolute path of the generating host and can be copied to another location
+or machine.
 
 To evaluate numerical colour/spin requests, set
 `evaluation.correlated_requests = "data/requests.json"`. The file maps output

@@ -981,6 +981,10 @@ class SliceRequest:
     # it. "fft" requires it: it refuses LC and a table without such orbits at
     # generation, and an evaluation in any other carrier when it dresses.
     colour_contraction: ContractionPolicy = "auto"
+    # An explicit structural source-compatibility profile of the model
+    # preparation (``loop.preparation.compatibility``; e.g. "gmu_particle_anti"
+    # restores the Goldstone flag MG5_aMC's loop_qcd_qed_sm loses on G-).
+    compatibility: str | None = None
 
     @property
     def exact_loop_orders(self) -> tuple[Mapping[str, int], ...]:
@@ -1090,6 +1094,7 @@ class LoopSlice:
             born_order_bounds=dict(request.born_orders),
             loop_order_bounds=request.loop_order_bounds,
             fixed_parameters=fixed,
+            compatibility=request.compatibility,
         )
         continuation = None
         if declaration is not None:
