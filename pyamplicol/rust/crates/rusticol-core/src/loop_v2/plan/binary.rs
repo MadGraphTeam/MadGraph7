@@ -166,9 +166,11 @@ columns! {
     MonomialPower,
     // contents
     ContentLen, ContentDIn, ContentDOut, ContentDegree, ContentRows, ContentMask,
-    RowHelicityRef, RowHelicityLen, RowHelicityLegs, RowHelicity, FusedRef, FusedLen, Fused0, Fused1, Fused2, Fused3,
+    RowHelicityRef, RowHelicityLen, RowHelicityLegs, RowHelicity, FusedRef, FusedLen, Fused0,
+    Fused1, Fused2, Fused3,
     Fused4, Fused5, TermLen, SlotLen, Slot, DimensionRef, DimensionLen, Dimension,
-    BindingLen, BindingKernel, BindingInputRef, BindingInputLen, BindingInputKind, BindingInputA, BindingInputB,
+    BindingLen, BindingKernel, BindingInputRef, BindingInputLen, BindingInputKind, BindingInputA,
+    BindingInputB,
     BindingEntryRef, BindingEntryLen, BindingEntry, TermVertex, SplitLen, SplitKernel,
     SplitInputRef, SplitInputLen, SplitInputKind, SplitInputA, SplitInputB, SplitEntryRef,
     SplitEntryLen, SplitEntryA, SplitEntryB,
