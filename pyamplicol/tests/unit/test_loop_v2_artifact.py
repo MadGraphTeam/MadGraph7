@@ -43,10 +43,22 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 * the artifact holds no absolute path, user or host name (relocatable,
   requirements addendum G) and loads from a copy at another path with
   bitwise-identical binary64 values;
+* the loop orders follow the Born amplitude orders, one per Born order and
+  correction: mixed Born orders (u u~ > d d~ with QCD and photon Born
+  amplitudes) equal MadLoop's split-order control per squared order, and in
+  the SM fail closed on the chiral Z loop vertex; on MG5_aMC's
+  loop_qcd_qed_sm (scale parameter at LOOP 666, compatibility profile) the
+  dry run reports the model preparation's refusal, QCD+QED corrections to
+  u u~ > d d~ stop in counterterm admission and g g > g g with QCD and QED
+  corrections equals legacy (nightly);
+* a coloured particle with a width in a tree current (g g > t t~ at the
+  default top width) is refused with the fix; with the width fixed to zero
+  g g > t t~ equals the legacy engine at the model's default parameters;
+  evaluations refuse parameters they would ignore;
 * requests v2 does not cover yet fail with the reason and leave
   ``loop.engine = "legacy"`` (the default) selectable; the slice request
-  records every ``SliceRequest`` field; several corrections take one exact
-  loop order each;
+  records every ``SliceRequest`` field; a generation run's staged
+  validation reuses its processes; O1 loads regenerate from the record;
 * a six-gluon plan v4 artifact stays below 20 MB (nightly).
 """
 
@@ -190,6 +202,7 @@ def _assert_inclusive_o1(artifact, name: str, process: str, arbitrary=True) -> N
 
     fixture = _fixture(name)
     results = fixture["results"]["arbitrary-200"]
+    _forget_generation()
     runtime = Runtime.load(
         artifact, process=process, model_parameters=_parameters(fixture)
     )
@@ -369,6 +382,7 @@ def test_slice_request_records_round_trip():
         alpha_s_parameter="aS",
         compress_colour=False,
         colour_contraction="direct",
+        compatibility="gmu_particle_anti",
     )
     default = SliceRequest("g g > g g", {"QCD": 2}, {"QCD": 4})
     for item in fields(SliceRequest):
@@ -390,40 +404,94 @@ def test_slice_request_records_round_trip():
 
 
 @pytest.mark.loop_fast
-def test_corrections_take_one_loop_order_each_and_one_born_order():
-    """The service derives one exact loop order per correction (the Born
-    limits raised by two powers of that correction) and refuses a process
-    with several Born amplitude orders with the reason."""
+def test_loop_orders_follow_the_born_amplitude_orders():
+    """One exact loop order per Born amplitude order and correction (not the
+    Born coupling-order limits raised by two, which for mixed or loose limits
+    is the loop amplitude of no Born order); the scale parameter by its
+    UFO/SLHA code (LOOP, 1), else the only one of block LOOP."""
 
     from types import SimpleNamespace
 
-    from pyamplicol.generation.loop_service import (
-        _require_one_born_order,
-        v2_loop_orders,
-    )
+    from pyamplicol.generation.loop_service import _v2_scale_parameter, v2_loop_orders
 
+    qcd, qed = (("QCD", 2),), (("QED", 2),)
     limits = {"QCD": 2, "QED": 0}
-    assert v2_loop_orders(limits, ("QCD",)) == {"QCD": 4, "QED": 0}
-    assert v2_loop_orders(limits, ("QCD", "QED")) == (
+    assert v2_loop_orders((qcd,), ("QCD",), limits) == {"QCD": 4, "QED": 0}
+    assert v2_loop_orders((qcd,), ("QCD", "QED"), limits) == (
         {"QCD": 4, "QED": 0},
         {"QCD": 2, "QED": 2},
     )
-    with pytest.raises(GenerationError):
-        v2_loop_orders(limits, ())
+    mixed = {"QCD": 2, "QED": 2}
+    assert v2_loop_orders((qcd, qed), ("QCD",), mixed) == (
+        {"QCD": 4, "QED": 0},
+        {"QCD": 2, "QED": 2},
+    )
+    assert v2_loop_orders((qcd, qed), ("QCD", "QED"), mixed) == (
+        {"QCD": 4, "QED": 0},
+        {"QCD": 2, "QED": 2},
+        {"QCD": 0, "QED": 4},
+    )
+    assert v2_loop_orders((qcd,), ("QCD",), {"QCD": 4, "QED": 2}) == {
+        "QCD": 4,
+        "QED": 0,
+    }
+    for born, corrections in (((), ("QCD",)), ((qcd,), ())):
+        with pytest.raises(GenerationError, match="at least one Born"):
+            v2_loop_orders(born, corrections)
 
-    def generated(*orders):
-        blocks = SimpleNamespace(born_orders=orders)
-        return SimpleNamespace(slice=SimpleNamespace(blocks=blocks))
-
-    _require_one_born_order("one", generated((("QCD", 2),)))
-    with pytest.raises(
-        GenerationError,
-        match=r"several Born amplitude orders.*Born coupling-order limits.*"
-        r"loop\.engine='legacy'",
-    ):
-        _require_one_born_order(
-            "mixed", generated((("QCD", 2),), (("QCD", 1), ("QED", 1)))
+    def model(*records):
+        parameters = tuple(
+            SimpleNamespace(name=name, nature="external", lhablock=block, lhacode=code)
+            for name, block, code in records
         )
+        return SimpleNamespace(ir=SimpleNamespace(parameters=parameters))
+
+    loop_sm = model(("MU_R", "LOOP", (1,)), ("aS", "SMINPUTS", (3,)))
+    assert _v2_scale_parameter(loop_sm, {}) == "MU_R"
+    assert _v2_scale_parameter(model(("MU_R", "LOOP", (666,))), {}) == "MU_R"
+    for candidates, fixed in (
+        (model(("A", "LOOP", (2,)), ("B", "LOOP", (3,))), {}),
+        (loop_sm, {"MU_R": "91.188"}),
+    ):
+        with pytest.raises(GenerationError, match="scale parameter is not identified"):
+            _v2_scale_parameter(candidates, fixed)
+
+
+@pytest.mark.loop_fast
+def test_a_generation_run_retains_its_processes(monkeypatch):
+    """Staged validation reuses every process of its run: the generation
+    cache keeps them while ``retained`` holds, then trims to its size."""
+
+    from collections import OrderedDict
+
+    from pyamplicol.loops.v2 import artifact
+
+    monkeypatch.setattr(artifact, "_slices", OrderedDict())
+
+    def remember(index: int) -> None:
+        artifact._remember(
+            "model",
+            artifact.GeneratedProcess(None, None, {"process": str(index)}, str(index)),
+        )
+
+    with artifact.retained(6):
+        for index in range(10):
+            remember(index)
+        assert len(artifact._slices) == 10
+    assert len(artifact._slices) == artifact._SLICE_CACHE_SIZE
+    remember(10)
+    assert len(artifact._slices) == artifact._SLICE_CACHE_SIZE
+
+
+def _forget_generation() -> None:
+    """Make the next ``Runtime.load`` regenerate from the artifact's request
+    record, as a fresh interpreter does, instead of reusing this
+    interpreter's generation objects (``artifact._recall``)."""
+
+    from pyamplicol.loops.v2 import artifact
+
+    with artifact._slices_lock:
+        artifact._slices.clear()
 
 
 # ------------------------------------------------------------------ public path
@@ -882,10 +950,25 @@ def test_cli_generates_and_evaluates_through_v2(
     entries = (("gg", "g g > g g"),)
     card = tmp_path / "card.toml"
     output = tmp_path / "artifact"
-    card.write_text(_card(loop_sm_compiled_model, output, entries))
+    # The card selects the legacy engine; --loop-engine v2 overrides it.
+    card.write_text(
+        _card(loop_sm_compiled_model, output, entries).replace(
+            'engine = "v2"', 'engine = "legacy"'
+        )
+    )
+    engine = ("--loop-engine", "v2")
     stdout, stderr = io.StringIO(), io.StringIO()
     code = run_cli(
-        ("generate", "--card", str(card), "--dry-run", "--json", "--progress", "off"),
+        (
+            "generate",
+            "--card",
+            str(card),
+            *engine,
+            "--dry-run",
+            "--json",
+            "--progress",
+            "off",
+        ),
         stdout=stdout,
         stderr=stderr,
     )
@@ -896,9 +979,11 @@ def test_cli_generates_and_evaluates_through_v2(
     assert coverage["engine"] == "v2"
     assert coverage["runtime_capability"] == "rusticol.loop-runtime.v4"
     assert coverage["processes"][0]["loop_orders"] == {"QCD": 4, "QED": 0}
+    assert coverage["processes"][0]["scale_parameter"] == "MU_R"
+    assert coverage["processes"][0]["loop_admission_checked"] is False
     assert not output.exists()
     code = run_cli(
-        ("generate", "--card", str(card), "--progress", "off"),
+        ("generate", "--card", str(card), *engine, "--progress", "off"),
         stdout=io.StringIO(),
         stderr=stderr,
     )
@@ -1306,6 +1391,9 @@ def _assert_public_o1(observables_artifact, name: str, carriers) -> None:
     representative = record["processes"][0][0]
     assert [process["id"] for process in manifest.processes] == [representative]
     points, scales = record["points"], record["scales_squared"]
+    # The first load regenerates from the request record (correlators,
+    # colour declaration); members are re-admitted on that slice.
+    _forget_generation()
     for process, _expression in record["processes"]:
         expected = record["results"]["arbitrary-200"][process]
         runtime = Runtime.load(
@@ -1534,6 +1622,293 @@ def test_unsupported_requests_name_the_reason_and_keep_legacy(
     plan = Generator(resolve_config(card)).plan(processes)
     assert plan.estimated_coverage.get("engine") is None  # the legacy plan
     assert plan.estimated_coverage["processes"][0]["loop_graph_count"] > 0
+
+
+# ------------------------------------------------------- orders, widths, models
+
+MIXED_LIMITS = """coupling_order_policy = "explicit"
+[process.max_coupling_orders]
+QCD = 2
+QED = 2"""
+# Z, W, Higgs and Goldstone bosons: photon exchange only, as the slice tests
+# request it (the public process syntax has no exclusion).
+PHOTON_ONLY = (23, 24, -24, 25, 250, 251, -251)
+COMPATIBILITY = 'fixed_parameters = {MB = "0"}\ncompatibility = "gmu_particle_anti"'
+
+
+def _canonical(orders: dict) -> tuple:
+    return tuple(sorted((name, power) for name, power in orders.items() if power))
+
+
+@pytest.mark.loop_physics
+def test_mixed_born_orders_take_one_loop_order_per_born_order(
+    loop_sm_compiled_model, loop_native, loop_reference, tmp_path, monkeypatch
+):
+    """u u~ > d d~ with QCD and electroweak Born amplitudes (explicit limits
+    QCD 2, QED 2): the dry run derives one loop order per Born amplitude
+    order (QCD^4 and QCD^2 QED^2, not the limits raised by two) and does not
+    claim loop admission; in the SM the generation fails closed on the
+    chiral Z vertex of a loop quark line (WP3.2). With photon exchange only
+    (Z, W and scalars excluded through the slice request) the public
+    generator and runtime, regenerating at load, equal MadLoop's split-order
+    control in every squared order: Borns and each sector's Laurent
+    coefficients within 1e-12 of the point's largest Born and the sector's
+    largest coefficient (MadLoop binary64)."""
+
+    from dataclasses import replace
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+    from pyamplicol.generation import loop_service
+
+    entries = (("uudd", "u u~ > d d~"),)
+    processes = ProcessSet((ProcessRequest.parse("u u~ > d d~", name="uudd"),))
+    card = tmp_path / "card.toml"
+    card.write_text(
+        _card(loop_sm_compiled_model, tmp_path / "a", entries).replace(
+            'coupling_order_policy = "minimal"', MIXED_LIMITS
+        )
+    )
+    generator = Generator(resolve_config(card))
+    plan = generator.plan(processes)
+    assert plan.unsupported_features == ()
+    (coverage,) = plan.estimated_coverage["processes"]
+    assert dict(coverage["born_orders"]) == {"QCD": 2, "QED": 2}
+    assert [dict(orders) for orders in coverage["loop_orders"]] == [
+        {"QCD": 4, "QED": 0},
+        {"QCD": 2, "QED": 2},
+    ]
+    assert coverage["loop_admission_checked"] is False
+    with pytest.raises(
+        GenerationError,
+        match=r"'Z'\) is not a pure vector coupling; its sign needs the "
+        r"electroweak oracles",
+    ):
+        generator.generate(processes, tmp_path / "a")
+    assert not (tmp_path / "a").exists()
+
+    request = loop_service._v2_request
+    monkeypatch.setattr(
+        loop_service,
+        "_v2_request",
+        lambda *args: replace(request(*args), ignored_particle_ids=PHOTON_ONLY),
+    )
+    generator.generate(processes, tmp_path / "b")
+    reference = loop_reference("mixed-uudd-qcd-control")
+    points = json.loads((ROOT / "tools/loop_reference/uudd_qcd.json").read_text())
+    born_key = {_canonical(v): k for k, v in reference["born_orders"].items()}
+    loop_key = {_canonical(v): k for k, v in reference["loop_orders"].items()}
+    _forget_generation()
+    runtime = Runtime.load(
+        tmp_path / "b", process="uudd", model_parameters=GG_PARAMETERS
+    )
+    momenta = [[[str(x) for x in leg] for leg in point] for point in points["points"]]
+    result = runtime.evaluate(momenta, mu_r2="1000000")
+    assert set(result.born_orders) == set(born_key)
+    assert [sector.order for sector in result.sectors] == sorted(loop_key)
+    assert len(result.values) == len(reference["rows"]) == 3
+    for index, row in enumerate(reference["rows"]):
+        borns = dict(zip(result.born_orders, result.born_values[index], strict=True))
+        scale = max(abs(value) for value in row["born"].values())
+        for order, key in born_key.items():
+            assert abs(borns[order] - row["born"][key]) <= 1e-12 * scale, order
+        for sector, laurent in zip(result.sectors, result.values[index], strict=True):
+            expected = row["full"][loop_key[sector.order]]
+            wanted = [expected[k] for k in ("finite", "single_pole", "double_pole")]
+            scale = max(map(abs, wanted))
+            for actual, target in zip(laurent, wanted, strict=True):
+                assert abs(actual - target) <= 1e-12 * scale, (index, sector.order)
+
+
+def _legacy_results(result) -> dict:
+    """A public evaluation in the frozen legacy fixtures' layout."""
+
+    return {
+        "born": [[[str(value), "0"]] for (value,) in result.born_values],
+        "virtual": [[[[str(c), "0"] for c in laurent]] for (laurent,) in result.values],
+    }
+
+
+@pytest.mark.loop_physics
+def test_coloured_widths_in_tree_currents_are_fixed_to_zero(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """g g > t t~ propagates the top in t-channel tree currents. At loop_sm's
+    default top width the v2 request is refused, by the dry run and before
+    any loop generation, naming the fix (v2 is real on-shell: a width there
+    would make the Born, its colour correlations and the virtual
+    inconsistent). With WT fixed to zero ([loop.preparation]) the public v2
+    virtual equals the legacy engine's, whose propagators carry no width,
+    evaluated at the model's default parameters (WT = 1.4915 included) at
+    the three exact on-shell points and scales of the provider reference:
+    binary64 1e-12, double-double 1e-24, 60 digits 1e-40 (legacy at 60
+    digits). An evaluation refuses what it would ignore: a WT other than the
+    fixed zero, the scale parameter and unknown names."""
+
+    import re
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    entries = (("ggtt", "g g > t t~"),)
+    processes = ProcessSet((ProcessRequest.parse("g g > t t~", name="ggtt"),))
+    card = tmp_path / "card.toml"
+
+    def generator(output: str, edit=None) -> Generator:
+        text = _card(loop_sm_compiled_model, tmp_path / output, entries)
+        card.write_text(text.replace(*edit) if edit else text)
+        return Generator(resolve_config(card))
+
+    reason = (
+        r"'ggtt' \([^)]*\): tree currents propagate coloured particles whose "
+        r"width is not fixed to zero: t \(WT\)\..*real on-shell.*"
+        r'fixed_parameters \(WT = "0"\)'
+    )
+    refused = generator("a")
+    (blocker,) = refused.plan(processes).unsupported_features
+    assert re.search(reason, blocker), blocker
+    with pytest.raises(GenerationError, match=reason):
+        refused.generate(processes, tmp_path / "a")
+    assert not (tmp_path / "a").exists()
+    fixed = ('fixed_parameters = {MB = "0"}', 'fixed_parameters = {MB = "0", WT = "0"}')
+    generator("v2", fixed).generate(processes, tmp_path / "v2")
+    generator("legacy", ('engine = "v2"', 'engine = "legacy"')).generate(
+        processes, tmp_path / "legacy"
+    )
+    required = json.loads(
+        (ROOT / "tests/fixtures/loop/required/gg_ttx.json").read_text()
+    )
+    points = required["points"]
+    scales = [str(Decimal(mu) ** 2) for mu in required["mu_r"]]
+    legacy = Runtime.load(
+        tmp_path / "legacy", process="ggtt", model_parameters=GG_PARAMETERS
+    ).evaluate(points, mu_r2=scales, arithmetic="arbitrary", precision=ARBITRARY_DIGITS)
+    results = _legacy_results(legacy)
+    runtime = Runtime.load(
+        tmp_path / "v2", process="ggtt", model_parameters=GG_PARAMETERS
+    )
+    _assert_legacy(runtime.evaluate(points, mu_r2=scales), results, DOUBLE_TOLERANCE)
+    _assert_legacy(
+        runtime.evaluate(points, mu_r2=scales, arithmetic="double-double"),
+        results,
+        DOUBLE_DOUBLE_TOLERANCE,
+    )
+    _assert_legacy(
+        runtime.evaluate(
+            points, mu_r2=scales, arithmetic="arbitrary", precision=ARBITRARY_DIGITS
+        ),
+        results,
+        ARBITRARY_TOLERANCE,
+    )
+    runtime.set_model_parameters({"WT": "0"})
+    for parameters, refusal in (
+        ({"WT": "1.4915"}, r"'WT' was fixed to 0 at generation"),
+        ({"MU_R": "100"}, r"'MU_R' is the renormalisation scale.*mu_r2"),
+        ({"WX": "1"}, r"unknown external parameter 'WX'"),
+    ):
+        with pytest.raises(ValueError, match=refusal):
+            runtime.set_model_parameters(parameters)
+        with pytest.raises(ValueError, match=refusal):
+            Runtime.load(tmp_path / "v2", process="ggtt", model_parameters=parameters)
+
+
+def _qed_model_generator(model: Path, tmp_path: Path, name: str, entries, *, engine):
+    from pyamplicol.api import Generator
+    from pyamplicol.config import resolve_config
+
+    text = _card(model, tmp_path / name, entries).replace(
+        'loop_coupling_orders = ["QCD"]', 'loop_coupling_orders = ["QCD", "QED"]'
+    )
+    card = tmp_path / f"{name}.toml"
+    card.write_text(
+        text.replace('fixed_parameters = {MB = "0"}', COMPATIBILITY).replace(
+            'engine = "v2"', f'engine = "{engine}"'
+        )
+        if engine
+        else text
+    )
+    return Generator(resolve_config(card))
+
+
+@pytest.mark.loop_physics
+def test_qed_declaring_model_names_its_blockers(
+    loop_qcd_qed_sm_ufo, loop_native, tmp_path
+):
+    """MG5_aMC's loop_qcd_qed_sm with QCD and QED corrections through the
+    public v2 path (its MU_R, at LHA code LOOP 666, is resolved at the public
+    boundary). Without the compatibility profile both engines refuse its G-
+    Goldstone flag, which the dry run reports from the model preparation;
+    with it, u u~ > d d~ stops in counterterm admission: QED-order witnesses
+    without a rule or certified zero (WP3.2/WP3.5)."""
+
+    from pyamplicol.api import ProcessRequest, ProcessSet
+
+    entries = (("uudd", "u u~ > d d~"),)
+    processes = ProcessSet((ProcessRequest.parse("u u~ > d d~", name="uudd"),))
+    plain = _qed_model_generator(
+        loop_qcd_qed_sm_ufo, tmp_path, "a", entries, engine=None
+    )
+    assert plain.plan(processes).unsupported_features == (
+        "antiparticle metadata mismatch for G+: goldstoneboson",
+    )
+    profiled = _qed_model_generator(
+        loop_qcd_qed_sm_ufo, tmp_path, "b", entries, engine="v2"
+    )
+    with pytest.raises(
+        GenerationError,
+        match=r"divergent witnesses without a counterterm rule or certified zero"
+        r".*'QED': 2",
+    ):
+        profiled.generate(processes, tmp_path / "b")
+    assert not (tmp_path / "b").exists()
+
+
+@pytest.mark.loop_nightly
+def test_qed_declaring_model_joint_corrections_equal_legacy(
+    loop_qcd_qed_sm_ufo, loop_native, tmp_path
+):
+    """g g > g g with QCD and QED corrections on loop_qcd_qed_sm
+    (compatibility profile ``gmu_particle_anti``) through the public v2 path
+    equals the legacy engine: Born and the QCD^6 virtual in binary64 (1e-12)
+    and at 60 digits (1e-40, legacy at 60 digits). v2 also lists the
+    QCD^4 QED^2 sector, a structural zero (no one-loop g g > g g amplitude of
+    order QCD^2 QED^2), which legacy omits."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import ProcessRequest, ProcessSet
+
+    entries = (("gg", "g g > g g"),)
+    processes = ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),))
+    runtimes = {}
+    for engine in ("v2", "legacy"):
+        _qed_model_generator(
+            loop_qcd_qed_sm_ufo, tmp_path, engine, entries, engine=engine
+        ).generate(processes, tmp_path / engine)
+        runtimes[engine] = Runtime.load(
+            tmp_path / engine, process="gg", model_parameters=GG_PARAMETERS
+        )
+    reference = runtimes["legacy"].evaluate(
+        [POINT], mu_r2="1000000", arithmetic="arbitrary", precision=ARBITRARY_DIGITS
+    )
+    assert [sector.order for sector in reference.sectors] == [(("QCD", 6),)]
+    results = _legacy_results(reference)
+    for options, tolerance in (
+        ({}, DOUBLE_TOLERANCE),
+        (
+            {"arithmetic": "arbitrary", "precision": ARBITRARY_DIGITS},
+            ARBITRARY_TOLERANCE,
+        ),
+    ):
+        value = runtimes["v2"].evaluate([POINT], mu_r2="1000000", **options)
+        assert [sector.order for sector in value.sectors] == [
+            (("QCD", 4), ("QED", 2)),
+            (("QCD", 6),),
+        ]
+        assert all(c == 0 for c in value.values[0][0])
+        qcd = value.for_order((("QCD", 6),))
+        _assert_legacy(qcd, results, tolerance)
 
 
 # ------------------------------------------------------------------ size

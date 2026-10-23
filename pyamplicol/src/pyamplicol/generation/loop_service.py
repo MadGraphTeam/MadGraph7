@@ -1206,7 +1206,7 @@ def _v2_request(backend, context, index):
     limits = context.limits[index]
     entry = context.expanded[index]
     process = entry.process_ir.process
-    label = f"{entry.request.name} ({entry.request.expression})"
+    label = f"{entry.request.name!r} ({entry.request.expression})"
     _require_declared_corrections(compiled, context.corrections)
     fixed = {}
     for name, (real, imaginary) in context.preparation.fixed_parameters.items():

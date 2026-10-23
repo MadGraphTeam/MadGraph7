@@ -252,9 +252,12 @@ def coloured_widths(
     """``{particle: width parameter}`` of the coloured particles that a tree
     current of ``dags`` propagates with a width that is not zero: neither
     ``ZERO``, a compile-time zero nor fixed to zero by ``fixed_parameters``.
-    Source currents (on-shell external legs) and auxiliary currents do not
-    count (WP2.2's ``blocks.ward_breaking_fields`` criterion, which also
-    counts model-supplied propagators)."""
+    Source currents (external legs), auxiliary currents and currents of all
+    legs but one do not count: the latter carry an external momentum and are
+    amputated (a Born root contracts them with the remaining leg; a loop
+    attached to one would be an external self-energy). This is WP2.2's
+    ``blocks.ward_breaking_fields`` criterion without its model-supplied
+    propagators and on-shell currents."""
 
     from pyamplicol.models.compiler_kernels import _is_compile_time_zero_parameter
 
@@ -263,9 +266,14 @@ def coloured_widths(
     out: dict[str, str] = {}
     for dag in dags:
         sources = set(dag.sources)
+        legs = (1 << len(dag.process.legs)) - 1
         for current_id, current in enumerate(dag.currents):
             index = current.index
-            if current_id in sources or index.auxiliary_kind is not None:
+            if (
+                current_id in sources
+                or index.auxiliary_kind is not None
+                or (legs & ~index.momentum_mask).bit_count() == 1
+            ):
                 continue
             record = particles.get(int(index.particle_id))
             if record is None or abs(int(record.color)) == 1:
