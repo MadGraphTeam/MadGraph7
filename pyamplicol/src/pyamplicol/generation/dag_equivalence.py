@@ -3827,6 +3827,8 @@ def assign_recursive_current_evaluation_reuse(
     This recovers AmpliCol-style reflection fan-out, but also recognizes exact
     reuse across colour sectors and helicity subgraphs.  No approximate
     numerical comparison or process/model-family classification is involved.
+    Classes never cross contracts, so only the currents that share their
+    contract with another current get term vectors.
     """
 
     if not dag.interactions:
@@ -4871,8 +4873,8 @@ def _own_representative_equivalence(
 ) -> _CurrentValueEquivalence:
     """Classify a current with an evaluation contract of its own.
 
-    It raises exactly where the full derivation would: a source without
-    physical metadata, or a generated current with a parent that is not yet
+    It keeps the full derivation's structural refusals: a source without
+    physical metadata, and a generated current with a parent that is not yet
     classified.
     """
 
