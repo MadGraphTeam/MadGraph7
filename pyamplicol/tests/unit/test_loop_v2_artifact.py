@@ -616,8 +616,8 @@ def test_public_generation_publishes_plan_v4(full_colour):
     with artifact._slices_lock:
         generated = [
             item.slice
-            for item in artifact._slices.values()
-            if item.request["process"] == "u u~ > d d~ g"
+            for (_model, _record, plan), item in artifact._slices.items()
+            if plan == info["plan_sha256"]
         ]
     assert generated
     for slice_ in generated:

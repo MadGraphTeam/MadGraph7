@@ -1783,16 +1783,17 @@ Total ≈ 270 agent-days [I].
   - *Depends:* S1.
   - *Accept:* O6 on every control; components equal O1; 7-leg CT generation < 10 min and < 4 GB.
   - *Size:* L (14).
-  - *Status:* increment on `work/v2-ct-recursion` (§6.1 "Status").
+  - *Status:* integrated (`work/v2-ct-recursion`, slice `a18b7599`), simplified by `work/v2-ct-simplify` (user decision 2026-10-23, REQUIREMENTS_ADDENDUM J; §6.1 "Status", §6.2).
     - Done:
       - CT vertices with the pseudo-order and slots, lowered into the tree model with exact derived couplings;
       - the tree-route form (form 1, kept as a test of the lowering) through both tree-engine builders, Python eager and Rust recurrence; the production closure (form 2) has the Python generic-DAG builder only, its native builder is WP3.1 I5R (contract in §6.1, decision D3);
-      - field-level admission;
+      - admission as plain tree-level insertions (ct-simplify, §6.2): coupling orders, exactly one insertion, every loop-content alternative without a vetoed particle; no witness table, no field-level or leg-mask admission, no per-request cell-cancellation check and no residual site closure in production (an unlowerable rule a request admits is refused); site closure with MadLoop-style witness admission is the O6 test oracle only (`counterterms = "sites"`, refused by plan v4); the public generator is on the recursion (`test_public_generation_publishes_plan_v4`: no CT site in the published slices);
+      - `particle_veto` (ct-simplify, §6.2): public (`[generation] particle_veto`, `--particle-veto`, `GenerationConfig.particle_veto`; v2 virtuals), stored in the request record (`SliceRequest.particle_veto`, |PDG| codes) and the generation filters; removes the vetoed particles from the Born, the loop blocks, the loop species and vertices (`ModelLoopCatalogue(veto=)`), the CT program and the CT and field terms with vetoed loop content; replaces the internal `ignored_particle_ids` of the v2 request (the tree engine's mechanism remains the implementation, `blocks.vetoed_particle_ids`). `particle_veto = [t]` equals NJet's Nf = 5 virtual (g g > g g at ten points to 3·10⁻¹⁴; g g > g g g g in the report of the package);
       - two-point insertions as clone lines (custom P Π P propagators with the engine's widths; κ on Weyl lines), including mixing between fields of equal spin (oriented clone pairs) and chiral or chirality-flipping terms on massless lines (Dirac fields of the lowered model; exact-runtime fix of crossed massless Dirac sources);
       - the slice's counterterms from the recursion, closed at leg 1 (`ct_closure`), with the multi-trace colour state (d-symbols, δδ, closed traces and lines) and the general-N_c four-gluon R2 asset;
       - the U(1) projection of the gluon legs of CT vertices (d-symbols, identities): no rule is left to site closure for a fermion line's gluon;
       - gggV, ggVV and ggSS contact colour flow;
-      - Levi-Civita cells that cancel between loop groups (R2_GGZ and the axial R2_GGGZ of loop_sm) left out with an exact per-request check: no loop_sm rule is residual;
+      - Levi-Civita cells that cancel between loop groups (R2_GGZ and the axial R2_GGGZ of loop_sm) left out with one exact check per lowered model (multiplicities from the veto and the corrections): no loop_sm rule is unlowerable without a veto;
       - N_c grading of the lowered couplings: LC/NLC take their CT components from the recursion;
       - no CT × CT orders in the closure;
       - full tree kernels for requests whose trees propagate a coloured width (§3.2 item 2, §6.1): recursion = sites at the model's top width;
@@ -1803,7 +1804,8 @@ Total ≈ 270 agent-days [I].
       - the contract of a native CT program builder for WP3.1 (§6.1, decision D3) and the seven-leg cost of the Python CT program (uu~→ggggg, gg→ggggg; residual-free).
     - Open:
       - chiral and mixing external-field factors (no UFO format; plan in §6.5 "Status"); two-point mixing between fields of different spin (WP3.2);
-      - Levi-Civita cells that do not cancel between the loop groups of their vertex (anomalous models, incomplete doublets; WP3.2 kernels); the loop_sm ones cancel (§6.1 "Cancelling cells");
+      - Levi-Civita cells that do not cancel between the loop groups of their vertex (anomalous models, incomplete doublets, a veto breaking a doublet; WP3.2 kernels; refused); the loop_sm ones cancel without a veto (§6.1 "Cancelling cells");
+      - tree-only generation and the legacy loop engine do not take `particle_veto` (refused by the configuration); WP3.1's native builders take it as `SliceRequest.particle_veto` (§6.1 item 8);
       - finite-only savings of the CT program's currents (§6.1 contract item 1: skip the currents that feed only pole slots): owner WP3.1, as the native program's; the Python CT program skips the pole slots' closure terms (43 % of a CT-level point at gg→ggg) but still evaluates their currents (under 1 % of a point there);
       - filing the upstream Symbolica issue and draft PR for the Spenso thread deadlock (§6.1 "Spenso's threads"; reproducer, fix and its verification prepared), and the follow-ups (public `InheritedLibraryUnlock`, Spenso carrying it); pyAmpliCol's serial Spenso policy without a thread-wide key stays until then;
       - 7-leg CT generation of the closure route < 10 min and < 4 GB: moved to WP3.1 (coordinator decision D3; the native builder's contract is §6.1 "What a native builder of the CT program must carry"). Not met and not fully measured: the Python CT program took 4 min and 4.9 GB at uu~→ggggg and 54 min and 55 GB at gg→ggggg (§6.1 "Generation cost", before the set of all legs but leg 1 was left out), and at gg→ggggg the bind (root-closure terms) and the first point's row build were never measured, so the production route's seven-leg cost (generation and first point, against REQUIREMENTS_ADDENDUM H: O(hours), < 150 GB) is an open measurement for WP3.1. The closure is the production form; the tree route (form 1) cannot carry the four-gluon R2 (§6.1 "Production form").

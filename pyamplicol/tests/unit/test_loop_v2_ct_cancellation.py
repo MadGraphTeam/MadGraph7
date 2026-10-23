@@ -160,7 +160,8 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
 ):
     """O6 with the Levi-Civita cells cancelled: the g g Z (and g g g Z)
     rules are admitted in the recursion with their cell left out (no rule is
-    residual), the site closure drops the same cells on its own, and every
+    residual; the plain admission also admits the g g g Z rules where no tree
+    holds them), the site closure drops the same cells on its own, and every
     component agrees."""
 
     from pyamplicol.loops.v2.ct_recursion import rule_key
@@ -177,7 +178,7 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
         and program.admission[rule]
         for vertex in _vertices(rules[rule])
     }
-    assert cancelled == CANCELLATION_O6[name][4]
+    assert CANCELLATION_O6[name][4] <= cancelled <= GGZ_VERTICES
     sites = cancellation_routes(name, "sites")
     closed = {
         vertex
