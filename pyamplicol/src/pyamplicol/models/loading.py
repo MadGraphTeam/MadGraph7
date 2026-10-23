@@ -1434,7 +1434,13 @@ def lower_counterterm_vertices(
             {"expansion_order": -1, "hierarchy": hierarchy + offset, "name": name}
         )
     started = time.perf_counter()
-    ir = compile_ufo_model_ir(payload, tree_kernel_variant=tree_kernel_variant)
+    # The multi-trace currents project the gluon legs of the counterterm
+    # vertices onto SU(N) (U(1)-subtraction auxiliaries, design §6.1).
+    ir = compile_ufo_model_ir(
+        payload,
+        tree_kernel_variant=tree_kernel_variant,
+        u1_projected_vertices=frozenset(vertex_members) if multi_trace else frozenset(),
+    )
     # Couplings the model's restriction makes vanish (e.g. off-diagonal CKM
     # entries) are structural zeros: their terms are dropped, not lowered.
     vanishing = {

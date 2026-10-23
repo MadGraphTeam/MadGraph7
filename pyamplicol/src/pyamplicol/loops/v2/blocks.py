@@ -659,8 +659,17 @@ def _connection_parities(
     """Parity of the colour-octet connections between fermion lines.
 
     A merge connects two lines when both inputs hold coloured fermion
-    endpoints and one of them is a colour-octet current (a gluon, contact or
-    U(1)-subtraction auxiliary). Every derivation of a current must agree.
+    endpoints in their open words and one of them is a colour-octet current
+    (a gluon, contact or U(1)-subtraction auxiliary). Every derivation of a
+    current must agree.
+
+    The closed lines of counterterm currents (design §6.1) are complete:
+    nothing crosses them, so their endpoints do not count, and a colour
+    singlet merged into an adjoint current or a closing leaves its strings
+    as closed lines (``ColorEngine._loop_block_absorbing_sides``), which
+    connects nothing. Its U(1)-subtraction sign is then a colour weight of
+    the stage that replaces the leg
+    (``models.compiler_color_flow.synthesize_u1_projections``).
     """
 
     def octet(index: CurrentIndex) -> bool:
@@ -669,8 +678,17 @@ def _connection_parities(
             or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
         )
 
+    def singlet(index: CurrentIndex) -> bool:
+        return (
+            model.color_rep(index.particle_id) == 1
+            or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
+        )
+
+    def coloured_fermion(particle_id: int) -> bool:
+        return model.is_fermion(particle_id) and abs(model.color_rep(particle_id)) == 3
+
     def has_endpoints(index: CurrentIndex) -> bool:
-        return any(label in endpoints for label in index.external_labels)
+        return any(label in endpoints for label in index.ordered_external_labels)
 
     currents = dag.currents
     parity: list[int | None] = [
@@ -686,6 +704,10 @@ def _connection_parities(
             has_endpoints(left)
             and has_endpoints(right)
             and (octet(left) or octet(right))
+            and (
+                coloured_fermion(currents[interaction.result_id].index.particle_id)
+                or not (singlet(left) or singlet(right))
+            )
         )
         value = parity[interaction.left_id] ^ parity[interaction.right_id] ^ connects
         known = parity[interaction.result_id]

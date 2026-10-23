@@ -397,6 +397,19 @@ def _u1_coupling_kinds(compiled: Any) -> frozenset[int]:
     return frozenset(out)
 
 
+def u1_projected(compiled: Any) -> bool:
+    """Whether the lowered model projects the gluon legs of its counterterm
+    vertices onto SU(N) (``models.compiler_color_flow.
+    synthesize_u1_projections``, all or nothing per model)."""
+
+    from pyamplicol.models.compiler_color_flow import U1_PROJECTION_SUFFIX
+
+    return any(
+        kernel.vertex.endswith(U1_PROJECTION_SUFFIX)
+        for kernel in compiled.ir.oriented_kernels
+    )
+
+
 U1_DEMOTION = (
     "its colour couples to the U(1) part of a gluon that a fermion line supplies "
     "or absorbs inside a block (U(1)-subtraction auxiliaries of counterterm "
@@ -420,6 +433,8 @@ def u1_leaking_structures(program: CountertermBlocks) -> frozenset[Any]:
     dag = program.blocks.blocks_dag
     lowered = program.recursion.model.lowered
     compiled = lowered.compiled
+    if u1_projected(compiled):
+        return frozenset()
     kinds = _u1_coupling_kinds(compiled)
     if not kinds:
         return frozenset()

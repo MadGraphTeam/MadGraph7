@@ -14,6 +14,7 @@ from .compiler_auxiliary_components import reduce_contact_auxiliary_components
 from .compiler_color_flow import (
     compile_lc_color_transition_terms,
     synthesize_fundamental_fierz_auxiliaries,
+    synthesize_u1_projections,
 )
 from .compiler_contact_trees import (
     _compile_color_singlet_contact_trees,
@@ -96,12 +97,18 @@ def compile_ufo_model_ir(
     model: Mapping[str, object],
     *,
     tree_kernel_variant: TreeKernelVariant = "transverse",
+    u1_projected_vertices: frozenset[str] = frozenset(),
 ) -> CompiledModelIR:
     """Compile one UFO payload; ``tree_kernel_variant`` selects YM lowering.
 
     The variant changes only the component expressions of oriented kernels
     proven eligible for the transverse massless Yang-Mills replacement. Kernel
     kinds, particles and every other record are identical in both variants.
+
+    ``u1_projected_vertices`` names vertex rules whose colour-flow stages get
+    the U(1) projection of their gluon legs
+    (``compiler_color_flow.synthesize_u1_projections``; the counterterm
+    vertices of the counterterm closure, ``models.loading``).
     """
 
     if tree_kernel_variant not in TREE_KERNEL_VARIANTS:
@@ -301,6 +308,13 @@ def compile_ufo_model_ir(
         propagators,
         model_symbols=model_symbols,
     )
+    if u1_projected_vertices:
+        particles, oriented_kernels = synthesize_u1_projections(
+            particles,
+            oriented_kernels,
+            projected_vertices=frozenset(u1_projected_vertices),
+            model_symbols=model_symbols,
+        )
     (
         annotated_terms,
         oriented_kernels,
