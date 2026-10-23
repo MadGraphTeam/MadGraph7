@@ -67,13 +67,13 @@ use super::reduction::{ReductionBatch, Reductions};
 use super::v2_poles::UvResidues;
 use super::*;
 use crate::FourMomentum;
-pub use ninjars_symbolica::PoleSelection;
-pub use rusticol_core::loop_execution::v2::Poles;
 use ninjars::fast::tensor_layout::{block_offset, monomial_index, monomials, ncoeff};
 use ninjars::fast::{
     C64, FastAmplitude, FastInput, FastOptions, FastResult, FastStatus, RMom, TensorNumerator,
 };
 use ninjars_symbolica::OneLoopNativeMasters;
+pub use ninjars_symbolica::PoleSelection;
+pub use rusticol_core::loop_execution::v2::Poles;
 use std::collections::{BTreeMap, HashMap};
 use symbolica::{domains::float::Real, evaluate::EvaluationDomain};
 
@@ -488,7 +488,11 @@ fn output_batches<T: BatchCarrier>(
                     ids.push(id);
                     values.extend(value.into_iter().take(columns.min(3)));
                     if poles == Poles::Split {
-                        values.push(outcome.uv.ok_or_else(|| error("lane lacks its UV residue"))?);
+                        values.push(
+                            outcome
+                                .uv
+                                .ok_or_else(|| error("lane lacks its UV residue"))?,
+                        );
                     }
                 }
                 statuses.push((id, outcome.status));

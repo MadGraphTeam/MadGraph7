@@ -331,7 +331,10 @@ mod tests {
                 let got = uv_residue(2, 2, &shifts, &[c(m0), c(m1)], &numerator);
                 let g = if mu == nu { metric[mu] } else { 0. };
                 let expected = g * ((m0 + m1) / 4. - p2 / 12.) + p[mu] * p[nu] / 3.;
-                assert!((got.re - expected).abs() < 1e-13, "{mu}{nu}: {got:?} {expected}");
+                assert!(
+                    (got.re - expected).abs() < 1e-13,
+                    "{mu}{nu}: {got:?} {expected}"
+                );
             }
         }
     }
@@ -352,8 +355,8 @@ mod tests {
             for m in monomials(rank).into_iter().skip(block_offset(rank)) {
                 let mut value = (1..=rank).product::<usize>() as f64;
                 for (mu, &e) in m.iter().enumerate() {
-                    value *= covariant[mu].powi(e as i32)
-                        / (1..=e as usize).product::<usize>() as f64;
+                    value *=
+                        covariant[mu].powi(e as i32) / (1..=e as usize).product::<usize>() as f64;
                 }
                 numerator[ninjars::fast::tensor_layout::monomial_index(m)] = c(value);
             }

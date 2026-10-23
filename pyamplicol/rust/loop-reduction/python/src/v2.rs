@@ -17,19 +17,19 @@ type Group<'py> = (
     PyRef<'py, NativeBatch>,
 );
 
-/// The Laurent columns of a `poles` option: a bool (combined poles or the
-/// finite part), or `"all"`, `"none"`, `"split"` (combined poles and each
-/// lane's UV residue, DESIGN.md §12.4).
+/// The Laurent columns of a `poles` option: `"all"` (combined poles),
+/// `"none"` (the finite part) or `"split"` (combined poles and each lane's UV
+/// residue, DESIGN.md §12.4). One spelling: no bool.
 pub(super) fn poles_option(value: &Bound<'_, PyAny>) -> PyResult<Poles> {
-    if let Ok(flag) = value.extract::<bool>() {
-        return Ok(if flag { Poles::All } else { Poles::None });
-    }
-    match value.extract::<String>()?.as_str() {
+    let Ok(value) = value.extract::<String>() else {
+        return Err(error("poles must be all, none or split".to_string()));
+    };
+    match value.as_str() {
         "all" => Ok(Poles::All),
         "none" => Ok(Poles::None),
         "split" => Ok(Poles::Split),
         other => Err(error(format!(
-            "poles must be a bool, all, none or split, not {other}"
+            "poles must be all, none or split, not {other}"
         ))),
     }
 }

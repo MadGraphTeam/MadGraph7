@@ -428,7 +428,14 @@ fn massless_families() -> Vec<Family> {
 /// Largest deviation of column `a` of `x` from column `b` of `y`, per lane
 /// relative to the lane's largest value in `x` or `y` (a scaleless lane's
 /// combined Laurent vanishes, its UV and IR residues do not).
-fn column_deviation(x: &[[f64; 2]], a: usize, wx: usize, y: &[[f64; 2]], b: usize, wy: usize) -> f64 {
+fn column_deviation(
+    x: &[[f64; 2]],
+    a: usize,
+    wx: usize,
+    y: &[[f64; 2]],
+    b: usize,
+    wy: usize,
+) -> f64 {
     let norm = |z: &[f64; 2]| z[0].hypot(z[1]);
     x.chunks(wx)
         .zip(y.chunks(wy))
@@ -443,7 +450,9 @@ fn column_deviation(x: &[[f64; 2]], a: usize, wx: usize, y: &[[f64; 2]], b: usiz
 fn split_poles_keep_the_combined_columns_and_match_selected_masters() {
     let mut all = all_lanes("double");
     for (f, family) in massless_families().iter().enumerate() {
-        let ids: Vec<u64> = (0..POINTS.len() as u64).map(|p| 100 + 10 * p + f as u64).collect();
+        let ids: Vec<u64> = (0..POINTS.len() as u64)
+            .map(|p| 100 + 10 * p + f as u64)
+            .collect();
         all.push(lanes(family, &POINTS, &ids, "double"));
     }
     let groups: Vec<_> = all.iter().map(group).collect();
@@ -487,12 +496,18 @@ fn split_poles_keep_the_combined_columns_and_match_selected_masters() {
         let uv = values(&uv[index].values().unwrap());
         let ir = values(&ir[index].values().unwrap());
         let both = values(&both[index].values().unwrap());
-        assert!(column_deviation(&four, 3, 4, &uv, 1, 3) < 1e-10, "group {index} UV");
+        assert!(
+            column_deviation(&four, 3, 4, &uv, 1, 3) < 1e-10,
+            "group {index} UV"
+        );
         let infrared: Vec<_> = four
             .chunks(4)
             .flat_map(|z| [z[0], [z[1][0] - z[3][0], z[1][1] - z[3][1]], z[2]])
             .collect();
-        assert!(column_deviation(&infrared, 1, 3, &ir, 1, 3) < 1e-10, "group {index} IR");
+        assert!(
+            column_deviation(&infrared, 1, 3, &ir, 1, 3) < 1e-10,
+            "group {index} IR"
+        );
         for row in uv.chunks(3) {
             assert_eq!(row[2], [0., 0.], "the double pole is infrared");
         }
@@ -502,8 +517,14 @@ fn split_poles_keep_the_combined_columns_and_match_selected_masters() {
             assert_eq!(i[0], b[0]);
         }
         // The rescaled check frame reproduces the residue.
-        assert!(column_deviation(&check, 3, 4, &four, 3, 4) < 1e-12, "group {index} check");
-        largest_uv = four.chunks(4).map(|z| z[3][0].hypot(z[3][1])).fold(largest_uv, f64::max);
+        assert!(
+            column_deviation(&check, 3, 4, &four, 3, 4) < 1e-12,
+            "group {index} check"
+        );
+        largest_uv = four
+            .chunks(4)
+            .map(|z| z[3][0].hypot(z[3][1]))
+            .fold(largest_uv, f64::max);
     }
     assert!(largest_uv > 0.);
     // Selected masters need the generic engine; the fast engine refuses them.
@@ -525,7 +546,9 @@ fn split_poles_keep_the_combined_columns_and_match_selected_masters() {
 fn split_residues_in_double_double_match_selected_masters() {
     let mut all = all_lanes("double-double");
     for (f, family) in massless_families().iter().enumerate() {
-        let ids: Vec<u64> = (0..POINTS.len() as u64).map(|p| 100 + 10 * p + f as u64).collect();
+        let ids: Vec<u64> = (0..POINTS.len() as u64)
+            .map(|p| 100 + 10 * p + f as u64)
+            .collect();
         all.push(lanes(family, &POINTS, &ids, "double-double"));
     }
     let groups: Vec<_> = all.iter().map(group).collect();
@@ -573,7 +596,10 @@ fn split_residues_in_double_double_match_selected_masters() {
 
 #[test]
 fn the_master_cache_forwards_a_selected_providers_capability() {
-    use ninjars::fast::{C64, FastAmplitude, FastInput, FastMasters, FastOptions, FastResult, FastStatus, TensorNumerator};
+    use ninjars::fast::{
+        C64, FastAmplitude, FastInput, FastMasters, FastOptions, FastResult, FastStatus,
+        TensorNumerator,
+    };
     use ninjars_symbolica::OneLoopNativeMasters;
     let selected = OneLoopNativeMasters::new()
         .unwrap()

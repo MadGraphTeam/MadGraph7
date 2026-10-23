@@ -471,8 +471,8 @@ impl V2Executor {
     /// (the re-test integrals or None), `bare` (per point and column),
     /// `budget` (re-test error budgets), `failures` and `report`. `schedule`
     /// `M` dresses the plan's schedule-M families by M (streamed in parts of
-    /// `part_chunks` chunks) and the others by B. `poles` is a bool or
-    /// `"split"` (each lane's UV residue as a fourth column, DESIGN.md
+    /// `part_chunks` chunks) and the others by B. `poles` is `"all"`, `"none"`
+    /// or `"split"` (each lane's UV residue as a fourth column, DESIGN.md
     /// §12.4); `master_poles` selects the masters' residues (generic engine).
     #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both"))]
     #[allow(clippy::too_many_arguments)]

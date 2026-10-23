@@ -404,11 +404,23 @@ struct ExecutionV4 {
     runtime_path: String,
     plan_sha256: String,
     /// SHA-256 of the companion plan of the certified-scaleless families
-    /// (`LOOP_PROGRAM_V4_SCALELESS_MEMBER`); None without such families.
-    #[serde(default)]
+    /// (`LOOP_PROGRAM_V4_SCALELESS_MEMBER`); null without such families. The
+    /// key is required (an absent key is not read as null: no compatibility
+    /// of internal artifact formats, AGENTS.md).
+    #[serde(deserialize_with = "required_nullable")]
     scaleless_plan_sha256: Option<String>,
     point_inputs: String,
     request: serde_json::Value,
+}
+
+/// A nullable key that must be present: serde reads an absent `Option` field
+/// as `None` unless the field has its own deserializer.
+#[cfg(feature = "loop-v2")]
+fn required_nullable<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)
 }
 
 /// How a plan v4 process obtains its per-point inputs (trees, Born
