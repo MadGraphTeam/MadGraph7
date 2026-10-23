@@ -46,9 +46,16 @@ def _points(source: str) -> tuple[list, list[str]]:
 
 # process, Born orders, accuracy, points
 PROCESSES = {
-    # No QED bound: the QCD-QED interference sector (QCD 6, QED 2) and the
-    # fixed massless b of the request.
-    "uux_ddxg": ("u u~ > d d~ g", {"QCD": 3}, "full", "required/uux_ddxg.json"),
+    # QED = 0: without the bound the Born has a QCD 1 QED 2 order (photon, Z
+    # and W exchange) that the root closure does not build, and generation
+    # refuses it (``test_loop_v2_generate``); before that refusal its
+    # interference sector (QCD 6, QED 2) was silently zero here.
+    "uux_ddxg": (
+        "u u~ > d d~ g",
+        {"QCD": 3, "QED": 0},
+        "full",
+        "required/uux_ddxg.json",
+    ),
     "gg_gg": ("g g > g g", {"QCD": 2, "QED": 0}, "full", "legacy/gg_gg.json"),
     "gg_gg_lc": ("g g > g g", {"QCD": 2, "QED": 0}, "lc", "legacy/gg_gg.json"),
     "gg_ttx": ("g g > t t~", {"QCD": 2, "QED": 0}, "full", "required/gg_ttx.json"),

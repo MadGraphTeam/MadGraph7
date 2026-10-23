@@ -274,6 +274,28 @@ def test_loop_aware_reachability_changes_no_result(
     assert pruned[4] <= full[4]
 
 
+@pytest.mark.loop_physics
+def test_born_orders_the_root_closure_misses_are_refused(
+    loop_sm_compiled_model, loop_native
+):
+    """Without a QED bound u u~ > d d~ g has a QCD 1 QED 2 Born (photon, Z
+    and W exchange). The root closure at leg 1 does not build it (the
+    reachability-pruned tree program has none of its electroweak currents,
+    the full one stops at the W vertex), so generation refuses the request
+    rather than leave the interference sector (QCD 6, QED 2) zero."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+
+    request = SliceRequest(
+        "u u~ > d d~ g", {"QCD": 3}, {"QCD": 5}, fixed_parameters={"MB": "0"}
+    )
+    with pytest.raises(NotImplementedError, match="no terms at the Born orders"):
+        LoopSlice.generate(
+            load_compiled_model(loop_sm_compiled_model), request, loop_native
+        )
+
+
 # ------------------------------------------------- providers at 5 and 6 legs
 
 
