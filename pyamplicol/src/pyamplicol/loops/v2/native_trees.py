@@ -203,7 +203,7 @@ def export_trees(
     born_orders = tuple(sorted(slice_.born_terms))
     for order, order_terms in sorted(slice_.born_terms.items()):
         for term in order_terms:
-            kernel = exporter._kernel(term.binding)
+            kernel = exporter._kernel(term.binding, ())
             ids = [block_id(block) for block in term.blocks]
             dimensions = [block_dimensions[ids[i]] for i in term.kernel_legs]
             current_slots = [

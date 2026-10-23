@@ -416,7 +416,11 @@ def poles(args) -> dict[str, Any]:
     start = time.perf_counter()
     slice_ = LoopSlice.generate(compiled, request, load_loop_native())
     record["generate_s"] = round(time.perf_counter() - start, 1)
-    record["generate_peak_gb"] = round(_status("VmHWM") / 2**30, 3)
+    # The stage timers reset the high-water mark: the largest stage peak.
+    record["generate_peak_gb"] = max(
+        [round(_status("VmHWM") / 2**30, 3)]
+        + [event["peak_gb"] for event in timers.events]
+    )
     _progress(record, "generate_s", "generate_peak_gb")
     start = time.perf_counter()
     executor = NativeExecutor(slice_, forward=False, inputs="native")
