@@ -1845,8 +1845,11 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     """u u~ > d d~ with QCD and electroweak Born amplitudes (explicit limits
     QCD 2, QED 2): the dry run derives one loop order per Born amplitude
     order (QCD^4 and QCD^2 QED^2, not the limits raised by two) and does not
-    claim loop admission; in the SM the generation fails closed on the
-    chiral Z vertex of a loop quark line (WP3.2). With photon exchange only
+    claim loop admission; in the SM the generation fails closed on the W
+    exchange of the electroweak Born: its root closure at leg 1 needs the
+    conjugate rule of a vertex that is not closed under conjugation (the
+    chiral Z on loop quark lines, which stopped it earlier, is supported
+    since WP3.1 I-AX). With photon exchange only
     (Z, W and scalars excluded through the slice request) the public
     generator and runtime, regenerating at load, equal MadLoop's split-order
     control in every squared order (MadLoop binary64): each Born order within
@@ -1882,8 +1885,8 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     assert coverage["loop_admission_checked"] is False
     with pytest.raises(
         GenerationError,
-        match=r"'Z'\) is not a pure vector coupling; its sign needs the "
-        r"electroweak oracles",
+        match=r"is not closed under conjugation; the tree reading of its legs "
+        r"needs its conjugate rule",
     ):
         generator.generate(processes, tmp_path / "a")
     assert not (tmp_path / "a").exists()
