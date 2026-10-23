@@ -266,7 +266,7 @@ def test_reduction_direction_check_agrees_and_poles_are_optional(
     assert _statuses_succeed(direct + check)
     for a, b in zip(direct, check, strict=True):
         assert _lane_relative(b, a, 3) < Decimal("1e-12")
-    finite, finite_check = reducer.reduce(groups, poles=False, check=True)
+    finite, finite_check = reducer.reduce(groups, poles="none", check=True)
     for full, only, full_check, only_check in zip(
         direct, finite, check, finite_check, strict=True
     ):

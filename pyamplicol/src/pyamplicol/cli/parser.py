@@ -623,7 +623,11 @@ def _add_evaluation_options(
         dest="evaluation.poles",
         choices=tuple(selection.value for selection in PoleSelection),
         default=argparse.SUPPRESS,
-        help="v2 virtuals: the poles computed; 'none' evaluates the finite part only",
+        help=(
+            "v2 virtuals: the poles computed; 'none' evaluates the finite part "
+            "only, 'uv' gives the bare loop's UV poles, 'ir' the renormalised "
+            "virtual's IR poles"
+        ),
     )
     parser.add_argument(
         "--stability-rotation",

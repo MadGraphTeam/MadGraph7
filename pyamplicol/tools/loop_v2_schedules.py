@@ -294,7 +294,7 @@ def measure(options: argparse.Namespace) -> int:
                     start = time.perf_counter()
                     output = executor.evaluate(
                         inputs,
-                        poles=False,
+                        poles="none",
                         check=False,
                         schedule=schedule,
                         chunk_families=options.chunk_families,

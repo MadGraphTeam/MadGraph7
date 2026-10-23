@@ -546,7 +546,7 @@ def test_finite_only_observables(generate):
         point, "1000000", correlations=("T12",), parameters=PARAMETERS
     )["T12"]
     finite = observables.evaluate(
-        point, "1000000", correlations=("T12",), parameters=PARAMETERS, poles=False
+        point, "1000000", correlations=("T12",), parameters=PARAMETERS, poles="none"
     )["T12"]
     assert len(finite.totals) == 7
     for name in COMPONENTS:

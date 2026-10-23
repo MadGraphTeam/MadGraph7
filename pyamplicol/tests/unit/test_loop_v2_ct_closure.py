@@ -21,6 +21,7 @@ from itertools import product
 
 import pytest
 
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.v2.ct_sites import LAURENT_POWERS, ColourOverlaps, add_colour
 from pyamplicol.loops.v2.families import add_orders
 from tools.loop_reference import legacy_capture
@@ -756,7 +757,7 @@ def _counterterms_per_route(compiled, native, process, qcd, point, **options):
                 _fraction(SLICE_SCALE_SQUARED),
                 dict(SLICE_PARAMETERS),
                 Precision.double(),
-                True,
+                PoleSelection.ALL,
             )
         values[route] = (dict(evaluation.born), dict(evaluation.counterterms))
     return values
@@ -819,6 +820,7 @@ def test_six_leg_four_gluon_counterterms_from_recursion_equal_sites(
 _SIX_GLUON_SCRIPT = """
 import json, sys
 from pyamplicol import licensing
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.v2.assemble import (
     LoopSlice, Precision, SliceRequest, _fraction, _Numbers,
@@ -836,7 +838,7 @@ for route in ("recursion", "sites"):
         assert not generated.counterterm_program.recursion.residual
     with _Numbers(Precision.double()).scope():
         evaluation = generated._point(exact, _fraction(scale),
-            json.loads(parameters), Precision.double(), True)
+            json.loads(parameters), Precision.double(), PoleSelection.ALL)
     out[route] = [[[repr(k), float(v)] for k, v in part.items()]
                   for part in (evaluation.born, evaluation.counterterms)]
 out["serial"] = (licensing._SPENSO_POLICY_APPLIED, licensing._SPENSO_SERIAL)

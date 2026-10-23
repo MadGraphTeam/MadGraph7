@@ -26,7 +26,7 @@ use std::time::Instant;
 
 use rusticol_core::RusticolResult;
 use rusticol_core::loop_execution::v2::{
-    FamilyLanes, LaneOutcome, Reduced, Schedule, V2Backend, V2Executor, V2Options,
+    FamilyLanes, LaneOutcome, Poles, Reduced, Schedule, V2Backend, V2Executor, V2Options,
 };
 use rusticol_core::loop_v2::dress::V2Batch;
 use rusticol_core::loop_v2::plan::{LoopProgramV4, Step};
@@ -44,10 +44,10 @@ impl V2Backend<f64> for Instant0 {
     fn reduce(
         &mut self,
         groups: &[FamilyLanes<f64>],
-        poles: bool,
+        poles: Poles,
         _check: Option<ReductionCheck>,
     ) -> RusticolResult<Reduced<f64>> {
-        let width = if poles { 3 } else { 1 };
+        let width = poles.width();
         let direct = groups
             .iter()
             .map(|group| {
@@ -196,7 +196,7 @@ fn main() {
         });
         for (name, schedule) in [("B", Schedule::B), ("M", Schedule::M)] {
             let mut options = V2Options {
-                poles: false,
+                poles: Poles::None,
                 schedule,
                 ..V2Options::default()
             };

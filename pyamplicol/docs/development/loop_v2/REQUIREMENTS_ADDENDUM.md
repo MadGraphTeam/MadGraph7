@@ -127,6 +127,62 @@ relocation with the same native build. A dedicated acceptance test covers this.
   rotational invariance, and Ward identities probed by replacing one external
   gluon's polarisation vector by its momentum.
 
+## I. UV and IR pole selection (user, 2026-10-23)
+
+- The user's words: "you can now pin/rebase the latest main of ninjars and
+  oneloopmasters as those extend now to the possibility of specifying to compute
+  just the IR or UV poles of the reduction, which is an option that should be
+  broadcasted to the user-provided settings in pyAmpliCol for the one-loop matrix
+  elements so that the user can also choose to compute / access only the IR or UV
+  poles (not just no poles) if they so desire".
+- Requirement (extends B): the one-loop matrix elements take a runtime pole
+  option `poles = "all" | "none" | "uv" | "ir"` for the same generated artifact.
+  `"all"` stays the default and its results are unchanged; `"none"` is the
+  finite-only mode of B with all its savings; `"uv"` and `"ir"` return only the
+  ultraviolet or only the infrared pole parts. The finite part is identical in
+  all four modes. The option reaches TOML, CLI, the Python API and the result
+  accessors (and the SDKs where they evaluate loop virtuals).
+- Semantics, decided by the user (~19:20 UTC, relayed by the coordinator's
+  DECISIONS 2026-10-23; binding): "poles='uv' should return the UV poles of
+  the bare (unrenormalised) one-loop amplitude, with the counterterms' UV
+  poles also accessible separately so I can check renormalisation;
+  poles='ir' returns the IR (Catani) poles of the renormalised virtual."
+  - `"uv"`: the selected values (`VirtualEvaluation.values` and the
+    per-order, correlated and resolved outputs) are the UV poles of the bare
+    loop amplitude interfered with the Born, the double pole zero. The
+    counterterms' UV poles (`uv_local`, `uv_external_fields`, their sum `uv`,
+    and `r2`) are in `pole_parts`; bare + counterterm UV poles = 0 per
+    Laurent coefficient where renormalisation is complete.
+  - `"ir"`: the IR poles of the renormalised virtual, equal to Catani's
+    operator.
+  - The finite part is identical in all four modes; `"all"` stays the default
+    and `"none"` the finite-only mode.
+  - Design §12.4 states what is a definition and what is evidence: a UFO
+    model writes the external-field factors with one eps, so their UV part is
+    fixed by the UV finiteness of the renormalised virtual and the bare +
+    counterterm cancellation in `pole_parts` holds by construction. The
+    independent evidence is the bare-loop UV residue against the generic
+    engine's UV-selected masters, bare UV + UV_local + the textbook
+    Feynman-gauge field renormalisation of every leg = 0, and the `"ir"`
+    poles against Catani's operator.
+- Companion plan (coordinator decision under the user's relaxed generation
+  budget, DECISIONS 2026-10-23): kept as built, always generated and stored,
+  so one artifact serves every mode. Its generation cost (about 11 % of the
+  slice generation at five legs and 15 % at six, plus export) is paid by
+  every process; its evaluation cost only by `"uv"` and `"ir"`: +1 %
+  (u u~ > e- e+ g g, six legs with a photon), +7 % (g g > g g g, five legs)
+  and +13–18 % (g g > g g g g, six legs; idle and loaded host) over `"all"` (design §12.4).
+- As built (WP2.10 after WP2.6, design §12.2 and §12.4): TOML
+  `evaluation.poles`, CLI `--poles` and the API `poles=` take all four values
+  (`PoleSelection.UV`, `.IR`); one artifact serves them all (it stores the
+  companion plan of the certified-scaleless families that `"uv"`/`"ir"` run;
+  artifacts written before the split are refused at load with a regeneration
+  message, no backward compatibility). `VirtualEvaluation.pole_parts` holds
+  both origins by component (virtual, bare, uv, r2, uv_local,
+  uv_external_fields), also for correlated and resolved outputs. The SDKs
+  evaluate legacy plan-v3 artifacts only; v4 SDK evaluation (WP3.1) takes
+  the same option.
+
 ## J. Counterterms as plain tree-level insertions; no loop matching (user, 2026-10-23)
 
 - R2 and UV counterterm vertices, two-point ones included, are ordinary

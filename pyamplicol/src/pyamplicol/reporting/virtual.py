@@ -68,6 +68,60 @@ def _stability_table(result: Any, prettytable: Any) -> Any:
     return table
 
 
+def _pole_parts_table(result: Any, prettytable: Any) -> Any:
+    """Both origins' pole parts per component (``poles`` "uv" or "ir"), or
+    None; resolved results per helicity and colour component."""
+
+    parts = getattr(result, "pole_parts", None)
+    if parts is None:
+        return None
+    resolved = isinstance(result, ResolvedVirtualEvaluation)
+    axes = ("helicity", "colour component") if resolved else ()
+    table = prettytable.PrettyTable(
+        (
+            "point",
+            "virtual squared order",
+            *axes,
+            "origin",
+            "component",
+            "single pole [-1]",
+            "double pole [-2]",
+        )
+    )
+    table.title = "Pole parts by origin (P/eps = P_UV/eps_UV + P_IR/eps_IR)"
+    table.align = "l"
+    table.hrules = prettytable.HRuleStyle.FRAME
+
+    def entries(value: Any) -> Any:
+        if not resolved:
+            yield (), value
+            return
+        for h, helicity in enumerate(result.helicity_ids):
+            for c, component in enumerate(result.virtual_color_ids):
+                yield (helicity, component), value[h][c]
+
+    for point, lane in enumerate(parts):
+        if lane is None:
+            table.add_row((point, "", *("",) * len(axes), "", "", "unavailable", ""))
+            continue
+        for index, sector in enumerate(result.sectors):
+            for origin in ("uv", "ir"):
+                for component, values in lane.origin(origin).items():
+                    for labels, laurent in entries(values[index]):
+                        table.add_row(
+                            (
+                                point,
+                                _order(sector.order),
+                                *labels,
+                                origin,
+                                component,
+                                _scalar(laurent.single_pole),
+                                _scalar(laurent.double_pole),
+                            )
+                        )
+    return table
+
+
 def virtual_evaluation_summary(
     result: VirtualEvaluation | ResolvedVirtualEvaluation, *, prettytable: Any
 ) -> str:
@@ -200,7 +254,20 @@ def virtual_evaluation_summary(
         )
     if result.poles is PoleSelection.NONE:
         header += "\nFinite-only evaluation: the poles were not computed."
+    elif result.poles is PoleSelection.UV:
+        header += (
+            "\nPoles: the ultraviolet poles of the bare loop amplitude; both "
+            "origins' parts per component, counterterms included, follow."
+        )
+    elif result.poles is PoleSelection.IR:
+        header += (
+            "\nPoles: the infrared poles of the renormalised virtual (the "
+            "double pole is infrared); both origins' parts per component follow."
+        )
     tables = [born, virtual, pairs, status]
+    parts = _pole_parts_table(result, prettytable)
+    if parts is not None:
+        tables.append(parts)
     stability = _stability_table(result, prettytable)
     if stability is not None:
         tables.append(stability)

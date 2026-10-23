@@ -244,10 +244,14 @@ class CoefficientLowering:
     * the UFO helper calls are resolved: ``cond(c, a, b)`` is ``a`` for a
       vanishing number ``c`` and ``b`` otherwise, ``reglog(z)`` is 0 for a
       vanishing number and ``log(z)`` otherwise, ``complexconjugate`` is
-      ``conj``. A symbolic ``c`` or ``z`` is recorded in ``assumptions``
-      (expressions that must not vanish at runtime, checked by
-      ``CountertermModel.check_parameters``); any other helper raises
-      ``CountertermCouplingError``.
+      ``conj``. Only the selected branch of a ``cond`` is resolved. A ``c``
+      or ``z`` free of model parameters (numbers, builtin constants such as
+      ``𝜋`` and builtin functions of them) is decided here
+      (``decide_constant``); one that depends on model parameters is
+      recorded in ``assumptions`` without its constant factors (the
+      parameter-dependent product that must not vanish at runtime, checked
+      by ``CountertermModel.check_parameters``). An undecidable constant and
+      any other helper raise ``CountertermCouplingError``.
     """
 
     def __init__(
@@ -306,12 +310,12 @@ class CoefficientLowering:
         kind = atom.get_type()
         if kind in (AtomType.Num, AtomType.Var):
             return atom
-        children = [self._resolve(child) for child in atom]
-        if kind == AtomType.Add:
-            return reduce(add, children)
-        if kind == AtomType.Mul:
-            return reduce(mul, children)
-        if kind == AtomType.Pow:
+        if kind in (AtomType.Add, AtomType.Mul, AtomType.Pow):
+            children = [self._resolve(child) for child in atom]
+            if kind == AtomType.Add:
+                return reduce(add, children)
+            if kind == AtomType.Mul:
+                return reduce(mul, children)
             base, exponent = children
             return base**exponent
         name = atom.get_name()
@@ -319,11 +323,16 @@ class CoefficientLowering:
         if not (
             name.startswith("pyamplicol_scalar_model_") and head.startswith("value_")
         ):
-            return symbols.qualified(name)(*children)
+            return symbols.qualified(name)(*(self._resolve(child) for child in atom))
         helper = self._helpers.get(int(head.removeprefix("value_")))
         if helper == "cond":
-            condition, if_zero, otherwise = children
-            return if_zero if self._vanishes(condition) else otherwise
+            # The branch that is not taken is never resolved: its conditions
+            # are no assumptions (and its fixed-parameter singularities, e.g.
+            # a log of MU_R^2/MB^2 at MB = 0, are never formed).
+            condition, if_zero, otherwise = list(atom)
+            taken = if_zero if self._vanishes(self._resolve(condition)) else otherwise
+            return self._resolve(taken)
+        children = [self._resolve(child) for child in atom]
         if helper == "reglog":
             (argument,) = children
             if self._vanishes(argument):
@@ -338,13 +347,87 @@ class CoefficientLowering:
         )
 
     def _vanishes(self, value: Any) -> bool:
+        """Whether the helper argument ``value`` vanishes: decided now when
+        it is free of model parameters, else assumed not (``assumptions``)."""
+
         from symbolica import AtomType
 
         value = value.expand()
-        if value.get_type() == AtomType.Num:
-            return value == self._zero
-        self.assumptions.add(value.to_canonical_string())
+        factors = list(value) if value.get_type() == AtomType.Mul else [value]
+        # An assumption states that a parameter-dependent factor is non-zero:
+        # constant factors are decided here and never become assumptions.
+        varying = []
+        for factor in factors:
+            if not factor.is_constant():
+                varying.append(factor)
+                continue
+            decision = decide_constant(factor)
+            if decision == "zero":
+                return True
+            if decision != "non-zero":
+                raise CountertermCouplingError(
+                    f"cannot decide whether the counterterm coefficient argument "
+                    f"{value} vanishes: its constant factor {factor} is {decision}"
+                )
+        if varying:
+            self.assumptions.add(reduce(mul, varying).to_canonical_string())
         return False
+
+
+# Working precisions (decimal digits) of the numerical decision of constants.
+_DECISION_DIGITS = 40
+
+
+def decide_constant(value: Any) -> str:
+    """Whether ``value``, an expression free of model parameters, vanishes.
+
+    ``value`` holds numbers, builtin constants (``𝜋``, Euler's number, the
+    imaginary unit) and builtin functions of them
+    (``Expression.is_constant``). Returns
+
+    * ``"zero"`` or ``"non-zero"``: decided. A number (rational or
+      floating-point) is compared with 0 exactly. Any other expression is
+      evaluated at ``_DECISION_DIGITS`` and twice as many digits, with its
+      floating-point coefficients replaced by the rationals of their stored
+      values (a binary64 coefficient would cap both evaluations at 16
+      digits): it is non-zero when both values agree to half the lower
+      precision, relative to the more precise one, and that one is non-zero.
+    * ``"singular"``: an infinite or indeterminate value.
+    * ``"undecided"``: neither (e.g. ``sin(𝜋)``, which Symbolica keeps; its
+      values at both precisions are rounding residues that do not agree).
+      Callers refuse it, never assume it non-zero.
+    """
+
+    from decimal import Decimal, localcontext
+
+    from symbolica import AtomType, E
+
+    from pyamplicol.models.compiler_symbolica import _exact_binary64_coefficients
+
+    if not value.is_constant():
+        raise ValueError(f"{value} depends on model parameters")
+    if value.is_finite() is False:
+        return "singular"
+    if value.get_type() == AtomType.Num:
+        return "zero" if value == E("0") else "non-zero"
+    exact = _exact_binary64_coefficients(value)
+    values = []
+    for digits in (_DECISION_DIGITS, 2 * _DECISION_DIGITS):
+        try:
+            number = exact.evaluate({}, decimal_digit_precision=digits)
+        except ValueError:  # e.g. an infinite coefficient
+            return "singular"
+        if not number.is_finite():
+            return "singular"
+        values.append((number.real.to_decimal(), number.imag.to_decimal()))
+    with localcontext() as context:
+        context.prec = 4 * _DECISION_DIGITS
+        (low_re, low_im), (high_re, high_im) = values
+        difference = (low_re - high_re) ** 2 + (low_im - high_im) ** 2
+        size = high_re**2 + high_im**2
+        if size and difference <= size * Decimal(10) ** -_DECISION_DIGITS:
+            return "non-zero"
+    return "undecided"
 
 
 def _numeric_constants(raw: Any) -> dict[str, str]:
@@ -442,10 +525,13 @@ class CountertermModel:
     def check_parameters(self, values: Mapping[str, Any]) -> None:
         """Fail if runtime model parameter ``values`` break an assumption.
 
-        Parameters absent from ``values`` take the compiled defaults.
+        Parameters absent from ``values`` take the compiled defaults. Every
+        assumption must be decided with the parameters substituted
+        (``decide_constant``): one that vanishes, is singular (e.g. a mass
+        in a denominator set to 0) or cannot be decided is refused.
         """
 
-        from symbolica import AtomType, E, Expression, Replacement
+        from symbolica import E, Expression, Replacement
 
         if not self.assumptions:
             return
@@ -464,13 +550,23 @@ class CountertermModel:
         ]
         for assumption in self.assumptions:
             expression = E(assumption).replace_multiple(replacements).expand()
-            if expression.get_type() != AtomType.Num:
-                raise ValueError(f"cannot decide counterterm assumption {assumption}")
-            if expression == E("0"):
+            decision = (
+                decide_constant(expression)
+                if expression.is_constant()
+                else "undecided"  # a symbol no parameter value replaces
+            )
+            if decision == "zero":
                 raise ValueError(
                     f"model parameters make {assumption} vanish, which the lowered "
                     "counterterm couplings assume non-zero"
                 )
+            if decision == "singular":
+                raise ValueError(
+                    f"model parameters make {assumption} singular, which the "
+                    "lowered counterterm couplings assume finite and non-zero"
+                )
+            if decision != "non-zero":
+                raise ValueError(f"cannot decide counterterm assumption {assumption}")
 
 
 def lower_model_counterterms(
@@ -1186,6 +1282,7 @@ __all__ = [
     "TreeVocabulary",
     "UnloweredCountertermError",
     "admitted_alternatives",
+    "decide_constant",
     "lower_model_counterterms",
     "rule_key",
     "rule_terms",
