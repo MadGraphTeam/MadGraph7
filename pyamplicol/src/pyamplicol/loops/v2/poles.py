@@ -46,7 +46,7 @@ gamma_j/eps (massless) or C_j/eps (massive); n_f light flavours in gamma_g.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from fractions import Fraction
 from typing import Any, Literal
 
@@ -164,19 +164,24 @@ def catani_poles(
     log: Callable[[Any], Any],
     real: Callable[[Any], Any],
     sqrt: Callable[[Any], Any],
+    massless: Collection[int] = (),
 ) -> tuple[Any, Any]:
     """(single, double) pole of the renormalised virtual over (alpha_s/2pi)
     for one sector, massless and massive coloured legs.
 
     ``correlated(j, k)`` is the sector's colour-correlated Born <T_j.T_k>,
     ``momenta`` the all-incoming exact momenta, ``gamma(j)`` gamma_j of a
-    massless leg (n_f light flavours). ``log``, ``real`` and ``sqrt`` act in
-    the carrier. The massless-only arithmetic is that of the previous
-    implementation (``assemble._PointEvaluation._ir_poles``).
+    massless leg (n_f light flavours). ``massless`` are the legs of massless
+    particles (by the model): their p^2 is taken as 0, whatever the rounding
+    of the given momenta; another leg's mass^2 is its p^2. ``log``, ``real``
+    and ``sqrt`` act in the carrier. The massless-only arithmetic is that of
+    the previous implementation (``assemble._PointEvaluation._ir_poles``).
     """
 
     single = double = real(0)
-    masses = {j: _minkowski(momenta[j]) for j in coloured}
+    masses = {
+        j: Fraction(0) if j in massless else _minkowski(momenta[j]) for j in coloured
+    }
     for j in coloured:
         c_j = casimir(representation[j])
         massive_j = masses[j] != 0

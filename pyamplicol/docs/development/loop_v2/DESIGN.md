@@ -1572,7 +1572,7 @@ The massless arithmetic is unchanged. The massive form reproduces the provider p
 - The residue equals the generic engine's UV-selected reduction lane by lane: binary64 to 10⁻¹⁰ on synthetic lanes and 3·10⁻¹⁴ on g g > g g, DoubleFloat to 10⁻²⁶.
 - The Python reference path equals the native executor in split mode. The stability estimates exist in every mode.
 
-Found on the way (pre-existing, not a pole-selection defect, pinned by a strict xfail): at massive external legs the native executor's family integrals differ from the reference path's. At g g > t t~ (top width 0) the native virtual's double pole is −0.0666 against −0.1133. The reference path equals MadLoop to 2·10⁻¹⁵. `test_loop_v2_executor.py` has no process with massive external legs; owner WP2.1/WP3.1. A top width in the loop propagators (complex mass, no CMS counterterms: WP3.2) also moves the single pole of g g > t t~ by 10⁻³ relative to Catani's, so the IR-pole prediction is made only for stable coloured legs.
+Found on the way (pre-existing, not a pole-selection defect): at massive external legs the native executor's family integrals differed from the reference path's (g g > t t~, top width 0: native double pole −0.0666 against −0.1133; the reference path equals MadLoop to 2·10⁻¹⁵). The slice's mass-flipped kernel copies (`reference_executor.mass_flips`, WP2.6) fixed it: after merging `45875b87` the native executor equals the reference path at g g > t t~ in `"all"` and `"ir"` (`test_native_executor_at_massive_external_legs`), and the massive processes of these tests now run natively (binary64, DoubleFloat). Catani's operator takes the massless legs from the model, not from p² of the given momenta: rounded inputs (the post-build validation's points) give a massless leg a p² of ±10⁻¹⁷, which the massive branch would read as a mass (`test_catani_takes_massless_legs_from_the_model`). A top width in the loop propagators (complex mass, no CMS counterterms: WP3.2) also moves the single pole of g g > t t~ by 10⁻³ relative to Catani's, so the IR-pole prediction is made only for stable coloured legs.
 
 **Public settings** (WP2.6 surface, §12.2). `PoleSelection` has `ALL`, `NONE`, `UV`, `IR`; TOML `evaluation.poles`, CLI `--poles` and the API `poles=` take any of them, a runtime option of one artifact. `V2VirtualRuntime.evaluate` passes the mode to `NativeExecutor.evaluate` (the reducer's `Poles::Split` and the companion plan in `uv`/`ir`):
 
@@ -1946,8 +1946,7 @@ Total ≈ 270 agent-days [I].
     - `uv`/`ir` for correlated and resolved outputs (refused now);
     - folding the companion into the main plan to share seeds and factors (the +20 % of `uv`/`ir` at gg→gggg);
     - the CT recursion's slot switches (`poles.slot_switches`, after WP2.2);
-    - the v4 SDK (WP3.1);
-    - the native executor at massive external legs (pre-existing, WP2.1/WP3.1).
+    - the v4 SDK (WP3.1).
 
 **Wave 3: required set**
 

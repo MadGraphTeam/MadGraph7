@@ -2549,6 +2549,10 @@ class _PointEvaluation:
             label for label, leg in legs.items() if leg.representation != 1
         )
         dipoles = slice_.dipoles()
+        # Massless legs by the model, not by the rounded momenta's p^2.
+        massless = {
+            leg.index + 1 for leg in slice_.families.legs if leg.mass.mass == ZERO
+        }
         three = Fraction(NC)
         physical = []
         for vectors in self.born_vectors.values():
@@ -2588,6 +2592,7 @@ class _PointEvaluation:
                 log=lambda x: _log(x, numbers),
                 real=numbers.real,
                 sqrt=lambda x: math.sqrt(x) if numbers.double else x.sqrt(),
+                massless=massless,
             )
             out[sector] = (prefactor * single, prefactor * double)
         return out

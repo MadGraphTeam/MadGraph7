@@ -18,7 +18,8 @@ Checks, one phase-space point per process (HANDOFF §0.3):
   Born with Z_g^UV = (alpha_s/4pi)(5/3 C_A - 4/3 T_F n_f) and Z_q^UV =
   -(alpha_s/4pi) C_F (massless and massive quarks);
 * the Python reference path (``LoopSlice.evaluate``) and the native executor
-  agree in split mode, and the stability estimates exist in every mode.
+  agree in split mode (also at massive external legs), and the stability
+  estimates exist in every mode.
 
 The lane-level residue is checked against NinjaRS's generic engine with
 oneloopmaster's UV- and IR-selected masters in
@@ -129,50 +130,31 @@ def slices(loop_sm_compiled_model, loop_native):
     return build
 
 
-# Massive external legs run on the Python reference path: the native
-# executor's family numerators of g g > t t~ and u u~ > t t~ differ from it
-# (``test_native_executor_massive_external_legs``).
-PYTHON_PATH = ("gg_ttx", "uux_ttx")
-
-
 @pytest.fixture(scope="module")
 def modes(slices):
-    """One point per process and carrier in every pole mode: the native
-    executor (binary64, DoubleFloat), or for ``PYTHON_PATH`` the slice's
-    reference path (binary64, 32 digits)."""
+    """One point per process and carrier in every pole mode through the
+    native executor (binary64, DoubleFloat)."""
 
     cache: dict = {}
 
     def evaluate(name: str, carrier: str = "double"):
         key = (name, carrier)
         if key not in cache:
-            slice_, executor = slices(name)
+            _slice, executor = slices(name)
             point, scale = PROCESSES[name][2]()
-            python = name in PYTHON_PATH
             if carrier == "double":
                 precision = Precision.double()
             else:
-                precision = (
-                    Precision.arbitrary(32) if python else Precision.double_double()
-                )
+                precision = Precision.double_double()
             out = {}
             for mode in (True, *MODES):
-                if python:
-                    out[mode] = slice_.evaluate(
-                        point,
-                        scale,
-                        parameters=PARAMETERS,
-                        precision=precision,
-                        poles=mode,
-                    )
-                else:
-                    (out[mode],) = executor.evaluate(
-                        [point],
-                        [scale],
-                        parameters=PARAMETERS,
-                        precision=precision,
-                        poles=mode,
-                    )
+                (out[mode],) = executor.evaluate(
+                    [point],
+                    [scale],
+                    parameters=PARAMETERS,
+                    precision=precision,
+                    poles=mode,
+                )
             cache[key] = out
         return cache[key]
 
@@ -438,20 +420,66 @@ def test_lane_and_sector_splits_are_exact_for_exact_numbers():
     assert total["ir"] == sum(v.single_pole for v in values.values())
 
 
+@pytest.mark.loop_fast
+def test_catani_takes_massless_legs_from_the_model():
+    """A massless leg's p^2 of rounded momenta (here -1e-17 relative) is not a
+    mass: with the model's massless legs the prediction is the massless one
+    (the massive branch would take the log of a negative p^2)."""
+
+    from pyamplicol.loops.v2.poles import catani_poles
+
+    q = Fraction
+    exact = {
+        1: (q(1), q(0), q(0), q(1)),
+        2: (q(1), q(0), q(0), q(-1)),
+        3: (q(-1), q(0), q(3, 5), q(4, 5)),
+        4: (q(-1), q(0), q(-3, 5), q(-4, 5)),
+    }
+    rounded = dict(exact)
+    rounded[3] = (q(-1), q(0), q(3, 5), q(4, 5) + q(1, 10**17))
+
+    def poles(momenta, massless):
+        return catani_poles(
+            (1, 2, 3, 4),
+            {1: 8, 2: 8, 3: 8, 4: 8},
+            momenta,
+            lambda j, k: -1.5,
+            casimir=lambda r: q(3),
+            gamma=lambda j: q(11, 2) - q(1, 3) * 5,
+            mu2=1.0,
+            log=math.log,
+            real=float,
+            sqrt=math.sqrt,
+            massless=massless,
+        )
+
+    expected = poles(exact, ())
+    got = poles(rounded, (1, 2, 3, 4))
+    assert all(abs(a - b) <= 1e-12 * abs(b) for a, b in zip(got, expected))
+    with pytest.raises(ValueError):
+        poles(rounded, ())
+
+
 @pytest.mark.loop_physics
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="pre-existing (slice 2a56a0e7, native bda5e256): the native executor's "
-    "family integrals of g g > t t~ differ from the reference path's at massive "
-    "external legs (the reference path equals MadLoop); not a pole-selection defect",
-)
-def test_native_executor_massive_external_legs(slices):
+def test_native_executor_at_massive_external_legs(slices):
+    """g g > t t~: the native executor equals the Python reference path (which
+    equals MadLoop), combined and split. Before the slice's mass-flipped
+    kernel copies (``reference_executor.mass_flips``, WP2.6) the native
+    family integrals of top lanes differed (double pole -0.0666 against
+    -0.1133)."""
+
     slice_, executor = slices("gg_ttx")
     point, scale = PROCESSES["gg_ttx"][2]()
-    python = slice_.evaluate(point, scale, parameters=PARAMETERS)
-    (native,) = executor.evaluate([point], [scale], parameters=PARAMETERS)
-    for sector, laurent in python.components["virtual"].items():
-        other = native.components["virtual"][sector]
-        for x, y in zip(laurent.coefficients, other.coefficients, strict=True):
-            assert abs(complex(x) - complex(y)) <= 1e-12 * _scale(laurent)
+    for mode in ("all", "ir"):
+        python = slice_.evaluate(point, scale, parameters=PARAMETERS, poles=mode)
+        (native,) = executor.evaluate(
+            [point], [scale], parameters=PARAMETERS, poles=mode
+        )
+        for component in COMPONENTS:
+            for sector, laurent in python.components[component].items():
+                other = native.components[component][sector]
+                bound = 1e-12 * _scale(python.virtual(sector)) + 1e-12 * _scale(
+                    laurent
+                )
+                for x, y in zip(laurent.coefficients, other.coefficients, strict=True):
+                    assert abs(complex(x) - complex(y)) <= bound, (mode, component)

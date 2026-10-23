@@ -149,3 +149,14 @@ relocation with the same native build. A dedicated acceptance test covers this.
   virtual pole free and lists the bare-loop and counterterm UV poles separately,
   and `"ir"` gives Catani's poles of the renormalised virtual with the bare
   loop's IR part; both parts are accessible together.
+- As built (WP2.10 after WP2.6, design §12.2 and §12.4): TOML
+  `evaluation.poles`, CLI `--poles` and the API `poles=` take all four values
+  (`PoleSelection.UV`, `.IR`); one artifact serves them all (it stores the
+  companion plan of the certified-scaleless families that `"uv"`/`"ir"` run;
+  artifacts written before the split serve `"all"`/`"none"` and refuse
+  `"uv"`/`"ir"` with a regeneration message). `VirtualEvaluation.values` holds
+  the selected origin's parts of the renormalised virtual and
+  `VirtualEvaluation.pole_parts` both origins by component (virtual, bare, uv,
+  r2, uv_local, uv_external_fields). Correlated and resolved outputs take
+  `"all"`/`"none"` for now (refused otherwise). The SDKs evaluate legacy
+  plan-v3 artifacts only; v4 SDK evaluation (WP3.1) takes the same option.

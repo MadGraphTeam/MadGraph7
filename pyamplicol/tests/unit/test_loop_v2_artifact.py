@@ -109,7 +109,7 @@ OBSERVABLES = LEGACY / "observables"
 BINARY64_CHECKS = VirtualStabilityChecks(("z:3/5:4/5",), True)
 GG_PARAMETERS = {"aS": "0.118", "MT": "173"}
 # Certified-scaleless families of the companion plans (poles "uv" and "ir").
-SCALELESS_FAMILIES = {"gg": None, "uux_ddxg": None}
+SCALELESS_FAMILIES = {"gg": 4, "uux_ddxg": 1}
 POINT = [[500, 0, 0, 500], [500, 0, 0, -500], [500, 300, 0, 400], [500, -300, 0, -400]]
 
 SCHEME = """
@@ -575,7 +575,12 @@ def test_public_generation_publishes_plan_v4(full_colour):
     assert info["engine"] == "v2" and info["schedule"] == "backward"
     assert info["families"] == 42
     assert sum(count for _n, _r, count in info["buckets"]) == 42
-    assert info["poles"] == ["all", "none"] and not info["rescue_available"]
+    assert info["poles"] == ["all", "none", "uv", "ir"]
+    assert not info["rescue_available"]
+    execution = json.loads(
+        (full_colour / "processes/uux_ddxg/execution.json").read_text()
+    )
+    assert info["scaleless_plan_sha256"] == execution["scaleless_plan_sha256"]
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
 
@@ -904,6 +909,8 @@ def _rewrite_payloads(source: Path, destination: Path, edits, files=None) -> Pat
                 content,
                 role=record.role,
                 media_type=record.media_type,
+                executable=record.executable,
+                target=record.target,
                 process_id=record.process_id,
             )
         builder.finalize(
@@ -1110,7 +1117,7 @@ def test_inspect_summarizes_v2_loop_artifacts(full_colour):
     assert loop.sectors == (("QCD^6", (("QCD^2", "QCD^4"),)),)
     assert loop.families == 24 and sum(b[2] for b in loop.buckets) == 24
     assert loop.color_degrees is None and loop.schedule == "backward"
-    assert loop.poles == ("all", "none")
+    assert loop.poles == ("all", "none", "uv", "ir")
     assert loop.stability_checks == ("rotation", "reduction-direction")
     assert loop.arithmetic == ("double", "double-double", "arbitrary")
     assert loop.resolved and not loop.correlations
