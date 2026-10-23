@@ -763,12 +763,13 @@ LEGACY_TOLERANCE = {"double": 1e-12, "arbitrary-200": 1e-40}
 # output must agree natively in DoubleFloat within DOUBLE_DOUBLE_TOLERANCE.
 # This rule replaces three named exceptions and needs the user's sign-off
 # (DESIGN WP2.5). Measured on the fixtures: 23 of 234 binary64 values (output,
-# point, executor) have E > 1e-12, all on u u~ > g g g, 19 of them at its first
+# point, executor) have E > 1e-12, all on u u~ > g g g, 18 of them at its first
 # point; five miss 1e-12 there (T12 native 9.7e-12 and Python 2.1e-12 with E
 # 1.7e-10 and 1.3e-10; NLC T13 native 2.1e-12 with E 2.0e-11; spin 3 native
 # 6.2e-12 and Python 3.4e-12 with E 1.2e-10 and 1.3e-10). Every value held to
-# 1e-12 is within 1.6e-14. At ten rotated copies of that point the same
-# outputs miss 1e-12 in either executor and in the legacy engine alike.
+# 1e-12 is within 1.6e-14. At ten exact rotations of that point spin 3 misses
+# 1e-12 in 9 of 10 copies natively, in 10 in Python and in 9 in the legacy
+# engine, so the point, not an executor, is ill-conditioned.
 LEGACY_ESTIMATE_CEILING = 1e-9
 DOUBLE_DOUBLE_TOLERANCE = 1e-24
 
