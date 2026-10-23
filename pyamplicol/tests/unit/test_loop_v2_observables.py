@@ -620,13 +620,17 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
     renormalised interference with the physical Born (bare + UV + R2)
     vanishes per Laurent coefficient and sector, on every gluon leg, in the
     Python reference executor (on the first gluon leg) and natively (every
-    leg; the Ward vector changes only the batch inputs). At 200 bits (Python
-    and native MPFR) within 1e-45 of the largest physical component,
-    natively in DoubleFloat within 1e-25 of it.
+    leg; the Ward vector changes only the batch inputs). The scale of a
+    coefficient is the largest physical component, or the R2 part where that
+    is larger (it cancels a bare part of its size: c = i on u u~ > g g g, up
+    to 20 times the physical scale; for c = 1 the scale is the physical
+    one). At 200 bits (Python and native MPFR) within 1e-45 of the scale,
+    natively in DoubleFloat within 1e-25 of it (measured: at most 8.8e-27 of
+    the physical scale for c = 1, 1.35e-26 of the R2 part for c = i, leg 5).
 
-    Binary64 (both executors, one bound): 1e-11 of the physical scale plus
-    1e-12 of the run's own family lanes' absolute sum (the conditioning of
-    the cancellation). On u u~ > g g g the lanes cancel across
+    Binary64 (both executors, one bound): 1e-11 of the scale plus 1e-12 of
+    the run's own family lanes' absolute sum (the conditioning of the
+    cancellation). On u u~ > g g g the lanes cancel across
     families (their absolute sum is 1.2e3 to 2.7e3 times the physical scale
     at this point) and binary64 leaves up to 3.5e-10 of the physical scale
     (Python, leg 5, c = 1); on g g > g g the lanes vanish on their own and
@@ -663,28 +667,44 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
     average = observables.slice.normalisation.average
     r2 = 0.0  # the largest |R2| over legs and factors, in physical units
 
-    def binary64_bound(run):
+    def bound(run, relative: float | None) -> list[float]:
+        """Per Laurent coefficient: ``relative`` (None: binary64, 1e-11) of
+        the cancellation's scale, the physical scale or the R2 part where
+        it cancels a larger bare part (c = i on u u~ > g g g); in binary64
+        plus 1e-12 of the run's family lanes' absolute sum."""
+
+        size = [
+            max(
+                physical[k],
+                *(
+                    abs(complex(r.coefficients[k]))
+                    for r in run.components["r2"].values()
+                ),
+            )
+            for k in range(3)
+        ]
+        if relative is not None:
+            return [relative * a for a in size]
         lanes = _lane_scale(run, average)
-        return [1e-11 * a + 1e-12 * b for a, b in zip(physical, lanes, strict=True)]
+        return [1e-11 * a + 1e-12 * b for a, b in zip(size, lanes, strict=True)]
 
     def runs(ward, python: bool):
         """(result, bound) of the native runs and, with ``python``, the
         Python reference run first."""
 
+        exact = None if carrier == "double" else 1e-45
         out = []
         if python:
             (result,) = observables.evaluate(
                 point, scale, ward=ward, parameters=PARAMETERS, precision=precision
             ).values()
-            out.append((result, None))
-        if carrier == "double":
-            natives = [(Precision.double(), None)]
-        else:
-            natives = [
-                (Precision.double_double(), [1e-25 * a for a in physical]),
-                (precision, None),
-            ]
-        for native_precision, native_bound in natives:
+            out.append((result, exact))
+        natives = (
+            [(Precision.double(), None)]
+            if carrier == "double"
+            else [(Precision.double_double(), 1e-25), (precision, exact)]
+        )
+        for native_precision, relative in natives:
             (result,) = native.evaluate(
                 [point],
                 [scale],
@@ -692,18 +712,8 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
                 parameters=PARAMETERS,
                 precision=native_precision,
             )
-            out.append((result[INCLUSIVE], native_bound))
-        return [
-            (
-                run,
-                bound
-                if bound is not None
-                else binary64_bound(run)
-                if carrier == "double"
-                else [1e-45 * a for a in physical],
-            )
-            for run, bound in out
-        ]
+            out.append((result[INCLUSIVE], relative))
+        return [(run, bound(run, relative)) for run, relative in out]
 
     # The Python reference executor on the first leg; natively every leg (the
     # executors share the Python-side Ward trees, and native = Python is
