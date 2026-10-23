@@ -1115,6 +1115,35 @@ class ConfigFile(dict):
         
         return log(text)
 
+    @staticmethod
+    def parse_dict_value(value):
+        """Split the text of a dict parameter into ({key: value-text},
+        full_reset). Allowed entries:
+          {name1:value1, name2:value2}   => full reset
+          name : value                   => just add the entry
+          name , value                   => just add the entry
+          name  value                    => just add the entry
+        Raises ValueError for anything else."""
+        value = value.strip()
+        if value.startswith('{') and value.endswith('}'):
+            new_value = {}
+            for pair in value[1:-1].split(','):
+                if not pair.strip():
+                    break
+                x, y = pair.rsplit(':',1)
+                x, y = x.strip(), y.strip()
+                if x.startswith(('"',"'")) and x.endswith(x[0]):
+                    x = x[1:-1]
+                new_value[x] = y
+            return new_value, True
+        elif ',' in value:
+            x,y = value.split(',')
+        elif ':' in value:
+            x,y = value.split(':')
+        else:
+            x,y = value.split()
+        return {x.strip():y.strip()}, False
+
     def post_set(self, name, value, change_userdefine, raiseerror):
         
         if value is None:
@@ -1269,39 +1298,8 @@ class ConfigFile(dict):
             full_reset = True #check if we just update the current dict or not
             
             if isinstance(value, str):
-                value = value.strip()
-                # allowed entry:
-                #   name : value   => just add the entry
-                #   name , value   => just add the entry
-                #   name  value    => just add the entry
-                #   {name1:value1, name2:value2}   => full reset
-                
-                # split for each comma/space
-                if value.startswith('{') and value.endswith('}'):
-                    new_value = {}
-                    for pair in value[1:-1].split(','):
-                        if not pair.strip():
-                            break
-                        x, y = pair.rsplit(':',1)
-                        x, y = x.strip(), y.strip()
-                        if x.startswith(('"',"'")) and x.endswith(x[0]):
-                            x = x[1:-1] 
-                        new_value[x] = y
-                    value = new_value
-                elif ',' in value:
-                    x,y = value.split(',')
-                    value = {x.strip():y.strip()}
-                    full_reset = False
-                    
-                elif ':' in value:
-                    x,y = value.split(':')
-                    value = {x.strip():y.strip()}
-                    full_reset = False       
-                else:
-                    x,y = value.split()
-                    value = {x:y}
-                    full_reset = False 
-            
+                value, full_reset = self.parse_dict_value(value)
+
             if isinstance(value, dict):
                 for key in value:
                     value[key] = self.format_variable(value[key], targettype, name=name)
@@ -7504,17 +7502,58 @@ class RunCardMG7(RunCard):
         return 'sfos_pair_mass' if only_part_antipart.get(
             pdg, only_part_antipart.get('default', False)) else 'pair_mass'
 
+    def _lo_card_pair_observable(self, pdg, only_part_antipart):
+        """Observable of ``set mxx_min_pdg`` for this pdg: what
+        ``set mxx_only_part_antipart`` chose, else the pair-mass cut the card
+        already has on that pdg (e.g. from the run_card.dat conversion), else
+        every pair of the group."""
+        if pdg in only_part_antipart or 'default' in only_part_antipart:
+            return self._lo_pair_observable(pdg, only_part_antipart)
+        cuts = self.dynamic_sections['cuts']
+        if 'pdg%d-sfos_pair_mass' % pdg in cuts and 'pdg%d-pair_mass' % pdg not in cuts:
+            return 'sfos_pair_mass'
+        return 'pair_mass'
+
+    @staticmethod
+    def _merge_cut_bounds(kept, other):
+        """Bounds of two [cuts] entries on the same quantity, as one entry:
+        the tighter of each bound; ``kept`` wins for anything else (mode)."""
+        merged = collections.OrderedDict(other)
+        for bound, value in kept.items():
+            if bound == 'min' and 'min' in other:
+                value = max(value, other['min'])
+            elif bound == 'max' and 'max' in other:
+                value = min(value, other['max'])
+            merged[bound] = value
+        return merged
+
+    def _lo_parse_pdg_items(self, name, text):
+        """The (key, value-text) pairs of a madevent {pdg: value} parameter,
+        in any form the run_card.dat editor takes ({6: 100, 25: 50}, 6:100,
+        6 100); keys are pdg integers or 'default'."""
+        try:
+            parsed, _ = self.parse_dict_value(text)
+        except ValueError:
+            raise InvalidCmd('%s takes {pdg: value, ...}, not %s' % (name, text))
+        items = []
+        for key, val in parsed.items():
+            if str(key).strip().lower() == 'default':
+                key = 'default'
+            else:
+                key = self.format_variable(key, int, name=name)
+            items.append((key, val))
+        return items
+
     def set_lo_param(self, name, value, masses=None):
         """Apply ``set <name> <value>`` for a madevent parameter that mg7 does
         not just rename (``_LO_SET_PARAMS``): its value needs translating
         (``dynamical_scale_choice 3``, ``maxjetflavor 4``, ...), or several
         madevent settings make one mg7 entry (fixed_fac_scale1 and
         fixed_fac_scale2 give beam.fixed_fact_scale). The beam energies,
-        types and PDFs go to :meth:`set_lo_beam_param` instead. Settings are
-        combined with what the earlier ``set`` commands of the same launch
-        question gave, the card supplying the rest, and
-        :meth:`lo_set_warnings` reports what still has no mg7 equivalent once
-        the question closes.
+        types and PDFs go to :meth:`set_lo_beam_param` instead. A per-beam
+        fixed_fac_scale is combined with the other beam's from earlier ``set``
+        commands of the same launch question, and :meth:`lo_set_warnings`
+        reports a mismatch once the question closes.
 
         Returns None when ``value`` is already an mg7 value (``set
         sde_strategy denominators``, ``set dynamical_scale_choice HT/4``),
@@ -7524,7 +7563,6 @@ class RunCardMG7(RunCard):
         InvalidCmd for a value of the wrong type."""
         name = name.lower()
         text = str(value).split('#')[0].strip()
-        state = vars(self).setdefault('_lo_set_state', {})
         beam = self['beam']
         changes, warnings = collections.OrderedDict(), []
 
@@ -7566,7 +7604,7 @@ class RunCardMG7(RunCard):
         elif name in ('fixed_fac_scale', 'fixed_fac_scale1', 'fixed_fac_scale2'):
             flag = self.format_variable(text, bool, name=name)
             current = beam['fixed_fact_scale']
-            flags = state.setdefault('fixed_fac_scale', {1: current, 2: current})
+            flags = vars(self).setdefault('_lo_fixed_fac_scale', {1: current, 2: current})
             for i in ((1, 2) if name == 'fixed_fac_scale' else (int(name[-1]),)):
                 flags[i] = flag
             put('beam.fixed_fact_scale', flag)
@@ -7581,44 +7619,46 @@ class RunCardMG7(RunCard):
 
         else:
             # per-pdg cuts, written {pdg: value, ...} as in the run_card.dat
-            items = []
-            for item in text.strip().lstrip('{').rstrip('}').split(','):
-                if not item.strip():
-                    continue
-                if ':' not in item:
-                    raise InvalidCmd('%s takes {pdg: value, ...}, not %s'
-                                     % (name, text))
-                key, val = (x.strip().strip('\'"') for x in item.split(':', 1))
-                if key.lower() != 'default':
-                    key = self.format_variable(key, int, name=name)
-                items.append((key, val))
+            items = self._lo_parse_pdg_items(name, text)
             cuts = self.dynamic_sections['cuts']
             multiparticles = self.dynamic_sections['multiparticles']
-            only_pairs = state.setdefault('mxx_only_part_antipart', {})
+            # kept with the card, not the question: it decides the observable
+            # of a later "set mxx_min_pdg" too
+            only_pairs = vars(self).setdefault('_lo_only_part_antipart', {})
             if name == 'mxx_only_part_antipart':
                 for key, val in items:
                     only_pairs[key] = self.format_variable(val, bool, name=name)
                 # existing pair-mass cuts follow the new choice
                 for cut in list(cuts):
                     match = re.match(r'^pdg(\d+)-(sfos_)?pair_mass$', cut)
-                    if not match:
+                    if not match or cut not in cuts:
                         continue
                     pdg = int(match.group(1))
                     new = 'pdg%d-%s' % (pdg, self._lo_pair_observable(pdg, only_pairs))
                     if new != cut:
-                        cuts[new] = cuts.pop(cut)
+                        moved = cuts.pop(cut)
+                        if new in cuts:
+                            moved = self._merge_cut_bounds(cuts[new], moved)
+                        cuts[new] = moved
                         changes['cuts.' + cut] = None
                         changes['cuts.' + new] = cuts[new]
             else:
                 for pdg, val in items:
                     if pdg == 'default':
                         continue
+                    group, pids = self._lo_pdg_group(pdg)
                     if name == 'mxx_min_pdg':
-                        observable = self._lo_pair_observable(pdg, only_pairs)
+                        observable = self._lo_card_pair_observable(pdg, only_pairs)
                         bound = 'min'
+                        # madevent has one pair-mass minimum per pdg: drop
+                        # the one on the other kind of pair
+                        other = '%s-%s' % (group, 'pair_mass' if observable
+                                           == 'sfos_pair_mass' else 'sfos_pair_mass')
+                        if 'min' in cuts.get(other, {}):
+                            self._put_lo_cut(other, 'min', 0.)
+                            changes['cuts.' + other] = cuts.get(other)
                     else:
                         observable, bound = self._LO_PDG_CUT_MAP[name]
-                    group, pids = self._lo_pdg_group(pdg)
                     cut = '%s-%s' % (group, observable)
                     if self._put_lo_cut(cut, bound, number(val)) is not None:
                         multiparticles[group] = pids
@@ -7628,12 +7668,11 @@ class RunCardMG7(RunCard):
     def lo_set_warnings(self):
         """What the madevent-style ``set`` commands of a launch question asked
         for that mg7, with one factorisation-scale switch for both beams,
-        cannot do. Meant for when the question closes: the combined
-        settings are forgotten afterwards, so the next question starts over."""
-        state = vars(self).pop('_lo_set_state', {})
+        cannot do. Meant for when the question closes: the per-beam settings
+        are forgotten afterwards, so the next question starts over."""
+        flags = vars(self).pop('_lo_fixed_fac_scale', None)
         beam = self['beam']
         out = []
-        flags = state.get('fixed_fac_scale')
         if flags and flags[1] != flags[2]:
             out.append('fixed_fac_scale1 = %s and fixed_fac_scale2 = %s: mg7 has '
                        'one beam.fixed_fact_scale for both beams (%s)'

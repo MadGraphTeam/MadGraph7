@@ -765,6 +765,35 @@ class MG7CmdTest(unittest.TestCase):
         self.assertIn('fixed_fac_scale1 = True and fixed_fac_scale2 = False',
                       logs.output[0])
 
+    def test_set_madevent_cut_name_scan_is_refused_by_name(self):
+        obj = self.cut_selector()
+        before = dict(obj.run_card['cuts'])
+        with self.assertLogs('madgraph7', level='WARNING') as logs:
+            obj.do_set('ptj scan:[20, 30]')
+        self.assertIn('cannot be scanned', logs.output[0])
+        self.assertEqual(dict(obj.run_card['cuts']), before)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_lo_param_bugs_are_not_hidden(self):
+        """only a bad value is reported as "ignoring set ..."; an error of
+        the translation itself is not swallowed"""
+        obj = self.cut_selector()
+        with mock.patch.object(type(obj.run_card), 'set_lo_param',
+                               side_effect=TypeError('bug')):
+            self.assertRaises(TypeError, obj.do_set, 'maxjetflavor 4')
+
+    def test_per_beam_state_is_cleared_when_the_check_fails(self):
+        obj = self.cut_selector()
+        parent = type(obj).__mro__[1]
+        obj.do_set('fixed_fac_scale1 T')
+        obj.do_set('fixed_fac_scale2 F')
+        with mock.patch.object(parent, 'check_card_consistency',
+                               side_effect=RuntimeError('card check')):
+            with self.assertLogs('madgraph7', level='WARNING') as logs:
+                self.assertRaises(RuntimeError, obj.check_card_consistency)
+        self.assertIn('fixed_fac_scale1 = True', logs.output[0])
+        self.assertEqual(obj.run_card.lo_set_warnings(), [])
+
     def test_set_madevent_beam_names(self):
         """set ebeam1/ebeam/pdlabel2/lpp, as a madevent launch script writes
         them, edit the per-beam [beam] entries"""

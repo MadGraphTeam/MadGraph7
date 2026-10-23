@@ -1752,6 +1752,50 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'pt_min_pdg', '{6: abc}')
         self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'pt_min_pdg', '100')
 
+    def test_set_lo_param_pdg_cut_forms(self):
+        """the {pdg: value} parameters take the forms the run_card.dat editor
+        takes, a single entry updating only that pdg"""
+        rc = bannermod.RunCardMG7()
+        rc.set_lo_param('pt_min_pdg', '6 100')
+        rc.set_lo_param('pt_min_pdg', '25:50')
+        rc.set_lo_param('pt_min_pdg', "{'23': 30}")
+        self.assertEqual(rc['cuts']['pdg6-pt'], {'min': 100.0})
+        self.assertEqual(rc['cuts']['pdg25-pt'], {'min': 50.0})
+        self.assertEqual(rc['cuts']['pdg23-pt'], {'min': 30.0})
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'pt_min_pdg', '{top: 100}')
+
+    def test_set_lo_param_pair_mass_follows_the_card(self):
+        """mxx_min_pdg updates the pair-mass cut the card already has, and
+        mg7 never ends up with two pair-mass minima on one pdg"""
+        rc = bannermod.RunCardMG7()
+        cuts = rc.dynamic_sections['cuts']
+        # as converted from a run_card.dat with mxx_only_part_antipart {6: True}
+        cuts['pdg6-sfos_pair_mass'] = {'min': 250.0}
+        rc.set_lo_param('mxx_min_pdg', '{6: 600}')
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'min': 600.0})
+        self.assertNotIn('pdg6-pair_mass', cuts)
+        # an explicit choice wins, and the other kind of pair loses its minimum
+        rc.set_lo_param('mxx_only_part_antipart', '{6: False}')
+        self.assertEqual(cuts['pdg6-pair_mass'], {'min': 600.0})
+        self.assertNotIn('pdg6-sfos_pair_mass', cuts)
+        cuts['pdg6-sfos_pair_mass'] = {'min': 100.0, 'max': 900.0}
+        rc.set_lo_param('mxx_min_pdg', '{6: 700}')
+        self.assertEqual(cuts['pdg6-pair_mass'], {'min': 700.0})
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'max': 900.0})
+        # renaming onto an existing cut merges the bounds, the tighter wins
+        rc.set_lo_param('mxx_only_part_antipart', '{6: True}')
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'max': 900.0, 'min': 700.0})
+        self.assertNotIn('pdg6-pair_mass', cuts)
+        # the choice is kept with the card, not with the question
+        rc.lo_set_warnings()
+        rc.set_lo_param('mxx_min_pdg', '{25: 300}')
+        self.assertNotIn('pdg25-sfos_pair_mass', cuts)
+        rc.set_lo_param('mxx_only_part_antipart', '{25: True}')
+        rc.lo_set_warnings()
+        rc.set_lo_param('mxx_min_pdg', '{25: 400}')
+        self.assertEqual(cuts['pdg25-sfos_pair_mass'], {'min': 400.0})
+        self.assertNotIn('pdg25-pair_mass', cuts)
+
     def test_set_lo_param_matches_from_LO(self):
         """"set" lands where the run_card.dat conversion puts the same values"""
         lo = bannermod.RunCardLO()

@@ -3780,12 +3780,18 @@ def build_selector_cmd(mother=None):
             return getattr(self, "run_set", out)
 
         def check_card_consistency(self):
-            super().check_card_consistency()
             # madevent settings given per beam ("set fixed_fac_scale1 ...")
             # that the mg7 card could not follow: said once, at the end, so
-            # "set fixed_fac_scale1 T" then "set fixed_fac_scale2 T" stays quiet
+            # "set fixed_fac_scale1 T" then "set fixed_fac_scale2 T" stays
+            # quiet. Collected first: lo_set_warnings also forgets them, which
+            # must happen even if the generic checks below raise.
+            warnings = []
             if isinstance(getattr(self, "run_card", None), RunCardMG7):
-                for text in self.run_card.lo_set_warnings():
+                warnings = self.run_card.lo_set_warnings()
+            try:
+                super().check_card_consistency()
+            finally:
+                for text in warnings:
                     logger.warning(text)
 
         def do_set(self, line, *args, **kwargs):
@@ -3859,10 +3865,15 @@ def build_selector_cmd(mother=None):
                     # run_card conversion maps them to (_LO_CUT_MAP), with the
                     # same "no cut" sentinels (minimum <= 0, maximum < 0).
                     if rest and nlow in run_card._LO_CUT_MAP:
+                        if rest.lower().startswith("scan"):
+                            logger.warning("ignoring 'set %s %s': the [cuts] entries of "
+                                           "the mg7 run_card.toml cannot be scanned",
+                                           nlow, rest)
+                            return
                         try:
                             cut, bound, val = run_card.set_lo_cut(
                                 nlow, run_card.evaluate(rest, masses))
-                        except (_banner_mod.InvalidCmd, TypeError, ValueError):
+                        except _banner_mod.InvalidCmd:
                             logger.warning("ignoring 'set %s %s': not a number", nlow, rest)
                             return
                         if val is None:
@@ -3883,7 +3894,7 @@ def build_selector_cmd(mother=None):
                     if rest and nlow in run_card._LO_SET_PARAMS:
                         try:
                             done = run_card.set_lo_param(nlow, rest, masses)
-                        except (_banner_mod.InvalidCmd, TypeError, ValueError) as error:
+                        except _banner_mod.InvalidCmd as error:
                             logger.warning("ignoring 'set %s %s': %s", nlow, rest, error)
                             return
                         if done is not None:
