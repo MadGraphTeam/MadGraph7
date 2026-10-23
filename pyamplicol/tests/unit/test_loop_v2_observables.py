@@ -769,7 +769,8 @@ LEGACY_TOLERANCE = {"double": 1e-12, "arbitrary-200": 1e-40}
 # 6.2e-12 and Python 3.4e-12 with E 1.2e-10 and 1.3e-10). Every value held to
 # 1e-12 is within 1.6e-14. At ten exact rotations of that point spin 3 misses
 # 1e-12 in 9 of 10 copies natively, in 10 in Python and in 9 in the legacy
-# engine, so the point, not an executor, is ill-conditioned.
+# engine, NLC T13 in 3, 2 and 7: the point, not an executor, is
+# ill-conditioned.
 LEGACY_ESTIMATE_CEILING = 1e-9
 DOUBLE_DOUBLE_TOLERANCE = 1e-24
 
