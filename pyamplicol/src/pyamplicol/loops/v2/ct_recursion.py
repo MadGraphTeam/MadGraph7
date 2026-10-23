@@ -54,7 +54,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import reduce
 from operator import add, mul
@@ -87,7 +87,7 @@ from .ct_sites import (
 )
 from .families import FamilySet, LoopOrderSelection, Orders, add_orders, model_data
 
-Slot = tuple[str, int]  # (component, epsilon power)
+Slot = tuple[str, int, int]  # (component, epsilon power, N_c grade)
 RuleKey = tuple[object, ...]
 _PREFIX = "PYAMPLICOL_CT_"
 
@@ -161,9 +161,16 @@ class TreeVocabulary:
     (``models.ct_color_flow``), which only loop-request blocks carry.
     """
 
-    def __init__(self, compiled: CompiledModel, *, multi_trace: bool = False):
+    def __init__(
+        self,
+        compiled: CompiledModel,
+        *,
+        multi_trace: bool = False,
+        whole_rules: bool = False,
+    ):
         self.compiled = compiled
         self.multi_trace = multi_trace
+        self.whole_rules = whole_rules
         self.particles = {
             str(item["name"]): item for item in compiled.model["particles"]
         }
@@ -176,9 +183,13 @@ class TreeVocabulary:
             return f"unknown counterterm kind {rule.kind!r}"
         if len(rule.particle_pdgs) < 2:
             return "one-point counterterm"
-        if rule.whole_rule_continuation is not None:
+        if rule.whole_rule_continuation is not None and not (
+            self.whole_rules and self.multi_trace
+        ):
             return "whole-rule colour continuation"
         for entry in rule.entries:
+            if rule.whole_rule_continuation is not None:
+                break  # the replacement terms are lowered, not the entries
             records = [self.particles[name] for name in entry.particle_names]
             if any(int(record.get("ghost_number", 0)) for record in records):
                 return "ghost leg"
@@ -222,7 +233,12 @@ class CoefficientLowering:
       ``CountertermCouplingError``.
     """
 
-    def __init__(self, compiled: CompiledModel, fixed_parameters: Mapping[str, Any]):
+    def __init__(
+        self,
+        compiled: CompiledModel,
+        fixed_parameters: Mapping[str, Any],
+        identities: Mapping[str, Any] | None = None,
+    ):
         from symbolica import E
 
         from pyamplicol._internal.physics.symbols import symbols
@@ -231,14 +247,20 @@ class CoefficientLowering:
             raise ValueError("counterterm coefficients need the model's NLO sidecar")
         bindings = compiled.raw_loop_model.metadata.get("function_bindings", {})
         self._helpers = {int(record): str(name) for name, record in bindings.items()}
+        identities = dict(identities or {})
+        constants = {
+            name: value
+            for name, value in _numeric_constants(compiled.raw_loop_model).items()
+            if name not in identities
+        }
+        # A formal-N_c continuation's colour invariants (CA -> N_c, ...)
+        # replace their numeric values (design §6.7).
         self._fixed = [
+            (E(f"UFO::{{}}::{name}"), value)
+            for name, value in sorted(identities.items())
+        ] + [
             (E(f"UFO::{{}}::{name}"), _number(value))
-            for name, value in sorted(
-                {
-                    **_numeric_constants(compiled.raw_loop_model),
-                    **fixed_parameters,
-                }.items()
-            )
+            for name, value in sorted({**constants, **fixed_parameters}.items())
         ]
         self._zero = E("0")
         self._log, self._conj = symbols.qualified("symbolica::log", "symbolica::conj")
@@ -246,6 +268,17 @@ class CoefficientLowering:
 
     def __call__(self, entry: Any, power: int) -> Any:
         expression = entry.coupling.value.coefficient(power)
+        for symbol, value in self._fixed:
+            expression = expression.replace(symbol, value)
+        return self._resolve(expression).expand()
+
+    def payload_expression(self, expression: Any) -> Any:
+        """An expression in source (``UFO::name``) symbols, e.g. a whole-rule
+        coefficient, as a coefficient in the payload's symbols."""
+
+        from symbolica import E
+
+        expression = _payload_symbols(expression)
         for symbol, value in self._fixed:
             expression = expression.replace(symbol, value)
         return self._resolve(expression).expand()
@@ -365,7 +398,8 @@ class CountertermModel:
     rule (by ``rule_key``) and ``switches`` that of every slot;
     ``assumptions`` are model-parameter expressions the lowered couplings
     assume non-zero (``CoefficientLowering``); ``residual`` maps every rule
-    left to site closure to the reason.
+    left to site closure to the reason; ``structures`` are the lowered vertex
+    terms of every lowered rule (graded with a continuation).
     """
 
     lowered: CountertermLoweredModel
@@ -373,6 +407,9 @@ class CountertermModel:
     switches: Mapping[Slot, str]
     assumptions: tuple[str, ...]
     residual: Mapping[RuleKey, str]
+    structures: Mapping[RuleKey, tuple[CountertermStructure, ...]] = field(
+        default_factory=dict
+    )
 
     def check_parameters(self, values: Mapping[str, Any]) -> None:
         """Fail if runtime model parameter ``values`` break an assumption.
@@ -412,6 +449,7 @@ def lower_model_counterterms(
     fixed_parameters: Mapping[str, Any] | None = None,
     forbidden: Iterable[int] = (),
     multi_trace: bool = False,
+    continuation: Any = None,
 ) -> CountertermModel:
     """The tree model of ``compiled`` with every lowerable rule's CT vertices.
 
@@ -428,10 +466,23 @@ def lower_model_counterterms(
     complete tree programs. The U(N) contact split of a ``d*d`` colour adds
     ``(2/N_c) delta delta``, which is subtracted from the rule exactly
     (``d_product_u1_term``; N_c = 3, the UFO's fixed-SU(3) colours).
+
+    ``continuation`` (a ``SourceColorContinuation``) grades the couplings by
+    N_c (design §6.7): its colour invariants enter the coefficients as
+    functions of a formal N_c, every vertex term is split into its N_c
+    powers (``CountertermStructure.grade``, one slot each), and the U(1) term
+    of a ``d*d`` split is ``2/N_c``.
     """
 
-    vocabulary = TreeVocabulary(compiled, multi_trace=multi_trace)
-    coefficients = CoefficientLowering(compiled, fixed_parameters or {})
+    vocabulary = TreeVocabulary(
+        compiled, multi_trace=multi_trace, whole_rules=continuation is not None
+    )
+    nc = None if continuation is None else continuation.nc
+    coefficients = CoefficientLowering(
+        compiled,
+        fixed_parameters or {},
+        None if continuation is None else _payload_identities(continuation),
+    )
     residual: dict[RuleKey, str] = {}
     # Exact coefficient of every rule on each of its lowered vertex terms.
     values: dict[RuleKey, dict[CountertermStructure, Any]] = {}
@@ -443,25 +494,35 @@ def lower_model_counterterms(
             continue
         rows: dict[CountertermStructure, Any] = {}
         try:
-            for entry, structure in rule_terms(rule):
+            if rule.whole_rule_continuation is not None:
+                rows = whole_rule_rows(rule, coefficients)
+            for entry, structure in (
+                rule_terms(rule) if rule.whole_rule_continuation is None else ()
+            ):
                 value = coefficients(entry, structure.power)
                 rows[structure] = (
                     rows[structure] + value if structure in rows else value
                 )
-        except CountertermCouplingError as error:
+        except (CountertermCouplingError, NotImplementedError) as error:
             residual[key] = str(error)
             continue
         if multi_trace:
-            rows = _without_u1_terms(rows)
+            rows = _without_u1_terms(rows, nc)
+        if nc is not None:
+            try:
+                rows = _graded(rows, nc)
+            except (ValueError, NotImplementedError) as error:
+                residual[key] = f"N_c grading of the coupling failed: {error}"
+                continue
         # A coefficient the fixed parameters make vanish has no vertex term.
         values[key] = {s: value for s, value in rows.items() if not _is_zero(value)}
     multiplicities = {
         key: f"{_PREFIX}M{index}" for index, key in enumerate(sorted(values, key=repr))
     }
     switches = {
-        slot: f"{_PREFIX}S_{slot[0].upper()}_EPS{-slot[1]}"
+        slot: _switch_name(slot)
         for slot in sorted(
-            {(s.component, s.power) for rows in values.values() for s in rows}
+            {(s.component, s.power, s.grade) for rows in values.values() for s in rows}
         )
     }
     forbidden = {abs(int(pdg)) for pdg in forbidden}
@@ -499,30 +560,192 @@ def lower_model_counterterms(
             switches=switches,
             assumptions=tuple(sorted(coefficients.assumptions)),
             residual=residual,
+            structures={key: tuple(sorted(rows)) for key, rows in values.items()},
         )
 
 
 def _without_u1_terms(
-    rows: Mapping[CountertermStructure, Any],
+    rows: Mapping[CountertermStructure, Any], nc: Any = None
 ) -> dict[CountertermStructure, Any]:
     """Subtract the U(1) term of every ``d*d`` colour's U(N) contact split.
 
-    ``(2/N_c) delta delta`` times the coefficient, with N_c = 3: UFO colours
-    are those of SU(3) (``models.ct_color_flow.d_product_u1_term``).
+    ``(2/N_c) delta delta`` times the coefficient: with N_c = 3 for UFO
+    colours (those of SU(3)), with the formal ``nc`` of a continuation
+    (``models.ct_color_flow.d_product_u1_term``).
     """
 
     from pyamplicol.color.contraction_types import NC
     from pyamplicol.models.ct_color_flow import d_product_u1_term
 
+    factor = _number((f"-2/{NC}", "0")) if nc is None else -2 / nc
     out = dict(rows)
     for structure, value in rows.items():
         colour = d_product_u1_term(structure.colour)
         if colour is None:
             continue
         term = replace(structure, colour=colour)
-        correction = value * _number((f"-2/{NC}", "0"))
+        correction = value * factor
         out[term] = out[term] + correction if term in out else correction
     return out
+
+
+def _graded(
+    rows: Mapping[CountertermStructure, Any], nc: Any
+) -> dict[CountertermStructure, Any]:
+    """Every vertex term split into its N_c powers (``grade``)."""
+
+    from pyamplicol.loops.physical_color import split_color_grades
+
+    out: dict[CountertermStructure, Any] = {}
+    items = sorted(rows.items())
+    for degree, values in split_color_grades((value for _s, value in items), nc):
+        for (structure, _value), value in zip(items, values, strict=True):
+            if _is_zero(value):
+                continue
+            term = replace(structure, grade=int(degree))
+            out[term] = out[term] + value if term in out else value
+    return out
+
+
+def whole_rule_rows(rule: Any, coefficients: CoefficientLowering) -> dict:
+    """Vertex terms of a whole-rule colour continuation (design §6.1, §6.7).
+
+    The replacement of a fixed-SU(3) rule (the general-N_c four-gluon R2,
+    ``loops.qcd_r2_color``) has colour tensors in adjoint traces and Lorentz
+    structures that are sums of metric products, with coefficients exact in
+    a formal N_c. Each term's colour is reduced to closed traces of its legs
+    and written in the SU(N) vocabulary of ``models.ct_color_flow``:
+    ``tr(tau^a tau^b) = delta^{ab}`` and ``tr(tau^a tau^b tau^c tau^d) =
+    delta^{ab} delta^{cd} / N_c + (d + i f)^{abx} (d + i f)^{cdx} / 2``.
+    Returns {structure: coefficient in the payload's symbols and N_c}.
+    """
+
+    from fractions import Fraction
+
+    from symbolica import E, Expression
+    from symbolica.community import hepkit
+
+    from pyamplicol.color.connections import ColorLeg
+    from pyamplicol.models.loading import counterterm_metric_lorentz_name
+
+    from .assemble import _metric_pairings
+    from .colour import reduce_network, relabel, spenso_colour_network
+
+    continuation = rule.whole_rule_continuation
+    nc = continuation.nc
+    particles = None
+    rows: dict[CountertermStructure, Any] = {}
+    (entry, *_rest) = rule.entries
+    particles = tuple(entry.particle_names)
+    orders = add_orders(tuple(entry.order))
+    for term in continuation.terms:
+        kernel = term.kernel
+        legs = {
+            hepkit.Symbols.half_edge()(half, 1).to_canonical_string(): index + 1
+            for index, half in enumerate(kernel.leg_half_edges)
+        }
+        if len(legs) != 4:
+            raise NotImplementedError("whole-rule continuation of a non-quartic rule")
+
+        def rename(label, legs=legs):
+            return ("leg", legs[label]) if label in legs else ("dummy", label)
+
+        network = relabel(spenso_colour_network(kernel.color.to_expression()), rename)
+        colour_legs = tuple(ColorLeg(index, 8) for index in range(1, 5))
+        tensor = reduce_network(
+            network, colour_legs, {("leg", i): i for i in range(1, 5)}
+        )
+        if tensor.normalization_power % 2:
+            raise NotImplementedError("whole-rule colour with an odd power of sqrt 2")
+        scale = Fraction(1, 2 ** (tensor.normalization_power // 2))
+        value = coefficients.payload_expression(term.coefficient)
+        for lorentz_scale, pairs in _metric_pairings(kernel.lorentz.to_expression(), legs):
+            lorentz = counterterm_metric_lorentz_name(
+                (a + 1, b + 1) for a, b in pairs
+            )
+            for item in tensor.terms:
+                if item.tensor.open_strings:
+                    raise NotImplementedError("whole-rule colour with open strings")
+                number = item.coefficient.scaled(scale * lorentz_scale)
+                weight = (
+                    E(str(number.real)) + E(str(number.imag)) * Expression.I
+                ) * nc ** item.nc_power
+                for colour, factor in _adjoint_trace_colours(item.tensor.traces, nc):
+                    structure = CountertermStructure(
+                        particles=particles,
+                        colour=colour,
+                        lorentz=lorentz,
+                        orders=orders,
+                        component=COMPONENT_BY_KIND[rule.kind],
+                        power=0,
+                    )
+                    contribution = value * weight * factor
+                    rows[structure] = (
+                        rows[structure] + contribution
+                        if structure in rows
+                        else contribution
+                    )
+    return rows
+
+
+def _adjoint_trace_colours(traces, nc) -> list[tuple[str, Any]]:
+    """UFO colours (SU(N) vocabulary) with factors of a product of traces."""
+
+    from symbolica import E, Expression
+
+    lengths = sorted(len(trace) for trace in traces)
+    if lengths == [2, 2]:
+        pairs = sorted(tuple(sorted(trace)) for trace in traces)
+        return [("*".join(f"Identity({a},{b})" for a, b in pairs), E("1"))]
+    if lengths == [4]:
+        ((a, b, c, d),) = traces
+        half, i = E("1/2"), Expression.I
+        # Each factor with its legs ascending: f flips sign, d does not.
+        ab, cd = (min(a, b), max(a, b)), (min(c, d), max(c, d))
+        sab, scd = (1 if a < b else -1), (1 if c < d else -1)
+        return [
+            (f"Identity({ab[0]},{ab[1]})*Identity({cd[0]},{cd[1]})", 1 / nc),
+            (f"d(-1,{ab[0]},{ab[1]})*d(-1,{cd[0]},{cd[1]})", half),
+            (f"d(-1,{ab[0]},{ab[1]})*f(-1,{cd[0]},{cd[1]})", half * i * scd),
+            (f"f(-1,{ab[0]},{ab[1]})*d(-1,{cd[0]},{cd[1]})", half * i * sab),
+            (f"f(-1,{ab[0]},{ab[1]})*f(-1,{cd[0]},{cd[1]})", -half * sab * scd),
+        ]
+    raise NotImplementedError(f"whole-rule colour with traces of lengths {lengths}")
+
+
+def _payload_identities(continuation: Any) -> dict[str, Any]:
+    """The continuation's colour invariants in the payload's symbols."""
+
+    return {
+        name: _payload_symbols(expression)
+        for name, expression in continuation.parameter_identities.items()
+    }
+
+
+def _payload_symbols(expression: Any) -> Any:
+    """Source parameter symbols (``UFO::name``) as payload ones (``UFO::{}::``)."""
+
+    from symbolica import E
+
+    for symbol in expression.get_all_symbols(False):
+        full = symbol.get_name()
+        if full.startswith("UFO::") and not full.startswith("UFO::{}::"):
+            expression = expression.replace(
+                symbol, E(f"UFO::{{}}::{full.removeprefix('UFO::')}")
+            )
+    return expression
+
+
+def _slot_of(structure: CountertermStructure) -> Slot:
+    return (structure.component, structure.power, structure.grade)
+
+
+def _switch_name(slot: Slot) -> str:
+    component, power, grade = slot
+    name = f"{_PREFIX}S_{component.upper()}_EPS{-power}"
+    if grade:
+        name += f"_NC{grade}" if grade > 0 else f"_NCM{-grade}"
+    return name
 
 
 def _coupling_expressions(
@@ -542,7 +765,7 @@ def _coupling_expressions(
             sums[structure] = sums[structure] + term if structure in sums else term
     return {
         structure: (
-            E(f"UFO::{{}}::{switches[structure.component, structure.power]}") * total
+            E(f"UFO::{{}}::{switches[_slot_of(structure)]}") * total
         )
         .expand()
         .to_canonical_string()
@@ -660,7 +883,9 @@ class CountertermRecursion:
             key = rule_key(rule)
             if key in model.multiplicities:
                 lowered[name] = rule
-                terms[name] = rule_terms(rule)
+                terms[name] = tuple(
+                    (None, structure) for structure in model.structures[key]
+                ) or rule_terms(rule)
             else:
                 residual[name] = model.residual.get(
                     key, "the rule is not in the lowered model"
@@ -708,7 +933,7 @@ class CountertermRecursion:
         return tuple(
             sorted(
                 {
-                    (structure.component, structure.power)
+                    _slot_of(structure)
                     for terms in self.terms.values()
                     for _entry, structure in terms
                 }
@@ -759,8 +984,9 @@ class CountertermRecursion:
         """
 
         slots = {
-            counterterm_slot_order(component, power): (component, power)
-            for component, power in self.slots
+            counterterm_slot_order(*slot): slot
+            for slot in self.slots
+            if not slot[2]  # the tree runtime evaluates at N_c = 3
         }
         born = set(self.born_orders)
         loop = set(self.loop_orders)
@@ -783,7 +1009,7 @@ class CountertermRecursion:
                         f"CT sector {sector.order} pairs a CT amplitude of order "
                         f"{physical} outside the loop orders"
                     )
-            component, power = slots[slot]
+            component, power, _grade = slots[slot]
             out[component, _physical(sector.order), power] = tuple(
                 point[index] for point in evaluation.values
             )

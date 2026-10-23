@@ -1102,19 +1102,23 @@ COUNTERTERM_POWERS = (0, -1, -2)
 _COUNTERTERM_PARAMETER_BLOCK = "PYAMPLICOL_CT"
 
 
-def counterterm_slot_order(component: str, power: int) -> str:
+def counterterm_slot_order(component: str, power: int, grade: int = 0) -> str:
     """Pseudo-order of one CT slot (component x epsilon power, design §6.1).
 
     Each insertion carries the order of its slot (``COUNTERTERM_INSERTION_WEIGHT``
     times, like the insertion order), so currents and roots with one
     insertion stay separate per slot and the squared-order partials of the
     tree runtime split the Born x CT interference into components and
-    Laurent coefficients.
+    Laurent coefficients. ``grade`` is the N_c power of a coupling graded by
+    a formal-N_c continuation (design §6.7); grade 0 keeps the plain name.
     """
 
     if component not in COUNTERTERM_COMPONENTS or power not in COUNTERTERM_POWERS:
         raise ValueError(f"unknown counterterm slot ({component!r}, {power})")
-    return f"{_COUNTERTERM_PARAMETER_BLOCK}_{component.upper()}_EPS{-power}"
+    name = f"{_COUNTERTERM_PARAMETER_BLOCK}_{component.upper()}_EPS{-power}"
+    if grade:
+        name += f"_NC{grade}" if grade > 0 else f"_NCM{-grade}"
+    return name
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -1125,7 +1129,8 @@ class CountertermStructure:
     the CT entry's UFO colour (``models.ct_color_flow``), ``lorentz`` the name
     of a Lorentz structure of the model, ``orders`` the physical coupling
     orders of the entry, ``component`` ``"r2"`` or ``"uv_local"`` and
-    ``power`` the epsilon power of the slot.
+    ``power`` the epsilon power of the slot and ``grade`` the N_c power of a
+    coupling graded by a formal-N_c continuation (0 without one).
     """
 
     particles: tuple[str, ...]
@@ -1134,10 +1139,11 @@ class CountertermStructure:
     orders: tuple[tuple[str, int], ...]
     component: str
     power: int
+    grade: int = 0
 
     @property
     def slot_order(self) -> str:
-        return counterterm_slot_order(self.component, self.power)
+        return counterterm_slot_order(self.component, self.power, self.grade)
 
 
 class CountertermLoweringError(ValueError):
@@ -1182,6 +1188,39 @@ class CountertermLoweredModel:
         return tuple(
             sorted({s.slot_order for s in (*self.couplings, *self.insertions)})
         )
+
+
+_METRIC_LORENTZ_PREFIX = f"{_COUNTERTERM_PARAMETER_BLOCK}_METRIC"
+
+
+def counterterm_metric_lorentz_name(pairs: Iterable[tuple[int, int]]) -> str:
+    """Name of the Lorentz structure ``prod Metric(a, b)`` over 1-based legs
+    ``pairs`` that ``lower_counterterm_vertices`` adds to the payload."""
+
+    canonical = sorted(tuple(sorted(pair)) for pair in pairs)
+    return _METRIC_LORENTZ_PREFIX + "".join(f"_{a}{b}" for a, b in canonical)
+
+
+def counterterm_metric_lorentz(name: str) -> dict[str, Any] | None:
+    """The payload record of a ``counterterm_metric_lorentz_name``, or None."""
+
+    if not name.startswith(_METRIC_LORENTZ_PREFIX + "_"):
+        return None
+    pairs = [
+        (int(text[0]), int(text[1]))
+        for text in name.removeprefix(_METRIC_LORENTZ_PREFIX + "_").split("_")
+    ]
+    legs = sorted(leg for pair in pairs for leg in pair)
+    if legs != list(range(1, len(legs) + 1)):
+        return None
+    return {
+        "name": name,
+        "spins": [3] * len(legs),
+        "structure": "*".join(
+            f"UFO::{{}}::Metric(UFO::{{}}::idx(1,{a}),UFO::{{}}::idx(1,{b}))"
+            for a, b in pairs
+        ),
+    }
 
 
 def counterterm_lorentz_error(compiled: CompiledModel, name: str) -> str | None:
@@ -1280,7 +1319,11 @@ def lower_counterterm_vertices(
     structures = tuple(sorted(s for s in couplings if not excluded & set(s.particles)))
     for structure in structures:
         if structure.lorentz not in lorentz_names:
-            raise ValueError(f"unknown Lorentz structure {structure.lorentz!r}")
+            record = counterterm_metric_lorentz(structure.lorentz)
+            if record is None:
+                raise ValueError(f"unknown Lorentz structure {structure.lorentz!r}")
+            payload["lorentz_structures"].append(record)
+            lorentz_names.add(structure.lorentz)
         if len(structure.particles) < 3:
             continue
         groups.setdefault(
@@ -1289,6 +1332,7 @@ def lower_counterterm_vertices(
                 structure.orders,
                 structure.component,
                 structure.power,
+                structure.grade,
             ),
             [],
         ).append(structure)
@@ -1326,14 +1370,13 @@ def lower_counterterm_vertices(
                 structure.orders,
                 structure.component,
                 structure.power,
+                structure.grade,
                 couplings[structure],
             ),
             [],
         ).append(structure)
     names: dict[CountertermStructure, str] = {}
-    for index, ((orders, _component, _power, expression), members) in enumerate(
-        classes.items()
-    ):
+    for index, ((orders, *_slot, expression), members) in enumerate(classes.items()):
         coupling = f"{_COUNTERTERM_PARAMETER_BLOCK}C_{index}"
         for member in members:
             names[member] = coupling
@@ -1457,6 +1500,7 @@ def lower_counterterm_vertices(
                         s.orders,
                         s.component,
                         s.power,
+                        s.grade,
                         couplings[s],
                     ]
                     for s in structures

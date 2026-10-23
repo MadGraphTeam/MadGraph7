@@ -122,7 +122,9 @@ def lower_line_insertions(
             continue
         first, second = term.particles
         canonical = first if int(particles[first]["pdg_code"]) > 0 else second
-        classes[canonical, term.orders, term.component, term.power].append(term)
+        classes[canonical, term.orders, term.component, term.power, term.grade].append(
+            term
+        )
     used = {abs(int(item["pdg_code"])) for item in payload["particles"]}
     pdg = max(9_900_000, max(used, default=0) + 1)
     couplings = {str(item["name"]): item for item in payload["couplings"]}
@@ -135,7 +137,7 @@ def lower_line_insertions(
             for name in rule["particles"]
         )
     ]
-    for number, ((source, orders, _component, _power), terms) in enumerate(
+    for number, ((source, orders, *_slot), terms) in enumerate(
         sorted(classes.items())
     ):
         clone = f"{prefix}_LINE{number}"

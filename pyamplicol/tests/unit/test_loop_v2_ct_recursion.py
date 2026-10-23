@@ -421,7 +421,7 @@ def test_rules_split_between_recursion_and_sites(ct_slice, lowered_ct_model):
         gluons = set(rule.particle_pdgs) == {21}
         expected = tuple(range(len(rule.alternatives))) if gluons else ()
         assert recursion.admission[name] == expected, name
-    assert recursion.slots == (("r2", 0), ("uv_local", -1), ("uv_local", 0))
+    assert recursion.slots == (("r2", 0, 0), ("uv_local", -1, 0), ("uv_local", 0, 0))
     assert recursion.coupling_order_limits() == {
         "QCD": 4,
         "QED": 0,

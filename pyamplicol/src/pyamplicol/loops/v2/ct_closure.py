@@ -94,7 +94,7 @@ class CloneLine:
 
     field_id: int
     half: Orders
-    slot: tuple[str, int]
+    slot: tuple[str, int, int]
     factor: str | None = None
 
 
@@ -103,21 +103,24 @@ class ClosureTerm:
     """One root term of a CT amplitude.
 
     The value is ``multiplicity * scale * coupling * term.sign * kernel``
-    times ``term.colour``: ``coupling`` is the source scalar
-    ``(coupling name, epsilon power)`` of the root vertex entry (power 0 for
-    an ordinary root, ``power`` for a CT root), ``scale`` a model expression
-    (the Weyl factor) or ``None``. ``component``, ``power`` and ``orders``
-    (the physical amplitude orders) name the CT amplitude the term adds to.
+    times ``term.colour`` times ``N_c^grade``: ``coupling`` is the source
+    scalar ``(coupling name, epsilon power)`` of the root vertex entry (power
+    0 for an ordinary root, ``power`` for a CT root; its own N_c grades come
+    with it), ``scale`` a model expression (the Weyl factor) or ``None`` and
+    ``grade`` the N_c grade of the inserted current's coupling (design
+    §6.7). ``component``, ``power`` and ``orders`` (the physical amplitude
+    orders) name the CT amplitude the term adds to.
     """
 
-    term: SiteTerm
+    term: Any  # ct_sites.SiteTerm or assemble.WholeRuleTerm
     root: RootKind
     component: str
     power: int
     orders: Orders
-    coupling: tuple[str, int]
+    coupling: tuple[str, int] | None
     multiplicity: int = 1
     scale: str | None = None
+    grade: int = 0
 
 
 @dataclass(frozen=True)
@@ -194,7 +197,7 @@ def _clone_lines(recursion: CountertermRecursion) -> dict[int, CloneLine]:
     out: dict[int, CloneLine] = {}
     for structure, clone in lowered.insertions.items():
         half = tuple((name, power // 2) for name, power in structure.orders)
-        slot = (structure.component, structure.power)
+        slot = (structure.component, structure.power, structure.grade)
         source = next(
             name
             for name in structure.particles
@@ -218,7 +221,9 @@ def _insertions(orders: Orders) -> int:
     return dict(orders).get(COUNTERTERM_INSERTION_ORDER, 0)
 
 
-def _slot(orders: Orders, slots: Mapping[str, tuple[str, int]]) -> tuple[str, int]:
+def _slot(
+    orders: Orders, slots: Mapping[str, tuple[str, int, int]]
+) -> tuple[str, int, int]:
     (slot,) = (slots[name] for name, _power in orders if name in slots)
     return slot
 
@@ -260,6 +265,7 @@ class CountertermClosure:
             native_model,
             selection,
             forbidden=forbidden,
+            whole_rules=True,
             closed_rules=recursion.rules,
             root_mask=1,
         )
@@ -310,7 +316,7 @@ class CountertermClosure:
                     physical = add_orders(order, *(_physical(b.orders) for b in choice))
                     if not clone and physical not in loop:
                         continue
-                    component, power = _slot(current.orders, slots)
+                    component, power, grade = _slot(current.orders, slots)
                     attachments = _assigned(fields, choice)
                     index = attachments.index(current)
                     for term in closure.vertex_terms(entries, attachments):
@@ -333,10 +339,27 @@ class CountertermClosure:
                                 total,
                                 (term.entry.coupling.name, 0),
                                 scale=None if line is None else line.factor,
+                                grade=grade,
                             )
                         )
-        _refuse_u1_couplings(program, terms)
         for site in sites:
+            if site.rule.whole_rule_continuation is not None:
+                # The replacement terms of a whole-rule colour continuation.
+                from .assemble import _whole_rule_terms
+
+                terms.extend(
+                    ClosureTerm(
+                        term,
+                        ROOT_COUNTERTERM,
+                        COMPONENT_BY_KIND[site.kind],
+                        0,
+                        site.orders,
+                        None,
+                        multiplicity=len(site.alternatives),
+                    )
+                    for term in _whole_rule_terms(closure, site)
+                )
+                continue
             for term in closure.terms(site):
                 for power in _powers(recursion, site):
                     terms.append(
@@ -350,6 +373,7 @@ class CountertermClosure:
                             multiplicity=len(site.alternatives),
                         )
                     )
+        _refuse_u1_couplings(program, terms)
         return cls(program, closure, tuple(sites), tuple(terms))
 
 
@@ -394,7 +418,9 @@ def _refuse_u1_couplings(program: CountertermBlocks, terms: Sequence[ClosureTerm
     for interaction in dag.interactions:
         produced[interaction.result_id].append(interaction)
     used: set[int] = set()
-    stack = [row.current_id for term in terms for b in term.term.blocks for row in b.rows]
+    stack = [
+        row.current_id for term in terms for block in term.term.blocks for row in block.rows
+    ]
     while stack:
         current = stack.pop()
         if current in used:
@@ -444,7 +470,7 @@ def _refuse_u1_couplings(program: CountertermBlocks, terms: Sequence[ClosureTerm
             )
 
 
-def _slot_order(slot: tuple[str, int]) -> str:
+def _slot_order(slot: tuple[str, int, int]) -> str:
     return counterterm_slot_order(*slot)
 
 
@@ -563,12 +589,16 @@ def lowered_counterterm_model(
     fixed_parameters: Mapping[str, Any],
     *,
     forbidden: Iterable[int] = (),
+    declaration: Any = None,
 ) -> Any:
     """The CT-lowered model of ``compiled`` for the closure, cached.
 
     Every rule of the model (an unbounded preparation with the request's
-    ``fixed_parameters``) is lowered once per model, fixed parameters and
-    vetoed |PDG| codes, with the multi-trace colours.
+    ``fixed_parameters``) is lowered once per model, fixed parameters, vetoed
+    |PDG| codes and colour ``declaration``, with the multi-trace colours. A
+    declaration (``LoopColorDeclaration``) grades the couplings by N_c and
+    replaces fixed-SU(3) rules by their whole-rule continuations (design
+    §6.7), as ``LoopSlice.generate`` prepares a declared request.
     """
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
@@ -579,18 +609,29 @@ def lowered_counterterm_model(
         id(compiled),
         tuple(sorted((str(k), str(v)) for k, v in fixed_parameters.items())),
         tuple(sorted({abs(int(pdg)) for pdg in forbidden})),
+        None if declaration is None else repr(declaration),
     )
     found = _LOWERED.get(key)
     if found is None or found[0] is not compiled:
         prepared = prepare_loop_request_model(
             compiled, fixed_parameters=dict(fixed_parameters)
         )
+        continuation = None
+        if declaration is not None:
+            from pyamplicol.loops.source_color_declaration import (
+                prepare_declared_source_color,
+            )
+
+            prepared, continuation = prepare_declared_source_color(
+                prepared, declaration, scheme=declaration.scheme
+            )
         lowered = lower_model_counterterms(
             compiled,
             prepared.counterterms.rules,
             fixed_parameters=prepared.structure.fixed_parameters,
             forbidden=key[2],
             multi_trace=True,
+            continuation=continuation,
         )
         found = _LOWERED[key] = (compiled, lowered)
     return found[1]
@@ -633,19 +674,24 @@ class CountertermProgram:
         *,
         forbidden: Iterable[int] = (),
         fixed_parameters: Mapping[str, Any] | None = None,
+        declaration: Any = None,
     ) -> CountertermProgram:
         """The CT program of a request (``prepared`` its loop-request model).
 
         ``process`` is the request's process text, ``families`` and
         ``native_model`` its family set and native model; ``fixed_parameters``
-        the request's fixed parameters (those of ``prepared``).
+        the request's fixed parameters (those of ``prepared``) and
+        ``declaration`` its colour declaration, if any.
         """
 
         from pyamplicol.processes.model import build_model_process_ir
 
         forbidden = tuple(forbidden)
         lowered = lowered_counterterm_model(
-            compiled, dict(fixed_parameters or {}), forbidden=forbidden
+            compiled,
+            dict(fixed_parameters or {}),
+            forbidden=forbidden,
+            declaration=declaration,
         )
         rules = prepared.counterterms.rules
         recursion = CountertermRecursion.build(

@@ -977,23 +977,23 @@ class LoopSlice:
             colour,
             policy=_FRAME_POLICY,
         )
-        program = None
-        if request.accuracy == "full" and continuation is None:
-            # Production form of the counterterms (design §6.1): the tree
-            # recursion over the CT-lowered model, closed at leg 1.
-            from .ct_closure import CountertermProgram
+        # Production form of the counterterms (design §6.1): the tree
+        # recursion over the CT-lowered model, closed at leg 1; graded by N_c
+        # with a colour declaration (design §6.7).
+        from .ct_closure import CountertermProgram
 
-            program = CountertermProgram.build(
-                compiled,
-                prepared,
-                request.process,
-                families,
-                data,
-                selection,
-                blocks.born_orders,
-                forbidden=request.ignored_particle_ids,
-                fixed_parameters=fixed,
-            )
+        program = CountertermProgram.build(
+            compiled,
+            prepared,
+            request.process,
+            families,
+            data,
+            selection,
+            blocks.born_orders,
+            forbidden=request.ignored_particle_ids,
+            fixed_parameters=fixed,
+            declaration=declaration,
+        )
         sites = generate_counterterm_sites(
             families,
             table,
@@ -1316,11 +1316,11 @@ class LoopSlice:
                 for term in terms
             )
             if self.counterterm_program is not None:
-                outputs.update(
-                    term.coupling
-                    for term in self.counterterm_program.closure.terms
-                    if term.coupling[1] in powers
-                )
+                for term in self.counterterm_program.closure.terms:
+                    if term.coupling is None:
+                        outputs.update((name, 0) for name in term.term.parameters)
+                    elif term.coupling[1] in powers:
+                        outputs.add(term.coupling)
             outputs.update(
                 (name, 0)
                 for terms in self.site_terms.values()
@@ -1474,6 +1474,22 @@ class LoopSlice:
                     else grades(t.entry.coupling.name)
                 ),
             )
+        if self.counterterm_program is not None:
+            for item in self.counterterm_program.closure.terms:
+                term = item.term
+                if isinstance(term, WholeRuleTerm):
+                    found = {d + item.grade for d, _e in term.grades}
+                else:
+                    found = {
+                        g + item.grade
+                        for g, _c in layout.get(item.coupling, ())
+                        if item.coupling[1] in LAURENT_POWERS
+                    }
+                counterterms[item.orders] |= {
+                    (part.tensor, part.nc_power + grade)
+                    for part in term.colour.terms
+                    for grade in found
+                }
         out = {"born": {}, "virtual": {}}
         for a, b in product(born, repeat=2):
             squared = add_orders(a, b)
@@ -1776,6 +1792,7 @@ class _PointEvaluation:
         numbers = self.numbers
         powers = LAURENT_POWERS if self.poles else (0,)
         closure = program.closure.closure
+        whole = self.__dict__.setdefault("_closure_whole_rules", {})
         for item in program.closure.terms:
             if item.power not in powers:
                 continue
@@ -1788,6 +1805,22 @@ class _PointEvaluation:
                 variant = "source" if block.is_source else "propagated"
                 values.append(rows[(row.current_id, variant)])
             else:
+                if isinstance(item.term, WholeRuleTerm):
+                    if item.term not in whole:
+                        whole[item.term] = item.term.coefficients(
+                            {name: scalars[name, 0][0] for name in item.term.parameters},
+                            numbers,
+                        )
+                    value = item.multiplicity * item.term.kinematic(values, numbers)
+                    for grade, coupling in whole[item.term].items():
+                        _add_graded(
+                            loops[item.component, item.power, item.orders],
+                            item.term.colour,
+                            coupling * value,
+                            grade + item.grade,
+                            numbers,
+                        )
+                    continue
                 vectors = [momenta[block.key.external_mask] for block in item.term.blocks]
                 value = item.term.sign * closure.value(item.term, values, vectors, carrier)
                 value = item.multiplicity * value
@@ -1798,7 +1831,7 @@ class _PointEvaluation:
                         loops[item.component, item.power, item.orders],
                         item.term.colour,
                         coupling * value,
-                        grade,
+                        grade + item.grade,
                         numbers,
                     )
 
