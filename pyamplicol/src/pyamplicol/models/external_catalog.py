@@ -38,6 +38,16 @@ class ExternalModelCatalogMixin:
     vertices: tuple[Vertex, ...]
     _weyl_projection_support: dict[tuple[int, int, int, int], bool]
 
+    if TYPE_CHECKING:
+        # Provided by ``ExternalModelKernelMixin`` (the symbolic probe).
+        def _weyl_projection_is_nonzero(
+            self,
+            kind: int,
+            left_chirality: int,
+            right_chirality: int,
+            result_chirality: int,
+        ) -> bool: ...
+
     def particle(self, pdg: int) -> Particle:
         try:
             return self.particles[int(pdg)]
