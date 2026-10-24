@@ -80,7 +80,16 @@ STAGES = (
     ("assemble", "extend_seed_table"),
     ("assemble", "seed_fourier"),
     ("assemble", "LoopSlice._prune_colour"),
+    ("assemble", "LoopSlice._scaleless_companion"),
+    ("assemble", "prepare_request_model"),
+    ("assemble", "with_ward_kernels"),
     ("reference_executor", "reading_skeletons"),
+    # The counterterm program of the recursion route (WP2.2).
+    ("ct_closure", "CountertermProgram.build"),
+    ("ct_closure", "CountertermBlocks.build"),
+    ("ct_closure", "CountertermClosure.build"),
+    ("ct_recursion", "CountertermRecursion.build"),
+    ("ct_closure", "lowered_counterterm_model"),
 )
 
 
@@ -144,11 +153,18 @@ class _Timers:
         return timed
 
     def install(self) -> None:
-        from pyamplicol.loops.v2 import assemble, generator_input
+        from pyamplicol.loops.v2 import (
+            assemble,
+            ct_closure,
+            ct_recursion,
+            generator_input,
+        )
         from pyamplicol.loops.v2 import reference_executor as rx
 
         modules = {
             "assemble": assemble,
+            "ct_closure": ct_closure,
+            "ct_recursion": ct_recursion,
             "generator_input": generator_input,
             "reference_executor": rx,
         }
@@ -322,11 +338,17 @@ def _validate(args) -> dict[str, Any]:
         "process": process,
         "counterterms": request.counterterms,
     }
+    timers = None
+    if getattr(args, "stages", False):
+        timers = _Timers()
+        timers.install()
     start = time.perf_counter()
     slice_ = LoopSlice.generate(
         _compiled_model(args.model), request, load_loop_native()
     )
     record["generate_s"] = round(time.perf_counter() - start, 1)
+    if timers is not None:
+        record["generate_events"] = list(timers.events)
     record["generate_peak_gb"] = round(_status("VmHWM") / 2**30, 3)
     _progress(record, "generate_s", "generate_peak_gb")
     _reset_peak()
@@ -572,6 +594,9 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("--precision", choices=("double", "dd"), default="double")
     check.add_argument("--stability", action="store_true")
     check.add_argument("--inputs", choices=("python", "native"), default="python")
+    check.add_argument(
+        "--stages", action="store_true", help="record per-stage generation times"
+    )
     check.add_argument("--model", help="compiled loop model JSON")
     check.add_argument("--json", help="write the record here")
     pole = commands.add_parser("poles")
