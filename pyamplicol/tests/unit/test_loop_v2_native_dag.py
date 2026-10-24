@@ -958,28 +958,38 @@ def test_switched_counterterm_program_equals_the_oracle_stage(
     """A4: ``CountertermBlocks.build`` takes the native builder under
     ``NATIVE_DAG``: the S1'' digest (DAG, blocks, clone lines) equals the
     oracle stage's, the U(1) leakage query runs natively (equal with the
-    projection gate off too) and nothing is decoded."""
+    projection gate off too) and nothing is decoded. (The whole production
+    chain under the flag: ``test_switched_generation_is_output_identical_``
+    ``and_decodes_nothing``.)"""
 
     from pyamplicol.loops.v2 import snapshot
 
-    from .test_loop_v2_ct_recursion import _program_and_rules
-
-    text, born, loop = "u u~ > d d~ g", {"QCD": 3}, {"QCD": 5}
-    python = _python_program(loop_sm_compiled_model, text, born, loop)
+    # The program of the A3 default-tier test (built once per module).
+    python = _python_program(
+        loop_sm_compiled_model, "g g > g g g", {"QCD": 3}, {"QCD": 5}
+    )
     before = dag_input.decode_count()
     with _flag(True):
-        native = _program_and_rules(loop_sm_compiled_model, text, born, loop)[0]
+        native = ct_closure.CountertermBlocks.build(
+            python.recursion, python.blocks.blocks_dag.process
+        )
     assert isinstance(native.blocks.blocks_dag, dag_input.NativeDag)
     assert native.blocks.dag_fallback is None
     assert snapshot.counterterm_program_digest(native) == (
         snapshot.counterterm_program_digest(python)
     )
     assert native.blocks.blocks == python.blocks.blocks
+    assert native.blocks.kernel_variant == python.blocks.kernel_variant
     assert dict(native.clones) == dict(python.clones)
-    monkeypatch.setattr(ct_closure, "u1_projected", lambda compiled: False)
-    leaking = ct_closure.u1_leaking_structures(native)
-    assert leaking
-    assert leaking == ct_closure.u1_leaking_structures(python)
+    # The U(1) leakage query dispatches on the DAG (with the projection gate
+    # off, quark lines leak: ``test_native_u1_leakage_scan_equals_the_closure``).
+    for projected in (True, False):
+        with monkeypatch.context() as patch:
+            if not projected:
+                patch.setattr(ct_closure, "u1_projected", lambda compiled: False)
+            assert ct_closure.u1_leaking_structures(native) == (
+                ct_closure.u1_leaking_structures(python)
+            )
     assert dag_input.decode_count() == before
 
 
@@ -1011,7 +1021,7 @@ def test_native_stage_falls_back_with_a_record(
     assert not isinstance(wrapped.blocks_dag, dag_input.NativeDag)
     assert wrapped.blocks == python.blocks
     program = _python_program(
-        loop_sm_compiled_model, "u u~ > d d~ g", {"QCD": 3}, {"QCD": 5}
+        loop_sm_compiled_model, "g g > g g g", {"QCD": 3}, {"QCD": 5}
     )
     for feature in dag_input.NATIVE_FALLBACKS:
 
