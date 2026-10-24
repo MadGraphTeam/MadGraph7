@@ -200,11 +200,19 @@ class TreeVocabulary:
             if not (self.whole_rules and self.multi_trace):
                 return "whole-rule colour continuation"
             return None  # the replacement terms are lowered, not the entries
-        for entry in rule.entries:
-            records = [self.particles[name] for name in entry.particle_names]
-            if any(int(record.get("ghost_number", 0)) for record in records):
-                return "ghost leg"
+        if self.ghost_leg(rule):
+            return "ghost leg"
         return None
+
+    def ghost_leg(self, rule: Any) -> bool:
+        """Whether an entry of ``rule`` has a ghost leg: no tree current of
+        physical legs carries a ghost, so such a rule is inert."""
+
+        return any(
+            int(self.particles[name].get("ghost_number", 0))
+            for entry in rule.entries
+            for name in entry.particle_names
+        )
 
     def entry_reason(self, entry: Any) -> str | None:
         """Why the colour or Lorentz cell of ``entry`` cannot be lowered."""
@@ -637,8 +645,8 @@ def lower_model_counterterms(
     for rule in rules.values():
         key = rule_key(rule)
         reason = vocabulary.rule_reason(rule)
-        if reason == "ghost leg":
-            inert.add(key)  # no tree current of physical legs carries a ghost
+        if reason is not None and vocabulary.ghost_leg(rule):
+            inert.add(key)
         if reason is None and order_limits is not None:
             beyond = [
                 orders
@@ -1086,8 +1094,13 @@ class CountertermRecursion:
     ``rules`` are the request's rules in the lowered model with their
     admitted alternatives (``admission``) and lowered ``terms``; ``residual``
     maps every other rule the request admits to the reason it is not lowered
-    (production refuses such a request, ``ct_closure.CountertermProgram``;
-    the tree-route tests close them at sites).
+    (production refuses such a request when the rule's vertex can enter a
+    tree of it, ``ct_closure.CountertermProgram``; the tree-route tests close
+    them at sites). ``inert`` maps the rules the request admits that
+    contribute nothing and need no lowering to the reason: in no tree of the
+    program (ghost legs, orders above its limits, or a vertex no tree of the
+    request can hold, ``ct_closure.InsertionReachability``; REQUIREMENTS_ADDENDUM
+    J), or every loop-content alternative vetoed.
     """
 
     model: CountertermModel
@@ -1097,6 +1110,7 @@ class CountertermRecursion:
     residual: Mapping[str, str]
     born_orders: tuple[Orders, ...]
     loop_orders: tuple[Orders, ...]
+    inert: Mapping[str, str] = field(default_factory=dict)
 
     @classmethod
     def build(
@@ -1111,6 +1125,7 @@ class CountertermRecursion:
         exact Born amplitude orders."""
 
         residual: dict[str, str] = {}
+        inert: dict[str, str] = {}
         lowered: dict[str, Any] = {}
         terms: dict[str, tuple[tuple[Any, CountertermStructure], ...]] = {}
         admission: dict[str, tuple[int, ...]] = {}
@@ -1118,16 +1133,10 @@ class CountertermRecursion:
             key = rule_key(rule)
             admitted = admitted_alternatives(rule, model.veto, selection.corrections)
             if key in model.multiplicities:
+                # The left-out cells cancel with the multiplicities the
+                # lowering assumed: the loop groups of one vertex share its
+                # correction type, so they are all admitted or none is.
                 cells = model.unlowered.get(key, {})
-                if cells and admitted and len(admitted) != model.weights[key]:
-                    # The left-out cells cancel only with the multiplicities
-                    # the lowering assumed (the loop groups of one vertex
-                    # share its correction type, so they are all selected or
-                    # none is).
-                    residual[name] = _uncancelled_reason(cells).replace(
-                        "its vertex)", "its vertex in this request)"
-                    )
-                    continue
                 lowered[name] = rule
                 admission[name] = admitted
                 terms[name] = tuple(
@@ -1137,7 +1146,9 @@ class CountertermRecursion:
                     for entry, structure in rule_terms(rule)
                     if entry_cell(entry) not in cells
                 )
-            elif admitted and key not in model.inert:
+            elif admitted and key in model.inert:
+                inert[name] = model.residual[key]
+            elif admitted:
                 residual[name] = model.residual.get(
                     key, "the rule is not in the lowered model"
                 )
@@ -1149,7 +1160,25 @@ class CountertermRecursion:
             residual=residual,
             born_orders=tuple(sorted({add_orders(o) for o in born_orders})),
             loop_orders=tuple(sorted(selection.loop_orders)),
+            inert=inert,
         )
+
+    def with_inert(
+        self, rules: Mapping[str, Any], reachable: Any
+    ) -> CountertermRecursion:
+        """This recursion with every ``residual`` rule (of the request's
+        ``rules``) whose vertex ``reachable`` (``rule -> bool``,
+        ``ct_closure.InsertionReachability.admits``) finds in no tree of the
+        program moved to ``inert`` (REQUIREMENTS_ADDENDUM J): it contributes
+        nothing, so it needs no lowering."""
+
+        residual, inert = {}, dict(self.inert)
+        for name, reason in self.residual.items():
+            if reachable(rules[name]):
+                residual[name] = reason
+            else:
+                inert[name] = f"its vertex enters no tree of the request ({reason})"
+        return replace(self, residual=residual, inert=inert)
 
     # -- program -----------------------------------------------------------------
 

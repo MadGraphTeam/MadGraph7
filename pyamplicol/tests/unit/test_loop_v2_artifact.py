@@ -2477,10 +2477,12 @@ def test_qed_declaring_model_names_its_blockers(
     public v2 path (its MU_R, at LHA code LOOP 666, is resolved at the public
     boundary). Without the compatibility profile both engines refuse its G-
     Goldstone flag, which the dry run reports from the model preparation;
-    with it, u u~ > d d~ stops at its electroweak counterterms, which the tree
-    recursion cannot lower: couplings with the complex-mass scheme's UFO
-    helpers (recms, regsqrt) and the G0-photon mixing between spins (WP3.2).
-    There is no site fallback."""
+    with it, u u~ > d d~ stops at the electroweak counterterms that the tree
+    recursion cannot lower and whose vertices can enter a tree of the
+    request: couplings with the complex-mass scheme's UFO helper recms
+    (WP3.2). There is no site fallback. The unlowerable G0-photon mixing
+    between spins is inert here (REQUIREMENTS_ADDENDUM J): the massless
+    quarks have no Goldstone coupling, so no tree of u u~ > d d~ holds it."""
 
     from pyamplicol.api import ProcessRequest, ProcessSet
     from pyamplicol.models.loading import compile_model_source
@@ -2501,10 +2503,11 @@ def test_qed_declaring_model_names_its_blockers(
     )
     with pytest.raises(
         GenerationError,
-        match=r"counterterm rules the tree recursion cannot lower: .*UFO helper "
-        r"'recms'.*G0-A between spins",
-    ):
+        match=r"counterterm rules the tree recursion cannot lower, whose vertices "
+        r"can enter a tree of the request: .*UFO helper 'recms'",
+    ) as refused:
         profiled.generate(processes, tmp_path / "b")
+    assert "G0" not in str(refused.value)
     assert not (tmp_path / "b").exists()
 
 

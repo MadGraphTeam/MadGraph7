@@ -573,6 +573,81 @@ def test_two_point_insertions_are_clone_lines(lowered_ct_model):
     }
 
 
+# Vertices the plain rule admits that no tree of the request holds (by their
+# UFO vertex names): REQUIREMENTS_ADDENDUM J's inert rules when unlowerable.
+UNREACHABLE_VERTICES = {
+    "gg_gg": {"V_R2GUU", "V_R2UU"},  # g g > g g: no quark current
+    # u u~ > e- e+ / z: no gluon current, and the veto removes the Z.
+    "dy": {"V_R2GG", "V_R2uuZ"},
+}
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize("name", ("gg_gg", "uux_ddxg", "dy"))
+def test_insertion_reachability_is_sound_against_the_site_oracle(ct_slice, name):
+    """The reachability that makes an unlowerable CT vertex inert
+    (``ct_closure.InsertionReachability``, REQUIREMENTS_ADDENDUM J) is sound:
+    every rule the site oracle closes on the slice's exact tree currents
+    (every partition of the legs, the plain admission, no witness) enters a
+    tree for it. It also discriminates: the quark vertices enter no tree of
+    g g > g g, nor the gluon and (vetoed) Z vertices a tree of Drell-Yan."""
+
+    from pyamplicol.loops.v2.blocks import vetoed_particle_ids
+    from pyamplicol.loops.v2.ct_closure import (
+        InsertionReachability,
+        program_order_limits,
+    )
+    from pyamplicol.loops.v2.ct_recursion import admitted_alternatives
+    from pyamplicol.loops.v2.ct_sites import generate_counterterm_sites
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import COUNTERTERM_INSERTION_ORDER
+    from pyamplicol.processes.model import build_model_process_ir
+
+    ct = ct_slice(name)
+    text = ct.control.process.split(" / ")[0]
+    limits = program_order_limits(
+        ct.compiled, ct.blocks.born_orders, ct.selection.loop_orders
+    )
+    reachability = InsertionReachability.build(
+        CompiledUFOModel(ct.compiled),
+        build_model_process_ir(text, ct.compiled.ir, color_accuracy="full"),
+        {**limits, COUNTERTERM_INSERTION_ORDER: 2},
+        ignored_particle_ids=vetoed_particle_ids(ct.vetoed),
+    )
+    admission = {
+        rule_name: admitted_alternatives(rule, ct.vetoed, ct.selection.corrections)
+        for rule_name, rule in ct.rules.items()
+    }
+    sites = generate_counterterm_sites(
+        None,
+        ct.table,
+        ct.rules,
+        ct.data,
+        ct.selection,
+        forbidden=ct.vetoed,
+        whole_rules=True,
+        admission=admission,
+    ).sites
+    closed = {site.rule_name for site in sites}
+    assert closed
+    reachable = {
+        rule_name
+        for rule_name, rule in ct.rules.items()
+        if admission[rule_name] and reachability.admits(rule)
+    }
+    assert closed <= reachable, sorted(closed - reachable)
+    unreachable = {
+        entry.vertex_name
+        for rule_name, rule in ct.rules.items()
+        if admission[rule_name] and rule_name not in reachable
+        for entry in rule.entries
+    }
+    assert UNREACHABLE_VERTICES.get(name, set()) <= unreachable, sorted(unreachable)
+    assert not {
+        entry.vertex_name for site in sites for entry in site.rule.entries
+    } & unreachable
+
+
 # The tree route (form 1) is a test of the lowering; the closure, the
 # production form (design §6.1), runs on the same lowered couplings in the
 # default and physics tiers (test_loop_v2_ct_closure, test_loop_v2_slice).

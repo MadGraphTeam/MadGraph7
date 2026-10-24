@@ -38,7 +38,7 @@ from __future__ import annotations
 from collections import OrderedDict, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from itertools import product
+from itertools import permutations, product
 from typing import Any, Literal
 
 from pyamplicol.models.loading import (
@@ -65,6 +65,7 @@ from .families import (
     Orders,
     _set_partitions,
     add_orders,
+    model_data,
 )
 
 RootKind = Literal["vertex", "line", "counterterm"]
@@ -94,6 +95,169 @@ class RootReachability:
 
     def admits_block(self, index: Any) -> bool:
         return self.admits_mask(index.external_mask)
+
+
+def _upper_orders(orders: Iterable[tuple[str, int]]) -> Orders:
+    totals: dict[str, int] = {}
+    for name, power in orders:
+        key = str(name).upper()
+        totals[key] = totals.get(key, 0) + int(power)
+    return tuple(sorted((name, power) for name, power in totals.items() if power))
+
+
+def _within(orders: Orders, limits: Mapping[str, int]) -> bool:
+    """The tree engine's order test: every limited order within its limit
+    (an order without a limit is unbounded, ``dag_reachability``)."""
+
+    found = dict(orders)
+    return all(found.get(name, 0) <= limit for name, limit in limits.items())
+
+
+def _pareto_minimal(rows: Iterable[Orders]) -> tuple[Orders, ...]:
+    """The order vectors no other one is below in every order: an order sum
+    within upper limits exists iff one of these is within them."""
+
+    unique = sorted(set(rows))
+    as_maps = [dict(row) for row in unique]
+
+    def below(a: Mapping[str, int], b: Mapping[str, int]) -> bool:
+        return a != b and all(a.get(name, 0) <= b.get(name, 0) for name in {*a, *b})
+
+    return tuple(
+        row
+        for row, values in zip(unique, as_maps, strict=True)
+        if not any(below(other, values) for other in as_maps)
+    )
+
+
+@dataclass(frozen=True)
+class InsertionReachability:
+    """Whether a CT vertex can enter a tree of a request's CT program.
+
+    REQUIREMENTS_ADDENDUM J: a vertex that cannot is inert (it contributes
+    nothing and needs no lowering). ``currents`` maps every leg set of the
+    process (the full set included) to the tree-engine particle ids of the
+    currents without a CT insertion over it, each with its Pareto-minimal
+    coupling orders. They come from the tree engine's forward species and
+    coupling-order sweep (``generation.dag_reachability``) over the program's
+    model, order limits and vetoed particles, as ``CountertermBlocks.build``
+    compiles the program. The sweep ignores colour, helicity and flavour-flow
+    labels, so it over-approximates the currents: a vertex it finds in no tree
+    enters none (sound); one it finds may still vanish.
+
+    A vertex of UFO fields ``f_1..f_n`` and orders ``o`` enters a tree iff the
+    legs split into ``n`` blocks whose currents enter its legs (the current
+    entering a leg of field ``f`` is the tree-engine particle ``anti(f)``)
+    with orders that sum with ``o`` to within the physical ``limits``. A block
+    of one leg is the external particle itself, so a two-point vertex on an
+    external line (its field factor) enters too. No loop, site or witness is
+    consulted.
+    """
+
+    full_mask: int
+    currents: Mapping[int, Mapping[int, tuple[Orders, ...]]]
+    limits: Mapping[str, int]
+    entering: Mapping[int, int]
+
+    @classmethod
+    def build(
+        cls,
+        model: Any,
+        process: Any,
+        order_limits: Mapping[str, int],
+        *,
+        ignored_particle_ids: Iterable[int] = (),
+    ) -> InsertionReachability:
+        """Sweep the tree-engine ``model`` over ``process`` (a model process
+        IR) within ``order_limits`` (a CT program's
+        ``CountertermRecursion.coupling_order_limits``; its insertion order
+        is set to 0 for the currents), without the ``ignored_particle_ids``
+        (signed tree-engine ids, ``vetoed_particle_ids``)."""
+
+        ignored = frozenset(int(pdg) for pdg in ignored_particle_ids)
+        limits = {str(k).upper(): int(v) for k, v in order_limits.items()}
+        insertion = COUNTERTERM_INSERTION_ORDER.upper()
+        current_limits = {**limits, insertion: 0}
+        physical = {k: v for k, v in limits.items() if k != insertion}
+        legs = sorted(process.legs, key=lambda leg: leg.label)
+        full = 0
+        currents: dict[int, dict[int, set[Orders]]] = {}
+        for leg in legs:
+            bit = 1 << (leg.label - 1)
+            full |= bit
+            if leg.outgoing_pdg is not None and int(leg.outgoing_pdg) not in ignored:
+                currents.setdefault(bit, {})[int(leg.outgoing_pdg)] = {()}
+        accepting: dict[tuple[int, int], tuple[Any, ...]] = {}
+        accuracy = process.color_accuracy
+        for mask in sorted(range(1, full + 1), key=lambda m: (m.bit_count(), m)):
+            if mask & full != mask or not mask & (mask - 1):
+                continue
+            found: dict[int, set[Orders]] = {}
+            sub = (mask - 1) & mask
+            while sub:
+                left, right = currents.get(sub), currents.get(mask ^ sub)
+                for lp, left_orders in (left or {}).items():
+                    for rp, right_orders in (right or {}).items():
+                        vertices = accepting.get((lp, rp))
+                        if vertices is None:
+                            vertices = accepting[lp, rp] = tuple(
+                                model.vertices_accepting(
+                                    lp, rp, color_accuracy=accuracy
+                                )
+                            )
+                        for vertex in vertices:
+                            result = int(vertex.particles[2])
+                            if (
+                                result in ignored
+                                or model.skip_duplicate_vertex_orientation(vertex)
+                            ):
+                                continue
+                            own = _upper_orders(model.vertex_coupling_orders(vertex))
+                            for a in left_orders:
+                                for b in right_orders:
+                                    total = _upper_orders((*a, *b, *own))
+                                    if _within(total, current_limits):
+                                        found.setdefault(result, set()).add(total)
+                sub = (sub - 1) & mask
+            if found:
+                currents[mask] = {pid: set(_pareto_minimal(o)) for pid, o in found.items()}
+        entering = {
+            int(pdg): int(particle.anti_pdg) for pdg, particle in model.particles.items()
+        }
+        return cls(
+            full,
+            {
+                mask: {pid: tuple(sorted(o)) for pid, o in species.items()}
+                for mask, species in currents.items()
+            },
+            physical,
+            entering,
+        )
+
+    def admits(self, rule: Any) -> bool:
+        """Whether the vertex of ``rule`` (a ``CountertermRule``) can enter a
+        tree of the program, at any of its entries' coupling orders."""
+
+        targets = [self.entering.get(int(pdg)) for pdg in rule.particle_pdgs]
+        if not targets or any(target is None for target in targets):
+            return False  # a field the tree model does not hold (a ghost)
+        own = {_upper_orders(tuple(e.order)) for e in rule.entries} or {
+            _upper_orders(tuple(rule.order))
+        }
+        arrangements = set(permutations(targets))
+        for parts in _set_partitions(self.full_mask, len(targets), len(targets)):
+            for arrangement in arrangements:
+                options = [
+                    self.currents.get(part, {}).get(target, ())
+                    for part, target in zip(parts, arrangement, strict=True)
+                ]
+                if not all(options):
+                    continue
+                for orders in own:
+                    for choice in product(*options):
+                        if _within(_upper_orders((*orders, *sum(choice, ()))), self.limits):
+                            return True
+        return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -809,20 +973,38 @@ class CountertermProgram:
             if scope is None
             else program_order_limits(compiled, born_orders, selection.loop_orders),
         )
-        recursion = CountertermRecursion.build(
-            lowered, prepared.counterterms.rules, selection, born_orders
-        )
-        if recursion.residual:
-            raise UnloweredCountertermError(
-                "counterterm rules the tree recursion cannot lower: "
-                + "; ".join(
-                    f"{name} ({reason})"
-                    for name, reason in sorted(recursion.residual.items())
-                )
-            )
+        rules = prepared.counterterms.rules
+        recursion = CountertermRecursion.build(lowered, rules, selection, born_orders)
         ir = build_model_process_ir(
             process, lowered.lowered.compiled.ir, color_accuracy="full"
         )
+        if recursion.residual:
+            # A rule that cannot be lowered is inert when its vertex enters
+            # no tree of the program (REQUIREMENTS_ADDENDUM J), and refused
+            # otherwise; there is no site fallback.
+            from pyamplicol.models.external import CompiledUFOModel
+
+            reachability = InsertionReachability.build(
+                CompiledUFOModel(lowered.lowered.compiled),
+                ir,
+                recursion.coupling_order_limits(),
+                ignored_particle_ids=vetoed_particle_ids(veto),
+            )
+            recursion = recursion.with_inert(rules, reachability.admits)
+        if recursion.residual:
+            names = {
+                int(item["pdg_code"]): str(item["name"])
+                for item in model_data(native_model)["particles"]
+            }
+            raise UnloweredCountertermError(
+                "counterterm rules the tree recursion cannot lower, whose "
+                "vertices can enter a tree of the request: "
+                + "; ".join(
+                    f"{name} [{' '.join(names[pdg] for pdg in rules[name].particle_pdgs)}]"
+                    f" ({reason})"
+                    for name, reason in sorted(recursion.residual.items())
+                )
+            )
         program = CountertermBlocks.build(
             recursion, ir, ignored_particle_ids=vetoed_particle_ids(veto)
         )
@@ -908,6 +1090,7 @@ __all__ = [
     "CountertermBlocks",
     "CountertermClosure",
     "CountertermProgram",
+    "InsertionReachability",
     "RootReachability",
     "UnprojectedU1Error",
     "counterterm_closure_entries",
