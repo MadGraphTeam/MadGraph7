@@ -194,7 +194,13 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
             self.results.def_current(name, self.run_tag)
 
         self.banner = self._banner_for_run(name)
-        return None
+        # As MadEventCmd.set_run_name, return the tag of the run holding the
+        # input of `level`: check_delphes looks for <tag>_pythia8_events.hepmc.gz,
+        # and silently skips Delphes (--no_default) when it is None_pythia8_...
+        # An mg7 run has one tag, so the shower output carries run_tag.
+        if level == 'parton':
+            return None
+        return self.run_tag
 
     def configure_directory(self, html_opening=True):
         """Lightweight replacement: the mg7 output has no Fortran ``Source`` to
