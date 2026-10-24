@@ -261,6 +261,7 @@ fn table<S: Stream, X: Default + 'static>(stream: &mut S, refs: Col) -> &mut X {
         .expect("one list type per reference column")
 }
 
+#[inline]
 fn num<S: Stream, T>(stream: &mut S, col: Col, value: &mut T) -> RusticolResult<()>
 where
     T: Copy + TryInto<i64> + TryFrom<i64>,
@@ -278,6 +279,7 @@ where
     Ok(())
 }
 
+#[inline]
 fn flag<S: Stream>(stream: &mut S, col: Col, value: &mut bool) -> RusticolResult<()> {
     let mut wide = i64::from(*value);
     stream.int(col, &mut wide)?;
@@ -289,6 +291,7 @@ fn flag<S: Stream>(stream: &mut S, col: Col, value: &mut bool) -> RusticolResult
     Ok(())
 }
 
+#[inline]
 fn list<S: Stream, T: Fresh>(
     stream: &mut S,
     col: Col,
@@ -310,6 +313,7 @@ fn list<S: Stream, T: Fresh>(
     Ok(())
 }
 
+#[inline]
 fn nums<S: Stream, T>(stream: &mut S, len: Col, col: Col, items: &mut Vec<T>) -> RusticolResult<()>
 where
     T: Copy + Fresh + TryInto<i64> + TryFrom<i64>,
@@ -318,6 +322,7 @@ where
 }
 
 /// A list stored once at its first use and referenced by number afterwards.
+#[inline]
 fn shared<S: Stream, T>(
     stream: &mut S,
     refs: Col,
@@ -367,6 +372,7 @@ where
     }
 }
 
+#[inline]
 fn option<S: Stream, T: Fresh>(
     stream: &mut S,
     col: Col,
@@ -437,6 +443,8 @@ impl<A: Fresh, B: Fresh, C: Fresh> Fresh for (A, B, C) {
     }
 }
 
+#[cold]
+#[inline(never)]
 fn too_large(col: Col) -> crate::RusticolError {
     invalid(format!(
         "binary plan: {col:?} decodes to more than the allocator grants"
@@ -444,6 +452,7 @@ fn too_large(col: Col) -> crate::RusticolError {
 }
 
 /// An empty list with room for exactly `len` items, or an error.
+#[inline]
 fn reserved<T>(len: usize, col: Col) -> RusticolResult<Vec<T>> {
     let mut items = Vec::new();
     items.try_reserve_exact(len).map_err(|_| too_large(col))?;
@@ -1208,11 +1217,13 @@ impl<'a> Reader<'a> {
 impl Stream for Reader<'_> {
     const READ: bool = true;
 
+    #[inline]
     fn int(&mut self, col: Col, value: &mut i64) -> RusticolResult<()> {
         *value = self.next(col)?;
         Ok(())
     }
 
+    #[inline]
     fn string(&mut self, col: Col, value: &mut String) -> RusticolResult<()> {
         let id = self.next(col)?;
         let text = usize::try_from(id)
@@ -1223,6 +1234,7 @@ impl Stream for Reader<'_> {
         Ok(())
     }
 
+    #[inline]
     fn len(&mut self, col: Col, _len: usize) -> RusticolResult<usize> {
         let len = self.next(col)?;
         usize::try_from(len)
