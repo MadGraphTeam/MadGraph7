@@ -535,6 +535,7 @@ def test_native_u1_leakage_scan_equals_the_closure(loop_sm_compiled_model, monke
     ("text", "born", "loop"),
     (
         ("u u~ > e- e+", {"QCD": 0, "QED": 2}, {"QCD": 2, "QED": 2}),
+        ("u u~ > e- e+ g", {"QCD": 1, "QED": 2}, {"QCD": 3, "QED": 2}),
         ("g g > u u~ g", {"QCD": 3, "QED": 0}, {"QCD": 5, "QED": 0}),
     ),
 )
@@ -545,7 +546,9 @@ def test_native_counterterm_program_two_point_model(
     loop,
 ):
     """The two-point synthetic model (photon-Z mixing line, chiral and
-    flipping u terms on a Dirac-forced u, d-s mixing)."""
+    flipping u terms on a Dirac-forced u, d-s mixing; with a gluon, the
+    g g Z R2 whose Levi-Civita cell cancels between the quark doublets and
+    is left out of the lowered model, ``test_loop_v2_ct_cancellation``)."""
 
     _program, native = _assert_ct_equal(two_point_model, text, born, loop)
     assert native.clones

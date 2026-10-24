@@ -220,7 +220,8 @@ def _native_blocks_chain(
             ignored_particle_ids=ignored,
         ),
     )
-    propagated = SimpleNamespace(
+    # The current scan of ``ward_breaking_fields`` reads ids and kinds only.
+    propagated: Any = SimpleNamespace(
         sources=(),
         currents=tuple(
             SimpleNamespace(index=SimpleNamespace(particle_id=pdg, auxiliary_kind=None))
