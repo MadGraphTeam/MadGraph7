@@ -18,6 +18,9 @@ classes, and copies scaled by inexact and complex factors).
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
+import itertools
 import os
 import subprocess
 import sys
@@ -43,6 +46,18 @@ from . import test_dag_equivalence_contract_classes as contract_classes
 from .test_loop_v2_ct_two_point import two_point_model  # noqa: F401 (fixture)
 
 VARIANTS = ("transverse", "full")
+
+
+@contextlib.contextmanager
+def _flag(on):
+    """``dag_input.NATIVE_DAG`` set to ``on`` (off: the oracle stages)."""
+
+    before = dag_input.NATIVE_DAG
+    dag_input.NATIVE_DAG = on
+    try:
+        yield
+    finally:
+        dag_input.NATIVE_DAG = before
 
 
 @pytest.fixture(scope="module")
@@ -231,7 +246,20 @@ def test_native_builder_needs_no_symbolica_licence(
     Path(request["build"][-1]).write_text(
         dag_input.dag_input(process, model, max_coupling_orders={"QCD": 5})
     )
-    expected["digests"].append(_native(model, process, {"QCD": 5}).digest())
+    loop_blocks = _native(model, process, {"QCD": 5})
+    expected["digests"].append(loop_blocks.digest())
+    # A4's bindings: the blocks with their interned helicity assignments and
+    # the propagated species (Ward and coloured-width queries).
+    request["blocks"] = str(tmp_path / "block-tables.json")
+    Path(request["blocks"]).write_text(loop_blocks._tables())
+    expected["blocks"] = json.loads(
+        json.dumps(loop_blocks._handle.blocks(loop_blocks._tables()))
+    )
+    full = (1 << len(process.legs)) - 1
+    request["full"] = full
+    expected["species"] = [
+        list(item) for item in loop_blocks._handle.propagated_species(full)
+    ]
     program, _native_program = _assert_ct_equal(
         loop_sm_compiled_model, "g g > g g g", {"QCD": 3}, {"QCD": 5}
     )
@@ -337,6 +365,11 @@ def test_native_builder_needs_no_symbolica_licence(
         "out = {'digests': [], 'reuse': []}\n"
         "for path in request['build']:\n"
         "    out['digests'].append(native.V2Dag.build(open(path).read()).digest())\n"
+        "handle = native.V2Dag.build(open(request['build'][0]).read())\n"
+        "tables = open(request['blocks']).read()\n"
+        "out['blocks'] = json.loads(json.dumps(handle.blocks(tables)))\n"
+        "species = handle.propagated_species(request['full'])\n"
+        "out['species'] = [list(x) for x in species]\n"
         "for columns, tables, rewritten in request['reuse']:\n"
         "    handle = native.V2Dag.from_columns(open(columns, 'rb').read())\n"
         "    records = []\n"
@@ -363,6 +396,8 @@ def test_native_builder_needs_no_symbolica_licence(
     )
     out = json.loads(result.stdout.strip().splitlines()[-1])
     assert out["digests"] == expected["digests"]
+    assert out["blocks"] == expected["blocks"]
+    assert out["species"] == expected["species"]
     assert out["reuse"] == expected["reuse"]
     for (reuse_dag, _model), (*_inputs, rewritten), interactions in zip(
         fixtures, request["reuse"], expected["interactions"], strict=True
@@ -696,7 +731,10 @@ def _python_program(compiled_path, text, born, loop, veto=()):
 
     key = (str(compiled_path), text, repr(born), repr(loop), tuple(veto))
     if key not in _PROGRAMS:
-        _PROGRAMS[key] = _program_and_rules(compiled_path, text, born, loop, veto)[0]
+        with _flag(False):
+            _PROGRAMS[key] = _program_and_rules(compiled_path, text, born, loop, veto)[
+                0
+            ]
     return _PROGRAMS[key]
 
 
@@ -840,3 +878,245 @@ def test_native_counterterm_program_six_legs(loop_sm_compiled_model, text, born,
         native.dag.digest(),
         dag_input.blocks_digest(native.blocks, native.clones),
     )
+
+
+# ------------------------------------------------------------------ A4
+
+
+def _tree_blocks(model, process, orders, on, **options):
+    from pyamplicol.loops.v2.blocks import build_tree_blocks
+
+    with _flag(on):
+        return build_tree_blocks(
+            process,
+            model,
+            born_coupling_orders=options.pop("born", None),
+            block_coupling_orders=orders,
+            **options,
+        )
+
+
+def _assert_switch_equal(compiled, model, text, orders, **options):
+    """``build_tree_blocks`` with the native stage equals the oracle stage:
+    blocks, Born, S1' digest, the Ward-kernel and coloured-width queries,
+    all without a decode; then reading a ``GenericDAG`` attribute of the
+    handle decodes it once, to the oracle's DAG."""
+
+    from pyamplicol.loops.v2 import snapshot
+    from pyamplicol.loops.v2.artifact import coloured_widths
+    from pyamplicol.loops.v2.blocks import propagated_species
+
+    process = _process(compiled, text)
+    python = _tree_blocks(model, process, orders, False, **dict(options))
+    before = dag_input.decode_count()
+    native = _tree_blocks(model, process, orders, True, **dict(options))
+    assert isinstance(native.blocks_dag, dag_input.NativeDag)
+    assert not isinstance(python.blocks_dag, dag_input.NativeDag)
+    assert native.dag_fallback is None
+    assert native.blocks == python.blocks
+    assert native.born_roots == python.born_roots
+    assert native.kernel_variant == python.kernel_variant
+    assert snapshot.loop_blocks_digest(native) == snapshot.loop_blocks_digest(python)
+    assert propagated_species(native.blocks_dag) == propagated_species(
+        python.blocks_dag
+    )
+    for fixed in ({}, {"WT": "0"}):
+        native_dags = (native.blocks_dag, native.born_dag)
+        python_dags = (python.blocks_dag, python.born_dag)
+        assert ward_breaking_fields(native_dags, compiled, fixed) == (
+            ward_breaking_fields(python_dags, compiled, fixed)
+        )
+        assert coloured_widths(native_dags, compiled, fixed) == (
+            coloured_widths(python_dags, compiled, fixed)
+        )
+    full = native.with_kernels(model)
+    assert full.blocks_dag is native.blocks_dag
+    assert full.blocks == python.with_kernels(model).blocks
+    assert dag_input.decode_count() == before
+    # Rule 9: the handle decodes on the first attribute read, once.
+    assert native.blocks_dag.currents == python.blocks_dag.currents
+    assert dag_input.decode_count() == before + 1
+    assert native.blocks_dag.materialize() == python.blocks_dag
+    assert native.blocks_dag.interactions == python.blocks_dag.interactions
+    assert dag_input.decode_count() == before + 1
+    return python, native
+
+
+@pytest.mark.loop_fast
+def test_switched_tree_blocks_equal_the_oracle_stage(models):
+    """A4: ``build_tree_blocks`` takes the native builder under
+    ``NATIVE_DAG`` (u u~ > d d~ g: quark lines, connection signs)."""
+
+    compiled, model = models
+    _assert_switch_equal(compiled, model, "u u~ > d d~ g", {"QCD": 5}, born={"QCD": 3})
+
+
+@pytest.mark.loop_fast
+def test_switched_counterterm_program_equals_the_oracle_stage(
+    loop_sm_compiled_model, monkeypatch
+):
+    """A4: ``CountertermBlocks.build`` takes the native builder under
+    ``NATIVE_DAG``: the S1'' digest (DAG, blocks, clone lines) equals the
+    oracle stage's, the U(1) leakage query runs natively (equal with the
+    projection gate off too) and nothing is decoded."""
+
+    from pyamplicol.loops.v2 import snapshot
+
+    from .test_loop_v2_ct_recursion import _program_and_rules
+
+    text, born, loop = "u u~ > d d~ g", {"QCD": 3}, {"QCD": 5}
+    python = _python_program(loop_sm_compiled_model, text, born, loop)
+    before = dag_input.decode_count()
+    with _flag(True):
+        native = _program_and_rules(loop_sm_compiled_model, text, born, loop)[0]
+    assert isinstance(native.blocks.blocks_dag, dag_input.NativeDag)
+    assert native.blocks.dag_fallback is None
+    assert snapshot.counterterm_program_digest(native) == (
+        snapshot.counterterm_program_digest(python)
+    )
+    assert native.blocks.blocks == python.blocks.blocks
+    assert dict(native.clones) == dict(python.clones)
+    monkeypatch.setattr(ct_closure, "u1_projected", lambda compiled: False)
+    leaking = ct_closure.u1_leaking_structures(native)
+    assert leaking
+    assert leaking == ct_closure.u1_leaking_structures(python)
+    assert dag_input.decode_count() == before
+
+
+class _Delegating:
+    """A model the native tables do not cover (not a ``CompiledUFOModel``)
+    that answers every query like the one it wraps."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+@pytest.mark.loop_fast
+def test_native_stage_falls_back_with_a_record(
+    models, loop_sm_compiled_model, monkeypatch
+):
+    """Rule 2: a feature the native builder does not cover takes the oracle
+    stage, which the blocks record (``dag_fallback``): a model other than a
+    compiled UFO model, and each listed refusal of the native tables, in
+    ``build_tree_blocks`` and ``CountertermBlocks.build``."""
+
+    compiled, model = models
+    process = _process(compiled, "u u~ > d d~ g")
+    python = _tree_blocks(model, process, {"QCD": 5}, False)
+    wrapped = _tree_blocks(_Delegating(model), process, {"QCD": 5}, True)
+    assert "model type" in wrapped.dag_fallback
+    assert not isinstance(wrapped.blocks_dag, dag_input.NativeDag)
+    assert wrapped.blocks == python.blocks
+    program = _python_program(
+        loop_sm_compiled_model, "u u~ > d d~ g", {"QCD": 3}, {"QCD": 5}
+    )
+    for feature in dag_input.NATIVE_FALLBACKS:
+
+        def refuse(*args, feature=feature, **kwargs):
+            raise dag_input.NativeDagUnsupported(feature)
+
+        monkeypatch.setattr(dag_input, "native_blocks", refuse)
+        monkeypatch.setattr(dag_input, "native_counterterm_blocks", refuse)
+        fallen = _tree_blocks(model, process, {"QCD": 5}, True)
+        assert fallen.dag_fallback == feature
+        assert fallen.blocks == python.blocks
+    # The counterterm program takes the same path (one feature: the oracle
+    # stage costs seconds).
+    with _flag(True):
+        again = ct_closure.CountertermBlocks.build(
+            program.recursion, program.blocks.blocks_dag.process
+        )
+    assert again.blocks.dag_fallback == dag_input.NATIVE_FALLBACKS[-1]
+    assert again.blocks.blocks == program.blocks.blocks
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("text", "orders", "born"),
+    (
+        # Photon and Z currents (shared evaluation contracts of the
+        # electroweak bosons: the value-equivalence derivation).
+        ("u u~ > e- e+ g g", {"QCD": 4, "QED": 2}, {"QCD": 2, "QED": 2}),
+        ("g g > u u~ a g", {"QCD": 5, "QED": 1}, {"QCD": 3, "QED": 1}),
+        ("e+ e- > u u~ g", {"QCD": 3, "QED": 2}, {"QCD": 1, "QED": 2}),
+        # Tops with W_T != 0: the Ward and coloured-width queries name them
+        # (amputated currents of all legs but one aside).
+        ("g g > t t~ g", {"QCD": 5}, {"QCD": 3}),
+    ),
+)
+def test_switched_tree_blocks_wider_controls(models, text, orders, born):
+    compiled, model = models
+    _python, native = _assert_switch_equal(compiled, model, text, orders, born=born)
+    if "t" in text.split():
+        from pyamplicol.loops.v2.artifact import coloured_widths
+
+        dags = (native.blocks_dag, native.born_dag)
+        assert {"t", "t~"} <= ward_breaking_fields(dags, compiled)
+        assert set(coloured_widths(dags, compiled, {})) >= {"t"}
+
+
+def _generation_digests(compiled, request, native_module, on):
+    """Every stage digest of ``LoopSlice.generate`` (recursion route) and
+    of its plan with native trees, with the native DAG stage ``on`` or off,
+    and the decodes the generation and each export made (rule 9)."""
+
+    from pyamplicol.loops.v2 import snapshot
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.loops.v2.plan_export import export_plan
+
+    decodes = [dag_input.decode_count()]
+    with _flag(on):
+        slice_ = LoopSlice.generate(compiled, request, native_module)
+        decodes.append(dag_input.decode_count())
+        digests = snapshot.stage_digests(slice_)
+        decodes.append(dag_input.decode_count())
+        digests["S1'"] = snapshot.loop_blocks_digest(slice_.blocks)
+        digests["S1''"] = snapshot.counterterm_program_digest(
+            slice_.counterterm_program.blocks
+        )
+        digests["S2"] = snapshot.root_closure_digest(slice_)
+        exported = export_plan(slice_, forward=False, trees=True, born_squared=True)
+        decodes.append(dag_input.decode_count())
+        digests["P"] = snapshot.programs_digest(exported.trees)
+        digests["S8 trees"] = hashlib.sha256(exported.json().encode()).hexdigest()
+    return slice_, digests, [b - a for a, b in itertools.pairwise(decodes)]
+
+
+@pytest.mark.loop_physics
+def test_switched_generation_is_output_identical_and_decodes_nothing(
+    loop_sm_compiled_model, loop_native
+):
+    """A4 output identity on the production path: a recursion-route
+    ``LoopSlice.generate`` with the native DAG stage gives the oracle
+    stage's S1, S4, S5, S8 (plan bytes, also with native trees), S1', S1'',
+    S2 and P digests. Rule 9: the generation and the plan export decode no
+    native DAG; the native-trees export decodes exactly the two A5 consumers
+    of the consumer table (the loop-block and CT DAGs' interaction
+    programs, ``RUST-MIGRATION.md`` §3.A)."""
+
+    from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request = SliceRequest(
+        "u u~ > d d~ g",
+        {"QCD": 3, "QED": 0},
+        {"QCD": 5, "QED": 0},
+        fixed_parameters={"MB": "0"},
+    )
+    _python, expected, python_decodes = _generation_digests(
+        compiled, request, loop_native, False
+    )
+    switched, digests, decodes = _generation_digests(
+        compiled, request, loop_native, True
+    )
+    assert python_decodes == [0, 0, 0]
+    assert decodes == [0, 0, 2]
+    assert isinstance(switched.blocks.blocks_dag, dag_input.NativeDag)
+    program = switched.counterterm_program.blocks.blocks
+    assert isinstance(program.blocks_dag, dag_input.NativeDag)
+    assert switched.blocks.blocks_dag.decoded and program.blocks_dag.decoded
+    assert digests == expected

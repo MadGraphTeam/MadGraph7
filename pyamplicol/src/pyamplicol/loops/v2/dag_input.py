@@ -88,8 +88,33 @@ from .blocks import (
     RequestedLoopBlocks,
 )
 
-# Rule 1: the native builder stays behind this flag until its switch (A4).
-NATIVE_DAG = False
+# Rule 1: the one flag of the native loop-request DAG stage (A4). On, the
+# loop-block DAG of ``blocks.build_tree_blocks`` and the counterterm program
+# of ``ct_closure.CountertermBlocks.build`` are the native builder's (their
+# Ward-kernel, coloured-width and U(1)-leakage queries native too); off, the
+# tree engine's loop-request mode, which stays the oracle. Under the flag a
+# request the native builder does not cover (``NativeDagUnsupported``)
+# takes the tree engine, and ``TreeBlocks.dag_fallback`` names the feature
+# (rule 2's listed fallbacks: ``NATIVE_FALLBACKS``).
+NATIVE_DAG = True
+
+# The features the native builder refuses (``NativeDagUnsupported``), for
+# which ``build_tree_blocks`` and ``CountertermBlocks.build`` fall back to the
+# tree engine under ``NATIVE_DAG`` (RUST-MIGRATION §2 rule 2): no control of
+# the Python stage needs one; each is tested in
+# ``tests/unit/test_loop_v2_native_dag.py``.
+NATIVE_FALLBACKS = (
+    "a model other than a compiled UFO model",
+    "a leg without an outgoing particle id",
+    "a tuple (multi-component) spin state of a vertex or a source",
+    "a flavour flow outside the recurrence operations (constant, append "
+    "left, append right), or one changing with the input chiralities",
+    "a vertex setting quantum numbers other than its result particle's",
+    "a NaN coupling or colour weight",
+    "source colour states with basis keys",
+    "more than 64 source states (helicity ancestry bits)",
+    "a loop-block reachability other than the three of the slice",
+)
 
 INPUT_SCHEMA = "pyamplicol.loop-v2.dag-input/1"
 BLOCK_INPUT_SCHEMA = "pyamplicol.loop-v2.dag-block-input/1"
@@ -1480,55 +1505,13 @@ def native_counterterm_blocks(
 
 
 def u1_leaking_structures(program: NativeCountertermBlocks) -> frozenset[Any]:
-    """``ct_closure.u1_leaking_structures`` on a native CT program: the
-    model-level gates and the kinds-to-structures map are the oracle's, the
-    DAG scan is native (``NativeDag.u1_leaking``)."""
+    """``ct_closure.u1_leaking_structures`` on a native CT program (its
+    model-level gates and kinds-to-structures map; the DAG scan is native,
+    ``NativeDag.u1_leaking``)."""
 
-    from collections import defaultdict
+    from .ct_closure import _u1_leaking
 
-    from . import ct_closure
-
-    lowered = program.recursion.model.lowered
-    compiled = lowered.compiled
-    if ct_closure.u1_projected(compiled):
-        return frozenset()
-    kinds = ct_closure._u1_coupling_kinds(compiled)
-    if not kinds:
-        return frozenset()
-    process = program.dag.process
-    colours = {int(p.pdg_code): int(p.color) for p in compiled.ir.particles}
-    fundamental = 0
-    for leg in process.legs:
-        if leg.outgoing_pdg is not None and abs(colours[int(leg.outgoing_pdg)]) == 3:
-            fundamental |= 1 << (leg.label - 1)
-    rest = 0
-    for leg in process.legs:
-        if leg.label != 1:
-            rest |= 1 << (leg.label - 1)
-    generator_kinds = {
-        int(kernel.kind)
-        for kernel in compiled.ir.oriented_kernels
-        if kernel.color_projection_structure == "fundamental-generator"
-    }
-    leaking = program.dag.u1_leaking(
-        kinds,
-        generator_kinds,
-        (pdg for pdg, colour in colours.items() if colour == 8),
-        fundamental,
-        rest,
-    )
-    if not leaking:
-        return frozenset()
-    by_coupling: dict[str, set[Any]] = defaultdict(set)
-    for structure, coupling in lowered.couplings.items():
-        by_coupling[coupling].add(structure)
-    coupling_of = {int(term.id): term.coupling for term in compiled.ir.vertex_terms}
-    out: set[Any] = set()
-    for kernel in compiled.ir.oriented_kernels:
-        if int(kernel.kind) in leaking:
-            for term_id in kernel.term_ids or (kernel.term_id,):
-                out |= by_coupling.get(coupling_of.get(int(term_id), ""), set())
-    return frozenset(out)
+    return _u1_leaking(program.recursion, program.dag)
 
 
 # ------------------------------------------------------------------ reuse oracle
@@ -1736,6 +1719,7 @@ __all__ = [
     "COLUMNS_SCHEMA",
     "INPUT_SCHEMA",
     "NATIVE_DAG",
+    "NATIVE_FALLBACKS",
     "REUSE_SCHEMA",
     "NativeCountertermBlocks",
     "NativeDag",

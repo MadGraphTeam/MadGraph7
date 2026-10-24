@@ -284,21 +284,17 @@ def coloured_widths(
 
     from pyamplicol.models.compiler_kernels import _is_compile_time_zero_parameter
 
+    from .blocks import propagated_species
+
     particles = {int(record.pdg_code): record for record in compiled.ir.particles}
     parameters = {record.name: record for record in compiled.ir.parameters}
     out: dict[str, str] = {}
     for dag in dags:
-        sources = set(dag.sources)
-        legs = (1 << len(dag.process.legs)) - 1
-        for current_id, current in enumerate(dag.currents):
-            index = current.index
-            if (
-                current_id in sources
-                or index.auxiliary_kind is not None
-                or (legs & ~index.momentum_mask).bit_count() == 1
-            ):
+        # The current scan (native for a ``dag_input.NativeDag``: no decode).
+        for particle_id, amputated in propagated_species(dag):
+            if amputated:
                 continue
-            record = particles.get(int(index.particle_id))
+            record = particles.get(particle_id)
             if record is None or abs(int(record.color)) == 1:
                 continue
             width = str(record.width)

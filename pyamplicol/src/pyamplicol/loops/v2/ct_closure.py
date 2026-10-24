@@ -35,6 +35,7 @@ id, and the insertion order of their orders marks them.
 
 from __future__ import annotations
 
+import logging
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -67,6 +68,8 @@ from .families import (
     add_orders,
     model_data,
 )
+
+_LOG = logging.getLogger(__name__)
 
 RootKind = Literal["vertex", "line", "counterterm"]
 ROOT_VERTEX: RootKind = "vertex"
@@ -303,7 +306,44 @@ class CountertermBlocks:
         progress_callback: Any = None,
     ) -> CountertermBlocks:
         """Compile the CT program's blocks for ``process`` (a model process IR
-        of the lowered model at full colour)."""
+        of the lowered model at full colour).
+
+        Under ``dag_input.NATIVE_DAG`` the native builder makes the program
+        (``dag_input.native_counterterm_blocks``, WP3.1 A4): its DAG is a
+        ``dag_input.NativeDag`` handle, decoded only by the per-point Python
+        rows (``CountertermProgram.rows``). The tree engine's loop-request
+        mode below is the oracle, and the stage for a request the native
+        builder does not cover (``TreeBlocks.dag_fallback`` names it)."""
+
+        from . import dag_input
+
+        fallback = None
+        if dag_input.NATIVE_DAG:
+            try:
+                native = dag_input.native_counterterm_blocks(
+                    recursion, process, ignored_particle_ids=ignored_particle_ids
+                )
+            except dag_input.NativeDagUnsupported as error:
+                fallback = str(error)
+                _LOG.warning(
+                    "%s: the tree engine builds the counterterm program "
+                    "(the native builder does not cover %s)",
+                    process.process,
+                    fallback,
+                )
+            else:
+                return cls(
+                    recursion,
+                    TreeBlocks(
+                        process=process,
+                        blocks_dag=native.dag,
+                        born_dag=native.dag,
+                        blocks=native.blocks,
+                        born_roots=(),
+                        kernel_variant=native.kernel_variant,  # type: ignore[arg-type]
+                    ),
+                    native.clones,
+                )
 
         from pyamplicol.generation.dag_compiler import GenericDAGCompiler
         from pyamplicol.models.external import CompiledUFOModel
@@ -340,6 +380,7 @@ class CountertermBlocks:
             blocks=tuple(blocks),
             born_roots=(),
             kernel_variant=variant,
+            dag_fallback=fallback,
         )
         return cls(recursion, tree, clones)
 
@@ -591,15 +632,23 @@ def u1_leaking_structures(program: CountertermBlocks) -> frozenset[Any]:
     that does either.
     """
 
-    dag = program.blocks.blocks_dag
-    lowered = program.recursion.model.lowered
+    return _u1_leaking(program.recursion, program.blocks.blocks_dag)
+
+
+def _u1_leaking(recursion: CountertermRecursion, dag: Any) -> frozenset[Any]:
+    """``u1_leaking_structures`` of the program DAG ``dag`` of ``recursion``:
+    the scan is native for a ``dag_input.NativeDag`` (``NativeDag.u1_leaking``,
+    no decode) and over the currents of a ``GenericDAG`` (the oracle)."""
+
+    from .dag_input import NativeDag
+
+    lowered = recursion.model.lowered
     compiled = lowered.compiled
     if u1_projected(compiled):
         return frozenset()
     kinds = _u1_coupling_kinds(compiled)
     if not kinds:
         return frozenset()
-    currents = dag.currents
     colours = {int(p.pdg_code): int(p.color) for p in compiled.ir.particles}
     fundamental = {
         leg.label
@@ -614,29 +663,39 @@ def u1_leaking_structures(program: CountertermBlocks) -> frozenset[Any]:
     # A root attaches at least two blocks to leg 1, so the currents of all
     # legs but leg 1 are never read (nor what only they derive from).
     rest = frozenset(leg.label for leg in dag.process.legs) - {1}
-    interactions = [
-        interaction
-        for interaction in dag.interactions
-        if frozenset(currents[interaction.result_id].index.external_labels) != rest
-    ]
     leaking: set[int] = set()
-    producers: dict[int, set[int]] = defaultdict(set)
-    for interaction in interactions:
-        kind = int(interaction.vertex_kind)
-        if kind not in kinds:
-            continue
-        for input_id in (interaction.left_id, interaction.right_id):
-            index = currents[input_id].index
-            if colours.get(int(index.particle_id)) == 8 and (
-                fundamental & set(index.external_labels)
-            ):
-                leaking.add(kind)
-        if colours.get(int(currents[interaction.result_id].index.particle_id)) == 8:
-            producers[interaction.result_id].add(kind)
-    for interaction in interactions:
-        if int(interaction.vertex_kind) in generator_kinds:
+    if isinstance(dag, NativeDag):
+        leaking |= dag.u1_leaking(
+            kinds,
+            generator_kinds,
+            (pdg for pdg, colour in colours.items() if colour == 8),
+            sum(1 << (label - 1) for label in fundamental),
+            sum(1 << (label - 1) for label in rest),
+        )
+    else:
+        currents = dag.currents
+        interactions = [
+            interaction
+            for interaction in dag.interactions
+            if frozenset(currents[interaction.result_id].index.external_labels) != rest
+        ]
+        producers: dict[int, set[int]] = defaultdict(set)
+        for interaction in interactions:
+            kind = int(interaction.vertex_kind)
+            if kind not in kinds:
+                continue
             for input_id in (interaction.left_id, interaction.right_id):
-                leaking |= producers.get(input_id, set())
+                index = currents[input_id].index
+                if colours.get(int(index.particle_id)) == 8 and (
+                    fundamental & set(index.external_labels)
+                ):
+                    leaking.add(kind)
+            if colours.get(int(currents[interaction.result_id].index.particle_id)) == 8:
+                producers[interaction.result_id].add(kind)
+        for interaction in interactions:
+            if int(interaction.vertex_kind) in generator_kinds:
+                for input_id in (interaction.left_id, interaction.right_id):
+                    leaking |= producers.get(input_id, set())
     if not leaking:
         return frozenset()
     by_coupling: dict[str, set[Any]] = defaultdict(set)
