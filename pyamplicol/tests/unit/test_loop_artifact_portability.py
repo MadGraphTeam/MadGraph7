@@ -15,7 +15,10 @@ cross-host acceptance (its docstring), on:
   member storage-v4 IR, target ``portable-64le`` without CPU features, a
   relocated copy in fresh interpreters with other working, home and temporary
   directories and user names gives bitwise-identical binary64 values with no
-  generation call;
+  generation call; its C example through the tree C API (opt-in input
+  ``PYAMPLICOL_CAPI_ARCHIVE``) is bitwise equal at both locations and to the
+  Python API, and runs without a licence while another process holds the
+  user's restricted Symbolica permit;
 * plan v4 loop artifacts, gg -> gg (loop_physics) and the six-gluon control
   gg -> gggg (loop_nightly): the same, plus no load-time regeneration once the
   point inputs are stored natively (``point_inputs = "native-v1"``, WP3.1;
@@ -279,6 +282,58 @@ def _concurrent_loads(artifact: Path, process: str, scratch: Path, legs: int) ->
     assert RESTRICTED not in second.stdout + rest
 
 
+@pytest.fixture(scope="module")
+def tree_capi_link():
+    """How to link the tree C API (``rusticol-capi``): a static archive
+    (``PYAMPLICOL_CAPI_ARCHIVE``, from ``cargo rustc --release -p rusticol-capi
+    --crate-type staticlib``) or an installed wheel
+    (``PYAMPLICOL_VIRTUAL_BUNDLE_INSTALL``, its ``bin/rusticol-config``).
+    Neither is a product of the staged native build (which builds the Python
+    extension and the loop SDK), so the input skips with its name."""
+
+    if archive := os.environ.get("PYAMPLICOL_CAPI_ARCHIVE"):
+        if not Path(archive).is_file():
+            pytest.fail(f"PYAMPLICOL_CAPI_ARCHIVE={archive} does not exist")
+        return {"archive": Path(archive)}
+    if installed := os.environ.get("PYAMPLICOL_VIRTUAL_BUNDLE_INSTALL"):
+        config = Path(installed) / "bin" / "rusticol-config"
+        if not config.is_file():
+            pytest.fail(f"{config} does not exist")
+        return {"rusticol_config": str(config)}
+    pytest.skip("tree C API unavailable; set PYAMPLICOL_CAPI_ARCHIVE")
+
+
+def test_tree_c_api_relocates_bitwise_without_a_licence(
+    tree_artifact, tree_capi_link, tmp_path
+):
+    """The tree engine's C distribution path, the artifact's own C example
+    (``API/c/check_standalone.c``): at a relocated copy, without
+    ``SYMBOLICA_LICENSE``, two concurrent processes run while another process
+    holds the user's restricted Symbolica permit (so neither touched Symbolica
+    state, although the archive links Symbolica through the loop SDK), and
+    every resolved value equals the original location and the bundle's Python
+    example bitwise."""
+
+    compiler = os.environ.get("CC") or shutil.which("cc") or shutil.which("gcc")
+    if compiler is None:
+        pytest.skip("no C compiler for the C example; set CC")
+    client = portability.capi_build(
+        tree_artifact,
+        tmp_path / "bin" / "check_standalone",
+        compiler=compiler,
+        **tree_capi_link,
+    )
+    verdict = portability.tree_capi_check(tree_artifact, client, tmp_path / "check")
+    assert verdict["scan"]["clean"], verdict["scan"]["findings"]
+    assert verdict["capi_ran"], verdict["capi"]
+    assert verdict["capi"]["relocated"]["permit"]["verified"], verdict["capi"]
+    assert verdict["capi_without_licence"], verdict["capi"]
+    assert verdict["capi_relocated_bitwise"]["bitwise"], verdict[
+        "capi_relocated_bitwise"
+    ]
+    assert verdict["capi_equals_python"]["bitwise"], verdict["capi_equals_python"]
+
+
 # ------------------------------------------------------------------ loops
 
 
@@ -439,8 +494,8 @@ def test_loop_v4_sdk_needs_no_symbolica_licence(
 ):
     """The f64 SDK follows the tree engine's rule: no Symbolica licence, so
     concurrent unlicensed SDK processes (a Monte Carlo farm) all run. A
-    Symbolica state access at open takes the user's single restricted-thread
-    permit and aborts every other unlicensed instance."""
+    Symbolica state access takes the user's single restricted-thread permit,
+    so the instances run while another process holds it: any access aborts."""
 
     reason = (
         NATIVE_LOOP_NEEDS_LICENCE if _sdk_evaluates_v4(loop_native) else SDK_WITHOUT_V4
@@ -457,7 +512,9 @@ def test_loop_v4_sdk_needs_no_symbolica_licence(
         licence=False,
         instances=2,
         workdir=tmp_path / "sdk",
+        hold_permit=True,
     )
+    assert record["permit"]["verified"], record["permit"]
     assert record["exit_status"] == [0, 0], record["stderr"]
     assert not record["symbolica_restricted"]
 

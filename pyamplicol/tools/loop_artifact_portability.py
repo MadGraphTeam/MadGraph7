@@ -42,14 +42,28 @@ Subcommands (``--help`` on each):
     the f64 SDK must need no Symbolica licence (the tree engine's rule,
     ``docs/user/symbolica-and-licensing.md``), so a restricted-Symbolica
     banner or an aborted concurrent instance is a finding.
+    With ``--hold-permit`` the instances run while a plain Symbolica process
+    holds this user's restricted thread permit (``RestrictedPermit``), so any
+    Symbolica state access aborts deterministically.
 ``compare A B``
-    Bitwise comparison of two ``evaluate``/``sdk`` records.
+    Bitwise comparison of two ``evaluate``/``sdk``/``tree-capi`` records.
 ``check ARTIFACT --process ID --scratch DIR``
     All of it on one host: scan, a copy at a fresh path, ``evaluate`` of the
     original and of the copy in fresh interpreters with other working,
     home and temporary directories and another user name (and, with
     ``--no-licence``, without ``SYMBOLICA_LICENSE``), the comparison, and,
     with ``--client``, the SDK at both paths. Prints one JSON verdict.
+``capi-build ARTIFACT --out EXE (--archive librusticol_capi.a | --rusticol-config C)``
+    Compiles a tree artifact's own C example (``API/c/check_standalone.c`` of
+    its API bundle) against the tree C API: a wheel's ``rusticol-config`` or a
+    static archive built with ``cargo rustc --release -p rusticol-capi
+    --crate-type staticlib -- --print native-static-libs`` (``--libs``: the
+    printed native libraries).
+``tree-capi ARTIFACT --client EXE --scratch DIR``
+    The tree C API at the original and at a relocated copy, by default
+    without ``SYMBOLICA_LICENSE`` in two concurrent processes while the
+    permit is held, compared bitwise with each other and with the bundle's
+    Python example (the public ``Runtime``) at the stored validation momenta.
 
 Cross-host use: run ``points`` and ``evaluate`` on the build host, copy the
 artifact directory, the points file and this script to the other host (or
@@ -669,6 +683,93 @@ int main(int argc, char **argv) {
 # licence check, so an unlicensed second instance aborts.
 RESTRICTED_MARKERS = ("restricted Symbolica", "Symbolica thread")
 
+# A plain Symbolica process (no pyAmpliCol, hence no package key) that makes
+# one symbolic call, which takes this user's restricted thread permit, and
+# keeps it until its stdin closes.
+HOLDER_SOURCE = (
+    "import sys, symbolica\n"
+    "symbolica.S('pyamplicol_portability_permit')\n"
+    "print('held', flush=True)\n"
+    "sys.stdin.read()\n"
+)
+CONTROL_SOURCE = "import symbolica\nsymbolica.S('pyamplicol_portability_control')\n"
+
+
+def _without_licence(env: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(os.environ if env is None else env)
+    env.pop("SYMBOLICA_LICENSE", None)
+    return env
+
+
+class RestrictedPermit:
+    """Holds this user's restricted Symbolica thread permit inside the
+    ``with`` block (``HOLDER_SOURCE``, without ``SYMBOLICA_LICENSE``).
+
+    Without a licence, Symbolica admits one restricted thread per user (a lock
+    file in its per-user lock directory); any other unlicensed Symbolica state
+    access of the user aborts at once while the permit is held. A process that
+    completes inside the block therefore touched no Symbolica state, which is
+    deterministic, unlike two racing instances. ``record["verified"]`` is the
+    positive control: a second plain Symbolica process aborted with the
+    restricted-mode message (false with a valid licence found elsewhere, for
+    example a registered key, in which case the check does not discriminate).
+
+    The permit is the user's, machine-wide: keep the block short, since any
+    other unlicensed Symbolica process of the same user aborts meanwhile.
+    """
+
+    def __init__(self, python: str = sys.executable) -> None:
+        self.python = python
+        self.process: subprocess.Popen[str] | None = None
+        self.record: dict[str, Any] = {}
+
+    def __enter__(self) -> RestrictedPermit:
+        env = _without_licence()
+        self.process = subprocess.Popen(
+            [self.python, "-c", HOLDER_SOURCE],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+            preexec_fn=_no_core,
+        )
+        assert self.process.stdout is not None
+        seen = []
+        for line in self.process.stdout:
+            seen.append(line)
+            if line.strip() == "held":
+                break
+        else:
+            self.process.wait()
+            raise RuntimeError(
+                "the permit holder did not start: " + "".join(seen)[-2000:]
+            )
+        control = subprocess.run(
+            [self.python, "-c", CONTROL_SOURCE],
+            capture_output=True,
+            text=True,
+            env=env,
+            preexec_fn=_no_core,
+        )
+        restricted = any(
+            m in control.stdout + control.stderr for m in RESTRICTED_MARKERS
+        )
+        self.record = {
+            "control_returncode": control.returncode,
+            "verified": control.returncode != 0 and restricted,
+        }
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        assert self.process is not None
+        try:
+            self.process.communicate(input="", timeout=60)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.communicate()
+        self.record["holder_returncode"] = self.process.returncode
+
 
 def sdk_build(
     out: Path,
@@ -730,45 +831,76 @@ def sdk(
     licence: bool = True,
     instances: int = 1,
     workdir: Path | None = None,
+    hold_permit: bool = False,
 ) -> dict[str, Any]:
     """Evaluate through the C client; ``instances`` concurrent copies (the
-    record holds the first's values and every instance's exit status)."""
+    record holds the first's values and every instance's exit status), with
+    ``hold_permit`` while ``RestrictedPermit`` holds the user's permit."""
 
     workdir = Path(workdir or tempfile.mkdtemp(prefix="portability-sdk-"))
     workdir.mkdir(parents=True, exist_ok=True)
     feed = workdir / "points.txt"
     _client_input(points_file, feed)
-    env = dict(os.environ)
-    if not licence:
-        env.pop("SYMBOLICA_LICENSE", None)
-    start = time.perf_counter()
-    runs = [
-        subprocess.Popen(
-            [str(client), str(artifact), process, str(feed)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-            cwd=workdir,
-        )
-        for _ in range(instances)
-    ]
-    outputs = [run.communicate() for run in runs]
-    seconds = time.perf_counter() - start
-    statuses = [run.returncode for run in runs]
-    restricted = any(m in out for out, _ in outputs for m in RESTRICTED_MARKERS)
-    record = _parse_client(outputs[0][0] if statuses[0] == 0 else "")
-    record.update(
-        {
-            "process": process,
-            "exit_status": statuses,
-            "licence": licence,
-            "symbolica_restricted": restricted,
-            "stderr": [err[-2000:] for _, err in outputs],
-            "seconds": {"run": seconds},
-        }
+    record = _parse_client("")
+    outcome = _run_instances(
+        [str(client), str(artifact), process, str(feed)],
+        workdir,
+        licence=licence,
+        instances=instances,
+        hold_permit=hold_permit,
     )
+    if outcome["exit_status"][0] == 0:
+        record = _parse_client(outcome.pop("stdout"))
+    outcome.pop("stdout", None)
+    record.update(process=process, **outcome)
     return record
+
+
+def _run_instances(
+    command: list[str],
+    cwd: Path,
+    *,
+    licence: bool,
+    instances: int,
+    hold_permit: bool,
+) -> dict[str, Any]:
+    """``instances`` concurrent runs of ``command``; the first's stdout, every
+    exit status, the restricted-mode banner and the permit record."""
+
+    env = dict(os.environ) if licence else _without_licence()
+    permit = RestrictedPermit() if hold_permit else None
+    if permit is not None:
+        permit.__enter__()
+    try:
+        start = time.perf_counter()
+        runs = [
+            subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+                cwd=cwd,
+                preexec_fn=_no_core,
+            )
+            for _ in range(instances)
+        ]
+        outputs = [run.communicate() for run in runs]
+        seconds = time.perf_counter() - start
+    finally:
+        if permit is not None:
+            permit.__exit__()
+    return {
+        "stdout": outputs[0][0],
+        "exit_status": [run.returncode for run in runs],
+        "licence": licence,
+        "symbolica_restricted": any(
+            m in out for out, _ in outputs for m in RESTRICTED_MARKERS
+        ),
+        "permit": None if permit is None else permit.record,
+        "stderr": [err[-2000:] for _, err in outputs],
+        "seconds": {"run": seconds},
+    }
 
 
 def _parse_client(stdout: str) -> dict[str, Any]:
@@ -794,6 +926,185 @@ def _parse_client(stdout: str) -> dict[str, Any]:
         "point_status": point_status,
         "host": host(),
     }
+
+
+# ---------------------------------------------------------------- tree C API
+
+CHECKOUT = Path(__file__).resolve().parents[1]
+# ``cargo rustc -p rusticol-capi --release --crate-type staticlib -- --print
+# native-static-libs`` on x86_64 Linux (glibc).
+CAPI_NATIVE_LIBS = "-ldl -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc"
+
+
+def capi_build(
+    artifact: Path,
+    out: Path,
+    *,
+    archive: Path | None = None,
+    include: Path | None = None,
+    libs: str = CAPI_NATIVE_LIBS,
+    rusticol_config: str | None = None,
+    compiler: str = "cc",
+) -> Path:
+    """Compile the artifact's own C example (``API/c/check_standalone.c`` of
+    its API bundle, the tree engine's C distribution path) against a wheel
+    (``rusticol-config``) or a ``rusticol-capi`` static archive, its header
+    directory (default: this checkout's) and its native libraries."""
+
+    source = Path(artifact) / "API" / "c" / "check_standalone.c"
+    if not source.is_file():
+        raise SystemExit(f"{source} missing: generate the artifact with its API bundle")
+    if rusticol_config:
+        cflags = subprocess.run(
+            [rusticol_config, "--cflags"], capture_output=True, text=True, check=True
+        ).stdout.split()
+        link = subprocess.run(
+            [rusticol_config, "--libs"], capture_output=True, text=True, check=True
+        ).stdout.split()
+    else:
+        if archive is None:
+            raise SystemExit("capi-build needs --rusticol-config or --archive")
+        header = include or CHECKOUT / "rust" / "crates" / "rusticol-capi" / "include"
+        cflags = [f"-I{header}"]
+        link = [str(archive), *libs.split()]
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [compiler, "-std=c11", "-O2", *cflags, str(source), "-o", str(out), *link],
+        check=True,
+    )
+    return out
+
+
+def _api_results(stdout: str) -> dict[str, Any]:
+    """The ``--json`` output of an API-bundle example: every resolved value
+    and both totals as hexadecimal literals (the C example prints ``%.17g``,
+    which round-trips binary64 exactly)."""
+
+    data = json.loads(stdout)
+    return {
+        "shape": data["shape"],
+        "values": _bits([float(v) for v in data["values"]]),
+        "resolved_sum": _bits([float(v) for v in data["resolved_sum"]]),
+        "compatibility_total": _bits([float(v) for v in data["compatibility_total"]]),
+    }
+
+
+def capi(
+    artifact: Path,
+    client: Path,
+    *,
+    licence: bool = True,
+    instances: int = 1,
+    hold_permit: bool = False,
+) -> dict[str, Any]:
+    """Run the compiled example from the artifact directory (it reads
+    ``artifact.json`` and the stored validation momenta) with ``--json``;
+    ``instances`` concurrent copies, optionally while the permit is held."""
+
+    outcome = _run_instances(
+        [str(Path(client).resolve()), "--json"],
+        Path(artifact),
+        licence=licence,
+        instances=instances,
+        hold_permit=hold_permit,
+    )
+    stdout = outcome.pop("stdout")
+    results = _api_results(stdout) if outcome["exit_status"][0] == 0 else {}
+    return {
+        "schema": SCHEMA,
+        "kind": "evaluate",
+        "path": "capi",
+        "results": results,
+        **outcome,
+        "host": host(),
+    }
+
+
+def api_python(artifact: Path, env: dict[str, str]) -> dict[str, Any]:
+    """The API bundle's Python example (``API/python/check_standalone.py
+    --json``, the public ``Runtime``) in a fresh interpreter: the reference of
+    the C example at the same stored validation momenta."""
+
+    script = Path(artifact) / "API" / "python" / "check_standalone.py"
+    run = subprocess.run(
+        [sys.executable, str(script), "--json"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=artifact,
+    )
+    if run.returncode != 0:
+        raise RuntimeError(f"{script} failed ({run.returncode}): {run.stderr[-4000:]}")
+    return {
+        "schema": SCHEMA,
+        "kind": "evaluate",
+        "path": "python-api-bundle",
+        "results": _api_results(run.stdout),
+        "host": host(),
+    }
+
+
+def tree_capi_check(
+    artifact: Path,
+    client: Path,
+    scratch: Path,
+    *,
+    licence: bool = False,
+    instances: int = 2,
+    hold_permit: bool = True,
+) -> dict[str, Any]:
+    """The tree C API at the original and at a relocated copy: bitwise equal
+    to each other and to the Python API, and (default) without
+    ``SYMBOLICA_LICENSE`` in ``instances`` concurrent processes while
+    ``RestrictedPermit`` holds the user's permit."""
+
+    artifact = Path(artifact).resolve()
+    scratch = Path(scratch).resolve()
+    scratch.mkdir(parents=True, exist_ok=True)
+    verdict: dict[str, Any] = {"schema": SCHEMA, "kind": "tree-capi"}
+    verdict["scan"] = scan(artifact)
+    moved = scratch / "relocated" / f"copy-{os.getpid()}" / artifact.name
+    if moved.exists():
+        raise SystemExit(f"{moved} exists")
+    shutil.copytree(artifact, moved, symlinks=True)
+    env, _ = _fresh(scratch, "python", licence)
+    python = api_python(artifact, env)
+    runs = {
+        "original": capi(artifact, client, licence=licence),
+        "relocated": capi(
+            moved,
+            client,
+            licence=licence,
+            instances=instances,
+            hold_permit=hold_permit,
+        ),
+    }
+    for label, record in runs.items():
+        (scratch / f"capi-{label}.json").write_text(json.dumps(record))
+    verdict["capi"] = {
+        label: {
+            k: r[k]
+            for k in ("exit_status", "symbolica_restricted", "permit", "seconds")
+        }
+        | {"stderr": [e for e in r["stderr"] if e]}
+        for label, r in runs.items()
+    }
+    ran = all(r["exit_status"] == [0] * len(r["exit_status"]) for r in runs.values())
+    verdict["capi_ran"] = ran
+    if ran:
+        verdict["capi_relocated_bitwise"] = compare(runs["original"], runs["relocated"])
+        verdict["capi_equals_python"] = compare(python, runs["original"])
+    permit = runs["relocated"]["permit"]
+    verdict["capi_without_licence"] = (
+        None
+        if licence
+        else ran
+        and not any(r["symbolica_restricted"] for r in runs.values())
+        and (permit is None or permit["verified"])
+    )
+    verdict["host"] = host()
+    return verdict
 
 
 # ---------------------------------------------------------------- compare
@@ -903,9 +1214,11 @@ def check(
     instances: int = 2,
     parameters: dict[str, str] | None = None,
     generation_seconds: float | None = None,
+    hold_permit: bool = False,
 ) -> dict[str, Any]:
     """Scan, relocate, evaluate both copies in fresh environments, compare;
-    the SDK too with ``client``."""
+    the SDK too with ``client`` (its concurrent run, with ``hold_permit``,
+    while ``RestrictedPermit`` holds the user's permit)."""
 
     artifact = Path(artifact).resolve()
     scratch = Path(scratch).resolve()
@@ -952,12 +1265,12 @@ def check(
         # One instance per location for the values, then ``instances``
         # concurrent ones at the relocated copy: a second unlicensed instance
         # aborts if the SDK takes Symbolica's restricted (one thread per
-        # user) permit.
+        # user) permit; with ``hold_permit`` even the first one does.
         runs = {}
-        for label, root, count_ in (
-            ("original", artifact, 1),
-            ("relocated", moved, 1),
-            ("concurrent", moved, instances),
+        for label, root, count_, held in (
+            ("original", artifact, 1, False),
+            ("relocated", moved, 1, False),
+            ("concurrent", moved, instances, hold_permit),
         ):
             runs[label] = sdk(
                 root,
@@ -967,12 +1280,14 @@ def check(
                 licence=licence,
                 instances=count_,
                 workdir=scratch / f"sdk-{label}",
+                hold_permit=held,
             )
             (scratch / f"sdk-{label}.json").write_text(json.dumps(runs[label]))
         verdict["sdk"] = {
             label: {
                 "exit_status": r["exit_status"],
                 "symbolica_restricted": r["symbolica_restricted"],
+                "permit": r["permit"],
                 "seconds": r["seconds"],
                 "stderr": [e for e in r["stderr"] if e],
             }
@@ -1106,6 +1421,13 @@ def _write(record: dict[str, Any], out: str | None) -> None:
         print(text)
 
 
+HOLD_HELP = (
+    "run the concurrent instances while a plain Symbolica process holds this "
+    "user's restricted thread permit (any other unlicensed Symbolica process "
+    "of the user aborts meanwhile)"
+)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1144,6 +1466,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--client", type=Path, required=True)
     p.add_argument("--no-licence", action="store_true")
     p.add_argument("--instances", type=int, default=1)
+    p.add_argument("--hold-permit", action="store_true", help=HOLD_HELP)
     p.add_argument("--out")
     p = sub.add_parser("compare", help="bitwise comparison of two records")
     p.add_argument("a", type=Path)
@@ -1169,6 +1492,23 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--instances", type=int, default=2)
     p.add_argument("--parameter", action="append", help="NAME=VALUE")
     p.add_argument("--generation-seconds", type=float)
+    p.add_argument("--hold-permit", action="store_true", help=HOLD_HELP)
+    p.add_argument("--out")
+    p = sub.add_parser("capi-build", help="compile an artifact's C example")
+    p.add_argument("artifact", type=Path)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--archive", type=Path, help="librusticol_capi.a")
+    p.add_argument("--include", type=Path)
+    p.add_argument("--libs", default=CAPI_NATIVE_LIBS)
+    p.add_argument("--rusticol-config")
+    p.add_argument("--compiler", default=os.environ.get("CC", "cc"))
+    p = sub.add_parser("tree-capi", help="the tree C API acceptance on this host")
+    p.add_argument("artifact", type=Path)
+    p.add_argument("--client", type=Path, required=True)
+    p.add_argument("--scratch", type=Path, required=True)
+    p.add_argument("--licence", action="store_true", help="keep SYMBOLICA_LICENSE")
+    p.add_argument("--instances", type=int, default=2)
+    p.add_argument("--no-permit", action="store_true", help="do not hold the permit")
     p.add_argument("--out")
     args = parser.parse_args(argv)
 
@@ -1211,6 +1551,7 @@ def main(argv: list[str] | None = None) -> int:
             args.client,
             licence=not args.no_licence,
             instances=args.instances,
+            hold_permit=args.hold_permit,
         )
         _write(record, args.out)
         return 0 if all(s == 0 for s in record["exit_status"]) else 1
@@ -1242,6 +1583,31 @@ def main(argv: list[str] | None = None) -> int:
             instances=args.instances,
             parameters=_parameters(args.parameter),
             generation_seconds=args.generation_seconds,
+            hold_permit=args.hold_permit,
+        )
+        _write(record, args.out)
+        return 0
+    if args.command == "capi-build":
+        print(
+            capi_build(
+                args.artifact,
+                args.out,
+                archive=args.archive,
+                include=args.include,
+                libs=args.libs,
+                rusticol_config=args.rusticol_config,
+                compiler=args.compiler,
+            )
+        )
+        return 0
+    if args.command == "tree-capi":
+        record = tree_capi_check(
+            args.artifact,
+            args.client,
+            args.scratch,
+            licence=args.licence,
+            instances=args.instances,
+            hold_permit=not args.no_permit,
         )
         _write(record, args.out)
         return 0
