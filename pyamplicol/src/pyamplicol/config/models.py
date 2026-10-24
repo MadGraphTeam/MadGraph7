@@ -103,14 +103,28 @@ class R2Strategy(StrEnum):
 
 
 class PoleSelection(StrEnum):
-    """Which Laurent poles a one-loop evaluation computes: ``all`` (the
-    default) or ``none`` (the finite part only; the poles are then absent).
-    The finite part is the same under every selection. The UV and IR
-    selections (``uv``, ``ir``) are added with the pole split at the
-    reduction boundary (package poles-uvir)."""
+    """Which Laurent poles a one-loop evaluation computes (design §12.4).
+
+    * ``all`` (the default): the poles of the renormalised virtual, with one
+      regulator (eps_UV = eps_IR);
+    * ``none``: the finite part only; the poles are absent and never
+      computed;
+    * ``uv``: the UV poles of the bare (unrenormalised) one-loop amplitude
+      interfered with the Born (the reduction's UV poles; the double pole is
+      zero); the counterterms' UV poles are accessible separately
+      (``VirtualEvaluation.pole_parts``), so that bare + counterterm UV poles
+      can be checked to cancel;
+    * ``ir``: the IR poles of the renormalised virtual (Catani's operator).
+
+    Every pole is split by origin, P/eps = P_UV/eps_UV + P_IR/eps_IR; the
+    double pole is infrared. The finite part is the renormalised virtual's,
+    the same under every selection.
+    """
 
     ALL = "all"
     NONE = "none"
+    UV = "uv"
+    IR = "ir"
 
 
 class LoopEngine(StrEnum):

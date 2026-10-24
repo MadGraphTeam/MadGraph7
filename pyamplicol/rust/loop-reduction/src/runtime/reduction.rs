@@ -85,6 +85,13 @@ where
         })
     }
 
+    /// Pole residues the masters of every epsilon sector keep.
+    pub(super) fn set_pole_selection(&mut self, selection: crate::PoleSelection) {
+        for sector in &mut self.sectors {
+            sector.set_pole_selection(selection);
+        }
+    }
+
     fn evaluate(
         &mut self,
         ids: &[u64],

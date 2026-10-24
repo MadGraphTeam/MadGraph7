@@ -463,6 +463,12 @@ class FamilySet:
     ``merged`` maps every member of a merged closed-loop flavour class to its
     representative (design §4.3); routings use representatives only and a
     closure's multiplicity is the class size.
+
+    ``scaleless_families`` keeps the certified-scaleless families (logged in
+    ``scaleless``) with their routings: their integrals vanish, but their UV
+    and IR poles do not separately (B0(0;0,0) = 1/eps_UV - 1/eps_IR), so the
+    ``uv`` and ``ir`` pole selections dress them (design §12.4). Their
+    closures are interned after every admitted family's.
     """
 
     legs: tuple[ExternalLeg, ...]
@@ -471,6 +477,7 @@ class FamilySet:
     scaleless: tuple[LoggedFamily, ...]
     rejected: tuple[LoggedFamily, ...]
     merged: Mapping[str, str]
+    scaleless_families: Mapping[FamilyKey, Family] = field(default_factory=dict)
 
     def routing(self, closure: Closure) -> tuple[str, tuple[Position, ...]]:
         return self.prefixes.path(closure.state)
@@ -643,27 +650,17 @@ class _Recursion:
         families = {}
         scaleless = []
         for key in sorted(admitted):
-            routings = admitted[key]
             rejected.pop(key, None)
             if certified_scaleless(key, self.legs):
                 scaleless.append(LoggedFamily(key, "certified-scaleless"))
                 continue
-            closures = []
-            rank = 0
-            for (cut, positions), symmetric in routings:
-                state = graph.root(cut)
-                for position in positions:
-                    state = graph.extend(state, position)
-                closures.append(
-                    Closure(state, symmetric, self.multiplicity.get(cut, 1))
-                )
-                rank = max(rank, sum(p.vertex.q_degree for p in positions))
-            if rank > len(key) + 2:
-                raise ValueError(
-                    f"family {key} has structural rank {rank} > N + 2, outside "
-                    "the integrand-reduction domain"
-                )
-            families[key] = Family(key, rank, tuple(closures))
+            families[key] = self._family(graph, key, admitted[key])
+        # The scaleless families after every admitted one: the admitted
+        # families' prefix states do not depend on them.
+        scaleless_families = {
+            entry.key: self._family(graph, entry.key, admitted[entry.key])
+            for entry in scaleless
+        }
         return FamilySet(
             self.legs,
             families,
@@ -673,7 +670,24 @@ class _Recursion:
                 LoggedFamily(key, reason) for key, reason in sorted(rejected.items())
             ),
             self.merged,
+            scaleless_families,
         )
+
+    def _family(self, graph: PrefixGraph, key: FamilyKey, routings) -> Family:
+        closures = []
+        rank = 0
+        for (cut, positions), symmetric in routings:
+            state = graph.root(cut)
+            for position in positions:
+                state = graph.extend(state, position)
+            closures.append(Closure(state, symmetric, self.multiplicity.get(cut, 1)))
+            rank = max(rank, sum(p.vertex.q_degree for p in positions))
+        if rank > len(key) + 2:
+            raise ValueError(
+                f"family {key} has structural rank {rank} > N + 2, outside "
+                "the integrand-reduction domain"
+            )
+        return Family(key, rank, tuple(closures))
 
     def _close(self, cut, positions, admitted, rejected) -> None:
         count = len(positions)

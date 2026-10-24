@@ -234,6 +234,46 @@ def test_native_stage_switch_names_the_stages():
     assert frozenset({"families", "schedules"}) == generator_input.NATIVE_STAGES
 
 
+COMPANION_CASES = [
+    ("g g > g g g", 3),
+    ("u u~ > g g g", 3),
+    pytest.param("g g > g g g g", 4, marks=pytest.mark.loop_nightly),
+]
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(("process", "qcd"), COMPANION_CASES)
+def test_scaleless_companion_on_native_families_equals_python(
+    loop_sm_compiled_model, loop_native, monkeypatch, process, qcd
+):
+    """The companion of the certified-scaleless families (poles-uvir's
+    ``LoopSlice.scaleless``, run by the "uv" and "ir" pole selections) on
+    the native family recursion equals the one on Python's: its families,
+    prefix states and schedules (S1, S4) and seeds (S5), and the main
+    slice's families with their scaleless records (RUST-MIGRATION.md §4
+    item 1(b))."""
+
+    from pyamplicol.loops.v2 import snapshot
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request = SliceRequest(
+        process, {"QCD": qcd}, {"QCD": qcd + 2}, fixed_parameters={"MB": "0"}
+    )
+    found = {}
+    for stages in (generator_input.NATIVE_STAGES, frozenset()):
+        monkeypatch.setattr(generator_input, "NATIVE_STAGES", stages)
+        slice_ = LoopSlice.generate(compiled, request, loop_native)
+        assert slice_.families.scaleless_families
+        assert slice_.scaleless is not None
+        found[bool(stages)] = (
+            snapshot.digest(snapshot.families_records(slice_.families)),
+            snapshot.stage_digests(slice_.scaleless, plan=False),
+        )
+    assert found[True] == found[False]
+
+
 # ---------------------------------------------------------- reachability (I1a)
 
 
@@ -524,8 +564,9 @@ def loop_sm_request_model(loop_sm_compiled_model):
 @pytest.mark.loop_physics
 def test_native_families_at_seven_legs(loop_sm_request_model, loop_native):
     """gg -> ggggg FC: the native recursion equals Python's on the
-    field-level table (9,414 families, 52,682 routings, 109,179 prefix
-    states; WP3.1 plan §2.5)."""
+    field-level table (9,414 families, 52,682 routings, 109,638 prefix
+    states: 109,179 of the admitted families, WP3.1 plan §2.5, then the
+    certified-scaleless families' for the poles companion)."""
 
     _compiled, data, catalogue = loop_sm_request_model
     selection = _selection({"QCD": 5})
@@ -533,7 +574,7 @@ def test_native_families_at_seven_legs(loop_sm_request_model, loop_native):
     native = NativeGeneration(table, catalogue, selection, loop_native).families()
     assert len(native.families) == 9414
     assert sum(len(f.closures) for f in native.families.values()) == 52682
-    assert len(native.prefixes) == 109179
+    assert len(native.prefixes) == 109638
     assert_same_families(native, generate_families(table, catalogue, selection))
 
 

@@ -7,7 +7,8 @@ generator's own numbering (ids are assigned first-seen, so a native stage
 equals the Python stage iff every record does, in the same order):
 
 * ``S1`` families: keys, ranks, closures, the prefix graph, the logs of
-  scaleless and rejected families and the merged closed-loop flavours;
+  scaleless and rejected families, the certified-scaleless families with
+  their closures (the poles companion) and the merged closed-loop flavours;
 * ``S4`` schedules: the view's contents and, per family, the trie (frame,
   leaves, nodes), the re-test relabelling and the master keys;
 * ``S5`` seeds: the seed table (classes, orders, exact cells) and each
@@ -93,6 +94,8 @@ def families_records(families: Any) -> Iterable[Any]:
             graph.depth[state],
         )
     yield "scaleless", families.scaleless
+    for key, family in families.scaleless_families.items():
+        yield "scaleless-family", key, family.rank, family.closures
     yield "rejected", families.rejected
     yield "merged", families.merged
 

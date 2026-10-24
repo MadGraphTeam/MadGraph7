@@ -72,8 +72,8 @@ def _errors(slice_: LoopSlice, controls: dict, name: str, indices, precision=Non
     rows = {row["index"]: row for row in entry["rows"]}
     out = {}
     # The fixture's Born is massless QCD: no top coupling to check here.
-    checked = assemble._PointEvaluation._massless_coloured_legs
-    assemble._PointEvaluation._massless_coloured_legs = lambda self: False
+    checked = assemble._PointEvaluation._stable_coloured_legs
+    assemble._PointEvaluation._stable_coloured_legs = lambda self: False
     try:
         for index in indices:
             scale = str(int(entry["mu_r"][index]) ** 2)
@@ -91,7 +91,7 @@ def _errors(slice_: LoopSlice, controls: dict, name: str, indices, precision=Non
                 for key, a, b in zip(COEFFICIENTS, mine, ref, strict=True)
             }
     finally:
-        assemble._PointEvaluation._massless_coloured_legs = checked
+        assemble._PointEvaluation._stable_coloured_legs = checked
     return out
 
 

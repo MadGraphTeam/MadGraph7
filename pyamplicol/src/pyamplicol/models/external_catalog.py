@@ -564,6 +564,12 @@ class ExternalModelCatalogMixin:
             phase = (-1j) ** power
             weight = coefficient * phase
             return (weight.real, weight.imag)
+        if structure == "adjoint-trilinear-product":
+            # f^abc = -i (tr(abc) - tr(acb)) / sqrt(2), d^abc = (tr(abc) +
+            # tr(acb)) / sqrt(2): only the structure constants carry -i.
+            phase = (-1j) ** self._kernel(vertex.kind).color_source.count("f(")
+            weight = coefficient * phase
+            return (weight.real, weight.imag)
         return (coefficient.real, coefficient.imag)
 
     def vertex_color_structure(self, vertex: Vertex) -> str:
