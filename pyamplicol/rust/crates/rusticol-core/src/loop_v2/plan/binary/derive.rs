@@ -256,6 +256,24 @@ impl Tally {
         self.growth = self.growth.max(last / 2);
     }
 
+    /// `lists` lists collected from iterators of unknown count, holding
+    /// `items` in all and at most `most` each: each at most `max(4, 2k)`
+    /// items, so at most `4 × lists + 2 × items` together.
+    fn keep_lists(&mut self, lists: u64, items: u64, most: u64, size: usize) {
+        if lists == 0 {
+            return;
+        }
+        let held = lists
+            .saturating_mul(4)
+            .saturating_add(items.saturating_mul(2));
+        let last = held
+            .saturating_mul(size as u64)
+            .saturating_add(lists.saturating_mul(ALLOCATION as u64));
+        self.keep_bytes(last);
+        self.allocated = self.allocated.saturating_add(last);
+        self.growth = self.growth.max(bytes(capacity(most), size) / 2);
+    }
+
     /// A temporary allocation of `bytes`, alive with the others of `scope`.
     #[inline]
     fn hold_bytes(&mut self, scope: &mut u64, bytes: u64) {
@@ -459,6 +477,8 @@ struct Sizes<'a> {
     /// Per content whether every term has a vertex (`split_candidate`
     /// builds a step's split form only if every edge's content has).
     vertexed: Vec<bool>,
+    /// Per content the most terms naming one of its rows.
+    multiplicity: Vec<u64>,
     /// The candidate split parts of every step (one per edge and term of
     /// its content).
     parts: u64,
@@ -496,17 +516,22 @@ impl Sizes<'_> {
     /// links into `content` (`split_candidate`): its filtered links
     /// (collected) and the list of their targets (kept if the step splits),
     /// the part, its block-row map and the targets' B-tree (temporaries of
-    /// the step, `step`). Returns the parts.
+    /// the step, `step`). A link's block is a content row, so the terms'
+    /// filtered links hold at most `expanded` times the most terms naming
+    /// one row. Returns the parts.
     fn parts(&self, tally: &mut Tally, step: &mut u64, content: usize, expanded: u64) -> u64 {
         let c = &self.file.contents[content];
         let rows = c.row_helicities.len() as u64;
-        for _ in &c.terms {
-            tally.keep_grown(expanded, size_of::<RowLink>());
-            tally.keep_grown(expanded, size_of::<u32>());
-            tally.hold(step, rows, size_of::<Option<u32>>());
-            tally.hold_bytes(step, tree(expanded));
-        }
         let terms = c.terms.len() as u64;
+        let filtered = expanded.saturating_mul(self.multiplicity[content]);
+        tally.keep_lists(terms, filtered, expanded, size_of::<RowLink>());
+        tally.keep_lists(terms, filtered, expanded, size_of::<u32>());
+        // One block-row map at a time.
+        let map = bytes(rows, size_of::<Option<u32>>());
+        tally.hold_bytes(step, map);
+        tally.allocated = tally.allocated.saturating_add(map.saturating_mul(terms));
+        let trees = filtered.saturating_mul(TREE_KEY);
+        tally.hold_bytes(step, trees.saturating_add(terms.saturating_mul(TREE_ROOT)));
         tally.keep(terms, size_of::<SplitPart>());
         let visits = rows.saturating_add(expanded).saturating_mul(terms);
         tally.iterate(visits.saturating_add(self.term_rows[content]));
@@ -554,7 +579,12 @@ fn rows_of(counts: &[u64], mask: u64) -> u64 {
 /// its terms' copies, and per vertex term the vertex `term_vertex` builds:
 /// its entries, their index and the content's fused-entry index
 /// (temporaries), its fused entries, bindings and two layouts.
-fn content(tally: &mut Tally, c: &ContentFile, vertex_terms: usize) -> RusticolResult<u64> {
+fn content(
+    tally: &mut Tally,
+    c: &ContentFile,
+    vertex_terms: usize,
+    named: &mut Vec<u64>,
+) -> RusticolResult<(u64, u64)> {
     for e in &c.fused {
         let degree: u64 = e[2..].iter().map(|&x| u64::from(x)).sum();
         require(
@@ -622,7 +652,18 @@ fn content(tally: &mut Tally, c: &ContentFile, vertex_terms: usize) -> RusticolR
             tally.iterate(fused);
         }
     }
-    Ok(rows_here)
+    // The most terms naming one row (a row beyond the content's is refused
+    // by the loader).
+    named.clear();
+    named.resize(c.row_helicities.len(), 0);
+    for t in &c.terms {
+        for (row, _) in &t.rows {
+            if let Some(count) = named.get_mut(*row) {
+                *count += 1;
+            }
+        }
+    }
+    Ok((rows_here, named.iter().copied().max().unwrap_or(0)))
 }
 
 /// The bound of the loader's derivations for `file`, after refusing the
@@ -653,9 +694,14 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     let vertex_terms = file.contents.iter().flat_map(|c| &c.terms);
     let vertex_terms = vertex_terms.filter(|t| t.vertex >= 0).count();
     let mut term_rows = buffer::<u64>(file.contents.len())?;
+    let mut multiplicity = buffer::<u64>(file.contents.len())?;
+    let most_rows = file.contents.iter().map(|c| c.row_helicities.len());
+    let mut named = buffer::<u64>(most_rows.max().unwrap_or(0))?;
     tally.keep(file.contents.len() as u64, size_of::<Content>());
     for c in &file.contents {
-        term_rows.push(content(&mut tally, c, vertex_terms)?);
+        let (rows_here, most) = content(&mut tally, c, vertex_terms, &mut named)?;
+        term_rows.push(rows_here);
+        multiplicity.push(most);
     }
     tally.keep_grown(vertex_terms as u64, size_of::<Option<Vertex>>());
     tally.keep_grown(vertex_terms as u64, size_of::<Vertex>());
@@ -703,6 +749,7 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         columns,
         term_rows,
         vertexed: vertexed.collect(),
+        multiplicity,
         parts: 0,
     };
     let mut tables = Tables {

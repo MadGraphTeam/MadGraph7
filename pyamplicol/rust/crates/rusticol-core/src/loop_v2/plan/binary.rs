@@ -2157,7 +2157,7 @@ mod tests {
     /// refused. A bound the allocator cannot reserve is an error.
     #[test]
     fn members_pay_for_their_derivations() {
-        let file = born_rows_plan(16, 4, 3);
+        let file = born_rows_plan(16, 4, 16);
         let mut model = PlanModel {
             file: json_copy(&file),
             member: None,
