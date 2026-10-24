@@ -11,8 +11,9 @@
 //! are its first-seen ids.
 
 use super::colour::ColourEngine;
+use super::exact::complex_mul;
 use super::input::{DagInput, FlavourOp};
-use super::reuse::canonical_kernel_evaluation;
+use super::reuse::{Kernel, canonical_kernel_evaluation};
 use super::{
     ColourState, ColumnarDag, DagError, DagResult, NO_HELICITY, NO_LEG, Orders, Species, Tables,
     VertexKey, invalid, unsupported,
@@ -148,14 +149,6 @@ pub struct Dag {
     pub colours: Interner<ColourState>,
     pub flavours: Interner<Vec<i64>>,
     pub orders: Interner<Orders>,
-}
-
-/// `_complex_weight_mul`, the oracle's IEEE-754 operation order.
-pub fn complex_mul(left: [f64; 2], right: [f64; 2]) -> [f64; 2] {
-    [
-        left[0] * right[0] - left[1] * right[1],
-        left[0] * right[1] + left[1] * right[0],
-    ]
 }
 
 /// `_masks_by_size`: every submask of `full`, by (size, value).
@@ -339,9 +332,6 @@ fn weight_key(weight: [f64; 2]) -> DagResult<[u64; 2]> {
 /// `GenericDAGCompiler.compile` in loop-request mode up to
 /// `_finish_loop_blocks`.
 pub fn compile(input: &DagInput) -> DagResult<Dag> {
-    if input.coloured_labels == 0 {
-        return unsupported("loop-request blocks of a process without coloured external legs");
-    }
     let engine = ColourEngine::new(input);
     let mut dag = Dag::default();
     let mut table = Table {
@@ -607,8 +597,11 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                             }
                             // The compile-time evaluation group: kernel
                             // class, canonical inputs, result and coupling.
-                            let (inputs, factor) =
-                                canonical_kernel_evaluation(vertex, left_id, right_id);
+                            let (inputs, factor) = canonical_kernel_evaluation(
+                                &Kernel::of(vertex, vertex.class),
+                                left_id,
+                                right_id,
+                            );
                             let next = compile_groups.len() as i64;
                             let group = *compile_groups
                                 .entry((

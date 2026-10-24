@@ -9,7 +9,8 @@ oracle is the tree engine's loop-request mode,
 **Input tables** (``dag_input``). The Rust builder never sees the model. It
 reads Θ(model) tables that this module fills from the oracle's own
 predicates, so every entry is what the Python recursion computes for the same
-key: per particle the colour roles of ``ColorEngine`` (loop-request mode),
+key: per particle the colour roles of ``ColorEngine`` (loop-request mode; for
+a process without coloured legs also its colour sectors),
 dimensions, admission, auxiliary kind and fermion-ordering contract; per
 vertex its usability (ignored ids, ``ColorEngine.vertex_allowed``, duplicate
 orientations), coupling orders, colour weight, absorbing sides, lowering
@@ -18,8 +19,7 @@ pair (``allowed_quantum_flows``); ``vertices_accepting`` and
 ``_right_particles_by_left``; the order limits; the sources of every leg; and
 the loop-aware reachability as its admitted leg sets plus the block
 predicate. Floats travel as IEEE-754 bit patterns. Only compiled UFO models
-and processes with coloured external legs are covered; anything else raises
-``NativeDagUnsupported`` (rule 2).
+are covered; anything else raises ``NativeDagUnsupported`` (rule 2).
 
 **Columns** (``encode_dag`` / ``NativeDag.decode``). A DAG travels as one
 byte container: ``b"PYAMDAG1"``, a little-endian u64 header length, a JSON
@@ -56,10 +56,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import struct
 import sys
 from array import array
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 
@@ -166,16 +168,54 @@ def _require_compiled_ufo(model: Any) -> None:
 
 
 def _loop_engine(process: CanonicalProcessIR, model: Any) -> Any:
-    """The oracle's loop-request colour engine, without Born sectors.
+    """The oracle's loop-request colour engine.
 
     In loop-request mode with coloured legs ``ColorEngine`` reads no colour
-    sector: its predicates depend on the legs and the model only.
+    sector: its predicates depend on the legs and the model only, so it is
+    built without Born sectors. Without coloured legs it orders labels and
+    makes source states from the colour plan's sectors (one singlet sector),
+    so it gets the plan ``GenericDAGCompiler.compile`` builds.
     """
 
+    from pyamplicol.color.plan import build_color_plan
     from pyamplicol.generation.dag_color import ColorEngine
 
     plan = GenericColorPlan(process=process, color_accuracy="full", sectors=())
+    engine = ColorEngine(plan, model, loop_blocks=True)
+    if engine._shared_lc_coloured_labels:
+        return engine
+    plan = build_color_plan(
+        process,
+        color_accuracy="full",
+        max_sectors=None,
+        reference_color_order=None,
+        fold_trace_reflections=False,
+    )
     return ColorEngine(plan, model, loop_blocks=True)
+
+
+def _sector_rows(process: CanonicalProcessIR, engine: Any) -> list[dict[str, Any]]:
+    """The colour sectors ``ColorEngine.ordered_combination_labels`` reads in
+    loop-request mode, i.e. for processes without coloured legs: per sector
+    its intermediate words and singlet labels."""
+
+    from pyamplicol.generation.dag_ordering import _sector_intermediate_order_words
+
+    if engine._shared_lc_coloured_labels:
+        return []
+    return [
+        {
+            "id": int(sector.id),
+            "words": [
+                [int(label) for label in word]
+                for word in _sector_intermediate_order_words(
+                    sector, include_compatible_traversals=False, process=process
+                )
+            ],
+            "singlet_labels": sorted(int(label) for label in sector.singlet_labels),
+        }
+        for sector in engine.color_plan.sectors
+    ]
 
 
 def _known(operation: Any, *args: Any) -> Any:
@@ -368,6 +408,11 @@ def _vertex_row(
                         f"vertex {vertex.kind} sets quantum numbers other than its "
                         "result particle's"
                     )
+                if any(math.isnan(part) for part in flow.coupling):
+                    raise NativeDagUnsupported(
+                        f"a NaN coupling of vertex {vertex.kind} (its runtime "
+                        "coupling identity has no order)"
+                    )
                 identity = _runtime_coupling_identity(
                     model,
                     vertex_kind=vertex.kind,
@@ -480,10 +525,6 @@ def dag_input(
     ignored_particles = frozenset(int(pdg) for pdg in ignored_particle_ids)
     ignored_kinds = frozenset(int(kind) for kind in ignored_vertex_kinds)
     engine = _loop_engine(process, model)
-    if not engine._shared_lc_coloured_labels:
-        raise NativeDagUnsupported(
-            "loop-request blocks of a process without coloured external legs"
-        )
     rights = _right_particles_by_left(model, color_accuracy="full")
     vertex_rows: dict[tuple[int, tuple[int, ...]], int] = {}
     vertices: list[Any] = []
@@ -577,12 +618,30 @@ def dag_input(
         "early_sources_only": any(
             _pdg(leg) in ignored_particles for leg in process.legs
         ),
+        "coupling_identity_ranks": _ranks(coupling_identities),
+        "sectors": _sector_rows(process, engine),
     }
     return json.dumps(payload, separators=(",", ":"))
 
 
-def block_input(process: CanonicalProcessIR, model: Any) -> str:
-    """The JSON tables of ``V2Dag.blocks`` / ``coloured_propagated``."""
+def _ranks(ids: Mapping[Any, int]) -> list[int]:
+    """Rank of every interned key (by id) in Python's sort order of the keys
+    (the order of the reuse derivation's evaluation keys)."""
+
+    ranks = [0] * len(ids)
+    for rank, key in enumerate(sorted(ids)):
+        ranks[ids[key]] = rank
+    return ranks
+
+
+def block_input(
+    process: CanonicalProcessIR,
+    model: Any,
+    clone_fields: Mapping[int, int] | None = None,
+) -> str:
+    """The JSON tables of ``V2Dag.blocks`` / ``coloured_propagated``;
+    ``clone_fields`` maps the clone particles of a CT program to the fields
+    their lines are read as (``ct_closure._clone_lines``)."""
 
     label_reps = []
     endpoints = []
@@ -612,6 +671,10 @@ def block_input(process: CanonicalProcessIR, model: Any) -> str:
             "particles": particles,
             "endpoints": endpoints,
             "u1_subtraction_kind": U1_SUBTRACTION_AUXILIARY_KIND,
+            "clones": sorted(
+                [int(clone), int(field)]
+                for clone, field in (clone_fields or {}).items()
+            ),
         },
         separators=(",", ":"),
     )
@@ -628,7 +691,9 @@ def _column(values: Iterable[Any], dtype: str) -> array[Any]:
 
 
 def encode_dag(dag: GenericDAG) -> bytes:
-    """``dag`` as a columnar container (the oracle side of the digests)."""
+    """``dag`` as a columnar container (the oracle side of the digests);
+    ``NativeDagUnsupported`` for a field outside its column type (masks and
+    the helicity ancestry are u64)."""
 
     species: dict[Any, int] = {}
     flavours: dict[tuple[int, ...], int] = {}
@@ -766,7 +831,14 @@ def encode_dag(dag: GenericDAG) -> bytes:
     header_columns = []
     payload = bytearray()
     for name, dtype in dtypes.items():
-        column = _column(values[name], dtype)
+        try:
+            column = _column(values[name], dtype)
+        except OverflowError as error:
+            # E.g. the helicity ancestry of a full-colour tree DAG wider than
+            # 64 bits: the container (and the native DAG) holds u64 masks.
+            raise NativeDagUnsupported(
+                f"{name} values outside the native {dtype} column"
+            ) from error
         header_columns.append([name, dtype, len(column)])
         payload += column.tobytes()
     header = {
@@ -947,10 +1019,17 @@ class NativeDag:
     per-point Python path) and is counted (``decode_count``).
     """
 
-    def __init__(self, handle: Any, process: CanonicalProcessIR, model: Any) -> None:
+    def __init__(
+        self,
+        handle: Any,
+        process: CanonicalProcessIR,
+        model: Any,
+        clone_fields: Mapping[int, int] | None = None,
+    ) -> None:
         self._handle = handle
         self.process = process
         self._model = model
+        self._clone_fields = dict(clone_fields or {})
         self._block_input: str | None = None
 
     @classmethod
@@ -975,17 +1054,31 @@ class NativeDag:
 
     def _tables(self) -> str:
         if self._block_input is None:
-            self._block_input = block_input(self.process, self._model)
+            self._block_input = block_input(
+                self.process, self._model, self._clone_fields
+            )
         return self._block_input
 
     def blocks(self, kernel_variant: str) -> tuple[Block, ...]:
-        """``loops.v2.blocks._blocks(dag, model, kernel_variant)``."""
+        """``loops.v2.blocks._blocks(dag, model, kernel_variant)``; the blocks
+        of a CT program's clone particles are keyed by the fields their lines
+        are read as (``ct_closure.CountertermBlocks.build``)."""
+
+        return self._blocks_and_clones(kernel_variant)[0]
+
+    def _blocks_and_clones(
+        self, kernel_variant: str
+    ) -> tuple[tuple[Block, ...], dict[int, int]]:
+        """The blocks and, for the clone blocks, block id -> clone particle."""
 
         from .blocks import _checked_kernel_variant
 
         variant = _checked_kernel_variant("plain", kernel_variant)  # type: ignore[arg-type]
         out: list[Block] = []
+        clones: dict[int, int] = {}
         for block in _call(self._handle.blocks, self._tables()):
+            if block["clone"] is not None:
+                clones[len(out)] = int(block["clone"])
             colour = block["colour"]
             key = BlockKey(
                 external_mask=block["mask"],
@@ -1031,7 +1124,28 @@ class NativeDag:
                     pairing_sign=block["pairing_sign"],
                 )
             )
-        return tuple(out)
+        return tuple(out), clones
+
+    def u1_leaking(
+        self,
+        kinds: Iterable[int],
+        generator_kinds: Iterable[int],
+        adjoint: Iterable[int],
+        fundamental_mask: int,
+        rest_mask: int,
+    ) -> frozenset[int]:
+        """The vertex kinds the DAG scan of ``ct_closure.u1_leaking_structures``
+        reports (see ``u1_leaking_structures``)."""
+
+        return frozenset(
+            self._handle.u1_leaking(
+                sorted(int(k) for k in kinds),
+                sorted(int(k) for k in generator_kinds),
+                sorted(int(p) for p in adjoint),
+                int(fundamental_mask),
+                int(rest_mask),
+            )
+        )
 
     def coloured_propagated(self) -> frozenset[int]:
         """Coloured particle ids that non-source, non-auxiliary currents
@@ -1076,6 +1190,208 @@ def native_blocks(
         reachability=reachability,
     )
     return NativeDag(_call(_native().V2Dag.build, tables), process, model)
+
+
+@dataclass(frozen=True)
+class NativeCountertermBlocks:
+    """The native twin of ``ct_closure.CountertermBlocks``: the CT program's
+    loop-request DAG (``dag``, a ``NativeDag``), its blocks (clone blocks
+    keyed by their fields) and clone lines (block id -> ``CloneLine``)."""
+
+    recursion: Any
+    dag: NativeDag
+    blocks: tuple[Block, ...]
+    clones: Mapping[int, Any]
+    kernel_variant: str
+
+
+def native_counterterm_blocks(
+    recursion: Any,
+    process: CanonicalProcessIR,
+    *,
+    ignored_particle_ids: Iterable[int] = (),
+) -> NativeCountertermBlocks:
+    """The native twin of ``ct_closure.CountertermBlocks.build(recursion,
+    process, ignored_particle_ids=...)``: the loop-request recursion of the
+    CT-lowered model (``recursion.model.lowered``) over the leg sets without
+    leg 1 except all other legs (``RootReachability``), within the program's
+    order limits and without the vetoed particles (DESIGN §6.1 items 1-6 and
+    8), grouped into blocks with the clone lines of ``_clone_lines``."""
+
+    from dataclasses import replace
+
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
+
+    from .ct_closure import RootReachability, _clone_lines
+
+    model = CompiledUFOModel(recursion.model.lowered.compiled)
+    full = (1 << len(process.legs)) - 1
+    process = replace(process, color_accuracy="full")
+    lines = _clone_lines(recursion)
+    tables = dag_input(
+        process,
+        model,
+        max_coupling_orders=recursion.coupling_order_limits(),
+        ignored_particle_ids=tuple(ignored_particle_ids),
+        reachability=RootReachability(full),
+    )
+    dag = NativeDag(
+        _call(_native().V2Dag.build, tables),
+        process,
+        model,
+        {clone: line.field_id for clone, line in lines.items()},
+    )
+    variant = model_tree_kernel_variant(model)
+    blocks, clone_particles = dag._blocks_and_clones(variant)
+    return NativeCountertermBlocks(
+        recursion,
+        dag,
+        blocks,
+        {block_id: lines[clone] for block_id, clone in clone_particles.items()},
+        variant,
+    )
+
+
+def u1_leaking_structures(program: NativeCountertermBlocks) -> frozenset[Any]:
+    """``ct_closure.u1_leaking_structures`` on a native CT program: the
+    model-level gates and the kinds-to-structures map are the oracle's, the
+    DAG scan is native (``NativeDag.u1_leaking``)."""
+
+    from collections import defaultdict
+
+    from . import ct_closure
+
+    lowered = program.recursion.model.lowered
+    compiled = lowered.compiled
+    if ct_closure.u1_projected(compiled):
+        return frozenset()
+    kinds = ct_closure._u1_coupling_kinds(compiled)
+    if not kinds:
+        return frozenset()
+    process = program.dag.process
+    colours = {int(p.pdg_code): int(p.color) for p in compiled.ir.particles}
+    fundamental = 0
+    for leg in process.legs:
+        if leg.outgoing_pdg is not None and abs(colours[int(leg.outgoing_pdg)]) == 3:
+            fundamental |= 1 << (leg.label - 1)
+    rest = 0
+    for leg in process.legs:
+        if leg.label != 1:
+            rest |= 1 << (leg.label - 1)
+    generator_kinds = {
+        int(kernel.kind)
+        for kernel in compiled.ir.oriented_kernels
+        if kernel.color_projection_structure == "fundamental-generator"
+    }
+    leaking = program.dag.u1_leaking(
+        kinds,
+        generator_kinds,
+        (pdg for pdg, colour in colours.items() if colour == 8),
+        fundamental,
+        rest,
+    )
+    if not leaking:
+        return frozenset()
+    by_coupling: dict[str, set[Any]] = defaultdict(set)
+    for structure, coupling in lowered.couplings.items():
+        by_coupling[coupling].add(structure)
+    coupling_of = {int(term.id): term.coupling for term in compiled.ir.vertex_terms}
+    out: set[Any] = set()
+    for kernel in compiled.ir.oriented_kernels:
+        if int(kernel.kind) in leaking:
+            for term_id in kernel.term_ids or (kernel.term_id,):
+                out |= by_coupling.get(coupling_of.get(int(term_id), ""), set())
+    return frozenset(out)
+
+
+# ------------------------------------------------------------------ reuse oracle
+
+REUSE_SCHEMA = "pyamplicol.loop-v2.dag-reuse/1"
+
+
+def reuse_tables(dag: GenericDAG, model: Any) -> str:
+    """The JSON tables of ``V2Dag.reuse`` for ``dag``: the evaluation
+    equivalence of every vertex kind it uses (``_kernel_equivalence``) and the
+    rank, in Python's order, of every interaction's runtime coupling identity
+    (``_runtime_coupling_identity``)."""
+
+    from pyamplicol.generation.dag_equivalence import (
+        _kernel_equivalence,
+        _runtime_coupling_identity,
+    )
+
+    cache: dict[int, Any] = {}
+    kernels = []
+    for kind in sorted({int(item.vertex_kind) for item in dag.interactions}):
+        equivalence = _kernel_equivalence(model, kind, cache)
+        kernels.append(
+            [
+                kind,
+                equivalence.class_id,
+                *_pair_bits(equivalence.factor),
+                tuple(equivalence.input_order) == (1, 0),
+                None
+                if equivalence.input_exchange_factor is None
+                else _pair_bits(equivalence.input_exchange_factor),
+            ]
+        )
+    identities: dict[Any, int] = {}
+    known: dict[tuple[Any, ...], int] = {}
+    per_interaction = []
+    for item in dag.interactions:
+        key = (int(item.vertex_kind), tuple(item.vertex_particles), item.coupling)
+        found = known.get(key)
+        if found is None:
+            if any(math.isnan(part) for part in item.coupling):
+                raise NativeDagUnsupported("a NaN coupling")
+            identity = _runtime_coupling_identity(
+                model,
+                vertex_kind=item.vertex_kind,
+                vertex_particles=item.vertex_particles,
+                coupling=item.coupling,
+            )
+            found = known[key] = identities.setdefault(identity, len(identities))
+        per_interaction.append(found)
+    ranks = _ranks(identities)
+    return json.dumps(
+        {
+            "schema": REUSE_SCHEMA,
+            "kernels": kernels,
+            "identity_ranks": [ranks[identity] for identity in per_interaction],
+        },
+        separators=(",", ":"),
+    )
+
+
+def native_reuse(
+    dag: GenericDAG, model: Any, *, restricted: bool = True
+) -> tuple[tuple[Any, ...], tuple[InteractionNode, ...]]:
+    """The native value-equivalence derivation of a Python ``dag``
+    (``_derive_current_value_equivalences``; ``restricted``: of the currents
+    that share their contract, as ``assign_recursive_current_evaluation_reuse``
+    runs it) and the interactions regrouped through it
+    (``_rewrite_interaction_evaluation_reuse``): the oracle of A3's port.
+    ``dag`` must fit the columns (``encode_dag``; otherwise
+    ``NativeDagUnsupported``)."""
+
+    from pyamplicol.generation.dag_equivalence import _CurrentValueEquivalence
+
+    handle = _call(_native().V2Dag.from_columns, encode_dag(dag))
+    records, rewritten = _call(handle.reuse, reuse_tables(dag, model), restricted)
+    equivalences = tuple(
+        _CurrentValueEquivalence(
+            int(representative),
+            (_float(real), _float(imaginary)),
+        )
+        for representative, real, imaginary in records
+    )
+    decoded = _decode(bytes(rewritten.columns()), dag.process, dag.color_plan)
+    return equivalences, decoded.interactions
+
+
+def _float(bits: int) -> float:
+    return float(struct.unpack("<d", struct.pack("<Q", int(bits)))[0])
 
 
 # ------------------------------------------------------------------ digests
@@ -1194,6 +1510,8 @@ __all__ = [
     "COLUMNS_SCHEMA",
     "INPUT_SCHEMA",
     "NATIVE_DAG",
+    "REUSE_SCHEMA",
+    "NativeCountertermBlocks",
     "NativeDag",
     "NativeDagUnsupported",
     "block_input",
@@ -1202,5 +1520,9 @@ __all__ = [
     "decode_count",
     "encode_dag",
     "native_blocks",
+    "native_counterterm_blocks",
+    "native_reuse",
+    "reuse_tables",
     "stage_digest",
+    "u1_leaking_structures",
 ]

@@ -2,8 +2,9 @@
 
 //! Loop-request colour engine: `generation/dag_color.ColorEngine` with
 //! `loop_blocks=True` (its `combine`, `ordered_combination_labels` and the
-//! `_loop_block_*` rules), for processes with coloured external legs (the
-//! shared-ordering branch the oracle takes for them).
+//! `_loop_block_*` rules): the shared-ordering branch the oracle takes for
+//! processes with coloured external legs, and its colour-sector branch for
+//! processes without.
 //!
 //! Words are label sequences; a colour state is the oracle's `ColorState`.
 //! Every rule below is the Python rule with the same name; their docstrings
@@ -311,6 +312,45 @@ impl<'a> ColourEngine<'a> {
         true
     }
 
+    /// The sector branch of `ordered_combination_labels`, which loop-request
+    /// mode takes for a process without coloured legs (its shared orderings
+    /// are off): the first intermediate word of the left input's sector with
+    /// an ordered segment (`_ordered_combination_segment`) whose extras are
+    /// singlets of the sector (`_line_local_singlet_extras_allowed`); the
+    /// proposed labels when the sector is not in the plan.
+    fn sector_ordered_labels(
+        &self,
+        left_word: &[u8],
+        right_word: &[u8],
+        left_state: &ColourState,
+        proposed: &[u8],
+    ) -> Option<Vec<u8>> {
+        let Some(sector) = self.input.sectors.get(&left_state.sector_id) else {
+            return Some(proposed.to_vec());
+        };
+        for word in &sector.words {
+            let Some(segment) = ordered_combination_segment(left_word, right_word, word) else {
+                continue;
+            };
+            let mut extras: Vec<u8> = proposed
+                .iter()
+                .copied()
+                .filter(|label| !word.contains(label))
+                .collect();
+            extras.sort_unstable();
+            if extras
+                .iter()
+                .any(|label| sector.singlet_labels & Self::bit(*label) == 0)
+            {
+                continue;
+            }
+            let mut labels = segment;
+            labels.extend(extras);
+            return Some(labels);
+        }
+        None
+    }
+
     /// `ColorEngine.ordered_combination_labels` in loop-request mode,
     /// uncached (the recursion keeps the oracle's cache).
     pub fn ordered_combination_labels(
@@ -347,6 +387,9 @@ impl<'a> ColourEngine<'a> {
             labels.extend(extras);
             return Some(labels);
         }
+        if self.input.coloured_labels == 0 {
+            return self.sector_ordered_labels(left_word, right_word, left_state, &proposed);
+        }
         // `_shared_lc_ordered_proposed_labels` (loop-request branch).
         let segment = self.coloured(&proposed);
         let mut extras: Vec<u8> = proposed
@@ -366,4 +409,55 @@ impl<'a> ColourEngine<'a> {
         labels.extend(extras);
         Some(labels)
     }
+}
+
+/// `_line_positions`: positions in `word` of the labels it holds (the last
+/// one of a repeated label, as the oracle's position map keeps it).
+fn line_positions(labels: &[u8], word: &[u8]) -> Vec<usize> {
+    labels
+        .iter()
+        .filter_map(|label| word.iter().rposition(|other| other == label))
+        .collect()
+}
+
+/// `_positions_contiguous`.
+fn contiguous(positions: &[usize]) -> bool {
+    positions
+        .iter()
+        .enumerate()
+        .all(|(offset, position)| *position == positions[0] + offset)
+}
+
+/// `_ordered_combination_segment`.
+fn ordered_combination_segment(left: &[u8], right: &[u8], word: &[u8]) -> Option<Vec<u8>> {
+    let left_positions = line_positions(left, word);
+    let right_positions = line_positions(right, word);
+    if left_positions.is_empty() && right_positions.is_empty() {
+        return Some(Vec::new());
+    }
+    if left_positions.is_empty() || right_positions.is_empty() {
+        let positions = if left_positions.is_empty() {
+            &right_positions
+        } else {
+            &left_positions
+        };
+        if !contiguous(positions) {
+            return None;
+        }
+        return Some(word[positions[0]..=positions[positions.len() - 1]].to_vec());
+    }
+    let mut union: Vec<usize> = left_positions
+        .iter()
+        .chain(&right_positions)
+        .copied()
+        .collect();
+    union.sort_unstable();
+    if contiguous(&left_positions)
+        && contiguous(&right_positions)
+        && contiguous(&union)
+        && left_positions.iter().max() < right_positions.iter().min()
+    {
+        return Some(word[union[0]..=union[union.len() - 1]].to_vec());
+    }
+    None
 }
