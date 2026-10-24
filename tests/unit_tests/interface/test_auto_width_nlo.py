@@ -397,10 +397,16 @@ class NLOWidthsTest(unittest.TestCase):
         handler.setLevel(logging.WARNING)
         logger = logging.getLogger('cmdprint')
         logger.addHandler(handler)
+        # another test may have muted the logger (MuteLogger, a level, ...)
+        level, disabled = logger.level, logger.disabled
+        logger.setLevel(logging.WARNING)
+        logger.disabled = False
         try:
             decay_info = self.run_nlo(k_factor=0.9, fail=('t > ',))
         finally:
             logger.removeHandler(handler)
+            logger.setLevel(level)
+            logger.disabled = disabled
         self.assertEqual(decay_info[6][0][1], 1.49)
         self.assertAlmostEqual(decay_info[25][0][1], 5.39e-3 * 0.9)
         self.assertTrue([w for w in warnings if 't > w+ b' in w and 'LO' in w], warnings)
@@ -512,6 +518,10 @@ class NLOWidthsTest(unittest.TestCase):
         handler.setLevel(logging.WARNING)
         logger = logging.getLogger('cmdprint')
         logger.addHandler(handler)
+        # another test may have muted the logger (MuteLogger, a level, ...)
+        level, disabled = logger.level, logger.disabled
+        logger.setLevel(logging.WARNING)
+        logger.disabled = False
         try:
             self.run_nlo_with('QED')
             qed = list(warnings)
@@ -519,6 +529,8 @@ class NLOWidthsTest(unittest.TestCase):
             self.run_nlo_with('QCD')
         finally:
             logger.removeHandler(handler)
+            logger.setLevel(level)
+            logger.disabled = disabled
         self.assertTrue([w for w in qed if 'QED loop information' in w], qed)
         self.assertFalse([w for w in warnings if 'QED loop information' in w])
 

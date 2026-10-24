@@ -291,9 +291,11 @@ class HistItem:
 
 
 class MadgraphProcess:
-    def __init__(self, extra_make_args=()):
+    def __init__(self, extra_make_args=(), split_flavors=False):
         # appended to the make command that builds the matrix elements
         self.extra_make_args = list(extra_make_args)
+        # one subprocess per flavour of a decay (split_decay_flavors)
+        self.split_flavors = split_flavors
         self.madnis_trained = False
         self.lhe_completer = None
         self.load_cards()
@@ -438,6 +440,29 @@ class MadgraphProcess:
         if self.decaying_mass <= 0.0:
             raise ValueError("the decaying particle must have a non-zero mass")
         self.drop_closed_channels()
+        if getattr(self, "split_flavors", False):
+            self.split_decay_flavors()
+
+    def split_decay_flavors(self) -> None:
+        """Integrate every flavour of a decay subprocess on its own.
+
+        A subprocess can hold several flavours with different matrix elements
+        (z > d d~ g and z > u u~ g in one P1_z_QQxg): its integrand samples
+        them, and its result is their sum. The widths of compute_decay_widths
+        need each of them, so each flavour becomes a subprocess of its own,
+        with the same matrix-element library and flavour index and the
+        diagrams active for it (see _single_flavor_metas).
+        """
+        if self.merged_subprocess_data is not None:
+            raise ValueError(
+                "split_flavors needs merge_subprocesses = false: "
+                "merged_subprocesses.json indexes the unsplit subprocesses"
+            )
+        self.subprocess_data = [
+            single
+            for meta in self.subprocess_data
+            for single in _single_flavor_metas(meta)
+        ]
 
     def drop_closed_channels(self) -> None:
         """Remove subprocesses the decaying particle is too light to produce.
@@ -1255,6 +1280,9 @@ class MadgraphProcess:
             for label, value in rows:
                 logger.info("systematics, %s %s", label, value)
 
+    # the scale below which the alpha_s of a decay is frozen (write_fixed_alphas_info)
+    ALPHAS_FREEZE_SCALE = 1.0
+
     def write_fixed_alphas_info(self) -> str:
         """Write a minimal LHAPDF ``.info`` with the alpha_s of a decay.
 
@@ -1269,7 +1297,10 @@ class MadgraphProcess:
 
         The grid carries the running over the whole scale range and has a node
         exactly at the decaying mass, so the interpolation returns alpha_s(M)
-        untouched.
+        untouched. Below ALPHAS_FREEZE_SCALE (or wherever the running stops
+        being defined, closer to the Landau pole) alpha_s is frozen at its last
+        value: a light decaying particle (the muon, ...) has no QCD to speak
+        of, and its widths must not fail on a coupling they do not use.
         """
         # SMINPUTS entry 3 is alpha_s(m_Z), the same value the Fortran
         # parameter setup feeds to G.
@@ -1278,19 +1309,44 @@ class MadgraphProcess:
         mass = float(self.decaying_mass)
         path = os.path.join(self.run_path, "fixed_alphas.info")
         # AlphaSGrid interpolates in log(q^2) across the grid, so give it a
-        # comfortable number of nodes rather than the bare minimum of three.
-        # The running is only defined above the Landau pole, hence 1 GeV (or
-        # the decaying mass itself, if that is lower) as the lowest node.
+        # comfortable number of nodes rather than the bare minimum of three:
+        # 1 GeV to 100 TeV, and the decaying mass.
         nodes = [10 ** (i / 4.0) for i in range(0, 21)]
         q_values = sorted(
             [q for q in nodes if abs(q / mass - 1) > 1e-9] + [mass]
         )
-        alpha_s_values = [runner(q) for q in q_values]
-        if min(alpha_s_values) <= 0.0:
-            raise ValueError(
-                f"alpha_s({mass:g} GeV) cannot be computed from "
-                f"alpha_s(m_Z) = {alpha_s_mz:g}: the scale is below the "
-                "perturbative running's range"
+
+        def running(q):
+            try:
+                value = runner(q)
+            except (ArithmeticError, ValueError):
+                return None
+            return value if math.isfinite(value) and value > 0 else None
+
+        # from the top down, freezing at the first scale where the running is
+        # not used (below ALPHAS_FREEZE_SCALE) or not defined
+        values = {}
+        frozen = None
+        for q in reversed(q_values):
+            value = None
+            if frozen is None and q >= self.ALPHAS_FREEZE_SCALE:
+                value = running(q)
+            if value is None:
+                if frozen is None:
+                    if not values:
+                        raise ValueError(
+                            f"alpha_s({q:g} GeV) cannot be computed from "
+                            f"alpha_s(m_Z) = {alpha_s_mz:g}"
+                        )
+                    frozen = min(values)
+                value = values[frozen]
+            values[q] = value
+        alpha_s_values = [values[q] for q in q_values]
+        if frozen is not None and mass < frozen:
+            logger.info(
+                "decay mode: alpha_s frozen below %g GeV at alpha_s(%g GeV) = "
+                "%.6g (decaying mass %g GeV)", frozen, frozen, values[frozen],
+                mass,
             )
         with open(path, "w") as f:
             f.write("SetDesc: 2-loop running alpha_s of a decay (no beams)\n")
@@ -1304,7 +1360,7 @@ class MadgraphProcess:
         logger.info(
             "decay mode: alpha_s(mu = %g GeV) = %.6g (2-loop running from "
             "alpha_s(m_Z) = %g, as madevent)",
-            mass, runner(mass), alpha_s_mz,
+            mass, values[mass], alpha_s_mz,
         )
         return path
 
@@ -1420,10 +1476,11 @@ class MadgraphProcess:
 
         log_path = os.path.join(self.run_path, "compile_subprocesses.log")
         for backend in resolved:
-            missing = [
-                meta for meta in self.subprocess_data
+            # by library: the flavours of a split subprocess share one
+            missing = list({
+                meta["me_path"]: meta for meta in self.subprocess_data
                 if not os.path.isfile(meta["me_path"].format(device=backend))
-            ]
+            }.values())
             if not missing:
                 continue
             logger.info(
@@ -4619,10 +4676,12 @@ def compute_decay_widths(
 
         {"incoming": 25, "outgoing": [5, -5], "width": 4.3e-3, "error": 1e-9}
 
-    (signed pdg ids, width in GeV). The processes of a subprocess that shares
-    one matrix element between several flavour assignments (they are the same
-    function of the momenta, or they would not be grouped) split its width
-    evenly. A decay the decaying particle is too light for has no entry.
+    (signed pdg ids, width in GeV). The flavours of a subprocess (different
+    matrix elements, e.g. the u u~ g and d d~ g of z > q q~ g) are integrated
+    separately (MadgraphProcess.split_decay_flavors); the assignments of one
+    flavour share its matrix element (they are the same function of the
+    momenta, or they would not be grouped) and split its width evenly. A
+    decay the decaying particle is too light for has no entry.
     """
     cwd = os.getcwd()
     os.chdir(me_dir)
@@ -4639,7 +4698,9 @@ def compute_decay_widths(
             card["run"]["cpu_thread_pool_size"] = int(nb_core)
         card.write(card_path)
 
-        process = MadgraphProcess(extra_make_args=extra_make_args)
+        # one survey result per flavour, not per subprocess
+        process = MadgraphProcess(extra_make_args=extra_make_args,
+                                  split_flavors=True)
         if not process.is_decay:
             raise ValueError("compute_decay_widths needs a decay (1 -> n) output")
         process.survey()
@@ -4652,7 +4713,7 @@ def compute_decay_widths(
             offset += len(phasespace.channels)
             width = sum(status.mean for status in statuses)
             error = sum(status.error ** 2 for status in statuses) ** 0.5
-            options = _flavor_options(subproc.meta)
+            options = _decay_flavor_options(subproc.meta)
             for option in options:
                 results.append({
                     "incoming": option[0],
@@ -4669,6 +4730,57 @@ def compute_decay_widths(
             del process
             gc.collect()
         os.chdir(cwd)
+
+
+def _single_flavor_metas(meta: dict) -> list[dict]:
+    """The subprocess ``meta`` as one subprocess per flavour (see
+    MadgraphProcess.split_decay_flavors).
+
+    Each copy keeps the flavour (its matrix-element index and its assignments)
+    and, in every channel, the diagrams that flavour is active in, renumbered
+    to its only flavour, 0. A channel left without diagrams is dropped, and a
+    flavour left without channels (no diagram at all) has no subprocess. A
+    subprocess of one flavour is returned as it is.
+    """
+    flavors = meta["flavors"]
+    if len(flavors) == 1:
+        return [meta]
+    singles = []
+    for position, flavor in enumerate(flavors):
+        channels = []
+        for channel in meta["channels"]:
+            diagrams = [
+                dict(diagram, active_flavors=[0])
+                for diagram in channel["diagrams"]
+                if position in diagram["active_flavors"]
+            ]
+            if diagrams:
+                channels.append(dict(channel, diagrams=diagrams))
+        if channels:
+            singles.append(dict(meta, flavors=[flavor], channels=channels))
+    return singles
+
+
+def _decay_flavor_options(meta: dict) -> list[list[int]]:
+    """The flavour assignments of a subprocess of compute_decay_widths, which
+    share its width evenly.
+
+    That is right for the assignments of one flavour, which have one matrix
+    element (d d~ and s s~ of a massless s, the three neutrinos). Different
+    flavours have different matrix elements (the u u~ and d d~ of a
+    flavour-grouped subprocess) and the survey of a subprocess only gives
+    their sum: compute_decay_widths splits them first (split_flavors), and a
+    subprocess still holding several is an error, not an even split that
+    would get the branching ratios wrong.
+    """
+    flavors = meta["flavors"]
+    if len(flavors) != 1:
+        raise ValueError(
+            "compute_decay_widths: the subprocess %s has %d flavours with "
+            "different matrix elements, the survey cannot give the width of "
+            "each" % (meta.get("path", "?"), len(flavors))
+        )
+    return [list(option) for option in flavors[0]["options"]]
 
 
 def _release_channel_generators(process) -> None:

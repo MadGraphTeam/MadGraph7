@@ -22,6 +22,7 @@ on real processes is in tests/acceptance_tests/test_auto_width.py.
 
 from __future__ import absolute_import
 
+import copy
 import json
 import logging
 import math
@@ -103,6 +104,10 @@ class AutoWidthEngineTest(unittest.TestCase):
         handler.setLevel(logging.WARNING)
         logger = logging.getLogger('cmdprint')
         logger.addHandler(handler)
+        # another test may have muted the logger (MuteLogger, a level, ...)
+        level, disabled = logger.level, logger.disabled
+        logger.setLevel(logging.WARNING)
+        logger.disabled = False
         update = mock.Mock()
         try:
             with mock.patch.object(self.cmd, 'do_decay_diagram', fake_decay_diagram), \
@@ -114,6 +119,8 @@ class AutoWidthEngineTest(unittest.TestCase):
                     'h --body_decay=3 --path=%s %s' % (self.card, line))
         finally:
             logger.removeHandler(handler)
+            logger.setLevel(level)
+            logger.disabled = disabled
         return madspace, update, warnings, result
 
     def test_default_integrates_with_madspace(self):
@@ -175,11 +182,17 @@ class AutoWidthEngineTest(unittest.TestCase):
         handler.setLevel(logging.WARNING)
         logger = logging.getLogger('cmdprint')
         logger.addHandler(handler)
+        # another test may have muted the logger (MuteLogger, a level, ...)
+        level, disabled = logger.level, logger.disabled
+        logger.setLevel(logging.WARNING)
+        logger.disabled = False
         try:
             with self.assertRaises(StopAtMadEvent):
                 self.run_compute_widths('', failing)
         finally:
             logger.removeHandler(handler)
+            logger.setLevel(level)
+            logger.disabled = disabled
         text = '\n'.join(warnings)
         self.assertIn('no compiler', text)
         self.assertIn('madevent', text)
@@ -478,11 +491,100 @@ class DecayAlphaSTest(unittest.TestCase):
         self.assertEqual(qs[0], 0.5)
         self.assertTrue(all(v > 0 for v in values))
 
-    def test_no_perturbative_running_below_the_pole(self):
-        with self.assertRaises(ValueError):
-            self.write_grid(0.1)
+    def test_alpha_s_is_frozen_below_the_freeze_scale(self):
+        """The muon has no QCD: its widths must not fail on the running of
+        alpha_s, which is not defined at its mass."""
+        runner = Alphas_Runner(0.118, 2, cmass=1.42, bmass=4.7)
+        qs, values = self.write_grid(0.1057)
+        self.assertEqual(qs[0], 0.1057)
+        self.assertAlmostEqual(values[0], runner(1.0), places=10)
+        self.assertEqual(values, sorted(values, reverse=True))
+        for q, value in zip(qs, values):
+            if q >= 1.0:
+                self.assertAlmostEqual(value, runner(q), places=10)
+            else:
+                self.assertAlmostEqual(value, runner(1.0), places=10)
+
+    def test_alpha_s_is_frozen_where_the_running_breaks_down(self):
+        """A larger alpha_s(m_Z) moves the Landau pole up: below 1 GeV the
+        running overflows for alpha_s(m_Z) = 0.13, and the grid still comes."""
+        qs, values = self.write_grid(0.5, alpha_s_mz=0.13)
+        self.assertEqual(qs[0], 0.5)
+        self.assertTrue(all(v > 0 for v in values))
+        self.assertEqual(values[0], values[qs.index(1.0)])
 
     def test_python_running_is_the_fortran_one(self):
         runner = Alphas_Runner(0.118, 2, cmass=1.42, bmass=4.7)
         for q, value in self.FORTRAN.items():
             self.assertAlmostEqual(runner(q), value, places=8)
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class DecayFlavorSplitTest(unittest.TestCase):
+    """compute_decay_widths integrates every flavour of a subprocess on its
+    own (the u u~ and d d~ of a flavour-grouped z > q q~ g have different
+    couplings to the Z) and splits a flavour's width evenly between its
+    assignments, which share its matrix element."""
+
+    # as written by 'output mg7' for z > q qx g, q = u d c s
+    GROUPED = {
+        'path': 'SubProcesses/P1_z_QQxg', 'incoming': [23], 'outgoing': [81, -81, 21],
+        'me_path': 'lib/libmadmatrix_P1_z_QQxg_{device}.so',
+        'flavors': [{'index': 0, 'options': [[23, 1, -1, 21], [23, 3, -3, 21]],
+                     'mirror': False},
+                    {'index': 1, 'options': [[23, 2, -2, 21], [23, 4, -4, 21]],
+                     'mirror': False}],
+        'channels': [
+            {'propagators': [81], 'diagrams': [
+                {'diagram': 0, 'permutation': [0, 1, 2, 3], 'active_flavors': [0, 1]},
+                {'diagram': 1, 'permutation': [0, 2, 1, 3], 'active_flavors': [0, 1]}]},
+            {'propagators': [82], 'diagrams': [
+                {'diagram': 2, 'permutation': [0, 1, 2, 3], 'active_flavors': [1]}]}],
+    }
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        self.launch = mg7_launch
+
+    def test_one_subprocess_per_flavour(self):
+        original = copy.deepcopy(self.GROUPED)
+        down, up = self.launch._single_flavor_metas(self.GROUPED)
+        self.assertEqual(self.GROUPED, original)
+        for single, flavor in zip((down, up), original['flavors']):
+            self.assertEqual(single['flavors'], [flavor])
+            self.assertEqual(single['me_path'], original['me_path'])
+            self.assertEqual(single['path'], original['path'])
+        # the diagrams the flavour is active in, renumbered to flavour 0
+        self.assertEqual(len(down['channels']), 1)
+        self.assertEqual([d['active_flavors'] for d in down['channels'][0]['diagrams']],
+                         [[0], [0]])
+        self.assertEqual(len(up['channels']), 2)
+        self.assertEqual([d['diagram'] for d in up['channels'][1]['diagrams']], [2])
+        self.assertEqual(self.launch._decay_flavor_options(down),
+                         [[23, 1, -1, 21], [23, 3, -3, 21]])
+        self.assertEqual(self.launch._decay_flavor_options(up),
+                         [[23, 2, -2, 21], [23, 4, -4, 21]])
+
+    def test_a_single_flavour_is_kept_as_it_is(self):
+        meta = {'flavors': [self.GROUPED['flavors'][0]], 'channels': []}
+        self.assertEqual(self.launch._single_flavor_metas(meta), [meta])
+
+    def test_a_flavour_without_diagrams_has_no_subprocess(self):
+        meta = copy.deepcopy(self.GROUPED)
+        meta['channels'] = meta['channels'][1:]
+        singles = self.launch._single_flavor_metas(meta)
+        self.assertEqual([s['flavors'][0]['index'] for s in singles], [1])
+
+    def test_split_needs_unmerged_subprocesses(self):
+        process = object.__new__(self.launch.MadgraphProcess)
+        process.merged_subprocess_data = [{'subprocesses': [0]}]
+        process.subprocess_data = [self.GROUPED]
+        with self.assertRaises(ValueError):
+            process.split_decay_flavors()
+
+    def test_several_flavours_left_are_refused(self):
+        """never an even split across matrix elements"""
+        with self.assertRaises(ValueError) as caught:
+            self.launch._decay_flavor_options(self.GROUPED)
+        self.assertIn('P1_z_QQxg', str(caught.exception))
