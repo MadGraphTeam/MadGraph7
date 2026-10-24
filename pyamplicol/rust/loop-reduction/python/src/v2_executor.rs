@@ -441,7 +441,10 @@ where
         let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
         // The counterterm pole outputs are formed unless finite-only (the
         // split modes read the same per-power outputs).
-        let poles = !matches!(options.poles, rusticol_core::loop_execution::v2::Poles::None);
+        let poles = !matches!(
+            options.poles,
+            rusticol_core::loop_execution::v2::Poles::None
+        );
         let native = trees.fill(executor.plan(), inputs, &mut batch, poles, &zero)?;
         let export = |points: Vec<Vec<T>>| -> Vec<Values> {
             points

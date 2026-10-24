@@ -195,9 +195,10 @@ impl<'a> Builder<'a> {
             Some(indices) => indices
                 .iter()
                 .map(|&index| {
-                    output.scaleless_families.get(index).ok_or_else(|| {
-                        format!("no certified-scaleless family {index} to schedule")
-                    })
+                    output
+                        .scaleless_families
+                        .get(index)
+                        .ok_or_else(|| format!("no certified-scaleless family {index} to schedule"))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         };

@@ -2866,7 +2866,8 @@ pub mod v2 {
         /// Two scalar bubble families of a two-leg "process": one seeded
         /// trace step each, the factor a constant, so each family numerator
         /// is `2 conj(A0)` at rank 0.
-        const PLAN: &[u8] = br#"{"schema":4,"legs":2,"rows":1,"helicities":[[0],[0]],"columns":1,"average":1,
+        const PLAN: &[u8] =
+            br#"{"schema":4,"legs":2,"rows":1,"helicities":[[0],[0]],"columns":1,"average":1,
             "born_components":1,"constants":1,"masses":1,"block_rows":[],
             "kernels":[{"inputs":[],"outputs":[[[0,[]]]]}],
             "contents":[{"d_in":1,"d_out":1,"degree":0,"rows":1,"mask":0,"row_helicities":[[]],

@@ -580,8 +580,14 @@ pub fn load_loop_v2_artifact(
     if execution.point_inputs == LOOP_V2_NATIVE_POINT_INPUTS {
         use crate::pacbin::PacbinMemberKind;
         for (member, kind) in [
-            (LOOP_V2_NATIVE_RECORD_MEMBER, PacbinMemberKind::LoopRuntimePlan),
-            (LOOP_V2_NATIVE_TREES_MEMBER, PacbinMemberKind::LoopRuntimePlan),
+            (
+                LOOP_V2_NATIVE_RECORD_MEMBER,
+                PacbinMemberKind::LoopRuntimePlan,
+            ),
+            (
+                LOOP_V2_NATIVE_TREES_MEMBER,
+                PacbinMemberKind::LoopRuntimePlan,
+            ),
             (
                 LOOP_V2_NATIVE_PARAMETERS_MEMBER,
                 PacbinMemberKind::SymbolicaExactState,
