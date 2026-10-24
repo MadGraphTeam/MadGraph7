@@ -16,7 +16,8 @@
 Default tier (``loop_fast``, about 25 s): g g > g g (FC; adjoint rings and
 fundamental traces) and u u~ > g g g (LC; quark rings and generic classes).
 Wider controls are ``loop_physics`` (g g > g g g and u u~ > g g g for the
-dipoles, as WP3.1 I5c asks), six legs ``loop_nightly``.
+dipoles, as WP3.1 I5c asks; contractions beyond the subset-sum label
+limit), six legs ``loop_nightly``.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import subprocess
 import sys
 import textwrap
@@ -43,7 +45,14 @@ from pyamplicol.color.connections import (
 from pyamplicol.loops.v2 import colour, native_cells
 from tools.loop_reference import legacy_capture
 
-_SOURCE = Path(__file__).resolve().parents[2] / "src"
+_ROOT = Path(__file__).resolve().parents[2]
+_SOURCE = _ROOT / "src"
+# The package's Rust sources (the no-licence rule covers them).
+_RUST = (
+    "rust/crates/rusticol-core/src/loop_v2/generate/cells.rs",
+    "rust/crates/rusticol-core/src/loop_v2/dipole_orbits.rs",
+    "rust/loop-reduction/python/src/v2_colour.rs",
+)
 
 # (process, Born QCD order, accuracy[, counterterm form]). The default tier
 # covers both forms of the counterterm keys of the degrees: the recursion's
@@ -207,10 +216,36 @@ _SPLIT = ((OpenColorString(1, (), 2),), ((3, 4),))
 _JOINED = ((OpenColorString(1, (3, 4), 2),), ())
 
 
-# Refusal of each primitive kind against a bra with an open quark string.
+@pytest.mark.loop_physics
+def test_contractions_beyond_the_subset_sum_limit_equal_python():
+    """Above ``cycles.rs``'s label limit (24) the native overlaps take the
+    exact Fierz recursion; Python's ``contract_colour`` falls back to
+    ``contraction_trace``."""
+
+    rng = random.Random(20261024)
+    for quarks, gluons in (((), 25), ((), 26), (((1, 2),), 25)):
+        legs = [ColorLeg(q, 3) for q, _ in quarks] + [
+            ColorLeg(b, -3) for _, b in quarks
+        ]
+        labels = list(range(10, 10 + gluons))
+        legs += [ColorLeg(a, 8) for a in labels]
+        pairs = [
+            (
+                _random_tensor(rng, legs, labels, quarks),
+                _random_tensor(rng, legs, labels, quarks),
+            )
+            for _ in range(4)
+        ]
+        assert native_cells.contract_many(pairs) == [
+            colour.contract_colour(a, b) for a, b in pairs
+        ]
+
+
+# Native refusal of each primitive kind against a bra with an open quark
+# string, and Python's refusal of the joined bra (the split one: below).
 _REFUSALS = {
-    "adjoint-ring": "adjoint-ring class against a Born",
-    "fundamental-trace": "bra string is not glued",
+    "adjoint-ring": ("adjoint-ring class against a Born", "not contracted exactly"),
+    "fundamental-trace": ("bra string is not glued", "do not match the typed"),
 }
 
 
@@ -220,33 +255,36 @@ def test_primitives_against_quark_bras_are_refused(kind):
     """Primitives against bras the relabelling cache cannot key (a quark
     leg) take the direct path of ``_PrimitiveCells._cell``. A primitive
     carries no fundamental index, so its overlap with a bra holding an open
-    quark string is not defined: refused natively (rule 2), where Python
-    refuses only a string holding the primitive's labels (oracle defect 3,
-    below)."""
+    quark string is not defined: refused natively (rule 2), as Python
+    refuses a fundamental trace there; Python refuses an adjoint ring only
+    where the string holds its labels (oracle defect 3, below)."""
 
     primitive = colour.Primitive(kind, (3, 4))
+    native, python = _REFUSALS[kind]
     for structure in (_SPLIT, _JOINED):
         basis = _quark_basis(structure)
-        with pytest.raises(ValueError, match=_REFUSALS[kind]):
+        with pytest.raises(ValueError, match=native):
             native_cells.seed_cells(basis, [primitive])
-        with pytest.raises(ValueError, match=_REFUSALS[kind]):
+        with pytest.raises(ValueError, match=native):
             native_cells.NativeCells(basis)(primitive)
-    with pytest.raises(ValueError, match="not contracted exactly twice"):
-        colour.seed_cells(_quark_basis(_JOINED), [primitive])
+    structures = (_JOINED,) if kind == "adjoint-ring" else (_SPLIT, _JOINED)
+    for structure in structures:
+        with pytest.raises(ValueError, match=python):
+            colour.seed_cells(_quark_basis(structure), [primitive])
 
 
 @pytest.mark.loop_fast
-@pytest.mark.parametrize("kind", sorted(_REFUSALS))
 @pytest.mark.xfail(
     strict=True,
     raises=pytest.fail.Exception,
-    reason="oracle defect 3 (read-only, rule 3): Python's overlap drops the "
-    "bra's quark string (color.connections.overlap_traces) and returns a "
-    "value for a primitive against a bra with an open string",
+    reason="oracle defect 3 (read-only, rule 3): _PrimitiveCells._overlap "
+    "drops the bra's quark index loop and returns a value for an adjoint "
+    "ring against a bra with an open string",
 )
-def test_python_primitive_against_a_quark_bra_is_refused(kind):
+def test_python_adjoint_ring_against_a_quark_bra_is_refused():
+    ring = colour.Primitive("adjoint-ring", (3, 4))
     with pytest.raises(ValueError):
-        colour.seed_cells(_quark_basis(_SPLIT), [colour.Primitive(kind, (3, 4))])
+        colour.seed_cells(_quark_basis(_SPLIT), [ring])
 
 
 @pytest.mark.loop_fast
@@ -485,8 +523,12 @@ def test_degrees_and_liveness_equal_python(slices, name):
 
 def _dipoles_equal(slice_) -> None:
     orbits = native_cells.dipole_orbits(slice_)
-    assert native_cells.dipoles(slice_, orbits) == slice_.dipoles()
     assert orbits.digest() == native_cells.dipoles_digest(slice_.dipoles())
+    # Rule 9: only the expansions decode, one count per entry.
+    assert orbits.decodes == 0
+    expanded = native_cells.dipoles(slice_, orbits)
+    assert expanded == slice_.dipoles()
+    assert orbits.decodes == sum(len(rows) * len(rows[0]) for rows in expanded.values())
     # The stored form reloads to the same operators; one thread or several.
     stored = type(orbits).from_json(orbits.to_json())
     assert stored.to_json() == orbits.to_json()
@@ -503,9 +545,26 @@ def test_dipole_orbits_equal_python(slices, name):
 
 
 @pytest.mark.loop_fast
-def test_new_bindings_need_no_symbolica_licence(tmp_path):
+def test_new_rust_uses_only_exact_number_domains_of_symbolica():
+    """No licence call (rule 4): the package's Rust names Symbolica only
+    for its exact numbers (``symbolica::domains::{integer, rational}``),
+    never its state, atoms or licence. The no-key run below is a smoke test
+    only: unlicensed Symbolica runs restricted rather than failing."""
+
+    for path in _RUST:
+        text = (_ROOT / path).read_text()
+        uses = re.findall(r"\bsymbolica\b[\w:{}, ]*", text)
+        assert all(
+            re.fullmatch(r"symbolica::domains::(integer|rational)::\w+", use)
+            for use in uses
+        ), (path, uses)
+
+
+@pytest.mark.loop_fast
+def test_new_bindings_run_without_a_symbolica_key(tmp_path):
     """The native cells, projection, degrees and dipole orbits run in a
-    process without a Symbolica key (no licence call)."""
+    process without a Symbolica key (smoke; the static check above is the
+    one that fails on a Symbolica call)."""
 
     environment = {
         key: value
