@@ -54,8 +54,18 @@
 //! an error before it allocates. The writer computes the same charges in the
 //! same traversal and pads a member whose plan shares more than the bound
 //! allows (zero bytes after the columns), so every plan has a member and none
-//! is refused (no plan written today needs padding: ≈ 15 decoded bytes per
-//! member byte at seven legs).
+//! is refused (no plan written today needs padding: 18-43 decoded bytes per
+//! member byte at five to seven legs).
+//!
+//! **Parallel decoding.** The top-level lists whose records hold no shared
+//! list (seed classes, seed keys, families) decode in parallel chunks when
+//! the rayon pool has more than one thread and the list at least
+//! [`PARALLEL_RECORDS`] records: a sequential skip pass reads, checks and
+//! charges every value of the list without building records (so the bound
+//! holds before any of its records allocates) and notes the cursors' state at
+//! each chunk's start; the chunks then decode from those states, each
+//! required to end at the next one's with exactly the charges the pass made.
+//! The model is the sequential decoding's for any thread count.
 //!
 //! Reading fails closed with an error, never a panic or an allocation abort:
 //! headers, widths, payload sizes and the padding are checked, every value is
@@ -74,10 +84,12 @@ use super::{
     StateFile, StepFile, TermFile, invalid, require,
 };
 use crate::RusticolResult;
+use rayon::prelude::*;
 use sha2::{Digest, Sha256};
 use std::any::Any;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::Arc;
 
 /// The first bytes of a binary plan member.
 pub const MAGIC: [u8; 8] = *b"LOOPPLAN";
@@ -86,7 +98,7 @@ pub const FORMAT: u32 = 2;
 
 /// The most bytes of decoded model a member may declare per member byte
 /// (module docs, "Bounded decoding").
-pub const DECODED_PER_BYTE: u64 = 64;
+pub const DECODED_PER_BYTE: u64 = 128;
 
 /// The bytes charged per allocation of the decoded model besides its payload
 /// (the allocator's bookkeeping); an empty list or string allocates nothing.
@@ -95,6 +107,10 @@ pub const ALLOCATION: usize = 16;
 /// The header's length: magic, format, schema, column count, reserved, the
 /// decoded size and the padding length.
 const HEADER: usize = 40;
+
+/// The fewest records of a top-level list the reader decodes in parallel
+/// chunks ([`Reader::records`]); shorter lists decode sequentially.
+const PARALLEL_RECORDS: usize = 256;
 
 /// Whether `bytes` start like a binary plan member (else they are JSON).
 pub fn is_binary(bytes: &[u8]) -> bool {
@@ -270,6 +286,21 @@ trait Stream {
     fn charge(&mut self, col: Col, bytes: usize) -> RusticolResult<()>;
     /// Per reference column, its table of shared lists (`shared`).
     fn tables(&mut self) -> &mut Vec<Option<Box<dyn Any>>>;
+    /// Whether the reader only reads and charges, without building records
+    /// (the skip pass of [`Reader::records`]).
+    fn skipping(&self) -> bool {
+        false
+    }
+    /// A top-level list whose records hold no shared list: [`list`], which
+    /// the reader may decode in parallel chunks ([`Reader::records`]).
+    fn records<T, F>(&mut self, col: Col, items: &mut Vec<T>, visit: F) -> RusticolResult<()>
+    where
+        Self: Sized,
+        T: Fresh + Send,
+        F: Fn(&mut Self, &mut T) -> RusticolResult<()> + Sync,
+    {
+        list(self, col, items, visit)
+    }
 }
 
 /// The table of shared lists of one reference column: by list when writing
@@ -320,14 +351,33 @@ fn list<S: Stream, T: Fresh>(
     stream: &mut S,
     col: Col,
     items: &mut Vec<T>,
-    mut visit: impl FnMut(&mut S, &mut T) -> RusticolResult<()>,
+    visit: impl FnMut(&mut S, &mut T) -> RusticolResult<()>,
 ) -> RusticolResult<()> {
     let len = stream.len(col, items.len())?;
     // A crafted length is refused here, beyond the declared size, before its
     // buffer is reserved (and a damaged one at its first exhausted column).
     stream.charge(col, allocation(len, size_of::<T>()))?;
+    fill(stream, col, len, items, visit)
+}
+
+/// The records of a list whose length `len` is read and charged.
+#[inline]
+fn fill<S: Stream, T: Fresh>(
+    stream: &mut S,
+    col: Col,
+    len: usize,
+    items: &mut Vec<T>,
+    mut visit: impl FnMut(&mut S, &mut T) -> RusticolResult<()>,
+) -> RusticolResult<()> {
     if !S::READ {
         return items.iter_mut().try_for_each(|item| visit(stream, item));
+    }
+    if stream.skipping() {
+        // Read and charged only: a scratch record, no buffer.
+        for _ in 0..len {
+            visit(stream, &mut T::fresh())?;
+        }
+        return Ok(());
     }
     *items = reserved(len, col)?;
     // Each record is filled in place in the reserved buffer.
@@ -366,6 +416,9 @@ where
 {
     // The table entry of a list (the reader's `(list, heap)`, doubling).
     let entry = 2 * size_of::<(Vec<T>, usize)>();
+    if stream.skipping() {
+        return Err(invalid("binary plan: a shared list in a parallel section"));
+    }
     if S::READ {
         let mut id = 0i64;
         stream.int(refs, &mut id)?;
@@ -667,7 +720,7 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
             num(s, Col::FactorShift, shift)
         },
     )?;
-    list(s, Col::SeedClassLen, &mut file.seed_classes, |s, seed| {
+    s.records(Col::SeedClassLen, &mut file.seed_classes, |s, seed| {
         list(s, Col::SeedColumnLen, &mut seed.columns, |s, column| {
             list(s, Col::SeedWeightLen, column, |s, (born, re, im)| {
                 num(s, Col::SeedWeightBorn, born)?;
@@ -676,7 +729,7 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
             })
         })
     })?;
-    list(s, Col::SeedKeyLen, &mut file.seeds, |s, key| {
+    s.records(Col::SeedKeyLen, &mut file.seeds, |s, key| {
         list(
             s,
             Col::SeedKeyClassLen,
@@ -688,7 +741,7 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
             },
         )
     })?;
-    list(s, Col::FamilyLen, &mut file.families, visit_family)?;
+    s.records(Col::FamilyLen, &mut file.families, visit_family)?;
     option(s, Col::ForwardFlag, &mut file.forward, |s, forward| {
         list(s, Col::StateLen, &mut forward.states, visit_state)
     })?;
@@ -1151,6 +1204,7 @@ fn encode_column(out: &mut Vec<u8>, values: &[i64]) {
 
 // ------------------------------------------------------------------ reading
 
+#[derive(Clone, Copy)]
 struct Cursor<'a> {
     payload: &'a [u8],
     width: usize,
@@ -1205,9 +1259,11 @@ impl Cursor<'_> {
 
 struct Reader<'a> {
     cursors: Vec<Cursor<'a>>,
-    strings: Vec<String>,
+    strings: Arc<[String]>,
     budget: Budget,
     tables: Vec<Option<Box<dyn Any>>>,
+    /// In the skip pass of [`Reader::records`].
+    skip: bool,
 }
 
 /// The decoded size a member declares and the part of it charged so far.
@@ -1324,9 +1380,10 @@ impl<'a> Reader<'a> {
         require(bytes.is_empty(), "binary plan: trailing bytes")?;
         let mut reader = Self {
             cursors,
-            strings: Vec::new(),
+            strings: Arc::from(Vec::new()),
             budget: Budget { declared, used: 0 },
             tables: Vec::new(),
+            skip: false,
         };
         // The string table, charged as the writer charges it; a string takes
         // its bytes from what the byte column still holds.
@@ -1351,7 +1408,7 @@ impl<'a> Reader<'a> {
             }
             strings.push(String::from_utf8(text).map_err(|_| invalid("binary plan: string"))?);
         }
-        reader.strings = strings;
+        reader.strings = Arc::from(strings);
         Ok(reader)
     }
 
@@ -1382,6 +1439,21 @@ impl<'a> Reader<'a> {
             "binary plan: declared decoded size",
         )
     }
+
+    /// The cursors' positions and running values and the charges so far.
+    fn state(&self) -> (Vec<(usize, i64)>, u64) {
+        let cursors = self.cursors.iter();
+        let state = cursors.map(|c| (c.position, c.previous)).collect();
+        (state, self.budget.used)
+    }
+
+    /// Places the cursors at a [`Self::state`] (positions and running values).
+    fn restore(&mut self, state: &[(usize, i64)]) {
+        for (cursor, &(position, previous)) in self.cursors.iter_mut().zip(state) {
+            cursor.position = position;
+            cursor.previous = previous;
+        }
+    }
 }
 
 impl Stream for Reader<'_> {
@@ -1401,6 +1473,9 @@ impl Stream for Reader<'_> {
             .and_then(|id| self.strings.get(id))
             .ok_or_else(|| invalid(format!("binary plan: {col:?} string id")))?;
         self.budget.charge(col, allocation(text.len(), 1))?;
+        if self.skip {
+            return Ok(());
+        }
         copy_text(text, value, col)
     }
 
@@ -1417,6 +1492,72 @@ impl Stream for Reader<'_> {
 
     fn tables(&mut self) -> &mut Vec<Option<Box<dyn Any>>> {
         &mut self.tables
+    }
+
+    fn skipping(&self) -> bool {
+        self.skip
+    }
+
+    fn records<T, F>(&mut self, col: Col, items: &mut Vec<T>, visit: F) -> RusticolResult<()>
+    where
+        T: Fresh + Send,
+        F: Fn(&mut Self, &mut T) -> RusticolResult<()> + Sync,
+    {
+        let len = self.len(col, 0)?;
+        self.budget.charge(col, allocation(len, size_of::<T>()))?;
+        let threads = rayon::current_num_threads();
+        if threads == 1 || self.skip || len < PARALLEL_RECORDS {
+            return fill(self, col, len, items, visit);
+        }
+        // Skip pass: every value of the section read, checked and charged
+        // against the declaration before any record allocates, and the
+        // cursors' state at each chunk's start.
+        let chunk = len.div_ceil(8 * threads).max(1);
+        let mut starts = Vec::new();
+        self.skip = true;
+        for k in 0..len {
+            if k % chunk == 0 {
+                starts.push(self.state());
+            }
+            let pass = visit(self, &mut T::fresh());
+            if pass.is_err() {
+                self.skip = false;
+                return pass;
+            }
+        }
+        self.skip = false;
+        starts.push(self.state());
+        // The chunks, decoded in parallel from their start states: each must
+        // end at the next one's with exactly the charges the pass made.
+        *items = reserved(len, col)?;
+        items.resize_with(len, T::fresh);
+        let (cursors, strings) = (&self.cursors, &self.strings);
+        items
+            .par_chunks_mut(chunk)
+            .zip(starts.par_windows(2))
+            .try_for_each(|(records, window)| {
+                let [(start, used), (end, until)] = window else {
+                    return Err(invalid("binary plan: a parallel chunk"));
+                };
+                let mut reader = Reader {
+                    cursors: cursors.clone(),
+                    strings: Arc::clone(strings),
+                    budget: Budget {
+                        declared: until - used,
+                        used: 0,
+                    },
+                    tables: Vec::new(),
+                    skip: false,
+                };
+                reader.restore(start);
+                for record in records {
+                    visit(&mut reader, record)?;
+                }
+                require(
+                    reader.state() == (end.clone(), until - used),
+                    "binary plan: a parallel chunk ends elsewhere",
+                )
+            })
     }
 }
 
@@ -1699,6 +1840,90 @@ mod tests {
         assert!(PlanModel::from_binary(&member).is_ok());
         for len in 0..member.len() {
             assert!(PlanModel::from_binary(&member[..len]).is_err(), "{len}");
+        }
+    }
+
+    /// A plan whose seed classes, seed keys and families are long enough for
+    /// the parallel decode, with strings, nested lists and options.
+    fn parallel_plan() -> PlanFile {
+        let mut file = PlanFile::fresh();
+        let weight = |k: usize| format!("{}/{}", k % 7, 1 + k % 5);
+        file.seed_classes = (0..600)
+            .map(|k| SeedFile {
+                columns: vec![
+                    (0..k % 9)
+                        .map(|t| (t, weight(k + t), "0".to_string()))
+                        .collect(),
+                ],
+            })
+            .collect();
+        file.seeds = (0..700)
+            .map(|k| SeedKeyFile {
+                classes: (0..k % 4).map(|c| (c, weight(c), weight(k))).collect(),
+            })
+            .collect();
+        file.families = (0..900)
+            .map(|k| {
+                let mut family = FamilyFile::fresh();
+                family.sequence = vec![(1 << (k % 5), k % 3)];
+                family.rank = k % 4;
+                family.leaves = (0..k % 6)
+                    .map(|j| LeafFile {
+                        seed: j,
+                        weight: weight(j * k),
+                    })
+                    .collect();
+                let mut step = StepFile::fresh();
+                step.trace = k as i64 - 450;
+                step.rows = (k % 2 == 0).then_some(k);
+                step.edges = vec![EdgeFile {
+                    leaf: -1,
+                    child: k as i64,
+                    factor: k % 11,
+                    links: (k % 3 == 0).then(|| vec![1, 2, 3]),
+                }];
+                family.steps = vec![step];
+                family
+            })
+            .collect();
+        file
+    }
+
+    /// The parallel decode equals the sequential one (one thread), and a
+    /// damaged member fails closed on it as well (RUST-MIGRATION.md rule 5).
+    #[test]
+    fn parallel_decode_equals_the_sequential_one() {
+        let mut model = PlanModel {
+            file: parallel_plan(),
+        };
+        let member = model.binary().unwrap();
+        let json = model.json();
+        let pool = |threads| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap()
+        };
+        let (one, four) = (pool(1), pool(4));
+        let sequential = one.install(|| PlanModel::from_binary(&member).unwrap());
+        let parallel = four.install(|| PlanModel::from_binary(&member).unwrap());
+        assert_eq!(sequential.json(), json);
+        assert_eq!(parallel.json(), json);
+        let mut again = parallel;
+        assert_eq!(again.binary().unwrap(), member);
+        let offsets = column_offsets(&member);
+        let payload = offsets[Col::SeedClassLen as usize]..member.len();
+        for at in payload.step_by(41) {
+            let mut damaged = member.clone();
+            damaged[at] ^= 0x5a;
+            let results = [&one, &four].map(|pool| {
+                pool.install(|| PlanModel::from_binary(&damaged).map(|model| model.json()))
+            });
+            match results {
+                [Ok(a), Ok(b)] => assert_eq!(a, b, "byte {at}"),
+                [Err(_), Err(_)] => {}
+                _ => panic!("byte {at}: one and four threads disagree"),
+            }
         }
     }
 

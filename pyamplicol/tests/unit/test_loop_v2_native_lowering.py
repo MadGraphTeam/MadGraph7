@@ -43,6 +43,7 @@ G-int (it is not on the pinned generation-scale base).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import struct
@@ -352,7 +353,7 @@ def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
 # reserved, the declared decoded size and the padding length; then per column
 # a 24-byte header (width, delta flag, zeros, count, base) and its payload.
 HEADER = 40
-DECODED_PER_BYTE = 64
+DECODED_PER_BYTE = 128
 
 
 def _columns(member: bytes, names: list[str]) -> dict[str, int]:
@@ -367,19 +368,36 @@ def _columns(member: bytes, names: list[str]) -> dict[str, int]:
     return offsets
 
 
-def _crafted_members(native) -> dict[str, bytes]:
-    """Decompression bombs of a few kB, rewritten from the empty plan's member
-    (width-0 columns hold no payload), each declaring the most decoded bytes
-    its length allows: 10^6 contents of 10^4 rows shared (the evidence audit's
-    2.4e11 bytes) and 10^5 x 10^5; 2^40 contents; one string of 2^40 bytes;
-    2^40 strings; and a declaration beyond the bound."""
-
+def _empty_plan() -> dict[str, object]:
     counts = ("legs", "rows", "columns", "born_components", "constants", "masses")
     lists = ("helicities", "block_rows", "kernels", "contents", "factors")
     lists += ("seed_classes", "seeds", "families")
     empty: dict[str, object] = {"schema": PLAN_SCHEMA, "average": 1}
     empty |= {key: 0 for key in counts} | {key: [] for key in lists}
-    empty |= {"forward": None, "merged": None}
+    return empty | {"forward": None, "merged": None}
+
+
+def _wide_member(native) -> bytes:
+    """A member whose seed classes and seed keys are long enough for the
+    reader's parallel decode (``binary.rs``, "Parallel decoding")."""
+
+    plan = _empty_plan()
+    plan["seed_classes"] = [
+        {"columns": [[[k % 3, f"{k}/7", "0"]] * (k % 4)]} for k in range(400)
+    ]
+    plan["seeds"] = [{"classes": [[k % 5, "1", f"-{k}"]] * (k % 3)} for k in range(500)]
+    return bytes(native.V2PlanModel.from_json(json.dumps(plan).encode()).binary())
+
+
+def _crafted_members(native) -> dict[str, bytes]:
+    """Decompression bombs of a few kB, rewritten from the empty plan's member
+    (width-0 columns hold no payload), each declaring the most decoded bytes
+    its length allows: 10^6 contents of 10^4 rows shared (the evidence audit's
+    2.4e11 bytes) and 10^5 x 10^5; 2^40 contents; one string of 2^40 bytes;
+    2^40 strings; 2^40 seed keys (a parallel section); and a declaration
+    beyond the bound."""
+
+    empty = _empty_plan()
     member = bytes(native.V2PlanModel.from_json(json.dumps(empty).encode()).binary())
     names = native.V2PlanModel.columns()
     assert struct.unpack_from("<I", member, 16)[0] == len(names)
@@ -414,22 +432,28 @@ def _crafted_members(native) -> dict[str, bytes]:
             ("StringLen", 1, 2**40), ("StringByte", 2**40, ord("1"))
         ),
         "strings 2^40": craft(("StringLen", 2**40, 0)),
+        "seed keys 2^40": craft(
+            ("SeedKeyLen", 1, 2**40), ("SeedKeyClassLen", 2**40, 0)
+        ),
         "declared beyond the bound": craft(declared=DECODED_PER_BYTE * len(member) + 1),
     }
 
 
 _FAIL_CLOSED = """
-import json, resource, sys, time
+import hashlib, json, resource, sys, time
 from pathlib import Path
 from pyamplicol.loops.native import load_loop_native
 model = load_loop_native().V2PlanModel
 member = Path(sys.argv[1]).read_bytes()
 crafted = {p.stem: p.read_bytes() for p in Path(sys.argv[2]).iterdir()}
+wide = Path(sys.argv[3]).read_bytes()
+digests = [hashlib.sha256(bytes(model.from_binary(m).json())).hexdigest()
+           for m in (member, wide)]
 status = Path('/proc/self/status').read_text().splitlines()
 size = next(int(l.split()[1]) for l in status if l.startswith('VmSize:'))
 limit = size * 1024 + 2**30
 resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
-out = {'truncated': [], 'corrupted': [0, 0], 'crafted': {}}
+out = {'truncated': [], 'corrupted': [0, 0], 'crafted': {}, 'digests': digests}
 start = time.perf_counter()
 for length in range(len(member)):
     try:
@@ -462,7 +486,10 @@ def _fail_closed(native, member: bytes, tmp_path: Path) -> None:
     container's SHA-256 detects damage), and every crafted bomb is refused at
     its declaration or at its first charge beyond it, before allocating. In a
     child under an address-space limit of 1 GiB above its size: a reader that
-    decoded a bomb would fail there instead of exhausting the host."""
+    decoded a bomb would fail there instead of exhausting the host. The child
+    decodes with one thread (sequentially), this process with its pool (the
+    wide member in parallel chunks): equal models (RUST-MIGRATION.md rule 5).
+    """
 
     crafted = tmp_path / "crafted"
     crafted.mkdir()
@@ -470,16 +497,23 @@ def _fail_closed(native, member: bytes, tmp_path: Path) -> None:
     for k, data in enumerate(bombs.values()):
         assert len(data) < 8192
         (crafted / f"{k}.bin").write_bytes(data)
-    stored = tmp_path / "member.bin"
+    stored, wide = tmp_path / "member.bin", tmp_path / "wide.bin"
     stored.write_bytes(member)
+    wide.write_bytes(_wide_member(native))
     result = subprocess.run(
-        [sys.executable, "-c", _FAIL_CLOSED, str(stored), str(crafted)],
+        [sys.executable, "-c", _FAIL_CLOSED, str(stored), str(crafted), str(wide)],
+        env=os.environ | {"RAYON_NUM_THREADS": "1"},
         capture_output=True,
         text=True,
         timeout=300,
     )
     assert result.returncode == 0, (result.returncode, result.stderr[-2000:])
     out = json.loads(result.stdout.splitlines()[-1])
+    here = [
+        hashlib.sha256(bytes(native.V2PlanModel.from_binary(data).json())).hexdigest()
+        for data in (member, wide.read_bytes())
+    ]
+    assert out["digests"] == here
     assert out["truncated"] == []
     assert sum(out["corrupted"]) == len(member) and out["corrupted"][0] > 0
     for k, name in enumerate(bombs):
