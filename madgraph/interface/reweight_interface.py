@@ -19,6 +19,7 @@ import difflib
 import logging
 import copy
 import math
+import numbers
 import os
 import re
 import shutil
@@ -111,6 +112,7 @@ class ReweightInterface(extended_cmd.Cmd):
         self.helicity_reweighting = True
         self.rwgt_mode = '' # can be LO, NLO, NLO_tree, '' is default 
         self.has_nlo = False
+        self.amcatnlo_sample = False # events from aMC@NLO (widths, see get_amcatnlo_param_card)
         self.rwgt_dir = None
         self.exitted = False # Flag to know if do_quit was already called.
         self.keep_ordering = False
@@ -196,6 +198,9 @@ class ReweightInterface(extended_cmd.Cmd):
         # load information
         process = self.banner.get_detail('proc_card', 'generate')
         if '[' in process and isinstance(self.banner.get('run_card'), banner.RunCardNLO):
+            # aMC@NLO sample: its matrix elements had the widths of the
+            # external particles set to zero (see get_amcatnlo_param_card)
+            self.amcatnlo_sample = True
             if not self.banner.get_detail('run_card', 'store_rwgt_info'):
                 logger.warning("The information to perform a proper NLO reweighting is not present in the event file.")
                 logger.warning("       We will perform a LO reweighting instead. This does not guarantee NLO precision.")
@@ -827,6 +832,15 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
 
+    @staticmethod
+    def write_card_atomically(path, text):
+        """write text to path through a temporary file and a rename, so that
+        a process reading path never sees it half written"""
+        tmp = '%s.%d.tmp' % (path, os.getpid())
+        with open(tmp, 'w') as fsock:
+            fsock.write(text)
+        os.replace(tmp, path)
+
     def handle_param_card(self, model_line, args, type_rwgt):
         
 
@@ -842,8 +856,10 @@ class ReweightInterface(extended_cmd.Cmd):
         if not '--keep_card' in args:
             if self.has_nlo and self.rwgt_mode != "LO":
                 rwdir_virt = rw_dir.replace('rw_me', 'rw_mevirt')
-            with open(pjoin(rw_dir, 'Cards', 'param_card.dat'), 'w') as fsock:
-                fsock.write(self.banner['slha']) 
+            # the reweighting runs in several processes sharing rw_dir: they
+            # all write this same card, atomically, so that none can read it
+            # half written
+            self.write_card_atomically(pjoin(rw_dir, 'Cards', 'param_card.dat'), self.banner['slha'])
             out, cmd = common_run_interface.CommonRunCmd.ask_edit_card_static(cards=['param_card.dat'],
                                 ask=self.ask, pwd=rw_dir, first_cmd=self.stored_line,
                                 write_file=False, return_instance=True
@@ -884,15 +900,16 @@ class ReweightInterface(extended_cmd.Cmd):
             raise Exception(str(new_card))
         tmp_card = new_card.lower().split('block',1)[1]
         if "auto" in tmp_card: 
-            if param_card_iterator:
-                first_card.write(pjoin(rw_dir, 'Cards', 'param_card.dat'))
-            else:
-                ff = open(pjoin(rw_dir, 'Cards', 'param_card.dat'),'w')
-                ff.write(new_card)
-                ff.close()
-                
-            self.mother.check_param_card(pjoin(rw_dir, 'Cards', 'param_card.dat'))
-            new_card = open(pjoin(rw_dir, 'Cards', 'param_card.dat')).read()
+            # the widths are computed in place: on a card of this process
+            # only, the other reweighting processes share rw_dir
+            path = pjoin(rw_dir, 'Cards', 'param_card_%d.dat' % os.getpid())
+            with open(path, 'w') as fsock:
+                fsock.write(first_card.write() if param_card_iterator else new_card)
+            try:
+                self.mother.check_param_card(path)
+                new_card = open(path).read()
+            finally:
+                os.remove(path)
 
         # Find new tag in the banner and add information if needed
         if 'initrwgt' in self.banner and self.output_type == 'default':
@@ -1036,6 +1053,7 @@ class ReweightInterface(extended_cmd.Cmd):
                         param_card = self.new_param_card
                     else:
                         param_card = check_param_card.ParamCard(self.orig_param_card_text)
+                    param_card = self.get_amcatnlo_param_card(param_card)
                     module.initialise('../Cards/param_card.dat')
                     for block in param_card:
                         if block.lower() == 'qnumbers':
@@ -1441,9 +1459,10 @@ class ReweightInterface(extended_cmd.Cmd):
             
         event.parse_reweight()
         event.parse_nlo_weight(threshold=self.soft_threshold) 
-        if not event.nloweight.ispureqcd():
-            raise Exception('NLO reweighting does not support mixed expansion mode. Only LO accurate mode is allowed.')
-        
+        # A mixed expansion (squared orders with different powers of g_s in
+        # one event) needs no special treatment: every contribution is
+        # rescaled with matrix elements evaluated at its own g_s (below).
+
         if self.output_type != 'default':
             event.nloweight.modified = True # the internal info will be changed
                                             # so set this flage to True to change
@@ -1460,29 +1479,59 @@ class ReweightInterface(extended_cmd.Cmd):
         qcdpower = []
         ref_wgts = [] #for debugging
 
+        # Every contribution is rescaled with the ratio of the matrix element
+        # it is proportional to, evaluated with its own strong coupling:
+        #  - the soft counter-terms (types 4 and 8) are eikonal sums of
+        #    colour-linked Borns, i.e. the real emission in the soft limit:
+        #    get_soft_limit_event. Their ratio is not the one of the Born
+        #    when the squared orders mix colour structures (four-fermion
+        #    operators, ...), and the real emission they cancel against
+        #    near the soft limit follows the colour-linked one.
+        #  - any other contribution: the matrix element of its kinematic
+        #    configuration (real emission, or Born for an n-body one).
+        # Within such a contribution type, the weights of the different
+        # squared orders are all proportional to the corresponding pieces of
+        # that matrix element *at the contribution's g_s*. One ratio of the
+        # summed matrix element is then exact, without splitting the orders;
+        # but with a dynamical scale g_s differs between contributions (and
+        # from the event's alpha_s), and the orders carry different powers of
+        # it, so the matrix element has to be evaluated at that g_s.
+        me_cache = {}
+        def tree_me(obj, key, alphas):
+            if (key, alphas) not in me_cache:
+                me_cache[(key, alphas)] = (
+                    self.calculate_matrix_element(obj, 0, alphas=alphas),
+                    self.calculate_matrix_element(obj, 1, alphas=alphas))
+            return me_cache[(key, alphas)]
+        soft_events = {}
         orig_wgt = 0
-        for cevent in event.nloweight.cevents:
-            #check if we need to compute the virtual for that cevent
-            need_V = False # the real is nothing else than the born for a N+1 config
-            all_ctype = [w.type for w in cevent.wgts]
-            if '_nlo' in type_nlo and any(c in all_ctype for c in [2,14,15]):
-                need_V =True
-            
-            w_orig = self.calculate_matrix_element(cevent, 0)
-            w_new =  self.calculate_matrix_element(cevent, 1)
-            ratio_T = w_new/w_orig
-
-            if need_V:
-                scale2 = cevent.wgts[0].scales2[0]
-                #for scale2 in set(c.scales2[1] for c in cevent.wgts): 
-                w_origV = self.calculate_matrix_element(cevent, 'V0', scale2=scale2**2)
-                w_newV =  self.calculate_matrix_element(cevent, 'V1', scale2=scale2**2)                    
-                ratio_BV = (w_newV + w_new) / (w_origV + w_orig)
-                ratio_V = w_newV/w_origV if w_origV else  "should not be used"
-            else:
-                ratio_V = "should not be used"
-                ratio_BV = "should not be used"
+        for icev, cevent in enumerate(event.nloweight.cevents):
+            born_kinematics = len(cevent) < cevent.wgts[0].nexternal
             for c_wgt in cevent.wgts:
+                alphas = c_wgt.gs**2 / (4 * math.pi)
+                obj, key = cevent, icev
+                if born_kinematics and c_wgt.type in (4, 8):
+                    skey = (c_wgt.born_related, c_wgt.real_related, tuple(c_wgt.to_merge_pdg))
+                    if skey not in soft_events:
+                        soft_events[skey] = self.get_soft_limit_event(event.nloweight, c_wgt)
+                    if soft_events[skey] is not None:
+                        obj, key = soft_events[skey], skey
+                w_orig, w_new = tree_me(obj, key, alphas)
+                ratio_T = w_new / w_orig
+                if '_nlo' in type_nlo and c_wgt.type in [2, 14, 15]:
+                    w_orig, w_new = tree_me(cevent, icev, alphas)
+                    # the Ellis-Sexton scale, already squared in the LHE
+                    # (smatrixhel takes mu_R^2)
+                    scale2 = c_wgt.scales2[0]
+                    if ('V', icev, alphas, scale2) not in me_cache:
+                        me_cache[('V', icev, alphas, scale2)] = (
+                            self.calculate_matrix_element(cevent, 'V0', scale2=scale2, alphas=alphas),
+                            self.calculate_matrix_element(cevent, 'V1', scale2=scale2, alphas=alphas))
+                    w_origV, w_newV = me_cache[('V', icev, alphas, scale2)]
+                    ratio_BV = (w_newV + w_new) / (w_origV + w_orig)
+                else:
+                    ratio_BV = "should not be used"
+
                 orig_wgt += c_wgt.ref_wgt
                 #add the information to the input
                 scales2.append(c_wgt.scales2)
@@ -1566,6 +1615,83 @@ class ReweightInterface(extended_cmd.Cmd):
 
         return final_weight 
 
+    @staticmethod
+    def get_soft_limit_event(nloweight, c_wgt, lam=1e-6):
+        """The configuration whose real-emission matrix element rescales the
+        soft counter-term c_wgt: its Born kinematics plus the FKS parton i_fks
+        with an energy lam*sqrt(shat), along the direction it has in the
+        real-emission kinematics of that contribution (each in its partonic
+        centre-of-mass frame). The final state of the Born absorbs the
+        transverse recoil, the incoming partons stay along the beam.
+
+        A soft counter-term is the eikonal sum of colour-linked Borns, which
+        is this real emission for lam -> 0 (the same holds for photons and
+        charge-linked Borns). Returns None when the configuration cannot be
+        built: the counter-term then follows the Born."""
+
+        nexternal = c_wgt.nexternal
+        nincoming = sum(1 for p in nloweight.event if p.status == -1)
+        i_fks, j_fks = [i - 1 for i in c_wgt.to_merge_pdg]
+        if nincoming != 2 or i_fks < nincoming or c_wgt.pdgs[i_fks] not in (21, 22):
+            return None
+        def config(n):
+            return [list(p.get_tuple()) for p in
+                    nloweight.momenta[nexternal * (n - 1): nexternal * n]]
+        born, real = config(c_wgt.born_related), config(c_wgt.real_related)
+        if len(born) != nexternal or len(real) != nexternal:
+            return None
+
+        def boost(p, b):
+            b2 = sum(x * x for x in b)
+            if b2 == 0:
+                return list(p)
+            g = 1 / math.sqrt(1 - b2)
+            bp = sum(b[i] * p[i + 1] for i in range(3))
+            g2 = (g - 1) / b2
+            return [g * (p[0] + bp)] + [p[i + 1] + g2 * bp * b[i] + g * b[i] * p[0] for i in range(3)]
+        def to_cm(moms, total):
+            return [boost(p, [-total[i + 1] / total[0] for i in range(3)]) for p in moms]
+        def add(a, b, sign=1):
+            return [a[i] + sign * b[i] for i in range(4)]
+
+        # the n-body Born: i_fks merged into j_fks
+        born[j_fks] = add(born[j_fks], born[i_fks], 1 if j_fks >= nincoming else -1)
+        others = [k for k in range(nexternal) if k != i_fks]
+        born = dict(zip(others, to_cm([born[k] for k in others], add(born[0], born[1]))))
+        real = to_cm(real, add(real[0], real[1]))
+        direction = real[i_fks][1:]
+        norm = math.sqrt(sum(x * x for x in direction))
+        if norm == 0:
+            return None
+        energy = lam * (born[0][0] + born[1][0])
+        k = [energy] + [energy * x / norm for x in direction]
+        # the final state of the Born takes the transverse recoil, keeping its
+        # invariant mass and longitudinal momentum
+        finals = [kk for kk in others if kk >= nincoming]
+        Q = [sum(born[kk][i] for kk in finals) for i in range(4)]
+        M2 = Q[0]**2 - sum(x * x for x in Q[1:])
+        qnew = [-k[1], -k[2], Q[3]]
+        Enew = math.sqrt(M2 + sum(x * x for x in qnew))
+        new = {}
+        for kk in finals:
+            p = boost(born[kk], [-Q[i + 1] / Q[0] for i in range(3)])
+            new[kk] = boost(p, [x / Enew for x in qnew])
+        E, pz = Enew + k[0], Q[3] + k[3]
+        plus = [(E + pz) / 2, 0., 0., (E + pz) / 2]
+        minus = [(E - pz) / 2, 0., 0., -(E - pz) / 2]
+        new[0], new[1] = (plus, minus) if born[0][3] >= 0 else (minus, plus)
+        new[i_fks] = k
+
+        soft = lhe_parser.NLO_PARTIALWEIGHT.BasicEvent.__new__(
+                                          lhe_parser.NLO_PARTIALWEIGHT.BasicEvent)
+        list.__init__(soft, [lhe_parser.FourMomentum(new[kk]) for kk in range(nexternal)])
+        soft.soft = False
+        soft.wgts = [c_wgt]
+        soft.pdgs = list(c_wgt.pdgs)
+        soft.event = nloweight.event
+        soft.real_type = nloweight.real_type
+        return soft
+
 
     def combine_wgt_local(self, scale2s, pdgs, bjxs, base_wgts, gss, qcdpowers, pdf):
 
@@ -1605,6 +1731,74 @@ class ReweightInterface(extended_cmd.Cmd):
             open(pjoin(Pdir, 'matrix%spy.so' % tag),'w').write(open(pjoin(Pdir, 'matrix2py.so')
                                         ).read().replace('matrix2py', 'matrix%spy' % tag))
 
+    def get_amcatnlo_param_card(self, param_card):
+        """The param_card the matrix elements of an aMC@NLO sample were
+        evaluated with. aMC@NLO sets the width of the external particles to
+        zero when it writes its param_card.inc (common_run_interface,
+        update_make_opts_full / --keepwidth): all of them for a mixed
+        expansion (nlo_mixed_expansion, the default), the coloured ones
+        otherwise, every width for the EW Sudakov approximation without the
+        complex mass scheme. The banner keeps the card as given, so the
+        reweighting has to do the same, or the ratios differ (soft gluons off
+        a top quark with and without its width, for instance).
+        Returns param_card itself if nothing changes, a modified copy
+        otherwise."""
+
+        if not self.amcatnlo_sample or self.flag_density_matrix:
+            return param_card
+        try:
+            decay = param_card['decay']
+        except KeyError:
+            return param_card
+        characteristics = getattr(self.mother, 'proc_characteristics', None) or {}
+        def characteristic(name, default):
+            try:
+                return characteristics[name]
+            except (KeyError, TypeError):
+                return default
+        model = getattr(self, 'original_model', None) or self.model
+
+        if characteristic('ew_sudakov', False) and not characteristic('complex_mass_scheme', False):
+            pdgs = set(abs(p.lhacode[0]) for p in decay)
+        else:
+            pdgs = set()
+            def collect(obj):
+                # the keys hold numpy integers
+                if isinstance(obj, numbers.Integral):
+                    pdgs.add(abs(int(obj)))
+                elif isinstance(obj, (tuple, list)):
+                    for o in obj:
+                        collect(o)
+            collect(list(self.id_to_path.keys()))
+            if not characteristic('nlo_mixed_expansion', True):
+                coloured = set()
+                for pdg in pdgs:
+                    try:
+                        if model.get_particle(pdg).get('color') != 1:
+                            coloured.add(pdg)
+                    except Exception:
+                        coloured.add(pdg)
+                pdgs = coloured
+
+        to_zero = []
+        for pdg in sorted(pdgs):
+            try:
+                if decay.get((pdg,)).value != 0:
+                    to_zero.append(pdg)
+            except KeyError:
+                continue
+        if not to_zero:
+            return param_card
+        if not getattr(self, '_amcatnlo_width_logged', False):
+            logger.info('The matrix elements of the aMC@NLO sample were evaluated with zero '
+                        'width for the external particle(s) %s: so are the ones of the reweighting.',
+                        ', '.join(str(p) for p in to_zero))
+            self._amcatnlo_width_logged = True
+        param_card = copy.deepcopy(param_card)
+        for pdg in to_zero:
+            param_card['decay'].get((pdg,)).value = 0.
+        return param_card
+
     def _get_revert_merged_for(self, model):
         """Return the {individual_pdg: merged_pdg} mapping for a given model.
 
@@ -1627,9 +1821,12 @@ class ReweightInterface(extended_cmd.Cmd):
                 rm[val] = key
         return rm
 
-    def calculate_matrix_element(self, event, hypp_id, scale2=0):
-        """routine to return the matrix element"""
+    def calculate_matrix_element(self, event, hypp_id, scale2=0, alphas=None):
+        """routine to return the matrix element (alphas: the strong coupling
+        to evaluate it with, by default the one of the event)"""
 
+        if alphas is None:
+            alphas = event.aqcd
         if self.has_nlo:
             nb_retry, sleep = 10, 60
         else:
@@ -1760,8 +1957,7 @@ class ReweightInterface(extended_cmd.Cmd):
 
             with misc.chdir(Pdir):
                 with misc.stdchannel_redirected(sys.stdout, os.devnull):
-                    #misc.sprint(pdg, pid, p, event.aqcd, scale2, nhel)
-                    new_value = module.smatrixhel(pdg, pid, p, event.aqcd, scale2, nhel)
+                    new_value = module.smatrixhel(pdg, pid, p, alphas, scale2, nhel)
                     #misc.sprint(new_value)
                     if new_value == 0:
                         raise Exception("Invalid matrix element")
@@ -3357,7 +3553,7 @@ class DensityInterface(ReweightInterface):
                 self.all_cross_section[(tag_name,name)] = (cross[name], error[name])
 
 
-    def calculate_matrix_element(self, event, hypp_id, scale2=0):
+    def calculate_matrix_element(self, event, hypp_id, scale2=0, alphas=None):
         """ This method overwrites the method of the same name in the class ReweightInterface.
             It computes the production matrix R given the user's inputs.
             Output: new_value (the production matrix R for a single event)
