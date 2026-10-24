@@ -20,7 +20,7 @@ ordering of its letters and multi-current positions concatenate their words.
 from __future__ import annotations
 
 from collections.abc import Hashable, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 from itertools import permutations, product
 from typing import Protocol
@@ -117,6 +117,37 @@ class Content:
     mask: int
     orders: Orders
     terms: tuple[Position, ...]
+    # The hash of the fields, computed once: contents key the generator's
+    # maps and hashing their terms dominated the 7-leg seed tables.
+    _hash: int | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __hash__(self) -> int:
+        if self._hash is None:
+            object.__setattr__(
+                self,
+                "_hash",
+                hash(
+                    (
+                        self.colour,
+                        self.loop_in,
+                        self.loop_out,
+                        self.mask,
+                        self.orders,
+                        self.terms,
+                    )
+                ),
+            )
+        return self._hash  # type: ignore[return-value]
+
+    def __reduce__(self):
+        return Content, (
+            self.colour,
+            self.loop_in,
+            self.loop_out,
+            self.mask,
+            self.orders,
+            self.terms,
+        )
 
     @property
     def q_degree(self) -> int:
@@ -136,6 +167,19 @@ class Skeleton:
     contents: tuple[Content, ...]
     weight: Fraction  # automorphism weight 1/|Stab|
     multiplicity: int = 1  # merged closed-loop flavours (design §4.3)
+    _hash: int | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __hash__(self) -> int:
+        if self._hash is None:
+            object.__setattr__(
+                self,
+                "_hash",
+                hash((self.family, self.contents, self.weight, self.multiplicity)),
+            )
+        return self._hash  # type: ignore[return-value]
+
+    def __reduce__(self):
+        return Skeleton, (self.family, self.contents, self.weight, self.multiplicity)
 
     @property
     def cut(self) -> str:

@@ -68,7 +68,7 @@ import copy
 import json
 import math
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
@@ -82,16 +82,17 @@ from pyamplicol.color.connections import (
     ExactColorCoefficient,
     TensorTerm,
     apply_color_connection,
-    contract_connected_tensor_nc_terms,
     evaluate_color_nc_terms,
 )
 from pyamplicol.color.contraction_types import NC
 from pyamplicol.config import PoleSelection
 
+from . import generator_input
 from . import reference_executor as rx
 from .blocks import (
     TreeBlocks,
     build_tree_blocks,
+    requested_loop_blocks,
     vetoed_particle_ids,
     with_ward_kernels,
 )
@@ -105,7 +106,11 @@ from .colour import (
     SeedCombination,
     SeedFourier,
     SeedTable,
+    _adjoint_rename,
+    _colour_key,
+    _relabelled_colour,
     build_seed_table,
+    contract_colour,
     extend_seed_table,
     kept,
     seed_fourier,
@@ -133,6 +138,7 @@ from .families import (
     FamilyKey,
     FamilySet,
     LoopOrderSelection,
+    ModelBlockTable,
     ModelLoopCatalogue,
     Orders,
     _set_partitions,
@@ -142,6 +148,7 @@ from .families import (
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
+from .generator_input import NativeGeneration
 from .poles import (
     ORIGINS,
     catani_poles,
@@ -154,7 +161,13 @@ from .poles import (
     splits,
 )
 from .poly_affine import MonomialLayout, leg_momentum
-from .schedules import LoopSchedules, SkeletonView, build_schedules, cheapest
+from .schedules import (
+    STRUCTURED,
+    LoopSchedules,
+    SkeletonView,
+    build_schedules,
+    cheapest,
+)
 from .stability import (
     ROTATION,
     Budget,
@@ -342,44 +355,42 @@ class TreeRows:
         compiled: Any,
         *,
         jit: bool = True,
-        propagated_currents: Iterable[int] = (),
+        propagated_currents: Iterable[int] | None = None,
     ):
-        from pyamplicol.generation.contracts import StageCompilationInput
         from pyamplicol.generation.runtime_schema import (
             build_runtime_expression_schema,
-        )
-        from pyamplicol.generation.stage_planning import (
-            build_generic_stage_compiler_blueprint,
         )
         from pyamplicol.models.external import CompiledUFOModel
 
         self.compiled = compiled
-        model = CompiledUFOModel(compiled)
+        self.dag = dag
+        self.model = CompiledUFOModel(compiled)
         with _exact_u1_subtraction_weights():
-            runtime_schema = build_runtime_expression_schema(
+            # Every block enters a loop vertex with its own propagator, also
+            # where no tree interaction consumes it (reachability-pruned DAGs):
+            # by default every current is propagated.
+            self.runtime_schema = build_runtime_expression_schema(
                 dag,
-                model,
+                self.model,
                 process_id="loop-v2-blocks",
-                propagated_currents=propagated_currents,
+                propagated_currents=(
+                    [current.id for current in dag.currents]
+                    if propagated_currents is None
+                    else propagated_currents
+                ),
             )
-            blueprint = build_generic_stage_compiler_blueprint(
-                StageCompilationInput(dag, model, runtime_schema)
-            )
-        if not blueprint.expression_ready:
-            raise ValueError(
-                f"tree blocks are not expression ready: {blueprint.blockers}"
-            )
-        self.schema = runtime_schema.to_mapping()
-        self.stages = blueprint.stages
-        self._amplitude_stage = blueprint.amplitude_stage
+        self.schema = self.runtime_schema.to_mapping()
+        # The stage expressions are built on first use (``stages``): native
+        # per-point trees compile their own, stage by stage (``native_trees``).
+        self._blueprint = None
         self._roots = {
             int(root["output_index"]): int(root["root_id"])
             for root in self.schema["amplitude_stage"]["roots"]
         }
+        # Built on the first replay: native per-point trees (``native_trees``)
+        # read the stage expressions only.
         self._jit = jit
-        self._evaluators = tuple(
-            _stage_evaluator(stage, jit=jit) for stage in self.stages
-        )
+        self._evaluators: tuple[Any, ...] | None = None
         self._amplitude_evaluator = None
         layout = self.schema["parameter_layout"]
         self._value_count = int(layout["value_component_count"])
@@ -402,6 +413,32 @@ class TreeRows:
                 for term in compiled.ir.vertex_terms
             }
         )
+
+    def _built(self) -> Any:
+        from pyamplicol.generation.contracts import StageCompilationInput
+        from pyamplicol.generation.stage_planning import (
+            build_generic_stage_compiler_blueprint,
+        )
+
+        if self._blueprint is None:
+            with _exact_u1_subtraction_weights():
+                blueprint = build_generic_stage_compiler_blueprint(
+                    StageCompilationInput(self.dag, self.model, self.runtime_schema)
+                )
+            if not blueprint.expression_ready:
+                raise ValueError(
+                    f"tree blocks are not expression ready: {blueprint.blockers}"
+                )
+            self._blueprint = blueprint
+        return self._blueprint
+
+    @property
+    def stages(self) -> tuple[Any, ...]:
+        return self._built().stages
+
+    @property
+    def _amplitude_stage(self) -> Any:
+        return self._built().amplitude_stage
 
     def _model_values(self, parameters: Mapping[str, str], digits: int) -> list:
         from symbolica import E
@@ -484,6 +521,10 @@ class TreeRows:
                     rows[(int(slot["current_id"]), "source")] = tuple(
                         convert(*z) for z in state[start:stop]
                     )
+        if self._evaluators is None:
+            self._evaluators = tuple(
+                _stage_evaluator(stage, jit=self._jit) for stage in self.stages
+            )
         for stage, evaluator in zip(self.stages, self._evaluators, strict=True):
             outputs, converted = self._replay(stage, evaluator, state, numbers)
             for slot in stage.output_slots:
@@ -684,7 +725,14 @@ def _canonical_stage(stage: Any) -> tuple[list[Any], list[Any], list[Any]]:
 
     def rename(expression: Any) -> Any:
         expression = expression.replace_multiple(symbols)
-        return expression.replace_multiple(calls) if calls else expression
+        # Nor into the arguments of a call another rule replaced: repeat
+        # until nested calls (``value_3(0, 0, value_4(0))``) are renamed too.
+        while calls:
+            renamed_calls = expression.replace_multiple(calls)
+            if renamed_calls == expression:
+                break
+            expression = renamed_calls
+        return expression
 
     return (
         [rename(expression) for expression in stage.output_expressions],
@@ -723,8 +771,37 @@ def _exact_u1_subtraction_weights():
 
 # --------------------------------------------------------------------- seeds
 
-# Schedule-B frame policy of the slice: the cheapest frame by undressed rows.
-_FRAME_POLICY = cheapest(lambda mask: 2 ** mask.bit_count())
+# Loop-aware reachability of the tree blocks (WP3.1 I1a); False builds every
+# block current the tree model allows (the families and every result are
+# unchanged, ``tests/unit/test_loop_v2_generate.py``).
+LOOP_BLOCK_REACHABILITY = True
+
+
+def _field_level_families(
+    data, process, catalogue, selection, request, native: Any
+) -> FamilySet:
+    """The families of the field-level block table (design §3.2 item 1);
+    ``native`` is the loop core, or None for the Python recursion."""
+
+    names = {int(entry["pdg_code"]): entry["name"] for entry in data["particles"]}
+    incoming = [names[leg.pdg] for leg in process.legs if leg.is_initial]
+    outgoing = [names[leg.pdg] for leg in process.legs if leg.is_final]
+    table = ModelBlockTable(
+        data,
+        incoming,
+        outgoing,
+        cap=selection.cap,
+        ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+    )
+    if native is not None:
+        return NativeGeneration(table, catalogue, selection, native).families()
+    return generate_families(table, catalogue, selection)
+
+
+# Schedule-B frame policy of the slice: the cheapest frame by undressed rows
+# (``NativeGeneration.schedules`` runs the same policy natively).
+_FRAME_MODEL = STRUCTURED
+_FRAME_POLICY = cheapest(lambda mask: 2 ** mask.bit_count(), _FRAME_MODEL)
 
 
 class SectorSeeds:
@@ -1211,14 +1288,12 @@ class LoopSlice:
     fields: tuple[FieldInsertion, ...]
     field_names: Mapping[tuple[int, str, int], str]
     born_terms: Mapping[Orders, tuple[SiteTerm, ...]]
-    site_terms: Mapping[Any, tuple[SiteTerm | WholeRuleTerm, ...]]
     continuation: Any
     basis: BornBasis
     table: SeedTable
     class_of: Mapping[Any, SeedCombination]
     sectors: tuple[tuple[Orders, frozenset[tuple[Orders, Orders]]], ...]
     normalisation: Normalisation
-    tree_rows: TreeRows
     layout: MonomialLayout
     native: Any
     reading: TreeReading
@@ -1232,11 +1307,55 @@ class LoopSlice:
     counterterm_program: Any = None
     # Whether LC/NLC pruning dropped skeletons (``_prune_colour``).
     colour_pruned: bool = False
+    # The native generator stages of this process (WP3.1), if they ran.
+    generation: NativeGeneration | None = None
+    # Site -> cells left out of its closure because they cancel between the
+    # rules closed on the same blocks (``SiteClosure.cancelled_cells``).
+    cancelled_cells: Mapping[Any, Any] = field(default_factory=dict)
     # The certified-scaleless families as a slice of their own (same blocks,
     # Born, counterterms and degrees): dressed only by the "uv" and "ir" pole
     # selections, whose bare UV and IR parts they carry (design §12.4).
     scaleless: LoopSlice | None = None
     _cache: dict = field(default_factory=dict, repr=False)
+
+    @property
+    def site_terms(self) -> Mapping[Any, tuple[SiteTerm | WholeRuleTerm, ...]]:
+        """The terms of every counterterm site (the slice's counterterm form,
+        design §6.6), built on first use: generation and the plan need none."""
+
+        found = self._cache.get("site-terms")
+        if found is None:
+            found = self._cache["site-terms"] = {
+                site: self._terms_of(site) for site in self.sites.sites
+            }
+        return found
+
+    def _terms_of(self, site: Any) -> tuple[SiteTerm | WholeRuleTerm, ...]:
+        found = self._cache.get("site-terms")
+        if found is not None:
+            # A slice whose terms were set (a copy without some sites, in
+            # tests) has none for the sites left out.
+            return found.get(site, ())
+        cache = self._cache.setdefault("terms-of", {})
+        terms = cache.get(site)
+        if terms is None:
+            terms = cache[site] = (
+                self.closure.terms(site, self.cancelled_cells.get(site, ()))
+                if site.rule.whole_rule_continuation is None
+                else _whole_rule_terms(self.closure, site)
+            )
+        return terms
+
+    @property
+    def tree_rows(self) -> TreeRows:
+        """The blocks DAG's tree runtime, built on first use."""
+
+        found = self._cache.get("tree-rows")
+        if found is None:
+            found = self._cache["tree-rows"] = TreeRows(
+                self.blocks.blocks_dag, self.compiled
+            )
+        return found
 
     # -- generation ------------------------------------------------------------
 
@@ -1258,6 +1377,8 @@ class LoopSlice:
 
         if request.accuracy not in ("full", "lc", "nlc"):
             raise ValueError(f"unknown colour accuracy {request.accuracy!r}")
+        if request.counterterms not in ("recursion", "sites"):
+            raise ValueError(f"unknown counterterm form {request.counterterms!r}")
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter = (
             prepare_request_model(compiled, request)
         )
@@ -1271,44 +1392,89 @@ class LoopSlice:
         process = build_model_process_ir(
             request.process, compiled.ir, color_accuracy="full"
         )
-        blocks = build_tree_blocks(
-            process,
-            CompiledUFOModel(compiled),
-            born_coupling_orders=dict(request.born_orders),
-            block_coupling_orders=request.loop_order_bounds,
-            ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
-        )
-        # Trees that propagate a coloured particle with a width (or a
-        # model-supplied propagator) take the full tree kernels: the
-        # transverse Yang-Mills ones are then not the Feynman rules (design
-        # §3.2 item 2, §6.1). Everything below uses that model.
-        blocks, compiled = with_ward_kernels(blocks, compiled, fixed)
-        table = blocks.block_table(data)
         loop_catalogue = ModelLoopCatalogue(
             data,
             species_orders=structure.perturbative_species_orders,
             veto=request.particle_veto,
         )
-        families = generate_families(table, loop_catalogue, selection)
-        colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
-        plan = build_schedules(
-            families,
-            loop_catalogue,
-            colour,
-            policy=_FRAME_POLICY,
-        )
-        if request.counterterms not in ("recursion", "sites"):
-            raise ValueError(f"unknown counterterm form {request.counterterms!r}")
-        # The block rows are compiled before the CT-lowered model exists:
-        # Symbolica orders terms by symbol creation, so their binary64
-        # rounding then does not depend on the counterterm form.
-        tree_rows = TreeRows(blocks.blocks_dag, compiled)
+        native_families = "families" in generator_input.NATIVE_STAGES
+        model = compiled
+
+        def tree_program(reachable):
+            blocks = build_tree_blocks(
+                process,
+                CompiledUFOModel(model),
+                born_coupling_orders=dict(request.born_orders),
+                block_coupling_orders=request.loop_order_bounds,
+                ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+                reachability=(
+                    None
+                    if reachable is None
+                    else requested_loop_blocks(reachable.block_requests(), data)
+                ),
+            )
+            # Trees that propagate a coloured particle with a width (or a
+            # model-supplied propagator) take the full tree kernels: the
+            # transverse Yang-Mills ones are then not the Feynman rules
+            # (design §3.2 item 2, §6.1). Everything below uses that model.
+            blocks, kernels = with_ward_kernels(blocks, model, fixed)
+            table = blocks.block_table(data)
+            if native_families:
+                generation = NativeGeneration(table, loop_catalogue, selection, native)
+                return blocks, kernels, table, generation, generation.families()
+            return (
+                blocks,
+                kernels,
+                table,
+                None,
+                generate_families(table, loop_catalogue, selection),
+            )
+
+        reachable = None
+        if LOOP_BLOCK_REACHABILITY and request.counterterms == "recursion":
+            # Loop-aware reachability (design §3.2 item 1): the tree program
+            # builds only the block currents the admitted positions of the
+            # field-level families consume. Site closure attaches counterterm
+            # vertices to the tree currents of every leg partition, which
+            # loop positions need not consume (a two-point counterterm on an
+            # electroweak line), so the site route builds every current.
+            reachable = _field_level_families(
+                data,
+                process,
+                loop_catalogue,
+                selection,
+                request,
+                native if native_families else None,
+            )
+        blocks, compiled, table, generation, families = tree_program(reachable)
+        if reachable is not None and (
+            families.families != reachable.families
+            or families.scaleless != reachable.scaleless
+        ):
+            # The field-level table does not predict this process's tree
+            # blocks (e.g. electroweak currents the tree compiler does not
+            # build split closed-loop flavour classes, ``families.
+            # _closed_loop_classes``): every block current is built.
+            blocks, compiled, table, generation, families = tree_program(None)
+
+        def schedules():
+            colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
+            if generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+                return colour, generation.schedules(colour, model=_FRAME_MODEL)
+            return colour, build_schedules(
+                families, loop_catalogue, colour, policy=_FRAME_POLICY
+            )
+
+        colour, plan = schedules()
         program = None
         if request.counterterms == "recursion":
             # Production form of the counterterms (design §6.1): the tree
             # recursion over the CT-lowered model with exactly one insertion,
             # closed at leg 1; graded by N_c with a colour declaration (design
-            # §6.7). No site closure and no loop matching.
+            # §6.7). No site closure and no loop matching. The block rows
+            # (``tree_rows``) are built on first use, after the CT-lowered
+            # model: native trees canonicalise their stages
+            # (``_canonical_stage``), and the Python replay is an oracle.
             from .ct_closure import CountertermProgram
 
             program = CountertermProgram.build(
@@ -1376,6 +1542,16 @@ class LoopSlice:
         if program is not None:
             program.bind(ordinary, data, catalogue)
         born_terms = _born_terms(blocks, table, closure, ordinary)
+        if missing := set(blocks.born_orders) - set(born_terms):
+            # The Born program has roots there, so their virtual sectors would
+            # be silently zero. Seen for a mixed-order Born whose electroweak
+            # block currents no admitted loop position consumes (loop-aware
+            # reachability does not build them); without reachability its
+            # closure refuses the W and Z vertices.
+            raise NotImplementedError(
+                f"the Born root closure at leg 1 has no terms at the Born "
+                f"orders {sorted(missing)} of the tree program"
+            )
         basis = _born_tensors(closure, born_terms)
         seed_table, class_of = build_seed_table(
             colour, readings, basis, compress=request.compress_colour
@@ -1408,14 +1584,6 @@ class LoopSlice:
             fields=insertions,
             field_names=names,
             born_terms=born_terms,
-            site_terms={
-                site: (
-                    closure.terms(site, cancelled.get(site, ()))
-                    if site.rule.whole_rule_continuation is None
-                    else _whole_rule_terms(closure, site)
-                )
-                for site in sites.sites
-            },
             continuation=continuation,
             basis=basis,
             table=seed_table,
@@ -1424,7 +1592,6 @@ class LoopSlice:
                 (sector, frozenset(pairs)) for sector, pairs in sorted(sectors.items())
             ),
             normalisation=Normalisation.of(structure.native, incoming, outgoing),
-            tree_rows=tree_rows,
             layout=MonomialLayout.native(
                 native,
                 # The executor bounds a node's rank by its inputs' rank plus
@@ -1441,7 +1608,9 @@ class LoopSlice:
             scale_parameter=scale_parameter,
             alpha_s_parameter=alpha_s_parameter,
             loop_catalogue=loop_catalogue,
+            generation=generation,
             counterterm_program=program,
+            cancelled_cells=cancelled,
         )
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
@@ -1480,9 +1649,16 @@ class LoopSlice:
             rejected=(),
             scaleless_families={},
         )
-        plan = build_schedules(
-            twin_families, self.loop_catalogue, self.colour, policy=_FRAME_POLICY
-        )
+        generation = None
+        if self.generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+            # The native stages schedule the companion's subset of their
+            # certified-scaleless families (and prune it at LC/NLC below).
+            generation = self.generation.scaleless_companion(twin_families)
+            plan = generation.schedules(self.colour, model=_FRAME_MODEL)
+        else:
+            plan = build_schedules(
+                twin_families, self.loop_catalogue, self.colour, policy=_FRAME_POLICY
+            )
         readings = rx.reading_skeletons(plan)
         for skeleton in readings:
             self.weights.fermion_sign(skeleton)
@@ -1498,6 +1674,7 @@ class LoopSlice:
             fourier=None,
             colour_pruned=False,
             scaleless=None,
+            generation=generation,
         )
         if self.request.accuracy != "full" and prune is not False:
             twin._prune_colour()
@@ -1572,13 +1749,16 @@ class LoopSlice:
                 trie for frame, trie in candidates if frame == frames[family.key]
             )
 
-        self.plan = build_schedules(
-            self.families,
-            self.loop_catalogue,
-            self.colour,
-            policy=same_frame,
-            view=SkeletonView(self.loop_catalogue, self.colour, keep=keep),
-        )
+        if self.generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+            self.plan = self.generation.schedules(self.colour, frames=frames, keep=keep)
+        else:
+            self.plan = build_schedules(
+                self.families,
+                self.loop_catalogue,
+                self.colour,
+                policy=same_frame,
+                view=SkeletonView(self.loop_catalogue, self.colour, keep=keep),
+            )
         self.table, self.class_of = extend_seed_table(
             self.table,
             self.class_of,
@@ -1656,14 +1836,24 @@ class LoopSlice:
     def _point(
         self, point, scale, parameters, precision, poles, **sources
     ) -> _PointEvaluation:
-        numbers = _Numbers(precision)
+        values = self._point_parameters(parameters, scale, precision)
+        return _PointEvaluation(
+            self, point, scale, values, _Numbers(precision), poles, **sources
+        )
+
+    def _point_parameters(
+        self, parameters: Mapping[str, str], scale: Fraction, precision: Precision
+    ) -> dict[str, str]:
+        """A point's parameter values: the caller's, the request's fixed
+        parameters and the renormalisation scale (the root of ``scale``)."""
+
         values = dict(parameters)
         values.update(self.request.fixed_parameters)
         digits = precision.working_digits
         values[self.scale_parameter] = _decimal_string(
             _sqrt_fraction(scale, digits), digits
         )
-        return _PointEvaluation(self, point, scale, values, numbers, poles, **sources)
+        return values
 
     def family_numerators(
         self,
@@ -1736,13 +1926,23 @@ class LoopSlice:
                         outputs.update((name, 0) for name in term.term.parameters)
                     elif term.coupling[1] in powers:
                         outputs.add(term.coupling)
-            outputs.update(
-                (name, 0)
-                for terms in self.site_terms.values()
-                for term in terms
-                if isinstance(term, WholeRuleTerm)
-                for name in term.parameters
-            )
+            # Only whole-rule sites (LC/NLC continuations) have whole-rule
+            # terms; the other site terms are not needed here. A term's
+            # parameters do not depend on the leg labels, so one site per
+            # relabelling orbit of identical legs is closed.
+            orbits = _AdjointOrbits(self.basis.legs, self.blocks.process, ())
+            closed = set()
+            for site in self.sites.sites:
+                identity = orbits.site_key(site)
+                if site.rule.whole_rule_continuation is None or identity in closed:
+                    continue
+                closed.add(identity)
+                outputs.update(
+                    (name, 0)
+                    for term in self._terms_of(site)
+                    if isinstance(term, WholeRuleTerm)
+                    for name in term.parameters
+                )
             plans: list[Any] = []
             layout: dict[tuple[str, int], tuple[tuple[int, int], ...]] = {}
             offset = 0
@@ -1755,6 +1955,7 @@ class LoopSlice:
                     layout[output] = tuple((g, c + offset) for g, c in rows)
                 offset += len(plan.expressions)
             cached = self._cache[("plan", powers)] = (tuple(plans), layout)
+
         return cached
 
     def _scalar_part(self, outputs, definitions):
@@ -1840,9 +2041,7 @@ class LoopSlice:
         found = cache.get((left, right))
         if found is None:
             legs = self.basis.legs
-            cells = contract_connected_tensor_nc_terms(
-                _single(left, legs), _single(right, legs)
-            )
+            cells = contract_colour(_single(left, legs), _single(right, legs))
             found = cache[(left, right)] = {
                 power: value for power, value in cells.items() if value
             }
@@ -1902,24 +2101,62 @@ class LoopSlice:
                 for grade in grade_of(term)
             }
 
-        def degree(bra: set, ket: set, offset: int = 0) -> int | None:
-            powers = [
-                power + p + q + offset
-                for left, p in bra
-                for right, q in ket
-                for power, value in overlaps(left, right).items()
-                if value
-            ]
-            return max(powers, default=None)
-
         born = {
-            order: keys(terms, lambda t: grades(t.entry.coupling.name, (0,)))
+            order: frozenset(keys(terms, lambda t: grades(t.entry.coupling.name, (0,))))
             for order, terms in self.born_terms.items()
         }
+        # The relabelling orbits apply to the inclusive metric only: a
+        # directed colour history (observables) is not invariant under the
+        # relabellings of identical adjoint legs.
+        orbits = (
+            _AdjointOrbits(self.basis.legs, self.blocks.process, born.values())
+            if inclusive
+            else None
+        )
+        leading: dict[tuple[frozenset, Hashable], int | None] = {}
+
+        def overlap_degree(bra: frozenset, right: Any) -> int | None:
+            return max(
+                (
+                    power + p
+                    for left, p in bra
+                    for power, value in overlaps(left, right).items()
+                    if value
+                ),
+                default=None,
+            )
+
+        def degree(bra: frozenset, ket: set, offset: int = 0) -> int | None:
+            # max over the bra of a ket tensor's overlap degrees is constant
+            # on the ket tensor's orbit (the bra is invariant): one
+            # representative per orbit is contracted.
+            out = None
+            for right, q in ket:
+                if orbits is None:
+                    found = overlap_degree(bra, right)
+                else:
+                    rename = orbits.rename(right)
+                    key = (bra, _colour_key(right, rename))
+                    if key not in leading:
+                        image = _relabelled_colour(right, rename)
+                        leading[key] = overlap_degree(bra, image)
+                    found = leading[key]
+                if found is not None:
+                    out = _max(out, found + q + offset)
+            return out
+
+        # Sites in one orbit of the relabellings have relabelled terms, so
+        # their keys reach the same degrees: one site per orbit is closed.
         counterterms: dict[Orders, set] = defaultdict(set)
-        for site, terms in self.site_terms.items():
+        closed: set[Hashable] = set()
+        for site in self.sites.sites:
+            if orbits is not None:
+                identity = orbits.site_key(site)
+                if identity in closed:
+                    continue
+                closed.add(identity)
             counterterms[site.orders] |= keys(
-                terms,
+                self._terms_of(site),
                 lambda t: (
                     {d for d, _e in t.grades}
                     if isinstance(t, WholeRuleTerm)
@@ -1969,47 +2206,69 @@ class LoopSlice:
     # -- colour correlations (IR-pole check) ------------------------------------
 
     def dipoles(self) -> dict[tuple[int, int], tuple[tuple[Fraction, ...], ...]]:
-        """<t|T_i.T_j|t'> at N_c = 3 over the Born tensors, for coloured i != j."""
+        """<t|T_i.T_j|t'> at N_c = 3 over the Born tensors, for coloured i != j.
+
+        The external adjoint labels are summed, so a cell is unchanged when one
+        permutation of them relabels both tensors and the legs i, j it moves:
+        row t is relabelled by the permutation that numbers its adjoint labels
+        in reading order (``colour._adjoint_rename``) and each distinct
+        relabelled cell is contracted once (as ``BornBasis.gram``).
+        """
 
         found = self._cache.get("dipoles")
         if found is not None:
             return found
         legs = self.basis.legs
         coloured = [leg.label for leg in legs if leg.representation != 1]
-        images = {}
-        for label in coloured:
-            connection = ColorConnection(legs, (EmitGluon(label, -1),))
-            images[label] = [
-                apply_color_connection(
-                    term.tensor, connection, coefficient=term.coefficient
+        adjoint = sorted(leg.label for leg in legs if leg.representation == 8)
+        items = [
+            (tensor, term) for tensor in self.basis.tensors for term in tensor.terms
+        ]
+        images: dict[tuple[int, Hashable], Any] = {}
+
+        def image(label: int, key: Hashable, term: Any, rename) -> Any:
+            found = images.get((label, key))
+            if found is None:
+                connection = ColorConnection(legs, (EmitGluon(label, -1),))
+                found = images[label, key] = apply_color_connection(
+                    _relabelled_colour(term.tensor, rename),
+                    connection,
+                    coefficient=term.coefficient,
                 )
-                for tensor in self.basis.tensors
-                for term in tensor.terms
-            ]
-        out = {}
-        for i in coloured:
-            for j in coloured:
-                if i == j:
-                    continue
-                out[(i, j)] = tuple(
-                    tuple(
-                        _real_colour(
-                            evaluate_color_nc_terms(
-                                contract_connected_tensor_nc_terms(left, right)
+            return found
+
+        cells: dict[tuple, Fraction] = {}
+        out: dict[tuple[int, int], list[list[Fraction]]] = {
+            (i, j): [] for i in coloured for j in coloured if i != j
+        }
+        for tensor, term in items:
+            rename = _adjoint_rename(tensor, adjoint)
+            keys = [_term_key(other, rename) for _tensor, other in items]
+            left = _term_key(term, rename)
+            for i in coloured:
+                for j in coloured:
+                    if i == j:
+                        continue
+                    a, b = rename.get(i, i), rename.get(j, j)
+                    row = []
+                    for (_other_tensor, other), key in zip(items, keys, strict=True):
+                        pair = (a, b, left, key)
+                        cell = cells.get(pair)
+                        if cell is None:
+                            cell = cells[pair] = _real_colour(
+                                evaluate_color_nc_terms(
+                                    contract_colour(
+                                        image(a, left, term, rename),
+                                        image(b, key, other, rename),
+                                    )
+                                )
                             )
-                        )
-                        for right in images[j]
-                    )
-                    for left in images[i]
-                )
+                        row.append(cell)
+                    out[(i, j)].append(row)
+        out = {pair: tuple(map(tuple, rows)) for pair, rows in out.items()}
         gram = tuple(
-            tuple(
-                _real_colour(
-                    evaluate_color_nc_terms(contract_connected_tensor_nc_terms(a, b))
-                )
-                for b in self.basis.tensors
-            )
-            for a in self.basis.tensors
+            tuple(_real_colour(evaluate_color_nc_terms(cell)) for cell in row)
+            for row in self.basis.gram
         )
         # Colour conservation: sum_{j != i} T_i.T_j = -C_i on every Born vector.
         for i in coloured:
@@ -2195,11 +2454,31 @@ class _PointEvaluation:
         accuracy = slice_.request.accuracy
 
         weights: dict = {}
+        # Per helicity: each bra's projection onto the ket keys, z[r] =
+        # sum_l conj(bra_l) <l|r>; every interference with that bra is then
+        # sum_r z[r] ket_r (one B x K product per bra instead of one per
+        # interference).
+        projections: dict = {}
+        one = numbers.pair(1)
 
         def interfere(bra, ket, degree, grade=0):
-            return _interfere(
-                bra, ket, degree, accuracy, overlap, numbers, grade, weights
-            )
+            projection = projections.setdefault((id(bra), degree, grade), {})
+            total = numbers.zero
+            for key, b in ket.items():
+                z = projection.get(key)
+                if z is None:
+                    z = projection[key] = _interfere(
+                        bra,
+                        {key: one},
+                        degree,
+                        accuracy,
+                        overlap,
+                        numbers,
+                        grade,
+                        weights,
+                    )
+                total = total + z * b
+            return total
 
         def degree_of(kind, sector):
             return None if degrees is None else degrees[kind][sector]
@@ -2224,6 +2503,7 @@ class _PointEvaluation:
 
         def born_vectors(helicity, rows) -> dict[Orders, dict]:
             vectors: dict[Orders, dict] = {}
+            projections.clear()
             for order, terms in slice_.born_terms.items():
                 vector: dict = {}
                 for term in terms:
@@ -2927,6 +3207,128 @@ class _PointEvaluation:
 # --------------------------------------------------------------------- helpers
 
 
+class _NativePoint(_PointEvaluation):
+    """A point whose block rows and Born components the native executor
+    forms (``plan_export.NativeExecutor(inputs="native")``, WP3.1).
+
+    Nothing numeric is prepared here: the executor binds every
+    parameter-dependent value natively. The result holds the Born (when the
+    executor forms |A0|^2) and the ``bare`` component per sector, and, when
+    the executor forms the counterterm and external-field components
+    (``native_counterterms``), every component as ``_PointEvaluation``
+    assembles it, without Catani's pole prediction (WP3.1 I5c). ``slice_``
+    may be a native process's structural view (``native_process``).
+    """
+
+    def __init__(self, slice_, point, scale, parameters, numbers):
+        """``parameters`` are the point's complete values
+        (``LoopSlice._point_parameters``)."""
+
+        self.slice = slice_
+        self.numbers = numbers
+        # The pole mode is set per batch (``plan_export.NativeExecutor``).
+        self.mode = pole_mode(PoleSelection.ALL)
+        self.poles = True
+        self.split_lanes = None
+        process = slice_.blocks.process
+        labels = sorted(leg.label for leg in process.legs)
+        initial = {leg.label for leg in process.legs if leg.is_initial}
+        self.incoming = [
+            [x if label in initial else -x for x in point[label - 1]]
+            for label in labels
+        ]
+        self.scale = scale
+        self.parameters = parameters
+        self.born: dict[Orders, Any] = {}
+        self.counterterms: dict = {}
+        self.native_counterterms = False
+        self.colour_contraction = "direct"
+        self.retest_families = None
+
+    def _stable_coloured_legs(self) -> bool:
+        # Catani's prediction is not formed natively (WP3.1 I5c).
+        return False
+
+    def _ir_poles(self) -> None:
+        return None
+
+    def _assemble(self) -> None:
+        if self.native_counterterms:
+            super()._assemble()
+            return
+        if self.split_lanes is not None:
+            raise NotImplementedError(
+                "the uv and ir pole selections need the counterterm components"
+            )
+        slice_, numbers = self.slice, self.numbers
+        width = 3 if self.poles else 1
+        zero = numbers.real(0)
+        bare = self._bare(self.families)
+        components = {
+            "bare": {
+                sector: bare.get(sector, Laurent(*[zero] * width))
+                for sector, _pairs in slice_.sectors
+            }
+        }
+        totals = [sum(self.born.values(), zero)]
+        for k in range(width):
+            totals.append(
+                sum(
+                    (
+                        laurent.coefficients[k]
+                        for laurent in components["bare"].values()
+                    ),
+                    zero,
+                )
+            )
+        self.result = PointResult(
+            dict(self.born),
+            components,
+            tuple(totals),
+            dict(self.families),
+            None,
+            colour_contraction=self.colour_contraction,
+        )
+        self.absolute = self._lane_budget(
+            {lane: value.coefficients for lane, value in self.families.items()}
+        )
+        self.retest_budget = None
+        self.family_deviations = None
+        if self.retest_families is not None:
+            self.family_deviations = {
+                lane: tuple(
+                    abs(a - b)
+                    for a, b in zip(
+                        self.families[lane].coefficients,
+                        self.retest_families[lane].coefficients,
+                        strict=True,
+                    )
+                )
+                for lane in self.families
+            }
+            self.retest_budget = self._lane_budget(self.family_deviations)
+
+    def rotation_budget(self, rotated: _PointEvaluation) -> dict[Orders, Budget]:
+        if self.native_counterterms:
+            # Every component: the local ones are rotation invariant too.
+            return super().rotation_budget(rotated)
+        zero = Laurent(*[self.numbers.zero] * (3 if self.poles else 1))
+        with self.numbers.scope():
+            lanes = {
+                lane: tuple(
+                    a - b
+                    for a, b in zip(
+                        rotated.families.get(lane, zero).coefficients,
+                        self.families.get(lane, zero).coefficients,
+                        strict=True,
+                    )
+                )
+                # Insertion order (the budget's summation order), not a set.
+                for lane in dict.fromkeys([*self.families, *rotated.families])
+            }
+        return self._lane_budget(lanes)
+
+
 def _max(a: int | None, b: int | None) -> int | None:
     return b if a is None else a if b is None else max(a, b)
 
@@ -3155,6 +3557,106 @@ def _gamma(representation: int, light: int) -> Fraction:
     if representation == 8:
         return Fraction(11, 6) * NC - Fraction(2, 3) * Fraction(1, 2) * light
     return Fraction(3, 2) * _casimir(representation)
+
+
+class _AdjointOrbits:
+    """Relabellings of identical external adjoint legs (WP3.1; design §7.4).
+
+    A class holds external adjoint legs of one particle (all-outgoing PDG
+    code) whose transpositions leave every given Born key set {(literal
+    tensor, N_c power)} invariant, checked exactly (no sets: every leg of
+    the particle); the relabellings are the permutations within classes.
+    The leading-degree maximum over an invariant key set is then constant
+    on the orbit of the other tensor
+    (``rename`` maps it to a representative), and a counterterm site's terms
+    are those of any site of its orbit, relabelled (``site_key``: its blocks
+    partition the legs, so two sites are related iff each block holds equally
+    many legs of each class and the same other legs).
+    """
+
+    def __init__(
+        self,
+        legs: Sequence[Any],
+        process: Any,
+        born_keys: Iterable[Iterable[tuple]],
+    ):
+        pdg = {leg.label: leg.outgoing_pdg for leg in process.legs}
+        sets = [tuple(keys) for keys in born_keys]
+        adjoint = sorted(leg.label for leg in legs if leg.representation == 8)
+        reference = [
+            frozenset((_colour_key(t, {}), p) for t, p in keys) for keys in sets
+        ]
+        parent = {label: label for label in adjoint}
+
+        def find(label: int) -> int:
+            while parent[label] != label:
+                label = parent[label]
+            return label
+
+        for i, a in enumerate(adjoint):
+            for b in adjoint[i + 1 :]:
+                if pdg[a] != pdg[b] or find(a) == find(b):
+                    continue
+                swap = {a: b, b: a}
+                if all(
+                    frozenset((_colour_key(t, swap), p) for t, p in keys) == ref
+                    for keys, ref in zip(sets, reference, strict=True)
+                ):
+                    parent[find(b)] = find(a)
+        classes: dict[int, list[int]] = defaultdict(list)
+        for label in adjoint:
+            classes[find(label)].append(label)
+        self.classes = tuple(
+            tuple(members) for members in classes.values() if len(members) > 1
+        )
+        self._class = {
+            label: c for c, members in enumerate(self.classes) for label in members
+        }
+
+    def rename(self, tensor: Any) -> dict[int, int]:
+        """A relabelling taking ``tensor`` to its orbit's representative: the
+        members of each class in reading order of its canonical key are given
+        the class's labels in increasing order."""
+
+        if not self.classes:
+            return {}
+        strings, traces = _colour_key(tensor, {})
+        read = [a for _f, labels, _e in strings for a in labels]
+        read += [a for trace in traces for a in trace]
+        out: dict[int, int] = {}
+        for members in self.classes:
+            order = [a for a in dict.fromkeys(read) if a in members]
+            order += [a for a in members if a not in order]
+            out.update(zip(order, members, strict=True))
+        return out
+
+    def site_key(self, site: Any) -> Hashable:
+        def mask_key(mask: int) -> tuple:
+            labels = [i + 1 for i in range(mask.bit_length()) if mask >> i & 1]
+            counts = [0] * len(self.classes)
+            fixed = []
+            for label in labels:
+                c = self._class.get(label)
+                if c is None:
+                    fixed.append(label)
+                else:
+                    counts[c] += 1
+            return tuple(fixed), tuple(counts)
+
+        return (
+            site.rule_name,
+            site.alternatives,
+            tuple(
+                (block.field, block.orders, mask_key(block.mask))
+                for block in site.blocks
+            ),
+        )
+
+
+def _term_key(term: Any, rename: Mapping[int, int]) -> Hashable:
+    """A key of one Born tensor term with its adjoint labels renamed."""
+
+    return term.coefficient, term.nc_power, _colour_key(term.tensor, rename)
 
 
 def _real_colour(value: ExactColorCoefficient) -> Fraction:

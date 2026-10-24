@@ -161,8 +161,9 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
     """O6 with the Levi-Civita cells cancelled: the g g Z (and g g g Z)
     rules are admitted in the recursion with their cell left out (no rule is
     residual; the plain admission also admits the g g g Z rules where no tree
-    holds them), the site closure drops the same cells on its own, and every
-    component agrees."""
+    holds them), the site closure closes the same cells with the catalogue's
+    Levi-Civita kernels (WP3.1 I-AX, ``test_loop_v2_levi_civita``), whose
+    up- and down-type terms cancel, and every component agrees."""
 
     from pyamplicol.loops.v2.ct_recursion import rule_key
 
@@ -193,7 +194,7 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
         if _vertices(site.rule) & GGZ_VERTICES
         for term in terms
     }
-    assert not lorentz & LEVI_CIVITA
+    assert lorentz & LEVI_CIVITA
     worst = _route_differences(
         cancellation_routes,
         name,
@@ -214,14 +215,17 @@ def _assert_vertex_changes_r2(sites, vertex: str, masses) -> None:
 
     from .test_loop_v2_ct_closure import SLICE_SCALE_SQUARED, _slice_point
 
+    # The site terms are built on first use (``LoopSlice.site_terms``): a
+    # copy with a fresh cache holding the terms without the vertex's sites.
     without = replace(
         sites,
-        site_terms={
-            site: terms
-            for site, terms in sites.site_terms.items()
-            if vertex not in _vertices(site.rule)
+        _cache={
+            "site-terms": {
+                site: terms
+                for site, terms in sites.site_terms.items()
+                if vertex not in _vertices(site.rule)
+            }
         },
-        _cache={},
     )
     point = _slice_point(masses)
     full, rest = (
@@ -289,14 +293,15 @@ def anomalous_model(loop_sm_ufo, tmp_path_factory):
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("counterterms", ("recursion", "sites"))
-def test_uncancelled_levi_civita_cells_fail_closed(
+def test_uncancelled_levi_civita_cells_refuse_or_close_at_sites(
     anomalous_model, loop_native, monkeypatch, counterterms
 ):
-    """Where the g g Z cell does not cancel (an anomalous model) it has no
-    kernel: the lowering cannot lower its rules, and as the vertex enters a
-    tree of u u~ > e- e+ g (two gluon currents and a Z) the recursion refuses
-    the request (no site fallback); the site oracle refuses it for want of a
-    kernel. Neither drops the cell."""
+    """Where the g g Z cell does not cancel (an anomalous model) the
+    lowering has no tree kernel for it: as the vertex enters a tree of
+    u u~ > e- e+ g (two gluon currents and a Z) the recursion refuses the
+    request (no site fallback, REQUIREMENTS_ADDENDUM J). The site oracle
+    closes the cell with the catalogue's Levi-Civita kernel (WP3.1 I-AX,
+    ``test_loop_v2_levi_civita``). Neither drops the cell."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.loops.v2.ct_recursion import UnloweredCountertermError
@@ -304,26 +309,27 @@ def test_uncancelled_levi_civita_cells_fail_closed(
 
     _certify_furry_zeros(monkeypatch)
     compiled = load_compiled_model(anomalous_model)
-    error, match = (
-        (
-            UnloweredCountertermError,
-            r"can enter a tree.*\[G G Z\].*R2_GGZ.*does not cancel",
-        )
-        if counterterms == "recursion"
-        else (ValueError, "no ct-site kernel")
+    request = SliceRequest(
+        "u u~ > e- e+ g",
+        {"QCD": 1, "QED": 2},
+        {"QCD": 3, "QED": 2},
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+        counterterms=counterterms,
     )
-    with pytest.raises(error, match=match):
-        LoopSlice.generate(
-            compiled,
-            SliceRequest(
-                "u u~ > e- e+ g",
-                {"QCD": 1, "QED": 2},
-                {"QCD": 3, "QED": 2},
-                fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-                counterterms=counterterms,
-            ),
-            loop_native,
-        )
+    if counterterms == "recursion":
+        with pytest.raises(
+            UnloweredCountertermError,
+            match=r"can enter a tree.*\[G G Z\].*R2_GGZ.*does not cancel",
+        ):
+            LoopSlice.generate(compiled, request, loop_native)
+        return
+    sites = LoopSlice.generate(compiled, request, loop_native)
+    assert {
+        term.entry.lorentz_name
+        for site, terms in sites.site_terms.items()
+        if _vertices(site.rule) & GGZ_VERTICES
+        for term in terms
+    } & LEVI_CIVITA
 
 
 @pytest.mark.loop_physics

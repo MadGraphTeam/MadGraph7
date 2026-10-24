@@ -34,7 +34,7 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol.loops.v2 import assemble, ct_sites, merged
+from pyamplicol.loops.v2 import merged
 from pyamplicol.loops.v2 import reference_executor as rx
 from pyamplicol.loops.v2.assemble import (
     COMPONENTS,
@@ -93,27 +93,6 @@ PROCESSES = {
 }
 
 
-def _furry_zeros(generate):
-    """``generate_counterterm_sites`` with Furry's certified zeros (as
-    ``test_loop_v2_executor``)."""
-
-    def with_zeros(families, table, rules, data, selection, **options):
-        zeros = [
-            ct_sites.CertifiedZero(
-                signature,
-                species,
-                "Furry: C-odd closed quark loop (one photon, two gluons)",
-            )
-            for signature, sets in ct_sites.divergent_witnesses(families, data).items()
-            if signature.fields == ("A", "G", "G")
-            for species in sets
-            if all(1 <= pdg <= 6 for pdg in species)
-        ]
-        return generate(families, table, rules, data, selection, zeros=zeros, **options)
-
-    return with_zeros
-
-
 @pytest.fixture(scope="module")
 def slices(loop_sm_compiled_model, loop_native):
     from pyamplicol.models.loading import load_compiled_model
@@ -139,16 +118,7 @@ def slices(loop_sm_compiled_model, loop_native):
                 accuracy=accuracy,
                 colour_declaration=None if accuracy == "full" else declaration,
             )
-            with pytest.MonkeyPatch.context() as patch:
-                if born["QED"]:
-                    patch.setattr(
-                        assemble,
-                        "generate_counterterm_sites",
-                        _furry_zeros(assemble.generate_counterterm_sites),
-                    )
-                built[name, accuracy] = LoopSlice.generate(
-                    compiled, request, loop_native
-                )
+            built[name, accuracy] = LoopSlice.generate(compiled, request, loop_native)
         return built[name, accuracy]
 
     return build

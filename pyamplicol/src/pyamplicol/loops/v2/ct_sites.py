@@ -35,7 +35,9 @@ loop lines, merged closed-loop flavours expanded to their members):
 
 Completeness (design §6.3): every divergent witness must be covered, for each
 of its loop-species sets, by a species-matched (R2 or UVmass) rule of its
-signature, or by a certified zero supplied by a certifier. Faddeev-Popov ghost
+signature, or by a certified zero: supplied by a certifier, or certified here
+for closed fermion loops whose orientations cancel by charge conjugation
+(Furry) or whose colour trace vanishes (``closed_fermion_zeros``). Faddeev-Popov ghost
 loops count in the loop group of their gauge boson, as in UFO loop
 declarations. Otherwise generation fails and names the uncovered signature.
 UV poles that are renormalised through couplings rather than per 1PI function
@@ -87,6 +89,7 @@ N_c = 3; the production form puts the CT vertices into the tree recursion
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -345,6 +348,131 @@ def divergent_witnesses(
     return {signature: frozenset(rows) for signature, rows in found.items()}
 
 
+# The pure vector current Gamma(mu of the boson leg, spinor, spinor) in the
+# native model's Lorentz structure syntax.
+_VECTOR_CURRENT = re.compile(r"Gamma\(idx\(1,(\d+)\),idx\(1,(\d+)\),idx\(1,(\d+)\)\)")
+FERMION_SPIN = 2
+
+
+def closed_fermion_zeros(
+    witnesses: Mapping[Signature, frozenset[Species]], native_model: Any
+) -> tuple[CertifiedZero, ...]:
+    """Certified zeros of divergent closed fermion loops (design §6.3).
+
+    A witness whose loop species is one fermion f is a closed f loop with its
+    attachments in every cyclic order and both orientations. Its UV and R2
+    parts vanish, so no rule needs to cover it, when
+
+    * the colour factor is Tr_R(T^a) = 0: exactly one adjoint attachment,
+      every other one a colour singlet; or
+    * charge conjugation cancels the orientations (Furry): the colour factor is
+      unchanged by reversing the order of the attachments (at most two
+      adjoint attachments, the rest singlets), and every vertex joining f, its
+      antiparticle and an attached field is a pure vector current
+      (C gamma^mu^T C^-1 = -gamma^mu) with an odd number of attachments. The
+      reversed orientation is then -1 times the other in d dimensions, cyclic
+      order by cyclic order.
+
+    Both need every model vertex with f and its antiparticle to be a
+    three-point vertex with one other field (renormalisable couplings).
+    E.g. one photon and two gluons on a quark loop (Furry), one photon and
+    one gluon (traceless colour). A Z keeps its axial part, which R2 rules
+    such as R2_GGZ cover.
+    """
+
+    data = model_data(native_model)
+    particles = _particles(data)
+    by_pdg = {int(entry["pdg_code"]): entry for entry in data["particles"]}
+    lorentz = {
+        entry["name"]: "".join(str(entry["structure"]).split())
+        for entry in data["lorentz_structures"]
+    }
+    zeros = []
+    for signature, rows in sorted(witnesses.items()):
+        for species in sorted(rows):
+            fermion = by_pdg.get(species[0]) if len(species) == 1 else None
+            if fermion is None or int(fermion["spin"]) != FERMION_SPIN:
+                continue
+            certificate = _closed_fermion_certificate(
+                signature.fields, fermion, particles, data["vertex_rules"], lorentz
+            )
+            if certificate is not None:
+                zeros.append(CertifiedZero(signature, species, certificate))
+    return tuple(zeros)
+
+
+def _closed_fermion_certificate(
+    fields: Sequence[str],
+    fermion: Mapping[str, Any],
+    particles: Mapping[str, Mapping[str, Any]],
+    rules: Sequence[Mapping[str, Any]],
+    lorentz: Mapping[str, str],
+) -> str | None:
+    line = sorted((fermion["name"], fermion["antiname"]))
+    couplings: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for rule in rules:
+        names = list(rule["particles"])
+        if not (fermion["name"] in names or fermion["antiname"] in names):
+            continue
+        rest = list(names)
+        for name in line:
+            if name not in rest:
+                rest = []
+                break
+            rest.remove(name)
+        if not rest:
+            if sorted(names) != line:
+                continue  # f couples to another flavour: not on this loop
+            return None
+        if len(rest) != 1:
+            return None  # a contact or multi-fermion vertex
+        couplings[rest[0]].append(rule)
+    if any(name not in couplings for name in fields):
+        return None
+    colours = [int(particles[name]["color"]) for name in fields]
+    if any(colour not in (1, 8) for colour in colours):
+        return None
+    adjoint = colours.count(8)
+    if adjoint == 1:
+        return "colour: one adjoint on a closed fermion loop gives Tr(T^a) = 0"
+    if (
+        len(fields) % 2 == 1
+        and adjoint <= 2
+        and all(
+            _pure_vector_current(rule, particles, lorentz)
+            for name in fields
+            for rule in couplings[name]
+        )
+    ):
+        return (
+            "Furry: an odd number of vector couplings on a closed fermion loop "
+            "with a reversal-symmetric colour trace"
+        )
+    return None
+
+
+def _pure_vector_current(
+    rule: Mapping[str, Any],
+    particles: Mapping[str, Mapping[str, Any]],
+    lorentz: Mapping[str, str],
+) -> bool:
+    """Whether every Lorentz structure of ``rule`` is Gamma(boson, f, f)."""
+
+    fermions = {
+        leg
+        for leg, name in enumerate(rule["particles"], start=1)
+        if int(particles[name]["spin"]) == FERMION_SPIN
+    }
+    for name in rule["lorentz_structures"]:
+        match = _VECTOR_CURRENT.fullmatch(lorentz[name])
+        if match is None:
+            return False
+        boson, *spinors = (int(leg) for leg in match.groups())
+        if boson in fermions or set(spinors) != fermions:
+            return False
+    return True
+
+
 def _coverage(
     witnesses: Mapping[Signature, frozenset[Species]],
     rules: Mapping[str, Any],
@@ -414,7 +542,8 @@ def generate_counterterm_sites(
     (``PreparedCountertermModel.rules``); ``blocks`` is the family recursion's
     block table and ``native_model`` the native model (or its JSON mapping)
     whose names both use. ``forbidden`` are the |PDG| codes the process
-    excludes; ``zeros`` are certified zeros of divergent witnesses.
+    excludes; ``zeros`` are certified zeros of divergent witnesses, besides
+    those of ``closed_fermion_zeros``.
     ``whole_rules`` admits rules carrying a whole-rule colour continuation;
     the caller then closes their replacement terms (``SiteClosure.close``)
     instead of ``SiteClosure.terms``. ``closed_rules`` restricts the sites to
@@ -447,7 +576,14 @@ def generate_counterterm_sites(
     forbidden = frozenset(abs(int(pdg)) for pdg in forbidden)
     witnesses = {} if admission is not None else divergent_witnesses(families, data)
     coverage = (
-        _coverage(witnesses, rules, names, corrections, ghost_partners(data), zeros)
+        _coverage(
+            witnesses,
+            rules,
+            names,
+            corrections,
+            ghost_partners(data),
+            (*zeros, *closed_fermion_zeros(witnesses, data)),
+        )
         if admission is None
         else ()
     )
@@ -1115,6 +1251,7 @@ __all__ = [
     "SiteClosure",
     "SiteTerm",
     "add_colour",
+    "closed_fermion_zeros",
     "divergent_witnesses",
     "entry_cell",
     "generate_counterterm_sites",

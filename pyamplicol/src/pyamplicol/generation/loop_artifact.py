@@ -40,10 +40,12 @@ DIRECTED_INTERFERENCE = "Bdagger K_BL L + Ldagger K_LB B"
 LOOP_V2_EXECUTION_SCHEMA = 4
 LOOP_V2_PHYSICS_SCHEMA = 2
 # How a plan v4 process obtains its per-point inputs (trees, Born amplitudes,
-# counterterm scalars): rebuilt at load from the artifact's compiled model and
-# generation request until WP3.1 stores native programs for them under a new
-# value (rusticol-core ``loop_artifact::LOOP_V2_POINT_INPUTS``).
+# counterterm and field components): from native programs stored as further
+# PACBIN members (``loops.v2.native_process``, WP3.1), or rebuilt at load from
+# the artifact's compiled model and generation request where a process has no
+# native program (rusticol-core ``loop_artifact::LOOP_V2_*POINT_INPUTS``).
 LOOP_V2_POINT_INPUTS = "regenerated-at-load"
+LOOP_V2_NATIVE_POINT_INPUTS = "native-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,6 +307,7 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
     scaleless_plan_sha256: str | None = None
     state_legs: tuple[dict[str, object], ...] = ()
     helicities: tuple[tuple[int, ...], ...] = ()
+    point_inputs: str = LOOP_V2_POINT_INPUTS
 
     def __post_init__(self) -> None:
         if not isinstance(self.metadata, LoopV2ExecutionMetadata):
@@ -323,6 +326,8 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
             raise ValueError("a companion plan digest is a SHA-256")
         if len(self.state_legs) != len(self.external_pdgs) or not self.helicities:
             raise ValueError("v2 loop processes declare their legs and helicities")
+        if self.point_inputs not in (LOOP_V2_POINT_INPUTS, LOOP_V2_NATIVE_POINT_INPUTS):
+            raise ValueError(f"unknown point inputs {self.point_inputs!r}")
 
     @property
     def runtime_capability(self) -> str:
@@ -357,7 +362,7 @@ def _v2_process_payloads(
         "runtime_path": LOOP_RUNTIME_PATH,
         "plan_sha256": process.plan_sha256,
         "scaleless_plan_sha256": process.scaleless_plan_sha256,
-        "point_inputs": LOOP_V2_POINT_INPUTS,
+        "point_inputs": process.point_inputs,
         "request": process.request,
     }
     return physics, execution
