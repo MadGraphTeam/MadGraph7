@@ -79,9 +79,10 @@
 
 use super::super::links::Row;
 use super::super::{
-    Binding, ChunkLayout, Closure, Content, ContentFile, ContentTerm, Edge, Entry, Family, Kernel,
-    KernelInput, KernelTerm, Leaf, MergedState, PlanFile, Seed, SeedKey, SeedTerm, SplitGroup,
-    SplitKernel, SplitPart, State, Step, Vertex, VertexEntry, invalid, require,
+    Binding, ChunkLayout, Closure, Content, ContentFile, ContentTerm, Edge, EdgeFile, Entry,
+    Family, Kernel, KernelInput, KernelTerm, Leaf, MergedEdgeFile, MergedState, PlanFile, Seed,
+    SeedKey, SeedTerm, SplitGroup, SplitKernel, SplitPart, State, Step, Vertex, VertexEntry,
+    invalid, require,
 };
 use super::ALLOCATION;
 use crate::RusticolResult;
@@ -455,6 +456,9 @@ struct Sizes<'a> {
     columns: u64,
     /// Per content the rows of its terms, summed.
     term_rows: Vec<u64>,
+    /// Per content whether every term has a vertex (`split_candidate`
+    /// builds a step's split form only if every edge's content has).
+    vertexed: Vec<bool>,
     /// The candidate split parts of every step (one per edge and term of
     /// its content).
     parts: u64,
@@ -466,16 +470,34 @@ impl Sizes<'_> {
         Some((content, self.file.contents.get(content)?))
     }
 
-    /// An edge of `links` row links (before the column expansion) into
-    /// `content`: its expanded links (kept) and the candidate split part of
-    /// every term (`split_candidate`, counted whether or not the step
-    /// splits): its filtered links (collected) and the list of their targets
-    /// (kept if the step splits), the part, its block-row map and the
-    /// targets' B-tree (temporaries of the step, `step`). Returns the parts.
-    fn edge(&self, tally: &mut Tally, step: &mut u64, content: usize, links: u64) -> u64 {
+    /// Whether `split_candidate` builds the split form of a step at input
+    /// rank `rank` (0 when seeded) over edges of these factors and source
+    /// ranks: every source at that rank, every term of every edge's content
+    /// with a vertex.
+    fn splits(&self, rank: usize, edges: impl IntoIterator<Item = (usize, usize)>) -> bool {
+        edges.into_iter().all(|(factor, source_rank)| {
+            source_rank == rank
+                && self
+                    .content(factor)
+                    .is_some_and(|(content, _)| self.vertexed[content])
+        })
+    }
+
+    /// An edge of `links` row links (before the column expansion): its
+    /// expanded links (kept). Returns them.
+    fn links(&self, tally: &mut Tally, links: u64) -> u64 {
         let expanded = links.saturating_mul(self.columns);
         tally.keep(expanded, size_of::<RowLink>());
         tally.iterate(expanded.saturating_add(links));
+        expanded
+    }
+
+    /// The candidate split part of every term of an edge of `expanded`
+    /// links into `content` (`split_candidate`): its filtered links
+    /// (collected) and the list of their targets (kept if the step splits),
+    /// the part, its block-row map and the targets' B-tree (temporaries of
+    /// the step, `step`). Returns the parts.
+    fn parts(&self, tally: &mut Tally, step: &mut u64, content: usize, expanded: u64) -> u64 {
         let c = &self.file.contents[content];
         let rows = c.row_helicities.len() as u64;
         for _ in &c.terms {
@@ -672,10 +694,15 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
     for c in &file.contents {
         tally.map(c.row_helicities.len() as u64, size_of::<(Row, u32)>());
     }
+    let vertexed = file
+        .contents
+        .iter()
+        .map(|c| c.terms.iter().all(|t| t.vertex >= 0));
     let mut sizes = Sizes {
         file,
         columns,
         term_rows,
+        vertexed: vertexed.collect(),
         parts: 0,
     };
     let mut tables = Tables {
@@ -725,28 +752,35 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
             let edges = s.edges.len() as u64;
             tally.keep(edges, size_of::<Edge>());
             tally.hold(&mut family, edges, size_of::<Vec<u32>>());
+            let source = |e: &EdgeFile| match (e.leaf, e.child) {
+                (-1, child) if child >= 0 && (child as usize) < index => outputs[child as usize],
+                _ => (rows, 0),
+            };
+            let rank = if s.seeded { 0 } else { s.rank_in };
+            let splits = sizes.splits(rank, s.edges.iter().map(|e| (e.factor, source(e).1)));
             let mut parts = 0u64;
             for e in &s.edges {
-                let (source, source_rank) = match (e.leaf, e.child) {
-                    (-1, child) if child >= 0 && (child as usize) < index => {
-                        outputs[child as usize]
-                    }
-                    _ => (rows, 0),
-                };
+                let (source, source_rank) = source(e);
                 targets = targets.saturating_add(source);
                 tally.iterate(source);
                 tally.hold_grown(&mut family, source.saturating_mul(3), size_of::<u32>());
                 if let Some((content, c)) = sizes.content(e.factor) {
-                    let terms = sizes.edge(&mut tally, &mut step, content, source);
-                    parts = parts.saturating_add(terms);
+                    let expanded = sizes.links(&mut tally, source);
+                    if splits {
+                        let terms = sizes.parts(&mut tally, &mut step, content, expanded);
+                        parts = parts.saturating_add(terms);
+                    }
                     if c.degree <= s.degree {
                         tables.pair(&mut tally, source_rank, c.degree);
-                        let rank = if s.seeded { 0 } else { s.rank_in };
-                        tables.split(&mut tally, rank, c.degree);
+                        if splits {
+                            tables.split(&mut tally, rank, c.degree);
+                        }
                     }
                 }
             }
-            sizes.split(&mut tally, &mut step, edges, parts);
+            if splits {
+                sizes.split(&mut tally, &mut step, edges, parts);
+            }
             edges_here = edges_here.saturating_add(edges);
             parts_here = parts_here.saturating_add(parts);
             let out = targets.min(rows_of(&counts, s.out)).min(rows);
@@ -821,6 +855,12 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
                 *count += 1;
             }
             let (mut step, mut parts) = (0, 0u64);
+            let source_rank = |e: &MergedEdgeFile| {
+                let parent = usize::try_from(e.parent).ok().filter(|&p| p < index);
+                parent.map_or(0, |p| ranks[p])
+            };
+            let rank = if s.seeded { 0 } else { s.rank_in };
+            let splits = sizes.splits(rank, s.edges.iter().map(|e| (e.factor, source_rank(e))));
             for e in &s.edges {
                 if let Some(weight) = &e.weight {
                     for _ in 0..2 {
@@ -829,20 +869,23 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
                     }
                     weighted += 1;
                 }
-                let parent = usize::try_from(e.parent).ok().filter(|&p| p < index);
-                let source_rank = parent.map_or(0, |p| ranks[p]);
                 if let Some((content, c)) = sizes.content(e.factor) {
-                    let links = (e.links.len() / 3) as u64;
-                    let terms = sizes.edge(&mut tally, &mut step, content, links);
-                    parts = parts.saturating_add(terms);
+                    let expanded = sizes.links(&mut tally, (e.links.len() / 3) as u64);
+                    if splits {
+                        let terms = sizes.parts(&mut tally, &mut step, content, expanded);
+                        parts = parts.saturating_add(terms);
+                    }
                     if c.degree <= s.degree {
-                        tables.pair(&mut tally, source_rank, c.degree);
-                        let rank = if s.seeded { 0 } else { s.rank_in };
-                        tables.split(&mut tally, rank, c.degree);
+                        tables.pair(&mut tally, source_rank(e), c.degree);
+                        if splits {
+                            tables.split(&mut tally, rank, c.degree);
+                        }
                     }
                 }
             }
-            sizes.split(&mut tally, &mut step, edges, parts);
+            if splits {
+                sizes.split(&mut tally, &mut step, edges, parts);
+            }
             tally.alive(step);
             ranks.push(rank_out);
         }
