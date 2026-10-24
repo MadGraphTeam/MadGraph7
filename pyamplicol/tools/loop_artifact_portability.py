@@ -163,7 +163,72 @@ class GenerationSentinel:
 # ---------------------------------------------------------------- host
 
 
+# x86-64 System V: void cpuid(uint32 leaf, uint32 subleaf, uint32 out[4]).
+_CPUID_CODE = bytes.fromhex(
+    "53"  # push rbx
+    "89f8"  # mov eax, edi
+    "89f1"  # mov ecx, esi
+    "4989d0"  # mov r8, rdx
+    "0fa2"  # cpuid
+    "418900"  # mov [r8], eax
+    "41895804"  # mov [r8+4], ebx
+    "41894808"  # mov [r8+8], ecx
+    "4189500c"  # mov [r8+12], edx
+    "5b"  # pop rbx
+    "c3"  # ret
+)
+
+
+def _cpuid_flags() -> set[str] | None:
+    """The CPU's own feature bits (CPUID, as SymJIT and Rust's
+    ``is_x86_feature_detected`` read them); ``/proc/cpuinfo`` shows the
+    physical host's under user-mode emulation (qemu-user)."""
+
+    if platform.machine().lower() not in ("x86_64", "amd64") or os.name != "posix":
+        return None
+    try:
+        import ctypes
+        import mmap
+
+        page = mmap.mmap(
+            -1, mmap.PAGESIZE, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC
+        )
+        page.write(_CPUID_CODE)
+        address = ctypes.addressof(ctypes.c_char.from_buffer(page))
+        words = ctypes.c_uint32 * 4
+        call = ctypes.CFUNCTYPE(None, ctypes.c_uint32, ctypes.c_uint32, words)(address)
+
+        def cpuid(leaf: int, subleaf: int = 0) -> tuple[int, ...]:
+            out = words()
+            call(leaf, subleaf, out)
+            return tuple(out)
+
+        top = cpuid(0)[0]
+        _, _, ecx, edx = cpuid(1)
+        ebx7 = cpuid(7)[1] if top >= 7 else 0
+    except Exception:
+        # An executable page may be refused (W^X policy): use /proc then.
+        return None
+    flags = set()
+    for name, word, bit in (
+        ("sse2", edx, 26),
+        ("sse4_2", ecx, 20),
+        ("fma", ecx, 12),
+        ("avx", ecx, 28),
+        ("avx2", ebx7, 5),
+        ("avx512f", ebx7, 16),
+    ):
+        if word >> bit & 1:
+            flags.add(name)
+    if not ecx >> 27 & 1:  # no OSXSAVE: the OS does not enable AVX state
+        flags -= {"avx", "avx2", "fma", "avx512f"}
+    return flags
+
+
 def _cpu_flags() -> set[str]:
+    flags = _cpuid_flags()
+    if flags is not None:
+        return flags
     try:
         text = Path("/proc/cpuinfo").read_text()
     except OSError:
@@ -692,31 +757,41 @@ def sdk(
     seconds = time.perf_counter() - start
     statuses = [run.returncode for run in runs]
     restricted = any(m in out for out, _ in outputs for m in RESTRICTED_MARKERS)
+    record = _parse_client(outputs[0][0] if statuses[0] == 0 else "")
+    record.update(
+        {
+            "process": process,
+            "exit_status": statuses,
+            "licence": licence,
+            "symbolica_restricted": restricted,
+            "stderr": [err[-2000:] for _, err in outputs],
+            "seconds": {"run": seconds},
+        }
+    )
+    return record
+
+
+def _parse_client(stdout: str) -> dict[str, Any]:
+    """The C client's output as an ``evaluate`` record."""
+
     born: list[Any] = []
     virtual: list[Any] = []
     point_status: list[int] = []
-    if statuses[0] == 0:
-        for line in outputs[0][0].splitlines():
-            if line.startswith("point "):
-                point_status.append(int(line.split()[3]))
-            elif line.startswith("born"):
-                born.append([_hex(x) for x in line.split()[1:]])
-            elif line.startswith("virtual"):
-                flat = [_hex(x) for x in line.split()[1:]]
-                virtual.append([flat[k : k + 3] for k in range(0, len(flat), 3)])
+    for line in stdout.splitlines():
+        if line.startswith("point "):
+            point_status.append(int(line.split()[3]))
+        elif line.startswith("born"):
+            born.append([_hex(x) for x in line.split()[1:]])
+        elif line.startswith("virtual"):
+            flat = [_hex(x) for x in line.split()[1:]]
+            virtual.append([flat[k : k + 3] for k in range(0, len(flat), 3)])
     return {
         "schema": SCHEMA,
         "kind": "evaluate",
         "path": "sdk",
-        "process": process,
         "points": len(born),
         "results": {"born": born, "virtual": virtual},
         "point_status": point_status,
-        "exit_status": statuses,
-        "licence": licence,
-        "symbolica_restricted": restricted,
-        "stderr": [err[-2000:] for _, err in outputs],
-        "seconds": {"run": seconds},
         "host": host(),
     }
 
@@ -927,6 +1002,91 @@ def check(
     return verdict
 
 
+# ---------------------------------------------------------------- CPU models
+
+# QEMU user-mode CPU models of the x86-64 feature levels SymJIT distinguishes:
+# AVX with FMA3 (the build host's class here), AVX without FMA3, SSE4.2 only.
+CPU_MODELS = ("Haswell-v4", "SandyBridge-v2", "Nehalem-v2")
+
+
+def _no_core() -> None:
+    import resource
+
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+
+def cpu_matrix(
+    artifact: Path,
+    process: str,
+    points_file: Path,
+    qemu: str,
+    scratch: Path,
+    *,
+    models: tuple[str, ...] = CPU_MODELS,
+    client: Path | None = None,
+) -> dict[str, Any]:
+    """``evaluate`` (and, with ``client``, the SDK) natively and under each
+    QEMU user-mode CPU model, each compared bitwise with the native run. A
+    model the artifact cannot run on must fail cleanly (an error naming the
+    reason), never with SIGILL."""
+
+    scratch = Path(scratch)
+    scratch.mkdir(parents=True, exist_ok=True)
+    tool = str(Path(__file__).resolve())
+
+    def run(prefix: list[str], label: str, sdk_run: bool) -> dict[str, Any]:
+        out = scratch / f"{'sdk' if sdk_run else 'python'}-{label}.json"
+        if sdk_run:
+            feed = scratch / "points.txt"
+            _client_input(points_file, feed)
+            command = [*prefix, str(client), str(artifact), process, str(feed)]
+        else:
+            command = [
+                *prefix,
+                sys.executable,
+                tool,
+                "evaluate",
+                str(artifact),
+                "--process",
+                process,
+                "--points",
+                str(points_file),
+                "--out",
+                str(out),
+            ]
+        start = time.perf_counter()
+        done = subprocess.run(
+            command, capture_output=True, text=True, preexec_fn=_no_core
+        )
+        entry: dict[str, Any] = {
+            "returncode": done.returncode,
+            "seconds": time.perf_counter() - start,
+            "sigill": done.returncode in (-4, 132),
+        }
+        if done.returncode != 0:
+            entry["stderr"] = done.stderr[-1500:]
+            return entry
+        entry["record"] = (
+            _parse_client(done.stdout) if sdk_run else json.loads(out.read_text())
+        )
+        return entry
+
+    verdict: dict[str, Any] = {"schema": SCHEMA, "kind": "cpu-matrix", "models": {}}
+    for sdk_run in (False, True) if client is not None else (False,):
+        path = "sdk" if sdk_run else "python"
+        native = run([], "native", sdk_run)
+        verdict["models"].setdefault("native", {})[path] = {
+            k: v for k, v in native.items() if k != "record"
+        }
+        for model in models:
+            entry = run([qemu, "-cpu", model], model, sdk_run)
+            if "record" in native and "record" in entry:
+                entry["compare"] = compare(native["record"], entry["record"])
+            entry.pop("record", None)
+            verdict["models"].setdefault(model, {})[path] = entry
+    return verdict
+
+
 # ---------------------------------------------------------------- CLI
 
 
@@ -989,6 +1149,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("a", type=Path)
     p.add_argument("b", type=Path)
     p.add_argument("--out")
+    p = sub.add_parser("cpu-matrix", help="evaluate under QEMU user-mode CPU models")
+    p.add_argument("artifact", type=Path)
+    p.add_argument("--process", required=True)
+    p.add_argument("--points", type=Path, required=True)
+    p.add_argument("--qemu", required=True, help="qemu-x86_64 executable")
+    p.add_argument("--scratch", type=Path, required=True)
+    p.add_argument("--models", default=",".join(CPU_MODELS))
+    p.add_argument("--client", type=Path)
+    p.add_argument("--out")
     p = sub.add_parser("check", help="the whole acceptance on this host")
     p.add_argument("artifact", type=Path)
     p.add_argument("--process", required=True)
@@ -1049,6 +1218,18 @@ def main(argv: list[str] | None = None) -> int:
         record = compare(json.loads(args.a.read_text()), json.loads(args.b.read_text()))
         _write(record, args.out)
         return 0 if record["bitwise"] else 1
+    if args.command == "cpu-matrix":
+        record = cpu_matrix(
+            args.artifact,
+            args.process,
+            args.points,
+            args.qemu,
+            args.scratch,
+            models=tuple(m for m in args.models.split(",") if m),
+            client=args.client,
+        )
+        _write(record, args.out)
+        return 0
     if args.command == "check":
         record = check(
             args.artifact,
