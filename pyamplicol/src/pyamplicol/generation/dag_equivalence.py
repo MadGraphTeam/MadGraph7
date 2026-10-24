@@ -3988,6 +3988,8 @@ def _rewrite_interaction_evaluation_reuse(
     evaluation_group_by_key: dict[_EvaluationKey, int] = {}
     interactions: list[InteractionNode] = []
     identity = coupling_identities or _CouplingIdentities(model)
+    # Rewritten interactions share one tuple per factor (bit pattern).
+    factors: dict[tuple[float, float, float, float], _ComplexWeight] = {}
 
     for interaction in dag.interactions:
         kernel_equivalence = _kernel_equivalence(
@@ -4028,8 +4030,34 @@ def _rewrite_interaction_evaluation_reuse(
             # Bit for bit what ``replace`` would build.
             interactions.append(interaction)
             continue
+        evaluation_factor = factors.setdefault(
+            (
+                evaluation_factor[0],
+                evaluation_factor[1],
+                copysign(1.0, evaluation_factor[0]),
+                copysign(1.0, evaluation_factor[1]),
+            ),
+            evaluation_factor,
+        )
+        # ``replace`` without its field introspection (every field is an
+        # init field and InteractionNode has no __post_init__).
         interactions.append(
-            replace(
+            InteractionNode(
+                id=interaction.id,
+                vertex_kind=interaction.vertex_kind,
+                vertex_particles=interaction.vertex_particles,
+                left_id=interaction.left_id,
+                right_id=interaction.right_id,
+                result_id=interaction.result_id,
+                coupling=interaction.coupling,
+                color_weight=interaction.color_weight,
+                lowering_backend=interaction.lowering_backend,
+                full_tensor_network_ready=interaction.full_tensor_network_ready,
+                evaluation_group_id=evaluation_group_id,
+                evaluation_factor=evaluation_factor,
+            )
+            if type(interaction) is InteractionNode
+            else replace(
                 interaction,
                 evaluation_group_id=evaluation_group_id,
                 evaluation_factor=evaluation_factor,
