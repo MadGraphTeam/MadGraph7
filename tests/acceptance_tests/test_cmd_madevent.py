@@ -263,15 +263,34 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     if proc.returncode != 0:
         # surface the generate_events output (the log lives in a tmp dir that CI
         # does not upload) so the real crash is visible in the test failure.
-        try:
-            tail = ''.join(open(log).readlines()[-120:])
-        except Exception as err:
-            tail = '(could not read %s: %s)' % (log, err)
-        test.fail('mg7 generate_events failed (rc=%s)\n'
-                  '----- %s (last 120 lines) -----\n%s' % (proc.returncode, log, tail))
+        test.fail('mg7 generate_events failed (rc=%s)\n%s'
+                  % (proc.returncode, _mg7_postproc_report(run_dir)))
     runs = sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*')))
     test.assertTrue(runs, 'no mg7 run directory under %s' % run_dir)
     return runs[0]
+
+
+def _mg7_postproc_report(run_dir, nlines=120):
+    """The content of the Events run directories and the end of the
+    generate_events log of _run_mg7_postproc, for a failure message: both live
+    in a tmp dir that CI does not upload."""
+    import glob
+    def tail(path):
+        try:
+            text = ''.join(open(path).readlines()[-nlines:])
+        except Exception as err:
+            text = '(could not read %s: %s)' % (path, err)
+        return '----- %s (last %d lines) -----\n%s' % (path, nlines, text)
+
+    out = []
+    for run in sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*'))):
+        out.append('----- %s -----\n%s' % (run, '\n'.join(sorted(os.listdir(run)))))
+        # the logs and scripts of the post-processing tools (Pythia8 shower, ...)
+        for path in sorted(glob.glob(pjoin(run, '*.log')) + glob.glob(pjoin(run, '*.sh'))):
+            if not os.path.basename(path).startswith('compile_'):
+                out.append(tail(path))
+    out.append(tail(pjoin(run_dir, 'mg7_postproc.log')))
+    return '\n'.join(out)
 
 
 #===============================================================================
@@ -3858,9 +3877,29 @@ set draw_rivet_plots True
             precopy_cards=['pythia8'],
             require_tools=('pythia8_path',),
             events=100)
+        report = _mg7_postproc_report(pjoin(self.path, 'MG7_py8'))
 
-        self.assertTrue(glob.glob(pjoin(run, '*hepmc*')),
-                        'mg7 Pythia8 shower produced no HepMC output in %s' % run)
+        hepmc = glob.glob(pjoin(run, '*hepmc*'))
+        self.assertTrue(hepmc, 'mg7 Pythia8 shower produced no HepMC output in %s\n%s'
+                        % (run, report))
+        # a file is not enough: an empty shower leaves one too. Both HepMC2
+        # and HepMC3 ascii start each event with an 'E ' line.
+        import gzip
+        opener = gzip.open if hepmc[0].endswith('.gz') else open
+        with opener(hepmc[0], 'rt') as fsock:
+            nb_showered = sum(1 for line in fsock if line.startswith('E '))
+        self.assertGreater(nb_showered, 0, 'no event in %s\n%s' % (hepmc[0], report))
+
+        # the Results Summary printed after the shower reports the generated
+        # sample (it read 0 events and 0 pb when the mg7 run was booked
+        # without them)
+        log = open(pjoin(self.path, 'MG7_py8', 'mg7_postproc.log')).read()
+        summary = log[log.rfind('Results Summary'):]
+        nb_event = re.search(r'Nb of events :\s+(\d+)', summary)
+        cross = re.search(r'Cross-section :\s+(\S+)', summary)
+        self.assertTrue(nb_event and cross, 'no Results Summary\n%s' % report)
+        self.assertEqual(int(nb_event.group(1)), 100, report)
+        self.assertGreater(float(cross.group(1)), 0., report)
 
     def test_delphes_mg7(self):
         """Delphes detector simulation chained on the mg7 output (Pythia8 shower
@@ -3879,7 +3918,8 @@ set draw_rivet_plots True
             events=100)
 
         self.assertTrue(glob.glob(pjoin(run, '*delphes*')),
-                        'mg7 Delphes run produced no output in %s' % run)
+                        'mg7 Delphes run produced no output in %s\n%s'
+                        % (run, _mg7_postproc_report(pjoin(self.path, 'MG7_delphes'))))
 
     def test_rivet_from_file_mg7(self):
         """Rivet analysis chained on the mg7 output (Pythia8 shower + Rivet)

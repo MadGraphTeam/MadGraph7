@@ -75,6 +75,13 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_auto_width_engine test_auto_width_nlo -t0
+      # Other unit tests which need the compiled madspace: without it they try
+      # to build it, or format the cross section without madspace.
+      - name: run the unit tests needing madspace
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_mg7_interference_helicity test_mg7_discrete_flavor TestOneImplementation TestRealRunNumbers -t0
 
 
   acceptancetest_mg7_bundle_1:
@@ -542,3 +549,47 @@ jobs:
             ./tests/test_manager.py test_systematics_mg7 -pA -t0 -l INFO
 
 
+  acceptancetest_mg7_uncovered:
+    # mg7 acceptance tests that no workflow selected (audit of 2026-10-24).
+    # test_mg7_custom_functions and test_mg7_interference compare to runs with
+    # NNPDF23_lo_as_0130_qed (install_lhapdf_pdfset); the custom PDF tests also
+    # need lhapdf-config and the lhapdf Python module from the heptools cache.
+    # test_custom_cut_torch_mg7 is left out: torch is not on the runner, and a
+    # skipped test fails the step.
+    # Each step runs even when an earlier one failed.
+    needs: build_madspace
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/install_madspace
+      - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/install_lhapdf_pdfset
+      - uses: ./.github/actions/restore_all
+      - uses: ./.github/actions/restore_delphes
+
+      - name: "mg7 custom functions"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages
+            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPtools/lhapdf6_py3/lib:$HOME/.cache/HEPtools/lib
+            ./tests/test_manager.py test_mg7_custom_functions -e test_custom_cut_torch_mg7 -pA -t0 -l INFO
+
+      - name: "mg7 interference"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_mg7_interference -pA -t0 -l INFO
+
+      - name: "mg7 output, systematics, reweighting, colour flow and Delphes"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export PATH="$HOME/.cache/HEPtools/bin:$PATH"
+            # LHAPDF_DATA_PATH (install_lhapdf_pdfset) holds only NNPDF23: unset, these
+            # tests find NNPDF40_lo_as_01180 in the heptools data dir via lhapdf-config
+            env -u LHAPDF_DATA_PATH ./tests/test_manager.py test_output_mg7_decay_run_card_has_no_cuts test_output_mg7_decay_subprocess_metadata test_color_flow_consistency_mg7 test_systematics_mg7_legacy test_systematics_mixed_order_mg7 test_mg7_reweighting_at_generation test_delphes_mg7 -pA -t0 -l INFO
