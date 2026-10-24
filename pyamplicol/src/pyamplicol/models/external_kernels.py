@@ -25,6 +25,10 @@ from .external_helpers import (
 
 
 class ExternalModelKernelMixin:
+    # Set by ``CompiledUFOModel`` (``_parameter_value``'s caches).
+    _runtime_derived_value_cache: dict[str, Any]
+    _runtime_parameter_substitutions: dict[Any, Any] | None
+
     def runtime_parameter_type(self, name: str) -> str:
         try:
             return self._parameter_records[str(name)].parameter_type

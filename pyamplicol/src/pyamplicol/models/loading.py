@@ -1769,11 +1769,14 @@ def counterterm_weyl_support(
     or malformed table is probed again; without an entry nothing is stored.
     """
 
+    compiled = model.compiled
+    if compiled is None:
+        raise ValueError("the Weyl support of a model without its compiled model")
     defaults = hashlib.sha256(
         json.dumps(
             sorted(
                 (str(name), [float(part) for part in value])
-                for name, value in model.compiled.parameter_defaults.items()
+                for name, value in compiled.parameter_defaults.items()
             ),
             separators=(",", ":"),
         ).encode("utf-8")

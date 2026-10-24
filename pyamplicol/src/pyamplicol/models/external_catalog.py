@@ -34,6 +34,10 @@ from .external_helpers import _spin_dimension
 
 
 class ExternalModelCatalogMixin:
+    # Set by ``CompiledUFOModel`` (``weyl_projection_support``).
+    vertices: tuple[Vertex, ...]
+    _weyl_projection_support: dict[tuple[int, int, int, int], bool]
+
     def particle(self, pdg: int) -> Particle:
         try:
             return self.particles[int(pdg)]
