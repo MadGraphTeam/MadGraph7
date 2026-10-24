@@ -443,6 +443,10 @@ class GenericDAGCompiler:
             ],
             tuple[ColorFlow, ...],
         ] = {}
+        # Model queries, coupling-order checks and colour combinations are pure
+        # functions of their keys: the eager compiler and loop-request blocks
+        # (whose counterterm programs repeat them for every slot) memoize them.
+        memoize = self.online_evaluation_reuse or self.loop_blocks
         full_mask = _labels_mask(leg.label for leg in process_ir.legs)
         eager_shared_lc_orderings = (
             color_engine.shared_lc_orderings if self.online_evaluation_reuse else False
@@ -669,7 +673,7 @@ class GenericDAGCompiler:
             return orders
 
         def coupling_orders_allowed(orders: CouplingOrders) -> bool:
-            if not self.online_evaluation_reuse:
+            if not memoize:
                 return _coupling_orders_within_limits(
                     orders,
                     self.max_coupling_orders,
@@ -794,7 +798,7 @@ class GenericDAGCompiler:
             ordered_external_labels: tuple[int, ...],
             sector_support_label_variants: tuple[tuple[int, ...], ...],
         ) -> tuple[ColorFlow, ...]:
-            if not self.online_evaluation_reuse:
+            if not memoize:
                 return color_engine.combine(
                     left.color_state,
                     right.color_state,
@@ -975,7 +979,7 @@ class GenericDAGCompiler:
                                 vertex_allowed_cache[vertex_key] = vertex_allowed
                             if not vertex_allowed:
                                 continue
-                            if self.online_evaluation_reuse:
+                            if memoize:
                                 duplicate_orientation = duplicate_orientation_cache.get(
                                     vertex
                                 )
@@ -1174,7 +1178,7 @@ class GenericDAGCompiler:
                                                 cached_auxiliary_kind(
                                                     vertex.particles[2]
                                                 )
-                                                if self.online_evaluation_reuse
+                                                if memoize
                                                 else self.model.auxiliary_kind(
                                                     vertex.particles[2]
                                                 )
@@ -1199,7 +1203,7 @@ class GenericDAGCompiler:
                                             _complex_weight_mul(
                                                 color_flow.weight,
                                                 cached_vertex_color_weight(vertex)
-                                                if self.online_evaluation_reuse
+                                                if memoize
                                                 else self.model.vertex_color_weight(
                                                     vertex,
                                                     color_accuracy=(
@@ -1220,7 +1224,7 @@ class GenericDAGCompiler:
                                         if key in interaction_keys:
                                             continue
                                         interaction_keys.add(key)
-                                        if self.online_evaluation_reuse:
+                                        if memoize:
                                             rule = lowering_rule_cache.get(vertex.kind)
                                             if rule is None:
                                                 rule = self.model.vertex_lowering_rule(
