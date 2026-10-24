@@ -209,6 +209,25 @@ PACBIN member and checks the target; `check` also evaluates the original and a
 relocated copy in fresh interpreters with other working, home and temporary
 directories, and reports any generation call made while loading.
 
+For a tree artifact with its API bundle, `tree-capi` checks the C
+distribution path: it compiles the artifact's own `API/c/check_standalone.c`
+against the C API (`capi-build`, from a wheel's `rusticol-config` or a static
+archive), runs it at the original and at a relocated copy, and compares every
+resolved value bitwise with the bundle's Python example:
+
+```console
+python tools/loop_artifact_portability.py capi-build artifacts/pp_jjj --out build/check_standalone --rusticol-config .venv/bin/rusticol-config
+python tools/loop_artifact_portability.py tree-capi artifacts/pp_jjj --client build/check_standalone --scratch /tmp/portability-c
+```
+
+By default it runs without `SYMBOLICA_LICENSE`, in two concurrent processes,
+while a plain Symbolica process holds your restricted Symbolica thread (see
+[Symbolica and Licensing](symbolica-and-licensing.md)): a run that touches
+Symbolica then aborts at once. For those seconds any other unlicensed
+Symbolica process of yours aborts too, so do not run it beside unlicensed
+work (`--no-permit` turns the hold off). `sdk` and `check` take the same hold
+with `--hold-permit`.
+
 ## Why some JIT artifacts are still target-specific
 
 JIT O0/O3 may specialize code and metadata for the producing host. C++ and ASM

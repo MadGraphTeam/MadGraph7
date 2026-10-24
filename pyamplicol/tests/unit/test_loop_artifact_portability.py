@@ -71,13 +71,13 @@ SDK_WITHOUT_V4 = (
     "the loop SDK refuses plan v4 until generation-scale-2 (V2Runtime and the "
     "rusticol_virtual_open dispatch)"
 )
-# Open defect (DESIGN §12.1, decision pending): every loop f64 path decodes
-# Symbolica exact evaluators natively (legacy coefficients, the slice's Python
-# point inputs through CoefficientEvaluator, the native-v1 tree program, the
-# SDK's V2Runtime), which without
-# SYMBOLICA_LICENSE takes Symbolica's restricted one-thread-per-user permit:
-# a second unlicensed process aborts. Fix: f64 SymJIT kernels (WP3.1 PLAN
-# §4.2, as the tree engine) or pyAmpliCol's library key in the native code.
+# Open defect (DESIGN §12.1): every loop f64 path decodes Symbolica exact
+# evaluators natively (legacy coefficients, the slice's Python point inputs
+# through CoefficientEvaluator, the native-v1 tree program, the SDK's
+# V2Runtime), which without SYMBOLICA_LICENSE takes Symbolica's restricted
+# one-thread-per-user permit: a second unlicensed process aborts. Fix (WP3.1):
+# binary64 through SymJIT applications as DESIGN §3.7 and the tree engine
+# specify, exact states only for DoubleFloat and arbitrary precision.
 NATIVE_LOOP_NEEDS_LICENCE = (
     "loop evaluation decodes Symbolica exact evaluators natively: without "
     "SYMBOLICA_LICENSE a second concurrent process aborts (DESIGN §12.1)"

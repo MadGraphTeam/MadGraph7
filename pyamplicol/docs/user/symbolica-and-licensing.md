@@ -116,7 +116,11 @@ restricted Symbolica thread while this user's thread allowance is in use".
 
 - Importing pyAmpliCol and f64 tree evaluation perform no Symbolica operation
   in the native code, so any number of unlicensed processes can load and
-  evaluate tree artifacts concurrently.
+  evaluate tree artifacts concurrently. This holds for the Python API and for
+  the C, C++ and Fortran API (the static archive links Symbolica through the
+  loop runtime, but tree evaluation never calls it). Tree evaluation at other
+  precisions uses the Python `symbolica` module, which the package key
+  unlocks, so concurrent unlicensed processes work there too.
 - Virtual (one-loop) evaluation is different for now: the loop runtime, in
   Python and in the C/C++/Fortran SDK, decodes saved Symbolica evaluator
   state natively when it loads or first evaluates a process. Without a
