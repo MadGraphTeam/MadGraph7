@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -1520,6 +1521,7 @@ def g1_estimates(document: Mapping[str, object]) -> list[dict[str, object]]:
         out.append(
             {
                 "process": row.process,
+                "label": " ".join(re.findall(r"e[-+]|[a-z]~?|>", row.process)),
                 "colour": row.colour,
                 "recipe_finite_only": list(recipe),
                 "outer_class": key,
