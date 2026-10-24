@@ -569,3 +569,15 @@ def test_top_free_seven_gluon_row_is_checked_against_njet():
     stream = streams.load("gg_ggggg")
     # NJet's first points are the stream's (at NJet's own scale).
     assert fixture["points"][:3] == stream["points"][:3]
+    # Its Catani entry states the Born and the poles, no finite part: only the
+    # quantities an entry states are compared.
+    from tools.loop_benchmark import pyamplicol_v2
+
+    row = fixture["rows"][0]["providers"]
+    primary = row[fixture["primary_provider"]]
+    errors = pyamplicol_v2.reference_errors(
+        float(primary["born"]), float(primary["finite"]), row, 0.118
+    )
+    assert "finite" not in row["catani"] and set(errors["catani"]) == {"born"}
+    assert set(errors[fixture["primary_provider"]]) == {"born", "finite"}
+    assert max(errors[fixture["primary_provider"]].values()) == 0.0
