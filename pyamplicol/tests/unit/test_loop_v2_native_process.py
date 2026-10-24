@@ -55,7 +55,7 @@ def test_stored_native_process_evaluates_without_generation(
     )
     for options in (
         {},
-        {"poles": False},
+        {"poles": "none"},
         {"stability": checks},
         {"precision": Precision.double_double()},
     ):

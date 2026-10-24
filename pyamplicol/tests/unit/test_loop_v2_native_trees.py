@@ -135,7 +135,7 @@ def test_native_rows_and_born_components_equal_the_python_inputs(executors, name
     rows, born, _amplitudes, _squared, _counterterms = native.native_inputs(
         points, scales, PARAMETERS
     )
-    _precision, evaluations = python._points(points, scales, PARAMETERS, None, True)
+    _precision, evaluations = python._points(points, scales, PARAMETERS, None, "all")
     reference = python._inputs(evaluations, "double")
     for k in range(len(points)):
         assert len(rows[k]) == len(reference["block_rows"][k])
@@ -225,7 +225,7 @@ def test_native_finite_only_keeps_every_finite_part(executors):
     points, scales = _points(PROCESSES["uux_ddxg"][3])
     points, scales = points[:1], scales[:1]
     (full,) = native.evaluate(points, scales, parameters=PARAMETERS)
-    (finite,) = native.evaluate(points, scales, parameters=PARAMETERS, poles=False)
+    (finite,) = native.evaluate(points, scales, parameters=PARAMETERS, poles="none")
     assert finite.components.keys() == full.components.keys()
     for name, sectors in full.components.items():
         for sector, value in sectors.items():
