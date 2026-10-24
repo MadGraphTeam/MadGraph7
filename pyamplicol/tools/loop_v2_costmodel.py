@@ -1452,6 +1452,108 @@ def g1_recalibration(document: Mapping[str, object]) -> list[dict[str, object]]:
     return rows
 
 
+# The G1 benchmark key whose measured outer factor stands for a design row's
+# class (same colour where measured, else full colour): pure gluon from
+# g g > g g g g, quark lines with gluons from u u~ > g g g g, V+jets from
+# u u~ > e- e+ g g, top pairs from g g > t t~ g g.
+G1_OUTER_CLASS = {
+    "gg>gg": "gg_gg",
+    "gg>gggg": "gg_gggg",
+    "gg>ggggg": "gg_gggg",
+    "uu~>ggggg": "uux_gggg",
+    "uu~>e-e+ggg": "uux_emepgg",
+    "uu~>e-e+dd~g": "uux_emepgg",
+    "gg>tt~gg": "gg_ttxgg",
+    "gg>tt~e-e+g": "gg_ttxgg",
+}
+# The NinjaRS stage with masters measured against the model R (G1 Table).
+G1_REDUCTION_OVER_MODEL = (0.97, 1.39)
+
+
+def g1_estimates(document: Mapping[str, object]) -> list[dict[str, object]]:
+    """Every design row (DESIGN Table 1a) re-estimated with G1's measured
+    terms, finite only, at G1's largest batch with native inputs.
+
+    The dressing term is the recipe's (its throughput holds: G1 measures
+    G0's rate on the real plans), the NinjaRS term the model R times the
+    measured band ``G1_REDUCTION_OVER_MODEL``, and the outer factor (trees,
+    Born and counterterm inputs, seeds, scatter, glue) the measured
+    total / (dressing + reduction) of the row's class representative
+    (``G1_OUTER_CLASS``; the same colour where measured, else full colour,
+    marked ``inferred``). A row that G1 measured itself also carries its
+    measured total. The gate limit is 1.3 x the best production provider of
+    DESIGN Table 1b where the row has one."""
+
+    outer: dict[tuple[str, str], float] = {}
+    measured: dict[tuple[str, str], float] = {}
+    for row in g1_recalibration(document):
+        name = row["configuration"]
+        if not str(name).startswith("native/") or str(name).count("/") != 1:
+            continue
+        colour = G1_COLOUR[str(name).split("/")[1]]
+        if row["outer_factor"] is not None:
+            outer[str(row["process"]), colour] = float(row["outer_factor"])  # type: ignore[arg-type]
+        measured[str(row["process"]), colour] = float(row["total"])  # type: ignore[arg-type]
+    out: list[dict[str, object]] = []
+    for row in PROCESSES:
+        key = G1_OUTER_CLASS.get(row.process)
+        if key is None:
+            continue
+        factor = outer.get((key, row.colour))
+        inferred = factor is None
+        if factor is None:
+            factor = outer.get((key, "FC"))
+        if factor is None:
+            continue
+        r_lo, r_hi = (value / 1e3 for value in row.ninjars_ms)
+        low = (
+            row.dress_structured * QUARTIC[0] / DESIGN_THROUGHPUT[0]
+            + r_lo * G1_REDUCTION_OVER_MODEL[0]
+        ) * factor
+        high = (
+            row.dress_dense * QUARTIC[1] / DESIGN_THROUGHPUT[1]
+            + r_hi * G1_REDUCTION_OVER_MODEL[1]
+        ) * factor
+        recipe = predict(row, None, "none")
+        own = next((k for k, v in G1_PROCESSES.items() if v == row.process), None)
+        limit = gate(row.process) if row.colour == "FC" else None
+        out.append(
+            {
+                "process": row.process,
+                "colour": row.colour,
+                "recipe_finite_only": list(recipe),
+                "outer_class": key,
+                "outer_factor": factor,
+                "outer_inferred": inferred,
+                "estimate": [low, high],
+                "measured": measured.get((own, row.colour)) if own else None,
+                "gate": limit,
+                "headroom": None if limit is None else limit / high,
+            }
+        )
+    return out
+
+
+def g1_estimates_text(rows: Sequence[Mapping[str, object]]) -> str:
+    lines = [
+        "process       col  recipe s/pt (finite)  outer (class)        "
+        "G1 estimate s/pt     measured  gate  headroom"
+    ]
+    for row in rows:
+        recipe, estimate = row["recipe_finite_only"], row["estimate"]
+        measured, limit = row["measured"], row["gate"]
+        lines.append(
+            f"{row['process']:13s} {row['colour']:3s}  "
+            f"{recipe[0]:.4g}-{recipe[1]:.4g}".ljust(42)  # type: ignore[index]
+            + f"{row['outer_factor']:.2f} ({row['outer_class']}"  # type: ignore[str-format]
+            + (", FC)" if row["outer_inferred"] else ")")
+            + f"  {estimate[0]:.4g}-{estimate[1]:.4g}"  # type: ignore[index]
+            + ("" if measured is None else f"  {measured:.4g}")
+            + ("" if limit is None else f"  {limit:.4g}  {row['headroom']:.2f}")
+        )
+    return "\n".join(lines)
+
+
 def g1_text(rows: Sequence[Mapping[str, object]]) -> str:
     lines = [
         "process     configuration     B    total ms  dressing  reduction  "
@@ -1523,10 +1625,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     if args.g1 is not None:
-        rows = g1_recalibration(json.loads(args.g1.read_text()))
+        document = json.loads(args.g1.read_text())
+        rows = g1_recalibration(document)
+        estimates = g1_estimates(document)
         print(g1_text(rows))
+        print()
+        print(g1_estimates_text(estimates))
         if args.json is not None:
-            args.json.write_text(json.dumps(rows, indent=1) + "\n")
+            args.json.write_text(
+                json.dumps({"terms": rows, "estimates": estimates}, indent=1) + "\n"
+            )
         return 0
     if args.export_programs is not None:
         names = args.processes.split(",") if args.processes else None
