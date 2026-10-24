@@ -669,13 +669,16 @@ def test_insertion_reachability_tells_a_vertex_from_its_conjugate(
     loop_sm_compiled_model,
 ):
     """Charged currents tell a CT vertex from its conjugate
-    (``ct_closure.InsertionReachability``: the current entering a leg of
-    field f is anti(f)). In u d~ > e+ ve the R2 of [d~ u W-] and the lepton
-    vertex [ve~ e- W+] enter a tree; their conjugates [u~ d W+] and
-    [e+ ve W-] and the vertices of other quark flavours do not. A two-point
-    vertex enters internal lines only (an external line takes the field
-    factor): in u u~ > d d~ the s-channel gluon holds [g g], and no tree has
-    an internal quark line for [u~ u] or [d~ d]."""
+    (``ct_closure.InsertionReachability``). At a CT root (leg 1 alone) the
+    current entering a leg of field f is anti(f); inside a current the tree
+    engine puts the current of particle p on the leg of p. In u d~ > e+ ve
+    the R2 of [d~ u W-] enters at the root and the lepton vertex [e+ ve W-]
+    inside the W+ current of legs 3 and 4; their conjugates [u~ d W+] and
+    [ve~ e- W+] and the vertices of other quark flavours enter no tree. With
+    a gluon, [u~ d W+] enters the current of legs 1 and 5 as well. A
+    two-point vertex enters internal lines only (an external line takes the
+    field factor): in u u~ > d d~ the s-channel gluon holds [g g], and no
+    tree has an internal quark line for [u~ u] or [d~ d]."""
 
     from types import SimpleNamespace
 
@@ -715,22 +718,213 @@ def test_insertion_reachability_tells_a_vertex_from_its_conjugate(
         assert len(found) == 1, (pdgs, found)
         return found.pop()
 
-    charged = reachability("u d~ > e+ ve", (("QED", 2),), (("QCD", 2), ("QED", 2)))
-    assert admitted(charged, -1, 2, -24)  # V_R2dxuW
-    assert not admitted(charged, -2, 1, 24)  # V_R2uxdW, its conjugate
-    assert not admitted(charged, -3, 2, -24)  # V_R2sxuW: no s quark
-    assert not admitted(charged, -1, 4, -24)  # V_R2dxcW: no c quark
-
     def vertex(*pdgs):
         return SimpleNamespace(particle_pdgs=pdgs, entries=(), order=(("QED", 1),))
 
-    assert charged.admits(vertex(-12, 11, 24))
-    assert not charged.admits(vertex(12, -11, -24))
+    charged = reachability("u d~ > e+ ve", (("QED", 2),), (("QCD", 2), ("QED", 2)))
+    assert admitted(charged, -1, 2, -24)  # V_R2dxuW, at the root
+    assert not admitted(charged, -2, 1, 24)  # V_R2uxdW, its conjugate
+    assert not admitted(charged, -3, 2, -24)  # V_R2sxuW: no s quark
+    assert not admitted(charged, -1, 4, -24)  # V_R2dxcW: no c quark
+    assert charged.admits(vertex(-11, 12, -24))  # inside the W+ of e+ ve
+    assert not charged.admits(vertex(-12, 11, 24))
+
+    gluon = reachability(
+        "u d~ > e+ ve g", (("QCD", 1), ("QED", 2)), (("QCD", 3), ("QED", 2))
+    )
+    assert admitted(gluon, -1, 2, -24)  # at the root
+    assert admitted(gluon, -2, 1, 24)  # inside the current of u~ and g
+    assert not admitted(gluon, -3, 2, -24)
 
     neutral = reachability("u u~ > d d~", (("QCD", 2),), (("QCD", 4),))
     assert admitted(neutral, 21, 21)
     assert not admitted(neutral, -2, 2)
     assert not admitted(neutral, -1, 1)
+
+
+def _program_and_rules(compiled_path, text, born, loop, veto=()):
+    """The production CT program (``ct_closure.counterterm_program_blocks``,
+    as ``LoopSlice.generate`` builds it) of ``text`` on a compiled model,
+    with the request's rules, native model, selection and the CT-lowered
+    model's process IR."""
+
+    import json
+
+    from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
+    from pyamplicol.loops.v2.blocks import (
+        build_tree_blocks,
+        vetoed_particle_ids,
+        with_ward_kernels,
+    )
+    from pyamplicol.loops.v2.ct_closure import counterterm_program_blocks
+    from pyamplicol.loops.v2.families import LoopOrderSelection, add_orders
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.processes.model import build_model_process_ir
+
+    compiled = load_compiled_model(compiled_path)
+    request = SliceRequest(
+        text,
+        born,
+        loop,
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+        particle_veto=tuple(veto),
+    )
+    prepared, continuation, fixed, _scale, _alpha = prepare_request_model(
+        compiled, request
+    )
+    data = json.loads(prepared.structure.native.to_json())
+    selection = LoopOrderSelection(
+        frozenset(request.corrections),
+        frozenset(add_orders(tuple(o.items())) for o in request.exact_loop_orders),
+    )
+    blocks = build_tree_blocks(
+        build_model_process_ir(text, compiled.ir, color_accuracy="full"),
+        CompiledUFOModel(compiled),
+        born_coupling_orders=dict(request.born_orders),
+        block_coupling_orders=request.loop_order_bounds,
+        ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+    )
+    blocks, compiled = with_ward_kernels(blocks, compiled, fixed)
+    program = counterterm_program_blocks(
+        compiled,
+        prepared,
+        text,
+        data,
+        selection,
+        blocks.born_orders,
+        veto=request.particle_veto,
+        fixed_parameters=fixed,
+        declaration=request.colour_declaration,
+        continuation=continuation,
+        scope=(
+            tuple(sorted(request.born_orders.items())),
+            tuple(sorted(request.loop_order_bounds.items())),
+            request.compatibility,
+        ),
+    )
+    return program, prepared.counterterms.rules, data, selection
+
+
+def _rules_in_program(program, rules, data, selection):
+    """``(rules of the CT vertices and clone lines the program's DAG
+    interactions use, rules of its CT-root sites)``, read from the lowered
+    model: interaction vertex kind -> kernel terms -> couplings -> lowered
+    structures -> rule."""
+
+    from pyamplicol.loops.v2.ct_closure import CountertermClosure
+    from pyamplicol.loops.v2.ct_recursion import rule_key
+
+    model = program.recursion.model
+    lowered = model.lowered.compiled
+    name = {rule_key(rule): rule_name for rule_name, rule in rules.items()}
+    of_structure = {
+        structure: name[key]
+        for key, structures in model.structures.items()
+        for structure in structures
+    }
+    by_coupling: dict[str, set[str]] = {}
+    for structure, coupling in model.lowered.couplings.items():
+        by_coupling.setdefault(coupling, set()).add(of_structure[structure])
+    by_clone: dict[str, set[str]] = {}
+    for structure, clone in model.lowered.insertions.items():
+        by_clone.setdefault(clone, set()).add(of_structure[structure])
+    coupling = {int(term.id): term.coupling for term in lowered.ir.vertex_terms}
+    by_kind: dict[int, set[str]] = {}
+    for kernel in lowered.ir.oriented_kernels:
+        for term_id in kernel.term_ids or (kernel.term_id,):
+            by_kind.setdefault(int(kernel.kind), set()).update(
+                by_coupling.get(coupling.get(int(term_id), ""), ())
+            )
+    particle = {int(p.pdg_code): p.name for p in lowered.ir.particles}
+    dag = program.blocks.blocks_dag
+    inside = set().union(
+        *(by_kind.get(int(i.vertex_kind), set()) for i in dag.interactions),
+        *(
+            by_clone.get(particle[int(c.index.particle_id)], set())
+            for c in dag.currents
+        ),
+    )
+    root = {
+        site.rule_name
+        for site in CountertermClosure.root_sites(program, data, selection)
+    }
+    return inside, root
+
+
+@pytest.mark.loop_physics
+def test_insertion_reachability_is_sound_against_the_program_dag(
+    loop_sm_compiled_model,
+):
+    """``ct_closure.InsertionReachability`` admits every rule the production
+    CT program itself uses, in its DAG (CT vertices and clone lines inside
+    the currents) or at its CT roots, on a charged-current request: in
+    u d~ > w+ g the R2 of [u~ d W+] sits inside the current of legs 1 and 4
+    and that of its conjugate [d~ u W-] at the root (a reading of every
+    vertex by its incoming fields admits only the latter)."""
+
+    from pyamplicol.loops.v2.ct_closure import InsertionReachability
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.processes.model import build_model_process_ir
+
+    program, rules, data, selection = _program_and_rules(
+        loop_sm_compiled_model,
+        "u d~ > w+ g",
+        {"QCD": 1, "QED": 1},
+        {"QCD": 3, "QED": 1},
+    )
+    inside, root = _rules_in_program(program, rules, data, selection)
+    lowered = program.recursion.model.lowered.compiled
+    reachability = InsertionReachability.build(
+        CompiledUFOModel(lowered),
+        build_model_process_ir("u d~ > w+ g", lowered.ir, color_accuracy="full"),
+        program.recursion.coupling_order_limits(),
+    )
+    used = inside | root
+    assert used and used <= set(program.recursion.rules)
+    assert not {n for n in used if not reachability.admits(rules[n])}
+
+    def of_fields(*pdgs):
+        return {n for n in used if sorted(rules[n].particle_pdgs) == sorted(pdgs)}
+
+    assert of_fields(-2, 1, 24) and of_fields(-2, 1, 24) <= inside - root
+    assert of_fields(-1, 2, -24) and of_fields(-1, 2, -24) <= root - inside
+
+
+@pytest.mark.loop_physics
+def test_unlowerable_charged_vertex_in_a_current_is_refused(
+    loop_sm_compiled_model, monkeypatch
+):
+    """REQUIREMENTS_ADDENDUM J: an unlowerable CT vertex that can enter a
+    tree is refused, also when it enters only inside a current. With the R2
+    of [u~ d W+] made unlowerable, u d~ > w+ g is refused naming it (its
+    vertex sits in the current of legs 1 and 4); its conjugate stays
+    lowered."""
+
+    from collections import OrderedDict
+
+    from pyamplicol.loops.v2 import ct_closure, ct_recursion
+
+    original = ct_recursion.TreeVocabulary.rule_reason
+
+    def rule_reason(self, rule):
+        if rule.kind == "R2" and sorted(rule.particle_pdgs) == [-2, 1, 24]:
+            return "made unlowerable (test)"
+        return original(self, rule)
+
+    monkeypatch.setattr(ct_recursion.TreeVocabulary, "rule_reason", rule_reason)
+    # A lowered model of this request without the patch must not be reused,
+    # nor this one kept.
+    monkeypatch.setattr(ct_closure, "_LOWERED", OrderedDict())
+    with pytest.raises(
+        ct_recursion.UnloweredCountertermError, match=r"\[u~ d W\+\] \(made"
+    ):
+        _program_and_rules(
+            loop_sm_compiled_model,
+            "u d~ > w+ g",
+            {"QCD": 1, "QED": 1},
+            {"QCD": 3, "QED": 1},
+        )
 
 
 # The tree route (form 1) is a test of the lowering; the closure, the

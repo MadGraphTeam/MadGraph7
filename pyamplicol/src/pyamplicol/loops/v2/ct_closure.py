@@ -72,6 +72,8 @@ RootKind = Literal["vertex", "line", "counterterm"]
 ROOT_VERTEX: RootKind = "vertex"
 ROOT_LINE: RootKind = "line"
 ROOT_COUNTERTERM: RootKind = "counterterm"
+# The leg set of leg 1 alone (bit 0), where a CT amplitude closes.
+_ROOT_LEG = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,21 +118,42 @@ class InsertionReachability:
     may still vanish.
 
     A vertex of UFO fields ``f_1..f_n`` and orders ``o`` enters a tree iff the
-    legs split into ``n`` blocks whose currents enter its legs (the current
-    entering a leg of field ``f`` is the tree-engine particle ``anti(f)``)
-    with orders that sum with ``o`` to within the physical ``limits``. A block
-    of one leg is the external particle itself; a two-point vertex needs two
-    blocks of at least two legs, as the CT program puts two-point insertions
-    on internal lines only (``models.ct_line_insertions``: a clone line is
-    never external; an external line takes the particle's field factor). A
-    one-point (tadpole) vertex is the root of a current over every leg. No
-    loop, site or witness is consulted.
+    legs split into ``n`` blocks whose currents enter its legs with orders
+    that sum with ``o`` to within the physical ``limits``. The CT program
+    reads a vertex in one of two ways, told apart by leg 1's block:
+
+    * leg 1 alone is a block: a CT-root site (``CountertermClosure.
+      root_sites``), which reads each block by its incoming field like the
+      Born closure (``blocks.TreeBlockTable``): the current entering a leg of
+      field ``f`` is the tree-engine particle ``anti(f)``;
+    * otherwise: an insertion inside a current (the program's DAG, whose
+      currents hold neither leg 1 nor all the other legs,
+      ``RootReachability``), which the tree engine reads with the current of
+      tree particle ``p`` on the UFO leg of ``p``
+      (``models.compiler_entry._compile_oriented_kernels``), so the current
+      entering a leg of field ``f`` is ``f``. The block holding leg 1 is the
+      rest of the tree re-rooted at the vertex: the path from the vertex's
+      result to the root's ordinary vertex, read through the conjugate of
+      that vertex (an ordinary vertex set closed under conjugation, as a
+      Hermitian Lagrangian gives), whose currents the sweep over leg sets
+      with leg 1 holds.
+
+    The two readings differ only for vertices whose fields are not closed
+    under conjugation (e.g. W couplings): in u d~ > e+ ve g the R2 of
+    [u~ d W+] sits inside the current of legs 1 and 5 and that of [d~ u W-]
+    at the root. A block of one leg is the external particle itself; a
+    two-point vertex needs two blocks of at least two legs, as the CT program
+    puts two-point insertions on internal lines only
+    (``models.ct_line_insertions``: a clone line is never external; an
+    external line takes the particle's field factor). A one-point (tadpole)
+    vertex is the root of a current over every leg. No loop, site or witness
+    is consulted.
     """
 
     full_mask: int
     currents: Mapping[int, Mapping[int, tuple[Orders, ...]]]
     limits: Mapping[str, int]
-    entering: Mapping[int, int]
+    antiparticles: Mapping[int, int]
 
     @classmethod
     def build(
@@ -184,17 +207,22 @@ class InsertionReachability:
             _coupling_orders_within_limits,
         )
 
-        targets = [self.entering.get(int(pdg)) for pdg in rule.particle_pdgs]
-        if not targets or any(target is None for target in targets):
+        fields = [int(pdg) for pdg in rule.particle_pdgs]
+        if not fields or any(f not in self.antiparticles for f in fields):
             return False  # a field the tree model does not hold (a ghost)
         own = {
             _combine_coupling_order_tuples(tuple(e.order)) for e in rule.entries
         } or {_combine_coupling_order_tuples(tuple(rule.order))}
-        arrangements = set(permutations(targets))
-        for parts in _set_partitions(self.full_mask, len(targets), len(targets)):
+        # Leg 1 alone: the closure's reading (a CT root); otherwise the tree
+        # engine's (an insertion inside a current).
+        readings = {
+            True: set(permutations(self.antiparticles[f] for f in fields)),
+            False: set(permutations(fields)),
+        }
+        for parts in _set_partitions(self.full_mask, len(fields), len(fields)):
             if len(parts) == 2 and any(not part & (part - 1) for part in parts):
                 continue  # a two-point vertex on an external line
-            for arrangement in arrangements:
+            for arrangement in readings[_ROOT_LEG in parts]:
                 options = [
                     self.currents.get(part, {}).get(target, ())
                     for part, target in zip(parts, arrangement, strict=True)

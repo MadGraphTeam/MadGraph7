@@ -209,7 +209,6 @@ relocation with the same native build. A dedicated acceptance test covers this.
   sound: a vertex that can enter a tree is never inert. A request admitting a
   vertex that cannot be lowered and can enter one of its trees is refused
   (coordinator decision, 2026-10-23 ~23:50 UTC). Implementation note
-  (ct-simplify): the generation record is the generated slice's
-  `CountertermRecursion.inert` (rule -> reason); it is not yet persisted in the
-  plan v4 artifact, whose native-checked metadata schema would need a change
-  (open for the coordinator, DESIGN §6.2).
+  (ct-simplify): the generation record is the process's generation filter
+  `counterterms_inert` (rule -> reason) in the artifact's generation
+  extension, next to `particle_veto` (DESIGN §6.2).

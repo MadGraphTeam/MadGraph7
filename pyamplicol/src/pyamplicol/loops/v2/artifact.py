@@ -493,6 +493,17 @@ class GeneratedProcess:
     def spin_correlations(self) -> tuple[tuple[int, ...], ...]:
         return tuple(tuple(legs) for legs in self.observables.spin_classes)
 
+    def inert_counterterms(self) -> dict[str, str]:
+        """The CT rules the request admits that contribute nothing, by name,
+        with the reason (``CountertermRecursion.inert``, REQUIREMENTS_ADDENDUM
+        J): the generation record's ``counterterms_inert``. Rule names and
+        reasons come from the model, so the record holds no path."""
+
+        program = self.slice.counterterm_program
+        if program is None:
+            return {}
+        return dict(sorted(program.recursion.inert.items()))
+
 
 def _order_text(order: Orders) -> str:
     return " ".join(f"{name}^{power}" for name, power in canonical_order(order))

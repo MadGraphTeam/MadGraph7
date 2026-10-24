@@ -734,6 +734,15 @@ def test_public_generation_publishes_plan_v4(full_colour):
         assert slice_.counterterm_program is not None
         assert slice_.sites.sites == () and not slice_.site_terms
         assert slice_.counterterm_program.closure.terms
+    # The generation record names the request's inert CT rules (ADDENDUM J).
+    (record,) = (
+        r
+        for r in manifest.extensions["generation"]["concrete_processes"]
+        if r["id"] == "uux_ddxg"
+    )
+    assert record["filters"]["counterterms_inert"] == dict(
+        sorted(generated[0].counterterm_program.recursion.inert.items())
+    )
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
 
@@ -2522,10 +2531,14 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
     equals the legacy engine: Born and the QCD^6 virtual in binary64 (1e-12)
     and at 60 digits (1e-40, legacy at 60 digits). v2 also lists the
     QCD^4 QED^2 sector, a structural zero (no one-loop g g > g g amplitude of
-    order QCD^2 QED^2), which legacy omits."""
+    order QCD^2 QED^2), which legacy omits. The electroweak CT rules the tree
+    recursion cannot lower enter no tree of g g > g g: the generation record
+    lists them inert (REQUIREMENTS_ADDENDUM J), the G0-photon mixing among
+    them."""
 
     from pyamplicol import Runtime
     from pyamplicol.api import ProcessRequest, ProcessSet
+    from pyamplicol.artifacts import load_manifest
 
     entries = (("gg", "g g > g g"),)
     processes = ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),))
@@ -2537,6 +2550,15 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
         runtimes[engine] = Runtime.load(
             tmp_path / engine, process="gg", model_parameters=GG_PARAMETERS
         )
+    (record,) = load_manifest(tmp_path / "v2").extensions["generation"][
+        "concrete_processes"
+    ]
+    inert = record["filters"]["counterterms_inert"]
+    unreachable = {
+        name: reason for name, reason in inert.items() if "enters no tree" in reason
+    }
+    assert "PYAMPLICOL_CT_V306" in unreachable, sorted(inert)
+    assert any("UFO helper 'recms'" in reason for reason in unreachable.values())
     reference = runtimes["legacy"].evaluate(
         [POINT], mu_r2="1000000", arithmetic="arbitrary", precision=ARBITRARY_DIGITS
     )
