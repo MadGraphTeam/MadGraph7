@@ -49,6 +49,16 @@ impl V2PlanModel {
         Ok(PyBytes::new(py, &member))
     }
 
+    /// The bound of the loader's derivations for this plan,
+    /// `(memory bytes, iterations)` (`PlanModel::derive_bound`), after its
+    /// refusal of untrusted scalars.
+    fn derive_bound(&self, py: Python<'_>) -> PyResult<(u64, u64)> {
+        let model = &self.0;
+        py.detach(|| model.derive_bound())
+            .map(|bound| (bound.memory, bound.work))
+            .map_err(error)
+    }
+
     /// The binary member's column names, in member order (diagnostics and
     /// tests of crafted members).
     #[staticmethod]

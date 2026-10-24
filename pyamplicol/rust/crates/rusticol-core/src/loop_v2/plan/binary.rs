@@ -67,17 +67,38 @@
 //! required to end at the next one's with exactly the charges the pass made.
 //! The model is the sequential decoding's for any thread count.
 //!
+//! **Bounded derivation.** The loader's derivations
+//! ([`LoopProgramV4::from_file`], shared with the JSON load) size tables by
+//! plan scalars: the row links per Born row (the product of the legs'
+//! helicity counts) expanded over the observable columns, the split parts per
+//! content term, the monomial tables per (rank, degree), the column-row flags
+//! and the vertex table. The member pays for them as for its decoded size:
+//! `derive::bound` computes, in one pass over the decoded model, an upper
+//! bound of the bytes those derivations allocate and of the iterations of
+//! their scalar-driven loops ([`DeriveBound`]), after refusing the scalars
+//! they would trust beyond the plan's tables (checks the loader's validation
+//! implies: vertex ids, family and step ranks). [`PlanModel::program`]
+//! refuses a member whose bound exceeds [`DERIVED_PER_BYTE`] per member byte,
+//! and reserves the memory bound fallibly before deriving; the writer pads a
+//! plan that needs more (none written today: 80-480 bytes per member byte at
+//! five to seven legs). A member of `n` bytes thus makes the loader allocate
+//! at most `DERIVED_PER_BYTE × n` bytes beyond its decoded model, and a plan
+//! the allocator cannot hold is refused with an error. The production JSON
+//! load (`LoopProgramV4::load`, `plan.rs`) is not bounded so: that is the
+//! loader's work of phase 1, together with fallible reservations in the
+//! derivations themselves.
+//!
 //! Reading fails closed with an error, never a panic or an allocation abort:
 //! headers, widths, payload sizes and the padding are checked, every value is
 //! checked against its field's type, every column must be read to its end, a
-//! string takes its bytes from what the byte column still holds, and the list
-//! reservations and copies are fallible (`TryCopy`). Only the decoding is this
-//! module's: the derivations of [`LoopProgramV4::from_file`] are the JSON
-//! load's, and some of their reservations follow plan scalars no input bounds
-//! (the row links expanded over `columns`, a vertex id, `rows`): bounding
-//! them, for both loads, is the loader's work of phase 1.
+//! string takes its bytes from what the byte column still holds, the list
+//! reservations and copies are fallible (`TryCopy`), and the string table is
+//! shared as decoded (one fixed-size `Arc` header besides it).
 
+mod derive;
 mod json;
+
+pub use derive::{DERIVED_PER_BYTE, DeriveBound};
 
 use super::{
     BindingFile, ClosureFile, ContentFile, EdgeFile, EntryFile, FamilyFile, FormPolicy,
@@ -129,6 +150,8 @@ pub fn column_names() -> &'static [&'static str] {
 /// binary columnar member.
 pub struct PlanModel {
     file: PlanFile,
+    /// The length of the member it was decoded from (none for a JSON).
+    member: Option<u64>,
 }
 
 impl PlanModel {
@@ -136,7 +159,7 @@ impl PlanModel {
     /// loader parses it (unknown fields refused).
     pub fn from_json(json: &[u8]) -> RusticolResult<Self> {
         let file = serde_json::from_slice(json).map_err(|error| invalid(error.to_string()))?;
-        Ok(Self { file })
+        Ok(Self { file, member: None })
     }
 
     /// The model of a binary plan member ([`Self::binary`]).
@@ -145,7 +168,10 @@ impl PlanModel {
         let mut file = PlanFile::fresh();
         visit_plan(&mut reader, &mut file)?;
         reader.finish()?;
-        Ok(Self { file })
+        Ok(Self {
+            file,
+            member: Some(bytes.len() as u64),
+        })
     }
 
     /// The plan JSON, byte-identical to the exporter's.
@@ -158,11 +184,32 @@ impl PlanModel {
     pub fn binary(&mut self) -> RusticolResult<Vec<u8>> {
         let mut writer = Writer::default();
         visit_plan(&mut writer, &mut self.file)?;
-        Ok(writer.finish())
+        // A plan the bound refuses gets no padding for it: its reader
+        // refuses it alike.
+        let derived = derive::bound(&self.file).map_or(0, |bound| bound.cost());
+        writer.finish(derived)
     }
 
-    /// The validated program with its derived tables (`LoopProgramV4::load`).
+    /// An upper bound of what the loader's derivations allocate and iterate
+    /// for this plan, after refusing the scalars they would trust beyond the
+    /// plan's tables (module docs, "Bounded derivation").
+    pub fn derive_bound(&self) -> RusticolResult<DeriveBound> {
+        derive::bound(&self.file)
+    }
+
+    /// The validated program with its derived tables (`LoopProgramV4::load`),
+    /// once the derivations are bounded: a model decoded from a member must
+    /// not need more than [`DERIVED_PER_BYTE`] per member byte, and the memory
+    /// bound is reserved fallibly first (module docs, "Bounded derivation").
     pub fn program(self, policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
+        let bound = derive::bound(&self.file)?;
+        if let Some(member) = self.member {
+            require(
+                bound.cost() <= DERIVED_PER_BYTE.saturating_mul(member),
+                "binary plan: the loader's derivations exceed the member's bound",
+            )?;
+        }
+        derive::reserve(bound.memory)?;
         LoopProgramV4::from_file(self.file, policy)
     }
 }
@@ -1069,7 +1116,9 @@ impl Writer {
         &mut self.columns[col as usize]
     }
 
-    fn finish(mut self) -> Vec<u8> {
+    /// The member, padded so that it pays for its decoded size and for its
+    /// derivations' bound `derived`.
+    fn finish(mut self, derived: u64) -> RusticolResult<Vec<u8>> {
         let strings = std::mem::take(&mut self.strings);
         let mut decoded = self.decoded;
         let mut charge = |bytes: usize| decoded = decoded.saturating_add(bytes as u64);
@@ -1088,11 +1137,23 @@ impl Writer {
         }
         // Zero bytes after the columns when the plan shares more than the
         // bound allows, so its member declares at most DECODED_PER_BYTE bytes
-        // per member byte (none for the plans written today).
+        // per member byte, or derives more than DERIVED_PER_BYTE per member
+        // byte (none for the plans written today).
         let unpadded = (HEADER + body.len()) as u64;
-        let short = decoded.div_ceil(DECODED_PER_BYTE).saturating_sub(unpadded);
-        let padding = short.next_multiple_of(8);
-        let mut out = Vec::with_capacity(HEADER + body.len() + padding as usize);
+        let least = decoded
+            .div_ceil(DECODED_PER_BYTE)
+            .max(derived.div_ceil(DERIVED_PER_BYTE));
+        let padding = least.saturating_sub(unpadded).next_multiple_of(8);
+        let size = usize::try_from(unpadded.saturating_add(padding))
+            .ok()
+            .filter(|&size| size <= isize::MAX as usize)
+            .ok_or_else(|| {
+                invalid("binary plan: the plan needs a member beyond any address space")
+            })?;
+        let mut out = Vec::new();
+        out.try_reserve_exact(size).map_err(|_| {
+            invalid("binary plan: the member's padding exceeds what the allocator grants")
+        })?;
         out.extend_from_slice(&MAGIC);
         out.extend_from_slice(&FORMAT.to_le_bytes());
         out.extend_from_slice(&PLAN_SCHEMA.to_le_bytes());
@@ -1101,8 +1162,8 @@ impl Writer {
         out.extend_from_slice(&decoded.to_le_bytes());
         out.extend_from_slice(&padding.to_le_bytes());
         out.extend_from_slice(&body);
-        out.resize(out.len() + padding as usize, 0);
-        out
+        out.resize(size, 0);
+        Ok(out)
     }
 }
 
@@ -1261,7 +1322,7 @@ impl Cursor<'_> {
 
 struct Reader<'a> {
     cursors: Vec<Cursor<'a>>,
-    strings: Arc<[String]>,
+    strings: Arc<Vec<String>>,
     budget: Budget,
     tables: Vec<Option<Box<dyn Any>>>,
     /// In the skip pass of [`Reader::records`].
@@ -1382,7 +1443,7 @@ impl<'a> Reader<'a> {
         require(bytes.is_empty(), "binary plan: trailing bytes")?;
         let mut reader = Self {
             cursors,
-            strings: Arc::from(Vec::new()),
+            strings: Arc::new(Vec::new()),
             budget: Budget { declared, used: 0 },
             tables: Vec::new(),
             skip: false,
@@ -1410,7 +1471,8 @@ impl<'a> Reader<'a> {
             }
             strings.push(String::from_utf8(text).map_err(|_| invalid("binary plan: string"))?);
         }
-        reader.strings = Arc::from(strings);
+        // Shared as decoded (a fixed-size Arc header, no copy of the table).
+        reader.strings = Arc::new(strings);
         Ok(reader)
     }
 
@@ -1671,6 +1733,7 @@ mod tests {
     fn empty_member() -> Vec<u8> {
         PlanModel {
             file: PlanFile::fresh(),
+            member: None,
         }
         .binary()
         .unwrap()
@@ -1803,7 +1866,7 @@ mod tests {
                 content
             })
             .collect();
-        let mut model = PlanModel { file };
+        let mut model = PlanModel { file, member: None };
         let member = model.binary().unwrap();
         let (decoded, padding) = (header(&member, 24), header(&member, 32));
         assert!(padding > 0, "the plan needs padding");
@@ -1838,7 +1901,7 @@ mod tests {
         file.helicities = vec![vec![-1, 1]; 4];
         file.block_rows = vec![3, 1, 4];
         file.factors = vec![(0, 2), (1, 7)];
-        let member = PlanModel { file }.binary().unwrap();
+        let member = PlanModel { file, member: None }.binary().unwrap();
         assert!(PlanModel::from_binary(&member).is_ok());
         for len in 0..member.len() {
             assert!(PlanModel::from_binary(&member[..len]).is_err(), "{len}");
@@ -1897,6 +1960,7 @@ mod tests {
     fn parallel_decode_equals_the_sequential_one() {
         let mut model = PlanModel {
             file: parallel_plan(),
+            member: None,
         };
         let member = model.binary().unwrap();
         let json = model.json();
@@ -1927,6 +1991,156 @@ mod tests {
                 _ => panic!("byte {at}: one and four threads disagree"),
             }
         }
+    }
+
+    /// The member of `file` padded for its decoded size and for derivations
+    /// of `derived` bytes (the writer's padding with another bound).
+    fn member_paying(file: &PlanFile, derived: u64) -> Vec<u8> {
+        let mut writer = Writer::default();
+        let mut file = PlanModel {
+            file: json_copy(file),
+            member: None,
+        };
+        visit_plan(&mut writer, &mut file.file).unwrap();
+        writer.finish(derived).unwrap()
+    }
+
+    fn json_copy(file: &PlanFile) -> PlanFile {
+        serde_json::from_slice(&json::write(file)).unwrap()
+    }
+
+    /// `legs` two-helicity legs, one family reading them all at once through
+    /// `edges` leaf edges into a content on no leg (each edge links every
+    /// Born row), `columns` observable columns.
+    fn born_rows_plan(legs: usize, edges: usize, columns: usize) -> PlanFile {
+        let mut file = PlanFile::fresh();
+        (file.schema, file.legs, file.rows, file.columns) = (PLAN_SCHEMA, legs, 1 << legs, columns);
+        file.helicities = vec![vec![-1, 1]; legs];
+        let mut content = ContentFile::fresh();
+        (content.rows, content.row_helicities) = (1, vec![Vec::new()]);
+        content.terms = vec![TermFile::fresh()];
+        file.contents = vec![content];
+        file.factors = vec![(0, 0)];
+        let mut family = FamilyFile::fresh();
+        (family.sequence, family.rank) = (vec![((1 << legs) - 1, 0)], 1);
+        let mut step = StepFile::fresh();
+        step.seeded = true;
+        step.edges = (0..edges)
+            .map(|_| EdgeFile {
+                leaf: 0,
+                child: -1,
+                factor: 0,
+                links: None,
+            })
+            .collect();
+        family.steps = vec![step];
+        file.families = vec![family];
+        file
+    }
+
+    /// Plans of a few kB whose derivations would take terabytes:
+    /// 2^40 Born rows, 2^30 columns, 2^20 x 2^12 column-row flags, a 2^40-th
+    /// vertex, ranks of 10^6 or 2^63, a forward table of degree 10^6.
+    /// Their unpadded members decode, and their reader refuses them before
+    /// the derivations allocate (this process would abort otherwise).
+    #[test]
+    fn derivation_bombs_are_refused_before_they_allocate() {
+        let mut bombs = vec![
+            ("rows", born_rows_plan(40, 1, 1)),
+            ("columns", born_rows_plan(4, 8, 1 << 30)),
+        ];
+        let mut flags = born_rows_plan(20, 0, 1 << 12);
+        flags.families.clear();
+        flags.column_rows = Some(vec![None; 1 << 12]);
+        bombs.push(("column rows", flags));
+        let mut vertex = born_rows_plan(4, 1, 1);
+        vertex.contents[0].terms[0].vertex = 1 << 40;
+        bombs.push(("vertex", vertex));
+        let mut rank = born_rows_plan(4, 1, 1);
+        rank.families[0].rank = 1_000_000;
+        bombs.push(("family rank", rank));
+        let mut step = born_rows_plan(4, 1, 1);
+        (
+            step.families[0].steps[0].rank_in,
+            step.families[0].steps[0].degree,
+        ) = (1 << 62, 1 << 62);
+        bombs.push(("step rank", step));
+        let mut merged = born_rows_plan(4, 1, 1);
+        let mut state = MergedStateFile::fresh();
+        state.rank_in = 1_000_000;
+        merged.merged = Some(MergedFile {
+            families: vec![0],
+            entries: Vec::new(),
+            states: vec![state],
+            chunks: vec![1],
+        });
+        bombs.push(("merged rank", merged));
+        let mut forward = born_rows_plan(4, 1, 1);
+        let mut state = StateFile::fresh();
+        (state.parent, state.degree, state.rank) = (-1, 1_000_000, 1_000_000);
+        forward.forward = Some(ForwardFile {
+            states: vec![state],
+        });
+        bombs.push(("forward degree", forward));
+        for (name, file) in &bombs {
+            let member = member_paying(file, 0);
+            assert!(member.len() < 8192, "{name}: {}", member.len());
+            let decoded = PlanModel::from_binary(&member).unwrap();
+            assert_eq!(decoded.json(), json::write(file), "{name}");
+            let error = read_binary(&member).err().unwrap().to_string();
+            let expected = match *name {
+                "vertex" => "vertex id",
+                "family rank" => "family rank",
+                "step rank" => "a step above",
+                "merged rank" => "a merged state above",
+                _ => "exceed the member's bound",
+            };
+            assert!(error.contains(expected), "{name}: {error}");
+        }
+    }
+
+    /// A plan whose derivations need more than its member pays for gets a
+    /// padded member, which the reader accepts; without its padding it is
+    /// refused. A bound the allocator cannot reserve is an error.
+    #[test]
+    fn members_pay_for_their_derivations() {
+        let file = born_rows_plan(16, 4, 3);
+        let mut model = PlanModel {
+            file: json_copy(&file),
+            member: None,
+        };
+        let bound = model.derive_bound().unwrap();
+        let member = model.binary().unwrap();
+        let padding = header(&member, 32);
+        assert!(padding > 0, "the plan needs padding");
+        let len = member.len() as u64;
+        assert!(bound.cost() <= DERIVED_PER_BYTE * len);
+        assert!(bound.cost() > DERIVED_PER_BYTE * (len - padding));
+        assert_eq!(
+            PlanModel::from_binary(&member)
+                .unwrap()
+                .derive_bound()
+                .unwrap(),
+            bound
+        );
+        // Past the bound, the loader's own validation decides (this plan's
+        // content has no fused entry).
+        let error = read_binary(&member).err().unwrap().to_string();
+        assert!(!error.contains("bound"), "{error}");
+        let cut = member_paying(&file, 0);
+        assert!(cut.len() as u64 == len - padding);
+        let error = read_binary(&cut).err().unwrap().to_string();
+        assert!(error.contains("exceed the member's bound"), "{error}");
+        // The empty plan derives next to nothing, and is no bomb.
+        let empty = PlanModel {
+            file: PlanFile::fresh(),
+            member: None,
+        };
+        assert!(empty.derive_bound().unwrap().cost() < 1024);
+        for bytes in [u64::MAX, 1 << 62] {
+            assert!(derive::reserve(bytes).is_err(), "{bytes}");
+        }
+        assert!(derive::reserve(1 << 20).is_ok());
     }
 
     #[test]
