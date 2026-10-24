@@ -69,25 +69,34 @@
 //!
 //! **Bounded derivation.** The loader's derivations
 //! ([`LoopProgramV4::from_file`], shared with the JSON load) size tables by
-//! plan scalars: the row links per Born row (the product of the legs' helicity
-//! counts) expanded over the observable columns, the split parts per content
-//! term, the monomial tables per (rank, degree), the column-row flags and the
-//! vertex table. The member pays for them as for its decoded size:
-//! `derive::bound` computes, in one pass over the decoded model, an upper bound
-//! of the bytes those derivations allocate (in all, and held at their peak) and
-//! of the iterations of their scalar-driven loops ([`DeriveBound`]), after
-//! refusing the scalars they would trust beyond the plan's tables (checks the
-//! loader's validation implies: vertex ids, family and step ranks).
-//! [`PlanModel::program`] refuses a member whose bound exceeds
-//! [`DERIVED_PER_BYTE`] per member byte, and reserves the memory bound (with
-//! twice the decoded size, for the program's copies of the plan's lists)
-//! fallibly before deriving; the writer pads a plan that needs more (none
+//! plan scalars (the row links per Born row, the product of the legs'
+//! helicity counts, expanded over the observable columns; the split parts per
+//! content term; the monomial tables per (rank, degree); the column-row flags;
+//! the vertex table; a decimal weight's power of ten) and by the plan's lists
+//! at several times their decoded size (segment layouts and their sets per
+//! fused entry, vertex tables per split entry, parsed weights, the schedules'
+//! structs, maps and B-trees). The member pays for them as for its decoded
+//! size: `derive::bound` computes, in one pass over the decoded model, an
+//! upper bound of the bytes those derivations allocate (in all, and held at
+//! their peak) and of the iterations of their scalar-driven loops
+//! ([`DeriveBound`]), after refusing the values they would trust beyond the
+//! plan's tables (vertex ids, family and step ranks, fused-entry q-degrees,
+//! decimal powers; `derive` module docs). [`PlanModel::program`] refuses a
+//! member whose bound exceeds [`DERIVED_PER_BYTE`] per member byte, and
+//! probes the bound's peak fallibly before deriving (with its [`margin`]: an
+//! eighth more and 16 MiB); the writer pads a plan that needs more (none
 //! written today: a few hundred bytes per member byte at five to seven legs).
 //! A member of `n` bytes thus makes the loader allocate at most
-//! `DERIVED_PER_BYTE × n` bytes beyond its decoded model, and a plan the
-//! allocator cannot hold is refused with an error. The production JSON load (`LoopProgramV4::load`,
-//! `plan.rs`) is not bounded so: that is the loader's work of phase 1, together
-//! with fallible reservations in the derivations themselves.
+//! `DERIVED_PER_BYTE × n` bytes beyond its decoded model, and a plan whose
+//! derivations the allocator cannot grant is refused with an error. A probe
+//! is a check, not a reservation (it allocates and releases at once), and it
+//! discriminates under an address-space limit (`RLIMIT_AS`): under Linux's
+//! default overcommit without one it succeeds for any size up to about the
+//! host's RAM plus swap, where the per-member-byte bounds are the guard. The
+//! decoded model is probed likewise before decoding, with the thread pool
+//! started first. The production JSON load (`LoopProgramV4::load`, `plan.rs`)
+//! is not bounded so: that is the loader's work of phase 1, together with
+//! fallible reservations in the derivations themselves.
 //!
 //! Reading fails closed with an error, never a panic or an allocation abort:
 //! headers, widths, payload sizes and the padding are checked, every value is
@@ -99,7 +108,7 @@
 mod derive;
 mod json;
 
-pub use derive::{DERIVED_PER_BYTE, DeriveBound};
+pub use derive::{DERIVED_PER_BYTE, DeriveBound, RANKS, margin};
 
 use super::{
     BindingFile, ClosureFile, ContentFile, EdgeFile, EntryFile, FamilyFile, FormPolicy,
@@ -151,17 +160,8 @@ pub fn column_names() -> &'static [&'static str] {
 /// binary columnar member.
 pub struct PlanModel {
     file: PlanFile,
-    /// The member it was decoded from (none for a JSON).
-    member: Option<Member>,
-}
-
-/// The sizes of the member a model was decoded from.
-#[derive(Clone, Copy)]
-struct Member {
-    /// The member's length.
-    bytes: u64,
-    /// Its declared (and charged) decoded size.
-    decoded: u64,
+    /// The length of the member it was decoded from (none for a JSON).
+    member: Option<u64>,
 }
 
 impl PlanModel {
@@ -177,14 +177,10 @@ impl PlanModel {
         let mut reader = Reader::new(bytes)?;
         let mut file = PlanFile::fresh();
         visit_plan(&mut reader, &mut file)?;
-        let decoded = reader.budget.declared;
         reader.finish()?;
         Ok(Self {
             file,
-            member: Some(Member {
-                bytes: bytes.len() as u64,
-                decoded,
-            }),
+            member: Some(bytes.len() as u64),
         })
     }
 
@@ -213,21 +209,18 @@ impl PlanModel {
 
     /// The validated program with its derived tables (`LoopProgramV4::load`),
     /// once the derivations are bounded: a model decoded from a member must
-    /// not need more than [`DERIVED_PER_BYTE`] per member byte, and the memory
-    /// bound is reserved fallibly first, with twice the decoded size for the
-    /// program's copies of the plan's lists (module docs, "Bounded
-    /// derivation").
+    /// not need more than [`DERIVED_PER_BYTE`] per member byte, and the
+    /// allocator must grant the bound's peak (a fallible probe, with its
+    /// margin) before deriving (module docs, "Bounded derivation").
     pub fn program(self, policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
         let bound = derive::bound(&self.file)?;
-        let mut copies = 0;
         if let Some(member) = self.member {
             require(
-                bound.cost() <= DERIVED_PER_BYTE.saturating_mul(member.bytes),
+                bound.cost() <= DERIVED_PER_BYTE.saturating_mul(member),
                 "binary plan: the loader's derivations exceed the member's bound",
             )?;
-            copies = member.decoded.saturating_mul(2);
         }
-        derive::reserve(bound.memory.saturating_add(copies))?;
+        derive::reserve("the loader's derivations", bound.memory)?;
         LoopProgramV4::from_file(self.file, policy)
     }
 }
@@ -1428,6 +1421,12 @@ impl<'a> Reader<'a> {
         )?;
         let padding = usize::try_from(u64_at(&mut bytes)?)
             .map_err(|_| invalid("binary plan: padding length"))?;
+        // The allocator must grant the declared model before decoding starts
+        // (a probe, with its margin), the thread pool being up first: its
+        // per-thread state would otherwise be allocated mid-decode, at the
+        // edge of an address space the decode may have used to its limit.
+        let _ = rayon::current_num_threads();
+        derive::reserve("binary plan: the decoded model", declared)?;
         let mut cursors = Vec::with_capacity(COLUMN_NAMES.len());
         for _ in COLUMN_NAMES {
             let head = take(&mut bytes, 8)?;
@@ -2058,11 +2057,14 @@ mod tests {
         file
     }
 
-    /// Plans of a few kB whose derivations would take terabytes:
+    /// Plans of a few kB whose derivations would take terabytes or crash:
     /// 2^40 Born rows, 2^30 columns, 2^20 x 2^12 column-row flags, a 2^40-th
-    /// vertex, ranks of 10^6 or 2^63, a forward table of degree 10^6.
-    /// Their unpadded members decode, and their reader refuses them before
-    /// the derivations allocate (this process would abort otherwise).
+    /// vertex, ranks of 10^6 or 2^63, a forward table of degree 10^6, fused
+    /// exponents of 2^20 (a stack overflow in the layouts' monomial index),
+    /// wrapping to 0 or beyond any rank, decimal powers of ten of 4 × 10^9
+    /// and 5 × 10^9 (a numerica panic). Their unpadded members decode, and
+    /// their reader refuses them before the derivations allocate (this
+    /// process would abort otherwise).
     #[test]
     fn derivation_bombs_are_refused_before_they_allocate() {
         let mut bombs = vec![
@@ -2102,6 +2104,35 @@ mod tests {
             states: vec![state],
         });
         bombs.push(("forward degree", forward));
+        // A fused entry's exponent recursed on by the layouts' monomial index
+        // before the loader checks its content's degree (a stack overflow at
+        // 2^20), exponents whose u32 sum wraps to 0, and a degree beyond any
+        // family's rank that its unread content allows.
+        for (name, exponents, degree) in [
+            ("fused exponent", [0, 0, 0, 1 << 20], 0),
+            ("fused wrap", [0, 1 << 31, 1 << 31, 0], 0),
+            ("fused rank", [0, 0, 0, RANKS as u32], 1000),
+        ] {
+            let mut fused = born_rows_plan(4, 1, 1);
+            let mut unread = ContentFile::fresh();
+            (unread.d_in, unread.d_out, unread.degree) = (1, 1, degree);
+            let [e0, e1, e2, e3] = exponents;
+            unread.fused = vec![[0, 0, e0, e1, e2, e3]];
+            fused.contents.push(unread);
+            bombs.push((name, fused));
+        }
+        // A decimal weight's power of ten: 10^(4 × 10^9) is 1.7 GB to
+        // compute; beyond 2^32 numerica panics.
+        for (name, weight) in [
+            ("decimal power", "1e4000000000"),
+            ("power 2^32", "1e5000000000"),
+        ] {
+            let mut power = born_rows_plan(4, 1, 1);
+            power.seed_classes = vec![SeedFile {
+                columns: vec![vec![(0, weight.to_owned(), "0".to_owned())]],
+            }];
+            bombs.push((name, power));
+        }
         for (name, file) in &bombs {
             let member = member_paying(file, 0);
             assert!(member.len() < 8192, "{name}: {}", member.len());
@@ -2113,6 +2144,8 @@ mod tests {
                 "family rank" => "family rank",
                 "step rank" => "a step above",
                 "merged rank" => "a merged state above",
+                "fused exponent" | "fused wrap" | "fused rank" => "q-degree above its content's",
+                "power 2^32" => "power of ten beyond 2^32",
                 _ => "exceed the member's bound",
             };
             assert!(error.contains(expected), "{name}: {error}");
@@ -2158,9 +2191,9 @@ mod tests {
         };
         assert!(empty.derive_bound().unwrap().cost() < 1024);
         for bytes in [u64::MAX, 1 << 62] {
-            assert!(derive::reserve(bytes).is_err(), "{bytes}");
+            assert!(derive::reserve("a test", bytes).is_err(), "{bytes}");
         }
-        assert!(derive::reserve(1 << 20).is_ok());
+        assert!(derive::reserve("a test", 1 << 20).is_ok());
     }
 
     #[test]
