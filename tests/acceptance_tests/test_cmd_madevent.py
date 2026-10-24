@@ -3877,9 +3877,29 @@ set draw_rivet_plots True
             precopy_cards=['pythia8'],
             require_tools=('pythia8_path',),
             events=100)
+        report = _mg7_postproc_report(pjoin(self.path, 'MG7_py8'))
 
-        self.assertTrue(glob.glob(pjoin(run, '*hepmc*')),
-                        'mg7 Pythia8 shower produced no HepMC output in %s' % run)
+        hepmc = glob.glob(pjoin(run, '*hepmc*'))
+        self.assertTrue(hepmc, 'mg7 Pythia8 shower produced no HepMC output in %s\n%s'
+                        % (run, report))
+        # a file is not enough: an empty shower leaves one too. Both HepMC2
+        # and HepMC3 ascii start each event with an 'E ' line.
+        import gzip
+        opener = gzip.open if hepmc[0].endswith('.gz') else open
+        with opener(hepmc[0], 'rt') as fsock:
+            nb_showered = sum(1 for line in fsock if line.startswith('E '))
+        self.assertGreater(nb_showered, 0, 'no event in %s\n%s' % (hepmc[0], report))
+
+        # the Results Summary printed after the shower reports the generated
+        # sample (it read 0 events and 0 pb when the mg7 run was booked
+        # without them)
+        log = open(pjoin(self.path, 'MG7_py8', 'mg7_postproc.log')).read()
+        summary = log[log.rfind('Results Summary'):]
+        nb_event = re.search(r'Nb of events :\s+(\d+)', summary)
+        cross = re.search(r'Cross-section :\s+(\S+)', summary)
+        self.assertTrue(nb_event and cross, 'no Results Summary\n%s' % report)
+        self.assertEqual(int(nb_event.group(1)), 100, report)
+        self.assertGreater(float(cross.group(1)), 0., report)
 
     def test_delphes_mg7(self):
         """Delphes detector simulation chained on the mg7 output (Pythia8 shower

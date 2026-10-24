@@ -16,6 +16,7 @@ each tool.
 """
 
 import contextlib
+import json
 import logging
 import os
 import shutil
@@ -190,6 +191,7 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
 
         if name not in self.results:
             self.results.add_run(name, self.run_card)
+            self._register_generation_results(name)
         else:
             self.results.def_current(name, self.run_tag)
 
@@ -201,6 +203,34 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         if level == 'parton':
             return None
         return self.run_tag
+
+    def _register_generation_results(self, name):
+        """Book the cross section, its error and the number of events of the
+        generated sample on the run just added to the results database.
+
+        madevent fills them during survey/refine, which an mg7 run does not go
+        through: the tools' "Results Summary" (printed after the Pythia8 shower,
+        for instance) then read "Cross-section : 0 +- 0 pb, Nb of events : 0".
+        They come from the info.json of the run (the numbers the mg7 run
+        itself printed), else from the <init> block of its LHE. A run booked
+        by a tool (MadSpin's <run>_decayed_i) is added with its own numbers
+        and does not come here.
+        """
+        cross = error = nb_event = None
+        try:
+            with open(pjoin(self.me_dir, 'Events', name, 'info.json')) as fsock:
+                status = json.load(fsock)['process']
+            cross, error = float(status['mean']), float(status['error'])
+            nb_event = int(status['count_unweighted'])
+        except Exception:
+            try:
+                cross, error = self._banner_for_run(name).get_cross(witherror=True)
+            except Exception:
+                return
+        self.results.add_detail('cross', cross)
+        self.results.add_detail('error', error)
+        if nb_event is not None:
+            self.results.add_detail('nb_event', nb_event)
 
     def configure_directory(self, html_opening=True):
         """Lightweight replacement: the mg7 output has no Fortran ``Source`` to
