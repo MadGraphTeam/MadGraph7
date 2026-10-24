@@ -124,10 +124,18 @@ def decode_count() -> int:
     return _DECODES
 
 
-def _native() -> Any:
-    from pyamplicol.loops.native import load_loop_native
+_NATIVE: list[Any] = []
 
-    return load_loop_native()
+
+def _native() -> Any:
+    """The staged loop core, verified once per process (each
+    ``load_loop_native`` re-verifies the native build, 0.2-0.4 s)."""
+
+    if not _NATIVE:
+        from pyamplicol.loops.native import load_loop_native
+
+        _NATIVE.append(load_loop_native())
+    return _NATIVE[0]
 
 
 def _call(operation: Any, *args: Any) -> Any:
@@ -310,26 +318,29 @@ def _flavour_operation(model: Any, vertex: Any, left: int, right: int) -> str | 
     )
 
 
-def _vertex_row(
+def _vertex_usable(
     model: Any,
     engine: Any,
     vertex: Any,
-    *,
     ignored_particles: frozenset[int],
     ignored_kinds: frozenset[int],
-    coupling_identities: dict[Any, int],
-) -> dict[str, Any]:
-    from pyamplicol.generation.dag_equivalence import (
-        _kernel_equivalence,
-        _runtime_coupling_identity,
-    )
-
-    usable = (
+) -> bool:
+    return (
         vertex.kind not in ignored_kinds
         and vertex.particles[2] not in ignored_particles
         and bool(engine.vertex_allowed(vertex))
         and not model.skip_duplicate_vertex_orientation(vertex)
     )
+
+
+def _vertex_row(
+    model: Any,
+    engine: Any,
+    vertex: Any,
+    *,
+    usable: bool,
+    coupling_identities: dict[Any, int],
+) -> dict[str, Any]:
     row: dict[str, Any] = {
         "kind": int(vertex.kind),
         "particles": [int(p) for p in vertex.particles],
@@ -349,21 +360,94 @@ def _vertex_row(
     }
     if not usable:
         return row
+    absorbing = engine._loop_block_absorbing_sides(vertex)
+    found = _model_vertex_row(model, vertex)
+    row.update(found.fields)
+    row["absorbing"] = None if absorbing is None else [bool(side) for side in absorbing]
+    row["flows"] = [
+        [
+            left,
+            right,
+            [
+                [
+                    *entry,
+                    coupling_identities.setdefault(identity, len(coupling_identities)),
+                ]
+                for entry, identity in entries
+            ],
+        ]
+        for left, right, entries in found.flows
+    ]
+    return row
+
+
+@dataclass(frozen=True)
+class _ModelVertexRow:
+    """The model-only part of a usable vertex row (``_vertex_row``): no
+    colour engine and no process enters it. ``flows`` hold, per input
+    chirality pair, ``(chirality, spin state, coupling bits)`` with the
+    runtime coupling identity each entry is interned by."""
+
+    fields: Mapping[str, Any]
+    flows: tuple[tuple[int, int, tuple[tuple[tuple[int, ...], Any], ...]], ...]
+
+
+# The model-only vertex rows of the most recent compiled models (rule 4 of
+# RUST-MIGRATION §2 aside, the Θ(model) input tables are per model, not per
+# process): ``id(compiled) -> (compiled, runtime parameters, rows)``. Most of
+# a row is ``allowed_quantum_flows``' symbolic Weyl-projection probe, which a
+# model instance caches only for itself.
+_MODEL_ROWS: dict[int, tuple[Any, str, dict[tuple[int, tuple[int, ...]], Any]]] = {}
+_MODEL_ROWS_KEPT = 4
+
+
+def _model_rows(model: Any) -> dict[tuple[int, tuple[int, ...]], Any]:
+    compiled = getattr(model, "compiled", None)
+    if compiled is None:
+        return {}
+    parameters = repr(sorted(getattr(model, "_runtime_parameters", {}).items()))
+    found = _MODEL_ROWS.get(id(compiled))
+    if found is None or found[0] is not compiled or found[1] != parameters:
+        found = (compiled, parameters, {})
+        _MODEL_ROWS.pop(id(compiled), None)
+        _MODEL_ROWS[id(compiled)] = found
+        while len(_MODEL_ROWS) > _MODEL_ROWS_KEPT:
+            del _MODEL_ROWS[next(iter(_MODEL_ROWS))]
+    return found[2]
+
+
+def _model_vertex_row(model: Any, vertex: Any) -> _ModelVertexRow:
+    rows = _model_rows(model)
+    key = (int(vertex.kind), tuple(int(p) for p in vertex.particles))
+    found = rows.get(key)
+    if found is None:
+        found = rows[key] = _compute_model_vertex_row(model, vertex)
+    return found  # type: ignore[no-any-return]
+
+
+def _compute_model_vertex_row(model: Any, vertex: Any) -> _ModelVertexRow:
+    from pyamplicol.generation.dag_equivalence import (
+        _kernel_equivalence,
+        _runtime_coupling_identity,
+    )
+
+    fields: dict[str, Any] = {
+        "colour_weight": None,
+        "colour_weight_error": None,
+    }
     try:
-        row["colour_weight"] = _pair_bits(
+        fields["colour_weight"] = _pair_bits(
             model.vertex_color_weight(vertex, color_accuracy="full")
         )
     except _MODEL_ERRORS as error:
-        row["colour_weight_error"] = str(error)
-    absorbing = engine._loop_block_absorbing_sides(vertex)
+        fields["colour_weight_error"] = str(error)
     rule = model.vertex_lowering_rule(vertex.kind)
     equivalence = _kernel_equivalence(model, vertex.kind, {})
-    row.update(
+    fields.update(
         orders=[
             [str(name).upper(), int(value)]
             for name, value in model.vertex_coupling_orders(vertex)
         ],
-        absorbing=None if absorbing is None else [bool(side) for side in absorbing],
         backend=rule.backend,
         full_tensor_network_ready=bool(rule.full_tensor_network_ready),
         factor=_pair_bits(equivalence.factor),
@@ -420,16 +504,16 @@ def _vertex_row(
                     coupling=flow.coupling,
                 )
                 entries.append(
-                    [
-                        int(flow.chirality),
-                        int(flow.spin_state),
-                        *_pair_bits(flow.coupling),
-                        coupling_identities.setdefault(
-                            identity, len(coupling_identities)
+                    (
+                        (
+                            int(flow.chirality),
+                            int(flow.spin_state),
+                            *_pair_bits(flow.coupling),
                         ),
-                    ]
+                        identity,
+                    )
                 )
-            flows.append([left, right, entries])
+            flows.append((left, right, tuple(entries)))
             operation = _flavour_operation(model, vertex, left, right)
             if operation is not None:
                 operations.add(operation)
@@ -437,9 +521,101 @@ def _vertex_row(
         raise NativeDagUnsupported(
             f"vertex {vertex.kind} changes its flavour rule with the input chiralities"
         )
-    row["flows"] = flows
-    row["flavour"] = operations.pop() if operations else "constant"
-    return row
+    fields["flavour"] = operations.pop() if operations else "constant"
+    return _ModelVertexRow(fields, tuple(flows))
+
+
+def _order_bounded(
+    orders: Iterable[tuple[str, int]], limits: Mapping[str, int]
+) -> bool:
+    """Whether a vertex of these coupling orders can enter a current within
+    ``limits`` (normalised as the recursion's): orders only add up along a
+    tree, so one vertex beyond a limit puts every current holding it beyond
+    too (a vertex with a negative order bounds nothing)."""
+
+    values = {str(name).upper(): int(value) for name, value in orders}
+    if any(value < 0 for value in values.values()):
+        return True
+    return all(values.get(name, 0) <= limit for name, limit in limits.items())
+
+
+def _reachable_vertices(
+    process: CanonicalProcessIR,
+    model: Any,
+    engine: Any,
+    rights: Mapping[int, Sequence[int]],
+    limits: Mapping[str, int],
+    ignored_particles: frozenset[int],
+    ignored_kinds: frozenset[int],
+) -> tuple[list[tuple[int, int, list[tuple[Any, bool]]]], dict[int, tuple[int, ...]]]:
+    """``vertices_accepting`` restricted to the species the recursion can
+    reach, and ``_right_particles_by_left`` restricted to them.
+
+    A species is reachable when it is a leg's or the result of a usable
+    vertex within the order limits whose inputs are reachable (a fixed
+    point over species: a superset of every current's particle, whatever
+    its leg set). The native recursion looks up only pairs of its
+    currents' particles (a missing pair accepts nothing), so the tables of
+    the other species are never read; the oracle pays their model probes
+    only for the vertices it reaches, and so does this table.
+    """
+
+    usable: dict[tuple[int, tuple[int, ...]], bool] = {}
+
+    def admitted(vertex: Any) -> bool:
+        key = (int(vertex.kind), tuple(int(p) for p in vertex.particles))
+        found = usable.get(key)
+        if found is None:
+            found = usable[key] = _vertex_usable(
+                model, engine, vertex, ignored_particles, ignored_kinds
+            )
+        return found
+
+    reached = {_pdg(leg) for leg in process.legs}
+    accepted: dict[tuple[int, int], tuple[Any, ...]] = {}
+    grown = True
+    while grown:
+        grown = False
+        for left in sorted(reached & set(rights)):
+            for right in rights[left]:
+                if right not in reached or (left, right) in accepted:
+                    continue
+                vertices = tuple(
+                    model.vertices_accepting(left, right, color_accuracy="full")
+                )
+                accepted[(left, right)] = vertices
+                for vertex in vertices:
+                    if (
+                        admitted(vertex)
+                        and _order_bounded(model.vertex_coupling_orders(vertex), limits)
+                        and int(vertex.particles[2]) not in reached
+                    ):
+                        reached.add(int(vertex.particles[2]))
+                        grown = True
+    rows = []
+    for left in sorted(rights):
+        if left not in reached:
+            continue
+        for right in rights[left]:
+            if right not in reached:
+                continue
+            rows.append(
+                (
+                    int(left),
+                    int(right),
+                    [
+                        (vertex, admitted(vertex))
+                        for vertex in accepted[(left, right)]
+                        if _order_bounded(model.vertex_coupling_orders(vertex), limits)
+                    ],
+                )
+            )
+    restricted = {
+        int(left): tuple(int(r) for r in rights[left] if r in reached)
+        for left in sorted(rights)
+        if left in reached
+    }
+    return rows, restricted
 
 
 def _submasks(full: int) -> list[int]:
@@ -525,23 +701,31 @@ def dag_input(
     ignored_particles = frozenset(int(pdg) for pdg in ignored_particle_ids)
     ignored_kinds = frozenset(int(kind) for kind in ignored_vertex_kinds)
     engine = _loop_engine(process, model)
-    rights = _right_particles_by_left(model, color_accuracy="full")
+    limits = _normalize_coupling_order_limits(max_coupling_orders)
+    accepted, rights = _reachable_vertices(
+        process,
+        model,
+        engine,
+        _right_particles_by_left(model, color_accuracy="full"),
+        limits,
+        ignored_particles,
+        ignored_kinds,
+    )
     vertex_rows: dict[tuple[int, tuple[int, ...]], int] = {}
-    vertices: list[Any] = []
+    vertices: list[tuple[Any, bool]] = []
     accepting = []
-    for left in sorted(rights):
-        for right in rights[left]:
-            rows = []
-            for vertex in model.vertices_accepting(left, right, color_accuracy="full"):
-                key = (int(vertex.kind), tuple(int(p) for p in vertex.particles))
-                if key not in vertex_rows:
-                    vertex_rows[key] = len(vertices)
-                    vertices.append(vertex)
-                rows.append(vertex_rows[key])
-            accepting.append([int(left), int(right), rows])
+    for left, right, found in accepted:
+        rows = []
+        for vertex, usable in found:
+            key = (int(vertex.kind), tuple(int(p) for p in vertex.particles))
+            if key not in vertex_rows:
+                vertex_rows[key] = len(vertices)
+                vertices.append((vertex, usable))
+            rows.append(vertex_rows[key])
+        accepting.append([left, right, rows])
     pdgs = sorted(
         {int(pdg) for pdg in model.particles}
-        | {int(p) for vertex in vertices for p in vertex.particles}
+        | {int(p) for vertex, _usable in vertices for p in vertex.particles}
         | {_pdg(leg) for leg in process.legs}
     )
     coupling_identities: dict[Any, int] = {}
@@ -594,22 +778,14 @@ def dag_input(
                 model,
                 engine,
                 vertex,
-                ignored_particles=ignored_particles,
-                ignored_kinds=ignored_kinds,
+                usable=usable,
                 coupling_identities=coupling_identities,
             )
-            for vertex in vertices
+            for vertex, usable in vertices
         ],
         "accepting": accepting,
-        "right_particles": [
-            [int(left), [int(r) for r in rights[left]]] for left in sorted(rights)
-        ],
-        "order_limits": sorted(
-            [name, int(value)]
-            for name, value in _normalize_coupling_order_limits(
-                max_coupling_orders
-            ).items()
-        ),
+        "right_particles": [[left, list(rights[left])] for left in sorted(rights)],
+        "order_limits": sorted([name, int(value)] for name, value in limits.items()),
         "ignored_particles": sorted(ignored_particles),
         "sources": sources,
         "colours": colours,
@@ -1016,7 +1192,12 @@ class NativeDag:
     """A native columnar loop-request DAG and its queries.
 
     ``decode`` builds the ``GenericDAG`` of Python objects (oracles, the
-    per-point Python path) and is counted (``decode_count``).
+    per-point Python path) and is counted (``decode_count``). As the
+    ``blocks_dag`` of ``blocks.TreeBlocks`` the handle stands in for that
+    ``GenericDAG``: reading any other of its attributes (``currents``,
+    ``interactions``, ``sources``, ``color_plan``, ...) decodes it once
+    (``materialize``) and reads it there, so consumers that need Python
+    objects keep working while generation decodes nothing (rule 9).
     """
 
     def __init__(
@@ -1031,6 +1212,26 @@ class NativeDag:
         self._model = model
         self._clone_fields = dict(clone_fields or {})
         self._block_input: str | None = None
+        self._decoded: GenericDAG | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        # Only attributes the handle does not have: the GenericDAG's.
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.materialize(), name)
+
+    def materialize(self) -> GenericDAG:
+        """The decoded ``GenericDAG``, decoded on the first call only."""
+
+        if self._decoded is None:
+            self._decoded = self.decode()
+        return self._decoded
+
+    @property
+    def decoded(self) -> bool:
+        """Whether ``materialize`` has decoded this DAG."""
+
+        return self._decoded is not None
 
     @classmethod
     def from_dag(cls, dag: GenericDAG, model: Any) -> NativeDag:
@@ -1076,7 +1277,16 @@ class NativeDag:
         variant = _checked_kernel_variant("plain", kernel_variant)  # type: ignore[arg-type]
         out: list[Block] = []
         clones: dict[int, int] = {}
-        for block in _call(self._handle.blocks, self._tables()):
+        raw, assignments = _call(self._handle.blocks, self._tables())
+        # Equal values are built once: the rows' helicity assignments, the
+        # colour states and orders repeat over the blocks of a leg set.
+        helicities = [tuple(tuple(pair) for pair in row) for row in assignments]
+        shared: dict[Any, Any] = {}
+
+        def one(value: Any) -> Any:
+            return shared.setdefault(value, value)
+
+        for block in raw:
             if block["clone"] is not None:
                 clones[len(out)] = int(block["clone"])
             colour = block["colour"]
@@ -1084,20 +1294,22 @@ class NativeDag:
                 external_mask=block["mask"],
                 particle_id=block["pdg"],
                 word=tuple(block["word"]),
-                coupling_orders=tuple(tuple(pair) for pair in block["orders"]),
-                color_state=ColorState(
-                    accuracy=colour[0],
-                    sector_id=colour[1],
-                    line_groups=tuple(colour[2]),
-                    basis_key=tuple(colour[3]),
-                    traces=tuple(tuple(trace) for trace in colour[4]),
-                    lines=tuple(tuple(line) for line in colour[5]),
+                coupling_orders=one(tuple(tuple(pair) for pair in block["orders"])),
+                color_state=one(
+                    ColorState(
+                        accuracy=colour[0],
+                        sector_id=colour[1],
+                        line_groups=tuple(colour[2]),
+                        basis_key=tuple(colour[3]),
+                        traces=tuple(tuple(trace) for trace in colour[4]),
+                        lines=tuple(tuple(line) for line in colour[5]),
+                    )
                 ),
                 chirality=block["chirality"],
                 spin_state=block["spin_state"],
-                flavour_flow=tuple(block["flavour"]),
-                quantum_number_flow=tuple(
-                    tuple(pair) for pair in block["quantum_numbers"]
+                flavour_flow=one(tuple(block["flavour"])),
+                quantum_number_flow=one(
+                    tuple(tuple(pair) for pair in block["quantum_numbers"])
                 ),
                 auxiliary_kind=block["auxiliary"],
             )
@@ -1117,8 +1329,8 @@ class NativeDag:
                     block_class="plain",
                     kernel_variant=variant,
                     rows=tuple(
-                        BlockRow(tuple(tuple(pair) for pair in helicities), current_id)
-                        for helicities, current_id in block["rows"]
+                        BlockRow(helicities[assignment], current_id)
+                        for assignment, current_id in block["rows"]
                     ),
                     connection_sign=block["connection_sign"],
                     pairing_sign=block["pairing_sign"],
@@ -1152,6 +1364,20 @@ class NativeDag:
         propagate (the DAG scan of ``blocks.ward_breaking_fields``)."""
 
         return frozenset(_call(self._handle.coloured_propagated, self._tables()))
+
+    def propagated_species(self) -> tuple[tuple[int, bool], ...]:
+        """Distinct ``(particle id, amputated)`` of the non-source,
+        non-auxiliary currents, sorted; ``amputated``: the current's
+        momentum leaves exactly one leg out. The current scans of
+        ``blocks.ward_breaking_fields`` (every particle) and
+        ``artifact.coloured_widths`` (the particles of currents that are not
+        amputated), which test colours, widths and propagators themselves."""
+
+        full = (1 << len(self.process.legs)) - 1
+        return tuple(
+            (int(pdg), bool(amputated))
+            for pdg, amputated in self._handle.propagated_species(full)
+        )
 
     def decode(self) -> GenericDAG:
         global _DECODES

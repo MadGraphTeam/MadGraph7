@@ -14,6 +14,7 @@ use pyo3::types::PyBytes;
 use rusticol_core::loop_v2::dag::{
     self, ColumnarDag, DagError, blocks::BlockInput, input::DagInput, reuse::ReuseTables,
 };
+use std::collections::HashMap;
 
 fn dag_error(error: DagError) -> PyErr {
     PyValueError::new_err(error.to_string())
@@ -55,9 +56,31 @@ struct PyBlock {
     colour_sign: i32,
     traces: Vec<Vec<u8>>,
     nc_grade: Option<i64>,
-    rows: Vec<(Vec<(u8, i32)>, u32)>,
+    /// `(helicity assignment, current id)`, the assignment an index into
+    /// the assignments `V2Dag.blocks` returns with the blocks.
+    rows: Vec<(u32, u32)>,
     connection_sign: i32,
     pairing_sign: i32,
+}
+
+/// The distinct helicity assignments of the blocks' rows, in first-seen
+/// order, and each row's index into them.
+#[derive(Default)]
+struct Assignments {
+    index: HashMap<Vec<(u8, i32)>, u32>,
+    table: Vec<Vec<(u8, i32)>>,
+}
+
+impl Assignments {
+    fn intern(&mut self, helicities: Vec<(u8, i32)>) -> u32 {
+        if let Some(found) = self.index.get(&helicities) {
+            return *found;
+        }
+        let id = self.table.len() as u32;
+        self.index.insert(helicities.clone(), id);
+        self.table.push(helicities);
+        id
+    }
 }
 
 /// A columnar loop-request DAG.
@@ -108,8 +131,14 @@ impl V2Dag {
         py.detach(|| self.dag.digest())
     }
 
-    /// The blocks (`loops/v2/blocks._blocks`) for `dag_input.block_input`.
-    fn blocks(&self, py: Python<'_>, tables: &str) -> PyResult<Vec<PyBlock>> {
+    /// The blocks (`loops/v2/blocks._blocks`) for `dag_input.block_input`,
+    /// and the distinct helicity assignments their rows index (Python
+    /// builds each assignment once).
+    fn blocks(
+        &self,
+        py: Python<'_>,
+        tables: &str,
+    ) -> PyResult<(Vec<PyBlock>, Vec<Vec<(u8, i32)>>)> {
         let tables = tables.to_owned();
         let raw = py
             .detach(|| {
@@ -118,7 +147,8 @@ impl V2Dag {
             })
             .map_err(dag_error)?;
         let t = &self.dag.tables;
-        Ok(raw
+        let mut assignments = Assignments::default();
+        let blocks = raw
             .into_iter()
             .map(|block| {
                 let id = block.key_current as usize;
@@ -151,12 +181,17 @@ impl V2Dag {
                     colour_sign: block.colour_flow.sign,
                     traces: block.colour_flow.traces,
                     nc_grade: block.nc_grade,
-                    rows: block.rows,
+                    rows: block
+                        .rows
+                        .into_iter()
+                        .map(|(helicities, current)| (assignments.intern(helicities), current))
+                        .collect(),
                     connection_sign: block.connection_sign,
                     pairing_sign: block.pairing_sign,
                 }
             })
-            .collect())
+            .collect();
+        Ok((blocks, assignments.table))
     }
 
     /// The value-equivalence derivation of `dag_input.reuse_tables`' JSON
@@ -207,6 +242,13 @@ impl V2Dag {
             self.dag
                 .u1_leaking(&kinds, &generator_kinds, &adjoint, fundamental, rest)
         })
+    }
+
+    /// Distinct `(particle id, amputated)` of the non-source, non-auxiliary
+    /// currents (`ColumnarDag::propagated_species`; the current scans of
+    /// `blocks.ward_breaking_fields` and `artifact.coloured_widths`).
+    fn propagated_species(&self, py: Python<'_>, full_mask: u64) -> Vec<(i64, bool)> {
+        py.detach(|| self.dag.propagated_species(full_mask))
     }
 
     /// Coloured particle ids propagated by non-source, non-auxiliary

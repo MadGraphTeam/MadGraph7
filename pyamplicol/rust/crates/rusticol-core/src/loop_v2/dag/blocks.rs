@@ -341,6 +341,26 @@ impl ColumnarDag {
         out.into_iter().collect()
     }
 
+    /// Distinct `(particle id, amputated)` of the non-source, non-auxiliary
+    /// currents, sorted: the current scans of `blocks.ward_breaking_fields`
+    /// (every pair) and `artifact.coloured_widths` (pairs not `amputated`),
+    /// which test each particle's colour, width and propagator themselves.
+    /// `amputated`: the current's momentum leaves exactly one leg of
+    /// `full_mask` out (a Born root or an external self-energy reads it).
+    pub fn propagated_species(&self, full_mask: u64) -> Vec<(i64, bool)> {
+        let sources = self.sources_set();
+        let mut out = BTreeSet::new();
+        for (id, source) in sources.iter().enumerate() {
+            let species = &self.tables.species[self.c_species[id] as usize];
+            if *source || species.auxiliary.is_some() {
+                continue;
+            }
+            let amputated = (full_mask & !self.c_momentum[id]).count_ones() == 1;
+            out.insert((species.pdg, amputated));
+        }
+        out.into_iter().collect()
+    }
+
     /// The vertex kinds `ct_closure.u1_leaking_structures` reports: kernels
     /// of `kinds` (CT colours coupling to the U(1) part of a gluon) that
     /// absorb an adjoint current holding a fundamental leg, or produce an
