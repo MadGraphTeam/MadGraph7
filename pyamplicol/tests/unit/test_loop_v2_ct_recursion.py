@@ -664,6 +664,75 @@ def test_insertion_reachability_is_sound_against_the_site_oracle(ct_slice, name)
     assert all("enters no tree" in reason for reason in split.inert.values())
 
 
+@pytest.mark.loop_fast
+def test_insertion_reachability_tells_a_vertex_from_its_conjugate(
+    loop_sm_compiled_model,
+):
+    """Charged currents tell a CT vertex from its conjugate
+    (``ct_closure.InsertionReachability``: the current entering a leg of
+    field f is anti(f)). In u d~ > e+ ve the R2 of [d~ u W-] and the lepton
+    vertex [ve~ e- W+] enter a tree; their conjugates [u~ d W+] and
+    [e+ ve W-] and the vertices of other quark flavours do not. A two-point
+    vertex enters internal lines only (an external line takes the field
+    factor): in u u~ > d d~ the s-channel gluon holds [g g], and no tree has
+    an internal quark line for [u~ u] or [d~ d]."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.loops.v2.ct_closure import (
+        InsertionReachability,
+        program_order_limits,
+    )
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import (
+        COUNTERTERM_INSERTION_ORDER,
+        load_compiled_model,
+    )
+    from pyamplicol.processes.model import build_model_process_ir
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    rules = prepare_loop_request_model(compiled).counterterms.rules
+    model = CompiledUFOModel(compiled)
+
+    def reachability(text, born, loop):
+        limits = program_order_limits(compiled, (born,), (loop,))
+        return InsertionReachability.build(
+            model,
+            build_model_process_ir(text, compiled.ir, color_accuracy="full"),
+            {**limits, COUNTERTERM_INSERTION_ORDER: 2},
+        )
+
+    def admitted(reach, *pdgs):
+        """Whether the loop_sm rules of exactly these fields are admitted
+        (all of them alike; at least one exists)."""
+
+        found = {
+            reach.admits(rule)
+            for rule in rules.values()
+            if sorted(rule.particle_pdgs) == sorted(pdgs)
+        }
+        assert len(found) == 1, (pdgs, found)
+        return found.pop()
+
+    charged = reachability("u d~ > e+ ve", (("QED", 2),), (("QCD", 2), ("QED", 2)))
+    assert admitted(charged, -1, 2, -24)  # V_R2dxuW
+    assert not admitted(charged, -2, 1, 24)  # V_R2uxdW, its conjugate
+    assert not admitted(charged, -3, 2, -24)  # V_R2sxuW: no s quark
+    assert not admitted(charged, -1, 4, -24)  # V_R2dxcW: no c quark
+
+    def vertex(*pdgs):
+        return SimpleNamespace(particle_pdgs=pdgs, entries=(), order=(("QED", 1),))
+
+    assert charged.admits(vertex(-12, 11, 24))
+    assert not charged.admits(vertex(12, -11, -24))
+
+    neutral = reachability("u u~ > d d~", (("QCD", 2),), (("QCD", 4),))
+    assert admitted(neutral, 21, 21)
+    assert not admitted(neutral, -2, 2)
+    assert not admitted(neutral, -1, 1)
+
+
 # The tree route (form 1) is a test of the lowering; the closure, the
 # production form (design §6.1), runs on the same lowered couplings in the
 # default and physics tiers (test_loop_v2_ct_closure, test_loop_v2_slice).

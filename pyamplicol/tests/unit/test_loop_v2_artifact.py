@@ -2481,8 +2481,10 @@ def test_qed_declaring_model_names_its_blockers(
     recursion cannot lower and whose vertices can enter a tree of the
     request: couplings with the complex-mass scheme's UFO helper recms
     (WP3.2). There is no site fallback. The unlowerable G0-photon mixing
-    between spins is inert here (REQUIREMENTS_ADDENDUM J): the massless
-    quarks have no Goldstone coupling, so no tree of u u~ > d d~ holds it."""
+    between spins is inert (REQUIREMENTS_ADDENDUM J): the model's tree model
+    absorbs the Goldstones into the massive vectors (``CompiledUFOModel.
+    inactive_goldstone_names``), so it holds no G0 vertex and no tree of any
+    request on this model holds the mixing."""
 
     from pyamplicol.api import ProcessRequest, ProcessSet
     from pyamplicol.models.loading import compile_model_source
