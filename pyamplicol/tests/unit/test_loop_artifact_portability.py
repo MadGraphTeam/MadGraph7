@@ -54,6 +54,7 @@ import shutil
 import subprocess
 import sys
 import zlib
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -533,6 +534,67 @@ def test_loop_v4_artifact_loads_without_regeneration(loop_artifact, name):
     # Loading is a small fraction of generating (measured: 4 % at gg -> gggg,
     # 2 % at gg -> ggggg).
     assert python["relocated"]["seconds"]["load"] < 0.25 * generation, python
+
+
+@pytest.mark.loop_physics
+def test_loop_plane_applications_equal_their_exact_states(loop_artifact):
+    """Every stored binary64 plane application (the interaction kernels and
+    the parameter program) through the production loader equals Symbolica's
+    binary64 evaluation of its exact state: at the parameter program's
+    default inputs (the branches its helper functions take there) and at
+    random inputs. The parameter program calls helper functions (inlined at
+    export) and reads registered constants (pi), which Symbolica's Python
+    instruction export writes as 0."""
+
+    import numpy as np
+    import symbolica
+
+    from pyamplicol import _rusticol
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.loops.scalar_frontend import _producer_predicate
+    from pyamplicol.loops.v2.artifact import read_native_process, read_plan
+
+    for name in ("truth", "equal", "less", "less_equal", "real_part", "imaginary_part"):
+        symbols.qualified(
+            f"pyamplicol_scalar_v1::{name}", eval={"complex": _producer_predicate(name)}
+        )
+    artifact, _, _ = loop_artifact("gg")
+    (pacbin,) = artifact.glob("processes/*/loop-runtime.pacbin")
+    trees = read_native_process(pacbin, read_plan(pacbin)).trees
+    assert len(trees.planes) == len(trees.kernels) + 1
+
+    def check(state: bytes, plane: bytes, rows) -> None:
+        evaluator = symbolica.Evaluator.load(state)
+        exported = evaluator.get_instructions()
+        inputs, outputs = exported.input_count, exported.output_count
+        rows = np.ascontiguousarray(rows, dtype=np.complex128)
+        expected = np.asarray(evaluator.evaluate_complex(rows), dtype=np.complex128)
+        expected = expected.reshape(len(rows), outputs)
+        flat = _rusticol._evaluate_symjit_plane_application_v2(
+            plane, inputs, outputs, rows.view(np.float64).ravel().tolist(), len(rows)
+        )
+        got = np.asarray(flat).view(np.complex128).reshape(len(rows), outputs)
+        same = (
+            (got == expected)
+            | (np.isnan(got) & np.isnan(expected))
+            | (np.abs(got - expected) <= 1e-12 * np.abs(expected))
+        )
+        assert same.all(), np.argwhere(~same)[:8]
+
+    rng = np.random.default_rng(20261024)
+    parameters = trees.program["parameters"]
+    exported = symbolica.Evaluator.load(trees.parameters).get_instructions()
+    assert exported.sub_evaluators
+    assert any(repr(value) == "0" for value in exported.constants)
+    defaults = [float(Fraction(value)) for value in parameters["defaults"]]
+    if parameters["scale"] is not None:
+        defaults[parameters["scale"]] = 91.188
+    check(trees.parameters, trees.planes[-1], [defaults])
+    check(trees.parameters, trees.planes[-1], rng.uniform(0.5, 1.5, (3, len(defaults))))
+    for state, plane in zip(trees.kernels, trees.planes, strict=False):
+        width = symbolica.Evaluator.load(state).get_instructions().input_count
+        rows = rng.uniform(0.5, 1.5, (3, width)) + 1j * rng.uniform(-1, 1, (3, width))
+        check(state, plane, rows)
 
 
 @pytest.fixture(scope="session")

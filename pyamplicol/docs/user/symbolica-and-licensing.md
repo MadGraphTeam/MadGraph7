@@ -75,7 +75,8 @@ Normal reminder suppression and JSON output behavior remain unchanged.
 | Generate a process artifact | Yes | Symbolic DAG/recurrence construction and evaluator production. |
 | Ordinary Python precision other than 16 | Yes | Lazily loads retained Symbolica evaluator state when supported. |
 | Python `evaluate_correlated(...)` | Yes | Uses retained Symbolica evaluator state at every precision, including 16. |
-| Virtual (one-loop) evaluation, Python and native SDK | Yes, natively | The loop runtime decodes saved Symbolica evaluator state natively; see [Concurrent processes without a license](#concurrent-processes-without-a-license). |
+| Virtual (one-loop) evaluation at f64, v2 engine | No (native code) | Runs the artifact's stored SymJIT applications; see [Concurrent processes without a license](#concurrent-processes-without-a-license). |
+| Virtual evaluation in double-double or arbitrary precision, and legacy-engine virtuals (Python and native SDK) | Yes, natively, under the package key | The loop runtime decodes saved Symbolica evaluator state in its Rust copy of Symbolica, which pyAmpliCol's key unlocks. |
 
 The absence of a Symbolica runtime dependency for f64 evaluation does not
 change the terms governing Symbolica use during generation.
@@ -108,11 +109,17 @@ handle concurrently because its parameter and warning state is handle-local.
 ## Concurrent processes without a license
 
 The package key licenses the Python `symbolica` module. The native extension
-contains its own Rust copy of Symbolica, which reads only `SYMBOLICA_LICENSE`.
-Without it, that copy runs restricted: the first Symbolica operation of a
-process takes the user's single restricted thread, and any other process of
-the same user that needs one then aborts with "Cannot start another
-restricted Symbolica thread while this user's thread allowance is in use".
+(and the native loop SDK) contains its own Rust copy of Symbolica. pyAmpliCol
+registers the same package key with that copy too, and the native operations
+that need Symbolica state (decoding saved evaluators of loop processes,
+double-double and arbitrary-precision loop evaluation, the legacy loop
+runtime) run under it. Without the key, that copy would run restricted: the
+first Symbolica operation of a process takes the user's single restricted
+thread, and any other process of the same user that needs one then aborts
+with "Cannot start another restricted Symbolica thread while this user's
+thread allowance is in use". A personal `SYMBOLICA_LICENSE` is used as
+before. If the package key is expired or rejected, the native code falls back
+to the personal license or to the restricted mode, as the Python side does.
 
 - Importing pyAmpliCol and f64 tree evaluation perform no Symbolica operation
   in the native code, so any number of unlicensed processes can load and
@@ -121,14 +128,22 @@ restricted Symbolica thread while this user's thread allowance is in use".
   loop runtime, but tree evaluation never calls it). Tree evaluation at other
   precisions uses the Python `symbolica` module, which the package key
   unlocks, so concurrent unlicensed processes work there too.
-- Virtual (one-loop) evaluation is different for now: the loop runtime, in
-  Python and in the C/C++/Fortran SDK, decodes saved Symbolica evaluator
-  state natively when it loads or first evaluates a process. Without a
-  personal license only one such process per user can run at a time. Export `SYMBOLICA_LICENSE` to evaluate virtuals in
-  parallel processes (for example a Monte Carlo farm).
+- Virtual (one-loop) evaluation of a v2 artifact in f64 (the default
+  `precision=16`) runs the SymJIT applications stored in the artifact and
+  performs no Symbolica operation in the native code, so any number of
+  unlicensed processes (for example a Monte Carlo farm) evaluate virtuals
+  concurrently; it does not depend on the package key either. On an x86-64
+  CPU without AVX and FMA3, where SymJIT cannot compile, f64 evaluates the
+  saved Symbolica states instead, under the package key.
+- Double-double and arbitrary-precision virtual evaluation, and the legacy
+  loop engine at every precision (Python and the C/C++/Fortran SDK), decode
+  saved Symbolica evaluator states natively under the package key, so they
+  also run in concurrent unlicensed processes.
 
 The wheel's native SDK archive contains this loop runtime and therefore links
-Symbolica.
+Symbolica. `PYAMPLICOL_NATIVE_LIBRARY_KEY=off` disables the package key in
+the native code (a diagnostic; the portability tests use it to show that f64
+virtual evaluation performs no Symbolica operation).
 
 See [Runtime and Selectors](runtime-and-selectors.md) and [Native APIs](native-apis.md).
 
