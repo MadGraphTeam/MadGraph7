@@ -20,7 +20,14 @@ instrumentation.
   protocol stays beside the verdict; imported timings must be the stream's
   points;
 * the Ward rows are divided by the physical scale of their point and judged
-  with the O10 test's binary64 bound.
+  with the O10 test's binary64 bound;
+* below 5 ms per point the gate does not block (the user's rule of
+  2026-10-24): the verdict says so and keeps the checks;
+* provider files are resolved relative to the reference root only: the
+  absolute paths stored in the records (an old root) are never touched;
+* the universal double pole of the physical rows at full and leading colour,
+  and the top-free g g > g g g g g row's NJet reference at the stream's
+  first points.
 """
 
 from __future__ import annotations
@@ -352,3 +359,213 @@ def test_native_dressing_work_is_per_chunk_and_schedule_m_counts_its_states(
             work[key, schedule] = counts[1]
     assert work["uux_ddxg", "M"] == work["uux_ddxg", "B"]
     assert 0.85 * work["gg_gg", "B"] <= work["gg_gg", "M"] <= work["gg_gg", "B"]
+
+
+def test_gate_floor_below_five_milliseconds():
+    times = {"madloop": 0.004, "openloops": 0.001}
+    verdict = gate.gate_verdict(0.003, times, uncertainty=0.01)
+    assert verdict["status"] == gate.GATE_FLOOR_STATUS
+    assert verdict["status"] == "below 5 ms: not gated (user 2026-10-24)"
+    # The checks and ratios stay; what they alone say is kept beside.
+    assert verdict["measured_status"] == "fail"
+    assert verdict["ratio_to_binding_limit"] == pytest.approx(0.003 / 0.0013)
+    assert set(verdict["checks"]) == {"madloop", "openloops"}
+    assert gate.gate_verdict(0.003, {})["measured_status"] == (
+        "no matched provider timing"
+    )
+    # At 5 ms and above the gate applies.
+    assert gate.gate_verdict(0.005, {"openloops": 0.001})["status"] == "fail"
+    assert gate.gate_verdict(0.006, {"openloops": 0.005})["status"] == "pass"
+
+
+OLD_ROOT = "/nonexistent-old-root/workspace/reference"
+
+
+@pytest.fixture
+def no_old_root(monkeypatch):
+    """Fail on any filesystem query of a path under ``OLD_ROOT``."""
+
+    import builtins
+
+    touched = []
+    for name in ("exists", "stat", "resolve", "read_text", "open", "is_file"):
+        original = getattr(Path, name)
+
+        def guarded(self, *args, _original=original, **kwargs):
+            if str(self).startswith("/nonexistent-old-root"):
+                touched.append(str(self))
+                raise AssertionError(f"old root touched: {self}")
+            return _original(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, name, guarded)
+    original_open = builtins.open
+
+    def guarded_open(file, *args, **kwargs):
+        if str(file).startswith("/nonexistent-old-root"):
+            touched.append(str(file))
+            raise AssertionError(f"old root touched: {file}")
+        return original_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", guarded_open)
+    return touched
+
+
+def test_madloop_exports_resolve_under_the_reference_root_only(tmp_path, no_old_root):
+    import json
+
+    export = tmp_path / "runs" / "required" / "uux_ddxg" / "madloop-export"
+    export.mkdir(parents=True)
+    times = {"graph_generation_s": 1.0, "source_export_s": 2.0, "compile_s": 3.0}
+    (export.parent / "madloop-export.generation.json").write_text(json.dumps(times))
+    recorded = f"{OLD_ROOT}/runs/required/uux_ddxg/madloop-export"
+    assert gate._export_of("uux_ddxg", recorded, tmp_path) == (
+        export,
+        "runs/required/uux_ddxg/madloop-export",
+    )
+    assert gate._madloop_generation(export)["total_s"] == 6.0
+    # An export outside a reference root's runs (a scratch copy) that moved:
+    # the specification's madloop.export.
+    moved = export.parents[2] / "g1" / "gg_ggg" / "madloop-export"
+    moved.mkdir(parents=True)
+    scratch = "/nonexistent-old-root/workspace/tmp/measure-g1/gg_ggg/madloop-export"
+    assert gate._export_of("gg_ggg", scratch, tmp_path) == (
+        moved,
+        "runs/g1/gg_ggg/madloop-export",
+    )
+    # Without a root, or with no export under it, only the name stays.
+    assert gate._export_of("uux_ddxg", recorded, None) == (
+        None,
+        "runs/required/uux_ddxg/madloop-export",
+    )
+    assert gate._export_of("uux_uuxg", recorded.replace("ddxg", "uuxg"), tmp_path) == (
+        None,
+        "runs/required/uux_uuxg/madloop-export",
+    )
+    assert gate._madloop_generation(None) is None
+    assert no_old_root == []
+
+
+def _pyamplicol_record(key: str, seconds: list[float], **extra) -> dict:
+    summary = {
+        "blocks": len(seconds),
+        "points_per_block": 128,
+        "median_seconds_per_point": sorted(seconds)[len(seconds) // 2],
+        "min_seconds_per_point": min(seconds),
+        "max_seconds_per_point": max(seconds),
+        "samples_seconds_per_point": seconds,
+        "stages_per_point": {"dressing": seconds[0] / 2},
+        "counts_per_block": {},
+        "reals_per_lane": {},
+        "throughput": None,
+        "values": {"0": [1.0, 0.5], "1": [2.0, 1.0]},
+    }
+    return {
+        "kind": "pyamplicol-v2",
+        "process": key,
+        "accuracy": "full",
+        "inputs": "native",
+        "lanes": 16,
+        "schedule": "B",
+        "revision": "0" * 40,
+        "branch": "work/test",
+        "dirty": False,
+        "batches": {"128": summary},
+        **extra,
+    }
+
+
+def test_gate_document_applies_the_floor_and_reads_no_old_root(tmp_path, no_old_root):
+    """``gate.build`` on records whose MadLoop export points into an old
+    root: the export is found under the reference root, the old root is
+    never touched, and the 5 ms floor sets the verdict of a fast row while
+    a slow row is gated."""
+
+    import json
+
+    export = tmp_path / "ref" / "runs" / "required" / "uux_ddxg" / "madloop-export"
+    export.mkdir(parents=True)
+    (export.parent / "madloop-export.generation.json").write_text(
+        json.dumps({"graph_generation_s": 1, "source_export_s": 2, "compile_s": 3})
+    )
+    rows = [{"born": 1.0, "finite": 0.5, "seconds": 0.002}] * 2
+    providers = {
+        "kind": "providers",
+        "process": "uux_ddxg",
+        "cpu": 130,
+        "points": 2,
+        "providers": {
+            "madloop": {
+                "points": 2,
+                "mean_seconds_per_point": 0.003,
+                "median_seconds_per_point": 0.003,
+                "rows": rows,
+                "export": f"{OLD_ROOT}/runs/required/uux_ddxg/madloop-export",
+            },
+            "openloops": {
+                "points": 2,
+                "mean_seconds_per_point": 0.0015,
+                "median_seconds_per_point": 0.0015,
+                "rows": rows,
+            },
+        },
+    }
+    records = [
+        providers,
+        {**providers, "process": "gg_ggg"},
+        _pyamplicol_record("uux_ddxg", [0.0026, 0.0027, 0.0028]),
+        _pyamplicol_record("gg_ggg", [0.0060, 0.0061, 0.0062]),
+    ]
+    records[1]["providers"] = {
+        name: {k: v for k, v in result.items() if k != "export"}
+        for name, result in providers["providers"].items()
+    }
+    paths = []
+    for index, record in enumerate(records):
+        path = tmp_path / f"record-{index}.json"
+        path.write_text(json.dumps(record))
+        paths.append(path)
+    document, _ = gate.build(paths, tmp_path / "ref")
+    rows = {row["key"]: row for row in document["processes"]}
+    fast = rows["uux_ddxg"]["pyamplicol"]["native/full"]["batches"]["128"]["gate"]
+    assert fast["status"] == gate.GATE_FLOOR_STATUS
+    assert fast["measured_status"] == "fail"
+    madloop = rows["uux_ddxg"]["providers"]["madloop"]
+    assert madloop["export"] == "runs/required/uux_ddxg/madloop-export"
+    assert madloop["generation"]["total_s"] == 6
+    slow = rows["gg_ggg"]["pyamplicol"]["native/full"]["batches"]["128"]["gate"]
+    assert slow["status"] == "fail" and "measured_status" not in slow
+    assert no_old_root == []
+
+
+def test_universal_double_pole_at_full_and_leading_colour():
+    import math
+
+    from tools.loop_benchmark import pyamplicol_v2
+
+    alpha = 0.118 / (2 * math.pi)
+    # u u~ > d d~ g: four quarks and a gluon; leading colour C_F -> N_c/2.
+    assert pyamplicol_v2.universal_double_pole("uux_ddxg", "full") == (
+        pytest.approx(-alpha * (4 * 4 / 3 + 3))
+    )
+    assert pyamplicol_v2.universal_double_pole("uux_ddxg", "lc") == pytest.approx(
+        -alpha * (4 * 3 / 2 + 3)
+    )
+    # Massive tops add no double pole; the leptons none.
+    assert pyamplicol_v2.universal_double_pole("gg_ttxemepg_qcd", "full") == (
+        pytest.approx(-alpha * 9)
+    )
+    assert pyamplicol_v2.universal_double_pole("gg_ggggg", "nlc") is None
+
+
+def test_top_free_seven_gluon_row_is_checked_against_njet():
+    import json
+
+    spec = streams.spec("gg_ggggg")
+    assert spec["particle_veto"] == [6]
+    name = streams.fixture_name("gg_ggggg")
+    assert name == "gg_ggggg_njet" and streams.fixture_name("uux_ddxg") == "uux_ddxg"
+    fixture = json.loads((streams.FIXTURES / f"{name}.json").read_text())
+    assert fixture["scheme"] == "massless-qcd-nf5"
+    stream = streams.load("gg_ggggg")
+    # NJet's first points are the stream's (at NJet's own scale).
+    assert fixture["points"][:3] == stream["points"][:3]
