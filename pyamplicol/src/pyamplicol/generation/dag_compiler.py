@@ -829,9 +829,8 @@ class GenericDAGCompiler:
         # Loop-request blocks build the same result index from many splits:
         # its validated ``CurrentIndex`` (and whether the model admits it) is
         # memoized by its construction arguments.
-        index_memo: dict[tuple[object, ...], tuple[CurrentIndex, bool]] | None = (
-            {} if self.loop_blocks else None
-        )
+        memoize_indices = self.loop_blocks
+        index_memo: dict[tuple[object, ...], tuple[CurrentIndex, bool]] = {}
 
         # The factors of an interaction's colour weight come from a few shared
         # objects (cached colour flows and vertex weights, literal symmetry
@@ -1218,7 +1217,7 @@ class GenericDAGCompiler:
                                             continue
                                         index_key = None
                                         memoized = None
-                                        if index_memo is not None:
+                                        if memoize_indices:
                                             index_key = (
                                                 vertex.particles[2],
                                                 mask,
