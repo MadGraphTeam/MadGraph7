@@ -80,8 +80,8 @@
 //! implies: vertex ids, family and step ranks). [`PlanModel::program`]
 //! refuses a member whose bound exceeds [`DERIVED_PER_BYTE`] per member byte,
 //! and reserves the memory bound fallibly before deriving; the writer pads a
-//! plan that needs more (none written today: 80-480 bytes per member byte at
-//! five to seven legs). A member of `n` bytes thus makes the loader allocate
+//! plan that needs more (none written today: 93-407 bytes per member byte at
+//! six and seven legs). A member of `n` bytes thus makes the loader allocate
 //! at most `DERIVED_PER_BYTE × n` bytes beyond its decoded model, and a plan
 //! the allocator cannot hold is refused with an error. The production JSON
 //! load (`LoopProgramV4::load`, `plan.rs`) is not bounded so: that is the
@@ -217,7 +217,9 @@ impl PlanModel {
 /// The validated program of a binary plan member ([`PlanModel::binary`])
 /// with the loader's default kernel-form policy ([`LoopProgramV4::load`]'s):
 /// the one reader of the member, for the loader and for an artifact's PACBIN
-/// plan member. RUST-MIGRATION.md §3.D names it `loop_v2::plan::read_binary`;
+/// plan member. It decodes within the member's declared size and derives
+/// within the member's derivation bound (module docs), else it fails with an
+/// error. RUST-MIGRATION.md §3.D names it `loop_v2::plan::read_binary`;
 /// in phase 0 it lives here (`plan.rs` takes only this module's `mod` line),
 /// and its re-export from `plan.rs` comes with phase 1, when the loader is
 /// this package's.

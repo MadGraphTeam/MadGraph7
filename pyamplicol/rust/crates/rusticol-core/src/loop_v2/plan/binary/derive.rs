@@ -42,9 +42,9 @@ use crate::RusticolResult;
 use crate::loop_v2::kernels::RowLink;
 
 /// The most bytes the loader's derivations may allocate and iterate per
-/// member byte (module docs). The plans written today need 80-480 (five to
-/// seven legs, one observable column); a plan needing more (many columns)
-/// gets a padded member.
+/// member byte (module docs). The plans written today need 93-407 (six and
+/// seven legs, one observable column: 20 times less); a plan needing more
+/// (tens of columns at seven legs) gets a padded member.
 pub const DERIVED_PER_BYTE: u64 = 8192;
 
 /// The largest rank or degree a monomial table of a valid plan can have: a
