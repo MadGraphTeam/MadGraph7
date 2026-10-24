@@ -357,7 +357,8 @@ def test_native_seeds_in_the_slice(
 ):
     """``LoopSlice.generate`` with the native stages in place of
     ``build_seed_table`` and ``extend_seed_table`` (the phase-1 switch) has
-    the Python run's S5 digest at FC, LC and NLC (prune included), and with
+    the Python run's S5 digest at FC, LC and NLC (prune included), for the
+    main slice and its poles companion (``scaleless``), and with
     ``colour_contraction="direct"`` the same plan bytes (S8); the native
     prune liveness equals ``_prune_colour``'s on every reading."""
 
@@ -400,17 +401,8 @@ def test_native_seeds_in_the_slice(
         if accuracy != "full":
             flags, keep = built.keep(native)
             assert any(flags.values())
-            # The oracle's keep: _prune_colour's callback on the readings.
-            seen = {}
-
-            def capture(colour, *, frames=None, keep=None, **kw):
-                seen["keep"] = keep
-                raise _Captured
-
-            patch.setattr(native.generation, "schedules", capture, raising=False)
-            with pytest.raises(_Captured):
-                native._prune_colour()
-            assert keep == [seen["keep"](s) for s in built._skeletons]
+            oracle = _oracle_keep(native, assemble.LoopSlice._prune_colour)
+            assert keep == [oracle(s) for s in built._skeletons]
             # LC prunes skeletons of g g > g g g; NLC keeps every u u~ > g g g one.
             assert any(keep) and all(keep) == (accuracy == "nlc")
     with monkeypatch.context() as patch:
@@ -420,7 +412,12 @@ def test_native_seeds_in_the_slice(
     assert snapshot.digest(snapshot.seeds_records(native)) == snapshot.digest(
         snapshot.seeds_records(python)
     )
-    assert len(stages) == 2 + (accuracy != "full")
+    assert python.scaleless is not None and native.scaleless is not None
+    assert snapshot.digest(snapshot.seeds_records(native.scaleless)) == (
+        snapshot.digest(snapshot.seeds_records(python.scaleless))
+    )
+    # Main slice and companion, each built (and at LC/NLC extended) natively.
+    assert len([s for s in stages if s._skeletons]) >= 2
     from pyamplicol.loops.v2.plan_export import export_plan
 
     assert (
@@ -431,6 +428,31 @@ def test_native_seeds_in_the_slice(
 
 class _Captured(Exception):
     pass
+
+
+def _oracle_keep(slice_, prune, observables=()):
+    """``_prune_colour``'s ``keep`` callback (captured where the pruned
+    schedules are rebuilt, natively or in Python, before they are)."""
+
+    from pyamplicol.loops.v2 import assemble
+
+    seen = {}
+
+    def native(colour, *, frames=None, keep=None, **kw):
+        seen["keep"] = keep
+        raise _Captured
+
+    def python(families, catalogue, colour, *, policy=None, view=None, **kw):
+        seen["keep"] = view.keep
+        raise _Captured
+
+    with pytest.MonkeyPatch.context() as patch:
+        if slice_.generation is not None:
+            patch.setattr(slice_.generation, "schedules", native)
+        patch.setattr(assemble, "build_schedules", python)
+        with pytest.raises(_Captured):
+            prune(slice_, observables)
+    return seen["keep"]
 
 
 @pytest.mark.loop_physics
@@ -460,21 +482,13 @@ def test_native_prune_liveness_with_directed_colour_tables(
 
     def checking(self, observables=()):
         observables = list(observables)
-        assert observables  # the directed tables are passed
-        _flags, keep = stages[0].keep(self, observables)
-        seen = {}
-
-        def capture(colour, *, frames=None, keep=None, **kw):
-            seen["keep"] = keep
-            raise _Captured
-
-        original = self.generation.schedules
-        self.generation.schedules = capture
-        with pytest.raises(_Captured):
-            prune(self, observables)
-        self.generation.schedules = original
-        checked.append(keep == [seen["keep"](s) for s in stages[0]._skeletons])
-        assert any(keep) and not all(keep)
+        (stage,) = [s for s in stages if s.table is self.table]
+        _flags, keep = stage.keep(self, observables)
+        oracle = _oracle_keep(self, prune, observables)
+        checked.append(
+            (bool(observables), keep == [oracle(s) for s in stage._skeletons])
+        )
+        assert any(keep) or not observables
         prune(self, observables)
 
     monkeypatch.setattr(assemble, "build_seed_table", build)
@@ -496,7 +510,10 @@ def test_native_prune_liveness_with_directed_colour_tables(
             color_correlations=(ColorCorrelator.dipole("T12", 1, 2),)
         ),
     )
-    assert checked == [True]
+    # The companion pruned for the inclusive virtual, the slice for the
+    # dipole's directed tables.
+    assert all(equal for _directed, equal in checked)
+    assert any(directed for directed, _equal in checked)
 
 
 # ------------------------------------------------------------------ six legs

@@ -220,8 +220,9 @@ class NativeSeedStage:
 
     After a stage, ``keep`` evaluates the LC/NLC prune's liveness of
     ``LoopSlice._prune_colour`` natively on the stage's skeletons,
-    ``timings`` holds the wall time of its steps (seconds) and ``counts`` its
-    sizes (skeletons, distinct contents, reductions, classes, rows).
+    ``timings`` holds the wall time of its steps (seconds), ``counts`` its
+    sizes (skeletons, distinct contents, reductions, classes, rows) and
+    ``table`` the table it returned.
     """
 
     def __init__(self, colour: SeedColour, native: Any = None):
@@ -237,6 +238,7 @@ class NativeSeedStage:
         self._class_orders: list[list[int]] = []
         self.timings: dict[str, float] = {}
         self.counts: dict[str, int] = {}
+        self.table: SeedTable | None = None
         self._clock = 0.0
 
     def _step(self, name: str) -> None:
@@ -384,17 +386,15 @@ class NativeSeedStage:
         self._orders = order_tuples
         self._names = names
         self._class_orders = class_orders
-        return (
-            replace(
-                table,
-                classes=tuple(classes),
-                orders=tuple(
-                    frozenset(order_tuples[o] for o in row) for row in class_orders
-                ),
-                cells=tuple(cells),
+        self.table = replace(
+            table,
+            classes=tuple(classes),
+            orders=tuple(
+                frozenset(order_tuples[o] for o in row) for row in class_orders
             ),
-            out,
+            cells=tuple(cells),
         )
+        return self.table, out
 
     def _certificates(
         self,
