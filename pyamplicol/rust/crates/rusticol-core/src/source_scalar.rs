@@ -57,6 +57,7 @@ pub fn decimal_rational(value: &str) -> Result<Rational, String> {
     })
 }
 
+/// The carrier-generic form of `crate::scalar_primitives::scalar_primitive_f64`.
 fn predicate<T: Real + SingleFloat + PartialOrd>(args: &[Complex<T>], mode: u8) -> Complex<T> {
     let zero = args.first().map_or_else(T::new_zero, |x| x.re.zero());
     if args.len() == 1 && mode >= 4 {
@@ -90,21 +91,59 @@ pub fn register_scalar_primitives() {
 }
 
 fn register_definitions() {
-    macro_rules! install {
-        ($name:literal, $mode:literal) => {
-            let _ = symbol!(
-                $name,
-                eval = EvaluationInfo::new()
-                    .register(|x: &[Complex<f64>]| predicate(x, $mode))
-                    .register(|x: &[Complex<DoubleFloat>]| predicate(x, $mode))
-                    .register(|x: &[Complex<Float>]| predicate(x, $mode))
-            );
-        };
+    for (name, mode) in crate::scalar_primitives::SCALAR_PRIMITIVES {
+        let _ = symbol!(
+            name,
+            eval = EvaluationInfo::new()
+                .register(move |x: &[Complex<f64>]| predicate(x, mode))
+                .register(move |x: &[Complex<DoubleFloat>]| predicate(x, mode))
+                .register(move |x: &[Complex<Float>]| predicate(x, mode))
+        );
     }
-    install!("pyamplicol_scalar_v1::truth", 0);
-    install!("pyamplicol_scalar_v1::equal", 1);
-    install!("pyamplicol_scalar_v1::less", 2);
-    install!("pyamplicol_scalar_v1::less_equal", 3);
-    install!("pyamplicol_scalar_v1::real_part", 4);
-    install!("pyamplicol_scalar_v1::imaginary_part", 5);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::predicate;
+    use crate::scalar_primitives::{SCALAR_PRIMITIVES, scalar_primitive_f64};
+    use symbolica::domains::float::Complex;
+
+    #[test]
+    fn binary64_primitives_equal_the_registered_semantics() {
+        let values = [
+            0.0,
+            -0.0,
+            1.5,
+            -2.5,
+            f64::MIN_POSITIVE / 4.0,
+            f64::MAX,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NAN,
+        ];
+        let numbers: Vec<(f64, f64)> = values
+            .iter()
+            .flat_map(|&re| [(re, 0.0), (re, -0.0), (re, 2.0), (1.5, re)])
+            .collect();
+        let mut lists: Vec<Vec<(f64, f64)>> = vec![vec![]];
+        lists.extend(numbers.iter().map(|&x| vec![x]));
+        for &x in &numbers {
+            lists.extend(numbers.iter().map(|&y| vec![x, y]));
+        }
+        lists.push(vec![(1.0, 0.0); 3]);
+        let same = |a: f64, b: f64| a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan());
+        for (_, mode) in SCALAR_PRIMITIVES {
+            for args in &lists {
+                let carrier: Vec<Complex<f64>> =
+                    args.iter().map(|&(re, im)| Complex::new(re, im)).collect();
+                let expected = predicate(&carrier, mode);
+                let (re, im) = scalar_primitive_f64(args, mode);
+                assert!(
+                    same(re, expected.re) && same(im, expected.im),
+                    "mode {mode} {args:?}: {:?} != {expected:?}",
+                    (re, im)
+                );
+            }
+        }
+    }
 }

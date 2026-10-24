@@ -30,6 +30,7 @@ pub mod loop_v2;
 mod metadata;
 pub mod pacbin;
 pub mod recurrence;
+pub mod scalar_primitives;
 #[cfg(feature = "symbolica-runtime")]
 pub mod source_bindings;
 #[cfg(feature = "symbolica-runtime")]
@@ -153,6 +154,25 @@ pub mod __private {
             output_complex_count,
             optimization_level,
             compress,
+        )
+    }
+
+    /// Unstable cold-path bridge: evaluate a stored complex plane application
+    /// through the production loader ((re, im) per value, row-major by point).
+    #[doc(hidden)]
+    pub fn evaluate_plane_application_bytes(
+        application: &[u8],
+        input_complex_count: usize,
+        output_complex_count: usize,
+        inputs: &[f64],
+        point_count: usize,
+    ) -> RusticolResult<Vec<f64>> {
+        crate::engine::evaluate_plane_application_bytes(
+            application,
+            input_complex_count,
+            output_complex_count,
+            inputs,
+            point_count,
         )
     }
 

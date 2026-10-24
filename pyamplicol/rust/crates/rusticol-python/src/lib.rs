@@ -18,6 +18,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyInt, PyList, PyTuple};
 use rusticol_core::__private::{
     build_recurrence_bootstrap_image_v1, compile_symbolica_program_to_plane_application_bytes,
+    evaluate_plane_application_bytes,
 };
 use rusticol_core::{
     ColorAccuracy, ColorComponent as CoreColorComponent, ModelParameter as CoreModelParameter,
@@ -1731,6 +1732,30 @@ fn _compile_symjit_plane_application_v2(
     Ok(PyBytes::new(py, &application).unbind())
 }
 
+/// Evaluate a stored complex plane application through the production loader:
+/// `inputs` are (re, im) per input, row-major by point; returns (re, im) per
+/// output, row-major by point. A cold-path bridge for validating exports.
+#[pyfunction]
+fn _evaluate_symjit_plane_application_v2(
+    py: Python<'_>,
+    application: &[u8],
+    input_complex_count: usize,
+    output_complex_count: usize,
+    inputs: Vec<f64>,
+    point_count: usize,
+) -> PyResult<Vec<f64>> {
+    py.detach(|| {
+        evaluate_plane_application_bytes(
+            application,
+            input_complex_count,
+            output_complex_count,
+            &inputs,
+            point_count,
+        )
+    })
+    .map_err(python_error)
+}
+
 #[pyfunction]
 fn _build_recurrence_bootstrap_v1(
     py: Python<'_>,
@@ -2322,6 +2347,10 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(_preflight_eager_kernel_pack, module)?)?;
     module.add_function(wrap_pyfunction!(
         _compile_symjit_plane_application_v2,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        _evaluate_symjit_plane_application_v2,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(_build_recurrence_bootstrap_v1, module)?)?;

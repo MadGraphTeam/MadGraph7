@@ -99,7 +99,7 @@ pub(crate) struct SymjitRawPlane<'a> {
 pub(crate) type PlaneDescriptor<'a> = SymjitRawPlane<'a>;
 
 impl<'a> SymjitRawPlane<'a> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "python-generation-bridge"))]
     pub(crate) fn from_slice(values: &'a mut [f64]) -> Self {
         Self {
             // SAFETY: The returned wrapper retains the exclusive slice
@@ -230,7 +230,7 @@ impl SymjitPlaneKernel {
         require_symjit_host_cpu(&display_path)?;
 
         let mut loader_config = explicit_loader_config()?;
-        loader_config.set_defuns(Defuns::new());
+        loader_config.set_defuns(scalar_primitive_defuns()?);
         let mut input = bytes;
         let mut application = guard_symjit_panic(
             || Application::load(&mut input, &loader_config),
@@ -787,6 +787,60 @@ pub(crate) fn compile_symbolica_program_to_plane_application_bytes(
     Ok(bytes)
 }
 
+/// Loads a stored complex plane application through the production loader
+/// and evaluates it at `point_count` points.
+///
+/// `inputs` holds (real, imaginary) per input, row-major by point; the result
+/// holds (real, imaginary) per output, row-major by point. A cold-path bridge
+/// for validating exports against Symbolica.
+#[cfg(any(test, feature = "python-generation-bridge"))]
+pub(crate) fn evaluate_plane_application_bytes(
+    bytes: &[u8],
+    input_complex_count: usize,
+    output_complex_count: usize,
+    inputs: &[f64],
+    point_count: usize,
+) -> RusticolResult<Vec<f64>> {
+    let expected = input_complex_count
+        .checked_mul(2)
+        .and_then(|width| width.checked_mul(point_count))
+        .ok_or_else(|| RusticolError::invalid_argument("plane input size overflows usize"))?;
+    if inputs.len() != expected {
+        return Err(RusticolError::invalid_argument(format!(
+            "expected {expected} input values ({point_count} points of \
+             {input_complex_count} complex inputs), got {}",
+            inputs.len()
+        )));
+    }
+    let layout = SymjitPlaneLayout::complex(input_complex_count, output_complex_count);
+    let kernel = SymjitPlaneKernel::load_bytes(bytes, "<plane application>", layout)?;
+    let input_planes = 2 * input_complex_count;
+    let mut planes: Vec<Vec<f64>> = (0..input_planes + 2 * output_complex_count)
+        .map(|plane| {
+            if plane < input_planes {
+                (0..point_count)
+                    .map(|point| inputs[point * input_planes + plane])
+                    .collect()
+            } else {
+                vec![f64::NAN; point_count]
+            }
+        })
+        .collect();
+    {
+        let mut table = kernel.build_raw_table(
+            planes
+                .iter_mut()
+                .map(|plane| PlaneDescriptor::from_slice(plane))
+                .collect(),
+        )?;
+        kernel.execute_table(&mut table, 0, point_count)?;
+    }
+    let output_planes = &planes[input_planes..];
+    Ok((0..point_count)
+        .flat_map(|point| output_planes.iter().map(move |plane| plane[point]))
+        .collect())
+}
+
 fn explicit_plane_config(complex: bool, opt_level: u8, compress: bool) -> RusticolResult<Config> {
     if opt_level > MAX_OPTIMIZATION_LEVEL {
         return Err(RusticolError::invalid_argument(format!(
@@ -823,7 +877,46 @@ fn explicit_plane_config(complex: bool, opt_level: u8, compress: bool) -> Rustic
     // persisted application semantics.
     config.set_direct_arena_operation(0);
     config.set_direct_arena_identity_output(true);
+    config.set_defuns(scalar_primitive_defuns()?);
     Ok(config)
+}
+
+/// pyAmpliCol's version-one scalar primitives (`source_scalar`) as SymJIT
+/// external functions.
+///
+/// SymJIT's Symbolica front end names a `fun` call `symbolica_<symbol>`; a
+/// stored application keeps that name and SymJIT binds it again when it
+/// recompiles the IR at load. The compiler and every plane loader register the
+/// same Rust functions, so an application calling them (a model's helper
+/// functions, inlined by the exporter) is relocatable and evaluates without
+/// Symbolica state. A call of any other non-built-in function is refused by the
+/// compiler.
+fn scalar_primitive_defuns() -> RusticolResult<Defuns> {
+    use num_complex::Complex;
+    let mut defuns = Defuns::new();
+    for (name, mode) in crate::scalar_primitives::SCALAR_PRIMITIVES {
+        defuns
+            .add_sliced_func::<Complex<f64>>(
+                &format!("symbolica_{name}"),
+                Box::new(move |args: &[Complex<f64>]| {
+                    let mut pairs = [(0.0, 0.0); 3];
+                    for (pair, value) in pairs.iter_mut().zip(args) {
+                        *pair = (value.re, value.im);
+                    }
+                    let (re, im) = crate::scalar_primitives::scalar_primitive_f64(
+                        &pairs[..args.len().min(pairs.len())],
+                        mode,
+                    );
+                    Complex::new(re, im)
+                }),
+            )
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "could not register the SymJIT scalar primitive {name}: {error}"
+                ))
+            })?;
+    }
+    Ok(defuns)
 }
 
 /// Refuses a CPU on which SymJIT's load-time code generation would crash.
@@ -2222,5 +2315,98 @@ mod tests {
         let error = compile_symbolica_program_to_plane_application_bytes(MODEL, 2, 1, 4, false)
             .unwrap_err();
         assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
+    }
+
+    /// One output per scalar primitive, and the `equal`-guarded branch shape
+    /// of a model helper function (Symbolica's `if`), all inlined calls.
+    const PRIMITIVE_MODEL: &str = "
+([('fun', ('temp', 0), 'pyamplicol_scalar_v1::equal', [], [('param', 0), ('param', 1)], False),
+  ('if_else', ('temp', 0), 1),
+  ('assign', ('temp', 1), ('param', 0)),
+  ('goto', 2),
+  ('label', 1),
+  ('mul', ('temp', 2), [('param', 1), ('const', 0)], 0),
+  ('label', 2),
+  ('join', ('out', 0), ('temp', 0), ('temp', 1), ('temp', 2)),
+  ('assign', ('out', 1), ('temp', 0)),
+  ('fun', ('out', 2), 'pyamplicol_scalar_v1::truth', [], [('param', 0)], False),
+  ('fun', ('out', 3), 'pyamplicol_scalar_v1::less', [], [('param', 0), ('param', 1)], False),
+  ('fun', ('out', 4), 'pyamplicol_scalar_v1::less_equal', [], [('param', 0), ('param', 1)], False),
+  ('fun', ('out', 5), 'pyamplicol_scalar_v1::real_part', [], [('param', 0)], False),
+  ('fun', ('out', 6), 'pyamplicol_scalar_v1::imaginary_part', [], [('param', 0)], False)],
+ 3,
+ [3])
+";
+
+    fn same_value(left: f64, right: f64) -> bool {
+        left.to_bits() == right.to_bits() || (left.is_nan() && right.is_nan())
+    }
+
+    #[test]
+    fn scalar_primitives_compile_relocate_and_match_the_native_semantics() {
+        let bytes =
+            compile_symbolica_program_to_plane_application_bytes(PRIMITIVE_MODEL, 2, 7, 2, false)
+                .unwrap();
+        // The stored IR names the primitives; loading binds them again.
+        let name = b"symbolica_pyamplicol_scalar_v1::equal";
+        assert!(bytes.windows(name.len()).any(|window| window == name));
+        let pairs: [((f64, f64), (f64, f64)); 11] = [
+            ((1.5, 0.0), (1.5, 0.0)),
+            ((1.5, 0.0), (2.5, 0.0)),
+            ((2.5, 0.0), (1.5, 0.0)),
+            ((0.0, 0.0), (-0.0, 0.0)),
+            ((1.0, 2.0), (1.0, 2.0)),
+            ((1.0, 2.0), (1.0, -2.0)),
+            ((0.0, 1.0), (3.0, 0.0)),
+            ((f64::NAN, 0.0), (1.0, 0.0)),
+            ((f64::INFINITY, 0.0), (1.0, 0.0)),
+            ((-4.0, 0.0), (-4.0, 0.0)),
+            ((0.0, 0.0), (0.0, 0.0)),
+        ];
+        // Long enough for SIMD blocks with divergent lanes, scalar replay
+        // and a scalar tail.
+        let points: Vec<_> = pairs.iter().cycle().take(3 * pairs.len()).collect();
+        let inputs: Vec<f64> = points
+            .iter()
+            .flat_map(|(x, y)| [x.0, x.1, y.0, y.1])
+            .collect();
+        let outputs =
+            evaluate_plane_application_bytes(&bytes, 2, 7, &inputs, points.len()).unwrap();
+        for (point, (x, y)) in points.iter().enumerate() {
+            let primitive = |args: &[(f64, f64)], mode| {
+                crate::scalar_primitives::scalar_primitive_f64(args, mode)
+            };
+            let equal = primitive(&[*x, *y], 1);
+            let branch = if equal.0 != 0.0 || equal.1 != 0.0 {
+                *x
+            } else {
+                (3.0 * y.0, 3.0 * y.1)
+            };
+            let expected = [
+                branch,
+                equal,
+                primitive(&[*x], 0),
+                primitive(&[*x, *y], 2),
+                primitive(&[*x, *y], 3),
+                primitive(&[*x], 4),
+                primitive(&[*x], 5),
+            ];
+            for (output, value) in expected.iter().enumerate() {
+                let at = 14 * point + 2 * output;
+                assert!(
+                    same_value(outputs[at], value.0) && same_value(outputs[at + 1], value.1),
+                    "point {point} {x:?} {y:?} output {output}: {:?} != {value:?}",
+                    (outputs[at], outputs[at + 1])
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn plane_compiler_refuses_unregistered_functions() {
+        let program = PRIMITIVE_MODEL.replace("scalar_v1::truth", "scalar_v1::unknown");
+        let error = compile_symbolica_program_to_plane_application_bytes(&program, 2, 7, 2, false)
+            .unwrap_err();
+        assert!(error.message().contains("unknown"), "{}", error.message());
     }
 }
