@@ -34,6 +34,6 @@ runs:
 
     - run: |
         cd $GITHUB_WORKSPACE
-        echo "pythia8_path = $HOME/.cache/HEPtools/pythia8" >>  input/mg7_configuration.txt
-        echo "hepmc_path = $HOME/.cache/HEPtools/hepmc" >>  input/mg7_configuration.txt
+        echo "pythia8_path = /home/runner/.cache/HEPtools/pythia8" >>  input/mg7_configuration.txt
+        echo "hepmc_path = /home/runner/.cache/HEPtools/hepmc" >>  input/mg7_configuration.txt
       shell: bash

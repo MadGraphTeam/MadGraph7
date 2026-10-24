@@ -33,10 +33,10 @@ runs:
 
     - run: |
         cd $GITHUB_WORKSPACE
-        echo "hepmc3_path = $HOME/.cache/HEPtools/hepmc3" >>  input/mg7_configuration.txt
-        echo "rivet_path = $HOME/.cache/HEPtools/rivet" >>  input/mg7_configuration.txt
-        echo "yoda_path = $HOME/.cache/HEPtools/yoda" >>  input/mg7_configuration.txt
-        echo "contur_path = $HOME/.cache/HEPtools/contur" >>  input/mg7_configuration.txt
+        echo "hepmc3_path = /home/runner/.cache/HEPtools/hepmc3" >>  input/mg7_configuration.txt
+        echo "rivet_path = /home/runner/.cache/HEPtools/rivet" >>  input/mg7_configuration.txt
+        echo "yoda_path = /home/runner/.cache/HEPtools/yoda" >>  input/mg7_configuration.txt
+        echo "contur_path = /home/runner/.cache/HEPtools/contur" >>  input/mg7_configuration.txt
         # Only point MG5 at fastjet if it is really there.  The cache restore
         # above is best-effort (fail-on-cache-miss is false, and warm_cache
         # deletes the contur/heptools caches ~30 min before it re-saves them,
@@ -46,7 +46,7 @@ runs:
         # fastjet/ClusterSequence.hh.  Without the line MG5 uses fjcore, which
         # is a working fallback: the contur/rivet jobs still fail, loudly and on
         # their own, but the numbered acceptance jobs no longer fail with them.
-        FJ=$HOME/.cache/HEPtools/fastjet/bin/fastjet-config
+        FJ=/home/runner/.cache/HEPtools/fastjet/bin/fastjet-config
         if [ -x "$FJ" ]; then
           echo "fastjet = $FJ" >>  input/mg7_configuration.txt
         else
@@ -57,24 +57,11 @@ runs:
     - name: set pythonpath for ubuntu22
       if: ${{ env.HEPTOOLS_IMAGE == 'ubuntu22' }}
       run: |
-          echo "PYTHONPATH=$PYTHONPATH:$HOME/.cache/HEPtools/contur/python3.10/:$HOME/.cache/HEPtools/rivet/python3.10/:$HOME/.cache/HEPtools/rivet/local/python3.10/" >> $GITHUB_ENV
+          echo "PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/contur/python3.10/:/home/runner/.cache/HEPtools/rivet/python3.10/:/home/runner/.cache/HEPtools/rivet/local/python3.10/" >> $GITHUB_ENV
       shell: bash
 
     - name: set pythonpath for ubuntu24
       if: ${{ env.HEPTOOLS_IMAGE == 'ubuntu24' }}
       run: |
-          echo "PYTHONPATH=$PYTHONPATH:$HOME/.cache/HEPtools/contur/python3.12/:$HOME/.cache/HEPtools/rivet/python3.12/:$HOME/.cache/HEPtools/rivet/local/python3.10/" >> $GITHUB_ENV
-      shell: bash
-    # any other image (a self-hosted runner, where ImageOS is unset): take the
-    # python modules wherever this machine's build put them
-    - name: set pythonpath for other images
-      if: ${{ env.HEPTOOLS_IMAGE != 'ubuntu22' && env.HEPTOOLS_IMAGE != 'ubuntu24' }}
-      run: |
-        P=$PYTHONPATH
-        for d in $HOME/.cache/HEPtools/contur/python3* $HOME/.cache/HEPtools/rivet/python3* \
-                 $HOME/.cache/HEPtools/rivet/local/python3* \
-                 $HOME/.cache/HEPtools/{rivet,yoda}/{,local/}lib*/python3*/*-packages; do
-          [ -d "$d" ] && P=$P:$d
-        done
-        echo "PYTHONPATH=$P" >> $GITHUB_ENV
+          echo "PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/contur/python3.12/:/home/runner/.cache/HEPtools/rivet/python3.12/:/home/runner/.cache/HEPtools/rivet/local/python3.10/" >> $GITHUB_ENV
       shell: bash

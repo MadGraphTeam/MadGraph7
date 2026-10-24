@@ -94,7 +94,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             #./tests/test_manager.py test_contur_from_file test_rivet_from_file -pA -t0 -l INFO
-            PYTHONPATH=$PYTHONPATH:$HOME/.cache/HEPtools/contur/python3.10:$HOME/.cache/HEPTools/rivet/local/lib/python3.10/dist-packages/:$HOME/.cache/HEPTools/yoda/local/lib/python3.10/dist-packages/ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPTools/lib ./tests/test_manager.py  test_rivet_from_file -pA -t0 -l INFO
+            PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/contur/python3.10:/home/runner/.cache/HEPTools/rivet/local/lib/python3.10/dist-packages/:/home/runner/.cache/HEPTools/yoda/local/lib/python3.10/dist-packages/ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPTools/lib ./tests/test_manager.py  test_rivet_from_file -pA -t0 -l INFO
 
       # ---- acceptancetest_60 ----
       - name: "acceptancetest_60"
@@ -257,18 +257,12 @@ jobs:
     #   acceptancetest_24 acceptancetest_38 acceptancetest_45 acceptancetest_47
     #   acceptancetest_56 acceptancetest_density_ttbar
     # Each keeps its own steps, run even when an earlier one failed.
-    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
-    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-        # only what these tests need: rivet/contur and the loop libraries are
-        # not built on the (small) self-hosted machines
-        with:
-          selfhosted_tools: lhapdf boost pythia8 emela
       - uses: ./.github/actions/restore-pip-cache
 
       # ---- acceptancetest_20 ----
@@ -332,19 +326,13 @@ jobs:
     # former jobs, run one after the other: acceptancetest_37 acceptancetest_52
     #   acceptancetest_density_interface
     # Each keeps its own steps, run even when an earlier one failed.
-    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
-    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_heptools
-        # only what these tests need: rivet/contur and the loop libraries are
-        # not built on the (small) self-hosted machines
-        with:
-          selfhosted_tools: lhapdf boost pythia8 emela
 
       # ---- acceptancetest_37 ----
       - name: "acceptancetest_37"
@@ -454,7 +442,7 @@ jobs:
       - name: "acceptancetest_contur2: run the test"
         if: ${{ !cancelled() }}
         run: |
-            PYTHONPATH=$PYTHONPATH:$HOME/.cache/HEPtools/contur/python3.10 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPTools/lib ./tests/test_manager.py test_rivet_from_file -pA -t0 -l INFO
+            PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/contur/python3.10 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPTools/lib ./tests/test_manager.py test_rivet_from_file -pA -t0 -l INFO
 
       # ---- acceptancetest_density_tttbartbar ----
       - name: "acceptancetest_density_tttbartbar"
@@ -472,18 +460,12 @@ jobs:
     # former jobs, run one after the other: acceptancetest_48
     #   acceptancetest_heft acceptancetest_madevent_flavor_zud
     # Each keeps its own steps, run even when an earlier one failed.
-    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
-    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-        # only what these tests need: rivet/contur and the loop libraries are
-        # not built on the (small) self-hosted machines
-        with:
-          selfhosted_tools: lhapdf boost pythia8 emela
 
       # ---- acceptancetest_48 ----
       - name: "acceptancetest_48"
@@ -512,9 +494,7 @@ jobs:
 
   acceptancetest_53:
     # The type of runner that the job will run on
-    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
-    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
@@ -523,10 +503,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-        # only what these tests need: rivet/contur and the loop libraries are
-        # not built on the (small) self-hosted machines
-        with:
-          selfhosted_tools: lhapdf boost pythia8 emela
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
 
@@ -561,7 +537,7 @@ jobs:
       - name: test one of the test test_loop_improved_reweighting
         run: |
             cd $GITHUB_WORKSPACE
-            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPtools/lhapdf6_py3/lib
+            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib
             export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages
             export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages
             ./tests/test_manager.py  test_nlo_reweighting -pA -t0 -l INFO
@@ -571,7 +547,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPtools/lhapdf6_py3/lib
+            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib
             export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages
             export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages
             ./tests/test_manager.py  test_nlo_reweighting_new_parameter -pA -t0 -l INFO
@@ -587,18 +563,12 @@ jobs:
     # former jobs, run one after the other: acceptancetest_103_polarization
     #   acceptancetest_flavor acceptancetest_madevent_vbf_merged_flavor
     # Each keeps its own steps, run even when an earlier one failed.
-    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
-    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
-        # only what these tests need: rivet/contur and the loop libraries are
-        # not built on the (small) self-hosted machines
-        with:
-          selfhosted_tools: lhapdf boost pythia8 emela
 
       # ---- acceptancetest_103_polarization ----
       - name: "acceptancetest_103_polarization"
