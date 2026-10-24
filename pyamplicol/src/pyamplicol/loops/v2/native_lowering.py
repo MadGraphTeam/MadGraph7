@@ -13,7 +13,13 @@ encodings:
   validation and derivations as the JSON (the schedule-B row links stay
   derived at load). It holds plan data only, no path or host information, and
   declares its decoded size, bounded by its length: the reader refuses a
-  member beyond the bound before allocating (no decompression bomb).
+  member beyond the bound before allocating (no decompression bomb). The
+  loader's derivations are bounded by the member too (``derive_bound``): the
+  reader refuses values the derivations would trust beyond the plan's tables
+  and a member whose derivations exceed its bound per byte (the writer pads a
+  plan that needs more; none written today does), and probes the decoded
+  model and the derivations' peak fallibly before making them, so a member
+  the allocator cannot hold is refused with an error, never an abort.
 
 Phase 0 (this module): the model is fed with the records of a Python
 ``ExportedPlan``. They travel as JSON with sorted keys and Python's default

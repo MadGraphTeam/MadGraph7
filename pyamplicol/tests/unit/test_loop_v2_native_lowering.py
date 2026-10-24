@@ -23,12 +23,17 @@ Per plan:
   tests add every truncation, the parallel decode's corruptions and the
   padding of plans that share beyond the bound); the parallel decode equals
   the sequential one;
-* crafted plans whose loader derivations would exhaust the process (2^26
-  Born rows, 2^16 columns without seed classes, a 2^40-th vertex, a family
-  rank of 10^6) are refused by ``read_binary`` before deriving: unpadded,
-  beyond the member's derivation bound; padded, by the fallible reservation
-  under the child's address-space limit; and no plan written today needs
-  padding;
+* crafted plans whose loader derivations would exhaust or crash the process
+  (2^26 Born rows, 2^16 columns without seed classes, a 2^40-th vertex, a
+  family rank of 10^6, a fused exponent of 2^20, a power of ten of 10^9)
+  are refused by ``read_binary`` before deriving: unpadded, beyond the
+  member's derivation bound; padded, by the fallible probe under the child's
+  address-space limit; valid list-dominated members (2^17 fused entries, 64
+  contents sharing 4096) load or are refused under a scan of tighter limits,
+  never abort; every plan's derivation bound (``derive_bound``) is within its
+  member's, and no plan written today needs padding (the bound's soundness
+  against the loader's real allocations: the reader's Rust tests,
+  ``tests/loop_v2_plan_derive_bound.rs``);
 * the bindings run in a process without a Symbolica key (``loop_nightly``).
 
 Plans cover schedule B with derived and written row links, schedule F
@@ -145,6 +150,9 @@ def check(exported, native) -> bytes:
     assert native_lowering.read(member, native) == json_load.digest
     assert not host_paths(member, decoded)
     assert struct.unpack_from("<Q", member, 32)[0] == 0, "no plan needs padding"
+    memory, allocated, work = again.derive_bound()
+    assert 0 < memory <= allocated
+    assert allocated + work <= DERIVED_PER_BYTE * len(member)
     return member
 
 
@@ -314,8 +322,8 @@ def test_six_leg_plans(slices, loop_native, name):
 def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
     """``V2PlanModel``, ``v2_plan_load`` and ``v2_plan_read`` in a process
     without a key (RUST-MIGRATION.md rule 4): the JSON written byte-identical,
-    the binary round trip bitwise, and equal load digests from both encodings
-    and from ``read_binary``.
+    the binary round trip bitwise, the derivation bound (``derive_bound``),
+    and equal load digests from both encodings and from ``read_binary``.
 
     The child imports the extension, which starts a restricted Symbolica
     instance: like ``test_native_builder_needs_no_symbolica_licence`` it must
@@ -341,6 +349,7 @@ def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
         "text, member = bytes(model.json()), bytes(model.binary())\n"
         "again = native.V2PlanModel.from_binary(member)\n"
         "assert bytes(again.json()) == text and bytes(again.binary()) == member\n"
+        "assert all(isinstance(x, int) and x > 0 for x in again.derive_bound())\n"
         "Path(sys.argv[2]).write_bytes(text)\n"
         "Path(sys.argv[3]).write_bytes(member)\n"
         "for data in (text, member):\n"
@@ -365,6 +374,7 @@ def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
 # a 24-byte header (width, delta flag, zeros, count, base) and its payload.
 HEADER = 40
 DECODED_PER_BYTE = 128
+DERIVED_PER_BYTE = 8192
 
 
 def _columns(member: bytes, names: list[str]) -> dict[str, int]:
@@ -482,7 +492,13 @@ def _derivation_bombs(native, program: dict) -> dict[str, tuple[bytes, str]]:
     - 2^26 Born rows (26 legs of two helicities) for one family's one edge;
     - a term's vertex id 2^40 (the vertex table) and a family rank of 10^6
       (monomial tables): refused as the loader's validation would, before it
-      allocates.
+      allocates;
+    - a fused exponent of 2^20 (the evidence audit's 4,240-byte crash: the
+      layouts' recursive monomial index overflowed the stack before the
+      loader checks the content's degree): refused before deriving;
+    - a leaf weight ``1e1000000000`` (a 0.4 GB power of ten, minutes to
+      compute; its written member is padded by 26 MB to pay for it):
+      unpadded, beyond the member's derivation bound.
 
     The first two as written (the writer pads them to pay for their
     derivations: refused by the fallible reservation under the child's
@@ -510,6 +526,10 @@ def _derivation_bombs(native, program: dict) -> dict[str, tuple[bytes, str]]:
     term["vertex"] = 2**40
     rank = json.loads(json.dumps(program))
     rank["families"][0]["rank"] = 10**6
+    exponent = json.loads(json.dumps(program))
+    exponent["contents"][0]["fused"][0][5] = 2**20
+    power = json.loads(json.dumps(program))
+    power["families"][0]["leaves"][0]["weight"] = "1e1000000000"
     refused = "which the allocator refuses"
     bound = "the loader's derivations exceed the member's bound"
     bombs = {}
@@ -520,6 +540,8 @@ def _derivation_bombs(native, program: dict) -> dict[str, tuple[bytes, str]]:
         bombs[f"{name} unpadded"] = (_unpadded(padded), bound)
     bombs["vertex 2^40"] = (member(vertex), "a vertex id beyond the terms")
     bombs["family rank 1e6"] = (member(rank), "family rank exceeds propagators")
+    bombs["fused exponent 2^20"] = (member(exponent), "q-degree above its content's")
+    bombs["decimal power 1e9"] = (_unpadded(member(power)), bound)
     return bombs
 
 
@@ -582,6 +604,76 @@ print(json.dumps(out))
 """
 
 
+# Address-space headrooms (MiB above a fresh child's size) the list-dominated
+# members are read under, ascending until one loads (``_under_limits``).
+HEADROOMS = (4, 8, 16, 24, 32, 40, 48, 64, 96, 128, 192)
+
+_UNDER_LIMITS = """
+import json, resource, sys
+from pathlib import Path
+from pyamplicol.loops.native import load_loop_native
+native = load_loop_native()
+member = Path(sys.argv[1]).read_bytes()
+rows = []
+for mb in json.loads(sys.argv[2]):
+    status = Path('/proc/self/status').read_text().splitlines()
+    size = next(int(l.split()[1]) for l in status if l.startswith('VmSize:'))
+    limit = size * 1024 + mb * 2**20
+    resource.setrlimit(resource.RLIMIT_AS, (limit, resource.RLIM_INFINITY))
+    try:
+        rows.append(native.v2_plan_read(member))
+    except ValueError as error:
+        rows.append(str(error))
+    resource.setrlimit(resource.RLIMIT_AS, (resource.RLIM_INFINITY,) * 2)
+    if 'allocator refuses' not in rows[-1]:
+        break
+print(json.dumps(rows))
+"""
+
+
+def _under_limits(native, tmp_path: Path) -> None:
+    """Valid members whose loader derivations follow their lists at several
+    times their decoded size (the evidence audit's abort windows: a probe of
+    twice the decoded size passed and the segment layouts' sets aborted; a
+    decode used the address space to its edge and the thread pool's first
+    use aborted): one content of 2^17 distinct fused entries, and 64 contents
+    sharing one list of 4096 (stored once, copied per content). Each is read
+    in a fresh child (one rayon thread, the pool not yet started; one malloc
+    arena, since glibc's per-thread arenas reserve 64 MB of address space
+    each, which a failing allocation falls back to: hidden headroom) under
+    address-space limits of ``HEADROOMS`` above its size, ascending: refused
+    by a probe ("which the allocator refuses") until it loads, to the
+    parent's digest, never aborting; refused at the smallest."""
+
+    def member(contents: int, entries: int, width: int) -> bytes:
+        fused = [[i // width, i % width, 0, 0, 0, 0] for i in range(entries)]
+        content = {"d_in": width, "d_out": width, "degree": 0, "rows": 0, "mask": 0}
+        content |= {"row_helicities": [], "fused": fused, "terms": []}
+        plan = _empty_plan() | {"legs": 1, "rows": 1, "columns": 1}
+        plan |= {"helicities": [[1]], "contents": [content] * contents}
+        text = json.dumps(plan, separators=(",", ":")).encode()
+        return bytes(native.V2PlanModel.from_json(text).binary())
+
+    members = {
+        "fused 2^17": member(1, 2**17, 512),
+        "shared 64 x 4096": member(64, 4096, 64),
+    }
+    for k, (name, data) in enumerate(members.items()):
+        path = tmp_path / f"limits-{k}.bin"
+        path.write_bytes(data)
+        result = subprocess.run(
+            [sys.executable, "-c", _UNDER_LIMITS, str(path), json.dumps(HEADROOMS)],
+            env=os.environ | {"RAYON_NUM_THREADS": "1", "MALLOC_ARENA_MAX": "1"},
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert result.returncode == 0, (name, result.returncode, result.stderr[-2000:])
+        rows = json.loads(result.stdout.splitlines()[-1])
+        assert len(rows) > 1 and all("allocator refuses" in r for r in rows[:-1]), rows
+        assert rows[-1] == native_lowering.read(data, native), (name, rows)
+
+
 def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
     """Truncations of ``member`` are refused; single-byte corruptions of it
     and of the wide member are refused or decode (a damaged value can be
@@ -592,7 +684,8 @@ def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
     allocating. ``read_binary`` loads ``member`` (``program``'s) and refuses
     the derivation bombs (``_derivation_bombs``). In a child under an
     address-space limit of 1 GiB above its size: a reader that decoded or
-    derived a bomb would fail there instead of exhausting the host. The child
+    derived a bomb would fail there instead of exhausting the host; the
+    list-dominated members then under tighter limits (``_under_limits``). The child
     decodes with one thread (sequentially), this process with its pool (the
     wide member in parallel chunks): equal models (RUST-MIGRATION.md rule 5).
     """
@@ -636,3 +729,4 @@ def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
         # Unpadded, a bomb is the size of the plan's own member (wider values).
         small = len(data) <= len(member) + 1024
         assert small or name.endswith(" padded"), (name, len(data))
+    _under_limits(native, tmp_path)
