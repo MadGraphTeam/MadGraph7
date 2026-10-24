@@ -306,13 +306,13 @@ class CountertermBlocks:
         of the lowered model at full colour)."""
 
         from pyamplicol.generation.dag_compiler import GenericDAGCompiler
-        from pyamplicol.models.external import CompiledUFOModel
         from pyamplicol.models.prepared_catalog_builder import (
             model_tree_kernel_variant,
         )
 
-        lowered = recursion.model.lowered
-        model = CompiledUFOModel(lowered.compiled)
+        # The lowered model's Weyl-projection support comes decided from
+        # the lowering cache (``CountertermLoweredModel.tree_model``).
+        model = recursion.model.lowered.tree_model()
         full = (1 << len(process.legs)) - 1
         dag = GenericDAGCompiler(
             model=model,
@@ -932,10 +932,8 @@ def counterterm_program_blocks(
             # A rule that cannot be lowered is inert when its vertex enters
             # no tree of the program (REQUIREMENTS_ADDENDUM J), and refused
             # otherwise; there is no site fallback.
-            from pyamplicol.models.external import CompiledUFOModel
-
             reachability = InsertionReachability.build(
-                CompiledUFOModel(lowered.lowered.compiled),
+                lowered.lowered.tree_model(),
                 ir,
                 recursion.coupling_order_limits(),
                 ignored_particle_ids=vetoed_particle_ids(veto),

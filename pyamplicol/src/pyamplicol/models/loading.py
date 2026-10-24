@@ -19,6 +19,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .external import CompiledUFOModel
     from .loop_import import RawLoopModel
     from .prepared import PreparedModelBundle
 
@@ -1195,12 +1196,34 @@ class CountertermLoweredModel:
     line_factors: Mapping[str, str] = field(default_factory=dict)
     line_fields: Mapping[str, str] = field(default_factory=dict)
     dirac_fields: frozenset[str] = frozenset()
+    # The lowering-cache entry of ``compiled`` (file, key), which also keeps
+    # its Weyl-projection support (``tree_model``); None: not cached.
+    cache_entry: tuple[Path, str] | None = field(
+        default=None, compare=False, repr=False
+    )
+    _weyl_support: list[Mapping[tuple[int, int, int, int], bool]] = field(
+        default_factory=list, compare=False, repr=False
+    )
 
     @property
     def slot_orders(self) -> tuple[str, ...]:
         return tuple(
             sorted({s.slot_order for s in (*self.couplings, *self.insertions)})
         )
+
+    def tree_model(self) -> CompiledUFOModel:
+        """The tree model of ``compiled`` (a new ``CompiledUFOModel``) with
+        its Weyl-projection support decided (``counterterm_weyl_support``:
+        from the lowering cache, or probed once and stored there), so that
+        no tree recursion over the lowered model repeats those probes."""
+
+        from .external import CompiledUFOModel
+
+        model = CompiledUFOModel(self.compiled)
+        if not self._weyl_support:
+            self._weyl_support.append(counterterm_weyl_support(model, self.cache_entry))
+        model.seed_weyl_projection_support(self._weyl_support[0])
+        return model
 
 
 _METRIC_LORENTZ_PREFIX = f"{_COUNTERTERM_PARAMETER_BLOCK}_METRIC"
@@ -1533,7 +1556,7 @@ def lower_counterterm_vertices(
     started = time.perf_counter()
     # The multi-trace currents project the gluon legs of the counterterm
     # vertices onto SU(N) (U(1)-subtraction auxiliaries, design §6.1).
-    ir = compile_counterterm_model_ir(
+    ir, entry = _counterterm_ir(
         payload,
         tree_kernel_variant=tree_kernel_variant,
         u1_projected_vertices=frozenset(vertex_members) if multi_trace else frozenset(),
@@ -1640,11 +1663,14 @@ def lower_counterterm_vertices(
         line_factors=lines.factors,
         line_fields=lines.reads_as,
         dirac_fields=lines.dirac_fields,
+        cache_entry=entry,
     )
 
 
 COUNTERTERM_IR_CACHE_SUFFIX = ".pyAmplicol-counterterm-ir.json"
 _COUNTERTERM_IR_CACHE_KIND = "pyamplicol-counterterm-model-ir"
+COUNTERTERM_WEYL_CACHE_SUFFIX = ".pyAmplicol-counterterm-weyl.json"
+_COUNTERTERM_WEYL_CACHE_KIND = "pyamplicol-counterterm-weyl-support"
 _COUNTERTERM_IR_FINGERPRINT: list[dict[str, object]] = []
 
 
@@ -1671,6 +1697,23 @@ def compile_counterterm_model_ir(
     written leaves the result uncached.
     """
 
+    return _counterterm_ir(
+        payload,
+        tree_kernel_variant=tree_kernel_variant,
+        u1_projected_vertices=u1_projected_vertices,
+        cache_dir=cache_dir,
+    )[0]
+
+
+def _counterterm_ir(
+    payload: Mapping[str, object],
+    *,
+    tree_kernel_variant: TreeKernelVariant,
+    u1_projected_vertices: frozenset[str],
+    cache_dir: Path | None = None,
+) -> tuple[CompiledModelIR, tuple[Path, str]]:
+    """``compile_counterterm_model_ir`` and its cache entry (file, key)."""
+
     from .compiler_entry import compile_ufo_model_ir
 
     if not _COUNTERTERM_IR_FINGERPRINT:
@@ -1695,7 +1738,7 @@ def compile_counterterm_model_ir(
             stored.get("kind") == _COUNTERTERM_IR_CACHE_KIND
             and stored.get("key") == key
         ):
-            return CompiledModelIR.from_dict(_mapping(stored["ir"], "ir"))
+            return CompiledModelIR.from_dict(_mapping(stored["ir"], "ir")), (path, key)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         pass
     ir = compile_ufo_model_ir(
@@ -1709,7 +1752,75 @@ def compile_counterterm_model_ir(
             {"kind": _COUNTERTERM_IR_CACHE_KIND, "key": key, "ir": ir.to_dict()},
             compact=True,
         )
-    return ir
+    return ir, (path, key)
+
+
+def counterterm_weyl_support(
+    model: CompiledUFOModel, entry: tuple[Path, str] | None
+) -> dict[tuple[int, int, int, int], bool]:
+    """``model.weyl_projection_support()`` of a CT-lowered model (a
+    ``CompiledUFOModel`` without runtime parameters), kept next to its
+    lowering-cache ``entry`` (``compile_counterterm_model_ir``: file, key) as
+    ``<key>.pyAmplicol-counterterm-weyl.json``.
+
+    The probes are symbolic zero tests of the projected kernels at the
+    model's parameter defaults, so the stored table is keyed by the entry's
+    key (payload and compiler code) and the defaults. An unreadable, foreign
+    or malformed table is probed again; without an entry nothing is stored.
+    """
+
+    defaults = hashlib.sha256(
+        json.dumps(
+            sorted(
+                (str(name), [float(part) for part in value])
+                for name, value in model.compiled.parameter_defaults.items()
+            ),
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    if entry is None:
+        return model.weyl_projection_support()
+    file, key = entry
+    path = file.with_name(f"{key}{COUNTERTERM_WEYL_CACHE_SUFFIX}")
+    with suppress(OSError, ValueError, KeyError, TypeError):
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            stored["kind"] == _COUNTERTERM_WEYL_CACHE_KIND
+            and stored["key"] == key
+            and stored["defaults"] == defaults
+        ):
+            return dict(_weyl_support_rows(stored["support"]))
+    support = model.weyl_projection_support()
+    with suppress(OSError):
+        _atomic_write_json(
+            path,
+            {
+                "kind": _COUNTERTERM_WEYL_CACHE_KIND,
+                "key": key,
+                "defaults": defaults,
+                "support": [
+                    [*probe, value] for probe, value in sorted(support.items())
+                ],
+            },
+            compact=True,
+        )
+    return support
+
+
+def _weyl_support_rows(
+    rows: object,
+) -> Iterator[tuple[tuple[int, int, int, int], bool]]:
+    if not isinstance(rows, list):
+        raise ValueError("Weyl support rows must be a list")
+    for row in rows:
+        if (
+            not isinstance(row, list)
+            or len(row) != 5
+            or not all(type(item) is int for item in row[:4])
+            or type(row[4]) is not bool
+        ):
+            raise ValueError(f"malformed Weyl support row {row!r}")
+        yield (row[0], row[1], row[2], row[3]), row[4]
 
 
 def _weyl_fields(compiled: CompiledModel) -> frozenset[str]:
