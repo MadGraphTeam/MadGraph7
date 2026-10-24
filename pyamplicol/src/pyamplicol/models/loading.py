@@ -342,8 +342,16 @@ class CompiledModel:
 
 
 def compiler_fingerprint() -> dict[str, object]:
+    return {"pyamplicol": package_version(), **_compiler_code_identity()}
+
+
+def _compiler_code_identity() -> dict[str, object]:
+    """``compiler_fingerprint`` without the package version: what a compile's
+    result depends on (the model-compiler sources, Symbolica and the
+    contracts). The version check of a source checkout (``package_version``
+    verifies the staged native runtime) is about a fifth of a second."""
+
     return {
-        "pyamplicol": package_version(),
         "ufo_model_loader": _distribution_version("ufo-model-loader", "missing"),
         "symbolica": _distribution_version("symbolica", "missing"),
         "compiled_model_schema_version": COMPILED_MODEL_SCHEMA_VERSION,
@@ -1655,8 +1663,9 @@ def compile_counterterm_model_ir(
     proofs) is cached like a compiled model (``compile_model_source``): in
     ``cache_dir`` (default: the model cache, ``$PYAMPLICOL_CACHE_DIR/models``
     or the platform cache) under the SHA-256 of the payload (in its own key
-    order), the variant, the projected vertices and the compiler fingerprint
-    (``compiler_fingerprint``: package, Symbolica and model-compiler sources).
+    order), the variant, the projected vertices and the compiler's code
+    identity (``compiler_fingerprint`` without the package version: Symbolica,
+    the model-compiler sources and contracts).
     The IR round-trips exactly (``CompiledModelIR.to_dict``/``from_dict``); an
     unreadable or foreign entry is recompiled, and a cache that cannot be
     written leaves the result uncached.
@@ -1665,7 +1674,7 @@ def compile_counterterm_model_ir(
     from .compiler_entry import compile_ufo_model_ir
 
     if not _COUNTERTERM_IR_FINGERPRINT:
-        _COUNTERTERM_IR_FINGERPRINT.append(compiler_fingerprint())
+        _COUNTERTERM_IR_FINGERPRINT.append(_compiler_code_identity())
     key = hashlib.sha256(
         json.dumps(
             [
