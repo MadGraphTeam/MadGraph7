@@ -1674,6 +1674,9 @@ class LoopSlice:
             fourier=None,
             colour_pruned=False,
             scaleless=None,
+            # The native generator stages hold the main families' schedules;
+            # the companion's are Python's (its LC/NLC prune included).
+            generation=None,
         )
         if self.request.accuracy != "full" and prune is not False:
             twin._prune_colour()
