@@ -1449,6 +1449,17 @@ def cpu_matrix(
     scratch.mkdir(parents=True, exist_ok=True)
     tool = str(Path(__file__).resolve())
 
+    # QEMU itself runs without the caller's LD_LIBRARY_PATH (its own host
+    # libraries may need another C library than the paths there provide);
+    # the emulated program gets the caller's value (``-E``).
+    host_env = dict(os.environ)
+    guest_library_path = host_env.pop("LD_LIBRARY_PATH", None)
+    guest = (
+        []
+        if guest_library_path is None
+        else ["-E", f"LD_LIBRARY_PATH={guest_library_path}"]
+    )
+
     def run(prefix: list[str], label: str, sdk_run: bool) -> dict[str, Any]:
         out = scratch / f"{'sdk' if sdk_run else 'python'}-{label}.json"
         if sdk_run:
@@ -1471,7 +1482,11 @@ def cpu_matrix(
             ]
         start = time.perf_counter()
         done = subprocess.run(
-            command, capture_output=True, text=True, preexec_fn=_no_core
+            command,
+            capture_output=True,
+            text=True,
+            preexec_fn=_no_core,
+            env=host_env if prefix else None,
         )
         entry: dict[str, Any] = {
             "returncode": done.returncode,
@@ -1494,7 +1509,7 @@ def cpu_matrix(
             k: v for k, v in native.items() if k != "record"
         }
         for model in models:
-            entry = run([qemu, "-cpu", model], model, sdk_run)
+            entry = run([qemu, *guest, "-cpu", model], model, sdk_run)
             if "record" in native and "record" in entry:
                 entry["compare"] = compare(native["record"], entry["record"])
             entry.pop("record", None)
