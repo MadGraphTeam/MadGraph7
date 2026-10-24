@@ -67,6 +67,13 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_mg7_launch -t0
+      # Other unit tests which need the compiled madspace: without it they try
+      # to build it, or format the cross section without madspace.
+      - name: run the unit tests needing madspace
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_mg7_interference_helicity test_mg7_discrete_flavor TestOneImplementation TestRealRunNumbers -t0
 
 
   acceptancetest_mg7_bundle_1:
