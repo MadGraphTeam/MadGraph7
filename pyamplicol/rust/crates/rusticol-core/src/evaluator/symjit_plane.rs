@@ -829,23 +829,33 @@ fn explicit_plane_config(complex: bool, opt_level: u8, compress: bool) -> Rustic
 /// Refuses a CPU on which SymJIT's load-time code generation would crash.
 ///
 /// Stored applications are IR that SymJIT 2.27 recompiles for the loading CPU
-/// (`CompilerType::Native`). On x86-64 it selects its AVX code generator from
-/// the AVX CPUID bit alone, but that generator also emits FMA3 instructions
-/// (complex products, fused multiply-add): on a CPU with AVX and without FMA3
-/// (Intel Sandy and Ivy Bridge, AMD Bulldozer, or a virtual-machine CPU model
-/// that masks FMA) the kernel dies with SIGILL, which no caller can recover.
-/// Such a CPU is refused here with the reason. Without AVX SymJIT takes its
-/// SSE generator, which reports what it cannot compile as an error.
+/// (`CompilerType::Native`). Its x86-64 kernels need AVX and FMA3: the shared
+/// epilogue emits `vzeroupper` (AVX) for every generator, the SSE one
+/// included, and the AVX generator, chosen from the AVX CPUID bit alone, also
+/// emits FMA3 instructions (complex products, fused multiply-add). On a CPU
+/// without AVX (x86-64-v1/v2) or with AVX and without FMA3 (Intel Sandy and
+/// Ivy Bridge, AMD Bulldozer, a virtual-machine CPU model masking them) a
+/// kernel dies with SIGILL, which no caller can recover. Such a CPU is refused
+/// here with the reason.
 pub(crate) fn require_symjit_host_cpu(display_path: &Path) -> RusticolResult<()> {
     #[cfg(target_arch = "x86_64")]
-    if std::is_x86_feature_detected!("avx") && !std::is_x86_feature_detected!("fma") {
-        return Err(RusticolError::compatibility(format!(
-            "cannot compile SymJIT application {} on this CPU: it has AVX without \
-             FMA3, and SymJIT's AVX code generator emits FMA3 instructions; use an \
-             x86-64 CPU with AVX and FMA3 (Intel Haswell, AMD Piledriver or newer), \
-             a CPU without AVX, or AArch64",
-            display_path.display()
-        )));
+    {
+        let missing: Vec<&str> = [
+            ("AVX", std::is_x86_feature_detected!("avx")),
+            ("FMA3", std::is_x86_feature_detected!("fma")),
+        ]
+        .into_iter()
+        .filter_map(|(name, present)| (!present).then_some(name))
+        .collect();
+        if !missing.is_empty() {
+            return Err(RusticolError::compatibility(format!(
+                "cannot compile SymJIT application {} on this CPU: it lacks {}, which \
+                 the SymJIT code generator's x86-64 kernels use; use an x86-64 CPU with \
+                 AVX and FMA3 (Intel Haswell, AMD Piledriver or newer) or AArch64",
+                display_path.display(),
+                missing.join(" and ")
+            )));
+        }
     }
     let _ = display_path;
     Ok(())
