@@ -1228,7 +1228,7 @@ class LoopSlice:
     loop_catalogue: Any = None
     fourier: SeedFourier | None = None
     # The CT amplitudes from the tree recursion (``ct_closure``); the sites
-    # then hold only the rules it leaves to site closure.
+    # are then empty (site closure is the "sites" test oracle only).
     counterterm_program: Any = None
     # Whether LC/NLC pruning dropped skeletons (``_prune_colour``).
     colour_pruned: bool = False

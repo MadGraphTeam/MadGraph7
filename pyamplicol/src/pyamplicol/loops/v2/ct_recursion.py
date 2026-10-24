@@ -40,9 +40,12 @@ Born x CT interference directly; no CT tree and no site is listed:
   ``models.ct_line_insertions`` refuses (mixing between spins) and
   coefficients with UFO helpers other than ``cond`` and ``reglog``; no
   loop_sm rule is among them. A request that admits such a rule is refused
-  (``UnloweredCountertermError``); there is no site fallback. Rules that can
-  be in no tree of the program (ghost legs; orders above its limits) or have
-  no admitted loop content are ``inert`` and contribute nothing. With
+  (``UnloweredCountertermError``) when the rule's vertex can enter a tree of
+  it (``ct_closure.InsertionReachability``, the tree engine's field and
+  coupling-order reachability); there is no site fallback. Rules that can be
+  in no tree of the program (ghost legs; orders above its limits; a vertex
+  no tree of the request holds, REQUIREMENTS_ADDENDUM J) or have no admitted
+  loop content are ``inert`` and contribute nothing. With
   ``multi_trace`` (the production closure, ``ct_closure``) the d-symbol, d·d,
   d·f and δδ colours of the four-gluon and gggV R2 (``models.ct_color_flow``)
   and the whole-rule colour continuations (``whole_rule_rows``) are lowered;
