@@ -29,8 +29,8 @@ cross-host acceptance (its docstring), on:
 * unlicensed concurrent processes: two pyAmpliCol processes without
   ``SYMBOLICA_LICENSE`` load a tree and a loop artifact at the same time (the
   Python package key does not reach the Rust copy of Symbolica, whose
-  restricted mode admits one thread per user); with native loop point inputs
-  the loop case is the same open defect.
+  restricted mode admits one thread per user); the loop case is the same
+  open defect.
 
 The seven-gluon artifact and other CPU feature levels (QEMU user-mode models)
 are opt-in runs of the same tool (``check``, ``cpu-matrix``), recorded in
@@ -68,14 +68,15 @@ SDK_WITHOUT_V4 = (
     "the loop SDK refuses plan v4 until generation-scale-2 (V2Runtime and the "
     "rusticol_virtual_open dispatch)"
 )
-# Open defect (DESIGN §12.1, decision pending): every native loop f64 path
-# decodes Symbolica exact evaluators when it loads (legacy coefficients, the
-# native-v1 tree program, the SDK's V2Runtime), which without
+# Open defect (DESIGN §12.1, decision pending): every loop f64 path decodes
+# Symbolica exact evaluators natively (legacy coefficients, the slice's Python
+# point inputs through CoefficientEvaluator, the native-v1 tree program, the
+# SDK's V2Runtime), which without
 # SYMBOLICA_LICENSE takes Symbolica's restricted one-thread-per-user permit:
 # a second unlicensed process aborts. Fix: f64 SymJIT kernels (WP3.1 PLAN
 # §4.2, as the tree engine) or pyAmpliCol's library key in the native code.
 NATIVE_LOOP_NEEDS_LICENCE = (
-    "native loop inputs decode Symbolica exact evaluators at load: without "
+    "loop evaluation decodes Symbolica exact evaluators natively: without "
     "SYMBOLICA_LICENSE a second concurrent process aborts (DESIGN §12.1)"
 )
 RESTRICTED = "restricted Symbolica"
@@ -228,20 +229,29 @@ def test_unlicensed_processes_load_tree_artifacts_concurrently(tree_artifact, tm
     takes the user's one restricted-thread permit; f64 loading and evaluation
     must not access it, so a second concurrent process does not abort."""
 
-    _concurrent_loads(tree_artifact, "g_g_to_g_g_g", tmp_path)
+    _concurrent_loads(tree_artifact, "g_g_to_g_g_g", tmp_path, 5)
 
 
-def _concurrent_loads(artifact: Path, process: str, scratch: Path) -> None:
+def _concurrent_loads(artifact: Path, process: str, scratch: Path, legs: int) -> None:
+    """Two unlicensed processes each load the artifact and evaluate a point
+    (native programs may be built at the first evaluation); the first one
+    stays alive (blocked on its stdin) until the second has finished."""
+
+    points = scratch / "points.json"
+    points.write_text(json.dumps(portability.points(legs, 1)))
     hold = scratch / "hold.py"
     hold.write_text(
-        "import sys, time\n"
-        "from pyamplicol import Runtime\n"
-        "Runtime.load(sys.argv[1], process=sys.argv[2])\n"
+        "import importlib.util, sys, time\n"
+        f"spec = importlib.util.spec_from_file_location('tool', {str(TOOL)!r})\n"
+        "tool = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(tool)\n"
+        "tool.evaluate(sys.argv[1], sys.argv[2], sys.argv[3])\n"
         "print('loaded', flush=True)\n"
-        "time.sleep(float(sys.argv[3]))\n"
+        "sys.stdin.read() if sys.argv[4] == 'hold' else None\n"
     )
     first = subprocess.Popen(
-        [sys.executable, str(hold), str(artifact), process, "8"],
+        [sys.executable, str(hold), str(artifact), process, str(points), "hold"],
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -257,13 +267,13 @@ def _concurrent_loads(artifact: Path, process: str, scratch: Path) -> None:
         first.wait()
         pytest.fail("the first process did not load: " + "".join(seen)[-2000:])
     second = subprocess.run(
-        [sys.executable, str(hold), str(artifact), process, "0"],
+        [sys.executable, str(hold), str(artifact), process, str(points), "go"],
         capture_output=True,
         text=True,
         env=_unlicensed(),
         cwd=scratch,
     )
-    rest = "".join(seen) + first.communicate(timeout=120)[0]
+    rest = "".join(seen) + first.communicate(input="", timeout=120)[0]
     assert second.returncode == 0, second.stdout[-2000:] + second.stderr[-2000:]
     assert first.returncode == 0, rest[-2000:]
     assert RESTRICTED not in second.stdout + rest
@@ -456,9 +466,8 @@ def test_loop_v4_sdk_needs_no_symbolica_licence(
 def test_unlicensed_processes_load_loop_artifacts_concurrently(
     request, loop_artifact, tmp_path
 ):
-    if NATIVE_POINT_INPUTS:
-        request.applymarker(
-            pytest.mark.xfail(reason=NATIVE_LOOP_NEEDS_LICENCE, strict=True)
-        )
+    request.applymarker(
+        pytest.mark.xfail(reason=NATIVE_LOOP_NEEDS_LICENCE, strict=True)
+    )
     artifact, _, _ = loop_artifact("gg")
-    _concurrent_loads(artifact, "gg", tmp_path)
+    _concurrent_loads(artifact, "gg", tmp_path, 4)

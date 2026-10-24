@@ -75,6 +75,7 @@ Normal reminder suppression and JSON output behavior remain unchanged.
 | Generate a process artifact | Yes | Symbolic DAG/recurrence construction and evaluator production. |
 | Ordinary Python precision other than 16 | Yes | Lazily loads retained Symbolica evaluator state when supported. |
 | Python `evaluate_correlated(...)` | Yes | Uses retained Symbolica evaluator state at every precision, including 16. |
+| Virtual (one-loop) evaluation, Python and native SDK | Yes, natively | The loop runtime decodes saved Symbolica evaluator state natively; see [Concurrent processes without a license](#concurrent-processes-without-a-license). |
 
 The absence of a Symbolica runtime dependency for f64 evaluation does not
 change the terms governing Symbolica use during generation.
@@ -103,6 +104,27 @@ values = runtime.evaluate(momenta, precision=16)
 Independent runtime handles can execute concurrently even when their artifact
 was generated under restricted Symbolica conditions. Do not call one mutable
 handle concurrently because its parameter and warning state is handle-local.
+
+## Concurrent processes without a license
+
+The package key licenses the Python `symbolica` module. The native extension
+contains its own Rust copy of Symbolica, which reads only `SYMBOLICA_LICENSE`.
+Without it, that copy runs restricted: the first Symbolica operation of a
+process takes the user's single restricted thread, and any other process of
+the same user that needs one then aborts with "Cannot start another
+restricted Symbolica thread while this user's thread allowance is in use".
+
+- Importing pyAmpliCol and f64 tree evaluation perform no Symbolica operation
+  in the native code, so any number of unlicensed processes can load and
+  evaluate tree artifacts concurrently.
+- Virtual (one-loop) evaluation is different for now: the loop runtime, in
+  Python and in the C/C++/Fortran SDK, decodes saved Symbolica evaluator
+  state natively when it loads or first evaluates a process. Without a
+  personal license only one such process per user can run at a time. Export `SYMBOLICA_LICENSE` to evaluate virtuals in
+  parallel processes (for example a Monte Carlo farm).
+
+The wheel's native SDK archive contains this loop runtime and therefore links
+Symbolica.
 
 See [Runtime and Selectors](runtime-and-selectors.md) and [Native APIs](native-apis.md).
 

@@ -150,6 +150,7 @@ certification performed during generation.
 | C++ or ASM process artifact | concrete target; CPU features when native specialization is enabled | No; requires exact compatible target/features. |
 | C++ or ASM prepared bundle | target-native | No. |
 | Compiled model IR (`.json`) | architecture-independent | Yes; it contains no executable prepared backend. |
+| Plan v4 virtual (one-loop, `loop.engine = "v2"`) process artifact | `portable-64le`, empty CPU-feature set | **Yes**: it holds no compiled code (exact kernels and evaluator states, evaluated natively). Until its point inputs are stored natively (`point_inputs = "native-v1"`), loading regenerates them (compiling SymJIT tree kernels in memory) and needs the same pyAmpliCol build. |
 
 For a portable compiled all-JIT artifact, Rusticol verifies that every
 executable leaf and nested selector path is O1 or O2 SymJIT. Eager and
@@ -161,6 +162,52 @@ loaded.
 `portable-64le` is an executable portability claim, not a claim that benchmark
 results transfer between hosts. Profiling measurements and campaign currents
 remain host/profile-specific.
+
+### CPU requirements of SymJIT kernels
+
+The SymJIT code generator (2.27) that rebuilds JIT kernels at load needs, on
+x86-64, a CPU with **AVX and FMA3** (Intel Haswell, AMD Piledriver or newer);
+AArch64 is supported as well. Its x86-64 kernels use AVX and FMA3 instructions
+even on its SSE fallback, so on an older CPU (or a virtual machine whose CPU
+model masks AVX or FMA3) they would end the process with an illegal
+instruction. pyAmpliCol refuses such a CPU when it would compile a kernel,
+with a `CompatibilityError` naming the missing feature. Generate C++
+evaluators on that host instead. Artifacts whose evaluation compiles no
+SymJIT kernel (plan v4 virtual artifacts with native point inputs) are not
+affected.
+
+A `symjit.toml` in the working directory, or `SYMJIT_TOML`, is read by
+SymJIT 2.27 whenever it loads a complex kernel; if that file is malformed or
+unreadable, loading fails. Keep such files out of the directories that
+evaluate pyAmpliCol artifacts.
+
+### Bitwise reproducibility
+
+With the same pyAmpliCol build, a relocated artifact gives bitwise-identical
+binary64 results on hosts of the same SymJIT code-path class: x86-64 with AVX
+and FMA3, or AArch64. Across classes, kernels may round differently in the
+last bits (fused multiply-add), so compare with a tolerance there. Plan v4
+virtual evaluations with native point inputs compile nothing at load and do
+not depend on the class.
+
+### Checking portability
+
+`tools/loop_artifact_portability.py` (source checkout) checks an artifact on
+one host and records results to compare across hosts:
+
+```console
+python tools/loop_artifact_portability.py scan artifacts/gg_ggggg
+python tools/loop_artifact_portability.py check artifacts/gg_ggggg --process gg5g --scratch /tmp/portability
+python tools/loop_artifact_portability.py points --legs 7 --count 2 --out points.json
+python tools/loop_artifact_portability.py evaluate artifacts/gg_ggggg --process gg5g --points points.json --out here.json
+# copy the artifact, points.json and the script to the other host, run evaluate there, then:
+python tools/loop_artifact_portability.py compare here.json there.json
+```
+
+`scan` looks for absolute paths, user and host names in every file and
+PACBIN member and checks the target; `check` also evaluates the original and a
+relocated copy in fresh interpreters with other working, home and temporary
+directories, and reports any generation call made while loading.
 
 ## Why some JIT artifacts are still target-specific
 
