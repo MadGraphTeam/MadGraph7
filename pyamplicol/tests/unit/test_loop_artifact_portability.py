@@ -492,6 +492,11 @@ def loop_artifact(loop_sm_compiled_model, loop_native, tmp_path_factory):
                 generation_seconds=generation,
                 hold_permit=name != "gg",
             )
+            # The records stay with the artifact (a retained --basetemp is
+            # the seven-gluon evidence of DESIGN §12.1).
+            (root / "verdict.json").write_text(
+                json.dumps({"generation_seconds": generation, **verdict}, indent=1)
+            )
             cache[name] = (output, generation, verdict)
         return cache[name]
 
