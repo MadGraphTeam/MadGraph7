@@ -6752,6 +6752,7 @@ c
       subroutine bornsoftvirtual(p,bsv_wgt,virt_wgt,born_wgt)
       use extra_weights
       use mint_module
+      use virt_surrogate
       implicit none
       include "genps.inc"
       include 'nexternal.inc'
@@ -6889,6 +6890,11 @@ C to keep track of the various split orders
       double precision coupl_wgtwnstmpmuf
 
       double precision amp_tot
+c surrogate/Born ratio subtracted from (and added back to) the virtual
+      double precision ave_ratio(0:amp_split_size)
+c fitted surrogate of the virtual needed for this point (grid setup, or
+c its channel uses it), and links-only pass of the I(reg) loop
+      logical vs_need,links_only
 
       include "pmass.inc"
       
@@ -7057,7 +7063,17 @@ C end of the external particle loop
 c     If doing MC over helicities, must sum over the two
 c     helicity contributions for the Q-terms of collinear limit.
  547  continue
-      if (abrv.eq.'virt') goto 548
+      if (fold.eq.0) then
+         vs_nlinks=0
+         vs_need=VirtTrickSurrogate.ge.1 .and. ichan.ge.1 .and.
+     $        ichan.le.vs_maxchan
+         if (vs_need) vs_need=imode.eq.0 .or. vs_on(ichan)
+      endif
+c Separate virtual events skip the I(reg) terms. The fitted surrogate of
+c the virtual still needs their colour-linked Borns: then the loop below
+c runs for the QCD links only, without the I(reg) contributions.
+      links_only=abrv.eq.'virt'
+      if (links_only .and. .not.(vs_need .and. fold.eq.0)) goto 548
 c
 c I(reg) terms, eq 5.5 of FKS
       nFKSprocess_save = nFKSprocess
@@ -7068,7 +7084,7 @@ c I(reg) terms, eq 5.5 of FKS
             need_charge_links=.false.
             nFKSprocess=nFKSprocess_col
          else if (iord.eq.qed_pos) then
-            if (.not. need_charge_links_used) cycle
+            if (.not. need_charge_links_used .or. links_only) cycle
             need_charge_links=need_charge_links_used
             need_color_links=.false.
             nFKSprocess=nFKSprocess_chg
@@ -7092,6 +7108,9 @@ c because there is a call above in this subroutine
 C wgt includes the gs/w^2 
                   call sborn_sf_frame(p_born,m,n,wgt)
                   if (wgt.ne.0d0) then
+                     if (fold.eq.0 .and. iord.eq.qcd_pos .and. vs_need)
+     $                    call virt_surrogate_add_link(m,n,wgt)
+                     if (links_only) cycle
                      call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
                      contr=contr+wgt*eikIreg
                      do k=1,amp_split_size
@@ -7141,7 +7160,35 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
          endif
       enddo
 
+c The surrogate of the virtual, as a ratio to the Born: the fitted one
+c (VirtTrickSurrogate=1,2) when its channel uses it, otherwise the
+c polynomial fit or the grid. Chosen at the first fold and kept for the
+c other folds of the same point.
       if (fold.eq.0) then
+         vs_ratio_set=.false.
+         vs_featok=.false.
+         if (vs_need) then
+            call virt_surrogate_features(born_wgt)
+            if (vs_featok .and. born_wgt.ne.0d0 .and. vs_on(ichan)) then
+               vs_ratio=vs_value(ichan)/born_wgt
+               vs_ratio_set=.true.
+            endif
+         endif
+      endif
+      do iamp=0,amp_split_size
+         if (vs_ratio_set) then
+            ave_ratio(iamp)=vs_ratio
+         elseif (vs_use_poly(ichan)) then
+            ave_ratio(iamp)=polyfit(iamp)
+         else
+            ave_ratio(iamp)=average_virtual(iamp,ichan)
+         endif
+      enddo
+
+      if (fold.eq.0) then
+         vs_vcomp=.false.
+         vs_born=born_wgt
+         vs_fvirt=virtual_fraction(ichan)
          if ((ran2().le.virtual_fraction(ichan) .and.
      $        abrv(1:3).ne.'nov').or.abrv(1:4).eq.'virt') then
             call cpu_time(tBefore)
@@ -7150,19 +7197,14 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
                amp_split_virt(iamp)=amp_split_finite_ML(iamp)
             enddo
             virtual_over_born=virt_wgt/born_wgt
+            vs_vcomp=.true.
+            vs_virt=virt_wgt
             if (ickkw.ne.-1) then
                virt_wgt = 0d0
                do iamp=1,amp_split_size
                   if (amp_split_virt(iamp).eq.0d0) cycle
-                  if (use_poly_virtual) then
-                     amp_split_virt(iamp)=amp_split_virt(iamp)-
-     $                    polyfit(iamp)
-     $                    *amp_split_born_for_virt(iamp)
-                  else
-                     amp_split_virt(iamp)=amp_split_virt(iamp)-
-     $                    average_virtual(iamp,ichan)
-     $                     *amp_split_born_for_virt(iamp)
-                  endif
+                  amp_split_virt(iamp)=amp_split_virt(iamp)-
+     $                 ave_ratio(iamp)*amp_split_born_for_virt(iamp)
                   virt_wgt = virt_wgt + amp_split_virt(iamp)
                enddo
             endif
@@ -7185,21 +7227,12 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
      $        amp_split_virt_save(1:amp_split_size)
       endif
       if (abrv(1:4).ne.'virt' .and. ickkw.ne.-1) then
-         if (use_poly_virtual) then
-            avv_wgt=polyfit(0)*born_wgt
-            do iamp=1, amp_split_size
-               if (amp_split_born_for_virt(iamp).eq.0d0) cycle
-               amp_split_avv(iamp)= polyfit(iamp)
-     $              *amp_split_born_for_virt(iamp)
-            enddo
-         else
-            avv_wgt=average_virtual(0,ichan)*born_wgt
-            do iamp=1, amp_split_size
-               if (amp_split_born_for_virt(iamp).eq.0d0) cycle
-               amp_split_avv(iamp)= average_virtual(iamp,ichan)
-     $              *amp_split_born_for_virt(iamp)
-            enddo
-         endif
+         avv_wgt=ave_ratio(0)*born_wgt
+         do iamp=1, amp_split_size
+            if (amp_split_born_for_virt(iamp).eq.0d0) cycle
+            amp_split_avv(iamp)= ave_ratio(iamp)
+     $           *amp_split_born_for_virt(iamp)
+         enddo
       endif
 
 c eq.(MadFKS.C.13)
@@ -8554,5 +8587,133 @@ c     reset the default dynamical_scale_choice
          enddo
       enddo
       mapconfig_in(0)=mapconfig(0)
+      return
+      end
+
+
+      subroutine virt_surrogate_add_link(m,n,bkl)
+c Records the colour-linked Born B_mn of the current point for the
+c fitted surrogate of the virtual (m,n numbered in the real-emission
+c process with the current i_fks).
+      use virt_surrogate
+      implicit none
+      integer m,n
+      double precision bkl
+      integer i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+      if (vs_nlinks.ge.vs_maxlinks) return
+      vs_nlinks=vs_nlinks+1
+      vs_lifks=i_fks
+      vs_link(1,vs_nlinks)=m
+      vs_link(2,vs_nlinks)=n
+      vs_bkl(vs_nlinks)=bkl
+      return
+      end
+
+
+      subroutine virt_surrogate_features(born)
+c Features of the fitted surrogate of the virtual for the current point,
+c from the colour-linked Borns and the Born momenta: B, sum_{k<l} B_kl
+c L_kl, sum_{k<l} B_kl L_kl^2 and sum_k B_kk (massive self-links), with
+c L_kl = log(|2 p_k.p_l|/Q_ES^2); VirtTrickSurrogate=2 adds B L_kl and
+c B L_kl^2 for every pair of Born particles k<l, coloured or not.
+      use virt_surrogate
+      use FKSParams, only: VirtTrickSurrogate
+      implicit none
+      include 'nexternal.inc'
+      include 'q_es.inc'
+      double precision born
+      double precision p_born(0:3,nexternal-1)
+      common/pborn/p_born
+      integer i,k,l,m,nf
+      double precision skl,lkl
+      logical warned
+      data warned /.false./
+      nf=4
+      if (VirtTrickSurrogate.eq.2) then
+         nf=4+(nexternal-1)*(nexternal-2)
+         if (nf.gt.vs_maxfeat) then
+            if (.not.warned) write (*,*) 'Too many Born particles for '/
+     $           /'VirtTrickSurrogate=2: using the dipole features only'
+            warned=.true.
+            nf=4
+         endif
+      endif
+      vs_nfeat=nf
+      vs_feat(1)=born
+      vs_feat(2:vs_nfeat)=0d0
+      vs_featok=.false.
+      if (vs_nlinks.eq.0 .or. QES2.le.0d0) return
+      if (vs_nfeat.gt.4) then
+         m=4
+         do k=1,nexternal-2
+            do l=k+1,nexternal-1
+               skl=abs(2d0*(p_born(0,k)*p_born(0,l)-p_born(1,k)
+     $              *p_born(1,l)-p_born(2,k)*p_born(2,l)-p_born(3,k)
+     $              *p_born(3,l)))
+               lkl=0d0
+               if (skl.gt.0d0) lkl=log(skl/QES2)
+               vs_feat(m+1)=born*lkl
+               vs_feat(m+2)=born*lkl**2
+               m=m+2
+            enddo
+         enddo
+      endif
+      do i=1,vs_nlinks
+c the links are numbered in the real-emission process (i_fks=vs_lifks)
+         k=vs_link(1,i)
+         l=vs_link(2,i)
+         if (k.gt.vs_lifks) k=k-1
+         if (l.gt.vs_lifks) l=l-1
+         if (k.eq.l) then
+            vs_feat(4)=vs_feat(4)+vs_bkl(i)
+         else
+            skl=abs(2d0*(p_born(0,k)*p_born(0,l)-p_born(1,k)*p_born(1
+     $           ,l)-p_born(2,k)*p_born(2,l)-p_born(3,k)*p_born(3,l)))
+            if (skl.le.0d0) cycle
+            lkl=log(skl/QES2)
+            vs_feat(2)=vs_feat(2)+vs_bkl(i)*lkl
+            vs_feat(3)=vs_feat(3)+vs_bkl(i)*lkl**2
+         endif
+      enddo
+      vs_featok=.true.
+      return
+      end
+
+
+      subroutine virt_surrogate_fit_point
+c Adds the current point to the fit of the surrogate of the virtual
+c (VirtTrickSurrogate=1,2; grid setup only; points where the virtual was
+c computed). Called once the weights include the PDFs: the weight of a
+c point is the square of the factor c that converts a matrix-element
+c level virtual into the integrand, c = (s14 f + s15)/V, with s14 and s15
+c the residual (type 14) and surrogate (type 15) contributions and f the
+c virtual fraction.
+      use weight_lines
+      use mint_module
+      use virt_surrogate
+      implicit none
+      integer i
+      double precision s14,s15,c,agrid,apoly
+      if (VirtTrickSurrogate.lt.1 .or. imode.ne.0) return
+      if (.not.vs_vcomp .or. .not.vs_featok) return
+      if (vs_virt.eq.0d0) return
+      s14=0d0
+      s15=0d0
+      do i=1,icontr
+         if (itype(i).eq.14) s14=s14+wgts(1,i)
+         if (itype(i).eq.15) s15=s15+wgts(1,i)
+      enddo
+      if (s14.eq.0d0 .and. s15.eq.0d0) return
+      c=(s14*vs_fvirt+s15)/vs_virt
+c the fallback surrogates: the grid and the polynomial fit
+      if (vs_grid_kept()) then
+         agrid=average_virtual(0,ichan)*vs_born
+      else
+         agrid=polyfit(0)*vs_born
+      endif
+      apoly=agrid
+      if (vs_both()) apoly=polyfit(0)*vs_born
+      call vs_accumulate(ichan,vs_virt,agrid,apoly,c**2)
       return
       end

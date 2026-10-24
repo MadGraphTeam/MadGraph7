@@ -64,8 +64,242 @@
 ! nintegrals>6 : virtual and born order by order
 !
 
+module mint_dims
+! dimensions shared by virt_surrogate and mint_module
+  implicit none
+  integer, parameter, public :: maxchannels=20 ! set as least as large as in amcatnlo_run_interface
+end module mint_dims
+
+
+module virt_surrogate
+! Fitted surrogate A of the virtual V for the virt-trick (VirtTrickSurrogate
+! = 1, 2 in FKS_params.dat). The virt-trick computes V only at a fraction
+! of the points and integrates A + (V-A)/f, which is exact for any A; the
+! closer A is to V, the smaller the variance and, in event generation, the
+! fewer the negative separate-virtual events.
+!   VirtTrickSurrogate=1 (colour dipole):
+!     A = t1 B + t2 sum_{k<l} B_kl L_kl + t3 sum_{k<l} B_kl L_kl^2 + t4 sum_k B_kk,
+!     with B_kl the colour-linked Borns of the I_reg terms of bornsoftvirtual
+!     and L_kl = log(|2 p_k.p_l|/Q_ES^2).
+!   VirtTrickSurrogate=2 adds B L_kl and B L_kl^2 for every pair of Born
+!     particles k<l, coloured or not, so that A also follows the kinematics
+!     of colourless particles (e.g. p p > W Z has a single colour dipole).
+! The coefficients t are fitted per integration channel during the grid
+! setup, by weighted least squares with the squared integrand weight of the
+! virtual as weight, and frozen within each iteration.
+! The grid and the polynomial fit (UsePolyVirtual) are both kept as
+! fallbacks, and each channel uses the best of the three surrogates on
+! out-of-sample points (all three are frozen within an iteration; the fit
+! enters the comparison from the iteration after its first fit):
+!   - event generation: the smallest score
+!       sum |c| max(0,A-V) + vs_costweight * sum |c| |A-V|,
+!     i.e. the weight of the negative residual (the negative separate-virtual
+!     events) plus the total residual (their number, hence the loop calls),
+!     so that a negative residual counts twice as much as a positive one;
+!   - fixed order: the smallest residual variance.
+  use mint_dims, only: maxchannels
+  use FKSParams, only: use_poly_virtual, VirtTrickSurrogate
+  implicit none
+  integer, parameter :: vs_maxlinks=400, vs_maxfeat=94, vs_maxchan=maxchannels, vs_minpts=50
+  double precision, parameter :: vs_costweight=1d0
+! colour-linked Borns of the current point (I_reg terms); the partons (m,n)
+! are numbered in the real-emission process whose i_fks is vs_lifks
+  integer :: vs_nlinks=0, vs_lifks=0
+  integer :: vs_link(2,vs_maxlinks)
+  double precision :: vs_bkl(vs_maxlinks)
+! the current point: virtual computed, its value, the Born, the virtual fraction
+  logical :: vs_vcomp=.false.
+  double precision :: vs_virt=0d0, vs_born=0d0, vs_fvirt=1d0
+! features of the current point, and the surrogate/Born ratio used for it
+  integer :: vs_nfeat=4
+  double precision :: vs_feat(vs_maxfeat)=0d0
+  logical :: vs_featok=.false., vs_ratio_set=.false.
+  double precision :: vs_ratio=0d0
+! per channel: normal equations of the fit, coefficients, and the choice
+! (vs_on: the fitted surrogate; vs_polyon: the polynomial fit; else the grid)
+  double precision :: vs_xtx(vs_maxfeat,vs_maxfeat,vs_maxchan)=0d0, &
+       vs_xty(vs_maxfeat,vs_maxchan)=0d0, vs_yty(vs_maxchan)=0d0
+  double precision :: vs_theta(vs_maxfeat,vs_maxchan)=0d0
+  logical :: vs_fitted(vs_maxchan)=.false., vs_on(vs_maxchan)=.false., vs_polyon(vs_maxchan)=.false.
+  integer :: vs_npt(vs_maxchan)=0
+! residual statistics of the grid and the polynomial fit on all the points
+! (second moment, negative and total residual weights), and of the three
+! surrogates on the points computed since the first fit
+  double precision :: vs_s2grid(vs_maxchan)=0d0, vs_s2poly(vs_maxchan)=0d0, &
+       vs_neggrid(vs_maxchan)=0d0, vs_negpoly(vs_maxchan)=0d0, &
+       vs_absgrid(vs_maxchan)=0d0, vs_abspoly(vs_maxchan)=0d0
+  integer :: vs_cum_npt(vs_maxchan)=0
+  double precision :: vs_cum_s2grid(vs_maxchan)=0d0, vs_cum_s2poly(vs_maxchan)=0d0, &
+       vs_cum_s2fit(vs_maxchan)=0d0, vs_cum_neggrid(vs_maxchan)=0d0, &
+       vs_cum_negpoly(vs_maxchan)=0d0, vs_cum_negfit(vs_maxchan)=0d0, &
+       vs_cum_absgrid(vs_maxchan)=0d0, vs_cum_abspoly(vs_maxchan)=0d0, vs_cum_absfit(vs_maxchan)=0d0
+
+contains
+
+  logical function vs_both()
+! grid and polynomial fit both kept, next to the fitted surrogate
+    vs_both=VirtTrickSurrogate.ge.1
+  end function vs_both
+
+  logical function vs_grid_kept()
+    vs_grid_kept=.not.use_poly_virtual .or. vs_both()
+  end function vs_grid_kept
+
+  logical function vs_poly_kept()
+    vs_poly_kept=use_poly_virtual .or. vs_both()
+  end function vs_poly_kept
+
+  logical function vs_use_poly(kchan)
+! the channel's surrogate is the polynomial fit (when the fitted one is not used)
+    integer :: kchan
+    if (vs_both()) then
+       vs_use_poly=.false.
+       if (kchan.ge.1 .and. kchan.le.vs_maxchan) vs_use_poly=vs_polyon(kchan)
+    else
+       vs_use_poly=use_poly_virtual
+    endif
+  end function vs_use_poly
+
+  double precision function vs_value(kchan)
+! the fitted surrogate at the current point (matrix-element level)
+    integer :: kchan
+    vs_value=dot_product(vs_theta(1:vs_nfeat,kchan),vs_feat(1:vs_nfeat))
+  end function vs_value
+
+  subroutine vs_accumulate(kchan,virt,surr_grid,surr_poly,w)
+! add the current point (virtual 'virt', grid and polynomial-fit surrogates
+! 'surr_grid' and 'surr_poly', at matrix-element level, weight w) to the fit
+! and to the residual statistics of channel kchan
+    integer :: kchan,i
+    double precision :: virt,surr_grid,surr_poly,w,afit
+    if (kchan.lt.1 .or. kchan.gt.vs_maxchan) return
+    do i=1,vs_nfeat
+       vs_xtx(1:vs_nfeat,i,kchan)=vs_xtx(1:vs_nfeat,i,kchan)+w*vs_feat(1:vs_nfeat)*vs_feat(i)
+    enddo
+    vs_xty(1:vs_nfeat,kchan)=vs_xty(1:vs_nfeat,kchan)+w*vs_feat(1:vs_nfeat)*virt
+    vs_yty(kchan)=vs_yty(kchan)+w*virt**2
+    vs_npt(kchan)=vs_npt(kchan)+1
+    vs_s2grid(kchan)=vs_s2grid(kchan)+w*(virt-surr_grid)**2
+    vs_s2poly(kchan)=vs_s2poly(kchan)+w*(virt-surr_poly)**2
+    vs_neggrid(kchan)=vs_neggrid(kchan)+sqrt(w)*max(0d0,surr_grid-virt)
+    vs_negpoly(kchan)=vs_negpoly(kchan)+sqrt(w)*max(0d0,surr_poly-virt)
+    vs_absgrid(kchan)=vs_absgrid(kchan)+sqrt(w)*abs(surr_grid-virt)
+    vs_abspoly(kchan)=vs_abspoly(kchan)+sqrt(w)*abs(surr_poly-virt)
+    if (vs_fitted(kchan)) then
+       afit=vs_value(kchan)
+       vs_cum_npt(kchan)=vs_cum_npt(kchan)+1
+       vs_cum_s2fit(kchan)=vs_cum_s2fit(kchan)+w*(virt-afit)**2
+       vs_cum_s2grid(kchan)=vs_cum_s2grid(kchan)+w*(virt-surr_grid)**2
+       vs_cum_negfit(kchan)=vs_cum_negfit(kchan)+sqrt(w)*max(0d0,afit-virt)
+       vs_cum_neggrid(kchan)=vs_cum_neggrid(kchan)+sqrt(w)*max(0d0,surr_grid-virt)
+       vs_cum_s2poly(kchan)=vs_cum_s2poly(kchan)+w*(virt-surr_poly)**2
+       vs_cum_negpoly(kchan)=vs_cum_negpoly(kchan)+sqrt(w)*max(0d0,surr_poly-virt)
+       vs_cum_absgrid(kchan)=vs_cum_absgrid(kchan)+sqrt(w)*abs(surr_grid-virt)
+       vs_cum_abspoly(kchan)=vs_cum_abspoly(kchan)+sqrt(w)*abs(surr_poly-virt)
+       vs_cum_absfit(kchan)=vs_cum_absfit(kchan)+sqrt(w)*abs(afit-virt)
+    endif
+  end subroutine vs_accumulate
+
+  subroutine vs_solve(kchan,signaware)
+! end of an iteration: refit channel kchan on all its points so far and
+! choose among the fit, the polynomial fit and the grid for the next
+! iteration (signaware: compare the event-generation scores, else the
+! residual variances)
+    integer :: kchan,i,j,k,nf
+    logical :: signaware
+    double precision :: a(vs_maxfeat,vs_maxfeat),b(vs_maxfeat),ridge,s2fit,piv,fac,sfit,sgrid,spoly
+    if (kchan.lt.1 .or. kchan.gt.vs_maxchan) return
+    nf=vs_nfeat
+    ! polynomial fit or grid, on all the points (both are frozen within an
+    ! iteration, so these are out of sample)
+    if (vs_npt(kchan).gt.0) then
+       if (signaware) then
+          vs_polyon(kchan)=vs_negpoly(kchan)+vs_costweight*vs_abspoly(kchan).lt. &
+               vs_neggrid(kchan)+vs_costweight*vs_absgrid(kchan)
+       else
+          vs_polyon(kchan)=vs_s2poly(kchan).lt.vs_s2grid(kchan)
+       endif
+    endif
+    if (vs_npt(kchan).ge.max(vs_minpts,3*nf)) then
+       a(1:nf,1:nf)=vs_xtx(1:nf,1:nf,kchan)
+       b(1:nf)=vs_xty(1:nf,kchan)
+       ! small ridge for (nearly) degenerate features
+       ridge=0d0
+       do i=1,nf
+          ridge=ridge+a(i,i)
+       enddo
+       ridge=1d-9*ridge/nf
+       do i=1,nf
+          a(i,i)=a(i,i)+ridge
+       enddo
+       ! Gaussian elimination with partial pivoting
+       do k=1,nf
+          j=k
+          do i=k+1,nf
+             if (abs(a(i,k)).gt.abs(a(j,k))) j=i
+          enddo
+          if (j.ne.k) then
+             do i=1,nf
+                piv=a(k,i)
+                a(k,i)=a(j,i)
+                a(j,i)=piv
+             enddo
+             piv=b(k)
+             b(k)=b(j)
+             b(j)=piv
+          endif
+          if (a(k,k).eq.0d0) return
+          do i=k+1,nf
+             fac=a(i,k)/a(k,k)
+             a(i,k:nf)=a(i,k:nf)-fac*a(k,k:nf)
+             b(i)=b(i)-fac*b(k)
+          enddo
+       enddo
+       do k=nf,1,-1
+          b(k)=(b(k)-dot_product(a(k,k+1:nf),b(k+1:nf)))/a(k,k)
+       enddo
+       if (vs_cum_npt(kchan).gt.0) then
+          ! the best of grid, polynomial fit and fit on the points since the fit
+          if (signaware) then
+             sfit=vs_cum_negfit(kchan)+vs_costweight*vs_cum_absfit(kchan)
+             sgrid=vs_cum_neggrid(kchan)+vs_costweight*vs_cum_absgrid(kchan)
+             spoly=vs_cum_negpoly(kchan)+vs_costweight*vs_cum_abspoly(kchan)
+             vs_on(kchan)=sfit.lt.min(sgrid,spoly)
+             vs_polyon(kchan)=.not.vs_on(kchan) .and. spoly.lt.sgrid
+          else
+             vs_on(kchan)=vs_cum_s2fit(kchan).lt.min(vs_cum_s2grid(kchan),vs_cum_s2poly(kchan))
+             vs_polyon(kchan)=.not.vs_on(kchan) .and. vs_cum_s2poly(kchan).lt.vs_cum_s2grid(kchan)
+          endif
+       elseif (signaware) then
+          ! first fit, event generation: the sign of the residual can only be
+          ! judged out of sample, so keep the grid or the polynomial fit until
+          ! the next iteration
+          vs_on(kchan)=.false.
+       else
+          ! first fit, fixed order: in-sample residual of the fit against the
+          ! better fallback's on the same points
+          s2fit=vs_yty(kchan)-2d0*dot_product(b(1:nf),vs_xty(1:nf,kchan)) &
+               +dot_product(b(1:nf),matmul(vs_xtx(1:nf,1:nf,kchan),b(1:nf)))
+          if (vs_polyon(kchan)) then
+             vs_on(kchan)=s2fit.lt.vs_s2poly(kchan)
+          else
+             vs_on(kchan)=s2fit.lt.vs_s2grid(kchan)
+          endif
+       endif
+       vs_theta(1:nf,kchan)=b(1:nf)
+       vs_fitted(kchan)=.true.
+       write (*,'(a,i3,a,i7,a,l2,a,l2)') ' fitted surrogate of the virtual, channel',kchan, &
+            ': points',vs_npt(kchan),', used',vs_on(kchan),', polynomial fit used',vs_polyon(kchan)
+    endif
+  end subroutine vs_solve
+
+end module virt_surrogate
+
+
 module mint_module
   use FKSParams ! contains use_poly_virtual
+  use mint_dims
+  use virt_surrogate
   implicit none
   integer, parameter, private :: nintervals=32    ! max number of intervals in the integration grids
   integer, parameter, public  :: ndimmax=60       ! max number of dimensions of the integral
@@ -77,7 +311,6 @@ module mint_module
   integer, parameter, private :: min_it1=5        ! minimal number of iterations in the mint step 1 phase
   integer, parameter, public :: max_fold=512     ! 8*8*8 is max folding for the three variables
   integer, parameter, private :: max_points=100000! maximum number of points to trow per iteration if not enough non-zero points can be found.
-  integer, parameter, public  :: maxchannels=20 ! set as least as large as in amcatnlo_run_interface
   ! Note that the number of intervals in the integration grids, 'nintervals', cannot be arbitrarily large.
   ! It should be equal to
   !     nintervals = min_inter * 2^n,
@@ -353,11 +586,16 @@ contains
        ! overwrite xgrid with the new xgrid
        if (regridded(kchan)) xgrid(1:nint_used,1:ndim,kchan)=xgrid_new(1:nint_used,1:ndim)
     enddo
-    if (use_poly_virtual) then
-       call do_polyfit()
-    else
+    if (vs_poly_kept()) call do_polyfit()
+    if (vs_grid_kept()) then
        do k_ord_virt=0,n_ord_virt
           call regrid_ave_virt(k_ord_virt)
+       enddo
+    endif
+    if (VirtTrickSurrogate.ge.1) then
+       ! refit the surrogate of the virtual and choose it or the grid
+       do kchan=1,nchans
+          call vs_solve(kchan,.not.fixed_order)
        enddo
     endif
 ! Regrid the MC over integers (used for the MC over FKS dirs)
@@ -693,7 +931,7 @@ contains
     implicit none
     integer :: kdim,k_ord_virt,ithree,isix
     double precision, dimension(ndimmax) :: x
-    double precision :: virtual,born
+    double precision :: virtual,born,ratio
 ! accumulate the function in xacc(icell(kdim),kdim) to adjust the grid later
     do kdim=1,ndim
        xacc(icell(kdim),kdim,ichan) = xacc(icell(kdim),kdim,ichan) + f(1)
@@ -711,17 +949,20 @@ contains
        endif
        if (f(ithree).ne.0d0) then
           born=f(isix)
-          ! virt_wgt_mint=(virtual-average_virtual*born)/virtual_fraction. Compensate:
-          if (use_poly_virtual) then
-             virtual=f(ithree)*virtual_fraction(ichan)+ &
-                  polyfit(k_ord_virt)*f(isix)
-             call add_point_polyfit(ichan,k_ord_virt,x(1:ndim-3), &
-                  virtual/born,born/wgt_mult)
+          ! virt_wgt_mint=(virtual-ratio*born)/virtual_fraction, with ratio the
+          ! surrogate/Born used for this point (the fitted surrogate, or the
+          ! polynomial fit or the grid). Compensate:
+          if (vs_ratio_set) then
+             ratio=vs_ratio
+          elseif (vs_use_poly(ichan)) then
+             ratio=polyfit(k_ord_virt)
           else
-             virtual=f(ithree)*virtual_fraction(ichan)+ &
-                  average_virtual(k_ord_virt,ichan)*f(isix)
-             call fill_ave_virt(x,k_ord_virt,virtual,born)
+             ratio=average_virtual(k_ord_virt,ichan)
           endif
+          virtual=f(ithree)*virtual_fraction(ichan)+ratio*f(isix)
+          if (vs_poly_kept()) call add_point_polyfit(ichan,k_ord_virt,x(1:ndim-3), &
+               virtual/born,born/wgt_mult)
+          if (vs_grid_kept()) call fill_ave_virt(x,k_ord_virt,virtual,born)
        else
           f(isix)=0d0
        endif
@@ -856,11 +1097,8 @@ contains
        if(imode.eq.0) nhits(icell(kdim),kdim,ichan)=nhits(icell(kdim),kdim,ichan)+1
     enddo
     do k_ord_virt=0,n_ord_virt
-       if (use_poly_virtual) then
-          call get_polyfit(ichan,k_ord_virt,x(1:ndim-3),polyfit(k_ord_virt))
-       else
-          call get_ave_virt(x,k_ord_virt)
-       endif
+       if (vs_poly_kept()) call get_polyfit(ichan,k_ord_virt,x(1:ndim-3),polyfit(k_ord_virt))
+       if (vs_grid_kept()) call get_ave_virt(x,k_ord_virt)
     enddo
   end subroutine get_random_x
   
@@ -1054,11 +1292,8 @@ contains
     nhits(1:nint_used,1:ndim,1:nchans)=0
     regridded(1:nchans)=.true.
     nhits_in_grids(1:nchans)=0
-    if (use_poly_virtual) then
-       call init_polyfit(ndim-3,nchans,n_ord_virt,1000)
-    else
-       call init_ave_virt
-    endif
+    if (vs_poly_kept()) call init_polyfit(ndim-3,nchans,n_ord_virt,1000)
+    if (vs_grid_kept()) call init_ave_virt
     virtual_fraction(1:nchans)=max(virt_fraction,min_virt_fraction)
     average_virtual(0:n_ave_virt,1:nchans)=0d0
     ans_chan(0:nchans)=0d0
@@ -1097,7 +1332,7 @@ contains
              write (12,*) 'MAX',(ymax(j,i,kchan),i=1,ndim)
           enddo
        endif
-       if (.not.use_poly_virtual) then
+       if (vs_grid_kept()) then
           do j=1,nintervals_virt
              do k=0,n_ord_virt
                 write (12,*) 'AVE',(ave_virt(j,i,k,kchan),i=1,ndim-3)
@@ -1112,16 +1347,29 @@ contains
        write (12,*) 'SPE',ncalls0,itmax,nhits_in_grids(kchan)
        write (12,*) 'AVE',virtual_fraction(kchan),average_virtual(0,kchan)
     enddo
-    if (use_poly_virtual) call save_polyfit(12)
+    if (VirtTrickSurrogate.ge.1) then
+       ! fitted surrogate: used (0/1), fitted (0/1), number of features,
+       ! coefficients. Numbers only, one record per channel, and before the
+       ! polynomial-fit (POL) lines: the grids of split-order jobs are combined
+       ! line by line, with the POL lines moved to the end.
+       do kchan=1,nchans
+          ! used: 0 grid, 1 fitted surrogate, 2 polynomial fit
+          write (12,'(a,3(1x,i0),*(1x,es24.16e3))') 'VSU', &
+               merge(1,merge(2,0,vs_polyon(kchan)),vs_on(kchan)), &
+               merge(1,0,vs_fitted(kchan)),vs_nfeat,vs_theta(1:vs_nfeat,kchan)
+       enddo
+    endif
+    if (vs_poly_kept()) call save_polyfit(12)
     close (12)
   end subroutine write_grids_to_file
   
   subroutine read_grids_from_file
 ! Read the MINT integration grids from file
     implicit none
-    integer :: i,j,k,kchan,idum
+    integer :: i,j,k,kchan,idum,ion,ifit,ios
     integer,dimension(maxchannels) :: points
     character(len=3) :: dummy
+    character(len=4096) :: line
     open (unit=12, file='mint_grids',status='old')
     ans(1,0)=0d0
     unc(1,0)=0d0
@@ -1134,7 +1382,7 @@ contains
              read (12,*) dummy,(ymax(j,i,kchan),i=1,ndim)
           enddo
        endif
-       if (.not.use_poly_virtual) then
+       if (vs_grid_kept()) then
           do j=1,nintervals_virt
              do k=0,n_ord_virt
                 read (12,*) dummy,(ave_virt(j,i,k,kchan),i=1,ndim-3)
@@ -1153,7 +1401,24 @@ contains
     enddo
     unc(1,0)=sqrt(unc(1,0))
     ! polyfit stuff:
-    if (use_poly_virtual) then
+    ! fitted surrogate: VSU lines, absent from grids written with
+    ! VirtTrickSurrogate=0 (then the grid surrogate is used)
+    vs_on(1:nchans)=.false.
+    vs_polyon(1:nchans)=.false.
+    vs_fitted(1:nchans)=.false.
+    do kchan=1,nchans
+       read (12,'(a)',iostat=ios) line
+       if (ios.ne.0) exit
+       if (index(adjustl(line),'VSU ').ne.1) then
+          backspace(12)
+          exit
+       endif
+       read (line,*) dummy,ion,ifit,vs_nfeat,(vs_theta(i,kchan),i=1,vs_nfeat)
+       vs_on(kchan)=ion.eq.1 .and. VirtTrickSurrogate.ge.1
+       vs_polyon(kchan)=ion.eq.2 .and. vs_both()
+       vs_fitted(kchan)=ifit.eq.1
+    enddo
+    if (vs_poly_kept()) then
        do kchan=1,nchans
           read (12,*) dummy,points(kchan)
        enddo
