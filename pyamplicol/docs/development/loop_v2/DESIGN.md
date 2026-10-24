@@ -918,6 +918,53 @@ Trees, Born amplitudes and counterterm scalars are still evaluated per point in 
 - **What did not work.** M read from the skeletons' own cuts (the first implementation) needed 1.2–1.45× B's work and 1.25–1.8× its time: its open steps lose the cost-optimal reading and fan out per rest word. Chunks keyed by the last letters of the cut word cost up to 30 % more states, and one chunk per process dominated, so M scaled 3.6× on 8 threads against B's 7.6×.
 - **Adoption data for G1** (§1.6 item 5: M where at least 15 % faster at equal accuracy, the reduction included; equal accuracy holds by O4). Measured today, only gg→gggg LC on one thread passes (0.80); gg→gggg FC and NLC reach 0.89–0.92, gg→gggg LC on 8 threads 0.90 (the serial reduction), and uu~→e⁻e⁺gg LC on 8 threads 0.85 on 0.35–0.42 ms/pt, within the run-to-run spread. Every class with a quark line is at 1.00 ± 0.02 on one thread. What the data support for WP2.7's per-class policy: B for every class with a quark line (no work gain, more memory); for pure-gluon classes M's gain grows with n and is largest at LC (dressing side 0.89–0.90 at FC/NLC and 0.75 at LC for n = 6), so M at LC from six gluons; at FC/NLC M would pass only with a parallel reduction (the 8-thread ratio then tends to the dressing side's 0.90) or a wider gap at n = 7, which is not measured. The 7-leg QCD rows (gg→ggggg, uu~→ggggg) and the n ≥ 8 default need plans the Python generator cannot produce (WP3.1); the 7-leg rows above are photon-exchange processes. M is selected per evaluation (`V2Options::schedule`, `NativeExecutor(..., merged=True).evaluate(..., schedule="M")`), B for the families M leaves.
 
+### 5.7 Gate G1 (WP2.7, measurements 2026-10-24)
+
+**Method** (`tools/loop_benchmark`, data `docs/performance_reports/loop/data/g1.json`, report §1).
+
+- Frozen streams of 128 distinct exact on-shell points per process (`streams/`): the reference campaign's three points first, then the campaign's construction (massive final states) or RAMBO at √s = 1 TeV made exactly massless (`loop_v2_stability_calibration.exact_point`); μ_R cycles through 1000, 700, 1400 GeV. pyAmpliCol reads the exact rationals, the providers their 17-digit decimal text.
+- pyAmpliCol through `NativeExecutor.evaluate`, the call of the public `V2VirtualRuntime`: binary64, finite part only (`poles="none"`), no stability check, one thread on one pinned core (one job per CCX of the cores without SMT siblings), 16 lanes; batches B ∈ {1, 8, 32, 128} of distinct points, paired across B per round after a warm-up, median per point over the blocks. Two configurations: **integrated** — `work/v2-slice` dfa6bf7c with this package's timers (trees, Born and counterterm scalars per point in Python); **native inputs** (development) — `work/v2-generation-scale` 889af02c with the same timers (scratch build), where the executor forms the trees, Born and counterterm inputs (WP3.1 I3–I6). Both builds are release with one codegen unit and thin LTO.
+- Instrumentation: the native report now counts the modelled kernel work of the chosen forms (`dressing work (modelled complex MAC per lane)`) and times the master integrals inside the reduction (`reduction: masters` = canonical arguments + cache + oneloopmaster, `reduction: masters (oneloopmaster)`; `master_cache.rs`, `V2Backend::take_statistics`); Python stages are timed by wrappers (outermost call only).
+- Providers in production mode on the same stream, mean over 16 points (MadLoop gg→gggg 8): OpenLoops 2.1.5 `truepoles 0`; Recola 2.3.0 with `compute_ir_poles 0`, Collier cache on (finite part converted with the universal double pole); MadLoop 3.7.0 at its production stability setting on exports built with MG5's production flags (new exports for gg→gg, gg→ggg, uu~→ggg, < 1 min each; none for uu~→gggg). MadLoop's stage split comes from an instrumented copy of its stage calls (numerator coefficients; Born/CT HELAS; reduction plus masters; residual). Each provider ran twice on different cores; the runs agree within 16 %, the gate uses the run on the core that timed the native-input configuration.
+- Values: pyAmpliCol's Born and finite part agree with all providers on the common stream points to ≤ 10⁻¹¹ except at ill-conditioned points, where the deviation (gg→ggg 1.7×10⁻⁶, gg→gggg 4×10⁻⁷, gg→tt̄gg 1.5×10⁻⁹–7.6×10⁻⁹) stays below the estimate E returned with one rotation and the reduction-direction check (9.9×10⁻⁶, 4.8×10⁻⁶, 5.6×10⁻⁸).
+
+**Results** (ms per point, full colour; gate limit = min(MadLoop, 1.30 × Recola, 1.30 × OpenLoops)):
+
+| Process | Integrated, B = 1 / 128 | Native inputs, B = 1 (16 lanes / 1 lane) / 128 | MadLoop | Recola | OpenLoops | Gate, native inputs at B = 128 (time ÷ limit) |
+|---|---|---|---|---|---|---|
+| gg→gg | 138 / 127 | 14.7 / 4.31 / 2.22 | 2.02 | 10.0 | 3.22 | no gate (2→2) |
+| uu~→dd~g | 40.1 / 31.5 | 10.8 / 4.19 / 2.63 | 3.21 | 3.34 | 1.59 | fail (1.28) |
+| uu~→uu~g | 68.5 / 53.9 | 19.7 / 6.20 / 3.80 | 8.98 | 6.05 | 2.93 | pass (1.00) |
+| uu~→ggg | 218 / 178 | 50.6 / 13.5 / 11.2 | 28.4 | 25.6 | 12.5 | pass (0.69) |
+| gg→ggg | 2 785 / 3 037 | 211 / 56.3 / 45.8 | 247 | 351 | 96.9 | pass (0.36) |
+| gg→gggg | 105 010 / — | 4 101 / 1 137 / 985 | 39 238 | 17 705 | 2 851 | pass (0.27) |
+| gg→tt̄gg | 7 189 / — | 840 / 224 / 190 | 5 445 | 1 991 | 476 | pass (0.31) |
+| uu~→gggg | 5 860 / — | 860 / 211 / 190 | — | 925 | 373 | pass (0.39) |
+
+**Verdict.**
+
+- *Integrated slice:* G1 fails for every 2→3 and 2→4 process, at 11–28× the limit. The per-point Python inputs take 85–99 % of the time; the Born and counterterm colour projections (`_PointEvaluation._born_and_counterterms`) alone 42–94 %.
+- *Native inputs* (development, WP3.1): at B = 128 six of seven gated processes pass (uu~→uu~g at the limit within the timing spread, 0.87 at B = 32) and uu~→dd~g fails at 1.28 (1.09 at B = 32). At B = 1 with 16 lanes every gated process fails (a one-point call pays a full 16-lane chunk); with one lane per call it passes for uu~→ggg, gg→ggg, gg→gggg, gg→tt̄gg and uu~→gggg. Against every provider pyAmpliCol is the fastest code at B = 128 for uu~→ggg, gg→ggg, gg→gggg, gg→tt̄gg and uu~→gggg (0.35–0.89× OpenLoops) and slower than OpenLoops for uu~→dd~g (1.66×) and uu~→uu~g (1.30×).
+- The 2→2 control gg→gg (no gate): 2.22 ms with native inputs against MadLoop's 2.02 ms.
+
+**Where the time goes** (native inputs, B = 128, share of the total): native trees, Born and counterterm inputs 15–71 % (gg→gggg 71 %); seeds, factors and dressing 22–33 %; scatter into NinjaRS lanes ≤ 18 % (uu~→dd~g); NinjaRS with masters 5–14 %; Python glue (point parameters, conversion, assembly, result export) ≤ 29 % (uu~→dd~g). The master integrals (canonical arguments, cache and oneloopmaster) are 11–45 % of the reduction stage, oneloopmaster itself 2–10 %: the cache bookkeeping costs more than the integrals.
+
+**Recalibration** (`tools/loop_v2_costmodel.py --g1`). Kernel throughput on the real plans is 1.24–1.34 G complex MAC/s per core, gate G0's rate; the NinjaRS stage with masters is 0.97–1.39 × the model R. The recipe's outer factor (trees, seeds, counterterms: 1.05–1.10) is wrong with today's native inputs: the total is 2.25–3.6 × dressing plus reduction, so measured totals are 1.2–7.1 × the recipe band where the design has a row (gg→gg, gg→gggg, gg→tt̄gg). The dressing and NinjaRS terms of every estimate stand; the tree term must be re-measured once the trees are compiled.
+
+**B against M** (§1.6 item 5). End to end with native inputs M/B is 0.86–1.11 on the pure-gluon rows (gg→ggg, gg→gggg, FC and LC, B = 1 and 128) and 1.00 ± 0.02 with a quark line (§5.6): no class reaches the 15 % rule. Decision: schedule B for every class at n ≤ 6; M remains the planned default from n ≥ 8 and is re-measured at seven legs with the WP3.1 plans (`measure-g1-7leg`).
+
+**Leading colour.** LC is 0.43–0.50 × FC at B = 1 but 0.72–1.30 × at B = 128 with native inputs: the loop stage shrinks, the native trees at LC cost more than at FC (uu~→ggg 9.9 against 5.9 ms per point).
+
+**Levers, with measured or bounded gains.**
+
+1. Native per-point inputs (WP3.1 G-int): measured 12–107 × from integrated to native inputs, each at its largest timed batch (B = 1 for the integrated 2→4 rows).
+2. Compiled native trees (kernels as the tree engine's SymJIT planes, batched over lanes): the trees' share is an upper bound of the gain, × 3.4 for gg→gggg.
+3. Lanes by batch size in binary64 (`plan_export.lanes_for` returns 16 lanes for one point): measured 2.6–4.1 × at B = 1.
+4. Finite-only result path (sum the virtual natively; no per-family lane export and Python assembly unless checks or observables ask for them) and lane-major closures: up to the glue and scatter shares; for uu~→dd~g they are 1.24 ms of 2.63, without them it would take 1.39 ms (0.68 of its limit).
+5. AVX2/AVX-512 kernel selection (G0: × 1.0–1.4 on the dressing) and NinjaRS-side work (parallel reduction, transposed reduction) for the remaining loop stage.
+
+Kernel specialisation (WP4.6) stays a wave-4 option: seeds, factors and dressing are 22–33 % of the native-input time, and levers 1–4 come first.
+
 ---
 
 ## 6. Counterterms, R2, UV and external fields
@@ -2002,6 +2049,10 @@ Total ≈ 270 agent-days [I].
   - *Depends:* WP2.1, WP0.3.
   - *Accept:* gate G1.
   - *Size:* M (5).
+  - *Status (branch `work/v2-measure-g1`, 2026-10-24):*
+    - done: the benchmark harness `tools/loop_benchmark` (frozen streams, pyAmpliCol and provider timing, MadLoop stage split, stability estimates at chosen points, the gate document); the native report's modelled kernel work and master-integral time; the G1 recalibration of `tools/loop_v2_costmodel.py` (`--g1`); the live report (G1 grid, stage split, levers, LC table, throughput, B against M, values); the measurements of §5.7 on 2→2, 2→3 and 2→4.
+    - result (§5.7): the integrated slice fails every gated process (11–28 × the limit; Python per-point inputs); with the WP3.1 native inputs six of seven pass at B = 128, uu~→dd~g fails at 1.28 ×, and B = 1 needs lanes by batch size. Schedule B for every class at n ≤ 6.
+    - open: the seven-leg rows (`measure-g1-7leg`, after WP3.1: uu~→e⁻e⁺dd~g, uu~→e⁻e⁺ggg, gg→tt̄e⁻e⁺g, uu~→ggggg, gg→ggggg without a gate); the protocol-mode provider columns were not re-measured (the addendum's gate uses production mode); the integrated configuration is re-measured when G-int lands.
 - **WP2.8 Schedule M in Rust (new; planned).**
   - *Goal:* M executor generic over T: LC generic; FC/NLC for certified classes; chunked states by cut-word suffix; family accumulators streamed into buckets where chunk order allows; generic fallback to B per class.
   - *Owns:* `rust/crates/rusticol-core/src/loop_v2/merged.rs`.
