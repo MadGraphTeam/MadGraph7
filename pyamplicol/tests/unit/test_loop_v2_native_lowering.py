@@ -9,9 +9,12 @@ Per plan:
 * the native JSON writer gives ``ExportedPlan.json()`` byte for byte;
 * the binary member decodes to the same model (its JSON again identical, its
   re-encoding bitwise), loads to the same executor tables as the JSON (digest
-  of the loaded program, derived row links included) and holds no path;
+  of the loaded program, derived row links included) and holds no host path
+  (searched in its decoded strings, where a path would show);
 * strings follow ``json.dumps``'s ``ensure_ascii`` escapes;
-* foreign, truncated or extended members and unknown JSON fields are refused.
+* foreign, truncated or extended members and unknown JSON fields are refused
+  (crafted column counts: the reader's Rust unit tests);
+* the bindings run in a process without a Symbolica key (``loop_nightly``).
 
 Plans cover schedule B with derived and written row links, schedule F
 (closures, relabellings), schedule M (edge weights, closures, chunks), massive
@@ -20,14 +23,17 @@ quark lines (mass flips), helicity-resolved observable columns
 inputs (its Born kernels join the plan's), and the certified-scaleless
 companion's plans that the "uv" and "ir" pole selections run (the slice's,
 with and without its tree program, and the observable columns'). Default
-tier: g g > t t~ and g g > g g; wider controls are ``loop_physics``, six
-legs ``loop_nightly``; seven-leg evidence is the stored S8 digest of bounded
-runs (RUST-MIGRATION.md rule 6).
+tier: g g > t t~ and g g > g g; wider controls (the companion's tree-program
+and column plans among them) are ``loop_physics``, six legs and the no-key
+process ``loop_nightly``; seven-leg evidence is the stored S8 digest of
+bounded runs (RUST-MIGRATION.md rule 6).
 """
 
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -80,6 +86,16 @@ def _host_markers() -> list[bytes]:
     return [str(path).encode() for path in paths]
 
 
+def host_paths(member: bytes, decoded: bytes) -> list[bytes]:
+    """The host markers a member carries. Its strings are byte columns stored
+    as offsets or differences, so a path never shows in the raw bytes: they
+    are searched in the member's decoded JSON (``decoded``), which holds every
+    string the member carries (the member is a function of that model, its
+    round trip being bitwise)."""
+
+    return [m for m in _host_markers() if m in decoded or m in member]
+
+
 def check(exported, native) -> bytes:
     """The native JSON and the binary member of one exported plan."""
 
@@ -89,15 +105,15 @@ def check(exported, native) -> bytes:
     member = bytes(model.binary())
     assert member.startswith(b"LOOPPLAN")
     again = native.V2PlanModel.from_binary(member)
-    assert bytes(again.json()) == text
+    decoded = bytes(again.json())
+    assert decoded == text
     assert bytes(again.binary()) == member
     json_load, binary_load = (
         native_lowering.load(data, native, digest=True) for data in (text, member)
     )
     assert (json_load.form, binary_load.form) == ("json", "binary")
     assert binary_load.digest == json_load.digest
-    for marker in _host_markers():
-        assert marker not in member
+    assert not host_paths(member, decoded)
     return member
 
 
@@ -132,8 +148,8 @@ def check_companion_plans(slice_, native, resolved=None) -> None:
 def test_massive_plan_forward_links_and_resolved_columns(slices, loop_native):
     """g g > t t~ (mass flips): schedule F; schedule B with derived and with
     written row links (the loader checks those against its derivation); the
-    observables' helicity-resolved columns (``column_rows``); the companion
-    plans."""
+    observables' helicity-resolved columns (``column_rows``); the companion's
+    plan (its tree-program and column plans: ``loop_physics``)."""
 
     from pyamplicol.loops.v2.observables import ColumnPlan, ObservableSlice
 
@@ -145,7 +161,8 @@ def test_massive_plan_forward_links_and_resolved_columns(slices, loop_native):
     resolved = export_plan(slice_, forward=False, columns=plan.seed_columns)
     assert any(rows is not None for rows in resolved.program["column_rows"])
     check(resolved, loop_native)
-    check_companion_plans(slice_, loop_native, plan)
+    assert slice_.scaleless is not None
+    check(export_plan(slice_.scaleless, forward=False), loop_native)
 
 
 @pytest.mark.parametrize(
@@ -189,7 +206,17 @@ def test_strings_follow_ensure_ascii(slices, loop_native):
     expected = json.dumps(program, separators=(",", ":")).encode()
     assert bytes(model.json()) == expected
     member = bytes(model.binary())
-    assert bytes(loop_native.V2PlanModel.from_binary(member).json()) == expected
+    decoded = bytes(loop_native.V2PlanModel.from_binary(member).json())
+    assert decoded == expected
+    # A host path in a string is found in the decoded strings, not in the
+    # member's raw bytes.
+    marker = _host_markers()[0]
+    leaves[len(texts)]["weight"] = marker.decode()
+    model = loop_native.V2PlanModel.from_json(json.dumps(program).encode())
+    member = bytes(model.binary())
+    assert marker not in member
+    decoded = bytes(loop_native.V2PlanModel.from_binary(member).json())
+    assert marker in host_paths(member, decoded)
 
 
 @pytest.mark.loop_fast
@@ -228,6 +255,7 @@ def test_quark_line_massive_and_electroweak_plans(slices, loop_native, name):
     )
     observables = ObservableSlice.of(slice_)
     plan = ColumnPlan(observables, observables.resolved_columns("helicity-colour", {}))
+    check(export_plan(slice_, forward=False, columns=plan.seed_columns), loop_native)
     check_companion_plans(slice_, loop_native, plan)
 
 
@@ -244,3 +272,51 @@ def test_six_leg_plans(slices, loop_native, name):
         export_plan(slice_, forward=False, trees=True, born_squared=True), loop_native
     )
     check_companion_plans(slice_, loop_native)
+
+
+@pytest.mark.loop_nightly
+def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
+    """``V2PlanModel`` and ``v2_plan_load`` in a process without a key
+    (RUST-MIGRATION.md rule 4): the JSON written byte-identical, the binary
+    round trip bitwise, and equal load digests from both encodings.
+
+    The child imports the extension, which starts a restricted Symbolica
+    instance: like ``test_native_builder_needs_no_symbolica_licence`` it must
+    not overlap another unlicensed Symbolica process of the user.
+    """
+
+    exported = export_plan(slices("gg_ttx"), forward=False)
+    text = exported.json().encode()
+    member = native_lowering.plan_binary(exported, loop_native)
+    expected = native_lowering.load(text, loop_native, digest=True).digest
+    records = tmp_path / "records.json"
+    records.write_text(json.dumps(exported.program, sort_keys=True))
+    written = tmp_path / "written.json", tmp_path / "written.bin"
+    environment = {
+        key: value for key, value in os.environ.items() if key != "SYMBOLICA_LICENSE"
+    }
+    script = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from pyamplicol.loops.native import load_loop_native\n"
+        "native = load_loop_native()\n"
+        "model = native.V2PlanModel.from_json(Path(sys.argv[1]).read_bytes())\n"
+        "text, member = bytes(model.json()), bytes(model.binary())\n"
+        "again = native.V2PlanModel.from_binary(member)\n"
+        "assert bytes(again.json()) == text and bytes(again.binary()) == member\n"
+        "Path(sys.argv[2]).write_bytes(text)\n"
+        "Path(sys.argv[3]).write_bytes(member)\n"
+        "for data in (text, member):\n"
+        "    print(native.v2_plan_load(data, digest=True)[3])\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(records), *map(str, written)],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=120,
+    )
+    assert written[0].read_bytes() == text
+    assert written[1].read_bytes() == member
+    assert result.stdout.split()[-2:] == [expected, expected]

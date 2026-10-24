@@ -34,6 +34,13 @@
 //! value count `u64`, the base `i64`, and `count × width` payload bytes padded
 //! to a multiple of eight. Writing and reading share one traversal
 //! (`visit_plan` over a `Stream`), so the two cannot disagree on the order.
+//!
+//! Reading fails closed with an error, never an abort: headers, widths and
+//! payload sizes are checked, every value is checked against its field's
+//! type, every column must be read to its end, lists grow as their records
+//! decode (a width-0 column can declare any count without payload bytes, so
+//! a declared length never sizes an allocation that cannot fail), and a
+//! string takes its bytes from what the byte column still holds.
 
 mod json;
 
@@ -100,6 +107,13 @@ impl PlanModel {
     pub fn program(self, policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
         LoopProgramV4::from_file(self.file, policy)
     }
+}
+
+/// The validated program of a binary plan member (`PlanModel::binary`): the
+/// entry point of the loader and of an artifact's PACBIN plan member
+/// (RUST-MIGRATION.md §3.D), with the default kernel-form policy.
+pub fn read_binary(bytes: &[u8]) -> RusticolResult<LoopProgramV4> {
+    LoopProgramV4::load_binary(bytes)
 }
 
 impl LoopProgramV4 {
@@ -264,12 +278,20 @@ fn list<S: Stream, T: Default>(
     mut visit: impl FnMut(&mut S, &mut T) -> RusticolResult<()>,
 ) -> RusticolResult<()> {
     let len = stream.len(col, items.len())?;
-    if S::READ {
-        items.clear();
-        items.resize_with(len, T::default);
+    if !S::READ {
+        return items.iter_mut().try_for_each(|item| visit(stream, item));
     }
-    for item in items.iter_mut() {
-        visit(stream, item)?;
+    // A read list grows as its records decode: a damaged or crafted length
+    // fails at its first exhausted column, and a length no allocation can
+    // hold fails here, never as an allocation abort.
+    items.clear();
+    items
+        .try_reserve_exact(len)
+        .map_err(|_| invalid(format!("binary plan: {col:?} list length")))?;
+    for _ in 0..len {
+        let mut item = T::default();
+        visit(stream, &mut item)?;
+        items.push(item);
     }
     Ok(())
 }
@@ -981,12 +1003,30 @@ impl<'a> Reader<'a> {
             budget,
             tables: Vec::new(),
         };
+        // The table's strings are distinct (first-use numbering), so at most
+        // one is empty and each other one takes at least one byte; a string
+        // takes its bytes from what the byte column still holds.
         let count = reader.cursors[Col::StringLen as usize].count;
-        let mut strings = Vec::with_capacity(count);
+        let bytes = reader.cursors[Col::StringByte as usize].count;
+        require(
+            count <= bytes.saturating_add(1),
+            "binary plan: string table",
+        )?;
+        let mut strings = Vec::new();
+        strings
+            .try_reserve_exact(count)
+            .map_err(|_| invalid("binary plan: string table"))?;
         for _ in 0..count {
             let len = reader.next(Col::StringLen)?;
-            let len = usize::try_from(len).map_err(|_| invalid("binary plan: string length"))?;
-            let mut text = Vec::with_capacity(len.min(reader.budget));
+            let byte_cursor = &reader.cursors[Col::StringByte as usize];
+            let left = byte_cursor.count - byte_cursor.position;
+            let len = usize::try_from(len)
+                .ok()
+                .filter(|&len| len <= left)
+                .ok_or_else(|| invalid("binary plan: string length"))?;
+            let mut text = Vec::new();
+            text.try_reserve_exact(len)
+                .map_err(|_| invalid("binary plan: string length"))?;
             for _ in 0..len {
                 let byte = reader.next(Col::StringByte)?;
                 text.push(u8::try_from(byte).map_err(|_| invalid("binary plan: string byte"))?);
@@ -1137,6 +1177,56 @@ mod tests {
         assert!(matches!(deltas.next(), Err(Short::Overflow)));
         let mut words = cursor(&[1, 0, 0, 0, 0, 0, 0, 128], 8, i64::MIN, false, 1);
         assert!(matches!(words.next(), Ok(1)));
+    }
+
+    /// The header offset of every column of a member, in member order.
+    fn column_offsets(member: &[u8]) -> Vec<usize> {
+        let mut at = 24;
+        let mut offsets = Vec::new();
+        for _ in COLUMN_NAMES {
+            offsets.push(at);
+            let width = usize::from(member[at]);
+            let count = u64::from_le_bytes(member[at + 8..at + 16].try_into().unwrap());
+            let size = width * count as usize;
+            at += 24 + size + (8 - size % 8) % 8;
+        }
+        assert_eq!(at, member.len());
+        offsets
+    }
+
+    #[test]
+    fn crafted_counts_fail_closed() {
+        let member = PlanModel {
+            file: PlanFile::default(),
+        }
+        .binary()
+        .unwrap();
+        assert!(PlanModel::from_binary(&member).is_ok());
+        let offsets = column_offsets(&member);
+        let patch = |edits: &[(Col, usize, u64)]| {
+            let mut crafted = member.clone();
+            for &(col, field, value) in edits {
+                let at = offsets[col as usize] + field;
+                crafted[at..at + 8].copy_from_slice(&value.to_le_bytes());
+            }
+            crafted
+        };
+        // Width-0 columns hold no payload: a column without values claims
+        // 2^40, and the one content length (width 0) becomes 2^36 or 2^62.
+        for length in [1u64 << 36, 1 << 62] {
+            let crafted = patch(&[(Col::Chunk, 8, 1 << 40), (Col::ContentLen, 16, length)]);
+            assert!(PlanModel::from_binary(&crafted).is_err());
+        }
+        // A string table of 2^40 one-byte strings without bytes, and one
+        // string longer than the byte column.
+        let crafted = patch(&[(Col::StringLen, 8, 1 << 40), (Col::StringLen, 16, 1)]);
+        assert!(PlanModel::from_binary(&crafted).is_err());
+        let crafted = patch(&[
+            (Col::StringLen, 8, 1),
+            (Col::StringLen, 16, 1 << 40),
+            (Col::StringByte, 8, 4),
+        ]);
+        assert!(PlanModel::from_binary(&crafted).is_err());
     }
 
     #[test]
