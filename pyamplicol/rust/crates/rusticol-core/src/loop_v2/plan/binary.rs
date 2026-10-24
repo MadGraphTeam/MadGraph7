@@ -73,7 +73,9 @@
 //! string takes its bytes from what the byte column still holds, and the list
 //! reservations and copies are fallible (`TryCopy`). Only the decoding is this
 //! module's: the derivations of [`LoopProgramV4::from_file`] are the JSON
-//! load's.
+//! load's, and some of their reservations follow plan scalars no input bounds
+//! (the row links expanded over `columns`, a vertex id, `rows`): bounding
+//! them, for both loads, is the loader's work of phase 1.
 
 mod json;
 
