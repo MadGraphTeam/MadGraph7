@@ -389,6 +389,8 @@ impl Tensor {
 /// `color.connections.overlap_traces`: the adjoint traces whose product is
 /// `<left|right>` (the traces of `right`, the reversed traces of `left` and
 /// one trace per closed index loop of the open strings glued end to end).
+/// A string of either side left unglued (structures on different quark
+/// legs) is refused, where Python drops a bra string silently (rule 2).
 pub fn overlap_traces(left: &Structure, right: &Structure) -> RusticolResult<Vec<Vec<Label>>> {
     let mut traces: Vec<Vec<Label>> = right.traces.clone();
     traces.extend(
@@ -402,6 +404,11 @@ pub fn overlap_traces(left: &Structure, right: &Structure) -> RusticolResult<Vec
     let right_by_q: BTreeMap<Label, &OpenString> = right.strings.iter().map(|s| (s.q, s)).collect();
     let left_by_qbar: FastMap<Label, &OpenString> =
         left.strings.iter().map(|s| (s.qbar, s)).collect();
+    if left.strings.len() != right.strings.len() {
+        return Err(invalid(
+            "a bra string is not glued to a ket string (different quark legs)",
+        ));
+    }
     let mut visited: FastSet<Label> = FastSet::default();
     for &start in right_by_q.keys() {
         if visited.contains(&start) {
