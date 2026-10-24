@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: 0BSD
 """Top-free requests against massless five-flavour QCD (NJet, N_f = 5).
 
-``SliceRequest.ignored_particle_ids`` excludes a particle in either
-orientation from the tree currents, the loop lines, the counterterms and the
-field insertions. With the top excluded (and MB = 0), loop_sm's virtual is
+``SliceRequest.particle_veto`` removes a particle (|PDG|, both orientations)
+from the tree currents, the loop lines, the counterterms and the field
+insertions. With the top excluded (and MB = 0), loop_sm's virtual is
 massless QCD with five flavours and MS-bar alpha_s, NJet's scheme, so every
 Laurent coefficient compares directly with ``njet_nf5_topfree.json`` (NJet
 double-double at pyAmpliCol's exact points, several renormalisation scales).
@@ -57,7 +57,7 @@ def _slice(compiled_path, native, name: str, controls: dict) -> LoopSlice:
             entry["born_orders"],
             entry["loop_orders"],
             fixed_parameters={"MB": "0"},
-            ignored_particle_ids=(6,),
+            particle_veto=(6,),
         ),
         native,
     )

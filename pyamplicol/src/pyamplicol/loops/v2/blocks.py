@@ -524,6 +524,15 @@ class TreeBlockTable:
         return self._currents.get(mask, ())
 
 
+def vetoed_particle_ids(veto: Iterable[int]) -> tuple[int, ...]:
+    """The tree engine's ignored particle ids (``GenericDAGCompiler``'s
+    ``ignored_particle_ids``, signed PDG codes) of vetoed |PDG| codes
+    (``particle_veto``): both charge states of every vetoed particle, so that
+    no tree vertex with one is used."""
+
+    return tuple(sorted({sign * abs(int(pdg)) for pdg in veto for sign in (1, -1)}))
+
+
 def build_tree_blocks(
     process: CanonicalProcessIR,
     model: Model,
@@ -899,6 +908,7 @@ __all__ = [
     "identity_pairing_sign",
     "requested_loop_blocks",
     "u1_grades",
+    "vetoed_particle_ids",
     "ward_breaking_fields",
     "with_ward_kernels",
 ]

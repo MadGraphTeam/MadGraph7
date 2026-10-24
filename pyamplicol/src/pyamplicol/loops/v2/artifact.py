@@ -243,25 +243,26 @@ def born_amplitude_orders(
     compiled: Any,
     process: str,
     bounds: Mapping[str, int],
-    ignored_particle_ids: Sequence[int] = (),
+    particle_veto: Sequence[int] = (),
 ) -> tuple[tuple[Orders, ...], Any]:
     """The Born amplitude orders of ``process`` within the coupling-order
     ``bounds`` and the Born DAG they are read from, before any loop
     generation: one tree DAG, compiled as ``blocks.build_tree_blocks``
-    compiles the Born of a slice."""
+    compiles the Born of a slice (without the vetoed |PDG| codes
+    ``particle_veto``)."""
 
     from pyamplicol.generation.dag_compiler import compile_generic_dag
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.processes.model import build_model_process_ir
 
-    from .blocks import _born_roots
+    from .blocks import _born_roots, vetoed_particle_ids
 
     model = CompiledUFOModel(compiled)
     dag = compile_generic_dag(
         build_model_process_ir(process, compiled.ir, color_accuracy="full"),
         model=model,
         max_coupling_orders=dict(bounds),
-        ignored_particle_ids=tuple(ignored_particle_ids),
+        ignored_particle_ids=vetoed_particle_ids(particle_veto),
     )
     orders = {root.coupling_orders for root in _born_roots(dag, model)}
     return tuple(sorted(orders)), dag
@@ -571,6 +572,17 @@ class GeneratedProcess:
     def spin_correlations(self) -> tuple[tuple[int, ...], ...]:
         return tuple(tuple(legs) for legs in self.observables.spin_classes)
 
+    def inert_counterterms(self) -> dict[str, str]:
+        """The CT rules the request admits that contribute nothing, by name,
+        with the reason (``CountertermRecursion.inert``, REQUIREMENTS_ADDENDUM
+        J): the generation record's ``counterterms_inert``. Rule names and
+        reasons come from the model, so the record holds no path."""
+
+        program = self.slice.counterterm_program
+        if program is None:
+            return {}
+        return dict(sorted(program.recursion.inert.items()))
+
 
 def _order_text(order: Orders) -> str:
     return " ".join(f"{name}^{power}" for name, power in canonical_order(order))
@@ -603,6 +615,12 @@ def generate_process(
     from .observables import ObservableSlice
     from .plan_export import export_plan
 
+    if request.counterterms != "recursion":
+        # Site closure (with its loop matching) is the O6 test oracle only.
+        raise ArtifactError(
+            "plan v4 processes take their counterterms from the tree recursion; "
+            f"counterterms={request.counterterms!r} is a test oracle"
+        )
     declared = correlators is not None and bool(
         correlators.color_correlations
         or correlators.spin_correlations

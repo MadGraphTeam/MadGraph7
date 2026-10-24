@@ -1179,6 +1179,23 @@ def _v2_scale_parameter(compiled, fixed: Mapping[str, str]) -> str:
     return str(found[0])
 
 
+def particle_veto_codes(compiled, names: Iterable[str]) -> tuple[int, ...]:
+    """The |PDG| codes of ``generation.particle_veto`` (model particle names;
+    a name vetoes its antiparticle too)."""
+
+    codes = {}
+    for record in compiled.model["particles"]:
+        code = abs(int(record["pdg_code"]))
+        codes[str(record["name"])] = codes[str(record["antiname"])] = code
+    unknown = sorted(set(names) - set(codes))
+    if unknown:
+        raise GenerationError(
+            f"generation.particle_veto names particles the model does not have: "
+            f"{unknown}"
+        )
+    return tuple(sorted({codes[name] for name in names}))
+
+
 def _loop_orders_record(request) -> object:
     orders = [dict(orders) for orders in request.exact_loop_orders]
     return orders[0] if len(orders) == 1 else orders
@@ -1215,7 +1232,20 @@ def _v2_request(backend, context, index):
                 f"v2 virtuals take real fixed parameters; {name!r} is complex"
             )
         fixed[name] = str(real)
-    born, dag = born_amplitude_orders(compiled, process, limits)
+    veto = particle_veto_codes(compiled, run.generation.particle_veto)
+    external = sorted(
+        {
+            abs(int(pdg))
+            for pdg in (*entry.process_ir.initial_pdgs, *entry.process_ir.final_pdgs)
+        }
+        & set(veto)
+    )
+    if external:
+        raise GenerationError(
+            f"{label}: generation.particle_veto removes external particles "
+            f"(|PDG| {external}); a veto only applies to internal lines and loops"
+        )
+    born, dag = born_amplitude_orders(compiled, process, limits, veto)
     if not born:
         raise GenerationError(
             f"{label} has no Born amplitude within the coupling-order limits "
@@ -1230,6 +1260,7 @@ def _v2_request(backend, context, index):
         v2_loop_orders(born, context.corrections, limits),
         corrections=context.corrections,
         fixed_parameters=fixed,
+        particle_veto=veto,
         accuracy=accuracy,
         colour_declaration=context.color_declaration if accuracy != "full" else None,
         scale_parameter=_v2_scale_parameter(compiled, fixed),
@@ -1436,6 +1467,11 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 "loop_coupling_orders": context.corrections,
                                 "born_orders": dict(request.born_orders),
                                 "loop_orders": _loop_orders_record(request),
+                                "particle_veto": list(
+                                    backend._run_config.generation.particle_veto
+                                ),
+                                # REQUIREMENTS_ADDENDUM J: rule -> reason.
+                                "counterterms_inert": process.inert_counterterms(),
                                 "model_declaration": context.declaration.to_dict(),
                                 **(
                                     {"correlators": correlators.to_json_dict()}

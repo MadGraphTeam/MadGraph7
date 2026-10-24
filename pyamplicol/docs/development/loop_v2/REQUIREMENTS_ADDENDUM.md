@@ -200,3 +200,15 @@ relocation with the same native build. A dedicated acceptance test covers this.
   in the artifact). A vetoed particle is also removed from every tree-level
   vertex in all generation steps (Born, blocks, loop content and propagators),
   so loops and counterterms stay consistent.
+- A counterterm vertex that cannot enter any tree of the request's counterterm
+  program is inert: it contributes nothing, needs no lowering, and its rule is
+  recorded as inert in the generation record. "Can enter" is decided by the
+  tree engine's own reachability over the request's legs, coupling-order
+  limits and `particle_veto` (the reachability the counterterm program is built
+  with), never by a site or witness list or by loop matching, and it must be
+  sound: a vertex that can enter a tree is never inert. A request admitting a
+  vertex that cannot be lowered and can enter one of its trees is refused
+  (coordinator decision, 2026-10-23 ~23:50 UTC). Implementation note
+  (ct-simplify): the generation record is the process's generation filter
+  `counterterms_inert` (rule -> reason) in the artifact's generation
+  extension, next to `particle_veto` (DESIGN §6.2).

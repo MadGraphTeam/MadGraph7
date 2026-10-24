@@ -439,7 +439,7 @@ def test_poles_double_pole_is_universal(
             process=process,
             born=born,
             accuracy=accuracy,
-            ignored="",
+            veto="",
             points=2,
             rotation=False,
             alpha_s="0.118",
@@ -466,17 +466,29 @@ def test_reachability_falls_back_where_field_level_families_differ(
     class Stop(Exception):
         pass
 
-    def capture(families, *args, **kwargs):
-        raise Stop(families)
+    # The families of the last tree program the generator builds (the
+    # field-level families come first), read when the colour model of the
+    # schedules is built.
+    built = []
+    families = generator_input.NativeGeneration.families
 
-    monkeypatch.setattr(assemble, "generate_counterterm_sites", capture)
+    def recorded(self):
+        found = families(self)
+        built.append(found)
+        return found
+
+    def capture(*args, **kwargs):
+        raise Stop(built[-1])
+
+    monkeypatch.setattr(generator_input.NativeGeneration, "families", recorded)
+    monkeypatch.setattr(assemble, "SeedColour", capture)
     compiled = load_compiled_model(loop_sm_compiled_model)
     request = SliceRequest(
         "u u~ > e- e+ d d~ g",
         {"QCD": 3, "QED": 2},
         {"QCD": 5, "QED": 2},
         fixed_parameters={"MB": "0"},
-        ignored_particle_ids=(23,),
+        particle_veto=(23,),
     )
     found = {}
     for reachability in (True, False):

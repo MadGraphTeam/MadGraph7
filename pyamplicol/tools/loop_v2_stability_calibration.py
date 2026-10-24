@@ -269,7 +269,7 @@ def build_slice(name: str, compiled: Any) -> Any:
         dict(entry.born),
         loop,
         fixed_parameters=FIXED,
-        ignored_particle_ids=entry.ignored,
+        particle_veto=entry.ignored,
     )
     generate = assemble.generate_counterterm_sites
     if entry.born.get("QED"):

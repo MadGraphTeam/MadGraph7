@@ -114,7 +114,7 @@ def slices(loop_sm_compiled_model, loop_native):
                 born,
                 loop,
                 fixed_parameters=FIXED,
-                ignored_particle_ids=ignored,
+                particle_veto=ignored,
                 accuracy=accuracy,
                 colour_declaration=None if accuracy == "full" else declaration,
             )

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Counterterm sites: the slice form and permanent oracle of design §6.2-§6.6.
+"""Counterterm sites: the test oracle of design §6.6 and the root closure.
 
 Every tree with exactly one counterterm (CT) vertex can be rooted at that
 vertex. A *site* is a model CT rule applied at the root to m block currents
@@ -13,10 +13,15 @@ complete CT=1 amplitude without listing a single tree (design §6.6):
 * a two-point site needs two blocks of at least two legs each: insertions on
   external legs are LSZ field factors (``loops.v2.fields``), never sites.
 
-Admission (design §6.2) follows MadLoop's ``set_LoopCT_vertices`` as the
-legacy ``loops.counterterms.match_counterterms`` does, with loop graphs
-replaced by *witnesses*: admitted family routings whose structural rank
-satisfies R >= 2N - 4. A witness signature is the multiset of its attached
+Production admits counterterms by the plain tree-level rule
+(``ct_recursion.admitted_alternatives``: coupling orders, one insertion and
+``particle_veto``), passed as ``admission`` to ``generate_counterterm_sites``
+for the CT vertices at the root of the closure (``ct_closure``). The site
+closure of every rule, the O6 oracle, keeps MadLoop's matching
+(``set_LoopCT_vertices``, as the legacy ``loops.counterterms.match_counterterms``
+does) as an independent check of that rule, with loop graphs replaced by
+*witnesses*: admitted family routings whose structural rank satisfies
+R >= 2N - 4. A witness signature is the multiset of its attached
 block currents (leg mask, field, orders) plus the summed orders of its loop
 vertices; it is realised by one or more loop-species sets (sorted |PDG| of the
 loop lines, merged closed-loop flavours expanded to their members):
@@ -518,7 +523,7 @@ def _selected(rule: Any, corrections: frozenset[str]) -> bool:
 
 
 def generate_counterterm_sites(
-    families: FamilySet,
+    families: FamilySet | None,
     blocks: BlockTable,
     rules: Mapping[str, Any],
     native_model: Any,
@@ -529,7 +534,7 @@ def generate_counterterm_sites(
     whole_rules: bool = False,
     closed_rules: Iterable[str] | None = None,
     root_mask: int | None = None,
-    check_coverage: bool = True,
+    admission: Mapping[str, tuple[int, ...]] | None = None,
 ) -> CountertermSites:
     """Admitted CT sites of a process, after the completeness check.
 
@@ -546,8 +551,10 @@ def generate_counterterm_sites(
     ``loops.v2.ct_recursion``); completeness is still checked on all rules.
     ``root_mask`` keeps only the sites with that leg set as one block (the
     CT vertices at the root of the counterterm closure, ``ct_closure``).
-    ``check_coverage=False`` skips the completeness check, for a caller that
-    has made it already for the same request.
+    ``admission`` (rule name ->
+    admitted alternative indices) replaces the witness admission and the
+    completeness check: production's plain rule (``ct_recursion``); then
+    ``families`` is not read.
     """
 
     data = model_data(native_model)
@@ -567,7 +574,7 @@ def generate_counterterm_sites(
             )
     corrections = frozenset(selection.corrections)
     forbidden = frozenset(abs(int(pdg)) for pdg in forbidden)
-    witnesses = divergent_witnesses(families, data)
+    witnesses = {} if admission is not None else divergent_witnesses(families, data)
     coverage = (
         _coverage(
             witnesses,
@@ -577,7 +584,7 @@ def generate_counterterm_sites(
             ghost_partners(data),
             (*zeros, *closed_fermion_zeros(witnesses, data)),
         )
-        if check_coverage
+        if admission is None
         else ()
     )
     full = (1 << len(blocks.legs)) - 1
@@ -611,6 +618,7 @@ def generate_counterterm_sites(
                     witnesses,
                     selection,
                     forbidden,
+                    None if admission is None else admission.get(name, ()),
                 )
                 if site is not None:
                     sites.append(site)
@@ -632,7 +640,7 @@ def _assign(
     return tuple(out)
 
 
-def admitted_alternatives(
+def witness_alternatives(
     rule: Any,
     signature: Signature,
     witnesses: Mapping[Signature, frozenset[Species]],
@@ -670,13 +678,15 @@ def _admit(
     witnesses: Mapping[Signature, frozenset[Species]],
     selection: LoopOrderSelection,
     forbidden: frozenset[int],
+    admitted: tuple[int, ...] | None = None,
 ) -> CountertermSite | None:
     site = CountertermSite(rule, name, blocks, ())
     if site.orders not in selection.loop_orders:
         return None
-    admitted = admitted_alternatives(
-        rule, site.signature, witnesses, selection, forbidden
-    )
+    if admitted is None:
+        admitted = witness_alternatives(
+            rule, site.signature, witnesses, selection, forbidden
+        )
     return CountertermSite(rule, name, blocks, admitted) if admitted else None
 
 
@@ -1241,7 +1251,6 @@ __all__ = [
     "SiteClosure",
     "SiteTerm",
     "add_colour",
-    "admitted_alternatives",
     "closed_fermion_zeros",
     "divergent_witnesses",
     "entry_cell",
@@ -1249,4 +1258,5 @@ __all__ = [
     "ghost_partners",
     "ufo_colour_network",
     "vanishes_identically",
+    "witness_alternatives",
 ]

@@ -887,10 +887,9 @@ class ModelLoopCatalogue:
     an order when it enters a vertex of that single order), which production
     modules may not import.
 
-    ``ignored_particle_ids`` are particles the request excludes: neither
-    orientation of them runs in a loop line (|PDG| codes, as the counterterm
-    and field rules' forbidden species), so a request that drops a particle
-    from its trees and counterterms drops its closed loops too.
+    ``veto`` (|PDG| codes, ``particle_veto``) removes those particles from the
+    loops: they are no loop species, and no vertex with one of them is a loop
+    vertex.
     """
 
     def __init__(
@@ -898,10 +897,11 @@ class ModelLoopCatalogue:
         model: Any,
         *,
         species_orders: Mapping[int, frozenset[str]] | None = None,
-        ignored_particle_ids: Iterable[int] = (),
+        veto: Iterable[int] = (),
     ):
         data = model_data(model)
-        excluded = frozenset(abs(int(pdg)) for pdg in ignored_particle_ids)
+        veto = frozenset(abs(int(pdg)) for pdg in veto)
+        vetoed = {p["name"] for p in data["particles"] if abs(p["pdg_code"]) in veto}
         self._species: dict[str, LoopSpecies] = {}
         coupling_orders = {
             entry["name"]: tuple(
@@ -917,6 +917,8 @@ class ModelLoopCatalogue:
         }
         rules = []
         for rule in data["vertex_rules"]:
+            if vetoed.intersection(rule["particles"]):
+                continue
             orders = {
                 add_orders(coupling_orders[name])
                 for row in rule["couplings"]
@@ -937,10 +939,7 @@ class ModelLoopCatalogue:
         for particle in data["particles"]:
             name = particle["name"]
             self._conjugate[name] = particle["antiname"]
-            if (
-                not particle.get("propagating", True)
-                or abs(int(particle["pdg_code"])) in excluded
-            ):
+            if not particle.get("propagating", True) or name in vetoed:
                 continue
             self._species[name] = LoopSpecies(
                 name,

@@ -37,7 +37,7 @@ one rotation check.
 
 Usage:
     python tools/loop_v2_generate.py measure "g g > g g g g" --born QCD=4
-        [--accuracy fc|lc|nlc] [--ignored 23] [--engine native|python]
+        [--accuracy fc|lc|nlc] [--veto 23] [--engine native|python]
         [--digests] [--export] [--json OUT.json] [--model COMPILED.json]
     python tools/loop_v2_generate.py diff A.json B.json
     python tools/loop_v2_generate.py validate gg_gggg [--points 0 1 2]
@@ -191,7 +191,7 @@ def _request(args) -> Any:
         born,
         loop,
         fixed_parameters={"MB": "0"},
-        ignored_particle_ids=tuple(int(x) for x in args.ignored.split(",") if x),
+        particle_veto=tuple(int(x) for x in args.veto.split(",") if x),
         **options,
     )
 
@@ -326,7 +326,7 @@ def _validate(args) -> dict[str, Any]:
         born,
         loop,
         fixed_parameters=dict(reference.get("fixed_parameters", {"MB": "0"})),
-        ignored_particle_ids=(6,) if top_free else (),
+        particle_veto=(6,) if top_free else (),
     )
     parameters = dict(reference["parameters"])
     record: dict[str, Any] = {
@@ -575,7 +575,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("process")
     run.add_argument("--born", required=True, help="e.g. QCD=3 or QCD=2,QED=2")
     run.add_argument("--accuracy", choices=("fc", "lc", "nlc"), default="fc")
-    run.add_argument("--ignored", default="", help="ignored particle ids, e.g. 23")
+    run.add_argument("--veto", default="", help="vetoed particles (|PDG|), e.g. 23")
     run.add_argument("--engine", choices=("native", "python"), default="native")
     run.add_argument("--digests", action="store_true")
     run.add_argument("--export", action="store_true")
@@ -599,7 +599,7 @@ def main(argv: list[str] | None = None) -> int:
     pole.add_argument("process")
     pole.add_argument("--born", required=True, help="e.g. QCD=5")
     pole.add_argument("--accuracy", choices=("fc", "lc", "nlc"), default="fc")
-    pole.add_argument("--ignored", default="", help="ignored particle ids, e.g. 23")
+    pole.add_argument("--veto", default="", help="vetoed particles (|PDG|), e.g. 23")
     pole.add_argument("--points", type=int, default=3)
     pole.add_argument("--rotation", action="store_true")
     pole.add_argument("--alpha-s", default="0.118")

@@ -93,6 +93,7 @@ from .blocks import (
     TreeBlocks,
     build_tree_blocks,
     requested_loop_blocks,
+    vetoed_particle_ids,
     with_ward_kernels,
 )
 from .catalogue import build_loop_kernel_catalogue
@@ -790,7 +791,7 @@ def _field_level_families(
         incoming,
         outgoing,
         cap=selection.cap,
-        ignored_particle_ids=request.excluded_particle_ids,
+        ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
     )
     if native is not None:
         return NativeGeneration(table, catalogue, selection, native).families()
@@ -1146,10 +1147,11 @@ class SliceRequest:
     loop_orders: Mapping[str, int] | Sequence[Mapping[str, int]]
     corrections: tuple[str, ...] = ("QCD",)
     fixed_parameters: Mapping[str, str] = field(default_factory=dict)
-    # Particles the request excludes, in either orientation (PDG codes): no
-    # tree current, loop line, counterterm or field insertion of theirs
-    # (e.g. (6,): closed top loops off, with their decoupling counterterms).
-    ignored_particle_ids: tuple[int, ...] = ()
+    # Vetoed particles (|PDG| codes, ``generation.particle_veto``): removed
+    # from every tree vertex of every generation step (Born, blocks, loop
+    # vertices and propagators, the counterterm program), and every
+    # counterterm term whose loop content holds one is dropped.
+    particle_veto: tuple[int, ...] = ()
     accuracy: ColourAccuracy = "full"
     # A source-owned formal-N_c continuation (``LoopColorDeclaration``); LC
     # needs it for the counterterm and field colour grades (design §6.7).
@@ -1177,6 +1179,12 @@ class SliceRequest:
     # site closure of every rule, the permanent oracle (O6).
     counterterms: Literal["recursion", "sites"] = "recursion"
 
+    def __post_init__(self) -> None:
+        veto = tuple(sorted({abs(int(pdg)) for pdg in self.particle_veto}))
+        if 0 in veto:
+            raise ValueError("particle_veto takes particle PDG codes")
+        object.__setattr__(self, "particle_veto", veto)
+
     @property
     def exact_loop_orders(self) -> tuple[Mapping[str, int], ...]:
         """The exact coupling orders of every admitted loop amplitude."""
@@ -1194,21 +1202,6 @@ class SliceRequest:
             for name, power in orders.items():
                 bounds[name] = max(bounds.get(name, 0), power)
         return bounds
-
-    @property
-    def excluded_particle_ids(self) -> tuple[int, ...]:
-        """``ignored_particle_ids`` in both orientations, as the tree compiler
-        reads them (it drops the currents of the signed ids it is given)."""
-
-        return tuple(
-            sorted(
-                {
-                    sign * int(pdg)
-                    for pdg in self.ignored_particle_ids
-                    for sign in (1, -1)
-                }
-            )
-        )
 
 
 class RequestModel(NamedTuple):
@@ -1310,7 +1303,7 @@ class LoopSlice:
     loop_catalogue: Any = None
     fourier: SeedFourier | None = None
     # The CT amplitudes from the tree recursion (``ct_closure``); the sites
-    # then hold only the rules it leaves to site closure.
+    # are then empty (site closure is the "sites" test oracle only).
     counterterm_program: Any = None
     # Whether LC/NLC pruning dropped skeletons (``_prune_colour``).
     colour_pruned: bool = False
@@ -1402,7 +1395,7 @@ class LoopSlice:
         loop_catalogue = ModelLoopCatalogue(
             data,
             species_orders=structure.perturbative_species_orders,
-            ignored_particle_ids=request.ignored_particle_ids,
+            veto=request.particle_veto,
         )
         native_families = "families" in generator_input.NATIVE_STAGES
         model = compiled
@@ -1413,7 +1406,7 @@ class LoopSlice:
                 CompiledUFOModel(model),
                 born_coupling_orders=dict(request.born_orders),
                 block_coupling_orders=request.loop_order_bounds,
-                ignored_particle_ids=request.excluded_particle_ids,
+                ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
                 reachability=(
                     None
                     if reachable is None
@@ -1476,8 +1469,9 @@ class LoopSlice:
         program = None
         if request.counterterms == "recursion":
             # Production form of the counterterms (design §6.1): the tree
-            # recursion over the CT-lowered model, closed at leg 1; graded by
-            # N_c with a colour declaration (design §6.7). The block rows
+            # recursion over the CT-lowered model with exactly one insertion,
+            # closed at leg 1; graded by N_c with a colour declaration (design
+            # §6.7). No site closure and no loop matching. The block rows
             # (``tree_rows``) are built on first use, after the CT-lowered
             # model: native trees canonicalise their stages
             # (``_canonical_stage``), and the Python replay is an oracle.
@@ -1487,11 +1481,10 @@ class LoopSlice:
                 compiled,
                 prepared,
                 request.process,
-                families,
                 data,
                 selection,
                 blocks.born_orders,
-                forbidden=request.ignored_particle_ids,
+                veto=request.particle_veto,
                 fixed_parameters=fixed,
                 declaration=declaration,
                 continuation=continuation,
@@ -1502,20 +1495,19 @@ class LoopSlice:
                     request.compatibility,
                 ),
             )
-            if program.residual and reachable is not None:
-                # The rules left to site closure need every leg partition's
-                # tree currents (above); the families do not change.
-                blocks, compiled, table, generation, families = tree_program(None)
-                colour, plan = schedules()
-        sites = generate_counterterm_sites(
-            families,
-            table,
-            prepared.counterterms.rules,
-            data,
-            selection,
-            forbidden=request.ignored_particle_ids,
-            whole_rules=continuation is not None,
-            closed_rules=None if program is None else program.residual,
+        sites = (
+            # The O6 oracle: every rule closed at sites, witness admission.
+            generate_counterterm_sites(
+                families,
+                table,
+                prepared.counterterms.rules,
+                data,
+                selection,
+                forbidden=request.particle_veto,
+                whole_rules=continuation is not None,
+            )
+            if program is None
+            else CountertermSites((), {}, (), 0)
         )
         insertions = external_field_insertions(
             table.legs,
@@ -1523,7 +1515,7 @@ class LoopSlice:
             data,
             selection,
             blocks.born_orders,
-            forbidden=request.ignored_particle_ids,
+            forbidden=request.particle_veto,
         )
         ordinary = _ordinary_entries(prepared, data)
         entries = [e for site in sites.sites for e in site.rule.entries]
@@ -1534,9 +1526,10 @@ class LoopSlice:
             compiled, counterterm_entries=list({id(e): e for e in entries}.values())
         )
         closure = SiteClosure(blocks, data, catalogue)
-        # Cells without a site kernel that cancel between the rules closed on
-        # the same blocks (the Levi-Civita R2 of a Z with gluons over complete
-        # quark doublets) are left out; any other such cell fails below.
+        # Oracle sites: cells without a site kernel that cancel between the
+        # rules closed on the same blocks (the Levi-Civita R2 of a Z with
+        # gluons over complete quark doublets) are left out; any other such
+        # cell fails below.
         cancelled = closure.cancelled_cells(
             sites.sites,
             _site_coefficient(compiled, structure.fixed_parameters, continuation),
