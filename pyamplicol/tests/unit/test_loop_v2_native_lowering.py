@@ -15,10 +15,14 @@ Per plan:
 
 Plans cover schedule B with derived and written row links, schedule F
 (closures, relabellings), schedule M (edge weights, closures, chunks), massive
-quark lines (mass flips) and helicity-resolved observable columns
-(``column_rows``). Default tier: g g > t t~ and g g > g g g; wider controls are
-``loop_physics``, six legs ``loop_nightly``; seven-leg evidence is the stored
-S8 digest of bounded runs (RUST-MIGRATION.md rule 6).
+quark lines (mass flips), helicity-resolved observable columns
+(``column_rows``), the stored form with the tree program of native per-point
+inputs (its Born kernels join the plan's), and the certified-scaleless
+companion's plans that the "uv" and "ir" pole selections run (the slice's,
+with and without its tree program, and the observable columns'). Default
+tier: g g > t t~ and g g > g g; wider controls are ``loop_physics``, six
+legs ``loop_nightly``; seven-leg evidence is the stored S8 digest of bounded
+runs (RUST-MIGRATION.md rule 6).
 """
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ from pyamplicol.loops.v2.plan_export import export_plan
 
 PROCESSES = {
     "gg_ttx": ("g g > t t~", {"QCD": 2, "QED": 0}, ()),
+    "gg_gg": ("g g > g g", {"QCD": 2, "QED": 0}, ()),
     "gg_ggg": ("g g > g g g", {"QCD": 3, "QED": 0}, ()),
     "uux_uuxg": ("u u~ > u u~ g", {"QCD": 3, "QED": 0}, ()),
     "gg_ttxg": ("g g > t t~ g", {"QCD": 3, "QED": 0}, ()),
@@ -96,11 +101,39 @@ def check(exported, native) -> bytes:
     return member
 
 
+def check_companion_plans(slice_, native, resolved=None) -> None:
+    """The plans the "uv" and "ir" pole selections run: the certified-scaleless
+    companion's plan (``LoopSlice.scaleless``, stored beside the main plan by
+    ``artifact.generate``) and its tree-program form (``NativeExecutor.scaleless``
+    with native inputs), and, for ``resolved`` observable columns
+    (``ColumnPlan``), the companion's column plan (``ColumnPlan.scaleless``,
+    ``observables.NativeObservables``)."""
+
+    companion = slice_.scaleless
+    assert companion is not None
+    check(export_plan(companion, forward=False), native)
+    check(
+        export_plan(
+            companion,
+            forward=False,
+            trees=True,
+            born_squared=False,
+            counterterms=False,
+        ),
+        native,
+    )
+    if resolved is not None:
+        twin = resolved.scaleless()
+        assert twin is not None
+        check(export_plan(twin.slice, forward=False, columns=twin.seed_columns), native)
+
+
 @pytest.mark.loop_fast
 def test_massive_plan_forward_links_and_resolved_columns(slices, loop_native):
     """g g > t t~ (mass flips): schedule F; schedule B with derived and with
     written row links (the loader checks those against its derivation); the
-    observables' helicity-resolved columns (``column_rows``)."""
+    observables' helicity-resolved columns (``column_rows``); the companion
+    plans."""
 
     from pyamplicol.loops.v2.observables import ColumnPlan, ObservableSlice
 
@@ -112,17 +145,32 @@ def test_massive_plan_forward_links_and_resolved_columns(slices, loop_native):
     resolved = export_plan(slice_, forward=False, columns=plan.seed_columns)
     assert any(rows is not None for rows in resolved.program["column_rows"])
     check(resolved, loop_native)
+    check_companion_plans(slice_, loop_native, plan)
 
 
-@pytest.mark.loop_fast
-def test_merged_plan(slices, loop_native):
-    """g g > g g g: schedule M's section (entries, weighted edges, closures,
-    chunks) beside schedule B."""
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("gg_gg", marks=pytest.mark.loop_fast),
+        pytest.param("gg_ggg", marks=pytest.mark.loop_physics),
+    ],
+)
+def test_merged_plan(slices, loop_native, name):
+    """Pure gluons: schedule M's section (entries, weighted edges, closures,
+    chunks) beside schedule B; the certified-scaleless companion's plan."""
 
-    slice_ = slices("gg_ggg")
+    slice_ = slices(name)
     merged = export_plan(slice_, forward=False, merged=merged_graph(slice_))
-    assert merged.program["merged"]["states"]
+    section = merged.program["merged"]
+    assert section["entries"] and section["chunks"]
+    states = section["states"]
+    assert any(state["closure"] is not None for state in states)
+    assert any(
+        edge.get("weight") is not None for state in states for edge in state["edges"]
+    )
     check(merged, loop_native)
+    assert slice_.scaleless is not None
+    check(export_plan(slice_.scaleless, forward=False), loop_native)
 
 
 @pytest.mark.loop_fast
@@ -167,16 +215,32 @@ def test_foreign_and_damaged_members_are_refused(slices, loop_native):
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", ["uux_uuxg", "gg_ttxg", "uux_emepgg"])
 def test_quark_line_massive_and_electroweak_plans(slices, loop_native, name):
+    from pyamplicol.loops.v2.observables import ColumnPlan, ObservableSlice
+
     slice_ = slices(name)
     check(export_plan(slice_), loop_native)
     check(export_plan(slice_, forward=False, links=True), loop_native)
+    # The stored main plan: its tree program and Born metric (the native
+    # per-point inputs, ``artifact.generate``); its Born kernels join the
+    # plan's.
+    check(
+        export_plan(slice_, forward=False, trees=True, born_squared=True), loop_native
+    )
+    observables = ObservableSlice.of(slice_)
+    plan = ColumnPlan(observables, observables.resolved_columns("helicity-colour", {}))
+    check_companion_plans(slice_, loop_native, plan)
 
 
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize("name", ["gg_gggg", "uux_gggg"])
 def test_six_leg_plans(slices, loop_native, name):
-    """The stored form at six legs (``forward=False``) and schedule M."""
+    """The stored form at six legs (``forward=False``), schedule M and the
+    stored and companion plans."""
 
     slice_ = slices(name)
     check(export_plan(slice_, forward=False), loop_native)
     check(export_plan(slice_, forward=False, merged=merged_graph(slice_)), loop_native)
+    check(
+        export_plan(slice_, forward=False, trees=True, born_squared=True), loop_native
+    )
+    check_companion_plans(slice_, loop_native)
