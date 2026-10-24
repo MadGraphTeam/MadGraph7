@@ -141,12 +141,19 @@ class NativeDagUnsupported(ValueError):
 
 
 _DECODES = 0
+_REBUILDS = 0
 
 
 def decode_count() -> int:
     """How many native DAGs were decoded into Python objects (rule 9)."""
 
     return _DECODES
+
+
+def rebuild_count() -> int:
+    """How many released native DAGs were rebuilt from their tables."""
+
+    return _REBUILDS
 
 
 _NATIVE: list[Any] = []
@@ -1223,6 +1230,13 @@ class NativeDag:
     ``interactions``, ``sources``, ``color_plan``, ...) decodes it once
     (``materialize``) and reads it there, so consumers that need Python
     objects keep working while generation decodes nothing (rule 9).
+
+    A DAG the builder made keeps its input tables (``build_input``):
+    ``release`` then drops the native columns, and a later query rebuilds
+    them from the tables (deterministic: the same columns,
+    ``rebuild_count``), so generation does not hold them to its end. The
+    queries generation asks (blocks, propagated species, U(1) leakage) are
+    answered once and kept.
     """
 
     def __init__(
@@ -1231,6 +1245,8 @@ class NativeDag:
         process: CanonicalProcessIR,
         model: Any,
         clone_fields: Mapping[int, int] | None = None,
+        *,
+        build_input: str | None = None,
     ) -> None:
         self._handle = handle
         self.process = process
@@ -1238,6 +1254,35 @@ class NativeDag:
         self._clone_fields = dict(clone_fields or {})
         self._block_input: str | None = None
         self._decoded: GenericDAG | None = None
+        self._build_input = build_input
+        self._blocks: tuple[tuple[Block, ...], dict[int, int]] | None = None
+        self._answers: dict[Any, Any] = {}
+
+    def _native_handle(self) -> Any:
+        global _REBUILDS
+        if self._handle is None:
+            if self._build_input is None:
+                raise ValueError("a released native DAG without its input tables")
+            _REBUILDS += 1
+            self._handle = _call(_native().V2Dag.build, self._build_input)
+        return self._handle
+
+    def release(self) -> None:
+        """Drop the native columns of a DAG the builder made (its input
+        tables rebuild them on the next query that needs them)."""
+
+        if self._build_input is not None:
+            self._handle = None
+
+    @property
+    def released(self) -> bool:
+        return self._handle is None
+
+    def _answer(self, key: Any, work: Any) -> Any:
+        found = self._answers.get(key)
+        if found is None:
+            found = self._answers[key] = work()
+        return found
 
     def __getattr__(self, name: str) -> Any:
         # Only attributes the handle does not have: the GenericDAG's.
@@ -1245,11 +1290,24 @@ class NativeDag:
             raise AttributeError(name)
         return getattr(self.materialize(), name)
 
+    @property  # type: ignore[misc]
+    def __class__(self) -> type:
+        # The stand-in passes the consumers' ``isinstance(dag, GenericDAG)``
+        # (e.g. ``StageCompilationInput`` of the per-point rows), which reads
+        # no attribute; ``type(dag)`` stays ``NativeDag``, which the native
+        # dispatches test first. Equality with a ``GenericDAG`` compares the
+        # decoded fields.
+        return GenericDAG
+
     def materialize(self) -> GenericDAG:
-        """The decoded ``GenericDAG``, decoded on the first call only."""
+        """The decoded ``GenericDAG``, decoded on the first call only (a
+        released DAG is rebuilt for it and released again)."""
 
         if self._decoded is None:
+            released = self.released
             self._decoded = self.decode()
+            if released:
+                self.release()
         return self._decoded
 
     @property
@@ -1268,15 +1326,19 @@ class NativeDag:
     def counts(self) -> tuple[int, int, int]:
         """``(currents, interactions, sources)``."""
 
-        return tuple(self._handle.counts())
+        return self._answer(  # type: ignore[no-any-return]
+            "counts", lambda: tuple(self._native_handle().counts())
+        )
 
     def columns(self) -> bytes:
-        return bytes(self._handle.columns())
+        return bytes(self._native_handle().columns())
 
     def digest(self) -> str:
         """Flat-record SHA-256 of the DAG (the DAG part of S1'/S1'')."""
 
-        return str(self._handle.digest())
+        return self._answer(  # type: ignore[no-any-return]
+            "digest", lambda: str(self._native_handle().digest())
+        )
 
     def _tables(self) -> str:
         if self._block_input is None:
@@ -1297,12 +1359,22 @@ class NativeDag:
     ) -> tuple[tuple[Block, ...], dict[int, int]]:
         """The blocks and, for the clone blocks, block id -> clone particle."""
 
+        from dataclasses import replace
+
         from .blocks import _checked_kernel_variant
 
         variant = _checked_kernel_variant("plain", kernel_variant)  # type: ignore[arg-type]
+        if self._blocks is not None:
+            # The variant only labels the blocks (the DAG does not depend on
+            # it, ``TreeBlocks.with_kernels``).
+            found, clone_map = self._blocks
+            if found and found[0].kernel_variant != variant:
+                found = tuple(replace(block, kernel_variant=variant) for block in found)
+                self._blocks = (found, clone_map)
+            return found, dict(clone_map)
         out: list[Block] = []
         clones: dict[int, int] = {}
-        raw, assignments = _call(self._handle.blocks, self._tables())
+        raw, assignments = _call(self._native_handle().blocks, self._tables())
         # Equal values are built once: the rows' helicity assignments, the
         # colour states and orders repeat over the blocks of a leg set.
         helicities = [tuple(tuple(pair) for pair in row) for row in assignments]
@@ -1361,7 +1433,8 @@ class NativeDag:
                     pairing_sign=block["pairing_sign"],
                 )
             )
-        return tuple(out), clones
+        self._blocks = (tuple(out), clones)
+        return tuple(out), dict(clones)
 
     def u1_leaking(
         self,
@@ -1374,21 +1447,32 @@ class NativeDag:
         """The vertex kinds the DAG scan of ``ct_closure.u1_leaking_structures``
         reports (see ``u1_leaking_structures``)."""
 
-        return frozenset(
-            self._handle.u1_leaking(
-                sorted(int(k) for k in kinds),
-                sorted(int(k) for k in generator_kinds),
-                sorted(int(p) for p in adjoint),
-                int(fundamental_mask),
-                int(rest_mask),
-            )
+        arguments = (
+            tuple(sorted(int(k) for k in kinds)),
+            tuple(sorted(int(k) for k in generator_kinds)),
+            tuple(sorted(int(p) for p in adjoint)),
+            int(fundamental_mask),
+            int(rest_mask),
+        )
+        return self._answer(  # type: ignore[no-any-return]
+            ("u1", arguments),
+            lambda: frozenset(
+                self._native_handle().u1_leaking(
+                    *map(list, arguments[:3]), *arguments[3:]
+                )
+            ),
         )
 
     def coloured_propagated(self) -> frozenset[int]:
         """Coloured particle ids that non-source, non-auxiliary currents
         propagate (the DAG scan of ``blocks.ward_breaking_fields``)."""
 
-        return frozenset(_call(self._handle.coloured_propagated, self._tables()))
+        return self._answer(  # type: ignore[no-any-return]
+            "coloured",
+            lambda: frozenset(
+                _call(self._native_handle().coloured_propagated, self._tables())
+            ),
+        )
 
     def propagated_species(self) -> tuple[tuple[int, bool], ...]:
         """Distinct ``(particle id, amputated)`` of the non-source,
@@ -1399,9 +1483,12 @@ class NativeDag:
         amputated), which test colours, widths and propagators themselves."""
 
         full = (1 << len(self.process.legs)) - 1
-        return tuple(
-            (int(pdg), bool(amputated))
-            for pdg, amputated in self._handle.propagated_species(full)
+        return self._answer(  # type: ignore[no-any-return]
+            "species",
+            lambda: tuple(
+                (int(pdg), bool(amputated))
+                for pdg, amputated in self._native_handle().propagated_species(full)
+            ),
         )
 
     def decode(self) -> GenericDAG:
@@ -1440,7 +1527,9 @@ def native_blocks(
         ignored_vertex_kinds=ignored_vertex_kinds,
         reachability=reachability,
     )
-    return NativeDag(_call(_native().V2Dag.build, tables), process, model)
+    return NativeDag(
+        _call(_native().V2Dag.build, tables), process, model, build_input=tables
+    )
 
 
 @dataclass(frozen=True)
@@ -1492,6 +1581,7 @@ def native_counterterm_blocks(
         process,
         model,
         {clone: line.field_id for clone, line in lines.items()},
+        build_input=tables,
     )
     variant = model_tree_kernel_variant(model)
     blocks, clone_particles = dag._blocks_and_clones(variant)
@@ -1732,6 +1822,7 @@ __all__ = [
     "native_blocks",
     "native_counterterm_blocks",
     "native_reuse",
+    "rebuild_count",
     "reuse_tables",
     "stage_digest",
     "u1_leaking_structures",

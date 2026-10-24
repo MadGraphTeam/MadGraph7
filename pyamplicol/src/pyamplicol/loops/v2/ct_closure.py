@@ -332,7 +332,7 @@ class CountertermBlocks:
                     fallback,
                 )
             else:
-                return cls(
+                program = cls(
                     recursion,
                     TreeBlocks(
                         process=process,
@@ -344,6 +344,13 @@ class CountertermBlocks:
                     ),
                     native.clones,
                 )
+                # The U(1) leakage scan is answered now (the handle keeps
+                # it), so the native columns are not held to the end of
+                # generation; the per-point rows and the export rebuild and
+                # decode them.
+                u1_leaking_structures(program)
+                native.dag.release()
+                return program
 
         from pyamplicol.generation.dag_compiler import GenericDAGCompiler
         from pyamplicol.models.external import CompiledUFOModel

@@ -645,7 +645,13 @@ def loop_request_blocks(
                 ignored_vertex_kinds=ignored_kinds,
                 reachability=reachability,
             )
-            return native, native.blocks(kernel_variant), None
+            blocks = native.blocks(kernel_variant)
+            # The Ward-kernel and coloured-width scans are answered now, so
+            # the native columns are not held to the end of generation; the
+            # per-point rows and the trees export rebuild and decode them.
+            native.propagated_species()
+            native.release()
+            return native, blocks, None
         except dag_input.NativeDagUnsupported as error:
             fallback = str(error)
             _LOG.warning(
