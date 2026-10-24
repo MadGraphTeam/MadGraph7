@@ -263,15 +263,28 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     if proc.returncode != 0:
         # surface the generate_events output (the log lives in a tmp dir that CI
         # does not upload) so the real crash is visible in the test failure.
-        try:
-            tail = ''.join(open(log).readlines()[-120:])
-        except Exception as err:
-            tail = '(could not read %s: %s)' % (log, err)
-        test.fail('mg7 generate_events failed (rc=%s)\n'
-                  '----- %s (last 120 lines) -----\n%s' % (proc.returncode, log, tail))
+        test.fail('mg7 generate_events failed (rc=%s)\n%s'
+                  % (proc.returncode, _mg7_postproc_report(run_dir)))
     runs = sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*')))
     test.assertTrue(runs, 'no mg7 run directory under %s' % run_dir)
     return runs[0]
+
+
+def _mg7_postproc_report(run_dir, nlines=120):
+    """The content of the Events run directories and the end of the
+    generate_events log of _run_mg7_postproc, for a failure message: both live
+    in a tmp dir that CI does not upload."""
+    import glob
+    out = []
+    for run in sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*'))):
+        out.append('----- %s -----\n%s' % (run, '\n'.join(sorted(os.listdir(run)))))
+    log = pjoin(run_dir, 'mg7_postproc.log')
+    try:
+        tail = ''.join(open(log).readlines()[-nlines:])
+    except Exception as err:
+        tail = '(could not read %s: %s)' % (log, err)
+    out.append('----- %s (last %d lines) -----\n%s' % (log, nlines, tail))
+    return '\n'.join(out)
 
 
 #===============================================================================
@@ -3879,7 +3892,8 @@ set draw_rivet_plots True
             events=100)
 
         self.assertTrue(glob.glob(pjoin(run, '*delphes*')),
-                        'mg7 Delphes run produced no output in %s' % run)
+                        'mg7 Delphes run produced no output in %s\n%s'
+                        % (run, _mg7_postproc_report(pjoin(self.path, 'MG7_delphes'))))
 
     def test_rivet_from_file_mg7(self):
         """Rivet analysis chained on the mg7 output (Pythia8 shower + Rivet)
