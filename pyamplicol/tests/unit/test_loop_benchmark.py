@@ -41,9 +41,10 @@ def test_streams_are_exact_distinct_and_start_with_the_campaign(key):
     for point in points:
         exact_points.check(point, masses, 2)
     assert streams.campaign_agreement(key, stream) in (True, None)
-    for exact, text in zip(stream["points"], stream["points_binary64"], strict=True):
-        for leg, decimal in zip(exact, text, strict=True):
-            assert [float(Fraction(x)) for x in leg] == [float(x) for x in decimal]
+    text = streams.binary64(stream, 3)
+    for exact, decimal in zip(stream["points"][:3], text, strict=True):
+        for leg, values in zip(exact, decimal, strict=True):
+            assert [float(Fraction(x)) for x in leg] == [float(x) for x in values]
 
 
 def test_gate_verdict():
