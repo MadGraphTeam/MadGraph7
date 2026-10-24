@@ -36,23 +36,23 @@ runs:
 
     - run: |
         cd $GITHUB_WORKSPACE
-        echo "heptools_install_dir=/home/runner/.cache/HEPtools" >> input/mg7_configuration.txt
-        echo "lhapdf = /home/runner/.cache/HEPtools/bin/lhapdf-config" >>       input/mg7_configuration.txt
-        echo "lhapdf_py3 = /home/runner/.cache/HEPtools/bin/lhapdf-config" >>       input/mg7_configuration.txt
-        echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lhapdf6_py3//lib" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lib" >> $GITHUB_ENV
+        echo "heptools_install_dir=$HOME/.cache/HEPtools" >> input/mg7_configuration.txt
+        echo "lhapdf = $HOME/.cache/HEPtools/bin/lhapdf-config" >>       input/mg7_configuration.txt
+        echo "lhapdf_py3 = $HOME/.cache/HEPtools/bin/lhapdf-config" >>       input/mg7_configuration.txt
+        echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPtools/lhapdf6_py3//lib" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.cache/HEPtools/lib" >> $GITHUB_ENV
       shell: bash
 
     - name: set pythonpath for ubuntu22
       if: ${{ env.HEPTOOLS_IMAGE == 'ubuntu22' }}
       run: |
-        echo "PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages" >> $GITHUB_ENV
+        echo "PYTHONPATH=$PYTHONPATH:$HOME/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages" >> $GITHUB_ENV
       shell: bash 
 
     - name: set pythonpath for ubuntu24
       if: ${{ env.HEPTOOLS_IMAGE == 'ubuntu24' }}
       run: |
-        echo "PYTHONPATH=$PYTHONPATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages" >> $GITHUB_ENV
+        echo "PYTHONPATH=$PYTHONPATH:$HOME/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages" >> $GITHUB_ENV
       shell: bash
 
     # The run_card default PDF sets: NNPDF40_lo_as_01180 (mg7 [beam] pdf and the
@@ -63,9 +63,20 @@ runs:
     # on the set being present and would all self-skip (test_manager.py counts a
     # skip as a failure). Fetching them here is a no-op once the cache carries
     # them. Non-fatal on failure: the tests skip as they did before.
+    # any other image (a self-hosted runner, where ImageOS is unset): take the
+    # python bindings wherever this machine's build put them
+    - name: set pythonpath for other images
+      if: ${{ env.HEPTOOLS_IMAGE != 'ubuntu22' && env.HEPTOOLS_IMAGE != 'ubuntu24' }}
+      run: |
+        P=$PYTHONPATH
+        for d in $HOME/.cache/HEPtools/lhapdf6_py3/lib*/python3*/*-packages; do
+          [ -d "$d" ] && P=$P:$d
+        done
+        echo "PYTHONPATH=$P" >> $GITHUB_ENV
+      shell: bash
     - name: ensure the default PDF sets are present
       run: |
-        DATADIR=/home/runner/.cache/HEPtools/lhapdf6_py3/share/LHAPDF
+        DATADIR=$HOME/.cache/HEPtools/lhapdf6_py3/share/LHAPDF
         for SET in NNPDF40_lo_as_01180 NNPDF40_nlo_as_01180 NNPDF40_nlo_as_01180_nf_4; do
           if [ -d "$DATADIR" ] && [ ! -d "$DATADIR/$SET" ]; then
             ( cd "$DATADIR" \
