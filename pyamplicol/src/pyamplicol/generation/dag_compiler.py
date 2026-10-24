@@ -833,6 +833,40 @@ class GenericDAGCompiler:
             {} if self.loop_blocks else None
         )
 
+        # The factors of an interaction's colour weight come from a few shared
+        # objects (cached colour flows and vertex weights, literal symmetry
+        # weights): their product is computed once per object triple and the
+        # interactions share it (the factors are kept alive with it).
+        color_weight_products: dict[
+            tuple[int, int, int],
+            tuple[
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+            ],
+        ] = {}
+
+        def shared_color_weight(
+            flow_weight: tuple[float, float],
+            vertex_weight: tuple[float, float],
+            symmetry_weight: tuple[float, float],
+        ) -> tuple[float, float]:
+            key = (id(flow_weight), id(vertex_weight), id(symmetry_weight))
+            found = color_weight_products.get(key)
+            if found is None:
+                found = (
+                    flow_weight,
+                    vertex_weight,
+                    symmetry_weight,
+                    _complex_weight_mul(
+                        _complex_weight_mul(flow_weight, vertex_weight),
+                        symmetry_weight,
+                    ),
+                )
+                color_weight_products[key] = found
+            return found[3]
+
         def cached_vertex_color_weight(
             vertex: Vertex,
         ) -> tuple[float, float]:
@@ -1254,20 +1288,25 @@ class GenericDAGCompiler:
                                             locally_reflectable_current_ids.add(
                                                 result.id
                                             )
-                                        signed_color_weight = _complex_weight_mul(
-                                            _complex_weight_mul(
+                                        if memoize:
+                                            signed_color_weight = shared_color_weight(
                                                 color_flow.weight,
-                                                cached_vertex_color_weight(vertex)
-                                                if memoize
-                                                else self.model.vertex_color_weight(
-                                                    vertex,
-                                                    color_accuracy=(
-                                                        process_ir.color_accuracy
+                                                cached_vertex_color_weight(vertex),
+                                                symmetry_weight,
+                                            )
+                                        else:
+                                            signed_color_weight = _complex_weight_mul(
+                                                _complex_weight_mul(
+                                                    color_flow.weight,
+                                                    self.model.vertex_color_weight(
+                                                        vertex,
+                                                        color_accuracy=(
+                                                            process_ir.color_accuracy
+                                                        ),
                                                     ),
                                                 ),
-                                            ),
-                                            symmetry_weight,
-                                        )
+                                                symmetry_weight,
+                                            )
                                         key = (
                                             vertex.kind,
                                             left_id,
