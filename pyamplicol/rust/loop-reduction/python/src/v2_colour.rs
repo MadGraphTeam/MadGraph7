@@ -232,8 +232,16 @@ impl NativeCellEngine {
     }
 
     /// Register a canonical quark ring by its reduced tensor.
-    fn register_ring(&mut self, ring: RawTensor) -> PyResult<usize> {
+    fn register_ring(&self, ring: RawTensor) -> PyResult<usize> {
         self.engine.register_ring(tensor(ring)?).map_err(error)
+    }
+
+    /// Sizes of the caches this engine shares with its rebased engines:
+    /// (relabelled bras, registered rings, primitive overlaps, ring
+    /// overlaps).
+    #[getter]
+    fn cache_sizes(&self) -> PyResult<(usize, usize, usize, usize)> {
+        self.engine.cache_sizes().map_err(error)
     }
 
     /// The cells of `classes` against the basis (`colour.seed_cells`).
@@ -456,9 +464,25 @@ fn live_classes(
 }
 
 /// IR dipole operators per relabelling orbit (`loop_v2::dipole_orbits`).
+/// Expansions to Python objects count their entries (rule 9).
 #[pyclass(frozen)]
 struct NativeDipoleOrbits {
     orbits: DipoleOrbits,
+    decodes: AtomicUsize,
+}
+
+impl NativeDipoleOrbits {
+    fn new(orbits: DipoleOrbits) -> Self {
+        Self {
+            orbits,
+            decodes: AtomicUsize::new(0),
+        }
+    }
+
+    fn entries(&self) -> usize {
+        let c = self.orbits.coloured.len();
+        c * c.saturating_sub(1) * self.orbits.basis * self.orbits.basis
+    }
 }
 
 #[pymethods]
@@ -479,14 +503,12 @@ impl NativeDipoleOrbits {
             .map(tensor)
             .collect::<PyResult<Vec<_>>>()?;
         let orbits = on_threads(py, threads, || DipoleOrbits::build(&legs, &basis, &classes))?;
-        Ok(Self { orbits })
+        Ok(Self::new(orbits))
     }
 
     #[staticmethod]
     fn from_json(text: &str) -> PyResult<Self> {
-        Ok(Self {
-            orbits: DipoleOrbits::from_json(text).map_err(error)?,
-        })
+        Ok(Self::new(DipoleOrbits::from_json(text).map_err(error)?))
     }
 
     fn to_json(&self) -> PyResult<String> {
@@ -508,6 +530,14 @@ impl NativeDipoleOrbits {
         self.orbits.coloured.clone()
     }
 
+    /// Entries decoded to Python so far: `expand`'s fraction texts (i != j)
+    /// and `expand_f64`'s dense floats (rule 9 of the migration plan;
+    /// `digest` and `to_json` decode no entry).
+    #[getter]
+    fn decodes(&self) -> usize {
+        self.decodes.load(Ordering::Relaxed)
+    }
+
     fn check_conservation(&self, py: Python<'_>) -> PyResult<()> {
         py.detach(|| self.orbits.check_conservation())
             .map_err(error)
@@ -525,6 +555,7 @@ impl NativeDipoleOrbits {
             })
         })
         .map_err(error)?;
+        self.decodes.fetch_add(self.entries(), Ordering::Relaxed);
         let labels: Vec<i64> = self.orbits.coloured.iter().map(|leg| leg.0).collect();
         Ok(dense
             .into_iter()
@@ -541,7 +572,9 @@ impl NativeDipoleOrbits {
 
     /// Dense binary64 operators `[i][j][b][b']`.
     fn expand_f64(&self, py: Python<'_>) -> PyResult<Vec<f64>> {
-        py.detach(|| self.orbits.expand_f64()).map_err(error)
+        let out = py.detach(|| self.orbits.expand_f64()).map_err(error)?;
+        self.decodes.fetch_add(out.len(), Ordering::Relaxed);
+        Ok(out)
     }
 }
 

@@ -25,9 +25,10 @@
 //!   the thread count.
 //! - **Projection** ([`project`], [`project_records`]): the plan's two-level
 //!   seed records, byte-identical to `plan_export._Exporter.seed_records`.
-//! - **Degrees** ([`table_degree`], [`OverlapDegrees`], [`AdjointOrbits`],
-//!   [`live_classes`]): the structural LC/NLC degree machinery of
-//!   `assemble.LoopSlice.degrees`, `_prune_colour` and `_AdjointOrbits`.
+//! - **Degrees** ([`OrderedTable::degree`], [`overlap_degrees`],
+//!   [`AdjointOrbits`], [`live_classes`]): the structural LC/NLC degree
+//!   machinery of `assemble.LoopSlice.degrees`, `_prune_colour` and
+//!   `_AdjointOrbits`.
 //!
 //! No Symbolica state is touched (exact numbers are numerica's `Rational`),
 //! so nothing here needs a licence.
@@ -39,7 +40,7 @@ use crate::{RusticolError, RusticolResult};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 use symbolica::domains::integer::Integer;
 use symbolica::domains::rational::Rational;
 
@@ -729,6 +730,15 @@ pub fn adjoint_un_terms(word: &[Label]) -> Vec<(i64, Vec<Vec<Label>>, i32)> {
 /// `_PrimitiveCells._overlap` of an adjoint ring: its U(N_c) expansion
 /// counted by faces (adjoint rings are U(1)-free in every external label).
 pub fn adjoint_ring_overlap(word: &[Label], bra: &Tensor) -> RusticolResult<Laurent> {
+    // An adjoint ring carries no fundamental index, so its overlap with a
+    // Born tensor holding open quark strings is not defined: refused (rule 2;
+    // Python's `_PrimitiveCells._overlap` drops the strings' index loops,
+    // recorded oracle defect 3).
+    if bra.terms.iter().any(|t| !t.structure.strings.is_empty()) {
+        return Err(invalid(
+            "an adjoint-ring class against a Born tensor with open quark strings",
+        ));
+    }
     if bra.normalization % 2 == 1 {
         return Err(invalid("a Born tensor has an odd inverse sqrt(2) power"));
     }
@@ -795,27 +805,59 @@ enum Recipe {
     Generic(Vec<(Exact, i32, usize)>),
 }
 
-/// Seed cells against one basis of literal tensors, with the relabelling
-/// caches of `_PrimitiveCells` (shared by [`CellEngine::rebased`] engines,
-/// whose basis lies on the same legs).
-#[derive(Clone)]
-pub struct CellEngine {
-    legs: Vec<Leg>,
-    basis: Vec<Tensor>,
+/// The basis-independent caches of `_PrimitiveCells`: relabelled bras by
+/// id, the registered canonical quark rings, and the primitive and ring
+/// overlaps keyed by them. An engine and every engine rebased from it share
+/// one instance both ways, as Python's `rebased` shares these dicts through
+/// `copy`.
+#[derive(Default)]
+struct SharedCaches {
     /// Relabelled bras by id (keys of the caches).
     bras: Vec<Tensor>,
     bra_ids: FastMap<Tensor, usize>,
     /// Registered canonical quark rings (reduced tensors).
     rings: Vec<Tensor>,
-    /// Cached overlaps: primitives (kind, length, relabelled bra) and rings
-    /// (ring, relabelled bra) are basis independent; generic structures are
-    /// per basis element.
+    /// Primitives (kind, length, relabelled bra) and rings (ring,
+    /// relabelled bra).
     primitive_cache: FastMap<(PrimitiveKind, usize, usize), Arc<Laurent>>,
     ring_cache: FastMap<(usize, usize), Arc<Laurent>>,
+}
+
+impl SharedCaches {
+    fn bra_id(&mut self, bra: Tensor) -> usize {
+        if let Some(&id) = self.bra_ids.get(&bra) {
+            return id;
+        }
+        self.bras.push(bra.clone());
+        self.bra_ids.insert(bra, self.bras.len() - 1);
+        self.bras.len() - 1
+    }
+}
+
+/// Sizes of the shared caches: (relabelled bras, registered rings, cached
+/// primitive overlaps, cached ring overlaps).
+pub type CacheSizes = (usize, usize, usize, usize);
+
+/// Seed cells against one basis of literal tensors, with the relabelling
+/// caches of `_PrimitiveCells`. [`CellEngine::rebased`] engines (another
+/// basis on the same legs) share the basis-independent caches both ways;
+/// the generic-structure overlaps and the relabelling index are per basis.
+pub struct CellEngine {
+    legs: Vec<Leg>,
+    basis: Vec<Tensor>,
+    shared: Arc<Mutex<SharedCaches>>,
+    /// Generic structures and their overlaps per element of this basis.
     structures: Vec<Structure>,
     structure_ids: FastMap<Structure, usize>,
     structure_cache: FastMap<(usize, usize), Arc<Laurent>>,
+    /// Bra ids of this basis per relabelling (`_relabellings`).
     relabelled: FastMap<Vec<(Label, Label)>, Vec<usize>>,
+}
+
+fn locked(shared: &Mutex<SharedCaches>) -> RusticolResult<MutexGuard<'_, SharedCaches>> {
+    shared
+        .lock()
+        .map_err(|_| invalid("the shared cell caches are poisoned"))
 }
 
 impl CellEngine {
@@ -825,19 +867,19 @@ impl CellEngine {
         if basis.iter().any(|b| b.legs != legs) {
             return Err(invalid("a basis tensor is not on the basis legs"));
         }
-        Ok(Self {
+        Ok(Self::on(legs, basis, Arc::default()))
+    }
+
+    fn on(legs: Vec<Leg>, basis: Vec<Tensor>, shared: Arc<Mutex<SharedCaches>>) -> Self {
+        Self {
             legs,
             basis,
-            bras: Vec::new(),
-            bra_ids: FastMap::default(),
-            rings: Vec::new(),
-            primitive_cache: FastMap::default(),
-            ring_cache: FastMap::default(),
+            shared,
             structures: Vec::new(),
             structure_ids: FastMap::default(),
             structure_cache: FastMap::default(),
             relabelled: FastMap::default(),
-        })
+        }
     }
 
     pub fn legs(&self) -> &[Leg] {
@@ -849,34 +891,34 @@ impl CellEngine {
     }
 
     /// The engine against another basis on the same legs, sharing the
-    /// basis-independent caches (`_PrimitiveCells.rebased`).
+    /// basis-independent caches both ways (`_PrimitiveCells.rebased`).
     pub fn rebased(&self, basis: Vec<Tensor>) -> RusticolResult<Self> {
         if basis.iter().any(|b| b.legs != self.legs) {
             return Err(invalid("rebased primitive cells need the same colour legs"));
         }
-        let mut other = self.clone();
-        other.basis = basis;
-        other.structure_cache = FastMap::default();
-        other.relabelled = FastMap::default();
-        Ok(other)
+        Ok(Self::on(self.legs.clone(), basis, Arc::clone(&self.shared)))
     }
 
-    /// Register a canonical quark ring by its reduced tensor; returns its id.
-    pub fn register_ring(&mut self, tensor: Tensor) -> RusticolResult<usize> {
+    /// The sizes of the shared caches ([`CacheSizes`]).
+    pub fn cache_sizes(&self) -> RusticolResult<CacheSizes> {
+        let caches = locked(&self.shared)?;
+        Ok((
+            caches.bras.len(),
+            caches.rings.len(),
+            caches.primitive_cache.len(),
+            caches.ring_cache.len(),
+        ))
+    }
+
+    /// Register a canonical quark ring by its reduced tensor; returns its id
+    /// (shared with the rebased engines).
+    pub fn register_ring(&self, tensor: Tensor) -> RusticolResult<usize> {
         if tensor.legs != self.legs {
             return Err(invalid("a quark ring is not on the basis legs"));
         }
-        self.rings.push(tensor);
-        Ok(self.rings.len() - 1)
-    }
-
-    fn bra_id(&mut self, bra: Tensor) -> usize {
-        if let Some(&id) = self.bra_ids.get(&bra) {
-            return id;
-        }
-        self.bras.push(bra.clone());
-        self.bra_ids.insert(bra, self.bras.len() - 1);
-        self.bras.len() - 1
+        let mut caches = locked(&self.shared)?;
+        caches.rings.push(tensor);
+        Ok(caches.rings.len() - 1)
     }
 
     fn structure_id(&mut self, structure: &Structure) -> usize {
@@ -936,7 +978,11 @@ impl CellEngine {
     }
 
     /// Bra ids of the basis relabelled by `forward` (`_relabelled_bras`).
-    fn relabelled_bras(&mut self, forward: &[(Label, Label)]) -> Vec<usize> {
+    fn relabelled_bras(
+        &mut self,
+        caches: &mut SharedCaches,
+        forward: &[(Label, Label)],
+    ) -> Vec<usize> {
         let mut key = forward.to_vec();
         key.sort();
         if let Some(found) = self.relabelled.get(&key) {
@@ -951,7 +997,7 @@ impl CellEngine {
                 } else {
                     self.basis[b].relabelled(&rename)
                 };
-                self.bra_id(bra)
+                caches.bra_id(bra)
             })
             .collect();
         self.relabelled.insert(key, ids.clone());
@@ -960,8 +1006,12 @@ impl CellEngine {
 
     /// The cells `<b|kappa_c>` of `classes` against every basis tensor
     /// (`colour.seed_cells`), in input order. Missing overlaps are
-    /// evaluated in parallel; caches persist across calls.
+    /// evaluated in parallel; caches persist across calls (and are shared
+    /// with the rebased engines, which wait for each other's calls).
     pub fn cells(&mut self, classes: &[ClassInput]) -> RusticolResult<Vec<Vec<Arc<Laurent>>>> {
+        let shared = Arc::clone(&self.shared);
+        let mut guard = locked(&shared)?;
+        let caches: &mut SharedCaches = &mut guard;
         let mut tasks: Vec<Task> = Vec::new();
         let mut task_ids: FastMap<Task, usize> = FastMap::default();
         let mut add_task = |task: Task, tasks: &mut Vec<Task>| -> usize {
@@ -986,17 +1036,17 @@ impl CellEngine {
                         .collect();
                     for b in 0..self.basis.len() {
                         let task = match self.primitive_bra(&self.basis[b], &rename) {
-                            Some(bra) => Task::Primitive(kind, word.len(), self.bra_id(bra)),
+                            Some(bra) => Task::Primitive(kind, word.len(), caches.bra_id(bra)),
                             None => Task::Direct(kind, word.clone(), b),
                         };
                         row.push(Recipe::Task(add_task(task, &mut tasks)));
                     }
                 }
                 ClassInput::QuarkRing { ring, forward } => {
-                    if *ring >= self.rings.len() {
+                    if *ring >= caches.rings.len() {
                         return Err(invalid(format!("unregistered quark ring {ring}")));
                     }
-                    for bra in self.relabelled_bras(forward) {
+                    for bra in self.relabelled_bras(caches, forward) {
                         row.push(Recipe::Task(add_task(Task::Ring(*ring, bra), &mut tasks)));
                     }
                 }
@@ -1032,17 +1082,22 @@ impl CellEngine {
             recipes.push(row);
         }
         // Evaluate the tasks missing from the caches, in parallel.
-        let mut results: Vec<Option<Arc<Laurent>>> = tasks.iter().map(|t| self.cached(t)).collect();
+        let mut results: Vec<Option<Arc<Laurent>>> =
+            tasks.iter().map(|t| self.cached(caches, t)).collect();
         let missing: Vec<usize> = (0..tasks.len()).filter(|&t| results[t].is_none()).collect();
-        let values: Vec<RusticolResult<Laurent>> = missing
-            .par_iter()
-            .map(|&t| self.evaluate(&tasks[t]))
-            .collect();
+        let values: Vec<RusticolResult<Laurent>> = {
+            let caches: &SharedCaches = caches;
+            missing
+                .par_iter()
+                .map(|&t| self.evaluate(caches, &tasks[t]))
+                .collect()
+        };
         for (&t, value) in missing.iter().zip(values) {
             let value = Arc::new(value?);
-            self.store(&tasks[t], value.clone());
+            self.store(caches, &tasks[t], value.clone());
             results[t] = Some(value);
         }
+        drop(guard);
         let results: Vec<Arc<Laurent>> = results
             .into_iter()
             .map(|value| value.expect("every task is evaluated"))
@@ -1068,22 +1123,24 @@ impl CellEngine {
             .collect())
     }
 
-    fn cached(&self, task: &Task) -> Option<Arc<Laurent>> {
+    fn cached(&self, caches: &SharedCaches, task: &Task) -> Option<Arc<Laurent>> {
         match task {
-            Task::Primitive(kind, n, bra) => self.primitive_cache.get(&(*kind, *n, *bra)).cloned(),
-            Task::Ring(ring, bra) => self.ring_cache.get(&(*ring, *bra)).cloned(),
+            Task::Primitive(kind, n, bra) => {
+                caches.primitive_cache.get(&(*kind, *n, *bra)).cloned()
+            }
+            Task::Ring(ring, bra) => caches.ring_cache.get(&(*ring, *bra)).cloned(),
             Task::Structure(s, b) => self.structure_cache.get(&(*s, *b)).cloned(),
             Task::Direct(..) => None,
         }
     }
 
-    fn store(&mut self, task: &Task, value: Arc<Laurent>) {
+    fn store(&mut self, caches: &mut SharedCaches, task: &Task, value: Arc<Laurent>) {
         match task {
             Task::Primitive(kind, n, bra) => {
-                self.primitive_cache.insert((*kind, *n, *bra), value);
+                caches.primitive_cache.insert((*kind, *n, *bra), value);
             }
             Task::Ring(ring, bra) => {
-                self.ring_cache.insert((*ring, *bra), value);
+                caches.ring_cache.insert((*ring, *bra), value);
             }
             Task::Structure(s, b) => {
                 self.structure_cache.insert((*s, *b), value);
@@ -1093,14 +1150,14 @@ impl CellEngine {
         }
     }
 
-    fn evaluate(&self, task: &Task) -> RusticolResult<Laurent> {
+    fn evaluate(&self, caches: &SharedCaches, task: &Task) -> RusticolResult<Laurent> {
         match task {
             Task::Primitive(kind, n, bra) => {
                 let word: Vec<Label> = (1..=*n as Label).collect();
-                primitive_overlap(*kind, &word, &self.bras[*bra])
+                primitive_overlap(*kind, &word, &caches.bras[*bra])
             }
             Task::Direct(kind, word, b) => primitive_overlap(*kind, word, &self.basis[*b]),
-            Task::Ring(ring, bra) => contract(&self.bras[*bra], &self.rings[*ring]),
+            Task::Ring(ring, bra) => contract(&caches.bras[*bra], &caches.rings[*ring]),
             Task::Structure(s, b) => {
                 let ket = Tensor::single(&self.legs, self.structures[*s].clone());
                 contract(&self.basis[*b], &ket)
@@ -1605,10 +1662,9 @@ pub fn overlap_degrees(
     let mut task_ids: FastMap<(usize, Structure), usize> = FastMap::default();
     let mut plans: Vec<Vec<(usize, i32)>> = Vec::with_capacity(queries.len());
     for &(bra, ket, offset) in queries {
-        let bra_set = sets
-            .get(bra)
-            .ok_or_else(|| invalid("bra key set out of range"))?;
-        let _ = bra_set;
+        if bra >= sets.len() {
+            return Err(invalid("bra key set out of range"));
+        }
         let ket_set = sets
             .get(ket)
             .ok_or_else(|| invalid("ket key set out of range"))?;
@@ -1765,16 +1821,22 @@ mod tests {
 
     #[test]
     fn many_labels_take_the_fierz_recursion() {
-        // Tr(1 2 ... n n ... 2 1) = C_F^n N_c-wise: compare n = 30 with the
-        // closed form of nested Casimirs, (N^2 - 1)/N)^n N / 1 = ...: here
-        // only that the recursion is exact and terminates beyond the limit.
-        let n = cycles::MAX_LABELS as Label + 2;
+        // Tr(tau^1 .. tau^n tau^n .. tau^1) with n beyond the subset-sum
+        // label limit: tau^a tau^a = C_F with C_F = (N^2 - 1)/N, so the
+        // nested trace is N C_F^n = N^(1-n) (N^2 - 1)^n
+        // = sum_k C(n, k) (-1)^k N^(n+1-2k), compared term by term.
+        let n = cycles::MAX_LABELS as i64 + 2;
         let mut trace: Vec<Label> = (1..=n).collect();
         trace.extend((1..=n).rev());
-        let laurent = trace_laurent(&[trace]).unwrap();
-        // Tr(T^a ... T^a) nested = N (C_F)^n with C_F = (N^2 - 1)/N in tau
-        // normalisation: the leading power is N^(n + 1).
-        assert_eq!(laurent.last().unwrap(), &(n as i32 + 1, Integer::one()));
+        let mut expected: Vec<(i32, Integer)> = Vec::new();
+        let mut binomial = Integer::one();
+        for k in 0..=n {
+            let sign = if k % 2 == 1 { -1 } else { 1 };
+            expected.push(((n + 1 - 2 * k) as i32, &binomial * &Integer::from(sign)));
+            binomial = &(&binomial * &Integer::from(n - k)) / &Integer::from(k + 1);
+        }
+        expected.reverse();
+        assert_eq!(trace_laurent(&[trace]).unwrap(), expected);
     }
 
     fn adjoint_tensor(legs: &[Leg], trace: Vec<Label>) -> Tensor {

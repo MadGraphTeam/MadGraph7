@@ -514,10 +514,13 @@ impl DipoleOrbits {
         Ok(())
     }
 
-    /// SHA-256 of every entry's exact text (`fraction_text`, one per line)
-    /// in the order of `LoopSlice.dipoles`: pairs (i, j != i) over coloured
-    /// legs in leg order, then rows b and columns b'. A dense value index
-    /// (four bytes per entry) keeps the 7-leg comparison cheap.
+    /// SHA-256 of the operators in the order of `LoopSlice.dipoles`: per
+    /// pair (i, j != i) of coloured legs in leg order, a block header
+    /// `"(label_i, label_j) BxB"` (the Python repr of the dict key and the
+    /// block shape), then every entry's exact text (`fraction_text`) by
+    /// rows b and columns b', one line each. Equal digests mean the same
+    /// pairs and shapes in the same order with equal entries. A dense value
+    /// index (four bytes per entry) keeps the 7-leg comparison cheap.
     pub fn digest(&self) -> RusticolResult<String> {
         use sha2::{Digest, Sha256};
         let mut ids = vec![u32::MAX; self.tuple_count()];
@@ -537,6 +540,10 @@ impl DipoleOrbits {
             let (i, j) = (k / (n * n) / c, k / (n * n) % c);
             if i == j {
                 continue;
+            }
+            if k % (n * n) == 0 {
+                let (a, b) = (self.coloured[i].0, self.coloured[j].0);
+                hasher.update(format!("({a}, {b}) {n}x{n}\n").as_bytes());
             }
             hasher.update(texts[id as usize].as_bytes());
             hasher.update(b"\n");
