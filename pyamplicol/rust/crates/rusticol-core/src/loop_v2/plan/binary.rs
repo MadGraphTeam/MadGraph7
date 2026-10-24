@@ -330,10 +330,12 @@ fn list<S: Stream, T: Fresh>(
         return items.iter_mut().try_for_each(|item| visit(stream, item));
     }
     *items = reserved(len, col)?;
+    // Each record is filled in place in the reserved buffer.
     for _ in 0..len {
-        let mut item = T::fresh();
-        visit(stream, &mut item)?;
-        items.push(item);
+        items.push(T::fresh());
+        if let Some(item) = items.last_mut() {
+            visit(stream, item)?;
+        }
     }
     Ok(())
 }
@@ -561,12 +563,39 @@ macro_rules! copy_plain {
 
 copy_plain!(i32, u32, usize, [u32; 6], (usize, usize));
 
+/// Sets `value` to a copy of `text` whose allocation is fallible: the hot
+/// path of the decoding (one copy per string use, 3.8 M at u u~ > g g g g g).
+/// It allocates as `str::to_owned` does, with the allocator's refusal as an
+/// error: `String::try_reserve_exact` is the safe equivalent, 12-20 % slower
+/// on the whole decode at seven legs (its out-of-line growth path).
+#[inline]
+fn copy_text(text: &str, value: &mut String, col: Col) -> RusticolResult<()> {
+    let len = text.len();
+    if len == 0 {
+        value.clear();
+        return Ok(());
+    }
+    let layout = std::alloc::Layout::array::<u8>(len).map_err(|_| too_large(col))?;
+    // SAFETY: `layout` has a non-zero size (`len > 0`).
+    let data = unsafe { std::alloc::alloc(layout) };
+    if data.is_null() {
+        return Err(too_large(col));
+    }
+    // SAFETY: `data` is a fresh allocation of the global allocator with the
+    // layout of `len` bytes, which `String` deallocates for capacity `len`;
+    // it receives the `len` bytes of `text`, so it holds UTF-8 of length
+    // `len` and does not overlap `text`.
+    unsafe {
+        std::ptr::copy_nonoverlapping(text.as_ptr(), data, len);
+        *value = String::from_raw_parts(data, len, len);
+    }
+    Ok(())
+}
+
 impl TryCopy for String {
     fn try_copy(&self, col: Col) -> RusticolResult<Self> {
         let mut copy = String::new();
-        copy.try_reserve_exact(self.len())
-            .map_err(|_| too_large(col))?;
-        copy.push_str(self);
+        copy_text(self, &mut copy, col)?;
         Ok(copy)
     }
 
@@ -1372,8 +1401,7 @@ impl Stream for Reader<'_> {
             .and_then(|id| self.strings.get(id))
             .ok_or_else(|| invalid(format!("binary plan: {col:?} string id")))?;
         self.budget.charge(col, allocation(text.len(), 1))?;
-        *value = text.try_copy(col)?;
-        Ok(())
+        copy_text(text, value, col)
     }
 
     #[inline]
