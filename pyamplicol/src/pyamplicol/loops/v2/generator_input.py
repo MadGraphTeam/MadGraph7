@@ -316,6 +316,7 @@ class NativeGeneration:
                 graph.depth.append(graph.depth[parent] + 1)
                 self._state_positions.append(label)
             graph.species.append(fields[name])
+
         def decoded(raws) -> dict[FamilyKey, Family]:
             out = {}
             for raw, rank, closures in raws:
