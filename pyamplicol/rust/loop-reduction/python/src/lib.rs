@@ -12,6 +12,7 @@ mod portable;
 mod stability;
 mod states;
 mod v2;
+mod v2_dag;
 mod v2_executor;
 mod v2_generate;
 mod virtual_runtime;
@@ -250,6 +251,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     dual_weights::register(module)?;
     module.add_class::<PolynomialPlan>()?;
     v2::register(module)?;
+    v2_dag::register(module)?;
     v2_executor::register(module)?;
     v2_generate::register(module)?;
     module.add_function(wrap_pyfunction!(massless_spinors_decimal, module)?)?;
