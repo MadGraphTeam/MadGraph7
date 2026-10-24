@@ -220,25 +220,22 @@ _JOINED = ((OpenColorString(1, (3, 4), 2),), ())
 def test_contractions_beyond_the_subset_sum_limit_equal_python():
     """Above ``cycles.rs``'s label limit (24) the native overlaps take the
     exact Fierz recursion; Python's ``contract_colour`` falls back to
-    ``contraction_trace``."""
+    ``contraction_trace`` (about 10 s per single-term pair at 25 labels, so
+    one pair with and one without a quark string)."""
 
     rng = random.Random(20261024)
-    for quarks, gluons in (((), 25), ((), 26), (((1, 2),), 25)):
+    for quarks in ((), ((1, 2),)):
         legs = [ColorLeg(q, 3) for q, _ in quarks] + [
             ColorLeg(b, -3) for _, b in quarks
         ]
-        labels = list(range(10, 10 + gluons))
+        labels = list(range(10, 35))
         legs += [ColorLeg(a, 8) for a in labels]
-        pairs = [
-            (
-                _random_tensor(rng, legs, labels, quarks),
-                _random_tensor(rng, legs, labels, quarks),
-            )
-            for _ in range(4)
-        ]
-        assert native_cells.contract_many(pairs) == [
-            colour.contract_colour(a, b) for a, b in pairs
-        ]
+        pair = []
+        while len(pair) < 2:
+            tensor = _random_tensor(rng, legs, labels, quarks)
+            if len(tensor.terms) == 1:
+                pair.append(tensor)
+        assert native_cells.contract_colour(*pair) == colour.contract_colour(*pair)
 
 
 # Native refusal of each primitive kind against a bra with an open quark
