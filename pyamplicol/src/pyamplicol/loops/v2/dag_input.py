@@ -1299,6 +1299,11 @@ class NativeDag:
         # decoded fields.
         return GenericDAG
 
+    def __reduce_ex__(self, protocol: Any) -> Any:
+        # ``pickle`` and ``copy`` take the decoded ``GenericDAG`` (counted):
+        # a native handle does not cross a process.
+        return self.materialize().__reduce_ex__(protocol)
+
     def materialize(self) -> GenericDAG:
         """The decoded ``GenericDAG``, decoded on the first call only (a
         released DAG is rebuilt for it and released again)."""
