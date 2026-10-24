@@ -42,6 +42,12 @@ design's re-test factor (1.75-2.0). G0 passes when every gated QCD process is
 within its gate (1.3 x best production provider) with x1.3 headroom at the
 upper end of the band.
 
+Gate G1 (WP2.7) measures the whole evaluation end to end
+(``tools/loop_benchmark``); ``--g1 G1_JSON`` sets its measured terms (dressing,
+NinjaRS stage, the rest of the native loop stage, everything outside it, the
+kernel throughput) beside the recipe and G0, which recalibrates the recipe's
+NinjaRS and outer factors (``g1_recalibration``).
+
 The bench's synthetic probe shapes are still reported (throughput per lane
 count, fastest form per shape, the recipe at the probe's throughput with the
 design's allowance for dispatch), but carry no verdict.
@@ -51,6 +57,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -1365,6 +1372,217 @@ def program_text(
     return "\n".join(lines), passed
 
 
+# ------------------------------------------------------------- gate G1
+
+# G1 benchmark keys (tools/loop_benchmark) of the processes with a design row.
+G1_PROCESSES = {"gg_gg": "gg>gg", "gg_gggg": "gg>gggg", "gg_ttxgg": "gg>tt~gg"}
+G1_COLOUR = {"full": "FC", "lc": "LC", "nlc": "NLC"}
+# Gate G0's measured dressing per point (DESIGN §5.4, rule, 16 lanes,
+# production code generation, fused-factor builds included), seconds.
+G0_DRESSING = {
+    ("gg>gggg", "FC"): 0.171,
+    ("gg>gggg", "LC"): 0.0453,
+    ("gg>tt~gg", "FC"): 0.0546,
+}
+G0_THROUGHPUT = (1.29e9, 1.37e9)
+NATIVE_LOOP_STAGES = ("seeds", "factors", "dressing", "scatter", "reduction")
+
+
+def g1_recalibration(document: Mapping[str, object]) -> list[dict[str, object]]:
+    """Measured G1 terms against the design recipe (DESIGN §1.3, §5.4).
+
+    For every pyAmpliCol configuration of a G1 document (``python -m
+    tools.loop_benchmark gate``) at its largest measured batch: the dressing
+    term (dressing plus fused-factor builds), the NinjaRS stage (reduction,
+    masters included), the rest of the native loop stage (seeds, scatter),
+    everything outside the native loop stage (trees, Born, counterterms,
+    assembly) as the recipe's outer factor, and the kernel throughput.
+    Where the design has a row (``PROCESSES``) the recipe's finite-only band,
+    its NinjaRS stage model R and gate G0's measured dressing are set beside
+    the measurement, with the recalibrated factors measured / modelled.
+    """
+
+    rows: list[dict[str, object]] = []
+    for process in document["processes"]:  # type: ignore[index]
+        for name, config in process["pyamplicol"].items():
+            batches = config["batches"]
+            if not batches:
+                continue
+            size = max(batches, key=int)
+            batch = batches[size]
+            stages = batch["stages_per_point"]
+            dressing = stages.get("dressing", 0.0) + stages.get("factors", 0.0)
+            reduction = stages.get("reduction", 0.0)
+            native = sum(stages.get(stage, 0.0) for stage in NATIVE_LOOP_STAGES)
+            total = batch["median_seconds_per_point"]
+            row: dict[str, object] = {
+                "process": process["key"],
+                "configuration": name,
+                "batch": int(size),
+                "total": total,
+                "dressing": dressing,
+                "reduction": reduction,
+                "masters": stages.get("reduction: masters"),
+                "native_loop_rest": native - dressing - reduction,
+                "outside_native_loop": total - native,
+                "outer_factor": total / (dressing + reduction)
+                if dressing + reduction
+                else None,
+                "kernel_cmac_per_second": (batch.get("throughput") or {}).get(
+                    "kernel_cmac_per_second"
+                ),
+            }
+            design = G1_PROCESSES.get(process["key"])
+            colour = G1_COLOUR.get(config["accuracy"])
+            model = _process_row(design, colour) if design and colour else None
+            if model is not None:
+                low, high = predict(model, None, "none")
+                r_lo, r_hi = (value / 1e3 for value in model.ninjars_ms)
+                row["design"] = {
+                    "recipe_finite_only": [low, high],
+                    "ninjars_model": [r_lo, r_hi],
+                    "dressing_model": [
+                        model.dress_structured * QUARTIC[0] / DESIGN_THROUGHPUT[0],
+                        model.dress_dense * QUARTIC[1] / DESIGN_THROUGHPUT[1],
+                    ],
+                    "g0_dressing": G0_DRESSING.get((design, colour)),
+                    "total_over_recipe": [total / high, total / low],
+                    "reduction_over_model": [reduction / r_hi, reduction / r_lo],
+                }
+            rows.append(row)
+    return rows
+
+
+# The G1 benchmark key whose measured outer factor stands for a design row's
+# class (same colour where measured, else full colour): pure gluon from
+# g g > g g g g, quark lines with gluons from u u~ > g g g g, V+jets from
+# u u~ > e- e+ g g, top pairs from g g > t t~ g g.
+G1_OUTER_CLASS = {
+    "gg>gg": "gg_gg",
+    "gg>gggg": "gg_gggg",
+    "gg>ggggg": "gg_gggg",
+    "uu~>ggggg": "uux_gggg",
+    "uu~>e-e+ggg": "uux_emepgg",
+    "uu~>e-e+dd~g": "uux_emepgg",
+    "gg>tt~gg": "gg_ttxgg",
+    "gg>tt~e-e+g": "gg_ttxgg",
+}
+# The NinjaRS stage with masters measured against the model R (G1 Table).
+G1_REDUCTION_OVER_MODEL = (0.97, 1.39)
+
+
+def g1_estimates(document: Mapping[str, object]) -> list[dict[str, object]]:
+    """Every design row (DESIGN Table 1a) re-estimated with G1's measured
+    terms, finite only, at G1's largest batch with native inputs.
+
+    The dressing term is the recipe's (its throughput holds: G1 measures
+    G0's rate on the real plans), the NinjaRS term the model R times the
+    measured band ``G1_REDUCTION_OVER_MODEL``, and the outer factor (trees,
+    Born and counterterm inputs, seeds, scatter, glue) the measured
+    total / (dressing + reduction) of the row's class representative
+    (``G1_OUTER_CLASS``; the same colour where measured, else full colour,
+    marked ``inferred``). A row that G1 measured itself also carries its
+    measured total. The gate limit is 1.3 x the best production provider of
+    DESIGN Table 1b where the row has one."""
+
+    outer: dict[tuple[str, str], float] = {}
+    measured: dict[tuple[str, str], float] = {}
+    for row in g1_recalibration(document):
+        name = row["configuration"]
+        if not str(name).startswith("native/") or str(name).count("/") != 1:
+            continue
+        colour = G1_COLOUR[str(name).split("/")[1]]
+        if row["outer_factor"] is not None:
+            outer[str(row["process"]), colour] = float(row["outer_factor"])  # type: ignore[arg-type]
+        measured[str(row["process"]), colour] = float(row["total"])  # type: ignore[arg-type]
+    out: list[dict[str, object]] = []
+    for row in PROCESSES:
+        key = G1_OUTER_CLASS.get(row.process)
+        if key is None:
+            continue
+        factor = outer.get((key, row.colour))
+        inferred = factor is None
+        if factor is None:
+            factor = outer.get((key, "FC"))
+        if factor is None:
+            continue
+        r_lo, r_hi = (value / 1e3 for value in row.ninjars_ms)
+        low = (
+            row.dress_structured * QUARTIC[0] / DESIGN_THROUGHPUT[0]
+            + r_lo * G1_REDUCTION_OVER_MODEL[0]
+        ) * factor
+        high = (
+            row.dress_dense * QUARTIC[1] / DESIGN_THROUGHPUT[1]
+            + r_hi * G1_REDUCTION_OVER_MODEL[1]
+        ) * factor
+        recipe = predict(row, None, "none")
+        own = next((k for k, v in G1_PROCESSES.items() if v == row.process), None)
+        limit = gate(row.process) if row.colour == "FC" else None
+        out.append(
+            {
+                "process": row.process,
+                "label": " ".join(re.findall(r"e[-+]|[a-z]~?|>", row.process)),
+                "colour": row.colour,
+                "recipe_finite_only": list(recipe),
+                "outer_class": key,
+                "outer_factor": factor,
+                "outer_inferred": inferred,
+                "estimate": [low, high],
+                "measured": measured.get((own, row.colour)) if own else None,
+                "gate": limit,
+                "headroom": None if limit is None else limit / high,
+            }
+        )
+    return out
+
+
+def g1_estimates_text(rows: Sequence[Mapping[str, object]]) -> str:
+    lines = [
+        "process       col  recipe s/pt (finite)  outer (class)        "
+        "G1 estimate s/pt     measured  gate  headroom"
+    ]
+    for row in rows:
+        recipe, estimate = row["recipe_finite_only"], row["estimate"]
+        measured, limit = row["measured"], row["gate"]
+        lines.append(
+            f"{row['process']:13s} {row['colour']:3s}  "
+            f"{recipe[0]:.4g}-{recipe[1]:.4g}".ljust(42)  # type: ignore[index]
+            + f"{row['outer_factor']:.2f} ({row['outer_class']}"  # type: ignore[str-format]
+            + (", FC)" if row["outer_inferred"] else ")")
+            + f"  {estimate[0]:.4g}-{estimate[1]:.4g}"  # type: ignore[index]
+            + ("" if measured is None else f"  {measured:.4g}")
+            + ("" if limit is None else f"  {limit:.4g}  {row['headroom']:.2f}")
+        )
+    return "\n".join(lines)
+
+
+def g1_text(rows: Sequence[Mapping[str, object]]) -> str:
+    lines = [
+        "process     configuration     B    total ms  dressing  reduction  "
+        "rest  outside  outer  G CMAC/s  recipe ms (finite only)  total/recipe"
+    ]
+    for row in rows:
+        design = row.get("design") or {}
+        recipe = design.get("recipe_finite_only")
+        ratio = design.get("total_over_recipe")
+        throughput = row["kernel_cmac_per_second"]
+        lines.append(
+            f"{row['process']:11s} {row['configuration']:16s} {row['batch']:4d} "
+            f"{row['total'] * 1e3:10.3f} {row['dressing'] * 1e3:9.3f} "
+            f"{row['reduction'] * 1e3:9.3f} {row['native_loop_rest'] * 1e3:6.3f} "
+            f"{row['outside_native_loop'] * 1e3:8.3f} "
+            f"{row['outer_factor'] or float('nan'):6.2f} "
+            f"{(throughput or float('nan')) / 1e9:9.2f}  "
+            + (
+                f"{recipe[0] * 1e3:8.2f}-{recipe[1] * 1e3:8.2f}         "
+                f"{ratio[0]:.2f}-{ratio[1]:.2f}"
+                if recipe
+                else "—"
+            )
+        )
+    return "\n".join(lines)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -1400,7 +1618,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help="loop_sm UFO directory (default: as tools/loop_v2_operation_counts.py)",
     )
+    parser.add_argument(
+        "--g1",
+        type=Path,
+        metavar="G1_JSON",
+        help="gate G1 document (tools/loop_benchmark gate): measured terms "
+        "against the recipe",
+    )
     args = parser.parse_args(argv)
+    if args.g1 is not None:
+        document = json.loads(args.g1.read_text())
+        rows = g1_recalibration(document)
+        estimates = g1_estimates(document)
+        print(g1_text(rows))
+        print()
+        print(g1_estimates_text(estimates))
+        if args.json is not None:
+            args.json.write_text(
+                json.dumps({"terms": rows, "estimates": estimates}, indent=1) + "\n"
+            )
+        return 0
     if args.export_programs is not None:
         names = args.processes.split(",") if args.processes else None
         ufo = args.ufo or _operation_counts_tool().UFO
