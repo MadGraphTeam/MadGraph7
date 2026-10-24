@@ -633,4 +633,6 @@ def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
     assert out["read"] == native_lowering.read(member, native)
     for k, (name, (data, expected)) in enumerate(derivation_bombs.items()):
         assert expected in out["derived"][str(k)], (name, out["derived"][str(k)])
-        assert len(data) < 8192 or name.endswith("padded"), (name, len(data))
+        # Unpadded, a bomb is the size of the plan's own member (wider values).
+        small = len(data) <= len(member) + 1024
+        assert small or name.endswith(" padded"), (name, len(data))
