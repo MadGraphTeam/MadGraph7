@@ -6,7 +6,15 @@
 set -u
 HEP="$HOME/.cache/HEPtools"
 CHECK="$GITHUB_WORKSPACE/.github/actions/check_heptools/check_heptools.sh"
-export MAKEFLAGS="-j$(nproc)"
+# The self-hosted machines are short on memory (a -j$(nproc) rivet build got
+# the runner service OOM-killed): one compile per 2 GB available, at most one
+# per core.
+avail_gb=$(awk '/^MemAvailable:/ {print int($2 / 1048576)}' /proc/meminfo)
+jobs=$(( avail_gb / 2 ))
+[ "$jobs" -gt "$(nproc)" ] && jobs=$(nproc)
+[ "$jobs" -lt 1 ] && jobs=1
+export MAKEFLAGS="-j$jobs"
+echo "building with $MAKEFLAGS (${avail_gb} GB available, $(nproc) cores)"
 mkdir -p "$HEP"
 
 # one build at a time per machine, should several runners share this home
