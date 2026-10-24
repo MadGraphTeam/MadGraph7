@@ -68,6 +68,11 @@ from .families import Orders, add_orders
 
 TREE_SCHEMA = 2
 
+# Prune the exported tree program to what its outputs read
+# (``prune_program``); False exports the unpruned program (the oracle of
+# the pruning's bitwise equality, ``tests/unit/test_loop_v2_native_trees.py``).
+PRUNE = True
+
 
 @dataclass(frozen=True)
 class NativeTrees:
@@ -414,9 +419,12 @@ def export_trees(
         "layouts": [[list(item) for item in layout] for layout in layouts],
         "weights": [list(weight) for weight in weights],
     }
+    ct_saved = () if ct is None else ct.saved
+    if PRUNE:
+        program, saved, ct_saved = prune_program(program, saved, ct_saved)
     return NativeTrees(
         program,
-        saved if ct is None else (*saved, *ct.saved),
+        (*saved, *ct_saved),
         tuple(couplings),
         born_orders,
         squared_orders,
@@ -1351,6 +1359,266 @@ def _interaction_program(
         "steps": steps,
     }
     return program, (*saved["kernels"], *saved["propagators"])
+
+
+# ---------------------------------------------------------------- pruning
+
+
+def prune_program(
+    program: dict[str, Any],
+    saved: Sequence[bytes],
+    ct_saved: Sequence[bytes],
+) -> tuple[dict[str, Any], tuple[bytes, ...], tuple[bytes, ...]]:
+    """``program`` without the work no output of it reads; with the saved
+    kernel evaluators ``saved`` (the trees') and ``ct_saved`` (the
+    counterterm program's) of the kernels it still uses.
+
+    1. **Counterterm ket components** no interference reads
+       (``_live_ket``: at leading and next-to-leading colour every
+       component whose N_c powers lie below the kept ones; at any accuracy
+       a ket tensor without an overlap cell): their contributions leave the
+       closure terms, and terms without contributions leave the closure.
+    2. **Currents** no closure term (Born or counterterm, with their input
+       layouts) and no plan block row reads, also through other currents:
+       their interactions and output slots leave both interaction programs
+       (``_prune_interactions``), then the kernels no interaction uses.
+
+    Every value the executor returns is bitwise unchanged: a dropped ket
+    component meets only zero metric cells (it adds ``0 * value``), every
+    kept current sums the same interactions in the same order (kernel
+    groups keep their order, kernel rows are independent), and the kept
+    terms add their kept contributions in the same order. Only the work
+    shrinks: at leading colour the counterterm program's N_c-graded slots
+    that the projection drops (design §7.5)."""
+
+    program = dict(program)
+    counterterms = program.get("counterterms")
+    if counterterms is not None:
+        program["counterterms"] = _prune_counterterm_terms(counterterms)
+    state_size = int(program["state_size"])
+    ct = program.get("counterterm_trees")
+    offset = state_size if ct is None else int(ct["offset"])
+    layouts = program["layouts"]
+    born_blocks = program["born"]["blocks"]
+    tree_reads = [
+        (int(start), int(size)) for start, size, _sign in program["block_rows"]
+    ]
+    ct_reads: list[tuple[int, int]] = []
+    widths: dict[int, list[int]] = {}
+
+    def slot_widths(layout: int) -> list[int]:
+        found = widths.get(layout)
+        if found is None:
+            found = []
+            for kind, slot, component in layouts[layout]:
+                if kind != "current":
+                    continue
+                while len(found) <= slot:
+                    found.append(0)
+                found[slot] = max(found[slot], int(component) + 1)
+            widths[layout] = found
+        return found
+
+    terms = list(program["born"]["terms"])
+    if program.get("counterterms") is not None:
+        terms += program["counterterms"]["terms"]
+    for term in terms:
+        for slot, width in enumerate(slot_widths(term["layout"])):
+            if not width:
+                continue
+            for start in born_blocks[term["blocks"][slot]]:
+                if start is None:
+                    continue
+                if start < offset:
+                    tree_reads.append((start, width))
+                else:
+                    ct_reads.append((start - offset, width))
+    tree_count = len(program["interactions"]["kernels"]) + len(
+        program["interactions"]["propagators"]
+    )
+    if len(saved) != tree_count:
+        raise ValueError("the trees' saved kernels and their program differ")
+    program["interactions"], saved = _prune_interactions(
+        program["interactions"], tuple(saved), state_size, tree_reads
+    )
+    if ct is not None:
+        ct = dict(ct)
+        ct["interactions"], ct_saved = _prune_interactions(
+            ct["interactions"], tuple(ct_saved), int(ct["state_size"]), ct_reads
+        )
+        program["counterterm_trees"] = ct
+    return program, tuple(saved), tuple(ct_saved)
+
+
+def _kept_exponent(exponent: int, degree: int | None, depth: int | None) -> bool:
+    """``loop_v2::interference::kept``: whether a cell of N_c exponent
+    ``exponent`` survives the projection of a sector of degree ``degree``
+    (``depth`` None: full colour; 0: LC; 2: NLC)."""
+
+    if depth is None:
+        return True
+    return degree is not None and degree - depth <= exponent <= degree
+
+
+def _live_ket(record: Mapping[str, Any]) -> list[bool]:
+    """Per ket component (tensor ``t``, vector, N_c power ``q``) of a
+    counterterm record whether an interference can read it: an entry of its
+    vector (bra order, grade ``g``, degree ``P``), a Born component (basis
+    element ``b``, power ``p``) of that order and an overlap cell
+    ``<b|t>`` of power ``n`` that the projection keeps at ``n + p + q + g``
+    (``loop_v2::interference``). Any other component meets only zero metric
+    cells. Conservative: cells that cancel in a class count as kept."""
+
+    bra: dict[int, set[tuple[int, int]]] = defaultdict(set)
+    for b, order, power in record["born"]:
+        bra[int(order)].add((int(b), int(power)))
+    cells: dict[int, dict[int, set[int]]] = defaultdict(lambda: defaultdict(set))
+    for b, t, power, _real, _imag in record["cells"]:
+        cells[int(t)][int(b)].add(int(power))
+    entries: dict[int, set[tuple[int, int, int | None]]] = defaultdict(set)
+    for kind, order, vector, _coupling, grade, _output, degree in record["entries"]:
+        if kind == "vector":
+            entries[int(vector)].add((int(order), int(grade), degree))
+    depth = record["depth"]
+    live = []
+    for t, vector, q in record["ket"]:
+        overlaps = cells.get(int(t), {})
+        live.append(
+            any(
+                _kept_exponent(n + p + int(q) + grade, degree, depth)
+                for order, grade, degree in entries.get(int(vector), ())
+                for b, p in bra.get(order, ())
+                for n in overlaps.get(b, ())
+            )
+        )
+    return live
+
+
+def _prune_counterterm_terms(record: Mapping[str, Any]) -> dict[str, Any]:
+    """``record`` without the ket components no interference reads
+    (``_live_ket``), their contributions and the terms left without any."""
+
+    live = _live_ket(record)
+    index: dict[int, int] = {}
+    ket = []
+    for k, (component, alive) in enumerate(zip(record["ket"], live, strict=True)):
+        if alive:
+            index[k] = len(ket)
+            ket.append(component)
+    terms = []
+    for term in record["terms"]:
+        contributions = [
+            [coupling, index[component], weight]
+            for coupling, component, weight in term["contributions"]
+            if component in index
+        ]
+        if contributions:
+            terms.append({**term, "contributions": contributions})
+    return {**record, "ket": ket, "terms": terms}
+
+
+def _prune_interactions(
+    interactions: Mapping[str, Any],
+    saved: tuple[bytes, ...],
+    size: int,
+    reads: Sequence[tuple[int, int]],
+) -> tuple[dict[str, Any], tuple[bytes, ...]]:
+    """An interaction program (``_interaction_program``) on a state of
+    ``size`` components without the outputs no read of ``reads`` ((start,
+    length) state ranges) needs, directly or through the interactions of
+    the outputs it needs; per step only the accumulators of kept outputs and
+    their interactions stay, then only the kernels and propagators they use
+    (``saved``: kernels, then propagators). Unchanged if a state component
+    is the output of two slots (each is written once)."""
+
+    steps = interactions["steps"]
+    written = bytearray(size)
+    for step in steps:
+        for _accumulator, _propagator, _momentum, start, dimension in step["outputs"]:
+            if any(written[start : start + dimension]):
+                return dict(interactions), saved
+            written[start : start + dimension] = b"\x01" * dimension
+    live = bytearray(size)
+    for start, length in reads:
+        live[start : start + length] = b"\x01" * length
+    kept: list[tuple[list[int], list[int], list[int]]] = [([], [], [])] * len(steps)
+    for index in reversed(range(len(steps))):
+        step = steps[index]
+        outputs = [
+            k
+            for k, (_a, _p, _m, start, dimension) in enumerate(step["outputs"])
+            if any(live[start : start + dimension])
+        ]
+        accumulators = sorted({step["outputs"][k][0] for k in outputs})
+        wanted = set(accumulators)
+        rows = []
+        for k, row in enumerate(step["interactions"]):
+            if row[7] not in wanted:
+                continue
+            rows.append(k)
+            live[row[1] : row[1] + row[2]] = b"\x01" * row[2]
+            live[row[3] : row[3] + row[4]] = b"\x01" * row[4]
+        kept[index] = (accumulators, rows, outputs)
+    vertex_kernels = len(interactions["kernels"])
+    used = sorted(
+        {
+            steps[i]["interactions"][k][0]
+            for i, (_a, rows, _o) in enumerate(kept)
+            for k in rows
+        }
+    )
+    propagators = sorted(
+        {
+            steps[i]["outputs"][k][1]
+            for i, (_a, _r, outputs) in enumerate(kept)
+            for k in outputs
+            if steps[i]["outputs"][k][1] >= 0
+        }
+    )
+    kernel_of = {old: new for new, old in enumerate(used)}
+    propagator_of = {old: new for new, old in enumerate(propagators)}
+    pruned_steps = []
+    for step, (accumulators, rows, outputs) in zip(steps, kept, strict=True):
+        accumulator_of = {old: new for new, old in enumerate(accumulators)}
+        pole_rows = set(step.get("pole_interactions", ()))
+        pole_outputs = set(step.get("pole_outputs", ()))
+        new_rows, new_pole_rows = [], []
+        for k in rows:
+            row = list(step["interactions"][k])
+            row[0] = kernel_of[row[0]]
+            row[7] = accumulator_of[row[7]]
+            if k in pole_rows:
+                new_pole_rows.append(len(new_rows))
+            new_rows.append(row)
+        new_outputs, new_pole_outputs = [], []
+        for k in outputs:
+            output = list(step["outputs"][k])
+            output[0] = accumulator_of[output[0]]
+            if output[1] >= 0:
+                output[1] = propagator_of[output[1]]
+            if k in pole_outputs:
+                new_pole_outputs.append(len(new_outputs))
+            new_outputs.append(output)
+        pruned = {
+            "interactions": new_rows,
+            "accumulators": [step["accumulators"][a] for a in accumulators],
+            "outputs": new_outputs,
+        }
+        if new_pole_rows or new_pole_outputs:
+            pruned["pole_interactions"] = new_pole_rows
+            pruned["pole_outputs"] = new_pole_outputs
+        pruned_steps.append(pruned)
+    return (
+        {
+            "kernels": [interactions["kernels"][k] for k in used],
+            "propagators": [interactions["propagators"][p] for p in propagators],
+            "steps": pruned_steps,
+        },
+        (
+            *(saved[k] for k in used),
+            *(saved[vertex_kernels + p] for p in propagators),
+        ),
+    )
 
 
 @dataclass(frozen=True)
