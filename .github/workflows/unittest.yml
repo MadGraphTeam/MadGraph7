@@ -472,6 +472,10 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      # a skipped test fails the step (test_manager exits 1): test_mg7_plots
+      # renders with matplotlib, test_mg7_gridpack_compression compares with pigz
+      - name: install matplotlib and pigz
+        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends python3-matplotlib pigz
 
       - name: "unittest_core_uncovered"
         if: ${{ !cancelled() }}
