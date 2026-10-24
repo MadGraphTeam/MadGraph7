@@ -47,7 +47,9 @@ jobs:
     #   unittest_26 unittest_28 unittest_31 unittest_32 unittest_33
     #   unittest_customize_model
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runner (cern1) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machine.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
@@ -212,7 +214,9 @@ jobs:
     #   unittest_6 unittest_8 unittest_9 unittest_13 unittest_14 unittest_15
     #   unittest_21 unittest_30 unittest_config_location
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runner (cern1) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machine.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
@@ -319,7 +323,9 @@ jobs:
     # former jobs, run one after the other: unittest_10 unittest_density_29
     #   unittest_madspin_sequential
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runner (cern1) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machine.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
@@ -343,7 +349,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            sudo pip install scipy
+            # no sudo/apt on the self-hosted runner: user install there
+            if command -v apt-get > /dev/null; then sudo pip install scipy; else python3 -m pip install --user scipy; fi
             ./tests/test_manager.py test_DensityMatrixObservables test_DensityMatrixObservables22 test_DensityMatrixObservables23 test_DensityMatrixObservables33 test_utilities -t0
 
       # ---- unittest_madspin_sequential ----
@@ -354,7 +361,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            sudo pip install numpy
+            # no sudo/apt on the self-hosted runner: user install there
+            if command -v apt-get > /dev/null; then sudo pip install numpy; else python3 -m pip install --user numpy; fi
             ./tests/test_manager.py test_madspin test_lhe_parser -t0
 
 
