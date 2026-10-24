@@ -19,25 +19,30 @@ cross-host acceptance (its docstring), on:
   ``PYAMPLICOL_CAPI_ARCHIVE``) is bitwise equal at both locations and to the
   Python API, and runs without a licence while another process holds the
   user's restricted Symbolica permit;
-* plan v4 loop artifacts, gg -> gg (loop_physics) and the six-gluon control
-  gg -> gggg (loop_nightly): the same, plus no load-time regeneration once the
-  point inputs are stored natively (``point_inputs = "native-v1"``, WP3.1;
-  until then this part is an expected failure with the reason);
+* plan v4 loop artifacts, gg -> gg (loop_physics), the six-gluon control
+  gg -> gggg and the seven-gluon gg -> ggggg (loop_nightly): the same, plus
+  no load-time regeneration (``point_inputs = "native-v2"``: the native
+  programs and the binary64 SymJIT plane application of every saved
+  evaluator, storage-v4 IR recompiled at load);
 * the loop SDK (C ABI through ``rusticol_virtual_open``): bitwise equal to the
-  Python API at both locations (an expected failure until the SDK evaluates
-  plan v4, generation-scale-2), and usable without a Symbolica licence by
-  concurrent processes (the tree engine's rule for f64 evaluation,
-  ``docs/user/symbolica-and-licensing.md``): an expected failure, the open
-  defect ``NATIVE_LOOP_NEEDS_LICENCE``;
-* unlicensed concurrent processes: two pyAmpliCol processes without
-  ``SYMBOLICA_LICENSE`` load a tree and a loop artifact at the same time (the
-  Python package key does not reach the Rust copy of Symbolica, whose
-  restricted mode admits one thread per user); the loop case is the same
-  open defect.
+  Python API at both locations and usable without a licence by concurrent
+  processes (expected failures until the SDK evaluates plan v4,
+  generation-scale-2); the legacy loop SDK, whose evaluation decodes exact
+  states, runs without a licence in concurrent processes while another
+  process holds the user's restricted permit (pyAmpliCol's Symbolica library
+  key in the native code, ``rusticol_core::licence``);
+* unlicensed concurrent processes (Symbolica's restricted mode admits one
+  thread per user, so any state access of the Rust copy of Symbolica aborts
+  while another process holds the permit): two pyAmpliCol processes without
+  ``SYMBOLICA_LICENSE`` load and evaluate a tree artifact at the same time;
+  two binary64 loop evaluations while the permit is held and the native
+  library key is disabled (binary64 touches no Symbolica state, DESIGN §3.7);
+  a DoubleFloat and an arbitrary-precision loop evaluation while the permit
+  is held (the native library key unlocks the exact states), and, as the
+  control, a DoubleFloat one with the key disabled aborts.
 
-The seven-gluon artifact and other CPU feature levels (QEMU user-mode models)
-are opt-in runs of the same tool (``check``, ``cpu-matrix``), recorded in
-DESIGN §12.1.
+Other CPU feature levels (QEMU user-mode models) are an opt-in run of the
+same tool (``cpu-matrix``), recorded in DESIGN §12.1.
 """
 
 from __future__ import annotations
@@ -59,30 +64,14 @@ _spec = importlib.util.spec_from_file_location("loop_artifact_portability", TOOL
 portability = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(portability)
 
-# The point inputs are stored natively from WP3.1 (generation-scale) on.
-NATIVE_POINT_INPUTS = (
-    importlib.util.find_spec("pyamplicol.loops.v2.native_process") is not None
-)
-REGENERATES = (
-    "WP3.1: the slice regenerates the trees, Born and counterterm inputs at "
-    "load (point_inputs = 'regenerated-at-load')"
-)
 SDK_WITHOUT_V4 = (
     "the loop SDK refuses plan v4 until generation-scale-2 (V2Runtime and the "
     "rusticol_virtual_open dispatch)"
 )
-# Open defect (DESIGN §12.1): every loop f64 path decodes Symbolica exact
-# evaluators natively (legacy coefficients, the slice's Python point inputs
-# through CoefficientEvaluator, the native-v1 tree program, the SDK's
-# V2Runtime), which without SYMBOLICA_LICENSE takes Symbolica's restricted
-# one-thread-per-user permit: a second unlicensed process aborts. Fix (WP3.1):
-# binary64 through SymJIT applications as DESIGN §3.7 and the tree engine
-# specify, exact states only for DoubleFloat and arbitrary precision.
-NATIVE_LOOP_NEEDS_LICENCE = (
-    "loop evaluation decodes Symbolica exact evaluators natively: without "
-    "SYMBOLICA_LICENSE a second concurrent process aborts (DESIGN §12.1)"
-)
 RESTRICTED = "restricted Symbolica"
+# Disables pyAmpliCol's Symbolica library key in the native code
+# (``rusticol_core::licence::DISABLE_VARIABLE``).
+NO_NATIVE_KEY = {"PYAMPLICOL_NATIVE_LIBRARY_KEY": "off"}
 
 SCHEME = """
 [loop.model]
@@ -100,9 +89,10 @@ model_convention = "loop_sm lhv=1 supplied QCD rules"
 """
 
 
-def _unlicensed() -> dict[str, str]:
+def _unlicensed(extra: dict[str, str] | None = None) -> dict[str, str]:
     env = dict(os.environ)
     env.pop("SYMBOLICA_LICENSE", None)
+    env.update(extra or {})
     return env
 
 
@@ -282,6 +272,98 @@ def _concurrent_loads(artifact: Path, process: str, scratch: Path, legs: int) ->
     assert RESTRICTED not in second.stdout + rest
 
 
+def _leaves(value) -> list[float]:
+    """The numbers of an ``evaluate`` record's results: binary64 hexadecimal
+    literals and extended-precision decimal strings."""
+
+    if isinstance(value, (list, tuple)):
+        return [x for item in value for x in _leaves(item)]
+    if isinstance(value, dict):
+        return [x for key in sorted(value) for x in _leaves(value[key])]
+    if value is None or isinstance(value, bool):
+        return []
+    text = str(value)
+    return [float.fromhex(text) if "0x" in text.lower() else float(text)]
+
+
+# An exactly massless 2 -> 2 point in binary64 (100^2 + 150^2 + 300^2 =
+# 350^2) and mu_R^2: every carrier sees the same on-shell rationals (the
+# tool's random binary64 points are on shell only to binary64 rounding, which
+# an extended carrier resolves as small external masses).
+EXACT_2TO2 = {
+    "points": [
+        [
+            [x.hex() for x in p]
+            for p in (
+                (350.0, 0.0, 0.0, 350.0),
+                (350.0, 0.0, 0.0, -350.0),
+                (350.0, 100.0, 150.0, 300.0),
+                (350.0, -100.0, -150.0, -300.0),
+            )
+        ]
+    ],
+    "mu_r2": [(8315.25).hex()],
+}
+
+
+def _held_evaluations(
+    artifact: Path,
+    process: str,
+    scratch: Path,
+    legs: int,
+    carriers: list[tuple[str, int | None]],
+    extra_env: dict[str, str] | None = None,
+    point: dict | None = None,
+) -> tuple[dict, list[subprocess.CompletedProcess]]:
+    """One unlicensed ``evaluate`` process per (arithmetic, digits), all at
+    once, while ``RestrictedPermit`` holds the user's permit: a process that
+    completes touched no Symbolica state needing the permit (the permit
+    record's positive control says the hold discriminates). ``point``: the
+    points file's content (default: one of the tool's points)."""
+
+    points = scratch / "points.json"
+    points.write_text(json.dumps(point or portability.points(legs, 1)))
+    with portability.RestrictedPermit() as permit:
+        running = []
+        for k, (arithmetic, digits) in enumerate(carriers):
+            command = [
+                sys.executable,
+                str(TOOL),
+                "evaluate",
+                str(artifact),
+                "--process",
+                process,
+                "--points",
+                str(points),
+                "--arithmetic",
+                arithmetic,
+                "--out",
+                str(scratch / f"{k}-{arithmetic}.json"),
+            ]
+            if digits is not None:
+                command += ["--precision", str(digits)]
+            running.append(
+                subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    env=_unlicensed(extra_env),
+                    cwd=scratch,
+                    preexec_fn=portability._no_core,
+                )
+            )
+        done = []
+        for process_ in running:
+            out, err = process_.communicate(timeout=1800)
+            done.append(
+                subprocess.CompletedProcess(
+                    process_.args, process_.returncode, out, err
+                )
+            )
+    return permit.record, done
+
+
 @pytest.fixture(scope="module")
 def tree_capi_link():
     """How to link the tree C API (``rusticol-capi``): a static archive
@@ -337,7 +419,9 @@ def test_tree_c_api_relocates_bitwise_without_a_licence(
 # ------------------------------------------------------------------ loops
 
 
-def _loop_card(model: Path, output: Path, name: str, expression: str) -> str:
+def _loop_card(
+    model: Path, output: Path, name: str, expression: str, engine: str = "v2"
+) -> str:
     return f"""
 action = "generate"
 [model]
@@ -351,7 +435,7 @@ accuracy = "full"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
-engine = "v2"
+engine = "{engine}"
 [loop.preparation]
 fixed_parameters = {{MB = "0"}}
 {SCHEME}
@@ -367,6 +451,8 @@ samples = 1
 LOOP_PROCESSES = {
     "gg": ("g g > g g", pytest.mark.loop_physics),
     "gg4g": ("g g > g g g g", pytest.mark.loop_nightly),
+    # The seven-gluon artifact (about 45 min and 30 GB to generate).
+    "gg5g": ("g g > g g g g g", pytest.mark.loop_nightly),
 }
 
 
@@ -400,9 +486,10 @@ def loop_artifact(loop_sm_compiled_model, loop_native, tmp_path_factory):
                 output,
                 name,
                 root / "check",
-                count=1 if name == "gg4g" else 2,
+                count=2 if name == "gg" else 1,
                 licence=False,
                 generation_seconds=generation,
+                hold_permit=name != "gg",
             )
             cache[name] = (output, generation, verdict)
         return cache[name]
@@ -414,34 +501,34 @@ def _loop_param(name: str):
     return pytest.param(name, marks=LOOP_PROCESSES[name][1], id=name)
 
 
-def _six_gluons_need_native_inputs(name: str) -> None:
-    if name == "gg4g" and not NATIVE_POINT_INPUTS:
-        # The Python per-point path costs ~4 min per point at six gluons.
-        pytest.xfail(f"{REGENERATES}; not run at six gluons")
+LOOP_NAMES = [_loop_param("gg"), _loop_param("gg4g"), _loop_param("gg5g")]
 
 
-@pytest.mark.parametrize("name", [_loop_param("gg"), _loop_param("gg4g")])
+@pytest.mark.parametrize("name", LOOP_NAMES)
 def test_loop_v4_artifact_relocates_bitwise(loop_artifact, name):
-    _six_gluons_need_native_inputs(name)
     _, _, verdict = loop_artifact(name)
     scan = verdict["scan"]
     assert scan["clean"], scan["findings"]
     assert scan["target"] == {"triple": "portable-64le", "cpu_features": []}
-    # No compiled code at all: the plan (kind 11) and, natively stored point
-    # inputs, Symbolica exact evaluator states (kind 2), recompiled or
-    # interpreted at load.
-    assert set(scan["member_kinds"]) <= {"2", "11"}, scan["member_kinds"]
+    # No native code: the plan (kind 11), the saved exact evaluator states
+    # (kind 2) and their binary64 SymJIT plane applications (kind 1), all
+    # storage-v4 IR that the loader recompiles for its CPU.
+    assert set(scan["member_kinds"]) == {"1", "2", "11"}, scan["member_kinds"]
+    assert scan["member_kinds"]["1"] == scan["member_kinds"]["2"]
+    symjit = scan["symjit_applications"]
+    assert symjit["members"] > 0 and symjit["storage_v4"] == symjit["members"]
     assert verdict["relocated_bitwise"]["bitwise"], verdict["relocated_bitwise"]
+    if name != "gg":
+        # Two concurrent unlicensed evaluations of the copy while another
+        # process holds the user's restricted permit.
+        assert verdict["python_without_licence"], verdict["python_concurrent"]
 
 
-@pytest.mark.parametrize("name", [_loop_param("gg"), _loop_param("gg4g")])
-def test_loop_v4_artifact_loads_without_regeneration(request, loop_artifact, name):
-    _six_gluons_need_native_inputs(name)
-    if not NATIVE_POINT_INPUTS:
-        request.applymarker(pytest.mark.xfail(reason=REGENERATES, strict=True))
+@pytest.mark.parametrize("name", LOOP_NAMES)
+def test_loop_v4_artifact_loads_without_regeneration(loop_artifact, name):
     _, generation, verdict = loop_artifact(name)
     python = verdict["python"]
-    assert {r["point_inputs"] for r in python.values()} == {"native-v1"}
+    assert {r["point_inputs"] for r in python.values()} == {"native-v2"}
     assert verdict["no_generation"], python
     # Loading is a small fraction of generating (measured: 4 % at gg -> gggg,
     # 2 % at gg -> ggggg).
@@ -497,10 +584,8 @@ def test_loop_v4_sdk_needs_no_symbolica_licence(
     Symbolica state access takes the user's single restricted-thread permit,
     so the instances run while another process holds it: any access aborts."""
 
-    reason = (
-        NATIVE_LOOP_NEEDS_LICENCE if _sdk_evaluates_v4(loop_native) else SDK_WITHOUT_V4
-    )
-    request.applymarker(pytest.mark.xfail(reason=reason, strict=True))
+    if not _sdk_evaluates_v4(loop_native):
+        request.applymarker(pytest.mark.xfail(reason=SDK_WITHOUT_V4, strict=True))
     artifact, _, _ = loop_artifact("gg")
     points = tmp_path / "points.json"
     points.write_text(json.dumps(portability.points(4, 1)))
@@ -520,11 +605,103 @@ def test_loop_v4_sdk_needs_no_symbolica_licence(
 
 
 @pytest.mark.loop_physics
-def test_unlicensed_processes_load_loop_artifacts_concurrently(
-    request, loop_artifact, tmp_path
-):
-    request.applymarker(
-        pytest.mark.xfail(reason=NATIVE_LOOP_NEEDS_LICENCE, strict=True)
-    )
+def test_binary64_loop_evaluation_touches_no_symbolica_state(loop_artifact, tmp_path):
+    """Binary64 runs the stored SymJIT plane applications (DESIGN §3.7): two
+    concurrent unlicensed evaluations complete while another process holds
+    the user's restricted permit, with pyAmpliCol's native library key
+    disabled, so neither touched the Rust copy of Symbolica."""
+
     artifact, _, _ = loop_artifact("gg")
-    _concurrent_loads(artifact, "gg", tmp_path, 4)
+    permit, runs = _held_evaluations(
+        artifact, "gg", tmp_path, 4, [("double", None)] * 2, NO_NATIVE_KEY
+    )
+    assert permit["verified"], permit
+    for run in runs:
+        assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+        assert RESTRICTED not in run.stdout + run.stderr
+
+
+@pytest.mark.loop_physics
+def test_unlicensed_extended_precision_loop_evaluations_run_concurrently(
+    loop_artifact, tmp_path
+):
+    """DoubleFloat and arbitrary precision evaluate the exact states in the
+    Rust copy of Symbolica, which pyAmpliCol's library key unlocks: a
+    DoubleFloat and a 32-digit evaluation complete concurrently with a
+    binary64 one, without a licence, while another process holds the user's
+    restricted permit, and agree with binary64; with the key disabled a
+    DoubleFloat evaluation aborts (the control)."""
+
+    artifact, _, _ = loop_artifact("gg")
+    carriers = [("double", None), ("double-double", None), ("arbitrary", 32)]
+    permit, runs = _held_evaluations(
+        artifact, "gg", tmp_path, 4, carriers, point=EXACT_2TO2
+    )
+    assert permit["verified"], permit
+    for run in runs:
+        assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-2000:]
+        assert RESTRICTED not in run.stdout + run.stderr
+    values = [
+        _leaves(json.loads((tmp_path / f"{k}-{a}.json").read_text())["results"])
+        for k, (a, _digits) in enumerate(carriers)
+    ]
+    binary64 = values[0]
+    scale = max(abs(v) for v in binary64)
+    for extended in values[1:]:
+        assert len(extended) == len(binary64)
+        # The binary64 rule of observables (1e-12, HANDOFF §0.5).
+        assert all(
+            abs(a - b) <= 1e-12 * scale for a, b in zip(extended, binary64, strict=True)
+        )
+    control = tmp_path / "control"
+    control.mkdir()
+    _, (refused,) = _held_evaluations(
+        artifact, "gg", control, 4, [("double-double", None)], NO_NATIVE_KEY
+    )
+    assert refused.returncode != 0
+    assert RESTRICTED in refused.stdout + refused.stderr
+
+
+@pytest.fixture(scope="module")
+def legacy_loop_artifact(loop_sm_compiled_model, tmp_path_factory):
+    """A legacy-engine loop artifact of g g > g g (about 25 s)."""
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    root = tmp_path_factory.mktemp("legacy-gg")
+    output = root / "artifact"
+    card = root / "card.toml"
+    card.write_text(
+        _loop_card(loop_sm_compiled_model, output, "gg", "g g > g g", "legacy")
+    )
+    Generator(resolve_config(card)).generate(
+        ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),)), output
+    )
+    return output
+
+
+@pytest.mark.loop_physics
+def test_legacy_loop_sdk_runs_unlicensed_while_the_permit_is_held(
+    legacy_loop_artifact, loop_sdk_client, tmp_path
+):
+    """The loop SDK's evaluation of a legacy artifact decodes Symbolica exact
+    states in the Rust copy of Symbolica: pyAmpliCol's library key unlocks
+    it, so two concurrent SDK processes without a licence complete while
+    another process holds the user's restricted permit."""
+
+    points = tmp_path / "points.json"
+    points.write_text(json.dumps(portability.points(4, 1)))
+    record = portability.sdk(
+        legacy_loop_artifact,
+        "gg",
+        points,
+        loop_sdk_client,
+        licence=False,
+        instances=2,
+        workdir=tmp_path / "sdk",
+        hold_permit=True,
+    )
+    assert record["permit"]["verified"], record["permit"]
+    assert record["exit_status"] == [0, 0], record["stderr"]
+    assert not record["symbolica_restricted"]

@@ -51,8 +51,11 @@ Subcommands (``--help`` on each):
     All of it on one host: scan, a copy at a fresh path, ``evaluate`` of the
     original and of the copy in fresh interpreters with other working,
     home and temporary directories and another user name (and, with
-    ``--no-licence``, without ``SYMBOLICA_LICENSE``), the comparison, and,
-    with ``--client``, the SDK at both paths. Prints one JSON verdict.
+    ``--no-licence``, without ``SYMBOLICA_LICENSE``), the comparison, with
+    ``--hold-permit`` ``--instances`` concurrent evaluations of the copy while
+    the user's restricted permit is held, and, with ``--client``, the SDK at
+    both paths. ``--arithmetic``/``--precision`` select the loop carrier of
+    the Python evaluations. Prints one JSON verdict.
 ``capi-build ARTIFACT --out EXE (--archive librusticol_capi.a | --rusticol-config C)``
     Compiles a tree artifact's own C example (``API/c/check_standalone.c`` of
     its API bundle) against the tree C API: a wheel's ``rusticol-config`` or a
@@ -546,9 +549,13 @@ def evaluate(
     *,
     parameters: dict[str, str] | None = None,
     poles: str | None = None,
+    arithmetic: str | None = None,
+    precision: int | None = None,
 ) -> dict[str, Any]:
     """Load and evaluate through the public Python API under the sentinel.
-    Import pyAmpliCol only inside (the sentinel sees module-level work)."""
+    Import pyAmpliCol only inside (the sentinel sees module-level work).
+    ``arithmetic``/``precision`` select a loop process's carrier (binary64
+    by default; ``double-double`` or ``arbitrary``)."""
 
     from decimal import Decimal
 
@@ -567,7 +574,11 @@ def evaluate(
         if loop:
             exact = [[[str(Decimal(c)) for c in p] for p in point] for point in momenta]
             mu = [str(Decimal(s)) for s in scales]
-            kwargs = {"poles": poles} if poles else {}
+            kwargs: dict[str, Any] = {"poles": poles} if poles else {}
+            if arithmetic:
+                kwargs["arithmetic"] = arithmetic
+            if precision:
+                kwargs["precision"] = precision
             value = runtime.evaluate(exact, mu_r2=mu, **kwargs)
             results = {"born": _bits(value.born_values), "virtual": _bits(value.values)}
         else:
@@ -580,6 +591,8 @@ def evaluate(
         "path": "python",
         "process": process,
         "points": len(momenta),
+        "arithmetic": arithmetic or "double",
+        "precision": precision,
         "results": results,
         "generation_calls": dict(sorted(sentinel.calls.items())),
         "seconds": {
@@ -1202,6 +1215,71 @@ def _run_evaluate(
     return json.loads(out.read_text())
 
 
+def _run_evaluate_concurrently(
+    artifact: Path,
+    process: str,
+    points_file: Path,
+    scratch: Path,
+    licence: bool,
+    instances: int,
+    extra: list[str],
+    hold_permit: bool,
+) -> dict[str, Any]:
+    """``instances`` concurrent ``evaluate`` processes, each in its own fresh
+    environment, optionally while ``RestrictedPermit`` holds the user's
+    permit (then every one completing touched no Symbolica state that needs
+    a licence or the permit)."""
+
+    def run() -> dict[str, Any]:
+        started = time.perf_counter()
+        processes = []
+        for k in range(instances):
+            env, cwd = _fresh(scratch, f"concurrent-{k}", licence)
+            out = scratch / f"concurrent-{k}.json"
+            command = [
+                sys.executable,
+                str(Path(__file__).resolve()),
+                "evaluate",
+                str(artifact),
+                "--process",
+                process,
+                "--points",
+                str(points_file),
+                "--out",
+                str(out),
+                *extra,
+            ]
+            processes.append(
+                subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    env=env,
+                    cwd=cwd,
+                    preexec_fn=_no_core,
+                )
+            )
+        outputs = [p.communicate() for p in processes]
+        return {
+            "exit_status": [p.returncode for p in processes],
+            "symbolica_restricted": any(
+                m in out + err for out, err in outputs for m in RESTRICTED_MARKERS
+            ),
+            "stderr": [err[-2000:] for _out, err in outputs],
+            "seconds": time.perf_counter() - started,
+        }
+
+    if hold_permit:
+        with RestrictedPermit() as permit:
+            record = run()
+        record["permit"] = permit.record
+    else:
+        record = run()
+        record["permit"] = None
+    return record
+
+
 def check(
     artifact: Path,
     process: str,
@@ -1216,10 +1294,15 @@ def check(
     parameters: dict[str, str] | None = None,
     generation_seconds: float | None = None,
     hold_permit: bool = False,
+    arithmetic: str | None = None,
+    precision: int | None = None,
 ) -> dict[str, Any]:
     """Scan, relocate, evaluate both copies in fresh environments, compare;
+    with ``hold_permit`` also ``instances`` concurrent Python evaluations of
+    the relocated copy while ``RestrictedPermit`` holds the user's permit;
     the SDK too with ``client`` (its concurrent run, with ``hold_permit``,
-    while ``RestrictedPermit`` holds the user's permit)."""
+    while the permit is held). ``arithmetic``/``precision``: the loop
+    carrier of the Python evaluations."""
 
     artifact = Path(artifact).resolve()
     scratch = Path(scratch).resolve()
@@ -1240,6 +1323,10 @@ def check(
     extra = []
     for name, value in (parameters or {}).items():
         extra += ["--parameter", f"{name}={value}"]
+    if arithmetic:
+        extra += ["--arithmetic", arithmetic]
+    if precision:
+        extra += ["--precision", str(precision)]
     records = {}
     for label, root in (("original", artifact), ("relocated", moved)):
         env, cwd = _fresh(scratch, label, licence)
@@ -1257,6 +1344,18 @@ def check(
     }
     verdict["relocated_bitwise"] = compare(records["original"], records["relocated"])
     verdict["no_generation"] = not any(r["generation_calls"] for r in records.values())
+    if hold_permit:
+        concurrent = _run_evaluate_concurrently(
+            moved, process, points_file, scratch, licence, instances, extra, True
+        )
+        verdict["python_concurrent"] = concurrent
+        verdict["python_without_licence"] = (
+            None
+            if licence
+            else concurrent["exit_status"] == [0] * instances
+            and not concurrent["symbolica_restricted"]
+            and bool(concurrent["permit"]["verified"])
+        )
     if generation_seconds is not None:
         verdict["generation_seconds"] = generation_seconds
         verdict["load_over_generation"] = (
@@ -1448,6 +1547,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--points", type=Path, required=True)
     p.add_argument("--parameter", action="append", help="NAME=VALUE")
     p.add_argument("--poles")
+    p.add_argument("--arithmetic", help="double, double-double or arbitrary")
+    p.add_argument("--precision", type=int, help="decimal digits")
     p.add_argument("--out")
     p.add_argument(
         "--allow-generation",
@@ -1494,6 +1595,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--parameter", action="append", help="NAME=VALUE")
     p.add_argument("--generation-seconds", type=float)
     p.add_argument("--hold-permit", action="store_true", help=HOLD_HELP)
+    p.add_argument("--arithmetic", help="double, double-double or arbitrary")
+    p.add_argument("--precision", type=int, help="decimal digits")
     p.add_argument("--out")
     p = sub.add_parser("capi-build", help="compile an artifact's C example")
     p.add_argument("artifact", type=Path)
@@ -1530,6 +1633,8 @@ def main(argv: list[str] | None = None) -> int:
             args.points,
             parameters=_parameters(args.parameter),
             poles=args.poles,
+            arithmetic=args.arithmetic,
+            precision=args.precision,
         )
         _write(record, args.out)
         return 3 if record["generation_calls"] and not args.allow_generation else 0
@@ -1585,6 +1690,8 @@ def main(argv: list[str] | None = None) -> int:
             parameters=_parameters(args.parameter),
             generation_seconds=args.generation_seconds,
             hold_permit=args.hold_permit,
+            arithmetic=args.arithmetic,
+            precision=args.precision,
         )
         _write(record, args.out)
         return 0
