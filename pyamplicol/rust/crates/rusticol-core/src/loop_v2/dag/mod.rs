@@ -13,10 +13,11 @@
 //!   first-seen order (rule 5);
 //! * [`colour`] is the loop-block colour engine (`ColorEngine._loop_block_*`,
 //!   `ordered_combination_labels`, `combine`);
-//! * [`reuse`] assigns evaluation groups when every current has its own
-//!   evaluation contract (the identity case of
-//!   `assign_recursive_current_evaluation_reuse`); shared contracts are
-//!   refused until the value-equivalence derivation is ported (A3);
+//! * [`reuse`] is `assign_recursive_current_evaluation_reuse`: the
+//!   value-equivalence derivation of the currents that share an evaluation
+//!   contract (the closed colour components of the CT program's currents)
+//!   in the oracle's bit-exact binary64 projective arithmetic ([`exact`]),
+//!   and the regrouped evaluations;
 //! * [`signs`] folds the colour-flow convention's external-fermion ordering
 //!   signs (`apply_fermion_ordering_signs(coloured_lines=False)`);
 //! * [`blocks`] groups the currents into blocks (`loops/v2/blocks._blocks`)
@@ -33,6 +34,7 @@
 
 pub mod blocks;
 pub mod colour;
+pub mod exact;
 pub mod input;
 pub mod recursion;
 pub mod reuse;
@@ -528,7 +530,7 @@ pub fn build(input: &input::DagInput) -> DagResult<ColumnarDag> {
     let mut dag = recursion::compile(input)?;
     if dag.finish {
         recursion::prune_to_admitted(input, &mut dag);
-        reuse::assign_identity_reuse(input, &mut dag)?;
+        reuse::assign_reuse(input, &mut dag)?;
         signs::apply_colour_flow_signs(input, &mut dag)?;
     }
     Ok(dag.into_columns(input))

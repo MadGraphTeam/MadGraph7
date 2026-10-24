@@ -96,6 +96,27 @@ struct RawInput {
     admitted_masks: Vec<u64>,
     block_rule: RawBlockRule,
     early_sources_only: bool,
+    /// Rank of every interned runtime coupling identity in Python's sort
+    /// order (the evaluation keys of the reuse derivation sort by it).
+    coupling_identity_ranks: Vec<u32>,
+    /// The colour sectors of a process without coloured legs.
+    #[serde(default)]
+    sectors: Vec<RawSector>,
+}
+
+#[derive(Deserialize)]
+struct RawSector {
+    id: i64,
+    words: Vec<Vec<u8>>,
+    singlet_labels: Vec<u8>,
+}
+
+/// A colour sector as `ColorEngine.ordered_combination_labels` reads it:
+/// its intermediate words (`_sector_intermediate_order_words`) and singlet
+/// labels.
+pub struct Sector {
+    pub words: Vec<Vec<u8>>,
+    pub singlet_labels: u64,
 }
 
 /// Flavour-flow operation of a vertex (`Model.combine_flavour_flow`).
@@ -231,6 +252,10 @@ pub struct DagInput {
     pub admitted_masks: std::collections::HashSet<u64>,
     pub block_rule: BlockRule,
     pub early_sources_only: bool,
+    /// Python-order rank of each runtime coupling identity id.
+    pub identity_ranks: Vec<u32>,
+    /// Colour sectors by id (a process without coloured legs only).
+    pub sectors: HashMap<i64, Sector>,
     /// Representation of every leg label (`None`: unknown to the model).
     pub label_rep: [Option<i32>; 256],
     pub coloured_labels: u64,
@@ -468,6 +493,18 @@ impl DagInput {
                 BlockRule::Requests(table)
             }
         };
+        let identities = raw.coupling_identity_ranks.len();
+        if vertices.iter().any(|vertex| {
+            vertex
+                .flows
+                .values()
+                .flatten()
+                .any(|flow| flow.coupling_identity as usize >= identities)
+        }) {
+            return Err(DagError::Malformed(
+                "coupling identity without a rank".into(),
+            ));
+        }
         Ok(DagInput {
             accuracy: raw.accuracy,
             legs,
@@ -484,6 +521,27 @@ impl DagInput {
             admitted_masks: raw.admitted_masks.into_iter().collect(),
             block_rule,
             early_sources_only: raw.early_sources_only,
+            identity_ranks: raw.coupling_identity_ranks,
+            sectors: raw
+                .sectors
+                .into_iter()
+                .map(|sector| {
+                    let mut singlet_labels = 0u64;
+                    for label in sector.singlet_labels {
+                        if label == 0 || label > 64 {
+                            return Err(DagError::Malformed(format!("sector label {label}")));
+                        }
+                        singlet_labels |= label_bit(label);
+                    }
+                    Ok((
+                        sector.id,
+                        Sector {
+                            words: sector.words,
+                            singlet_labels,
+                        },
+                    ))
+                })
+                .collect::<DagResult<_>>()?,
             label_rep,
             coloured_labels,
             singlet_labels,
