@@ -332,9 +332,6 @@ fn weight_key(weight: [f64; 2]) -> DagResult<[u64; 2]> {
 /// `GenericDAGCompiler.compile` in loop-request mode up to
 /// `_finish_loop_blocks`.
 pub fn compile(input: &DagInput) -> DagResult<Dag> {
-    if input.coloured_labels == 0 {
-        return unsupported("loop-request blocks of a process without coloured external legs");
-    }
     let engine = ColourEngine::new(input);
     let mut dag = Dag::default();
     let mut table = Table {

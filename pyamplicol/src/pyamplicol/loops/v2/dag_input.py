@@ -9,7 +9,8 @@ oracle is the tree engine's loop-request mode,
 **Input tables** (``dag_input``). The Rust builder never sees the model. It
 reads Θ(model) tables that this module fills from the oracle's own
 predicates, so every entry is what the Python recursion computes for the same
-key: per particle the colour roles of ``ColorEngine`` (loop-request mode),
+key: per particle the colour roles of ``ColorEngine`` (loop-request mode; for
+a process without coloured legs also its colour sectors),
 dimensions, admission, auxiliary kind and fermion-ordering contract; per
 vertex its usability (ignored ids, ``ColorEngine.vertex_allowed``, duplicate
 orientations), coupling orders, colour weight, absorbing sides, lowering
@@ -18,8 +19,7 @@ pair (``allowed_quantum_flows``); ``vertices_accepting`` and
 ``_right_particles_by_left``; the order limits; the sources of every leg; and
 the loop-aware reachability as its admitted leg sets plus the block
 predicate. Floats travel as IEEE-754 bit patterns. Only compiled UFO models
-and processes with coloured external legs are covered; anything else raises
-``NativeDagUnsupported`` (rule 2).
+are covered; anything else raises ``NativeDagUnsupported`` (rule 2).
 
 **Columns** (``encode_dag`` / ``NativeDag.decode``). A DAG travels as one
 byte container: ``b"PYAMDAG1"``, a little-endian u64 header length, a JSON
@@ -168,16 +168,54 @@ def _require_compiled_ufo(model: Any) -> None:
 
 
 def _loop_engine(process: CanonicalProcessIR, model: Any) -> Any:
-    """The oracle's loop-request colour engine, without Born sectors.
+    """The oracle's loop-request colour engine.
 
     In loop-request mode with coloured legs ``ColorEngine`` reads no colour
-    sector: its predicates depend on the legs and the model only.
+    sector: its predicates depend on the legs and the model only, so it is
+    built without Born sectors. Without coloured legs it orders labels and
+    makes source states from the colour plan's sectors (one singlet sector),
+    so it gets the plan ``GenericDAGCompiler.compile`` builds.
     """
 
+    from pyamplicol.color.plan import build_color_plan
     from pyamplicol.generation.dag_color import ColorEngine
 
     plan = GenericColorPlan(process=process, color_accuracy="full", sectors=())
+    engine = ColorEngine(plan, model, loop_blocks=True)
+    if engine._shared_lc_coloured_labels:
+        return engine
+    plan = build_color_plan(
+        process,
+        color_accuracy="full",
+        max_sectors=None,
+        reference_color_order=None,
+        fold_trace_reflections=False,
+    )
     return ColorEngine(plan, model, loop_blocks=True)
+
+
+def _sector_rows(process: CanonicalProcessIR, engine: Any) -> list[dict[str, Any]]:
+    """The colour sectors ``ColorEngine.ordered_combination_labels`` reads in
+    loop-request mode, i.e. for processes without coloured legs: per sector
+    its intermediate words and singlet labels."""
+
+    from pyamplicol.generation.dag_ordering import _sector_intermediate_order_words
+
+    if engine._shared_lc_coloured_labels:
+        return []
+    return [
+        {
+            "id": int(sector.id),
+            "words": [
+                [int(label) for label in word]
+                for word in _sector_intermediate_order_words(
+                    sector, include_compatible_traversals=False, process=process
+                )
+            ],
+            "singlet_labels": sorted(int(label) for label in sector.singlet_labels),
+        }
+        for sector in engine.color_plan.sectors
+    ]
 
 
 def _known(operation: Any, *args: Any) -> Any:
@@ -487,10 +525,6 @@ def dag_input(
     ignored_particles = frozenset(int(pdg) for pdg in ignored_particle_ids)
     ignored_kinds = frozenset(int(kind) for kind in ignored_vertex_kinds)
     engine = _loop_engine(process, model)
-    if not engine._shared_lc_coloured_labels:
-        raise NativeDagUnsupported(
-            "loop-request blocks of a process without coloured external legs"
-        )
     rights = _right_particles_by_left(model, color_accuracy="full")
     vertex_rows: dict[tuple[int, tuple[int, ...]], int] = {}
     vertices: list[Any] = []
@@ -585,6 +619,7 @@ def dag_input(
             _pdg(leg) in ignored_particles for leg in process.legs
         ),
         "coupling_identity_ranks": _ranks(coupling_identities),
+        "sectors": _sector_rows(process, engine),
     }
     return json.dumps(payload, separators=(",", ":"))
 

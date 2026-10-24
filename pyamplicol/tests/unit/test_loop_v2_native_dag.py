@@ -117,6 +117,8 @@ CONTROLS = (
     ("g g > g g", {"QCD": 4}),
     ("u u~ > d d~ g", {"QCD": 5}),
     ("g g > g g g", {"QCD": 5}),
+    # No coloured leg: the colour-sector branch of the engine (A3).
+    ("e+ e- > e+ e- a", {"QCD": 2, "QED": 3}),
 )
 
 
@@ -156,10 +158,6 @@ def test_native_builder_refuses_what_it_does_not_cover(models):
     compiled, model = models
     with pytest.raises(dag_input.NativeDagUnsupported, match="model type"):
         dag_input.dag_input(_process(compiled, "g g > g g"), object())
-    with pytest.raises(dag_input.NativeDagUnsupported, match="coloured external"):
-        dag_input.dag_input(
-            _process(compiled, "e+ e- > e+ e-"), model, max_coupling_orders={}
-        )
     with pytest.raises(ValueError, match="full-colour"):
         from pyamplicol.processes.model import build_model_process_ir
 
@@ -503,6 +501,9 @@ def test_native_counterterm_program_equals_the_closure(
         ("u u~ > a g g g", {"QCD": 3, "QED": 1}, {"QCD": 5, "QED": 1}, ()),
         ("g g > t t~ g g", {"QCD": 4}, {"QCD": 6}, ()),
         ("g g > g g g", {"QCD": 3}, {"QCD": 5}, (6,)),
+        # No coloured leg (photon, Z and quark-loop two-point counterterms).
+        ("e+ e- > e+ e-", {"QCD": 0, "QED": 2}, {"QCD": 2, "QED": 2}, ()),
+        ("u d~ > e+ ve g", {"QCD": 1, "QED": 2}, {"QCD": 3, "QED": 2}, ()),
     ),
 )
 def test_native_counterterm_program_block_sets(
