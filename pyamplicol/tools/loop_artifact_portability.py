@@ -562,7 +562,8 @@ def evaluate(
         runtime = Runtime.load(artifact, process=process, **options)
         loaded = time.perf_counter()
         info = runtime.inspect() if hasattr(runtime, "inspect") else {}
-        loop = isinstance(info, dict) and "plan_sha256" in info
+        # Virtual processes (plan v4 and legacy) report contribution_kind.
+        loop = isinstance(info, dict) and info.get("contribution_kind") == "virtual"
         if loop:
             exact = [[[str(Decimal(c)) for c in p] for p in point] for point in momenta]
             mu = [str(Decimal(s)) for s in scales]
