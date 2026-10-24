@@ -28,20 +28,24 @@ Born x CT interference directly; no CT tree and no site is listed:
   zeroes the pole slots). The tree runtime evaluates the couplings from the
   model parameters in every carrier, so no per-point binding is needed and
   arbitrary precision stays exact.
-* **Admission** (design §6.2) is a precomputed predicate, never a site list.
-  It follows the witness table of ``loops.v2.ct_sites``: per rule, the
-  alternatives ``admitted_alternatives`` gives on every divergent witness of
-  the rule's field multiset and orders. In QCD this is field level (leg masks
-  enter only through LSZ, which clone lines exclude structurally: a clone is
-  never external); a rule whose admission differs between witness
-  signatures fails closed.
-* **Not lowered** (``residual`` with the reason; these rules stay site
-  closures, ``loops.v2.ct_sites``, restricted with ``closed_rules``):
-  Lorentz structures the tree compiler does not normalise (Levi-Civita
-  cells that do not cancel), contact vertices without a colour-flow
-  decomposition, the two-point terms ``models.ct_line_insertions`` refuses
-  (mixing between spins), ghost legs and coefficients with UFO helpers other
-  than ``cond`` and ``reglog``; no loop_sm rule is among them. With
+* **Admission** (design §6.2) is the plain tree-level rule, without any
+  matching to the loop: a rule of a selected correction enters with every
+  loop-content alternative (``rule.alternatives``, the UFO ``loop_particles``)
+  that holds no vetoed particle (``particle_veto``, |PDG| codes), and the
+  exactly-once constraint is the insertion order. ``M_rule`` is the number
+  of those alternatives (``admitted_alternatives``).
+* **Not lowered** (``residual`` with the reason): Lorentz structures the
+  tree compiler does not normalise (Levi-Civita cells that do not cancel),
+  contact vertices without a colour-flow decomposition, the two-point terms
+  ``models.ct_line_insertions`` refuses (mixing between spins) and
+  coefficients with UFO helpers other than ``cond`` and ``reglog``; no
+  loop_sm rule is among them. A request that admits such a rule is refused
+  (``UnloweredCountertermError``) when the rule's vertex can enter a tree of
+  it (``ct_closure.InsertionReachability``, the tree engine's field and
+  coupling-order reachability); there is no site fallback. Rules that can be
+  in no tree of the program (ghost legs; orders above its limits; a vertex
+  no tree of the request holds, REQUIREMENTS_ADDENDUM J) or have no admitted
+  loop content are ``inert`` and contribute nothing. With
   ``multi_trace`` (the production closure, ``ct_closure``) the d-symbol, d·d,
   d·f and δδ colours of the four-gluon and gggV R2 (``models.ct_color_flow``)
   and the whole-rule colour continuations (``whole_rule_rows``) are lowered;
@@ -50,19 +54,17 @@ Born x CT interference directly; no CT tree and no site is listed:
 * **Cancelling cells.** A colour or Lorentz cell of a UFO vertex the tree
   compiler cannot lower does not make its rule residual when it cancels
   exactly between the rules of that cell (the loop groups of one vertex):
-  the sum over those rules of their admitted alternatives times their
-  Laurent coefficients vanishes identically (``ct_sites.vanishes_identically``),
-  e.g. the Levi-Civita R2 of a Z with gluons, whose axial couplings cancel
-  between the up- and down-type quark loops of complete doublets. The
-  lowered model leaves the cell out (``CountertermModel.unlowered`` keeps its
-  coefficients; candidates are the cells that cancel with every alternative
-  admitted), and each request checks the cancellation again with its own
-  admission (``CountertermRecursion.cancelled``); where it fails, every rule
-  of the cell is residual for that request.
+  the sum over those rules of ``M_rule`` times their Laurent coefficients
+  vanishes identically (``ct_sites.vanishes_identically``), e.g. the
+  Levi-Civita R2 of a Z with gluons, whose axial couplings cancel between
+  the up- and down-type quark loops of complete doublets. The lowered model
+  leaves the cell out (``CountertermModel.unlowered``); a veto that breaks a
+  doublet makes the cell's rules residual.
 
-The site closure stays the oracle (O6): per component, squared order and
-Laurent coefficient, the recursion's partials equal the sites of the lowered
-rules (``tests/unit/test_loop_v2_ct_recursion.py``).
+The site closure with MadLoop-style witness admission (``ct_sites``) stays a
+test oracle (O6): per component, squared order and Laurent coefficient, the
+recursion's partials equal the sites of the lowered rules
+(``tests/unit/test_loop_v2_ct_recursion.py``, ``test_loop_v2_ct_closure.py``).
 """
 
 from __future__ import annotations
@@ -96,22 +98,18 @@ from .ct_sites import (
     COMPONENT_BY_KIND,
     COUNTERTERM_KINDS,
     Cell,
-    Signature,
-    Species,
-    admitted_alternatives,
-    divergent_witnesses,
     entry_cell,
     vanishes_identically,
 )
-from .families import FamilySet, LoopOrderSelection, Orders, add_orders, model_data
+from .families import LoopOrderSelection, Orders, add_orders
 
 Slot = tuple[str, int, int]  # (component, epsilon power, N_c grade)
 RuleKey = tuple[object, ...]
 _PREFIX = "PYAMPLICOL_CT_"
 
 
-class CountertermAdmissionError(NotImplementedError):
-    """A rule's admission depends on more than its fields and orders."""
+class UnloweredCountertermError(NotImplementedError):
+    """A request admits a counterterm rule its lowered model does not hold."""
 
 
 class CountertermCouplingError(NotImplementedError):
@@ -194,18 +192,6 @@ class TreeVocabulary:
         }
         self._lorentz: dict[str, str | None] = {}
 
-    def residual_reason(self, rule: Any) -> str | None:
-        """Why ``rule`` cannot enter the tree recursion yet, or ``None``."""
-
-        reason = self.rule_reason(rule)
-        if reason is not None or rule.whole_rule_continuation is not None:
-            return reason
-        for entry in rule.entries:
-            reason = self.entry_reason(entry)
-            if reason is not None:
-                return reason
-        return None
-
     def rule_reason(self, rule: Any) -> str | None:
         """Why no entry of ``rule`` can enter the tree recursion, or ``None``."""
 
@@ -217,11 +203,19 @@ class TreeVocabulary:
             if not (self.whole_rules and self.multi_trace):
                 return "whole-rule colour continuation"
             return None  # the replacement terms are lowered, not the entries
-        for entry in rule.entries:
-            records = [self.particles[name] for name in entry.particle_names]
-            if any(int(record.get("ghost_number", 0)) for record in records):
-                return "ghost leg"
+        if self.ghost_leg(rule):
+            return "ghost leg"
         return None
+
+    def ghost_leg(self, rule: Any) -> bool:
+        """Whether an entry of ``rule`` has a ghost leg: no tree current of
+        physical legs carries a ghost, so such a rule is inert."""
+
+        return any(
+            int(self.particles[name].get("ghost_number", 0))
+            for entry in rule.entries
+            for name in entry.particle_names
+        )
 
     def entry_reason(self, entry: Any) -> str | None:
         """Why the colour or Lorentz cell of ``entry`` cannot be lowered."""
@@ -513,11 +507,15 @@ class CountertermModel:
     rule (by ``rule_key``) and ``switches`` that of every slot;
     ``assumptions`` are model-parameter expressions the lowered couplings
     assume non-zero (``CoefficientLowering``); ``residual`` maps every rule
-    left to site closure to the reason; ``structures`` are the lowered vertex
-    terms of every lowered rule (graded with a continuation); ``unlowered``
-    holds, per lowered rule, the cells the lowered model leaves out because
-    they cancel between rules (module docstring): cell -> (why it is not
-    lowered, {Laurent power: exact coefficient}).
+    the lowering cannot lower to the reason, and ``inert`` names those of
+    them that contribute nothing (ghost legs and orders above the program's
+    limits: in no tree of it; no admitted loop content); ``structures`` are
+    the lowered vertex terms of every lowered rule (graded with a
+    continuation); ``unlowered`` holds, per lowered rule,
+    the cells the lowered model leaves out because they cancel between rules
+    with the multiplicities ``weights`` (module docstring): cell -> (why it is
+    not lowered, {Laurent power: exact coefficient}). ``veto`` are the
+    vetoed |PDG| codes (``particle_veto``).
     """
 
     lowered: CountertermLoweredModel
@@ -531,6 +529,9 @@ class CountertermModel:
     unlowered: Mapping[RuleKey, Mapping[Cell, tuple[str, Mapping[int, Any]]]] = field(
         default_factory=dict
     )
+    weights: Mapping[RuleKey, int] = field(default_factory=dict)
+    inert: frozenset[RuleKey] = frozenset()
+    veto: frozenset[int] = frozenset()
 
     def check_parameters(self, values: Mapping[str, Any]) -> None:
         """Fail if runtime model parameter ``values`` break an assumption.
@@ -584,7 +585,8 @@ def lower_model_counterterms(
     rules: Mapping[str, Any],
     *,
     fixed_parameters: Mapping[str, Any] | None = None,
-    forbidden: Iterable[int] = (),
+    veto: Iterable[int] = (),
+    corrections: Iterable[str] | None = None,
     multi_trace: bool = False,
     continuation: Any = None,
     dirac_fields: Iterable[str] = (),
@@ -596,8 +598,11 @@ def lower_model_counterterms(
     of any request and ``fixed_parameters`` the exact fixed parameter values of
     that preparation (``structure.fixed_parameters``); preparing the model
     without order bounds gives every rule, so one lowered model serves every
-    process of the model that forbids the same particles (|PDG| codes
-    ``forbidden``, removed from the tree model).
+    process of the model with the same ``veto`` (|PDG| codes: the vetoed
+    particles are removed from every tree vertex, ordinary or CT, and every
+    loop-content alternative holding one is dropped, ``admitted_alternatives``).
+    ``corrections`` (``None``: all) select the rules whose multiplicities the
+    cancellation of unlowerable cells assumes.
 
     ``multi_trace`` lowers the colours whose currents carry closed traces
     (the four-gluon R2; ``models.ct_color_flow``): the model then serves the
@@ -619,11 +624,11 @@ def lower_model_counterterms(
     ``order_limits`` (physical coupling order -> largest power) bound the
     tree program the model serves (``CountertermRecursion.coupling_order_limits``
     of a request): the model then keeps only the vertices and rules within
-    them, and a rule above them stays residual. ``None`` lowers the whole
-    model.
+    them, and a rule above them is inert. ``None`` lowers the whole model.
     """
 
     dirac_fields = frozenset(dirac_fields)
+    veto = frozenset(abs(int(pdg)) for pdg in veto)
     vocabulary = TreeVocabulary(
         compiled, multi_trace=multi_trace, whole_rules=continuation is not None
     )
@@ -634,6 +639,7 @@ def lower_model_counterterms(
         None if continuation is None else _payload_identities(continuation),
     )
     residual: dict[RuleKey, str] = {}
+    inert: set[RuleKey] = set()
     # Exact coefficient of every rule on each of its lowered vertex terms.
     values: dict[RuleKey, dict[CountertermStructure, Any]] = {}
     # Cells the tree compiler cannot lower, per rule: (reason, coefficients).
@@ -642,6 +648,8 @@ def lower_model_counterterms(
     for rule in rules.values():
         key = rule_key(rule)
         reason = vocabulary.rule_reason(rule)
+        if reason is not None and vocabulary.ghost_leg(rule):
+            inert.add(key)
         if reason is None and order_limits is not None:
             beyond = [
                 orders
@@ -650,6 +658,10 @@ def lower_model_counterterms(
             ]
             if beyond:
                 reason = f"its orders {beyond[0]} exceed the program's limits"
+                inert.add(key)
+        if reason is None and not admitted_alternatives(rule, veto, corrections):
+            reason = "no admitted loop content (particle_veto or correction)"
+            inert.add(key)
         if reason is not None:
             residual[key] = reason
             continue
@@ -685,7 +697,7 @@ def lower_model_counterterms(
             continue
         if cells:
             unlowered[key] = cells
-            weights[key] = len(rule.alternatives)
+            weights[key] = len(admitted_alternatives(rule, veto, corrections))
         if multi_trace:
             rows = _without_u1_terms(rows, nc)
         if nc is not None:
@@ -700,9 +712,8 @@ def lower_model_counterterms(
     def vanishes(expression: Any) -> bool:
         return vanishes_identically(compiled, expression)
 
-    # Candidate cells cancel with every alternative of their rules admitted;
-    # the other rules with an unlowered cell stay residual (all of a cell's
-    # rules together, so that no share of a cell is left to sites alone).
+    # Unlowered cells must cancel with the rules' multiplicities; otherwise
+    # every rule of the cell is residual (refused by a request admitting it).
     for key in uncancelled_rules(unlowered, weights, vanishes, frozenset(residual)):
         if key in values:
             del values[key]
@@ -717,11 +728,10 @@ def lower_model_counterterms(
             {(s.component, s.power, s.grade) for rows in values.values() for s in rows}
         )
     }
-    forbidden = {abs(int(pdg)) for pdg in forbidden}
     excluded = {
         str(item["name"])
         for item in compiled.model["particles"]
-        if abs(int(item["pdg_code"])) in forbidden
+        if abs(int(item["pdg_code"])) in veto
     }
     parameters = dict.fromkeys((*multiplicities.values(), *switches.values()), 1.0)
     refused: dict[CountertermStructure, str] = {}
@@ -765,6 +775,9 @@ def lower_model_counterterms(
             residual=residual,
             structures={key: tuple(sorted(rows)) for key, rows in values.items()},
             unlowered=unlowered,
+            weights={key: weights[key] for key in unlowered},
+            inert=frozenset(inert),
+            veto=veto,
         )
 
 
@@ -776,10 +789,9 @@ def uncancelled_rules(
 ) -> frozenset:
     """Rules (keys of ``unlowered``) whose unlowered cells do not cancel.
 
-    A cell cancels when the sum over its rules of ``weights`` (admitted
-    alternatives) times their coefficients ``vanishes`` at every Laurent
-    power, and none of its rules is ``residual`` (a residual rule's share of
-    the cell is closed at sites). Every rule of a cell that does not cancel is
+    A cell cancels when the sum over its rules of ``weights`` (multiplicities)
+    times their coefficients ``vanishes`` at every Laurent power, and none of
+    its rules is ``residual``. Every rule of a cell that does not cancel is
     returned, to a fixed point.
     """
 
@@ -1043,58 +1055,36 @@ def _is_zero(value: Any) -> bool:
 # ---------------------------------------------------------------------- admission
 
 
-def field_level_admission(
-    rules: Mapping[str, Any],
-    witnesses: Mapping[Signature, frozenset[Species]],
-    native_model: Any,
-    selection: LoopOrderSelection,
-    *,
-    forbidden: Iterable[int] = (),
-) -> dict[str, tuple[int, ...]]:
-    """Admitted alternatives of each rule, independent of the leg masks.
+def admitted_alternatives(
+    rule: Any,
+    veto: Iterable[int] = (),
+    corrections: Iterable[str] | None = None,
+) -> tuple[int, ...]:
+    """Indices of the loop-content alternatives of ``rule`` that are admitted.
 
-    The witness signatures of a rule are those with its field multiset and
-    orders; every one of them must admit the same alternatives
-    (``ct_sites.admitted_alternatives``), otherwise the recursion would need a
-    mask-level predicate and ``CountertermAdmissionError`` is raised. UVtree
-    rules need no witness. Rules of an unselected correction admit nothing.
+    The plain tree-level rule (design §6.2): every alternative (the rule's
+    UFO ``loop_particles``, |PDG| codes; an empty one is a wildcard) without
+    a particle of ``veto`` (|PDG| codes), for a rule of a selected correction
+    (``corrections``; ``None`` selects every correction). A UVtree rule also
+    needs a selected correction among its own orders. No loop routing is
+    consulted: the coupling orders and the exactly-once insertion bound the
+    trees the rule enters.
     """
 
-    data = model_data(native_model)
-    names = {int(entry["pdg_code"]): entry["name"] for entry in data["particles"]}
-    forbidden = frozenset(abs(int(pdg)) for pdg in forbidden)
-    by_projection: dict[tuple[tuple[str, ...], Orders], list[Signature]] = defaultdict(
-        list
-    )
-    for signature in witnesses:
-        by_projection[signature.fields, signature.orders].append(signature)
-    out: dict[str, tuple[int, ...]] = {}
-    for name, rule in sorted(rules.items()):
-        if not (
-            rule.perturbation_type is None
-            or rule.perturbation_type in selection.corrections
+    veto = frozenset(abs(int(pdg)) for pdg in veto)
+    if corrections is not None:
+        corrections = frozenset(corrections)
+        if rule.perturbation_type is not None and (
+            rule.perturbation_type not in corrections
         ):
-            out[name] = ()
-            continue
-        orders = add_orders(rule.order)
-        fields = tuple(sorted(names[pdg] for pdg in rule.particle_pdgs))
-        if rule.kind == "UVtree":
-            out[name] = admitted_alternatives(
-                rule, Signature((), orders), witnesses, selection, forbidden
-            )
-            continue
-        found = {
-            admitted_alternatives(rule, signature, witnesses, selection, forbidden)
-            for signature in by_projection.get((fields, orders), ())
-        }
-        if len(found) > 1:
-            raise CountertermAdmissionError(
-                f"counterterm rule {name} admits different alternatives on "
-                f"witnesses with the same fields {fields}; the tree recursion "
-                "needs a leg-mask admission predicate for it"
-            )
-        out[name] = found.pop() if found else ()
-    return out
+            return ()
+        if rule.kind == "UVtree" and not corrections & {n for n, _ in rule.order}:
+            return ()
+    return tuple(
+        index
+        for index, alternative in enumerate(rule.alternatives)
+        if not veto.intersection(alternative)
+    )
 
 
 # ---------------------------------------------------------------------- recursion
@@ -1102,14 +1092,18 @@ def field_level_admission(
 
 @dataclass(frozen=True)
 class CountertermRecursion:
-    """The CT rules of one loop request, split between recursion and sites.
+    """The CT rules of one loop request in the recursion.
 
-    ``rules`` are the request's rules in the recursion with their admitted
-    alternatives (``admission``) and lowered ``terms``; ``residual`` maps
-    every other rule of the request to the reason it stays a site closure;
-    ``cancelled`` names the cells of the recursion's rules that the lowered
-    model leaves out and that cancel with this request's admission (module
-    docstring), which the CT-root sites leave out too.
+    ``rules`` are the request's rules in the lowered model with their
+    admitted alternatives (``admission``) and lowered ``terms``; ``residual``
+    maps every other rule the request admits to the reason it is not lowered
+    (production refuses such a request when the rule's vertex can enter a
+    tree of it, ``ct_closure.CountertermProgram``; the tree-route tests close
+    them at sites). ``inert`` maps the rules the request admits that
+    contribute nothing and need no lowering to the reason: in no tree of the
+    program (ghost legs, orders above its limits, or a vertex no tree of the
+    request can hold, ``ct_closure.InsertionReachability``; REQUIREMENTS_ADDENDUM
+    J), or every loop-content alternative vetoed.
     """
 
     model: CountertermModel
@@ -1119,35 +1113,35 @@ class CountertermRecursion:
     residual: Mapping[str, str]
     born_orders: tuple[Orders, ...]
     loop_orders: tuple[Orders, ...]
-    cancelled: Mapping[str, frozenset[Cell]] = field(default_factory=dict)
+    inert: Mapping[str, str] = field(default_factory=dict)
 
     @classmethod
     def build(
         cls,
         model: CountertermModel,
         rules: Mapping[str, Any],
-        families: FamilySet,
-        native_model: Any,
         selection: LoopOrderSelection,
         born_orders: Iterable[Orders],
-        *,
-        forbidden: Iterable[int] = (),
     ) -> CountertermRecursion:
-        """Split the request's ``rules`` and admit the lowered ones.
-
-        ``families`` is the request's family set, whose divergent routings are
-        the witnesses (``ct_sites.divergent_witnesses``); ``born_orders`` are
-        the exact Born amplitude orders.
-        """
+        """Admit the request's ``rules`` (``admitted_alternatives`` with the
+        model's veto and the request's corrections); ``born_orders`` are the
+        exact Born amplitude orders."""
 
         residual: dict[str, str] = {}
+        inert: dict[str, str] = {}
         lowered: dict[str, Any] = {}
         terms: dict[str, tuple[tuple[Any, CountertermStructure], ...]] = {}
+        admission: dict[str, tuple[int, ...]] = {}
         for name, rule in rules.items():
             key = rule_key(rule)
+            admitted = admitted_alternatives(rule, model.veto, selection.corrections)
             if key in model.multiplicities:
-                lowered[name] = rule
+                # The left-out cells cancel with the multiplicities the
+                # lowering assumed: the loop groups of one vertex share its
+                # correction type, so they are all admitted or none is.
                 cells = model.unlowered.get(key, {})
+                lowered[name] = rule
+                admission[name] = admitted
                 terms[name] = tuple(
                     (None, structure) for structure in model.structures[key]
                 ) or tuple(
@@ -1155,35 +1149,12 @@ class CountertermRecursion:
                     for entry, structure in rule_terms(rule)
                     if entry_cell(entry) not in cells
                 )
-            else:
+            elif admitted and key in model.inert:
+                inert[name] = model.residual[key]
+            elif admitted:
                 residual[name] = model.residual.get(
                     key, "the rule is not in the lowered model"
                 )
-        admission = field_level_admission(
-            lowered,
-            divergent_witnesses(families, native_model),
-            native_model,
-            selection,
-            forbidden=forbidden,
-        )
-        # The cells the lowered model leaves out must cancel with this
-        # request's admission; otherwise their rules are closed at sites.
-        unlowered = {
-            name: model.unlowered[rule_key(rule)]
-            for name, rule in lowered.items()
-            if rule_key(rule) in model.unlowered
-        }
-        compiled = model.lowered.compiled
-        failed = uncancelled_rules(
-            unlowered,
-            {name: len(admission[name]) for name in unlowered},
-            lambda expression: vanishes_identically(compiled, expression),
-        )
-        for name in failed:
-            residual[name] = _uncancelled_reason(unlowered[name]).replace(
-                "its vertex)", "its vertex in this request)"
-            )
-            del lowered[name], terms[name], admission[name]
         return cls(
             model=model,
             rules=lowered,
@@ -1192,12 +1163,25 @@ class CountertermRecursion:
             residual=residual,
             born_orders=tuple(sorted({add_orders(o) for o in born_orders})),
             loop_orders=tuple(sorted(selection.loop_orders)),
-            cancelled={
-                name: frozenset(cells)
-                for name, cells in unlowered.items()
-                if name not in failed
-            },
+            inert=inert,
         )
+
+    def with_inert(
+        self, rules: Mapping[str, Any], reachable: Any
+    ) -> CountertermRecursion:
+        """This recursion with every ``residual`` rule (of the request's
+        ``rules``) whose vertex ``reachable`` (``rule -> bool``,
+        ``ct_closure.InsertionReachability.admits``) finds in no tree of the
+        program moved to ``inert`` (REQUIREMENTS_ADDENDUM J): it contributes
+        nothing, so it needs no lowering."""
+
+        residual, inert = {}, dict(self.inert)
+        for name, reason in self.residual.items():
+            if reachable(rules[name]):
+                residual[name] = reason
+            else:
+                inert[name] = f"its vertex enters no tree of the request ({reason})"
+        return replace(self, residual=residual, inert=inert)
 
     # -- program -----------------------------------------------------------------
 
@@ -1324,13 +1308,13 @@ def _physical(orders: Iterable[tuple[str, int]]) -> Orders:
 
 __all__ = [
     "CoefficientLowering",
-    "CountertermAdmissionError",
     "CountertermCouplingError",
     "CountertermModel",
     "CountertermRecursion",
     "TreeVocabulary",
+    "UnloweredCountertermError",
+    "admitted_alternatives",
     "decide_constant",
-    "field_level_admission",
     "lower_model_counterterms",
     "rule_key",
     "rule_terms",
