@@ -606,12 +606,12 @@ mod tests {
     /// 3. Schedule M: family 0 merges two entries (weights 1 and 2i) in one
     /// state, the second through an edge of weight -i; family 1 is one path
     /// in a chunk of its own with entry weight -i and edge weight 3i.
-    const PLAN: &str = r#"{"schema":4,"legs":2,"rows":1,"columns":1,"average":1,
+    const PLAN: &str = r#"{"schema":4,"legs":2,"rows":1,"helicities":[[0],[0]],"columns":1,"average":1,
         "born_components":1,"constants":2,"masses":1,"block_rows":[],
         "kernels":[{"inputs":[],"outputs":[[[0,[]]]]},{"inputs":[],"outputs":[[[1,[]]]]}],
         "contents":[CONTENT0,CONTENT1],
         "factors":[[0,0],[1,1]],
-        "seeds":[{"columns":[[[0,"1","0"]]]}],
+        "seed_classes":[{"columns":[[[0,"1","0"]]]}],"seeds":[{"classes":[[0,"1","0"]]}],
         "families":[FAMILY,FAMILY],"forward":null,
         "merged":{"families":[0,1],
             "entries":[{"seed":0,"weight":["1","0"]},{"seed":0,"weight":["0","2"]},
@@ -634,15 +634,15 @@ mod tests {
                  "edges":[{"entry":-1,"parent":3,"factor":1,"weight":["0","3"],"links":[0,0,0]}],
                  "closure":{"family":1,"accumulator":0,"relabel":null}}],
             "chunks":[3,5]}}"#;
-    const CONTENT: &str = r#"{"d_in":1,"d_out":1,"degree":0,"rows":1,
+    const CONTENT: &str = r#"{"d_in":1,"d_out":1,"degree":0,"rows":1,"mask":0,"row_helicities":[[]],
         "fused":[[0,0,0,0,0,0]],
         "terms":[{"slots":[],"dimensions":[],"vertex":-1,"split":[],"rows":[[0,[]]],
             "bindings":[{"kernel":KERNEL,"inputs":[],"entries":[0]}]}]}"#;
     const FAMILY: &str = r#"{"sequence":[[1,0],[2,0]],"rank":0,"orders":[0],
         "leaves":[{"seed":0,"weight":"3"}],
-        "steps":[{"seeded":true,"trace":-1,"rows":1,"d_alpha":1,"d_out":1,"degree":0,
+        "steps":[{"seeded":true,"trace":-1,"out":2,"rows":1,"d_alpha":1,"d_out":1,"degree":0,
                   "rank_in":0,"edges":[{"leaf":0,"child":-1,"factor":0,"links":[0,0,0]}]},
-                 {"seeded":false,"trace":0,"rows":1,"d_alpha":1,"d_out":1,"degree":0,
+                 {"seeded":false,"trace":0,"out":0,"rows":1,"d_alpha":1,"d_out":1,"degree":0,
                   "rank_in":0,"edges":[{"leaf":-1,"child":0,"factor":1,"links":[0,0,0]}]}]}"#;
 
     fn plan() -> LoopProgramV4 {
@@ -712,7 +712,7 @@ mod tests {
         assert_eq!(PLAN.matches(state).count(), 1);
         let error = load(&PLAN.replace(state, &state.replace(":0,", ":1,")), FAMILY).unwrap_err();
         assert!(error.message().contains("merged closure"), "{error}");
-        let trace = "\"trace\":0,\"rows\":1,\"d_alpha\":1,\"d_out\":1,\"degree\":0,";
+        let trace = "\"trace\":0,\"out\":0,\"rows\":1,\"d_alpha\":1,\"d_out\":1,\"degree\":0,";
         assert_eq!(FAMILY.matches(trace).count(), 1);
         let family = FAMILY.replace(trace, &trace.replace("\"degree\":0", "\"degree\":1"));
         let error = load(PLAN, &family).unwrap_err();

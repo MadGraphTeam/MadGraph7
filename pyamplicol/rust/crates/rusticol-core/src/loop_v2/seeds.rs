@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: 0BSD
 
-//! Born-weighted seeds (DESIGN.md §7.3): `U0[k][o][h] = Σ_b K[k, b]
-//! conj(A0_b(h))` per seed key `k` (colour class, loop orders), observable
-//! column `o` and Born helicity row `h`, from the plan's exact weights and the
-//! batch's Born components (zero on the rows a helicity-resolved column does
-//! not keep, [`super::observables::ColumnRows`]); and the leaf objects
+//! Born-weighted seeds (DESIGN.md §7.3): per seed class and loop orders
+//! `U0_c[o][h] = Σ_b K[c, b] conj(A0_b(h))` per observable column `o` and
+//! Born helicity row `h`, from the plan's exact weights and the batch's Born
+//! components (zero on the rows a helicity-resolved column does not keep,
+//! [`super::observables::ColumnRows`]); per seed key `U0[k] = Σ_c x_c U0_c`;
+//! and the leaf objects
 //! `w_s U0[k]` that schedule B dresses (a seed times `δ_ab`, one lane vector
 //! per object row).
 
@@ -19,12 +20,13 @@ pub struct Seeds<T> {
     pub values: Vec<Vec<T>>,
 }
 
-/// `U0` of every seed key of the plan (seed keys on parallel threads).
+/// `U0` of every seed key of the plan (classes, then keys, on parallel
+/// threads).
 pub fn seeds<T: Carrier, const L: usize>(plan: &LoopProgramV4, data: &LaneData<T, L>) -> Seeds<T> {
     let v = lane_vector_len(L);
     let columns = plan.columns;
-    let values = plan
-        .seeds
+    let classes: Vec<Vec<T>> = plan
+        .seed_classes
         .par_iter()
         .map(|seed| {
             let weights: Vec<Vec<(usize, T, T)>> = seed
@@ -56,6 +58,33 @@ pub fn seeds<T: Carrier, const L: usize>(plan: &LoopProgramV4, data: &LaneData<T
                             target_re[l] += re.clone() * c + im.clone() * d;
                             target_im[l] += im.clone() * c - re.clone() * d;
                         }
+                    }
+                }
+            }
+            out
+        })
+        .collect();
+    let values = plan
+        .seeds
+        .par_iter()
+        .map(|key| {
+            if let [(class, [re, im])] = key.classes.as_slice()
+                && re.is_one()
+                && im.is_zero()
+            {
+                return classes[*class].clone();
+            }
+            let mut out = vec![data.zero.clone(); plan.rows * columns * v];
+            for (class, [re, im]) in &key.classes {
+                let (re, im) = (data.cast(re), data.cast(im));
+                let source = &classes[*class];
+                for (target, input) in out.chunks_exact_mut(v).zip(source.chunks_exact(v)) {
+                    // x * U0_c: (a + ib)(c + id), added in place.
+                    let (target_re, target_im) = target.split_at_mut(L);
+                    let (c, d) = input.split_at(L);
+                    for l in 0..L {
+                        target_re[l] += re.clone() * &c[l] - im.clone() * &d[l];
+                        target_im[l] += re.clone() * &d[l] + im.clone() * &c[l];
                     }
                 }
             }

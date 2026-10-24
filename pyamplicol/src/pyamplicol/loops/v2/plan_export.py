@@ -15,18 +15,22 @@ two run identical programs:
 * **kernels**: every catalogue kernel as exact polynomial terms over its
   inputs (``reference_executor.ExactKernel``, in its canonical term order);
   the model factors of its coefficients are numbered kernel constants,
-  valued per batch. A
-  content whose tree reading flips the sign of its outgoing loop line's mass
-  (``reference_executor.mass_flips``) binds its own copy of each kernel,
-  whose constants are valued with the flipped mass;
-* **seeds**: per seed key (class combination, loop orders) and observable
-  column the exact colour weights sum_c x_c K[c, b] N_c^g of each Born
+  valued per batch. A content whose tree reading flips the sign of its
+  outgoing loop line's mass (``reference_executor.mass_flips``) binds its
+  own copy of each kernel, whose constants are valued with the flipped mass;
+* **seed classes and seeds**: per seed class and loop orders, and per
+  observable column, the exact colour weights K[c, b] N_c^g of each Born
   component (b, Born order, N_c grade g), projected at the request's colour
-  accuracy (``colour.SeedTable.seeds``), so U0 = sum K conj(A0) is formed
-  natively;
+  accuracy (``colour.SeedTable.seeds``); per seed key (class combination,
+  loop orders) its exact weights x_c of the classes, so U0_c = sum_b K
+  conj(A0) and U0 = sum_c x_c U0_c are formed natively;
 * **families**: per family its trie frame reading, rank and loop orders, the
   leaves (seed key, leaf weight) and the schedule-B steps with their edges
-  (child step or leaf, fused factor) and helicity row links;
+  (child step or leaf, fused factor) and the legs each step leaves open; the
+  native loader derives every step's helicity rows and row links from the
+  Born rows (``helicities``: per leg its helicities, rows in product order)
+  and each content's leg mask and row helicities (``links=True`` also writes
+  them, which the loader then checks);
 * **forward**: the schedule-F prefix tree with its row links and closures
   (seed key, weight, exact frame map into the family's trie frame).
 
@@ -80,19 +84,27 @@ def _complex_text(value: Any) -> list[str]:
     return [_fraction_text(value.real), _fraction_text(value.imag)]
 
 
-def born_rows(slice_: Any) -> tuple[rx.Row, ...]:
-    """Born helicity rows in the order of ``assemble`` (the seed rows)."""
+def born_helicities(slice_: Any) -> tuple[tuple[int, ...], ...]:
+    """Per leg (label order) its sorted helicities: the Born rows are their
+    product (``born_rows``)."""
 
     labels = sorted(leg.label for leg in slice_.blocks.process.legs)
+    if labels != list(range(1, len(labels) + 1)):
+        raise ValueError("plan v4 needs legs labelled 1..n")
     helicities: dict[int, set[int]] = defaultdict(set)
     for block in slice_.blocks.blocks:
         if block.is_source:
             for row in block.rows:
                 ((leg, value),) = row.helicities
                 helicities[leg].add(value)
+    return tuple(tuple(sorted(helicities[label])) for label in labels)
+
+
+def born_rows(slice_: Any) -> tuple[rx.Row, ...]:
+    """Born helicity rows in the order of ``assemble`` (the seed rows)."""
+
     return tuple(
-        tuple((label - 1, h) for label, h in zip(labels, choice, strict=True))
-        for choice in product(*(sorted(helicities[label]) for label in labels))
+        tuple(enumerate(choice)) for choice in product(*born_helicities(slice_))
     )
 
 
@@ -115,6 +127,8 @@ class ExportedPlan:
     # Lane label of each observable column: its sector for the sector
     # columns, its index for other observable columns.
     columns: tuple[Hashable, ...]
+    # The tree program of native per-point inputs (``native_trees``).
+    trees: Any = None
 
     def json(self) -> str:
         return json.dumps(self.program, separators=(",", ":"))
@@ -149,12 +163,16 @@ class _Exporter:
     born_components: dict[tuple[int, Orders, int], int] = field(default_factory=dict)
     orders: dict[Orders, int] = field(default_factory=dict)
     masses: dict[Any, int] = field(default_factory=dict)
+    # Write the schedule-B row links and step rows (the loader derives them;
+    # written, they are checked against the derivation).
+    links: bool = False
 
     # -- kernels ------------------------------------------------------------
 
     def _kernel(self, binding, flips: rx.MassFlips) -> int:
         """A kernel record per (catalogue kernel, mass flips): the flips are
-        part of its constants' keys (valued by ``NativeExecutor._inputs``)."""
+        part of its constants' keys (valued by ``NativeExecutor._inputs``), so
+        one kernel read with and without flips has two records."""
 
         found = self.kernels.get((binding.kernel_id, flips))
         if found is not None:
@@ -267,12 +285,18 @@ class _Exporter:
                 }
             )
         found = self.contents[content] = len(self.content_records)
+        mask = content.mask
+        for row in shape.rows:
+            if sum(1 << leg for leg, _h in row) != mask or len(row) != mask.bit_count():
+                raise ValueError(f"content {content.label} has a row off its legs")
         self.content_records.append(
             {
                 "d_in": shape.loop_in,
                 "d_out": shape.loop_out,
                 "degree": shape.degree,
                 "rows": len(shape.rows),
+                "mask": mask,
+                "row_helicities": [[h for _leg, h in row] for row in shape.rows],
                 "fused": [[b, b2, *e] for b, b2, e in shape.fused],
                 "terms": terms,
             }
@@ -296,52 +320,70 @@ class _Exporter:
             found = self.seeds[key] = len(self.seeds)
         return found
 
-    def seed_records(self, columns: Sequence[Any]) -> list[dict]:
-        """Per seed key and column the exact weights of the Born components,
-        the projection of ``assemble.SectorSeeds`` (``SeedTable.seeds``).
+    def seed_records(self, columns: Sequence[Any]) -> tuple[list[dict], list[dict]]:
+        """The seed classes and seed keys of the plan: the projection of
+        ``assemble.SectorSeeds`` (``SeedTable.seeds``) in two levels.
 
-        A column (``SeedColumn``) has its own seed table (directed colour
-        histories), sector pairs, degree P and Born basis elements; its
-        helicity rows are the plan's ``column_rows``."""
+        A seed class record holds, per column, the exact projected weights
+        K[c, b] of the Born components that the column admits for one class
+        c at one loop order; a seed key record holds its combination
+        sum_c x_c of class records (``U0 = sum_c x_c U0_c``, formed by the
+        executor). A column (``SeedColumn``) has its own seed table (directed
+        colour histories, on the classes of the slice's table), sector pairs,
+        degree P and Born basis elements; its helicity rows are the plan's
+        ``column_rows``. The admitted entries of each column are indexed by
+        (class, loop order) once, in ``SeedTable.admitted`` order.
+        """
 
         slice_ = self.slice_
         accuracy = slice_.request.accuracy
         born_grades = slice_._born_grades()
         admitted: set[tuple[int, Orders]] = set()
-        # Per column, once: its degree and, per (class, loop order), the
-        # nonzero projected weights of its admitted Born entries (table
-        # order, so the Born components are numbered as by a direct scan).
+        # Per column, once: its table, degree and, per (class, loop order),
+        # its admitted Born entries (table order).
         indexed = []
         for column in columns:
             table, degree = column.table, column.degree
             if accuracy != "full" and degree is None:
                 degree = table.degree(column.pairs, born_grades)
-            entries: dict[tuple[int, Orders], list] = {}
+            entries: dict[tuple[int, Orders], list[tuple[int, Orders]]] = {}
             for c, order, b, born_order in table.admitted(column.pairs):
                 admitted.add((c, order))
                 if column.basis is not None and b not in column.basis:
                     continue
-                found = entries.setdefault((c, order), [])
-                for grade in sorted(born_grades.get((b, born_order), ())):
-                    weight = project(table.cells[c][b], degree, accuracy, grade)
-                    if weight:
-                        found.append(((b, born_order, grade), weight))
-            indexed.append(entries)
-        records = []
-        for combination, order in self.seeds:
-            for c, _x in combination:
-                if (c, order) not in admitted:
-                    raise KeyError(f"no sector admits class {c} at {order}")
+                entries.setdefault((c, order), []).append((b, born_order))
+            indexed.append((table, degree, entries))
+        classes: dict[tuple[int, Orders], int] = {}
+        class_records: list[dict] = []
+        # Projected cells by (table, class, basis element, degree, grade):
+        # columns and loop orders of one class share them.
+        projected: dict[tuple[int, int, int, int | None, int], Any] = {}
+
+        def weight_of(table, c: int, b: int, degree: int | None, grade: int):
+            key = (id(table), c, b, degree, grade)
+            found = projected.get(key)
+            if found is None:
+                found = projected[key] = project(
+                    table.cells[c][b], degree, accuracy, grade
+                )
+            return found
+
+        def class_record(c: int, order: Orders) -> int:
+            found = classes.get((c, order))
+            if found is not None:
+                return found
             weights_of = []
-            for entries in indexed:
+            for table, degree, entries in indexed:
                 weights: dict[int, ExactColorCoefficient] = {}
-                for c, x in combination:
-                    for component, weight in entries.get((c, order), ()):
+                for b, born_order in entries.get((c, order), ()):
+                    for grade in sorted(born_grades.get((b, born_order), ())):
+                        weight = weight_of(table, c, b, degree, grade)
+                        if not weight:
+                            continue
                         j = self.born_components.setdefault(
-                            component, len(self.born_components)
+                            (b, born_order, grade), len(self.born_components)
                         )
-                        term = x * weight
-                        weights[j] = term + weights[j] if j in weights else term
+                        weights[j] = weight + weights[j] if j in weights else weight
                 weights_of.append(
                     [
                         [j, _fraction_text(w.real), _fraction_text(w.imag)]
@@ -349,8 +391,29 @@ class _Exporter:
                         if w
                     ]
                 )
-            records.append({"columns": weights_of})
-        return records
+            found = classes[(c, order)] = len(class_records)
+            class_records.append({"columns": weights_of})
+            return found
+
+        records = []
+        for combination, order in self.seeds:
+            for c, _x in combination:
+                if (c, order) not in admitted:
+                    raise KeyError(f"no sector admits class {c} at {order}")
+            records.append(
+                {
+                    "classes": [
+                        [
+                            class_record(c, order),
+                            _fraction_text(x.real),
+                            _fraction_text(x.imag),
+                        ]
+                        for c, x in combination
+                        if x
+                    ]
+                }
+            )
+        return class_records, records
 
     # -- schedule B -----------------------------------------------------------
 
@@ -413,11 +476,17 @@ class _Exporter:
         return self.masses.setdefault(mass, len(self.masses))
 
     def _step(self, steps, edges, out_mask, shift, accumulator) -> _Object:
+        """One schedule-B step. Its helicity rows and row links follow from
+        the source rows and the contents' rows (``rx.restrict``): written only
+        with ``links``, else the native loader derives them."""
+
         (d_alpha,) = {source.d_alpha for _content, source in edges}
         seeded = {source.leaf >= 0 for _content, source in edges}
         if len(seeded) != 1:
             raise AssertionError("a step mixes leaf seeds and open-loop objects")
         (seeded,) = seeded
+        if accumulator is not None and out_mask:
+            raise AssertionError("a closure with undressed legs")
         targets: dict[rx.Row, int] = {}
         records = []
         d_out = set()
@@ -430,38 +499,37 @@ class _Exporter:
             d_out.add(shape.loop_out)
             degree = max(degree, shape.degree)
             storage = max(storage, source.storage)
-            block_index = {row: i for i, row in enumerate(shape.rows)}
-            links = []
-            for position, row in enumerate(source.rows):
-                block = block_index.get(rx.restrict(row, content.mask))
-                if block is not None:
-                    target = targets.setdefault(
-                        rx.restrict(row, out_mask), len(targets)
-                    )
-                    links += [target, position, block]
-            records.append(
-                {
-                    "leaf": source.leaf,
-                    "child": source.step,
-                    "factor": self.factor(index, shift),
-                    "links": links,
-                }
-            )
-        (d_out,) = d_out
-        if accumulator is not None and set(targets) - {()}:
-            raise AssertionError("a closure with undressed legs")
-        steps.append(
-            {
-                "seeded": seeded,
-                "trace": -1 if accumulator is None else accumulator,
-                "rows": len(targets),
-                "d_alpha": d_alpha,
-                "d_out": d_out,
-                "degree": degree,
-                "rank_in": storage,
-                "edges": records,
+            record = {
+                "leaf": source.leaf,
+                "child": source.step,
+                "factor": self.factor(index, shift),
             }
-        )
+            if self.links:
+                block_index = {row: i for i, row in enumerate(shape.rows)}
+                links = []
+                for position, row in enumerate(source.rows):
+                    block = block_index.get(rx.restrict(row, content.mask))
+                    if block is not None:
+                        target = targets.setdefault(
+                            rx.restrict(row, out_mask), len(targets)
+                        )
+                        links += [target, position, block]
+                record["links"] = links
+            records.append(record)
+        (d_out,) = d_out
+        step = {
+            "seeded": seeded,
+            "trace": -1 if accumulator is None else accumulator,
+            "out": out_mask,
+            "d_alpha": d_alpha,
+            "d_out": d_out,
+            "degree": degree,
+            "rank_in": storage,
+            "edges": records,
+        }
+        if self.links:
+            step["rows"] = len(targets)
+        steps.append(step)
         return _Object(
             tuple(targets), d_alpha, d_out, storage + degree, step=len(steps) - 1
         )
@@ -679,6 +747,10 @@ def export_plan(
     forward: bool = True,
     columns: Sequence[Any] | None = None,
     merged: MergedGraph | None = None,
+    trees: bool = False,
+    born_squared: bool = False,
+    links: bool = False,
+    counterterms: bool = True,
 ) -> ExportedPlan:
     """The plan v4 program of a generated slice (structure only, no numerics).
 
@@ -688,7 +760,12 @@ def export_plan(
     ``merged`` adds schedule M's planar state graph (``merged.merged_graph``)
     for its certified families; schedule B keeps every family. Its entries
     are primitive seed keys, so they carry one weight list per column like
-    every other seed.
+    every other seed. ``trees`` exports the tree program of native per-point
+    inputs (``native_trees.export_trees``; its Born kernels join the plan's),
+    with the Born colour metric when ``born_squared`` and the counterterm
+    and external-field components when ``counterterms``. ``links`` writes the
+    schedule-B helicity rows and row links, which the native loader otherwise
+    derives (and with them checks).
     """
 
     from .assemble import _BlockRows
@@ -702,8 +779,9 @@ def export_plan(
         rx.KernelConstants({}, rx.Carrier.f64()),
         reading=slice_.reading,
     )
+    helicities = born_helicities(slice_)
     rows = born_rows(slice_)
-    exporter = _Exporter(slice_, kinematics, rows)
+    exporter = _Exporter(slice_, kinematics, rows, links=links)
     families, keys = [], []
     for key, schedule in slice_.plan.schedules.items():
         keys.append(key)
@@ -726,13 +804,25 @@ def export_plan(
     )
     columns_given = columns
     columns = tuple(sector_columns(slice_) if columns is None else columns)
-    seeds = exporter.seed_records(columns)
+    seed_classes, seeds = exporter.seed_records(columns)
+    native_trees = None
+    if trees:
+        from .native_trees import export_trees
+
+        native_trees = export_trees(
+            slice_,
+            exporter,
+            rows,
+            born_squared=born_squared,
+            with_counterterms=counterterms,
+        )
     legs = len(slice_.blocks.process.legs)
     row_index = {row: i for i, row in enumerate(rows)}
     program = {
         "schema": PLAN_SCHEMA,
         "legs": legs,
         "rows": len(rows),
+        "helicities": [list(h) for h in helicities],
         "columns": len(columns),
         "average": slice_.normalisation.average,
         "born_components": len(exporter.born_components),
@@ -742,6 +832,7 @@ def export_plan(
         "kernels": exporter.kernel_records,
         "contents": exporter.content_records,
         "factors": [list(key) for key in exporter.factors],
+        "seed_classes": seed_classes,
         "seeds": seeds,
         "families": families,
         "forward": forward_program,
@@ -766,6 +857,7 @@ def export_plan(
         columns=tuple(sector for sector, _pairs in slice_.sectors)
         if columns_given is None
         else tuple(range(len(columns))),
+        trees=native_trees,
     )
 
 
@@ -813,6 +905,18 @@ class NativeExecutor:
     or every step fused or split (where it can). ``merged`` adds schedule M
     (``merged.merged_graph``; True builds it with its default chunks), which
     ``schedule="M"`` runs for its certified families, and B for the others.
+
+    ``inputs="native"`` forms every point's block rows and Born components in
+    the executor (``native_trees``, WP3.1) instead of in Python: a batch then
+    hands over only momenta, scales and the external model parameters, from
+    which the executor binds the kernel constants, masses, couplings and the
+    tree program's model parameters itself. Its results hold the Born (with
+    ``born_squared``, at the request's colour accuracy), the ``bare``
+    component and, with ``counterterms`` (default), the counterterm and
+    external-field components and the complete virtual, formed natively from
+    the slice's counterterm closure (``native_trees._counterterm_program``);
+    without ``counterterms`` ``virtual`` is absent. Catani's pole prediction
+    (``PointResult.ir_poles``) is not formed natively (WP3.1 I5c).
     """
 
     def __init__(
@@ -826,8 +930,13 @@ class NativeExecutor:
         forms: Literal["rule", "fused", "split"] = "rule",
         merged: MergedGraph | bool = False,
         plan_json: str | None = None,
+        inputs: Literal["python", "native"] = "python",
+        born_squared: bool = True,
+        counterterms: bool = True,
         scaleless: tuple[ExportedPlan, str] | Callable[[], Any] | None = None,
     ):
+        if inputs not in ("python", "native"):
+            raise ValueError(f"unknown input path {inputs!r}")
         if plan_json is not None and exported is None:
             raise ValueError("plan_json is the serialised exported plan")
         if isinstance(scaleless, tuple) and slice_.scaleless is None:
@@ -840,11 +949,19 @@ class NativeExecutor:
                 "contraction 'auto' or 'direct'"
             )
         self.slice = slice_
+        self.inputs = inputs
         if merged is True:
             merged = merged_graph(slice_)
         self.exported = exported or export_plan(
-            slice_, forward=forward, merged=merged or None
+            slice_,
+            forward=forward,
+            merged=merged or None,
+            trees=inputs == "native",
+            born_squared=born_squared,
+            counterterms=counterterms,
         )
+        if inputs == "native" and self.exported.trees is None:
+            raise ValueError("native inputs need a plan exported with trees=True")
         self.lanes = lanes
         self.threads = threads
         self.forms = forms
@@ -874,6 +991,11 @@ class NativeExecutor:
         key = (arithmetic, digits, lanes)
         found = self._native.get(key)
         if found is None:
+            trees = (
+                self.exported.trees.executor_argument()
+                if self.inputs == "native" and arithmetic != "exact"
+                else None
+            )
             found = self._native[key] = self.slice.native.V2Executor(
                 self._plan_json,
                 arithmetic,
@@ -881,6 +1003,7 @@ class NativeExecutor:
                 lanes=lanes,
                 threads=self.threads,
                 forms=self.forms,
+                trees=trees,
             )
         return found
 
@@ -899,6 +1022,13 @@ class NativeExecutor:
                 built = source()
             elif self.slice.scaleless is not None:
                 exported, plan_json = source or (None, None)
+                if self.inputs == "native" and (
+                    exported is None or exported.trees is None
+                ):
+                    # With native inputs the companion forms its own block
+                    # rows: its plan is exported with its tree program (no
+                    # Born or counterterm outputs; it adds only lanes).
+                    exported = plan_json = None
                 built = NativeExecutor(
                     self.slice.scaleless,
                     lanes=self.lanes,
@@ -907,6 +1037,9 @@ class NativeExecutor:
                     exported=exported,
                     forms=self.forms,
                     plan_json=plan_json,
+                    inputs=self.inputs,
+                    born_squared=False,
+                    counterterms=False,
                 )
             self._scaleless.append(built)
         return self._scaleless[0]
@@ -1033,6 +1166,14 @@ class NativeExecutor:
             "block_rows": [],
             "born": [],
         }
+        if self.inputs == "native":
+            from .native_trees import batch_parameters
+
+            # The executor binds kernel constants, masses, couplings and the
+            # tree program's model parameters from the external parameters.
+            batch["parameters"] = batch_parameters(exported.trees, evaluations)
+            del batch["block_rows"], batch["born"]
+            return batch
         for evaluation in evaluations:
             with evaluation.numbers.scope():
                 common = shared(evaluation)
@@ -1178,8 +1319,9 @@ class NativeExecutor:
                 budgets[ROTATION.format(k)] = reference.rotation_budget(runs[index])
             if stability.reduction:
                 budgets[stability.reduction] = reference.retest_budget
+            components = reference.result.components
             estimate = StabilityEstimate.from_checks(
-                reference.result.components["virtual"],
+                components.get("virtual", components["bare"]),
                 budgets,
                 scale=reference.absolute,
                 roundoff=precision.unit_roundoff,
@@ -1190,6 +1332,38 @@ class NativeExecutor:
             raise FailedPoints(out, failures)
         return out
 
+    def native_inputs(self, points, scales, parameters=None, precision=None):
+        """The executor's native tree inputs of a batch (``inputs="native"``):
+        per point ``(block_rows, born, amplitudes, born_squared, counterterms)``
+        (the counterterm and field outputs with poles, or None)."""
+
+        from .assemble import Precision
+
+        precision = precision or Precision.double()
+        arithmetic, digits = self._arithmetic(precision, False)
+        evaluations = self._native_points(points, scales, parameters, precision)
+        native = self.native(arithmetic, digits, len(evaluations))
+        return native.tree_inputs(self._inputs(evaluations, arithmetic))
+
+    def _native_points(self, points, scales, parameters, precision):
+        from .assemble import _fraction, _NativePoint, _Numbers
+
+        slice_ = self.slice
+        out = []
+        for point, scale in zip(points, scales, strict=True):
+            scale = _fraction(scale)
+            values = slice_._point_parameters(dict(parameters or {}), scale, precision)
+            out.append(
+                _NativePoint(
+                    slice_,
+                    tuple(tuple(_fraction(x) for x in p) for p in point),
+                    scale,
+                    values,
+                    _Numbers(precision),
+                )
+            )
+        return out
+
     def _evaluated(
         self, points, scales, parameters, precision, poles, retest, schedule="B"
     ):
@@ -1197,11 +1371,20 @@ class NativeExecutor:
         evaluations (failed points unassembled) and the failures per point
         index."""
 
-        from .assemble import _Numbers
+        from .assemble import Precision, _Numbers
 
-        precision, evaluations = self._points(
-            points, scales, parameters, precision, poles
-        )
+        if self.inputs == "native":
+            from .poles import has_poles, pole_mode
+
+            precision = precision or Precision.double()
+            evaluations = self._native_points(points, scales, parameters, precision)
+            for evaluation in evaluations:
+                evaluation.mode = pole_mode(poles)
+                evaluation.poles = has_poles(evaluation.mode)
+        else:
+            precision, evaluations = self._points(
+                points, scales, parameters, precision, poles
+            )
         failed = self.reduce(evaluations, precision, poles, retest, schedule)
         for index, evaluation in enumerate(evaluations):
             if index in failed:
@@ -1222,13 +1405,15 @@ class NativeExecutor:
         schedule: Literal["B", "M"] = "B",
     ) -> dict[int, list[str]]:
         """Dress and reduce prepared point evaluations (``assemble``'s
-        ``_PointEvaluation``) natively in ``precision``'s carrier and
-        ``schedule`` (B, or M for the plan's schedule-M families): sets each
-        evaluation's ``families`` (and ``retest_families`` in the re-test
-        frame ``retest``, ``stability.FRAMES``), lanes labelled (family, loop
-        orders, column label). Returns the failures per point index; a failed
-        point's evaluation is left without families. ``poles`` is the pole
-        mode (``poles``): "uv" and "ir" also run the scaleless companion
+        ``_PointEvaluation``, or ``_NativePoint`` with native inputs) natively
+        in ``precision``'s carrier and ``schedule`` (B, or M for the plan's
+        schedule-M families): sets each evaluation's ``families`` (and
+        ``retest_families`` in the re-test frame ``retest``,
+        ``stability.FRAMES``), lanes labelled (family, loop orders, column
+        label), and with native inputs its ``born`` and counterterm and field
+        components. Returns the failures per point index; a failed point's
+        evaluation is left without families. ``poles`` is the pole mode
+        (``poles``): "uv" and "ir" also run the scaleless companion
         (``scaleless``: the slice's on the sector columns, or the one built
         for the plan's observable columns)."""
 
@@ -1236,6 +1421,13 @@ class NativeExecutor:
         from .poles import pole_mode, reducer_poles, splits
 
         mode = pole_mode(poles)
+        if splits(mode) and not hasattr(self.slice, "scaleless"):
+            # A stored native process (``native_process``) has no companion of
+            # its certified-scaleless families: its loads regenerate for them.
+            raise NotImplementedError(
+                "the uv and ir pole selections of a stored native process need "
+                "its regenerated slice"
+            )
         sectors = tuple(sector for sector, _pairs in self.slice.sectors)
         if (
             splits(mode)
@@ -1308,6 +1500,25 @@ class NativeExecutor:
                 if extra["check"] is not None:
                     scaleless_check = read(extra["check"][index], twin.exported)
             with _Numbers(precision).scope():
+                if output.get("counterterms") is not None:
+                    evaluation.counterterms = {
+                        key: numbers.real(Decimal(str(re)))
+                        for key, (re, _im) in zip(
+                            exported.trees.counterterm_outputs,
+                            output["counterterms"][index],
+                            strict=True,
+                        )
+                    }
+                    evaluation.native_counterterms = True
+                if output.get("born") is not None:
+                    evaluation.born = {
+                        order: numbers.real(Decimal(str(re)))
+                        for order, (re, _im) in zip(
+                            exported.trees.squared_orders,
+                            output["born"][index],
+                            strict=True,
+                        )
+                    }
                 evaluation.set_lanes(
                     read(lanes), read(checks), scaleless, scaleless_check
                 )

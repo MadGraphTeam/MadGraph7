@@ -34,11 +34,12 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 * stability checks (rotations by count or exact specification, the
   reduction-direction check) return one estimate per point that bounds the
   true error, and no estimate without checks;
-* a fresh interpreter rebuilds the per-point inputs from the artifact, with
-  the same plan and bitwise-identical binary64 values also after unrelated
-  Symbolica symbols were created (the regeneration does not depend on the
-  interpreter's symbol history), and refuses a stored plan that differs
-  from the regenerated one;
+* a fresh interpreter loads and evaluates the stored native point inputs
+  (``point_inputs = "native-v1"``, WP3.1) with generation forbidden, with
+  bitwise-identical binary64 values also after unrelated Symbolica symbols
+  were created; a call that needs the generation objects (correlated and
+  resolved outputs) regenerates the slice and refuses a stored plan that
+  differs from the regenerated one;
 * the native artifact loader (``load_loop_v2_artifact``) admits each plan v4
   process, cross-checks families, buckets, legs, helicity rows and sectors
   against the declarations, and refuses tampered declarations and digests;
@@ -73,6 +74,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import subprocess
 import sys
 from decimal import Decimal
@@ -512,7 +514,7 @@ def test_slice_request_records_round_trip():
         ({"QCD": 4, "QED": 0}, {"QCD": 2, "QED": 2}),
         corrections=("QCD", "QED"),
         fixed_parameters={"MB": "0"},
-        ignored_particle_ids=(23,),
+        particle_veto=(23,),
         accuracy="lc",
         colour_declaration=declaration,
         scale_parameter="MU_R",
@@ -539,6 +541,37 @@ def test_slice_request_records_round_trip():
         request_from_record(
             {key: value for key, value in record.items() if key != "compress_colour"}
         )
+
+
+@pytest.mark.loop_fast
+def test_particle_veto_is_resolved_to_pdg_codes_and_refuses_the_site_oracle():
+    """``generation.particle_veto`` names resolve to |PDG| codes (a name
+    vetoes its antiparticle); the request keeps them sorted and unsigned;
+    plan v4 refuses the site-closure counterterm oracle."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.api.errors import ArtifactError
+    from pyamplicol.generation.loop_service import particle_veto_codes
+    from pyamplicol.loops.v2.artifact import generate_process
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
+    particles = [
+        {"name": "t", "antiname": "t~", "pdg_code": 6},
+        {"name": "t~", "antiname": "t", "pdg_code": -6},
+        {"name": "Z", "antiname": "Z", "pdg_code": 23},
+    ]
+    model = SimpleNamespace(model={"particles": particles})
+    assert particle_veto_codes(model, ("t~", "Z", "t")) == (6, 23)
+    with pytest.raises(GenerationError, match=r"does not have: \['b'\]"):
+        particle_veto_codes(model, ("b",))
+    request = SliceRequest(
+        "g g > g g", {"QCD": 2}, {"QCD": 4}, particle_veto=(-6, 23, 6)
+    )
+    assert request.particle_veto == (6, 23)
+    with pytest.raises(ArtifactError, match="tree recursion"):
+        generate_process(None, replace(request, counterterms="sites"), None)
 
 
 @pytest.mark.loop_fast
@@ -685,10 +718,78 @@ def test_public_generation_publishes_plan_v4(full_colour):
         (full_colour / "processes/uux_ddxg/execution.json").read_text()
     )
     assert info["scaleless_plan_sha256"] == execution["scaleless_plan_sha256"]
-    # The public path takes its counterterms from the tree recursion (WP2.2).
+    # The public path takes its counterterms from the tree recursion (WP2.2):
+    # no counterterm site closure, no veto unless requested (ADDENDUM J).
     assert info["request"]["counterterms"] == "recursion"
+    assert info["request"]["particle_veto"] == []
+    from pyamplicol.loops.v2 import artifact
+
+    with artifact._slices_lock:
+        generated = [
+            item.slice
+            for (_model, _record, plan), item in artifact._slices.items()
+            if plan == info["plan_sha256"]
+        ]
+    assert generated
+    for slice_ in generated:
+        assert slice_.counterterm_program is not None
+        assert slice_.sites.sites == () and not slice_.site_terms
+        assert slice_.counterterm_program.closure.terms
+    # The generation record names the request's inert CT rules (ADDENDUM J).
+    (record,) = (
+        r
+        for r in manifest.extensions["generation"]["concrete_processes"]
+        if r["id"] == "uux_ddxg"
+    )
+    assert record["filters"]["counterterms_inert"] == dict(
+        sorted(generated[0].counterterm_program.recursion.inert.items())
+    )
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
+
+
+@pytest.mark.loop_physics
+def test_public_particle_veto_equals_njet_five_flavours(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """``[generation] particle_veto = ["t"]`` through the public path: stored
+    in the request record (|PDG| codes) and the generation filters (names),
+    and g g > g g is massless five-flavour QCD, equal to NJet's Nf=5 virtual
+    at two of its points (binary64, 1e-12)."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.artifacts import load_manifest
+
+    entries = (("gg", "g g > g g"),)
+    card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries).replace(
+        "emit_api_bundle = false", 'emit_api_bundle = false\nparticle_veto = ["t"]'
+    )
+    output = _generate(card, tmp_path, entries)
+    manifest = load_manifest(output, verify_payloads=True)
+    (record,) = manifest.extensions["generation"]["concrete_processes"]
+    assert record["filters"]["particle_veto"] == ["t"]
+    _forget_generation()
+    runtime = Runtime.load(output, process="gg", model_parameters={"aS": "0.118"})
+    assert runtime.inspect()["request"]["particle_veto"] == [6]
+    controls = json.loads(
+        (ROOT / "tests/fixtures/loop/required/njet_nf5_controls.json").read_text()
+    )["processes"]["gg_gg"]
+    points = controls["points"][:2]
+    scales = [str(int(mu) ** 2) for mu in controls["mu_r"][:2]]
+    result = runtime.evaluate(points, mu_r2=scales)
+    for index, row in enumerate(controls["rows"][:2]):
+        ((born,),) = (result.born_values[index],)
+        assert abs(float(born) - float(row["born"])) <= 1e-12 * abs(float(born))
+        ((laurent,),) = (result.values[index],)
+        floor = abs(float(born)) * 0.118 / (2 * math.pi)
+        for mine, key in zip(
+            laurent, ("finite", "single_pole", "double_pole"), strict=True
+        ):
+            reference = float(row[key])
+            assert abs(float(mine) - reference) <= 1e-12 * max(abs(reference), floor), (
+                index,
+                key,
+            )
 
 
 @pytest.mark.loop_physics
@@ -957,17 +1058,20 @@ FILLER_SYMBOLS = (0, 141)
 
 
 @pytest.mark.loop_physics
-def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
+def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
     full_colour, monkeypatch
 ):
-    """A new interpreter regenerates the per-point inputs from the artifact
-    alone, with the same plan and bitwise-identical binary64 Born and virtual
-    values whatever Symbolica symbols it created before; a stored plan
-    unequal to the regenerated one is refused."""
+    """A new interpreter loads the artifact's native point inputs and
+    evaluates them with generation forbidden (no slice is regenerated),
+    giving the same plan and bitwise-identical binary64 Born and virtual
+    values whatever Symbolica symbols it created before; a call that
+    regenerates the slice (the correlated outputs) refuses a stored plan
+    unequal to the regenerated one."""
 
     from pyamplicol import Runtime
 
     here = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
+    assert here.inspect()["point_inputs"] == "native-v1"
     value = here.evaluate([POINT], mu_r2="1000000")
     expected = [
         here.inspect()["plan_sha256"],
@@ -980,6 +1084,11 @@ def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
             "from symbolica import S",
             "fillers = [S(f'filler::f{k}') for k in range(int(sys.argv[2]))]",
             "from pyamplicol import Runtime",
+            "from pyamplicol.loops.v2 import artifact, assemble",
+            "def forbidden(*args, **kwargs):",
+            "    raise AssertionError('a native load must not generate')",
+            "artifact.generate_process = forbidden",
+            "assemble.LoopSlice.generate = forbidden",
             "r = Runtime.load(sys.argv[1], process='gg', model_parameters=PARAMETERS)",
             "v = r.evaluate([POINT], mu_r2='1000000')",
             "print(json.dumps([r.inspect()['plan_sha256'], v.born_values, v.values]))",
@@ -1014,8 +1123,9 @@ def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
 
     monkeypatch.setattr(artifact, "_slices", type(artifact._slices)())
     monkeypatch.setattr(artifact, "generate_process", drifted)
+    loaded = Runtime.load(full_colour, process="gg")
     with pytest.raises(ArtifactError, match="differs from the stored one"):
-        Runtime.load(full_colour, process="gg")
+        loaded.available_color_correlations()
 
 
 def _rewrite_payloads(source: Path, destination: Path, edits) -> Path:
@@ -1228,7 +1338,7 @@ def test_inspect_summarizes_v2_loop_artifacts(full_colour):
     assert loop.arithmetic == ("double", "double-double", "arbitrary")
     assert loop.resolved and not loop.correlations
     assert loop.color_correlations == () and loop.spin_correlations == ()
-    assert loop.point_inputs == "regenerated-at-load"
+    assert loop.point_inputs == "native-v1"
     execution = json.loads((full_colour / "processes/gg/execution.json").read_text())
     assert loop.plan_sha256 == execution["plan_sha256"]
     assert by_id["uux_ddxg"].loop.families == 42
@@ -2062,8 +2172,8 @@ def test_artifacts_hold_no_host_paths_and_load_relocated(
     script = script.replace("PARTS", repr(POLE_COMPONENTS))
     script = script.replace("PARAMETERS", repr(GG_PARAMETERS))
     script = script.replace("POINTS", repr(points))
-    # A fresh interpreter in another working directory regenerates the point
-    # inputs from the copy alone.
+    # A fresh interpreter in another working directory evaluates the copy's
+    # stored native point inputs.
     process = subprocess.run(
         [sys.executable, "-c", script, str(moved)],
         capture_output=True,
@@ -2154,8 +2264,11 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     """u u~ > d d~ with QCD and electroweak Born amplitudes (explicit limits
     QCD 2, QED 2): the dry run derives one loop order per Born amplitude
     order (QCD^4 and QCD^2 QED^2, not the limits raised by two) and does not
-    claim loop admission; in the SM the generation fails closed on the
-    chiral Z vertex of a loop quark line (WP3.2). With photon exchange only
+    claim loop admission; in the SM the generation fails closed on the W
+    exchange of the electroweak Born: its root closure at leg 1 needs the
+    conjugate rule of a vertex that is not closed under conjugation (the
+    chiral Z on loop quark lines, which stopped it earlier, is supported
+    since WP3.1 I-AX). With photon exchange only
     (Z, W and scalars excluded through the slice request) the public
     generator and runtime, regenerating at load, equal MadLoop's split-order
     control in every squared order (MadLoop binary64): each Born order within
@@ -2191,8 +2304,8 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     assert coverage["loop_admission_checked"] is False
     with pytest.raises(
         GenerationError,
-        match=r"'Z'\) is not a pure vector coupling; its sign needs the "
-        r"electroweak oracles",
+        match=r"is not closed under conjugation; the tree reading of its legs "
+        r"needs its conjugate rule",
     ):
         generator.generate(processes, tmp_path / "a")
     assert not (tmp_path / "a").exists()
@@ -2201,7 +2314,7 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     monkeypatch.setattr(
         loop_service,
         "_v2_request",
-        lambda *args: replace(request(*args), ignored_particle_ids=PHOTON_ONLY),
+        lambda *args: replace(request(*args), particle_veto=PHOTON_ONLY),
     )
     generator.generate(processes, tmp_path / "b")
     reference = loop_reference("mixed-uudd-qcd-control")
@@ -2386,8 +2499,14 @@ def test_qed_declaring_model_names_its_blockers(
     public v2 path (its MU_R, at LHA code LOOP 666, is resolved at the public
     boundary). Without the compatibility profile both engines refuse its G-
     Goldstone flag, which the dry run reports from the model preparation;
-    with it, u u~ > d d~ stops in counterterm admission: QED-order witnesses
-    without a rule or certified zero (WP3.2/WP3.5)."""
+    with it, u u~ > d d~ stops at the electroweak counterterms that the tree
+    recursion cannot lower and whose vertices can enter a tree of the
+    request: couplings with the complex-mass scheme's UFO helper recms
+    (WP3.2). There is no site fallback. The unlowerable G0-photon mixing
+    between spins is inert (REQUIREMENTS_ADDENDUM J): the model's tree model
+    absorbs the Goldstones into the massive vectors (``CompiledUFOModel.
+    inactive_goldstone_names``), so it holds no G0 vertex and no tree of any
+    request on this model holds the mixing."""
 
     from pyamplicol.api import ProcessRequest, ProcessSet
     from pyamplicol.models.loading import compile_model_source
@@ -2408,10 +2527,11 @@ def test_qed_declaring_model_names_its_blockers(
     )
     with pytest.raises(
         GenerationError,
-        match=r"divergent witnesses without a counterterm rule or certified zero"
-        r".*'QED': 2",
-    ):
+        match=r"counterterm rules the tree recursion cannot lower, whose vertices "
+        r"can enter a tree of the request: .*UFO helper 'recms'",
+    ) as refused:
         profiled.generate(processes, tmp_path / "b")
+    assert "G0" not in str(refused.value)
     assert not (tmp_path / "b").exists()
 
 
@@ -2424,10 +2544,14 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
     equals the legacy engine: Born and the QCD^6 virtual in binary64 (1e-12)
     and at 60 digits (1e-40, legacy at 60 digits). v2 also lists the
     QCD^4 QED^2 sector, a structural zero (no one-loop g g > g g amplitude of
-    order QCD^2 QED^2), which legacy omits."""
+    order QCD^2 QED^2), which legacy omits. The electroweak CT rules the tree
+    recursion cannot lower enter no tree of g g > g g: the generation record
+    lists them inert (REQUIREMENTS_ADDENDUM J), the G0-photon mixing among
+    them."""
 
     from pyamplicol import Runtime
     from pyamplicol.api import ProcessRequest, ProcessSet
+    from pyamplicol.artifacts import load_manifest
 
     entries = (("gg", "g g > g g"),)
     processes = ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),))
@@ -2439,6 +2563,15 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
         runtimes[engine] = Runtime.load(
             tmp_path / engine, process="gg", model_parameters=GG_PARAMETERS
         )
+    (record,) = load_manifest(tmp_path / "v2").extensions["generation"][
+        "concrete_processes"
+    ]
+    inert = record["filters"]["counterterms_inert"]
+    unreachable = {
+        name: reason for name, reason in inert.items() if "enters no tree" in reason
+    }
+    assert "PYAMPLICOL_CT_V306" in unreachable, sorted(inert)
+    assert any("UFO helper 'recms'" in reason for reason in unreachable.values())
     reference = runtimes["legacy"].evaluate(
         [POINT], mu_r2="1000000", arithmetic="arbitrary", precision=ARBITRARY_DIGITS
     )
@@ -2470,8 +2603,10 @@ def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
 ):
     """gg -> gggg (1100 families, 45 MB of plan JSON without the forward
     oracle, and the companion plan of 6 certified-scaleless families)
-    publishes < 20 MB (8.8 MB measured, 5.3 MB of it the compiled model and
-    3.5 MB the plan PACBIN with the companion)."""
+    publishes < 20 MB (measured: 11 MB with the native point inputs and the
+    counterterm program of the recursion; 8.8 MB on the slice without native
+    point inputs, 5.3 MB of it the compiled model and 3.5 MB the plan PACBIN
+    with the companion)."""
 
     from pyamplicol.loops.v2.artifact import admit, plan_digest, read_plan
 

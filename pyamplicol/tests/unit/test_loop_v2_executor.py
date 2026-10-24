@@ -35,7 +35,6 @@ from pathlib import Path
 import pytest
 
 from pyamplicol.config import PoleSelection
-from pyamplicol.loops.v2 import assemble, ct_sites
 from pyamplicol.loops.v2 import reference_executor as rx
 from pyamplicol.loops.v2.assemble import (
     COMPONENTS,
@@ -136,38 +135,12 @@ PROCESSES = {
         lambda: _points("dilepton-two-gluon.json"),
     ),
 }
-# Photon exchange only: Z couplings on loop quark lines are not pure vector
-# couplings, whose fermion signs await the electroweak oracles (WP3.2,
-# ``conventions.FermionSignError``).
+# Photon exchange only: its closed quark loops with one photon and two gluons
+# are exactly vanishing families (Furry, ``CERTIFIED_ZEROS``); the Z's axial
+# coupling would keep them (``test_loop_v2_axial``).
 IGNORED = {"uux_emepgg": (23,)}
 SLICE = ("gg_gg", "uux_ddxg", "uux_uux", "uux_uuxg", "uux_ttx")
 EXTRA = ("gg_ggg", "uux_ggg", "uux_emepgg")
-
-
-def _furry_zeros(generate):
-    """``generate_counterterm_sites`` with Furry's certified zeros.
-
-    A closed quark loop with one photon and two gluons is C-odd (three vector
-    couplings, symmetric colour trace), so its UV and R2 parts vanish: the
-    certified zero the model certifier (WP3.5) will supply. The generator
-    does not certify it yet, so the dilepton process needs it here.
-    """
-
-    def with_zeros(families, table, rules, data, selection, **options):
-        zeros = [
-            ct_sites.CertifiedZero(
-                signature,
-                species,
-                "Furry: C-odd closed quark loop (one photon, two gluons)",
-            )
-            for signature, sets in ct_sites.divergent_witnesses(families, data).items()
-            if signature.fields == ("A", "G", "G")
-            for species in sets
-            if all(1 <= pdg <= 6 for pdg in species)
-        ]
-        return generate(families, table, rules, data, selection, zeros=zeros, **options)
-
-    return with_zeros
 
 
 @pytest.fixture(scope="module")
@@ -186,16 +159,9 @@ def slices(loop_sm_compiled_model, loop_native):
                 born,
                 loop,
                 fixed_parameters=FIXED,
-                ignored_particle_ids=IGNORED.get(name, ()),
+                particle_veto=IGNORED.get(name, ()),
             )
-            with pytest.MonkeyPatch.context() as patch:
-                if born["QED"]:
-                    patch.setattr(
-                        assemble,
-                        "generate_counterterm_sites",
-                        _furry_zeros(assemble.generate_counterterm_sites),
-                    )
-                slice_ = LoopSlice.generate(compiled, request, loop_native)
+            slice_ = LoopSlice.generate(compiled, request, loop_native)
             built[name] = slice_, NativeExecutor(slice_)
         return built[name]
 

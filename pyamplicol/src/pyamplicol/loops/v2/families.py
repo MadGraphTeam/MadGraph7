@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from collections.abc import Hashable, Iterator, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from itertools import combinations, product
@@ -135,6 +135,15 @@ class Position:
 
     vertex: LoopVertex
     blocks: tuple[BlockCurrent, ...]  # sorted by mask
+    _hash: int | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __hash__(self) -> int:
+        if self._hash is None:
+            object.__setattr__(self, "_hash", hash((self.vertex, self.blocks)))
+        return self._hash  # type: ignore[return-value]
+
+    def __reduce__(self):
+        return Position, (self.vertex, self.blocks)
 
     @property
     def mask(self) -> int:
@@ -877,6 +886,10 @@ class ModelLoopCatalogue:
     rules by the same rule as the diagram oracle (a species is perturbative in
     an order when it enters a vertex of that single order), which production
     modules may not import.
+
+    ``veto`` (|PDG| codes, ``particle_veto``) removes those particles from the
+    loops: they are no loop species, and no vertex with one of them is a loop
+    vertex.
     """
 
     def __init__(
@@ -884,8 +897,11 @@ class ModelLoopCatalogue:
         model: Any,
         *,
         species_orders: Mapping[int, frozenset[str]] | None = None,
+        veto: Iterable[int] = (),
     ):
         data = model_data(model)
+        veto = frozenset(abs(int(pdg)) for pdg in veto)
+        vetoed = {p["name"] for p in data["particles"] if abs(p["pdg_code"]) in veto}
         self._species: dict[str, LoopSpecies] = {}
         coupling_orders = {
             entry["name"]: tuple(
@@ -901,6 +917,8 @@ class ModelLoopCatalogue:
         }
         rules = []
         for rule in data["vertex_rules"]:
+            if vetoed.intersection(rule["particles"]):
+                continue
             orders = {
                 add_orders(coupling_orders[name])
                 for row in rule["couplings"]
@@ -921,7 +939,7 @@ class ModelLoopCatalogue:
         for particle in data["particles"]:
             name = particle["name"]
             self._conjugate[name] = particle["antiname"]
-            if not particle.get("propagating", True):
+            if not particle.get("propagating", True) or name in vetoed:
                 continue
             self._species[name] = LoopSpecies(
                 name,
@@ -1031,9 +1049,13 @@ class ModelBlockTable:
         outgoing: Sequence[str],
         *,
         cap: Orders,
+        ignored_particle_ids: Iterable[int] = (),
     ):
         data = model_data(model)
         particles = {entry["name"]: entry for entry in data["particles"]}
+        # As the tree compiler: no current of an ignored (all-outgoing)
+        # particle id is produced.
+        ignored = frozenset(int(pdg) for pdg in ignored_particle_ids)
         conjugate = {name: entry["antiname"] for name, entry in particles.items()}
         coupling_orders = {
             entry["name"]: tuple(
@@ -1065,6 +1087,8 @@ class ModelBlockTable:
                 if name is not None
             }
             for result in range(len(names)):
+                if int(particles[names[result]]["pdg_code"]) in ignored:
+                    continue
                 attached = tuple(sorted(n for i, n in enumerate(names) if i != result))
                 for order in orders:
                     self._merges[attached].add((conjugate[names[result]], order))

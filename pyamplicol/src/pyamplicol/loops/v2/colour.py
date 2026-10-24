@@ -76,7 +76,7 @@ from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from copy import copy
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
-from functools import cached_property, lru_cache
+from functools import cache, cached_property, lru_cache
 from itertools import count, permutations, product
 from typing import Any, Literal
 
@@ -87,7 +87,7 @@ from pyamplicol.color.connections import (
     ExactColorCoefficient,
     OpenColorString,
     TensorTerm,
-    contract_connected_tensor_nc_terms,
+    _literal_tensor_overlap_nc_terms,
     overlap_traces,
 )
 from pyamplicol.color.contraction_trace import (
@@ -1239,6 +1239,12 @@ class CompressedColour:
         self._vertices: dict[tuple, VertexDecomposition | None] = {}
         self._contents: dict[int, tuple[Content, tuple | None]] = {}
         self._products: dict[tuple, ExactColorCoefficient] = {}
+        # A combination depends only on the kind and the positions' terms
+        # (decomposition ids and descriptors), which many skeletons share.
+        self._combinations: dict[tuple, Combination | None] = {}
+        # Ring combinations of keys equal up to a renaming of the external
+        # labels (``_renamed``), on the renamed key.
+        self._renamed: dict[tuple, Combination | None] = {}
 
     def _letters(self, block: Block) -> tuple[int, ...] | None:
         """M_w = tau^w_k ... tau^w_1 of a pure-gluon block, in matrix order."""
@@ -1388,6 +1394,63 @@ class CompressedColour:
         if kind is None:
             return None
         infos = [self._content(content) for content in skeleton.contents]
+        key = (kind, tuple(info[2] for info in infos))
+        if key in self._combinations:
+            return self._combinations[key]
+        if kind == "quark-ring":
+            found = self._combination(kind, infos)
+        else:
+            found = self._ring_combination(kind, key)
+        self._combinations[key] = found
+        return found
+
+    def _ring_combination(self, kind: PrimitiveKind, key: tuple) -> Combination | None:
+        """An adjoint ring's or closed fundamental loop's combination from the
+        one of its key with the external labels renamed 1, 2, ... in reading
+        order: the products of position terms do not depend on the labels, so
+        the renamed key's primitives, renamed back and made canonical again,
+        are this key's (a primitive's sign changes with its canonical form).
+        Rings of relabelled legs (identical gluons) share one renamed key."""
+
+        rename: dict[int, int] = {}
+        for terms in key[1]:
+            for _ids, descriptor in terms:
+                for label in descriptor[1]:
+                    if label not in rename:
+                        rename[label] = len(rename) + 1
+        renamed = (
+            kind,
+            tuple(
+                tuple(
+                    (
+                        ids,
+                        (
+                            descriptor[0],
+                            tuple(rename[a] for a in descriptor[1]),
+                            *descriptor[2:],
+                        ),
+                    )
+                    for ids, descriptor in terms
+                )
+                for terms in key[1]
+            ),
+        )
+        if renamed not in self._renamed:
+            infos = [(None, None, terms) for terms in renamed[1]]
+            self._renamed[renamed] = self._combination(kind, infos)
+        found = self._renamed[renamed]
+        if found is None:
+            return None
+        back = {new: old for old, new in rename.items()}
+        out = []
+        for primitive, coefficient in found:
+            original, sign = canonical_primitive(
+                kind, tuple(back[a] for a in primitive.word)
+            )
+            out.append((original, coefficient if sign == 1 else coefficient.scaled(-1)))
+        return tuple(sorted(out, key=repr))
+
+    def _combination(self, kind: PrimitiveKind, infos) -> Combination | None:
         out: dict[Primitive, ExactColorCoefficient] = {}
         for choice in product(*(info[2] for info in infos)):
             descriptors = tuple(descriptor for _ids, descriptor in choice)
@@ -1548,15 +1611,34 @@ class BornBasis:
 
     @cached_property
     def gram(self) -> tuple[tuple[Laurent, ...], ...]:
-        """<b|b'> as exact Laurent polynomials (the tree engine's Born metric)."""
+        """<b|b'> as exact Laurent polynomials (the tree engine's Born metric).
 
-        return tuple(
-            tuple(
-                contract_connected_tensor_nc_terms(left, right)
-                for right in self.tensors
-            )
-            for left in self.tensors
+        The external adjoint labels are summed, so <b|b'> = <pi b|pi b'> for
+        every permutation pi of them. Row b is relabelled by the permutation
+        that numbers its adjoint labels in reading order (``_adjoint_rename``),
+        and each distinct relabelled pair is contracted once: a single-trace
+        gluon basis of n legs contracts (n-1)! pairs instead of (n-1)!^2.
+        """
+
+        adjoint = sorted(
+            leg.label for leg in self.legs if leg.representation == ADJOINT
         )
+        cells: dict[tuple[Hashable, Hashable], Laurent] = {}
+        rows = []
+        for left in self.tensors:
+            rename = _adjoint_rename(left, adjoint)
+            key = _relabelled_key(left, rename)
+            row = []
+            for right in self.tensors:
+                pair = (key, _relabelled_key(right, rename))
+                found = cells.get(pair)
+                if found is None:
+                    found = cells[pair] = contract_colour(
+                        _relabelled(left, rename), _relabelled(right, rename)
+                    )
+                row.append(found)
+            rows.append(tuple(row))
+        return tuple(rows)
 
     def degree(self, pairs: Iterable[SectorPair]) -> int | None:
         """Leading N_c degree of a Born squared-order sector (its own P)."""
@@ -1568,6 +1650,111 @@ class BornBasis:
             for b2, cell in enumerate(row)
             if any((a, a2) in pairs for a in self.orders[b] for a2 in self.orders[b2])
         )
+
+
+def contract_colour(left: ConnectedColorTensor, right: ConnectedColorTensor) -> Laurent:
+    """``contract_connected_tensor_nc_terms`` (the exact Laurent coefficients
+    of ``left.conjugate() * right``) with each literal overlap, a product of
+    adjoint traces, counted natively: the subset sum over the labels that
+    take the U(1) term of their Fierz identity, each term N_c to its index
+    loops (``loop_v2::generate::cycles``). Products with too many labels for
+    the subset sum keep the trace algebra of ``color/contraction_trace.py``,
+    which is the oracle of both."""
+
+    if left.legs != right.legs:
+        raise ValueError(
+            "bra and ket connections must have identical typed output legs"
+        )
+    power = left.normalization_power + right.normalization_power
+    if power % 2:
+        raise ValueError("bra/ket normalization has an odd inverse sqrt(2) power")
+    normalization = Fraction(1, 2 ** (power // 2))
+    pairs = [(a, b) for a in left.terms for b in right.terms]
+    products = [overlap_traces(a.tensor, b.tensor) for a, b in pairs]
+    counted = _trace_overlaps()(products)
+    result: dict[int, ExactColorCoefficient] = {}
+    for (a, b), laurent in zip(pairs, counted, strict=True):
+        terms = (
+            _literal_tensor_overlap_nc_terms(a.tensor, b.tensor).items()
+            if laurent is None
+            else ((p, Fraction(c)) for p, c in laurent)
+        )
+        coefficient = (a.coefficient.conjugate() * b.coefficient).scaled(normalization)
+        for nc_power, factor in terms:
+            exponent = nc_power + a.nc_power + b.nc_power
+            result[exponent] = result.get(
+                exponent, ExactColorCoefficient()
+            ) + coefficient.scaled(factor)
+    return {p: value for p, value in sorted(result.items()) if value}
+
+
+@lru_cache(maxsize=1)
+def _trace_overlaps() -> Callable[[list], list]:
+    from pyamplicol.loops.native import load_loop_native
+
+    return load_loop_native().trace_overlaps
+
+
+ADJOINT = 8
+
+
+def _adjoint_rename(
+    tensor: ConnectedColorTensor, adjoint: Sequence[int]
+) -> dict[int, int]:
+    """The permutation of the adjoint labels ``adjoint`` (sorted) that numbers
+    them in the order ``tensor`` reads them (terms, then open strings, then
+    traces, as stored); labels it does not read keep the remaining ones."""
+
+    order: list[int] = []
+    seen: set[int] = set()
+    members = set(adjoint)
+    for term in tensor.terms:
+        colour = term.tensor
+        labels = [a for string in colour.open_strings for a in string.adjoint_labels]
+        labels += [a for trace in colour.traces for a in trace]
+        for label in labels:
+            if label in members and label not in seen:
+                seen.add(label)
+                order.append(label)
+    order += [label for label in adjoint if label not in seen]
+    return dict(zip(order, adjoint, strict=True))
+
+
+def _relabelled_key(
+    tensor: ConnectedColorTensor, rename: Mapping[int, int]
+) -> Hashable:
+    """A key of ``_relabelled(tensor, rename)``: equal exactly for equal
+    tensors (open strings and traces in canonical order and rotation)."""
+
+    return tensor.normalization_power, frozenset(
+        (term.coefficient, term.nc_power, _colour_key(term.tensor, rename))
+        for term in tensor.terms
+    )
+
+
+def _colour_key(colour: ColorTensor, rename: Mapping[int, int]) -> Hashable:
+    """A key of ``_relabelled_colour(colour, rename)``."""
+
+    def label(a: int) -> int:
+        return rename.get(a, a)
+
+    return (
+        tuple(
+            sorted(
+                (
+                    string.fundamental_label,
+                    tuple(map(label, string.adjoint_labels)),
+                    string.antifundamental_label,
+                )
+                for string in colour.open_strings
+            )
+        ),
+        tuple(
+            sorted(
+                _canonical_rotation(tuple(map(label, trace))) for trace in colour.traces
+            )
+        ),
+    )
 
 
 def born_basis(blocks: TreeBlocks) -> BornBasis:
@@ -1625,11 +1812,18 @@ def project(
     leading degree P (``shift`` is the N_c grade of the Born amplitude the
     cell multiplies)."""
 
-    total = ExactColorCoefficient()
+    real = imag = Fraction(0)
     for power, value in cell.items():
         if kept(power + shift, degree, accuracy):
-            total = total + value.scaled(Fraction(NC) ** (power + shift))
-    return total
+            factor = _nc_power(power + shift)
+            real += value.real * factor
+            imag += value.imag * factor
+    return ExactColorCoefficient(real, imag)
+
+
+@cache
+def _nc_power(power: int) -> Fraction:
+    return Fraction(NC) ** power
 
 
 @dataclass(frozen=True)
@@ -1871,6 +2065,9 @@ def _extended(
     orders: list[set[Orders]] = [set(row) for row in table.orders]
     class_of = dict(class_of)
 
+    # x of a seed against its class's scale, by (scale, class scale).
+    ratios: dict[tuple[ExactColorCoefficient, ExactColorCoefficient], Any] = {}
+
     def row(seed: Hashable, order: Orders) -> tuple[int, ExactColorCoefficient]:
         """(class, x) with seed = x kappa_class."""
 
@@ -1882,8 +2079,14 @@ def _extended(
             scales.append(scale)
             orders.append(set())
         orders[c].add(order)
-        return c, _ratio(scale, scales[c])
+        pair = (scale, scales[c])
+        ratio = ratios.get(pair)
+        if ratio is None:
+            ratio = ratios[pair] = _ONE if pair[0] == pair[1] else _ratio(*pair)
+        return c, ratio
 
+    # Rows of shared (memoised) combinations, by identity and loop order.
+    rows: dict[tuple[int, Orders], tuple[SeedCombination, Combination]] = {}
     for skeleton in skeletons:
         combination = combinations.get(skeleton)
         if (
@@ -1894,11 +2097,17 @@ def _extended(
             combination = compressed.combination(skeleton)
         if combination is None:
             combination = ((colour.seed(skeleton), _ONE),)
+        shared = rows.get((id(combination), skeleton.orders))
+        if shared is not None and shared[1] is combination:
+            class_of[skeleton] = shared[0]
+            continue
         merged: dict[int, ExactColorCoefficient] = {}
         for seed, x in combination:
             c, factor = row(seed, skeleton.orders)
-            merged[c] = merged.get(c, ExactColorCoefficient()) + x * factor
+            term = x if factor is _ONE else x * factor
+            merged[c] = merged[c] + term if c in merged else term
         class_of[skeleton] = tuple(merged.items())
+        rows[id(combination), skeleton.orders] = (class_of[skeleton], combination)
     classes = tuple(classes)
     cells = list(table.cells)
     cells.extend(seed_cells(basis, classes[len(cells) :]))
@@ -1942,7 +2151,7 @@ def seed_cells(
             if term.tensor not in overlaps:
                 ket = ConnectedColorTensor(basis.legs, (TensorTerm(_ONE, term.tensor),))
                 overlaps[term.tensor] = tuple(
-                    contract_connected_tensor_nc_terms(b, ket) for b in basis.tensors
+                    contract_colour(b, ket) for b in basis.tensors
                 )
             for cell, overlap in zip(row_cells, overlaps[term.tensor], strict=True):
                 for power, value in overlap.items():
@@ -2074,8 +2283,8 @@ class _PrimitiveCells:
                 if found is None:
                     if ket is None:
                         ket = canonical.tensor(self.basis.legs)
-                    found = self._ring_cells[ring, bra] = (
-                        contract_connected_tensor_nc_terms(self._bras[bra], ket)
+                    found = self._ring_cells[ring, bra] = contract_colour(
+                        self._bras[bra], ket
                     )
                 out.append(found)
             return tuple(out)
@@ -2117,7 +2326,7 @@ class _PrimitiveCells:
     ) -> Laurent:
         primitive = Primitive(kind, word)
         if kind == "fundamental-trace":
-            return contract_connected_tensor_nc_terms(bra, primitive.tensor(bra.legs))
+            return contract_colour(bra, primitive.tensor(bra.legs))
         if bra.normalization_power % 2:
             raise ValueError("a Born tensor has an odd inverse sqrt(2) power")
         scale = Fraction(1, 2 ** (bra.normalization_power // 2))

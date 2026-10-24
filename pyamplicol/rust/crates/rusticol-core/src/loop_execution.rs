@@ -2907,18 +2907,20 @@ pub mod v2 {
         /// Two scalar bubble families of a two-leg "process": one seeded
         /// trace step each, the factor a constant, so each family numerator
         /// is `2 conj(A0)` at rank 0.
-        const PLAN: &[u8] = br#"{"schema":4,"legs":2,"rows":1,"columns":1,"average":1,
+        const PLAN: &[u8] =
+            br#"{"schema":4,"legs":2,"rows":1,"helicities":[[0],[0]],"columns":1,"average":1,
             "born_components":1,"constants":1,"masses":1,"block_rows":[],
             "kernels":[{"inputs":[],"outputs":[[[0,[]]]]}],
-            "contents":[{"d_in":1,"d_out":1,"degree":0,"rows":1,"fused":[[0,0,0,0,0,0]],
+            "contents":[{"d_in":1,"d_out":1,"degree":0,"rows":1,"mask":0,"row_helicities":[[]],
+                "fused":[[0,0,0,0,0,0]],
                 "terms":[{"slots":[],"dimensions":[],"vertex":-1,"split":[],"rows":[[0,[]]],
                     "bindings":[{"kernel":0,"inputs":[],"entries":[0]}]}]}],
             "factors":[[0,0]],
-            "seeds":[{"columns":[[[0,"1","0"]]]}],
+            "seed_classes":[{"columns":[[[0,"1","0"]]]}],"seeds":[{"classes":[[0,"1","0"]]}],
             "families":[FAMILY,FAMILY],"forward":null}"#;
         const FAMILY: &str = r#"{"sequence":[[1,0],[2,0]],"rank":0,"orders":[0],
             "leaves":[{"seed":0,"weight":"1"}],
-            "steps":[{"seeded":true,"trace":0,"rows":1,"d_alpha":1,"d_out":1,"degree":0,
+            "steps":[{"seeded":true,"trace":0,"out":0,"rows":1,"d_alpha":1,"d_out":1,"degree":0,
                 "rank_in":0,"edges":[{"leaf":0,"child":-1,"factor":0,"links":[0,0,0]}]}]}"#;
 
         /// Fails every lane of point 0 in its first reduction and records the

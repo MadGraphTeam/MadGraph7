@@ -170,7 +170,7 @@ def slices(loop_sm_compiled_model, loop_native):
                     born,
                     loop,
                     fixed_parameters=FIXED,
-                    ignored_particle_ids=ignored,
+                    particle_veto=ignored,
                 ),
                 loop_native,
             )
