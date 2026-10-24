@@ -79,9 +79,10 @@
 //! they would trust beyond the plan's tables (checks the loader's validation
 //! implies: vertex ids, family and step ranks). [`PlanModel::program`]
 //! refuses a member whose bound exceeds [`DERIVED_PER_BYTE`] per member byte,
-//! and reserves the memory bound fallibly before deriving; the writer pads a
-//! plan that needs more (none written today: 93-407 bytes per member byte at
-//! six and seven legs). A member of `n` bytes thus makes the loader allocate
+//! and reserves the memory bound (with twice the decoded size, for the
+//! program's copies of the plan's lists) fallibly before deriving; the writer
+//! pads a plan that needs more (none written today: about 100-500 bytes per
+//! member byte at six and seven legs). A member of `n` bytes thus makes the loader allocate
 //! at most `DERIVED_PER_BYTE × n` bytes beyond its decoded model, and a plan
 //! the allocator cannot hold is refused with an error. The production JSON
 //! load (`LoopProgramV4::load`, `plan.rs`) is not bounded so: that is the
@@ -150,8 +151,17 @@ pub fn column_names() -> &'static [&'static str] {
 /// binary columnar member.
 pub struct PlanModel {
     file: PlanFile,
-    /// The length of the member it was decoded from (none for a JSON).
-    member: Option<u64>,
+    /// The member it was decoded from (none for a JSON).
+    member: Option<Member>,
+}
+
+/// The sizes of the member a model was decoded from.
+#[derive(Clone, Copy)]
+struct Member {
+    /// The member's length.
+    bytes: u64,
+    /// Its declared (and charged) decoded size.
+    decoded: u64,
 }
 
 impl PlanModel {
@@ -167,10 +177,14 @@ impl PlanModel {
         let mut reader = Reader::new(bytes)?;
         let mut file = PlanFile::fresh();
         visit_plan(&mut reader, &mut file)?;
+        let decoded = reader.budget.declared;
         reader.finish()?;
         Ok(Self {
             file,
-            member: Some(bytes.len() as u64),
+            member: Some(Member {
+                bytes: bytes.len() as u64,
+                decoded,
+            }),
         })
     }
 
@@ -200,16 +214,20 @@ impl PlanModel {
     /// The validated program with its derived tables (`LoopProgramV4::load`),
     /// once the derivations are bounded: a model decoded from a member must
     /// not need more than [`DERIVED_PER_BYTE`] per member byte, and the memory
-    /// bound is reserved fallibly first (module docs, "Bounded derivation").
+    /// bound is reserved fallibly first, with twice the decoded size for the
+    /// program's copies of the plan's lists (module docs, "Bounded
+    /// derivation").
     pub fn program(self, policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
         let bound = derive::bound(&self.file)?;
+        let mut copies = 0;
         if let Some(member) = self.member {
             require(
-                bound.cost() <= DERIVED_PER_BYTE.saturating_mul(member),
+                bound.cost() <= DERIVED_PER_BYTE.saturating_mul(member.bytes),
                 "binary plan: the loader's derivations exceed the member's bound",
             )?;
+            copies = member.decoded.saturating_mul(2);
         }
-        derive::reserve(bound.memory)?;
+        derive::reserve(bound.memory.saturating_add(copies))?;
         LoopProgramV4::from_file(self.file, policy)
     }
 }

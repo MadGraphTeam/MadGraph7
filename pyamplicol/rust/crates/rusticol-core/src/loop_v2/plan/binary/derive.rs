@@ -18,7 +18,9 @@
 //! upper bound of the bytes those derivations allocate (summed over every
 //! allocation, so it bounds their peak too, at the allocator's growth
 //! factors) and of the iterations of their loops whose count is a product of
-//! scalars and list lengths. The binary member must pay for it: its reader
+//! scalars and list lengths. The derivations' copies of the plan's own lists
+//! (at most about twice the decoded model) are not part of it: the reader
+//! reserves them with it. The binary member must pay for it: its reader
 //! refuses a member whose bound exceeds [`DERIVED_PER_BYTE`] per member byte
 //! (the writer pads the member of a plan that needs more, as it does for the
 //! decoded size), and reserves the memory bound fallibly before deriving, so a
@@ -42,9 +44,9 @@ use crate::RusticolResult;
 use crate::loop_v2::kernels::RowLink;
 
 /// The most bytes the loader's derivations may allocate and iterate per
-/// member byte (module docs). The plans written today need 93-407 (six and
-/// seven legs, one observable column: 20 times less); a plan needing more
-/// (tens of columns at seven legs) gets a padded member.
+/// member byte (module docs). The plans written today need about 100-500
+/// (six and seven legs, one observable column: 16 times less or more); a
+/// plan needing more (tens of columns at seven legs) gets a padded member.
 pub const DERIVED_PER_BYTE: u64 = 8192;
 
 /// The largest rank or degree a monomial table of a valid plan can have: a
@@ -104,9 +106,9 @@ fn ncoeff(rank: u64) -> u64 {
 /// Bytes per entry of a hash map or set the derivations fill (key, value,
 /// control byte, load factor and the table kept while it grows).
 const MAP_ENTRY: usize = 64;
-/// Bytes per entry of a B-tree set of row indices (`u32` keys, nodes at
-/// least half full).
-const TREE_ENTRY: usize = 16;
+/// Bytes per entry of a B-tree set of row indices (`u32` keys in nodes at
+/// least half full, with their bookkeeping) and of the list of its targets.
+const TREE_ENTRY: usize = 32;
 /// A helicity row restricted to legs (`links::Row`).
 const ROW: usize = 16;
 
