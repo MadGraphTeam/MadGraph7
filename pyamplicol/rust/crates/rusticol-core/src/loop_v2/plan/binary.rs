@@ -119,18 +119,41 @@ impl LoopProgramV4 {
 /// and any differing value changes it. A test tool for comparing the JSON and
 /// binary loads; no artifact carries it.
 pub fn program_digest(program: &LoopProgramV4) -> String {
-    struct Hashing(Sha256);
+    debug_digest(program)
+}
+
+/// SHA-256 (hex) of a value's `Debug` form. `Debug` writes many short
+/// pieces; they reach the hasher in blocks, and the digest of the stream does
+/// not depend on how it is cut.
+fn debug_digest(value: &impl std::fmt::Debug) -> String {
+    const BLOCK: usize = 1 << 16;
+    struct Hashing {
+        hasher: Sha256,
+        block: Vec<u8>,
+    }
     impl std::fmt::Write for Hashing {
         fn write_str(&mut self, text: &str) -> std::fmt::Result {
-            self.0.update(text.as_bytes());
+            if self.block.len() + text.len() > BLOCK {
+                self.hasher.update(&self.block);
+                self.block.clear();
+            }
+            if text.len() > BLOCK {
+                self.hasher.update(text.as_bytes());
+            } else {
+                self.block.extend_from_slice(text.as_bytes());
+            }
             Ok(())
         }
     }
-    let mut hashing = Hashing(Sha256::new());
-    std::fmt::write(&mut hashing, format_args!("{program:?}"))
-        .expect("formatting a program into a hasher cannot fail");
+    let mut hashing = Hashing {
+        hasher: Sha256::new(),
+        block: Vec::with_capacity(BLOCK),
+    };
+    std::fmt::write(&mut hashing, format_args!("{value:?}"))
+        .expect("formatting a value into a hasher cannot fail");
+    hashing.hasher.update(&hashing.block);
     hashing
-        .0
+        .hasher
         .finalize()
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -1097,6 +1120,22 @@ empty_records! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_digest_is_the_digest_of_the_whole_debug_form() {
+        // Short pieces across block boundaries, a piece longer than a block.
+        let long = "x".repeat(3 << 16);
+        let value = (
+            (0..100_000u32).collect::<Vec<_>>(),
+            long.as_str(),
+            vec![Some(1u8), None],
+        );
+        let whole: String = Sha256::digest(format!("{value:?}").as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        assert_eq!(debug_digest(&value), whole);
+    }
 
     #[test]
     fn columns_pick_the_narrowest_form() {
