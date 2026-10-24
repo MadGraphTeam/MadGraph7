@@ -499,8 +499,10 @@ class GeneratedProcess:
             return None
         return plan_digest(self.scaleless_plan_json)
 
-    def executor(self) -> Any:
-        """A native executor of the slice on the stored plans."""
+    def executor(self, inputs: str = "python") -> Any:
+        """A native executor of the slice on the stored plans; ``inputs=
+        "native"`` forms the point inputs from the plan's tree program (the
+        stored native process's lane, ``native_process``)."""
 
         from .plan_export import NativeExecutor
 
@@ -512,6 +514,7 @@ class GeneratedProcess:
             exported=self.exported,
             plan_json=self.plan_json,
             scaleless=scaleless,
+            inputs=inputs,
         )
 
     def born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
@@ -994,7 +997,10 @@ class V2VirtualRuntime:
         if self._native_process is None or not splits(pole_mode(poles)):
             return self._executor
         if self._split_executor is None:
-            self._split_executor = self._regenerated().executor()
+            # Native inputs from the regenerated plan's tree program (the
+            # stored one, regenerated bitwise): the finite part is that of
+            # the other selections, and the companion forms its own rows.
+            self._split_executor = self._regenerated().executor(inputs="native")
         return self._split_executor
 
     def _observable_runtime(self) -> Any:

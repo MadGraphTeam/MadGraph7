@@ -564,8 +564,9 @@ def loop_sm_request_model(loop_sm_compiled_model):
 @pytest.mark.loop_physics
 def test_native_families_at_seven_legs(loop_sm_request_model, loop_native):
     """gg -> ggggg FC: the native recursion equals Python's on the
-    field-level table (9,414 families, 52,682 routings, 109,179 prefix
-    states; WP3.1 plan §2.5)."""
+    field-level table (9,414 families, 52,682 routings, 109,638 prefix
+    states: 109,179 of the admitted families, WP3.1 plan §2.5, then the
+    certified-scaleless families' for the poles companion)."""
 
     _compiled, data, catalogue = loop_sm_request_model
     selection = _selection({"QCD": 5})
@@ -573,7 +574,7 @@ def test_native_families_at_seven_legs(loop_sm_request_model, loop_native):
     native = NativeGeneration(table, catalogue, selection, loop_native).families()
     assert len(native.families) == 9414
     assert sum(len(f.closures) for f in native.families.values()) == 52682
-    assert len(native.prefixes) == 109179
+    assert len(native.prefixes) == 109638
     assert_same_families(native, generate_families(table, catalogue, selection))
 
 
