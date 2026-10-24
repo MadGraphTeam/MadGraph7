@@ -1656,9 +1656,16 @@ class LoopSlice:
             rejected=(),
             scaleless_families={},
         )
-        plan = build_schedules(
-            twin_families, self.loop_catalogue, self.colour, policy=_FRAME_POLICY
-        )
+        generation = None
+        if self.generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+            # The native stages schedule the companion's subset of their
+            # certified-scaleless families (and prune it at LC/NLC below).
+            generation = self.generation.scaleless_companion(twin_families)
+            plan = generation.schedules(self.colour, model=_FRAME_MODEL)
+        else:
+            plan = build_schedules(
+                twin_families, self.loop_catalogue, self.colour, policy=_FRAME_POLICY
+            )
         readings = rx.reading_skeletons(plan)
         for skeleton in readings:
             self.weights.fermion_sign(skeleton)
@@ -1674,9 +1681,7 @@ class LoopSlice:
             fourier=None,
             colour_pruned=False,
             scaleless=None,
-            # The native generator stages hold the main families' schedules;
-            # the companion's are Python's (its LC/NLC prune included).
-            generation=None,
+            generation=generation,
         )
         if self.request.accuracy != "full" and prune is not False:
             twin._prune_colour()

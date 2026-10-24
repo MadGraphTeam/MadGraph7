@@ -11,11 +11,13 @@ rebuild the Python objects, so every later stage reads the same objects
 whichever engine produced them.
 
 ``NativeGeneration`` runs ``families.generate_families`` and
-``schedules.build_schedules`` natively.
+``schedules.build_schedules`` natively, the latter also for the poles
+companion's certified-scaleless families (``scaleless_companion``).
 """
 
 from __future__ import annotations
 
+import copy
 import gc
 import itertools
 import json
@@ -227,6 +229,9 @@ class NativeGeneration:
     ``schedules.build_schedules``. ``native`` is the staged loop core
     (``loops.native.load_loop_native``). Every decoded object equals the
     Python stage's (``tests/unit/test_loop_v2_generate.py``).
+
+    ``scaleless_companion`` returns the same generation scheduling a subset
+    of the certified-scaleless families instead (the poles companion).
     """
 
     def __init__(
@@ -245,6 +250,9 @@ class NativeGeneration:
         self._families: FamilySet | None = None
         self._positions: list[Position] = []
         self._state_positions: list[int] = []
+        # Indices into the native certified-scaleless families scheduled
+        # instead of the admitted ones (``scaleless_companion``).
+        self._scaleless: list[int] | None = None
 
     def _position(self, vertex: int, blocks) -> Position:
         tables = self.tables
@@ -259,6 +267,24 @@ class NativeGeneration:
             return self._families
         with _no_cyclic_gc():
             return self._decode_families()
+
+    def scaleless_companion(self, families: FamilySet) -> NativeGeneration:
+        """This generation scheduling ``families.families``, certified-
+        scaleless families of this one (``FamilySet.scaleless_families``), in
+        their order: the poles companion's ``build_schedules(families, ...)``
+        (``LoopSlice._scaleless_companion``). The prefix graph is shared."""
+
+        index = {key: i for i, key in enumerate(self.families().scaleless_families)}
+        missing = [key for key in families.families if key not in index]
+        if missing:
+            raise ValueError(
+                f"families {missing} are not certified-scaleless families of "
+                "this generation"
+            )
+        twin = copy.copy(self)
+        twin._families = families
+        twin._scaleless = [index[key] for key in families.families]
+        return twin
 
     def _decode_families(self) -> FamilySet:
         tables = self.tables
@@ -345,7 +371,10 @@ class NativeGeneration:
         """
 
         families = self.families()
-        used = sorted({label for label in self._state_positions if label >= 0})
+        if self._scaleless is None:
+            used = sorted({label for label in self._state_positions if label >= 0})
+        else:
+            used = sorted(self._path_positions(families))
         per_position = {p: colour.states(self._positions[p]) for p in used}
         states: set = set()
         for found in per_position.values():
@@ -399,6 +428,8 @@ class NativeGeneration:
             "reflected": [rank[reflection[state]] for state in ordered],
             "policy": policy,
         }
+        if self._scaleless is not None:
+            payload["scaleless"] = self._scaleless
         if keep is not None:
             payload["keep"] = self._keep_flags(keep, ordered, payload, keys)
         raw_contents, labels, raw_orders, raw_schedules = self._native.schedules(
@@ -408,6 +439,22 @@ class NativeGeneration:
             return self._decode(
                 colour, keep, ordered, raw_contents, labels, raw_orders, raw_schedules
             )
+
+    def _path_positions(self, families: FamilySet) -> set[int]:
+        """The positions on the prefix paths of ``families``' closures."""
+
+        parent = families.graph.parent
+        seen: set[int] = set()
+        found: set[int] = set()
+        for family in families.families.values():
+            for closure in family.closures:
+                state = closure.state
+                while state >= 0 and state not in seen:
+                    seen.add(state)
+                    if (label := self._state_positions[state]) >= 0:
+                        found.add(label)
+                    state = parent[state]
+        return found
 
     def _keep_flags(self, keep, ordered, payload, keys) -> list[list[bool]]:
         """``keep`` evaluated on every skeleton of every family."""

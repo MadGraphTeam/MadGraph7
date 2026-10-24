@@ -14,7 +14,7 @@
 //! pass; the tries of the families are independent and built in parallel.
 
 use super::families::{
-    FamilyInput, FamilyKey, FamilyOutput, LegSet, Position, canonical_family_key,
+    Family, FamilyInput, FamilyKey, FamilyOutput, LegSet, Position, canonical_family_key,
     certified_scaleless,
 };
 use super::orders::{OrderSpace, OrderVec};
@@ -36,6 +36,14 @@ pub struct ScheduleInput {
     #[serde(default)]
     pub keep: Option<Vec<Vec<bool>>>,
     pub policy: FramePolicy,
+    /// The families to schedule: `None` schedules the admitted families
+    /// (`FamilyOutput::families`); `Some(indices)` the certified-scaleless
+    /// families at those indices of `FamilyOutput::scaleless_families`, in
+    /// that order (the poles companion, `LoopSlice._scaleless_companion`).
+    /// `keep`, a fixed frame policy and `FamilySchedule::family` index this
+    /// list.
+    #[serde(default)]
+    pub scaleless: Option<Vec<usize>>,
 }
 
 /// Frame policies of the production generator.
@@ -126,7 +134,8 @@ pub struct TrieNode {
 /// The schedule-B data of one family.
 #[derive(Debug, Clone)]
 pub struct FamilySchedule {
-    /// Index of the family in the family output.
+    /// Index of the family in the scheduled list (`ScheduleInput::scaleless`;
+    /// by default the family output's admitted families).
     pub family: usize,
     /// Every skeleton of the family (`family_skeletons`), content ids.
     pub skeletons: Vec<Skeleton>,
@@ -154,6 +163,8 @@ struct Builder<'a> {
     families: &'a FamilyInput,
     output: &'a FamilyOutput,
     input: &'a ScheduleInput,
+    /// The scheduled families (`ScheduleInput::scaleless`).
+    list: Vec<&'a Family>,
     orders: OrderSpace,
     position_orders: Vec<u32>,
     position_mask: Vec<LegSet>,
@@ -174,7 +185,22 @@ fn content_cmp(space: &OrderSpace, a: &Content, b: &Content) -> Ordering {
 }
 
 impl<'a> Builder<'a> {
-    fn new(families: &'a FamilyInput, output: &'a FamilyOutput, input: &'a ScheduleInput) -> Self {
+    fn new(
+        families: &'a FamilyInput,
+        output: &'a FamilyOutput,
+        input: &'a ScheduleInput,
+    ) -> Result<Self, String> {
+        let list = match &input.scaleless {
+            None => output.families.iter().collect(),
+            Some(indices) => indices
+                .iter()
+                .map(|&index| {
+                    output.scaleless_families.get(index).ok_or_else(|| {
+                        format!("no certified-scaleless family {index} to schedule")
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        };
         let mut orders = OrderSpace::new();
         let mut position_orders = Vec::with_capacity(output.positions.len());
         let mut position_mask = Vec::with_capacity(output.positions.len());
@@ -191,17 +217,18 @@ impl<'a> Builder<'a> {
             position_orders.push(total);
             position_mask.push(mask);
         }
-        Self {
+        Ok(Self {
             families,
             output,
             input,
+            list,
             orders,
             position_orders,
             position_mask,
             contents: Vec::new(),
             content_index: HashMap::default(),
             reflection: Vec::new(),
-        }
+        })
     }
 
     fn intern(&mut self, content: Content) -> u32 {
@@ -295,7 +322,7 @@ impl<'a> Builder<'a> {
     /// `family_skeletons`: the skeletons of one family, sorted.
     fn family_skeletons(&mut self, family: usize) -> Result<Vec<Skeleton>, String> {
         type Label = (u32, u32, u32, LegSet, u32);
-        let record = &self.output.families[family];
+        let record = self.list[family];
         let mut ring_index: HashMap<Vec<Label>, usize> = HashMap::default();
         // Per ring: per-slot positions (insertion order, distinct), the
         // distinct position combinations, symmetric flag and multiplicity.
@@ -654,9 +681,9 @@ pub fn build_skeletons(
     output: &FamilyOutput,
     input: &ScheduleInput,
 ) -> Result<SkeletonOutput, String> {
-    let mut builder = Builder::new(families, output, input);
-    let mut all = Vec::with_capacity(output.families.len());
-    for family in 0..output.families.len() {
+    let mut builder = Builder::new(families, output, input)?;
+    let mut all = Vec::with_capacity(builder.list.len());
+    for family in 0..builder.list.len() {
         all.push(builder.family_skeletons(family)?);
     }
     let orders = (0..builder.orders.len() as u32)
@@ -672,10 +699,11 @@ pub fn build_schedules(
     output: &FamilyOutput,
     input: &ScheduleInput,
 ) -> Result<ScheduleOutput, String> {
-    let mut builder = Builder::new(families, output, input);
+    let mut builder = Builder::new(families, output, input)?;
     // Skeletons per family (sequential: contents are interned first-seen).
-    let mut all: Vec<Vec<Skeleton>> = Vec::with_capacity(output.families.len());
-    for family in 0..output.families.len() {
+    let list = builder.list.clone();
+    let mut all: Vec<Vec<Skeleton>> = Vec::with_capacity(list.len());
+    for family in 0..list.len() {
         all.push(builder.family_skeletons(family)?);
     }
     // The view: labels first-seen across families, in family order.
@@ -763,7 +791,7 @@ pub fn build_schedules(
             if viewed.is_empty() {
                 return Ok(None);
             }
-            let key = &output.families[family].key;
+            let key = &list[family].key;
             let count = key.len();
             // frames(family): distinct readings of the key, first seen.
             let mut targets: Vec<(FamilyKey, (usize, bool))> = Vec::new();
