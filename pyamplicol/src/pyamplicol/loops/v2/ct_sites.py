@@ -692,6 +692,24 @@ class SiteClosure:
                 ].append(block)
         self._colours: dict[tuple, ConnectedColorTensor] = {}
 
+    def share_colours(self, other: SiteClosure) -> None:
+        """Share ``other``'s closed vertex colours (one cache for both).
+
+        A closed colour depends on the vertex colour, the attached fields and
+        the blocks' colour flows (its key) and on the process legs and the
+        native fields, which must agree: the CT program's closure and its
+        slice's (the Born closure) close the same vertices on blocks of the
+        same words, so each colour is reduced once.
+        """
+
+        if (
+            self.legs != other.legs
+            or self._representations != other._representations
+            or self._fields.by_pdg != other._fields.by_pdg
+        ):
+            raise ValueError("closures of different processes or models")
+        self._colours = other._colours
+
     @property
     def fermion_ends(self) -> Mapping[int, int]:
         """Coloured external fermions: label -> all-outgoing representation."""

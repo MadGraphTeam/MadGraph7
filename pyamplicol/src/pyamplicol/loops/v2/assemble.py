@@ -1374,7 +1374,9 @@ class LoopSlice:
         for skeleton in readings:
             weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
         if program is not None:
-            program.bind(ordinary, data, catalogue)
+            # The program's root terms and the Born close the same vertices
+            # on blocks of the same words: one colour cache serves both.
+            program.bind(ordinary, data, catalogue, colours=closure)
         born_terms = _born_terms(blocks, table, closure, ordinary)
         basis = _born_tensors(closure, born_terms)
         seed_table, class_of = build_seed_table(

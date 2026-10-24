@@ -425,16 +425,22 @@ class CountertermClosure:
         ordinary: Sequence[Sequence[Any]],
         native_model: Any,
         catalogue: Any,
+        *,
+        colours: SiteClosure | None = None,
     ) -> CountertermClosure:
         """Root terms of ``program``.
 
         ``sites`` are its ``root_sites``, ``ordinary`` the model's ordinary
         tree vertex entries by vertex (the Born closure's) and ``catalogue`` a
-        loop kernel catalogue binding all of their entries.
+        loop kernel catalogue binding all of their entries. ``colours`` (the
+        slice's Born closure) shares its closed colours with the program's
+        closure (``SiteClosure.share_colours``).
         """
 
         recursion = program.recursion
         closure = SiteClosure(program.blocks, native_model, catalogue)
+        if colours is not None:
+            closure.share_colours(colours)
         table = program.blocks.block_table(native_model)
         legs = table.legs
         full = (1 << len(legs)) - 1
@@ -1045,13 +1051,24 @@ class CountertermProgram:
         )
 
     def bind(
-        self, ordinary: Sequence[Sequence[Any]], native_model: Any, catalogue: Any
+        self,
+        ordinary: Sequence[Sequence[Any]],
+        native_model: Any,
+        catalogue: Any,
+        *,
+        colours: SiteClosure | None = None,
     ) -> CountertermProgram:
         """Attach the root terms (``catalogue`` binds the
-        ``counterterm_closure_entries``)."""
+        ``counterterm_closure_entries``; ``colours``, the slice's Born
+        closure, shares its closed colours)."""
 
         self.closure = CountertermClosure.build(
-            self.blocks, self.root_sites, ordinary, native_model, catalogue
+            self.blocks,
+            self.root_sites,
+            ordinary,
+            native_model,
+            catalogue,
+            colours=colours,
         )
         return self
 
