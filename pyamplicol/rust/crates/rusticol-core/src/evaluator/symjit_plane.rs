@@ -227,6 +227,7 @@ impl SymjitPlaneKernel {
     ) -> RusticolResult<Self> {
         let display_path = display_path.into();
         authenticate_storage_v4(bytes, &display_path)?;
+        require_symjit_host_cpu(&display_path)?;
 
         let mut loader_config = explicit_loader_config()?;
         loader_config.set_defuns(Defuns::new());
@@ -825,7 +826,32 @@ fn explicit_plane_config(complex: bool, opt_level: u8, compress: bool) -> Rustic
     Ok(config)
 }
 
-fn explicit_loader_config() -> RusticolResult<Config> {
+/// Refuses a CPU on which SymJIT's load-time code generation would crash.
+///
+/// Stored applications are IR that SymJIT 2.27 recompiles for the loading CPU
+/// (`CompilerType::Native`). On x86-64 it selects its AVX code generator from
+/// the AVX CPUID bit alone, but that generator also emits FMA3 instructions
+/// (complex products, fused multiply-add): on a CPU with AVX and without FMA3
+/// (Intel Sandy and Ivy Bridge, AMD Bulldozer, or a virtual-machine CPU model
+/// that masks FMA) the kernel dies with SIGILL, which no caller can recover.
+/// Such a CPU is refused here with the reason. Without AVX SymJIT takes its
+/// SSE generator, which reports what it cannot compile as an error.
+pub(crate) fn require_symjit_host_cpu(display_path: &Path) -> RusticolResult<()> {
+    #[cfg(target_arch = "x86_64")]
+    if std::is_x86_feature_detected!("avx") && !std::is_x86_feature_detected!("fma") {
+        return Err(RusticolError::compatibility(format!(
+            "cannot compile SymJIT application {} on this CPU: it has AVX without \
+             FMA3, and SymJIT's AVX code generator emits FMA3 instructions; use an \
+             x86-64 CPU with AVX and FMA3 (Intel Haswell, AMD Piledriver or newer), \
+             a CPU without AVX, or AArch64",
+            display_path.display()
+        )));
+    }
+    let _ = display_path;
+    Ok(())
+}
+
+pub(crate) fn explicit_loader_config() -> RusticolResult<Config> {
     let mut config = Config::new(CompilerType::Native, 0).map_err(|error| {
         RusticolError::internal(format!(
             "could not construct explicit SymJIT loader configuration: {error}"
