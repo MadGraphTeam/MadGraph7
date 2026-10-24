@@ -490,18 +490,14 @@ jobs:
       - uses: actions/checkout@v5
       # a skipped test fails the step (test_manager exits 1): test_mg7_plots
       # renders with matplotlib, test_mg7_gridpack_compression compares with pigz.
-      # No sudo/apt on the self-hosted runner: user install of matplotlib there,
-      # and without pigz installed the one test needing it is left out.
+      # No sudo/apt on the self-hosted runner, which has pigz installed: user
+      # install of matplotlib there.
       - name: install matplotlib and pigz
         run: |
             if command -v apt-get > /dev/null; then
               sudo apt-get update -q && sudo apt-get install -y --no-install-recommends python3-matplotlib pigz
             else
               python3 -c 'import matplotlib' 2> /dev/null || python3 -m pip install --user matplotlib
-            fi
-            if ! command -v pigz > /dev/null; then
-              echo "::warning::pigz not installed on this runner: test_pigz_output_is_gzip_compatible not run"
-              echo "NO_PIGZ=-e test_pigz_output_is_gzip_compatible" >> $GITHUB_ENV
             fi
 
       - name: "unittest_core_uncovered"
@@ -520,7 +516,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madmatrix_writer test_mg7_gridpack_compression test_mg7_launcher_script AlohaModelPathTest DDMColorFlowMG7Test IOExportPythia8Test TestBornGscale F2PYSplitterFlavorOrderTest OptimiseJampTest AxialGaugeReferenceTest CombineNameHashTest test_flavor_mask_placeholders_present_in_nonstandalone_templates test_splitorders_entry_points_agree_with_their_callers test_standalone_files_next_to_matrix_file test_UFO_cpp_flavor_mask_prefix_uses_index_bits test_UFO_fortran_flavor_mask_prefix_uses_index_bits $NO_PIGZ -t0
+            ./tests/test_manager.py test_madmatrix_writer test_mg7_gridpack_compression test_mg7_launcher_script AlohaModelPathTest DDMColorFlowMG7Test IOExportPythia8Test TestBornGscale F2PYSplitterFlavorOrderTest OptimiseJampTest AxialGaugeReferenceTest CombineNameHashTest test_flavor_mask_placeholders_present_in_nonstandalone_templates test_splitorders_entry_points_agree_with_their_callers test_standalone_files_next_to_matrix_file test_UFO_cpp_flavor_mask_prefix_uses_index_bits test_UFO_fortran_flavor_mask_prefix_uses_index_bits -t0
 
       - name: "unittest_loop_madevent_uncovered"
         if: ${{ !cancelled() }}
