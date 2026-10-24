@@ -1211,6 +1211,22 @@ fn scalar_primitive_defuns() -> RusticolResult<Defuns> {
     Ok(defuns)
 }
 
+/// Whether SymJIT's load-time code generation runs on this CPU
+/// ([`require_symjit_host_cpu`]): x86-64 with AVX and FMA3, or another
+/// architecture. Until a SymJIT release with the upstream fixes is pinned
+/// (siravan/symjit issues 22 and 23, pull requests 24 and 25) this gate is
+/// the fallback; afterwards it stays as a fallback.
+pub(crate) fn symjit_host_cpu_supported() -> bool {
+    #[cfg(target_arch = "x86_64")]
+    {
+        std::is_x86_feature_detected!("avx") && std::is_x86_feature_detected!("fma")
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        true
+    }
+}
+
 /// Refuses a CPU on which SymJIT's load-time code generation would crash.
 ///
 /// Stored applications are IR that SymJIT 2.27 recompiles for the loading CPU
@@ -1223,6 +1239,9 @@ fn scalar_primitive_defuns() -> RusticolResult<Defuns> {
 /// kernel dies with SIGILL, which no caller can recover. Such a CPU is refused
 /// here with the reason.
 pub(crate) fn require_symjit_host_cpu(display_path: &Path) -> RusticolResult<()> {
+    if symjit_host_cpu_supported() {
+        return Ok(());
+    }
     #[cfg(target_arch = "x86_64")]
     {
         let missing: Vec<&str> = [

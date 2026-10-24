@@ -49,7 +49,9 @@
 //! sealed, `evaluator::symjit_plane`; DESIGN §3.7): binary64 runs the plane
 //! applications and touches no Symbolica state, so it needs no licence;
 //! DoubleFloat and arbitrary precision decode the exact states in the
-//! carrier, under pyAmpliCol's Symbolica library key (`crate::licence`).
+//! carrier, under pyAmpliCol's Symbolica library key (`crate::licence`), as
+//! binary64 does on an x86-64 CPU without AVX and FMA3 (where SymJIT cannot
+//! compile).
 
 use super::dress::{Carrier, cast, parse_rational};
 use super::interference::{Entry, Interference, InterferenceRuntime, Ket};
@@ -2238,8 +2240,14 @@ impl TreeCarrier for f64 {
         zero: &Self,
     ) -> RusticolResult<Kernel<Self>> {
         match plane {
-            Some(bytes) => Ok(Kernel::Plane(Box::new(BinaryPlane::load(bytes, shape)?))),
-            None => exact_kernel(saved, zero),
+            // On an x86-64 CPU without AVX and FMA3, where SymJIT cannot
+            // compile (`symjit_plane::require_symjit_host_cpu`), binary64
+            // runs the exact states (under the library key, as the extended
+            // carriers do).
+            Some(bytes) if crate::engine::symjit_host_cpu_supported() => {
+                Ok(Kernel::Plane(Box::new(BinaryPlane::load(bytes, shape)?)))
+            }
+            _ => exact_kernel(saved, zero),
         }
     }
 }

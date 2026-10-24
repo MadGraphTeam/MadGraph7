@@ -4867,7 +4867,9 @@ pub(crate) use evaluator::symjit_plane::{
 ))]
 pub(crate) use evaluator::symjit_plane::compile_symbolica_evaluator_to_plane_application_bytes;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-pub(crate) use evaluator::symjit_plane::{PlaneDescriptor, SymjitPlaneKernel, SymjitPlaneLayout};
+pub(crate) use evaluator::symjit_plane::{
+    PlaneDescriptor, SymjitPlaneKernel, SymjitPlaneLayout, symjit_host_cpu_supported,
+};
 use evaluator::*;
 #[cfg(feature = "symbolica-runtime")]
 pub(crate) use evaluator::decode_exact_evaluator_state;
