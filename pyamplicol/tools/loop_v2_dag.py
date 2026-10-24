@@ -14,9 +14,10 @@ Stages:
   loop_blocks=True)``, default reachability, the request's loop-order
   bounds) and its blocks (``blocks._blocks``).
 * ``s1pp``: S1'', the counterterm program's DAG, its blocks and clone lines
-  (``ct_closure.CountertermBlocks.build``), chained after the request
-  model, the Born, the loop blocks and the families. Python lane only until
-  the native CT builder (A3).
+  (``ct_closure.counterterm_program_blocks``, the production chain: CT
+  lowering, the recursion with its inert rules, ``CountertermBlocks.build``),
+  chained after the request model, the Born and the loop blocks. Python lane
+  only until the native CT builder (A3).
 
 Lanes: ``python`` (the oracle) or ``native`` (``dag_input.native_blocks``).
 The request follows ``tools/loop_v2_generate.py``: ``--born`` bounds, loop
@@ -176,19 +177,13 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
         raise SystemExit("s1pp: the native CT builder is increment A3")
     from pyamplicol.loops.v2 import dag_input
     from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
-    from pyamplicol.loops.v2.blocks import build_tree_blocks, with_ward_kernels
-    from pyamplicol.loops.v2.ct_closure import (
-        CountertermBlocks,
-        lowered_counterterm_model,
-        program_order_limits,
+    from pyamplicol.loops.v2.blocks import (
+        build_tree_blocks,
+        vetoed_particle_ids,
+        with_ward_kernels,
     )
-    from pyamplicol.loops.v2.ct_recursion import CountertermRecursion
-    from pyamplicol.loops.v2.families import (
-        LoopOrderSelection,
-        ModelLoopCatalogue,
-        add_orders,
-        generate_families,
-    )
+    from pyamplicol.loops.v2.ct_closure import counterterm_program_blocks
+    from pyamplicol.loops.v2.families import LoopOrderSelection, add_orders
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.processes.model import build_model_process_ir
 
@@ -197,7 +192,7 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
         args.process,
         record["born_bounds"],
         record["loop_orders"],
-        ignored_particle_ids=tuple(args.ignore),
+        particle_veto=tuple(args.ignore),
     )
     prepared, continuation, fixed, _scale, _alpha = clock(
         "request model", lambda: prepare_request_model(compiled, request)
@@ -215,53 +210,31 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
             CompiledUFOModel(compiled),
             born_coupling_orders=dict(request.born_orders),
             block_coupling_orders=request.loop_order_bounds,
-            ignored_particle_ids=request.ignored_particle_ids,
+            ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
         ),
     )
     blocks, compiled = with_ward_kernels(blocks, compiled, fixed)
-    catalogue = ModelLoopCatalogue(
-        data, species_orders=prepared.structure.perturbative_species_orders
-    )
-    families = clock(
-        "families",
-        lambda: generate_families(blocks.block_table(data), catalogue, selection),
-    )
-    scope = (
-        tuple(sorted(request.born_orders.items())),
-        tuple(sorted(request.loop_order_bounds.items())),
-        request.compatibility,
-    )
-    lowered = clock(
-        "CT lowering",
-        lambda: lowered_counterterm_model(
-            compiled,
-            dict(fixed),
-            forbidden=request.ignored_particle_ids,
-            declaration=request.colour_declaration,
-            request=(scope, prepared, continuation),
-            order_limits=program_order_limits(
-                compiled, blocks.born_orders, selection.loop_orders
-            ),
-        ),
-    )
-    recursion = CountertermRecursion.build(
-        lowered,
-        prepared.counterterms.rules,
-        families,
+    # The production chain (``LoopSlice.generate``): the CT program depends
+    # on no loop family (REQUIREMENTS_ADDENDUM J), so none is generated here.
+    program = counterterm_program_blocks(
+        compiled,
+        prepared,
+        request.process,
         data,
         selection,
         blocks.born_orders,
-        forbidden=request.ignored_particle_ids,
-    )
-    ir = build_model_process_ir(
-        args.process, lowered.lowered.compiled.ir, color_accuracy="full"
-    )
-    program = clock(
-        "CT program",
-        lambda: CountertermBlocks.build(
-            recursion, ir, ignored_particle_ids=request.ignored_particle_ids
+        veto=request.particle_veto,
+        fixed_parameters=fixed,
+        declaration=request.colour_declaration,
+        continuation=continuation,
+        scope=(
+            tuple(sorted(request.born_orders.items())),
+            tuple(sorted(request.loop_order_bounds.items())),
+            request.compatibility,
         ),
+        stage=clock,
     )
+    lowered = program.recursion.model
     lowered_model = CompiledUFOModel(lowered.lowered.compiled)
     dag = program.blocks.blocks_dag
     native = clock("encode", lambda: dag_input.NativeDag.from_dag(dag, lowered_model))
@@ -294,7 +267,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--lane", choices=("python", "native"), default="native")
     parser.add_argument(
-        "--ignore", type=int, nargs="*", default=[], help="ignored particle ids"
+        "--ignore",
+        type=int,
+        nargs="*",
+        default=[],
+        help="ignored particle ids (s1p: signed tree-engine ids; s1pp: the "
+        "request's particle_veto, |PDG| codes with both charge states)",
     )
     parser.add_argument("--model", type=Path, help="compiled loop model (JSON)")
     parser.add_argument("--ufo", type=Path, help="loop_sm UFO (with --cache)")

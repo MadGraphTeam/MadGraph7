@@ -89,7 +89,12 @@ from pyamplicol.color.contraction_types import NC
 from pyamplicol.config import PoleSelection
 
 from . import reference_executor as rx
-from .blocks import TreeBlocks, build_tree_blocks, with_ward_kernels
+from .blocks import (
+    TreeBlocks,
+    build_tree_blocks,
+    vetoed_particle_ids,
+    with_ward_kernels,
+)
 from .catalogue import build_loop_kernel_catalogue
 from .colour import (
     SYMMETRIC_GROUP_FFT,
@@ -1065,7 +1070,11 @@ class SliceRequest:
     loop_orders: Mapping[str, int] | Sequence[Mapping[str, int]]
     corrections: tuple[str, ...] = ("QCD",)
     fixed_parameters: Mapping[str, str] = field(default_factory=dict)
-    ignored_particle_ids: tuple[int, ...] = ()
+    # Vetoed particles (|PDG| codes, ``generation.particle_veto``): removed
+    # from every tree vertex of every generation step (Born, blocks, loop
+    # vertices and propagators, the counterterm program), and every
+    # counterterm term whose loop content holds one is dropped.
+    particle_veto: tuple[int, ...] = ()
     accuracy: ColourAccuracy = "full"
     # A source-owned formal-N_c continuation (``LoopColorDeclaration``); LC
     # needs it for the counterterm and field colour grades (design §6.7).
@@ -1092,6 +1101,12 @@ class SliceRequest:
     # recursion over the CT-lowered model (``ct_closure``), "sites" from the
     # site closure of every rule, the permanent oracle (O6).
     counterterms: Literal["recursion", "sites"] = "recursion"
+
+    def __post_init__(self) -> None:
+        veto = tuple(sorted({abs(int(pdg)) for pdg in self.particle_veto}))
+        if 0 in veto:
+            raise ValueError("particle_veto takes particle PDG codes")
+        object.__setattr__(self, "particle_veto", veto)
 
     @property
     def exact_loop_orders(self) -> tuple[Mapping[str, int], ...]:
@@ -1213,7 +1228,7 @@ class LoopSlice:
     loop_catalogue: Any = None
     fourier: SeedFourier | None = None
     # The CT amplitudes from the tree recursion (``ct_closure``); the sites
-    # then hold only the rules it leaves to site closure.
+    # are then empty (site closure is the "sites" test oracle only).
     counterterm_program: Any = None
     # Whether LC/NLC pruning dropped skeletons (``_prune_colour``).
     colour_pruned: bool = False
@@ -1261,7 +1276,7 @@ class LoopSlice:
             CompiledUFOModel(compiled),
             born_coupling_orders=dict(request.born_orders),
             block_coupling_orders=request.loop_order_bounds,
-            ignored_particle_ids=request.ignored_particle_ids,
+            ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
         )
         # Trees that propagate a coloured particle with a width (or a
         # model-supplied propagator) take the full tree kernels: the
@@ -1270,7 +1285,9 @@ class LoopSlice:
         blocks, compiled = with_ward_kernels(blocks, compiled, fixed)
         table = blocks.block_table(data)
         loop_catalogue = ModelLoopCatalogue(
-            data, species_orders=structure.perturbative_species_orders
+            data,
+            species_orders=structure.perturbative_species_orders,
+            veto=request.particle_veto,
         )
         families = generate_families(table, loop_catalogue, selection)
         colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
@@ -1289,19 +1306,19 @@ class LoopSlice:
         program = None
         if request.counterterms == "recursion":
             # Production form of the counterterms (design §6.1): the tree
-            # recursion over the CT-lowered model, closed at leg 1; graded by
-            # N_c with a colour declaration (design §6.7).
+            # recursion over the CT-lowered model with exactly one insertion,
+            # closed at leg 1; graded by N_c with a colour declaration (design
+            # §6.7). No site closure and no loop matching.
             from .ct_closure import CountertermProgram
 
             program = CountertermProgram.build(
                 compiled,
                 prepared,
                 request.process,
-                families,
                 data,
                 selection,
                 blocks.born_orders,
-                forbidden=request.ignored_particle_ids,
+                veto=request.particle_veto,
                 fixed_parameters=fixed,
                 declaration=declaration,
                 continuation=continuation,
@@ -1312,15 +1329,19 @@ class LoopSlice:
                     request.compatibility,
                 ),
             )
-        sites = generate_counterterm_sites(
-            families,
-            table,
-            prepared.counterterms.rules,
-            data,
-            selection,
-            forbidden=request.ignored_particle_ids,
-            whole_rules=continuation is not None,
-            closed_rules=None if program is None else program.residual,
+        sites = (
+            # The O6 oracle: every rule closed at sites, witness admission.
+            generate_counterterm_sites(
+                families,
+                table,
+                prepared.counterterms.rules,
+                data,
+                selection,
+                forbidden=request.particle_veto,
+                whole_rules=continuation is not None,
+            )
+            if program is None
+            else CountertermSites((), {}, (), 0)
         )
         insertions = external_field_insertions(
             table.legs,
@@ -1328,7 +1349,7 @@ class LoopSlice:
             data,
             selection,
             blocks.born_orders,
-            forbidden=request.ignored_particle_ids,
+            forbidden=request.particle_veto,
         )
         ordinary = _ordinary_entries(prepared, data)
         entries = [e for site in sites.sites for e in site.rule.entries]
@@ -1339,9 +1360,10 @@ class LoopSlice:
             compiled, counterterm_entries=list({id(e): e for e in entries}.values())
         )
         closure = SiteClosure(blocks, data, catalogue)
-        # Cells without a site kernel that cancel between the rules closed on
-        # the same blocks (the Levi-Civita R2 of a Z with gluons over complete
-        # quark doublets) are left out; any other such cell fails below.
+        # Oracle sites: cells without a site kernel that cancel between the
+        # rules closed on the same blocks (the Levi-Civita R2 of a Z with
+        # gluons over complete quark doublets) are left out; any other such
+        # cell fails below.
         cancelled = closure.cancelled_cells(
             sites.sites,
             _site_coefficient(compiled, structure.fixed_parameters, continuation),

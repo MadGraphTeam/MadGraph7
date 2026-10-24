@@ -127,7 +127,7 @@ def generate(compiled: Any, native: Any, key: str, accuracy: str) -> Any:
         born,
         loop,
         fixed_parameters={"MB": "0"},
-        ignored_particle_ids=ignored,
+        particle_veto=ignored,
         accuracy=accuracy,
         colour_declaration=declaration,
     )

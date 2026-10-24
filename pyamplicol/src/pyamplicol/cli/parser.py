@@ -378,6 +378,17 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--particle-veto",
+        dest="generation.particle_veto",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="PARTICLE",
+        help=(
+            "v2 virtuals: remove PARTICLE (and its antiparticle) from every tree "
+            "vertex and its loops from the counterterms; repeat for each particle"
+        ),
+    )
+    parser.add_argument(
         "--validation",
         dest="generation.validation.enabled",
         action=argparse.BooleanOptionalAction,
