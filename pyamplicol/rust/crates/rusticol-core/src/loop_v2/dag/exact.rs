@@ -139,8 +139,7 @@ pub fn fsum(values: impl IntoIterator<Item = f64>) -> DagResult<f64> {
                 break;
             }
         }
-        if n > 0 && ((lo < 0.0 && partials[n - 1] < 0.0) || (lo > 0.0 && partials[n - 1] > 0.0))
-        {
+        if n > 0 && ((lo < 0.0 && partials[n - 1] < 0.0) || (lo > 0.0 && partials[n - 1] > 0.0)) {
             let y = lo * 2.0;
             let x = hi + y;
             let yr = x - hi;
@@ -283,6 +282,9 @@ mod tests {
         assert_eq!(roundtrip_ratio([1.0, 0.0], [0.0, 1.0]), Some([0.0, -1.0]));
         assert_eq!(python_complex_quotient([1.0, 1.0], [0.0, 0.0]), None);
         let tiny = f64::from_bits(1);
-        assert_eq!(exact_ratio([tiny, 0.0], [0.5, 0.0]), Some([2.0 * tiny, 0.0]));
+        assert_eq!(
+            exact_ratio([tiny, 0.0], [0.5, 0.0]),
+            Some([2.0 * tiny, 0.0])
+        );
     }
 }

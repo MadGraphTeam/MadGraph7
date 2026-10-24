@@ -359,8 +359,9 @@ impl ColumnarDag {
         let kinds: BTreeSet<i64> = kinds.iter().copied().collect();
         let generators: BTreeSet<i64> = generator_kinds.iter().copied().collect();
         let adjoint: BTreeSet<i64> = adjoint.iter().copied().collect();
-        let is_adjoint =
-            |current: u32| adjoint.contains(&self.tables.species[self.c_species[current as usize] as usize].pdg);
+        let is_adjoint = |current: u32| {
+            adjoint.contains(&self.tables.species[self.c_species[current as usize] as usize].pdg)
+        };
         let read: Vec<usize> = (0..self.interaction_count())
             .filter(|id| self.c_mask[self.i_result[*id] as usize] != rest)
             .collect();

@@ -600,8 +600,11 @@ pub fn compile(input: &DagInput) -> DagResult<Dag> {
                             }
                             // The compile-time evaluation group: kernel
                             // class, canonical inputs, result and coupling.
-                            let (inputs, factor) =
-                                canonical_kernel_evaluation(&Kernel::of(vertex, vertex.class), left_id, right_id);
+                            let (inputs, factor) = canonical_kernel_evaluation(
+                                &Kernel::of(vertex, vertex.class),
+                                left_id,
+                                right_id,
+                            );
                             let next = compile_groups.len() as i64;
                             let group = *compile_groups
                                 .entry((

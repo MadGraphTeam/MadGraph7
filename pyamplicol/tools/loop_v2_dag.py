@@ -20,7 +20,10 @@ Stages:
   loop blocks. The native lane runs the same chain and replaces only its
   ``CT program`` stage (``dag_input.native_counterterm_blocks`` and
   ``dag_input.u1_leaking_structures``), so the lowering and the recursion
-  are the production ones.
+  are the production ones. ``--blocks native`` chains the native loop-block
+  DAG (equal to Python's by its S1' digest) into the Ward-kernel query and
+  compiles only the Born in Python (rule 6: no oracle run repeats an
+  upstream Python stage whose native twin is proven equal).
 
 Lanes: ``python`` (the oracle) or ``native`` (``dag_input.native_blocks``).
 The request follows ``tools/loop_v2_generate.py``: ``--born`` bounds, loop
@@ -175,6 +178,65 @@ def _s1p(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> Non
     }
 
 
+def _native_blocks_chain(
+    clock: _Clock, process: Any, compiled: Any, request: Any, fixed: Any
+) -> tuple[Any, tuple[Any, ...]]:
+    """``(compiled, born_orders)`` of ``with_ward_kernels(build_tree_blocks(...))``
+    with the loop-block DAG native: the Born in Python, the Ward-kernel query
+    on the native DAG's ``coloured_propagated()`` (the current scan of
+    ``ward_breaking_fields``) and the Born DAG."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.generation.dag_compiler import compile_generic_dag
+    from pyamplicol.loops.v2 import dag_input
+    from pyamplicol.loops.v2.blocks import (
+        _born_roots,
+        vetoed_particle_ids,
+        ward_breaking_fields,
+    )
+    from pyamplicol.loops.v2.catalogue import compile_tree_kernel_variant
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
+
+    model = CompiledUFOModel(compiled)
+    ignored = vetoed_particle_ids(request.particle_veto)
+    born = clock(
+        "Born",
+        lambda: compile_generic_dag(
+            process,
+            model=model,
+            max_coupling_orders=dict(request.born_orders),
+            ignored_particle_ids=ignored,
+        ),
+    )
+    native = clock(
+        "loop-block DAG (native)",
+        lambda: dag_input.native_blocks(
+            replace(process, color_accuracy="full"),
+            model,
+            max_coupling_orders=request.loop_order_bounds,
+            ignored_particle_ids=ignored,
+        ),
+    )
+    propagated = SimpleNamespace(
+        sources=(),
+        currents=tuple(
+            SimpleNamespace(index=SimpleNamespace(particle_id=pdg, auxiliary_kind=None))
+            for pdg in sorted(native.coloured_propagated())
+        ),
+    )
+    if model_tree_kernel_variant(model) != "full" and ward_breaking_fields(
+        (propagated, born), compiled, fixed
+    ):
+        compiled = compile_tree_kernel_variant(compiled, "full")
+    born_orders = tuple(
+        sorted({root.coupling_orders for root in _born_roots(born, model)})
+    )
+    return compiled, born_orders
+
+
 def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> None:
     from pyamplicol.loops.v2 import dag_input
     from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
@@ -207,17 +269,23 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
         frozenset(add_orders(tuple(o.items())) for o in request.exact_loop_orders),
     )
     process = build_model_process_ir(args.process, compiled.ir, color_accuracy="full")
-    blocks = clock(
-        "Born + loop blocks",
-        lambda: build_tree_blocks(
-            process,
-            CompiledUFOModel(compiled),
-            born_coupling_orders=dict(request.born_orders),
-            block_coupling_orders=request.loop_order_bounds,
-            ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
-        ),
-    )
-    blocks, compiled = with_ward_kernels(blocks, compiled, fixed)
+    if args.blocks == "python":
+        blocks = clock(
+            "Born + loop blocks",
+            lambda: build_tree_blocks(
+                process,
+                CompiledUFOModel(compiled),
+                born_coupling_orders=dict(request.born_orders),
+                block_coupling_orders=request.loop_order_bounds,
+                ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+            ),
+        )
+        blocks, compiled = with_ward_kernels(blocks, compiled, fixed)
+        born_orders = blocks.born_orders
+    else:
+        compiled, born_orders = _native_blocks_chain(
+            clock, process, compiled, request, fixed
+        )
     recursion: list[Any] = []
 
     class _NativeProgram(Exception):
@@ -240,7 +308,7 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
             request.process,
             data,
             selection,
-            blocks.born_orders,
+            born_orders,
             veto=request.particle_veto,
             fixed_parameters=fixed,
             declaration=request.colour_declaration,
@@ -308,6 +376,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--lane", choices=("python", "native"), default="native")
     parser.add_argument(
+        "--blocks",
+        choices=("python", "native"),
+        default="python",
+        help="s1pp: the Born and loop blocks upstream of the CT program in "
+        "Python, or the loop blocks native (equal by S1')",
+    )
+    parser.add_argument(
         "--ignore",
         type=int,
         nargs="*",
@@ -340,6 +415,7 @@ def main(argv: list[str] | None = None) -> int:
         "loop_orders": loop,
         "loop_bounds": loop,
         "ignored_particle_ids": list(args.ignore),
+        "blocks": args.blocks,
     }
     try:
         record["commit"] = subprocess.check_output(

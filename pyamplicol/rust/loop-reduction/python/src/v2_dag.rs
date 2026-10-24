@@ -28,6 +28,9 @@ type ColourTuple = (
     Vec<Vec<u8>>,
 );
 
+/// `(representative, factor re bits, im bits)` per current.
+type EquivalenceRecords = Vec<(u32, u64, u64)>;
+
 /// One block for Python (`dag_input.NativeDag.blocks`).
 #[derive(IntoPyObject)]
 struct PyBlock {
@@ -165,7 +168,7 @@ impl V2Dag {
         py: Python<'_>,
         tables: &str,
         restricted: bool,
-    ) -> PyResult<(Vec<(u32, u64, u64)>, Self)> {
+    ) -> PyResult<(EquivalenceRecords, Self)> {
         let tables = tables.to_owned();
         py.detach(|| {
             let tables = ReuseTables::from_json(&tables)?;

@@ -21,11 +21,11 @@
 //! Python sorts its key tuples: by the kernel class string, the inputs and
 //! the runtime coupling identity (both passed as ranks of Python's order).
 
+use super::blocks::canonical_ids;
 use super::exact::{
     Complex, bits_equal, canonical, canonical_zero, complex_mul, exact_product, exact_ratio,
     finite, fsum, key_bits, pair_eq, roundtrip_ratio,
 };
-use super::blocks::canonical_ids;
 use super::input::{DagInput, Vertex};
 use super::recursion::{Dag, FxMap};
 use super::{ColumnarDag, DagError, DagResult, NO_HELICITY, NO_LEG, invalid};
@@ -86,7 +86,11 @@ pub trait ReuseDag {
 
 /// `_canonical_kernel_evaluation`: canonical representative inputs and the
 /// concrete kernel's factor.
-pub fn canonical_kernel_evaluation(kernel: &Kernel, left: u32, right: u32) -> ((u32, u32), Complex) {
+pub fn canonical_kernel_evaluation(
+    kernel: &Kernel,
+    left: u32,
+    right: u32,
+) -> ((u32, u32), Complex) {
     let mut inputs = (left, right);
     if kernel.swap {
         inputs = (inputs.1, inputs.0);
@@ -170,8 +174,7 @@ fn negated(terms: &[Term]) -> TermVector {
 
 /// `_term_vector_scaled_exactly`.
 fn scaled_exactly(representative: &[Term], factor: Complex, candidate: &[Term]) -> bool {
-    if !finite(factor) || pair_eq(factor, [0.0, 0.0]) || representative.len() != candidate.len()
-    {
+    if !finite(factor) || pair_eq(factor, [0.0, 0.0]) || representative.len() != candidate.len() {
         return false;
     }
     representative.iter().zip(candidate).all(|(rep, cand)| {
@@ -343,7 +346,9 @@ pub fn derive<D: ReuseDag>(
         if dag.is_source(id) {
             let (leg, helicity) = dag.source_state(id);
             if leg == NO_LEG || helicity == NO_HELICITY {
-                return invalid(format!("source current {id} lacks physical source metadata"));
+                return invalid(format!(
+                    "source current {id} lacks physical source metadata"
+                ));
             }
             let representative = if derived(id) {
                 *sources
@@ -365,9 +370,7 @@ pub fn derive<D: ReuseDag>(
                 equivalences[dag.right(i) as usize],
             ) {
                 (Some(left), Some(right)) => Ok((left, right)),
-                _ => invalid(
-                    "current-value equivalence requires parents from an earlier subset",
-                ),
+                _ => invalid("current-value equivalence requires parents from an earlier subset"),
             }
         };
         if !derived(id) {
@@ -620,7 +623,9 @@ impl ReuseTables {
         let mut kernels = Vec::with_capacity(raw.kernels.len());
         for (row, (kind, _class, re, im, swap, exchange)) in raw.kernels.into_iter().enumerate() {
             if kernel_by_kind.insert(kind, row).is_some() {
-                return Err(DagError::Malformed(format!("kernel of kind {kind} repeated")));
+                return Err(DagError::Malformed(format!(
+                    "kernel of kind {kind} repeated"
+                )));
             }
             let bits = |pair: [u64; 2]| [f64::from_bits(pair[0]), f64::from_bits(pair[1])];
             kernels.push(Kernel {
