@@ -220,9 +220,12 @@ class InsertionReachability:
                                         found.setdefault(result, set()).add(total)
                 sub = (sub - 1) & mask
             if found:
-                currents[mask] = {pid: set(_pareto_minimal(o)) for pid, o in found.items()}
+                currents[mask] = {
+                    pid: set(_pareto_minimal(o)) for pid, o in found.items()
+                }
         entering = {
-            int(pdg): int(particle.anti_pdg) for pdg, particle in model.particles.items()
+            int(pdg): int(particle.anti_pdg)
+            for pdg, particle in model.particles.items()
         }
         return cls(
             full,
@@ -255,7 +258,9 @@ class InsertionReachability:
                     continue
                 for orders in own:
                     for choice in product(*options):
-                        if _within(_upper_orders((*orders, *sum(choice, ()))), self.limits):
+                        if _within(
+                            _upper_orders((*orders, *sum(choice, ()))), self.limits
+                        ):
                             return True
         return False
 
@@ -992,16 +997,19 @@ class CountertermProgram:
             )
             recursion = recursion.with_inert(rules, reachability.admits)
         if recursion.residual:
-            names = {
+            particles = {
                 int(item["pdg_code"]): str(item["name"])
                 for item in model_data(native_model)["particles"]
             }
+
+            def fields(name: str) -> str:
+                return " ".join(particles[p] for p in rules[name].particle_pdgs)
+
             raise UnloweredCountertermError(
                 "counterterm rules the tree recursion cannot lower, whose "
                 "vertices can enter a tree of the request: "
                 + "; ".join(
-                    f"{name} [{' '.join(names[pdg] for pdg in rules[name].particle_pdgs)}]"
-                    f" ({reason})"
+                    f"{name} [{fields(name)}] ({reason})"
                     for name, reason in sorted(recursion.residual.items())
                 )
             )

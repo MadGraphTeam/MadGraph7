@@ -590,14 +590,19 @@ def test_insertion_reachability_is_sound_against_the_site_oracle(ct_slice, name)
     every rule the site oracle closes on the slice's exact tree currents
     (every partition of the legs, the plain admission, no witness) enters a
     tree for it. It also discriminates: the quark vertices enter no tree of
-    g g > g g, nor the gluon and (vetoed) Z vertices a tree of Drell-Yan."""
+    g g > g g, nor the gluon and (vetoed) Z vertices a tree of Drell-Yan.
+    Were every admitted rule unlowerable, the reachable ones would be refused
+    and the others inert (``CountertermRecursion.with_inert``)."""
 
     from pyamplicol.loops.v2.blocks import vetoed_particle_ids
     from pyamplicol.loops.v2.ct_closure import (
         InsertionReachability,
         program_order_limits,
     )
-    from pyamplicol.loops.v2.ct_recursion import admitted_alternatives
+    from pyamplicol.loops.v2.ct_recursion import (
+        CountertermRecursion,
+        admitted_alternatives,
+    )
     from pyamplicol.loops.v2.ct_sites import generate_counterterm_sites
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.models.loading import COUNTERTERM_INSERTION_ORDER
@@ -643,9 +648,20 @@ def test_insertion_reachability_is_sound_against_the_site_oracle(ct_slice, name)
         for entry in rule.entries
     }
     assert UNREACHABLE_VERTICES.get(name, set()) <= unreachable, sorted(unreachable)
-    assert not {
-        entry.vertex_name for site in sites for entry in site.rule.entries
-    } & unreachable
+    assert (
+        not {entry.vertex_name for site in sites for entry in site.rule.entries}
+        & unreachable
+    )
+    # The inert rule itself, as if every admitted rule could not be lowered:
+    # the reachable ones stay refused, the others become inert.
+    admitted = {rule_name for rule_name in ct.rules if admission[rule_name]}
+    every = CountertermRecursion(
+        None, {}, {}, {}, dict.fromkeys(admitted, "not lowered (test)"), (), ()
+    )
+    split = every.with_inert(ct.rules, reachability.admits)
+    assert set(split.residual) == reachable
+    assert set(split.inert) == admitted - reachable
+    assert all("enters no tree" in reason for reason in split.inert.values())
 
 
 # The tree route (form 1) is a test of the lowering; the closure, the
