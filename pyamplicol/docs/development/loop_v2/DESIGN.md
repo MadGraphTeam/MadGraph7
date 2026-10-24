@@ -2398,9 +2398,9 @@ I also searched for 2023–2026 developments [L*] and measured the providers on 
 To reproduce:
 
 ```sh
-source /shared/external/pyLoopAmpliCol/workspace/env.sh
-PY=/shared/external/pyLoopAmpliCol/workspace/venv/bin/python
-cd /shared/external/pyLoopAmpliCol/workspace/tmp/engine-v2/otf && $PY -I run_all.py
+source /shared/vhirschi/t3code/pyamplicol/workspace/env.sh
+PY=/shared/vhirschi/t3code/pyamplicol/workspace/venv/bin/python
+cd /shared/vhirschi/t3code/pyamplicol/workspace/tmp/engine-v2/otf && $PY -I run_all.py
 cd ../cft && $PY -I schedules_gluon.py 8 && $PY -I memory_gluon.py 7
 cd ../lcs && $PY -I lc_structure_counts.py
 cd ../revision && $PY -I mb0_all.py && $PY -I b_dense.py && $PY -I ttll_cost.py mb0 \
