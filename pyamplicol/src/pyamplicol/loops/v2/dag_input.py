@@ -691,7 +691,9 @@ def _column(values: Iterable[Any], dtype: str) -> array[Any]:
 
 
 def encode_dag(dag: GenericDAG) -> bytes:
-    """``dag`` as a columnar container (the oracle side of the digests)."""
+    """``dag`` as a columnar container (the oracle side of the digests);
+    ``NativeDagUnsupported`` for a field outside its column type (masks and
+    the helicity ancestry are u64)."""
 
     species: dict[Any, int] = {}
     flavours: dict[tuple[int, ...], int] = {}
@@ -829,7 +831,14 @@ def encode_dag(dag: GenericDAG) -> bytes:
     header_columns = []
     payload = bytearray()
     for name, dtype in dtypes.items():
-        column = _column(values[name], dtype)
+        try:
+            column = _column(values[name], dtype)
+        except OverflowError as error:
+            # E.g. the helicity ancestry of a full-colour tree DAG wider than
+            # 64 bits: the container (and the native DAG) holds u64 masks.
+            raise NativeDagUnsupported(
+                f"{name} values outside the native {dtype} column"
+            ) from error
         header_columns.append([name, dtype, len(column)])
         payload += column.tobytes()
     header = {
@@ -1362,7 +1371,9 @@ def native_reuse(
     (``_derive_current_value_equivalences``; ``restricted``: of the currents
     that share their contract, as ``assign_recursive_current_evaluation_reuse``
     runs it) and the interactions regrouped through it
-    (``_rewrite_interaction_evaluation_reuse``): the oracle of A3's port."""
+    (``_rewrite_interaction_evaluation_reuse``): the oracle of A3's port.
+    ``dag`` must fit the columns (``encode_dag``; otherwise
+    ``NativeDagUnsupported``)."""
 
     from pyamplicol.generation.dag_equivalence import _CurrentValueEquivalence
 

@@ -114,7 +114,6 @@ def _assert_equal(compiled, model, text, orders, **options):
 
 
 CONTROLS = (
-    ("g g > g g", {"QCD": 4}),
     ("u u~ > d d~ g", {"QCD": 5}),
     ("g g > g g g", {"QCD": 5}),
     # No coloured leg: the colour-sector branch of the engine (A3).
@@ -165,6 +164,17 @@ def test_native_builder_refuses_what_it_does_not_cover(models):
             build_model_process_ir("g g > g g", compiled.ir, color_accuracy="lc"),
             model,
         )
+    from pyamplicol.generation.dag_compiler import compile_generic_dag
+    from pyamplicol.models import BuiltinSMModel
+    from pyamplicol.models.builtin.process_ir import build_process_ir
+
+    # A full-colour tree DAG whose helicity ancestry needs 80 bits (rule 2).
+    tree = compile_generic_dag(
+        build_process_ir("u u~ > d d~ g", color_accuracy="full"),
+        model=BuiltinSMModel(),
+    )
+    with pytest.raises(dag_input.NativeDagUnsupported, match="c_ancestry"):
+        dag_input.encode_dag(tree)
 
 
 def test_native_builder_sources_never_name_symbolica():
@@ -190,69 +200,185 @@ def test_native_builder_sources_never_name_symbolica():
 
 @pytest.mark.loop_nightly
 def test_native_builder_needs_no_symbolica_licence(
-    models, loop_sm_compiled_model, tmp_path
+    models, loop_sm_compiled_model, tmp_path, monkeypatch
 ):
-    """The Rust builder runs on its tables alone, in a process without a key:
-    a loop-block DAG, and the CT program of g g > g g g, whose shared
-    contracts run the derivation with its exact rationals.
+    """Rule 4: every binding runs on its tables alone in a process without a
+    key, and equals the oracle there. ``V2Dag.build``: a loop-block DAG and
+    the CT program of g g > g g g (its closed colour components share
+    contracts but merge no class, so the build's derivation sees unit
+    factors only). ``V2Dag.reuse``, full and restricted, with the rewrite:
+    the electroweak copies scaled by ``SCALED_FACTORS`` and the guard copies,
+    whose non-unit factor products and quotients take the Symbolica
+    ``Rational`` path of ``dag/exact.rs``. ``V2Dag.u1_leaking``: the leaking
+    CT DAG of u u~ > d d~ g (the projection gate off, as in the
+    ``loop_physics`` test).
 
     The child imports the extension, which starts a restricted Symbolica
     instance: like ``test_six_gluon_generation_completes_without_a_personal_key``
     it must not overlap another unlicensed Symbolica process of the user.
     """
 
+    import json
+
+    from pyamplicol.generation import dag_equivalence
     from pyamplicol.models.external import CompiledUFOModel
 
     compiled, model = models
     process = _process(compiled, "u u~ > d d~ g")
-    paths, expected = [], []
-    paths.append(tmp_path / "blocks.json")
-    paths[-1].write_text(
+    request: dict = {"build": [], "reuse": []}
+    expected: dict = {"digests": [], "reuse": [], "interactions": []}
+    request["build"].append(str(tmp_path / "blocks.json"))
+    Path(request["build"][-1]).write_text(
         dag_input.dag_input(process, model, max_coupling_orders={"QCD": 5})
     )
-    expected.append(_native(model, process, {"QCD": 5}).digest())
+    expected["digests"].append(_native(model, process, {"QCD": 5}).digest())
     program, _native_program = _assert_ct_equal(
         loop_sm_compiled_model, "g g > g g g", {"QCD": 3}, {"QCD": 5}
     )
     dag = program.blocks.blocks_dag
-    paths.append(tmp_path / "ct.json")
-    paths[-1].write_text(
+    lowered = CompiledUFOModel(program.recursion.model.lowered.compiled)
+    request["build"].append(str(tmp_path / "ct.json"))
+    Path(request["build"][-1]).write_text(
         dag_input.dag_input(
             dag.process,
-            CompiledUFOModel(program.recursion.model.lowered.compiled),
+            lowered,
             max_coupling_orders=program.recursion.coupling_order_limits(),
             reachability=ct_closure.RootReachability((1 << len(dag.process.legs)) - 1),
         )
     )
-    expected.append(
-        dag_input.NativeDag.from_dag(
-            dag, CompiledUFOModel(program.recursion.model.lowered.compiled)
-        ).digest()
+    expected["digests"].append(dag_input.NativeDag.from_dag(dag, lowered).digest())
+
+    # The oracle's exact helpers on non-unit factors: the twins in exact.rs
+    # take the Rational path on the same arguments.
+    exact_calls = {"product": 0, "ratio": 0}
+    product = dag_equivalence._exact_representable_complex_product
+    ratio = dag_equivalence._exact_representable_complex_ratio
+
+    def counted_product(left, right):
+        if left not in dag_equivalence._EXACT_UNITS and (
+            right not in dag_equivalence._EXACT_UNITS
+        ):
+            exact_calls["product"] += 1
+        return product(left, right)
+
+    def counted_ratio(numerator, denominator):
+        exact_calls["ratio"] += 1
+        return ratio(numerator, denominator)
+
+    monkeypatch.setattr(contract_classes, "FACTORS", SCALED_FACTORS)
+    fixtures = [contract_classes._sector_copies(), _guard_copies(monkeypatch)[:2]]
+    for number, (reuse_dag, reuse_model) in enumerate(fixtures):
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                dag_equivalence, "_exact_representable_complex_product", counted_product
+            )
+            patch.setattr(
+                dag_equivalence, "_exact_representable_complex_ratio", counted_ratio
+            )
+            records = [
+                [
+                    [
+                        item.representative_id,
+                        dag_input._bits(item.factor[0]),
+                        dag_input._bits(item.factor[1]),
+                    ]
+                    for item in _derive_current_value_equivalences(
+                        reuse_dag, reuse_model, derived_current_ids=derived
+                    )
+                ]
+                for derived in (None, _shared_contract_current_ids(reuse_dag))
+            ]
+            rewritten = assign_recursive_current_evaluation_reuse(
+                reuse_dag, reuse_model
+            )
+        paths = [tmp_path / f"reuse{number}.{suffix}" for suffix in ("bin", "json")]
+        paths[0].write_bytes(dag_input.encode_dag(reuse_dag))
+        paths[1].write_text(dag_input.reuse_tables(reuse_dag, reuse_model))
+        request["reuse"].append([*map(str, paths), str(tmp_path / f"out{number}.bin")])
+        expected["reuse"].append(records)
+        expected["interactions"].append(rewritten.interactions)
+    assert exact_calls["product"] > 0 and exact_calls["ratio"] > 0
+
+    program, native = _assert_ct_equal(
+        loop_sm_compiled_model, "u u~ > d d~ g", {"QCD": 3}, {"QCD": 5}
+    )
+    monkeypatch.setattr(ct_closure, "u1_projected", lambda compiled: False)
+    scans = []
+    scan = dag_input.NativeDag.u1_leaking
+
+    def recorded(self, kinds, generator_kinds, adjoint, fundamental, rest):
+        arguments = [
+            *(
+                sorted(int(v) for v in values)
+                for values in (kinds, generator_kinds, adjoint)
+            ),
+            int(fundamental),
+            int(rest),
+        ]
+        found = scan(self, *arguments)
+        scans.append((arguments, sorted(found)))
+        return found
+
+    monkeypatch.setattr(dag_input.NativeDag, "u1_leaking", recorded)
+    assert dag_input.u1_leaking_structures(native) == (
+        ct_closure.u1_leaking_structures(program)
+    )
+    ((arguments, leaking),) = scans
+    assert leaking
+    (tmp_path / "u1.bin").write_bytes(native.dag.columns())
+    request["u1"] = [str(tmp_path / "u1.bin"), arguments]
+    (tmp_path / "request.json").write_text(json.dumps(request))
+
+    script = (
+        "import json, sys\n"
+        "from pyamplicol.loops.native import load_loop_native\n"
+        "native = load_loop_native()\n"
+        "request = json.load(open(sys.argv[1]))\n"
+        "out = {'digests': [], 'reuse': []}\n"
+        "for path in request['build']:\n"
+        "    out['digests'].append(native.V2Dag.build(open(path).read()).digest())\n"
+        "for columns, tables, rewritten in request['reuse']:\n"
+        "    handle = native.V2Dag.from_columns(open(columns, 'rb').read())\n"
+        "    records = []\n"
+        "    for restricted in (False, True):\n"
+        "        found, dag = handle.reuse(open(tables).read(), restricted)\n"
+        "        records.append([list(item) for item in found])\n"
+        "    open(rewritten, 'wb').write(bytes(dag.columns()))\n"
+        "    out['reuse'].append(records)\n"
+        "columns, arguments = request['u1']\n"
+        "handle = native.V2Dag.from_columns(open(columns, 'rb').read())\n"
+        "out['u1'] = sorted(handle.u1_leaking(*arguments))\n"
+        "print(json.dumps(out))\n"
     )
     environment = {
         key: value for key, value in os.environ.items() if key != "SYMBOLICA_LICENSE"
     }
-    script = (
-        "import sys\n"
-        "from pyamplicol.loops.native import load_loop_native\n"
-        "for path in sys.argv[1:]:\n"
-        "    print(load_loop_native().V2Dag.build(open(path).read()).digest())\n"
-    )
     result = subprocess.run(
-        [sys.executable, "-c", script, *map(str, paths)],
+        [sys.executable, "-c", script, str(tmp_path / "request.json")],
         env=environment,
         capture_output=True,
         text=True,
         check=True,
         timeout=300,
     )
-    assert result.stdout.strip().splitlines()[-2:] == expected
+    out = json.loads(result.stdout.strip().splitlines()[-1])
+    assert out["digests"] == expected["digests"]
+    assert out["reuse"] == expected["reuse"]
+    for (reuse_dag, _model), (*_inputs, rewritten), interactions in zip(
+        fixtures, request["reuse"], expected["interactions"], strict=True
+    ):
+        decoded = dag_input._decode(
+            Path(rewritten).read_bytes(), reuse_dag.process, reuse_dag.color_plan
+        )
+        assert decoded.interactions == interactions
+    assert out["u1"] == leaking
 
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
     ("text", "orders"),
     (
+        ("g g > g g", {"QCD": 4}),
         ("u u~ > g g g", {"QCD": 5}),
         ("u u~ > e- e+ g g", {"QCD": 4, "QED": 2}),
         ("e+ e- > u u~ g", {"QCD": 3, "QED": 2}),
@@ -417,6 +543,149 @@ def test_native_reuse_derivation_equals_the_oracle_bit_for_bit(monkeypatch):
     assert (-1.0, 0.0) in merged and (0.0, -1.0) in merged
 
 
+# Coefficients of the guard copies (``_guard_copies``): ``c / 3`` does not
+# round-trip (``3 * fl(c / 3) != c``); ``p / 3`` and ``q / 9`` round to the same
+# lookup key and round-trip, but ``3 * p != q``.
+GUARD_NON_ROUNDTRIP = float.fromhex("0x1.f4bea97b9e977p+0")
+GUARD_UNSCALED = (
+    float.fromhex("0x1.414c3423c5fd7p+0"),
+    float.fromhex("0x1.e1f24e35a8fc3p+1"),
+)
+
+
+def _rounded_ratio(numerator, denominator):
+    quotient = complex(*numerator) / complex(*denominator)
+    return (quotient.real, quotient.imag)
+
+
+# Each mutant drops one fail-closed guard of the oracle (``dag_equivalence``):
+# the exactness proof of the projective factor, ``fsum``, the round-trip bit
+# check of the lookup key, the coefficient-by-coefficient scaling check.
+GUARD_MUTANTS = {
+    "_exact_representable_complex_ratio": _rounded_ratio,
+    "fsum": sum,
+    "_roundtrip_complex_ratio": _rounded_ratio,
+    "_term_vector_scaled_exactly": lambda representative, factor, candidate: True,
+}
+
+
+def _guard_copies(monkeypatch):
+    """A0's electroweak DAG with four exact copies whose coefficients decide
+    one class at each guard of ``GUARD_MUTANTS``; returns the DAG, the model
+    and the current each guard decides.
+
+    Copy 1: a one-term current is 3 in every other copy and 1 here; the
+    lookup keys collide, and 1/3 is not a binary64 value (its rounding would
+    scale 3 back to 1 exactly). Copy 2: one term summed over three
+    interactions 2**60, 1, -2**60 (``fsum`` 1: the class merges; a plain sum
+    0). Copy 3: a two-term current (3, c) everywhere and (6, 2c) here, with
+    no lookup key (c / 3 does not round-trip). Copy 4: (3, p) and (9, q),
+    the same key and an exact pivot ratio 3, but 3p != q."""
+
+    from collections import defaultdict
+    from dataclasses import replace
+
+    from pyamplicol.generation.dag_equivalence import _current_term_vector
+
+    copies = 4
+    monkeypatch.setattr(contract_classes, "FACTORS", ((1.0, 0.0),) * copies)
+    monkeypatch.setattr(contract_classes, "DEFORMATION", (1.0, 0.0))
+    dag, model = contract_classes._sector_copies()
+    count = len(dag.currents) // (copies + 1)
+    stride = len(dag.interactions) // (copies + 1)
+    by_result = defaultdict(list)
+    for item in dag.interactions[:stride]:
+        by_result[item.result_id].append(item.id)
+    generated = [c.id for c in dag.currents[:count] if not c.is_source]
+    singles = [
+        i
+        for i in generated
+        if len(dag.currents[i].index.external_labels) == 2 and len(by_result[i]) == 1
+    ]
+    pairs = [
+        i
+        for i in generated
+        if len(dag.currents[i].index.external_labels) == 3 and len(by_result[i]) == 2
+    ]
+    equivalences = list(_derive_current_value_equivalences(dag, model))
+
+    def in_term_order(current_id):
+        # The interactions of a two-term current in its term-vector order
+        # (unit evaluation factors: the coefficients are the colour weights).
+        probe = [
+            replace(dag.interactions[i], color_weight=(float(k + 1), 0.0))
+            for k, i in enumerate(by_result[current_id])
+        ]
+        terms = _current_term_vector(
+            dag,
+            dag.currents[current_id],
+            probe,
+            model,
+            current_equivalences=equivalences,
+            equivalence_by_kind={},
+        )
+        values = [coefficient for _key, coefficient in terms]
+        assert sorted(values) == [(1.0, 0.0), (2.0, 0.0)]
+        return [by_result[current_id][int(value[0]) - 1] for value in values]
+
+    weights = {}
+    rows = (
+        (singles[0], (3.0,), (1.0,), 1),
+        (pairs[0], (3.0, GUARD_NON_ROUNDTRIP), (6.0, 2 * GUARD_NON_ROUNDTRIP), 3),
+        (pairs[1], (3.0, GUARD_UNSCALED[0]), (9.0, GUARD_UNSCALED[1]), 4),
+    )
+    for current_id, everywhere, here, special in rows:
+        ids = (
+            in_term_order(current_id) if len(everywhere) > 1 else by_result[current_id]
+        )
+        for copy in range(copies + 1):
+            for item, value in zip(
+                ids, here if copy == special else everywhere, strict=True
+            ):
+                weights[item + copy * stride] = (value, 0.0)
+    interactions = [
+        replace(item, color_weight=weights.get(item.id, item.color_weight))
+        for item in dag.interactions
+    ]
+    (summed,) = by_result[singles[1]]
+    summed += 2 * stride
+    interactions[summed] = replace(interactions[summed], color_weight=(2.0**60, 0.0))
+    for value in (1.0, -(2.0**60)):
+        interactions.append(
+            replace(
+                interactions[summed], id=len(interactions), color_weight=(value, 0.0)
+            )
+        )
+    decided = {
+        "_exact_representable_complex_ratio": singles[0] + count,
+        "fsum": singles[1] + 2 * count,
+        "_roundtrip_complex_ratio": pairs[0] + 3 * count,
+        "_term_vector_scaled_exactly": pairs[1] + 4 * count,
+    }
+    return replace(dag, interactions=tuple(interactions)), model, decided
+
+
+@pytest.mark.loop_fast
+def test_native_reuse_derivation_fails_closed_where_the_oracle_does(monkeypatch):
+    """The derivation's fail-closed guards (``_guard_copies``) value by value:
+    each decides one class, which moves when the oracle drops that guard, so
+    the native twins (``dag/exact.rs`` ``exact_ratio``, ``roundtrip_ratio``,
+    ``fsum``; ``reuse.rs`` ``scaled_exactly``) are pinned there."""
+
+    from pyamplicol.generation import dag_equivalence
+
+    dag, model, decided = _guard_copies(monkeypatch)
+    full = _assert_reuse_equal(dag, model)
+    for name, current_id in decided.items():
+        # fsum merges the summed current with its original; every other
+        # guard keeps its current in a class of its own.
+        assert (full[current_id].representative_id == current_id) == (name != "fsum")
+        with monkeypatch.context() as patch:
+            patch.setattr(dag_equivalence, name, GUARD_MUTANTS[name])
+            mutated = _derive_current_value_equivalences(dag, model)
+        assert mutated[current_id] != full[current_id], name
+
+
 _PROGRAMS: dict = {}
 
 
@@ -465,36 +734,26 @@ def _assert_ct_equal(compiled_path, text, born, loop, veto=(), *, rebuild=False)
     return program, native
 
 
-CT_CONTROLS = (
-    ("g g > g g g", {"QCD": 3}, {"QCD": 5}),
-    ("g g > u u~", {"QCD": 2}, {"QCD": 4}),
-)
-
-
 @pytest.mark.loop_fast
-@pytest.mark.parametrize(("text", "born", "loop"), CT_CONTROLS)
-def test_native_counterterm_program_equals_the_closure(
-    loop_sm_compiled_model, text, born, loop
-):
-    """The DESIGN §6.1 block set of the CT program: multi-trace colour
-    states, U(1)-projection copies and clone lines of the lowered model."""
+def test_native_counterterm_program_equals_the_closure(loop_sm_compiled_model):
+    """The DESIGN §6.1 block set of the g g > g g g CT program: multi-trace
+    colour states, U(1)-projection copies and clone lines of the lowered
+    model (quark lines and the wider sets: ``loop_physics`` below)."""
 
     program, native = _assert_ct_equal(
-        loop_sm_compiled_model, text, born, loop, rebuild=text == "g g > g g g"
+        loop_sm_compiled_model, "g g > g g g", {"QCD": 3}, {"QCD": 5}, rebuild=True
     )
     assert native.clones
-    if text == "g g > g g g":
-        # Closed colour components share evaluation contracts: the derivation.
-        assert _shared_contract_current_ids(program.blocks.blocks_dag)
-        assert any(
-            c.index.color_state.traces for c in program.blocks.blocks_dag.currents
-        )
+    # Closed colour components share evaluation contracts: the derivation.
+    assert _shared_contract_current_ids(program.blocks.blocks_dag)
+    assert any(c.index.color_state.traces for c in program.blocks.blocks_dag.currents)
 
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
     ("text", "born", "loop", "veto"),
     (
+        ("g g > u u~", {"QCD": 2}, {"QCD": 4}, ()),
         ("u u~ > d d~ g", {"QCD": 3}, {"QCD": 5}, ()),
         ("u u~ > d d~ g g", {"QCD": 4}, {"QCD": 6}, ()),
         ("g g > u u~ a g", {"QCD": 3, "QED": 1}, {"QCD": 5, "QED": 1}, ()),
@@ -509,8 +768,9 @@ def test_native_counterterm_program_equals_the_closure(
 def test_native_counterterm_program_block_sets(
     loop_sm_compiled_model, text, born, loop, veto
 ):
-    """The remaining §6.1 block sets (the U(1) projection taking a quark
-    line's gluon, photons, massive tops with W_T != 0) and a top veto."""
+    """The remaining §6.1 block sets (quark loops and lines, the U(1)
+    projection taking a quark line's gluon, photons, massive tops with
+    W_T != 0) and a top veto."""
 
     _assert_ct_equal(loop_sm_compiled_model, text, born, loop, veto)
 
