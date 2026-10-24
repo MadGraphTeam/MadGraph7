@@ -103,6 +103,10 @@ pub const DERIVED_PER_BYTE: u64 = 8192;
 /// (`legs < 64`).
 pub const RANKS: usize = 66;
 
+/// GMP's allocations, summed, per byte and bit of length of a
+/// multi-precision weight's numbers (`Tally::weight`; measured at most 4.9).
+const GMP_ALLOCATED: u64 = 16;
+
 /// The fixed part of a probe's margin: room for the allocator's own growth
 /// and for the fixed-size allocations around the bounded ones (the thread
 /// pool's per-thread state, error messages).
@@ -328,16 +332,30 @@ impl Tally {
     }
 
     /// The exact weight `text` parsed (`dress::parse_rational`): a fraction
-    /// `p/q`, else a decimal (`source_scalar::decimal_rational`, whose power
-    /// of ten `10^|e - places|` takes `|e - places| × log2(10) / 8` bytes;
-    /// refused from 2^32, where numerica panics). The parsed value is kept;
-    /// the parse's buffers and the power's squarings are temporaries.
+    /// `p/q`, else a decimal (`source_scalar::decimal_rational`: its digits
+    /// as one integer, times or over `10^|e - places|`, which takes
+    /// `|e - places| × log2(10) / 8` bytes; refused from 2^32, where
+    /// numerica panics). A text of more than 40 characters or a power of
+    /// more than 16 bytes is multi-precision (numerica's GMP numbers, which
+    /// allocate through C `malloc`), at most a byte per character. The
+    /// parsed value is kept; the parse's buffers, base conversion, the
+    /// power's squarings, the product and a fraction's normalising gcd and
+    /// divisions are temporaries, at most four times the numbers at once,
+    /// and GMP's allocations sum to at most [`GMP_ALLOCATED`] × `size` ×
+    /// log2(`size`) bytes for numbers of `size` bytes (its subquadratic
+    /// algorithms allocate per recursion level). Both are measured with
+    /// GMP's allocations counted (`tests/loop_v2_plan_derive_bound.rs`): the
+    /// peak at most 0.74 of its charge and the sum at most 4.9 × `size` ×
+    /// log2(`size`), over powers of ten of 10^5 to 10^8 digits of either
+    /// sign, mantissas of up to 10^7 digits and fractions of up to 3 × 10^7
+    /// digits.
     fn weight(&mut self, text: &str) -> RusticolResult<()> {
         let text = text.trim();
         let len = text.len() as u64;
         // Numbers of more than 40 characters are multi-precision; all of the
         // text's numbers together take at most a byte per character.
         let long = if len > 40 { bytes(len, 1) } else { 0 };
+        let mut size = if len > 40 { len } else { 0 };
         let mut kept = long;
         let mut scratch = long.saturating_mul(4);
         if !text.contains('/') {
@@ -349,7 +367,11 @@ impl Tally {
                     "a decimal weight's power of ten beyond 2^32",
                 )?;
                 // log2(10) / 8 < 107 / 256.
-                let digits = bytes(power.saturating_mul(107) / 256, 1);
+                let digits = power.saturating_mul(107) / 256;
+                if digits > 16 {
+                    size = size.saturating_add(digits);
+                }
+                let digits = bytes(digits, 1);
                 kept = kept.saturating_add(digits.saturating_mul(2));
                 scratch = scratch.saturating_add(digits.saturating_mul(4));
                 self.iterate(digits.saturating_mul(512));
@@ -358,6 +380,12 @@ impl Tally {
         self.keep_bytes(kept);
         self.hold_bytes(&mut 0, scratch);
         self.alive(scratch);
+        if size > 0 {
+            let log = u64::from(64 - size.leading_zeros());
+            self.allocated = self
+                .allocated
+                .saturating_add(size.saturating_mul(log).saturating_mul(GMP_ALLOCATED));
+        }
         if len > 40 {
             self.iterate(len.saturating_mul(u64::from(64 - len.leading_zeros())));
         }

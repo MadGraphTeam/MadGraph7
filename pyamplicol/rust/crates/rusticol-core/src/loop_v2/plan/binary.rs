@@ -1340,6 +1340,8 @@ struct Reader<'a> {
     tables: Vec<Option<Box<dyn Any>>>,
     /// In the skip pass of [`Reader::records`].
     skip: bool,
+    /// The rayon pool's threads ([`pool_threads`]).
+    threads: usize,
 }
 
 /// The decoded size a member declares and the part of it charged so far.
@@ -1360,6 +1362,32 @@ impl Budget {
             _ => Err(beyond_declared(col)),
         }
     }
+}
+
+/// The rayon pool's thread count for a read (inside a pool's worker, that
+/// pool's), the global pool started fallibly first. rayon starts it lazily at
+/// its first use and panics there when a thread cannot be spawned (under an
+/// address-space limit: `WouldBlock`), leaving the process without a pool;
+/// the reader starts it itself and refuses with an error instead, at every
+/// read once a start has failed (rayon's later uses would panic).
+fn pool_threads() -> RusticolResult<usize> {
+    static STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    if STARTED.get().is_none() {
+        if let Err(error) = rayon::ThreadPoolBuilder::new().build_global() {
+            if let Some(cause) = std::error::Error::source(&error) {
+                return Err(invalid(format!(
+                    "binary plan: the thread pool cannot start: {cause}"
+                )));
+            }
+            // Started already, or a start failed earlier in this process
+            // (rayon then panics at any use).
+            std::panic::catch_unwind(rayon::current_num_threads).map_err(|_| {
+                invalid("binary plan: the thread pool failed to start in this process")
+            })?;
+        }
+        let _ = STARTED.set(());
+    }
+    Ok(rayon::current_num_threads())
 }
 
 #[cold]
@@ -1425,7 +1453,7 @@ impl<'a> Reader<'a> {
         // (a probe, with its margin), the thread pool being up first: its
         // per-thread state would otherwise be allocated mid-decode, at the
         // edge of an address space the decode may have used to its limit.
-        let _ = rayon::current_num_threads();
+        let threads = pool_threads()?;
         derive::reserve("binary plan: the decoded model needs", declared)?;
         let mut cursors = Vec::with_capacity(COLUMN_NAMES.len());
         for _ in COLUMN_NAMES {
@@ -1466,6 +1494,7 @@ impl<'a> Reader<'a> {
             budget: Budget { declared, used: 0 },
             tables: Vec::new(),
             skip: false,
+            threads,
         };
         // The string table, charged as the writer charges it; a string takes
         // its bytes from what the byte column still holds.
@@ -1588,7 +1617,7 @@ impl Stream for Reader<'_> {
     {
         let len = self.len(col, 0)?;
         self.budget.charge(col, allocation(len, size_of::<T>()))?;
-        let threads = rayon::current_num_threads();
+        let threads = self.threads;
         if threads == 1 || self.skip || len < PARALLEL_RECORDS {
             return fill(self, col, len, items, visit);
         }
@@ -1631,6 +1660,7 @@ impl Stream for Reader<'_> {
                     },
                     tables: Vec::new(),
                     skip: false,
+                    threads,
                 };
                 reader.restore(start);
                 for record in records {

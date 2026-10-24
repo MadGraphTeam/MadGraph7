@@ -16,9 +16,10 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
+use std::ffi::c_void;
 use std::io::Read;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::{Mutex, Once};
 
 use rusticol_core::loop_v2::plan::FormPolicy;
 use rusticol_core::loop_v2::plan::binary::PlanModel;
@@ -87,6 +88,53 @@ unsafe impl GlobalAlloc for Counting {
     }
 }
 
+// GMP's allocations (numerica's multi-precision numbers are rug's, over GMP,
+// which allocates through C `malloc`, not the global allocator; MPFR through
+// GMP's functions), counted through GMP's memory functions alike.
+type GmpAllocate = unsafe extern "C" fn(usize) -> *mut c_void;
+type GmpReallocate = unsafe extern "C" fn(*mut c_void, usize, usize) -> *mut c_void;
+type GmpFree = unsafe extern "C" fn(*mut c_void, usize);
+
+unsafe extern "C" {
+    /// GMP's `mp_set_memory_functions` (linked through numerica's GMP).
+    #[link_name = "__gmp_set_memory_functions"]
+    fn gmp_set_memory_functions(
+        allocate: Option<GmpAllocate>,
+        reallocate: Option<GmpReallocate>,
+        free: Option<GmpFree>,
+    );
+}
+
+fn gmp_measuring() -> bool {
+    MEASURING.try_with(Cell::get).unwrap_or(false)
+}
+
+unsafe extern "C" fn gmp_allocate(size: usize) -> *mut c_void {
+    if gmp_measuring() {
+        grow(size);
+    }
+    unsafe { libc::malloc(size) }
+}
+
+unsafe extern "C" fn gmp_reallocate(pointer: *mut c_void, old: usize, size: usize) -> *mut c_void {
+    if gmp_measuring() {
+        grow(size);
+        LIVE.fetch_sub(old as i64, Ordering::Relaxed);
+    }
+    unsafe { libc::realloc(pointer, size) }
+}
+
+unsafe extern "C" fn gmp_free(pointer: *mut c_void, size: usize) {
+    if gmp_measuring() {
+        LIVE.fetch_sub(size as i64, Ordering::Relaxed);
+    }
+    unsafe { libc::free(pointer) }
+}
+
+/// GMP's allocations counted from the first measurement on (C `malloc` both
+/// ways, so a number allocated before is freed alike).
+static GMP_COUNTED: Once = Once::new();
+
 /// One measurement at a time (the test harness runs tests in threads; the
 /// loader's derivations run on the calling thread).
 static WINDOW: Mutex<()> = Mutex::new(());
@@ -100,6 +148,9 @@ fn measure(name: &str, json: &[u8]) {
         .unwrap_or_else(|error| panic!("{name}: {error}"));
     let model = PlanModel::from_binary(&member).unwrap();
     let bound = model.derive_bound().unwrap();
+    GMP_COUNTED.call_once(|| unsafe {
+        gmp_set_memory_functions(Some(gmp_allocate), Some(gmp_reallocate), Some(gmp_free));
+    });
     let window = WINDOW
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -123,6 +174,9 @@ fn measure(name: &str, json: &[u8]) {
         bound.allocated,
         allocated as f64 / bound.allocated as f64,
     );
+    if std::env::var_os("CALIBRATE").is_some() {
+        return;
+    }
     assert!(
         peak <= bound.memory,
         "{name}: peak {peak} > {}",
@@ -210,24 +264,76 @@ fn split_vertices_stay_within_the_bound() {
     }
 }
 
+/// `classes` seed classes of `terms` terms, each of weight `weight`, and one
+/// seed key reading them all with it.
+fn weights_plan(classes: usize, terms: usize, weight: &str) -> Value {
+    let mut plan = empty();
+    let column = vec![json!([0, weight, "0"]); terms];
+    plan["seed_classes"] = vec![json!({"columns": [column]}); classes].into();
+    let keys: Vec<Value> = (0..classes).map(|k| json!([k, "1", weight])).collect();
+    plan["seeds"] = json!([{"classes": keys}]);
+    plan
+}
+
+/// The weights' cases: name, classes, terms, weight.
+fn weight_cases(scale: u32) -> Vec<(String, usize, usize, String)> {
+    let digits = |n: usize| "1234567890".repeat(n.div_ceil(10))[..n].to_string();
+    let power = 10usize.pow(scale);
+    let mantissa = digits(power / 10);
+    let mut cases = vec![
+        ("p/q".into(), 2000, 16, "-3/4".into()),
+        ("long fraction".into(), 200, 8, format!("{}/7", digits(300))),
+        ("12.5e3000".into(), 50, 4, "12.5e3000".into()),
+    ];
+    for (name, weight) in [
+        (format!("1e{power}"), format!("1e{power}")),
+        (format!("1e-{power}"), format!("1e-{power}")),
+        (format!("-9e{power}"), format!("-9e{power}")),
+        // A long mantissa times a power: the product, and for a negative
+        // power the normalising gcd and divisions.
+        (
+            format!("{} digits e{power}", power / 10),
+            format!("{mantissa}e{power}"),
+        ),
+        (
+            format!("{} digits e-{power}", power / 10),
+            format!("{mantissa}e-{power}"),
+        ),
+        (
+            format!("0.{} digits e-{power}", power / 10),
+            format!("0.{mantissa}e-{power}"),
+        ),
+        // A long fraction with a common factor (gcd and divisions).
+        (
+            format!("{} digits / {} digits", power, power),
+            format!("{}0/{}5", digits(power), digits(power)),
+        ),
+    ] {
+        cases.push((name, 2, 2, weight));
+    }
+    cases
+}
+
 #[test]
 fn weights_stay_within_the_bound() {
-    let long = format!("{}/7", "1234567890".repeat(30));
-    for (classes, terms, weight) in [
-        (2000, 16, "-3/4"),
-        (200, 8, long.as_str()),
-        (50, 4, "12.5e3000"),
-        (4, 2, "1e200000"),
-    ] {
-        let mut plan = empty();
-        let column = vec![json!([0, weight, "0"]); terms];
-        plan["seed_classes"] = vec![json!({"columns": [column]}); classes].into();
-        let keys: Vec<Value> = (0..classes).map(|k| json!([k, "1", weight])).collect();
-        plan["seeds"] = json!([{"classes": keys}]);
-        measure(
-            &format!("weights {classes} x {terms} {}", &weight[..4]),
-            &text(&plan),
-        );
+    for (name, classes, terms, weight) in weight_cases(5) {
+        let plan = weights_plan(classes, terms, &weight);
+        measure(&format!("weights {classes} x {terms} {name}"), &text(&plan));
+    }
+}
+
+/// The decimal powers and long numbers at larger scales: 10^(10^6) to
+/// 10^(10^SCALE) (`LOOP_PLAN_BOUND_SCALE`, default 7; GMP's algorithms change
+/// with the operands' sizes), ignored by default (seconds to minutes).
+#[test]
+#[ignore = "large weights (evidence runs)"]
+fn large_weights_stay_within_the_bound() {
+    let top = std::env::var("LOOP_PLAN_BOUND_SCALE").map_or(7, |s| s.parse().unwrap());
+    for scale in 6..=top {
+        for (name, classes, terms, weight) in weight_cases(scale).into_iter().skip(3) {
+            let plan = weights_plan(classes, terms, &weight);
+            measure(&format!("weights {classes} x {terms} {name}"), &text(&plan));
+        }
     }
 }
 
@@ -281,5 +387,34 @@ fn exported_plans_stay_within_their_bound() {
             raw
         };
         measure(path, &json);
+    }
+}
+
+#[test]
+#[ignore = "calibration"]
+fn calibrate_weights() {
+    let digits = |n: usize| "1234567890".repeat(n.div_ceil(10))[..n].to_string();
+    let spec = std::env::var("CALIBRATE").unwrap();
+    for item in spec.split(',') {
+        let (l, k) = item.split_once(':').unwrap();
+        let (l, k): (usize, i64) = (l.parse().unwrap(), k.parse().unwrap());
+        let weight = if l == 0 {
+            // a fraction of |k| digits over |k| digits sharing a factor 5
+            let n = k.unsigned_abs() as usize;
+            format!("{}0/{}5", digits(n), digits(n))
+        } else if k == 0 {
+            format!("0.{}", digits(l))
+        } else if l > 1 && k.unsigned_abs() > 1 && k < -1_000_000_000 {
+            let n = (k.unsigned_abs() - 1_000_000_000) as usize;
+            format!("{}0/{}5", digits(l), digits(n))
+        } else {
+            format!("{}e{k}", digits(l))
+        };
+        let mut plan = empty();
+        plan["seed_classes"] = json!([{"columns": [[[0, weight, "0"]]]}]);
+        plan["seeds"] = json!([]);
+        let size = ((l as f64) + k.unsigned_abs() as f64) * 0.4152;
+        eprintln!("CAL l={l} k={k} size={size:.0}");
+        measure(&format!("cal {l}:{k}"), &text(&plan));
     }
 }
