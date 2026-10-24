@@ -275,15 +275,21 @@ def _mg7_postproc_report(run_dir, nlines=120):
     generate_events log of _run_mg7_postproc, for a failure message: both live
     in a tmp dir that CI does not upload."""
     import glob
+    def tail(path):
+        try:
+            text = ''.join(open(path).readlines()[-nlines:])
+        except Exception as err:
+            text = '(could not read %s: %s)' % (path, err)
+        return '----- %s (last %d lines) -----\n%s' % (path, nlines, text)
+
     out = []
     for run in sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*'))):
         out.append('----- %s -----\n%s' % (run, '\n'.join(sorted(os.listdir(run)))))
-    log = pjoin(run_dir, 'mg7_postproc.log')
-    try:
-        tail = ''.join(open(log).readlines()[-nlines:])
-    except Exception as err:
-        tail = '(could not read %s: %s)' % (log, err)
-    out.append('----- %s (last %d lines) -----\n%s' % (log, nlines, tail))
+        # the logs and scripts of the post-processing tools (Pythia8 shower, ...)
+        for path in sorted(glob.glob(pjoin(run, '*.log')) + glob.glob(pjoin(run, '*.sh'))):
+            if not os.path.basename(path).startswith('compile_'):
+                out.append(tail(path))
+    out.append(tail(pjoin(run_dir, 'mg7_postproc.log')))
     return '\n'.join(out)
 
 
