@@ -443,7 +443,7 @@ class NativeGeneration:
     def _path_positions(self, families: FamilySet) -> set[int]:
         """The positions on the prefix paths of ``families``' closures."""
 
-        parent = families.graph.parent
+        parent = families.prefixes.parent
         seen: set[int] = set()
         found: set[int] = set()
         for family in families.families.values():

@@ -5,7 +5,7 @@
 orientation from the tree currents, the loop lines, the counterterms and the
 field insertions. With the top excluded (and MB = 0), loop_sm's virtual is
 massless QCD with five flavours and MS-bar alpha_s, NJet's scheme, so every
-Laurent coefficient compares directly with ``njet_nf5_controls.json`` (NJet
+Laurent coefficient compares directly with ``njet_nf5_topfree.json`` (NJet
 double-double at pyAmpliCol's exact points, several renormalisation scales).
 This is the scheme the g g > g g g g g finite part needs against
 ``gg_ggggg_njet.json``.
@@ -33,7 +33,7 @@ FIXTURE = (
     / "fixtures"
     / "loop"
     / "required"
-    / "njet_nf5_controls.json"
+    / "njet_nf5_topfree.json"
 )
 COEFFICIENTS = ("born", "finite", "single_pole", "double_pole")
 

@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "name": "njet_nf5_controls",
+ "name": "njet_nf5_topfree",
  "scheme": "massless-qcd-nf5",
  "scheme_description": "massless QCD: five massless quark flavours (u, d, s, c, b) in the loops and in the MS-bar running of alpha_s(mu_R); NO top quark. pyAmpliCol reproduces it with loop_sm, MB = 0 and ignored_particle_ids = (6,) (no closed top loop, no top counterterm or field insertion).",
  "source": "NJet 3.1.2 (g g > g g, g g > g g g g) and NJet 2.1.1 (g g > g g g) double-double, numerical colour-summed amplitudes through NJetAccuracy (driver tools/loop_reference/njet/njet_driver.cpp, runner tools/loop_reference/njet/run_njet.py), copied from the calibration runs of the NJet reference package; no pyAmpliCol code involved.",
