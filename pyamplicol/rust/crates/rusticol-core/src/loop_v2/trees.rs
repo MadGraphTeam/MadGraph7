@@ -688,6 +688,15 @@ where
 
 /// A binary64 plane application, evaluated on row-major complex rows
 /// (transposed into its split-complex planes: inputs re, im, then outputs).
+///
+/// SymJIT's SIMD and scalar kernels of one application round differently in
+/// the last bits, and a call runs its aligned blocks of `simd_lanes` rows in
+/// SIMD and the rest in scalar code. Rows are therefore padded to whole SIMD
+/// blocks (copies of the last row, discarded), so every row runs in SIMD and
+/// a point's value does not depend on the batch it is evaluated in. (A block
+/// whose lanes take different branches of a branching program is replayed
+/// in scalar code by SymJIT; the programs branch on parameters only, which
+/// the points of a batch share.)
 struct BinaryPlane {
     kernel: SymjitPlaneKernel,
     inputs: usize,
@@ -721,30 +730,33 @@ impl PlaneRows<f64> for BinaryPlane {
         if rows == 0 {
             return Ok(());
         }
+        // Whole SIMD blocks: padding rows repeat the last row.
+        let padded = rows.div_ceil(self.kernel.simd_lanes()) * self.kernel.simd_lanes();
         let planes = 2 * (self.inputs + self.outputs);
         self.planes.clear();
-        self.planes.resize(planes * rows, 0.0);
-        for (row, values) in inputs.chunks_exact(self.inputs.max(1)).enumerate() {
+        self.planes.resize(planes * padded, 0.0);
+        for row in 0..padded {
+            let values = &inputs[row.min(rows - 1) * self.inputs..][..self.inputs];
             for (input, value) in values.iter().enumerate() {
-                self.planes[2 * input * rows + row] = value.re;
-                self.planes[(2 * input + 1) * rows + row] = value.im;
+                self.planes[2 * input * padded + row] = value.re;
+                self.planes[(2 * input + 1) * padded + row] = value.im;
             }
         }
         {
             let descriptors = self
                 .planes
-                .chunks_exact_mut(rows)
+                .chunks_exact_mut(padded)
                 .map(PlaneDescriptor::from_slice)
                 .collect();
             let mut table = self.kernel.build_raw_table(descriptors)?;
-            self.kernel.execute_table(&mut table, 0, rows)?;
+            self.kernel.execute_table(&mut table, 0, padded)?;
         }
         let base = 2 * self.inputs;
         for (row, values) in outputs.chunks_exact_mut(self.outputs.max(1)).enumerate() {
             for (output, value) in values.iter_mut().enumerate() {
                 *value = Complex::new(
-                    self.planes[(base + 2 * output) * rows + row],
-                    self.planes[(base + 2 * output + 1) * rows + row],
+                    self.planes[(base + 2 * output) * padded + row],
+                    self.planes[(base + 2 * output + 1) * padded + row],
                 );
             }
         }

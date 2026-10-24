@@ -313,7 +313,8 @@ impl SymjitPlaneKernel {
             .expect("validated SymJIT output plane count")
     }
 
-    #[cfg(test)]
+    /// Points per SIMD call (1 without a SIMD kernel).
+    #[cfg(any(test, feature = "loop-v2"))]
     pub(crate) const fn simd_lanes(&self) -> usize {
         self.simd_lanes
     }
