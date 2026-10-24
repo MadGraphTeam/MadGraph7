@@ -333,6 +333,31 @@ def _decimal_power(base: Decimal, exponent: int) -> Decimal:
 # --------------------------------------------------------------------- tree rows
 
 
+def _canonical_runtime_schema(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """``RuntimeExpressionSchema.from_mapping(raw).to_mapping()`` without
+    keeping the contract's canonical JSON and payload cache: the same keys,
+    order, values and checks."""
+
+    from pyamplicol.generation.contracts import _REQUIRED_RUNTIME_SCHEMA_KEYS
+
+    try:
+        canonical = json.dumps(
+            raw, allow_nan=False, separators=(",", ":"), sort_keys=True
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "runtime expression schema must contain canonical JSON values"
+        ) from exc
+    payload = json.loads(canonical)
+    del canonical
+    if not isinstance(payload, dict):
+        raise ValueError("runtime expression schema root must be an object")
+    missing = sorted(_REQUIRED_RUNTIME_SCHEMA_KEYS - payload.keys())
+    if missing:
+        raise ValueError("runtime expression schema is missing: " + ", ".join(missing))
+    return {str(key): value for key, value in payload.items()}
+
+
 class TreeRows:
     """Currents of the tree runtime at one point (design §3.2 exports).
 
@@ -357,9 +382,7 @@ class TreeRows:
         jit: bool = True,
         propagated_currents: Iterable[int] | None = None,
     ):
-        from pyamplicol.generation.runtime_schema import (
-            build_runtime_expression_schema,
-        )
+        from pyamplicol.generation.runtime_schema import build_runtime_schema
         from pyamplicol.models.external import CompiledUFOModel
 
         self.compiled = compiled
@@ -369,7 +392,7 @@ class TreeRows:
             # Every block enters a loop vertex with its own propagator, also
             # where no tree interaction consumes it (reachability-pruned DAGs):
             # by default every current is propagated.
-            self.runtime_schema = build_runtime_expression_schema(
+            raw = build_runtime_schema(
                 dag,
                 self.model,
                 process_id="loop-v2-blocks",
@@ -379,7 +402,15 @@ class TreeRows:
                     else propagated_currents
                 ),
             )
-        self.schema = self.runtime_schema.to_mapping()
+        # The runtime schema's canonical mapping (``RuntimeExpressionSchema.
+        # to_mapping`` of ``build_runtime_expression_schema``); the contract
+        # object, whose canonical JSON and cached payload would double it
+        # (0.24 GB for g g > g g g g's counterterm program), is built from it
+        # on the first replay (``runtime_schema``): native per-point trees
+        # read the mapping only.
+        self.schema = _canonical_runtime_schema(raw)
+        del raw
+        self._runtime_schema: Any = None
         # The stage expressions are built on first use (``stages``): native
         # per-point trees compile their own, stage by stage (``native_trees``).
         self._blueprint = None
@@ -413,6 +444,18 @@ class TreeRows:
                 for term in compiled.ir.vertex_terms
             }
         )
+
+    @property
+    def runtime_schema(self) -> Any:
+        """The runtime schema contract (``RuntimeExpressionSchema``) of the
+        DAG, built on first use from ``schema``: its canonical JSON is that of
+        ``build_runtime_expression_schema`` (canonical JSON round-trips)."""
+
+        if self._runtime_schema is None:
+            from pyamplicol.generation.contracts import RuntimeExpressionSchema
+
+            self._runtime_schema = RuntimeExpressionSchema.from_mapping(self.schema)
+        return self._runtime_schema
 
     def _built(self) -> Any:
         from pyamplicol.generation.contracts import StageCompilationInput
