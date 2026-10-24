@@ -47,8 +47,10 @@ build_pythia8() { mg_install "install pythia8"; }
 build_emela()   { mg_install "install eMELA"; }
 build_contur()  { mg_install "install rivet" "install contur"; }
 build_looptools() {
-    (cd "$SRC/vendor/IREGI/src" && make) || return 1
-    (cd "$SRC/vendor/CutTools" && make) || return 1
+    # serial: the IREGI/CutTools makefiles do not declare their Fortran module
+    # dependencies, so a parallel make fails on a missing .mod
+    (cd "$SRC/vendor/IREGI/src" && MAKEFLAGS= make) || return 1
+    (cd "$SRC/vendor/CutTools" && MAKEFLAGS= make) || return 1
     mkdir -p "$HEP/IREGI/src" "$HEP/CutTools/lib"
     cp "$SRC/vendor/IREGI/src/libiregi.a" "$HEP/IREGI/src/"
     cp "$SRC/vendor/CutTools/includects/libcts.a" "$SRC/vendor/CutTools/includects/mpmodule.mod" "$HEP/CutTools/lib"
