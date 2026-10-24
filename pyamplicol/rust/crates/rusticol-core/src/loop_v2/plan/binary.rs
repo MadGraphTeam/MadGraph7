@@ -14,7 +14,7 @@
 //!   floating-point value: every number is an integer of the loader's types and
 //!   every exact weight a `p/q` string, so Python's float formatting never
 //!   arises.
-//! - **Binary member** ([`PlanModel::binary`], [`LoopProgramV4::load_binary`]):
+//! - **Binary member** ([`PlanModel::binary`], [`read_binary`]):
 //!   every field of every record is one column, in a fixed traversal order;
 //!   list lengths and option flags are columns too, and strings (exact weights,
 //!   kernel input kinds) are numbers into a string table in first-use order.
@@ -29,31 +29,41 @@
 //!   model, so `binary → model → binary` is bitwise.
 //!
 //! Layout (little endian): magic `LOOPPLAN`, format `u32`, plan schema `u32`,
-//! column count `u32`, `u32` zero; then per column (in the order of `Col`) a
-//! width `u8` (0, 1, 2, 4 or 8), a delta flag `u8`, `u16` and `u32` zero, the
-//! value count `u64`, the base `i64`, and `count × width` payload bytes padded
-//! to a multiple of eight. Writing and reading share one traversal
-//! (`visit_plan` over a `Stream`), so the two cannot disagree on the order.
+//! column count `u32`, `u32` zero, the decoded size `u64` and the padding
+//! length `u64`; then per column (in the order of `Col`) a width `u8` (0, 1,
+//! 2, 4 or 8), a delta flag `u8`, `u16` and `u32` zero, the value count
+//! `u64`, the base `i64`, and `count × width` payload bytes padded to a
+//! multiple of eight; then the padding's zero bytes. Writing and reading share
+//! one traversal (`visit_plan` over a `Stream`), so the two cannot disagree on
+//! the order.
 //!
-//! Reading fails closed with an error, never a panic or an allocation
-//! abort: headers, widths and payload sizes are checked, every value is
+//! **Bounded decoding.** The member is a compressed encoding (a width-0
+//! column holds any count of one value without payload, a shared list is
+//! copied at every reference), so its decoded size is not a function of its
+//! length alone. The member therefore declares the size of its decoded model:
+//! the bytes of every allocation the decoding makes (list buffers at their
+//! item size, string bytes, the string table, the copies of shared lists and
+//! their table), each plus [`ALLOCATION`] bytes. The reader refuses a member
+//! that declares more than [`DECODED_PER_BYTE`] bytes per member byte, charges
+//! every allocation against the declaration *before* making it (a list's
+//! length before its buffer, a copy before it is made) and refuses the member
+//! at the first charge beyond it; at the end the charges must equal the
+//! declaration. A member of `n` bytes thus decodes into at most
+//! `DECODED_PER_BYTE × n` bytes (plus the allocator's rounding) in time
+//! linear in `n`, whatever it declares; a decompression bomb is refused with
+//! an error before it allocates. The writer computes the same charges in the
+//! same traversal and pads a member whose plan shares more than the bound
+//! allows (zero bytes after the columns), so every plan has a member and none
+//! is refused (no plan written today needs padding: ≈ 15 decoded bytes per
+//! member byte at seven legs).
+//!
+//! Reading fails closed with an error, never a panic or an allocation abort:
+//! headers, widths, payload sizes and the padding are checked, every value is
 //! checked against its field's type, every column must be read to its end, a
-//! string takes its bytes from what the byte column still holds, and every
-//! allocation of the decoded model is fallible (list reservations, the copy
-//! of a shared list at each of its references and of a table string at each
-//! use: `TryCopy`), so a member that asks for more memory than the allocator
-//! grants is refused with an error.
-//!
-//! **Trust.** The member is a compressed encoding: a width-0 column declares
-//! any count of one value without payload bytes, and a shared list is copied
-//! at every reference, so the decoded size is not bounded by the member's size
-//! (zlib's, of the JSON member, is about 1000:1). Under memory overcommit a
-//! crafted member can therefore exhaust memory before any allocation fails;
-//! a process limit (`RLIMIT_AS`) turns that into the error above. A member is
-//! trusted input like the rest of an artifact (its compiled-kernel IR and
-//! evaluator states): written by [`PlanModel::binary`], in a container whose
-//! SHA-256 detects damage, not tampering. Only the decoding is this module's:
-//! the derivations of [`LoopProgramV4::from_file`] are the JSON load's.
+//! string takes its bytes from what the byte column still holds, and the list
+//! reservations and copies are fallible (`TryCopy`). Only the decoding is this
+//! module's: the derivations of [`LoopProgramV4::from_file`] are the JSON
+//! load's.
 
 mod json;
 
@@ -72,7 +82,19 @@ use std::hash::Hash;
 /// The first bytes of a binary plan member.
 pub const MAGIC: [u8; 8] = *b"LOOPPLAN";
 /// The binary member's format (one version; another is refused).
-pub const FORMAT: u32 = 1;
+pub const FORMAT: u32 = 2;
+
+/// The most bytes of decoded model a member may declare per member byte
+/// (module docs, "Bounded decoding").
+pub const DECODED_PER_BYTE: u64 = 64;
+
+/// The bytes charged per allocation of the decoded model besides its payload
+/// (the allocator's bookkeeping); an empty list or string allocates nothing.
+pub const ALLOCATION: usize = 16;
+
+/// The header's length: magic, format, schema, column count, reserved, the
+/// decoded size and the padding length.
+const HEADER: usize = 40;
 
 /// Whether `bytes` start like a binary plan member (else they are JSON).
 pub fn is_binary(bytes: &[u8]) -> bool {
@@ -127,23 +149,21 @@ impl PlanModel {
     }
 }
 
-/// The validated program of a binary plan member (`PlanModel::binary`): the
-/// entry point of the loader and of an artifact's PACBIN plan member
-/// (RUST-MIGRATION.md §3.D), with the default kernel-form policy.
-pub fn read_binary(bytes: &[u8]) -> RusticolResult<LoopProgramV4> {
-    LoopProgramV4::load_binary(bytes)
+/// The validated program of a binary plan member ([`PlanModel::binary`])
+/// with the loader's default kernel-form policy ([`LoopProgramV4::load`]'s):
+/// the one reader of the member, for the loader and for an artifact's PACBIN
+/// plan member. RUST-MIGRATION.md §3.D names it `loop_v2::plan::read_binary`;
+/// in phase 0 it lives here (`plan.rs` takes only this module's `mod` line),
+/// and its re-export from `plan.rs` comes with phase 1, when the loader is
+/// this package's.
+pub fn read_binary(member: &[u8]) -> RusticolResult<LoopProgramV4> {
+    read_binary_with(member, FormPolicy::Rule)
 }
 
-impl LoopProgramV4 {
-    /// [`Self::load`] from a binary plan member ([`PlanModel::binary`]).
-    pub fn load_binary(bytes: &[u8]) -> RusticolResult<Self> {
-        Self::load_binary_with(bytes, FormPolicy::Rule)
-    }
-
-    /// [`Self::load_binary`] with an explicit kernel-form policy.
-    pub fn load_binary_with(bytes: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
-        PlanModel::from_binary(bytes)?.program(policy)
-    }
+/// [`read_binary`] with an explicit kernel-form policy
+/// ([`LoopProgramV4::load_with`]'s).
+pub fn read_binary_with(member: &[u8], policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
+    PlanModel::from_binary(member)?.program(policy)
 }
 
 /// SHA-256 of a loaded program's validated and derived tables (its `Debug`
@@ -242,8 +262,12 @@ trait Stream {
     const READ: bool;
     fn int(&mut self, col: Col, value: &mut i64) -> RusticolResult<()>;
     fn string(&mut self, col: Col, value: &mut String) -> RusticolResult<()>;
-    /// A list length: written as `len`, or read (and bounded).
+    /// A list length: written as `len`, or read.
     fn len(&mut self, col: Col, len: usize) -> RusticolResult<usize>;
+    /// Charges `bytes` of decoded model (module docs, "Bounded decoding"):
+    /// summed when writing; when reading, refused beyond the member's
+    /// declared size, before the allocation they stand for is made.
+    fn charge(&mut self, col: Col, bytes: usize) -> RusticolResult<()>;
     /// Per reference column, its table of shared lists (`shared`).
     fn tables(&mut self) -> &mut Vec<Option<Box<dyn Any>>>;
 }
@@ -299,11 +323,12 @@ fn list<S: Stream, T: Fresh>(
     mut visit: impl FnMut(&mut S, &mut T) -> RusticolResult<()>,
 ) -> RusticolResult<()> {
     let len = stream.len(col, items.len())?;
+    // A crafted length is refused here, beyond the declared size, before its
+    // buffer is reserved (and a damaged one at its first exhausted column).
+    stream.charge(col, allocation(len, size_of::<T>()))?;
     if !S::READ {
         return items.iter_mut().try_for_each(|item| visit(stream, item));
     }
-    // A damaged or crafted length fails at its first exhausted column, and a
-    // length no allocation can hold fails here, never as an allocation abort.
     *items = reserved(len, col)?;
     for _ in 0..len {
         let mut item = T::fresh();
@@ -322,6 +347,10 @@ where
 }
 
 /// A list stored once at its first use and referenced by number afterwards.
+/// Every reference copies the list, so each is charged the copy's size (the
+/// list's [`TryCopy::heap`], kept in the table), and a first use also its
+/// table entry: a member cannot reference one long list from any number of
+/// records beyond its declared size.
 #[inline]
 fn shared<S: Stream, T>(
     stream: &mut S,
@@ -333,42 +362,51 @@ fn shared<S: Stream, T>(
 where
     T: TryCopy + Fresh + Eq + Hash + 'static,
 {
+    // The table entry of a list (the reader's `(list, heap)`, doubling).
+    let entry = 2 * size_of::<(Vec<T>, usize)>();
     if S::READ {
         let mut id = 0i64;
         stream.int(refs, &mut id)?;
-        let known: &mut Vec<Vec<T>> = table(stream, refs);
+        let known: &mut Vec<(Vec<T>, usize)> = table(stream, refs);
+        let first = known.len();
         match usize::try_from(id) {
-            Ok(k) if k < known.len() => {
-                // Every reference copies the list: fallibly (a crafted member
-                // can reference one long list from any number of records).
-                *items = known[k].try_copy(refs)?;
+            Ok(k) if k < first => {
+                let heap = known[k].1;
+                stream.charge(refs, heap)?;
+                let known: &mut Vec<(Vec<T>, usize)> = table(stream, refs);
+                *items = known[k].0.try_copy(refs)?;
                 Ok(())
             }
-            Ok(k) if k == known.len() => {
+            Ok(k) if k == first => {
                 list(stream, len, items, visit)?;
+                let heap = items.heap();
+                stream.charge(refs, heap.saturating_add(entry))?;
                 let copy = items.try_copy(refs)?;
-                let known: &mut Vec<Vec<T>> = table(stream, refs);
+                let known: &mut Vec<(Vec<T>, usize)> = table(stream, refs);
                 known.try_reserve(1).map_err(|_| too_large(refs))?;
-                known.push(copy);
+                known.push((copy, heap));
                 Ok(())
             }
             _ => Err(invalid(format!("binary plan: {refs:?} reference"))),
         }
     } else {
-        let known: &mut HashMap<Vec<T>, i64> = table(stream, refs);
+        let known: &mut HashMap<Vec<T>, (i64, usize)> = table(stream, refs);
         let next = known.len() as i64;
-        let mut id = match known.get(items.as_slice()) {
-            Some(&id) => id,
+        let (mut id, heap) = match known.get(items.as_slice()) {
+            Some(&known) => known,
             None => {
-                known.insert(items.try_copy(refs)?, next);
-                next
+                let heap = items.heap();
+                known.insert(items.try_copy(refs)?, (next, heap));
+                (next, heap)
             }
         };
         stream.int(refs, &mut id)?;
         if id == next {
             list(stream, len, items, visit)?;
+            stream.charge(refs, heap.saturating_add(entry))
+        } else {
+            stream.charge(refs, heap)
         }
-        Ok(())
     }
 }
 
@@ -451,6 +489,18 @@ fn too_large(col: Col) -> crate::RusticolError {
     ))
 }
 
+/// The bytes charged for one allocation of `len` items of `size` bytes:
+/// none for an empty list or string (no allocation), else the payload plus
+/// [`ALLOCATION`] (saturating: an unrepresentable size exceeds any member).
+#[inline]
+fn allocation(len: usize, size: usize) -> usize {
+    if len == 0 {
+        0
+    } else {
+        len.saturating_mul(size.max(1)).saturating_add(ALLOCATION)
+    }
+}
+
 /// An empty list with room for exactly `len` items, or an error.
 #[inline]
 fn reserved<T>(len: usize, col: Col) -> RusticolResult<Vec<T>> {
@@ -464,6 +514,16 @@ fn reserved<T>(len: usize, col: Col) -> RusticolResult<Vec<T>> {
 /// these copies outgrow memory; the error names the column).
 trait TryCopy: Sized {
     fn try_copy(&self, col: Col) -> RusticolResult<Self>;
+
+    /// The bytes [`allocation`] charges for a copy (zero for plain values).
+    fn heap(&self) -> usize;
+
+    /// The bytes charged for copies of the items of a list of `Self`.
+    fn heap_list(items: &[Self]) -> usize {
+        items
+            .iter()
+            .fold(0usize, |sum, item| sum.saturating_add(item.heap()))
+    }
 
     /// A copy of a list of `Self` (item by item; `memcpy` for plain values).
     fn try_copy_list(items: &[Self], col: Col) -> RusticolResult<Vec<Self>> {
@@ -480,6 +540,14 @@ macro_rules! copy_plain {
         $(impl TryCopy for $ty {
             fn try_copy(&self, _col: Col) -> RusticolResult<Self> {
                 Ok(*self)
+            }
+
+            fn heap(&self) -> usize {
+                0
+            }
+
+            fn heap_list(_items: &[Self]) -> usize {
+                0
             }
 
             fn try_copy_list(items: &[Self], col: Col) -> RusticolResult<Vec<Self>> {
@@ -501,11 +569,19 @@ impl TryCopy for String {
         copy.push_str(self);
         Ok(copy)
     }
+
+    fn heap(&self) -> usize {
+        allocation(self.len(), 1)
+    }
 }
 
 impl<T: TryCopy> TryCopy for Vec<T> {
     fn try_copy(&self, col: Col) -> RusticolResult<Self> {
         T::try_copy_list(self, col)
+    }
+
+    fn heap(&self) -> usize {
+        allocation(self.len(), size_of::<T>()).saturating_add(T::heap_list(self))
     }
 }
 
@@ -516,6 +592,13 @@ impl<A: TryCopy, B: TryCopy, C: TryCopy> TryCopy for (A, B, C) {
             self.1.try_copy(col)?,
             self.2.try_copy(col)?,
         ))
+    }
+
+    fn heap(&self) -> usize {
+        self.0
+            .heap()
+            .saturating_add(self.1.heap())
+            .saturating_add(self.2.heap())
     }
 }
 
@@ -890,6 +973,8 @@ struct Writer {
     strings: Vec<String>,
     ids: HashMap<String, i64>,
     tables: Vec<Option<Box<dyn Any>>>,
+    /// The decoded size: the charges of the traversal (`Stream::charge`).
+    decoded: u64,
 }
 
 impl Writer {
@@ -902,22 +987,37 @@ impl Writer {
 
     fn finish(mut self) -> Vec<u8> {
         let strings = std::mem::take(&mut self.strings);
+        let mut decoded = self.decoded;
+        let mut charge = |bytes: usize| decoded = decoded.saturating_add(bytes as u64);
+        charge(allocation(strings.len(), size_of::<String>()));
         for text in &strings {
+            charge(allocation(text.len(), 1));
             let len = text.len() as i64;
             self.column(Col::StringLen).push(len);
             let bytes = text.bytes().map(i64::from);
             self.column(Col::StringByte).extend(bytes);
         }
-        let mut out = Vec::new();
+        let mut body = Vec::new();
+        for k in 0..COLUMN_NAMES.len() {
+            let values = self.columns.get(k).map(Vec::as_slice).unwrap_or(&[]);
+            encode_column(&mut body, values);
+        }
+        // Zero bytes after the columns when the plan shares more than the
+        // bound allows, so its member declares at most DECODED_PER_BYTE bytes
+        // per member byte (none for the plans written today).
+        let unpadded = (HEADER + body.len()) as u64;
+        let short = decoded.div_ceil(DECODED_PER_BYTE).saturating_sub(unpadded);
+        let padding = short.next_multiple_of(8);
+        let mut out = Vec::with_capacity(HEADER + body.len() + padding as usize);
         out.extend_from_slice(&MAGIC);
         out.extend_from_slice(&FORMAT.to_le_bytes());
         out.extend_from_slice(&PLAN_SCHEMA.to_le_bytes());
         out.extend_from_slice(&(COLUMN_NAMES.len() as u32).to_le_bytes());
         out.extend_from_slice(&0u32.to_le_bytes());
-        for k in 0..COLUMN_NAMES.len() {
-            let values = self.columns.get(k).map(Vec::as_slice).unwrap_or(&[]);
-            encode_column(&mut out, values);
-        }
+        out.extend_from_slice(&decoded.to_le_bytes());
+        out.extend_from_slice(&padding.to_le_bytes());
+        out.extend_from_slice(&body);
+        out.resize(out.len() + padding as usize, 0);
         out
     }
 }
@@ -931,6 +1031,9 @@ impl Stream for Writer {
     }
 
     fn string(&mut self, col: Col, value: &mut String) -> RusticolResult<()> {
+        self.decoded = self
+            .decoded
+            .saturating_add(allocation(value.len(), 1) as u64);
         let id = match self.ids.get(value.as_str()) {
             Some(&id) => id,
             None => {
@@ -948,6 +1051,11 @@ impl Stream for Writer {
         let mut wide = len as i64;
         self.int(col, &mut wide)?;
         Ok(len)
+    }
+
+    fn charge(&mut self, _col: Col, bytes: usize) -> RusticolResult<()> {
+        self.decoded = self.decoded.saturating_add(bytes as u64);
+        Ok(())
     }
 
     fn tables(&mut self) -> &mut Vec<Option<Box<dyn Any>>> {
@@ -1069,9 +1177,36 @@ impl Cursor<'_> {
 struct Reader<'a> {
     cursors: Vec<Cursor<'a>>,
     strings: Vec<String>,
-    /// Values in the member: no list is longer.
-    budget: usize,
+    budget: Budget,
     tables: Vec<Option<Box<dyn Any>>>,
+}
+
+/// The decoded size a member declares and the part of it charged so far.
+struct Budget {
+    declared: u64,
+    used: u64,
+}
+
+impl Budget {
+    /// Charges `bytes`, refused beyond the declared size.
+    #[inline]
+    fn charge(&mut self, col: Col, bytes: usize) -> RusticolResult<()> {
+        match self.used.checked_add(bytes as u64) {
+            Some(used) if used <= self.declared => {
+                self.used = used;
+                Ok(())
+            }
+            _ => Err(beyond_declared(col)),
+        }
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn beyond_declared(col: Col) -> crate::RusticolError {
+    invalid(format!(
+        "binary plan: {col:?} decodes beyond the member's declared size"
+    ))
 }
 
 fn take<'a>(bytes: &mut &'a [u8], n: usize) -> RusticolResult<&'a [u8]> {
@@ -1118,8 +1253,14 @@ impl<'a> Reader<'a> {
             u32_at(&mut bytes)? == 0,
             "binary plan: reserved header field",
         )?;
+        let declared = u64_at(&mut bytes)?;
+        require(
+            declared <= DECODED_PER_BYTE.saturating_mul(member.len() as u64),
+            "binary plan: declared decoded size beyond the member's bound",
+        )?;
+        let padding = usize::try_from(u64_at(&mut bytes)?)
+            .map_err(|_| invalid("binary plan: padding length"))?;
         let mut cursors = Vec::with_capacity(COLUMN_NAMES.len());
-        let mut budget = 0usize;
         for _ in COLUMN_NAMES {
             let head = take(&mut bytes, 8)?;
             let width = usize::from(head[0]);
@@ -1137,7 +1278,6 @@ impl<'a> Reader<'a> {
                 .ok_or_else(|| invalid("binary plan: column length"))?;
             let payload = take(&mut bytes, size)?;
             take(&mut bytes, (8 - size % 8) % 8)?;
-            budget = budget.saturating_add(count);
             cursors.push(Cursor {
                 payload,
                 width,
@@ -1148,26 +1288,24 @@ impl<'a> Reader<'a> {
                 previous: 0,
             });
         }
+        require(
+            take(&mut bytes, padding)?.iter().all(|&b| b == 0),
+            "binary plan: padding",
+        )?;
         require(bytes.is_empty(), "binary plan: trailing bytes")?;
         let mut reader = Self {
             cursors,
             strings: Vec::new(),
-            budget,
+            budget: Budget { declared, used: 0 },
             tables: Vec::new(),
         };
-        // The table's strings are distinct (first-use numbering), so at most
-        // one is empty and each other one takes at least one byte; a string
-        // takes its bytes from what the byte column still holds.
+        // The string table, charged as the writer charges it; a string takes
+        // its bytes from what the byte column still holds.
         let count = reader.cursors[Col::StringLen as usize].count;
-        let bytes = reader.cursors[Col::StringByte as usize].count;
-        require(
-            count <= bytes.saturating_add(1),
-            "binary plan: string table",
-        )?;
-        let mut strings = Vec::new();
-        strings
-            .try_reserve_exact(count)
-            .map_err(|_| invalid("binary plan: string table"))?;
+        reader
+            .budget
+            .charge(Col::StringLen, allocation(count, size_of::<String>()))?;
+        let mut strings = reserved(count, Col::StringLen)?;
         for _ in 0..count {
             let len = reader.next(Col::StringLen)?;
             let byte_cursor = &reader.cursors[Col::StringByte as usize];
@@ -1176,9 +1314,8 @@ impl<'a> Reader<'a> {
                 .ok()
                 .filter(|&len| len <= left)
                 .ok_or_else(|| invalid("binary plan: string length"))?;
-            let mut text = Vec::new();
-            text.try_reserve_exact(len)
-                .map_err(|_| invalid("binary plan: string length"))?;
+            reader.budget.charge(Col::StringByte, allocation(len, 1))?;
+            let mut text: Vec<u8> = reserved(len, Col::StringByte)?;
             for _ in 0..len {
                 let byte = reader.next(Col::StringByte)?;
                 text.push(u8::try_from(byte).map_err(|_| invalid("binary plan: string byte"))?);
@@ -1200,7 +1337,8 @@ impl<'a> Reader<'a> {
         })
     }
 
-    /// Every column must be read to its end.
+    /// Every column must be read to its end, and the charges must equal the
+    /// declared decoded size.
     fn finish(self) -> RusticolResult<()> {
         for (k, cursor) in self.cursors.iter().enumerate() {
             if cursor.position != cursor.count {
@@ -1210,7 +1348,10 @@ impl<'a> Reader<'a> {
                 )));
             }
         }
-        Ok(())
+        require(
+            self.budget.used == self.budget.declared,
+            "binary plan: declared decoded size",
+        )
     }
 }
 
@@ -1230,6 +1371,7 @@ impl Stream for Reader<'_> {
             .ok()
             .and_then(|id| self.strings.get(id))
             .ok_or_else(|| invalid(format!("binary plan: {col:?} string id")))?;
+        self.budget.charge(col, allocation(text.len(), 1))?;
         *value = text.try_copy(col)?;
         Ok(())
     }
@@ -1237,10 +1379,12 @@ impl Stream for Reader<'_> {
     #[inline]
     fn len(&mut self, col: Col, _len: usize) -> RusticolResult<usize> {
         let len = self.next(col)?;
-        usize::try_from(len)
-            .ok()
-            .filter(|&len| len <= self.budget)
-            .ok_or_else(|| invalid(format!("binary plan: {col:?} list length")))
+        usize::try_from(len).map_err(|_| invalid(format!("binary plan: {col:?} list length")))
+    }
+
+    #[inline]
+    fn charge(&mut self, col: Col, bytes: usize) -> RusticolResult<()> {
+        self.budget.charge(col, bytes)
     }
 
     fn tables(&mut self) -> &mut Vec<Option<Box<dyn Any>>> {
@@ -1335,7 +1479,7 @@ mod tests {
 
     /// The header offset of every column of a member, in member order.
     fn column_offsets(member: &[u8]) -> Vec<usize> {
-        let mut at = 24;
+        let mut at = HEADER;
         let mut offsets = Vec::new();
         for _ in COLUMN_NAMES {
             offsets.push(at);
@@ -1344,95 +1488,190 @@ mod tests {
             let size = width * count as usize;
             at += 24 + size + (8 - size % 8) % 8;
         }
-        assert_eq!(at, member.len());
+        let padding = u64::from_le_bytes(member[32..40].try_into().unwrap());
+        assert_eq!(at + padding as usize, member.len());
         offsets
+    }
+
+    fn header(member: &[u8], at: usize) -> u64 {
+        u64::from_le_bytes(member[at..at + 8].try_into().unwrap())
+    }
+
+    fn empty_member() -> Vec<u8> {
+        PlanModel {
+            file: PlanFile::fresh(),
+        }
+        .binary()
+        .unwrap()
+    }
+
+    /// Rewrites column `col`'s count and base (a width-0 column: no payload).
+    fn declare(member: &mut [u8], offsets: &[usize], col: Col, count: u64, base: u64) {
+        let at = offsets[col as usize];
+        assert_eq!(member[at], 0, "{col:?} holds no payload");
+        member[at + 8..at + 16].copy_from_slice(&count.to_le_bytes());
+        member[at + 16..at + 24].copy_from_slice(&base.to_le_bytes());
+    }
+
+    /// The most a member of its length may declare.
+    fn declare_most(member: &mut [u8]) {
+        let most = DECODED_PER_BYTE * member.len() as u64;
+        member[24..32].copy_from_slice(&most.to_le_bytes());
     }
 
     #[test]
     fn crafted_counts_fail_closed() {
-        let member = PlanModel {
-            file: PlanFile::fresh(),
-        }
-        .binary()
-        .unwrap();
+        let member = empty_member();
         assert!(PlanModel::from_binary(&member).is_ok());
         let offsets = column_offsets(&member);
-        let patch = |edits: &[(Col, usize, u64)]| {
+        let patch = |edits: &[(Col, usize, u64)], most: bool| {
             let mut crafted = member.clone();
             for &(col, field, value) in edits {
                 let at = offsets[col as usize] + field;
                 crafted[at..at + 8].copy_from_slice(&value.to_le_bytes());
             }
+            if most {
+                declare_most(&mut crafted);
+            }
             crafted
         };
-        // Width-0 columns hold no payload: a column without values claims
-        // 2^40, and the one content length (width 0) becomes 2^36 or 2^62.
-        for length in [1u64 << 36, 1 << 62] {
-            let crafted = patch(&[(Col::Chunk, 8, 1 << 40), (Col::ContentLen, 16, length)]);
-            assert!(PlanModel::from_binary(&crafted).is_err());
+        for most in [false, true] {
+            // Width-0 columns hold no payload: a column without values claims
+            // 2^40, and the one content length (width 0) becomes 2^36 or 2^62.
+            for length in [1u64 << 36, 1 << 62] {
+                let edits = [(Col::Chunk, 8, 1 << 40), (Col::ContentLen, 16, length)];
+                let error = PlanModel::from_binary(&patch(&edits, most)).err().unwrap();
+                assert!(error.to_string().contains("declared size"), "{error}");
+            }
+            // A string table of 2^40 one-byte strings without bytes, and one
+            // string longer than the byte column.
+            let edits = [(Col::StringLen, 8, 1 << 40), (Col::StringLen, 16, 1)];
+            assert!(PlanModel::from_binary(&patch(&edits, most)).is_err());
+            let edits = [
+                (Col::StringLen, 8, 1),
+                (Col::StringLen, 16, 1 << 40),
+                (Col::StringByte, 8, 4),
+            ];
+            assert!(PlanModel::from_binary(&patch(&edits, most)).is_err());
+            // One string of 2^40 bytes, all from a width-0 byte column.
+            let edits = [
+                (Col::StringLen, 8, 1),
+                (Col::StringLen, 16, 1 << 40),
+                (Col::StringByte, 8, 1 << 40),
+                (Col::StringByte, 16, u64::from(b'1')),
+            ];
+            let error = PlanModel::from_binary(&patch(&edits, most)).err().unwrap();
+            assert!(error.to_string().contains("declared size"), "{error}");
         }
-        // A string table of 2^40 one-byte strings without bytes, and one
-        // string longer than the byte column.
-        let crafted = patch(&[(Col::StringLen, 8, 1 << 40), (Col::StringLen, 16, 1)]);
-        assert!(PlanModel::from_binary(&crafted).is_err());
-        let crafted = patch(&[
-            (Col::StringLen, 8, 1),
-            (Col::StringLen, 16, 1 << 40),
-            (Col::StringByte, 8, 4),
-        ]);
-        assert!(PlanModel::from_binary(&crafted).is_err());
+        // A declaration beyond the bound is refused at the header, and the
+        // charges must equal the declaration.
+        let mut crafted = member.clone();
+        let beyond = DECODED_PER_BYTE * crafted.len() as u64 + 1;
+        crafted[24..32].copy_from_slice(&beyond.to_le_bytes());
+        let error = PlanModel::from_binary(&crafted).err().unwrap();
+        assert!(error.to_string().contains("bound"), "{error}");
+        let mut crafted = member.clone();
+        declare_most(&mut crafted);
+        let error = PlanModel::from_binary(&crafted).err().unwrap();
+        assert!(
+            error.to_string().contains("declared decoded size"),
+            "{error}"
+        );
     }
 
     /// Width-0 columns declare `n` contents that all reference one shared
-    /// list of `m` empty rows (a member of a few kB): every reference copies
-    /// it, and a copy the allocator cannot grant is an error (the reproducer
-    /// at a size that fits; its refusal under `RLIMIT_AS` is the nightly
-    /// Python test's).
+    /// list of `m` empty rows (a member of a few kB, the evidence audit's
+    /// 2.4e11-byte decompression bomb at n = 10^6, m = 10^4): the charges of
+    /// the first content's list, or of the copies, exceed what the member may
+    /// declare, so it is refused before it allocates them, whatever it
+    /// declares.
     #[test]
-    fn shared_lists_are_copied_at_every_reference() {
-        let member = PlanModel {
-            file: PlanFile::fresh(),
-        }
-        .binary()
-        .unwrap();
+    fn shared_list_bombs_are_refused_before_they_allocate() {
+        let member = empty_member();
         let offsets = column_offsets(&member);
-        let (n, m) = (1000u64, 10u64);
-        let mut crafted = member.clone();
-        let mut set = |col: Col, count: u64, base: u64| {
-            let at = offsets[col as usize];
-            assert_eq!(crafted[at], 0, "{col:?} holds no payload");
-            crafted[at + 8..at + 16].copy_from_slice(&count.to_le_bytes());
-            crafted[at + 16..at + 24].copy_from_slice(&base.to_le_bytes());
-        };
-        set(Col::ContentLen, 1, n);
-        for col in [
-            Col::ContentDIn,
-            Col::ContentDOut,
-            Col::ContentDegree,
-            Col::ContentRows,
-            Col::ContentMask,
-            Col::RowHelicityRef,
-            Col::FusedRef,
-            Col::TermLen,
-        ] {
-            set(col, n, 0);
+        for (n, m) in [(1_000_000u64, 10_000u64), (100_000, 100_000), (2_000, 30)] {
+            for most in [false, true] {
+                let mut crafted = member.clone();
+                declare(&mut crafted, &offsets, Col::ContentLen, 1, n);
+                for col in [
+                    Col::ContentDIn,
+                    Col::ContentDOut,
+                    Col::ContentDegree,
+                    Col::ContentRows,
+                    Col::ContentMask,
+                    Col::RowHelicityRef,
+                    Col::FusedRef,
+                    Col::TermLen,
+                ] {
+                    declare(&mut crafted, &offsets, col, n, 0);
+                }
+                declare(&mut crafted, &offsets, Col::RowHelicityLen, 1, m);
+                declare(&mut crafted, &offsets, Col::RowHelicityLegs, m, 0);
+                declare(&mut crafted, &offsets, Col::FusedLen, 1, 0);
+                if most {
+                    declare_most(&mut crafted);
+                }
+                assert_eq!(crafted.len(), member.len());
+                let error = PlanModel::from_binary(&crafted).err().unwrap();
+                assert!(error.to_string().contains("declared size"), "{error}");
+            }
         }
-        set(Col::RowHelicityLen, 1, m);
-        set(Col::RowHelicityLegs, m, 0);
-        set(Col::FusedLen, 1, 0);
-        assert_eq!(crafted.len(), member.len());
-        let model = PlanModel::from_binary(&crafted).unwrap();
-        assert_eq!(model.file.contents.len(), n as usize);
-        assert!(model.file.contents.iter().all(|content| {
-            content.row_helicities.len() == m as usize
-                && content.row_helicities.iter().all(Vec::is_empty)
-        }));
-        // An allocation the allocator refuses is an error, not an abort.
+    }
+
+    /// The same structure written by the writer (`n` contents sharing one
+    /// list of `m` empty rows) shares more than the bound allows: the writer
+    /// pads the member, which then decodes to the same model.
+    #[test]
+    fn plans_that_share_beyond_the_bound_are_padded() {
+        let (n, m) = (500, 400);
+        let mut file = PlanFile::fresh();
+        file.contents = (0..n)
+            .map(|_| {
+                let mut content = ContentFile::fresh();
+                content.row_helicities = vec![Vec::new(); m];
+                content
+            })
+            .collect();
+        let mut model = PlanModel { file };
+        let member = model.binary().unwrap();
+        let (decoded, padding) = (header(&member, 24), header(&member, 32));
+        assert!(padding > 0, "the plan needs padding");
+        assert!(decoded <= DECODED_PER_BYTE * member.len() as u64);
+        assert!(decoded > DECODED_PER_BYTE * (member.len() as u64 - padding));
+        let again = PlanModel::from_binary(&member).unwrap();
+        assert_eq!(again.json(), model.json());
+        // Without its padding (and the declaration the bound then allows) it
+        // is refused.
+        let mut cut = member[..member.len() - padding as usize].to_vec();
+        cut[32..40].copy_from_slice(&0u64.to_le_bytes());
+        declare_most(&mut cut);
+        assert!(PlanModel::from_binary(&cut).is_err());
+        // A damaged padding byte is refused.
+        let mut damaged = member.clone();
+        *damaged.last_mut().unwrap() = 1;
+        assert!(PlanModel::from_binary(&damaged).is_err());
+        // An allocation the allocator refuses is an error, not an abort, and
+        // the fallible copies equal their originals.
         assert!(reserved::<u64>(usize::MAX / 2, Col::Chunk).is_err());
         let rows = vec![vec![1i32, -1], vec![]];
         assert_eq!(rows.try_copy(Col::RowHelicityRef).unwrap(), rows);
+        assert_eq!(rows.heap(), allocation(2, 24) + allocation(2, 4));
         let inputs = vec![("loop".to_string(), 1usize, 2usize)];
         assert_eq!(inputs.try_copy(Col::BindingInputRef).unwrap(), inputs);
+    }
+
+    /// Every truncation of a member is refused.
+    #[test]
+    fn truncated_members_are_refused() {
+        let mut file = PlanFile::fresh();
+        file.helicities = vec![vec![-1, 1]; 4];
+        file.block_rows = vec![3, 1, 4];
+        file.factors = vec![(0, 2), (1, 7)];
+        let member = PlanModel { file }.binary().unwrap();
+        assert!(PlanModel::from_binary(&member).is_ok());
+        for len in 0..member.len() {
+            assert!(PlanModel::from_binary(&member[..len]).is_err(), "{len}");
+        }
     }
 
     #[test]

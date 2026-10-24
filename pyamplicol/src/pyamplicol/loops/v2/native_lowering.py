@@ -9,9 +9,11 @@ encodings:
   (``json.dumps(program, separators=(",", ":"))``, keys in the exporter's
   order);
 * the binary columnar member (one column per record field, at its narrowest
-  width), which ``LoopProgramV4::load_binary`` reads through the same
+  width), which ``loop_v2::plan::binary::read_binary`` reads through the same
   validation and derivations as the JSON (the schedule-B row links stay
-  derived at load). It holds plan data only, no path or host information.
+  derived at load). It holds plan data only, no path or host information, and
+  declares its decoded size, bounded by its length: the reader refuses a
+  member beyond the bound before allocating (no decompression bomb).
 
 Phase 0 (this module): the model is fed with the records of a Python
 ``ExportedPlan``. They travel as JSON with sorted keys and Python's default
@@ -68,9 +70,18 @@ class PlanLoad:
 
 
 def load(data: bytes, native: Any | None = None, *, digest: bool = False) -> PlanLoad:
-    """Load a plan (binary member or JSON) as the native executor does."""
+    """Load a plan (binary member or JSON) as the native executor does, timing
+    the decode and the derivations apart."""
 
     return PlanLoad(*_native(native).v2_plan_load(data, digest=digest))
 
 
-__all__ = ["PlanLoad", "load", "plan_binary", "plan_json", "plan_model"]
+def read(data: bytes, native: Any | None = None) -> str:
+    """The digest of the program the production readers load from a plan: a
+    binary member through ``read_binary`` (its one reader), a JSON through
+    ``LoopProgramV4::load``."""
+
+    return str(_native(native).v2_plan_read(data))
+
+
+__all__ = ["PlanLoad", "load", "plan_binary", "plan_json", "plan_model", "read"]

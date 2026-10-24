@@ -9,13 +9,18 @@ Per plan:
 * the native JSON writer gives ``ExportedPlan.json()`` byte for byte;
 * the binary member decodes to the same model (its JSON again identical, its
   re-encoding bitwise), loads to the same executor tables as the JSON (digest
-  of the loaded program, derived row links included) and holds no host path
-  (searched in its decoded strings, where a path would show);
+  of the loaded program, derived row links included), both through the timed
+  load and through ``read_binary``, the member's one production reader, and
+  holds no host path (searched in its decoded strings, where a path would
+  show);
 * strings follow ``json.dumps``'s ``ensure_ascii`` escapes;
-* foreign, truncated or extended members and unknown JSON fields are refused
-  (crafted column counts: the reader's Rust unit tests), and a crafted member
-  that decodes beyond a process memory limit is refused, not an abort
-  (``loop_nightly``);
+* foreign members and unknown JSON fields are refused, and every truncation,
+  every single-byte corruption and crafted decompression bombs (width-0
+  columns, shared lists copied at every reference, strings, declared sizes)
+  fail closed: an error or a model within the member's declared bound, never
+  an abort or a memory exhaustion (in a child under an address-space limit,
+  so a regression fails instead of exhausting the host; the reader's Rust
+  unit tests add the padding of plans that share beyond the bound);
 * the bindings run in a process without a Symbolica key (``loop_nightly``).
 
 Plans cover schedule B with derived and written row links, schedule F
@@ -29,6 +34,11 @@ tier: g g > t t~ and g g > g g; wider controls (the companion's tree-program
 and column plans among them) are ``loop_physics``, six legs and the no-key
 process ``loop_nightly``; seven-leg evidence is the stored S8 digest of
 bounded runs (RUST-MIGRATION.md rule 6).
+
+The electroweak control vetoes the top through ``SliceRequest``'s
+``ignored_particle_ids``, which ct-simplify renames ``particle_veto``: the
+rename lands here in phase 1, when ct-simplify reaches this branch with
+G-int (it is not on the pinned generation-scale base).
 """
 
 from __future__ import annotations
@@ -123,6 +133,7 @@ def check(exported, native) -> bytes:
     )
     assert (json_load.form, binary_load.form) == ("json", "binary")
     assert binary_load.digest == json_load.digest
+    assert native_lowering.read(member, native) == json_load.digest
     assert not host_paths(member, decoded)
     return member
 
@@ -230,14 +241,18 @@ def test_strings_follow_ensure_ascii(slices, loop_native):
 
 
 @pytest.mark.loop_fast
-def test_foreign_and_damaged_members_are_refused(slices, loop_native):
+def test_foreign_and_damaged_members_are_refused(slices, loop_native, tmp_path):
+    """Foreign formats and schemas, extended members and unknown JSON fields
+    are refused; truncations, single-byte corruptions and crafted
+    decompression bombs fail closed (``_fail_closed``)."""
+
     exported = export_plan(slices("gg_ttx"), forward=False)
     member = native_lowering.plan_binary(exported, loop_native)
     damaged = [
-        member[:-8],
         member + bytes(8),
         b"LOOPPLAX" + member[8:],
-        member[:8] + (2).to_bytes(4, "little") + member[12:],
+        member[:8] + (1).to_bytes(4, "little") + member[12:],
+        member[:8] + (3).to_bytes(4, "little") + member[12:],
         member[:12] + (3).to_bytes(4, "little") + member[16:],
     ]
     for data in damaged:
@@ -247,6 +262,7 @@ def test_foreign_and_damaged_members_are_refused(slices, loop_native):
     program["families"][0]["unknown"] = 1
     with pytest.raises(ValueError, match="unknown field"):
         loop_native.V2PlanModel.from_json(json.dumps(program).encode())
+    _fail_closed(loop_native, member, tmp_path)
 
 
 @pytest.mark.loop_physics
@@ -332,10 +348,31 @@ def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
     assert result.stdout.split()[-2:] == [expected, expected]
 
 
-def _crafted_member(native, contents: int, rows: int) -> bytes:
-    """A member of a few kB: width-0 columns (no payload) declare ``contents``
-    contents that all reference one shared list of ``rows`` empty row
-    helicities, which the reader copies at every reference."""
+# The member's header (``binary.rs``): magic, format, schema, column count,
+# reserved, the declared decoded size and the padding length; then per column
+# a 24-byte header (width, delta flag, zeros, count, base) and its payload.
+HEADER = 40
+DECODED_PER_BYTE = 64
+
+
+def _columns(member: bytes, names: list[str]) -> dict[str, int]:
+    """The header offset of every column of a member."""
+
+    offsets, at = {}, HEADER
+    for name in names:
+        offsets[name] = at
+        size = member[at] * struct.unpack_from("<Q", member, at + 8)[0]
+        at += 24 + size + (8 - size % 8) % 8
+    assert at + struct.unpack_from("<Q", member, 32)[0] == len(member)
+    return offsets
+
+
+def _crafted_members(native) -> dict[str, bytes]:
+    """Decompression bombs of a few kB, rewritten from the empty plan's member
+    (width-0 columns hold no payload), each declaring the most decoded bytes
+    its length allows: 10^6 contents of 10^4 rows shared (the evidence audit's
+    2.4e11 bytes) and 10^5 x 10^5; 2^40 contents; one string of 2^40 bytes;
+    2^40 strings; and a declaration beyond the bound."""
 
     counts = ("legs", "rows", "columns", "born_components", "constants", "masses")
     lists = ("helicities", "block_rows", "kernels", "contents", "factors")
@@ -343,73 +380,109 @@ def _crafted_member(native, contents: int, rows: int) -> bytes:
     empty: dict[str, object] = {"schema": PLAN_SCHEMA, "average": 1}
     empty |= {key: 0 for key in counts} | {key: [] for key in lists}
     empty |= {"forward": None, "merged": None}
-    member = bytearray(
-        native.V2PlanModel.from_json(json.dumps(empty).encode()).binary()
-    )
+    member = bytes(native.V2PlanModel.from_json(json.dumps(empty).encode()).binary())
     names = native.V2PlanModel.columns()
     assert struct.unpack_from("<I", member, 16)[0] == len(names)
-    offsets, at = {}, 24
-    for name in names:
-        offsets[name] = at
-        size = member[at] * struct.unpack_from("<Q", member, at + 8)[0]
-        at += 24 + size + (8 - size % 8) % 8
-    assert at == len(member)
+    offsets = _columns(member, names)
 
-    def declare(name: str, count: int, base: int) -> None:
-        assert member[offsets[name]] == 0, name  # width 0: no payload
-        struct.pack_into("<Qq", member, offsets[name] + 8, count, base)
+    def craft(*columns: tuple[str, int, int], declared: int | None = None) -> bytes:
+        crafted = bytearray(member)
+        for name, count, base in columns:
+            assert crafted[offsets[name]] == 0, name  # width 0: no payload
+            struct.pack_into("<Qq", crafted, offsets[name] + 8, count, base)
+        most = DECODED_PER_BYTE * len(crafted)
+        struct.pack_into("<Q", crafted, 24, most if declared is None else declared)
+        return bytes(crafted)
 
-    declare("ContentLen", 1, contents)
-    per_content = ("ContentDIn", "ContentDOut", "ContentDegree", "ContentRows")
-    for name in (*per_content, "ContentMask", "RowHelicityRef", "FusedRef", "TermLen"):
-        declare(name, contents, 0)
-    declare("RowHelicityLen", 1, rows)
-    declare("RowHelicityLegs", rows, 0)
-    declare("FusedLen", 1, 0)
-    return bytes(member)
+    def shared_rows(contents: int, rows: int) -> bytes:
+        per_content = ("ContentDIn", "ContentDOut", "ContentDegree", "ContentRows")
+        per_content += ("ContentMask", "RowHelicityRef", "FusedRef", "TermLen")
+        return craft(
+            ("ContentLen", 1, contents),
+            *((name, contents, 0) for name in per_content),
+            ("RowHelicityLen", 1, rows),
+            ("RowHelicityLegs", rows, 0),
+            ("FusedLen", 1, 0),
+        )
+
+    return {
+        "shared 1e6 x 1e4": shared_rows(10**6, 10**4),
+        "shared 1e5 x 1e5": shared_rows(10**5, 10**5),
+        "shared 2e3 x 30": shared_rows(2000, 30),
+        "contents 2^40": craft(("ContentLen", 1, 2**40), ("Chunk", 2**40, 0)),
+        "string 2^40 bytes": craft(
+            ("StringLen", 1, 2**40), ("StringByte", 2**40, ord("1"))
+        ),
+        "strings 2^40": craft(("StringLen", 2**40, 0)),
+        "declared beyond the bound": craft(declared=DECODED_PER_BYTE * len(member) + 1),
+    }
 
 
-@pytest.mark.loop_nightly
-def test_crafted_member_beyond_a_memory_limit_is_refused(loop_native, tmp_path):
-    """A 4 kB member that decodes to 10^5 copies of a list of 10^5 rows (2.4e11
-    bytes): under an address-space limit (``RLIMIT_AS``, 1 GiB above the
-    child's size after import) the reader refuses it with ``ValueError``, as
-    every allocation of the decoded model is fallible, instead of aborting the
-    process. The same structure at a small size decodes (the refusal is the
-    memory's, not the structure's). Members are trusted input (``binary.rs``):
-    without a limit, overcommit lets such a member exhaust memory."""
+_FAIL_CLOSED = """
+import json, resource, sys, time
+from pathlib import Path
+from pyamplicol.loops.native import load_loop_native
+model = load_loop_native().V2PlanModel
+member = Path(sys.argv[1]).read_bytes()
+crafted = {p.stem: p.read_bytes() for p in Path(sys.argv[2]).iterdir()}
+status = Path('/proc/self/status').read_text().splitlines()
+size = next(int(l.split()[1]) for l in status if l.startswith('VmSize:'))
+limit = size * 1024 + 2**30
+resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+out = {'truncated': [], 'corrupted': [0, 0], 'crafted': {}}
+start = time.perf_counter()
+for length in range(len(member)):
+    try:
+        model.from_binary(member[:length])
+        out['truncated'].append(length)
+    except ValueError:
+        pass
+for at in range(len(member)):
+    damaged = bytearray(member)
+    damaged[at] ^= 0xFF
+    try:
+        model.from_binary(bytes(damaged))
+        out['corrupted'][1] += 1
+    except ValueError:
+        out['corrupted'][0] += 1
+for name, data in crafted.items():
+    try:
+        model.from_binary(data)
+        out['crafted'][name] = 'DECODED'
+    except ValueError as error:
+        out['crafted'][name] = str(error)
+out['seconds'] = time.perf_counter() - start
+print(json.dumps(out))
+"""
 
-    small = loop_native.V2PlanModel.from_binary(_crafted_member(loop_native, 1000, 10))
-    program = json.loads(bytes(small.json()))
-    assert len(program["contents"]) == 1000
-    assert all(
-        content["row_helicities"] == [[]] * 10 for content in program["contents"]
-    )
-    member = tmp_path / "crafted.bin"
-    member.write_bytes(_crafted_member(loop_native, 10**5, 10**5))
-    assert member.stat().st_size < 8192
-    script = (
-        "import resource, sys\n"
-        "from pathlib import Path\n"
-        "from pyamplicol.loops.native import load_loop_native\n"
-        "native = load_loop_native()\n"
-        "member = Path(sys.argv[1]).read_bytes()\n"
-        "status = Path('/proc/self/status').read_text().splitlines()\n"
-        "size = next(int(l.split()[1]) for l in status if l.startswith('VmSize:'))\n"
-        "limit = size * 1024 + 2**30\n"
-        "resource.setrlimit(resource.RLIMIT_AS, (limit, limit))\n"
-        "try:\n"
-        "    native.V2PlanModel.from_binary(member)\n"
-        "    print('DECODED')\n"
-        "except ValueError as error:\n"
-        "    print('REFUSED', error)\n"
-    )
+
+def _fail_closed(native, member: bytes, tmp_path: Path) -> None:
+    """Every truncation of ``member`` is refused, every single-byte corruption
+    is refused or decodes (a damaged value can be another valid one; the
+    container's SHA-256 detects damage), and every crafted bomb is refused at
+    its declaration or at its first charge beyond it, before allocating. In a
+    child under an address-space limit of 1 GiB above its size: a reader that
+    decoded a bomb would fail there instead of exhausting the host."""
+
+    crafted = tmp_path / "crafted"
+    crafted.mkdir()
+    bombs = _crafted_members(native)
+    for k, data in enumerate(bombs.values()):
+        assert len(data) < 8192
+        (crafted / f"{k}.bin").write_bytes(data)
+    stored = tmp_path / "member.bin"
+    stored.write_bytes(member)
     result = subprocess.run(
-        [sys.executable, "-c", script, str(member)],
+        [sys.executable, "-c", _FAIL_CLOSED, str(stored), str(crafted)],
         capture_output=True,
         text=True,
-        timeout=120,
+        timeout=300,
     )
     assert result.returncode == 0, (result.returncode, result.stderr[-2000:])
-    assert result.stdout.startswith("REFUSED"), result.stdout
-    assert "decodes to more than the allocator grants" in result.stdout
+    out = json.loads(result.stdout.splitlines()[-1])
+    assert out["truncated"] == []
+    assert sum(out["corrupted"]) == len(member) and out["corrupted"][0] > 0
+    for k, name in enumerate(bombs):
+        error = out["crafted"][str(k)]
+        expected = "bound" if name == "declared beyond the bound" else "declared size"
+        assert expected in error, (name, error)

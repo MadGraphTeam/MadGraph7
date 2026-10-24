@@ -7,7 +7,9 @@
 //! Python `ExportedPlan` (`loops/v2/native_lowering.py`).
 use super::*;
 use pyo3::types::PyBytes;
-use rusticol_core::loop_v2::plan::binary::{PlanModel, column_names, is_binary, program_digest};
+use rusticol_core::loop_v2::plan::binary::{
+    PlanModel, column_names, is_binary, program_digest, read_binary,
+};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use std::time::Instant;
 
@@ -89,7 +91,24 @@ fn v2_plan_load(
     .map_err(|e: rusticol_core::RusticolError| error(e))
 }
 
+/// The SHA-256 of the program the production readers load from a plan
+/// (`program_digest`): a binary member through `read_binary`, the one reader
+/// of the member, and a JSON through `LoopProgramV4::load`.
+#[pyfunction]
+fn v2_plan_read(py: Python<'_>, data: &[u8]) -> PyResult<String> {
+    py.detach(|| {
+        let program = if is_binary(data) {
+            read_binary(data)
+        } else {
+            LoopProgramV4::load(data)
+        }?;
+        Ok(program_digest(&program))
+    })
+    .map_err(|e: rusticol_core::RusticolError| error(e))
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2PlanModel>()?;
-    module.add_function(wrap_pyfunction!(v2_plan_load, module)?)
+    module.add_function(wrap_pyfunction!(v2_plan_load, module)?)?;
+    module.add_function(wrap_pyfunction!(v2_plan_read, module)?)
 }
