@@ -17,9 +17,11 @@ single pole exceeded NJet's by (alpha_s/4pi)(4/3) B at every multiplicity.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import math
+from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 
@@ -65,6 +67,18 @@ def _slice(compiled_path, native, name: str, controls: dict) -> LoopSlice:
     )
 
 
+@contextlib.contextmanager
+def _no_coloured_leg_check() -> Iterator[None]:
+    """Skip the slice's coloured-leg stability gate for massless-QCD
+    fixtures (no top coupling to check), restored on exit."""
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            assemble._PointEvaluation, "_stable_coloured_legs", lambda self: False
+        )
+        yield
+
+
 def _errors(slice_: LoopSlice, controls: dict, name: str, indices, precision=None):
     entry = controls["processes"][name]
     alphas = controls["parameters"]["aS"]
@@ -74,9 +88,7 @@ def _errors(slice_: LoopSlice, controls: dict, name: str, indices, precision=Non
     rows = {row["index"]: row for row in entry["rows"]}
     out = {}
     # The fixture's Born is massless QCD: no top coupling to check here.
-    checked = assemble._PointEvaluation._stable_coloured_legs
-    assemble._PointEvaluation._stable_coloured_legs = lambda self: False
-    try:
+    with _no_coloured_leg_check():
         for index in indices:
             scale = str(int(entry["mu_r"][index]) ** 2)
             (result,) = executor.evaluate(
@@ -92,8 +104,6 @@ def _errors(slice_: LoopSlice, controls: dict, name: str, indices, precision=Non
                 key: merge_metric(a, b, 0.0 if key == "born" else floor)
                 for key, a, b in zip(COEFFICIENTS, mine, ref, strict=True)
             }
-    finally:
-        assemble._PointEvaluation._stable_coloured_legs = checked
     return out
 
 
@@ -267,14 +277,10 @@ def test_vetoed_native_lane_equals_the_references(vetoed, controls):
     entry = controls["processes"]["gg_gg"]
     rows = {row["index"]: row for row in entry["rows"]}
     points, scales = _veto_points("gg_gg")
-    checked = assemble._PointEvaluation._stable_coloured_legs
-    assemble._PointEvaluation._stable_coloured_legs = lambda self: False
-    try:
+    with _no_coloured_leg_check():
         results = NativeExecutor(
             vetoed("gg_gg"), forward=False, inputs="native"
         ).evaluate(points, scales, parameters=_veto_parameters("gg_gg"))
-    finally:
-        assemble._PointEvaluation._stable_coloured_legs = checked
     alphas = float(controls["parameters"]["aS"])
     worst = 0.0
     for index, result in enumerate(results):
