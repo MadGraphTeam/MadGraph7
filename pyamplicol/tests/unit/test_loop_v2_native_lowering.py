@@ -55,6 +55,12 @@ PROCESSES = {
     "gg_gggg": ("g g > g g g g", {"QCD": 4, "QED": 0}, ()),
     "uux_gggg": ("u u~ > g g g g", {"QCD": 4, "QED": 0}, ()),
 }
+# A plan without the tree program holds no counterterm data, so it is the same
+# under both counterterm forms (RUST-MIGRATION.md rule 6; checked for every
+# export of these controls): they take the cheaper site closure. The controls
+# exported with their tree program (counterterm components) keep the
+# production route.
+SITES = {"gg_ttx", "gg_gg", "gg_ggg"}
 
 
 @pytest.fixture(scope="module")
@@ -74,6 +80,7 @@ def slices(loop_sm_compiled_model, loop_native):
                 loop,
                 fixed_parameters={"MB": "0"},
                 ignored_particle_ids=ignored,
+                **({"counterterms": "sites"} if name in SITES else {}),
             )
             built[name] = LoopSlice.generate(compiled, request, loop_native)
         return built[name]
