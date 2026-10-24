@@ -723,6 +723,11 @@ class GenerationConfig:
     )
     workers: AutoInt = field(default="auto", metadata=_setting("auto_int"))
     emit_api_bundle: bool = field(default=True, metadata=_setting("bool"))
+    # Particles (model names; a particle vetoes its antiparticle too) removed
+    # from every tree vertex of one-loop generation with loop.engine='v2'
+    # (Born, blocks, loop vertices and propagators, counterterm program);
+    # counterterm terms whose loop content holds one are dropped.
+    particle_veto: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     validation: GenerationValidationConfig = field(
         default_factory=GenerationValidationConfig, metadata=_section()
     )
@@ -741,6 +746,11 @@ class GenerationConfig:
         )
         if not isinstance(self.emit_api_bundle, bool):
             raise ConfigurationError("generation.emit_api_bundle must be a boolean")
+        object.__setattr__(
+            self,
+            "particle_veto",
+            _tuple_of_strings(self.particle_veto, "generation.particle_veto"),
+        )
         if not isinstance(self.validation, GenerationValidationConfig):
             raise ConfigurationError(
                 "generation.validation must be a GenerationValidationConfig"
@@ -1570,6 +1580,13 @@ class RunConfig:
             raise ConfigurationError(
                 "evaluator.execution_mode='loop_recurrence' requires "
                 "process.loop_coupling_orders"
+            )
+        if self.generation.particle_veto and not (
+            virtual and self.loop.engine is LoopEngine.V2
+        ):
+            raise ConfigurationError(
+                "generation.particle_veto requires one-loop generation "
+                "(process.loop_coupling_orders) with loop.engine='v2'"
             )
         if (
             self.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT
