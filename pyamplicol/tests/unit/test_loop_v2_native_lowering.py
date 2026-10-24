@@ -23,6 +23,12 @@ Per plan:
   tests add every truncation, the parallel decode's corruptions and the
   padding of plans that share beyond the bound); the parallel decode equals
   the sequential one;
+* crafted plans whose loader derivations would exhaust the process (2^26
+  Born rows, 2^16 columns without seed classes, a 2^40-th vertex, a family
+  rank of 10^6) are refused by ``read_binary`` before deriving: unpadded,
+  beyond the member's derivation bound; padded, by the fallible reservation
+  under the child's address-space limit; and no plan written today needs
+  padding;
 * the bindings run in a process without a Symbolica key (``loop_nightly``).
 
 Plans cover schedule B with derived and written row links, schedule F
@@ -138,6 +144,7 @@ def check(exported, native) -> bytes:
     assert binary_load.digest == json_load.digest
     assert native_lowering.read(member, native) == json_load.digest
     assert not host_paths(member, decoded)
+    assert struct.unpack_from("<Q", member, 32)[0] == 0, "no plan needs padding"
     return member
 
 
@@ -265,7 +272,7 @@ def test_foreign_and_damaged_members_are_refused(slices, loop_native, tmp_path):
     program["families"][0]["unknown"] = 1
     with pytest.raises(ValueError, match="unknown field"):
         loop_native.V2PlanModel.from_json(json.dumps(program).encode())
-    _fail_closed(loop_native, member, tmp_path)
+    _fail_closed(loop_native, member, json.loads(exported.json()), tmp_path)
 
 
 @pytest.mark.loop_physics
@@ -393,13 +400,15 @@ def _wide_member(native) -> bytes:
     return bytes(native.V2PlanModel.from_json(json.dumps(plan).encode()).binary())
 
 
-def _crafted_members(native) -> dict[str, bytes]:
+def _crafted_members(native) -> dict[str, tuple[bytes, str]]:
     """Decompression bombs of a few kB, rewritten from the empty plan's member
     (width-0 columns hold no payload), each declaring the most decoded bytes
-    its length allows: 10^6 contents of 10^4 rows shared (the evidence audit's
-    2.4e11 bytes) and 10^5 x 10^5; 2^40 contents; one string of 2^40 bytes;
-    2^40 strings; 2^40 seed keys (a parallel section); and a declaration
-    beyond the bound."""
+    its length allows, with the charge that refuses it: n contents sharing one
+    list of m empty rows, refused at the contents' own list for n = 10^6, 10^5
+    (the evidence audit's 2.4e11 bytes at m = 10^4) and at the shared list's
+    copies (``RowHelicityRef``) for few contents of long lists; 2^40 contents;
+    one string of 2^40 bytes; 2^40 strings; 2^40 seed keys (a parallel
+    section); and a declaration beyond the bound."""
 
     empty = _empty_plan()
     member = bytes(native.V2PlanModel.from_json(json.dumps(empty).encode()).binary())
@@ -427,30 +436,103 @@ def _crafted_members(native) -> dict[str, bytes]:
             ("FusedLen", 1, 0),
         )
 
+    beyond = "decodes beyond the member's declared size"
     return {
-        "shared 1e6 x 1e4": shared_rows(10**6, 10**4),
-        "shared 1e5 x 1e5": shared_rows(10**5, 10**5),
-        "shared 2e3 x 30": shared_rows(2000, 30),
-        "contents 2^40": craft(("ContentLen", 1, 2**40), ("Chunk", 2**40, 0)),
-        "string 2^40 bytes": craft(
-            ("StringLen", 1, 2**40), ("StringByte", 2**40, ord("1"))
+        "shared 1e6 x 1e4": (shared_rows(10**6, 10**4), f"ContentLen {beyond}"),
+        "shared 1e5 x 1e5": (shared_rows(10**5, 10**5), f"ContentLen {beyond}"),
+        "shared 2e3 x 30": (shared_rows(2000, 30), f"RowHelicityRef {beyond}"),
+        "shared 3e3 x 2e3": (shared_rows(3000, 2000), f"RowHelicityRef {beyond}"),
+        "shared 1e2 x 2e4": (shared_rows(100, 20000), f"RowHelicityRef {beyond}"),
+        "contents 2^40": (
+            craft(("ContentLen", 1, 2**40), ("Chunk", 2**40, 0)),
+            beyond,
         ),
-        "strings 2^40": craft(("StringLen", 2**40, 0)),
-        "seed keys 2^40": craft(
-            ("SeedKeyLen", 1, 2**40), ("SeedKeyClassLen", 2**40, 0)
+        "string 2^40 bytes": (
+            craft(("StringLen", 1, 2**40), ("StringByte", 2**40, ord("1"))),
+            beyond,
         ),
-        "declared beyond the bound": craft(declared=DECODED_PER_BYTE * len(member) + 1),
+        "strings 2^40": (craft(("StringLen", 2**40, 0)), beyond),
+        "seed keys 2^40": (
+            craft(("SeedKeyLen", 1, 2**40), ("SeedKeyClassLen", 2**40, 0)),
+            beyond,
+        ),
+        "declared beyond the bound": (
+            craft(declared=DECODED_PER_BYTE * len(member) + 1),
+            "declared decoded size beyond the member's bound",
+        ),
     }
+
+
+def _unpadded(member: bytes) -> bytes:
+    """The member without its padding (and the padding length 0)."""
+
+    padding = struct.unpack_from("<Q", member, 32)[0]
+    cut = bytearray(member[: len(member) - padding])
+    struct.pack_into("<Q", cut, 32, 0)
+    return bytes(cut)
+
+
+def _derivation_bombs(native, program: dict) -> dict[str, tuple[bytes, str]]:
+    """Plans whose loader derivations (``LoopProgramV4::from_file``) would
+    take far beyond the child's address space, from the g g > t t~ plan
+    ``program``, with the refusal ``read_binary`` gives each.
+
+    - 2^16 observable columns without seed classes (the evidence audit's
+      reproducer, at 4096 on g g > g g g): every row link expanded per column;
+    - 2^26 Born rows (26 legs of two helicities) for one family's one edge;
+    - a term's vertex id 2^40 (the vertex table) and a family rank of 10^6
+      (monomial tables): refused as the loader's validation would, before it
+      allocates.
+
+    The first two as written (the writer pads them to pay for their
+    derivations: refused by the fallible reservation under the child's
+    limit) and unpadded (a few kB: beyond the member's derivation bound).
+    """
+
+    def member(plan: dict) -> bytes:
+        text = json.dumps(plan, separators=(",", ":")).encode()
+        return bytes(native.V2PlanModel.from_json(text).binary())
+
+    columns = json.loads(json.dumps(program))
+    columns["seed_classes"] = []
+    for key in columns["seeds"]:
+        key["classes"] = []
+    columns["columns"] = 2**16
+    rows = json.loads(json.dumps(program))
+    legs = 26
+    rows |= {"legs": legs, "rows": 2**legs, "helicities": [[-1, 1]] * legs}
+    family = rows["families"][0]
+    family["steps"] = family["steps"][:1]
+    family["steps"][0]["edges"] = family["steps"][0]["edges"][:1]
+    rows["families"] = [family]
+    vertex = json.loads(json.dumps(program))
+    term = next(t for c in vertex["contents"] for t in c["terms"] if t["vertex"] >= 0)
+    term["vertex"] = 2**40
+    rank = json.loads(json.dumps(program))
+    rank["families"][0]["rank"] = 10**6
+    refused = "which the allocator refuses"
+    bound = "the loader's derivations exceed the member's bound"
+    bombs = {}
+    for name, plan in (("columns 2^16", columns), ("rows 2^26", rows)):
+        padded = member(plan)
+        assert struct.unpack_from("<Q", padded, 32)[0] > 0, name
+        bombs[f"{name} padded"] = (padded, refused)
+        bombs[f"{name} unpadded"] = (_unpadded(padded), bound)
+    bombs["vertex 2^40"] = (member(vertex), "a vertex id beyond the terms")
+    bombs["family rank 1e6"] = (member(rank), "family rank exceeds propagators")
+    return bombs
 
 
 _FAIL_CLOSED = """
 import hashlib, json, resource, sys, time
 from pathlib import Path
 from pyamplicol.loops.native import load_loop_native
-model = load_loop_native().V2PlanModel
+native = load_loop_native()
+model = native.V2PlanModel
 member = Path(sys.argv[1]).read_bytes()
 crafted = {p.stem: p.read_bytes() for p in Path(sys.argv[2]).iterdir()}
 wide = Path(sys.argv[3]).read_bytes()
+derived = {p.stem: p.read_bytes() for p in Path(sys.argv[4]).iterdir()}
 digests = [hashlib.sha256(bytes(model.from_binary(m).json())).hexdigest()
            for m in (member, wide)]
 status = Path('/proc/self/status').read_text().splitlines()
@@ -485,36 +567,53 @@ for name, data in crafted.items():
         out['crafted'][name] = 'DECODED'
     except ValueError as error:
         out['crafted'][name] = str(error)
+# The member's production reader (read_binary) under the limit: the stored
+# plan loads; the derivation bombs are refused.
+out['read'] = native.v2_plan_read(member)
+out['derived'] = {}
+for name, data in derived.items():
+    try:
+        native.v2_plan_read(data)
+        out['derived'][name] = 'LOADED'
+    except ValueError as error:
+        out['derived'][name] = str(error)
 out['seconds'] = time.perf_counter() - start
 print(json.dumps(out))
 """
 
 
-def _fail_closed(native, member: bytes, tmp_path: Path) -> None:
+def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
     """Truncations of ``member`` are refused; single-byte corruptions of it
     and of the wide member are refused or decode (a damaged value can be
     another valid one; the container's SHA-256 detects damage), at every byte
     of the first 256 and every seventh after (the Rust unit tests take every
     truncation, and corruptions in parallel chunks); and every crafted bomb is
     refused at its declaration or at its first charge beyond it, before
-    allocating. In a child under an address-space limit of 1 GiB above its
-    size: a reader that decoded a bomb would fail there instead of exhausting
-    the host. The child decodes with one thread (sequentially), this process
-    with its pool (the wide member in parallel chunks): equal models
-    (RUST-MIGRATION.md rule 5).
+    allocating. ``read_binary`` loads ``member`` (``program``'s) and refuses
+    the derivation bombs (``_derivation_bombs``). In a child under an
+    address-space limit of 1 GiB above its size: a reader that decoded or
+    derived a bomb would fail there instead of exhausting the host. The child
+    decodes with one thread (sequentially), this process with its pool (the
+    wide member in parallel chunks): equal models (RUST-MIGRATION.md rule 5).
     """
 
     crafted = tmp_path / "crafted"
     crafted.mkdir()
     bombs = _crafted_members(native)
-    for k, data in enumerate(bombs.values()):
+    for k, (data, _) in enumerate(bombs.values()):
         assert len(data) < 8192
         (crafted / f"{k}.bin").write_bytes(data)
+    derived = tmp_path / "derived"
+    derived.mkdir()
+    derivation_bombs = _derivation_bombs(native, program)
+    for k, (data, _) in enumerate(derivation_bombs.values()):
+        (derived / f"{k}.bin").write_bytes(data)
     stored, wide = tmp_path / "member.bin", tmp_path / "wide.bin"
     stored.write_bytes(member)
     wide.write_bytes(_wide_member(native))
+    arguments = [str(stored), str(crafted), str(wide), str(derived)]
     result = subprocess.run(
-        [sys.executable, "-c", _FAIL_CLOSED, str(stored), str(crafted), str(wide)],
+        [sys.executable, "-c", _FAIL_CLOSED, *arguments],
         env=os.environ | {"RAYON_NUM_THREADS": "1"},
         capture_output=True,
         text=True,
@@ -529,7 +628,9 @@ def _fail_closed(native, member: bytes, tmp_path: Path) -> None:
     assert out["digests"] == here
     assert out["truncated"] == [] and out["offsets"] > 256
     assert out["corrupted"][0] > 0
-    for k, name in enumerate(bombs):
-        error = out["crafted"][str(k)]
-        expected = "bound" if name == "declared beyond the bound" else "declared size"
-        assert expected in error, (name, error)
+    for k, (name, (_, expected)) in enumerate(bombs.items()):
+        assert expected in out["crafted"][str(k)], (name, out["crafted"][str(k)])
+    assert out["read"] == native_lowering.read(member, native)
+    for k, (name, (data, expected)) in enumerate(derivation_bombs.items()):
+        assert expected in out["derived"][str(k)], (name, out["derived"][str(k)])
+        assert len(data) < 8192 or name.endswith("padded"), (name, len(data))
