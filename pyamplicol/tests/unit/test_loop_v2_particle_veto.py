@@ -155,14 +155,18 @@ def test_top_veto_equals_njet_five_flavours_gg_gg(loop_sm_compiled_model, loop_n
 
 
 @pytest.mark.loop_nightly
+@pytest.mark.parametrize("inputs", ["native", "python"])
 def test_top_veto_equals_njet_five_flavours_gg_gggg(
-    loop_sm_compiled_model, loop_native
+    loop_sm_compiled_model, loop_native, inputs
 ):
     """g g > g g g g with particle_veto = [t] at NJet's first point, the
-    complete virtual through the native executor (binary64). Generation and
-    the point's Python inputs (the counterterm program's rows) take about
-    an hour and 6.4 GB on the per-point Python inputs (2026-10-23: generation
-    234 s, the point 3,639 s), until WP3.1's native inputs."""
+    complete virtual through the native executor (binary64), on both input
+    lanes. ``native``: the executor forms the point's tree rows, Born and
+    counterterm programs itself (WP3.1 native inputs; 2026-10-24: generation
+    113 s, export 27 s, about 3 s per point). ``python``: the per-point
+    Python inputs (the counterterm program's rows), the oracle of the native
+    lane, take about an hour and 6.4 GB (2026-10-23: generation 234 s, the
+    point 3,639 s)."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice
     from pyamplicol.loops.v2.plan_export import NativeExecutor
@@ -172,7 +176,7 @@ def test_top_veto_equals_njet_five_flavours_gg_gggg(
     slice_ = LoopSlice.generate(compiled, _request("gg_gggg"), loop_native)
     _assert_top_free(slice_)
     control = _controls("gg_gggg")
-    (result,) = NativeExecutor(slice_, forward=False).evaluate(
+    (result,) = NativeExecutor(slice_, forward=False, inputs=inputs).evaluate(
         [control["points"][0]],
         [str(int(control["mu_r"][0]) ** 2)],
         parameters=PARAMETERS,

@@ -424,11 +424,22 @@ where
 }
 
 /// How a plan v4 process obtains its per-point inputs (trees, Born
-/// amplitudes, counterterm scalars): rebuilt at load from the artifact's
-/// compiled model and generation request (Python, until WP3.1 stores them as
-/// native programs under a new value of this field and further PACBIN
-/// members; the plan member is unchanged by that addition).
+/// amplitudes, counterterm and field components): rebuilt at load from the
+/// artifact's compiled model and generation request (Python), or
+/// [`LOOP_V2_NATIVE_POINT_INPUTS`].
 pub const LOOP_V2_POINT_INPUTS: &str = "regenerated-at-load";
+
+/// Native point inputs (WP3.1): the PACBIN also holds the process's native
+/// program (`loops/v2/native_process.py`): its assembly record and tree
+/// program (zlib JSON, kind `LoopRuntimePlan`), its parameter evaluator and
+/// kernel evaluators (saved exact Symbolica states), so a load regenerates
+/// nothing.
+pub const LOOP_V2_NATIVE_POINT_INPUTS: &str = "native-v1";
+
+/// The PACBIN members of native point inputs.
+pub const LOOP_V2_NATIVE_RECORD_MEMBER: &str = "point-inputs/native-process.json.zlib";
+pub const LOOP_V2_NATIVE_TREES_MEMBER: &str = "point-inputs/tree-program.json.zlib";
+pub const LOOP_V2_NATIVE_PARAMETERS_MEMBER: &str = "point-inputs/parameters.state";
 
 #[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
@@ -515,7 +526,8 @@ pub fn load_loop_v2_artifact(
             && execution.contribution_kind == "virtual"
             && execution.execution_mode == "loop_recurrence"
             && execution.engine == "v2"
-            && execution.point_inputs == LOOP_V2_POINT_INPUTS
+            && (execution.point_inputs == LOOP_V2_POINT_INPUTS
+                || execution.point_inputs == LOOP_V2_NATIVE_POINT_INPUTS)
             && execution.request.is_object(),
         "unsupported plan v4 execution declaration",
     )?;
@@ -565,6 +577,28 @@ pub fn load_loop_v2_artifact(
     )?;
     let reader = store.source(&execution.runtime_path)?.pacbin()?;
     let plan_json = crate::loop_runtime::read_loop_program_v4_json(&reader)?;
+    if execution.point_inputs == LOOP_V2_NATIVE_POINT_INPUTS {
+        use crate::pacbin::PacbinMemberKind;
+        for (member, kind) in [
+            (
+                LOOP_V2_NATIVE_RECORD_MEMBER,
+                PacbinMemberKind::LoopRuntimePlan,
+            ),
+            (
+                LOOP_V2_NATIVE_TREES_MEMBER,
+                PacbinMemberKind::LoopRuntimePlan,
+            ),
+            (
+                LOOP_V2_NATIVE_PARAMETERS_MEMBER,
+                PacbinMemberKind::SymbolicaExactState,
+            ),
+        ] {
+            require(
+                reader.member(member)?.kind() == kind,
+                "native point inputs member of the wrong kind",
+            )?;
+        }
+    }
     require(
         format!("{:x}", Sha256::digest(&plan_json)) == execution.plan_sha256,
         "the stored plan v4 differs from its declared digest",

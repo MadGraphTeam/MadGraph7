@@ -547,14 +547,14 @@ Parent-major saves only NinjaRS's per-cut overhead, which is 4.6× fewer visits.
 ## Appendix A. Reproduction
 
 ```sh
-source /shared/external/pyLoopAmpliCol/workspace/env.sh
-cd /shared/external/pyLoopAmpliCol/workspace/tmp/engine-v2/lcs
-/shared/external/pyLoopAmpliCol/workspace/venv/bin/python -I lc_structure_counts.py   # 39 s; writes lc_structure_counts.json
-PYTHONPATH=/shared/external/pyLoopAmpliCol/pyamplicol/src \
-  /shared/external/pyLoopAmpliCol/workspace/venv/bin/python lc_kk_block_probe.py      # exact colour-level KK check
-(cd ../lc && PYTHONPATH=/shared/external/pyLoopAmpliCol/pyamplicol/src \
-  /shared/external/pyLoopAmpliCol/workspace/venv/bin/python lc_colour_probe.py out.json)   # exact degree classes
-(cd ../lc && /shared/external/pyLoopAmpliCol/workspace/venv/bin/python lc_replay.py)    # replay overhead
+source /shared/vhirschi/t3code/pyamplicol/workspace/env.sh
+cd /shared/vhirschi/t3code/pyamplicol/workspace/tmp/engine-v2/lcs
+/shared/vhirschi/t3code/pyamplicol/workspace/venv/bin/python -I lc_structure_counts.py   # 39 s; writes lc_structure_counts.json
+PYTHONPATH=/shared/vhirschi/t3code/pyamplicol/pyamplicol/src \
+  /shared/vhirschi/t3code/pyamplicol/workspace/venv/bin/python lc_kk_block_probe.py      # exact colour-level KK check
+(cd ../lc && PYTHONPATH=/shared/vhirschi/t3code/pyamplicol/pyamplicol/src \
+  /shared/vhirschi/t3code/pyamplicol/workspace/venv/bin/python lc_colour_probe.py out.json)   # exact degree classes
+(cd ../lc && /shared/vhirschi/t3code/pyamplicol/workspace/venv/bin/python lc_replay.py)    # replay overhead
 ```
 
 Logs: `lcs/lc_structure_counts.log`, `lcs/lc_kk_block_probe.log`, `lcs/rerun_lc_colour_probe.log`, `lcs/rerun_lc_colour_probe2.log`, `lcs/rerun_lc_replay.log`.

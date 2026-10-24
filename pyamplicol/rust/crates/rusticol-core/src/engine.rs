@@ -4735,6 +4735,8 @@ use helicity_lane::*;
 mod momentum;
 use momentum::*;
 mod sources;
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) use sources::SchemaSources;
 
 mod validation;
 use validation::*;

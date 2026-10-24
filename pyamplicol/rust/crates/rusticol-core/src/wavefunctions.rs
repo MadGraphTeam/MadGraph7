@@ -360,6 +360,88 @@ where
     }
 }
 
+/// Massive Dirac spinor u (or v for an antiparticle) in any carrier: the
+/// binary64 `ext_quark_dirac_massive` / `ext_antiquark_dirac_massive` (HELAS
+/// ixxxxx/oxxxxx conventions) with the mass in the carrier, as the exact
+/// runtime's `_massive_dirac`.
+#[cfg(feature = "symbolica-runtime")]
+pub(super) fn ext_dirac_massive_generic<T>(
+    momentum: &[T; 4],
+    helicity: i32,
+    mass: T,
+    antiparticle: bool,
+) -> RusticolResult<[Complex<T>; 4]>
+where
+    T: Real + RealLike + From<f64> + PartialOrd + Clone,
+{
+    let zero = T::new_zero();
+    let energy = momentum[0].clone();
+    let positive = energy > zero;
+    let nsf: i64 = match (antiparticle, positive) {
+        (false, true) | (true, false) => 1,
+        (false, false) | (true, true) => -1,
+    };
+    let nh = nsf * i64::from(helicity);
+    let integer = |value: i64| energy.from_i64(value);
+    let [px, py, pz] = [1, 2, 3].map(|mu| momentum[mu].clone());
+    let pp = (px.clone() * px.clone() + py.clone() * py.clone() + pz.clone() * pz.clone())
+        .sqrt()
+        .norm();
+    let omega1 = (energy.norm() + pp.clone()).sqrt();
+    if is_zero(&omega1) {
+        return Err(RusticolError::invalid_argument(
+            "massive fermion source has zero normalization",
+        ));
+    }
+    let omega = [omega1.clone(), mass / omega1];
+    // (1 + nsf ± (1 - nsf) nh) is even: the factors are exactly ±1 or 0.
+    let sf1 = integer((1 + nsf + (1 - nsf) * nh) / 2);
+    let sf2 = integer((1 + nsf - (1 - nsf) * nh) / 2);
+    let ip = ((3 + nh) / 2 - 1) as usize;
+    let im = ((3 - nh) / 2 - 1) as usize;
+    let sfomeg = [sf1 * omega[ip].clone(), sf2 * omega[im].clone()];
+    let (signed_px, signed_py, signed_pz) = if positive {
+        (px, py, pz)
+    } else {
+        (-px, -py, -pz)
+    };
+    let pp3 = t_max(&(pp.clone() + signed_pz), &zero);
+    let two = integer(2);
+    let chi1 = if is_zero(&pp) {
+        c_generic(energy.one(), zero.clone())
+    } else {
+        c_generic(
+            (pp3.clone() / (two.clone() * pp.clone())).sqrt(),
+            zero.clone(),
+        )
+    };
+    let chi2 = if is_zero(&pp3) || is_zero(&pp) {
+        c_generic(-integer(nh), zero.clone())
+    } else {
+        let denominator = (two * pp * pp3).sqrt();
+        let y = signed_py / denominator.clone();
+        c_generic(
+            integer(nh) * signed_px / denominator,
+            if antiparticle { y } else { -y },
+        )
+    };
+    let chi = [chi1, chi2];
+    let scaled = |c: &Complex<T>, factor: &T| {
+        c_generic(c.re.clone() * factor.clone(), c.im.clone() * factor.clone())
+    };
+    let (upper, lower) = if antiparticle {
+        (&sfomeg[0], &sfomeg[1])
+    } else {
+        (&sfomeg[1], &sfomeg[0])
+    };
+    Ok([
+        scaled(&chi[im], upper),
+        scaled(&chi[ip], upper),
+        scaled(&chi[im], lower),
+        scaled(&chi[ip], lower),
+    ])
+}
+
 pub(super) fn ext_massive_vector(
     momentum: [f64; 4],
     helicity: i32,

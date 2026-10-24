@@ -34,11 +34,12 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 * stability checks (rotations by count or exact specification, the
   reduction-direction check) return one estimate per point that bounds the
   true error, and no estimate without checks;
-* a fresh interpreter rebuilds the per-point inputs from the artifact, with
-  the same plan and bitwise-identical binary64 values also after unrelated
-  Symbolica symbols were created (the regeneration does not depend on the
-  interpreter's symbol history), and refuses a stored plan that differs
-  from the regenerated one;
+* a fresh interpreter loads and evaluates the stored native point inputs
+  (``point_inputs = "native-v1"``, WP3.1) with generation forbidden, with
+  bitwise-identical binary64 values also after unrelated Symbolica symbols
+  were created; a call that needs the generation objects (correlated and
+  resolved outputs) regenerates the slice and refuses a stored plan that
+  differs from the regenerated one;
 * the native artifact loader (``load_loop_v2_artifact``) admits each plan v4
   process, cross-checks families, buckets, legs, helicity rows and sectors
   against the declarations, and refuses tampered declarations and digests;
@@ -1057,17 +1058,20 @@ FILLER_SYMBOLS = (0, 141)
 
 
 @pytest.mark.loop_physics
-def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
+def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
     full_colour, monkeypatch
 ):
-    """A new interpreter regenerates the per-point inputs from the artifact
-    alone, with the same plan and bitwise-identical binary64 Born and virtual
-    values whatever Symbolica symbols it created before; a stored plan
-    unequal to the regenerated one is refused."""
+    """A new interpreter loads the artifact's native point inputs and
+    evaluates them with generation forbidden (no slice is regenerated),
+    giving the same plan and bitwise-identical binary64 Born and virtual
+    values whatever Symbolica symbols it created before; a call that
+    regenerates the slice (the correlated outputs) refuses a stored plan
+    unequal to the regenerated one."""
 
     from pyamplicol import Runtime
 
     here = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
+    assert here.inspect()["point_inputs"] == "native-v1"
     value = here.evaluate([POINT], mu_r2="1000000")
     expected = [
         here.inspect()["plan_sha256"],
@@ -1080,6 +1084,11 @@ def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
             "from symbolica import S",
             "fillers = [S(f'filler::f{k}') for k in range(int(sys.argv[2]))]",
             "from pyamplicol import Runtime",
+            "from pyamplicol.loops.v2 import artifact, assemble",
+            "def forbidden(*args, **kwargs):",
+            "    raise AssertionError('a native load must not generate')",
+            "artifact.generate_process = forbidden",
+            "assemble.LoopSlice.generate = forbidden",
             "r = Runtime.load(sys.argv[1], process='gg', model_parameters=PARAMETERS)",
             "v = r.evaluate([POINT], mu_r2='1000000')",
             "print(json.dumps([r.inspect()['plan_sha256'], v.born_values, v.values]))",
@@ -1114,8 +1123,9 @@ def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
 
     monkeypatch.setattr(artifact, "_slices", type(artifact._slices)())
     monkeypatch.setattr(artifact, "generate_process", drifted)
+    loaded = Runtime.load(full_colour, process="gg")
     with pytest.raises(ArtifactError, match="differs from the stored one"):
-        Runtime.load(full_colour, process="gg")
+        loaded.available_color_correlations()
 
 
 def _rewrite_payloads(source: Path, destination: Path, edits) -> Path:
@@ -1328,7 +1338,7 @@ def test_inspect_summarizes_v2_loop_artifacts(full_colour):
     assert loop.arithmetic == ("double", "double-double", "arbitrary")
     assert loop.resolved and not loop.correlations
     assert loop.color_correlations == () and loop.spin_correlations == ()
-    assert loop.point_inputs == "regenerated-at-load"
+    assert loop.point_inputs == "native-v1"
     execution = json.loads((full_colour / "processes/gg/execution.json").read_text())
     assert loop.plan_sha256 == execution["plan_sha256"]
     assert by_id["uux_ddxg"].loop.families == 42
@@ -2162,8 +2172,8 @@ def test_artifacts_hold_no_host_paths_and_load_relocated(
     script = script.replace("PARTS", repr(POLE_COMPONENTS))
     script = script.replace("PARAMETERS", repr(GG_PARAMETERS))
     script = script.replace("POINTS", repr(points))
-    # A fresh interpreter in another working directory regenerates the point
-    # inputs from the copy alone.
+    # A fresh interpreter in another working directory evaluates the copy's
+    # stored native point inputs.
     process = subprocess.run(
         [sys.executable, "-c", script, str(moved)],
         capture_output=True,
@@ -2254,8 +2264,11 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     """u u~ > d d~ with QCD and electroweak Born amplitudes (explicit limits
     QCD 2, QED 2): the dry run derives one loop order per Born amplitude
     order (QCD^4 and QCD^2 QED^2, not the limits raised by two) and does not
-    claim loop admission; in the SM the generation fails closed on the
-    chiral Z vertex of a loop quark line (WP3.2). With photon exchange only
+    claim loop admission; in the SM the generation fails closed on the W
+    exchange of the electroweak Born: its root closure at leg 1 needs the
+    conjugate rule of a vertex that is not closed under conjugation (the
+    chiral Z on loop quark lines, which stopped it earlier, is supported
+    since WP3.1 I-AX). With photon exchange only
     (Z, W and scalars excluded through the slice request) the public
     generator and runtime, regenerating at load, equal MadLoop's split-order
     control in every squared order (MadLoop binary64): each Born order within
@@ -2291,8 +2304,8 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     assert coverage["loop_admission_checked"] is False
     with pytest.raises(
         GenerationError,
-        match=r"'Z'\) is not a pure vector coupling; its sign needs the "
-        r"electroweak oracles",
+        match=r"is not closed under conjugation; the tree reading of its legs "
+        r"needs its conjugate rule",
     ):
         generator.generate(processes, tmp_path / "a")
     assert not (tmp_path / "a").exists()
@@ -2590,8 +2603,10 @@ def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
 ):
     """gg -> gggg (1100 families, 45 MB of plan JSON without the forward
     oracle, and the companion plan of 6 certified-scaleless families)
-    publishes < 20 MB (8.8 MB measured, 5.3 MB of it the compiled model and
-    3.5 MB the plan PACBIN with the companion)."""
+    publishes < 20 MB (measured: 11 MB with the native point inputs and the
+    counterterm program of the recursion; 8.8 MB on the slice without native
+    point inputs, 5.3 MB of it the compiled model and 3.5 MB the plan PACBIN
+    with the companion)."""
 
     from pyamplicol.loops.v2.artifact import admit, plan_digest, read_plan
 

@@ -476,6 +476,16 @@ class CountertermClosure:
                     if slot is None:
                         continue
                     component, power, grade = slot
+                    lines = closure._blocks.get(current) if clone else None
+                    if lines and all(
+                        add_orders(physical, program.clones[block.id].half) not in loop
+                        for block in lines
+                    ):
+                        # No consuming copy reaches a loop order: the vertex's
+                        # terms are not built (a vertex the closure refuses,
+                        # e.g. a W vertex not closed under conjugation at
+                        # u u~ > e- e+ d d~ g, may sit at such orders).
+                        continue
                     attachments = _assigned(fields, choice)
                     index = attachments.index(current)
                     for term in closure.vertex_terms(entries, attachments):

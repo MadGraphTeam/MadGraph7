@@ -36,15 +36,24 @@ with eps_s the product of
   line turns fermionic and back; the identity pairing inside each block
   represents its trees, as for counterterm sites;
 * -1 per closed fermion or ghost loop (Wick sewing of the cut pair);
-* -1 per fermion propagator on the loop: the tree reading of a fermion line
-  is its transposed chain, which carries this sign against the Feynman
-  rules for pure vector couplings (gamma^mu is odd under charge conjugation).
-  The transposed propagator numerator is C (q-slash + m)^T C^-1 =
-  -(q-slash - m), so the tree reading also evaluates the line's propagator
-  with the opposite mass sign (``TreeReading.mass_signs``). The flip acts on
-  the mass parameter in the whole segment kernel (vertex and propagator), so
-  a vertex whose couplings depend on the mass of the loop line it emits is
-  refused (a Yukawa written as MT/v rather than through its own parameter).
+* -1 per fermion propagator on the loop. The tree reading of a fermion line
+  is its transposed Dirac chain: every vertex tensor is contracted on its
+  swapped spinor slots and every propagator is the antifermion propagator
+  S(-k)^T of the momentum k the line carries (``models.expressions``), so the
+  chain equals the families' reading with S(-k) = -(k-slash - m) in place of
+  S(k) = k-slash + m. No property of the vertex tensors enters (no
+  charge-conjugation matrix, unlike Furry's theorem), so the sign holds for
+  every Lorentz structure. Vector and chiral currents are checked against
+  MadLoop with the Z on open quark lines (Drell-Yan equals the universal
+  massless form factor) and on closed quark loops (u u~ > e- e+ g g; reversing
+  the top's axial coupling moves the finite part by 6e-4 to 7e-3); scalar and
+  tensor couplings follow from the same identity, without a process oracle
+  yet (DESIGN WP3.1). The tree reading therefore also evaluates the line's
+  propagator with the opposite mass sign (``TreeReading.mass_signs``). The
+  flip acts on the mass parameter in the whole segment kernel (vertex and
+  propagator), so a vertex whose couplings depend on the mass of the loop
+  line it emits is refused (a Yukawa written as MT/v rather than through its
+  own parameter).
 
 The tree engine's ``merge_sign`` (``generation/fermion_ordering.py``) is +1
 for coloured lines, whose ordering the colour flow owns, so for coloured
@@ -52,10 +61,7 @@ fermions the rule above is the design §3.3 ring sign. It is refused
 (``FermionSignError``, at generation) wherever it is not established:
 colour-singlet fermion lines through the loop (they need the Koszul signs of
 ``fermion_ordering.py``), vertices with more than one fermion line, and loop
-fermion vertices whose Lorentz structure is not a pure vector current
-(chiral, scalar and tensor couplings transpose with other signs or change
-chirality), and loop fermion vertices coupling through the mass of the line
-they emit (above); the electroweak sign oracles (O13 EW, WP3.2) admit them.
+fermion vertices coupling through the mass of the line they emit (above).
 
 Normalisation. NinjaRS returns mu^(2 eps) / (i pi^(2-eps) r_Gamma) times the
 integral of N / prod D (design §11.1), so with Born-weighted family numerators
@@ -85,10 +91,6 @@ from .skeletons import Content, Skeleton
 
 GHOST_SPIN = -1
 FERMION_SPIN = 2
-
-# The pure vector current Gamma(mu of the boson leg, spinor, spinor) in the
-# native model's Lorentz structure syntax.
-_VECTOR_CURRENT = re.compile(r"Gamma\(idx\(1,(\d+)\),idx\(1,(\d+)\),idx\(1,(\d+)\)\)")
 
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
@@ -186,16 +188,12 @@ class LeafWeights:
         data = model_data(native_model)
         self._particles = {p["name"]: p for p in data["particles"]}
         self._rules = {rule["name"]: rule for rule in data["vertex_rules"]}
-        self._lorentz = {
-            entry["name"]: entry["structure"] for entry in data["lorentz_structures"]
-        }
         self._expressions = {
             entry["name"]: entry.get("expression") or ""
             for entry in (*data["parameters"], *data["couplings"])
         }
         self._ends = dict(ends)
         self._signs: dict[tuple[Content, ...], int] = {}
-        self._vector: dict[str, bool] = {}
         self._depends: dict[str, frozenset[str]] = {}
 
     def __call__(self, skeleton: Skeleton, contents: Sequence[Content]) -> Fraction:
@@ -207,7 +205,7 @@ class LeafWeights:
     def fermion_sign(self, skeleton: Skeleton) -> int:
         """eps_s of a skeleton (reading-independent)."""
 
-        self._require_vector_couplings(skeleton.contents)
+        self._require_mass_free_couplings(skeleton.contents)
         spins = [int(self._particles[name]["spin"]) for name in skeleton.species]
         sign = -1 if all(spin == GHOST_SPIN for spin in spins) else 1
         for content in skeleton.contents:
@@ -224,30 +222,22 @@ class LeafWeights:
     def _fermion(self, name: str) -> bool:
         return int(self._particles[name]["spin"]) == FERMION_SPIN
 
-    def _require_vector_couplings(self, contents: Sequence[Content]) -> None:
+    def _require_mass_free_couplings(self, contents: Sequence[Content]) -> None:
+        """Refuse a loop fermion vertex coupling through the mass of the loop
+        line it emits (module docstring: the tree reading flips that mass)."""
+
         for content in contents:
-            if not (self._fermion(content.loop_in) or self._fermion(content.loop_out)):
+            if not self._fermion(content.loop_out):
+                continue
+            mass = mass_name(self._particles[content.loop_out]["mass"])
+            if mass == ZERO:
                 continue
             for term in content.terms:
                 rule = term.vertex.rule
-                vector = self._vector.get(rule)
-                if vector is None:
-                    vector = self._vector[rule] = self._vector_rule(rule)
-                if not vector:
-                    raise FermionSignError(
-                        f"loop fermion vertex {rule} "
-                        f"{tuple(self._rules[rule]['particles'])} is not a pure "
-                        "vector coupling; its sign needs the electroweak oracles"
-                    )
-                mass = mass_name(self._particles[content.loop_out]["mass"])
-                if (
-                    self._fermion(content.loop_out)
-                    and mass != ZERO
-                    and any(
-                        mass in self._dependencies(coupling)
-                        for row in self._rules[rule]["couplings"]
-                        for coupling in row
-                    )
+                if any(
+                    mass in self._dependencies(coupling)
+                    for row in self._rules[rule]["couplings"]
+                    for coupling in row
                 ):
                     raise FermionSignError(
                         f"loop fermion vertex {rule} couples through the mass "
@@ -270,22 +260,6 @@ class LeafWeights:
             )
             self._depends[name] = found
         return found
-
-    def _vector_rule(self, rule: str) -> bool:
-        """Whether every Lorentz structure of ``rule`` is Gamma(boson, f, f)."""
-
-        particles = self._rules[rule]["particles"]
-        fermions = {
-            leg for leg, name in enumerate(particles, start=1) if self._fermion(name)
-        }
-        for name in self._rules[rule]["lorentz_structures"]:
-            match = _VECTOR_CURRENT.fullmatch("".join(self._lorentz[name].split()))
-            if match is None:
-                return False
-            boson, *spinors = (int(leg) for leg in match.groups())
-            if boson in fermions or set(spinors) != fermions:
-                return False
-        return True
 
     def _line_parity(self, contents: Sequence[Content]) -> int:
         """Pairing parity of the coloured lines and closed-loop sewing signs."""

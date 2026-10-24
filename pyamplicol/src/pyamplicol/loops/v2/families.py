@@ -135,6 +135,15 @@ class Position:
 
     vertex: LoopVertex
     blocks: tuple[BlockCurrent, ...]  # sorted by mask
+    _hash: int | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __hash__(self) -> int:
+        if self._hash is None:
+            object.__setattr__(self, "_hash", hash((self.vertex, self.blocks)))
+        return self._hash  # type: ignore[return-value]
+
+    def __reduce__(self):
+        return Position, (self.vertex, self.blocks)
 
     @property
     def mask(self) -> int:
@@ -1040,9 +1049,13 @@ class ModelBlockTable:
         outgoing: Sequence[str],
         *,
         cap: Orders,
+        ignored_particle_ids: Iterable[int] = (),
     ):
         data = model_data(model)
         particles = {entry["name"]: entry for entry in data["particles"]}
+        # As the tree compiler: no current of an ignored (all-outgoing)
+        # particle id is produced.
+        ignored = frozenset(int(pdg) for pdg in ignored_particle_ids)
         conjugate = {name: entry["antiname"] for name, entry in particles.items()}
         coupling_orders = {
             entry["name"]: tuple(
@@ -1074,6 +1087,8 @@ class ModelBlockTable:
                 if name is not None
             }
             for result in range(len(names)):
+                if int(particles[names[result]]["pdg_code"]) in ignored:
+                    continue
                 attached = tuple(sorted(n for i, n in enumerate(names) if i != result))
                 for order in orders:
                     self._merges[attached].add((conjugate[names[result]], order))
