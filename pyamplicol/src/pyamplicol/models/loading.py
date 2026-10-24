@@ -1672,6 +1672,10 @@ _COUNTERTERM_IR_CACHE_KIND = "pyamplicol-counterterm-model-ir"
 COUNTERTERM_WEYL_CACHE_SUFFIX = ".pyAmplicol-counterterm-weyl.json"
 _COUNTERTERM_WEYL_CACHE_KIND = "pyamplicol-counterterm-weyl-support"
 _COUNTERTERM_IR_FINGERPRINT: list[dict[str, object]] = []
+# Lowered models one cache directory keeps, least recently used out first:
+# an entry is 14-19 MB for loop_sm's six-leg QCD scopes, and every change of
+# the compiler's code identity writes new ones (``_counterterm_ir``).
+COUNTERTERM_IR_CACHE_KEPT = 64
 
 
 def compile_counterterm_model_ir(
@@ -1738,7 +1742,10 @@ def _counterterm_ir(
             stored.get("kind") == _COUNTERTERM_IR_CACHE_KIND
             and stored.get("key") == key
         ):
-            return CompiledModelIR.from_dict(_mapping(stored["ir"], "ir")), (path, key)
+            ir = CompiledModelIR.from_dict(_mapping(stored["ir"], "ir"))
+            with suppress(OSError):
+                os.utime(path)  # recently used (``_evict_counterterm_entries``)
+            return ir, (path, key)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         pass
     ir = compile_ufo_model_ir(
@@ -1752,7 +1759,28 @@ def _counterterm_ir(
             {"kind": _COUNTERTERM_IR_CACHE_KIND, "key": key, "ir": ir.to_dict()},
             compact=True,
         )
+        _evict_counterterm_entries(path.parent)
     return ir, (path, key)
+
+
+def _evict_counterterm_entries(
+    directory: Path, kept: int = COUNTERTERM_IR_CACHE_KEPT
+) -> None:
+    """Remove the CT lowering entries of ``directory`` (with their Weyl
+    tables, ``counterterm_weyl_support``) beyond the ``kept`` most recently
+    used. Only these two kinds of file are touched; an entry another process
+    loses is recompiled on its next miss, never trusted half-read."""
+
+    entries = []
+    for path in directory.glob(f"*{COUNTERTERM_IR_CACHE_SUFFIX}"):
+        with suppress(OSError):
+            entries.append((path.stat().st_mtime_ns, path.name, path))
+    entries.sort(reverse=True)
+    for _used, name, path in entries[kept:]:
+        key = name[: -len(COUNTERTERM_IR_CACHE_SUFFIX)]
+        for stale in (path, path.with_name(f"{key}{COUNTERTERM_WEYL_CACHE_SUFFIX}")):
+            with suppress(OSError):
+                stale.unlink()
 
 
 def counterterm_weyl_support(

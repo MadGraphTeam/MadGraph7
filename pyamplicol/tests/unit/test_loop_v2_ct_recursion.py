@@ -464,6 +464,41 @@ def test_lowered_model_compile_is_cached_by_content(
 
 
 @pytest.mark.loop_fast
+def test_lowered_model_cache_keeps_the_most_recently_used(tmp_path):
+    """The lowering cache is bounded: beyond ``COUNTERTERM_IR_CACHE_KEPT``
+    entries the least recently used go, each with its Weyl table, and
+    nothing else in the directory is touched."""
+
+    import os
+
+    from pyamplicol.models.loading import (
+        COUNTERTERM_IR_CACHE_SUFFIX,
+        COUNTERTERM_WEYL_CACHE_SUFFIX,
+        _evict_counterterm_entries,
+    )
+
+    for age in range(5):
+        for suffix in (COUNTERTERM_IR_CACHE_SUFFIX, COUNTERTERM_WEYL_CACHE_SUFFIX):
+            path = tmp_path / f"k{age}{suffix}"
+            path.write_text("{}", encoding="utf-8")
+            os.utime(path, ns=(10**18 - age * 10**9,) * 2)  # k0 newest
+    other = tmp_path / "loop-sm.json.pyAmplicol-model.json"
+    other.write_text("{}", encoding="utf-8")
+    os.utime(tmp_path / f"k4{COUNTERTERM_IR_CACHE_SUFFIX}", ns=(10**18 + 1,) * 2)
+    _evict_counterterm_entries(tmp_path, kept=3)
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
+        [
+            other.name,
+            *(
+                f"k{k}{s}"
+                for k in (0, 1, 4)
+                for s in (COUNTERTERM_IR_CACHE_SUFFIX, COUNTERTERM_WEYL_CACHE_SUFFIX)
+            ),
+        ]
+    )
+
+
+@pytest.mark.loop_fast
 def test_lowered_model_weyl_support_is_cached(
     loop_sm_compiled_model, tmp_path, monkeypatch
 ):
