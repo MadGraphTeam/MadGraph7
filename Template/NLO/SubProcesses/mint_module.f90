@@ -97,6 +97,13 @@ module mint_module
   double precision, dimension(maxchannels), public :: virtual_fraction
   double precision, dimension(nintegrals,0:maxchannels), public :: ans,unc
   logical :: only_virt,new_point,pass_cuts_check
+! Number of folded images of the current point, and whether (and with
+! which factor) the H-event contributions are included: with FoldSumSets
+! they only come from the set of FKS configurations that was picked (see
+! sigintF in driver_mintMC.f)
+  integer, public :: n_fold_images=1
+  logical, public :: fold_h_keep=.true.
+  double precision, public :: fold_h_scale=1d0
 
 ! private variables
   character(len=13), parameter, dimension(nintegrals), private :: title=(/ &
@@ -802,10 +809,12 @@ contains
     ! contribution to integral
     ifirst=0
     if(imode.eq.0) then
+       n_fold_images=1
        dummy=fun(x,vol,ifirst,f1)
        if (.not. fixed_order) dummy=fun(x,vol,2,f1)
        f(1:nintegrals)=f1(1:nintegrals)
     else
+       n_fold_images=product(ifold(1:ndim))
        f(1:nintegrals)=0d0
        kfold(1:ndim)=1
 1      continue
@@ -828,7 +837,7 @@ contains
     implicit none
     integer :: kdim,k_ord_virt,nintcurr
     integer, dimension(ndimmax) :: kfold
-    double precision :: vol,dx
+    double precision :: vol,dx,t,s
     double precision, dimension(ndimmax) :: x
     call get_channel
 ! find random x, and its random cell
@@ -850,9 +859,25 @@ contains
     do kdim=1,ndim
        nintcurr=nint_used/ifold(kdim)
        icell(kdim)=ncell(kdim)+(kfold(kdim)-1)*nintcurr
-       dx=xgrid(icell(kdim),kdim,ichan)-xgrid(icell(kdim)-1,kdim,ichan)
-       vol=vol*dx*nintcurr
-       x(kdim)=xgrid(icell(kdim)-1,kdim,ichan)+rand(kdim)*dx
+       if (FoldCubic .and. ifold(kdim).gt.1 .and. &
+            (kdim.eq.ifold_energy .or. kdim.eq.ifold_yij)) then
+! Folded xi_i or y_ij with FoldCubic: the images t=(U+k-1)/n of the flat
+! coordinate are moved to s=t^2(3-2t), with weight ds/dt=6t(1-t). The
+! rule stays exact on average (each image is uniformly distributed), and
+! for a smooth integrand its error falls like 1/n^2 instead of 1/n: the
+! weight vanishes at both ends, so the transformed integrand is periodic.
+! It also keeps the images away from the endpoints of the range.
+          t=(icell(kdim)-1+rand(kdim))/dble(nint_used)
+          s=min(max(t**2*(3d0-2d0*t),1d-10),1d0-1d-10)
+          icell(kdim)=min(int(s*nint_used)+1,nint_used)
+          dx=xgrid(icell(kdim),kdim,ichan)-xgrid(icell(kdim)-1,kdim,ichan)
+          vol=vol*dx*nintcurr*6d0*t*(1d0-t)
+          x(kdim)=xgrid(icell(kdim)-1,kdim,ichan)+(s*nint_used-(icell(kdim)-1))*dx
+       else
+          dx=xgrid(icell(kdim),kdim,ichan)-xgrid(icell(kdim)-1,kdim,ichan)
+          vol=vol*dx*nintcurr
+          x(kdim)=xgrid(icell(kdim)-1,kdim,ichan)+rand(kdim)*dx
+       endif
        if(imode.eq.0) nhits(icell(kdim),kdim,ichan)=nhits(icell(kdim),kdim,ichan)+1
     enddo
     do k_ord_virt=0,n_ord_virt

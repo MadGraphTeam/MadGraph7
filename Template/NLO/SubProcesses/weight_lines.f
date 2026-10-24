@@ -22,7 +22,7 @@
       subroutine weight_lines_allocated(nexternal,n_contr,n_wgt,n_proc)
       use weight_lines
       implicit none
-      integer n_contr,n_wgt,n_proc,nexternal
+      integer n_contr,n_wgt,n_proc,nexternal,n_new
       logical, allocatable :: ltemp1(:)
       integer, allocatable :: itemp1(:),itemp2(:,:),itemp3(:,:,:)
       double precision, allocatable :: temp1(:),temp2(:,:),temp3(:,:,:)
@@ -72,144 +72,148 @@ c update maximum
       endif
 c --- increase size of max_contr ---
       if (n_contr.gt.max_contr) then
+c grow geometrically: growing by one contribution at a time costs
+c O(n^2) in reallocations (icontr_sum is n x n) when there are many
+c folded images
+         n_new=max(n_contr,2*max_contr)
 c H_event
-         allocate(ltemp1(n_contr))
+         allocate(ltemp1(n_new))
          ltemp1(1:max_contr)=H_event
          call move_alloc(ltemp1,H_event)
 c itype
-         allocate(itemp1(n_contr))
+         allocate(itemp1(n_new))
          itemp1(1:max_contr)=itype
          call move_alloc(itemp1,itype)
 c nFKS
-         allocate(itemp1(n_contr))
+         allocate(itemp1(n_new))
          itemp1(1:max_contr)=nFKS
          call move_alloc(itemp1,nFKS)
 c QCDpower         
-         allocate(itemp1(n_contr))
+         allocate(itemp1(n_new))
          itemp1(1:max_contr)=QCDpower
          call move_alloc(itemp1,QCDpower)
 c pdg
-         allocate(itemp2(nexternal,0:n_contr))
+         allocate(itemp2(nexternal,0:n_new))
          itemp2(1:nexternal,0:max_contr)=pdg
          call move_alloc(itemp2,pdg)
 c pdg_uborn
-         allocate(itemp2(nexternal,0:n_contr))
+         allocate(itemp2(nexternal,0:n_new))
          itemp2(1:nexternal,0:max_contr)=pdg_uborn
          call move_alloc(itemp2,pdg_uborn)
 c parton_pdg_uborn
-         allocate(itemp3(nexternal,max_iproc,n_contr))
+         allocate(itemp3(nexternal,max_iproc,n_new))
          itemp3(1:nexternal,1:max_iproc,1:max_contr)=parton_pdg_uborn
          call move_alloc(itemp3,parton_pdg_uborn)
 c parton_pdg
-         allocate(itemp3(nexternal,max_iproc,n_contr))
+         allocate(itemp3(nexternal,max_iproc,n_new))
          itemp3(1:nexternal,1:max_iproc,1:max_contr)=parton_pdg
          call move_alloc(itemp3,parton_pdg)
 c plot_id
-         allocate(itemp1(n_contr))
+         allocate(itemp1(n_new))
          itemp1(1:max_contr)=plot_id
          call move_alloc(itemp1,plot_id)
 c ifold_cnt
-         allocate(itemp1(n_contr))
+         allocate(itemp1(n_new))
          itemp1(1:max_contr)=ifold_cnt
          call move_alloc(itemp1,ifold_cnt)
 c niproc
-         allocate(itemp1(n_contr))
+         allocate(itemp1(n_new))
          itemp1(1:max_contr)=niproc
          call move_alloc(itemp1,niproc)
 c ipr
-         allocate(itemp1(n_contr))
+         allocate(itemp1(n_new))
          itemp1(1:max_contr)=ipr
          call move_alloc(itemp1,ipr)
 c orderstag
-         allocate(itemp1(n_contr))
+         allocate(itemp1(n_new))
          itemp1(1:max_contr)=orderstag
          call move_alloc(itemp1,orderstag)
 c amppos
-         allocate(itemp1(n_contr))
+         allocate(itemp1(n_new))
          itemp1(1:max_contr)=amppos
          call move_alloc(itemp1,amppos)
 c parton_pdf
-         allocate(itemp3(nexternal,max_iproc,n_contr))
+         allocate(itemp3(nexternal,max_iproc,n_new))
          itemp3(1:nexternal,1:max_iproc,1:max_contr)=parton_pdf
          call move_alloc(itemp3,parton_pdf)
 c icontr_sum
-         allocate(itemp2(0:n_contr,n_contr))
+         allocate(itemp2(0:n_new,n_new))
          itemp2(0:max_contr,1:max_contr)=icontr_sum
          call move_alloc(itemp2,icontr_sum)
 c icolour_con
-         allocate(itemp3(2,nexternal,n_contr))
+         allocate(itemp3(2,nexternal,n_new))
          itemp3(1:2,1:nexternal,1:max_contr)=icolour_con
          call move_alloc(itemp3,icolour_con)
 c momemta
-         allocate(temp3(0:3,nexternal,n_contr))
+         allocate(temp3(0:3,nexternal,n_new))
          temp3(0:3,1:nexternal,1:max_contr)=momenta
          call move_alloc(temp3,momenta)
 c momemta_m
-         allocate(temp4(0:3,nexternal,2,n_contr))
+         allocate(temp4(0:3,nexternal,2,n_new))
          temp4(0:3,1:nexternal,1:2,1:max_contr)=momenta_m
          call move_alloc(temp4,momenta_m)
 c wgt
-         allocate(temp2(3,n_contr))
+         allocate(temp2(3,n_new))
          temp2(1:3,1:max_contr)=wgt
          call move_alloc(temp2,wgt)
 c wgt_ME_tree
-         allocate(temp2(2,n_contr))
+         allocate(temp2(2,n_new))
          temp2(1:2,1:max_contr)=wgt_ME_tree
          call move_alloc(temp2,wgt_ME_tree)
 c bjx
-         allocate(temp2(2,n_contr))
+         allocate(temp2(2,n_new))
          temp2(1:2,1:max_contr)=bjx
          call move_alloc(temp2,bjx)
 c scales2
-         allocate(temp2(3,n_contr))
+         allocate(temp2(3,n_new))
          temp2(1:3,1:max_contr)=scales2
          call move_alloc(temp2,scales2)
 c g_strong
-         allocate(temp1(n_contr))
+         allocate(temp1(n_new))
          temp1(1:max_contr)=g_strong
          call move_alloc(temp1,g_strong)
 c wgts
-         allocate(temp2(max_wgt,n_contr))
+         allocate(temp2(max_wgt,n_new))
          temp2(1:max_wgt,1:max_contr)=wgts
          call move_alloc(temp2,wgts)
 c parton_iproc
-         allocate(temp2(max_iproc,n_contr))
+         allocate(temp2(max_iproc,n_new))
          temp2(1:max_iproc,1:max_contr)=parton_iproc
          call move_alloc(temp2,parton_iproc)
 c y_bst
-         allocate(temp1(n_contr))
+         allocate(temp1(n_new))
          temp1(1:max_contr)=y_bst
          call move_alloc(temp1,y_bst)
 c cpower
-         allocate(temp1(n_contr))
+         allocate(temp1(n_new))
          temp1(1:max_contr)=cpower
          call move_alloc(temp1,cpower)
 c bias_wgt
-         allocate(temp1(n_contr))
+         allocate(temp1(n_new))
          temp1(1:max_contr)=bias_wgt
          call move_alloc(temp1,bias_wgt)
 c plot_wgts
-         allocate(temp2(max_wgt,n_contr))
+         allocate(temp2(max_wgt,n_new))
          temp2(1:max_wgt,1:max_contr)=plot_wgts
          call move_alloc(temp2,plot_wgts)
 c shower_scale
-         allocate(temp1(n_contr))
+         allocate(temp1(n_new))
          temp1(1:max_contr)=shower_scale
          call move_alloc(temp1,shower_scale)
 c shower_scale_a
-         allocate(temp3(n_contr,nexternal,nexternal))
+         allocate(temp3(n_new,nexternal,nexternal))
          temp3(1:max_contr,1:nexternal,1:nexternal)=shower_scale_a
          call move_alloc(temp3,shower_scale_a)
 c unwgt
-         allocate(temp2(max_iproc,n_contr))
+         allocate(temp2(max_iproc,n_new))
          temp2(1:max_iproc,1:max_contr)=unwgt
          call move_alloc(temp2,unwgt)
 c need_match
-         allocate(itemp2(nexternal,1:n_contr))
+         allocate(itemp2(nexternal,1:n_new))
          itemp2(1:nexternal,1:max_contr)=need_match
          call move_alloc(itemp2,need_match)
 c update maximum
-         max_contr=n_contr
+         max_contr=n_new
       endif
       return
       end

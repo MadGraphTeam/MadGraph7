@@ -16,6 +16,8 @@ module FKSParams
               SelectedCouplingOrders(maxCouplingTypes,0:maxCouplingsSelected), &
               QCD_squared_selected
   logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual
+  ! MC@NLO folding (see FKS_params.dat): FoldCubic and FoldSumSets
+  logical :: FoldCubic,FoldSumSets
 
 contains
 
@@ -79,6 +81,10 @@ contains
              read(68,*,end=999) separate_flavour_configs
           else if (buff .eq. '#UsePolyVirtual') then
              read(68,*,end=999) use_poly_virtual
+          else if (buff .eq. '#FoldCubic') then
+             read(68,*,end=999) FoldCubic
+          else if (buff .eq. '#FoldSumSets') then
+             read(68,*,end=999) FoldSumSets
           else if (buff .eq. '#VetoedContributionTypes') then
              read(68,*,end=999) VetoedContributionTypes(0)
              if (VetoedContributionTypes(0) .lt. 0.or. &
@@ -205,6 +211,8 @@ contains
        write(*,*) ' > MinVirtualFraction        = ',Min_virt_fraction
        write(*,*) ' > SeparateFlavourConfigs    = ',separate_flavour_configs
        write(*,*) ' > UsePolyVirtual            = ',use_poly_virtual
+       write(*,*) ' > FoldCubic                 = ',FoldCubic
+       write(*,*) ' > FoldSumSets               = ',FoldSumSets
        write(*,*) &
             '==============================================================='
        paramPrinted=.TRUE.
@@ -229,6 +237,8 @@ contains
     separate_flavour_configs=.false.
     use_poly_virtual=.true.
     IncludeBornContributions=.true.
+    FoldCubic=.true.
+    FoldSumSets=.true.
     SelectedContributionTypes(0)=0
     VetoedContributionTypes(0)=0
     do i=1, maxContribsSelected
