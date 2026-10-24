@@ -87,7 +87,11 @@ fn predicate<T: Real + SingleFloat + PartialOrd>(args: &[Complex<T>], mode: u8) 
 
 pub fn register_scalar_primitives() {
     static REGISTER: std::sync::Once = std::sync::Once::new();
-    REGISTER.call_once(register_definitions);
+    REGISTER.call_once(|| {
+        // Symbol definitions are Symbolica state (`crate::licence`).
+        let _unlock = crate::licence::unlock();
+        register_definitions();
+    });
 }
 
 fn register_definitions() {

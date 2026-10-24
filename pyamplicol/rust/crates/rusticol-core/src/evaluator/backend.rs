@@ -2646,6 +2646,8 @@ fn load_evaluator_state_bytes(
 pub(crate) fn decode_exact_evaluator_state(
     bytes: &[u8],
 ) -> RusticolResult<ExpressionEvaluator<Complex<Rational>>> {
+    // Decoding creates Symbolica state: pyAmpliCol's library key unlocks it.
+    let _unlock = crate::licence::unlock();
     crate::source_scalar::register_scalar_primitives();
     load_evaluator_state_bytes(bytes, "Python Evaluator.save()").map(|(_, evaluator, _)| evaluator)
 }
