@@ -14,13 +14,15 @@ Per plan:
   holds no host path (searched in its decoded strings, where a path would
   show);
 * strings follow ``json.dumps``'s ``ensure_ascii`` escapes;
-* foreign members and unknown JSON fields are refused, and every truncation,
-  every single-byte corruption and crafted decompression bombs (width-0
-  columns, shared lists copied at every reference, strings, declared sizes)
-  fail closed: an error or a model within the member's declared bound, never
-  an abort or a memory exhaustion (in a child under an address-space limit,
-  so a regression fails instead of exhausting the host; the reader's Rust
-  unit tests add the padding of plans that share beyond the bound);
+* foreign members and unknown JSON fields are refused, and truncations,
+  single-byte corruptions and crafted decompression bombs (width-0 columns,
+  shared lists copied at every reference, strings, declared sizes) fail
+  closed: an error or a model within the member's declared bound, never an
+  abort or a memory exhaustion (in a child under an address-space limit, so
+  a regression fails instead of exhausting the host; the reader's Rust unit
+  tests add every truncation, the parallel decode's corruptions and the
+  padding of plans that share beyond the bound); the parallel decode equals
+  the sequential one;
 * the bindings run in a process without a Symbolica key (``loop_nightly``).
 
 Plans cover schedule B with derived and written row links, schedule F
@@ -303,9 +305,10 @@ def test_six_leg_plans(slices, loop_native, name):
 
 @pytest.mark.loop_nightly
 def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
-    """``V2PlanModel`` and ``v2_plan_load`` in a process without a key
-    (RUST-MIGRATION.md rule 4): the JSON written byte-identical, the binary
-    round trip bitwise, and equal load digests from both encodings.
+    """``V2PlanModel``, ``v2_plan_load`` and ``v2_plan_read`` in a process
+    without a key (RUST-MIGRATION.md rule 4): the JSON written byte-identical,
+    the binary round trip bitwise, and equal load digests from both encodings
+    and from ``read_binary``.
 
     The child imports the extension, which starts a restricted Symbolica
     instance: like ``test_native_builder_needs_no_symbolica_licence`` it must
@@ -335,6 +338,7 @@ def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
         "Path(sys.argv[3]).write_bytes(member)\n"
         "for data in (text, member):\n"
         "    print(native.v2_plan_load(data, digest=True)[3])\n"
+        "print(native.v2_plan_read(member))\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", script, str(records), *map(str, written)],
@@ -346,7 +350,7 @@ def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
     )
     assert written[0].read_bytes() == text
     assert written[1].read_bytes() == member
-    assert result.stdout.split()[-2:] == [expected, expected]
+    assert result.stdout.split()[-3:] == [expected] * 3
 
 
 # The member's header (``binary.rs``): magic, format, schema, column count,
@@ -455,20 +459,26 @@ limit = size * 1024 + 2**30
 resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
 out = {'truncated': [], 'corrupted': [0, 0], 'crafted': {}, 'digests': digests}
 start = time.perf_counter()
-for length in range(len(member)):
+# Every byte of the header and of the first column headers, then every
+# seventh byte (all offsets modulo eight); the reader's Rust unit tests take
+# every truncation.
+offsets = [*range(min(len(member), 256)), *range(256, len(member), 7)]
+out['offsets'] = len(offsets)
+for length in offsets:
     try:
         model.from_binary(member[:length])
         out['truncated'].append(length)
     except ValueError:
         pass
-for at in range(len(member)):
-    damaged = bytearray(member)
-    damaged[at] ^= 0xFF
-    try:
-        model.from_binary(bytes(damaged))
-        out['corrupted'][1] += 1
-    except ValueError:
-        out['corrupted'][0] += 1
+for data in (member, wide):
+    for at in [*range(min(len(data), 256)), *range(256, len(data), 7)]:
+        damaged = bytearray(data)
+        damaged[at] ^= 0xFF
+        try:
+            model.from_binary(bytes(damaged))
+            out['corrupted'][1] += 1
+        except ValueError:
+            out['corrupted'][0] += 1
 for name, data in crafted.items():
     try:
         model.from_binary(data)
@@ -481,14 +491,17 @@ print(json.dumps(out))
 
 
 def _fail_closed(native, member: bytes, tmp_path: Path) -> None:
-    """Every truncation of ``member`` is refused, every single-byte corruption
-    is refused or decodes (a damaged value can be another valid one; the
-    container's SHA-256 detects damage), and every crafted bomb is refused at
-    its declaration or at its first charge beyond it, before allocating. In a
-    child under an address-space limit of 1 GiB above its size: a reader that
-    decoded a bomb would fail there instead of exhausting the host. The child
-    decodes with one thread (sequentially), this process with its pool (the
-    wide member in parallel chunks): equal models (RUST-MIGRATION.md rule 5).
+    """Truncations of ``member`` are refused; single-byte corruptions of it
+    and of the wide member are refused or decode (a damaged value can be
+    another valid one; the container's SHA-256 detects damage), at every byte
+    of the first 256 and every seventh after (the Rust unit tests take every
+    truncation, and corruptions in parallel chunks); and every crafted bomb is
+    refused at its declaration or at its first charge beyond it, before
+    allocating. In a child under an address-space limit of 1 GiB above its
+    size: a reader that decoded a bomb would fail there instead of exhausting
+    the host. The child decodes with one thread (sequentially), this process
+    with its pool (the wide member in parallel chunks): equal models
+    (RUST-MIGRATION.md rule 5).
     """
 
     crafted = tmp_path / "crafted"
@@ -514,8 +527,8 @@ def _fail_closed(native, member: bytes, tmp_path: Path) -> None:
         for data in (member, wide.read_bytes())
     ]
     assert out["digests"] == here
-    assert out["truncated"] == []
-    assert sum(out["corrupted"]) == len(member) and out["corrupted"][0] > 0
+    assert out["truncated"] == [] and out["offsets"] > 256
+    assert out["corrupted"][0] > 0
     for k, name in enumerate(bombs):
         error = out["crafted"][str(k)]
         expected = "bound" if name == "declared beyond the bound" else "declared size"
