@@ -14,7 +14,13 @@ instrumentation.
   per lane chunk in schedules B and M, M's equals B's for a quark line and
   stays at or below it for gluons;
 * the particle names of the slice request come from the model's PDG codes,
-  and the gate statistic has its uncertainty band (pass, fail, inconclusive).
+  and the gate statistic has its uncertainty band (pass, fail, inconclusive);
+* a matched provider without a production-mode timing (HANDOFF §0.1) makes a
+  passing verdict "partial", and an imported campaign timing outside the
+  protocol stays beside the verdict; imported timings must be the stream's
+  points;
+* the Ward rows are divided by the physical scale of their point and judged
+  with the O10 test's binary64 bound.
 """
 
 from __future__ import annotations
@@ -89,6 +95,111 @@ def test_gate_band_decides_and_inconclusive_straddles_the_limit():
     assert gate.median_uncertainty([1.0, 1.2, 1.1]) == pytest.approx(0.1 / 1.1)
     assert gate.median_uncertainty([1.0] * 9) == 0.0
     assert gate.half_range([2.0]) is None
+
+
+def test_gate_partial_without_a_matched_provider_and_outside_the_protocol():
+    times = {"madloop": 100.0}
+    missing = {"recola": "no production-mode timing (HANDOFF §0.1)"}
+    outside = {"recola": {"seconds": 20.0, "mode": "compute_ir_poles 1"}}
+    verdict = gate.gate_verdict(5.0, times, missing=missing, outside=outside)
+    assert verdict["status"] == "partial"
+    assert verdict["missing"] == missing
+    assert verdict["outside_protocol"]["recola"]["ratio"] == pytest.approx(0.25)
+    # The timing outside the protocol never decides: a failed check fails.
+    assert (
+        gate.gate_verdict(150.0, times, missing=missing, outside=outside)["status"]
+        == "fail"
+    )
+    assert gate.gate_verdict(1.0, {}, missing=missing)["status"] == (
+        "no matched provider timing"
+    )
+
+
+def test_missing_providers_follow_the_specification():
+    # A provider without a library is not matched; one beyond HANDOFF §0.1 is.
+    assert gate.missing_providers("uux_emepg", None) == {}
+    assert set(gate.missing_providers("gg_ggggg", None)) == {"madloop", "recola"}
+    assert set(gate.missing_providers("uux_gggg", None)) == {"madloop"}
+    record = {
+        "providers": {
+            "madloop": {"median_seconds_per_point": 500.0, "protocol_mode": True},
+            "recola": {
+                "median_seconds_per_point": 180.0,
+                "protocol_mode": False,
+                "mode": "compute_ir_poles 1",
+            },
+        }
+    }
+    assert set(gate.missing_providers("uux_ggggg", record)) == {"recola"}
+    assert gate._times(record, "median_seconds_per_point") == {"madloop": 500.0}
+    assert gate.outside_protocol(record) == {
+        "recola": {"seconds": 180.0, "mode": "compute_ir_poles 1"}
+    }
+
+
+def test_imported_campaign_timings_are_the_stream_points(tmp_path):
+    import json
+
+    from tools.loop_benchmark import providers
+
+    stream = streams.load("uux_ggggg")
+    run = tmp_path / "runs" / "required" / "uux_ggggg"
+    run.mkdir(parents=True)
+    points = {"points": stream["points"][:3], "mu_r": stream["mu_r"][:3]}
+    (run / "points.json").write_text(json.dumps(points))
+    rows = [
+        {"born": 1.0, "finite": 2.0, "seconds": t, "raw": {"finite": 1.5}}
+        for t in (3.0, 1.0, 2.0)
+    ]
+    (run / "recola-result.json").write_text(
+        json.dumps(
+            {
+                "provider": "recola",
+                "process_name": "uux_ggggg",
+                "cpu": 7,
+                "settings": {"compute_ir_poles": 1, "collier_cache": "off"},
+                "generation_seconds": 10.0,
+                "rows": rows,
+            }
+        )
+    )
+
+    class Options:
+        reference_root = tmp_path
+        mg5 = recola = openloops = None
+
+    trees = providers.Trees(Options())
+    result = providers.imported(streams.spec("uux_ggggg"), "recola", trees)
+    assert result["protocol_mode"] is False
+    assert result["median_seconds_per_point"] == 2.0
+    assert result["cpu"] == 7
+    assert result["setup"] == {"generation_seconds": 10.0}
+    points["points"] = points["points"][::-1]
+    (run / "points.json").write_text(json.dumps(points))
+    with pytest.raises(RuntimeError):
+        providers.imported(streams.spec("uux_ggggg"), "recola", trees)
+
+
+def test_ward_rows_against_the_physical_scale():
+    physical = [
+        {"index": 0, "components": {"virtual": [2.0, 4.0, 1.0], "r2": [8.0, 0, 0]}}
+    ]
+    small = {"virtual": [1e-12, 0.0, 0.0], "r2": [0.0, 0.0, 0.0]}
+    rows = gate.ward_rows(
+        [
+            {"index": 0, "components": small, "lanes": [10.0, 0, 0]},
+            {"index": 0, "components": {"virtual": [1e-9, 0, 0]}, "lanes": [0, 0, 0]},
+            {"index": 1, "components": small},
+        ],
+        physical,
+    )
+    # The scale is the largest physical component per coefficient.
+    assert rows[0]["scale"] == [8.0, 4.0, 1.0]
+    assert rows[0]["bound"][0] == pytest.approx(1e-11 * 8.0 + 1e-12 * 10.0)
+    assert rows[0]["passed"] is True
+    assert rows[0]["ratios"]["virtual"][0] == pytest.approx(1e-12 / 8.0)
+    assert rows[1]["passed"] is False
+    assert rows[2]["scale"] is None and "passed" not in rows[2]
 
 
 def test_process_text_from_the_model_pdg_codes():
