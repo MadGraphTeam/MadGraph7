@@ -6,7 +6,8 @@ oracles (nothing here is switched on yet):
 
 * **C1 cells.** ``seed_cells`` has the signature and output of
   ``colour.seed_cells``; ``NativeCells`` is the twin of
-  ``colour._PrimitiveCells`` (relabelling caches, ``rebased``);
+  ``colour._PrimitiveCells`` (relabelling caches, shared both ways with
+  its ``rebased`` engines);
   ``contract_colour``/``contract_many`` and ``gram`` are the twins of
   ``colour.contract_colour`` and ``BornBasis.gram``. Cells stay native in a
   ``NativeCellTable`` handle (``cell_table``) that counts its decodes.
@@ -16,9 +17,9 @@ oracles (nothing here is switched on yet):
   records of ``plan_export._Exporter.seed_records`` natively, as the exact
   JSON bytes the plan holds.
 * **C3 degrees.** ``table_degree`` (``SeedTable.degree``), ``degrees``
-  (``LoopSlice.degrees``, inclusive), ``adjoint_orbits``
-  (``assemble._AdjointOrbits``) and ``live_classes`` (the liveness of
-  ``LoopSlice._prune_colour``).
+  (``LoopSlice.degrees``, inclusive; its key collection is a phase-0
+  harness), ``adjoint_orbits`` (``assemble._AdjointOrbits``) and
+  ``live_classes`` (the liveness of ``LoopSlice._prune_colour``).
 * **C4 dipoles.** ``dipole_orbits`` builds the IR dipole operators per
   relabelling orbit in rusticol-core (no Python, no licence call; stored
   form ``NativeDipoleOrbits.to_json``); ``dipoles`` expands them to the
@@ -31,7 +32,6 @@ thread count (``threads`` selects a private pool; None the global one).
 from __future__ import annotations
 
 import hashlib
-import json
 from collections import defaultdict
 from collections.abc import Hashable, Iterable, Mapping, Sequence
 from fractions import Fraction
@@ -45,6 +45,7 @@ from pyamplicol.color.connections import (
     ExactColorCoefficient,
 )
 
+from .assemble import _AdjointOrbits
 from .colour import (
     BornBasis,
     Laurent,
@@ -162,15 +163,16 @@ def decode(table: Any, start: int = 0, stop: int | None = None) -> Cells:
 class NativeCells:
     """The twin of ``colour._PrimitiveCells`` (and of ``seed_cells``'s
     generic overlaps) against one basis: a native engine with the
-    relabelling caches; ``rebased`` shares them with an engine against
-    another basis on the same legs."""
+    relabelling caches. ``rebased`` gives an engine against another basis
+    on the same legs that shares them both ways (the native caches and the
+    registered quark rings), as ``_PrimitiveCells.rebased`` does."""
 
     def __init__(
         self,
         basis: BornBasis,
         *,
         _engine: Any = None,
-        _rings: Mapping[Primitive, int] | None = None,
+        _rings: dict[Primitive, int] | None = None,
     ):
         self.basis = basis
         self._engine = (
@@ -183,9 +185,13 @@ class NativeCells:
         self._adjoint = frozenset(
             leg.label for leg in basis.legs if leg.representation == 8
         )
-        self._rings: dict[Primitive, int] = dict(_rings or {})
+        # Canonical quark ring -> native ring id, shared with the rebased
+        # engines (the native ring registry is shared too).
+        self._rings: dict[Primitive, int] = {} if _rings is None else _rings
 
     def rebased(self, basis: BornBasis) -> NativeCells:
+        """The cells against ``basis`` (same legs), sharing the caches."""
+
         if basis.legs != self.basis.legs:
             raise ValueError("rebased primitive cells need the same colour legs")
         engine = self._engine.rebased([_tensor(b) for b in basis.tensors])
@@ -216,6 +222,14 @@ class NativeCells:
     def __call__(self, primitive: Primitive) -> tuple[Laurent, ...]:
         (row,) = decode(self.table([primitive]))
         return row
+
+    @property
+    def cache_sizes(self) -> tuple[int, int, int, int]:
+        """(relabelled bras, quark rings, primitive overlaps, ring overlaps)
+        cached natively, shared with the rebased engines."""
+
+        sizes: tuple[int, int, int, int] = self._engine.cache_sizes
+        return sizes
 
 
 def cell_table(
@@ -378,21 +392,6 @@ def project_records(
     return class_json, records_json
 
 
-def seed_records(
-    slice_: Any,
-    columns: Sequence[Any],
-    seeds: Iterable[tuple[tuple[Any, ...], Orders]],
-    born_components: dict[tuple[int, Orders, int], int],
-    tables: Mapping[int, Any] | None = None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """``_Exporter.seed_records``'s output (decoded ``project_records``)."""
-
-    class_json, records_json = project_records(
-        slice_, columns, seeds, born_components, tables
-    )
-    return json.loads(class_json), json.loads(records_json)
-
-
 # -------------------------------------------------------------- C3: degrees
 
 
@@ -424,8 +423,9 @@ def table_degree(
     return degree
 
 
-class _Orbits:
-    """``assemble._AdjointOrbits`` with its classes built natively."""
+class _Orbits(_AdjointOrbits):
+    """``assemble._AdjointOrbits`` with its classes and ``rename`` native
+    (``site_key`` is the oracle's own)."""
 
     def __init__(self, legs: Sequence[Any], process: Any, born_keys: Iterable[KeySet]):
         pdg = {leg.label: leg.outgoing_pdg for leg in process.legs}
@@ -439,32 +439,10 @@ class _Orbits:
             label: c for c, members in enumerate(self.classes) for label in members
         }
 
-    def rename(self, tensor: ColorTensor) -> dict[int, int]:
+    def rename(self, tensor: Any) -> dict[int, int]:
         if not self.classes:
             return {}
         return dict(self.native.rename(_structure(tensor)))
-
-    def site_key(self, site: Any) -> Hashable:
-        def mask_key(mask: int) -> tuple[tuple[int, ...], tuple[int, ...]]:
-            labels = [i + 1 for i in range(mask.bit_length()) if mask >> i & 1]
-            counts = [0] * len(self.classes)
-            fixed = []
-            for label in labels:
-                c = self._class.get(label)
-                if c is None:
-                    fixed.append(label)
-                else:
-                    counts[c] += 1
-            return tuple(fixed), tuple(counts)
-
-        return (
-            site.rule_name,
-            site.alternatives,
-            tuple(
-                (block.field, block.orders, mask_key(block.mask))
-                for block in site.blocks
-            ),
-        )
 
 
 def adjoint_orbits(
@@ -483,10 +461,17 @@ def degrees(
     slice_: Any, table_handle: Any = None, threads: int | None = None
 ) -> dict[str, dict[Orders, int | None]]:
     """``LoopSlice.degrees()`` (the inclusive metric), with every overlap
-    degree and the seed-table degrees evaluated natively in one batch. The
-    key sets are collected exactly as the oracle collects them.
+    degree and the seed-table degrees evaluated natively in one batch.
     ``table_handle`` is the slice table's ``NativeCellTable`` (default: its
-    cells built natively from its classes)."""
+    cells built natively from its classes).
+
+    Phase-0 harness: the key sets are collected here as the oracle collects
+    them, on its private members (``_scalar_plan``, ``_terms_of``, the CT
+    program's closure terms), so this copy can drift from the oracle and
+    the collection stays Python (one pass over the CT program's closure
+    terms in the recursion form). The phase-1 switch hands
+    ``LoopSlice.degrees``' own key sets to the native batch
+    (``overlap_degrees``) and deletes this copy."""
 
     from .assemble import WholeRuleTerm
     from .ct_sites import LAURENT_POWERS
@@ -607,10 +592,16 @@ def live_classes(
     threads: int | None = None,
 ) -> dict[tuple[int, Orders], bool]:
     """The liveness ``class_live(c, order)`` of ``LoopSlice._prune_colour``
-    for every class of the slice table at each of its loop orders.
-    ``degrees`` are the virtual sector degrees (default
-    ``slice_.degrees()["virtual"]``); ``handles`` maps ``id(table)`` to its
-    ``NativeCellTable`` (default: built natively from the table's classes)."""
+    for every class of the slice table at each of its loop orders, over
+    the slice table and the ``observables`` criteria (table, virtual sector
+    degrees). ``degrees`` are the slice table's virtual sector degrees
+    (default ``slice_.degrees()["virtual"]``); ``handles`` maps
+    ``id(table)`` to its ``NativeCellTable``. Without a handle, the slice
+    table's cells are built natively from its classes (they are
+    ``seed_cells(table.basis, table.classes)`` by construction,
+    ``colour._extended``); every other table is read from its own cells,
+    as the oracle reads ``table.cells`` (an observable's directed table
+    holds cells against operator images, not against its Born basis)."""
 
     accuracy = slice_.request.accuracy
     grades = slice_._born_grades()
@@ -626,9 +617,11 @@ def live_classes(
 
     def handle(table: Any) -> Any:
         found = None if handles is None else handles.get(id(table))
-        if found is None:
-            found = cell_table(slice_.basis, table.classes, threads=threads)
-        return found
+        if found is not None:
+            return found
+        if table is slice_.table:
+            return cell_table(table.basis, table.classes, threads=threads)
+        return _table_handle(table, None)
 
     queries = [
         (c, order) for c, row in enumerate(slice_.table.orders) for order in sorted(row)
@@ -694,12 +687,16 @@ def dipoles(
 def dipoles_digest(
     dipoles: Mapping[tuple[int, int], Sequence[Sequence[Fraction]]],
 ) -> str:
-    """SHA-256 of a ``LoopSlice.dipoles()`` output, one exact entry per line
-    in its order: equal to ``NativeDipoleOrbits.digest()`` iff every entry
-    is."""
+    """SHA-256 of a ``LoopSlice.dipoles()`` output in its order: per pair a
+    header line ``"(i, j) RxC"`` (the key's repr and the block shape), then
+    one exact entry per line. It equals ``NativeDipoleOrbits.digest()`` iff
+    both hold the same pairs and shapes in the same order with equal
+    entries."""
 
     hasher = hashlib.sha256()
-    for rows in dipoles.values():
+    for pair, rows in dipoles.items():
+        columns = len(rows[0]) if rows else 0
+        hasher.update(f"{tuple(pair)!r} {len(rows)}x{columns}\n".encode())
         for row in rows:
             for value in row:
                 hasher.update(str(value).encode())

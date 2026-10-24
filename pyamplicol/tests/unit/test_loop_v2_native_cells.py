@@ -186,34 +186,67 @@ def test_contractions_and_faces_equal_python():
                     ) == colour.face_count(left.tensor, right.tensor)
 
 
+_QUARK_LEGS = (ColorLeg(1, 3), ColorLeg(2, -3), ColorLeg(3, 8), ColorLeg(4, 8))
+
+
+def _quark_basis(*structures) -> colour.BornBasis:
+    tensors = tuple(
+        ConnectedColorTensor(
+            _QUARK_LEGS,
+            (TensorTerm(ExactColorCoefficient(1), ColorTensor(strings, traces)),),
+        )
+        for strings, traces in structures
+    )
+    return colour.BornBasis(
+        _QUARK_LEGS, tuple(range(len(tensors))), tensors, (frozenset(),) * len(tensors)
+    )
+
+
+# A quark string apart from the ring's labels, and one holding them.
+_SPLIT = ((OpenColorString(1, (), 2),), ((3, 4),))
+_JOINED = ((OpenColorString(1, (3, 4), 2),), ())
+
+
+# Refusal of each primitive kind against a bra with an open quark string.
+_REFUSALS = {
+    "adjoint-ring": "adjoint-ring class against a Born",
+    "fundamental-trace": "bra string is not glued",
+}
+
+
 @pytest.mark.loop_fast
-def test_primitive_cells_against_quark_bras_equal_python():
+@pytest.mark.parametrize("kind", sorted(_REFUSALS))
+def test_primitives_against_quark_bras_are_refused(kind):
     """Primitives against bras the relabelling cache cannot key (a quark
-    leg): the direct path of ``_PrimitiveCells._cell``, equal values, and
-    the same refusal where a bra's string holds the ring's labels."""
+    leg) take the direct path of ``_PrimitiveCells._cell``. A primitive
+    carries no fundamental index, so its overlap with a bra holding an open
+    quark string is not defined: refused natively (rule 2), where Python
+    refuses only a string holding the primitive's labels (oracle defect 3,
+    below)."""
 
-    legs = (ColorLeg(1, 3), ColorLeg(2, -3), ColorLeg(3, 8), ColorLeg(4, 8))
+    primitive = colour.Primitive(kind, (3, 4))
+    for structure in (_SPLIT, _JOINED):
+        basis = _quark_basis(structure)
+        with pytest.raises(ValueError, match=_REFUSALS[kind]):
+            native_cells.seed_cells(basis, [primitive])
+        with pytest.raises(ValueError, match=_REFUSALS[kind]):
+            native_cells.NativeCells(basis)(primitive)
+    with pytest.raises(ValueError, match="not contracted exactly twice"):
+        colour.seed_cells(_quark_basis(_JOINED), [primitive])
 
-    def basis(*structures):
-        tensors = tuple(
-            ConnectedColorTensor(
-                legs,
-                (TensorTerm(ExactColorCoefficient(1), ColorTensor(strings, traces)),),
-            )
-            for strings, traces in structures
-        )
-        return colour.BornBasis(
-            legs, tuple(range(len(tensors))), tensors, (frozenset(),) * len(tensors)
-        )
 
-    ring = colour.Primitive("adjoint-ring", (3, 4))
-    split = basis(((OpenColorString(1, (), 2),), ((3, 4),)))
-    assert native_cells.seed_cells(split, [ring]) == colour.seed_cells(split, [ring])
-    assert native_cells.NativeCells(split)(ring) == colour._PrimitiveCells(split)(ring)
-    joined = basis(((OpenColorString(1, (3, 4), 2),), ()))
-    for engine in (native_cells.seed_cells, colour.seed_cells):
-        with pytest.raises(ValueError, match="not contracted exactly twice"):
-            engine(joined, [ring])
+@pytest.mark.loop_fast
+@pytest.mark.parametrize("kind", sorted(_REFUSALS))
+@pytest.mark.xfail(
+    strict=True,
+    raises=pytest.fail.Exception,
+    reason="oracle defect 3 (read-only, rule 3): Python's overlap drops the "
+    "bra's quark string (color.connections.overlap_traces) and returns a "
+    "value for a primitive against a bra with an open string",
+)
+def test_python_primitive_against_a_quark_bra_is_refused(kind):
+    with pytest.raises(ValueError):
+        colour.seed_cells(_quark_basis(_SPLIT), [colour.Primitive(kind, (3, 4))])
 
 
 @pytest.mark.loop_fast
@@ -242,7 +275,7 @@ def _seed_cells_equal(slice_) -> None:
     }
     assert kinds, "no seed class"
     assert native_cells.seed_cells(basis, table.classes) == table.cells
-    # Python's cells of fresh (uncached) _PrimitiveCells agree as well.
+    # The Born metric.
     assert native_cells.gram(basis) == basis.gram
 
 
@@ -260,7 +293,8 @@ def test_seed_cells_equal_python(slices, name):
 @pytest.mark.loop_fast
 def test_rebased_cells_share_caches_and_equal_python(slices):
     """A rebased engine (another basis on the same legs, e.g. operator
-    images) equals ``seed_cells`` against that basis."""
+    images) equals ``seed_cells`` against that basis and shares the caches
+    both ways, as ``_PrimitiveCells.rebased``."""
 
     slice_, _kept = slices("uux_ggg_lc")
     table = slice_.table
@@ -272,11 +306,17 @@ def test_rebased_cells_share_caches_and_equal_python(slices):
         basis.orders[::-1],
     )
     engine = native_cells.NativeCells(basis)
-    engine.table(table.classes)
     rebased = engine.rebased(other)
     assert native_cells.seed_cells(other, table.classes, rebased) == colour.seed_cells(
         other, table.classes
     )
+    # The parent sees the rebased engine's relabelled bras, rings and ring
+    # overlaps; its own table (the same tensors reordered) is all cache hits.
+    shared = rebased.cache_sizes
+    assert shared[0] and shared[1] and shared[3], shared
+    assert engine.cache_sizes == shared
+    assert native_cells.seed_cells(basis, table.classes, engine) == table.cells
+    assert engine.cache_sizes == rebased.cache_sizes == shared
     with pytest.raises(ValueError, match="another basis"):
         native_cells.seed_cells(basis, table.classes, rebased)
 
@@ -345,6 +385,77 @@ def _degrees_equal(slice_, kept) -> None:
         assert native == keep(skeleton), skeleton
         checked += 1
     assert checked
+
+
+@pytest.mark.loop_fast
+def test_liveness_reads_observable_tables(slices, monkeypatch):
+    """Observable criteria of ``_prune_colour`` (directed tables: cells
+    against operator images, the Born basis kept) enter the native liveness
+    through their own cells. A copy of the slice table with cells kept at
+    the projection for some dead classes revives them, as in the oracle's
+    ``keep`` closure (captured from ``_prune_colour`` with the same
+    criteria, aborted before it changes the slice)."""
+
+    from dataclasses import replace
+
+    from pyamplicol.loops.v2 import assemble, generator_input
+
+    slice_, _kept = slices("uux_ggg_lc")
+    degrees = slice_.degrees()["virtual"]
+    grades = slice_._born_grades()
+    live = native_cells.live_classes(slice_)
+    cells = [list(row) for row in slice_.table.cells]
+    revived = []
+    for (c, order), alive in sorted(live.items()):
+        found = next(
+            (
+                (degrees[sector] - g, b)
+                for sector, pairs in slice_.sectors
+                if degrees[sector] is not None
+                for a, loop in pairs
+                if loop == order
+                for b, born in enumerate(slice_.basis.orders)
+                if a in born
+                for g in grades.get((b, a), ())
+            ),
+            None,
+        )
+        if alive or found is None or len(revived) == 3:
+            continue
+        power, b = found
+        cells[c][b] = {power: ExactColorCoefficient(1)}
+        revived.append((c, order))
+    assert revived
+    directed = replace(slice_.table, cells=tuple(map(tuple, cells)))
+    native = native_cells.live_classes(slice_, [(directed, degrees)])
+    assert all(native[key] for key in revived)
+    assert sum(native.values()) == sum(live.values()) + len(revived)
+
+    class Captured(Exception):
+        pass
+
+    kept: list = []
+
+    def capture(keep):
+        kept.append(keep)
+        raise Captured
+
+    monkeypatch.setattr(
+        generator_input.NativeGeneration,
+        "schedules",
+        lambda self, colour_model, **kwargs: capture(kwargs["keep"]),
+    )
+    monkeypatch.setattr(
+        assemble, "SkeletonView", lambda *args, keep, **kwargs: capture(keep)
+    )
+    with pytest.raises(Captured):
+        slice_._prune_colour([(directed, degrees)])
+    monkeypatch.undo()
+    (keep,) = kept
+    for skeleton, combination in slice_.class_of.items():
+        assert any(native[c, skeleton.orders] for c, _x in combination) == keep(
+            skeleton
+        ), skeleton
 
 
 @pytest.mark.loop_fast
