@@ -21,14 +21,16 @@ cross-host acceptance (its docstring), on:
   point inputs are stored natively (``point_inputs = "native-v1"``, WP3.1;
   until then this part is an expected failure with the reason);
 * the loop SDK (C ABI through ``rusticol_virtual_open``): bitwise equal to the
-  Python API at both locations, and usable without a Symbolica licence by
+  Python API at both locations (an expected failure until the SDK evaluates
+  plan v4, generation-scale-2), and usable without a Symbolica licence by
   concurrent processes (the tree engine's rule for f64 evaluation,
-  ``docs/user/symbolica-and-licensing.md``); an expected failure until the SDK
-  evaluates plan v4 (generation-scale-2);
+  ``docs/user/symbolica-and-licensing.md``): an expected failure, the open
+  defect ``NATIVE_LOOP_NEEDS_LICENCE``;
 * unlicensed concurrent processes: two pyAmpliCol processes without
-  ``SYMBOLICA_LICENSE`` load artifacts at the same time (the Python package
-  key does not reach the Rust copy of Symbolica, whose restricted mode admits
-  one thread per user).
+  ``SYMBOLICA_LICENSE`` load a tree and a loop artifact at the same time (the
+  Python package key does not reach the Rust copy of Symbolica, whose
+  restricted mode admits one thread per user); with native loop point inputs
+  the loop case is the same open defect.
 
 The seven-gluon artifact and other CPU feature levels (QEMU user-mode models)
 are opt-in runs of the same tool (``check``, ``cpu-matrix``), recorded in
@@ -65,6 +67,16 @@ REGENERATES = (
 SDK_WITHOUT_V4 = (
     "the loop SDK refuses plan v4 until generation-scale-2 (V2Runtime and the "
     "rusticol_virtual_open dispatch)"
+)
+# Open defect (DESIGN §12.1, decision pending): every native loop f64 path
+# decodes Symbolica exact evaluators when it loads (legacy coefficients, the
+# native-v1 tree program, the SDK's V2Runtime), which without
+# SYMBOLICA_LICENSE takes Symbolica's restricted one-thread-per-user permit:
+# a second unlicensed process aborts. Fix: f64 SymJIT kernels (WP3.1 PLAN
+# §4.2, as the tree engine) or pyAmpliCol's library key in the native code.
+NATIVE_LOOP_NEEDS_LICENCE = (
+    "native loop inputs decode Symbolica exact evaluators at load: without "
+    "SYMBOLICA_LICENSE a second concurrent process aborts (DESIGN §12.1)"
 )
 RESTRICTED = "restricted Symbolica"
 
@@ -420,8 +432,10 @@ def test_loop_v4_sdk_needs_no_symbolica_licence(
     Symbolica state access at open takes the user's single restricted-thread
     permit and aborts every other unlicensed instance."""
 
-    if not _sdk_evaluates_v4(loop_native):
-        request.applymarker(pytest.mark.xfail(reason=SDK_WITHOUT_V4, strict=True))
+    reason = (
+        NATIVE_LOOP_NEEDS_LICENCE if _sdk_evaluates_v4(loop_native) else SDK_WITHOUT_V4
+    )
+    request.applymarker(pytest.mark.xfail(reason=reason, strict=True))
     artifact, _, _ = loop_artifact("gg")
     points = tmp_path / "points.json"
     points.write_text(json.dumps(portability.points(4, 1)))
@@ -439,6 +453,12 @@ def test_loop_v4_sdk_needs_no_symbolica_licence(
 
 
 @pytest.mark.loop_physics
-def test_unlicensed_processes_load_loop_artifacts_concurrently(loop_artifact, tmp_path):
+def test_unlicensed_processes_load_loop_artifacts_concurrently(
+    request, loop_artifact, tmp_path
+):
+    if NATIVE_POINT_INPUTS:
+        request.applymarker(
+            pytest.mark.xfail(reason=NATIVE_LOOP_NEEDS_LICENCE, strict=True)
+        )
     artifact, _, _ = loop_artifact("gg")
     _concurrent_loads(artifact, "gg", tmp_path)
