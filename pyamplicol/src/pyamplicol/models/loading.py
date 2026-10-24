@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from copy import copy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -1376,7 +1376,6 @@ def lower_counterterm_vertices(
     caller bounds its rules first). With ``None`` the whole model is kept.
     """
 
-    from .compiler_entry import compile_ufo_model_ir
     from .ct_color_flow import tree_colour_source
     from .ct_line_insertions import lower_line_insertions
 
@@ -1526,7 +1525,7 @@ def lower_counterterm_vertices(
     started = time.perf_counter()
     # The multi-trace currents project the gluon legs of the counterterm
     # vertices onto SU(N) (U(1)-subtraction auxiliaries, design §6.1).
-    ir = compile_ufo_model_ir(
+    ir = compile_counterterm_model_ir(
         payload,
         tree_kernel_variant=tree_kernel_variant,
         u1_projected_vertices=frozenset(vertex_members) if multi_trace else frozenset(),
@@ -1634,6 +1633,74 @@ def lower_counterterm_vertices(
         line_fields=lines.reads_as,
         dirac_fields=lines.dirac_fields,
     )
+
+
+COUNTERTERM_IR_CACHE_SUFFIX = ".pyAmplicol-counterterm-ir.json"
+_COUNTERTERM_IR_CACHE_KIND = "pyamplicol-counterterm-model-ir"
+_COUNTERTERM_IR_FINGERPRINT: list[dict[str, object]] = []
+
+
+def compile_counterterm_model_ir(
+    payload: Mapping[str, object],
+    *,
+    tree_kernel_variant: TreeKernelVariant,
+    u1_projected_vertices: frozenset[str],
+    cache_dir: Path | None = None,
+) -> CompiledModelIR:
+    """``compile_ufo_model_ir`` of a CT-lowered payload, content-addressed.
+
+    The lowered model of a request scope is the same for every process of
+    that scope (``lower_counterterm_vertices``), so its compile (most of the
+    lowering: oriented kernels, contact decompositions and their Symbolica
+    proofs) is cached like a compiled model (``compile_model_source``): in
+    ``cache_dir`` (default: the model cache, ``$PYAMPLICOL_CACHE_DIR/models``
+    or the platform cache) under the SHA-256 of the payload (in its own key
+    order), the variant, the projected vertices and the compiler fingerprint
+    (``compiler_fingerprint``: package, Symbolica and model-compiler sources).
+    The IR round-trips exactly (``CompiledModelIR.to_dict``/``from_dict``); an
+    unreadable or foreign entry is recompiled, and a cache that cannot be
+    written leaves the result uncached.
+    """
+
+    from .compiler_entry import compile_ufo_model_ir
+
+    if not _COUNTERTERM_IR_FINGERPRINT:
+        _COUNTERTERM_IR_FINGERPRINT.append(compiler_fingerprint())
+    key = hashlib.sha256(
+        json.dumps(
+            [
+                payload,
+                str(tree_kernel_variant),
+                sorted(u1_projected_vertices),
+                _COUNTERTERM_IR_FINGERPRINT[0],
+            ],
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    path = (cache_dir or _default_model_cache_dir()) / (
+        f"{key}{COUNTERTERM_IR_CACHE_SUFFIX}"
+    )
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            stored.get("kind") == _COUNTERTERM_IR_CACHE_KIND
+            and stored.get("key") == key
+        ):
+            return CompiledModelIR.from_dict(_mapping(stored["ir"], "ir"))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass
+    ir = compile_ufo_model_ir(
+        payload,
+        tree_kernel_variant=tree_kernel_variant,
+        u1_projected_vertices=u1_projected_vertices,
+    )
+    with suppress(OSError):
+        _atomic_write_json(
+            path,
+            {"kind": _COUNTERTERM_IR_CACHE_KIND, "key": key, "ir": ir.to_dict()},
+            compact=True,
+        )
+    return ir
 
 
 def _weyl_fields(compiled: CompiledModel) -> frozenset[str]:

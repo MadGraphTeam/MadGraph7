@@ -408,6 +408,62 @@ def test_lowered_couplings_are_exact_model_expressions(lowered_ct_model):
 
 
 @pytest.mark.loop_fast
+def test_lowered_model_compile_is_cached_by_content(
+    loop_sm_compiled_model, tmp_path, monkeypatch
+):
+    """The compile of a CT-lowered payload (most of the lowering) is cached
+    by content like a compiled model: a warm entry gives the identical IR
+    without compiling, a damaged entry is recompiled, and another payload or
+    kernel variant is another entry."""
+
+    import json
+
+    import pyamplicol.models.compiler_entry as compiler_entry
+    from pyamplicol.models.loading import (
+        COUNTERTERM_IR_CACHE_SUFFIX,
+        compile_counterterm_model_ir,
+        load_compiled_model,
+    )
+
+    model = load_compiled_model(loop_sm_compiled_model).model
+    payload = json.loads(json.dumps(model))
+    keep = {"G", "u", "u~"}
+    payload["vertex_rules"] = [
+        rule for rule in payload["vertex_rules"] if set(rule["particles"]) <= keep
+    ]
+
+    def compile_ir(variant="full", data=payload):
+        return compile_counterterm_model_ir(
+            data,
+            tree_kernel_variant=variant,
+            u1_projected_vertices=frozenset(),
+            cache_dir=tmp_path,
+        )
+
+    cold = compile_ir()
+    (entry,) = tmp_path.glob(f"*{COUNTERTERM_IR_CACHE_SUFFIX}")
+    assert cold.oriented_kernels and cold.tree_kernel_variant == "full"
+
+    calls = []
+    original = compiler_entry.compile_ufo_model_ir
+
+    def counted(*args, **kwargs):
+        calls.append(kwargs.get("tree_kernel_variant"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(compiler_entry, "compile_ufo_model_ir", counted)
+    assert compile_ir() == cold and not calls
+    entry.write_text("{", encoding="utf-8")
+    assert compile_ir() == cold and calls == ["full"]
+    assert compile_ir() == cold and calls == ["full"]
+    assert compile_ir("transverse").tree_kernel_variant == "transverse"
+    fewer = {**payload, "vertex_rules": payload["vertex_rules"][:-1]}
+    assert len(compile_ir(data=fewer).vertex_terms) < len(cold.vertex_terms)
+    assert calls == ["full", "transverse", "full"]
+    assert len(list(tmp_path.glob(f"*{COUNTERTERM_IR_CACHE_SUFFIX}"))) == 3
+
+
+@pytest.mark.loop_fast
 def test_constant_factors_are_decided_not_assumed():
     """Helper arguments free of model parameters are decided when the CT
     couplings are lowered: loop_qcd_qed_sm's reglog(2 pi) is log(2 pi) with no
