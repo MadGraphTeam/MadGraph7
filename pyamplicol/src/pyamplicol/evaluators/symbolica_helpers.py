@@ -165,7 +165,12 @@ class _InlinedProgram:
                 )
 
     def _inline(
-        self, destination: Any, arguments: list[Any], body: Any, slot_of: Any, depth: int
+        self,
+        destination: Any,
+        arguments: list[Any],
+        body: Any,
+        slot_of: Any,
+        depth: int,
     ) -> None:
         if body.output_count != 1:
             raise NativeEvaluationError(
@@ -205,6 +210,66 @@ def _map_slots(row: Any, slot_of: Any) -> tuple[Any, ...]:
         else:
             mapped.append(value)
     return tuple(mapped)
+
+
+def _has_zero_constant(exported: Any) -> bool:
+    if isinstance(exported, tuple):
+        return any(repr(value) == "0" for value in exported[2])
+    return any(repr(value) == "0" for value in exported.constants) or any(
+        _has_zero_constant(sub.evaluator) for sub in exported.sub_evaluators
+    )
+
+
+def _verify_symjit_plane_constants(
+    evaluator: Any,
+    exported: Any,
+    application: bytes,
+    rusticol: Any,
+    input_len: int,
+    output_len: int,
+) -> None:
+    """Refuse a plane application that reads a registered constant as zero.
+
+    Symbolica's Python instruction export writes the slots of registered
+    constants and fixed-argument functions (pi, e, ...) as the constant 0 and
+    does not say which they are (the Rust export's ``constant_functions`` is
+    not exposed). A program without a zero constant carries none. Otherwise
+    the stored application, through the production loader, is compared with
+    Symbolica at two fixed real points: a constant read as zero changes an
+    output at O(1), rounding stays orders of magnitude below the bound.
+    """
+    if not _has_zero_constant(exported):
+        return
+    rows = 0.5 + np.random.default_rng(0x5EED).random((2, input_len))
+    rows = np.ascontiguousarray(rows, dtype=np.complex128)
+    expected = np.asarray(evaluator.evaluate_complex(rows), dtype=np.complex128)
+    values = np.asarray(
+        rusticol._evaluate_symjit_plane_application_v2(
+            application,
+            input_len,
+            output_len,
+            rows.view(np.float64).ravel().tolist(),
+            len(rows),
+        ),
+        dtype=np.float64,
+    ).view(np.complex128)
+    expected = expected.reshape(values.shape)
+    finite = np.abs(expected[np.isfinite(expected)])
+    scale = float(finite.max()) if finite.size else 0.0
+    difference = np.abs(values - expected)
+    agree = (
+        (values == expected)
+        | (np.isnan(values) & np.isnan(expected))
+        | (difference <= 1e-6 * np.abs(expected))
+        | (difference <= 1e-12 * scale)
+    )
+    if not agree.all():
+        raise NativeEvaluationError(
+            "the SymJIT plane application disagrees with Symbolica: Symbolica's "
+            "instruction export writes registered constants (pi, e, ...) as 0; "
+            "keep such programs on the Symbolica evaluator or pass the constant "
+            "as a parameter"
+        )
 
 
 def _complex128_parameter_rows(parameter_rows: Any) -> np.ndarray:
