@@ -13,7 +13,9 @@ Per plan:
   (searched in its decoded strings, where a path would show);
 * strings follow ``json.dumps``'s ``ensure_ascii`` escapes;
 * foreign, truncated or extended members and unknown JSON fields are refused
-  (crafted column counts: the reader's Rust unit tests);
+  (crafted column counts: the reader's Rust unit tests), and a crafted member
+  that decodes beyond a process memory limit is refused, not an abort
+  (``loop_nightly``);
 * the bindings run in a process without a Symbolica key (``loop_nightly``).
 
 Plans cover schedule B with derived and written row links, schedule F
@@ -33,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import struct
 import subprocess
 import sys
 import tempfile
@@ -43,7 +46,7 @@ import pytest
 from pyamplicol.loops.v2 import native_lowering
 from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
 from pyamplicol.loops.v2.merged import merged_graph
-from pyamplicol.loops.v2.plan_export import export_plan
+from pyamplicol.loops.v2.plan_export import PLAN_SCHEMA, export_plan
 
 PROCESSES = {
     "gg_ttx": ("g g > t t~", {"QCD": 2, "QED": 0}, ()),
@@ -74,13 +77,13 @@ def slices(loop_sm_compiled_model, loop_native):
         if name not in built:
             process, born, ignored = PROCESSES[name]
             loop = {k: v + (2 if k == "QCD" else 0) for k, v in born.items()}
+            options: dict[str, object] = {}
+            if ignored:  # only the electroweak control vetoes a particle
+                options["ignored_particle_ids"] = ignored
+            if name in SITES:
+                options["counterterms"] = "sites"
             request = SliceRequest(
-                process,
-                born,
-                loop,
-                fixed_parameters={"MB": "0"},
-                ignored_particle_ids=ignored,
-                **({"counterterms": "sites"} if name in SITES else {}),
+                process, born, loop, fixed_parameters={"MB": "0"}, **options
             )
             built[name] = LoopSlice.generate(compiled, request, loop_native)
         return built[name]
@@ -327,3 +330,86 @@ def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
     assert written[0].read_bytes() == text
     assert written[1].read_bytes() == member
     assert result.stdout.split()[-2:] == [expected, expected]
+
+
+def _crafted_member(native, contents: int, rows: int) -> bytes:
+    """A member of a few kB: width-0 columns (no payload) declare ``contents``
+    contents that all reference one shared list of ``rows`` empty row
+    helicities, which the reader copies at every reference."""
+
+    counts = ("legs", "rows", "columns", "born_components", "constants", "masses")
+    lists = ("helicities", "block_rows", "kernels", "contents", "factors")
+    lists += ("seed_classes", "seeds", "families")
+    empty: dict[str, object] = {"schema": PLAN_SCHEMA, "average": 1}
+    empty |= {key: 0 for key in counts} | {key: [] for key in lists}
+    empty |= {"forward": None, "merged": None}
+    member = bytearray(
+        native.V2PlanModel.from_json(json.dumps(empty).encode()).binary()
+    )
+    names = native.V2PlanModel.columns()
+    assert struct.unpack_from("<I", member, 16)[0] == len(names)
+    offsets, at = {}, 24
+    for name in names:
+        offsets[name] = at
+        size = member[at] * struct.unpack_from("<Q", member, at + 8)[0]
+        at += 24 + size + (8 - size % 8) % 8
+    assert at == len(member)
+
+    def declare(name: str, count: int, base: int) -> None:
+        assert member[offsets[name]] == 0, name  # width 0: no payload
+        struct.pack_into("<Qq", member, offsets[name] + 8, count, base)
+
+    declare("ContentLen", 1, contents)
+    per_content = ("ContentDIn", "ContentDOut", "ContentDegree", "ContentRows")
+    for name in (*per_content, "ContentMask", "RowHelicityRef", "FusedRef", "TermLen"):
+        declare(name, contents, 0)
+    declare("RowHelicityLen", 1, rows)
+    declare("RowHelicityLegs", rows, 0)
+    declare("FusedLen", 1, 0)
+    return bytes(member)
+
+
+@pytest.mark.loop_nightly
+def test_crafted_member_beyond_a_memory_limit_is_refused(loop_native, tmp_path):
+    """A 4 kB member that decodes to 10^5 copies of a list of 10^5 rows (2.4e11
+    bytes): under an address-space limit (``RLIMIT_AS``, 1 GiB above the
+    child's size after import) the reader refuses it with ``ValueError``, as
+    every allocation of the decoded model is fallible, instead of aborting the
+    process. The same structure at a small size decodes (the refusal is the
+    memory's, not the structure's). Members are trusted input (``binary.rs``):
+    without a limit, overcommit lets such a member exhaust memory."""
+
+    small = loop_native.V2PlanModel.from_binary(_crafted_member(loop_native, 1000, 10))
+    program = json.loads(bytes(small.json()))
+    assert len(program["contents"]) == 1000
+    assert all(
+        content["row_helicities"] == [[]] * 10 for content in program["contents"]
+    )
+    member = tmp_path / "crafted.bin"
+    member.write_bytes(_crafted_member(loop_native, 10**5, 10**5))
+    assert member.stat().st_size < 8192
+    script = (
+        "import resource, sys\n"
+        "from pathlib import Path\n"
+        "from pyamplicol.loops.native import load_loop_native\n"
+        "native = load_loop_native()\n"
+        "member = Path(sys.argv[1]).read_bytes()\n"
+        "status = Path('/proc/self/status').read_text().splitlines()\n"
+        "size = next(int(l.split()[1]) for l in status if l.startswith('VmSize:'))\n"
+        "limit = size * 1024 + 2**30\n"
+        "resource.setrlimit(resource.RLIMIT_AS, (limit, limit))\n"
+        "try:\n"
+        "    native.V2PlanModel.from_binary(member)\n"
+        "    print('DECODED')\n"
+        "except ValueError as error:\n"
+        "    print('REFUSED', error)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(member)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, (result.returncode, result.stderr[-2000:])
+    assert result.stdout.startswith("REFUSED"), result.stdout
+    assert "decodes to more than the allocator grants" in result.stdout

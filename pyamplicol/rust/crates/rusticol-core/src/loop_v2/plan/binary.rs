@@ -35,12 +35,25 @@
 //! to a multiple of eight. Writing and reading share one traversal
 //! (`visit_plan` over a `Stream`), so the two cannot disagree on the order.
 //!
-//! Reading fails closed with an error, never an abort: headers, widths and
-//! payload sizes are checked, every value is checked against its field's
-//! type, every column must be read to its end, lists grow as their records
-//! decode (a width-0 column can declare any count without payload bytes, so
-//! a declared length never sizes an allocation that cannot fail), and a
-//! string takes its bytes from what the byte column still holds.
+//! Reading fails closed with an error, never a panic or an allocation
+//! abort: headers, widths and payload sizes are checked, every value is
+//! checked against its field's type, every column must be read to its end, a
+//! string takes its bytes from what the byte column still holds, and every
+//! allocation of the decoded model is fallible (list reservations, the copy
+//! of a shared list at each of its references and of a table string at each
+//! use: `TryCopy`), so a member that asks for more memory than the allocator
+//! grants is refused with an error.
+//!
+//! **Trust.** The member is a compressed encoding: a width-0 column declares
+//! any count of one value without payload bytes, and a shared list is copied
+//! at every reference, so the decoded size is not bounded by the member's size
+//! (zlib's, of the JSON member, is about 1000:1). Under memory overcommit a
+//! crafted member can therefore exhaust memory before any allocation fails;
+//! a process limit (`RLIMIT_AS`) turns that into the error above. A member is
+//! trusted input like the rest of an artifact (its compiled-kernel IR and
+//! evaluator states): written by [`PlanModel::binary`], in a container whose
+//! SHA-256 detects damage, not tampering. Only the decoding is this module's:
+//! the derivations of [`LoopProgramV4::from_file`] are the JSON load's.
 
 mod json;
 
@@ -66,6 +79,11 @@ pub fn is_binary(bytes: &[u8]) -> bool {
     bytes.starts_with(&MAGIC)
 }
 
+/// The member's column names, in member order (diagnostics and tests).
+pub fn column_names() -> &'static [&'static str] {
+    COLUMN_NAMES
+}
+
 /// A plan v4 in the loader's file form: the input of [`LoopProgramV4`]'s
 /// validation and derivations, written as the exporter's JSON or as the
 /// binary columnar member.
@@ -84,7 +102,7 @@ impl PlanModel {
     /// The model of a binary plan member ([`Self::binary`]).
     pub fn from_binary(bytes: &[u8]) -> RusticolResult<Self> {
         let mut reader = Reader::new(bytes)?;
-        let mut file = PlanFile::default();
+        let mut file = PlanFile::fresh();
         visit_plan(&mut reader, &mut file)?;
         reader.finish()?;
         Ok(Self { file })
@@ -271,7 +289,7 @@ fn flag<S: Stream>(stream: &mut S, col: Col, value: &mut bool) -> RusticolResult
     Ok(())
 }
 
-fn list<S: Stream, T: Default>(
+fn list<S: Stream, T: Fresh>(
     stream: &mut S,
     col: Col,
     items: &mut Vec<T>,
@@ -281,15 +299,11 @@ fn list<S: Stream, T: Default>(
     if !S::READ {
         return items.iter_mut().try_for_each(|item| visit(stream, item));
     }
-    // A read list grows as its records decode: a damaged or crafted length
-    // fails at its first exhausted column, and a length no allocation can
-    // hold fails here, never as an allocation abort.
-    items.clear();
-    items
-        .try_reserve_exact(len)
-        .map_err(|_| invalid(format!("binary plan: {col:?} list length")))?;
+    // A damaged or crafted length fails at its first exhausted column, and a
+    // length no allocation can hold fails here, never as an allocation abort.
+    *items = reserved(len, col)?;
     for _ in 0..len {
-        let mut item = T::default();
+        let mut item = T::fresh();
         visit(stream, &mut item)?;
         items.push(item);
     }
@@ -298,7 +312,7 @@ fn list<S: Stream, T: Default>(
 
 fn nums<S: Stream, T>(stream: &mut S, len: Col, col: Col, items: &mut Vec<T>) -> RusticolResult<()>
 where
-    T: Copy + Default + TryInto<i64> + TryFrom<i64>,
+    T: Copy + Fresh + TryInto<i64> + TryFrom<i64>,
 {
     list(stream, len, items, |s, item| num(s, col, item))
 }
@@ -312,7 +326,7 @@ fn shared<S: Stream, T>(
     visit: impl FnMut(&mut S, &mut T) -> RusticolResult<()>,
 ) -> RusticolResult<()>
 where
-    T: Clone + Default + Eq + Hash + 'static,
+    T: TryCopy + Fresh + Eq + Hash + 'static,
 {
     if S::READ {
         let mut id = 0i64;
@@ -320,14 +334,17 @@ where
         let known: &mut Vec<Vec<T>> = table(stream, refs);
         match usize::try_from(id) {
             Ok(k) if k < known.len() => {
-                // `clone`, not `clone_from`: `items` is a fresh record's
-                // empty list, so one exact allocation suffices.
-                *items = known[k].clone();
+                // Every reference copies the list: fallibly (a crafted member
+                // can reference one long list from any number of records).
+                *items = known[k].try_copy(refs)?;
                 Ok(())
             }
             Ok(k) if k == known.len() => {
                 list(stream, len, items, visit)?;
-                table::<S, Vec<Vec<T>>>(stream, refs).push(items.clone());
+                let copy = items.try_copy(refs)?;
+                let known: &mut Vec<Vec<T>> = table(stream, refs);
+                known.try_reserve(1).map_err(|_| too_large(refs))?;
+                known.push(copy);
                 Ok(())
             }
             _ => Err(invalid(format!("binary plan: {refs:?} reference"))),
@@ -338,7 +355,7 @@ where
         let mut id = match known.get(items.as_slice()) {
             Some(&id) => id,
             None => {
-                known.insert(items.clone(), next);
+                known.insert(items.try_copy(refs)?, next);
                 next
             }
         };
@@ -350,7 +367,7 @@ where
     }
 }
 
-fn option<S: Stream, T: Default>(
+fn option<S: Stream, T: Fresh>(
     stream: &mut S,
     col: Col,
     value: &mut Option<T>,
@@ -359,11 +376,137 @@ fn option<S: Stream, T: Default>(
     let mut present = value.is_some();
     flag(stream, col, &mut present)?;
     if S::READ {
-        *value = present.then(T::default);
+        *value = present.then(T::fresh);
     }
     match value {
         Some(inner) => visit(stream, inner),
         None => Ok(()),
+    }
+}
+
+// ------------------------------------------------------- fresh and copied
+
+/// An empty value for a record the reader is about to fill. This module's own
+/// trait (not `Default`), so it never collides with a `Default` the loader's
+/// file types may derive; the records' impls list every field
+/// (`fresh_records!`), so a field added to a file type without a column fails
+/// to compile here.
+trait Fresh {
+    fn fresh() -> Self;
+}
+
+macro_rules! fresh_scalars {
+    ($($ty:ty),* $(,)?) => {
+        $(impl Fresh for $ty {
+            fn fresh() -> Self {
+                <$ty>::default()
+            }
+        })*
+    };
+}
+
+fresh_scalars!(bool, i8, i32, i64, u32, u64, usize, String);
+
+impl<T> Fresh for Vec<T> {
+    fn fresh() -> Self {
+        Vec::new()
+    }
+}
+
+impl<T> Fresh for Option<T> {
+    fn fresh() -> Self {
+        None
+    }
+}
+
+impl<T: Fresh, const N: usize> Fresh for [T; N] {
+    fn fresh() -> Self {
+        std::array::from_fn(|_| T::fresh())
+    }
+}
+
+impl<A: Fresh, B: Fresh> Fresh for (A, B) {
+    fn fresh() -> Self {
+        (A::fresh(), B::fresh())
+    }
+}
+
+impl<A: Fresh, B: Fresh, C: Fresh> Fresh for (A, B, C) {
+    fn fresh() -> Self {
+        (A::fresh(), B::fresh(), C::fresh())
+    }
+}
+
+fn too_large(col: Col) -> crate::RusticolError {
+    invalid(format!(
+        "binary plan: {col:?} decodes to more than the allocator grants"
+    ))
+}
+
+/// An empty list with room for exactly `len` items, or an error.
+fn reserved<T>(len: usize, col: Col) -> RusticolResult<Vec<T>> {
+    let mut items = Vec::new();
+    items.try_reserve_exact(len).map_err(|_| too_large(col))?;
+    Ok(items)
+}
+
+/// A copy whose every allocation is fallible: of a shared list at each
+/// reference and of a table string at each use (a crafted member can make
+/// these copies outgrow memory; the error names the column).
+trait TryCopy: Sized {
+    fn try_copy(&self, col: Col) -> RusticolResult<Self>;
+
+    /// A copy of a list of `Self` (item by item; `memcpy` for plain values).
+    fn try_copy_list(items: &[Self], col: Col) -> RusticolResult<Vec<Self>> {
+        let mut copy = reserved(items.len(), col)?;
+        for item in items {
+            copy.push(item.try_copy(col)?);
+        }
+        Ok(copy)
+    }
+}
+
+macro_rules! copy_plain {
+    ($($ty:ty),* $(,)?) => {
+        $(impl TryCopy for $ty {
+            fn try_copy(&self, _col: Col) -> RusticolResult<Self> {
+                Ok(*self)
+            }
+
+            fn try_copy_list(items: &[Self], col: Col) -> RusticolResult<Vec<Self>> {
+                let mut copy = reserved(items.len(), col)?;
+                copy.extend_from_slice(items);
+                Ok(copy)
+            }
+        })*
+    };
+}
+
+copy_plain!(i32, u32, usize, [u32; 6], (usize, usize));
+
+impl TryCopy for String {
+    fn try_copy(&self, col: Col) -> RusticolResult<Self> {
+        let mut copy = String::new();
+        copy.try_reserve_exact(self.len())
+            .map_err(|_| too_large(col))?;
+        copy.push_str(self);
+        Ok(copy)
+    }
+}
+
+impl<T: TryCopy> TryCopy for Vec<T> {
+    fn try_copy(&self, col: Col) -> RusticolResult<Self> {
+        T::try_copy_list(self, col)
+    }
+}
+
+impl<A: TryCopy, B: TryCopy, C: TryCopy> TryCopy for (A, B, C) {
+    fn try_copy(&self, col: Col) -> RusticolResult<Self> {
+        Ok((
+            self.0.try_copy(col)?,
+            self.1.try_copy(col)?,
+            self.2.try_copy(col)?,
+        ))
     }
 }
 
@@ -1076,8 +1219,7 @@ impl Stream for Reader<'_> {
             .ok()
             .and_then(|id| self.strings.get(id))
             .ok_or_else(|| invalid(format!("binary plan: {col:?} string id")))?;
-        // A fresh record's empty string: one exact allocation (`clone`).
-        *value = text.clone();
+        *value = text.try_copy(col)?;
         Ok(())
     }
 
@@ -1097,17 +1239,17 @@ impl Stream for Reader<'_> {
 // ------------------------------------------------------------ empty records
 
 /// The traversal fills fresh records when reading.
-macro_rules! empty_records {
+macro_rules! fresh_records {
     ($($name:ident { $($field:ident),* $(,)? }),* $(,)?) => {
-        $(impl Default for $name {
-            fn default() -> Self {
-                Self { $($field: Default::default()),* }
+        $(impl Fresh for $name {
+            fn fresh() -> Self {
+                Self { $($field: Fresh::fresh()),* }
             }
         })*
     };
 }
 
-empty_records! {
+fresh_records! {
     PlanFile {
         schema, legs, rows, helicities, columns, average, born_components, constants, masses,
         block_rows, kernels, contents, factors, seed_classes, seeds, families, forward, merged,
@@ -1197,7 +1339,7 @@ mod tests {
     #[test]
     fn crafted_counts_fail_closed() {
         let member = PlanModel {
-            file: PlanFile::default(),
+            file: PlanFile::fresh(),
         }
         .binary()
         .unwrap();
@@ -1227,6 +1369,58 @@ mod tests {
             (Col::StringByte, 8, 4),
         ]);
         assert!(PlanModel::from_binary(&crafted).is_err());
+    }
+
+    /// Width-0 columns declare `n` contents that all reference one shared
+    /// list of `m` empty rows (a member of a few kB): every reference copies
+    /// it, and a copy the allocator cannot grant is an error (the reproducer
+    /// at a size that fits; its refusal under `RLIMIT_AS` is the nightly
+    /// Python test's).
+    #[test]
+    fn shared_lists_are_copied_at_every_reference() {
+        let member = PlanModel {
+            file: PlanFile::fresh(),
+        }
+        .binary()
+        .unwrap();
+        let offsets = column_offsets(&member);
+        let (n, m) = (1000u64, 10u64);
+        let mut crafted = member.clone();
+        let mut set = |col: Col, count: u64, base: u64| {
+            let at = offsets[col as usize];
+            assert_eq!(crafted[at], 0, "{col:?} holds no payload");
+            crafted[at + 8..at + 16].copy_from_slice(&count.to_le_bytes());
+            crafted[at + 16..at + 24].copy_from_slice(&base.to_le_bytes());
+        };
+        set(Col::ContentLen, 1, n);
+        for col in [
+            Col::ContentDIn,
+            Col::ContentDOut,
+            Col::ContentDegree,
+            Col::ContentRows,
+            Col::ContentMask,
+            Col::RowHelicityRef,
+            Col::FusedRef,
+            Col::TermLen,
+        ] {
+            set(col, n, 0);
+        }
+        set(Col::RowHelicityLen, 1, m);
+        set(Col::RowHelicityLegs, m, 0);
+        set(Col::FusedLen, 1, 0);
+        assert_eq!(crafted.len(), member.len());
+        let model = PlanModel::from_binary(&crafted).unwrap();
+        assert_eq!(model.file.contents.len(), n as usize);
+        assert!(model.file.contents.iter().all(|content| {
+            content.row_helicities.len() == m as usize
+                && content.row_helicities.iter().all(Vec::is_empty)
+        }));
+        // An allocation the allocator refuses is an error, not an abort.
+        assert!(reserved::<u64>(usize::MAX / 2, Col::Chunk).is_err());
+        let rows = vec![vec![1i32, -1], vec![]];
+        assert_eq!(rows.try_copy(Col::RowHelicityRef).unwrap(), rows);
+        let inputs = vec![("loop".to_string(), 1usize, 2usize)];
+        assert_eq!(inputs.try_copy(Col::BindingInputRef).unwrap(), inputs);
     }
 
     #[test]

@@ -7,7 +7,7 @@
 //! Python `ExportedPlan` (`loops/v2/native_lowering.py`).
 use super::*;
 use pyo3::types::PyBytes;
-use rusticol_core::loop_v2::plan::binary::{PlanModel, is_binary, program_digest};
+use rusticol_core::loop_v2::plan::binary::{PlanModel, column_names, is_binary, program_digest};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use std::time::Instant;
 
@@ -45,6 +45,13 @@ impl V2PlanModel {
         let model = &mut self.0;
         let member = py.detach(|| model.binary()).map_err(error)?;
         Ok(PyBytes::new(py, &member))
+    }
+
+    /// The binary member's column names, in member order (diagnostics and
+    /// tests of crafted members).
+    #[staticmethod]
+    fn columns() -> Vec<&'static str> {
+        column_names().to_vec()
     }
 }
 
