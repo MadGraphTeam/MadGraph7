@@ -44,8 +44,10 @@ LOOP_V2_PHYSICS_SCHEMA = 2
 # PACBIN members (``loops.v2.native_process``, WP3.1), or rebuilt at load from
 # the artifact's compiled model and generation request where a process has no
 # native program (rusticol-core ``loop_artifact::LOOP_V2_*POINT_INPUTS``).
+# "native-v2": the native programs with the binary64 SymJIT plane application
+# of every saved evaluator (licence-free binary64, DESIGN §3.7).
 LOOP_V2_POINT_INPUTS = "regenerated-at-load"
-LOOP_V2_NATIVE_POINT_INPUTS = "native-v1"
+LOOP_V2_NATIVE_POINT_INPUTS = "native-v2"
 
 
 @dataclass(frozen=True, slots=True)

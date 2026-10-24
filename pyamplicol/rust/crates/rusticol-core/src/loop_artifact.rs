@@ -432,14 +432,17 @@ pub const LOOP_V2_POINT_INPUTS: &str = "regenerated-at-load";
 /// Native point inputs (WP3.1): the PACBIN also holds the process's native
 /// program (`loops/v2/native_process.py`): its assembly record and tree
 /// program (zlib JSON, kind `LoopRuntimePlan`), its parameter evaluator and
-/// kernel evaluators (saved exact Symbolica states), so a load regenerates
-/// nothing.
-pub const LOOP_V2_NATIVE_POINT_INPUTS: &str = "native-v1";
+/// kernel evaluators (saved exact Symbolica states, for DoubleFloat and
+/// arbitrary precision) and their binary64 SymJIT plane applications
+/// (storage-v4 IR, kind `SymjitApplication`, recompiled at load), so a load
+/// regenerates nothing and binary64 touches no Symbolica state.
+pub const LOOP_V2_NATIVE_POINT_INPUTS: &str = "native-v2";
 
 /// The PACBIN members of native point inputs.
 pub const LOOP_V2_NATIVE_RECORD_MEMBER: &str = "point-inputs/native-process.json.zlib";
 pub const LOOP_V2_NATIVE_TREES_MEMBER: &str = "point-inputs/tree-program.json.zlib";
 pub const LOOP_V2_NATIVE_PARAMETERS_MEMBER: &str = "point-inputs/parameters.state";
+pub const LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER: &str = "point-inputs/parameters.symjit";
 
 #[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
@@ -591,6 +594,10 @@ pub fn load_loop_v2_artifact(
             (
                 LOOP_V2_NATIVE_PARAMETERS_MEMBER,
                 PacbinMemberKind::SymbolicaExactState,
+            ),
+            (
+                LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER,
+                PacbinMemberKind::SymjitApplication,
             ),
         ] {
             require(

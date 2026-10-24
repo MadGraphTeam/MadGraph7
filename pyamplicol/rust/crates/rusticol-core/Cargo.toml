@@ -23,7 +23,7 @@ symbolica-runtime = ["dep:symbolica"]
 # Native core of the loop engine v2: plan v4 and its executor (open-loop
 # polynomials in the NinjaRS tensor layout). Enabled by the loop consumer
 # (rusticol-loop-reduction), so the native extension ships it.
-loop-v2 = ["dep:flate2", "dep:ninjars", "symbolica-runtime"]
+loop-v2 = ["dep:flate2", "dep:ninjars", "symbolica-runtime", "f64-symjit"]
 
 [dependencies]
 bincode.workspace = true

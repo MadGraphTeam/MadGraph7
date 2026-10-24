@@ -42,11 +42,19 @@
 //!
 //! Every value derives from the stored program and the external parameters:
 //! no Python per batch or point.
+//!
+//! **Carriers.** Each kernel and the parameter program come as a saved exact
+//! evaluator and, from the generation (`native_trees.py`), as a SymJIT
+//! storage-v4 plane application (IR, recompiled for the loading CPU and
+//! sealed, `evaluator::symjit_plane`; DESIGN §3.7): binary64 runs the plane
+//! applications and touches no Symbolica state, so it needs no licence;
+//! DoubleFloat and arbitrary precision decode the exact states in the
+//! carrier, under pyAmpliCol's Symbolica library key (`crate::licence`).
 
 use super::dress::{Carrier, cast, parse_rational};
 use super::interference::{Entry, Interference, InterferenceRuntime, Ket};
 use super::plan::LoopProgramV4;
-use crate::engine::SchemaSources;
+use crate::engine::{PlaneDescriptor, SchemaSources, SymjitPlaneKernel, SymjitPlaneLayout};
 use crate::{RusticolError, RusticolResult};
 use rayon::prelude::*;
 use serde::Deserialize;
@@ -57,6 +65,118 @@ use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
 
 /// The tree-program schema this executor runs.
 pub const TREE_SCHEMA: u32 = 2;
+
+/// Generation: the binary64 SymJIT plane application of a saved exact
+/// evaluator of a tree program (a kernel or the parameter program), with its
+/// input and output counts. The evaluator is the one binary64 would run
+/// without it (its coefficients, registered constants included, cast as
+/// [`TreeProgram::runtime`] casts them), compiled at `opt_level` into
+/// storage-v4 IR (`evaluator::symjit_plane`).
+#[cfg(feature = "python-generation-bridge")]
+pub fn compile_plane_application(
+    saved: &[u8],
+    opt_level: u8,
+    compress: bool,
+) -> RusticolResult<(Vec<u8>, usize, usize)> {
+    let _unlock = crate::licence::unlock();
+    let zero = 0.0_f64;
+    let complex = |re: &Rational, im: &Rational| Complex::new(cast(&zero, re), cast(&zero, im));
+    let evaluator = crate::engine::decode_exact_evaluator_state(saved)?.map_coeff_with_prec(
+        &|r| complex(&r.re, &r.im),
+        symbolica::domains::float::FloatLike::get_precision(&zero),
+    );
+    let (plane, inputs, outputs) =
+        crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(
+            &evaluator, opt_level, compress,
+        )?;
+    verify_plane(&plane, evaluator.into_batch_evaluator(), (inputs, outputs))?;
+    Ok((plane, inputs, outputs))
+}
+
+/// Refuse a plane application that disagrees with its evaluator at two fixed
+/// real points (inputs in (0.5, 1.5)): a translation error (a constant or a
+/// function read wrongly) changes an output at O(1), while the two
+/// evaluations' rounding differs by orders of magnitude less (the criterion
+/// of the tree engine's exporter, `symbolica_helpers._verify_symjit_plane_
+/// constants`).
+#[cfg(feature = "python-generation-bridge")]
+fn verify_plane(
+    plane: &[u8],
+    mut evaluator: BatchExpressionEvaluator<Complex<f64>>,
+    shape: (usize, usize),
+) -> RusticolResult<()> {
+    const ROWS: usize = 2;
+    let (inputs, outputs) = shape;
+    // A low-discrepancy sequence: deterministic, distinct per input.
+    let values: Vec<Complex<f64>> = (0..ROWS * inputs)
+        .map(|k| {
+            Complex::new(
+                0.5 + (0.618_033_988_749_894_8 * (k + 1) as f64).fract(),
+                0.0,
+            )
+        })
+        .collect();
+    let mut expected = vec![Complex::new(0.0, 0.0); ROWS * outputs];
+    evaluator
+        .evaluate_batch(&values, &mut expected, ROWS)
+        .map_err(|e| invalid(format!("plane check: {e}")))?;
+    let got = evaluate_plane_application(plane, shape, &values, ROWS)?;
+    let parts = |values: &[Complex<f64>]| -> Vec<f64> {
+        values.iter().flat_map(|z| [z.re, z.im]).collect()
+    };
+    let (expected, got) = (parts(&expected), parts(&got));
+    let scale = expected
+        .iter()
+        .filter(|x| x.is_finite())
+        .fold(0.0_f64, |m, x| m.max(x.abs()));
+    for (index, (&e, &g)) in expected.iter().zip(&got).enumerate() {
+        let agree = e.to_bits() == g.to_bits()
+            || (e.is_nan() && g.is_nan())
+            || (e - g).abs() <= 1e-6 * e.abs()
+            || (e - g).abs() <= 1e-12 * scale;
+        if !agree {
+            return Err(invalid(format!(
+                "the SymJIT plane application disagrees with its exact evaluator \
+                 (value {index}: {g:e} against {e:e}); keep this program on the \
+                 exact evaluator"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// The binary64 rows of a plane application (`compile_plane_application`)
+/// through the production loader, row-major: a cold-path check of an export
+/// against its exact evaluator.
+#[cfg(feature = "python-generation-bridge")]
+pub fn evaluate_plane_application(
+    plane: &[u8],
+    shape: (usize, usize),
+    inputs: &[Complex<f64>],
+    rows: usize,
+) -> RusticolResult<Vec<Complex<f64>>> {
+    let mut kernel = BinaryPlane::load(plane, shape)?;
+    let mut outputs = vec![Complex::new(0.0, 0.0); rows * shape.1];
+    kernel.evaluate(inputs, &mut outputs, rows)?;
+    Ok(outputs)
+}
+
+/// The binary64 rows of a saved exact evaluator (Symbolica's evaluation of
+/// the state), row-major: the reference of `evaluate_plane_application`.
+#[cfg(feature = "python-generation-bridge")]
+pub fn evaluate_exact_state(
+    saved: &[u8],
+    inputs: &[Complex<f64>],
+    rows: usize,
+) -> RusticolResult<Vec<Complex<f64>>> {
+    let mut kernel = exact_kernel(saved, &0.0_f64)?;
+    let mut outputs = vec![Complex::new(0.0, 0.0); rows * kernel.output_len()];
+    let _unlock = crate::licence::unlock();
+    kernel
+        .evaluate_batch(inputs, &mut outputs, rows)
+        .map_err(invalid)?;
+    Ok(outputs)
+}
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::compatibility(format!("loop v2 trees: {}", message.into()))
@@ -324,6 +444,11 @@ struct Step {
 struct Interactions {
     /// Saved exact evaluators: vertex kernels, then propagator kernels.
     saved: Vec<Vec<u8>>,
+    /// Their binary64 plane applications, in the same order (none: binary64
+    /// runs the exact states).
+    planes: Option<Vec<Vec<u8>>>,
+    /// (inputs, outputs) of each kernel, in the same order.
+    shapes: Vec<(usize, usize)>,
     steps: Vec<Step>,
 }
 
@@ -373,6 +498,9 @@ struct Parameters {
     names: Vec<String>,
     defaults: Vec<Rational>,
     saved: Vec<u8>,
+    /// The binary64 plane application of the program (none: binary64 runs
+    /// the exact state).
+    plane: Option<Vec<u8>>,
     outputs: usize,
     model: Vec<ModelSource>,
     counterterm_model: Vec<ModelSource>,
@@ -471,13 +599,13 @@ pub struct TreeInputs<T> {
 /// The carrier form of a program: its kernel evaluators and exact weights.
 pub struct TreeRuntime<T> {
     /// The parameter program.
-    parameters: BatchExpressionEvaluator<Complex<T>>,
+    parameters: Kernel<T>,
     /// The interaction program's kernels and, per step and kernel group,
     /// its interactions' weights.
-    kernels: Vec<BatchExpressionEvaluator<Complex<T>>>,
+    kernels: Vec<Kernel<T>>,
     edge_weights: Vec<Vec<Vec<Complex<T>>>>,
     /// The counterterm program's kernels and interaction weights.
-    counterterm_kernels: Vec<BatchExpressionEvaluator<Complex<T>>>,
+    counterterm_kernels: Vec<Kernel<T>>,
     counterterm_edge_weights: Vec<Vec<Vec<Complex<T>>>>,
     /// The closure terms' colour weights.
     weights: Vec<Complex<T>>,
@@ -486,22 +614,179 @@ pub struct TreeRuntime<T> {
     interference: Option<InterferenceRuntime<T>>,
 }
 
+/// One kernel (or the parameter program) in carrier `T`: its exact
+/// evaluator in the carrier, or in binary64 its SymJIT plane application.
+pub enum Kernel<T> {
+    Exact(BatchExpressionEvaluator<Complex<T>>),
+    Plane(Box<dyn PlaneRows<T> + Send>),
+}
+
+/// Row-major batch evaluation of a plane application (binary64 only).
+pub trait PlaneRows<T> {
+    fn evaluate(
+        &mut self,
+        inputs: &[Complex<T>],
+        outputs: &mut [Complex<T>],
+        rows: usize,
+    ) -> RusticolResult<()>;
+    fn input_len(&self) -> usize;
+    fn output_len(&self) -> usize;
+}
+
+impl<T> Kernel<T>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    /// `rows` evaluations: inputs and outputs row-major.
+    fn evaluate_batch(
+        &mut self,
+        inputs: &[Complex<T>],
+        outputs: &mut [Complex<T>],
+        rows: usize,
+    ) -> Result<(), String> {
+        match self {
+            Kernel::Exact(evaluator) => evaluator
+                .evaluate_batch(inputs, outputs, rows)
+                .map_err(|e| e.to_string()),
+            Kernel::Plane(plane) => plane
+                .evaluate(inputs, outputs, rows)
+                .map_err(|e| e.message().to_owned()),
+        }
+    }
+
+    fn input_len(&self) -> usize {
+        match self {
+            Kernel::Exact(evaluator) => evaluator.get_input_len(),
+            Kernel::Plane(plane) => plane.input_len(),
+        }
+    }
+
+    fn output_len(&self) -> usize {
+        match self {
+            Kernel::Exact(evaluator) => evaluator.get_output_len(),
+            Kernel::Plane(plane) => plane.output_len(),
+        }
+    }
+}
+
+/// A saved exact evaluator in carrier `T`, under pyAmpliCol's library key
+/// (decoding and mapping create Symbolica state).
+fn exact_kernel<T: Carrier + Real>(saved: &[u8], zero: &T) -> RusticolResult<Kernel<T>>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    let _unlock = crate::licence::unlock();
+    let complex = |re: &Rational, im: &Rational| Complex::new(cast(zero, re), cast(zero, im));
+    Ok(Kernel::Exact(
+        crate::engine::decode_exact_evaluator_state(saved)?
+            .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
+            .into_batch_evaluator(),
+    ))
+}
+
+/// A binary64 plane application, evaluated on row-major complex rows
+/// (transposed into its split-complex planes: inputs re, im, then outputs).
+struct BinaryPlane {
+    kernel: SymjitPlaneKernel,
+    inputs: usize,
+    outputs: usize,
+    planes: Vec<f64>,
+}
+
+impl BinaryPlane {
+    fn load(bytes: &[u8], (inputs, outputs): (usize, usize)) -> RusticolResult<Self> {
+        let layout = SymjitPlaneLayout::complex(inputs, outputs);
+        Ok(Self {
+            kernel: SymjitPlaneKernel::load_bytes(bytes, "<loop v2 tree kernel>", layout)?,
+            inputs,
+            outputs,
+            planes: Vec::new(),
+        })
+    }
+}
+
+impl PlaneRows<f64> for BinaryPlane {
+    fn evaluate(
+        &mut self,
+        inputs: &[Complex<f64>],
+        outputs: &mut [Complex<f64>],
+        rows: usize,
+    ) -> RusticolResult<()> {
+        require(
+            inputs.len() == rows * self.inputs && outputs.len() == rows * self.outputs,
+            "plane kernel rows",
+        )?;
+        if rows == 0 {
+            return Ok(());
+        }
+        let planes = 2 * (self.inputs + self.outputs);
+        self.planes.clear();
+        self.planes.resize(planes * rows, 0.0);
+        for (row, values) in inputs.chunks_exact(self.inputs.max(1)).enumerate() {
+            for (input, value) in values.iter().enumerate() {
+                self.planes[2 * input * rows + row] = value.re;
+                self.planes[(2 * input + 1) * rows + row] = value.im;
+            }
+        }
+        {
+            let descriptors = self
+                .planes
+                .chunks_exact_mut(rows)
+                .map(PlaneDescriptor::from_slice)
+                .collect();
+            let mut table = self.kernel.build_raw_table(descriptors)?;
+            self.kernel.execute_table(&mut table, 0, rows)?;
+        }
+        let base = 2 * self.inputs;
+        for (row, values) in outputs.chunks_exact_mut(self.outputs.max(1)).enumerate() {
+            for (output, value) in values.iter_mut().enumerate() {
+                *value = Complex::new(
+                    self.planes[(base + 2 * output) * rows + row],
+                    self.planes[(base + 2 * output + 1) * rows + row],
+                );
+            }
+        }
+        Ok(())
+    }
+
+    fn input_len(&self) -> usize {
+        self.inputs
+    }
+
+    fn output_len(&self) -> usize {
+        self.outputs
+    }
+}
+
 /// Validate and group an interaction program (`InteractionFile`); `saved`
 /// holds its kernels' evaluators, vertex kernels first.
 fn load_interactions(
     program: InteractionFile,
     saved: &[Vec<u8>],
+    planes: Option<&[Vec<u8>]>,
     state_size: usize,
     model_count: usize,
 ) -> RusticolResult<Interactions> {
     let kernels = program.kernels.len();
     require(
-        saved.len() == kernels + program.propagators.len(),
+        saved.len() == kernels + program.propagators.len()
+            && planes.is_none_or(|planes| planes.len() == saved.len()),
         "interaction kernel evaluator count",
     )?;
-    for bytes in saved {
-        drop(crate::engine::decode_exact_evaluator_state(bytes)?);
+    // Without plane applications every carrier decodes the exact states:
+    // validate them now. With them, a carrier that needs the exact states
+    // decodes them when its runtime is built (binary64 never does).
+    if planes.is_none() {
+        for bytes in saved {
+            drop(crate::engine::decode_exact_evaluator_state(bytes)?);
+        }
     }
+    let shapes = program
+        .kernels
+        .iter()
+        .chain(&program.propagators)
+        .copied()
+        .collect();
     let within = |start: usize, length: usize| start + length <= state_size;
     let mut steps = Vec::with_capacity(program.steps.len());
     for step in program.steps {
@@ -597,6 +882,8 @@ fn load_interactions(
     }
     Ok(Interactions {
         saved: saved.to_vec(),
+        planes: planes.map(<[Vec<u8>]>::to_vec),
+        shapes,
         steps,
     })
 }
@@ -607,6 +894,7 @@ fn load_interactions(
 fn load_parameters(
     file: ParameterFile,
     saved: &[u8],
+    plane: Option<&[u8]>,
     model_count: usize,
     counterterm_model_count: usize,
     couplings: usize,
@@ -671,10 +959,10 @@ fn load_parameters(
     };
     let model = sources(&file.model)?;
     let counterterm_model = sources(&file.counterterm_model)?;
-    // Helper functions call the scalar library's predicates.
-    crate::source_scalar::register_scalar_primitives();
-    let evaluator = crate::engine::decode_exact_evaluator_state(saved)?;
-    drop(evaluator);
+    if plane.is_none() {
+        // Validated when its runtime is built otherwise (`load_interactions`).
+        drop(crate::engine::decode_exact_evaluator_state(saved)?);
+    }
     Ok(Parameters {
         names: file.names,
         defaults: file
@@ -683,6 +971,7 @@ fn load_parameters(
             .map(|value| exact(value))
             .collect::<RusticolResult<_>>()?,
         saved: saved.to_vec(),
+        plane: plane.map(<[u8]>::to_vec),
         outputs: file.outputs,
         model,
         counterterm_model,
@@ -878,8 +1167,14 @@ fn load_counterterms(
 impl TreeProgram {
     /// Load a program exported by `loops/v2/native_trees.py` for `plan`.
     /// `kernels` holds the interaction program's saved exact evaluators and,
-    /// last, the parameter program's.
-    pub fn load(json: &[u8], kernels: &[Vec<u8>], plan: &LoopProgramV4) -> RusticolResult<Self> {
+    /// last, the parameter program's; `planes`, when given, their binary64
+    /// SymJIT plane applications in the same order.
+    pub fn load(
+        json: &[u8],
+        kernels: &[Vec<u8>],
+        planes: Option<&[Vec<u8>]>,
+        plan: &LoopProgramV4,
+    ) -> RusticolResult<Self> {
         let file: TreeFile = serde_json::from_slice(json).map_err(|e| invalid(e.to_string()))?;
         require(
             file.schema == TREE_SCHEMA,
@@ -903,12 +1198,28 @@ impl TreeProgram {
         let (parameter_evaluator, kernels) = kernels
             .split_last()
             .ok_or_else(|| invalid("the parameter program's evaluator is missing"))?;
+        require(
+            planes.is_none_or(|planes| planes.len() == kernels.len() + 1),
+            "a plane application per saved evaluator",
+        )?;
+        let (parameter_plane, planes) = match planes.and_then(<[Vec<u8>]>::split_last) {
+            Some((parameter, planes)) => (Some(parameter.as_slice()), Some(planes)),
+            None => (None, None),
+        };
         let own = file.interactions.kernels.len() + file.interactions.propagators.len();
         require(kernels.len() >= own, "interaction kernel evaluator count")?;
         let (kernels, counterterm_kernels) = kernels.split_at(own);
+        let (planes, counterterm_planes) = match planes {
+            Some(planes) => {
+                let (own, counterterm) = planes.split_at(own);
+                (Some(own), Some(counterterm))
+            }
+            None => (None, None),
+        };
         let interactions = load_interactions(
             file.interactions,
             kernels,
+            planes,
             file.state_size,
             file.model_count,
         )?;
@@ -936,6 +1247,7 @@ impl TreeProgram {
                     interactions: load_interactions(
                         ct.interactions,
                         counterterm_kernels,
+                        counterterm_planes,
                         ct.state_size,
                         ct.model_count,
                     )?,
@@ -956,6 +1268,7 @@ impl TreeProgram {
         let parameters = load_parameters(
             file.parameters,
             parameter_evaluator,
+            parameter_plane,
             file.model_count,
             counterterm_trees
                 .as_ref()
@@ -1135,6 +1448,8 @@ impl TreeProgram {
     where
         Complex<T>: Real + EvaluationDomain,
     {
+        // Exact kernels (DoubleFloat, arbitrary precision) under the key.
+        let _unlock = crate::licence::unlock();
         let program = &self.parameters;
         let points = scales.len();
         let width = program.names.len();
@@ -1271,25 +1586,31 @@ impl TreeProgram {
     }
 
     /// The program in carrier `T` (kernel evaluators and exact weights
-    /// cast).
-    pub fn runtime<T: Carrier + Real>(&self, zero: &T) -> RusticolResult<TreeRuntime<T>>
+    /// cast): binary64 loads the plane applications when the program has
+    /// them, other carriers decode the exact states (`TreeCarrier::kernel`).
+    pub fn runtime<T: TreeCarrier + Real>(&self, zero: &T) -> RusticolResult<TreeRuntime<T>>
     where
         Complex<T>: Real + EvaluationDomain,
     {
         let complex = |re: &Rational, im: &Rational| Complex::new(cast(zero, re), cast(zero, im));
         let two = cast(zero, &Rational::from(2));
         let root = two.sqrt();
-        let parameters = crate::engine::decode_exact_evaluator_state(&self.parameters.saved)?
-            .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
-            .into_batch_evaluator();
+        let program = &self.parameters;
+        let parameters = T::kernel(
+            &program.saved,
+            program.plane.as_deref(),
+            (program.names.len(), program.outputs),
+            zero,
+        )?;
         let kernels_of = |program: &Interactions| {
             program
                 .saved
                 .iter()
-                .map(|saved| {
-                    Ok(crate::engine::decode_exact_evaluator_state(saved)?
-                        .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
-                        .into_batch_evaluator())
+                .zip(&program.shapes)
+                .enumerate()
+                .map(|(k, (saved, &shape))| {
+                    let plane = program.planes.as_ref().map(|planes| planes[k].as_slice());
+                    T::kernel(saved, plane, shape, zero)
                 })
                 .collect::<RusticolResult<Vec<_>>>()
         };
@@ -1380,6 +1701,8 @@ impl TreeProgram {
     where
         Complex<T>: Real + EvaluationDomain,
     {
+        // Exact kernels (DoubleFloat, arbitrary precision) under the key.
+        let _unlock = crate::licence::unlock();
         let points = momenta.len();
         require(
             batch.model.len() == points
@@ -1771,7 +2094,7 @@ impl TreeProgram {
 fn run_interactions<T: Carrier>(
     program: &Interactions,
     layout: StateLayout,
-    kernels: &mut [BatchExpressionEvaluator<Complex<T>>],
+    kernels: &mut [Kernel<T>],
     edge_weights: &[Vec<Vec<Complex<T>>>],
     states: &mut [Complex<T>],
     points: usize,
@@ -1801,7 +2124,7 @@ where
                 continue;
             }
             let evaluator = &mut kernels[*kernel];
-            let width = evaluator.get_output_len();
+            let width = evaluator.output_len();
             let per_call = (ROWS / points.max(1)).max(1);
             for chunk in active.chunks(per_call) {
                 let rows = chunk.len() * points;
@@ -1850,8 +2173,8 @@ where
                 continue;
             };
             let evaluator = &mut kernels[kernel];
-            let width = evaluator.get_output_len();
-            let inputs = evaluator.get_input_len();
+            let width = evaluator.output_len();
+            let inputs = evaluator.input_len();
             let value = inputs - 4 - layout.model_count;
             parameters.clear();
             for (point, state) in states.chunks_exact(layout.size).enumerate() {
@@ -1886,6 +2209,16 @@ pub trait TreeCarrier: Carrier + PartialOrd {
         point: &[[Self; 4]],
         state: &mut [Complex<Self>],
     ) -> RusticolResult<()>;
+
+    /// A kernel of `shape` (inputs, outputs) from its saved exact evaluator
+    /// and, when stored, its binary64 plane application: binary64 runs the
+    /// plane application, the other carriers the exact state.
+    fn kernel(
+        saved: &[u8],
+        plane: Option<&[u8]>,
+        shape: (usize, usize),
+        zero: &Self,
+    ) -> RusticolResult<Kernel<Self>>;
 }
 
 impl TreeCarrier for f64 {
@@ -1896,6 +2229,18 @@ impl TreeCarrier for f64 {
         state: &mut [Complex<Self>],
     ) -> RusticolResult<()> {
         sources.fill_f64(masses, point, state)
+    }
+
+    fn kernel(
+        saved: &[u8],
+        plane: Option<&[u8]>,
+        shape: (usize, usize),
+        zero: &Self,
+    ) -> RusticolResult<Kernel<Self>> {
+        match plane {
+            Some(bytes) => Ok(Kernel::Plane(Box::new(BinaryPlane::load(bytes, shape)?))),
+            None => exact_kernel(saved, zero),
+        }
     }
 }
 
@@ -1908,6 +2253,15 @@ impl TreeCarrier for DoubleFloat {
     ) -> RusticolResult<()> {
         sources.fill_double_float(masses, point, state)
     }
+
+    fn kernel(
+        _saved: &[u8],
+        _plane: Option<&[u8]>,
+        _shape: (usize, usize),
+        zero: &Self,
+    ) -> RusticolResult<Kernel<Self>> {
+        exact_kernel(_saved, zero)
+    }
 }
 
 impl TreeCarrier for Float {
@@ -1918,5 +2272,14 @@ impl TreeCarrier for Float {
         state: &mut [Complex<Self>],
     ) -> RusticolResult<()> {
         sources.fill_float(masses, point, state)
+    }
+
+    fn kernel(
+        _saved: &[u8],
+        _plane: Option<&[u8]>,
+        _shape: (usize, usize),
+        zero: &Self,
+    ) -> RusticolResult<Kernel<Self>> {
+        exact_kernel(_saved, zero)
     }
 }
