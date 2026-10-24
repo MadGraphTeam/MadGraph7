@@ -590,4 +590,6 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             export PATH="$HOME/.cache/HEPtools/bin:$PATH"
-            ./tests/test_manager.py test_output_mg7_decay_run_card_has_no_cuts test_output_mg7_decay_subprocess_metadata test_color_flow_consistency_mg7 test_systematics_mg7_legacy test_systematics_mixed_order_mg7 test_mg7_reweighting_at_generation test_delphes_mg7 -pA -t0 -l INFO
+            # LHAPDF_DATA_PATH (install_lhapdf_pdfset) holds only NNPDF23: unset, these
+            # tests find NNPDF40_lo_as_01180 in the heptools data dir via lhapdf-config
+            env -u LHAPDF_DATA_PATH ./tests/test_manager.py test_output_mg7_decay_run_card_has_no_cuts test_output_mg7_decay_subprocess_metadata test_color_flow_consistency_mg7 test_systematics_mg7_legacy test_systematics_mixed_order_mg7 test_mg7_reweighting_at_generation test_delphes_mg7 -pA -t0 -l INFO

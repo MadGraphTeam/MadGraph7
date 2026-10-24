@@ -1032,6 +1032,10 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
       - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_all
+      # StdHEP (the hw6/py6 stdhep tests) needs the rpc headers, as in parralel.yml
+      - name: Install libtirpc-dev
+        run: sudo apt install -y libtirpc-dev
 
       - name: "standalone and madmatrix outputs"
         if: ${{ !cancelled() }}
