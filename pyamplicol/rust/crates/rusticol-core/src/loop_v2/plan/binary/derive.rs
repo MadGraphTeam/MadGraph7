@@ -14,18 +14,20 @@
 //! derivations for any amount of memory (40 legs of two helicities: 2^40 Born
 //! rows), and the derivations allocate infallibly.
 //!
-//! [`bound`] computes, from the file form alone and in time linear in it, an
-//! upper bound of the bytes those derivations allocate (summed over every
-//! allocation, so it bounds their peak too, at the allocator's growth
-//! factors) and of the iterations of their loops whose count is a product of
-//! scalars and list lengths. The derivations' copies of the plan's own lists
-//! (at most about twice the decoded model) are not part of it: the reader
-//! reserves them with it. The binary member must pay for it: its reader
-//! refuses a member whose bound exceeds [`DERIVED_PER_BYTE`] per member byte
-//! (the writer pads the member of a plan that needs more, as it does for the
-//! decoded size), and reserves the memory bound fallibly before deriving, so a
-//! plan whose derivations the allocator cannot grant is refused with an error
-//! instead of aborting the process.
+//! [`bound`] computes, from the file form alone and in time linear in it,
+//! upper bounds of what those derivations do ([`DeriveBound`]): the bytes they
+//! hold at their peak (the tables they keep, plus the largest set of
+//! temporary ones alive at once: one family's derived rows and links with one
+//! step's split candidate), the bytes of all their allocations summed, and
+//! the iterations of their loops whose count is a product of scalars and list
+//! lengths, at the allocator's growth factors. The derivations' copies of the
+//! plan's own lists (at most about twice the decoded model) are not part of
+//! it: the reader reserves them with it. The binary member must pay for the
+//! allocations and iterations: its reader refuses a member whose bound
+//! exceeds [`DERIVED_PER_BYTE`] per member byte (the writer pads the member of
+//! a plan that needs more, as it does for the decoded size), and reserves the
+//! peak fallibly before deriving, so a plan whose derivations the allocator
+//! cannot grant is refused with an error instead of aborting the process.
 //!
 //! Before bounding, [`bound`] refuses the scalars the derivations would trust
 //! beyond the plan's own tables. Every one of these checks is implied by the
@@ -44,9 +46,9 @@ use crate::RusticolResult;
 use crate::loop_v2::kernels::RowLink;
 
 /// The most bytes the loader's derivations may allocate and iterate per
-/// member byte (module docs). The plans written today need about 100-500
-/// (six and seven legs, one observable column: 16 times less or more); a
-/// plan needing more (tens of columns at seven legs) gets a padded member.
+/// member byte (module docs). The plans written today need a few hundred
+/// (five to seven legs, one observable column); a plan needing more (tens of
+/// columns at seven legs) gets a padded member.
 pub const DERIVED_PER_BYTE: u64 = 8192;
 
 /// The largest rank or degree a monomial table of a valid plan can have: a
@@ -54,29 +56,68 @@ pub const DERIVED_PER_BYTE: u64 = 8192;
 /// propagator per leg (`legs < 64`).
 const RANKS: usize = 66;
 
-/// An upper bound of what the loader's derivations make of a plan.
+/// Upper bounds of what the loader's derivations make of a plan.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DeriveBound {
-    /// Bytes of every allocation (each plus the allocator's bookkeeping).
+    /// Bytes held at the peak: the tables kept, plus the largest set of
+    /// temporary ones alive at once (each allocation plus the allocator's
+    /// bookkeeping).
     pub memory: u64,
+    /// Bytes of every allocation, summed.
+    pub allocated: u64,
     /// Iterations of the scalar-driven loops.
     pub work: u64,
 }
 
 impl DeriveBound {
-    /// What the member must pay for: memory and work (saturating).
+    /// What the member must pay for: allocations and iterations (saturating).
     pub fn cost(&self) -> u64 {
-        self.memory.saturating_add(self.work)
+        self.allocated.saturating_add(self.work)
+    }
+}
+
+/// The bytes of one allocation of `items` of `size` bytes (none when empty).
+fn bytes(items: u64, size: usize) -> u64 {
+    if items == 0 {
+        0
+    } else {
+        items
+            .saturating_mul(size as u64)
+            .saturating_add(ALLOCATION as u64)
+    }
+}
+
+/// The running bound: bytes kept to the end, the largest temporary set seen,
+/// all allocations, the iterations.
+#[derive(Default)]
+struct Tally {
+    kept: u64,
+    peak: u64,
+    allocated: u64,
+    work: u64,
+}
+
+impl Tally {
+    /// An allocation the program keeps.
+    #[inline]
+    fn keep(&mut self, items: u64, size: usize) {
+        let b = bytes(items, size);
+        self.kept = self.kept.saturating_add(b);
+        self.allocated = self.allocated.saturating_add(b);
     }
 
+    /// A temporary allocation, alive with the others of `scope`.
     #[inline]
-    fn alloc(&mut self, items: u64, size: usize) {
-        if items > 0 {
-            let bytes = items.saturating_mul(size as u64);
-            self.memory = self
-                .memory
-                .saturating_add(bytes.saturating_add(ALLOCATION as u64));
-        }
+    fn hold(&mut self, scope: &mut u64, items: u64, size: usize) {
+        let b = bytes(items, size);
+        *scope = scope.saturating_add(b);
+        self.allocated = self.allocated.saturating_add(b);
+    }
+
+    /// The temporaries alive at once at some point: `held` bytes.
+    #[inline]
+    fn alive(&mut self, held: u64) {
+        self.peak = self.peak.max(held);
     }
 
     #[inline]
@@ -84,14 +125,25 @@ impl DeriveBound {
         self.work = self.work.saturating_add(count);
     }
 
-    /// The monomial-product table of `(rank, degree)` and its monomial lists.
+    /// The monomial-product table of `(rank, degree)` (kept) and its
+    /// monomial lists (temporary).
     fn table(&mut self, rank: u64, degree: u64) {
         let (left, right) = (ncoeff(rank), ncoeff(degree));
         let entries = left.saturating_mul(right);
-        self.alloc(entries, size_of::<usize>());
-        self.alloc(left.saturating_mul(2), size_of::<[u32; 4]>());
-        self.alloc(right.saturating_mul(2), size_of::<[u32; 4]>());
+        self.keep(entries, size_of::<usize>());
+        let mut lists = 0;
+        self.hold(&mut lists, left.saturating_mul(2), size_of::<[u32; 4]>());
+        self.hold(&mut lists, right.saturating_mul(2), size_of::<[u32; 4]>());
+        self.alive(lists);
         self.iterate(entries);
+    }
+
+    fn finish(self) -> DeriveBound {
+        DeriveBound {
+            memory: self.kept.saturating_add(self.peak),
+            allocated: self.allocated,
+            work: self.work,
+        }
     }
 }
 
@@ -107,7 +159,7 @@ fn ncoeff(rank: u64) -> u64 {
 /// control byte, load factor and the table kept while it grows).
 const MAP_ENTRY: usize = 64;
 /// Bytes per entry of a B-tree set of row indices (`u32` keys in nodes at
-/// least half full, with their bookkeeping) and of the list of its targets.
+/// least half full, with their bookkeeping).
 const TREE_ENTRY: usize = 32;
 /// A helicity row restricted to legs (`links::Row`).
 const ROW: usize = 16;
@@ -122,30 +174,30 @@ struct Tables {
 }
 
 impl Tables {
-    fn pair(&mut self, bound: &mut DeriveBound, rank: usize, degree: usize) {
+    fn pair(&mut self, tally: &mut Tally, rank: usize, degree: usize) {
         if rank < RANKS && degree < RANKS {
             self.pairs[rank][degree] = true;
         } else {
             // Beyond any valid plan (forward states only): counted per use.
-            bound.table(rank as u64, degree as u64);
+            tally.table(rank as u64, degree as u64);
         }
     }
 
-    fn split(&mut self, bound: &mut DeriveBound, rank: usize, degree: usize) {
+    fn split(&mut self, tally: &mut Tally, rank: usize, degree: usize) {
         if rank < RANKS && degree < RANKS {
             let most = &mut self.split[rank];
             *most = Some(most.map_or(degree, |d| d.max(degree)));
         } else {
-            bound.table(rank as u64, degree as u64);
+            tally.table(rank as u64, degree as u64);
         }
     }
 
-    fn finish(&self, bound: &mut DeriveBound) {
+    fn finish(&self, tally: &mut Tally) {
         for (rank, degrees) in self.pairs.iter().enumerate() {
             for (degree, &used) in degrees.iter().enumerate() {
                 let split = self.split[rank].is_some_and(|most| degree <= most);
                 if used || split {
-                    bound.table(rank as u64, degree as u64);
+                    tally.table(rank as u64, degree as u64);
                 }
             }
         }
@@ -167,27 +219,27 @@ impl Sizes<'_> {
     }
 
     /// An edge of `links` row links (before the column expansion) into
-    /// `content`: its expanded links and the candidate split parts of every
-    /// term (`split_candidate`, counted whether or not the step splits).
-    fn edge(&self, bound: &mut DeriveBound, content: usize, links: u64) {
+    /// `content`: its expanded links (kept) and the candidate split part of
+    /// every term (`split_candidate`, counted whether or not the step
+    /// splits): its filtered links (grown by doubling) and the list of their
+    /// targets (kept if the step splits), its block-row map and the targets'
+    /// B-tree (temporaries of the step, `step`).
+    fn edge(&self, tally: &mut Tally, step: &mut u64, content: usize, links: u64) {
         let expanded = links.saturating_mul(self.columns);
-        bound.alloc(expanded, size_of::<RowLink>());
-        bound.iterate(expanded.saturating_add(links));
+        tally.keep(expanded, size_of::<RowLink>());
+        tally.iterate(expanded.saturating_add(links));
         let c = &self.file.contents[content];
-        let terms = c.terms.len() as u64;
         let rows = c.row_helicities.len() as u64;
-        // Per term: its block-row map, its filtered links (grown by
-        // doubling), their targets, and its part and group.
-        let mut term = DeriveBound::default();
-        term.alloc(rows, size_of::<Option<u32>>());
-        term.alloc(expanded.saturating_mul(2), size_of::<RowLink>());
-        term.alloc(expanded, TREE_ENTRY);
-        term.alloc(2, MAP_ENTRY);
-        bound.memory = bound
-            .memory
-            .saturating_add(term.memory.saturating_mul(terms));
+        for _ in &c.terms {
+            tally.keep(expanded.saturating_mul(2), size_of::<RowLink>());
+            tally.keep(expanded, size_of::<u32>());
+            tally.keep(2, MAP_ENTRY);
+            tally.hold(step, rows, size_of::<Option<u32>>());
+            tally.hold(step, expanded, TREE_ENTRY);
+        }
+        let terms = c.terms.len() as u64;
         let visits = rows.saturating_add(expanded).saturating_mul(terms);
-        bound.iterate(visits.saturating_add(self.term_rows[content]));
+        tally.iterate(visits.saturating_add(self.term_rows[content]));
     }
 }
 
@@ -221,34 +273,37 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         file.legs < 64 && file.helicities.len() == file.legs,
         "plan helicities per leg differ from its legs",
     )?;
-    let mut bound = DeriveBound::default();
+    let mut tally = Tally::default();
     let counts: Vec<u64> = file.helicities.iter().map(|h| h.len() as u64).collect();
     let (rows, columns) = (file.rows as u64, file.columns as u64);
 
-    // Contents: the block-row maps, the term-row checks per binding input,
-    // the fused-entry index per vertex term, the vertex table.
+    // Contents: the block-row maps (kept to the end), the term-row checks
+    // per binding input, the fused-entry index per vertex term (temporary),
+    // the vertex table.
     let vertex_terms = file.contents.iter().flat_map(|c| &c.terms);
     let vertex_terms = vertex_terms.filter(|t| t.vertex >= 0).count();
     let mut term_rows = buffer::<u64>(file.contents.len())?;
     for c in &file.contents {
-        bound.alloc(c.row_helicities.len() as u64, MAP_ENTRY);
+        tally.keep(c.row_helicities.len() as u64, MAP_ENTRY);
         let mut rows_here: u64 = 0;
         for t in &c.terms {
             let inputs: u64 = t.bindings.iter().map(|b| b.inputs.len() as u64).sum();
-            bound.iterate((t.rows.len() as u64).saturating_mul(inputs.saturating_add(1)));
+            tally.iterate((t.rows.len() as u64).saturating_mul(inputs.saturating_add(1)));
             rows_here = rows_here.saturating_add(t.rows.len() as u64);
             if t.vertex >= 0 {
                 require(
                     (t.vertex as u64) < vertex_terms as u64,
                     "a vertex id beyond the terms that carry one",
                 )?;
-                bound.alloc(c.fused.len() as u64, MAP_ENTRY);
-                bound.iterate(c.fused.len() as u64);
+                let mut index = 0;
+                tally.hold(&mut index, c.fused.len() as u64, MAP_ENTRY);
+                tally.alive(index);
+                tally.iterate(c.fused.len() as u64);
             }
         }
         term_rows.push(rows_here);
     }
-    bound.alloc(2 * vertex_terms as u64, size_of::<Option<Vertex>>());
+    tally.keep(2 * vertex_terms as u64, size_of::<Option<Vertex>>());
     let sizes = Sizes {
         file,
         columns,
@@ -259,9 +314,10 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         split: [None; RANKS],
     };
 
-    // Schedule B: per family the Born rows, per step its output rows (at
-    // most its source rows and the rows of the legs it leaves open), per
-    // edge one link per source row.
+    // Schedule B. Per family (`links::derive`, temporary for the family):
+    // the Born rows, per step its output rows (at most its source rows and
+    // the rows of the legs it leaves open) and their map, per edge one link
+    // per source row (grown by doubling); then per step its edges.
     let mut largest_rank = 0;
     for f in &file.families {
         require(
@@ -269,8 +325,10 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
             "family rank exceeds propagators + 2",
         )?;
         largest_rank = largest_rank.max(f.rank);
-        bound.alloc(rows, ROW);
-        bound.iterate(rows);
+        let mut family = 0;
+        tally.hold(&mut family, rows, ROW);
+        tally.iterate(rows);
+        let (mut most_map, mut most_step) = (0, 0);
         let mut outputs = buffer::<(u64, usize)>(f.steps.len())?;
         for (index, s) in f.steps.iter().enumerate() {
             let rank_out = s
@@ -278,7 +336,7 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
                 .checked_add(s.degree)
                 .filter(|&rank| rank <= f.rank)
                 .ok_or_else(|| invalid("a step above its family's rank"))?;
-            let mut targets: u64 = 0;
+            let (mut targets, mut step): (u64, u64) = (0, 0);
             for e in &s.edges {
                 let (source, source_rank) = match (e.leaf, e.child) {
                     (-1, child) if child >= 0 && (child as usize) < index => {
@@ -287,22 +345,25 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
                     _ => (rows, 0),
                 };
                 targets = targets.saturating_add(source);
-                bound.iterate(source);
-                bound.alloc(source.saturating_mul(2), 3 * size_of::<u32>());
+                tally.iterate(source);
+                tally.hold(&mut family, source.saturating_mul(2), 3 * size_of::<u32>());
                 if let Some((content, c)) = sizes.content(e.factor) {
-                    sizes.edge(&mut bound, content, source);
+                    sizes.edge(&mut tally, &mut step, content, source);
                     if c.degree <= s.degree {
-                        tables.pair(&mut bound, source_rank, c.degree);
+                        tables.pair(&mut tally, source_rank, c.degree);
                         let rank = if s.seeded { 0 } else { s.rank_in };
-                        tables.split(&mut bound, rank, c.degree);
+                        tables.split(&mut tally, rank, c.degree);
                     }
                 }
             }
             let out = targets.min(rows_of(&counts, s.out)).min(rows);
-            bound.alloc(out.saturating_mul(2), ROW);
-            bound.alloc(out, MAP_ENTRY);
+            tally.hold(&mut family, out.saturating_mul(2), ROW);
+            let mut map = 0;
+            tally.hold(&mut map, out, MAP_ENTRY);
+            (most_map, most_step) = (most_map.max(map), most_step.max(step));
             outputs.push((out, rank_out));
         }
+        tally.alive(family.saturating_add(most_map.max(most_step)));
     }
 
     // Schedule F: stored links (one column), tables by the states' ranks.
@@ -311,13 +372,13 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         for (index, s) in forward.states.iter().enumerate() {
             let parent = usize::try_from(s.parent).ok().filter(|&p| p < index);
             let source_rank = parent.map_or(0, |p| ranks[p]);
-            bound.alloc((s.links.len() / 3) as u64, size_of::<RowLink>());
-            tables.pair(&mut bound, source_rank, s.degree);
+            tally.keep((s.links.len() / 3) as u64, size_of::<RowLink>());
+            tables.pair(&mut tally, source_rank, s.degree);
             ranks.push(s.rank);
         }
     }
 
-    // Schedule M: stored links expanded over the columns, split parts.
+    // Schedule M: stored links expanded over the columns, split candidates.
     if let Some(merged) = &file.merged {
         let mut ranks = buffer::<usize>(merged.states.len())?;
         for (index, s) in merged.states.iter().enumerate() {
@@ -326,32 +387,34 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
                 .checked_add(s.degree)
                 .filter(|&rank| rank <= largest_rank)
                 .ok_or_else(|| invalid("a merged state above every family's rank"))?;
+            let mut step = 0;
             for e in &s.edges {
                 let parent = usize::try_from(e.parent).ok().filter(|&p| p < index);
                 let source_rank = parent.map_or(0, |p| ranks[p]);
                 if let Some((content, c)) = sizes.content(e.factor) {
-                    sizes.edge(&mut bound, content, (e.links.len() / 3) as u64);
+                    sizes.edge(&mut tally, &mut step, content, (e.links.len() / 3) as u64);
                     if c.degree <= s.degree {
-                        tables.pair(&mut bound, source_rank, c.degree);
+                        tables.pair(&mut tally, source_rank, c.degree);
                         let rank = if s.seeded { 0 } else { s.rank_in };
-                        tables.split(&mut bound, rank, c.degree);
+                        tables.split(&mut tally, rank, c.degree);
                     }
                 }
             }
+            tally.alive(step);
             ranks.push(rank_out);
         }
     }
-    tables.finish(&mut bound);
+    tables.finish(&mut tally);
 
     // The column-row flags (`ColumnRows::new`).
     if let Some(column_rows) = &file.column_rows {
         let flags = rows.saturating_mul(columns);
-        bound.alloc(flags, 1);
-        bound.iterate(flags);
+        tally.keep(flags, 1);
+        tally.iterate(flags);
         let kept = column_rows.iter().flatten().map(|kept| kept.len() as u64);
-        bound.iterate(kept.sum());
+        tally.iterate(kept.sum());
     }
-    Ok(bound)
+    Ok(tally.finish())
 }
 
 /// Reserves `bytes` fallibly and releases them: an error, not an abort,

@@ -50,12 +50,12 @@ impl V2PlanModel {
     }
 
     /// The bound of the loader's derivations for this plan,
-    /// `(memory bytes, iterations)` (`PlanModel::derive_bound`), after its
-    /// refusal of untrusted scalars.
-    fn derive_bound(&self, py: Python<'_>) -> PyResult<(u64, u64)> {
+    /// `(peak bytes, allocated bytes, iterations)` (`PlanModel::derive_bound`),
+    /// after its refusal of untrusted scalars.
+    fn derive_bound(&self, py: Python<'_>) -> PyResult<(u64, u64, u64)> {
         let model = &self.0;
         py.detach(|| model.derive_bound())
-            .map(|bound| (bound.memory, bound.work))
+            .map(|bound| (bound.memory, bound.allocated, bound.work))
             .map_err(error)
     }
 

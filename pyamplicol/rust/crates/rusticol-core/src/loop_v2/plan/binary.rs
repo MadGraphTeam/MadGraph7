@@ -69,25 +69,25 @@
 //!
 //! **Bounded derivation.** The loader's derivations
 //! ([`LoopProgramV4::from_file`], shared with the JSON load) size tables by
-//! plan scalars: the row links per Born row (the product of the legs'
-//! helicity counts) expanded over the observable columns, the split parts per
-//! content term, the monomial tables per (rank, degree), the column-row flags
-//! and the vertex table. The member pays for them as for its decoded size:
-//! `derive::bound` computes, in one pass over the decoded model, an upper
-//! bound of the bytes those derivations allocate and of the iterations of
-//! their scalar-driven loops ([`DeriveBound`]), after refusing the scalars
-//! they would trust beyond the plan's tables (checks the loader's validation
-//! implies: vertex ids, family and step ranks). [`PlanModel::program`]
-//! refuses a member whose bound exceeds [`DERIVED_PER_BYTE`] per member byte,
-//! and reserves the memory bound (with twice the decoded size, for the
-//! program's copies of the plan's lists) fallibly before deriving; the writer
-//! pads a plan that needs more (none written today: about 100-500 bytes per
-//! member byte at six and seven legs). A member of `n` bytes thus makes the loader allocate
-//! at most `DERIVED_PER_BYTE × n` bytes beyond its decoded model, and a plan
-//! the allocator cannot hold is refused with an error. The production JSON
-//! load (`LoopProgramV4::load`, `plan.rs`) is not bounded so: that is the
-//! loader's work of phase 1, together with fallible reservations in the
-//! derivations themselves.
+//! plan scalars: the row links per Born row (the product of the legs' helicity
+//! counts) expanded over the observable columns, the split parts per content
+//! term, the monomial tables per (rank, degree), the column-row flags and the
+//! vertex table. The member pays for them as for its decoded size:
+//! `derive::bound` computes, in one pass over the decoded model, an upper bound
+//! of the bytes those derivations allocate (in all, and held at their peak) and
+//! of the iterations of their scalar-driven loops ([`DeriveBound`]), after
+//! refusing the scalars they would trust beyond the plan's tables (checks the
+//! loader's validation implies: vertex ids, family and step ranks).
+//! [`PlanModel::program`] refuses a member whose bound exceeds
+//! [`DERIVED_PER_BYTE`] per member byte, and reserves the memory bound (with
+//! twice the decoded size, for the program's copies of the plan's lists)
+//! fallibly before deriving; the writer pads a plan that needs more (none
+//! written today: a few hundred bytes per member byte at five to seven legs).
+//! A member of `n` bytes thus makes the loader allocate at most
+//! `DERIVED_PER_BYTE × n` bytes beyond its decoded model, and a plan the
+//! allocator cannot hold is refused with an error. The production JSON load (`LoopProgramV4::load`,
+//! `plan.rs`) is not bounded so: that is the loader's work of phase 1, together
+//! with fallible reservations in the derivations themselves.
 //!
 //! Reading fails closed with an error, never a panic or an allocation abort:
 //! headers, widths, payload sizes and the padding are checked, every value is
