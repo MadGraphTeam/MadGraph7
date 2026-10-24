@@ -482,14 +482,27 @@ jobs:
     # test_mg7_discrete_flavor, TestOneImplementation, TestRealRunNumbers) run
     # in the unittest_mg7_launch job of acceptancetest_mg7.yml.
     # Each step runs even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
       # a skipped test fails the step (test_manager exits 1): test_mg7_plots
-      # renders with matplotlib, test_mg7_gridpack_compression compares with pigz
+      # renders with matplotlib, test_mg7_gridpack_compression compares with pigz.
+      # No sudo/apt on the self-hosted runner: user install of matplotlib there,
+      # and without pigz installed the one test needing it is left out.
       - name: install matplotlib and pigz
-        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends python3-matplotlib pigz
+        run: |
+            if command -v apt-get > /dev/null; then
+              sudo apt-get update -q && sudo apt-get install -y --no-install-recommends python3-matplotlib pigz
+            else
+              python3 -c 'import matplotlib' 2> /dev/null || python3 -m pip install --user matplotlib
+            fi
+            if ! command -v pigz > /dev/null; then
+              echo "::warning::pigz not installed on this runner: test_pigz_output_is_gzip_compatible not run"
+              echo "NO_PIGZ=-e test_pigz_output_is_gzip_compatible" >> $GITHUB_ENV
+            fi
 
       - name: "unittest_core_uncovered"
         if: ${{ !cancelled() }}
@@ -507,7 +520,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madmatrix_writer test_mg7_gridpack_compression test_mg7_launcher_script AlohaModelPathTest DDMColorFlowMG7Test IOExportPythia8Test TestBornGscale F2PYSplitterFlavorOrderTest OptimiseJampTest AxialGaugeReferenceTest CombineNameHashTest test_flavor_mask_placeholders_present_in_nonstandalone_templates test_splitorders_entry_points_agree_with_their_callers test_standalone_files_next_to_matrix_file test_UFO_cpp_flavor_mask_prefix_uses_index_bits test_UFO_fortran_flavor_mask_prefix_uses_index_bits -t0
+            ./tests/test_manager.py test_madmatrix_writer test_mg7_gridpack_compression test_mg7_launcher_script AlohaModelPathTest DDMColorFlowMG7Test IOExportPythia8Test TestBornGscale F2PYSplitterFlavorOrderTest OptimiseJampTest AxialGaugeReferenceTest CombineNameHashTest test_flavor_mask_placeholders_present_in_nonstandalone_templates test_splitorders_entry_points_agree_with_their_callers test_standalone_files_next_to_matrix_file test_UFO_cpp_flavor_mask_prefix_uses_index_bits test_UFO_fortran_flavor_mask_prefix_uses_index_bits $NO_PIGZ -t0
 
       - name: "unittest_loop_madevent_uncovered"
         if: ${{ !cancelled() }}
