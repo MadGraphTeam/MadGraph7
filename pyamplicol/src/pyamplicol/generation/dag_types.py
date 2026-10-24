@@ -75,6 +75,9 @@ def _lc_color_identity_closures_compatible(
     )
 
 
+_NO_LABELS: frozenset[int] = frozenset()
+
+
 @dataclass(frozen=True)
 class ColorState:
     """Colour identity carried by one current.
@@ -118,6 +121,8 @@ class ColorState:
     @property
     def closed_labels(self) -> frozenset[int]:
         """Labels of the closed traces and lines."""
+        if not self.traces and not self.lines:
+            return _NO_LABELS
         return frozenset(
             label for part in (*self.traces, *self.lines) for label in part
         )

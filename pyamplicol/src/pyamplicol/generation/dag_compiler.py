@@ -778,6 +778,61 @@ class GenericDAGCompiler:
             auxiliary_kind_cache[particle_id] = kind
             return kind
 
+        def cached_vertex_allowed(vertex: Vertex) -> bool:
+            vertex_key = (vertex.kind, *vertex.particles)
+            if vertex_key in vertex_allowed_cache:
+                return vertex_allowed_cache[vertex_key]
+            vertex_allowed = color_engine.vertex_allowed(vertex)
+            vertex_allowed_cache[vertex_key] = vertex_allowed
+            return vertex_allowed
+
+        # Loop-request blocks have no per-mask species pruning, so the vertex
+        # filters below depend on the vertex alone: each input pair's vertex
+        # list is filtered once, in the same order.
+        prefiltered_vertices = self.loop_blocks and useful_states_by_mask is None
+
+        def static_vertex_admitted(vertex: Vertex) -> bool:
+            if (
+                vertex.kind in self.ignored_vertex_kinds
+                or vertex.particles[2] in self.ignored_particle_ids
+            ):
+                return False
+            if not cached_vertex_allowed(vertex):
+                return False
+            return not self.model.skip_duplicate_vertex_orientation(vertex)
+
+        def dynamic_vertex_admitted(vertex: Vertex, mask: int) -> bool:
+            if (
+                vertex.kind in self.ignored_vertex_kinds
+                or vertex.particles[2] in self.ignored_particle_ids
+            ):
+                return False
+            if useful_states_by_mask is not None and vertex.particles[
+                2
+            ] not in useful_states_by_mask.get(mask, {}):
+                return False
+            if not cached_vertex_allowed(vertex):
+                return False
+            if memoize:
+                duplicate_orientation = duplicate_orientation_cache.get(vertex)
+                if duplicate_orientation is None:
+                    duplicate_orientation = (
+                        self.model.skip_duplicate_vertex_orientation(vertex)
+                    )
+                    duplicate_orientation_cache[vertex] = duplicate_orientation
+            else:
+                duplicate_orientation = self.model.skip_duplicate_vertex_orientation(
+                    vertex
+                )
+            return not duplicate_orientation
+
+        # Loop-request blocks build the same result index from many splits:
+        # its validated ``CurrentIndex`` (and whether the model admits it) is
+        # memoized by its construction arguments.
+        index_memo: dict[tuple[object, ...], tuple[CurrentIndex, bool]] | None = (
+            {} if self.loop_blocks else None
+        )
+
         def cached_vertex_color_weight(
             vertex: Vertex,
         ) -> tuple[float, float]:
@@ -960,43 +1015,17 @@ class GenericDAGCompiler:
                                 right.index.particle_id,
                                 color_accuracy=process_ir.color_accuracy,
                             )
+                            if prefiltered_vertices:
+                                vertices = tuple(
+                                    vertex
+                                    for vertex in vertices
+                                    if static_vertex_admitted(vertex)
+                                )
                             vertices_by_input[vertex_lookup_key] = vertices
                         for vertex in vertices:
-                            if (
-                                vertex.kind in self.ignored_vertex_kinds
-                                or vertex.particles[2] in self.ignored_particle_ids
+                            if not prefiltered_vertices and not dynamic_vertex_admitted(
+                                vertex, mask
                             ):
-                                continue
-                            if useful_states_by_mask is not None and vertex.particles[
-                                2
-                            ] not in useful_states_by_mask.get(mask, {}):
-                                continue
-                            vertex_key = (vertex.kind, *vertex.particles)
-                            if vertex_key in vertex_allowed_cache:
-                                vertex_allowed = vertex_allowed_cache[vertex_key]
-                            else:
-                                vertex_allowed = color_engine.vertex_allowed(vertex)
-                                vertex_allowed_cache[vertex_key] = vertex_allowed
-                            if not vertex_allowed:
-                                continue
-                            if memoize:
-                                duplicate_orientation = duplicate_orientation_cache.get(
-                                    vertex
-                                )
-                                if duplicate_orientation is None:
-                                    duplicate_orientation = (
-                                        self.model.skip_duplicate_vertex_orientation(
-                                            vertex
-                                        )
-                                    )
-                                    duplicate_orientation_cache[vertex] = (
-                                        duplicate_orientation
-                                    )
-                            else:
-                                duplicate_orientation = (
-                                    self.model.skip_duplicate_vertex_orientation(vertex)
-                                )
-                            if duplicate_orientation:
                                 continue
                             coupling_orders = combined_coupling_orders(
                                 left.index,
@@ -1153,43 +1182,69 @@ class GenericDAGCompiler:
                                             self.max_lc_current_line_groups,
                                         ):
                                             continue
-                                        out_index = current_index_factory(
-                                            particle_id=vertex.particles[2],
-                                            external_mask=mask,
-                                            external_labels=labels,
-                                            ordered_external_labels=variant_ordered_labels,
-                                            helicity_ancestry=(
+                                        index_key = None
+                                        memoized = None
+                                        if index_memo is not None:
+                                            index_key = (
+                                                vertex.particles[2],
+                                                mask,
+                                                variant_ordered_labels,
                                                 left.index.helicity_ancestry
-                                                | right.index.helicity_ancestry
-                                            ),
-                                            chirality=quantum_flow.chirality,
-                                            spin_state=quantum_flow.spin_state,
-                                            flavour_flow=quantum_flow.flavour_flow,
-                                            quantum_number_flow=(
-                                                quantum_flow.quantum_number_flow
-                                            ),
-                                            color_state=color_flow.state,
-                                            momentum_mask=(
+                                                | right.index.helicity_ancestry,
+                                                quantum_flow.chirality,
+                                                quantum_flow.spin_state,
+                                                quantum_flow.flavour_flow,
+                                                quantum_flow.quantum_number_flow,
+                                                color_flow.state,
                                                 left.index.momentum_mask
-                                                | right.index.momentum_mask
-                                            ),
-                                            coupling_orders=coupling_orders,
-                                            auxiliary_kind=(
-                                                cached_auxiliary_kind(
-                                                    vertex.particles[2]
+                                                | right.index.momentum_mask,
+                                                coupling_orders,
+                                            )
+                                            memoized = index_memo.get(index_key)
+                                        if memoized is None:
+                                            out_index = current_index_factory(
+                                                particle_id=vertex.particles[2],
+                                                external_mask=mask,
+                                                external_labels=labels,
+                                                ordered_external_labels=variant_ordered_labels,
+                                                helicity_ancestry=(
+                                                    left.index.helicity_ancestry
+                                                    | right.index.helicity_ancestry
+                                                ),
+                                                chirality=quantum_flow.chirality,
+                                                spin_state=quantum_flow.spin_state,
+                                                flavour_flow=quantum_flow.flavour_flow,
+                                                quantum_number_flow=(
+                                                    quantum_flow.quantum_number_flow
+                                                ),
+                                                color_state=color_flow.state,
+                                                momentum_mask=(
+                                                    left.index.momentum_mask
+                                                    | right.index.momentum_mask
+                                                ),
+                                                coupling_orders=coupling_orders,
+                                                auxiliary_kind=(
+                                                    cached_auxiliary_kind(
+                                                        vertex.particles[2]
+                                                    )
+                                                    if memoize
+                                                    else self.model.auxiliary_kind(
+                                                        vertex.particles[2]
+                                                    )
+                                                ),
+                                            )
+                                            index_allowed = (
+                                                live_state_plan is None
+                                                or live_state_plan.allows(out_index)
+                                            ) and self.model.current_allowed(out_index)
+                                            if index_key is not None:
+                                                index_memo[index_key] = (
+                                                    out_index,
+                                                    index_allowed,
                                                 )
-                                                if memoize
-                                                else self.model.auxiliary_kind(
-                                                    vertex.particles[2]
-                                                )
-                                            ),
-                                        )
-                                        if (
-                                            live_state_plan is not None
-                                            and not live_state_plan.allows(out_index)
-                                        ):
-                                            continue
-                                        if not self.model.current_allowed(out_index):
+                                        else:
+                                            out_index, index_allowed = memoized
+                                        if not index_allowed:
                                             continue
                                         result = table.add_or_get(
                                             out_index,
