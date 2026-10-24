@@ -1,5 +1,12 @@
 name: Restore full heptools cache
 description: Restores heptools from cache and sets MG5 accordingly
+inputs:
+  selfhosted_tools:
+    description: >
+      On a self-hosted runner only: the components to build on the machine when
+      missing (see selfhosted_heptools). Ignored on GitHub-hosted runners.
+    required: false
+    default: 'lhapdf boost pythia8 emela contur looptools'
 
 runs:
   using: composite
@@ -55,6 +62,8 @@ runs:
     - name: build HEPTools on this machine
       if: runner.environment == 'self-hosted'
       uses: ./.github/actions/selfhosted_heptools
+      with:
+        tools: ${{ inputs.selfhosted_tools }}
 
     # setup other environment of previous level of cache
     # try to use their cache if previous cache failed or content is incomplete

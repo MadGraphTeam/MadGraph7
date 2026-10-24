@@ -5,9 +5,16 @@ description: >
   with paths baked in for, the ubuntu image) each machine builds the missing
   components itself, once, the first time a job needs them. A component that
   fails to build only warns: the tests that need it then fail, the others run.
+inputs:
+  tools:
+    description: 'Components to build when missing, among lhapdf boost pythia8 emela contur looptools'
+    required: false
+    default: 'lhapdf boost pythia8 emela contur looptools'
 runs:
   using: composite
   steps:
     - name: Build the missing HEPTools components
       shell: bash
-      run: bash "${{ github.action_path }}/build_heptools.sh"
+      env:
+        HEPTOOLS_BUILD: ${{ inputs.tools }}
+      run: bash "${{ github.action_path }}/build_heptools.sh" $HEPTOOLS_BUILD

@@ -38,9 +38,7 @@ concurrency:
 jobs:
   acceptancetest_0:
     # The type of runner that the job will run on
-    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
-    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
@@ -69,9 +67,7 @@ jobs:
     #   acceptancetest_contur acceptancetest_60
     #   acceptancetest_uncovered_madevent
     # Each keeps its own steps, run even when an earlier one failed.
-    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
-    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
@@ -122,9 +118,7 @@ jobs:
     #   acceptancetest_25 acceptancetest_35 acceptancetest_44 acceptancetest_55
     #   acceptancetest_59 acceptancetest_mssm_gogo
     # Each keeps its own steps, run even when an earlier one failed.
-    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
-    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
@@ -198,9 +192,7 @@ jobs:
     #   acceptancetest_density_wpwm acceptancetest_density_decay1
     #   acceptancetest_density_decay2
     # Each keeps its own steps, run even when an earlier one failed.
-    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
-    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
@@ -273,6 +265,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
+        # only what these tests need: rivet/contur and the loop libraries are
+        # not built on the (small) self-hosted machines
+        with:
+          selfhosted_tools: lhapdf boost pythia8 emela
       - uses: ./.github/actions/restore-pip-cache
 
       # ---- acceptancetest_20 ----
@@ -345,6 +341,10 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_heptools
+        # only what these tests need: rivet/contur and the loop libraries are
+        # not built on the (small) self-hosted machines
+        with:
+          selfhosted_tools: lhapdf boost pythia8 emela
 
       # ---- acceptancetest_37 ----
       - name: "acceptancetest_37"
@@ -407,9 +407,7 @@ jobs:
     #   acceptancetest_46 acceptancetest_49 acceptancetest_contur2
     #   acceptancetest_density_tttbartbar
     # Each keeps its own steps, run even when an earlier one failed.
-    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
-    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v4
@@ -482,6 +480,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
+        # only what these tests need: rivet/contur and the loop libraries are
+        # not built on the (small) self-hosted machines
+        with:
+          selfhosted_tools: lhapdf boost pythia8 emela
 
       # ---- acceptancetest_48 ----
       - name: "acceptancetest_48"
@@ -521,6 +523,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
+        # only what these tests need: rivet/contur and the loop libraries are
+        # not built on the (small) self-hosted machines
+        with:
+          selfhosted_tools: lhapdf boost pythia8 emela
       - uses: ./.github/actions/restore-pip-cache
       - uses: ./.github/actions/restore_ufomodel
 
@@ -589,6 +595,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore_heptools
+        # only what these tests need: rivet/contur and the loop libraries are
+        # not built on the (small) self-hosted machines
+        with:
+          selfhosted_tools: lhapdf boost pythia8 emela
 
       # ---- acceptancetest_103_polarization ----
       - name: "acceptancetest_103_polarization"

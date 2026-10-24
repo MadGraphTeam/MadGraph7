@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build into ~/.cache/HEPtools every HEPTools component that check_heptools
+# usage: build_heptools.sh [component ...]   (default: all of them)
+# Build into ~/.cache/HEPtools every requested HEPTools component that check_heptools
 # does not find complete there, with the same install commands as the
 # warm_cache.yml jobs. Runs from a pristine copy of the checked-out tree, so
 # the job's own tree is left as checked out.
@@ -66,7 +67,9 @@ build_looptools() {
 }
 
 # dependency order: emela needs boost, contur needs pythia8 (hepmc)
+requested=" ${*:-lhapdf boost pythia8 emela contur looptools} "
 for tool in lhapdf boost pythia8 emela contur looptools; do
+    [[ "$requested" == *" $tool "* ]] || continue
     if complete "$tool"; then
         echo "$tool: already built on $RUNNER_NAME"
         continue
