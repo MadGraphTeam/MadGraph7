@@ -8,7 +8,13 @@
 //! assignments. The colour-flow strings and sign, the colour-connection
 //! parity, the N_c grade and the identity-pairing sign follow the oracle
 //! rule by rule. The kernel variant only labels the blocks (every block of
-//! the plain request model is a "plain" block), so Python attaches it.
+//! a loop-request DAG is a "plain" block), so Python attaches it.
+//!
+//! For the CT program (`ct_closure.CountertermBlocks.build`) the tables
+//! carry the clone lines of the lowered model: a block of a clone particle
+//! is grouped as that particle and keyed by the field the line is read as
+//! (`CountertermLoweredModel.line_fields`). [`ColumnarDag::u1_leaking`] is
+//! the DAG scan of `ct_closure.u1_leaking_structures`.
 //!
 //! The tables come from `dag_input.block_input` (the model's colour
 //! representations and fermion roles of the legs and particles), so blocks
@@ -29,6 +35,10 @@ struct RawBlockInput {
     /// Labels of coloured fermion legs (`|rep| == 3` and a fermion).
     endpoints: Vec<u8>,
     u1_subtraction_kind: String,
+    /// `(clone pdg, pdg of the field it is read as)` of the CT program's
+    /// clone lines (`ct_closure._clone_lines`); empty otherwise.
+    #[serde(default)]
+    clones: Vec<(i64, i64)>,
 }
 
 pub const BLOCK_INPUT_SCHEMA: &str = "pyamplicol.loop-v2.dag-block-input/1";
@@ -38,6 +48,7 @@ pub struct BlockInput {
     particles: HashMap<i64, (Option<i32>, Option<bool>)>,
     endpoints: HashMap<u8, i32>,
     u1_subtraction_kind: String,
+    clones: HashMap<i64, i64>,
 }
 
 impl BlockInput {
@@ -72,6 +83,7 @@ impl BlockInput {
                 .collect(),
             endpoints,
             u1_subtraction_kind: raw.u1_subtraction_kind,
+            clones: raw.clones.into_iter().collect(),
         })
     }
 
@@ -113,6 +125,8 @@ pub struct ColourFlow {
 #[derive(Clone, Debug)]
 pub struct RawBlock {
     pub key_current: u32,
+    /// The field a clone block is read as (its key's particle), else `None`.
+    pub clone_field: Option<i64>,
     pub colour_flow: ColourFlow,
     pub nc_grade: Option<i64>,
     /// `(helicities, current id)`, sorted by helicities.
@@ -289,7 +303,7 @@ fn identity_pairing_sign(
 
 /// Canonical (by-value) ids of the tables, so that equal keys compare
 /// equal whatever produced the columns.
-fn canonical_ids<T: Eq + std::hash::Hash>(values: &[T]) -> Vec<u32> {
+pub(super) fn canonical_ids<T: Eq + std::hash::Hash>(values: &[T]) -> Vec<u32> {
     let mut seen: HashMap<&T, u32> = HashMap::new();
     values
         .iter()
@@ -325,6 +339,61 @@ impl ColumnarDag {
             }
         }
         out.into_iter().collect()
+    }
+
+    /// The vertex kinds `ct_closure.u1_leaking_structures` reports: kernels
+    /// of `kinds` (CT colours coupling to the U(1) part of a gluon) that
+    /// absorb an adjoint current holding a fundamental leg, or produce an
+    /// adjoint current a `generator_kinds` kernel (a fundamental generator)
+    /// reads. `adjoint` are the particles of IR colour 8, `fundamental` the
+    /// mask of the legs of IR colour ±3; interactions into the leg set
+    /// `rest` (every leg but leg 1) are never read by a root and skipped.
+    pub fn u1_leaking(
+        &self,
+        kinds: &[i64],
+        generator_kinds: &[i64],
+        adjoint: &[i64],
+        fundamental: u64,
+        rest: u64,
+    ) -> Vec<i64> {
+        let kinds: BTreeSet<i64> = kinds.iter().copied().collect();
+        let generators: BTreeSet<i64> = generator_kinds.iter().copied().collect();
+        let adjoint: BTreeSet<i64> = adjoint.iter().copied().collect();
+        let is_adjoint =
+            |current: u32| adjoint.contains(&self.tables.species[self.c_species[current as usize] as usize].pdg);
+        let read: Vec<usize> = (0..self.interaction_count())
+            .filter(|id| self.c_mask[self.i_result[*id] as usize] != rest)
+            .collect();
+        let kind = |id: usize| self.tables.vertices[self.i_vertex[id] as usize].kind;
+        let mut leaking = BTreeSet::new();
+        let mut producers: HashMap<u32, BTreeSet<i64>> = HashMap::new();
+        for &id in &read {
+            let vertex_kind = kind(id);
+            if !kinds.contains(&vertex_kind) {
+                continue;
+            }
+            for input in [self.i_left[id], self.i_right[id]] {
+                if is_adjoint(input) && self.c_mask[input as usize] & fundamental != 0 {
+                    leaking.insert(vertex_kind);
+                }
+            }
+            if is_adjoint(self.i_result[id]) {
+                producers
+                    .entry(self.i_result[id])
+                    .or_default()
+                    .insert(vertex_kind);
+            }
+        }
+        for &id in &read {
+            if generators.contains(&kind(id)) {
+                for input in [self.i_left[id], self.i_right[id]] {
+                    if let Some(found) = producers.get(&input) {
+                        leaking.extend(found.iter().copied());
+                    }
+                }
+            }
+        }
+        leaking.into_iter().collect()
     }
 
     /// `_connection_parities`.
@@ -521,6 +590,7 @@ impl ColumnarDag {
                 .collect();
             out.push(RawBlock {
                 key_current: first,
+                clone_field: tables.clones.get(&pdg).copied(),
                 colour_flow,
                 nc_grade: if nc_grades.len() == 1 {
                     *nc_grades.iter().next().expect("one grade")

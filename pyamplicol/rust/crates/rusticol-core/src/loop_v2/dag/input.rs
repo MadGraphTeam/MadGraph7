@@ -96,6 +96,9 @@ struct RawInput {
     admitted_masks: Vec<u64>,
     block_rule: RawBlockRule,
     early_sources_only: bool,
+    /// Rank of every interned runtime coupling identity in Python's sort
+    /// order (the evaluation keys of the reuse derivation sort by it).
+    coupling_identity_ranks: Vec<u32>,
 }
 
 /// Flavour-flow operation of a vertex (`Model.combine_flavour_flow`).
@@ -231,6 +234,8 @@ pub struct DagInput {
     pub admitted_masks: std::collections::HashSet<u64>,
     pub block_rule: BlockRule,
     pub early_sources_only: bool,
+    /// Python-order rank of each runtime coupling identity id.
+    pub identity_ranks: Vec<u32>,
     /// Representation of every leg label (`None`: unknown to the model).
     pub label_rep: [Option<i32>; 256],
     pub coloured_labels: u64,
@@ -468,6 +473,18 @@ impl DagInput {
                 BlockRule::Requests(table)
             }
         };
+        let identities = raw.coupling_identity_ranks.len();
+        if vertices.iter().any(|vertex| {
+            vertex
+                .flows
+                .values()
+                .flatten()
+                .any(|flow| flow.coupling_identity as usize >= identities)
+        }) {
+            return Err(DagError::Malformed(
+                "coupling identity without a rank".into(),
+            ));
+        }
         Ok(DagInput {
             accuracy: raw.accuracy,
             legs,
@@ -484,6 +501,7 @@ impl DagInput {
             admitted_masks: raw.admitted_masks.into_iter().collect(),
             block_rule,
             early_sources_only: raw.early_sources_only,
+            identity_ranks: raw.coupling_identity_ranks,
             label_rep,
             coloured_labels,
             singlet_labels,

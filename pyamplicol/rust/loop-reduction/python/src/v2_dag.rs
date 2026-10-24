@@ -12,7 +12,7 @@ use super::*;
 use pyo3::IntoPyObject;
 use pyo3::types::PyBytes;
 use rusticol_core::loop_v2::dag::{
-    self, ColumnarDag, DagError, blocks::BlockInput, input::DagInput,
+    self, ColumnarDag, DagError, blocks::BlockInput, input::DagInput, reuse::ReuseTables,
 };
 
 fn dag_error(error: DagError) -> PyErr {
@@ -28,12 +28,15 @@ type ColourTuple = (
     Vec<Vec<u8>>,
 );
 
-/// One block for Python (`dag_input._python_blocks`).
+/// One block for Python (`dag_input.NativeDag.blocks`).
 #[derive(IntoPyObject)]
 struct PyBlock {
     key_current: u32,
     mask: u64,
+    /// The key's particle: the field a clone block is read as.
     pdg: i64,
+    /// The clone particle of a clone line's block (its currents' particle).
+    clone: Option<i64>,
     word: Vec<u8>,
     orders: Vec<(String, i64)>,
     colour: ColourTuple,
@@ -121,7 +124,8 @@ impl V2Dag {
                 PyBlock {
                     key_current: block.key_current,
                     mask: self.dag.c_mask[id],
-                    pdg: species.pdg,
+                    pdg: block.clone_field.unwrap_or(species.pdg),
+                    clone: block.clone_field.map(|_| species.pdg),
                     word: self.dag.word(id).to_vec(),
                     orders: t.orders[self.dag.c_orders[id] as usize].clone(),
                     colour: (
@@ -150,6 +154,56 @@ impl V2Dag {
                 }
             })
             .collect())
+    }
+
+    /// The value-equivalence derivation of `dag_input.reuse_tables`' JSON
+    /// (`restricted`: only the currents sharing a contract, as production;
+    /// otherwise all) and the DAG with its interactions regrouped:
+    /// `([(representative, factor re bits, im bits)], V2Dag)`.
+    fn reuse(
+        &self,
+        py: Python<'_>,
+        tables: &str,
+        restricted: bool,
+    ) -> PyResult<(Vec<(u32, u64, u64)>, Self)> {
+        let tables = tables.to_owned();
+        py.detach(|| {
+            let tables = ReuseTables::from_json(&tables)?;
+            self.dag.reuse(&tables, restricted)
+        })
+        .map(|(equivalences, dag)| {
+            (
+                equivalences
+                    .into_iter()
+                    .map(|item| {
+                        (
+                            item.representative,
+                            item.factor[0].to_bits(),
+                            item.factor[1].to_bits(),
+                        )
+                    })
+                    .collect(),
+                Self { dag },
+            )
+        })
+        .map_err(dag_error)
+    }
+
+    /// The vertex kinds `ct_closure.u1_leaking_structures` reports
+    /// (`ColumnarDag::u1_leaking`).
+    fn u1_leaking(
+        &self,
+        py: Python<'_>,
+        kinds: Vec<i64>,
+        generator_kinds: Vec<i64>,
+        adjoint: Vec<i64>,
+        fundamental: u64,
+        rest: u64,
+    ) -> Vec<i64> {
+        py.detach(|| {
+            self.dag
+                .u1_leaking(&kinds, &generator_kinds, &adjoint, fundamental, rest)
+        })
     }
 
     /// Coloured particle ids propagated by non-source, non-auxiliary

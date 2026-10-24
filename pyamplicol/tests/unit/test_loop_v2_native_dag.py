@@ -153,16 +153,24 @@ def test_native_builder_refuses_what_it_does_not_cover(models):
 
 
 def test_native_builder_sources_never_name_symbolica():
-    """Rule 4: the builder and its binding make no Symbolica (licence) call."""
+    """Rule 4: the builder and its binding make no Symbolica (licence) call.
+
+    The exact rationals of the reuse derivation (``dag/exact.rs``) are the one
+    use: Symbolica's ``Rational`` (a ``numerica`` domain, no licence check)."""
 
     root = Path(__file__).resolve().parents[2] / "rust"
     sources = [
         *sorted((root / "crates/rusticol-core/src/loop_v2/dag").glob("*.rs")),
         root / "loop-reduction/python/src/v2_dag.rs",
     ]
-    assert len(sources) >= 7
+    assert len(sources) >= 8
     for path in sources:
-        assert "symbolica::" not in path.read_text(), path
+        text = path.read_text()
+        if path.name == "exact.rs":
+            assert text.count("symbolica::") == 1, path
+            assert "use symbolica::domains::rational::Rational;" in text
+        else:
+            assert "symbolica::" not in text, path
 
 
 @pytest.mark.loop_nightly

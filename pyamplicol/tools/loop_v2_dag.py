@@ -15,9 +15,12 @@ Stages:
   bounds) and its blocks (``blocks._blocks``).
 * ``s1pp``: S1'', the counterterm program's DAG, its blocks and clone lines
   (``ct_closure.counterterm_program_blocks``, the production chain: CT
-  lowering, the recursion with its inert rules, ``CountertermBlocks.build``),
-  chained after the request model, the Born and the loop blocks. Python lane
-  only until the native CT builder (A3).
+  lowering, the recursion with its inert rules, ``CountertermBlocks.build``,
+  the U(1) leakage check), chained after the request model, the Born and the
+  loop blocks. The native lane runs the same chain and replaces only its
+  ``CT program`` stage (``dag_input.native_counterterm_blocks`` and
+  ``dag_input.u1_leaking_structures``), so the lowering and the recursion
+  are the production ones.
 
 Lanes: ``python`` (the oracle) or ``native`` (``dag_input.native_blocks``).
 The request follows ``tools/loop_v2_generate.py``: ``--born`` bounds, loop
@@ -173,8 +176,6 @@ def _s1p(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> Non
 
 
 def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> None:
-    if args.lane != "python":
-        raise SystemExit("s1pp: the native CT builder is increment A3")
     from pyamplicol.loops.v2 import dag_input
     from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
     from pyamplicol.loops.v2.blocks import (
@@ -182,7 +183,10 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
         vetoed_particle_ids,
         with_ward_kernels,
     )
-    from pyamplicol.loops.v2.ct_closure import counterterm_program_blocks
+    from pyamplicol.loops.v2.ct_closure import (
+        UnprojectedU1Error,
+        counterterm_program_blocks,
+    )
     from pyamplicol.loops.v2.families import LoopOrderSelection, add_orders
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.processes.model import build_model_process_ir
@@ -214,41 +218,78 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
         ),
     )
     blocks, compiled = with_ward_kernels(blocks, compiled, fixed)
+    recursion: list[Any] = []
+
+    class _NativeProgram(Exception):
+        """Raised at the chain's ``CT program`` stage in the native lane."""
+
+    def stage(name: str, work: Callable[[], Any]) -> Any:
+        if args.lane == "native" and name == "CT program":
+            raise _NativeProgram
+        value = clock(name, work)
+        if name == "CT recursion":
+            recursion.append(value)
+        return value
+
     # The production chain (``LoopSlice.generate``): the CT program depends
     # on no loop family (REQUIREMENTS_ADDENDUM J), so none is generated here.
-    program = counterterm_program_blocks(
-        compiled,
-        prepared,
-        request.process,
-        data,
-        selection,
-        blocks.born_orders,
-        veto=request.particle_veto,
-        fixed_parameters=fixed,
-        declaration=request.colour_declaration,
-        continuation=continuation,
-        scope=(
-            tuple(sorted(request.born_orders.items())),
-            tuple(sorted(request.loop_order_bounds.items())),
-            request.compatibility,
-        ),
-        stage=clock,
-    )
-    lowered = program.recursion.model
-    lowered_model = CompiledUFOModel(lowered.lowered.compiled)
-    dag = program.blocks.blocks_dag
-    native = clock("encode", lambda: dag_input.NativeDag.from_dag(dag, lowered_model))
+    try:
+        program = counterterm_program_blocks(
+            compiled,
+            prepared,
+            request.process,
+            data,
+            selection,
+            blocks.born_orders,
+            veto=request.particle_veto,
+            fixed_parameters=fixed,
+            declaration=request.colour_declaration,
+            continuation=continuation,
+            scope=(
+                tuple(sorted(request.born_orders.items())),
+                tuple(sorted(request.loop_order_bounds.items())),
+                request.compatibility,
+            ),
+            stage=stage,
+        )
+    except _NativeProgram:
+        ((ct_recursion, ir),) = recursion
+        native_program = clock(
+            "CT program",
+            lambda: dag_input.native_counterterm_blocks(
+                ct_recursion,
+                ir,
+                ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+            ),
+        )
+        leaking = clock(
+            "U(1) leakage", lambda: dag_input.u1_leaking_structures(native_program)
+        )
+        if leaking:
+            raise UnprojectedU1Error(
+                f"counterterm vertices {sorted(str(s.particles) for s in leaking)} "
+                "would take the U(1) part of a fermion line's gluon"
+            ) from None
+        native = native_program.dag
+        program_blocks, clones = native_program.blocks, native_program.clones
+    else:
+        lowered_model = CompiledUFOModel(program.recursion.model.lowered.compiled)
+        dag = program.blocks.blocks_dag
+        native = clock(
+            "encode", lambda: dag_input.NativeDag.from_dag(dag, lowered_model)
+        )
+        program_blocks, clones = program.blocks.blocks, program.clones
     dag_digest = clock("dag digest", native.digest)
     block_digest = clock(
-        "blocks digest",
-        lambda: dag_input.blocks_digest(program.blocks.blocks, program.clones),
+        "blocks digest", lambda: dag_input.blocks_digest(program_blocks, clones)
     )
+    currents, interactions, sources = native.counts()
     record["counts"] = {
-        "currents": len(dag.currents),
-        "interactions": len(dag.interactions),
-        "sources": len(dag.sources),
-        "blocks": len(program.blocks.blocks),
-        "clones": len(program.clones),
+        "currents": currents,
+        "interactions": interactions,
+        "sources": sources,
+        "blocks": len(program_blocks),
+        "clones": len(clones),
     }
     record["digests"] = {
         "dag": dag_digest,
