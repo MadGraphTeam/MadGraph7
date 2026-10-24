@@ -104,10 +104,8 @@ fn measure(name: &str, json: &[u8]) {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     IGNORED.store(bound.reserved(), Ordering::Relaxed);
-    (
-        LIVE.store(0, Ordering::Relaxed),
-        PEAK.store(0, Ordering::Relaxed),
-    );
+    LIVE.store(0, Ordering::Relaxed);
+    PEAK.store(0, Ordering::Relaxed);
     TOTAL.store(0, Ordering::Relaxed);
     MEASURING.with(|on| on.set(true));
     let program = model.program(FormPolicy::Rule);

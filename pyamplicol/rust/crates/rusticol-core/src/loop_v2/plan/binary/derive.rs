@@ -893,14 +893,15 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
 }
 
 /// Probes `bytes` with their [`margin`] fallibly and releases them: an
-/// error, not an abort, when the allocator would refuse `what` (an
-/// address-space limit, or more than the host can map). A check, not a
+/// error, not an abort, when the allocator would refuse them (an
+/// address-space limit, or more than the host can map); `need` names what
+/// needs them (the error reads "`need` up to N bytes"). A check, not a
 /// reservation (module docs).
-pub fn reserve(what: &str, bytes: u64) -> RusticolResult<()> {
+pub fn reserve(need: &str, bytes: u64) -> RusticolResult<()> {
     let probe = margin(bytes);
     let refused = || {
         invalid(format!(
-            "{what} needs up to {probe} bytes, which the allocator refuses"
+            "{need} up to {probe} bytes, which the allocator refuses"
         ))
     };
     let probe = usize::try_from(probe).map_err(|_| refused())?;

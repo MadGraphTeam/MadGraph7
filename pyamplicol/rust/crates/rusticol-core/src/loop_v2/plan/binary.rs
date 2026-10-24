@@ -220,7 +220,7 @@ impl PlanModel {
                 "binary plan: the loader's derivations exceed the member's bound",
             )?;
         }
-        derive::reserve("the loader's derivations", bound.memory)?;
+        derive::reserve("the loader's derivations need", bound.memory)?;
         LoopProgramV4::from_file(self.file, policy)
     }
 }
@@ -1426,7 +1426,7 @@ impl<'a> Reader<'a> {
         // per-thread state would otherwise be allocated mid-decode, at the
         // edge of an address space the decode may have used to its limit.
         let _ = rayon::current_num_threads();
-        derive::reserve("binary plan: the decoded model", declared)?;
+        derive::reserve("binary plan: the decoded model needs", declared)?;
         let mut cursors = Vec::with_capacity(COLUMN_NAMES.len());
         for _ in COLUMN_NAMES {
             let head = take(&mut bytes, 8)?;
@@ -2191,9 +2191,9 @@ mod tests {
         };
         assert!(empty.derive_bound().unwrap().cost() < 1024);
         for bytes in [u64::MAX, 1 << 62] {
-            assert!(derive::reserve("a test", bytes).is_err(), "{bytes}");
+            assert!(derive::reserve("a test needs", bytes).is_err(), "{bytes}");
         }
-        assert!(derive::reserve("a test", 1 << 20).is_ok());
+        assert!(derive::reserve("a test needs", 1 << 20).is_ok());
     }
 
     #[test]
