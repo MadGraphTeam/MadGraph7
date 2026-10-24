@@ -406,7 +406,6 @@ def generate_counterterm_sites(
     whole_rules: bool = False,
     closed_rules: Iterable[str] | None = None,
     root_mask: int | None = None,
-    check_coverage: bool = True,
     admission: Mapping[str, tuple[int, ...]] | None = None,
 ) -> CountertermSites:
     """Admitted CT sites of a process, after the completeness check.
@@ -423,8 +422,7 @@ def generate_counterterm_sites(
     ``loops.v2.ct_recursion``); completeness is still checked on all rules.
     ``root_mask`` keeps only the sites with that leg set as one block (the
     CT vertices at the root of the counterterm closure, ``ct_closure``).
-    ``check_coverage=False`` skips the completeness check, for a caller that
-    has made it already for the same request. ``admission`` (rule name ->
+    ``admission`` (rule name ->
     admitted alternative indices) replaces the witness admission and the
     completeness check: production's plain rule (``ct_recursion``); then
     ``families`` is not read.
@@ -450,7 +448,7 @@ def generate_counterterm_sites(
     witnesses = {} if admission is not None else divergent_witnesses(families, data)
     coverage = (
         _coverage(witnesses, rules, names, corrections, ghost_partners(data), zeros)
-        if check_coverage and admission is None
+        if admission is None
         else ()
     )
     full = (1 << len(blocks.legs)) - 1
@@ -506,7 +504,7 @@ def _assign(
     return tuple(out)
 
 
-def admitted_alternatives(
+def witness_alternatives(
     rule: Any,
     signature: Signature,
     witnesses: Mapping[Signature, frozenset[Species]],
@@ -550,7 +548,7 @@ def _admit(
     if site.orders not in selection.loop_orders:
         return None
     if admitted is None:
-        admitted = admitted_alternatives(
+        admitted = witness_alternatives(
             rule, site.signature, witnesses, selection, forbidden
         )
     return CountertermSite(rule, name, blocks, admitted) if admitted else None
@@ -1117,11 +1115,11 @@ __all__ = [
     "SiteClosure",
     "SiteTerm",
     "add_colour",
-    "admitted_alternatives",
     "divergent_witnesses",
     "entry_cell",
     "generate_counterterm_sites",
     "ghost_partners",
     "ufo_colour_network",
     "vanishes_identically",
+    "witness_alternatives",
 ]
