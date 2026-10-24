@@ -153,27 +153,23 @@ class _Timers:
         return timed
 
     def install(self) -> None:
-        from pyamplicol.loops.v2 import (
-            assemble,
-            ct_closure,
-            ct_recursion,
-            generator_input,
-        )
-        from pyamplicol.loops.v2 import reference_executor as rx
+        """Wrap every stage of ``STAGES`` the tree under test has (a stage
+        that an older or newer tree lacks is skipped, so one tool measures
+        both sides of a merge)."""
 
-        modules = {
-            "assemble": assemble,
-            "ct_closure": ct_closure,
-            "ct_recursion": ct_recursion,
-            "generator_input": generator_input,
-            "reference_executor": rx,
-        }
+        import importlib
+
         for module_name, attribute in STAGES:
-            owner: Any = modules[module_name]
-            *path, name = attribute.split(".")
-            for part in path:
-                owner = getattr(owner, part)
-            setattr(owner, name, self.wrap(attribute, getattr(owner, name)))
+            try:
+                module = f"pyamplicol.loops.v2.{module_name}"
+                owner: Any = importlib.import_module(module)
+                *path, name = attribute.split(".")
+                for part in path:
+                    owner = getattr(owner, part)
+                target = getattr(owner, name)
+            except (ImportError, AttributeError):
+                continue
+            setattr(owner, name, self.wrap(attribute, target))
 
 
 def _request(args) -> Any:
