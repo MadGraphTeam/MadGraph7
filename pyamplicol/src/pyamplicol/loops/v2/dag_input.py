@@ -1124,6 +1124,27 @@ def _colour_state(row: Mapping[str, Any]) -> ColorState:
     )
 
 
+def _shared_pairs(column: array[Any]) -> list[tuple[float, float]]:
+    """The ``(re, im)`` pairs of an ``f64`` column, equal bit patterns as one
+    tuple (the compiled DAG shares a vertex's coupling over its
+    interactions; signed zeros and NaN payloads stay distinct)."""
+
+    bits: array[int] = array("Q")
+    bits.frombytes(column.tobytes())
+    if sys.byteorder != "little":
+        bits.byteswap()
+    values = iter(column)
+    keys = iter(bits)
+    table: dict[tuple[int, int], tuple[float, float]] = {}
+    out = []
+    for key, pair in zip(zip(keys, keys), zip(values, values), strict=True):
+        found = table.get(key)
+        if found is None:
+            found = table[key] = pair
+        out.append(found)
+    return out
+
+
 def _decode(
     data: bytes, process: CanonicalProcessIR, color_plan: GenericColorPlan
 ) -> GenericDAG:
@@ -1150,27 +1171,42 @@ def _decode(
     ]
     offsets = c["c_word_offsets"]
     words = c["c_words"]
+    # Equal values are one object, as in the compiled DAG (whose ids,
+    # labels and couplings are shared by the nodes that read them): the
+    # current ids, the label tuples of a leg set and the words.
+    ids = list(range(max(len(c["c_species"]), len(c["i_vertex"]))))
+    labels: dict[int, tuple[int, ...]] = {}
+    masks: dict[int, int] = {}
+    shared_words: dict[tuple[int, ...], tuple[int, ...]] = {}
+
+    def mask_of(value: int) -> int:
+        return masks.setdefault(value, value)
+
     currents = []
     for i in range(len(c["c_species"])):
         pdg, auxiliary, quantum_numbers = species[c["c_species"][i]]
-        mask = c["c_mask"][i]
+        mask = mask_of(c["c_mask"][i])
+        found = labels.get(mask)
+        if found is None:
+            found = labels[mask] = _labels(mask)
+        word = tuple(words[offsets[i] : offsets[i + 1]])
         leg = c["c_leg"][i]
         helicity = c["c_helicity"][i]
         currents.append(
             CurrentNode(
-                id=i,
+                id=ids[i],
                 index=CurrentIndex(
                     particle_id=pdg,
                     external_mask=mask,
-                    external_labels=_labels(mask),
-                    ordered_external_labels=tuple(words[offsets[i] : offsets[i + 1]]),
+                    external_labels=found,
+                    ordered_external_labels=shared_words.setdefault(word, word),
                     helicity_ancestry=c["c_ancestry"][i],
                     chirality=c["c_chirality"][i],
                     spin_state=c["c_spin"][i],
                     flavour_flow=flavours[c["c_flavour"][i]],
                     quantum_number_flow=quantum_numbers,
                     color_state=colours[c["c_colour"][i]],
-                    momentum_mask=c["c_momentum"][i],
+                    momentum_mask=mask_of(c["c_momentum"][i]),
                     coupling_orders=orders[c["c_orders"][i]],
                     auxiliary_kind=auxiliary,
                 ),
@@ -1180,36 +1216,38 @@ def _decode(
                 source_helicity=None if helicity == _NO_HELICITY else helicity,
             )
         )
-    pairs = {
-        name: [(column[2 * k], column[2 * k + 1]) for k in range(len(column) // 2)]
-        for name in ("i_coupling", "i_colour_weight", "i_factor")
-        for column in (c[name],)
-    }
+    couplings = _shared_pairs(c["i_coupling"])
+    colour_weights = _shared_pairs(c["i_colour_weight"])
+    factors = _shared_pairs(c["i_factor"])
     interactions = []
     for k in range(len(c["i_vertex"])):
         kind, particles, backend, ready = vertices[c["i_vertex"][k]]
         group = c["i_group"][k]
         interactions.append(
             InteractionNode(
-                id=k,
+                id=ids[k],
                 vertex_kind=kind,
                 vertex_particles=particles,
-                left_id=c["i_left"][k],
-                right_id=c["i_right"][k],
-                result_id=c["i_result"][k],
-                coupling=pairs["i_coupling"][k],
-                color_weight=pairs["i_colour_weight"][k],
+                left_id=ids[c["i_left"][k]],
+                right_id=ids[c["i_right"][k]],
+                result_id=ids[c["i_result"][k]],
+                coupling=couplings[k],
+                color_weight=colour_weights[k],
                 lowering_backend=backend,
                 full_tensor_network_ready=ready,
-                evaluation_group_id=None if group == _NO_GROUP else group,
-                evaluation_factor=pairs["i_factor"][k],
+                evaluation_group_id=(
+                    None
+                    if group == _NO_GROUP
+                    else ids[group] if group < len(ids) else group
+                ),
+                evaluation_factor=factors[k],
             )
         )
     return GenericDAG(
         process=process,
         color_plan=color_plan,
         currents=tuple(currents),
-        sources=tuple(c["sources"]),
+        sources=tuple(ids[source] for source in c["sources"]),
         interactions=tuple(interactions),
         amplitude_roots=(),
         helicity_coverage="complete",
@@ -1310,9 +1348,11 @@ class NativeDag:
 
         if self._decoded is None:
             released = self.released
-            self._decoded = self.decode()
+            data = self.columns()
             if released:
+                # The rebuilt columns are not held while Python decodes.
                 self.release()
+            self._decoded = self._decode_columns(data)
         return self._decoded
 
     @property
@@ -1497,6 +1537,11 @@ class NativeDag:
         )
 
     def decode(self) -> GenericDAG:
+        """A new ``GenericDAG`` of Python objects (counted)."""
+
+        return self._decode_columns(self.columns())
+
+    def _decode_columns(self, data: bytes) -> GenericDAG:
         global _DECODES
         from pyamplicol.color.plan import build_color_plan
 
@@ -1508,7 +1553,7 @@ class NativeDag:
             reference_color_order=None,
             fold_trace_reflections=False,
         )
-        return _decode(self.columns(), self.process, plan)
+        return _decode(data, self.process, plan)
 
 
 def native_blocks(
