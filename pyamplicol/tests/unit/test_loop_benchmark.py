@@ -32,8 +32,9 @@ instrumentation.
   imported MadLoop timing takes its generation from the specification's
   export, an imported Recola run keeps its generation, and reference runs
   that did not finish are reported as such;
-* the universal double pole of the physical rows at full and leading colour,
-  and the top-free g g > g g g g g row's NJet reference at the stream's
+* the universal double pole of the physical rows at full and leading colour
+  (one source each: the toolkit's at full colour, the generator's
+  leading-colour table), and the top-free g g > g g g g g row's NJet reference at the stream's
   first points; stability rows at the reference fixture's own points
   (``stability --fixture``) carry their deviations from its references, stay
   apart from the stream's rows in the gate and give the report its estimate
@@ -44,7 +45,10 @@ instrumentation.
   a generate-only record is no gate input;
 * the report builder labels the gate tool's 5 ms floor with the registry's
   threshold rule and stops on a disagreement, and gives a row without a
-  gate its rotation and Ward checks (addendum H).
+  gate its rotation and Ward checks (addendum H);
+* a user acceptance of a check's points above its tolerance marks exactly
+  those points on the validation cell (the check and its tolerance stay)
+  and stops the build when its claims do not hold.
 """
 
 from __future__ import annotations
@@ -958,6 +962,94 @@ def test_fixture_stability_rows_stay_apart_and_decide_the_worst_point(tmp_path):
     del proc["fixture_stability"]
     out = builder._validation_g1(proc, cfg, "native/full", "src", "native/full")
     assert "worst_point" not in out
+
+
+def test_a_user_acceptance_marks_exactly_the_points_above_the_tolerance():
+    """A user acceptance (milestone.json validation_decisions; g g > g g g g g
+    against NJet, 2026-10-25) marks the accepted points on the validation
+    cell; the check keeps its tolerance and passed: false. Accepted points
+    other than those above the tolerance, a point outside its binary64
+    estimate, or a DD value off the reference stop the build."""
+
+    builder = _report_builder()
+    errors = [1e-9, 3.7e-8, 5e-10, 2.2e-8]
+    check = {
+        "fixture": "gg_ggggg_njet",
+        "tolerance": 2e-8,
+        "max_error": 4.3e-8,
+        "passed": False,
+        "rows": [
+            {
+                "index": i,
+                "errors": {
+                    "njet_dd_oneloop_R1": {"born": 1e-13, "finite": dev},
+                    "njet_double_R2": {"born": 1e-13, "finite": dev * 1.1},
+                },
+            }
+            for i, dev in enumerate(errors)
+        ],
+    }
+
+    def stab(index, arithmetic, estimate, dd=0.0):
+        return {
+            "index": index,
+            "arithmetic": arithmetic,
+            "configuration": "native/full",
+            "fixture": "gg_ggggg_njet",
+            "estimate": estimate,
+            "deviation_vs_references": {
+                "njet_dd_oneloop_R1": dd,
+                "njet_double_R2": 5e-9,
+            },
+        }
+
+    def proc(estimate=1.3e-6, dd=0.0):
+        return {
+            "key": "gg_ggggg",
+            "pyamplicol": {"native/full": {"accuracy_check": check}},
+            "fixture_stability": [
+                stab(1, "double", estimate),
+                stab(1, "double-double", 1e-23, dd),
+                stab(3, "double", 2.5e-7),
+                stab(3, "double-double", 1e-23),
+            ],
+        }
+
+    entry = {
+        "process": "gg_ggggg",
+        "configuration": "native/full",
+        "fixture": "gg_ggggg_njet",
+        "points": [1, 3],
+        "tolerance": 2e-8,
+        "label": "accepted (user 2026-10-25): O(1e-8) binary64, within the"
+        " estimate, DD = NJet",
+        "short": "accepted (user 2026-10-25)",
+    }
+    out = builder._accepted(proc(), entry)
+    assert out["status"] == entry["label"] and out["passed"] is False
+    assert out["tolerance"] == 2e-8 and [p["index"] for p in out["points"]] == [1, 3]
+    first = out["points"][0]
+    assert first["finite"] == {"njet_dd_oneloop_R1": 3.7e-8}
+    assert first["max_error"] == pytest.approx(3.7e-8 * 1.1)
+    assert first["dd_deviation"] == {"njet_dd_oneloop_R1": 0.0}
+    # The cell carries it only where it validates with that check.
+    source = "g1.json processes[gg_ggggg].pyamplicol['native/full'].accuracy_check"
+    rows = [{"key": "gg_ggggg", "validation": {"source": source}}]
+    g1 = {"processes": [proc()]}
+    builder._accept(rows, g1, {"accepted": [entry]})
+    assert rows[0]["validation"]["accepted"]["short"] == entry["short"]
+    with pytest.raises(ValueError, match="not the validation cell"):
+        builder._accept(
+            [{"key": "gg_ggggg", "validation": {}}], g1, {"accepted": [entry]}
+        )
+    with pytest.raises(ValueError, match="points above the tolerance"):
+        builder._accepted(proc(), {**entry, "points": [1]})
+    with pytest.raises(ValueError, match="outside its estimate"):
+        builder._accepted(proc(estimate=1e-8), entry)
+    with pytest.raises(ValueError, match="DD value"):
+        builder._accepted(proc(dd=3e-8), entry)
+    with pytest.raises(ValueError, match="not the check"):
+        builder._accepted(proc(), {**entry, "tolerance": 5e-8})
 
 
 def test_a_worst_deviation_the_double_double_value_repeats_is_the_references():
