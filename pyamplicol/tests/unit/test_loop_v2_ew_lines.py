@@ -596,6 +596,87 @@ def test_complex_ckm_vertices_are_read_through_their_conjugate_rule(
     _assert_form_factor(slice_, [_two_to_two("0", "0")], ["1000000"])
 
 
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["udx_epve", "emu_emu"])
+def test_native_inputs_equal_the_python_inputs(
+    loop_sm_compiled_model, loop_native, name
+):
+    """The native per-point inputs (``NativeExecutor(inputs="native")``: tree
+    program, Born and counterterm root closures) equal the Python inputs on
+    the conjugate rule's root terms (u d~ > e+ ve) and on a lepton line
+    closing at the root (e- u > e- u), in binary64."""
+
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    entry = LEGACY["processes"][name]
+    slice_ = _slice(
+        loop_sm_compiled_model,
+        loop_native,
+        entry["process"],
+        entry["born_orders"],
+        entry["loop_orders"],
+        LEGACY["fixed_parameters"],
+    )
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    python = NativeExecutor(slice_, forward=False, exported=native.exported)
+    points = [entry["point"], _massless_points()[0][0]]
+    scales = [LEGACY["mu_r2"]] * len(points)
+    mine = native.evaluate(points, scales, parameters=PARAMETERS)
+    theirs = python.evaluate(points, scales, parameters=PARAMETERS)
+    for a, b in zip(mine, theirs, strict=True):
+        assert a.born.keys() == b.born.keys()
+        for order, value in b.born.items():
+            assert abs(float(a.born[order]) - float(value)) <= TOLERANCE * abs(
+                float(value)
+            )
+        assert a.components.keys() == b.components.keys()
+        for component, sectors in b.components.items():
+            for sector, laurent in sectors.items():
+                virtual = b.components["virtual"][sector].coefficients
+                scale = max(abs(float(x)) for x in virtual)
+                for x, y in zip(
+                    a.components[component][sector].coefficients,
+                    laurent.coefficients,
+                    strict=True,
+                ):
+                    assert abs(float(x) - float(y)) <= TOLERANCE * scale, component
+
+
+@pytest.mark.loop_physics
+def test_electroweak_line_stages_leave_quark_rooted_qcd_requests_unchanged(
+    loop_sm_compiled_model, loop_native, monkeypatch
+):
+    """On a quark-rooted QCD request (u u~ > d d~ g) the families' loop
+    species give the catalogue of the root rules' declared species, and the
+    Born closure's block requests add no current: the families, schedules,
+    seeds, the exported plan and the virtual are those of the generation
+    without either (byte identity of WP3.2 EWI-1)."""
+
+    from pyamplicol.loops.v2 import assemble, snapshot
+    from pyamplicol.models.loading import load_compiled_model
+    from tools.loop_reference import exact_points
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    (point,) = exact_points.generate([0] * 5, count=1)
+    point = [[exact_points.decimal_string(x) for x in leg] for leg in point]
+    born, loop = {"QCD": 3, "QED": 0}, {"QCD": 5, "QED": 0}
+
+    def digests():
+        slice_ = _slice(compiled, loop_native, "u u~ > d d~ g", born, loop, {"MB": "0"})
+        return (
+            snapshot.stage_digests(slice_),
+            snapshot.virtual_digest(slice_, [point], ["1000000"], PARAMETERS),
+        )
+
+    production = digests()
+    with monkeypatch.context() as patch:
+        patch.setattr(assemble, "_family_loop_species", lambda *args: None)
+        patch.setattr(assemble, "_check_declared_loop_species", lambda *args: None)
+        patch.setattr(assemble, "_born_block_requests", lambda *args: frozenset())
+        declared = digests()
+    assert production == declared
+
+
 # ---------------------------------------------------------------- nightly
 
 
