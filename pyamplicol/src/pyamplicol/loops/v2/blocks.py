@@ -447,7 +447,7 @@ class TreeBlocks:
         return replace(
             self,
             blocks=_dag_blocks(self.blocks_dag, model, variant),
-            born_roots=_born_roots(self.born_dag, model),
+            born_roots=_dag_born_roots(self.born_dag, model),
             kernel_variant=variant,
         )
 
@@ -683,6 +683,18 @@ def _dag_blocks(
     if isinstance(dag, NativeDag):
         return dag.blocks(kernel_variant)
     return _blocks(dag, model, kernel_variant)
+
+
+def _dag_born_roots(dag: GenericDAG | NativeDag, model: Model) -> tuple[BornRoot, ...]:
+    """``_born_roots`` of a Born DAG; none for a ``NativeDag`` (the program
+    DAG a counterterm program also keeps as its ``born_dag``: a loop-request
+    DAG has no amplitude roots), which is not decoded for them."""
+
+    from .dag_input import NativeDag
+
+    if isinstance(dag, NativeDag):
+        return ()
+    return _born_roots(dag, model)
 
 
 def propagated_species(

@@ -424,12 +424,17 @@ class _ModelVertexRow:
     flows: tuple[tuple[int, int, tuple[tuple[tuple[int, ...], Any], ...]], ...]
 
 
-# The model-only vertex rows of the most recent compiled models (rule 4 of
-# RUST-MIGRATION §2 aside, the Θ(model) input tables are per model, not per
-# process): ``id(compiled) -> (compiled, runtime parameters, rows)``. Most of
-# a row is ``allowed_quantum_flows``' symbolic Weyl-projection probe, which a
-# model instance caches only for itself.
-_MODEL_ROWS: dict[int, tuple[Any, str, dict[tuple[int, tuple[int, ...]], Any]]] = {}
+# The model-only vertex rows of the most recent models (the Θ(model) input
+# tables are per model, not per process): ``(id(compiled), runtime
+# parameters) -> (compiled, rows)``, the compiled model kept so that its id
+# is not reused while the entry lives. A ``CompiledUFOModel`` is its compiled
+# model and runtime parameters. Most of a row is ``allowed_quantum_flows``'
+# symbolic Weyl-projection probe, which a model instance caches only for
+# itself (a lowered model's instance, ``CountertermLoweredModel.tree_model``,
+# comes with them decided).
+_MODEL_ROWS: dict[
+    tuple[int, str], tuple[Any, dict[tuple[int, tuple[int, ...]], Any]]
+] = {}
 _MODEL_ROWS_KEPT = 4
 
 
@@ -437,15 +442,18 @@ def _model_rows(model: Any) -> dict[tuple[int, tuple[int, ...]], Any]:
     compiled = getattr(model, "compiled", None)
     if compiled is None:
         return {}
-    parameters = repr(sorted(getattr(model, "_runtime_parameters", {}).items()))
-    found = _MODEL_ROWS.get(id(compiled))
-    if found is None or found[0] is not compiled or found[1] != parameters:
-        found = (compiled, parameters, {})
-        _MODEL_ROWS.pop(id(compiled), None)
-        _MODEL_ROWS[id(compiled)] = found
-        while len(_MODEL_ROWS) > _MODEL_ROWS_KEPT:
-            del _MODEL_ROWS[next(iter(_MODEL_ROWS))]
-    return found[2]
+    key = (
+        id(compiled),
+        repr(sorted(getattr(model, "_runtime_parameters", {}).items())),
+    )
+    found = _MODEL_ROWS.pop(key, None)
+    if found is None or found[0] is not compiled:
+        found = (compiled, {})
+    # Most recently used last; the oldest entries leave first.
+    _MODEL_ROWS[key] = found
+    while len(_MODEL_ROWS) > _MODEL_ROWS_KEPT:
+        del _MODEL_ROWS[next(iter(_MODEL_ROWS))]
+    return found[1]
 
 
 def _model_vertex_row(model: Any, vertex: Any) -> _ModelVertexRow:
@@ -454,7 +462,7 @@ def _model_vertex_row(model: Any, vertex: Any) -> _ModelVertexRow:
     found = rows.get(key)
     if found is None:
         found = rows[key] = _compute_model_vertex_row(model, vertex)
-    return found  # type: ignore[no-any-return]
+    return found
 
 
 def _compute_model_vertex_row(model: Any, vertex: Any) -> _ModelVertexRow:
@@ -1133,14 +1141,13 @@ def _shared_pairs(column: array[Any]) -> list[tuple[float, float]]:
     bits.frombytes(column.tobytes())
     if sys.byteorder != "little":
         bits.byteswap()
-    values = iter(column)
-    keys = iter(bits)
     table: dict[tuple[int, int], tuple[float, float]] = {}
     out = []
-    for key, pair in zip(zip(keys, keys), zip(values, values), strict=True):
+    for k in range(0, len(column) - 1, 2):
+        key = (bits[k], bits[k + 1])
         found = table.get(key)
         if found is None:
-            found = table[key] = pair
+            found = table[key] = (column[k], column[k + 1])
         out.append(found)
     return out
 
@@ -1238,7 +1245,9 @@ def _decode(
                 evaluation_group_id=(
                     None
                     if group == _NO_GROUP
-                    else ids[group] if group < len(ids) else group
+                    else ids[group]
+                    if group < len(ids)
+                    else group
                 ),
                 evaluation_factor=factors[k],
             )
