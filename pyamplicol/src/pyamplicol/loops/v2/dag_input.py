@@ -2153,8 +2153,10 @@ def native_interaction_program(
     orders given there): the native steps, and the kernels in their first
     use, each built from the representative the oracle builds it from by the
     oracle's recipe (the model's component expressions with its kernel
-    functions inlined, on canonical symbols, saved as exact Symbolica
-    evaluators; vertex kernels first, then propagators).
+    functions inlined, on canonical symbols, reading only the model
+    parameters they hold, saved as exact Symbolica evaluators; vertex
+    kernels first, then propagators; shapes ``[inputs, outputs,
+    model_inputs]`` of TREE_SCHEMA 3).
 
     The model functions are inlined into every kernel in one
     ``_specialize_stage_symbolica_functions`` call (the oracle calls it per
@@ -2247,18 +2249,33 @@ def native_interaction_program(
         definitions,
     )
     saved: dict[str, list[bytes]] = {"kernels": [], "propagators": []}
-    shapes: dict[str, list[list[int]]] = {"kernels": [], "propagators": []}
+    shapes: dict[str, list[list[Any]]] = {"kernels": [], "propagators": []}
     position = 0
     for kind, inputs, components in built:
         specialised = rewritten[position : position + len(components)]
         position += len(components)
+        retained = _retained_functions(specialised, definitions) if specialised else ()
+        # The oracle's model inputs (TREE_SCHEMA 3): the model parameters
+        # the kernel's expressions and retained functions hold, in the model
+        # block's order.
+        held = {
+            symbol.to_canonical_string()
+            for expression in (*specialised, *(body for _f, _a, body in retained))
+            for symbol in expression.get_all_symbols()
+        }
+        model_inputs = [
+            k
+            for k, symbol in enumerate(model_symbols)
+            if symbol.to_canonical_string() in held
+        ]
         outputs, parameters, functions = _canonical_stage(
             SimpleNamespace(
                 output_expressions=list(specialised),
-                parameter_symbols=[*inputs, *model_symbols],
-                symbolica_functions=list(
-                    _retained_functions(specialised, definitions) if specialised else ()
-                ),
+                parameter_symbols=[
+                    *inputs,
+                    *(model_symbols[k] for k in model_inputs),
+                ],
+                symbolica_functions=list(retained),
             )
         )
         evaluator = Expression.evaluator_multiple(
@@ -2271,7 +2288,9 @@ def native_interaction_program(
             jit_compile=False,
         )
         saved[kind].append(bytes(evaluator.save()))
-        shapes[kind].append([len(inputs) + len(model_symbols), len(outputs)])
+        shapes[kind].append(
+            [len(inputs) + len(model_inputs), len(outputs), model_inputs]
+        )
     texts = []
     for real, imag in program.weights():
         weight = _exact_weight(complex(real, imag))
