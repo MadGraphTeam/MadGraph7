@@ -148,6 +148,7 @@ from .families import (
     add_orders,
     generate_families,
     mass_name,
+    onshell_leg,
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
@@ -3135,11 +3136,23 @@ class _PointEvaluation:
         arithmetic = "double" if numbers.double else "arbitrary"
         digits = None if numbers.double else numbers.precision.digits
         lanes, groups = [], []
+        legs = slice_.families.legs
+        full = (1 << len(legs)) - 1
         masses = _mass_values(
             slice_.compiled,
             self.parameters,
-            {mass for key in numerators for _mask, mass in key[0]},
+            {mass for key in numerators for _mask, mass in key[0]}
+            | {leg.mass for leg in legs},
         )
+
+        def invariant(arc: int, a, b):
+            # A single-leg arc is the leg's squared mass (on-shell external
+            # invariants, design §11.1), exactly the value its propagators
+            # take; any other arc is p(arc)^2 of the given momenta.
+            leg = onshell_leg(arc, full)
+            if leg is not None:
+                return masses[legs[leg].mass]
+            return _minkowski([x - y for x, y in zip(a, b, strict=True)])
 
         def batch(values, lane: int):
             return native.NativeBatch.from_decimal(
@@ -3153,9 +3166,10 @@ class _PointEvaluation:
         for (family, loop_order), numerator in sorted(numerators.items()):
             sequence = numerator.sequence
             n = len(sequence)
-            vectors = [leg_momentum(mask, self.incoming) for mask in shifts(sequence)]
+            arcs = shifts(sequence)
+            vectors = [leg_momentum(mask, self.incoming) for mask in arcs]
             matrix = [
-                _minkowski([a - b for a, b in zip(vectors[i], vectors[j], strict=True)])
+                invariant(arcs[i] ^ arcs[j], vectors[i], vectors[j])
                 for i in range(n)
                 for j in range(n)
             ]

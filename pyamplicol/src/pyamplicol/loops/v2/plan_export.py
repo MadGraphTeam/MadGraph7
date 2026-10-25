@@ -1111,7 +1111,8 @@ class NativeExecutor:
         return precision, evaluations
 
     def _inputs(self, evaluations, arithmetic: Arithmetic) -> dict[str, Any]:
-        """Batch inputs: exact momenta, scales and masses; carrier values of
+        """Batch inputs: exact momenta, scales, masses and the legs' squared
+        masses (the on-shell invariants, DESIGN §11.1); carrier values of
         block rows, Born components and kernel constants.
 
         Every carrier value is formed in its point's Decimal context: block
@@ -1133,8 +1134,8 @@ class NativeExecutor:
             return [str(x.real), str(x.imag)]
 
         def shared(evaluation):
-            """Kernel constants (with their contents' mass flips) and squared
-            masses of a point's parameters."""
+            """Kernel constants (with their contents' mass flips), squared
+            masses and the legs' squared masses of a point's parameters."""
 
             constants = evaluation.constants
             if arithmetic == "exact":
@@ -1150,12 +1151,14 @@ class NativeExecutor:
                     found = signed[flips] = rx.signed_constants(constants, flips)
                 return found.constant(key)
 
+            legs = [leg.mass for leg in slice_.families.legs]
             masses = _mass_values(
-                slice_.compiled, evaluation.parameters, exported.masses
+                slice_.compiled, evaluation.parameters, {*exported.masses, *legs}
             )
             return (
                 [value(constant(key, flips)) for key, flips in exported.constants],
                 [_fraction_text(masses[m]) for m in exported.masses],
+                [_fraction_text(masses[m]) for m in legs],
             )
 
         batch: dict[str, Any] = {
@@ -1197,7 +1200,7 @@ class NativeExecutor:
                     for b, order, grade in exported.born_components
                 ]
             )
-        batch["constants"], batch["masses"] = batch.pop("shared")
+        batch["constants"], batch["masses"], batch["leg_masses"] = batch.pop("shared")
         return batch
 
     @staticmethod
