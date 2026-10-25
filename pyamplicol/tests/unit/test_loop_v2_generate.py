@@ -235,31 +235,45 @@ def test_native_stage_switch_names_the_stages():
 
 
 COMPANION_CASES = [
-    ("g g > g g g", 3),
-    ("u u~ > g g g", 3),
-    pytest.param("g g > g g g g", 4, marks=pytest.mark.loop_nightly),
+    ("g g > g g g", 3, "full"),
+    ("u u~ > g g g", 3, "full"),
+    # The companion's LC prune (``_prune_colour`` with each family's frame).
+    ("u u~ > g g g", 3, "lc"),
+    pytest.param("g g > g g g g", 4, "full", marks=pytest.mark.loop_nightly),
 ]
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize(("process", "qcd"), COMPANION_CASES)
+@pytest.mark.parametrize(("process", "qcd", "accuracy"), COMPANION_CASES)
 def test_scaleless_companion_on_native_families_equals_python(
-    loop_sm_compiled_model, loop_native, monkeypatch, process, qcd
+    loop_sm_compiled_model, loop_native, monkeypatch, process, qcd, accuracy
 ):
     """The companion of the certified-scaleless families (poles-uvir's
     ``LoopSlice.scaleless``, run by the "uv" and "ir" pole selections) on
-    the native family recursion equals the one on Python's: its families,
-    prefix states and schedules (S1, S4) and seeds (S5), and the main
-    slice's families with their scaleless records (RUST-MIGRATION.md §4
-    item 1(b))."""
+    the native family recursion and native schedules equals the one on
+    Python's stages: its families, prefix states and schedules (S1, S4) and
+    seeds (S5), and the main slice's families with their scaleless records
+    (RUST-MIGRATION.md §4 item 1(b))."""
+
+    import json
 
     from pyamplicol.loops.v2 import snapshot
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    from tools.loop_reference import legacy_capture
 
     compiled = load_compiled_model(loop_sm_compiled_model)
+    options = {}
+    if accuracy != "full":
+        options = {
+            "accuracy": accuracy,
+            "colour_declaration": LoopColorDeclaration.from_dict(
+                json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+            ),
+        }
     request = SliceRequest(
-        process, {"QCD": qcd}, {"QCD": qcd + 2}, fixed_parameters={"MB": "0"}
+        process, {"QCD": qcd}, {"QCD": qcd + 2}, fixed_parameters={"MB": "0"}, **options
     )
     found = {}
     for stages in (generator_input.NATIVE_STAGES, frozenset()):
@@ -267,6 +281,9 @@ def test_scaleless_companion_on_native_families_equals_python(
         slice_ = LoopSlice.generate(compiled, request, loop_native)
         assert slice_.families.scaleless_families
         assert slice_.scaleless is not None
+        # The native side schedules (and prunes) the companion natively.
+        assert (slice_.scaleless.generation is not None) is bool(stages)
+        assert slice_.scaleless.colour_pruned is (accuracy != "full")
         found[bool(stages)] = (
             snapshot.digest(snapshot.families_records(slice_.families)),
             snapshot.stage_digests(slice_.scaleless, plan=False),
@@ -316,24 +333,62 @@ def test_loop_aware_reachability_changes_no_result(
 
 @pytest.mark.loop_physics
 def test_born_orders_the_root_closure_misses_are_refused(
-    loop_sm_compiled_model, loop_native
+    loop_sm_compiled_model, loop_native, monkeypatch
 ):
-    """Without a QED bound u u~ > d d~ g has a QCD 1 QED 2 Born (photon, Z
-    and W exchange). The root closure at leg 1 does not build it (the
-    reachability-pruned tree program has none of its electroweak currents,
-    the full one stops at the W vertex), so generation refuses the request
-    rather than leave the interference sector (QCD 6, QED 2) zero."""
+    """Without a QED bound u u~ > d d~ g has a QCD 1 QED 2 Born (photon, Z and
+    W exchange). The root closure at leg 1 builds it, also for QCD loops of
+    the QCD Born only: loop-aware reachability adds the block currents the
+    Born closure attaches (``assemble._born_block_requests``, beyond the loop
+    orders' cap) and the W vertex closes through its conjugate rule (WP3.2
+    EWI-2). With the QCD loops of both Born orders the renormalised virtual
+    is UV-finite in every sector and the QCD sector's poles are Catani's
+    (the QCD x electroweak sectors are no Catani check with QCD corrections
+    alone: the loop selection leaves out the photon-gluon boxes, as
+    MadLoop's does). Without those currents the closure has no terms at that
+    order, and generation refuses the request rather than leave the
+    interference sectors zero."""
 
+    from pyamplicol.loops.v2 import assemble
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.models.loading import load_compiled_model
+    from tools.loop_reference import exact_points
 
+    compiled = load_compiled_model(loop_sm_compiled_model)
     request = SliceRequest(
         "u u~ > d d~ g", {"QCD": 3}, {"QCD": 5}, fixed_parameters={"MB": "0"}
     )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    assert (("QCD", 1), ("QED", 2)) in slice_.blocks.born_orders
+    assert set(slice_.born_terms) == set(slice_.blocks.born_orders)
+    slice_ = LoopSlice.generate(
+        compiled,
+        SliceRequest(
+            "u u~ > d d~ g",
+            {"QCD": 3},
+            ({"QCD": 5, "QED": 0}, {"QCD": 3, "QED": 2}),
+            fixed_parameters={"MB": "0"},
+        ),
+        loop_native,
+    )
+    (point,) = exact_points.generate([0] * 5, count=1)
+    point = [[exact_points.decimal_string(x) for x in leg] for leg in point]
+    parameters = {"aS": "0.118", "MT": "173"}
+    result = slice_.evaluate(point, "1000000", parameters=parameters)
+    virtual = result.components["virtual"]
+    assert len(virtual) == 3
+    single, double = result.ir_poles[(("QCD", 8),)]
+    coefficients = [float(x) for x in virtual[(("QCD", 8),)].coefficients]
+    scale = max(abs(float(single)), abs(float(double)))
+    assert abs(coefficients[1] - float(single)) <= 1e-12 * scale
+    assert abs(coefficients[2] - float(double)) <= 1e-12 * scale
+    uv = slice_.evaluate(point, "1000000", parameters=parameters, poles="uv")
+    for sector, laurent in uv.pole_origins["uv"]["virtual"].items():
+        bare = [float(x) for x in uv.components["bare"][sector].coefficients]
+        poles = [float(x) for x in laurent.coefficients[1:]]
+        assert all(abs(x) <= 1e-12 * max(map(abs, bare)) for x in poles), sector
+    monkeypatch.setattr(assemble, "_born_block_requests", lambda *args: frozenset())
     with pytest.raises(NotImplementedError, match="no terms at the Born orders"):
-        LoopSlice.generate(
-            load_compiled_model(loop_sm_compiled_model), request, loop_native
-        )
+        LoopSlice.generate(compiled, request, loop_native)
 
 
 # ------------------------------------------------- providers at 5 and 6 legs
@@ -422,7 +477,7 @@ def test_poles_double_pole_is_universal(
             process=process,
             born=born,
             accuracy=accuracy,
-            ignored="",
+            veto="",
             points=2,
             rotation=False,
             alpha_s="0.118",
@@ -449,17 +504,29 @@ def test_reachability_falls_back_where_field_level_families_differ(
     class Stop(Exception):
         pass
 
-    def capture(families, *args, **kwargs):
-        raise Stop(families)
+    # The families of the last tree program the generator builds (the
+    # field-level families come first), read when the colour model of the
+    # schedules is built.
+    built = []
+    families = generator_input.NativeGeneration.families
 
-    monkeypatch.setattr(assemble, "generate_counterterm_sites", capture)
+    def recorded(self):
+        found = families(self)
+        built.append(found)
+        return found
+
+    def capture(*args, **kwargs):
+        raise Stop(built[-1])
+
+    monkeypatch.setattr(generator_input.NativeGeneration, "families", recorded)
+    monkeypatch.setattr(assemble, "SeedColour", capture)
     compiled = load_compiled_model(loop_sm_compiled_model)
     request = SliceRequest(
         "u u~ > e- e+ d d~ g",
         {"QCD": 3, "QED": 2},
         {"QCD": 5, "QED": 2},
         fixed_parameters={"MB": "0"},
-        ignored_particle_ids=(23,),
+        particle_veto=(23,),
     )
     found = {}
     for reachability in (True, False):

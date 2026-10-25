@@ -528,7 +528,10 @@ profiling or generation.
 one-loop engine (no loop diagram is listed) and publishes them as plan v4
 processes (runtime capability `rusticol.loop-runtime.v4`). Its UV and R2
 counterterms come from the same tree recursion as the Born, over the model's
-counterterm vertices (no counterterm diagram is listed either). The
+counterterm vertices (no counterterm diagram is listed either): every
+counterterm vertex of the model, two-point ones included, is an ordinary tree
+vertex inserted exactly once per contribution, within the requested coupling
+orders, and is not matched to the loops. The
 default `engine = "legacy"` keeps the per-diagram engine, which remains
 available as an oracle. A v2 evaluation can skip the poles and return stability
 estimates:
@@ -637,8 +640,13 @@ does not admit yet fails at generation with the reason, for example:
   Born orders in the SM: "not a pure vector coupling; its sign needs the
   electroweak oracles"), and electroweak bosons in the final state with QCD
   corrections (`u u~ > e- e+ g g`);
-- QED corrections to quark processes (`u u~ > d d~` with QCD and QED corrections:
-  "divergent witnesses without a counterterm rule or certified zero").
+- QED corrections to quark processes with MG5_aMC's `loop_qcd_qed_sm`
+  (`u u~ > d d~` with QCD and QED corrections): its electroweak counterterms use
+  the complex-mass scheme's UFO helpers (`recms`, `regsqrt`) and a Goldstone-photon
+  mixing between spins ("counterterm rules the tree recursion cannot lower").
+
+The model's UV and R2 counterterms are taken as declared (`uv_complete`,
+`model_r2_complete`): the engine does not check them against the loops.
 
 MG5_aMC's `loop_qcd_qed_sm` needs
 `[loop.preparation] compatibility = "gmu_particle_anti"` with either engine (its
@@ -647,6 +655,18 @@ goldstoneboson"); `loop.preparation.covariant_multiplets` and
 `color.contraction = "symmetric-group-fft"` need `engine = "legacy"`. A dry run
 (`generate --dry-run`) reports what the model preparation refuses; loop
 admission is checked by the generation only.
+
+Particle veto. `[generation] particle_veto = ["t"]` (CLI `--particle-veto t`,
+repeatable; Python `GenerationConfig(particle_veto=("t",))`) removes the named
+particles, with their antiparticles, from every tree vertex of the v2
+generation: the Born, the trees attached to the loops, the loop vertices and
+propagators, and the counterterm program; every counterterm term whose loop
+content (the UFO `loop_particles`) holds a vetoed particle is dropped, and so is
+its external-field renormalisation. With loop_sm, `particle_veto = ["t"]` gives
+massless five-flavour QCD (no top loop, no top decoupling term), the convention
+of NJet. A vetoed particle cannot be external. The veto is stored with the
+artifact's generation request and in its generation filters; it is available
+with `loop.engine = "v2"` only.
 
 Widths. v2 virtuals use real on-shell masses: loop propagators carry no width and
 the model counterterms renormalise the real mass. A coloured particle that a
@@ -668,15 +688,27 @@ use them (for example a width only loop propagators would carry), as with the
 legacy engine. The renormalisation-scale parameter is the external
 parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
 
-Loading a v2 process rebuilds its per-point tree inputs from the artifact, which
-takes about the process's generation time, until those inputs run natively; the
-standalone SDK bundle needs `engine = "legacy"` until then. A v2 artifact holds
-no absolute path, user or host name of the generating host, and a copy moved to
-another directory loads with bitwise-identical results. Loading regenerates the
-stored plan and requires it to be identical, so the copy needs the same
-pyAmpliCol build (Python package and native extension) as the one that
-generated it; relocation is tested on the generating host only, not yet on
-another machine.
+A v2 artifact stores its whole program: the loop plan and its per-point tree,
+Born, counterterm and parameter programs (`point_inputs = "native-v2"`), the
+latter as SymJIT IR recompiled for the loading CPU and as saved Symbolica states
+for double-double and arbitrary precision. A plain load (`evaluate` with
+`poles = "all"` or `"none"`) regenerates nothing and takes a small fraction of
+the generation time. Still regenerated from the artifact, until their inputs are
+stored too: exact flavour members served by their representative (at load), and
+correlated and resolved calls and the `"uv"` and `"ir"` pole selections (on
+first use; the latter also evaluate the companion of the certified-scaleless
+families, whose tree inputs are not stored). The SymJIT IR is always compiled at
+-O2 (the portable level), whatever `evaluator.jit.optimization_level` says. The
+artifact holds no absolute path, user or host name of the generating host; a
+copy moved to another directory, user or machine loads without regeneration and,
+with the same pyAmpliCol build (Python package and native extension), gives
+bitwise-identical binary64 results on CPUs of the same SymJIT class (x86-64 with
+AVX and FMA3; AArch64 is expected to behave the same but is untested); other CPU
+levels (checked under emulation) run the saved states and agree to rounding
+([portability](artifacts-and-portability.md#cpu-requirements-of-symjit-kernels)).
+Binary64 evaluation needs no Symbolica licence; double-double and arbitrary
+precision use pyAmpliCol's own Symbolica key. The standalone SDK bundle needs
+`engine = "legacy"` until the v4 SDK runtime exists.
 
 To evaluate numerical colour/spin requests, set
 `evaluation.correlated_requests = "data/requests.json"`. The file maps output

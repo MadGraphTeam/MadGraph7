@@ -72,16 +72,22 @@ pub struct Interference {
     outputs: Vec<i32>,
 }
 
+/// Per metric class and basis element: its nonzero (ket tensor, value)
+/// cells.
+type MetricClasses<T> = Vec<Vec<Vec<(usize, Complex<T>)>>>;
+
 /// The metric classes of an interference program in a carrier: per class
 /// and basis element, its nonzero (ket tensor, value) cells.
 pub struct InterferenceRuntime<T> {
-    metrics: Vec<Vec<Vec<(usize, Complex<T>)>>>,
+    metrics: MetricClasses<T>,
 }
 
 fn kept(exponent: i32, degree: Option<i32>, depth: Option<i32>) -> bool {
     match depth {
         None => true,
-        Some(depth) => degree.is_some_and(|degree| degree - depth <= exponent && exponent <= degree),
+        Some(depth) => {
+            degree.is_some_and(|degree| degree - depth <= exponent && exponent <= degree)
+        }
     }
 }
 
@@ -98,13 +104,21 @@ fn nc_power(exponent: i32) -> Rational {
     value
 }
 
-fn groups(components: impl Iterator<Item = (usize, usize, i32, usize)>, count: usize) -> Vec<Groups> {
+fn groups(
+    components: impl Iterator<Item = (usize, usize, i32, usize)>,
+    count: usize,
+) -> Vec<Groups> {
     // (owner, tensor, power, component)
     let mut out: Vec<BTreeMap<i32, Vec<(usize, usize)>>> = vec![BTreeMap::new(); count];
     for (owner, tensor, power, component) in components {
-        out[owner].entry(power).or_default().push((tensor, component));
+        out[owner]
+            .entry(power)
+            .or_default()
+            .push((tensor, component));
     }
-    out.into_iter().map(|groups| groups.into_iter().collect()).collect()
+    out.into_iter()
+        .map(|groups| groups.into_iter().collect())
+        .collect()
 }
 
 impl Interference {
@@ -207,7 +221,8 @@ impl Interference {
             .class_keys
             .iter()
             .map(|&(degree, shift)| {
-                let mut rows: Vec<BTreeMap<usize, [Rational; 2]>> = vec![BTreeMap::new(); self.basis];
+                let mut rows: Vec<BTreeMap<usize, [Rational; 2]>> =
+                    vec![BTreeMap::new(); self.basis];
                 for (b, t, power, [re, im]) in &self.cells {
                     let exponent = power + shift;
                     if !kept(exponent, degree, self.depth) {
@@ -224,7 +239,9 @@ impl Interference {
                     .map(|row| {
                         row.into_iter()
                             .filter(|(_, [re, im])| !re.is_zero() || !im.is_zero())
-                            .map(|(t, [re, im])| (t, Complex::new(cast(zero, &re), cast(zero, &im))))
+                            .map(|(t, [re, im])| {
+                                (t, Complex::new(cast(zero, &re), cast(zero, &im)))
+                            })
                             .collect()
                     })
                     .collect()
@@ -271,7 +288,9 @@ impl Interference {
                         Ket::Born(o) => (&self.bra[o], a),
                     };
                     let mut value = czero.clone();
-                    for (g, ((_p, bras), classes)) in self.bra[entry.bra].iter().zip(classes).enumerate() {
+                    for (g, ((_p, bras), classes)) in
+                        self.bra[entry.bra].iter().zip(classes).enumerate()
+                    {
                         for ((_q, components), &class) in kets.iter().zip(classes) {
                             let z = cache.entry((entry.bra, g, class)).or_insert_with(|| {
                                 let mut z = vec![czero.clone(); self.tensors];

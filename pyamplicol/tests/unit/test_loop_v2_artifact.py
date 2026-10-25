@@ -35,7 +35,7 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   reduction-direction check) return one estimate per point that bounds the
   true error, and no estimate without checks;
 * a fresh interpreter loads and evaluates the stored native point inputs
-  (``point_inputs = "native-v1"``, WP3.1) with generation forbidden, with
+  (``point_inputs = "native-v2"``, WP3.1) with generation forbidden, with
   bitwise-identical binary64 values also after unrelated Symbolica symbols
   were created; a call that needs the generation objects (correlated and
   resolved outputs) regenerates the slice and refuses a stored plan that
@@ -74,6 +74,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import subprocess
 import sys
 from decimal import Decimal
@@ -513,7 +514,7 @@ def test_slice_request_records_round_trip():
         ({"QCD": 4, "QED": 0}, {"QCD": 2, "QED": 2}),
         corrections=("QCD", "QED"),
         fixed_parameters={"MB": "0"},
-        ignored_particle_ids=(23,),
+        particle_veto=(23,),
         accuracy="lc",
         colour_declaration=declaration,
         scale_parameter="MU_R",
@@ -540,6 +541,37 @@ def test_slice_request_records_round_trip():
         request_from_record(
             {key: value for key, value in record.items() if key != "compress_colour"}
         )
+
+
+@pytest.mark.loop_fast
+def test_particle_veto_is_resolved_to_pdg_codes_and_refuses_the_site_oracle():
+    """``generation.particle_veto`` names resolve to |PDG| codes (a name
+    vetoes its antiparticle); the request keeps them sorted and unsigned;
+    plan v4 refuses the site-closure counterterm oracle."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.api.errors import ArtifactError
+    from pyamplicol.generation.loop_service import particle_veto_codes
+    from pyamplicol.loops.v2.artifact import generate_process
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
+    particles = [
+        {"name": "t", "antiname": "t~", "pdg_code": 6},
+        {"name": "t~", "antiname": "t", "pdg_code": -6},
+        {"name": "Z", "antiname": "Z", "pdg_code": 23},
+    ]
+    model = SimpleNamespace(model={"particles": particles})
+    assert particle_veto_codes(model, ("t~", "Z", "t")) == (6, 23)
+    with pytest.raises(GenerationError, match=r"does not have: \['b'\]"):
+        particle_veto_codes(model, ("b",))
+    request = SliceRequest(
+        "g g > g g", {"QCD": 2}, {"QCD": 4}, particle_veto=(-6, 23, 6)
+    )
+    assert request.particle_veto == (6, 23)
+    with pytest.raises(ArtifactError, match="tree recursion"):
+        generate_process(None, replace(request, counterterms="sites"), None)
 
 
 @pytest.mark.loop_fast
@@ -686,10 +718,81 @@ def test_public_generation_publishes_plan_v4(full_colour):
         (full_colour / "processes/uux_ddxg/execution.json").read_text()
     )
     assert info["scaleless_plan_sha256"] == execution["scaleless_plan_sha256"]
-    # The public path takes its counterterms from the tree recursion (WP2.2).
+    # The public path takes its counterterms from the tree recursion (WP2.2):
+    # no counterterm site closure, no veto unless requested (ADDENDUM J).
     assert info["request"]["counterterms"] == "recursion"
+    assert info["request"]["particle_veto"] == []
+    from pyamplicol.loops.v2 import artifact
+
+    with artifact._slices_lock:
+        generated = [
+            item.slice
+            for (_model, _record, plan), item in artifact._slices.items()
+            if plan == info["plan_sha256"]
+        ]
+    assert generated
+    for slice_ in generated:
+        assert slice_.counterterm_program is not None
+        assert slice_.sites.sites == () and not slice_.site_terms
+        assert slice_.counterterm_program.closure.terms
+    # The generation record names the request's inert CT rules (ADDENDUM J).
+    (record,) = (
+        r
+        for r in manifest.extensions["generation"]["concrete_processes"]
+        if r["id"] == "uux_ddxg"
+    )
+    assert record["filters"]["counterterms_inert"] == dict(
+        sorted(generated[0].counterterm_program.recursion.inert.items())
+    )
+    # No native stage fell back (RUST-MIGRATION rule 2: the record would
+    # name it).
+    assert "native_fallbacks" not in record["filters"]
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
+
+
+@pytest.mark.loop_physics
+def test_public_particle_veto_equals_njet_five_flavours(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """``[generation] particle_veto = ["t"]`` through the public path: stored
+    in the request record (|PDG| codes) and the generation filters (names),
+    and g g > g g is massless five-flavour QCD, equal to NJet's Nf=5 virtual
+    at two of its points (binary64, 1e-12)."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.artifacts import load_manifest
+
+    entries = (("gg", "g g > g g"),)
+    card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries).replace(
+        "emit_api_bundle = false", 'emit_api_bundle = false\nparticle_veto = ["t"]'
+    )
+    output = _generate(card, tmp_path, entries)
+    manifest = load_manifest(output, verify_payloads=True)
+    (record,) = manifest.extensions["generation"]["concrete_processes"]
+    assert record["filters"]["particle_veto"] == ["t"]
+    _forget_generation()
+    runtime = Runtime.load(output, process="gg", model_parameters={"aS": "0.118"})
+    assert runtime.inspect()["request"]["particle_veto"] == [6]
+    controls = json.loads(
+        (ROOT / "tests/fixtures/loop/required/njet_nf5_controls.json").read_text()
+    )["processes"]["gg_gg"]
+    points = controls["points"][:2]
+    scales = [str(int(mu) ** 2) for mu in controls["mu_r"][:2]]
+    result = runtime.evaluate(points, mu_r2=scales)
+    for index, row in enumerate(controls["rows"][:2]):
+        ((born,),) = (result.born_values[index],)
+        assert abs(float(born) - float(row["born"])) <= 1e-12 * abs(float(born))
+        ((laurent,),) = (result.values[index],)
+        floor = abs(float(born)) * 0.118 / (2 * math.pi)
+        for mine, key in zip(
+            laurent, ("finite", "single_pole", "double_pole"), strict=True
+        ):
+            reference = float(row[key])
+            assert abs(float(mine) - reference) <= 1e-12 * max(abs(reference), floor), (
+                index,
+                key,
+            )
 
 
 @pytest.mark.loop_physics
@@ -971,7 +1074,7 @@ def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
     from pyamplicol import Runtime
 
     here = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
-    assert here.inspect()["point_inputs"] == "native-v1"
+    assert here.inspect()["point_inputs"] == "native-v2"
     value = here.evaluate([POINT], mu_r2="1000000")
     expected = [
         here.inspect()["plan_sha256"],
@@ -1238,7 +1341,7 @@ def test_inspect_summarizes_v2_loop_artifacts(full_colour):
     assert loop.arithmetic == ("double", "double-double", "arbitrary")
     assert loop.resolved and not loop.correlations
     assert loop.color_correlations == () and loop.spin_correlations == ()
-    assert loop.point_inputs == "native-v1"
+    assert loop.point_inputs == "native-v2"
     execution = json.loads((full_colour / "processes/gg/execution.json").read_text())
     assert loop.plan_sha256 == execution["plan_sha256"]
     assert by_id["uux_ddxg"].loop.families == 42
@@ -2164,11 +2267,10 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     """u u~ > d d~ with QCD and electroweak Born amplitudes (explicit limits
     QCD 2, QED 2): the dry run derives one loop order per Born amplitude
     order (QCD^4 and QCD^2 QED^2, not the limits raised by two) and does not
-    claim loop admission; in the SM the generation fails closed on the W
-    exchange of the electroweak Born: its root closure at leg 1 needs the
-    conjugate rule of a vertex that is not closed under conjugation (the
-    chiral Z on loop quark lines, which stopped it earlier, is supported
-    since WP3.1 I-AX). With photon exchange only
+    claim loop admission; in the SM it generates, the W exchange of the
+    electroweak Born closing at leg 1 through the conjugate rule of its
+    vertex (WP3.2 EWI-2; its values against MadLoop with the Wolfenstein CKM:
+    ``test_loop_v2_ew_lines``). With photon exchange only
     (Z, W and scalars excluded through the slice request) the public
     generator and runtime, regenerating at load, equal MadLoop's split-order
     control in every squared order (MadLoop binary64): each Born order within
@@ -2202,19 +2304,13 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
         {"QCD": 2, "QED": 2},
     ]
     assert coverage["loop_admission_checked"] is False
-    with pytest.raises(
-        GenerationError,
-        match=r"is not closed under conjugation; the tree reading of its legs "
-        r"needs its conjugate rule",
-    ):
-        generator.generate(processes, tmp_path / "a")
-    assert not (tmp_path / "a").exists()
+    generator.generate(processes, tmp_path / "a")
 
     request = loop_service._v2_request
     monkeypatch.setattr(
         loop_service,
         "_v2_request",
-        lambda *args: replace(request(*args), ignored_particle_ids=PHOTON_ONLY),
+        lambda *args: replace(request(*args), particle_veto=PHOTON_ONLY),
     )
     generator.generate(processes, tmp_path / "b")
     reference = loop_reference("mixed-uudd-qcd-control")
@@ -2373,7 +2469,9 @@ def test_coloured_width_fixed_to_zero_equals_legacy_at_sixty_digits(
     )
 
 
-def _qed_model_generator(model: Path, tmp_path: Path, name: str, entries, *, engine):
+def _qed_model_generator(
+    model: Path, tmp_path: Path, name: str, entries, *, engine, fixed='MB = "0"'
+):
     from pyamplicol.api import Generator
     from pyamplicol.config import resolve_config
 
@@ -2382,9 +2480,10 @@ def _qed_model_generator(model: Path, tmp_path: Path, name: str, entries, *, eng
     )
     card = tmp_path / f"{name}.toml"
     card.write_text(
-        text.replace('fixed_parameters = {MB = "0"}', COMPATIBILITY).replace(
-            'engine = "v2"', f'engine = "{engine}"'
-        )
+        text.replace(
+            'fixed_parameters = {MB = "0"}',
+            COMPATIBILITY.replace('{MB = "0"}', f"{{{fixed}}}"),
+        ).replace('engine = "v2"', f'engine = "{engine}"')
         if engine
         else text
     )
@@ -2398,11 +2497,22 @@ def test_qed_declaring_model_names_its_blockers(
     """MG5_aMC's loop_qcd_qed_sm with QCD and QED corrections through the
     public v2 path (its MU_R, at LHA code LOOP 666, is resolved at the public
     boundary). Without the compatibility profile both engines refuse its G-
-    Goldstone flag, which the dry run reports from the model preparation;
-    with it, u u~ > d d~ stops in counterterm admission: QED-order witnesses
-    without a rule or certified zero (WP3.2/WP3.5)."""
+    Goldstone flag, which the dry run reports from the model preparation.
+    With it, u u~ > d d~ at the card's W and Z widths is refused by the
+    electroweak width policy (WP3.2 EWI-0b, the user's decision [U8]: the
+    widths fixed to zero, or the complex-mass scheme), before its tree
+    kernels and the counterterm lowering. With those widths fixed to zero it
+    stops at the electroweak counterterms that the tree recursion cannot
+    lower and whose vertices can enter a tree of the request: couplings with
+    the complex-mass scheme's UFO helper recms (WP3.2). There is no site
+    fallback. The unlowerable G0-photon mixing between spins is inert
+    (REQUIREMENTS_ADDENDUM J): the model's tree model absorbs the Goldstones
+    into the massive vectors (``CompiledUFOModel.inactive_goldstone_names``),
+    so it holds no G0 vertex and no tree of any request on this model holds
+    the mixing."""
 
     from pyamplicol.api import ProcessRequest, ProcessSet
+    from pyamplicol.loops.v2.ew_policy import ElectroweakWidthError
     from pyamplicol.models.loading import compile_model_source
 
     entries = (("uudd", "u u~ > d d~"),)
@@ -2420,12 +2530,29 @@ def test_qed_declaring_model_names_its_blockers(
         loop_qcd_qed_sm_ufo, tmp_path, "b", entries, engine="v2"
     )
     with pytest.raises(
-        GenerationError,
-        match=r"divergent witnesses without a counterterm rule or certified zero"
-        r".*'QED': 2",
+        ElectroweakWidthError,
+        match=r"'u u~ > d d~': an electroweak request .* with a width that is not "
+        r"fixed to zero: W\+ \(WW\), W- \(WW\), Z \(WZ\)\..* fixed_parameters "
+        r'\(WW = "0", WZ = "0"\); .*complex-mass scheme',
     ):
         profiled.generate(processes, tmp_path / "b")
     assert not (tmp_path / "b").exists()
+    zero_widths = _qed_model_generator(
+        loop_qcd_qed_sm_ufo,
+        tmp_path,
+        "c",
+        entries,
+        engine="v2",
+        fixed='MB = "0", WW = "0", WZ = "0"',
+    )
+    with pytest.raises(
+        GenerationError,
+        match=r"counterterm rules the tree recursion cannot lower, whose vertices "
+        r"can enter a tree of the request: .*UFO helper 'recms'",
+    ) as refused:
+        zero_widths.generate(processes, tmp_path / "c")
+    assert "G0" not in str(refused.value)
+    assert not (tmp_path / "c").exists()
 
 
 @pytest.mark.loop_nightly
@@ -2437,10 +2564,14 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
     equals the legacy engine: Born and the QCD^6 virtual in binary64 (1e-12)
     and at 60 digits (1e-40, legacy at 60 digits). v2 also lists the
     QCD^4 QED^2 sector, a structural zero (no one-loop g g > g g amplitude of
-    order QCD^2 QED^2), which legacy omits."""
+    order QCD^2 QED^2), which legacy omits. The electroweak CT rules the tree
+    recursion cannot lower enter no tree of g g > g g: the generation record
+    lists them inert (REQUIREMENTS_ADDENDUM J), the G0-photon mixing among
+    them."""
 
     from pyamplicol import Runtime
     from pyamplicol.api import ProcessRequest, ProcessSet
+    from pyamplicol.artifacts import load_manifest
 
     entries = (("gg", "g g > g g"),)
     processes = ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),))
@@ -2452,6 +2583,15 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
         runtimes[engine] = Runtime.load(
             tmp_path / engine, process="gg", model_parameters=GG_PARAMETERS
         )
+    (record,) = load_manifest(tmp_path / "v2").extensions["generation"][
+        "concrete_processes"
+    ]
+    inert = record["filters"]["counterterms_inert"]
+    unreachable = {
+        name: reason for name, reason in inert.items() if "enters no tree" in reason
+    }
+    assert "PYAMPLICOL_CT_V306" in unreachable, sorted(inert)
+    assert any("UFO helper 'recms'" in reason for reason in unreachable.values())
     reference = runtimes["legacy"].evaluate(
         [POINT], mu_r2="1000000", arithmetic="arbitrary", precision=ARBITRARY_DIGITS
     )

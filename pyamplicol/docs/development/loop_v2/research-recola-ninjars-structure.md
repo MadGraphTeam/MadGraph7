@@ -673,9 +673,9 @@ Recursion plan (sibling design): open-loop objects keyed by
 ## Appendix A. Reproduction
 
 ```sh
-source /shared/external/pyLoopAmpliCol/workspace/env.sh
-cd /shared/external/pyLoopAmpliCol/workspace/tmp/engine-v2/rn2
-PY=/shared/external/pyLoopAmpliCol/workspace/venv/bin/python
+source /shared/vhirschi/t3code/pyamplicol/workspace/env.sh
+cd /shared/vhirschi/t3code/pyamplicol/workspace/tmp/engine-v2/rn2
+PY=/shared/vhirschi/t3code/pyamplicol/workspace/venv/bin/python
 $PY -I calib.py $PYLOOP_WORKSPACE/cache/cargo/git/checkouts/ninjars-3842d69907c1a3a3/0d0d7e7/docs/benchmark/data/results.json
 $PY -I analyse.py          # families, parents, options, P0 cost   -> required_analysis.json
 $PY -I groups.py           # (b1) assignment policies and costs   -> groups.json

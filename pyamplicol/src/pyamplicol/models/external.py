@@ -131,6 +131,8 @@ class CompiledUFOModel(
         )
         self._runtime_derived_expression_cache: dict[str, _sym.Expression] = {}
         self._runtime_derived_default_cache: dict[str, complex] = {}
+        self._runtime_derived_value_cache: dict[str, Any] = {}
+        self._runtime_parameter_substitutions: dict[_sym.Expression, Any] | None = None
         self._runtime_derived_domain_cache: dict[str, str] = {}
         self._runtime_parameter_domain_cache: dict[str, str] = {}
         self._weyl_projection_support: dict[tuple[int, int, int, int], bool] = {}
@@ -193,6 +195,8 @@ class CompiledUFOModel(
             **dict(parameters),
         }
         model._runtime_derived_default_cache = {}
+        model._runtime_derived_value_cache = {}
+        model._runtime_parameter_substitutions = None
         return model
 
 

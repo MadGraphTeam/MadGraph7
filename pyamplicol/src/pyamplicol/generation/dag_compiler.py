@@ -443,6 +443,10 @@ class GenericDAGCompiler:
             ],
             tuple[ColorFlow, ...],
         ] = {}
+        # Model queries, coupling-order checks and colour combinations are pure
+        # functions of their keys: the eager compiler and loop-request blocks
+        # (whose counterterm programs repeat them for every slot) memoize them.
+        memoize = self.online_evaluation_reuse or self.loop_blocks
         full_mask = _labels_mask(leg.label for leg in process_ir.legs)
         eager_shared_lc_orderings = (
             color_engine.shared_lc_orderings if self.online_evaluation_reuse else False
@@ -669,7 +673,7 @@ class GenericDAGCompiler:
             return orders
 
         def coupling_orders_allowed(orders: CouplingOrders) -> bool:
-            if not self.online_evaluation_reuse:
+            if not memoize:
                 return _coupling_orders_within_limits(
                     orders,
                     self.max_coupling_orders,
@@ -774,6 +778,94 @@ class GenericDAGCompiler:
             auxiliary_kind_cache[particle_id] = kind
             return kind
 
+        def cached_vertex_allowed(vertex: Vertex) -> bool:
+            vertex_key = (vertex.kind, *vertex.particles)
+            if vertex_key in vertex_allowed_cache:
+                return vertex_allowed_cache[vertex_key]
+            vertex_allowed = color_engine.vertex_allowed(vertex)
+            vertex_allowed_cache[vertex_key] = vertex_allowed
+            return vertex_allowed
+
+        # Loop-request blocks have no per-mask species pruning, so the vertex
+        # filters below depend on the vertex alone: each input pair's vertex
+        # list is filtered once, in the same order.
+        prefiltered_vertices = self.loop_blocks and useful_states_by_mask is None
+
+        def static_vertex_admitted(vertex: Vertex) -> bool:
+            if (
+                vertex.kind in self.ignored_vertex_kinds
+                or vertex.particles[2] in self.ignored_particle_ids
+            ):
+                return False
+            if not cached_vertex_allowed(vertex):
+                return False
+            return not self.model.skip_duplicate_vertex_orientation(vertex)
+
+        def dynamic_vertex_admitted(vertex: Vertex, mask: int) -> bool:
+            if (
+                vertex.kind in self.ignored_vertex_kinds
+                or vertex.particles[2] in self.ignored_particle_ids
+            ):
+                return False
+            if useful_states_by_mask is not None and vertex.particles[
+                2
+            ] not in useful_states_by_mask.get(mask, {}):
+                return False
+            if not cached_vertex_allowed(vertex):
+                return False
+            if memoize:
+                duplicate_orientation = duplicate_orientation_cache.get(vertex)
+                if duplicate_orientation is None:
+                    duplicate_orientation = (
+                        self.model.skip_duplicate_vertex_orientation(vertex)
+                    )
+                    duplicate_orientation_cache[vertex] = duplicate_orientation
+            else:
+                duplicate_orientation = self.model.skip_duplicate_vertex_orientation(
+                    vertex
+                )
+            return not duplicate_orientation
+
+        # Loop-request blocks build the same result index from many splits:
+        # its validated ``CurrentIndex`` (and whether the model admits it) is
+        # memoized by its construction arguments.
+        memoize_indices = self.loop_blocks
+        index_memo: dict[tuple[object, ...], tuple[CurrentIndex, bool]] = {}
+
+        # The factors of an interaction's colour weight come from a few shared
+        # objects (cached colour flows and vertex weights, literal symmetry
+        # weights): their product is computed once per object triple and the
+        # interactions share it (the factors are kept alive with it).
+        color_weight_products: dict[
+            tuple[int, int, int],
+            tuple[
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+            ],
+        ] = {}
+
+        def shared_color_weight(
+            flow_weight: tuple[float, float],
+            vertex_weight: tuple[float, float],
+            symmetry_weight: tuple[float, float],
+        ) -> tuple[float, float]:
+            key = (id(flow_weight), id(vertex_weight), id(symmetry_weight))
+            found = color_weight_products.get(key)
+            if found is None:
+                found = (
+                    flow_weight,
+                    vertex_weight,
+                    symmetry_weight,
+                    _complex_weight_mul(
+                        _complex_weight_mul(flow_weight, vertex_weight),
+                        symmetry_weight,
+                    ),
+                )
+                color_weight_products[key] = found
+            return found[3]
+
         def cached_vertex_color_weight(
             vertex: Vertex,
         ) -> tuple[float, float]:
@@ -794,7 +886,7 @@ class GenericDAGCompiler:
             ordered_external_labels: tuple[int, ...],
             sector_support_label_variants: tuple[tuple[int, ...], ...],
         ) -> tuple[ColorFlow, ...]:
-            if not self.online_evaluation_reuse:
+            if not memoize:
                 return color_engine.combine(
                     left.color_state,
                     right.color_state,
@@ -956,43 +1048,17 @@ class GenericDAGCompiler:
                                 right.index.particle_id,
                                 color_accuracy=process_ir.color_accuracy,
                             )
+                            if prefiltered_vertices:
+                                vertices = tuple(
+                                    vertex
+                                    for vertex in vertices
+                                    if static_vertex_admitted(vertex)
+                                )
                             vertices_by_input[vertex_lookup_key] = vertices
                         for vertex in vertices:
-                            if (
-                                vertex.kind in self.ignored_vertex_kinds
-                                or vertex.particles[2] in self.ignored_particle_ids
+                            if not prefiltered_vertices and not dynamic_vertex_admitted(
+                                vertex, mask
                             ):
-                                continue
-                            if useful_states_by_mask is not None and vertex.particles[
-                                2
-                            ] not in useful_states_by_mask.get(mask, {}):
-                                continue
-                            vertex_key = (vertex.kind, *vertex.particles)
-                            if vertex_key in vertex_allowed_cache:
-                                vertex_allowed = vertex_allowed_cache[vertex_key]
-                            else:
-                                vertex_allowed = color_engine.vertex_allowed(vertex)
-                                vertex_allowed_cache[vertex_key] = vertex_allowed
-                            if not vertex_allowed:
-                                continue
-                            if self.online_evaluation_reuse:
-                                duplicate_orientation = duplicate_orientation_cache.get(
-                                    vertex
-                                )
-                                if duplicate_orientation is None:
-                                    duplicate_orientation = (
-                                        self.model.skip_duplicate_vertex_orientation(
-                                            vertex
-                                        )
-                                    )
-                                    duplicate_orientation_cache[vertex] = (
-                                        duplicate_orientation
-                                    )
-                            else:
-                                duplicate_orientation = (
-                                    self.model.skip_duplicate_vertex_orientation(vertex)
-                                )
-                            if duplicate_orientation:
                                 continue
                             coupling_orders = combined_coupling_orders(
                                 left.index,
@@ -1149,43 +1215,69 @@ class GenericDAGCompiler:
                                             self.max_lc_current_line_groups,
                                         ):
                                             continue
-                                        out_index = current_index_factory(
-                                            particle_id=vertex.particles[2],
-                                            external_mask=mask,
-                                            external_labels=labels,
-                                            ordered_external_labels=variant_ordered_labels,
-                                            helicity_ancestry=(
+                                        index_key = None
+                                        memoized = None
+                                        if memoize_indices:
+                                            index_key = (
+                                                vertex.particles[2],
+                                                mask,
+                                                variant_ordered_labels,
                                                 left.index.helicity_ancestry
-                                                | right.index.helicity_ancestry
-                                            ),
-                                            chirality=quantum_flow.chirality,
-                                            spin_state=quantum_flow.spin_state,
-                                            flavour_flow=quantum_flow.flavour_flow,
-                                            quantum_number_flow=(
-                                                quantum_flow.quantum_number_flow
-                                            ),
-                                            color_state=color_flow.state,
-                                            momentum_mask=(
+                                                | right.index.helicity_ancestry,
+                                                quantum_flow.chirality,
+                                                quantum_flow.spin_state,
+                                                quantum_flow.flavour_flow,
+                                                quantum_flow.quantum_number_flow,
+                                                color_flow.state,
                                                 left.index.momentum_mask
-                                                | right.index.momentum_mask
-                                            ),
-                                            coupling_orders=coupling_orders,
-                                            auxiliary_kind=(
-                                                cached_auxiliary_kind(
-                                                    vertex.particles[2]
+                                                | right.index.momentum_mask,
+                                                coupling_orders,
+                                            )
+                                            memoized = index_memo.get(index_key)
+                                        if memoized is None:
+                                            out_index = current_index_factory(
+                                                particle_id=vertex.particles[2],
+                                                external_mask=mask,
+                                                external_labels=labels,
+                                                ordered_external_labels=variant_ordered_labels,
+                                                helicity_ancestry=(
+                                                    left.index.helicity_ancestry
+                                                    | right.index.helicity_ancestry
+                                                ),
+                                                chirality=quantum_flow.chirality,
+                                                spin_state=quantum_flow.spin_state,
+                                                flavour_flow=quantum_flow.flavour_flow,
+                                                quantum_number_flow=(
+                                                    quantum_flow.quantum_number_flow
+                                                ),
+                                                color_state=color_flow.state,
+                                                momentum_mask=(
+                                                    left.index.momentum_mask
+                                                    | right.index.momentum_mask
+                                                ),
+                                                coupling_orders=coupling_orders,
+                                                auxiliary_kind=(
+                                                    cached_auxiliary_kind(
+                                                        vertex.particles[2]
+                                                    )
+                                                    if memoize
+                                                    else self.model.auxiliary_kind(
+                                                        vertex.particles[2]
+                                                    )
+                                                ),
+                                            )
+                                            index_allowed = (
+                                                live_state_plan is None
+                                                or live_state_plan.allows(out_index)
+                                            ) and self.model.current_allowed(out_index)
+                                            if index_key is not None:
+                                                index_memo[index_key] = (
+                                                    out_index,
+                                                    index_allowed,
                                                 )
-                                                if self.online_evaluation_reuse
-                                                else self.model.auxiliary_kind(
-                                                    vertex.particles[2]
-                                                )
-                                            ),
-                                        )
-                                        if (
-                                            live_state_plan is not None
-                                            and not live_state_plan.allows(out_index)
-                                        ):
-                                            continue
-                                        if not self.model.current_allowed(out_index):
+                                        else:
+                                            out_index, index_allowed = memoized
+                                        if not index_allowed:
                                             continue
                                         result = table.add_or_get(
                                             out_index,
@@ -1195,20 +1287,25 @@ class GenericDAGCompiler:
                                             locally_reflectable_current_ids.add(
                                                 result.id
                                             )
-                                        signed_color_weight = _complex_weight_mul(
-                                            _complex_weight_mul(
+                                        if memoize:
+                                            signed_color_weight = shared_color_weight(
                                                 color_flow.weight,
-                                                cached_vertex_color_weight(vertex)
-                                                if self.online_evaluation_reuse
-                                                else self.model.vertex_color_weight(
-                                                    vertex,
-                                                    color_accuracy=(
-                                                        process_ir.color_accuracy
+                                                cached_vertex_color_weight(vertex),
+                                                symmetry_weight,
+                                            )
+                                        else:
+                                            signed_color_weight = _complex_weight_mul(
+                                                _complex_weight_mul(
+                                                    color_flow.weight,
+                                                    self.model.vertex_color_weight(
+                                                        vertex,
+                                                        color_accuracy=(
+                                                            process_ir.color_accuracy
+                                                        ),
                                                     ),
                                                 ),
-                                            ),
-                                            symmetry_weight,
-                                        )
+                                                symmetry_weight,
+                                            )
                                         key = (
                                             vertex.kind,
                                             left_id,
@@ -1220,7 +1317,7 @@ class GenericDAGCompiler:
                                         if key in interaction_keys:
                                             continue
                                         interaction_keys.add(key)
-                                        if self.online_evaluation_reuse:
+                                        if memoize:
                                             rule = lowering_rule_cache.get(vertex.kind)
                                             if rule is None:
                                                 rule = self.model.vertex_lowering_rule(

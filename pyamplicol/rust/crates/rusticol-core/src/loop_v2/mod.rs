@@ -17,6 +17,7 @@
 //! of its tests.
 
 pub mod closure;
+pub mod dag;
 pub mod dress;
 pub mod forward;
 pub mod generate;

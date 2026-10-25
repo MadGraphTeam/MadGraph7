@@ -104,8 +104,6 @@ def test_dilepton_two_gluons_with_the_z_equals_madloop(
         ),
         loop_native,
     )
-    certified = {c.certificate for c in slice_.sites.coverage if c.certificate}
-    assert any(text.startswith("Furry") for text in certified), certified
     parameters = {k: v for k, v in fixture["parameters"].items() if k != "MU_R"}
     for index in range(len(fixture["points"])):
         result = slice_.evaluate(

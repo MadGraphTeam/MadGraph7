@@ -37,7 +37,7 @@ one rotation check.
 
 Usage:
     python tools/loop_v2_generate.py measure "g g > g g g g" --born QCD=4
-        [--accuracy fc|lc|nlc] [--ignored 23] [--engine native|python]
+        [--accuracy fc|lc|nlc] [--veto 23] [--engine native|python]
         [--digests] [--export] [--json OUT.json] [--model COMPILED.json]
     python tools/loop_v2_generate.py diff A.json B.json
     python tools/loop_v2_generate.py validate gg_gggg [--points 0 1 2]
@@ -80,7 +80,16 @@ STAGES = (
     ("assemble", "extend_seed_table"),
     ("assemble", "seed_fourier"),
     ("assemble", "LoopSlice._prune_colour"),
+    ("assemble", "LoopSlice._scaleless_companion"),
+    ("assemble", "prepare_request_model"),
+    ("assemble", "with_ward_kernels"),
     ("reference_executor", "reading_skeletons"),
+    # The counterterm program of the recursion route (WP2.2).
+    ("ct_closure", "CountertermProgram.build"),
+    ("ct_closure", "CountertermBlocks.build"),
+    ("ct_closure", "CountertermClosure.build"),
+    ("ct_recursion", "CountertermRecursion.build"),
+    ("ct_closure", "lowered_counterterm_model"),
 )
 
 
@@ -144,20 +153,23 @@ class _Timers:
         return timed
 
     def install(self) -> None:
-        from pyamplicol.loops.v2 import assemble, generator_input
-        from pyamplicol.loops.v2 import reference_executor as rx
+        """Wrap every stage of ``STAGES`` the tree under test has (a stage
+        that an older or newer tree lacks is skipped, so one tool measures
+        both sides of a merge)."""
 
-        modules = {
-            "assemble": assemble,
-            "generator_input": generator_input,
-            "reference_executor": rx,
-        }
+        import importlib
+
         for module_name, attribute in STAGES:
-            owner: Any = modules[module_name]
-            *path, name = attribute.split(".")
-            for part in path:
-                owner = getattr(owner, part)
-            setattr(owner, name, self.wrap(attribute, getattr(owner, name)))
+            try:
+                module = f"pyamplicol.loops.v2.{module_name}"
+                owner: Any = importlib.import_module(module)
+                *path, name = attribute.split(".")
+                for part in path:
+                    owner = getattr(owner, part)
+                target = getattr(owner, name)
+            except (ImportError, AttributeError):
+                continue
+            setattr(owner, name, self.wrap(attribute, target))
 
 
 def _request(args) -> Any:
@@ -179,7 +191,7 @@ def _request(args) -> Any:
         born,
         loop,
         fixed_parameters={"MB": "0"},
-        ignored_particle_ids=tuple(int(x) for x in args.ignored.split(",") if x),
+        particle_veto=tuple(int(x) for x in args.veto.split(",") if x),
         **options,
     )
 
@@ -314,7 +326,7 @@ def _validate(args) -> dict[str, Any]:
         born,
         loop,
         fixed_parameters=dict(reference.get("fixed_parameters", {"MB": "0"})),
-        ignored_particle_ids=(6,) if top_free else (),
+        particle_veto=(6,) if top_free else (),
     )
     parameters = dict(reference["parameters"])
     record: dict[str, Any] = {
@@ -322,11 +334,17 @@ def _validate(args) -> dict[str, Any]:
         "process": process,
         "counterterms": request.counterterms,
     }
+    timers = None
+    if getattr(args, "stages", False):
+        timers = _Timers()
+        timers.install()
     start = time.perf_counter()
     slice_ = LoopSlice.generate(
         _compiled_model(args.model), request, load_loop_native()
     )
     record["generate_s"] = round(time.perf_counter() - start, 1)
+    if timers is not None:
+        record["generate_events"] = list(timers.events)
     record["generate_peak_gb"] = round(_status("VmHWM") / 2**30, 3)
     _progress(record, "generate_s", "generate_peak_gb")
     _reset_peak()
@@ -557,7 +575,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("process")
     run.add_argument("--born", required=True, help="e.g. QCD=3 or QCD=2,QED=2")
     run.add_argument("--accuracy", choices=("fc", "lc", "nlc"), default="fc")
-    run.add_argument("--ignored", default="", help="ignored particle ids, e.g. 23")
+    run.add_argument("--veto", default="", help="vetoed particles (|PDG|), e.g. 23")
     run.add_argument("--engine", choices=("native", "python"), default="native")
     run.add_argument("--digests", action="store_true")
     run.add_argument("--export", action="store_true")
@@ -572,13 +590,16 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("--precision", choices=("double", "dd"), default="double")
     check.add_argument("--stability", action="store_true")
     check.add_argument("--inputs", choices=("python", "native"), default="python")
+    check.add_argument(
+        "--stages", action="store_true", help="record per-stage generation times"
+    )
     check.add_argument("--model", help="compiled loop model JSON")
     check.add_argument("--json", help="write the record here")
     pole = commands.add_parser("poles")
     pole.add_argument("process")
     pole.add_argument("--born", required=True, help="e.g. QCD=5")
     pole.add_argument("--accuracy", choices=("fc", "lc", "nlc"), default="fc")
-    pole.add_argument("--ignored", default="", help="ignored particle ids, e.g. 23")
+    pole.add_argument("--veto", default="", help="vetoed particles (|PDG|), e.g. 23")
     pole.add_argument("--points", type=int, default=3)
     pole.add_argument("--rotation", action="store_true")
     pole.add_argument("--alpha-s", default="0.118")

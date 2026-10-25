@@ -1,0 +1,309 @@
+{
+  "description": "Gate-G1 benchmark processes (tools/loop_benchmark): the required-references specification format of tools/loop_reference/required_processes.json (same 'qcd' scheme, loop_sm-no_b_mass), with the 2->2 control and the 2->3/2->4 QCD processes that the v2 generator of work/v2-slice produces. 'madloop.export' is the MadLoop export built with MG5's production flags, relative to the reference root (--reference-root); 'openloops.unavailable' records why a process has no OpenLoops library.",
+  "schemes": {
+    "qcd": {
+      "description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
+      "madloop_model": "{mg5}/models/loop_sm-no_b_mass",
+      "parameters": {
+        "aS": "0.118",
+        "aEWM1": "132.507",
+        "Gf": "0.0000116639",
+        "MZ": "91.188",
+        "MH": "125",
+        "MT": "173",
+        "ymt": "173"
+      },
+      "fixed_parameters": {
+        "MB": "0",
+        "ymb": "0",
+        "MTA": "0",
+        "ymtau": "0",
+        "WT": "0",
+        "WW": "0",
+        "WZ": "0",
+        "WH": "0"
+      },
+      "electroweak_inputs": "alpha_fixed",
+      "complex_mass_scheme": false,
+      "active_flavours": 5,
+      "loop_quark_flavours": 6
+    }
+  },
+  "processes": [
+    {
+      "name": "gg_gg",
+      "pdgs": [
+        21,
+        21,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 2,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > g g QED=0 [virt=QCD]",
+        "export": "runs/g1/gg_gg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> g g"
+      },
+      "openloops": {
+        "process": "21 21 -> 21 21",
+        "library": "ppjj"
+      }
+    },
+    {
+      "name": "uux_ddxg",
+      "role": "slice",
+      "pdgs": [
+        2,
+        -2,
+        1,
+        -1,
+        21
+      ],
+      "born_orders": {
+        "QCD": 3,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > d d~ g QED=0 [virt=QCD]",
+        "export": "runs/required/uux_ddxg/madloop-export"
+      },
+      "recola": {
+        "process": "u u~ -> d d~ g"
+      },
+      "openloops": {
+        "process": "2 -2 -> 1 -1 21",
+        "library": "ppjjj"
+      }
+    },
+    {
+      "name": "uux_uuxg",
+      "role": "slice",
+      "pdgs": [
+        2,
+        -2,
+        2,
+        -2,
+        21
+      ],
+      "born_orders": {
+        "QCD": 3,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > u u~ g QED=0 [virt=QCD]",
+        "export": "runs/required/uux_uuxg/madloop-export"
+      },
+      "recola": {
+        "process": "u u~ -> u u~ g"
+      },
+      "openloops": {
+        "process": "2 -2 -> 2 -2 21",
+        "library": "ppjjj"
+      }
+    },
+    {
+      "name": "uux_emepg",
+      "pdgs": [
+        2,
+        -2,
+        11,
+        -11,
+        21
+      ],
+      "born_orders": {
+        "QCD": 1,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > e- e+ g QED=2 [virt=QCD]",
+        "export": "runs/g1/uux_emepg/madloop-export"
+      },
+      "recola": {
+        "process": "u u~ -> e- e+ g"
+      },
+      "openloops": {
+        "process": "2 -2 -> 11 -11 21",
+        "unavailable": "no OpenLoops library with QCD corrections to l+l- + 1 jet(s) is installed (ppllj/pplljj are not installed; ppllj_ew carries electroweak corrections only, pplljjj is l+l- + 3 jets); the brief allows existing provider builds only"
+      }
+    },
+    {
+      "name": "uux_ggg",
+      "pdgs": [
+        2,
+        -2,
+        21,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 3,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > g g g QED=0 [virt=QCD]",
+        "export": "runs/g1/uux_ggg/madloop-export"
+      },
+      "recola": {
+        "process": "u u~ -> g g g"
+      },
+      "openloops": {
+        "process": "2 -2 -> 21 21 21",
+        "library": "ppjjj"
+      }
+    },
+    {
+      "name": "gg_ggg",
+      "pdgs": [
+        21,
+        21,
+        21,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 3,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > g g g QED=0 [virt=QCD]",
+        "export": "runs/g1/gg_ggg/madloop-export"
+      },
+      "recola": {
+        "process": "g g -> g g g"
+      },
+      "openloops": {
+        "process": "21 21 -> 21 21 21",
+        "library": "ppjjj"
+      }
+    },
+    {
+      "name": "uux_emepgg",
+      "pdgs": [
+        2,
+        -2,
+        11,
+        -11,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 2,
+        "QED": 2
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > e- e+ g g QED=2 [virt=QCD]",
+        "export": "runs/g1/uux_emepgg/madloop-export"
+      },
+      "recola": {
+        "process": "u u~ -> e- e+ g g"
+      },
+      "openloops": {
+        "process": "2 -2 -> 11 -11 21 21",
+        "unavailable": "no OpenLoops library with QCD corrections to l+l- + 2 jet(s) is installed (ppllj/pplljj are not installed; ppllj_ew carries electroweak corrections only, pplljjj is l+l- + 3 jets); the brief allows existing provider builds only"
+      }
+    },
+    {
+      "name": "gg_gggg",
+      "pdgs": [
+        21,
+        21,
+        21,
+        21,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 4,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > g g g g QED=0 [virt=QCD]",
+        "export": "runs/required/gg_gggg/madloop-export-production-flags"
+      },
+      "recola": {
+        "process": "g g -> g g g g"
+      },
+      "openloops": {
+        "process": "21 21 -> 21 21 21 21",
+        "library": "ppjjjj"
+      }
+    },
+    {
+      "name": "gg_ttxgg",
+      "pdgs": [
+        21,
+        21,
+        6,
+        -6,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 4,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "g g > t t~ g g QED=0 [virt=QCD]",
+        "export": "runs/required/gg_ttxgg/madloop-export-production-flags"
+      },
+      "recola": {
+        "process": "g g -> t t~ g g"
+      },
+      "openloops": {
+        "process": "21 21 -> 6 -6 21 21",
+        "library": "ppttjj"
+      }
+    },
+    {
+      "name": "uux_gggg",
+      "pdgs": [
+        2,
+        -2,
+        21,
+        21,
+        21,
+        21
+      ],
+      "born_orders": {
+        "QCD": 4,
+        "QED": 0
+      },
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {
+        "process": "u u~ > g g g g QED=0 [virt=QCD]",
+        "unavailable": "not exported: the MadLoop export of g g > g g g g took 2.4 h, and HANDOFF \u00a70.1 allows no provider generation beyond about 45 minutes"
+      },
+      "recola": {
+        "process": "u u~ -> g g g g"
+      },
+      "openloops": {
+        "process": "2 -2 -> 21 21 21 21",
+        "library": "ppjjjj"
+      }
+    }
+  ]
+}

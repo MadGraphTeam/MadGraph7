@@ -72,7 +72,7 @@ from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
-from itertools import product
+from itertools import permutations, product
 from typing import Any, Literal, NamedTuple
 
 from pyamplicol.color.connections import (
@@ -87,12 +87,13 @@ from pyamplicol.color.connections import (
 from pyamplicol.color.contraction_types import NC
 from pyamplicol.config import PoleSelection
 
-from . import generator_input
+from . import ew_policy, generator_input
 from . import reference_executor as rx
 from .blocks import (
     TreeBlocks,
     build_tree_blocks,
     requested_loop_blocks,
+    vetoed_particle_ids,
     with_ward_kernels,
 )
 from .catalogue import build_loop_kernel_catalogue
@@ -123,10 +124,12 @@ from .conventions import (
 )
 from .ct_sites import (
     LAURENT_POWERS,
+    ConjugateVertices,
     CountertermSites,
     SiteClosure,
     SiteTerm,
     generate_counterterm_sites,
+    require_one_singlet_line,
     vanishes_identically,
 )
 from .ct_sites import (
@@ -134,6 +137,7 @@ from .ct_sites import (
 )
 from .families import (
     ZERO,
+    BlockCurrent,
     FamilyKey,
     FamilySet,
     LoopOrderSelection,
@@ -151,9 +155,16 @@ from .generator_input import NativeGeneration
 from .poles import (
     ORIGINS,
     catani_poles,
+    coupling_value,
+    dressed_born,
+    exact_charge,
     has_poles,
     pole_mode,
+    qed_catani_poles,
+    qed_coupling,
+    qed_gamma,
     reducer_poles,
+    sector_sum,
     select_lane,
     select_sector,
     split_sector,
@@ -332,6 +343,31 @@ def _decimal_power(base: Decimal, exponent: int) -> Decimal:
 # --------------------------------------------------------------------- tree rows
 
 
+def _canonical_runtime_schema(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """``RuntimeExpressionSchema.from_mapping(raw).to_mapping()`` without
+    keeping the contract's canonical JSON and payload cache: the same keys,
+    order, values and checks."""
+
+    from pyamplicol.generation.contracts import _REQUIRED_RUNTIME_SCHEMA_KEYS
+
+    try:
+        canonical = json.dumps(
+            raw, allow_nan=False, separators=(",", ":"), sort_keys=True
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "runtime expression schema must contain canonical JSON values"
+        ) from exc
+    payload = json.loads(canonical)
+    del canonical
+    if not isinstance(payload, dict):
+        raise ValueError("runtime expression schema root must be an object")
+    missing = sorted(_REQUIRED_RUNTIME_SCHEMA_KEYS - payload.keys())
+    if missing:
+        raise ValueError("runtime expression schema is missing: " + ", ".join(missing))
+    return {str(key): value for key, value in payload.items()}
+
+
 class TreeRows:
     """Currents of the tree runtime at one point (design §3.2 exports).
 
@@ -356,9 +392,7 @@ class TreeRows:
         jit: bool = True,
         propagated_currents: Iterable[int] | None = None,
     ):
-        from pyamplicol.generation.runtime_schema import (
-            build_runtime_expression_schema,
-        )
+        from pyamplicol.generation.runtime_schema import build_runtime_schema
         from pyamplicol.models.external import CompiledUFOModel
 
         self.compiled = compiled
@@ -368,7 +402,7 @@ class TreeRows:
             # Every block enters a loop vertex with its own propagator, also
             # where no tree interaction consumes it (reachability-pruned DAGs):
             # by default every current is propagated.
-            self.runtime_schema = build_runtime_expression_schema(
+            raw = build_runtime_schema(
                 dag,
                 self.model,
                 process_id="loop-v2-blocks",
@@ -378,7 +412,15 @@ class TreeRows:
                     else propagated_currents
                 ),
             )
-        self.schema = self.runtime_schema.to_mapping()
+        # The runtime schema's canonical mapping (``RuntimeExpressionSchema.
+        # to_mapping`` of ``build_runtime_expression_schema``); the contract
+        # object, whose canonical JSON and cached payload would double it
+        # (0.24 GB for g g > g g g g's counterterm program), is built from it
+        # on the first replay (``runtime_schema``): native per-point trees
+        # read the mapping only.
+        self.schema = _canonical_runtime_schema(raw)
+        del raw
+        self._runtime_schema: Any = None
         # The stage expressions are built on first use (``stages``): native
         # per-point trees compile their own, stage by stage (``native_trees``).
         self._blueprint = None
@@ -412,6 +454,18 @@ class TreeRows:
                 for term in compiled.ir.vertex_terms
             }
         )
+
+    @property
+    def runtime_schema(self) -> Any:
+        """The runtime schema contract (``RuntimeExpressionSchema``) of the
+        DAG, built on first use from ``schema``: its canonical JSON is that of
+        ``build_runtime_expression_schema`` (canonical JSON round-trips)."""
+
+        if self._runtime_schema is None:
+            from pyamplicol.generation.contracts import RuntimeExpressionSchema
+
+            self._runtime_schema = RuntimeExpressionSchema.from_mapping(self.schema)
+        return self._runtime_schema
 
     def _built(self) -> Any:
         from pyamplicol.generation.contracts import StageCompilationInput
@@ -776,25 +830,174 @@ def _exact_u1_subtraction_weights():
 LOOP_BLOCK_REACHABILITY = True
 
 
-def _field_level_families(
-    data, process, catalogue, selection, request, native: Any
-) -> FamilySet:
-    """The families of the field-level block table (design §3.2 item 1);
-    ``native`` is the loop core, or None for the Python recursion."""
+def _field_level_table(data, process, selection, request, cap=None) -> ModelBlockTable:
+    """The field-level block table of a loop request (design §3.2 item 1),
+    within the loop orders' ``cap`` unless another is given."""
 
     names = {int(entry["pdg_code"]): entry["name"] for entry in data["particles"]}
     incoming = [names[leg.pdg] for leg in process.legs if leg.is_initial]
     outgoing = [names[leg.pdg] for leg in process.legs if leg.is_final]
-    table = ModelBlockTable(
+    return ModelBlockTable(
         data,
         incoming,
         outgoing,
-        cap=selection.cap,
-        ignored_particle_ids=request.excluded_particle_ids,
+        cap=selection.cap if cap is None else cap,
+        ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
     )
+
+
+def _block_order_bounds(request) -> dict[str, int]:
+    """Coupling-order bounds of the request's tree blocks: they serve the
+    loops and the Born closure at leg 1, so an order the loops bound takes
+    the Born's bound where that is larger (u u~ > d d~ with QCD loops of the
+    QCD Born only still closes its photon Born on photon currents)."""
+
+    born = request.born_orders
+    return {
+        name: max(int(power), int(born.get(name, power)))
+        for name, power in request.loop_order_bounds.items()
+    }
+
+
+def _born_table(data, process, selection, request, table) -> ModelBlockTable:
+    """The field-level table of the Born closure's currents: ``table`` (the
+    loop orders' cap) when that covers the Born orders, else one within the
+    Born's own (a Born order beyond the loop cap, e.g. the electroweak Born
+    of a request for QCD loops only, interferes with the QCD loops). An
+    order the request does not bound is bounded by its largest power in a
+    tree of the n legs (``_tree_order_bounds``)."""
+
+    names = sorted(
+        {str(name) for entry in data["couplings"] for name, _power in entry["orders"]}
+    )
+    tree = _tree_order_bounds(
+        data, len(process.legs), [n for n in names if n not in request.born_orders]
+    )
+    born = {
+        name: int(request.born_orders.get(name, tree.get(name, 0)))
+        for name in names
+        if request.born_orders.get(name, tree.get(name, 0))
+    }
+    loop = dict(selection.cap)
+    if all(power <= loop.get(name, 0) for name, power in born.items()):
+        return table
+    cap = {name: max(power, born.get(name, 0)) for name, power in loop.items()}
+    cap.update((name, power) for name, power in born.items() if name not in loop)
+    return _field_level_table(
+        data, process, selection, request, cap=tuple(sorted(cap.items()))
+    )
+
+
+def _tree_order_bounds(data, legs: int, names: Sequence[str]) -> dict[str, int]:
+    """The largest power of each coupling order of ``names`` in a tree with
+    ``legs`` external legs, from the model's vertices: a tree's vertices have
+    sum(arity - 2) = legs - 2, so an order's power is at most legs - 2 times
+    its largest power per arity - 2 over the vertices (legs - 2 for
+    renormalisable vertices; more for effective ones, e.g. a g g H vertex of
+    QCD = 2). A two-point vertex carrying one of the orders leaves its power
+    unbounded and is refused."""
+
+    wanted = set(names)
+    orders = {entry["name"]: entry["orders"] for entry in data["couplings"]}
+    ratio: dict[str, Fraction] = {}
+    for rule in data["vertex_rules"]:
+        arity = len(rule["particles"])
+        for row in rule["couplings"]:
+            for coupling in row:
+                for name, power in orders[coupling] if coupling else ():
+                    if name not in wanted or int(power) <= 0:
+                        continue
+                    if arity <= 2:
+                        raise NotImplementedError(
+                            f"vertex {rule['name']} has {arity} legs and coupling "
+                            f"order {name}={power}: its tree-level power is unbounded"
+                        )
+                    ratio[name] = max(
+                        ratio.get(name, Fraction(0)), Fraction(int(power), arity - 2)
+                    )
+    return {name: int((legs - 2) * value) for name, value in ratio.items()}
+
+
+def _field_level_families(
+    data, process, catalogue, selection, request, native: Any, table=None
+) -> FamilySet:
+    """The families of the field-level block table (design §3.2 item 1);
+    ``native`` is the loop core, or None for the Python recursion."""
+
+    if table is None:
+        table = _field_level_table(data, process, selection, request)
     if native is not None:
         return NativeGeneration(table, catalogue, selection, native).families()
     return generate_families(table, catalogue, selection)
+
+
+def _born_block_requests(
+    table: ModelBlockTable, data, born_orders: Mapping[str, int]
+) -> frozenset[BlockCurrent]:
+    """Block currents the Born closure at leg 1 attaches (``_born_terms``), at
+    field level: loop-aware reachability builds only the currents loop
+    positions consume, and the Born root of a process whose leg 1 is a lepton
+    (e+ e- > u u~: the quark pair's photon current) or of a mixed-order Born
+    (the W exchange of u u~ > d d~) attaches currents no loop position does.
+    A vertex of the model attaches leg 1 alone and one current of the
+    vertex's fields per part of the other legs, within ``born_orders`` (an
+    order it does not name is unbounded, as for the tree program).
+    """
+
+    full = (1 << len(table.legs)) - 1
+    bounds = {str(name): int(power) for name, power in born_orders.items()}
+
+    def within(orders: Orders) -> bool:
+        return all(power <= bounds.get(name, power) for name, power in orders)
+
+    spins = {entry["name"]: int(entry["spin"]) for entry in data["particles"]}
+    coupling_orders = {
+        entry["name"]: tuple(sorted((name, power) for name, power in entry["orders"]))
+        for entry in data["couplings"]
+    }
+    by_arity: dict[int, list[tuple[tuple[str, ...], set[Orders]]]] = defaultdict(list)
+    for rule in data["vertex_rules"]:
+        fields = tuple(rule["particles"])
+        if any(spins[name] == -1 for name in fields):
+            continue
+        orders = {
+            add_orders(coupling_orders[name])
+            for row in rule["couplings"]
+            for name in row
+            if name is not None
+        }
+        by_arity[len(fields)].append((fields, orders))
+    by_field: dict[int, dict[str, list[BlockCurrent]]] = {}
+
+    def currents(mask: int) -> dict[str, list[BlockCurrent]]:
+        found = by_field.get(mask)
+        if found is None:
+            found = by_field[mask] = defaultdict(list)
+            for block in table.currents(mask):
+                found[block.field].append(block)
+        return found
+
+    out: set[BlockCurrent] = set()
+    for arity, rules in sorted(by_arity.items()):
+        for rest in _set_partitions(full & ~1, arity - 1, arity - 1):
+            pools = [currents(part) for part in (1, *rest)]
+            for fields, orders in rules:
+                for arrangement in set(permutations(fields)):
+                    options = [
+                        pool.get(name, ())
+                        for pool, name in zip(pools, arrangement, strict=True)
+                    ]
+                    if not all(options):
+                        continue
+                    for choice in product(*options):
+                        if any(
+                            within(
+                                add_orders(order, *(block.orders for block in choice))
+                            )
+                            for order in orders
+                        ):
+                            out.update(choice)
+    return frozenset(out)
 
 
 # Schedule-B frame policy of the slice: the cheapest frame by undressed rows
@@ -1101,9 +1304,10 @@ class PointResult:
     sectors (Born, then each component's Laurent coefficients; 7 entries in
     finite-only mode). ``families`` keeps each reduction lane's raw integrals
     ``(family, loop order, sector) -> Laurent``. ``ir_poles`` is Catani's
-    prediction of the virtual's (single, double) poles per sector (massless
-    and massive coloured legs), ``None`` in finite-only and ``"uv"`` mode, at
-    leading colour and for non-QCD corrections; ``stability`` is ``None``
+    prediction of the virtual's (single, double) poles per sector (the QCD
+    and QED operators, massless and massive legs), ``None`` in finite-only
+    and ``"uv"`` mode, at leading colour and where the operators make no
+    prediction (a correction without one); ``stability`` is ``None``
     unless checks were asked. ``colour_contraction`` is the seed contraction
     used ("direct" or "symmetric-group-fft").
 
@@ -1146,10 +1350,11 @@ class SliceRequest:
     loop_orders: Mapping[str, int] | Sequence[Mapping[str, int]]
     corrections: tuple[str, ...] = ("QCD",)
     fixed_parameters: Mapping[str, str] = field(default_factory=dict)
-    # Particles the request excludes, in either orientation (PDG codes): no
-    # tree current, loop line, counterterm or field insertion of theirs
-    # (e.g. (6,): closed top loops off, with their decoupling counterterms).
-    ignored_particle_ids: tuple[int, ...] = ()
+    # Vetoed particles (|PDG| codes, ``generation.particle_veto``): removed
+    # from every tree vertex of every generation step (Born, blocks, loop
+    # vertices and propagators, the counterterm program), and every
+    # counterterm term whose loop content holds one is dropped.
+    particle_veto: tuple[int, ...] = ()
     accuracy: ColourAccuracy = "full"
     # A source-owned formal-N_c continuation (``LoopColorDeclaration``); LC
     # needs it for the counterterm and field colour grades (design §6.7).
@@ -1177,6 +1382,12 @@ class SliceRequest:
     # site closure of every rule, the permanent oracle (O6).
     counterterms: Literal["recursion", "sites"] = "recursion"
 
+    def __post_init__(self) -> None:
+        veto = tuple(sorted({abs(int(pdg)) for pdg in self.particle_veto}))
+        if 0 in veto:
+            raise ValueError("particle_veto takes particle PDG codes")
+        object.__setattr__(self, "particle_veto", veto)
+
     @property
     def exact_loop_orders(self) -> tuple[Mapping[str, int], ...]:
         """The exact coupling orders of every admitted loop amplitude."""
@@ -1194,21 +1405,6 @@ class SliceRequest:
             for name, power in orders.items():
                 bounds[name] = max(bounds.get(name, 0), power)
         return bounds
-
-    @property
-    def excluded_particle_ids(self) -> tuple[int, ...]:
-        """``ignored_particle_ids`` in both orientations, as the tree compiler
-        reads them (it drops the currents of the signed ids it is given)."""
-
-        return tuple(
-            sorted(
-                {
-                    sign * int(pdg)
-                    for pdg in self.ignored_particle_ids
-                    for sign in (1, -1)
-                }
-            )
-        )
 
 
 class RequestModel(NamedTuple):
@@ -1251,11 +1447,21 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     scale_parameter = _external_parameter(
         compiled, request.scale_parameter, _LHA_SCALE, fixed
     )
-    alpha_s_parameter = (
-        _external_parameter(compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed)
-        if set(request.corrections) == {"QCD"}
-        else None
-    )
+    alpha_s_parameter = None
+    if set(request.corrections) == {"QCD"}:
+        alpha_s_parameter = _external_parameter(
+            compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
+        )
+    elif "QCD" in request.corrections:
+        # The QCD operator of a joint request's IR-pole prediction (WP3.2
+        # EWI-6); without an identified alpha_s it makes none.
+        try:
+            alpha_s_parameter = _external_parameter(
+                compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
+            )
+        except ValueError:
+            if request.alpha_s_parameter is not None:
+                raise
     prepared = prepare_loop_request_model(
         compiled,
         born_order_bounds=dict(request.born_orders),
@@ -1310,7 +1516,7 @@ class LoopSlice:
     loop_catalogue: Any = None
     fourier: SeedFourier | None = None
     # The CT amplitudes from the tree recursion (``ct_closure``); the sites
-    # then hold only the rules it leaves to site closure.
+    # are then empty (site closure is the "sites" test oracle only).
     counterterm_program: Any = None
     # Whether LC/NLC pruning dropped skeletons (``_prune_colour``).
     colour_pruned: bool = False
@@ -1346,11 +1552,28 @@ class LoopSlice:
         cache = self._cache.setdefault("terms-of", {})
         terms = cache.get(site)
         if terms is None:
-            terms = cache[site] = (
-                self.closure.terms(site, self.cancelled_cells.get(site, ()))
-                if site.rule.whole_rule_continuation is None
-                else _whole_rule_terms(self.closure, site)
-            )
+            if site.rule.whole_rule_continuation is None:
+                terms = self.closure.terms(site, self.cancelled_cells.get(site, ()))
+                _plans, layout = self._scalar_plan(LAURENT_POWERS)
+                # A coupling the scalar plan does not compute would make its
+                # term vanish without an error (the Python and native
+                # evaluations read the layout).
+                missing = sorted(
+                    {
+                        term.entry.coupling.name
+                        for term in terms
+                        for power in LAURENT_POWERS
+                        if (term.entry.coupling.name, power) not in layout
+                    }
+                )
+                if missing:
+                    raise ValueError(
+                        f"counterterm site {site.rule_name} binds couplings "
+                        f"{missing} that the slice's scalar plan does not compute"
+                    )
+            else:
+                terms = _whole_rule_terms(self.closure, site)
+            cache[site] = terms
         return terms
 
     @property
@@ -1399,10 +1622,20 @@ class LoopSlice:
         process = build_model_process_ir(
             request.process, compiled.ir, color_accuracy="full"
         )
+        # The root closure and the loops sign one colour-singlet fermion line
+        # only (``ct_sites.require_one_singlet_line``; WP3.2 EWI-5 lifts it).
+        require_one_singlet_line(process)
+        # Fail-closed guards of electroweak requests (WP3.2 EWI-0b), before
+        # any tree, family or counterterm generation (``ew_policy``).
+        electroweak = ew_policy.electroweak(
+            compiled, request, structure.perturbative_species_orders
+        )
+        if electroweak:
+            ew_policy.require_no_external_photons(compiled, request, process, fixed)
         loop_catalogue = ModelLoopCatalogue(
             data,
             species_orders=structure.perturbative_species_orders,
-            ignored_particle_ids=request.ignored_particle_ids,
+            veto=request.particle_veto,
         )
         native_families = "families" in generator_input.NATIVE_STAGES
         model = compiled
@@ -1412,14 +1645,24 @@ class LoopSlice:
                 process,
                 CompiledUFOModel(model),
                 born_coupling_orders=dict(request.born_orders),
-                block_coupling_orders=request.loop_order_bounds,
-                ignored_particle_ids=request.excluded_particle_ids,
+                block_coupling_orders=_block_order_bounds(request),
+                ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
                 reachability=(
                     None
                     if reachable is None
-                    else requested_loop_blocks(reachable.block_requests(), data)
+                    else requested_loop_blocks(
+                        reachable.block_requests() | born_requests, data
+                    )
                 ),
             )
+            if electroweak:
+                # Widths in the Born or the loop-side trees, before their
+                # kernels (a width takes the full ones, 38 s at g g > t t~
+                # on the G_mu model) and the counterterm lowering
+                # (``ew_policy.require_zero_widths``).
+                ew_policy.require_zero_widths(
+                    model, request, (blocks.born_dag, blocks.blocks_dag), fixed
+                )
             # Trees that propagate a coloured particle with a width (or a
             # model-supplied propagator) take the full tree kernels: the
             # transverse Yang-Mills ones are then not the Feynman rules
@@ -1438,6 +1681,7 @@ class LoopSlice:
             )
 
         reachable = None
+        born_requests: frozenset[BlockCurrent] = frozenset()
         if LOOP_BLOCK_REACHABILITY and request.counterterms == "recursion":
             # Loop-aware reachability (design §3.2 item 1): the tree program
             # builds only the block currents the admitted positions of the
@@ -1445,6 +1689,7 @@ class LoopSlice:
             # vertices to the tree currents of every leg partition, which
             # loop positions need not consume (a two-point counterterm on an
             # electroweak line), so the site route builds every current.
+            field_table = _field_level_table(data, process, selection, request)
             reachable = _field_level_families(
                 data,
                 process,
@@ -1452,6 +1697,12 @@ class LoopSlice:
                 selection,
                 request,
                 native if native_families else None,
+                table=field_table,
+            )
+            born_requests = _born_block_requests(
+                _born_table(data, process, selection, request, field_table),
+                data,
+                request.born_orders,
             )
         blocks, compiled, table, generation, families = tree_program(reachable)
         if reachable is not None and (
@@ -1476,8 +1727,9 @@ class LoopSlice:
         program = None
         if request.counterterms == "recursion":
             # Production form of the counterterms (design §6.1): the tree
-            # recursion over the CT-lowered model, closed at leg 1; graded by
-            # N_c with a colour declaration (design §6.7). The block rows
+            # recursion over the CT-lowered model with exactly one insertion,
+            # closed at leg 1; graded by N_c with a colour declaration (design
+            # §6.7). No site closure and no loop matching. The block rows
             # (``tree_rows``) are built on first use, after the CT-lowered
             # model: native trees canonicalise their stages
             # (``_canonical_stage``), and the Python replay is an oracle.
@@ -1487,11 +1739,10 @@ class LoopSlice:
                 compiled,
                 prepared,
                 request.process,
-                families,
                 data,
                 selection,
                 blocks.born_orders,
-                forbidden=request.ignored_particle_ids,
+                veto=request.particle_veto,
                 fixed_parameters=fixed,
                 declaration=declaration,
                 continuation=continuation,
@@ -1502,20 +1753,19 @@ class LoopSlice:
                     request.compatibility,
                 ),
             )
-            if program.residual and reachable is not None:
-                # The rules left to site closure need every leg partition's
-                # tree currents (above); the families do not change.
-                blocks, compiled, table, generation, families = tree_program(None)
-                colour, plan = schedules()
-        sites = generate_counterterm_sites(
-            families,
-            table,
-            prepared.counterterms.rules,
-            data,
-            selection,
-            forbidden=request.ignored_particle_ids,
-            whole_rules=continuation is not None,
-            closed_rules=None if program is None else program.residual,
+        sites = (
+            # The O6 oracle: every rule closed at sites, witness admission.
+            generate_counterterm_sites(
+                families,
+                table,
+                prepared.counterterms.rules,
+                data,
+                selection,
+                forbidden=request.particle_veto,
+                whole_rules=continuation is not None,
+            )
+            if program is None
+            else CountertermSites((), {}, (), 0)
         )
         insertions = external_field_insertions(
             table.legs,
@@ -1523,20 +1773,38 @@ class LoopSlice:
             data,
             selection,
             blocks.born_orders,
-            forbidden=request.ignored_particle_ids,
+            forbidden=request.particle_veto,
         )
         ordinary = _ordinary_entries(prepared, data)
-        entries = [e for site in sites.sites for e in site.rule.entries]
-        if program is not None:
-            entries += [e for site in program.root_sites for e in site.rule.entries]
-        entries += [e for rows in ordinary for e in rows]
-        catalogue = build_loop_kernel_catalogue(
-            compiled, counterterm_entries=list({id(e): e for e in entries}.values())
+        root_sites = (*sites.sites, *(() if program is None else program.root_sites))
+        # The root closure reads a vertex not closed under conjugation (a W
+        # coupling) through its conjugate rule (WP3.2 EWI-2).
+        conjugates = ConjugateVertices(
+            (
+                *((rows[0].vertex_name, rows) for rows in ordinary),
+                *(
+                    (name, rule.entries)
+                    for name, rule in prepared.counterterms.rules.items()
+                ),
+            ),
+            data,
         )
-        closure = SiteClosure(blocks, data, catalogue)
-        # Cells without a site kernel that cancel between the rules closed on
-        # the same blocks (the Levi-Civita R2 of a Z with gluons over complete
-        # quark doublets) are left out; any other such cell fails below.
+        entries = [e for site in root_sites for e in site.rule.entries]
+        entries += _conjugate_site_entries(root_sites, conjugates, program)
+        entries += [e for rows in ordinary for e in rows]
+        _check_declared_loop_species(
+            root_sites, _eligible_loop_species(loop_catalogue, selection, data)
+        )
+        catalogue = build_loop_kernel_catalogue(
+            compiled,
+            loop_species=_family_loop_species(families, data),
+            counterterm_entries=list({id(e): e for e in entries}.values()),
+        )
+        closure = SiteClosure(blocks, data, catalogue, conjugates)
+        # Oracle sites: cells without a site kernel that cancel between the
+        # rules closed on the same blocks (the Levi-Civita R2 of a Z with
+        # gluons over complete quark doublets) are left out; any other such
+        # cell fails below.
         cancelled = closure.cancelled_cells(
             sites.sites,
             _site_coefficient(compiled, structure.fixed_parameters, continuation),
@@ -1544,10 +1812,21 @@ class LoopSlice:
         )
         readings = rx.reading_skeletons(plan)
         weights = LeafWeights(data, closure.fermion_ends)
+        reading = TreeReading(data)
+        rules = set()
         for skeleton in readings:
             weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
+            rules.update(
+                term.vertex.rule
+                for content in skeleton.contents
+                for term in content.terms
+            )
+        for rule in sorted(rules):
+            reading.conjugate(rule)  # refuses vertices it cannot read
         if program is not None:
-            program.bind(ordinary, data, catalogue)
+            # The program's root terms and the Born close the same vertices
+            # on blocks of the same words: one colour cache serves both.
+            program.bind(ordinary, data, catalogue, colours=closure)
         born_terms = _born_terms(blocks, table, closure, ordinary)
         if missing := set(blocks.born_orders) - set(born_terms):
             # The Born program has roots there, so their virtual sectors would
@@ -1610,7 +1889,7 @@ class LoopSlice:
                 ),
             ),
             native=native,
-            reading=TreeReading(data),
+            reading=reading,
             weights=weights,
             scale_parameter=scale_parameter,
             alpha_s_parameter=alpha_s_parameter,
@@ -1656,9 +1935,16 @@ class LoopSlice:
             rejected=(),
             scaleless_families={},
         )
-        plan = build_schedules(
-            twin_families, self.loop_catalogue, self.colour, policy=_FRAME_POLICY
-        )
+        generation = None
+        if self.generation is not None and "schedules" in generator_input.NATIVE_STAGES:
+            # The native stages schedule the companion's subset of their
+            # certified-scaleless families (and prune it at LC/NLC below).
+            generation = self.generation.scaleless_companion(twin_families)
+            plan = generation.schedules(self.colour, model=_FRAME_MODEL)
+        else:
+            plan = build_schedules(
+                twin_families, self.loop_catalogue, self.colour, policy=_FRAME_POLICY
+            )
         readings = rx.reading_skeletons(plan)
         for skeleton in readings:
             self.weights.fermion_sign(skeleton)
@@ -1674,9 +1960,7 @@ class LoopSlice:
             fourier=None,
             colour_pruned=False,
             scaleless=None,
-            # The native generator stages hold the main families' schedules;
-            # the companion's are Python's (its LC/NLC prune included).
-            generation=None,
+            generation=generation,
         )
         if self.request.accuracy != "full" and prune is not False:
             twin._prune_colour()
@@ -1893,7 +2177,8 @@ class LoopSlice:
     def _scalar_plan(self, powers: tuple[int, ...]):
         """The scalar plans of ``scalars`` and their (name, power) -> ((grade,
         column), ...) layout over the concatenated columns; only structurally
-        nonzero grades are kept.
+        nonzero grades are kept, and every output has an entry (none for a
+        structurally zero one), so a coupling the layout lacks is no output.
 
         The Born couplings have a program of their own: the common
         subexpressions of a scalar program, and so the binary64 rounding of
@@ -1912,11 +2197,14 @@ class LoopSlice:
                 for terms in self.born_terms.values()
                 for term in terms
             }
+            # The entries the site terms close: a vertex not closed under
+            # conjugation is read through its conjugate rule, whose couplings
+            # its terms bind (``SiteClosure.read_entries``).
             outputs = {
                 (entry.coupling.name, power)
                 for site in self.sites.sites
                 if site.rule.whole_rule_continuation is None
-                for entry in site.rule.entries
+                for entry in self.closure.read_entries(site.rule.entries)
                 for power in powers
             }
             outputs.update(
@@ -1983,7 +2271,7 @@ class LoopSlice:
                 if graded.coefficients.expressions[column].value != 0:
                     layout[output].append((degree, column))
         return graded.coefficients, {
-            output: tuple(rows) for output, rows in layout.items()
+            output: tuple(layout.get(output, ())) for output in outputs
         }
 
     def scalars(
@@ -2550,7 +2838,7 @@ class _PointEvaluation:
                         if isinstance(term, WholeRuleTerm):
                             grades = whole[term] if power == 0 else {}
                         else:
-                            grades = scalars.get((term.entry.coupling.name, power), {})
+                            grades = scalars[term.entry.coupling.name, power]
                         for grade, coupling in grades.items():
                             _add_graded(
                                 loops[site.component, power, site.orders],
@@ -2579,7 +2867,7 @@ class _PointEvaluation:
                     if sector is None:
                         continue
                     for power in powers:
-                        for grade, coupling in scalars.get((name, power), {}).items():
+                        for grade, coupling in scalars[name, power].items():
                             degree = degree_of("virtual", sector)
                             # The field coupling's N_c grade joins the
                             # overlap's powers (projection and N_c = 3).
@@ -2665,7 +2953,7 @@ class _PointEvaluation:
                 value = item.multiplicity * value
                 if item.scale is not None:
                     value = scales[item.scale] * value
-                for grade, coupling in scalars.get(item.coupling, {}).items():
+                for grade, coupling in scalars[item.coupling].items():
                     _add_graded(
                         loops[item.component, item.power, item.orders],
                         item.term.colour,
@@ -3013,14 +3301,11 @@ class _PointEvaluation:
                         zero,
                     )
                 )
-        # Catani's operator is the full-colour pole prediction of QCD
-        # corrections (massless and stable massive coloured legs); in "uv"
-        # mode the renormalised virtual has no IR pole to predict.
-        checked = (
-            slice_.request.accuracy == "full"
-            and slice_.alpha_s_parameter
-            and self._stable_coloured_legs()
-        )
+        # Catani's operators are the full-colour pole prediction of QCD and
+        # QED corrections (massless and stable massive coloured or charged
+        # legs; ``_ir_poles``); in "uv" mode the renormalised virtual has no
+        # IR pole to predict.
+        checked = slice_.request.accuracy == "full" and self._stable_coloured_legs()
         ir_poles = (
             self._ir_poles() if self.poles and self.mode != "uv" and checked else None
         )
@@ -3109,29 +3394,61 @@ class _PointEvaluation:
     # -- IR poles ----------------------------------------------------------------------
 
     def _stable_coloured_legs(self) -> bool:
-        """Whether every massive coloured leg has a zero width: Catani's
-        operator describes stable (real-mass) emitters."""
+        """Whether every massive leg that a requested correction dresses has
+        a zero width (coloured legs for QCD, charged legs for QED): Catani's
+        operators describe stable (real-mass) emitters."""
 
         values = _kernel_parameters(self.slice.compiled, self.parameters)
+        charged = (
+            _charged_fields(self.slice.compiled)
+            if "QED" in self.slice.request.corrections
+            else frozenset()
+        )
         return all(
             leg.mass.width == ZERO or values.get(leg.mass.width, 0) == 0
             for leg in self.slice.families.legs
-            if abs(leg.colour) != 1 and leg.mass.mass != ZERO
+            if (abs(leg.colour) != 1 or leg.field in charged) and leg.mass.mass != ZERO
         )
 
     def _ir_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
-        """Catani's single and double poles of the renormalised virtual, or
-        None where the operator makes no prediction (``poles.catani_poles``).
+        """Catani's single and double poles of the renormalised virtual per
+        sector, or None where the operators make no prediction.
+
+        One operator per correction (WP3.2 EWI-6), each over the Born
+        interferences of the amplitude orders a, b whose orders plus that
+        correction's two powers are the sector (cross-order interferences
+        included): QCD (``_qcd_poles``: alpha_s / 2 pi, colour-correlated
+        <T_i.T_j>) and QED (``_qed_poles``: alpha / 2 pi, Q_i Q_j times the
+        colour-summed Born). A sector's prediction is their sum
+        (``poles.sector_sum``); a correction without an operator, or one of
+        them making no prediction, gives none (never a partial sum).
+        """
+
+        operators = {"QCD": self._qcd_poles, "QED": self._qed_poles}
+        predictions = []
+        for name in self.slice.request.corrections:
+            operator = operators.get(name)
+            prediction = None if operator is None else operator()
+            if prediction is None:
+                return None
+            predictions.append(prediction)
+        return sector_sum(predictions)
+
+    def _qcd_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
+        """The QCD operator per sector (``poles.catani_poles``), or None
+        where it makes no prediction.
 
         V_poles = (alpha_s / 2 pi) sum_i sum_{j != i} (1/C_i) (C_i/eps^2 +
         gamma_i/eps) (1 + eps log(mu^2 / |2 p_i.p_j|)) <T_i.T_j> for massless
-        coloured legs, QCD corrections, n_f light flavours in gamma_g; massive
-        emitters take the massive form. The legs' masses are the model's
-        runtime values (a symbolic mass bound to 0 is massless), not the p^2
-        of the given (possibly rounded) momenta.
+        coloured legs, n_f light flavours in gamma_g; massive emitters take
+        the massive form. The legs' masses are the model's runtime values (a
+        symbolic mass bound to 0 is massless), not the p^2 of the given
+        (possibly rounded) momenta.
         """
 
         slice_, numbers = self.slice, self.numbers
+        if slice_.alpha_s_parameter is None:
+            return None
         legs = {leg.label: leg for leg in slice_.basis.legs}
         coloured = sorted(
             label for label, leg in legs.items() if leg.representation != 1
@@ -3160,7 +3477,7 @@ class _PointEvaluation:
         alpha = numbers.real(values[slice_.alpha_s_parameter])
         prefactor = alpha / (2 * numbers.pi)
         mu2 = numbers.real(self.scale)
-        correction = add_orders(tuple((name, 2) for name in slice_.request.corrections))
+        correction = add_orders((("QCD", 2),))
         out = {}
         for sector, _pairs in slice_.sectors:
 
@@ -3192,6 +3509,96 @@ class _PointEvaluation:
             single, double = prediction
             out[sector] = (prefactor * single, prefactor * double)
         return out
+
+    def _qed_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
+        """The QED operator per sector (``poles.qed_catani_poles``), or None
+        where it makes no prediction.
+
+        The correlator is Q_i Q_j (the legs' all-incoming charges) times the
+        colour-summed Born interferences that the sector's QED correction
+        dresses (``poles.dressed_born``, cross-order ones included); the
+        prefactor alpha / 2 pi takes alpha of the model's photon couplings at
+        this point (``_qed_alpha``: alpha_Gmu in a G_mu model), the coupling
+        of the loops. A leg is massless where the model's runtime mass is
+        zero (``ZERO``, a compile-time zero or a value bound to 0). No
+        prediction for a charged leg of unknown mass, a massless charged
+        vector or an on-shell external photon: the engine does not yet couple
+        such a photon with alpha(0), the user's convention [U9] (WP3.2
+        EWI-6b), and ``ew_policy`` refuses electroweak requests with one.
+        """
+
+        slice_, numbers = self.slice, self.numbers
+        compiled = slice_.compiled
+        parameters = {record.name: record for record in compiled.ir.parameters}
+        records = {record.name: record for record in compiled.ir.particles}
+        fixed = slice_.request.fixed_parameters
+        values = _kernel_parameters(compiled, self.parameters)
+        charges: dict[int, Fraction] = {}
+        masses: dict[int, Fraction] = {}
+        spins: dict[int, int] = {}
+        for leg in slice_.families.legs:
+            record = records[leg.field]
+            if ew_policy.is_photon(record, parameters, fixed):
+                return None
+            charge = exact_charge(record.charge)
+            if charge == 0:
+                continue
+            label, name = leg.index + 1, leg.mass.mass
+            if name == ZERO or ew_policy.is_zero(name, parameters, {}):
+                masses[label] = Fraction(0)
+            elif name in values:
+                masses[label] = values[name] ** 2
+            else:
+                return None
+            charges[label] = charge
+            spins[label] = int(record.spin)
+        alpha = self._qed_alpha()
+        if alpha is None:
+            return None
+        prefactor = alpha / (2 * numbers.pi)
+        mu2 = numbers.real(self.scale)
+        zero = numbers.real(0)
+        out = {}
+        for sector, _pairs in slice_.sectors:
+            prediction = qed_catani_poles(
+                charges,
+                {label: self.incoming[label - 1] for label in charges},
+                masses,
+                dressed_born(self.born, sector, "QED", zero),
+                gamma=lambda j: qed_gamma(spins[j], charges[j]),
+                mu2=mu2,
+                log=lambda x: _log(x, numbers),
+                real=numbers.real,
+                sqrt=lambda x: math.sqrt(x) if numbers.double else x.sqrt(),
+            )
+            if prediction is None:
+                return None
+            single, double = prediction
+            out[sector] = (prefactor * single, prefactor * double)
+        return out
+
+    def _qed_alpha(self) -> Any:
+        """alpha of the model's photon couplings at this point's parameters
+        in the carrier (``poles.qed_coupling``, ``poles.coupling_value``), or
+        None if the model has no charge-universal one."""
+
+        slice_ = self.slice
+        cache = slice_._cache
+        if "qed-coupling" not in cache:
+            compiled = slice_.compiled
+            parameters = {record.name: record for record in compiled.ir.parameters}
+            fixed = slice_.request.fixed_parameters
+            cache["qed-coupling"] = qed_coupling(
+                compiled, lambda r: ew_policy.is_photon(r, parameters, fixed)
+            )
+        coupling = cache["qed-coupling"]
+        if coupling is None:
+            return None
+        return coupling_value(
+            coupling,
+            _kernel_parameters(slice_.compiled, self.parameters),
+            self.numbers.carrier,
+        )
 
     def _sandwich(self, left, right, matrix) -> Any:
         slice_ = self.slice
@@ -3414,6 +3821,96 @@ class _BlockRows:
         return tuple(sign * value for value in self._rows[(entry.current_id, variant)])
 
 
+def _family_loop_species(families: FamilySet, data) -> tuple[int, ...]:
+    """PDG codes of the loop species the families route (WP3.2 EWI-1): the
+    cut species and the loop lines of every admitted and certified-scaleless
+    family's routings, with the members of merged closed-loop flavour
+    classes. The request's loop content, not the loop particles its
+    counterterm rules declare (an electroweak UV rule declares none, and a
+    lepton at leg 1 has no counterterm rule at the root); species the
+    families never route (a unitary-gauge W with joint corrections on a
+    gluon process) get no kernels."""
+
+    names: set[str] = set()
+    for group in (families.families, families.scaleless_families):
+        for family in group.values():
+            for closure in family.closures:
+                cut, positions = families.routing(closure)
+                names.add(cut)
+                for position in positions:
+                    names.update((position.vertex.loop_in, position.vertex.loop_out))
+    names.update(
+        member
+        for member, representative in families.merged.items()
+        if representative in names
+    )
+    pdg = {entry["name"]: int(entry["pdg_code"]) for entry in data["particles"]}
+    return tuple(sorted(pdg[name] for name in names))
+
+
+def _eligible_loop_species(
+    loop_catalogue: ModelLoopCatalogue, selection: LoopOrderSelection, data
+) -> tuple[int, ...]:
+    """PDG codes of the species perturbative in a requested correction (the
+    family recursion's eligibility, ``families._Recursion``), vetoed
+    particles excluded, ghosts included."""
+
+    pdg = {entry["name"]: int(entry["pdg_code"]) for entry in data["particles"]}
+    return tuple(
+        sorted(
+            pdg[name]
+            for name in loop_catalogue.loop_species()
+            if loop_catalogue.species(name).perturbative_orders & selection.corrections
+        )
+    )
+
+
+def _conjugate_site_entries(sites, conjugates: ConjugateVertices, program):
+    """Entries of the conjugate rules through which the root closure reads
+    the counterterm ``sites`` whose vertices are not closed under conjugation
+    (``ct_sites.ConjugateVertices``), for the kernel catalogue.
+
+    The production program reads such a root site through its conjugate
+    rule, so that rule must be lowered: a conjugate rule the program records
+    as inert (its vertex enters no tree inside a current) is refused.
+    """
+
+    inert = {} if program is None else program.recursion.inert
+    out: dict[int, Any] = {}
+    for site in sites:
+        if conjugates.closed(site.rule.entries):
+            continue
+        name, entries = conjugates.named(site.rule.entries)
+        if name in inert:
+            raise NotImplementedError(
+                f"counterterm root site {site.rule_name} is read through its "
+                f"conjugate rule {name}, which the program leaves inert "
+                f"({inert[name]})"
+            )
+        out.update((id(entry), entry) for entry in entries)
+    return list(out.values())
+
+
+def _check_declared_loop_species(sites, loop_species: Sequence[int]) -> None:
+    """The loop particles of every admitted counterterm alternative are
+    eligible loop species of the request (``_eligible_loop_species``): a rule
+    admitted for loops of species the request cannot route (vetoed or not
+    perturbative in its corrections) would renormalise a loop the virtual
+    does not contain, so the request is refused as the other admission
+    checks refuse theirs (NotImplementedError)."""
+
+    known = {abs(pdg) for pdg in loop_species}
+    for site in sites:
+        for index in site.alternatives:
+            missing = set(site.rule.alternatives[index]) - known
+            if missing:
+                raise NotImplementedError(
+                    f"counterterm rule {site.rule_name} is admitted for loop "
+                    f"particles {sorted(missing)} that are no loop species of the "
+                    f"request's families {sorted(known)}"
+                )
+
+
 def _ordinary_entries(prepared, data) -> tuple[tuple[Any, ...], ...]:
     """Ordinary (non-ghost) tree vertex entries by vertex, for the Born closure."""
 
@@ -3499,6 +3996,14 @@ def _mass_values(
         mass: Fraction(0) if mass.massless else values[mass.mass] ** 2
         for mass in masses
     }
+
+
+def _charged_fields(compiled) -> frozenset[str]:
+    """Names of the model's electrically charged particles."""
+
+    return frozenset(
+        str(record.name) for record in compiled.ir.particles if float(record.charge)
+    )
 
 
 def _light_flavours(data, values: Mapping[str, Fraction]) -> int:

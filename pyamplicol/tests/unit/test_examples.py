@@ -88,6 +88,7 @@ _VIRTUAL_ONLY_LEAVES = frozenset(
         "evaluation.mu_r2_file",
         "evaluation.stability.absolute_tolerance",
         "evaluation.stability.relative_tolerance",
+        "generation.particle_veto",
     }
 )
 _VIRTUAL_ONLY_SECTIONS = ("loop.model.", "loop.preparation")

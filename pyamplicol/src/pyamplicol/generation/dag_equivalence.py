@@ -3835,17 +3835,20 @@ def assign_recursive_current_evaluation_reuse(
         return dag
 
     equivalence_by_kind: dict[int, VertexEvaluationEquivalence] = {}
+    coupling_identities = _CouplingIdentities(model)
     current_equivalences = _derive_current_value_equivalences(
         dag,
         model,
         equivalence_by_kind=equivalence_by_kind,
         derived_current_ids=_shared_contract_current_ids(dag),
+        coupling_identities=coupling_identities,
     )
     return _rewrite_interaction_evaluation_reuse(
         dag,
         model,
         current_equivalences=current_equivalences,
         equivalence_by_kind=equivalence_by_kind,
+        coupling_identities=coupling_identities,
     )
 
 
@@ -3980,9 +3983,13 @@ def _rewrite_interaction_evaluation_reuse(
     *,
     current_equivalences: tuple[_CurrentValueEquivalence, ...],
     equivalence_by_kind: dict[int, VertexEvaluationEquivalence],
+    coupling_identities: _CouplingIdentities | None = None,
 ) -> GenericDAG:
     evaluation_group_by_key: dict[_EvaluationKey, int] = {}
     interactions: list[InteractionNode] = []
+    identity = coupling_identities or _CouplingIdentities(model)
+    # Rewritten interactions share one tuple per factor (bit pattern).
+    factors: dict[tuple[float, float, float, float], _ComplexWeight] = {}
 
     for interaction in dag.interactions:
         kernel_equivalence = _kernel_equivalence(
@@ -4005,19 +4012,52 @@ def _rewrite_interaction_evaluation_reuse(
             canonical_inputs,
             int(result.index.particle_id),
             int(result.index.chirality),
-            _runtime_coupling_identity(
-                model,
-                vertex_kind=interaction.vertex_kind,
-                vertex_particles=interaction.vertex_particles,
-                coupling=interaction.coupling,
+            identity(
+                interaction.vertex_kind,
+                interaction.vertex_particles,
+                interaction.coupling,
             ),
         )
         evaluation_group_id = evaluation_group_by_key.setdefault(
             evaluation_key,
             len(evaluation_group_by_key),
         )
+        if interaction.evaluation_group_id == evaluation_group_id and (
+            _complex_weight_bits_identical(
+                interaction.evaluation_factor, evaluation_factor
+            )
+        ):
+            # Bit for bit what ``replace`` would build.
+            interactions.append(interaction)
+            continue
+        evaluation_factor = factors.setdefault(
+            (
+                evaluation_factor[0],
+                evaluation_factor[1],
+                copysign(1.0, evaluation_factor[0]),
+                copysign(1.0, evaluation_factor[1]),
+            ),
+            evaluation_factor,
+        )
+        # ``replace`` without its field introspection (every field is an
+        # init field and InteractionNode has no __post_init__).
         interactions.append(
-            replace(
+            InteractionNode(
+                id=interaction.id,
+                vertex_kind=interaction.vertex_kind,
+                vertex_particles=interaction.vertex_particles,
+                left_id=interaction.left_id,
+                right_id=interaction.right_id,
+                result_id=interaction.result_id,
+                coupling=interaction.coupling,
+                color_weight=interaction.color_weight,
+                lowering_backend=interaction.lowering_backend,
+                full_tensor_network_ready=interaction.full_tensor_network_ready,
+                evaluation_group_id=evaluation_group_id,
+                evaluation_factor=evaluation_factor,
+            )
+            if type(interaction) is InteractionNode
+            else replace(
                 interaction,
                 evaluation_group_id=evaluation_group_id,
                 evaluation_factor=evaluation_factor,
@@ -4736,6 +4776,7 @@ def _derive_current_value_equivalences(
         Mapping[int, _CurrentValueEquivalence] | None
     ) = None,
     derived_current_ids: Set[int] | None = None,
+    coupling_identities: _CouplingIdentities | None = None,
 ) -> tuple[_CurrentValueEquivalence, ...]:
     """Derive current classes in increasing external-subset order.
 
@@ -4810,6 +4851,7 @@ def _derive_current_value_equivalences(
             model,
             current_equivalences=current_equivalences,
             equivalence_by_kind=kernel_equivalences,
+            coupling_identities=coupling_identities,
         )
         equivalence = _classify_current_term_vector(
             current_id=current.id,
@@ -5490,6 +5532,7 @@ def _exact_representable_complex_ratio(
 
 
 _EXACT_UNITS = frozenset({(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)})
+_UNIT = (1.0, 0.0)
 
 
 def _exact_representable_complex_product(
@@ -5500,6 +5543,12 @@ def _exact_representable_complex_product(
 
     if not _complex_weight_is_finite(left) or not _complex_weight_is_finite(right):
         return None
+    if left == _UNIT:
+        # 1 * z: every component is z's own up to the sign of a zero, which
+        # the canonical form drops (as for the general product below).
+        return _canonical_complex_weight(right)
+    if right == _UNIT:
+        return _canonical_complex_weight(left)
     if left in _EXACT_UNITS or right in _EXACT_UNITS:
         # A factor +-1 or +-i only swaps and negates the other's finite
         # components, so the binary64 product is exact.
@@ -5630,8 +5679,10 @@ def _current_term_vector(
     *,
     current_equivalences: list[_CurrentValueEquivalence | None],
     equivalence_by_kind: dict[int, VertexEvaluationEquivalence],
+    coupling_identities: _CouplingIdentities | None = None,
 ) -> _CurrentTermVector:
     coefficients_by_key: dict[_EvaluationKey, list[_ComplexWeight]] = defaultdict(list)
+    identity = coupling_identities or _CouplingIdentities(model)
     for interaction in interactions:
         kernel_equivalence = _kernel_equivalence(
             model,
@@ -5656,11 +5707,10 @@ def _current_term_vector(
             canonical_inputs,
             int(current.index.particle_id),
             int(current.index.chirality),
-            _runtime_coupling_identity(
-                model,
-                vertex_kind=interaction.vertex_kind,
-                vertex_particles=interaction.vertex_particles,
-                coupling=interaction.coupling,
+            identity(
+                interaction.vertex_kind,
+                interaction.vertex_particles,
+                interaction.coupling,
             ),
         )
         coefficient = _complex_weight_mul(
@@ -5714,6 +5764,52 @@ def _runtime_coupling_identity(
     )
     provenance = tuple((0, "") if name is None else (1, str(name)) for name in names)
     return coupling, provenance
+
+
+class _CouplingIdentities:
+    """``_runtime_coupling_identity`` of one model, memoized for one pass.
+
+    The provenance depends on the vertex and the coupling's values only (a
+    signed zero names the same parameters), so it is cached by value; the
+    identity keeps the interaction's own coupling.
+    """
+
+    __slots__ = ("_model", "_provenance")
+
+    def __init__(self, model: Model) -> None:
+        self._model = model
+        self._provenance: dict[tuple[object, ...], tuple[tuple[int, str], ...]] = {}
+
+    def __call__(
+        self,
+        vertex_kind: int,
+        vertex_particles: tuple[int, int, int],
+        coupling: tuple[float, float],
+    ) -> tuple[tuple[float, float], tuple[tuple[int, str], ...]]:
+        key = (vertex_kind, vertex_particles, coupling)
+        provenance = self._provenance.get(key)
+        if provenance is None:
+            provenance = _runtime_coupling_identity(
+                self._model,
+                vertex_kind=vertex_kind,
+                vertex_particles=vertex_particles,
+                coupling=coupling,
+            )[1]
+            self._provenance[key] = provenance
+        return coupling, provenance
+
+
+def _complex_weight_bits_identical(
+    left: _ComplexWeight,
+    right: _ComplexWeight,
+) -> bool:
+    """Bitwise equality of two finite complex weights (signed zeros differ)."""
+
+    return (
+        left == right
+        and copysign(1.0, left[0]) == copysign(1.0, right[0])
+        and copysign(1.0, left[1]) == copysign(1.0, right[1])
+    )
 
 
 def _negate_term_vector(vector: _CurrentTermVector) -> _CurrentTermVector:
