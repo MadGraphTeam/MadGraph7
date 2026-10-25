@@ -875,6 +875,66 @@ def _counterterm_program(
     )
 
 
+@dataclass(frozen=True)
+class _CountertermReferences:
+    """The reference parameters of a slice's counterterm program (WP3.2
+    EWI-3) on the parameter program's inputs.
+
+    ``parameters`` maps every reference parameter of the CT model
+    (``CountertermModel.coefficients``) to its coefficient-plan output
+    (CT scalar, epsilon power) and whether it is the imaginary part;
+    ``columns`` holds every such output's (value, active diagnostic), the
+    plan's inputs replaced by the program's; ``library`` is the scalar
+    library whose helper functions they call (``None`` without references).
+    """
+
+    parameters: Mapping[str, tuple[tuple[str, int], bool]]
+    columns: Mapping[tuple[str, int], tuple[Any, Any]]
+    library: Any
+
+    @classmethod
+    def of(
+        cls, slice_: Any, index: Mapping[str, int], symbol_of: Mapping[str, Any]
+    ) -> _CountertermReferences:
+        from symbolica import Replacement
+
+        model = slice_.counterterm_program.recursion.model
+        if not model.coefficients:
+            return cls({}, {}, None)
+        plan = model.coefficient_plan
+        inputs = []
+        for name, symbol in zip(plan.external_names, plan.input_symbols, strict=True):
+            if name not in index:
+                raise NotImplementedError(
+                    f"the counterterm coefficient plan reads {name!r}, which the "
+                    "tree program has not"
+                )
+            inputs.append(Replacement(symbol, symbol_of[name]))
+        columns = {
+            output: (
+                expression.value.replace_multiple(inputs),
+                expression.diagnostic.replace_multiple(inputs),
+            )
+            for output, expression in zip(plan.outputs, plan.expressions, strict=True)
+        }
+        parameters = {
+            name: ((scalar, power), part == "im")
+            for name, (scalar, power, part) in model.coefficients.items()
+        }
+        return cls(parameters, columns, plan.program.library)
+
+    def part(self, name: str) -> Any:
+        """The reference parameter ``name`` as a real expression: the real
+        or imaginary part of its output (the scalar library's projection,
+        which every carrier evaluates exactly)."""
+
+        key, imaginary = self.parameters[name]
+        projection = self.library.predicates[
+            "imaginary_part" if imaginary else "real_part"
+        ]
+        return projection(self.columns[key][0])
+
+
 def _parameter_program(
     slice_: Any,
     exporter: Any,
@@ -904,7 +964,13 @@ def _parameter_program(
     a fractional power was distributed over (the executor checks it
     positive, as ``KernelConstants`` does). The evaluator is compiled on
     canonical symbols (``assemble._canonical_stage``): its term order does
-    not depend on the process history.
+    not depend on the process history. The counterterm program's reference
+    parameters (``ct_recursion.CoefficientLowering``, WP3.2 EWI-3) are
+    outputs too: per referenced CT scalar coefficient its coefficient-plan
+    expression (``CountertermModel.coefficient_plan``, the helpers again the
+    scalar library's functions) and its active diagnostic; a reference reads
+    its real or imaginary part, as ``CountertermModel.coefficient_values``
+    binds it in Python.
     """
 
     from symbolica import E, Expression, FunctionDefinition, Replacement
@@ -959,11 +1025,15 @@ def _parameter_program(
             raise NotImplementedError(f"a tree model parameter of kind {kind!r}")
     # The counterterm program's model parameters: the model's, plus the CT
     # multiplicities and slot switches of the request (integers fixed per
-    # process; every slot on, finite-only evaluations skip the pole terms).
+    # process; every slot on, finite-only evaluations skip the pole terms)
+    # and the referenced CT scalars' coefficients (per card).
     counterterm_model = []
+    finite: list[int] = []
+    helpers: dict[Any, Any] = {}
     if counterterm_trees is not None:
         ct_rows = counterterm_trees.rows
         fixed = counterterm_trees.fixed
+        references = _CountertermReferences.of(slice_, index, symbol_of)
         ct_symbols = symbols.model(ct_rows.compiled.name)
         ct_externals = []
         for record in ct_rows._records:
@@ -975,6 +1045,8 @@ def _parameter_program(
                 ct_externals.append(Replacement(symbol, symbol_of[name]))
             elif name in fixed:
                 ct_externals.append(Replacement(symbol, Expression.num(fixed[name])))
+            elif name in references.parameters:
+                ct_externals.append(Replacement(symbol, references.part(name)))
             else:
                 raise NotImplementedError(
                     f"the counterterm program reads {name!r}, which the trees have not"
@@ -985,6 +1057,19 @@ def _parameter_program(
                 name = str(record["name"])
                 if name in index:
                     counterterm_model.append(["input", index[name], False])
+                    continue
+                if name in references.parameters:
+                    key, imaginary = references.parameters[name]
+                    value, diagnostic = references.columns[key]
+                    o = output(("ct-reference", key), lambda v=value: v)
+                    counterterm_model.append(["output", o, imaginary])
+                    if diagnostic != 0:
+                        finite.append(
+                            output(
+                                ("ct-reference-diagnostic", key),
+                                lambda d=diagnostic: d,
+                            )
+                        )
                     continue
                 o = output(("ct-fixed", name), lambda v=fixed[name]: Expression.num(v))
                 counterterm_model.append(["output", o, False])
@@ -1042,7 +1127,7 @@ def _parameter_program(
 
     # Counterterm and field couplings per epsilon power and N_c grade; they
     # may read the renormalisation scale (one value per point).
-    counterterm_outputs, finite = [], []
+    counterterm_outputs = []
     used: set[int] = set()
 
     def scalar(name: str, power: int, grade: int) -> Any:
@@ -1084,10 +1169,13 @@ def _parameter_program(
             )
         )
     # The scalar library's helper functions (e.g. ``cond``, ``reglog``) the
-    # counterterm and field couplings call; every plan shares the library.
-    helpers: dict[Any, Any] = {}
-    for p in sorted(used):
-        for head, body in plans[p].program.library._bodies.items():
+    # counterterm and field couplings and the CT references call; every plan
+    # shares the library.
+    libraries = [plans[p].program.library for p in sorted(used)]
+    if counterterm_trees is not None and references.library is not None:
+        libraries.append(references.library)
+    for library in libraries:
+        for head, body in library._bodies.items():
             if helpers.setdefault(head, body) != body:
                 raise ValueError(f"the scalar plans define {head!r} differently")
 
