@@ -268,6 +268,29 @@ def test_native_extension_of_an_uncompressed_table(controls, loop_native):
         )
 
 
+@pytest.mark.loop_fast
+def test_native_extension_of_an_empty_table_with_certificates(controls, loop_native):
+    """The poles companion's seeds on the slice's certificates (an empty
+    table holding another table's certificates, extended with compression;
+    generation-scale-2's lean companion): equal to the Python stage."""
+
+    from pyamplicol.loops.v2.colour import SeedTable
+
+    colour, skeletons = controls("uux_ggg")
+    half = len(skeletons) // 2
+    built, _class_of = python_build(colour, skeletons[:half], compress=True)
+    assert built.certificates
+    empty = SeedTable(
+        built.basis, (), (), (), built.formal_nc, certificates=dict(built.certificates)
+    )
+    assert_same_tables(
+        native_seeds.extend_seed_table(
+            empty, {}, colour, skeletons[half:], compress=True, native=loop_native
+        ),
+        python_extend(empty, {}, colour, skeletons[half:], compress=True),
+    )
+
+
 _NO_KEY_SCRIPT = r"""
 import json, sys
 from pyamplicol.loops.native import load_loop_native
