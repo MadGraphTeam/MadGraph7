@@ -182,6 +182,16 @@ def _antiparticle_legs(
     return tuple(out)
 
 
+def closed_under_conjugation(
+    particles: Sequence[str], antinames: Mapping[str, str]
+) -> bool:
+    """Whether a vertex's particle multiset is its own conjugate: the tree
+    engine then reads the vertex on its own legs, else through its conjugate
+    rule (``conjugate_vertex_rules``, ``ct_sites.ConjugateVertices``)."""
+
+    return sorted(particles) == sorted(antinames[name] for name in particles)
+
+
 def conjugate_vertex_rules(data: Mapping[str, Any]) -> dict[str, str | None]:
     """The conjugate rule of every vertex rule of a native model (``data``).
 
@@ -215,11 +225,10 @@ def conjugate_vertex_rules(data: Mapping[str, Any]) -> dict[str, str | None]:
         by_fields.setdefault(key, []).append(rule)
     out: dict[str, str | None] = {}
     for rule in data["vertex_rules"]:
-        fields = tuple(sorted(rule["particles"]))
-        conjugate = tuple(sorted(antinames[name] for name in rule["particles"]))
-        if conjugate == fields:
+        if closed_under_conjugation(rule["particles"], antinames):
             out[rule["name"]] = rule["name"]
             continue
+        conjugate = tuple(sorted(antinames[name] for name in rule["particles"]))
         found = by_fields.get((conjugate, orders(rule)), [])
         out[rule["name"]] = (
             found[0]["name"]
@@ -483,6 +492,7 @@ __all__ = [
     "LeafWeights",
     "Normalisation",
     "TreeReading",
+    "closed_under_conjugation",
     "conjugate_vertex_rules",
     "tree_reading_legs",
 ]

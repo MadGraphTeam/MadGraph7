@@ -129,6 +129,7 @@ from .ct_sites import (
     SiteClosure,
     SiteTerm,
     generate_counterterm_sites,
+    require_one_singlet_line,
     vanishes_identically,
 )
 from .ct_sites import (
@@ -863,17 +864,19 @@ def _born_table(data, process, selection, request, table) -> ModelBlockTable:
     loop orders' cap) when that covers the Born orders, else one within the
     Born's own (a Born order beyond the loop cap, e.g. the electroweak Born
     of a request for QCD loops only, interferes with the QCD loops). An
-    order the request does not bound is bounded by the tree-level power
-    n - 2 of the n legs."""
+    order the request does not bound is bounded by its largest power in a
+    tree of the n legs (``_tree_order_bounds``)."""
 
     names = sorted(
         {str(name) for entry in data["couplings"] for name, _power in entry["orders"]}
     )
-    tree = len(process.legs) - 2
+    tree = _tree_order_bounds(
+        data, len(process.legs), [n for n in names if n not in request.born_orders]
+    )
     born = {
-        name: int(request.born_orders.get(name, tree))
+        name: int(request.born_orders.get(name, tree.get(name, 0)))
         for name in names
-        if request.born_orders.get(name, tree)
+        if request.born_orders.get(name, tree.get(name, 0))
     }
     loop = dict(selection.cap)
     if all(power <= loop.get(name, 0) for name, power in born.items()):
@@ -883,6 +886,36 @@ def _born_table(data, process, selection, request, table) -> ModelBlockTable:
     return _field_level_table(
         data, process, selection, request, cap=tuple(sorted(cap.items()))
     )
+
+
+def _tree_order_bounds(data, legs: int, names: Sequence[str]) -> dict[str, int]:
+    """The largest power of each coupling order of ``names`` in a tree with
+    ``legs`` external legs, from the model's vertices: a tree's vertices have
+    sum(arity - 2) = legs - 2, so an order's power is at most legs - 2 times
+    its largest power per arity - 2 over the vertices (legs - 2 for
+    renormalisable vertices; more for effective ones, e.g. a g g H vertex of
+    QCD = 2). A two-point vertex carrying one of the orders leaves its power
+    unbounded and is refused."""
+
+    wanted = set(names)
+    orders = {entry["name"]: entry["orders"] for entry in data["couplings"]}
+    ratio: dict[str, Fraction] = {}
+    for rule in data["vertex_rules"]:
+        arity = len(rule["particles"])
+        for row in rule["couplings"]:
+            for coupling in row:
+                for name, power in orders[coupling] if coupling else ():
+                    if name not in wanted or int(power) <= 0:
+                        continue
+                    if arity <= 2:
+                        raise NotImplementedError(
+                            f"vertex {rule['name']} has {arity} legs and coupling "
+                            f"order {name}={power}: its tree-level power is unbounded"
+                        )
+                    ratio[name] = max(
+                        ratio.get(name, Fraction(0)), Fraction(int(power), arity - 2)
+                    )
+    return {name: int((legs - 2) * value) for name, value in ratio.items()}
 
 
 def _field_level_families(
@@ -1519,11 +1552,28 @@ class LoopSlice:
         cache = self._cache.setdefault("terms-of", {})
         terms = cache.get(site)
         if terms is None:
-            terms = cache[site] = (
-                self.closure.terms(site, self.cancelled_cells.get(site, ()))
-                if site.rule.whole_rule_continuation is None
-                else _whole_rule_terms(self.closure, site)
-            )
+            if site.rule.whole_rule_continuation is None:
+                terms = self.closure.terms(site, self.cancelled_cells.get(site, ()))
+                _plans, layout = self._scalar_plan(LAURENT_POWERS)
+                # A coupling the scalar plan does not compute would make its
+                # term vanish without an error (the Python and native
+                # evaluations read the layout).
+                missing = sorted(
+                    {
+                        term.entry.coupling.name
+                        for term in terms
+                        for power in LAURENT_POWERS
+                        if (term.entry.coupling.name, power) not in layout
+                    }
+                )
+                if missing:
+                    raise ValueError(
+                        f"counterterm site {site.rule_name} binds couplings "
+                        f"{missing} that the slice's scalar plan does not compute"
+                    )
+            else:
+                terms = _whole_rule_terms(self.closure, site)
+            cache[site] = terms
         return terms
 
     @property
@@ -1572,6 +1622,9 @@ class LoopSlice:
         process = build_model_process_ir(
             request.process, compiled.ir, color_accuracy="full"
         )
+        # The root closure and the loops sign one colour-singlet fermion line
+        # only (``ct_sites.require_one_singlet_line``; WP3.2 EWI-5 lifts it).
+        require_one_singlet_line(process)
         # Fail-closed guards of electroweak requests (WP3.2 EWI-0b), before
         # any tree, family or counterterm generation (``ew_policy``).
         electroweak = ew_policy.electroweak(
@@ -1737,7 +1790,7 @@ class LoopSlice:
             data,
         )
         entries = [e for site in root_sites for e in site.rule.entries]
-        entries += _conjugate_site_entries(root_sites, conjugates, program, data)
+        entries += _conjugate_site_entries(root_sites, conjugates, program)
         entries += [e for rows in ordinary for e in rows]
         _check_declared_loop_species(
             root_sites, _eligible_loop_species(loop_catalogue, selection, data)
@@ -1760,11 +1813,16 @@ class LoopSlice:
         readings = rx.reading_skeletons(plan)
         weights = LeafWeights(data, closure.fermion_ends)
         reading = TreeReading(data)
+        rules = set()
         for skeleton in readings:
             weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
-            for content in skeleton.contents:
-                for term in content.terms:
-                    reading.conjugate(term.vertex.rule)  # refuses unread vertices
+            rules.update(
+                term.vertex.rule
+                for content in skeleton.contents
+                for term in content.terms
+            )
+        for rule in sorted(rules):
+            reading.conjugate(rule)  # refuses vertices it cannot read
         if program is not None:
             # The program's root terms and the Born close the same vertices
             # on blocks of the same words: one colour cache serves both.
@@ -2119,7 +2177,8 @@ class LoopSlice:
     def _scalar_plan(self, powers: tuple[int, ...]):
         """The scalar plans of ``scalars`` and their (name, power) -> ((grade,
         column), ...) layout over the concatenated columns; only structurally
-        nonzero grades are kept.
+        nonzero grades are kept, and every output has an entry (none for a
+        structurally zero one), so a coupling the layout lacks is no output.
 
         The Born couplings have a program of their own: the common
         subexpressions of a scalar program, and so the binary64 rounding of
@@ -2138,11 +2197,14 @@ class LoopSlice:
                 for terms in self.born_terms.values()
                 for term in terms
             }
+            # The entries the site terms close: a vertex not closed under
+            # conjugation is read through its conjugate rule, whose couplings
+            # its terms bind (``SiteClosure.read_entries``).
             outputs = {
                 (entry.coupling.name, power)
                 for site in self.sites.sites
                 if site.rule.whole_rule_continuation is None
-                for entry in site.rule.entries
+                for entry in self.closure.read_entries(site.rule.entries)
                 for power in powers
             }
             outputs.update(
@@ -2209,7 +2271,7 @@ class LoopSlice:
                 if graded.coefficients.expressions[column].value != 0:
                     layout[output].append((degree, column))
         return graded.coefficients, {
-            output: tuple(rows) for output, rows in layout.items()
+            output: tuple(layout.get(output, ())) for output in outputs
         }
 
     def scalars(
@@ -2776,7 +2838,7 @@ class _PointEvaluation:
                         if isinstance(term, WholeRuleTerm):
                             grades = whole[term] if power == 0 else {}
                         else:
-                            grades = scalars.get((term.entry.coupling.name, power), {})
+                            grades = scalars[term.entry.coupling.name, power]
                         for grade, coupling in grades.items():
                             _add_graded(
                                 loops[site.component, power, site.orders],
@@ -2805,7 +2867,7 @@ class _PointEvaluation:
                     if sector is None:
                         continue
                     for power in powers:
-                        for grade, coupling in scalars.get((name, power), {}).items():
+                        for grade, coupling in scalars[name, power].items():
                             degree = degree_of("virtual", sector)
                             # The field coupling's N_c grade joins the
                             # overlap's powers (projection and N_c = 3).
@@ -2891,7 +2953,7 @@ class _PointEvaluation:
                 value = item.multiplicity * value
                 if item.scale is not None:
                     value = scales[item.scale] * value
-                for grade, coupling in scalars.get(item.coupling, {}).items():
+                for grade, coupling in scalars[item.coupling].items():
                     _add_graded(
                         loops[item.component, item.power, item.orders],
                         item.term.colour,
@@ -3803,7 +3865,7 @@ def _eligible_loop_species(
     )
 
 
-def _conjugate_site_entries(sites, conjugates: ConjugateVertices, program, data):
+def _conjugate_site_entries(sites, conjugates: ConjugateVertices, program):
     """Entries of the conjugate rules through which the root closure reads
     the counterterm ``sites`` whose vertices are not closed under conjugation
     (``ct_sites.ConjugateVertices``), for the kernel catalogue.
@@ -3813,12 +3875,10 @@ def _conjugate_site_entries(sites, conjugates: ConjugateVertices, program, data)
     as inert (its vertex enters no tree inside a current) is refused.
     """
 
-    anti = {p["name"]: p["antiname"] for p in data["particles"]}
     inert = {} if program is None else program.recursion.inert
     out: dict[int, Any] = {}
     for site in sites:
-        names = site.rule.entries[0].particle_names if site.rule.entries else ()
-        if not names or sorted(names) == sorted(anti[n] for n in names):
+        if conjugates.closed(site.rule.entries):
             continue
         name, entries = conjugates.named(site.rule.entries)
         if name in inert:
@@ -3836,14 +3896,15 @@ def _check_declared_loop_species(sites, loop_species: Sequence[int]) -> None:
     eligible loop species of the request (``_eligible_loop_species``): a rule
     admitted for loops of species the request cannot route (vetoed or not
     perturbative in its corrections) would renormalise a loop the virtual
-    does not contain."""
+    does not contain, so the request is refused as the other admission
+    checks refuse theirs (NotImplementedError)."""
 
     known = {abs(pdg) for pdg in loop_species}
     for site in sites:
         for index in site.alternatives:
             missing = set(site.rule.alternatives[index]) - known
             if missing:
-                raise ValueError(
+                raise NotImplementedError(
                     f"counterterm rule {site.rule_name} is admitted for loop "
                     f"particles {sorted(missing)} that are no loop species of the "
                     f"request's families {sorted(known)}"

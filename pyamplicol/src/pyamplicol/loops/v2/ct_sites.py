@@ -135,6 +135,7 @@ from .colour import (
     multiply,
     reduce_network,
 )
+from .conventions import GHOST_SPIN, FermionSignError, closed_under_conjugation
 from .families import (
     BlockCurrent,
     BlockTable,
@@ -815,12 +816,18 @@ class ConjugateVertices:
     the antiparticles; it must be unique, and both must have one colour
     structure (the closure keeps the vertex's own colour, the incoming
     reading of the colour seeds, and the pairing of several structures with
-    the conjugate's is not established). Otherwise ``of`` refuses.
+    the conjugate's is not established), and neither may have a ghost leg
+    (an electroweak ghost line, whose reading through the conjugate is not
+    established); the same conditions as ``conventions.
+    conjugate_vertex_rules`` for the loop segments. Otherwise ``of`` refuses.
     """
 
     def __init__(self, groups: Iterable[tuple[str, Sequence[Any]]], native_model: Any):
         data = model_data(native_model)
         self._anti = {p["name"]: p["antiname"] for p in data["particles"]}
+        self._ghosts = frozenset(
+            p["name"] for p in data["particles"] if int(p["spin"]) == GHOST_SPIN
+        )
         self._groups: dict[tuple, list[tuple[str, tuple[Any, ...]]]] = defaultdict(list)
         for name, entries in groups:
             entries = tuple(entries)
@@ -853,6 +860,12 @@ class ConjugateVertices:
                 "needs exactly one"
             )
         name, conjugate = found[0]
+        if self._ghosts.intersection(first.particle_names):
+            raise NotImplementedError(
+                f"{first.vertex_name} [{' '.join(first.particle_names)}] is not "
+                "closed under conjugation and has a ghost leg, whose reading "
+                "through the conjugate rule is not established"
+            )
         for group in (entries, conjugate):
             if len({entry.color_index for entry in group}) != 1:
                 raise NotImplementedError(
@@ -866,6 +879,13 @@ class ConjugateVertices:
         """The entries of the conjugate rule of a vertex's ``entries``."""
 
         return self.named(entries)[1]
+
+    def closed(self, entries: Sequence[Any]) -> bool:
+        """Whether the vertex of ``entries`` is closed under conjugation."""
+
+        return not entries or closed_under_conjugation(
+            entries[0].particle_names, self._anti
+        )
 
 
 class SiteClosure:
@@ -886,11 +906,13 @@ class SiteClosure:
         catalogue: LoopKernelCatalogue,
         conjugates: ConjugateVertices | None = None,
     ):
+        require_one_singlet_line(blocks.process)
         data = model_data(native_model)
         self.tree = blocks
         self.catalogue = catalogue
         self._fields = _NativeFields.of(data)
         self._by_name = {entry["name"]: entry for entry in data["particles"]}
+        self._anti = {name: entry["antiname"] for name, entry in self._by_name.items()}
         self.legs = process_color_legs(blocks.process)
         self._representations = {leg.label: leg.representation for leg in self.legs}
         # Coloured fermion endpoints (label -> all-outgoing representation).
@@ -916,8 +938,6 @@ class SiteClosure:
                 ].append(block)
         self._colours: dict[tuple, ConnectedColorTensor] = {}
         self._conjugates = conjugates
-        # Vertices read through their conjugate rule (``vertex_terms``).
-        self.conjugate_readings: set[str] = set()
 
     def share_colours(self, other: SiteClosure) -> None:
         """Share ``other``'s closed vertex colours (one cache for both) and,
@@ -939,7 +959,6 @@ class SiteClosure:
         self._colours = other._colours
         if self._conjugates is None:
             self._conjugates = other._conjugates
-        self.conjugate_readings = other.conjugate_readings
 
     @property
     def fermion_ends(self) -> Mapping[int, int]:
@@ -955,8 +974,8 @@ class SiteClosure:
         entries = tuple(
             entry for entry in site.rule.entries if entry_cell(entry) not in cancelled
         )
-        if len(entries) != len(site.rule.entries) and not self._conjugation_closed(
-            site.rule.entries[0].particle_names
+        if len(entries) != len(site.rule.entries) and not self._self_conjugate(
+            site.rule.entries
         ):
             raise NotImplementedError(
                 f"{site.rule_name}: cancelled cells of a vertex read through its "
@@ -1022,19 +1041,11 @@ class SiteClosure:
             options.append(rows)
         sign = self._root_sign(attachments)
         entries = tuple(entries)
-        colour_entry = None
-        if entries and not self._conjugation_closed(entries[0].particle_names):
-            # The tree engine reads these blocks through the conjugate rule
-            # (module docstring): its entries give kernels and couplings, the
-            # vertex's single colour structure the colour.
-            if self._conjugates is None:
-                raise NotImplementedError(
-                    f"{entries[0].vertex_name} is not closed under conjugation; "
-                    "the tree reading of its legs needs its conjugate rule"
-                )
-            colour_entry = entries[0]
-            entries = self._conjugates.of(entries)
-            self.conjugate_readings.add(colour_entry.vertex_name)
+        read = self.read_entries(entries)
+        # A vertex read through its conjugate rule keeps its own single
+        # colour structure (``read_entries``).
+        colour_entry = None if read is entries else entries[0]
+        entries = read
         out = []
         for entry in entries:
             legs = self._kernel_legs(entry, attachments)
@@ -1061,10 +1072,28 @@ class SiteClosure:
                 )
         return tuple(out)
 
-    def _conjugation_closed(self, names: Sequence[str]) -> bool:
-        """Whether a vertex's particle multiset is closed under conjugation."""
+    def read_entries(self, entries: Sequence[Any]) -> tuple[Any, ...]:
+        """The entries the root closure reads for a vertex's ``entries``
+        (``vertex_terms``), so their couplings are the ones its terms bind:
+        ``entries`` for a vertex closed under conjugation, else its conjugate
+        rule's. The tree engine reads the blocks of an open vertex through the
+        conjugate rule (module docstring): that rule's entries give kernels
+        and couplings, the vertex's single colour structure the colour."""
 
-        return sorted(names) == sorted(self._by_name[n]["antiname"] for n in names)
+        entries = tuple(entries)
+        if self._self_conjugate(entries):
+            return entries
+        if self._conjugates is None:
+            raise NotImplementedError(
+                f"{entries[0].vertex_name} is not closed under conjugation; "
+                "the tree reading of its legs needs its conjugate rule"
+            )
+        return self._conjugates.of(entries)
+
+    def _self_conjugate(self, entries: Sequence[Any]) -> bool:
+        return not entries or closed_under_conjugation(
+            entries[0].particle_names, self._anti
+        )
 
     def value(
         self,
@@ -1239,25 +1268,19 @@ class SiteClosure:
         root completes them with the sign of the merge that joins the line's
         two ends, as the tree engine signs that merge: the Koszul sign of the
         two supports times the orientation sign of the two-fermion kernel.
-        With one singlet line in the process the merges of the other blocks
-        at the root carry no singlet fermion and no sign. Several singlet
-        lines need the Koszul signs between blocks in the loop as well (open
-        lepton lines, EWI-5), so they are refused here.
+        The process has one singlet line (``require_one_singlet_line``), so
+        the merges of the other blocks at the root carry no singlet fermion
+        and no sign.
         """
 
         from pyamplicol.generation.fermion_ordering import FermionOrderingSign
 
         process = self.tree.process
-        legs = [
-            leg
-            for leg in process.legs
-            if leg.statistics == "fermion" and leg.color_role == "singlet"
-        ]
-        if len(attachments) != 2 or len(legs) != 2:
+        legs = _singlet_fermion_legs(process)
+        if len(attachments) != 2:
             raise NotImplementedError(
-                "colour-singlet fermion lines at the root of a process with more "
-                "than one such line need the Koszul signs between blocks of "
-                "design §3.3 (WP3.2 EWI-5)"
+                "a colour-singlet fermion line closing at the root on more than "
+                "two blocks"
             )
         ends = [
             next(leg for leg in legs if current.mask >> (leg.label - 1) & 1)
@@ -1269,6 +1292,43 @@ class SiteClosure:
             )
         ordering = FermionOrderingSign(process, _SingletSignModel(self._fields))
         return ordering.tree_sign([(ends[0], ends[1])])
+
+
+def _singlet_fermion_legs(process: Any) -> list[Any]:
+    return [
+        leg
+        for leg in process.legs
+        if leg.statistics == "fermion" and leg.color_role == "singlet"
+    ]
+
+
+def require_one_singlet_line(process: Any) -> None:
+    """Refuse a process with more than one colour-singlet fermion line
+    (more than two lepton legs: u u~ > e- e+ mu- mu+, e+ e- > e+ e-) until
+    WP3.2 EWI-5.
+
+    The tree engine signs every merge of currents whose supports hold
+    colour-singlet fermions with their Koszul sign
+    (``generation/fermion_ordering.py``). Inside a block the rows carry it;
+    between the blocks a root vertex or a loop joins, the closure and the
+    loop's leaf weights would have to supply it. With one singlet line no
+    other block holds a singlet fermion, so the only such merge is the
+    line's own (``SiteClosure._singlet_root_sign``). With two lines the
+    blocks' supports interleave in the leg order (u u~ > e- mu- e+ mu+: the
+    supports {3, 5} and {4, 6} have a Koszul sign of -1) and the Born and
+    the virtual would be silently wrong (Born closure / tree runtime 0.53 at
+    an exact point), so every such process is refused, wherever its lines
+    sit, before any tree is built.
+    """
+
+    legs = _singlet_fermion_legs(process)
+    if len(legs) > 2:
+        raise FermionSignError(
+            f"{len(legs) // 2} colour-singlet fermion lines (legs "
+            f"{', '.join(str(leg.label) for leg in legs)}): the Koszul signs "
+            "between the blocks that carry them, at the root and in the loop, "
+            "are not implemented yet (WP3.2 EWI-5)"
+        )
 
 
 class _SingletSignModel:
@@ -1457,6 +1517,7 @@ __all__ = [
     "entry_cell",
     "generate_counterterm_sites",
     "ghost_partners",
+    "require_one_singlet_line",
     "ufo_colour_network",
     "vanishes_identically",
     "witness_alternatives",

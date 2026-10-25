@@ -553,6 +553,64 @@
     "born": 6.142513268769164e-16,
     "(('QCD', 2), ('QED', 4))": 1.1498640826118066e-15
    }
+  },
+  "bbx_wpwm": {
+   "process": "b b~ > w+ w-",
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 2,
+    "QED": 2
+   },
+   "fixed_parameters": {
+    "MB": "0",
+    "WT": "0",
+    "WZ": "0",
+    "WW": "0",
+    "WH": "0",
+    "ymb": "0"
+   },
+   "note": "5F with a massless b and its Yukawa ymb = 0 (MB = 0 with the default ymb is not unitary): the top t-channel exchange joins the massless b and the massive top through the chiral W vertex in the Born and in the loop (the Dirac-Weyl case of measurement M4). Captured from work/v2-ew-lines (fix round 2).",
+   "point": [
+    [
+     "500",
+     "0",
+     "0",
+     "500"
+    ],
+    [
+     "500",
+     "0",
+     "0",
+     "-500"
+    ],
+    [
+     "500.00000000000000000",
+     "151.8432028536037545327711052589737032991",
+     "364.4236868486490108786506526215368879179",
+     "296.0942455645273213389036552549987214333"
+    ],
+    [
+     "500.00000000000000000",
+     "-151.8432028536037545327711052589737032991",
+     "-364.4236868486490108786506526215368879179",
+     "-296.0942455645273213389036552549987214333"
+    ]
+   ],
+   "born": 0.01808343782873039,
+   "virtual": {
+    "(('QCD', 2), ('QED', 4))": [
+     -0.0069099759662761915,
+     -0.001358448340749572,
+     -0.0009056322271664419
+    ]
+   },
+   "v2_relative_difference_at_capture": {
+    "born": 5.448758934484109e-14,
+    "(('QCD', 2), ('QED', 4))": 8.510467492596087e-14
+   }
   }
  }
 }

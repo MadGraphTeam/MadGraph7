@@ -10,7 +10,9 @@ merge sign (``ct_sites.SiteClosure._singlet_root_sign``; B4 at the root):
 
 * e+ e- > u u~ with the photon and the Z is the massless quark form factor;
 * e- u > e- u (lepton root) equals u e- > u e- (quark root) and legacy;
-* e+ e- > t t~ h, the top Yukawa on loop top lines, equals MadLoop (nightly).
+* e+ e- > t t~ h, the top Yukawa on loop top lines, equals MadLoop (nightly);
+* a process with two colour-singlet fermion lines (u u~ > e- mu- e+ mu+) is
+  refused until the Koszul signs between their blocks exist (EWI-5).
 
 W vertices (EWI-2). A vertex whose particles are not closed under
 conjugation has no leg for the tree particles of its currents; the tree
@@ -27,7 +29,9 @@ structures (``ct_sites.ConjugateVertices``, ``conventions.TreeReading``):
   gives Catani's poles and the Born closed at an open W vertex is the tree
   runtime's amplitude up to a real sign; reading the vertex's own couplings
   (complex-conjugated, chiral projectors exchanged) misses Catani by 59 % and
-  gives the closure the phase V_ub^*/V_ub.
+  gives the closure the phase V_ub^*/V_ub;
+* the counterterm-site oracle (O6) equals the production recursion with W
+  vertices at the sites, read through their conjugate rules too.
 
 Z and photon on quark lines (EWI-1b): u u~ > z g equals legacy; u u~ > z z
 (nightly); the LC and NLC of u u~ > e- e+ g g are the formal N_c
@@ -250,6 +254,49 @@ def test_conjugate_vertices_need_one_conjugate_with_one_colour_structure():
         several.of(open_)
 
 
+@pytest.mark.loop_fast
+def test_born_orders_the_request_leaves_open_are_bounded_by_the_vertices():
+    """An order the request does not bound takes its largest tree power
+    from the model's vertices (``assemble._tree_order_bounds``): n - 2 for
+    renormalisable vertices, 2 (n - 2) with an effective g g H vertex of
+    QCD = 2; a two-point vertex carrying the order is refused. A counterterm
+    rule admitted for a loop particle no family routes is refused too."""
+
+    from pyamplicol.loops.v2.assemble import (
+        _check_declared_loop_species,
+        _tree_order_bounds,
+    )
+
+    qcd, qed, heft = ("GS", ("QCD", 1)), ("GW", ("QED", 1)), ("GH", ("QCD", 2))
+    rules = [
+        ("V_g", ("u~", "u", "g"), ("T(3,2,1)",), ("GS",)),
+        ("V_W", ("d~", "u", "W-"), ("Identity(1,2)",), ("GW",)),
+    ]
+    data = _native(PARTICLES, rules, [qcd, qed, heft])
+    assert _tree_order_bounds(data, 5, ["QCD", "QED"]) == {"QCD": 3, "QED": 3}
+    assert _tree_order_bounds(data, 5, ["QED"]) == {"QED": 3}
+    effective = _native(
+        PARTICLES,
+        [*rules, ("V_ggH", ("g", "g", "W+"), ("1",), ("GH",))],
+        [qcd, qed, heft],
+    )
+    assert _tree_order_bounds(effective, 5, ["QCD"]) == {"QCD": 6}
+    mixing = _native(
+        PARTICLES, [*rules, ("V_mix", ("W+", "W-"), ("1",), ("GW",))], [qcd, qed, heft]
+    )
+    assert _tree_order_bounds(mixing, 5, ["QCD"]) == {"QCD": 3}
+    with pytest.raises(NotImplementedError, match="tree-level power is unbounded"):
+        _tree_order_bounds(mixing, 5, ["QED"])
+    site = SimpleNamespace(
+        rule=SimpleNamespace(alternatives={0: (6,), 1: (1, 2)}, rule_name="R2_x"),
+        rule_name="R2_x",
+        alternatives=(0, 1),
+    )
+    _check_declared_loop_species([site], [1, 2, 6, 21])
+    with pytest.raises(NotImplementedError, match=r"loop particles \[6\]"):
+        _check_declared_loop_species([site], [1, 2, 21])
+
+
 # --------------------------------------------------------------- lepton legs
 
 
@@ -291,6 +338,32 @@ def test_lepton_and_quark_roots_agree(loop_sm_compiled_model, loop_native):
     _assert_legacy(first, entry)
 
 
+@pytest.mark.loop_fast
+@pytest.mark.parametrize(
+    "process", ["u u~ > e- mu- e+ mu+", "u u~ > e- e+ mu- mu+", "u u~ > e- e- e+ e+"]
+)
+def test_two_colour_singlet_fermion_lines_are_refused(
+    loop_sm_compiled_model, loop_native, process
+):
+    """Two lepton lines at a quark root: their blocks' supports interleave
+    in the leg order (u u~ > e- mu- e+ mu+, and a pairing of e- e- e+ e+),
+    whose Koszul sign neither the root closure nor the loops apply yet
+    (EWI-5); the Born closure was the tree runtime's amplitude times 0.53
+    and 0.34 there. Every such process is refused before any tree is built,
+    wherever its lines sit."""
+
+    from pyamplicol.loops.v2.conventions import FermionSignError
+
+    with pytest.raises(FermionSignError, match="2 colour-singlet fermion lines"):
+        _slice(
+            loop_sm_compiled_model,
+            loop_native,
+            process,
+            {"QCD": 0, "QED": 4},
+            {"QCD": 2, "QED": 4},
+        )
+
+
 # ------------------------------------------------------------------ W lines
 
 
@@ -306,8 +379,25 @@ def test_w_drell_yan_is_the_massless_form_factor(loop_sm_compiled_model, loop_na
         {"QCD": 0, "QED": 2},
         {"QCD": 2, "QED": 2},
     )
-    assert slice_.closure.conjugate_readings
+    assert _open_vertex_terms(slice_)
     _assert_form_factor(slice_, *_massless_points())
+
+
+def _open_vertex_terms(slice_) -> list:
+    """Born root terms at a vertex not closed under conjugation (a W
+    vertex), whose entries are the conjugate rule's
+    (``ct_sites.SiteClosure.read_entries``)."""
+
+    from pyamplicol.loops.v2.conventions import closed_under_conjugation
+
+    data = json.loads(slice_.prepared.structure.native.to_json())
+    anti = {p["name"]: p["antiname"] for p in data["particles"]}
+    return [
+        term
+        for terms in slice_.born_terms.values()
+        for term in terms
+        if not closed_under_conjugation(term.entry.particle_names, anti)
+    ]
 
 
 def _assert_legacy(result, entry) -> None:
@@ -336,8 +426,11 @@ def _assert_legacy(result, entry) -> None:
                 "uux_wpwm",
                 "bu_dt",
                 # 5F tW: the chiral W vertex joins the massless b and the
-                # massive top (the Dirac-Weyl case, measurement M4).
+                # massive top (the Dirac-Weyl case, measurement M4); b b~ >
+                # w+ w- has that vertex twice, in the top t-channel exchange
+                # (ymb = 0 with MB = 0: the default ymb is not unitary).
                 "gb_twm",
+                "bbx_wpwm",
                 "uux_zz",
                 "udx_epve",
                 "epem_uux",
@@ -357,10 +450,58 @@ def test_electroweak_exchange_equals_legacy(loop_sm_compiled_model, loop_native,
         entry["process"],
         entry["born_orders"],
         entry["loop_orders"],
-        LEGACY["fixed_parameters"],
+        entry.get("fixed_parameters", LEGACY["fixed_parameters"]),
     )
     result = slice_.evaluate(entry["point"], LEGACY["mu_r2"], parameters=PARAMETERS)
     _assert_legacy(result, entry)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("udx_epve", marks=pytest.mark.loop_physics),
+        *(
+            pytest.param(name, marks=pytest.mark.loop_nightly)
+            for name in ("gu_wpd", "bu_dt")
+        ),
+    ],
+)
+def test_counterterm_sites_equal_the_recursion_at_w_vertices(
+    loop_sm_compiled_model, loop_native, name
+):
+    """O6 with W vertices at the counterterm sites (the R2 of [d~ u W-] is
+    read through [u~ d W+], whose coupling the site scalar plan computes):
+    the site oracle equals the production recursion, which equals legacy."""
+
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    entry = LEGACY["processes"][name]
+    results = [
+        _slice(
+            compiled,
+            loop_native,
+            entry["process"],
+            entry["born_orders"],
+            entry["loop_orders"],
+            LEGACY["fixed_parameters"],
+            counterterms=form,
+        ).evaluate(entry["point"], LEGACY["mu_r2"], parameters=PARAMETERS)
+        for form in ("recursion", "sites")
+    ]
+    _assert_legacy(results[0], entry)
+    assert any(float(x) for x in _laurent(results[1].components["r2"]))
+    _assert_equal_results(results[1], results[0])
+    assert results[1].components.keys() == results[0].components.keys()
+    for component, sectors in results[0].components.items():
+        for sector, laurent in sectors.items():
+            virtual = results[0].components["virtual"][sector].coefficients
+            scale = max(abs(float(x)) for x in virtual)
+            found = results[1].components[component][sector].coefficients
+            assert all(
+                abs(float(a) - float(b)) <= TOLERANCE * scale
+                for a, b in zip(found, laurent.coefficients, strict=True)
+            ), (component, sector)
 
 
 @pytest.fixture(scope="module")
@@ -587,7 +728,7 @@ def test_complex_ckm_vertices_are_read_through_their_conjugate_rule(
         {"QCD": 2, "QED": 2},
         fixed,
     )
-    assert slice_.closure.conjugate_readings
+    assert _open_vertex_terms(slice_)
     ratio, residual = _born_closure_ratio(
         slice_, _two_to_two("0", "0"), "1000000", PARAMETERS
     )
@@ -749,8 +890,9 @@ def test_dilepton_two_gluon_colour_projections_are_formal_nc_projections(
     """u u~ > e- e+ g g (photon and Z on quark lines, closed quark loops): the
     LC (NLC) slice equals the N_c^P (N_c^P, N_c^(P-1), N_c^(P-2)) part of the
     exact colour cells of every skeleton (an unpruned LC slice evaluated one
-    N_c power at a time), P the sector's leading degree; the parts over every
-    power sum to the full-colour result (design §7.4-§7.6, WP2.4)."""
+    N_c power at a time), P the sector's leading degree, above which every
+    part vanishes; the parts over every power sum to the full-colour result
+    (design §7.4-§7.6, WP2.4)."""
 
     from pyamplicol.loops.v2 import assemble, colour
     from pyamplicol.models.loading import load_compiled_model
@@ -800,6 +942,9 @@ def test_dilepton_two_gluon_colour_projections_are_formal_nc_projections(
     reference = full.evaluate(point, scale, parameters=parameters)
     for order, value in mine.born.items():
         degree = degrees["born"][order]
+        assert all(
+            float(parts[p].born.get(order, 0)) == 0 for p in parts if p > degree
+        ), order
         expected = sum(
             float(parts[p].born.get(order, 0))
             for p in range(degree - depth, degree + 1)
@@ -824,6 +969,13 @@ def test_dilepton_two_gluon_colour_projections_are_formal_nc_projections(
                 for a, b in zip(totals, values, strict=True)
             )
             degree = degrees["virtual"][sector]
+            for p in (p for p in parts if p > degree):
+                cell = parts[p].components[component].get(sector)
+                assert cell is None or not any(map(float, cell.coefficients)), (
+                    component,
+                    sector,
+                    p,
+                )
             expected = [0.0, 0.0, 0.0]
             for p in range(degree - depth, degree + 1):
                 cell = parts[p].components[component].get(sector)
