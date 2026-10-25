@@ -2,21 +2,30 @@
 """Native exact colour cells against their Python oracles (WP3.1 package C).
 
 ``loops/v2/native_cells`` (rusticol-core ``loop_v2::generate::cells`` and
-``loop_v2::dipole_orbits``) must equal the Python stages exactly:
+``loop_v2::dipole_orbits``) must equal the Python stages exactly. Phase 1
+switched them on inside the Python stages (``native_cells.NATIVE_STAGES``),
+so every control is generated in two lanes: the production lane (every
+stage native) and the oracle lane (``native_cells.native_stages(())``):
 
 * C1: ``colour.seed_cells`` cell by cell (adjoint rings, fundamental traces,
-  quark rings and generic classes), ``contract_colour``, ``face_count`` and
+  quark rings and generic classes; the slice's, the companion's and the
+  prune's tables), ``contract_colour``, ``face_count`` and
   ``BornBasis.gram``; outputs independent of the thread count;
 * C2: ``plan_export._Exporter.seed_records``, byte-identical plan JSON and
   the same Born components;
-* C3: ``LoopSlice.degrees`` and the liveness of ``_prune_colour``;
+* C3: ``LoopSlice.degrees``, ``_AdjointOrbits`` and the liveness of
+  ``_prune_colour``; S1, S4, S5 and S8 equal between the lanes;
 * C4: ``LoopSlice.dipoles`` from the orbit representatives built in
-  rusticol-core, which needs no Symbolica licence.
+  rusticol-core, which needs no Symbolica licence (``dipoles``);
+* C5: the directed tables (``DirectedColour._table``) and the complete-family
+  degrees (``ObservableSlice._family_degrees``), with the pruned slices;
+* rule 9: generation decodes each table's cells once, the degrees none.
 
-Default tier (``loop_fast``, about 25 s): g g > g g (FC; adjoint rings and
-fundamental traces) and u u~ > g g g (LC; quark rings and generic classes).
-Wider controls are ``loop_physics`` (g g > g g g and u u~ > g g g for the
-dipoles, as WP3.1 I5c asks; contractions beyond the subset-sum label
+Default tier (``loop_fast``, about 30 s): g g > g g (FC; adjoint rings and
+fundamental traces), u u~ > g g g (LC; quark rings and generic classes) and
+the dipole family of g g > g g at LC. Wider controls are ``loop_physics``
+(g g > g g g and u u~ > g g g for the dipoles, as WP3.1 I5c asks; the
+directed tables of WP2.5's controls; contractions beyond the subset-sum label
 limit), six legs ``loop_nightly``.
 """
 
@@ -29,8 +38,10 @@ import re
 import subprocess
 import sys
 import textwrap
+from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -38,11 +49,13 @@ from pyamplicol.color.connections import (
     ColorLeg,
     ColorTensor,
     ConnectedColorTensor,
+    EmitGluon,
     ExactColorCoefficient,
     OpenColorString,
     TensorTerm,
 )
-from pyamplicol.loops.v2 import colour, native_cells
+from pyamplicol.color.correlator_matrices import ColorCorrelator
+from pyamplicol.loops.v2 import colour, dipoles, native_cells, snapshot
 from tools.loop_reference import legacy_capture
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -78,30 +91,80 @@ NIGHTLY = {
     "gg_gggg_lc": ("g g > g g g g", 4, "lc", "sites"),
 }
 CONTROLS = {**DEFAULT, **PHYSICS, **NIGHTLY}
+LANES = {"native": native_cells.STAGES, "python": frozenset()}
+
+
+@dataclass
+class Generated:
+    """One control generated in one lane, with the ``keep`` closures that
+    ``_prune_colour`` handed to the native schedules (the slice's, then the
+    companion's) and the cells the generation decoded (rule 9)."""
+
+    slice: Any
+    kept: list
+    decoded: int
+
+
+def python(function, *args, **kwargs):
+    """``function`` in the oracle lane (every stage of package C Python)."""
+
+    with native_cells.native_stages(()):
+        return function(*args, **kwargs)
+
+
+def uncached(slice_, key: str, method):
+    """A cached ``LoopSlice`` method (``degrees``, ``dipoles``) evaluated
+    again in the oracle lane; the slice's cached value is restored."""
+
+    saved = slice_._cache.pop(key, None)
+    try:
+        return python(method)
+    finally:
+        slice_._cache.pop(key, None)
+        if saved is not None:
+            slice_._cache[key] = saved
+
+
+def _request(name: str):
+    from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+    process, born, accuracy, *form = CONTROLS[name]
+    options: dict[str, Any] = {"counterterms": form[0]} if form else {}
+    if accuracy != "full":
+        options.update(
+            accuracy=accuracy,
+            colour_declaration=LoopColorDeclaration.from_dict(
+                json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+            ),
+        )
+    return SliceRequest(
+        process,
+        {"QCD": born, "QED": 0},
+        {"QCD": born + 2, "QED": 0},
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+        **options,
+    )
 
 
 @pytest.fixture(scope="module")
-def slices(loop_sm_compiled_model, loop_native):
-    """Generated slices per control, with the ``keep`` closures that
-    ``_prune_colour`` handed to the native schedules (its liveness oracle)."""
+def compiled(loop_sm_compiled_model):
+    from pyamplicol.models.loading import load_compiled_model
+
+    return load_compiled_model(loop_sm_compiled_model)
+
+
+@pytest.fixture(scope="module")
+def slices(compiled, loop_native):
+    """Generated slices per (control, lane), cached."""
 
     from pyamplicol.loops.v2 import generator_input
-    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
-    from pyamplicol.models.loading import load_compiled_model
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    from pyamplicol.loops.v2.assemble import LoopSlice
 
-    compiled = load_compiled_model(loop_sm_compiled_model)
-    declaration = LoopColorDeclaration.from_dict(
-        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
-    )
-    built: dict[str, tuple] = {}
+    built: dict[tuple[str, str], Generated] = {}
 
-    def get(name: str):
-        if name not in built:
-            process, born, accuracy, *form = CONTROLS[name]
-            options = {"counterterms": form[0]} if form else {}
-            if accuracy != "full":
-                options.update(accuracy=accuracy, colour_declaration=declaration)
+    def get(name: str, lane: str = "native") -> Generated:
+        if (name, lane) not in built:
             kept: list = []
             original = generator_input.NativeGeneration.schedules
 
@@ -112,21 +175,14 @@ def slices(loop_sm_compiled_model, loop_native):
 
             generator_input.NativeGeneration.schedules = spy
             try:
-                slice_ = LoopSlice.generate(
-                    compiled,
-                    SliceRequest(
-                        process,
-                        {"QCD": born, "QED": 0},
-                        {"QCD": born + 2, "QED": 0},
-                        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-                        **options,
-                    ),
-                    loop_native,
-                )
+                with native_cells.native_stages(LANES[lane]):
+                    before = native_cells.decoded_cells()
+                    slice_ = LoopSlice.generate(compiled, _request(name), loop_native)
+                    decoded = native_cells.decoded_cells() - before
             finally:
                 generator_input.NativeGeneration.schedules = original
-            built[name] = (slice_, kept)
-        return built[name]
+            built[name, lane] = Generated(slice_, kept, decoded)
+        return built[name, lane]
 
     return get
 
@@ -257,17 +313,20 @@ def test_primitives_against_quark_bras_are_refused(kind):
     where the string holds its labels (oracle defect 3, below)."""
 
     primitive = colour.Primitive(kind, (3, 4))
-    native, python = _REFUSALS[kind]
+    refused, oracle_refused = _REFUSALS[kind]
     for structure in (_SPLIT, _JOINED):
         basis = _quark_basis(structure)
-        with pytest.raises(ValueError, match=native):
+        with pytest.raises(ValueError, match=refused):
             native_cells.seed_cells(basis, [primitive])
-        with pytest.raises(ValueError, match=native):
+        with pytest.raises(ValueError, match=refused):
             native_cells.NativeCells(basis)(primitive)
+        # The switched stage fails closed (rule 2: no Python fallback).
+        with pytest.raises(ValueError, match=refused):
+            colour.seed_cells(basis, [primitive])
     structures = (_JOINED,) if kind == "adjoint-ring" else (_SPLIT, _JOINED)
     for structure in structures:
-        with pytest.raises(ValueError, match=python):
-            colour.seed_cells(_quark_basis(structure), [primitive])
+        with pytest.raises(ValueError, match=oracle_refused):
+            python(colour.seed_cells, _quark_basis(structure), [primitive])
 
 
 @pytest.mark.loop_fast
@@ -281,12 +340,12 @@ def test_primitives_against_quark_bras_are_refused(kind):
 def test_python_adjoint_ring_against_a_quark_bra_is_refused():
     ring = colour.Primitive("adjoint-ring", (3, 4))
     with pytest.raises(ValueError):
-        colour.seed_cells(_quark_basis(_SPLIT), [ring])
+        python(colour.seed_cells, _quark_basis(_SPLIT), [ring])
 
 
 @pytest.mark.loop_fast
 def test_stored_dipole_orbits_are_validated(slices):
-    slice_, _kept = slices("gg_gg")
+    slice_ = slices("gg_gg").slice
     stored = json.loads(native_cells.dipole_orbits(slice_).to_json())
     reloaded = type(native_cells.dipole_orbits(slice_)).from_json
     duplicated = dict(stored, representatives=stored["representatives"] * 2)
@@ -301,15 +360,68 @@ def test_stored_dipole_orbits_are_validated(slices):
         reloaded(json.dumps(broken))
 
 
-def _seed_cells_equal(slice_) -> None:
-    table = slice_.table
+# ------------------------------------------------- switched generation
+
+
+def _companion(slice_):
+    twin = slice_.scaleless
+    return twin if twin is not None else None
+
+
+def _switched_equal(native: Generated, oracle: Generated) -> None:
+    """The production lane equals the oracle lane: S1, S4, S5 and S8 (the
+    plan bytes), the companion's tables and S5, the degrees and (FC) the
+    dipoles; rule 9: the generation decoded each table's cells once."""
+
+    a, b = native.slice, oracle.slice
+    assert snapshot.stage_digests(a) == python(snapshot.stage_digests, b)
+    assert a.table.cells == b.table.cells
+    twins = [(a, b)]
+    if _companion(a) is not None or _companion(b) is not None:
+        twins.append((a.scaleless, b.scaleless))
+        assert snapshot.digest(snapshot.seeds_records(a.scaleless)) == (
+            snapshot.digest(snapshot.seeds_records(b.scaleless))
+        )
+    assert a.degrees() == python(b.degrees)
+    # Rule 9: each table built during generation decoded its own cells once
+    # (an extension decodes only its new classes); no degree decodes.
+    assert native.decoded == sum(len(x.table.classes) * len(x.basis) for x, _y in twins)
+    assert oracle.decoded == 0
+    before = native_cells.decoded_cells()
+    native_cells.degrees(a)
+    assert native_cells.decoded_cells() == before
+    if a.request.accuracy == "full":
+        assert a.dipoles() == python(b.dipoles)
+
+
+@pytest.mark.loop_fast
+def test_switched_generation_equals_python(slices):
+    """The production lane equals the oracle lane end to end (g g > g g;
+    the LC/NLC controls, whose prune the lanes must agree on, are
+    ``loop_physics``: two generations each)."""
+
+    _switched_equal(slices("gg_gg"), slices("gg_gg", "python"))
+
+
+def _seed_cells_equal(native: Generated, oracle: Generated | None = None) -> None:
+    table = native.slice.table
     basis = table.basis
     kinds = {
         seed.kind if isinstance(seed, colour.Primitive) else "generic"
         for seed in table.classes
     }
     assert kinds, "no seed class"
-    assert native_cells.seed_cells(basis, table.classes) == table.cells
+    expected = python(colour.seed_cells, basis, table.classes)
+    assert table.cells == expected
+    if oracle is not None:
+        assert oracle.slice.table.cells == expected
+    assert native_cells.seed_cells(basis, table.classes) == expected
+    assert colour.seed_cells(basis, table.classes) == expected
+    twin = native.slice.scaleless
+    if twin is not None:
+        assert twin.table.cells == python(
+            colour.seed_cells, twin.basis, twin.table.classes
+        )
     # The Born metric.
     assert native_cells.gram(basis) == basis.gram
 
@@ -317,10 +429,10 @@ def _seed_cells_equal(slice_) -> None:
 @pytest.mark.loop_fast
 @pytest.mark.parametrize("name", sorted(DEFAULT))
 def test_seed_cells_equal_python(slices, name):
-    slice_, _kept = slices(name)
-    _seed_cells_equal(slice_)
+    native = slices(name)
+    _seed_cells_equal(native)
     # Rule 5: one thread and several give the same cells.
-    table = slice_.table
+    table = native.slice.table
     one = native_cells.seed_cells(table.basis, table.classes, threads=1)
     assert one == native_cells.seed_cells(table.basis, table.classes, threads=4)
 
@@ -329,10 +441,10 @@ def test_seed_cells_equal_python(slices, name):
 def test_rebased_cells_share_caches_and_equal_python(slices):
     """A rebased engine (another basis on the same legs, e.g. operator
     images) equals ``seed_cells`` against that basis and shares the caches
-    both ways, as ``_PrimitiveCells.rebased``."""
+    both ways, as ``_PrimitiveCells.rebased``; so does the native twin of a
+    rebased ``_PrimitiveCells`` (the switched path of the directed tables)."""
 
-    slice_, _kept = slices("uux_ggg_lc")
-    table = slice_.table
+    table = slices("uux_ggg_lc").slice.table
     basis = table.basis
     other = colour.BornBasis(
         basis.legs,
@@ -340,11 +452,10 @@ def test_rebased_cells_share_caches_and_equal_python(slices):
         basis.tensors[::-1],
         basis.orders[::-1],
     )
+    expected = python(colour.seed_cells, other, table.classes)
     engine = native_cells.NativeCells(basis)
     rebased = engine.rebased(other)
-    assert native_cells.seed_cells(other, table.classes, rebased) == colour.seed_cells(
-        other, table.classes
-    )
+    assert native_cells.seed_cells(other, table.classes, rebased) == expected
     # The parent sees the rebased engine's relabelled bras, rings and ring
     # overlaps; its own table (the same tensors reordered) is all cache hits.
     shared = rebased.cache_sizes
@@ -354,6 +465,14 @@ def test_rebased_cells_share_caches_and_equal_python(slices):
     assert engine.cache_sizes == rebased.cache_sizes == shared
     with pytest.raises(ValueError, match="another basis"):
         native_cells.seed_cells(basis, table.classes, rebased)
+    # The switched seed_cells through _PrimitiveCells and its rebased copy.
+    cells = colour._PrimitiveCells(basis)
+    copy = cells.rebased(other)
+    assert colour.seed_cells(other, table.classes, copy) == expected
+    assert cells.native().cache_sizes == copy.native().cache_sizes
+    assert colour.seed_cells(basis, table.classes, cells) == table.cells
+    with pytest.raises(ValueError, match="another basis"):
+        colour.seed_cells(basis, table.classes, copy)
 
 
 # ---------------------------------------------------------- C2 projection
@@ -394,15 +513,26 @@ def _records_equal(slice_, monkeypatch, columns=None) -> None:
 @pytest.mark.loop_fast
 @pytest.mark.parametrize("name", sorted(DEFAULT))
 def test_seed_records_equal_the_exporter(slices, monkeypatch, name):
-    slice_, _kept = slices(name)
-    _records_equal(slice_, monkeypatch)
+    _records_equal(slices(name).slice, monkeypatch)
 
 
 # ------------------------------------------------------------ C3 degrees
 
 
-def _degrees_equal(slice_, kept) -> None:
-    assert native_cells.degrees(slice_) == slice_.degrees()
+def _degrees_equal(native: Generated, oracle: Generated | None = None) -> None:
+    """Degrees and liveness against the oracle lane's slice, or (without
+    it) against the Python stages on the production lane's slice: its
+    degrees recomputed in Python and the keep closures of its own prune
+    (Python liveness over the native cells and degrees)."""
+
+    slice_ = native.slice
+    expected = (
+        python(oracle.slice.degrees)
+        if oracle is not None
+        else uncached(slice_, "degrees", slice_.degrees)
+    )
+    assert native_cells.degrees(slice_) == expected
+    assert slice_.degrees() == expected
     table = slice_.table
     for pairs in (pairs for _sector, pairs in slice_.sectors):
         assert native_cells.table_degree(
@@ -411,19 +541,21 @@ def _degrees_equal(slice_, kept) -> None:
         assert native_cells.table_degree(table, pairs) == table.degree(pairs)
     if slice_.request.accuracy == "full":
         return
-    # The liveness of _prune_colour: its keep closure on every skeleton, for
-    # the slice and then its certified-scaleless companion (pruned after it
-    # at LC/NLC, with the slice's degrees).
-    pruned = [slice_]
-    if slice_.scaleless is not None and slice_.scaleless.colour_pruned:
-        pruned.append(slice_.scaleless)
-    assert len(kept) == len(pruned)
-    for target, keep in zip(pruned, kept, strict=True):
+    # The liveness of _prune_colour: the keep closures on every skeleton,
+    # for the slice and then its certified-scaleless companion (pruned
+    # after it at LC/NLC, with the slice's degrees).
+    reference = oracle or native
+    pruned = [reference.slice]
+    twin = reference.slice.scaleless
+    if twin is not None and twin.colour_pruned:
+        pruned.append(twin)
+    assert len(reference.kept) == len(pruned) == len(native.kept)
+    for target, keep in zip(pruned, reference.kept, strict=True):
         live = native_cells.live_classes(target)
         checked = 0
         for skeleton, combination in target.class_of.items():
-            native = any(live[c, skeleton.orders] for c, _x in combination)
-            assert native == keep(skeleton), skeleton
+            native_live = any(live[c, skeleton.orders] for c, _x in combination)
+            assert native_live == python(keep, skeleton), skeleton
             checked += 1
         assert checked
 
@@ -441,7 +573,7 @@ def test_liveness_reads_observable_tables(slices, monkeypatch):
 
     from pyamplicol.loops.v2 import assemble, generator_input
 
-    slice_, _kept = slices("uux_ggg_lc")
+    slice_ = slices("uux_ggg_lc").slice
     degrees = slice_.degrees()["virtual"]
     grades = slice_._born_grades()
     live = native_cells.live_classes(slice_)
@@ -499,11 +631,7 @@ def test_liveness_reads_observable_tables(slices, monkeypatch):
         ), skeleton
 
 
-@pytest.mark.loop_fast
-@pytest.mark.parametrize("name", sorted(DEFAULT))
-def test_degrees_and_liveness_equal_python(slices, name):
-    slice_, kept = slices(name)
-    _degrees_equal(slice_, kept)
+def _orbits_equal(slice_) -> None:
     from pyamplicol.loops.v2.assemble import _AdjointOrbits
 
     born_keys = [
@@ -511,40 +639,244 @@ def test_degrees_and_liveness_equal_python(slices, name):
         for terms in slice_.born_terms.values()
     ]
     legs, process = slice_.basis.legs, slice_.blocks.process
-    orbits = native_cells.adjoint_orbits(legs, process, born_keys)
-    python = _AdjointOrbits(legs, process, born_keys)
-    assert orbits.classes == python.classes
+    orbits = _AdjointOrbits(legs, process, born_keys)
+    oracle = python(_AdjointOrbits, legs, process, born_keys)
+    # The switch: the native classes and rename under the "orbits" stage.
+    assert isinstance(orbits, native_cells._Orbits)
+    assert type(oracle) is _AdjointOrbits
+    assert orbits.classes == oracle.classes
     for tensor in slice_.basis.tensors:
         for term in tensor.terms:
-            assert orbits.rename(term.tensor) == python.rename(term.tensor)
+            assert orbits.rename(term.tensor) == oracle.rename(term.tensor)
     for site in slice_.sites.sites:
-        assert orbits.site_key(site) == python.site_key(site)
+        assert orbits.site_key(site) == oracle.site_key(site)
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize("name", sorted(DEFAULT))
+def test_degrees_and_liveness_equal_python(slices, name):
+    _degrees_equal(slices(name))
+    _orbits_equal(slices(name).slice)
 
 
 # ------------------------------------------------------------ C4 dipoles
 
 
-def _dipoles_equal(slice_) -> None:
-    orbits = native_cells.dipole_orbits(slice_)
-    assert orbits.digest() == native_cells.dipoles_digest(slice_.dipoles())
+def _dipoles_equal(native: Generated, oracle: Generated | None = None) -> None:
+    slice_ = native.slice
+    expected = (
+        python(oracle.slice.dipoles)
+        if oracle is not None
+        else uncached(slice_, "dipoles", slice_.dipoles)
+    )
+    orbits = dipoles.build(slice_)
+    assert orbits.digest() == native_cells.dipoles_digest(expected)
     # Rule 9: only the expansions decode, one count per entry.
     assert orbits.decodes == 0
-    expanded = native_cells.dipoles(slice_, orbits)
-    assert expanded == slice_.dipoles()
+    expanded = dipoles.operators(orbits)
+    assert expanded == expected == slice_.dipoles()
     assert orbits.decodes == sum(len(rows) * len(rows[0]) for rows in expanded.values())
     # The stored form reloads to the same operators; one thread or several.
-    stored = type(orbits).from_json(orbits.to_json())
-    assert stored.to_json() == orbits.to_json()
-    assert native_cells.dipoles(slice_, stored) == slice_.dipoles()
-    assert native_cells.dipole_orbits(slice_, threads=1).to_json() == orbits.to_json()
+    text = dipoles.stored(orbits)
+    assert json.loads(text)["format"] == dipoles.FORMAT
+    stored = dipoles.load(text)
+    assert dipoles.stored(stored) == text
+    assert dipoles.operators(stored) == expected
+    assert dipoles.build(slice_, threads=1).to_json() == text
     stored.check_conservation()
+    floats = dipoles.matrices(stored)
+    assert list(floats) == list(expected)
+    assert all(
+        float(x) == y
+        for pair, rows in expected.items()
+        for row, values in zip(rows, floats[pair], strict=True)
+        for x, y in zip(row, values, strict=True)
+    )
 
 
 @pytest.mark.loop_fast
 @pytest.mark.parametrize("name", sorted(DEFAULT))
 def test_dipole_orbits_equal_python(slices, name):
-    slice_, _kept = slices(name)
-    _dipoles_equal(slice_)
+    _dipoles_equal(slices(name))
+
+
+# ---------------------------------------------------- C5 directed colour
+
+
+# (process, Born QCD order, accuracy, histories).
+OBSERVABLES_PHYSICS = {
+    "gg_gg_lc_T12": ("g g > g g", 2, "lc", ("T12",)),
+    "uux_ggg_directed": ("u u~ > g g g", 3, "full", ("T12", "T35", "chain")),
+    "ddx_gg_directed": ("d d~ > g g", 2, "full", ("T12", "T23", "casimir", "ordered")),
+    "uux_ggg_nlc_T12": ("u u~ > g g g", 3, "nlc", ("T12",)),
+    "gg_ggg_lc_T13": ("g g > g g g", 3, "lc", ("T13",)),
+}
+OBSERVABLES_NIGHTLY = {
+    "gg_gggg_lc_T12": ("g g > g g g g", 4, "lc", ("T12",)),
+}
+HISTORIES = {
+    "T12": ColorCorrelator.dipole("T12", 1, 2),
+    "T13": ColorCorrelator.dipole("T13", 1, 3),
+    "T23": ColorCorrelator.dipole("T23", 2, 3),
+    "T35": ColorCorrelator.dipole("T35", 3, 5),
+    "casimir": ColorCorrelator.dipole("casimir", 1, 1),
+    "ordered": ColorCorrelator(
+        "ordered",
+        (EmitGluon(1, -1), EmitGluon(1, -2)),
+        (EmitGluon(2, -1), EmitGluon(3, -2)),
+    ),
+    "chain": ColorCorrelator(
+        "chain",
+        (EmitGluon(1, -1), EmitGluon(-1, -2)),
+        (EmitGluon(5, -1), EmitGluon(4, -2)),
+    ),
+}
+
+
+@pytest.fixture(scope="module")
+def observables(compiled, loop_native):
+    """``ObservableSlice.generate`` per (control, lane), cached."""
+
+    from pyamplicol.correlators import CorrelatorConfig
+    from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.loops.v2.observables import ObservableSlice
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+    controls = {**OBSERVABLES_PHYSICS, **OBSERVABLES_NIGHTLY}
+    built: dict[tuple[str, str], Any] = {}
+
+    def get(name: str, lane: str = "native") -> Any:
+        if (name, lane) not in built:
+            process, born, accuracy, histories = controls[name]
+            options: dict[str, Any] = {}
+            if accuracy != "full":
+                options.update(
+                    accuracy=accuracy,
+                    colour_declaration=LoopColorDeclaration.from_dict(
+                        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+                    ),
+                )
+            request = SliceRequest(
+                process,
+                {"QCD": born, "QED": 0},
+                {"QCD": born + 2, "QED": 0},
+                fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+                **options,
+            )
+            correlators = CorrelatorConfig(
+                color_correlations=tuple(HISTORIES[h] for h in histories)
+            )
+            with native_cells.native_stages(LANES[lane]):
+                built[name, lane] = ObservableSlice.generate(
+                    compiled, request, loop_native, correlators=correlators
+                )
+        return built[name, lane]
+
+    return get
+
+
+def _directed_equal(native: Any, oracle: Any) -> None:
+    """Directed tables (both directions), the complete-family degrees and
+    the slices they pruned equal the oracle lane's; the native family
+    degrees also equal the Python ones on the production lane's tables."""
+
+    from pyamplicol.loops.v2.observables import DirectedColour
+
+    assert snapshot.stage_digests(native.slice) == python(
+        snapshot.stage_digests, oracle.slice
+    )
+    assert native._families == oracle._families
+    directed = [h for h in native.histories if h.bra]
+    assert directed
+    for history in directed:
+        mine, theirs = native.directed(history), python(oracle.directed, history)
+        assert mine.table.cells == theirs.table.cells, history.id
+        assert mine.swapped.cells == python(getattr, theirs, "swapped").cells
+        # The switched table against the Python route on the same objects.
+        fresh = python(DirectedColour, native.slice.table, history, None, None)
+        assert mine.table.cells == fresh.table.cells
+        if native.slice.request.accuracy != "full":
+            family = native.family(history)
+            expected = python(native._family_degrees, family)
+            assert native_cells.family_degrees(native, family) == expected
+            assert native._families[family] == expected
+
+
+@pytest.mark.loop_fast
+def test_directed_tables_and_family_degrees_equal_python(slices):
+    """The directed tables of g g > g g (both directions; a dipole, a Casimir
+    and an ordered history) in both lanes, and the complete-family degrees
+    of the dipole against the Python ones on the same slice (the ordered
+    history's 28-member family and the LC/NLC families with their prune
+    are ``loop_physics``)."""
+
+    from pyamplicol.correlators import CorrelatorConfig
+    from pyamplicol.loops.v2.observables import ObservableSlice
+
+    correlators = CorrelatorConfig(
+        color_correlations=tuple(HISTORIES[h] for h in ("T12", "casimir", "ordered"))
+    )
+    native = ObservableSlice.of(slices("gg_gg").slice, correlators=correlators)
+    oracle = python(
+        ObservableSlice.of, slices("gg_gg", "python").slice, correlators=correlators
+    )
+    for history in native.histories:
+        if not history.bra:
+            continue
+        mine, theirs = native.directed(history), oracle.directed(history)
+        assert mine.table.cells == theirs.table.cells, history.id
+        assert mine.swapped.cells == python(getattr, theirs, "swapped").cells
+    for history in (HISTORIES["T12"],):
+        family = native.family(history)
+        assert native_cells.family_degrees(native, family) == python(
+            native._family_degrees, family
+        )
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", sorted(OBSERVABLES_PHYSICS))
+def test_wider_directed_controls_equal_python(observables, name):
+    _directed_equal(observables(name), observables(name, "python"))
+
+
+@pytest.mark.loop_physics
+def test_ordered_history_family_equals_python(slices):
+    """The 28-member complete family of an ordered two-emission history
+    (784 history pairs) on g g > g g."""
+
+    from pyamplicol.loops.v2.observables import ObservableSlice
+
+    native = ObservableSlice.of(slices("gg_gg").slice)
+    family = native.family(HISTORIES["ordered"])
+    assert len(family) == 28
+    assert native_cells.family_degrees(native, family) == python(
+        native._family_degrees, family
+    )
+
+
+@pytest.mark.loop_physics
+def test_family_with_a_quark_pair_splitting_equals_python(observables):
+    """A family holding quark-pair splittings (connected images on both
+    sides, ``DirectedColour.generic_table``) takes the native batch with
+    the connected ket images."""
+
+    from pyamplicol.color.connections import SplitGluon
+
+    obs = observables("uux_ggg_nlc_T12")
+    split = ColorCorrelator("split", (SplitGluon(3, -1, -2),), (SplitGluon(3, -1, -2),))
+    family = python(obs.family, split)
+    assert any(not isinstance(e, EmitGluon) for f in family for e in f.emissions)
+    expected = python(obs._family_degrees, family)
+    assert native_cells.family_degrees(obs, family) == expected
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("name", sorted(OBSERVABLES_NIGHTLY))
+def test_six_leg_directed_controls_equal_python(observables, name):
+    _directed_equal(observables(name), observables(name, "python"))
+
+
+# ------------------------------------------------------------ no licence
 
 
 @pytest.mark.loop_fast
@@ -565,9 +897,10 @@ def test_new_rust_uses_only_exact_number_domains_of_symbolica():
 
 @pytest.mark.loop_fast
 def test_new_bindings_run_without_a_symbolica_key(tmp_path):
-    """The native cells, projection, degrees and dipole orbits run in a
-    process without a Symbolica key (smoke; the static check above is the
-    one that fails on a Symbolica call)."""
+    """The native cells, projection, degrees and dipole orbits (and their
+    stored form through ``loops/v2/dipoles``) run in a process without a
+    Symbolica key (smoke; the static check above is the one that fails on a
+    Symbolica call)."""
 
     environment = {
         key: value
@@ -595,10 +928,14 @@ def test_new_bindings_run_without_a_symbolica_key(tmp_path):
         assert len(ids) == 3 and table.decodes == 3
         native.colour_gram(basis)
         native.overlap_degrees(legs, [[(([], [[1, 2, 3, 4]]), 0)]], [(0, 0, 0)])
+        assert native.tensor_overlap_degrees(
+            [[(basis[0], 1)]], [[(basis[1], 0)]], [(0, 0, 0)]) == [3]
         orbits = native.NativeDipoleOrbits.build(legs, basis, [[1, 2, 3, 4]])
         orbits.check_conservation()
-        loaded = native.NativeDipoleOrbits.from_json(orbits.to_json())
+        from pyamplicol.loops.v2 import dipoles
+        loaded = dipoles.load(dipoles.stored(orbits))
         loaded.expand_f64()
+        assert dipoles.operators(loaded) and dipoles.matrices(loaded)
         assert loaded.digest() == orbits.digest() and loaded.expand()
         assert native.contract_colours([(basis[0], basis[1])])
         assert native.face_counts([(([], [[1, 2, 3, 4]]), ([], [[1, 3, 2, 4]]))])
@@ -634,23 +971,24 @@ def test_new_bindings_run_without_a_symbolica_key(tmp_path):
 # ----------------------------------------------------------- wider controls
 
 
+def _all_equal(name: str, slices, monkeypatch) -> None:
+    native, oracle = slices(name), slices(name, "python")
+    _switched_equal(native, oracle)
+    _seed_cells_equal(native, oracle)
+    _records_equal(native.slice, monkeypatch)
+    _degrees_equal(native, oracle)
+    _orbits_equal(native.slice)
+    if native.slice.request.accuracy == "full":
+        _dipoles_equal(native, oracle)
+
+
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("name", sorted(PHYSICS))
+@pytest.mark.parametrize("name", sorted([*PHYSICS, "uux_ggg_lc"]))
 def test_wider_controls_equal_python(slices, monkeypatch, name):
-    slice_, kept = slices(name)
-    _seed_cells_equal(slice_)
-    _records_equal(slice_, monkeypatch)
-    _degrees_equal(slice_, kept)
-    if slice_.request.accuracy == "full":
-        _dipoles_equal(slice_)
+    _all_equal(name, slices, monkeypatch)
 
 
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize("name", sorted(NIGHTLY))
 def test_six_leg_controls_equal_python(slices, monkeypatch, name):
-    slice_, kept = slices(name)
-    _seed_cells_equal(slice_)
-    _records_equal(slice_, monkeypatch)
-    _degrees_equal(slice_, kept)
-    if slice_.request.accuracy == "full":
-        _dipoles_equal(slice_)
+    _all_equal(name, slices, monkeypatch)
