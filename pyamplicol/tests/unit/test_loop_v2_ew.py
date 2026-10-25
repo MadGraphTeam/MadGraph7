@@ -126,19 +126,25 @@ def qcd_qed(loop_qcd_qed_sm_ufo, loop_reference):
 _UFO_PARTS = ("parameters", "CT_parameters", "function_library", "CT_couplings")
 
 
-def _import_ufo(path, name):
+def _import_ufo(path, name) -> tuple:
     """The UFO's ``parameters``, ``CT_parameters``, ``function_library`` and
     ``CT_couplings`` modules, imported privately (no bytecode written): a
     UFO with relative imports (the G_mu ``_py3`` conversion) as the package
     ``name``; one with Python-2-style sibling imports (``from object_library
-    import ...``, loop_qcd_qed_sm) from its directory, as top-level modules
-    whose names shadow no module already loaded. A generator: the modules
-    are removed and the shadowed ones restored when it resumes."""
+    import ...``, loop_qcd_qed_sm) from its directory as top-level modules.
+    Once imported, ``sys.path`` and ``sys.modules`` are restored (a module
+    of the same name loaded before is put back): the modules live on in the
+    returned objects only."""
 
     relative = "from .object_library" in (path / "function_library.py").read_text()
-    siblings = {"__init__"} | {source.stem for source in path.glob("*.py")}
-    before = set(sys.modules)
-    shadowed = {key: sys.modules.pop(key) for key in siblings & before}
+    siblings = {source.stem for source in path.glob("*.py")}
+
+    def ours(key: str) -> bool:
+        if relative:
+            return key == name or key.startswith(f"{name}.")
+        return key in siblings
+
+    shadowed = {key: sys.modules.pop(key) for key in list(sys.modules) if ours(key)}
     previous = sys.dont_write_bytecode
     sys.dont_write_bytecode = True
     try:
@@ -156,15 +162,14 @@ def _import_ufo(path, name):
             else:
                 sys.path.insert(0, str(path))
                 prefix = ""
-            modules = tuple(
+            return tuple(
                 importlib.import_module(f"{prefix}{part}") for part in _UFO_PARTS
             )
-        yield modules
     finally:
         sys.dont_write_bytecode = previous
-        if not relative and sys.path and sys.path[0] == str(path):
-            del sys.path[0]
-        for key in set(sys.modules) - before:
+        if not relative:
+            sys.path.remove(str(path))
+        for key in [key for key in sys.modules if ours(key)]:
             del sys.modules[key]
         sys.modules.update(shadowed)
 
@@ -173,14 +178,14 @@ def _import_ufo(path, name):
 def gmu_ufo(loop_gmu_ufo):
     """The G_mu UFO's oracle modules (``_import_ufo``)."""
 
-    yield from _import_ufo(loop_gmu_ufo, "_pyamplicol_test_ufo_gmu")
+    return _import_ufo(loop_gmu_ufo, "_pyamplicol_test_ufo_gmu")
 
 
 @pytest.fixture(scope="module")
 def qcd_qed_ufo(loop_qcd_qed_sm_ufo):
     """loop_qcd_qed_sm's oracle modules (``_import_ufo``)."""
 
-    yield from _import_ufo(loop_qcd_qed_sm_ufo, "_pyamplicol_test_ufo_qcd_qed")
+    return _import_ufo(loop_qcd_qed_sm_ufo, "_pyamplicol_test_ufo_qcd_qed")
 
 
 def _counterterm_outputs(raw) -> list[tuple[str, int]]:
