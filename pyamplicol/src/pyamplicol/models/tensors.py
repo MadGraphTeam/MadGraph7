@@ -187,64 +187,89 @@ class _LorentzContext:
         self.projm_tensor = TensorExpression.projm(4)
         self.projp_tensor = TensorExpression.projp(4)
         self._fresh_index = 0
-        # Standard UFO vertices index a fermion pair in the opposite order to
-        # the internal spinor slots, e.g. Gamma(3,2,1) for the SM FFV1.
-        dirac_legs = (
-            [leg for leg, spin in enumerate(spins, 1) if spin == 2] if vertex else []
-        )
-        self._spinor_partner = {
-            leg: partner
-            for first, second in zip(dirac_legs[::2], dirac_legs[1::2], strict=False)
-            for leg, partner in ((first, second), (second, first))
-        }
+        # A UFO vertex structure Gamma(mu,i,j)... is a matrix product with i the
+        # row (the outgoing-fermion index, e.g. particle 2 of FFV1's
+        # Gamma(3,2,1)) and j the column. spenso's bispinor tensors take
+        # (row, column), and each UFO spinor index stays on its own leg's
+        # slot, so the network evaluates the chain in its source order: the
+        # current of the row leg is the barred spinor, that of the column leg
+        # the unbarred one. A lone projector is therefore UFO's own chirality,
+        # Gamma(mu,2,-1)*ProjM(-1,1) is gamma^mu P_L, and products of several
+        # gamma matrices (Sigma, gamma^mu gamma^5) keep their order.
+        # Propagators keep their own (column, row) order.
+        self._vertex = vertex
 
     def metric(self, match: Mapping[Expression, Expression]) -> Expression:
         left = self._minkowski_slot(match[_WILDCARDS["a_"]])
         right = self._minkowski_slot(match[_WILDCARDS["b_"]])
         return TensorExpression.g(self.minkowski)(left, right).to_expression()
 
+    def _spinor_pair(self, row: Expression, column: Expression) -> tuple[str, str]:
+        """spenso's (first, second) bispinor labels of a UFO (row, column)
+        index pair: (row, column) at vertices, (column, row) in propagators."""
+
+        first = self._bispinor_label(row)
+        second = self._bispinor_label(column)
+        return (first, second) if self._vertex else (second, first)
+
     def gamma(self, match: Mapping[Expression, Expression]) -> Expression:
         lorentz = self._minkowski_label(match[_WILDCARDS["a_"]])
-        output = self._bispinor_label(match[_WILDCARDS["b_"]])
-        input_ = self._bispinor_label(match[_WILDCARDS["c_"]])
-        return _as_expression(self.gamma_tensor(input_, output, lorentz))
+        first, second = self._spinor_pair(
+            match[_WILDCARDS["b_"]], match[_WILDCARDS["c_"]]
+        )
+        return _as_expression(self.gamma_tensor(first, second, lorentz))
 
     def gamma5(self, match: Mapping[Expression, Expression]) -> Expression:
-        output = self._bispinor_label(match[_WILDCARDS["a_"]])
-        input_ = self._bispinor_label(match[_WILDCARDS["b_"]])
-        return _as_expression(self.gamma5_tensor(input_, output))
+        first, second = self._spinor_pair(
+            match[_WILDCARDS["a_"]], match[_WILDCARDS["b_"]]
+        )
+        return _as_expression(self.gamma5_tensor(first, second))
 
     def projector_minus(
         self,
         match: Mapping[Expression, Expression],
     ) -> Expression:
-        output = self._bispinor_label(match[_WILDCARDS["a_"]])
-        input_ = self._bispinor_label(match[_WILDCARDS["b_"]])
-        return _as_expression(self.projp_tensor(input_, output))
+        """UFO ``ProjM`` = (1 - gamma^5)/2, spenso's ``projm`` at vertices.
+        Propagators keep their historical exchanged head (no supported
+        propagator uses a projector)."""
+
+        first, second = self._spinor_pair(
+            match[_WILDCARDS["a_"]], match[_WILDCARDS["b_"]]
+        )
+        tensor = self.projm_tensor if self._vertex else self.projp_tensor
+        return _as_expression(tensor(first, second))
 
     def projector_plus(
         self,
         match: Mapping[Expression, Expression],
     ) -> Expression:
-        output = self._bispinor_label(match[_WILDCARDS["a_"]])
-        input_ = self._bispinor_label(match[_WILDCARDS["b_"]])
-        return _as_expression(self.projm_tensor(input_, output))
+        """UFO ``ProjP`` = (1 + gamma^5)/2 (``projector_minus``)."""
+
+        first, second = self._spinor_pair(
+            match[_WILDCARDS["a_"]], match[_WILDCARDS["b_"]]
+        )
+        tensor = self.projp_tensor if self._vertex else self.projm_tensor
+        return _as_expression(tensor(first, second))
 
     def identity(self, match: Mapping[Expression, Expression]) -> Expression:
-        left = self.bispinor(self._bispinor_label(match[_WILDCARDS["a_"]]))
-        right = self.bispinor(self._bispinor_label(match[_WILDCARDS["b_"]]))
+        first, second = self._spinor_pair(
+            match[_WILDCARDS["b_"]], match[_WILDCARDS["a_"]]
+        )
+        left = self.bispinor(first)
+        right = self.bispinor(second)
         return TensorExpression.g(self.bispinor)(left, right).to_expression()
 
     def sigma(self, match: Mapping[Expression, Expression]) -> Expression:
         mu = self._minkowski_label(match[_WILDCARDS["a_"]])
         nu = self._minkowski_label(match[_WILDCARDS["b_"]])
-        output = self._bispinor_label(match[_WILDCARDS["c_"]])
-        input_ = self._bispinor_label(match[_WILDCARDS["d_"]])
+        # (gamma^mu gamma^nu)[row][column] = sum_x gamma^mu[row][x] gamma^nu[x][column]
+        # in spenso's (first, second) order (``_spinor_pair``).
+        start, end = self._spinor_pair(match[_WILDCARDS["c_"]], match[_WILDCARDS["d_"]])
         dummy = self._fresh_label("sigma")
-        first = _as_expression(self.gamma_tensor(input_, dummy, mu))
-        second = _as_expression(self.gamma_tensor(dummy, output, nu))
-        reverse_first = _as_expression(self.gamma_tensor(input_, dummy, nu))
-        reverse_second = _as_expression(self.gamma_tensor(dummy, output, mu))
+        first = _as_expression(self.gamma_tensor(start, dummy, mu))
+        second = _as_expression(self.gamma_tensor(dummy, end, nu))
+        reverse_first = _as_expression(self.gamma_tensor(start, dummy, nu))
+        reverse_second = _as_expression(self.gamma_tensor(dummy, end, mu))
         return E("1𝑖/2") * (  # noqa: RUF001
             first * second - reverse_first * reverse_second
         )
@@ -300,12 +325,13 @@ class _LorentzContext:
         return self._momentum_tensor(leg, self._minkowski_slot(index))
 
     def p_slash(self, match: Mapping[Expression, Expression]) -> Expression:
-        output = self._bispinor_label(match[_WILDCARDS["a_"]])
-        input_ = self._bispinor_label(match[_WILDCARDS["b_"]])
+        first, second = self._spinor_pair(
+            match[_WILDCARDS["a_"]], match[_WILDCARDS["b_"]]
+        )
         lorentz_label = self._fresh_label("pslash")
         lorentz = self.minkowski(lorentz_label)
         return _as_expression(
-            self.gamma_tensor(input_, output, lorentz_label)
+            self.gamma_tensor(first, second, lorentz_label)
         ) * self._momentum_tensor(
             1,
             lorentz,
@@ -331,7 +357,7 @@ class _LorentzContext:
             )
         if component != 1:
             raise ValueError(f"Dirac particle leg {leg} has no spin index {component}")
-        return f"ufo_s_{component}_{self._spinor_partner.get(leg, leg)}"
+        return f"ufo_s_{component}_{leg}"
 
     def _momentum_tensor(self, leg: int, slot) -> Expression:
         if leg < 1 or leg > len(self.spins):
