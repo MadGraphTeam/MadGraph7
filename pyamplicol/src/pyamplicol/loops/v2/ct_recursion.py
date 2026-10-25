@@ -21,13 +21,19 @@ Born x CT interference directly; no CT tree and no site is listed:
   coupling, ``S_slot * sum_rules M_rule * c_rule``: ``c_rule`` is the exact
   Laurent coefficient of the rule's UFO coupling (the source scalar program
   of ``loops.model``, with the model's fixed parameters substituted and the
-  UFO helpers ``cond``/``reglog`` resolved, ``CoefficientLowering``),
-  ``M_rule`` an integer runtime parameter (the number of admitted
-  alternatives of the rule in the process, 0 when not admitted) and
-  ``S_slot`` an integer slot switch (0 drops the slot: finite-only mode
-  zeroes the pole slots). The tree runtime evaluates the couplings from the
-  model parameters in every carrier, so no per-point binding is needed and
-  arbitrary precision stays exact.
+  UFO-standard helpers ``cond``/``reglog``/``complexconjugate`` resolved,
+  ``CoefficientLowering``), ``M_rule`` an integer runtime parameter (the
+  number of admitted alternatives of the rule in the process, 0 when not
+  admitted) and ``S_slot`` an integer slot switch (0 drops the slot:
+  finite-only mode zeroes the pole slots). The tree runtime evaluates the
+  couplings from the model parameters in every carrier, so arbitrary
+  precision stays exact. A coupling that reads a CT scalar whose body needs
+  the model's scalar library (the electroweak helpers, a rebound ``reglog``;
+  WP3.2) is lowered on *reference parameters*, the real and imaginary parts
+  of the scalars' Laurent coefficients, which the CT program binds at the
+  card from their exact bodies (``coefficient_plan``,
+  ``CountertermRecursion.parameter_values``): no CT body is inlined into a
+  vertex.
 * **Admission** (design §6.2) is the plain tree-level rule, without any
   matching to the loop: a rule of a selected correction enters with every
   loop-content alternative (``rule.alternatives``, the UFO ``loop_particles``)
@@ -37,12 +43,13 @@ Born x CT interference directly; no CT tree and no site is listed:
 * **Not lowered** (``residual`` with the reason): Lorentz structures the
   tree compiler does not normalise (Levi-Civita cells that do not cancel),
   contact vertices without a colour-flow decomposition, the two-point terms
-  ``models.ct_line_insertions`` refuses (mixing between spins) and
-  coefficients with UFO helpers other than ``cond`` and ``reglog``; no
-  loop_sm rule is among them. A request that admits such a rule is refused
-  (``UnloweredCountertermError``) when the rule's vertex can enter a tree of
-  it (``ct_closure.InsertionReachability``, the tree engine's field and
-  coupling-order reachability); there is no site fallback. Rules that can be
+  ``models.ct_line_insertions`` refuses (mixing between spins), couplings
+  that are not linear in their referenced CT scalars, and coefficients that
+  are not finite at the fixed parameters (an infinity or indeterminate in a
+  taken branch); no loop_sm rule is among them. A request that admits such
+  a rule is refused (``UnloweredCountertermError``) when the rule's vertex
+  can enter a tree of it (``ct_closure.InsertionReachability``, the tree
+  engine's field and coupling-order reachability); there is no site fallback. Rules that can be
   in no tree of the program (ghost legs; orders above its limits; a vertex
   no tree of the request holds, REQUIREMENTS_ADDENDUM J) or have no admitted
   loop content are ``inert`` and contribute nothing. With

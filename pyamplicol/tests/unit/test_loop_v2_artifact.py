@@ -2499,12 +2499,13 @@ def test_qed_declaring_model_names_its_blockers(
     public v2 path (its MU_R, at LHA code LOOP 666, is resolved at the public
     boundary). Without the compatibility profile both engines refuse its G-
     Goldstone flag, which the dry run reports from the model preparation;
-    with it, u u~ > d d~ stops at the electroweak counterterms that the tree
-    recursion cannot lower and whose vertices can enter a tree of the
-    request: couplings with the complex-mass scheme's UFO helper recms
-    (WP3.2). There is no site fallback. The unlowerable G0-photon mixing
-    between spins is inert (REQUIREMENTS_ADDENDUM J): the model's tree model
-    absorbs the Goldstones into the massive vectors (``CompiledUFOModel.
+    with it, the electroweak counterterms of u u~ > d d~ are lowered (their
+    CT scalars with the complex-mass scheme's helper recms and the CMS
+    reglog are parameter-program references, WP3.2 EWI-3) and the request
+    stops at the next blocker, the unitary-gauge W and Z on loop lines
+    (WP3.2 EWI-4b). The unlowerable G0-photon mixing between spins stays
+    inert (REQUIREMENTS_ADDENDUM J): the model's tree model absorbs the
+    Goldstones into the massive vectors (``CompiledUFOModel.
     inactive_goldstone_names``), so it holds no G0 vertex and no tree of any
     request on this model holds the mixing."""
 
@@ -2526,9 +2527,7 @@ def test_qed_declaring_model_names_its_blockers(
         loop_qcd_qed_sm_ufo, tmp_path, "b", entries, engine="v2"
     )
     with pytest.raises(
-        GenerationError,
-        match=r"counterterm rules the tree recursion cannot lower, whose vertices "
-        r"can enter a tree of the request: .*UFO helper 'recms'",
+        GenerationError, match=r"loop line -?\d+ has a unitary-gauge propagator"
     ) as refused:
         profiled.generate(processes, tmp_path / "b")
     assert "G0" not in str(refused.value)

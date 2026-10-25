@@ -559,3 +559,264 @@ def test_every_referenced_coupling_equals_the_ufo_coupling(gmu, gmu_ufo, gmu_pla
     coupling of the model."""
 
     _check_referenced_couplings(gmu, gmu_ufo, gmu_plan, every=1)
+
+
+# ------------------------------------------------------------------- ladder
+
+# Blockers (PLAN wp32 §2): the exception and message each request stops at.
+B2 = ("LoopKernelCatalogueError", r"declares no loop species")
+B2_RUNTIME = ("ValueError", r"lowers to no kernel")
+B3 = ("LoopKernelCatalogueError", r"loop line -?\d+ has a unitary-gauge propagator")
+B5 = ("FermionSignError", r"has more than one fermion line")
+B6 = ("NotImplementedError", r"is not closed under conjugation")
+_PHOTON_ONLY = (23, 24, 25, 250, 251)  # Z, W, H and the Goldstones vetoed
+_G_MU_FIXED = {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0",
+}
+_MASSLESS_POINT = [
+    ["500", "0", "0", "500"],
+    ["500", "0", "0", "-500"],
+    ["500", "240", "320", "300"],
+    ["500", "-240", "-320", "-300"],
+]
+_GB_TW_POINT = [
+    ["500", "0", "0", "500"],
+    ["500", "0", "0", "-500"],
+    [
+        "511.73089221950000000",
+        "148.1849175986458016361389900087303105804",
+        "355.6438022367499239267335760209527453930",
+        "288.9605893173593131904710305170241056318",
+    ],
+    [
+        "488.26910778050000000",
+        "-148.1849175986458016361389900087303105804",
+        "-355.6438022367499239267335760209527453930",
+        "-288.9605893173593131904710305170241056318",
+    ],
+]
+
+
+def _rung(name, model, process, born, loop, blocker, **options):
+    """One ladder rung: a strict xfail raising its blocker's exception."""
+
+    import pyamplicol.loops.v2.catalogue as catalogue
+    import pyamplicol.loops.v2.conventions as conventions
+
+    errors = {
+        "LoopKernelCatalogueError": catalogue.LoopKernelCatalogueError,
+        "FermionSignError": conventions.FermionSignError,
+        "ValueError": ValueError,
+        "NotImplementedError": NotImplementedError,
+    }
+    return pytest.param(
+        model,
+        process,
+        born,
+        loop,
+        blocker,
+        options,
+        id=name,
+        marks=pytest.mark.xfail(
+            strict=True, raises=errors[blocker[0]], reason=f"blocker: {blocker[1]}"
+        ),
+    )
+
+
+LADDER = [
+    # Photon-only QED corrections of a lepton process: the families' photon
+    # and lepton species are not in the kernel catalogue (B2, WP3.2 EWI-1).
+    _rung(
+        "qq_eemm_photon",
+        "loop_qcd_qed_sm",
+        "e- e+ > m- m+",
+        {"QED": 2, "QCD": 0},
+        {"QED": 4, "QCD": 0},
+        B2,
+        corrections=("QED",),
+        particle_veto=_PHOTON_ONLY,
+    ),
+    _rung(
+        "sm_epem_uux",
+        "loop_sm",
+        "e+ e- > u u~",
+        {"QCD": 0, "QED": 2},
+        {"QCD": 2, "QED": 2},
+        B2,
+    ),
+    # Q3: photon-only QED corrections of u u~ > d d~ generate (EWI-3); the
+    # photon loop line lowers to no kernel (B2 at runtime). Once it does,
+    # the bare and counterterm UV poles must cancel.
+    _rung(
+        "uudd_qed_photon_uv",
+        "loop_qcd_qed_sm",
+        "u u~ > d d~",
+        {"QCD": 2, "QED": 0},
+        {"QCD": 2, "QED": 2},
+        B2_RUNTIME,
+        corrections=("QED",),
+        particle_veto=_PHOTON_ONLY,
+        point=_MASSLESS_POINT,
+        poles="uv",
+    ),
+    _rung(
+        "uudd_qed",
+        "loop_qcd_qed_sm",
+        "u u~ > d d~",
+        {"QCD": 2, "QED": 0},
+        {"QCD": 2, "QED": 2},
+        B3,
+        corrections=("QED",),
+    ),
+    _rung(
+        "uudd_qcd_qed",
+        "loop_qcd_qed_sm",
+        "u u~ > d d~",
+        {"QCD": 2, "QED": 0},
+        ({"QCD": 4, "QED": 0}, {"QCD": 2, "QED": 2}),
+        B3,
+        corrections=("QCD", "QED"),
+    ),
+    _rung(
+        "gb_twm",
+        "loop_sm",
+        "g b > t w-",
+        {"QCD": 1, "QED": 1},
+        {"QCD": 3, "QED": 1},
+        B5,
+        fixed_parameters={"MB": "0", "WT": "0"},
+        point=_GB_TW_POINT,
+    ),
+    _rung(
+        "udx_epve",
+        "loop_sm",
+        "u d~ > e+ ve",
+        {"QCD": 0, "QED": 2},
+        {"QCD": 2, "QED": 2},
+        B6,
+    ),
+    # The G_mu ladder of PLAN wp32 §1 (real masses, widths zero).
+    _rung(
+        "gmu_eemm",
+        "loop_gmu",
+        "e- e+ > m- m+",
+        {"QED": 2, "QCD": 0},
+        {"QED": 4, "QCD": 0},
+        B3,
+        corrections=("QED",),
+        fixed_parameters=_G_MU_FIXED,
+    ),
+    _rung(
+        "gmu_gg_ttx",
+        "loop_gmu",
+        "g g > t t~",
+        {"QCD": 2, "QED": 0},
+        {"QCD": 2, "QED": 2},
+        B3,
+        corrections=("QCD", "QED"),
+        fixed_parameters=_G_MU_FIXED,
+    ),
+    _rung(
+        "gmu_uux_emepg",
+        "loop_gmu",
+        "u u~ > e- e+ g",
+        {"QCD": 1, "QED": 2},
+        {"QCD": 1, "QED": 4},
+        B3,
+        corrections=("QCD", "QED"),
+        fixed_parameters=_G_MU_FIXED,
+    ),
+    _rung(
+        "gmu_gg_ttxemep",
+        "loop_gmu",
+        "g g > t t~ e- e+",
+        {"QCD": 2, "QED": 2},
+        {"QCD": 2, "QED": 4},
+        B3,
+        corrections=("QCD", "QED"),
+        fixed_parameters=_G_MU_FIXED,
+    ),
+    _rung(
+        "gmu_gg_ttxemepg",
+        "loop_gmu",
+        "g g > t t~ e- e+ g",
+        {"QCD": 3, "QED": 2},
+        {"QCD": 3, "QED": 4},
+        B3,
+        corrections=("QCD", "QED"),
+        fixed_parameters=_G_MU_FIXED,
+    ),
+]
+
+
+@pytest.fixture(scope="module")
+def ladder_models(request):
+    """Compiled models of the ladder by name, compiled on first use."""
+
+    from pyamplicol.models.loading import compile_model_source, load_compiled_model
+
+    models = {}
+
+    def get(name):
+        if name not in models:
+            if name == "loop_sm":
+                path = request.getfixturevalue("loop_sm_compiled_model")
+                models[name] = load_compiled_model(path)
+            else:
+                ufo = request.getfixturevalue(f"{name}_ufo")
+                models[name] = compile_model_source(ufo, require_supported=False)
+        return models[name]
+
+    return get
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize(
+    ("model", "process", "born", "loop", "blocker", "options"), LADDER
+)
+def test_electroweak_ladder_reaches_its_blocker(
+    ladder_models, loop_native, model, process, born, loop, blocker, options
+):
+    """Each rung generates past the CT lowering (WP3.2 EWI-3) and stops at
+    its named blocker; a rung whose blocker is lifted runs its check (the UV
+    poles cancel) and flips its strict xfail."""
+
+    import re
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+
+    options = dict(options)
+    point, poles = options.pop("point", None), options.pop("poles", "all")
+    if model != "loop_sm":
+        options.setdefault("compatibility", "gmu_particle_anti")
+        options.setdefault("scale_parameter", "MU_R")
+    request = SliceRequest(process, born, loop, **options)
+    try:
+        slice_ = LoopSlice.generate(ladder_models(model), request, loop_native)
+        if point is not None:
+            result = slice_.evaluate(
+                point, "1000000", parameters={"aS": "0.118", "MT": "173"}, poles=poles
+            )
+    except Exception as error:
+        if type(error).__name__ == blocker[0] and re.search(blocker[1], str(error)):
+            raise
+        raise AssertionError(f"stopped before its blocker: {error!r}") from error
+    if poles == "uv":
+        # Bare UV poles + counterterm UV poles = 0 per sector and coefficient
+        # (REQUIREMENTS_ADDENDUM I): renormalisation is complete.
+        for sector, bare in result.components["bare"].items():
+            counterterms = result.components["uv"][sector]
+            for index in (1, 2):
+                total = float(bare.coefficients[index]) + float(
+                    counterterms.coefficients[index]
+                )
+                assert abs(total) <= 1e-10 * max(
+                    abs(float(bare.coefficients[index])), 1e-300
+                ), (sector, index, bare, counterterms)
