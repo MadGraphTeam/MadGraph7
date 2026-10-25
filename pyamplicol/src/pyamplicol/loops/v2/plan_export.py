@@ -1421,13 +1421,6 @@ class NativeExecutor:
         from .poles import pole_mode, reducer_poles, splits
 
         mode = pole_mode(poles)
-        if splits(mode) and not hasattr(self.slice, "scaleless"):
-            # A stored native process (``native_process``) has no companion of
-            # its certified-scaleless families: its loads regenerate for them.
-            raise NotImplementedError(
-                "the uv and ir pole selections of a stored native process need "
-                "its regenerated slice"
-            )
         sectors = tuple(sector for sector, _pairs in self.slice.sectors)
         if (
             splits(mode)

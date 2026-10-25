@@ -132,6 +132,9 @@ NATIVE_KERNEL_MEMBER = "point-inputs/kernel-{}.state"
 # Their binary64 SymJIT plane applications (storage-v4 IR).
 NATIVE_PARAMETERS_PLANE_MEMBER = "point-inputs/parameters.symjit"
 NATIVE_KERNEL_PLANE_MEMBER = "point-inputs/kernel-{}.symjit"
+# The certified-scaleless companion's tree program (``native_process.
+# NativeCompanion``): the same members under this prefix.
+NATIVE_SCALELESS_PREFIX = "point-inputs/scaleless/"
 # The companion plan of the certified-scaleless families (rusticol-core
 # ``loop_runtime::LOOP_PROGRAM_V4_SCALELESS_MEMBER``).
 SCALELESS_PLAN_MEMBER = "schedule/loop-plan-v4-scaleless.json.zlib"
@@ -383,30 +386,54 @@ def write_plan(
     if native is not None:
         if native.plan_json != plan_json:
             raise ValueError("the native point inputs belong to another plan")
+        companion = native.scaleless
+        if (companion is None) != (scaleless_json is None) or (
+            companion is not None and companion.plan_json != scaleless_json
+        ):
+            raise ValueError(
+                "the native point inputs store the companion of the stored "
+                "companion plan"
+            )
         stored = native.members()
-        members += [
+        members.append(
             (
                 NATIVE_RECORD_MEMBER,
                 plan,
                 zlib.compress(stored["native-process.json"], 6),
-            ),
-            (NATIVE_TREES_MEMBER, plan, zlib.compress(stored["tree-program.json"], 6)),
-            (NATIVE_PARAMETERS_MEMBER, state, stored["parameters.bin"]),
-            (NATIVE_PARAMETERS_PLANE_MEMBER, symjit, stored["parameters.symjit"]),
-        ]
-        k = 0
-        while f"kernel-{k}.bin" in stored:
-            members.append(
-                (NATIVE_KERNEL_MEMBER.format(k), state, stored[f"kernel-{k}.bin"])
             )
-            members.append(
+        )
+        prefixes = [("", "point-inputs/")]
+        if companion is not None:
+            from .native_process import SCALELESS
+
+            prefixes.append((SCALELESS, NATIVE_SCALELESS_PREFIX))
+        for prefix, path in prefixes:
+            members += [
                 (
-                    NATIVE_KERNEL_PLANE_MEMBER.format(k),
+                    f"{path}tree-program.json.zlib",
+                    plan,
+                    zlib.compress(stored[f"{prefix}tree-program.json"], 6),
+                ),
+                (f"{path}parameters.state", state, stored[f"{prefix}parameters.bin"]),
+                (
+                    f"{path}parameters.symjit",
                     symjit,
-                    stored[f"kernel-{k}.symjit"],
+                    stored[f"{prefix}parameters.symjit"],
+                ),
+            ]
+            k = 0
+            while f"{prefix}kernel-{k}.bin" in stored:
+                members.append(
+                    (f"{path}kernel-{k}.state", state, stored[f"{prefix}kernel-{k}.bin"])
                 )
-            )
-            k += 1
+                members.append(
+                    (
+                        f"{path}kernel-{k}.symjit",
+                        symjit,
+                        stored[f"{prefix}kernel-{k}.symjit"],
+                    )
+                )
+                k += 1
     write_pacbin(
         destination,
         tuple(
@@ -433,11 +460,19 @@ def read_plan(path: Path, member: str = PLAN_MEMBER) -> str | None:
     return zlib.decompress(compressed).decode()
 
 
-def read_native_process(path: Path, plan_json: str) -> Any:
+def read_native_process(
+    path: Path, plan_json: str, scaleless_json: str | None = None
+) -> Any:
     """The native point inputs of a ``loop-runtime.pacbin`` written with them
-    (``write_plan(..., native)``), for its plan ``plan_json``."""
+    (``write_plan(..., native)``), for its plan ``plan_json`` and, when the
+    process has certified-scaleless families, its companion plan
+    ``scaleless_json`` (whose native tree program it also holds; read from
+    the PACBIN when not given)."""
 
-    from .native_process import NativeProcess
+    from .native_process import SCALELESS, NativeProcess
+
+    if scaleless_json is None:
+        scaleless_json = read_plan(path, SCALELESS_PLAN_MEMBER)
 
     def read(reader: Any, name: str, kind: PacbinMemberKind) -> bytes:
         member = reader.member(name)
@@ -454,23 +489,32 @@ def read_native_process(path: Path, plan_json: str) -> Any:
         members["native-process.json"] = zlib.decompress(
             read(reader, NATIVE_RECORD_MEMBER, json_kind)
         )
-        members["tree-program.json"] = zlib.decompress(
-            read(reader, NATIVE_TREES_MEMBER, json_kind)
-        )
-        members["parameters.bin"] = read(reader, NATIVE_PARAMETERS_MEMBER, state)
-        members["parameters.symjit"] = read(
-            reader, NATIVE_PARAMETERS_PLANE_MEMBER, symjit
-        )
-        k = 0
-        while NATIVE_KERNEL_MEMBER.format(k) in names:
-            members[f"kernel-{k}.bin"] = read(
-                reader, NATIVE_KERNEL_MEMBER.format(k), state
+        prefixes = [("", "point-inputs/")]
+        if scaleless_json is not None:
+            prefixes.append((SCALELESS, NATIVE_SCALELESS_PREFIX))
+        for prefix, base in prefixes:
+            members[f"{prefix}tree-program.json"] = zlib.decompress(
+                read(reader, f"{base}tree-program.json.zlib", json_kind)
             )
-            members[f"kernel-{k}.symjit"] = read(
-                reader, NATIVE_KERNEL_PLANE_MEMBER.format(k), symjit
+            members[f"{prefix}parameters.bin"] = read(
+                reader, f"{base}parameters.state", state
             )
-            k += 1
-    return NativeProcess.from_members(plan_json, members)
+            members[f"{prefix}parameters.symjit"] = read(
+                reader, f"{base}parameters.symjit", symjit
+            )
+            k = 0
+            while f"{base}kernel-{k}.state" in names:
+                members[f"{prefix}kernel-{k}.bin"] = read(
+                    reader, f"{base}kernel-{k}.state", state
+                )
+                members[f"{prefix}kernel-{k}.symjit"] = read(
+                    reader, f"{base}kernel-{k}.symjit", symjit
+                )
+                k += 1
+    try:
+        return NativeProcess.from_members(plan_json, members, scaleless_json)
+    except ValueError as error:
+        raise ArtifactError(f"unreadable native point inputs: {error}") from error
 
 
 # --------------------------------------------------------------------- generation
@@ -683,14 +727,31 @@ def generate_process(
     except NotImplementedError:
         exported = export_plan(observables.slice, forward=False)
     plan_json = exported.json()
+    # The companion plan of the certified-scaleless families, which the "uv"
+    # and "ir" pole selections run (design §12.4). With native point inputs
+    # it is exported with its own tree program (no Born or counterterm
+    # outputs: it adds only lanes), stored with the process, so no pole
+    # selection of a loaded process regenerates.
+    companion = observables.slice.scaleless
+    scaleless = None
+    if companion is not None:
+        scaleless = export_plan(
+            companion,
+            forward=False,
+            trees=exported.trees is not None,
+            born_squared=False,
+            counterterms=False,
+        )
+    scaleless_json = None if scaleless is None else scaleless.json()
     if exported.trees is not None:
         from .native_process import NativeProcess
 
-        native = NativeProcess.export(observables.slice, exported, plan_json)
-    # The companion plan of the certified-scaleless families, which the "uv"
-    # and "ir" pole selections run (design §12.4).
-    companion = observables.slice.scaleless
-    scaleless = None if companion is None else export_plan(companion, forward=False)
+        native = NativeProcess.export(
+            observables.slice,
+            exported,
+            plan_json,
+            None if scaleless is None else (scaleless, cast(str, scaleless_json)),
+        )
     resolved = CorrelatorConfig(
         tuple(observables.histories), tuple(observables.spin_classes)
     )
@@ -702,7 +763,7 @@ def generate_process(
         plan_json,
         native=native,
         scaleless_exported=scaleless,
-        scaleless_plan_json=None if scaleless is None else scaleless.json(),
+        scaleless_plan_json=scaleless_json,
     )
     _remember(model_digest(compiled.to_dict()) if model is None else model, generated)
     return generated
@@ -903,9 +964,6 @@ class V2VirtualRuntime:
         self._model_payload = model_payload
         self._plan_sha256 = str(admission["plan_sha256"])
         self._scaleless_plan_sha256 = admission["scaleless_plan_sha256"]
-        # The executor of the "uv" and "ir" pole selections when the stored
-        # native process cannot run them (its companion is not stored).
-        self._split_executor: Any = None
         self._group_member = group_member
         self._member = None
         self._generated: GeneratedProcess | None = None
@@ -918,15 +976,21 @@ class V2VirtualRuntime:
             for record in compiled.ir.parameters
             if record.nature == "external"
         }
-        if (
-            execution["point_inputs"] == LOOP_V2_NATIVE_POINT_INPUTS
-            and group_member is None
-        ):
-            # The stored native program evaluates every point: no slice is
-            # regenerated (WP3.1 I6); correlated and resolved calls regenerate
-            # it on first use (``_observable_runtime``).
+        if execution["point_inputs"] == LOOP_V2_NATIVE_POINT_INPUTS:
+            # The stored native program evaluates every point in every pole
+            # selection (with the stored companion of the certified-scaleless
+            # families): no slice is regenerated (WP3.1 I6). A flavour member
+            # is an identity-port member of its representative, proved at
+            # generation (``process-groups.json``); correlated and resolved
+            # calls regenerate the slice on first use (``_observable_runtime``).
             runtime = root / "processes" / process_id / str(execution["runtime_path"])
-            self._native_process = read_native_process(runtime, read_plan(runtime))
+            self._native_process = read_native_process(
+                runtime,
+                read_plan(runtime),
+                read_plan(runtime, SCALELESS_PLAN_MEMBER),
+            )
+            if group_member is not None:
+                self._member = _stored_member(group_member, str(selected["expression"]))
             record = self._native_process.record
             self._fixed = dict(record["fixed_parameters"])
             self._scale_parameter = record["scale_parameter"]
@@ -1033,22 +1097,12 @@ class V2VirtualRuntime:
             return generated
 
     def _executor_for(self, poles: PoleSelection) -> Any:
-        """The executor of a pole selection. A stored native process runs the
-        "all" and "none" selections; "uv" and "ir" also dress the companion
-        of the certified-scaleless families, whose inputs are not stored, so
-        they run on the regenerated slice (built on first use, as correlated
-        and resolved calls do)."""
+        """The executor of a pole selection: one executor serves all of them
+        (a stored native process holds the companion of its
+        certified-scaleless families, which "uv" and "ir" also dress)."""
 
-        from .poles import pole_mode, splits
-
-        if self._native_process is None or not splits(pole_mode(poles)):
-            return self._executor
-        if self._split_executor is None:
-            # Native inputs from the regenerated plan's tree program (the
-            # stored one, regenerated bitwise): the finite part is that of
-            # the other selections, and the companion forms its own rows.
-            self._split_executor = self._regenerated().executor(inputs="native")
-        return self._split_executor
+        del poles
+        return self._executor
 
     def _observable_runtime(self) -> Any:
         """The correlated and resolved outputs' runtime (``runtime.virtual.
@@ -1502,7 +1556,6 @@ class V2VirtualRuntime:
                 self._executor = self._native_process.executor(self._native)
             else:
                 self._executor = self._regenerated().executor()
-            self._split_executor = None
             if self._observables is not None:
                 self._observables.clear()
 
@@ -1511,6 +1564,24 @@ class V2VirtualRuntime:
 
     def unmute_warnings(self) -> None:
         """No effect: v2 runtimes emit no runtime warnings."""
+
+
+def _stored_member(group_member: Any, representative: str) -> Any:
+    """The identity-port flavour member of a stored process group
+    (``process-groups.json``, basis ``exact-loop-flavor``): generation proved
+    the species substitution on the representative (``observables.
+    admit_member``, ``loop_service._v2_member``) and lists only identity-port
+    members, so a load reads it without regenerating the representative."""
+
+    from .observables import FlavourMember
+
+    legs = tuple(int(leg) for leg in group_member.permutation)
+    if legs != tuple(range(len(legs))):
+        raise ArtifactError(
+            f"flavour member {group_member.process_id!r} is not an identity-port "
+            "member of its representative"
+        )
+    return FlavourMember(str(group_member.expression), representative, legs, {})
 
 
 def _zero(carrier: str) -> Any:
