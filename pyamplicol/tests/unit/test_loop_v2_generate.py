@@ -336,13 +336,17 @@ def test_born_orders_the_root_closure_misses_are_refused(
     loop_sm_compiled_model, loop_native, monkeypatch
 ):
     """Without a QED bound u u~ > d d~ g has a QCD 1 QED 2 Born (photon, Z and
-    W exchange). The root closure at leg 1 builds it: loop-aware reachability
-    adds the block currents the Born closure attaches
-    (``assemble._born_block_requests``) and the W vertex closes through its
-    conjugate rule (WP3.2 EWI-2); the virtual's poles are Catani's in every
-    sector. Without those currents the closure has no terms at that order,
-    and generation refuses the request rather than leave the interference
-    sectors zero."""
+    W exchange). The root closure at leg 1 builds it, also for QCD loops of
+    the QCD Born only: loop-aware reachability adds the block currents the
+    Born closure attaches (``assemble._born_block_requests``, beyond the loop
+    orders' cap) and the W vertex closes through its conjugate rule (WP3.2
+    EWI-2). With the QCD loops of both Born orders the renormalised virtual
+    is UV-finite in every sector and the QCD sector's poles are Catani's
+    (the QCD x electroweak sectors are no Catani check with QCD corrections
+    alone: the loop selection leaves out the photon-gluon boxes, as
+    MadLoop's does). Without those currents the closure has no terms at that
+    order, and generation refuses the request rather than leave the
+    interference sectors zero."""
 
     from pyamplicol.loops.v2 import assemble
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
@@ -356,19 +360,32 @@ def test_born_orders_the_root_closure_misses_are_refused(
     slice_ = LoopSlice.generate(compiled, request, loop_native)
     assert (("QCD", 1), ("QED", 2)) in slice_.blocks.born_orders
     assert set(slice_.born_terms) == set(slice_.blocks.born_orders)
-    (point,) = exact_points.generate([0] * 5, count=1)
-    result = slice_.evaluate(
-        [[exact_points.decimal_string(x) for x in leg] for leg in point],
-        "1000000",
-        parameters={"aS": "0.118", "MT": "173"},
+    slice_ = LoopSlice.generate(
+        compiled,
+        SliceRequest(
+            "u u~ > d d~ g",
+            {"QCD": 3},
+            ({"QCD": 5, "QED": 0}, {"QCD": 3, "QED": 2}),
+            fixed_parameters={"MB": "0"},
+        ),
+        loop_native,
     )
+    (point,) = exact_points.generate([0] * 5, count=1)
+    point = [[exact_points.decimal_string(x) for x in leg] for leg in point]
+    parameters = {"aS": "0.118", "MT": "173"}
+    result = slice_.evaluate(point, "1000000", parameters=parameters)
     virtual = result.components["virtual"]
-    assert set(result.ir_poles) == set(virtual)
-    for sector, (single, double) in result.ir_poles.items():
-        coefficients = [float(x) for x in virtual[sector].coefficients]
-        scale = max(abs(float(single)), abs(float(double)))
-        assert abs(coefficients[1] - float(single)) <= 1e-12 * scale, sector
-        assert abs(coefficients[2] - float(double)) <= 1e-12 * scale, sector
+    assert len(virtual) == 3
+    single, double = result.ir_poles[(("QCD", 8),)]
+    coefficients = [float(x) for x in virtual[(("QCD", 8),)].coefficients]
+    scale = max(abs(float(single)), abs(float(double)))
+    assert abs(coefficients[1] - float(single)) <= 1e-12 * scale
+    assert abs(coefficients[2] - float(double)) <= 1e-12 * scale
+    uv = slice_.evaluate(point, "1000000", parameters=parameters, poles="uv")
+    for sector, laurent in uv.pole_origins["uv"]["virtual"].items():
+        bare = [float(x) for x in uv.components["bare"][sector].coefficients]
+        poles = [float(x) for x in laurent.coefficients[1:]]
+        assert all(abs(x) <= 1e-12 * max(map(abs, bare)) for x in poles), sector
     monkeypatch.setattr(assemble, "_born_block_requests", lambda *args: frozenset())
     with pytest.raises(NotImplementedError, match="no terms at the Born orders"):
         LoopSlice.generate(compiled, request, loop_native)

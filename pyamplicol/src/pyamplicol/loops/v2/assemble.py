@@ -147,7 +147,6 @@ from .families import (
     add_orders,
     generate_families,
     mass_name,
-    orders_within,
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
@@ -823,8 +822,9 @@ def _exact_u1_subtraction_weights():
 LOOP_BLOCK_REACHABILITY = True
 
 
-def _field_level_table(data, process, selection, request) -> ModelBlockTable:
-    """The field-level block table of a loop request (design §3.2 item 1)."""
+def _field_level_table(data, process, selection, request, cap=None) -> ModelBlockTable:
+    """The field-level block table of a loop request (design §3.2 item 1),
+    within the loop orders' ``cap`` unless another is given."""
 
     names = {int(entry["pdg_code"]): entry["name"] for entry in data["particles"]}
     incoming = [names[leg.pdg] for leg in process.legs if leg.is_initial]
@@ -833,8 +833,48 @@ def _field_level_table(data, process, selection, request) -> ModelBlockTable:
         data,
         incoming,
         outgoing,
-        cap=selection.cap,
+        cap=selection.cap if cap is None else cap,
         ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+    )
+
+
+def _block_order_bounds(request) -> dict[str, int]:
+    """Coupling-order bounds of the request's tree blocks: they serve the
+    loops and the Born closure at leg 1, so an order the loops bound takes
+    the Born's bound where that is larger (u u~ > d d~ with QCD loops of the
+    QCD Born only still closes its photon Born on photon currents)."""
+
+    born = request.born_orders
+    return {
+        name: max(int(power), int(born.get(name, power)))
+        for name, power in request.loop_order_bounds.items()
+    }
+
+
+def _born_table(data, process, selection, request, table) -> ModelBlockTable:
+    """The field-level table of the Born closure's currents: ``table`` (the
+    loop orders' cap) when that covers the Born orders, else one within the
+    Born's own (a Born order beyond the loop cap, e.g. the electroweak Born
+    of a request for QCD loops only, interferes with the QCD loops). An
+    order the request does not bound is bounded by the tree-level power
+    n - 2 of the n legs."""
+
+    names = sorted(
+        {str(name) for entry in data["couplings"] for name, _power in entry["orders"]}
+    )
+    tree = len(process.legs) - 2
+    born = {
+        name: int(request.born_orders.get(name, tree))
+        for name in names
+        if request.born_orders.get(name, tree)
+    }
+    loop = dict(selection.cap)
+    if all(power <= loop.get(name, 0) for name, power in born.items()):
+        return table
+    cap = {name: max(power, born.get(name, 0)) for name, power in loop.items()}
+    cap.update((name, power) for name, power in born.items() if name not in loop)
+    return _field_level_table(
+        data, process, selection, request, cap=tuple(sorted(cap.items()))
     )
 
 
@@ -860,11 +900,16 @@ def _born_block_requests(
     (e+ e- > u u~: the quark pair's photon current) or of a mixed-order Born
     (the W exchange of u u~ > d d~) attaches currents no loop position does.
     A vertex of the model attaches leg 1 alone and one current of the
-    vertex's fields per part of the other legs, within ``born_orders``.
+    vertex's fields per part of the other legs, within ``born_orders`` (an
+    order it does not name is unbounded, as for the tree program).
     """
 
     full = (1 << len(table.legs)) - 1
-    cap = add_orders(tuple(born_orders.items()))
+    bounds = {str(name): int(power) for name, power in born_orders.items()}
+
+    def within(orders: Orders) -> bool:
+        return all(power <= bounds.get(name, power) for name, power in orders)
+
     spins = {entry["name"]: int(entry["spin"]) for entry in data["particles"]}
     coupling_orders = {
         entry["name"]: tuple(sorted((name, power) for name, power in entry["orders"]))
@@ -906,9 +951,8 @@ def _born_block_requests(
                         continue
                     for choice in product(*options):
                         if any(
-                            orders_within(
-                                add_orders(order, *(block.orders for block in choice)),
-                                cap,
+                            within(
+                                add_orders(order, *(block.orders for block in choice))
                             )
                             for order in orders
                         ):
@@ -1523,7 +1567,7 @@ class LoopSlice:
                 process,
                 CompiledUFOModel(model),
                 born_coupling_orders=dict(request.born_orders),
-                block_coupling_orders=request.loop_order_bounds,
+                block_coupling_orders=_block_order_bounds(request),
                 ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
                 reachability=(
                     None
@@ -1569,7 +1613,11 @@ class LoopSlice:
                 native if native_families else None,
                 table=field_table,
             )
-            born_requests = _born_block_requests(field_table, data, request.born_orders)
+            born_requests = _born_block_requests(
+                _born_table(data, process, selection, request, field_table),
+                data,
+                request.born_orders,
+            )
         blocks, compiled, table, generation, families = tree_program(reachable)
         if reachable is not None and (
             families.families != reachable.families
