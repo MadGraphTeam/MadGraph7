@@ -41,6 +41,11 @@ cross-host acceptance (its docstring), on:
   is held (the native library key unlocks the exact states), and, as the
   control, a DoubleFloat one with the key disabled aborts.
 
+Every unlicensed process of this module uses a private Symbolica lock
+directory (``private_symbolica_permit``): "the user's permit" above is that
+directory's, which discriminates the same way and leaves the user's real
+permit to their other processes.
+
 Other CPU feature levels (QEMU user-mode models) are an opt-in run of the
 same tool (``cpu-matrix``), recorded in DESIGN §12.1.
 """
@@ -88,6 +93,23 @@ mass_scheme = "real-on-shell"
 finite_restoration = "source-UFO-local-rules"
 model_convention = "loop_sm lhv=1 supplied QCD rules"
 """
+
+
+@pytest.fixture(scope="module", autouse=True)
+def private_symbolica_permit(tmp_path_factory):
+    """A private Symbolica lock directory (0700) for every unlicensed process
+    of this module: the permit holder, its control, the instances it covers
+    and the concurrent loads. Restricted mode admits one thread per lock
+    directory, so the checks discriminate as they would with the user's real
+    permit, which stays free for the user's other processes and for the other
+    unlicensed test files run in parallel (the tool's ``--hold-permit`` keeps
+    the real one)."""
+
+    lock = tmp_path_factory.mktemp("symbolica-locks")
+    lock.chmod(0o700)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("SYMBOLICA_LOCK_DIR", str(lock))
+        yield lock
 
 
 def _unlicensed(extra: dict[str, str] | None = None) -> dict[str, str]:
@@ -183,7 +205,9 @@ def test_sentinel_entries_name_existing_generation_code():
         assert (ROOT / "src" / suffix).is_file(), suffix
 
 
-def test_permit_lock_directory_follows_symbolica_and_is_explicit(tmp_path):
+def test_permit_lock_directory_follows_symbolica_and_is_explicit(
+    tmp_path, private_symbolica_permit
+):
     lock = portability.symbolica_lock_dir
     home = {"HOME": "/h"}
     assert lock({**home, "SYMBOLICA_LOCK_DIR": "/l"}) == "/l"
@@ -192,11 +216,49 @@ def test_permit_lock_directory_follows_symbolica_and_is_explicit(tmp_path):
     assert lock(home) == "/h/.cache/symbolica/locks"
     assert lock({**home, "XDG_RUNTIME_DIR": "relative"}) == "/h/.cache/symbolica/locks"
     # The holder, its control and every covered instance share one lock
-    # directory whatever their HOME and XDG_CACHE_HOME (``_fresh``).
+    # directory whatever their HOME and XDG_CACHE_HOME (``_fresh``): in this
+    # module the private one, never the user's.
     permit = portability.RestrictedPermit()
+    assert permit.lock_dir == str(private_symbolica_permit)
+    assert permit.lock_dir != lock(
+        {k: v for k, v in os.environ.items() if k != "SYMBOLICA_LOCK_DIR"}
+    )
+    assert private_symbolica_permit.stat().st_mode & 0o777 == 0o700
     env, _cwd = portability._fresh(tmp_path, "x", False, permit)
     assert env["SYMBOLICA_LOCK_DIR"] == permit.lock_dir
     assert env["HOME"] != os.environ.get("HOME")
+    assert portability.RestrictedPermit(lock_dir="/p").lock_dir == "/p"
+
+
+def test_native_library_key_equals_the_python_package_key():
+    """pyAmpliCol's library key exists twice: registered with the Python
+    ``symbolica`` module (``pyamplicol/__init__.py``) and in the native crate
+    (``rust/crates/pyamplicol``). A renewal must change both; they are
+    compared by digest, so a failure prints neither key."""
+
+    import ast
+    import hashlib
+    import re
+
+    tree = ast.parse((ROOT / "src" / "pyamplicol" / "__init__.py").read_text())
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_set_library_key"
+    ]
+    assert len(calls) == 1 and isinstance(calls[0].args[0], ast.Constant)
+    python_key = calls[0].args[0].value
+    source = (ROOT / "rust" / "crates" / "pyamplicol" / "src" / "lib.rs").read_text()
+    match = re.search(r"const KEY: \[&str; \d+\] = \[(.*?)\];", source, re.S)
+    assert match is not None
+    native_key = "".join(re.findall(r'"([^"]*)"', match.group(1)))
+    same = (
+        hashlib.sha256(python_key.encode()).digest()
+        == hashlib.sha256(native_key.encode()).digest()
+    )
+    assert python_key and same, "the native and the Python library keys differ"
 
 
 def test_native_library_key_uses_symbolicas_documented_registration():
@@ -587,6 +649,41 @@ def test_loop_v4_artifact_loads_without_regeneration(loop_artifact, name):
     # Loading is a small fraction of generating (measured with native-v2:
     # 3 % at gg -> gggg, 1.4 % at gg -> ggggg).
     assert python["relocated"]["seconds"]["load"] < 0.25 * generation, python
+
+
+@pytest.mark.loop_physics
+def test_loop_artifact_with_retired_or_unknown_point_inputs_is_refused(
+    loop_artifact, tmp_path
+):
+    """A copy whose execution declaration names the retired point inputs
+    ``native-v1`` (no SymJIT plane applications) or an unknown kind is refused
+    at load with a typed error, its manifest digest kept consistent so the
+    refusal is the reader's, not the integrity check's."""
+
+    import hashlib
+
+    from pyamplicol import ArtifactError, Runtime
+
+    artifact, _, _ = loop_artifact("gg")
+    expected = {
+        "native-v1": "native-v1 stored no SymJIT plane applications",
+        "native-v9": "unsupported plan v4 execution declaration",
+    }
+    for kind, message in expected.items():
+        copy = tmp_path / kind
+        shutil.copytree(artifact, copy)
+        execution = copy / "processes" / "gg" / "execution.json"
+        old = execution.read_bytes()
+        new = old.replace(b'"native-v2"', f'"{kind}"'.encode())
+        assert new != old and len(new) == len(old)
+        execution.write_bytes(new)
+        manifest = copy / "artifact.json"
+        text = manifest.read_bytes()
+        digests = (hashlib.sha256(old).hexdigest(), hashlib.sha256(new).hexdigest())
+        assert text.count(digests[0].encode()) == 1
+        manifest.write_bytes(text.replace(digests[0].encode(), digests[1].encode()))
+        with pytest.raises(ArtifactError, match=message):
+            Runtime.load(copy, process="gg")
 
 
 @pytest.mark.loop_physics

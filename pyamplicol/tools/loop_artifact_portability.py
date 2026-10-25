@@ -719,17 +719,21 @@ class RestrictedPermit:
     restricted-mode message (false with a valid licence found elsewhere, for
     example a registered key, in which case the check does not discriminate).
 
-    The permit is the user's, machine-wide: keep the block short, since any
-    other unlicensed Symbolica process of the same user aborts meanwhile.
+    The permit lives in Symbolica's lock directory (``lock_dir``, by default
+    ``symbolica_lock_dir()`` of this process's environment). The default is
+    the user's real, machine-wide permit: keep the block short, since any
+    other unlicensed Symbolica process of the same user aborts meanwhile. A
+    private directory (``SYMBOLICA_LOCK_DIR`` or ``lock_dir``, as the tests
+    use) discriminates as well and leaves the user's permit alone.
     """
 
-    def __init__(self, python: str = sys.executable) -> None:
+    def __init__(self, python: str = sys.executable, lock_dir: str | None = None):
         self.python = python
         self.process: subprocess.Popen[str] | None = None
         self.record: dict[str, Any] = {}
         # The permit's directory, explicit for the holder, the control and
         # every covered instance (``environment``).
-        self.lock_dir = symbolica_lock_dir()
+        self.lock_dir = lock_dir or symbolica_lock_dir()
 
     def environment(self, env: dict[str, str]) -> dict[str, str]:
         """``env`` bound to this permit's lock directory."""
