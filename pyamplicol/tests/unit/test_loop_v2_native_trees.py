@@ -540,7 +540,13 @@ def _program_size(executor: NativeExecutor) -> dict[str, int]:
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
     ("name", "smaller"),
-    [("gg_gg_lc", True), ("uux_ddxg_nlc", True), ("uux_ddxg", False)],
+    [
+        ("gg_gg_lc", ("ket", "counterterm interactions")),
+        ("uux_ddxg_nlc", ("ket", "counterterm interactions")),
+        # Full colour reads every ket component, but not every current of
+        # the counterterm program (648 -> 296 interactions).
+        ("uux_ddxg", ("counterterm interactions",)),
+    ],
 )
 def test_pruned_tree_program_is_bitwise_the_unpruned_one(
     executors, monkeypatch, name, smaller
@@ -550,7 +556,7 @@ def test_pruned_tree_program_is_bitwise_the_unpruned_one(
     (``native_trees.prune_program``; at leading and next-to-leading colour
     the N_c powers the projection drops). Every native input and the
     evaluation with and without poles are bitwise those of the unpruned
-    program, which is larger at LC and NLC."""
+    program, which is strictly larger in ``smaller``."""
 
     from pyamplicol.loops.v2 import native_trees
 
@@ -559,9 +565,7 @@ def test_pruned_tree_program_is_bitwise_the_unpruned_one(
     unpruned = NativeExecutor(native.slice, forward=False, inputs="native")
     pruned, full = _program_size(native), _program_size(unpruned)
     assert all(pruned[key] <= full[key] for key in full)
-    if smaller:
-        assert pruned["ket"] < full["ket"]
-        assert pruned["counterterm interactions"] < full["counterterm interactions"]
+    assert all(pruned[key] < full[key] for key in smaller), (pruned, full)
     points, scales = _points(PROCESSES[name][3])
     assert repr(native.native_inputs(points, scales, PARAMETERS)) == repr(
         unpruned.native_inputs(points, scales, PARAMETERS)
@@ -578,10 +582,10 @@ def test_pruned_tree_program_is_bitwise_the_unpruned_one(
 )
 def test_native_inputs_do_not_depend_on_the_batch(executors, name, stream):
     """The root closures run over a batch's points in lanes (8 at a time,
-    the last chunk padded): each point's native inputs, counterterms
-    included, are bitwise those of the point alone (nine distinct points
-    of the gate-G1 stream at three scales: a full lane chunk and a padded
-    one)."""
+    the rest in lanes of 4, 2 and 1): each point's native inputs,
+    counterterms included, are bitwise those of the point alone (nine
+    distinct points of the gate-G1 stream at three scales: a lane of 8 and
+    a lane of 1)."""
 
     from tools.loop_benchmark import streams
 
@@ -596,3 +600,76 @@ def test_native_inputs_do_not_depend_on_the_batch(executors, name, stream):
         assert repr([None if x is None else x[0] for x in alone]) == repr(
             [None if x is None else x[k] for x in batch]
         ), k
+
+
+_SIMD_PROBE = r"""
+import json
+import sys
+from pathlib import Path
+
+from pyamplicol.loops.native import load_loop_native
+from pyamplicol.loops.v2.native_process import NativeProcess
+
+root = Path(sys.argv[1])
+members = {path.name: path.read_bytes() for path in (root / "members").iterdir()}
+data = json.loads((root / "points.json").read_text())
+process = NativeProcess.from_members((root / "plan.json").read_text(), members)
+executor = process.executor(load_loop_native())
+points, scales, parameters = data["points"], data["scales"], data["parameters"]
+print(repr(executor.native_inputs(points, scales, parameters)))
+for poles in ("none", "all"):
+    print(repr(executor.evaluate(points, scales, parameters=parameters, poles=poles)))
+"""
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("name", "stream"), [("gg_gg_lc", "gg_gg"), ("uux_ddxg", "uux_ddxg")]
+)
+def test_closure_simd_widths_are_bitwise_equal(executors, tmp_path, name, stream):
+    """The binary64 root closures run AVX-512, AVX2 or baseline kernels,
+    whichever the running CPU has (``loop_v2::trees::Wide``), so a process
+    relocated to another x86-64 host may run another width.
+    ``RUSTICOL_TEST_CLOSURE_SIMD`` caps the width: the stored process,
+    loaded in fresh interpreters capped at AVX2 and at the baseline, gives
+    bitwise the native inputs and evaluations (poles none and all) of the
+    uncapped run on nine points (a lane of 8 and a lane of 1)."""
+
+    import os
+    import subprocess
+    import sys
+
+    from pyamplicol.loops.v2.native_process import NativeProcess
+    from tools.loop_benchmark import streams
+
+    native, _python = executors(name)
+    (tmp_path / "members").mkdir()
+    for member, data in NativeProcess.of(native).members().items():
+        (tmp_path / "members" / member).write_bytes(data)
+    (tmp_path / "plan.json").write_text(native._plan_json)
+    frozen = streams.load(stream)
+    points = [streams.exact(frozen, k) for k in range(9)]
+    scales = [("250000", "1000000", "4000000")[k % 3] for k in range(9)]
+    (tmp_path / "points.json").write_text(
+        json.dumps({"points": points, "scales": scales, "parameters": PARAMETERS})
+    )
+    outputs = {}
+    for cap in (None, "avx2", "baseline"):
+        environment = dict(os.environ)
+        environment.pop("RUSTICOL_TEST_CLOSURE_SIMD", None)
+        if cap is not None:
+            environment["RUSTICOL_TEST_CLOSURE_SIMD"] = cap
+        run = subprocess.run(
+            [sys.executable, "-c", _SIMD_PROBE, str(tmp_path)],
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=900,
+            check=False,
+        )
+        assert run.returncode == 0, run.stderr[-4000:]
+        outputs[cap] = run.stdout
+    assert outputs[None].count("\n") == 3
+    assert outputs["avx2"] == outputs[None]
+    assert outputs["baseline"] == outputs[None]
