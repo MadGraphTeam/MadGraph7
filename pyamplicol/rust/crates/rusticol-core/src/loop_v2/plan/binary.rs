@@ -2332,7 +2332,7 @@ mod tests {
             let expected = match *name {
                 "vertex" => "vertex id",
                 "family rank" => "family rank",
-                "step rank" => "a step above",
+                "step rank" => "step above the family rank",
                 "merged rank" => "a merged state above",
                 "fused exponent" | "fused wrap" | "fused rank" => "q-degree above its content's",
                 "power 2^32" => "power of ten beyond 2^32",
