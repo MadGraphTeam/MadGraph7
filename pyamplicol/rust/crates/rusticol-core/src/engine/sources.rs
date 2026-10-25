@@ -863,6 +863,58 @@ impl SchemaSources {
         })
     }
 
+    /// The squared mass of each of `legs` legs' external states, in leg
+    /// order, by the wavefunctions' own lookup ([`SourceMasses`]): the mass of
+    /// the particle's PDG code, else its antiparticle's, absent = massless.
+    /// Every leg needs a source, and all sources of a leg one mass.
+    pub(crate) fn leg_masses(
+        &self,
+        legs: usize,
+        masses: &BTreeMap<i32, Rational>,
+    ) -> RusticolResult<Vec<Rational>> {
+        let mut out: Vec<Option<Rational>> = vec![None; legs];
+        for source in &self.sources {
+            let index = source
+                .leg_label
+                .checked_sub(1)
+                .filter(|&index| index < legs)
+                .ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "generic source {} refers to unknown external label {}",
+                        source.source_id, source.leg_label
+                    ))
+                })?;
+            let identity = &source.source_ir.identity;
+            let mass = masses
+                .get(&identity.pdg_label)
+                .or_else(|| masses.get(&identity.anti_pdg_label))
+                .cloned()
+                .unwrap_or_else(|| Rational::from(0));
+            let square = &mass * &mass;
+            match &out[index] {
+                Some(found) if *found != square => {
+                    return Err(RusticolError::invalid_argument(format!(
+                        "the sources of external label {} disagree on its mass",
+                        source.leg_label
+                    )));
+                }
+                Some(_) => {}
+                None => out[index] = Some(square),
+            }
+        }
+        out.into_iter()
+            .enumerate()
+            .map(|(index, square)| {
+                square.ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "external label {} has no source",
+                        index + 1
+                    ))
+                })
+            })
+            .collect()
+    }
+
     /// Binary64 wavefunctions of physical momenta `point` into `row`.
     pub(crate) fn fill_f64(
         &self,

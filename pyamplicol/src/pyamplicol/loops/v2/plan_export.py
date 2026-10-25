@@ -1133,7 +1133,8 @@ class NativeExecutor:
         return precision, evaluations
 
     def _inputs(self, evaluations, arithmetic: Arithmetic) -> dict[str, Any]:
-        """Batch inputs: exact momenta, scales and masses; carrier values of
+        """Batch inputs: exact momenta, scales, masses and the legs' squared
+        masses (the on-shell invariants, DESIGN §11.1); carrier values of
         block rows, Born components and kernel constants.
 
         Every carrier value is formed in its point's Decimal context: block
@@ -1141,7 +1142,7 @@ class NativeExecutor:
         their irrational factors, both in the carrier's arithmetic.
         """
 
-        from .assemble import _BlockRows, _mass_values
+        from .assemble import _BlockRows, _leg_masses, _mass_values
 
         exported = self.exported
         slice_ = self.slice
@@ -1155,8 +1156,8 @@ class NativeExecutor:
             return [str(x.real), str(x.imag)]
 
         def shared(evaluation):
-            """Kernel constants (with their contents' mass flips) and squared
-            masses of a point's parameters."""
+            """Kernel constants (with their contents' mass flips), squared
+            masses and the legs' squared masses of a point's parameters."""
 
             constants = evaluation.constants
             if arithmetic == "exact":
@@ -1178,6 +1179,11 @@ class NativeExecutor:
             return (
                 [value(constant(key, flips)) for key, flips in exported.constants],
                 [_fraction_text(masses[m]) for m in exported.masses],
+                # "" leaves a leg whose mass is no parameter unbound.
+                [
+                    "" if m is None else _fraction_text(m)
+                    for m in _leg_masses(slice_, evaluation.parameters)
+                ],
             )
 
         batch: dict[str, Any] = {
@@ -1219,7 +1225,7 @@ class NativeExecutor:
                     for b, order, grade in exported.born_components
                 ]
             )
-        batch["constants"], batch["masses"] = batch.pop("shared")
+        batch["constants"], batch["masses"], batch["leg_masses"] = batch.pop("shared")
         return batch
 
     @staticmethod
