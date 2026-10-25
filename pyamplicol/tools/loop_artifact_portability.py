@@ -192,66 +192,22 @@ class GenerationSentinel:
 # ---------------------------------------------------------------- host
 
 
-# x86-64 System V: void cpuid(uint32 leaf, uint32 subleaf, uint32 out[4]).
-_CPUID_CODE = bytes.fromhex(
-    "53"  # push rbx
-    "89f8"  # mov eax, edi
-    "89f1"  # mov ecx, esi
-    "4989d0"  # mov r8, rdx
-    "0fa2"  # cpuid
-    "418900"  # mov [r8], eax
-    "41895804"  # mov [r8+4], ebx
-    "41894808"  # mov [r8+8], ecx
-    "4189500c"  # mov [r8+12], edx
-    "5b"  # pop rbx
-    "c3"  # ret
-)
-
-
 def _cpuid_flags() -> set[str] | None:
-    """The CPU's own feature bits (CPUID, as SymJIT and Rust's
-    ``is_x86_feature_detected`` read them); ``/proc/cpuinfo`` shows the
-    physical host's under user-mode emulation (qemu-user)."""
+    """The CPU's own SymJIT-relevant feature bits, from the native extension
+    (``_rusticol._symjit_host_cpu``: CPUID with the OS's XSAVE state, as
+    SymJIT and the loaders' CPU gate read them); ``/proc/cpuinfo`` shows the
+    physical host's under user-mode emulation (qemu-user). None on another
+    architecture or without the native extension."""
 
-    if platform.machine().lower() not in ("x86_64", "amd64") or os.name != "posix":
+    if platform.machine().lower() not in ("x86_64", "amd64"):
         return None
     try:
-        import ctypes
-        import mmap
+        from pyamplicol import _rusticol
 
-        page = mmap.mmap(
-            -1, mmap.PAGESIZE, prot=mmap.PROT_READ | mmap.PROT_WRITE | mmap.PROT_EXEC
-        )
-        page.write(_CPUID_CODE)
-        address = ctypes.addressof(ctypes.c_char.from_buffer(page))
-        words = ctypes.c_uint32 * 4
-        call = ctypes.CFUNCTYPE(None, ctypes.c_uint32, ctypes.c_uint32, words)(address)
-
-        def cpuid(leaf: int, subleaf: int = 0) -> tuple[int, ...]:
-            out = words()
-            call(leaf, subleaf, out)
-            return tuple(out)
-
-        top = cpuid(0)[0]
-        _, _, ecx, edx = cpuid(1)
-        ebx7 = cpuid(7)[1] if top >= 7 else 0
+        features, _supported = _rusticol._symjit_host_cpu()
     except Exception:
-        # An executable page may be refused (W^X policy): use /proc then.
         return None
-    flags = set()
-    for name, word, bit in (
-        ("sse2", edx, 26),
-        ("sse4_2", ecx, 20),
-        ("fma", ecx, 12),
-        ("avx", ecx, 28),
-        ("avx2", ebx7, 5),
-        ("avx512f", ebx7, 16),
-    ):
-        if word >> bit & 1:
-            flags.add(name)
-    if not ecx >> 27 & 1:  # no OSXSAVE: the OS does not enable AVX state
-        flags -= {"avx", "avx2", "fma", "avx512f"}
-    return flags
+    return set(features)
 
 
 def _cpu_flags() -> set[str]:

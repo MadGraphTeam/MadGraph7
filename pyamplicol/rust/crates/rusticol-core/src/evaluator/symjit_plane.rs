@@ -1263,6 +1263,31 @@ fn scalar_primitive_defuns() -> RusticolResult<Defuns> {
     Ok(defuns)
 }
 
+/// The x86-64 features that decide SymJIT's code path, as this CPU reports
+/// them (CPUID with the OS's XSAVE state, as `is_x86_feature_detected!` reads
+/// them; under user-mode emulation the emulated CPU's): `sse2`, `sse4_2`,
+/// `avx`, `fma`, `avx2`, `avx512f`. Empty on other architectures.
+pub(crate) fn symjit_cpu_features() -> Vec<&'static str> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        [
+            ("sse2", std::is_x86_feature_detected!("sse2")),
+            ("sse4_2", std::is_x86_feature_detected!("sse4.2")),
+            ("avx", std::is_x86_feature_detected!("avx")),
+            ("fma", std::is_x86_feature_detected!("fma")),
+            ("avx2", std::is_x86_feature_detected!("avx2")),
+            ("avx512f", std::is_x86_feature_detected!("avx512f")),
+        ]
+        .into_iter()
+        .filter_map(|(name, present)| present.then_some(name))
+        .collect()
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        Vec::new()
+    }
+}
+
 /// Whether SymJIT's load-time code generation runs on this CPU
 /// ([`require_symjit_host_cpu`]): x86-64 with AVX and FMA3, or another
 /// architecture. Until a SymJIT release with the upstream fixes is pinned

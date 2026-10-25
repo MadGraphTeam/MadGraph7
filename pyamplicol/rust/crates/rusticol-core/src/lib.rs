@@ -159,6 +159,18 @@ pub mod __private {
         )
     }
 
+    /// Unstable diagnostic bridge: the CPU features that decide SymJIT's code
+    /// path on this CPU and whether its load-time code generation runs here
+    /// (the loaders' CPU gate).
+    #[doc(hidden)]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    pub fn symjit_host_cpu() -> (Vec<&'static str>, bool) {
+        (
+            crate::engine::symjit_cpu_features(),
+            crate::engine::symjit_host_cpu_supported(),
+        )
+    }
+
     /// Unstable cold-path bridge: evaluate a stored complex plane application
     /// through the production loader ((re, im) per value, row-major by point).
     #[doc(hidden)]

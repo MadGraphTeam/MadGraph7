@@ -18,7 +18,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyInt, PyList, PyTuple};
 use rusticol_core::__private::{
     build_recurrence_bootstrap_image_v1, compile_symbolica_program_to_plane_application_bytes,
-    evaluate_plane_application_bytes,
+    evaluate_plane_application_bytes, symjit_host_cpu,
 };
 use rusticol_core::{
     ColorAccuracy, ColorComponent as CoreColorComponent, ModelParameter as CoreModelParameter,
@@ -1756,6 +1756,14 @@ fn _evaluate_symjit_plane_application_v2(
     .map_err(python_error)
 }
 
+/// The CPU features that decide SymJIT's code path on this CPU (CPUID, so
+/// the emulated CPU's under user-mode emulation) and whether SymJIT's
+/// load-time code generation runs here: `(features, supported)`.
+#[pyfunction]
+fn _symjit_host_cpu() -> (Vec<&'static str>, bool) {
+    symjit_host_cpu()
+}
+
 #[pyfunction]
 fn _build_recurrence_bootstrap_v1(
     py: Python<'_>,
@@ -2353,6 +2361,7 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
         _evaluate_symjit_plane_application_v2,
         module
     )?)?;
+    module.add_function(wrap_pyfunction!(_symjit_host_cpu, module)?)?;
     module.add_function(wrap_pyfunction!(_build_recurrence_bootstrap_v1, module)?)?;
     module.add_function(wrap_pyfunction!(_eager_direct_descriptor_v1, module)?)?;
     module.add_function(wrap_pyfunction!(_load_eager_reduction_groups_v1, module)?)?;
