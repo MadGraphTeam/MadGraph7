@@ -17,13 +17,14 @@ runs in ``rusticol-core`` ``loop_v2::generate::seeds`` (binding
   accumulation of ``_extended``, the class orders and the LC/NLC prune
   liveness of ``LoopSlice._prune_colour`` (``NativeSeedStage.keep``).
 
-Python keeps what is per distinct object and needs Spenso/Idenso or the
-exact colour algebra: each distinct content's compression
-(``CompressedColour._content``, vertex decompositions), the certificate
-check on the smallest instance, one exact reduction per distinct canonical
-quark ring (``_reduced_primitive``) and per distinct generic seed
-(``SeedColour.seed``), batched between the native steps, and the cells
-(``seed_cells``, package native-cells).
+Python keeps what is per distinct object and needs Spenso/Idenso: each
+distinct content's compression (``CompressedColour._content``, vertex
+decompositions), the certificate check on the smallest instance, the colour
+networks of the exact descriptors and contents that the in-crate
+reductions read, and the cells (``seed_cells``, package native-cells). The
+exact reduction of each distinct canonical quark ring
+(``_reduced_primitive``) and generic seed (``SeedColour.seed``) runs
+in-crate (``NATIVE_REDUCTIONS``; off, in Python between the native steps).
 
 The stage input is Θ(contents): per distinct content its position kind,
 single-leg flag, terms (coefficient, descriptor) and coupling orders, and
