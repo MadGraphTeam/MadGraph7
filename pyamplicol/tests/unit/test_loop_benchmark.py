@@ -34,11 +34,11 @@ instrumentation.
   that did not finish are reported as such;
 * the universal double pole of the physical rows at full and leading colour
   (one source each: the toolkit's at full colour, the generator's
-  leading-colour table), and the top-free g g > g g g g g row's NJet reference at the stream's
-  first points; stability rows at the reference fixture's own points
-  (``stability --fixture``) carry their deviations from its references, stay
-  apart from the stream's rows in the gate and give the report its estimate
-  at the fixture's worst point;
+  leading-colour table), and the top-free g g > g g g g g row's NJet
+  reference at the stream's first points; stability rows at the reference
+  fixture's own points (``stability --fixture``) carry their deviations from
+  its references, stay apart from the stream's rows in the gate and give the
+  report its estimate at the fixture's worst point;
 * a stored process (``--store``) loads as the public runtime loads an
   artifact, regenerates nothing and times bitwise the generating run's
   values; a load of another configuration or native build is refused, and
@@ -782,6 +782,16 @@ def test_universal_double_pole_at_full_and_leading_colour():
     )
 
 
+def test_universal_double_pole_refuses_a_non_qcd_correction(monkeypatch):
+    from tools.loop_benchmark import pyamplicol_v2
+
+    qcd = streams.spec("uux_ddxg")
+    monkeypatch.setattr(streams, "spec", lambda key: {**qcd, "correction": "EW"})
+    for accuracy in ("full", "lc", "nlc"):
+        with pytest.raises(ValueError, match="QCD corrections only"):
+            pyamplicol_v2.universal_double_pole("uux_ddxg", accuracy)
+
+
 def test_top_free_seven_gluon_row_is_checked_against_njet():
     import json
 
@@ -1048,6 +1058,9 @@ def test_a_user_acceptance_marks_exactly_the_points_above_the_tolerance():
         builder._accepted(proc(estimate=1e-8), entry)
     with pytest.raises(ValueError, match="DD value"):
         builder._accepted(proc(dd=3e-8), entry)
+    # 'DD = NJet' means equal to binary64 rounding, not within the tolerance.
+    with pytest.raises(ValueError, match="DD value"):
+        builder._accepted(proc(dd=1e-9), entry)
     with pytest.raises(ValueError, match="not the check"):
         builder._accepted(proc(), {**entry, "tolerance": 5e-8})
 
