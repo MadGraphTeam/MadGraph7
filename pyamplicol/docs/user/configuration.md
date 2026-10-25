@@ -563,10 +563,10 @@ under every selection, and `"none"` saves the pole work. The CLI spells these
 
 Momenta and arithmetic. Every arithmetic (`double`, `double-double`,
 `arbitrary`) takes each external leg's invariant p² in the loop integrals to be
-the leg's squared mass at the evaluation's model parameters, exactly, rather
-than the p² of the supplied momenta; everything else (trees, wavefunctions,
-loop-momentum shifts, invariants of several legs) uses the momenta as given,
-without projection or tolerance. Momenta rounded to binary64 sit off their mass
+the leg's squared mass at the evaluation's model parameters (zero, or a mass
+parameter such as `MT`), exactly, rather than the p² of the supplied momenta;
+everything else (trees, wavefunctions, loop-momentum shifts, invariants of
+several legs) uses the momenta as given, without projection or tolerance. Momenta rounded to binary64 sit off their mass
 shells by about 1e-16 relative, so a point copied from a binary64 evaluation
 gives the same finite part and poles in `double-double` and `arbitrary`
 arithmetic, to the accuracy of the binary64 value (its stability estimate);
