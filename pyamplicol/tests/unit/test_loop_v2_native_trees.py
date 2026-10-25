@@ -525,3 +525,73 @@ def test_counterterm_roots_outside_the_request_orders_are_not_closed(
         python.evaluate(points, scales, parameters=PARAMETERS),
         1e-12,
     )
+
+
+def _program_size(executor: NativeExecutor) -> dict[str, int]:
+    program = executor.exported.trees.program
+    ct = program["counterterm_trees"]["interactions"]["steps"]
+    return {
+        "ket": len(program["counterterms"]["ket"]),
+        "terms": len(program["counterterms"]["terms"]),
+        "counterterm interactions": sum(len(step["interactions"]) for step in ct),
+    }
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("name", "smaller"),
+    [("gg_gg_lc", True), ("uux_ddxg_nlc", True), ("uux_ddxg", False)],
+)
+def test_pruned_tree_program_is_bitwise_the_unpruned_one(
+    executors, monkeypatch, name, smaller
+):
+    """The exported tree program drops the counterterm ket components no
+    interference reads and the currents no closure term or block row reads
+    (``native_trees.prune_program``; at leading and next-to-leading colour
+    the N_c powers the projection drops). Every native input and the
+    evaluation with and without poles are bitwise those of the unpruned
+    program, which is larger at LC and NLC."""
+
+    from pyamplicol.loops.v2 import native_trees
+
+    native, _python = executors(name)
+    monkeypatch.setattr(native_trees, "PRUNE", False)
+    unpruned = NativeExecutor(native.slice, forward=False, inputs="native")
+    pruned, full = _program_size(native), _program_size(unpruned)
+    assert all(pruned[key] <= full[key] for key in full)
+    if smaller:
+        assert pruned["ket"] < full["ket"]
+        assert pruned["counterterm interactions"] < full["counterterm interactions"]
+    points, scales = _points(PROCESSES[name][3])
+    assert repr(native.native_inputs(points, scales, PARAMETERS)) == repr(
+        unpruned.native_inputs(points, scales, PARAMETERS)
+    )
+    for poles in ("none", "all"):
+        assert repr(
+            native.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
+        ) == repr(unpruned.evaluate(points, scales, parameters=PARAMETERS, poles=poles))
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(("name", "legs"), [("gg_gg_lc", 4), ("uux_ddxg_nlc", 5)])
+def test_native_inputs_do_not_depend_on_the_batch(executors, name, legs):
+    """The root closures run over a batch's points in lanes (8 at a time,
+    the last chunk padded): each point's native inputs, counterterms
+    included, are bitwise those of the point alone (nine points at three
+    scales: a full lane chunk and a padded one)."""
+
+    from tools.loop_reference import exact_points
+
+    native, _python = executors(name)
+    points = [
+        [[exact_points.decimal_string(x) for x in p] for p in point]
+        for point in exact_points.generate([0] * legs, count=9)
+    ]
+    scales = [("250000", "1000000", "4000000")[k % 3] for k in range(9)]
+    batch = native.native_inputs(points, scales, PARAMETERS)
+    assert batch[4] is not None
+    for k in range(9):
+        alone = native.native_inputs(points[k : k + 1], scales[k : k + 1], PARAMETERS)
+        assert repr([None if x is None else x[0] for x in alone]) == repr(
+            [None if x is None else x[k] for x in batch]
+        ), k
