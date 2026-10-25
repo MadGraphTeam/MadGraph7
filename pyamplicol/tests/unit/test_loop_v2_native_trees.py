@@ -573,20 +573,21 @@ def test_pruned_tree_program_is_bitwise_the_unpruned_one(
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize(("name", "legs"), [("gg_gg_lc", 4), ("uux_ddxg_nlc", 5)])
-def test_native_inputs_do_not_depend_on_the_batch(executors, name, legs):
+@pytest.mark.parametrize(
+    ("name", "stream"), [("gg_gg_lc", "gg_gg"), ("uux_ddxg_nlc", "uux_ddxg")]
+)
+def test_native_inputs_do_not_depend_on_the_batch(executors, name, stream):
     """The root closures run over a batch's points in lanes (8 at a time,
     the last chunk padded): each point's native inputs, counterterms
-    included, are bitwise those of the point alone (nine points at three
-    scales: a full lane chunk and a padded one)."""
+    included, are bitwise those of the point alone (nine distinct points
+    of the gate-G1 stream at three scales: a full lane chunk and a padded
+    one)."""
 
-    from tools.loop_reference import exact_points
+    from tools.loop_benchmark import streams
 
     native, _python = executors(name)
-    points = [
-        [[exact_points.decimal_string(x) for x in p] for p in point]
-        for point in exact_points.generate([0] * legs, count=9)
-    ]
+    frozen = streams.load(stream)
+    points = [streams.exact(frozen, k) for k in range(9)]
     scales = [("250000", "1000000", "4000000")[k % 3] for k in range(9)]
     batch = native.native_inputs(points, scales, PARAMETERS)
     assert batch[4] is not None
