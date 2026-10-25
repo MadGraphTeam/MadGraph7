@@ -156,8 +156,17 @@ fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch
         // bound natively from the external parameters like `masses`. A
         // synthetic batch without external states (timing tools) may omit
         // them: its invariants then all come from the momenta.
+        // "" leaves a leg unbound (its mass is no model parameter).
         leg_masses: match inputs.get_item("leg_masses")? {
-            Some(values) if !native => rationals(values.extract()?)?,
+            Some(values) if !native => values
+                .extract::<Vec<String>>()?
+                .into_iter()
+                .map(|text| {
+                    (!text.is_empty())
+                        .then(|| parse_rational(&text).map_err(error))
+                        .transpose()
+                })
+                .collect::<PyResult<_>>()?,
             _ => Vec::new(),
         },
         constants: if native {

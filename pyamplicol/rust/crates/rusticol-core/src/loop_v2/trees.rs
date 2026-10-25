@@ -594,7 +594,7 @@ pub struct BoundParameters<T> {
     pub masses: Vec<Rational>,
     /// The squared mass of each leg's external state (`V2Batch::leg_masses`),
     /// from the same exact mass parameters as the plan's and the sources'.
-    pub leg_masses: Vec<Rational>,
+    pub leg_masses: Vec<Option<Rational>>,
 }
 
 /// Native inputs of a batch, per point.
@@ -1669,7 +1669,12 @@ impl TreeProgram {
             .map(|&(pdg, index)| (pdg, values[index].clone()))
             .collect();
         Ok(BoundParameters {
-            leg_masses: self.sources.leg_masses(self.legs, &masses)?,
+            leg_masses: self
+                .sources
+                .leg_masses(self.legs, &masses)?
+                .into_iter()
+                .map(Some)
+                .collect(),
             trees: TreeBatch {
                 model,
                 masses,

@@ -3136,22 +3136,21 @@ class _PointEvaluation:
         arithmetic = "double" if numbers.double else "arbitrary"
         digits = None if numbers.double else numbers.precision.digits
         lanes, groups = [], []
-        legs = slice_.families.legs
-        full = (1 << len(legs)) - 1
         masses = _mass_values(
             slice_.compiled,
             self.parameters,
-            {mass for key in numerators for _mask, mass in key[0]}
-            | {leg.mass for leg in legs},
+            {mass for key in numerators for _mask, mass in key[0]},
         )
+        onshell = _leg_masses(slice_, self.parameters)
+        full = (1 << len(onshell)) - 1
 
         def invariant(arc: int, a, b):
             # A single-leg arc is the leg's squared mass (on-shell external
             # invariants, design §11.1), exactly the value its propagators
             # take; any other arc is p(arc)^2 of the given momenta.
             leg = onshell_leg(arc, full)
-            if leg is not None:
-                return masses[legs[leg].mass]
+            if leg is not None and onshell[leg] is not None:
+                return onshell[leg]
             return _minkowski([x - y for x, y in zip(a, b, strict=True)])
 
         def batch(values, lane: int):
@@ -4010,6 +4009,23 @@ def _mass_values(
         mass: Fraction(0) if mass.massless else values[mass.mass] ** 2
         for mass in masses
     }
+
+
+def _leg_masses(slice_, parameters: Mapping[str, str]) -> tuple[Fraction | None, ...]:
+    """Each external leg's squared mass in leg order, the value of the
+    invariants its mass shell fixes (``families.onshell_leg``; DESIGN §11.1):
+    the same exact value ``_mass_values`` gives its mass id, 0 for a massless
+    leg (a mass parameter bound to 0 included), None for a mass that is no
+    external parameter (a derived mass such as loop_sm's MW, which no loop
+    propagator of the slice can carry: those invariants stay p^2)."""
+
+    values = _kernel_parameters(slice_.compiled, parameters)
+    return tuple(
+        Fraction(0)
+        if leg.mass.mass == ZERO
+        else (values[leg.mass.mass] ** 2 if leg.mass.mass in values else None)
+        for leg in slice_.families.legs
+    )
 
 
 def _charged_fields(compiled) -> frozenset[str]:

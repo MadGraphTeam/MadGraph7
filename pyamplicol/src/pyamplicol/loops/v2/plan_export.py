@@ -1120,7 +1120,7 @@ class NativeExecutor:
         their irrational factors, both in the carrier's arithmetic.
         """
 
-        from .assemble import _BlockRows, _mass_values
+        from .assemble import _BlockRows, _leg_masses, _mass_values
 
         exported = self.exported
         slice_ = self.slice
@@ -1151,14 +1151,17 @@ class NativeExecutor:
                     found = signed[flips] = rx.signed_constants(constants, flips)
                 return found.constant(key)
 
-            legs = [leg.mass for leg in slice_.families.legs]
             masses = _mass_values(
-                slice_.compiled, evaluation.parameters, {*exported.masses, *legs}
+                slice_.compiled, evaluation.parameters, exported.masses
             )
             return (
                 [value(constant(key, flips)) for key, flips in exported.constants],
                 [_fraction_text(masses[m]) for m in exported.masses],
-                [_fraction_text(masses[m]) for m in legs],
+                # "" leaves a leg whose mass is no parameter unbound.
+                [
+                    "" if m is None else _fraction_text(m)
+                    for m in _leg_masses(slice_, evaluation.parameters)
+                ],
             )
 
         batch: dict[str, Any] = {

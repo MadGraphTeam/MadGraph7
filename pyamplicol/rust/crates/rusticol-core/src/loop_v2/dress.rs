@@ -103,9 +103,10 @@ pub struct V2Batch<T> {
     /// of every invariant a single leg fixes on its mass shell (a single-leg
     /// arc or its complement), never the `p²` of the given momenta, which
     /// rounding leaves off shell (DESIGN §11.1, on-shell external
-    /// invariants). Empty: every invariant from the momenta (callers without
-    /// external states, e.g. synthetic benchmark batches).
-    pub leg_masses: Vec<Rational>,
+    /// invariants). `None` leaves a leg's invariants to the momenta (a mass
+    /// that is no model parameter); empty: every invariant from the momenta
+    /// (callers without external states, e.g. synthetic benchmark batches).
+    pub leg_masses: Vec<Option<Rational>>,
     /// Model constants of the kernel terms.
     pub constants: Vec<Complex<T>>,
     /// Per point, the components of every block row, in plan order.
@@ -193,7 +194,7 @@ struct ExactInvariants {
     momenta: Vec<HashMap<u64, [Rational; 4]>>,
     squares: Vec<HashMap<u64, Rational>>,
     /// Squared mass of each leg's external state (empty: none).
-    onshell: Vec<Rational>,
+    onshell: Vec<Option<Rational>>,
 }
 
 impl ExactInvariants {
@@ -216,8 +217,10 @@ impl ExactInvariants {
         if let Some(found) = self.squares[point].get(&mask) {
             return found.clone();
         }
-        if let Some(leg) = onshell_leg(mask, self.onshell.len()) {
-            return self.onshell[leg].clone();
+        if let Some(Some(mass)) =
+            onshell_leg(mask, self.onshell.len()).map(|leg| &self.onshell[leg])
+        {
+            return mass.clone();
         }
         let p = self.momentum(point, mask);
         let value = p[0].clone() * &p[0]
@@ -877,6 +880,37 @@ mod tests {
                 - direct[3].clone() * &direct[3];
             assert_eq!(table.square(0, mask), square);
         }
+    }
+
+    #[test]
+    fn exact_invariants_bind_single_legs_on_shell() {
+        let legs: Vec<Rational> = (0..16)
+            .map(|k| Rational::from(((k * 5 % 9) as i64 - 4, 1)))
+            .collect();
+        let table = |onshell| ExactInvariants {
+            legs: vec![legs.clone()],
+            momenta: vec![HashMap::new()],
+            squares: vec![HashMap::new()],
+            onshell,
+        };
+        let mut plain = table(Vec::new());
+        let mut bound = table(vec![
+            Some(Rational::from(2)),
+            Some(Rational::from(7)),
+            Some(Rational::from(0)),
+            None,
+        ]);
+        assert_eq!(bound.square(0, 0b0010), Rational::from(7));
+        // The complement of leg 1 (momentum conservation).
+        assert_eq!(bound.square(0, 0b1101), Rational::from(7));
+        assert_eq!(bound.square(0, 0b0100), Rational::from(0));
+        // An unbound leg and a two-leg arc keep p(arc)^2; momenta are kept.
+        for mask in [0b1000u64, 0b0011, 0b0110] {
+            assert_eq!(bound.square(0, mask), plain.square(0, mask));
+        }
+        assert_eq!(bound.momentum(0, 0b0010), plain.momentum(0, 0b0010));
+        assert_eq!(onshell_leg(0b0111, 4), Some(3));
+        assert_eq!(onshell_leg(0, 4), None);
     }
 
     #[test]
