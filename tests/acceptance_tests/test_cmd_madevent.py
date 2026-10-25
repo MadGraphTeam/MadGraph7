@@ -483,8 +483,19 @@ class TestMECmdShell(unittest.TestCase):
         self.assertGreater(len(set(biased_events_wgts)),1)
         # Make sure that there is significantly more events in the ptj tail
         self.assertGreater(biased_median_ptj,5.0*unbiased_median_ptj)
-        # Make sure that the cross-section is close enough for the bias and unbiased samples
-        self.assertLess((abs(biased_events.cross-unbiased_events.cross)/abs(unbiased_events.cross)),0.1)
+        # Make sure that the cross-section is close enough for the bias and
+        # unbiased samples. The biased sample estimates it from its event
+        # weights, which have a long tail (low ptj events carry large
+        # weights): its statistical error is ~4.5% for 10k events, so a
+        # fixed 10% (~2 sigma) tolerance fails for some seeds.
+        nb = len(biased_events_wgts)
+        mean_wgt = sum(biased_events_wgts) / nb
+        stat_err = math.sqrt(sum((w - mean_wgt)**2 for w in biased_events_wgts)
+                             / (nb - 1) / nb)
+        self.assertLess(abs(biased_events.cross-unbiased_events.cross),
+                        4 * stat_err,
+                        'biased %s +- %s vs unbiased %s' % (biased_events.cross,
+                                                stat_err, unbiased_events.cross))
 
     def test_madspin_gridpack(self):
 
