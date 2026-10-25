@@ -7,30 +7,37 @@ public generator, the tools, the tests and the artifacts all see them:
 * ``electroweak`` decides whether a request is electroweak: a correction
   other than ``QCD``, or a colour-singlet species (photon, Z, W, H,
   Goldstones, leptons, electroweak ghosts) that is perturbative in a
-  requested correction and not vetoed.
+  requested correction and not vetoed. QCD-only requests are not
+  electroweak and pass every guard unchanged (their coloured widths keep
+  ``artifact.require_zero_coloured_widths``).
 * ``require_no_external_photons`` refuses an electroweak request with an
-  on-shell external photon (``ExternalPhotonError``). Such a photon couples
-  with alpha(0), not with the loops' coupling, plus the charge
-  renormalisation term of that change (MadLoop's and OpenLoops' default,
-  MASTER_PLAN §4.9 "external-photon conventions"); v2 does not implement it
-  yet (WP3.2 EWI-6b; the user's decision [U9] is pending), and a virtual
-  without it is wrong at O(alpha) by the photon's light-fermion logarithms.
+  on-shell external photon (``ExternalPhotonError``). The user's decision
+  [U9] (2026-10-25): every on-shell external photon couples with alpha(0),
+  not with the loops' coupling (alpha_Gmu in a G_mu model), together with
+  the charge-renormalisation term of that change (MadLoop's and OpenLoops'
+  default; MASTER_PLAN §4.9 "external-photon conventions"). v2 implements
+  it in WP3.2 EWI-6b; until then a virtual with such a photon would be wrong
+  at O(alpha) by the photon's light-fermion logarithms, so it is refused.
 * ``require_zero_widths`` refuses an electroweak request whose tree currents
-  (the Born and the loop-side blocks) propagate a particle with a width that
-  is not zero, coloured or not (``ElectroweakWidthError``). v2 virtuals are
-  real on-shell: loop propagators carry no width and the model counterterms
-  renormalise the real masses, so a Z, W, H or top width in the trees mixes
-  two schemes (DESIGN §6.1's top-width case: a 1.8e-5 double-pole mismatch
-  and a 2.8 % finite shift). The fix is to fix the widths to zero, or the
-  complex-mass scheme, which v2 does not have yet (WP3.2 EWI-10): every v2
-  request is a non-CMS request. This is the recommended default of the
-  user's decision [U8] (refuse rather than zero the widths silently).
+  propagate a particle with a width that is not zero, coloured or not
+  (``ElectroweakWidthError``). v2 virtuals are real on-shell: loop
+  propagators carry no width and the model counterterms renormalise the
+  real masses, so a Z, W, H or top width in the trees mixes two schemes
+  (DESIGN §6.1's top-width case: a 1.8e-5 double-pole mismatch and a 2.8 %
+  finite shift). The user's decision [U8] (2026-10-25): refuse, with the fix
+  (the widths fixed to zero, or the complex-mass scheme, WP3.2 EWI-10, which
+  v2 does not have yet: every v2 request is a non-CMS request). The trees
+  scanned are the Born and the loop-side blocks, before their kernels and
+  the counterterm lowering. A counterterm tree (one insertion of a local
+  vertex into the blocks of the loop it renormalises) propagates what those
+  blocks propagate. Its program's DAG is not scanned: it also holds
+  currents no tree of the request completes (g g > g g on loop_qcd_qed_sm:
+  a Higgs from the R2 g g H vertex), whose widths enter no amplitude.
 
-QCD-only requests are not electroweak and pass unchanged (their coloured
-widths keep ``artifact.require_zero_coloured_widths``). The width query
-mirrors ``artifact.coloured_widths`` for every species; the two are to share
-one propagator query once A4 (which edits ``coloured_widths``) integrates
-(wp32/PLAN.md §3.2 EWI-0b).
+The width query (``propagated_species``) is the current scan of
+``artifact.coloured_widths``, for every species; a DAG that scans itself
+natively (A4's ``dag_input.NativeDag``) is asked directly. The two share
+``blocks.propagated_species`` once A4 integrates (wp32/PLAN.md §3.2 EWI-0b).
 """
 
 from __future__ import annotations
@@ -52,17 +59,17 @@ class ElectroweakWidthError(GenerationError):
 
 class ExternalPhotonError(GenerationError):
     """An electroweak request with an on-shell external photon, whose
-    external-photon convention v2 does not implement yet."""
+    alpha(0) convention v2 does not implement yet."""
 
 
 def electroweak(
     compiled: Any, request: Any, species_orders: Mapping[int, Iterable[str]]
 ) -> bool:
     """Whether ``request`` is an electroweak loop request: a correction
-    other than QCD, or a non-vetoed species that is perturbative in a
-    requested correction (``species_orders``: |PDG| -> coupling orders, the
-    prepared structure's ``perturbative_species_orders``) and a colour
-    singlet."""
+    other than QCD, or a non-vetoed colour-singlet species that is
+    perturbative in a requested correction (``species_orders``: |PDG| ->
+    coupling orders, the prepared structure's
+    ``perturbative_species_orders``)."""
 
     corrections = set(request.corrections)
     if corrections - {"QCD"}:
@@ -76,9 +83,9 @@ def electroweak(
     )
 
 
-def _zero(name: str, parameters: Mapping[str, Any], fixed: Mapping[str, Any]) -> bool:
+def is_zero(name: str, parameters: Mapping[str, Any], fixed: Mapping[str, Any]) -> bool:
     """Whether the mass or width parameter ``name`` is zero: ``ZERO``, a
-    compile-time zero or fixed to zero."""
+    compile-time zero or fixed to zero by ``fixed``."""
 
     from pyamplicol.models.compiler_kernels import _is_compile_time_zero_parameter
 
@@ -97,7 +104,7 @@ def is_photon(record: Any, parameters: Mapping[str, Any], fixed) -> bool:
         and float(record.charge) == 0
         and int(record.ghost_number) == 0
         and not record.goldstoneboson
-        and _zero(str(record.mass), parameters, fixed)
+        and is_zero(str(record.mass), parameters, fixed)
     )
 
 
@@ -129,25 +136,49 @@ def require_no_external_photons(
     raise ExternalPhotonError(
         f"{request.process!r}: on-shell external photons (legs "
         f"{list(photons)}) in a request with corrections "
-        f"{list(request.corrections)}. Electroweak corrections need the "
-        "external-photon convention: alpha(0) for every on-shell external "
-        "photon instead of the loops' coupling, with the matching charge "
-        "renormalisation term (MadLoop's and OpenLoops' default), which the v2 "
-        "engine does not implement yet; without it the virtual is wrong at "
-        "O(alpha). QCD corrections to such processes are available, and "
-        "loop.engine='legacy' covers electroweak 2 -> 2 controls"
+        f"{list(request.corrections)}. Electroweak corrections take the "
+        "external-photon convention alpha(0): every on-shell external photon "
+        "couples with alpha(0) instead of the loops' coupling, with the "
+        "matching charge-renormalisation term (MadLoop's and OpenLoops' "
+        "default; the user's decision of 2026-10-25), which the v2 engine does "
+        "not implement yet (WP3.2 EWI-6b); without it the virtual is wrong at "
+        "O(alpha). QCD corrections to such processes are available"
+    )
+
+
+def propagated_species(dag: Any) -> tuple[tuple[int, bool], ...]:
+    """Distinct ``(particle id, amputated)`` of the non-source,
+    non-auxiliary currents of ``dag``, sorted; ``amputated``: the current's
+    momentum leaves exactly one leg out (a Born root contracts it with the
+    remaining leg; a loop attached to it would be an external self-energy).
+    A DAG with its own scan (``propagated_species``) is asked for it."""
+
+    scan = getattr(dag, "propagated_species", None)
+    if scan is not None:
+        return tuple(scan())
+    sources = set(dag.sources)
+    legs = (1 << len(dag.process.legs)) - 1
+    return tuple(
+        sorted(
+            {
+                (
+                    int(current.index.particle_id),
+                    (legs & ~current.index.momentum_mask).bit_count() == 1,
+                )
+                for current_id, current in enumerate(dag.currents)
+                if current_id not in sources and current.index.auxiliary_kind is None
+            }
+        )
     )
 
 
 def propagating_widths(
     dags: Sequence[Any], compiled: Any, fixed: Mapping[str, Any]
 ) -> dict[str, str]:
-    """``{particle: width parameter}`` of the particles that a tree current
-    of ``dags`` propagates with a width that is not zero: neither ``ZERO``,
-    a compile-time zero nor fixed to zero. Source currents (external legs),
-    auxiliary currents and currents of all legs but one (amputated: a Born
-    root contracts them with the remaining leg) do not count, as in
-    ``artifact.coloured_widths``, for coloured and colourless particles."""
+    """``{particle: width parameter}`` of the particles, coloured or not,
+    that a non-amputated tree current of ``dags`` (``propagated_species``)
+    propagates with a width that is not zero: neither ``ZERO``, a
+    compile-time zero nor fixed to zero."""
 
     particles = {int(record.pdg_code): record for record in compiled.ir.particles}
     parameters = {record.name: record for record in compiled.ir.parameters}
@@ -155,21 +186,12 @@ def propagating_widths(
     for dag in dags:
         if dag is None:
             continue
-        sources = set(dag.sources)
-        legs = (1 << len(dag.process.legs)) - 1
-        for current_id, current in enumerate(dag.currents):
-            index = current.index
-            if (
-                current_id in sources
-                or index.auxiliary_kind is not None
-                or (legs & ~index.momentum_mask).bit_count() == 1
-            ):
-                continue
-            record = particles.get(int(index.particle_id))
-            if record is None:
+        for particle_id, amputated in propagated_species(dag):
+            record = particles.get(particle_id)
+            if amputated or record is None:
                 continue
             width = str(record.width)
-            if not _zero(width, parameters, fixed):
+            if not is_zero(width, parameters, fixed):
                 out[str(record.name)] = width
     return out
 
@@ -191,11 +213,11 @@ def require_zero_widths(
         f"{list(request.corrections)}) whose tree currents propagate particles "
         f"with a width that is not fixed to zero: {named}. v2 virtuals are "
         "real on-shell (loop propagators carry no width and the model "
-        "counterterms renormalise the real masses), so a width in the Born or "
-        "the loop-side trees mixes two schemes. Fix the widths to zero in "
-        f"[loop.preparation] fixed_parameters ({hint}); resonant electroweak "
-        "bosons need the complex-mass scheme, which the v2 engine does not "
-        "implement yet"
+        "counterterms renormalise the real masses), so a width in the Born, "
+        "the loop-side or the counterterm trees mixes two schemes. Fix the "
+        f"widths to zero in [loop.preparation] fixed_parameters ({hint}); "
+        "resonant electroweak bosons need the complex-mass scheme, which the "
+        "v2 engine does not implement yet (WP3.2 EWI-10)"
     )
 
 
@@ -205,6 +227,8 @@ __all__ = [
     "electroweak",
     "external_photons",
     "is_photon",
+    "is_zero",
+    "propagated_species",
     "propagating_widths",
     "require_no_external_photons",
     "require_zero_widths",

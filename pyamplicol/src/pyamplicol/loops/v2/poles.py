@@ -58,17 +58,26 @@ in hep-ph/0201036, QED with masses Dittmaier hep-ph/9904440): T_j.T_k ->
 Q_j Q_k with the legs' all-incoming charges (Q eta of the outgoing-particle
 convention; sum_j Q_j = 0), C_j -> Q_j^2, gamma_f = 3/2 Q_f^2 (massless
 fermions), gamma_s = 2 Q_s^2 (massless scalars), massive legs soft only. The
-correlator is Q_j Q_k times the colour-summed Born interference of the
-sector (``_ir_poles``), the prefactor alpha / 2 pi with alpha the coupling of
-the loops (``qed_coupling``: the model's photon coupling, alpha_Gmu in a
-G_mu model), not alpha(0). An on-shell external photon adds -gamma_gamma/eps
-per photon only where its coupling is not alpha(0)
-(``EXTERNAL_PHOTON_CONVENTIONS``): with alpha(0), delta Z_e^alpha(0) + 1/2
-delta Z_AA has no light-fermion pole; with the loops' coupling the photon's
-gamma_gamma = -2/3 sum_f N_c^f Q_f^2 (massless charged fermions) stays. The
-convention is the user's pending decision [U9] (``EXTERNAL_PHOTON_CONVENTION``
-is None): until it is taken there is no prediction with an external photon,
-and the generation refuses electroweak requests with one (``ew_policy``).
+correlator is Q_j Q_k times the colour-summed Born interferences the sector's
+QED correction dresses (``dressed_born``, cross-order ones included), the
+prefactor alpha / 2 pi with alpha the coupling of the loops (``qed_coupling``:
+the model's photon coupling, alpha_Gmu in a G_mu model), not alpha(0). A
+joint request's prediction is the sum of its corrections' operators
+(``sector_sum``). An on-shell external photon adds -gamma_gamma/eps per photon
+only where its coupling is not alpha(0) (``EXTERNAL_PHOTON_CONVENTIONS``):
+with alpha(0), delta Z_e^alpha(0) + 1/2 delta Z_AA has no light-fermion pole;
+with the loops' coupling the photon's gamma_gamma = -2/3 sum_f N_c^f Q_f^2
+(massless charged fermions) stays. The production convention is alpha(0), the
+user's decision [U9] of 2026-10-25 (``EXTERNAL_PHOTON_CONVENTION``); the
+engine implements that coupling in WP3.2 EWI-6b, so until then its virtual
+makes no prediction with an external photon and the generation refuses
+electroweak requests with one (``ew_policy``).
+
+The fixtures' provider poles of the electroweak rungs (MadLoop, Recola and
+OpenLoops; g g > t t~, u u~ > e- e+ g, g g > t t~ e- e+ and
+g g > t t~ e- e+ g at O(alpha)) and of the MadLoop G_mu controls
+(e- e+ > mu- mu+, e- e+ > u u~) are the operator's references
+(``tests/unit/test_loop_v2_qed_catani.py``).
 """
 
 from __future__ import annotations
@@ -79,6 +88,8 @@ from fractions import Fraction
 from typing import Any
 
 from pyamplicol.config import PoleSelection
+
+from .families import Orders, add_orders
 
 # The origins of a split pole (``PointResult.pole_origins``, the public
 # ``VirtualPoleParts``).
@@ -282,12 +293,48 @@ def _minkowski_dot(a: Sequence[Fraction], b: Sequence[Fraction]) -> Fraction:
 # UFO spins (2s + 1) of the charged massless emitters with a QED gamma.
 _FERMION_SPIN, _SCALAR_SPIN = 2, 1
 # The coupling of an on-shell external photon: "alpha0" (alpha(0) with its
-# charge-renormalisation term, the recommended default of [U9], MadLoop's and
-# OpenLoops' convention) or "loop-coupling" (the loops' alpha, e.g. alpha_Gmu
-# throughout). ``EXTERNAL_PHOTON_CONVENTION`` is the production choice: None
-# until the user decides [U9] (no prediction with an external photon).
+# charge-renormalisation term, MadLoop's and OpenLoops' convention) or
+# "loop-coupling" (the loops' alpha, e.g. alpha_Gmu throughout).
+# ``EXTERNAL_PHOTON_CONVENTION`` is the production choice, "alpha0" by the
+# user's decision [U9] of 2026-10-25 (slice-status DECISIONS ~04:55).
 EXTERNAL_PHOTON_CONVENTIONS = ("alpha0", "loop-coupling")
-EXTERNAL_PHOTON_CONVENTION: str | None = None
+EXTERNAL_PHOTON_CONVENTION = "alpha0"
+
+
+def dressed_born(
+    born: Mapping[Orders, Any], sector: Orders, correction: str, zero: Any
+) -> Any:
+    """The colour-summed Born interferences that the one-loop correction
+    ``correction`` (a coupling-order name) of ``sector`` dresses: those of
+    every squared Born order, cross-order interferences included, whose sum
+    with the correction's two powers is ``sector`` (``zero`` if none)."""
+
+    raised = add_orders(((correction, 2),))
+    return sum(
+        (value for order, value in born.items() if add_orders(order, raised) == sector),
+        zero,
+    )
+
+
+def sector_sum(
+    predictions: Sequence[Mapping[Orders, tuple[Any, Any]]],
+) -> dict[Orders, tuple[Any, Any]]:
+    """The (single, double) poles per sector of several corrections'
+    operators (each over the same sectors), summed; one prediction is
+    returned as it is."""
+
+    first, *rest = predictions
+    if not rest:
+        return dict(first)
+    if any(set(other) != set(first) for other in rest):
+        raise ValueError("the corrections' predictions cover different sectors")
+    return {
+        sector: (
+            sum((other[sector][0] for other in rest), single),
+            sum((other[sector][1] for other in rest), double),
+        )
+        for sector, (single, double) in first.items()
+    }
 
 
 def exact_charge(charge: float | Fraction | str) -> Fraction:
@@ -340,7 +387,7 @@ def qed_catani_poles(
     sqrt: Callable[[Any], Any],
     photons: int = 0,
     gamma_photon: Fraction | None = None,
-    convention: str | None = EXTERNAL_PHOTON_CONVENTION,
+    convention: str = EXTERNAL_PHOTON_CONVENTION,
 ) -> tuple[Any, Any] | None:
     """(single, double) pole of the renormalised virtual over (alpha/2pi) for
     one sector's QED correction; None where the operator makes no
@@ -351,17 +398,16 @@ def qed_catani_poles(
     ``born`` the colour-summed Born interference the QED correction of the
     sector dresses; ``masses`` the legs' squared masses (``catani_poles``);
     ``gamma(j)`` gamma_j of a massless charged leg (``qed_gamma``).
-    ``photons`` on-shell external photons add -gamma_gamma/eps each under
-    the ``"loop-coupling"`` convention and nothing under ``"alpha0"``
-    (module docstring); with ``convention`` None (the user's decision [U9]
-    pending) there is no prediction with photons.
+    ``photons`` on-shell external photons add -gamma_gamma/eps each
+    (``gamma_photon``, ``photon_gamma``) under the ``"loop-coupling"``
+    convention and nothing under ``"alpha0"``, the production one (module
+    docstring).
     """
 
-    if photons:
-        if convention not in EXTERNAL_PHOTON_CONVENTIONS:
-            return None
-        if convention == "loop-coupling" and gamma_photon is None:
-            raise ValueError("the loop-coupling convention needs gamma_gamma")
+    if convention not in EXTERNAL_PHOTON_CONVENTIONS:
+        raise ValueError(f"unknown external-photon convention {convention!r}")
+    if photons and convention == "loop-coupling" and gamma_photon is None:
+        raise ValueError("the loop-coupling convention needs gamma_gamma")
     if sum(charges.values(), Fraction(0)) != 0:
         raise ValueError(
             f"the legs' all-incoming charges do not add to zero: {charges}"
@@ -438,7 +484,9 @@ def qed_coupling(
         if any(record is None for record in records):
             continue
         photons = [i for i, record in enumerate(records) if is_photon(record)]
-        fermions = [i for i, record in enumerate(records) if int(record.spin) == 2]
+        fermions = [
+            i for i, record in enumerate(records) if int(record.spin) == _FERMION_SPIN
+        ]
         if len(photons) != 1 or len(fermions) != 2:
             continue
         match = _GAMMA.match(term.lorentz_source)
@@ -475,12 +523,35 @@ def qed_coupling(
     return alpha.to_canonical_string(), tuple(sorted(pairs))
 
 
+def coupling_value(
+    coupling: tuple[str, tuple[tuple[str, str], ...]],
+    parameters: Mapping[str, Fraction],
+    carrier: Any,
+) -> Any:
+    """The real positive value of a ``qed_coupling`` expression at the
+    exact external ``parameters`` in ``carrier`` (``reference_executor.
+    Carrier``, evaluated as a kernel's irrational factor at the carrier's
+    digits; an AP carrier inside its Decimal context), or None if it is not
+    real and positive."""
+
+    from .reference_executor import KernelConstants
+
+    value = KernelConstants(parameters, carrier).constant(
+        ((1, 0), (), ((("expr", coupling), Fraction(1)),), ())
+    )
+    if value.imag != 0 or not value.real > 0:
+        return None
+    return value.real
+
+
 __all__ = [
     "EXTERNAL_PHOTON_CONVENTION",
     "EXTERNAL_PHOTON_CONVENTIONS",
     "LOCAL_UV",
     "ORIGINS",
     "catani_poles",
+    "coupling_value",
+    "dressed_born",
     "exact_charge",
     "has_poles",
     "photon_gamma",
@@ -489,6 +560,7 @@ __all__ = [
     "qed_coupling",
     "qed_gamma",
     "reducer_poles",
+    "sector_sum",
     "select_lane",
     "select_sector",
     "split_sector",
