@@ -2085,12 +2085,11 @@ class TestMECmdShell(unittest.TestCase):
 
     def test_t_channel_survey_grid(self):
         """check that refining on the survey grid is not biased for
-        u q > z u q (all channels pure t-channel chains). With the t-channel
-        invariants sampled in units of the hadronic s and the grid defined
-        on [-1,1], the survey grid starved the regions close to the
-        kinematic end-points (u -> 0, and below the lowest x seen): the
-        rare huge weights from there biased the refine low (96.6 pb, -2.3%,
-        averaged over 4 seeds).
+        u q > z u q (all channels pure t-channel chains). With the grid
+        defined on [-1,1] while the variables are in [0,1], the survey grid
+        starved the regions close to the kinematic end-points (below the
+        lowest x seen): the rare huge weights from there biased the refine
+        low (96.6 pb, -2.3%, averaged over 4 seeds).
         Reference (fixed scale 91.188, default PDF) from high statistics
         (8 iterations up to 2.5M points per channel, pooled over seeds):
         98.840 +- 0.017 pb; madspace gives 98.78 +- 0.02 pb.

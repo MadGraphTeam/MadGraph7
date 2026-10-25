@@ -1299,9 +1299,7 @@ c            ddum(j) = tx(2,j)                 !Use last value
 
 c     t-channel invariant: denser sampling near the large-|t| edge of the
 c     range allowed for this point (density (1-a)+a/(2 sqrt(1-r)) in its
-c     relative position r). genps.f samples t relative to that range, so
-c     the edge sits at the top of the grid, which can now learn it; this
-c     map still lowers the variance there
+c     relative position r)
       if (tsoft(Minvar(j,ipole)) .and. xbin_max .gt. xbin_min
      &     .and. nzoom .le. 0) then
          call tsoft_map((ddum(j)-xbin_min)/(xbin_max-xbin_min),tsr,tsrho)
@@ -1309,10 +1307,10 @@ c     map still lowers the variance there
          wgt = wgt/tsrho
       endif
 c     t-chain invariant mass: denser sampling near its threshold (r -> 0),
-c     with the density of tsoft_map mirrored. In p p > w+ w+ j j QCD=0 the
-c     large weights sat there (r ~ 0.04), and in VBF H the extreme weights
-c     (up to 2000x) disappear with it. genps.f samples that mass relative
-c     to its range, so the threshold is at the bottom of the grid
+c     with the density of tsoft_map mirrored. The threshold moves with the
+c     other variables, so the grid cannot follow it: in p p > w+ w+ j j
+c     QCD=0 the large weights sat there (r ~ 0.04), and in VBF H the
+c     extreme weights (up to 2000x) disappear with it
       if (msoft .and. xbin_max .gt. xbin_min .and. nzoom .le. 0) then
          call tsoft_map(1d0-(ddum(j)-xbin_min)/(xbin_max-xbin_min),
      &        tsr,tsrho)
