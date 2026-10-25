@@ -103,7 +103,9 @@ fn v2_plan_load(
 
 /// The SHA-256 of the program the production readers load from a plan
 /// (`program_digest`): a binary member through `read_binary`, the one reader
-/// of the member, and a JSON through `LoopProgramV4::load`.
+/// of the member, and a JSON through `LoopProgramV4::load`. A diagnostic: the
+/// digest formats the program beyond the reader's bound (`program_digest`),
+/// so fail-closed probes call `v2_plan_load(data, digest=False)` instead.
 #[pyfunction]
 fn v2_plan_read(py: Python<'_>, data: &[u8]) -> PyResult<String> {
     py.detach(|| {

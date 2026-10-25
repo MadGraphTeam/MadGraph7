@@ -102,8 +102,13 @@
 //! headers, widths, payload sizes and the padding are checked, every value is
 //! checked against its field's type, every column must be read to its end, a
 //! string takes its bytes from what the byte column still holds, the list
-//! reservations and copies are fallible (`TryCopy`), and the string table is
-//! shared as decoded (one fixed-size `Arc` header besides it).
+//! reservations and copies are fallible (`TryCopy`), the string table is
+//! shared as decoded (one fixed-size `Arc` header besides it), and the thread
+//! pool is started fallibly (`pool_threads`: a pool that cannot start is an
+//! error, not rayon's panic). This holds for [`read_binary`]
+//! ([`PlanModel::from_binary`] and [`PlanModel::program`]); the test tool
+//! [`program_digest`] is outside it (it formats the loaded program, a
+//! multi-precision weight as decimal digits, beyond the derivations' bound).
 
 mod derive;
 mod json;
@@ -247,7 +252,13 @@ pub fn read_binary_with(member: &[u8], policy: FormPolicy) -> RusticolResult<Loo
 /// SHA-256 of a loaded program's validated and derived tables (its `Debug`
 /// form, streamed, every field included): equal tables give equal digests
 /// and any differing value changes it. A test tool for comparing the JSON and
-/// binary loads; no artifact carries it.
+/// binary loads; no artifact carries it. Not bounded by the member: the
+/// `Debug` form writes a multi-precision weight in decimal (GMP's conversion,
+/// through C `malloc`, several times the number's size), so a plan with a
+/// weight of 10^8 digits takes it about 20 s and, under an address-space
+/// limit the load itself fits in, can abort the process in GMP. Probes of the
+/// reader's fail-closed contract read without it (`v2_plan_load` with
+/// `digest=False`).
 pub fn program_digest(program: &LoopProgramV4) -> String {
     struct Hashing(Sha256);
     impl std::fmt::Write for Hashing {
@@ -1364,28 +1375,31 @@ impl Budget {
     }
 }
 
-/// The rayon pool's thread count for a read (inside a pool's worker, that
-/// pool's), the global pool started fallibly first. rayon starts it lazily at
-/// its first use and panics there when a thread cannot be spawned (under an
-/// address-space limit: `WouldBlock`), leaving the process without a pool;
-/// the reader starts it itself and refuses with an error instead, at every
-/// read once a start has failed (rayon's later uses would panic).
+/// The rayon pool's thread count for a read: inside a pool's worker that
+/// pool's, else the global pool's, started fallibly first. rayon starts the
+/// global pool lazily at its first use and panics there when a worker cannot
+/// be spawned (under an address-space limit: `WouldBlock`), and never starts
+/// it after a failed start (any later use panics too). The reader starts it
+/// itself and refuses with an error instead, at every read once a start has
+/// failed (the outcome is kept: rayon's own is final). A pool another
+/// component started first is used as it is.
 fn pool_threads() -> RusticolResult<usize> {
-    static STARTED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-    if STARTED.get().is_none() {
-        if let Err(error) = rayon::ThreadPoolBuilder::new().build_global() {
-            if let Some(cause) = std::error::Error::source(&error) {
-                return Err(invalid(format!(
-                    "binary plan: the thread pool cannot start: {cause}"
-                )));
-            }
-            // Started already, or a start failed earlier in this process
-            // (rayon then panics at any use).
-            std::panic::catch_unwind(rayon::current_num_threads).map_err(|_| {
-                invalid("binary plan: the thread pool failed to start in this process")
-            })?;
+    static GLOBAL: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+    if rayon::current_thread_index().is_none() {
+        let started = GLOBAL.get_or_init(|| match rayon::ThreadPoolBuilder::new().build_global() {
+            Ok(()) => Ok(()),
+            Err(error) => match std::error::Error::source(&error) {
+                Some(cause) => Err(format!("the thread pool cannot start: {cause}")),
+                // Started before, or its start failed before (outside this
+                // reader), which only a use reveals: it panics.
+                None => std::panic::catch_unwind(rayon::current_num_threads)
+                    .map(drop)
+                    .map_err(|_| "the thread pool failed to start in this process".to_owned()),
+            },
+        });
+        if let Err(error) = started {
+            return Err(invalid(format!("binary plan: {error}")));
         }
-        let _ = STARTED.set(());
     }
     Ok(rayon::current_num_threads())
 }

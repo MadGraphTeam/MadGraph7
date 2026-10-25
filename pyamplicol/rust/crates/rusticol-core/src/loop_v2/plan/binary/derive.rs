@@ -49,7 +49,10 @@
 //! without one, it succeeds for any size up to about the host's RAM plus
 //! swap, and the per-member-byte bounds are the guard. The bound is checked
 //! against the derivations' real allocations (a counting allocator over
-//! crafted and exported plans: `tests/loop_v2_plan_derive_bound.rs`).
+//! crafted and exported plans, GMP's allocations counted through its memory
+//! functions) and, for multi-precision weights, against the address space
+//! their derivations take, C `malloc`'s placement included
+//! (`tests/loop_v2_plan_derive_bound.rs`).
 //!
 //! Before bounding, [`bound`] refuses the values the derivations would trust
 //! beyond the plan's own tables, before their first allocation. Each is
@@ -348,7 +351,10 @@ impl Tally {
     /// peak at most 0.74 of its charge and the sum at most 4.9 × `size` ×
     /// log2(`size`), over powers of ten of 10^5 to 10^8 digits of either
     /// sign, mantissas of up to 10^7 digits and fractions of up to 3 × 10^7
-    /// digits.
+    /// digits; and the address space the derivations take (`VmPeak`, C
+    /// `malloc`'s placement and fragmentation included) at most 0.75 of the
+    /// bound's `memory` (without the probe's margin), over powers of ten,
+    /// mantissas times and over them and fractions of 10^6 to 10^8 digits.
     fn weight(&mut self, text: &str) -> RusticolResult<()> {
         let text = text.trim();
         let len = text.len() as u64;

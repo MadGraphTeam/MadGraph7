@@ -21,8 +21,8 @@ use std::io::Read;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Mutex, Once};
 
-use rusticol_core::loop_v2::plan::FormPolicy;
 use rusticol_core::loop_v2::plan::binary::PlanModel;
+use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use serde_json::{Value, json};
 
 thread_local! {
@@ -174,9 +174,6 @@ fn measure(name: &str, json: &[u8]) {
         bound.allocated,
         allocated as f64 / bound.allocated as f64,
     );
-    if std::env::var_os("CALIBRATE").is_some() {
-        return;
-    }
     assert!(
         peak <= bound.memory,
         "{name}: peak {peak} > {}",
@@ -390,31 +387,128 @@ fn exported_plans_stay_within_their_bound() {
     }
 }
 
+/// The environment variable naming the plan JSON a child of
+/// [`weights_fit_their_bound_in_address_space`] loads.
+const ADDRESS_PLAN: &str = "LOOP_PLAN_BOUND_ADDRESS_PLAN";
+
+/// This process's `/proc/self/status` field `name` (kB), in bytes.
+fn status(name: &str) -> u64 {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap();
+    let line = status.lines().find(|line| line.starts_with(name)).unwrap();
+    line[name.len()..]
+        .trim()
+        .trim_end_matches("kB")
+        .trim()
+        .parse::<u64>()
+        .unwrap()
+        * 1024
+}
+
+/// The multi-precision weights at `digits` digits, named: a power of ten of
+/// either sign, a long mantissa times or over one (the product; the
+/// normalising gcd and divisions), a long fraction with a common factor.
+fn address_cases(digits: usize) -> Vec<(String, String)> {
+    let text = |n: usize| "1234567890".repeat(n.div_ceil(10))[..n].to_string();
+    let mantissa = text(digits / 10);
+    let short = digits / 10;
+    vec![
+        (format!("1e{digits}"), format!("1e{digits}")),
+        (format!("1e-{digits}"), format!("1e-{digits}")),
+        (
+            format!("{short} digits e{digits}"),
+            format!("{mantissa}e{digits}"),
+        ),
+        (
+            format!("{short} digits e-{digits}"),
+            format!("{mantissa}e-{digits}"),
+        ),
+        (
+            format!("0.{short} digits e-{digits}"),
+            format!("0.{mantissa}e-{digits}"),
+        ),
+        (
+            format!("{digits} digits / {digits} digits"),
+            format!("{}0/{}5", text(digits), text(digits)),
+        ),
+    ]
+}
+
+/// The address space the loader's derivations of the plan `json` take
+/// beyond the process's size before them, in a fresh child of this test
+/// binary (one malloc arena, as the main thread's). The counting allocator
+/// sees GMP's allocations (`measure`), not what C `malloc`'s placement makes
+/// of them (its brk heap below the dynamic mmap threshold, fragmented, and
+/// the mappings above it); an address-space limit sees both. The child reads
+/// the plan from a file and derives through the JSON load
+/// (`LoopProgramV4::load`: the same derivations without the reader's probe,
+/// which would otherwise be the peak): `VmPeak` after it over `VmSize` before
+/// it (nothing before it peaks above its size).
+fn address_space(name: &str, json: &[u8]) -> u64 {
+    let path = std::env::temp_dir().join(format!(
+        "loop_v2_plan_derive_bound-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(&path, json).unwrap();
+    let exe = std::env::current_exe().unwrap();
+    let output = std::process::Command::new(exe)
+        .args(["--exact", "weights_fit_their_bound_in_address_space"])
+        .args(["--nocapture", "--test-threads=1"])
+        .env(ADDRESS_PLAN, &path)
+        .env("MALLOC_ARENA_MAX", "1")
+        .output()
+        .unwrap();
+    std::fs::remove_file(&path).unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{name}: {output:?}");
+    let line = stdout
+        .lines()
+        .find_map(|line| line.split_once("ADDRESS ").map(|(_, values)| values))
+        .unwrap_or_else(|| panic!("{name}: {stdout}"));
+    let values: Vec<u64> = line.split(' ').map(|v| v.parse().unwrap()).collect();
+    values[1].saturating_sub(values[0])
+}
+
+/// A plan whose weight is a GMP number takes, in address space, at most its
+/// bound's `memory` (the reader probes that with its margin): 10^6 and
+/// 3 × 10^6 digits by default, up to 10^`LOOP_PLAN_BOUND_ADDRESS_SCALE`
+/// digits with that variable (evidence runs; scale 8 takes minutes).
 #[test]
-#[ignore = "calibration"]
-fn calibrate_weights() {
-    let digits = |n: usize| "1234567890".repeat(n.div_ceil(10))[..n].to_string();
-    let spec = std::env::var("CALIBRATE").unwrap();
-    for item in spec.split(',') {
-        let (l, k) = item.split_once(':').unwrap();
-        let (l, k): (usize, i64) = (l.parse().unwrap(), k.parse().unwrap());
-        let weight = if l == 0 {
-            // a fraction of |k| digits over |k| digits sharing a factor 5
-            let n = k.unsigned_abs() as usize;
-            format!("{}0/{}5", digits(n), digits(n))
-        } else if k == 0 {
-            format!("0.{}", digits(l))
-        } else if l > 1 && k.unsigned_abs() > 1 && k < -1_000_000_000 {
-            let n = (k.unsigned_abs() - 1_000_000_000) as usize;
-            format!("{}0/{}5", digits(l), digits(n))
-        } else {
-            format!("{}e{k}", digits(l))
-        };
-        let mut plan = empty();
-        plan["seed_classes"] = json!([{"columns": [[[0, weight, "0"]]]}]);
-        plan["seeds"] = json!([]);
-        let size = ((l as f64) + k.unsigned_abs() as f64) * 0.4152;
-        eprintln!("CAL l={l} k={k} size={size:.0}");
-        measure(&format!("cal {l}:{k}"), &text(&plan));
+fn weights_fit_their_bound_in_address_space() {
+    if let Some(path) = std::env::var_os(ADDRESS_PLAN) {
+        let json = std::fs::read(path).unwrap();
+        let before = status("VmSize:");
+        let program = LoopProgramV4::load(&json).unwrap();
+        let peak = status("VmPeak:");
+        drop(program);
+        println!("ADDRESS {before} {peak}");
+        return;
+    }
+    let scale: u32 =
+        std::env::var("LOOP_PLAN_BOUND_ADDRESS_SCALE").map_or(0, |s| s.parse().unwrap());
+    let mut sizes = vec![1_000_000, 3_000_000];
+    for k in 7..=scale {
+        sizes.push(10usize.pow(k));
+        if k < scale {
+            sizes.push(3 * 10usize.pow(k));
+        }
+    }
+    for digits in sizes {
+        for (name, weight) in address_cases(digits) {
+            let mut plan = empty();
+            plan["seed_classes"] = json!([{"columns": [[[0, weight, "0"]]]}]);
+            let json = text(&plan);
+            drop(plan);
+            let memory = PlanModel::from_json(&json)
+                .unwrap()
+                .derive_bound()
+                .unwrap()
+                .memory;
+            let used = address_space(&name, &json);
+            eprintln!(
+                "address {name}: {used} <= {memory} ({:.2})",
+                used as f64 / memory as f64
+            );
+            assert!(used <= memory, "{name}: address space {used} > {memory}");
+        }
     }
 }
