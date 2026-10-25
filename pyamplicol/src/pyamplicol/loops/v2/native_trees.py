@@ -1147,13 +1147,20 @@ def _parameter_program(
             raise NotImplementedError(f"the loop mass {mass.mass!r} is no input")
         else:
             plan_masses.append(index[mass.mass])
+    # The helpers in the order of their names, not the library's (which
+    # follows the model's function bindings: a model compiled from its UFO
+    # source and the same model read from the cache list them in different
+    # orders), so their canonical names and the saved state do not depend on
+    # how the model was obtained.
     canonical, parameters, functions = _canonical_stage(
         SimpleNamespace(
             output_expressions=outputs,
             parameter_symbols=inputs,
             symbolica_functions=[
                 (head, tuple(arguments), body)
-                for head, (arguments, body) in helpers.items()
+                for head, (arguments, body) in sorted(
+                    helpers.items(), key=lambda item: item[0].to_canonical_string()
+                )
             ],
         )
     )

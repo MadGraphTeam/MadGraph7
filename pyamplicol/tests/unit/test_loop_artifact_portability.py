@@ -651,6 +651,85 @@ def test_loop_v4_artifact_loads_without_regeneration(loop_artifact, name):
     assert python["relocated"]["seconds"]["load"] < 0.25 * generation, python
 
 
+# Generates g g > g g in a fresh interpreter from the UFO source with the model
+# cache ``argv[2]`` and writes the SHA-256 of its plan and native members.
+_GENERATE_DIGESTS = """
+import hashlib, json, sys
+from dataclasses import replace
+from pathlib import Path
+from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
+from pyamplicol.loops.native import load_loop_native
+from pyamplicol.loops.v2.artifact import generate_process
+from pyamplicol.loops.v2.assemble import SliceRequest
+from pyamplicol.models.loading import compile_model_source
+
+ufo, cache, out = sys.argv[1:4]
+model = compile_model_source(ufo, cache_dir=Path(cache))
+model = replace(
+    model,
+    raw_loop_model=prepare_loop_sm_scalar_declarations(model.raw_loop_model).derived,
+    _serialized_path=None,
+    _prepared_bundle=None,
+)
+request = SliceRequest(
+    "g g > g g", {"QCD": 2, "QED": 0}, {"QCD": 4, "QED": 0},
+    fixed_parameters={"MB": "0"}, scale_parameter="MU_R",
+)
+generated = generate_process(model, request, load_loop_native())
+plan = generated.plan_json
+plan = plan.encode() if isinstance(plan, str) else plan
+digest = lambda data: hashlib.sha256(data).hexdigest()
+members = generated.native.members()
+Path(out).write_text(json.dumps(
+    {"plan": digest(plan), "members": {k: digest(v) for k, v in members.items()}}
+))
+"""
+
+
+@pytest.mark.loop_physics
+def test_native_members_do_not_depend_on_the_model_cache(
+    loop_sm_ufo, loop_sm_compiled_model, loop_native, tmp_path
+):
+    """g g > g g generated in two fresh interpreters from the UFO source, one
+    with an empty model cache and one with the session's warm cache: the plan
+    and every native member are byte-identical, except the parameter
+    program's plane application, whose SymJIT call tags are random
+    (``SYMJIT_RANDOM_CALL_TAG``, test_symjit_plane_helper_functions.py). The
+    compiled and the cached model list their helper functions in different
+    orders; the parameter program names them in sorted order, so its saved
+    state is the same."""
+
+    warm = Path(loop_sm_compiled_model).parent / "model-cache"
+    assert warm.is_dir(), warm
+    script = tmp_path / "generate.py"
+    script.write_text(_GENERATE_DIGESTS)
+    caches = {"cold": tmp_path / "cold-cache", "warm": warm}
+    running = {
+        name: subprocess.Popen(
+            [sys.executable, str(script), str(loop_sm_ufo), str(cache), f"{name}.json"],
+            cwd=tmp_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        for name, cache in caches.items()
+    }
+    for process in running.values():
+        output, _ = process.communicate(timeout=1800)
+        assert process.returncode == 0, output[-2000:]
+    cold, warm_run = (
+        json.loads((tmp_path / f"{name}.json").read_text()) for name in caches
+    )
+    assert cold["plan"] == warm_run["plan"]
+    assert cold["members"].keys() == warm_run["members"].keys()
+    differing = sorted(
+        name
+        for name, digest in cold["members"].items()
+        if warm_run["members"][name] != digest
+    )
+    assert differing in ([], ["parameters.symjit"]), differing
+
+
 @pytest.mark.loop_physics
 def test_loop_artifact_with_retired_or_unknown_point_inputs_is_refused(
     loop_artifact, tmp_path
@@ -680,7 +759,8 @@ def test_loop_artifact_with_retired_or_unknown_point_inputs_is_refused(
         manifest = copy / "artifact.json"
         text = manifest.read_bytes()
         digests = (hashlib.sha256(old).hexdigest(), hashlib.sha256(new).hexdigest())
-        assert text.count(digests[0].encode()) == 1
+        # The payload record and the process record name the digest.
+        assert text.count(digests[0].encode()) >= 1
         manifest.write_bytes(text.replace(digests[0].encode(), digests[1].encode()))
         with pytest.raises(ArtifactError, match=message):
             Runtime.load(copy, process="gg")
