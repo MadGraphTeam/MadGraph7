@@ -437,10 +437,14 @@ def _seed_cells_equal(native: Generated, oracle: Generated | None = None) -> Non
 def test_seed_cells_equal_python(slices, name):
     native = slices(name)
     _seed_cells_equal(native)
-    # Rule 5: one thread and several give the same cells.
-    table = native.slice.table
-    one = native_cells.seed_cells(table.basis, table.classes, threads=1)
-    assert one == native_cells.seed_cells(table.basis, table.classes, threads=4)
+    # Rule 5: one thread and several give the same cells (the companion's
+    # generic classes share cells per worker).
+    tables = [native.slice.table]
+    if native.slice.scaleless is not None:
+        tables.append(native.slice.scaleless.table)
+    for table in tables:
+        one = native_cells.seed_cells(table.basis, table.classes, threads=1)
+        assert one == native_cells.seed_cells(table.basis, table.classes, threads=4)
 
 
 @pytest.mark.loop_fast

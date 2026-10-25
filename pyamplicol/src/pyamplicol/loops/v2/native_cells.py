@@ -518,6 +518,76 @@ def _max(a: int | None, b: int | None) -> int | None:
     return b if a is None else a if b is None else max(a, b)
 
 
+_CLOSURE_KEYS = ("native_cells", "closure-keys")
+
+
+def _closure_keys(
+    slice_: Any, layout: Mapping[Any, Any]
+) -> dict[Orders, frozenset[tuple[ColorTensor, int]]]:
+    """The degree keys of the CT program's closure terms per orders (the
+    oracle's ``counterterms[item.orders] |= ...`` over
+    ``counterterm_program.closure.terms``), cached on the slice for its
+    program and coupling layout (the inclusive degrees and every complete
+    family read them)."""
+
+    from .assemble import WholeRuleTerm
+    from .ct_sites import LAURENT_POWERS
+
+    program = slice_.counterterm_program
+    cached = slice_._cache.get(_CLOSURE_KEYS)
+    if cached is not None and cached[0] is program and cached[1] is layout:
+        found: dict[Orders, frozenset[tuple[ColorTensor, int]]] = cached[2]
+        return found
+    # The closure's terms (millions at seven legs, a few thousand colours)
+    # are grouped by what their keys read: the colour (by identity: colours
+    # are shared), the orders, the term's own grade and the coupling, or a
+    # whole-rule term's coefficient grades (by identity).
+    first: dict[tuple[int, Any, int, Orders], Any] = {}
+    for item in program.closure.terms:
+        term = item.term
+        key = (
+            id(term.colour),
+            id(term.grades) if isinstance(term, WholeRuleTerm) else item.coupling,
+            item.grade,
+            item.orders,
+        )
+        if key not in first:
+            first[key] = term
+    grouped: dict[tuple[Orders, int], tuple[Any, set[int]]] = {}
+    coupling_grades: dict[Any, tuple[int, ...]] = {}
+    for (colour_id, coupling, grade, orders), term in first.items():
+        if isinstance(term, WholeRuleTerm):
+            grades = {d + grade for d, _e in term.grades}
+        else:
+            base = coupling_grades.get(coupling)
+            if base is None:
+                base = coupling_grades[coupling] = tuple(
+                    g
+                    for g, _c in layout.get(coupling, ())
+                    if coupling[1] in LAURENT_POWERS
+                )
+            grades = {g + grade for g in base}
+        entry = grouped.get((orders, colour_id))
+        if entry is None:
+            entry = grouped[orders, colour_id] = (term.colour, set())
+        entry[1].update(grades)
+    del first
+    by_orders: dict[Orders, list[tuple[Any, set[int]]]] = defaultdict(list)
+    for (orders, _colour_id), entry in grouped.items():
+        by_orders[orders].append(entry)
+    found = {
+        orders: frozenset(
+            (part.tensor, part.nc_power + grade)
+            for colour, grades in entries
+            for part in colour.terms
+            for grade in grades
+        )
+        for orders, entries in by_orders.items()
+    }
+    slice_._cache[_CLOSURE_KEYS] = (program, layout, found)
+    return found
+
+
 class _DegreeKeys:
     """The key sets of ``LoopSlice.degrees``, collected as the oracle
     collects them (``_scalar_plan``'s grades, ``_terms_of`` per site, the CT
@@ -544,6 +614,18 @@ class _DegreeKeys:
                 for grade in grade_of(term)
             }
 
+        # The counterterm keys of one colour are its terms times the union
+        # of its grades: grades are gathered per (order, colour) first and
+        # every colour is expanded once (the oracle's sets, without
+        # re-hashing a colour's tensors per term and grade).
+        grouped: dict[Orders, dict[int, tuple[Any, set[int]]]] = defaultdict(dict)
+
+        def gather(orders: Orders, colour: Any, found: Iterable[int]) -> None:
+            entry = grouped[orders].get(id(colour))
+            if entry is None:
+                entry = grouped[orders][id(colour)] = (colour, set())
+            entry[1].update(found)
+
         self.born = {
             order: frozenset(keys(terms, lambda t: grades(t.entry.coupling.name, (0,))))
             for order, terms in slice_.born_terms.items()
@@ -553,39 +635,37 @@ class _DegreeKeys:
             if orbits
             else None
         )
-        counterterms: dict[Orders, set[tuple[ColorTensor, int]]] = defaultdict(set)
         closed: set[Hashable] = set()
+        site_grades: dict[str, set[int]] = {}
         for site in slice_.sites.sites:
             if self.orbits is not None:
                 identity = self.orbits.site_key(site)
                 if identity in closed:
                     continue
                 closed.add(identity)
-            counterterms[site.orders] |= keys(
-                slice_._terms_of(site),
-                lambda t: (
-                    {d for d, _e in t.grades}
-                    if isinstance(t, WholeRuleTerm)
-                    else grades(t.entry.coupling.name)
-                ),
-            )
-        if slice_.counterterm_program is not None:
-            for item in slice_.counterterm_program.closure.terms:
-                term = item.term
+            grouped.setdefault(site.orders, {})
+            for term in slice_._terms_of(site):
                 if isinstance(term, WholeRuleTerm):
-                    found = {d + item.grade for d, _e in term.grades}
-                else:
-                    found = {
-                        g + item.grade
-                        for g, _c in layout.get(item.coupling, ())
-                        if item.coupling[1] in LAURENT_POWERS
-                    }
-                counterterms[item.orders] |= {
-                    (part.tensor, part.nc_power + grade)
-                    for part in term.colour.terms
-                    for grade in found
-                }
-        self.counterterms = dict(counterterms)
+                    gather(site.orders, term.colour, {d for d, _e in term.grades})
+                    continue
+                name = term.entry.coupling.name
+                named = site_grades.get(name)
+                if named is None:
+                    named = site_grades[name] = grades(name)
+                gather(site.orders, term.colour, named)
+        counterterms: dict[Orders, set[tuple[ColorTensor, int]]] = {
+            orders: {
+                (part.tensor, part.nc_power + grade)
+                for colour, found in entries.values()
+                for part in colour.terms
+                for grade in found
+            }
+            for orders, entries in grouped.items()
+        }
+        if slice_.counterterm_program is not None:
+            for orders, found_keys in _closure_keys(slice_, layout).items():
+                counterterms[orders] = counterterms.get(orders, set()) | found_keys
+        self.counterterms = counterterms
         # Per sector: (pairs, [(Born order a, ket key, offset)]) with the ket
         # keys ("born", order) or ("ct", order) (``_DegreeKeys.ket``).
         self.sectors: list[tuple[Orders, Any, list[tuple[Orders, Any, int]]]] = []
