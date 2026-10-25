@@ -593,6 +593,12 @@ def test_a_repeat_at_another_batch_keeps_the_earlier_checks(tmp_path):
     assert set(config["earlier_runs"][0]["batches"]) == {"16"}
     assert config["physical"] == [{"index": 0}]
     assert config["checks_from_earlier_run"] == {"physical": "0" * 40}
+    assert "partial" not in config
+    # A checkpoint of a run that did not finish is marked.
+    second["partial"] = True
+    paths[1].write_text(json.dumps(second))
+    document, _ = gate.build(paths, None)
+    assert document["processes"][0]["pyamplicol"]["native/lc"]["partial"] is True
 
 
 def test_universal_double_pole_at_full_and_leading_colour():
