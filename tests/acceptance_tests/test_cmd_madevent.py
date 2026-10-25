@@ -2083,8 +2083,8 @@ class TestMECmdShell(unittest.TestCase):
         Reference (fixed scale 91.188, default PDF) from high statistics
         (8 iterations up to 2.5M points per channel, pooled over seeds):
         98.840 +- 0.017 pb; madspace gives 98.78 +- 0.02 pb.
-        Only the grouped output is checked: the flavour-merged non-grouped
-        output (P1_uQ_zuQ) is ~4.5% high for an unrelated reason."""
+        Only the grouped output is checked here (the non-grouped one is
+        test_madevent_merged_flavor_nogroup_symmetry)."""
 
         from unittest import mock
         gen_ximprove = MECmd.gen_ximprove
@@ -2118,6 +2118,52 @@ class TestMECmdShell(unittest.TestCase):
         val = self.cmd_line.results.current['cross']
         err = self.cmd_line.results.current['error']
         self.assertLess(abs(val - target) / target, 0.012,
+                        '%s +- %s vs %s' % (val, err, target))
+
+    def test_madevent_merged_flavor_nogroup_symmetry(self):
+        """u q > z u q (q = u d) without subprocess grouping: one
+        flavor-merged P dir (rows u u and u d). The identical-particle swap
+        of the final quarks is a symmetry of the u u row only; symfact.dat
+        used it to fold channel 2 onto channel 1 with weight 2, which made
+        the cross-section ~4.5% high (103.4 pb).
+        Reference (fixed scale 91.188, default PDF): 98.840 +- 0.017 pb
+        from the grouped output at high statistics; madspace 98.78 +- 0.02.
+        The tolerance leaves room for the low bias of the survey grid on
+        t-channel chains (see test_t_channel_survey_grid)."""
+
+        target = 98.84
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('set group_subprocesses False')
+        mg_cmd.exec_cmd('define q = u d')
+        mg_cmd.exec_cmd('generate u q > z u q')
+        mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+        pdirs = [d for d in glob.glob(pjoin(self.run_dir, 'SubProcesses', 'P*'))
+                 if os.path.isdir(d)]
+        self.assertEqual(len(pdirs), 1, pdirs)
+        symfact = open(pjoin(pdirs[0], 'symfact_orig.dat')).read().split()
+        self.assertEqual(symfact[1::2], ['1'] * (len(symfact) // 2))
+
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 10000, user=True)
+        run_card.set('iseed', 21, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('scale', 91.188, user=True)
+        run_card.set('dsqrt_q2fact1', 91.188, user=True)
+        run_card.set('dsqrt_q2fact2', 91.188, user=True)
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        self.do('generate_events -f')
+        val = self.cmd_line.results.current['cross']
+        err = self.cmd_line.results.current['error']
+        self.assertLess(abs(val - target) / target, 0.02,
                         '%s +- %s vs %s' % (val, err, target))
 
     def test_e_p_collision(self):
