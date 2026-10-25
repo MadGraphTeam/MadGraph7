@@ -603,7 +603,7 @@ def test_native_inputs_do_not_depend_on_the_batch(executors, name, stream):
 
 
 _SIMD_PROBE = r"""
-import json
+import pickle
 import sys
 from pathlib import Path
 
@@ -612,7 +612,7 @@ from pyamplicol.loops.v2.native_process import NativeProcess
 
 root = Path(sys.argv[1])
 members = {path.name: path.read_bytes() for path in (root / "members").iterdir()}
-data = json.loads((root / "points.json").read_text())
+data = pickle.loads((root / "points.pickle").read_bytes())
 process = NativeProcess.from_members((root / "plan.json").read_text(), members)
 executor = process.executor(load_loop_native())
 points, scales, parameters = data["points"], data["scales"], data["parameters"]
@@ -636,6 +636,7 @@ def test_closure_simd_widths_are_bitwise_equal(executors, tmp_path, name, stream
     uncapped run on nine points (a lane of 8 and a lane of 1)."""
 
     import os
+    import pickle
     import subprocess
     import sys
 
@@ -650,8 +651,9 @@ def test_closure_simd_widths_are_bitwise_equal(executors, tmp_path, name, stream
     frozen = streams.load(stream)
     points = [streams.exact(frozen, k) for k in range(9)]
     scales = [("250000", "1000000", "4000000")[k % 3] for k in range(9)]
-    (tmp_path / "points.json").write_text(
-        json.dumps({"points": points, "scales": scales, "parameters": PARAMETERS})
+    # Exact (Fraction) stream points: pickled, not rounded.
+    (tmp_path / "points.pickle").write_bytes(
+        pickle.dumps({"points": points, "scales": scales, "parameters": PARAMETERS})
     )
     outputs = {}
     for cap in (None, "avx2", "baseline"):
