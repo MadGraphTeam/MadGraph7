@@ -2567,10 +2567,12 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
     equals the legacy engine: Born and the QCD^6 virtual in binary64 (1e-12)
     and at 60 digits (1e-40, legacy at 60 digits). v2 also lists the
     QCD^4 QED^2 sector, a structural zero (no one-loop g g > g g amplitude of
-    order QCD^2 QED^2), which legacy omits. The electroweak CT rules the tree
-    recursion cannot lower enter no tree of g g > g g: the generation record
-    lists them inert (REQUIREMENTS_ADDENDUM J), the G0-photon mixing among
-    them."""
+    order QCD^2 QED^2), which legacy omits. The electroweak CT rules are
+    lowered (their CT scalars with the complex-mass scheme's helpers are
+    parameter-program references, WP3.2 EWI-3): no inert rule is left for a
+    UFO helper; the G0-photon mixing between spins, which the tree recursion
+    cannot lower, enters no tree of g g > g g and the generation record lists
+    it inert (REQUIREMENTS_ADDENDUM J)."""
 
     from pyamplicol import Runtime
     from pyamplicol.api import ProcessRequest, ProcessSet
@@ -2594,7 +2596,7 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
         name: reason for name, reason in inert.items() if "enters no tree" in reason
     }
     assert "PYAMPLICOL_CT_V306" in unreachable, sorted(inert)
-    assert any("UFO helper 'recms'" in reason for reason in unreachable.values())
+    assert not any("UFO helper" in reason for reason in inert.values()), inert
     reference = runtimes["legacy"].evaluate(
         [POINT], mu_r2="1000000", arithmetic="arbitrary", precision=ARBITRARY_DIGITS
     )

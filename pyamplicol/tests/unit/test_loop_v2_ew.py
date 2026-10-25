@@ -284,6 +284,8 @@ def _plan_values(plan, card, **options) -> dict:
 
 
 def _relative(value, reference) -> float:
+    """|value - reference| / |reference|, or |value| for a zero reference."""
+
     scale = abs(reference)
     return float(abs(value - reference) / scale) if scale else float(abs(value))
 
@@ -432,6 +434,126 @@ def _check_referenced_couplings(gmu, gmu_ufo, gmu_plan, *, every: int) -> None:
     )
 
 
+# Arguments of the helper tests: every quadrant, the negative real axis
+# (above, and 1e-30 off either side of the cut), the positive one and zero.
+_HELPER_POINTS = (
+    ("2", "3"),
+    ("-2", "3"),
+    ("-2", "-3"),
+    ("2", "-3"),
+    ("-2", "0"),
+    ("-2", "1e-30"),
+    ("-2", "-1e-30"),
+    ("3", "0"),
+    ("0", "0"),
+)
+
+
+def _helper_cases():
+    """(helper, arguments) of every G_mu function-library helper: unary ones
+    at every point, the switch-taking ones (``cond``, ``recms``, ``crecms``,
+    ``grreglog``) with their switch 0 and 1 and the second argument at every
+    point paired with a fixed first one."""
+
+    unary = ("re", "im", "complexconjugate", "reglog", "reglogp", "reglogm")
+    unary += ("regsqrt", "arg")
+    cases = [(name, (z,)) for name in unary for z in _HELPER_POINTS]
+    for switch in (("0", "0"), ("1", "0")):
+        cases += [("cond", (switch, ("5", "1"), z)) for z in _HELPER_POINTS]
+        cases += [
+            (name, (switch, z)) for name in ("recms", "crecms") for z in _HELPER_POINTS
+        ]
+        cases += [
+            ("grreglog", (switch, z1, z2))
+            for z1 in _HELPER_POINTS[:7]
+            for z2 in (("-1", "2"), ("-1", "-2"), ("1", "1"))
+        ]
+    return cases
+
+
+def test_scalar_library_helpers_equal_the_ufo_function_library(gmu, gmu_ufo):
+    """Every G_mu helper body as the scalar library lowers it (the bound
+    body, a function of the native parameter program) evaluated natively
+    equals the UFO's own ``function_library`` (Python ``cmath``) in binary64
+    and an mpmath transliteration of it in double-double and at 40 digits,
+    in every quadrant and on both sides of the cut (the CMS reglog's
+    -2 pi i above the negative axis, grreglog's sheet switches)."""
+
+    import mpmath
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.loops.native import load_loop_native
+
+    library = gmu.program.library
+    backend = load_loop_native()
+    functions = gmu_ufo[2]
+    cases = _helper_cases()
+    width = max(len(arguments) for _name, arguments in cases)
+    inputs = tuple(symbols.qualified(f"pyamplicol_test_ew::x{i}") for i in range(width))
+    names = [f"x{i}" for i in range(width)]
+    expressions = tuple(
+        library.lower(
+            f"{name}({','.join(names[: len(arguments)])})",
+            locals=dict(zip(names, inputs, strict=False)),
+        )
+        for name, arguments in cases
+    )
+    state = library.evaluator(expressions, inputs).save()
+    with mpmath.workdps(60):
+        exact = {}
+        for function in functions.all_functions:
+            arguments = function.arguments
+            arguments = arguments if isinstance(arguments, tuple) else (arguments,)
+            exact[function.name] = eval(
+                _compiled(f"lambda {','.join(arguments)}: {function.expr}", True),
+                {
+                    "cmath": _Library(mpmath.mp),
+                    "math": _Library(mpmath.mp),
+                    "NUMBER": mpmath.mpf,
+                    "IMAGINARY": lambda text: mpmath.mpc(0, mpmath.mpf(text)),
+                },
+            )
+        references = [
+            exact[name](*(mpmath.mpc(mpmath.mpf(re), mpmath.mpf(im)) for re, im in a))
+            for name, a in cases
+        ]
+    python = {f.name: f for f in functions.all_functions}  # the last binding wins
+    for arithmetic, precision, tolerance in (
+        ("double", None, 4e-16),
+        ("double-double", None, 1e-30),
+        ("arbitrary", 40, 1e-38),
+    ):
+        evaluator = backend.CoefficientEvaluator(
+            state, arithmetic=arithmetic, precision=precision
+        )
+        for row, (name, arguments) in enumerate(cases):
+            padded = [*arguments, *(("0", "0"),) * (width - len(arguments))]
+            batch = backend.NativeBatch.from_decimal(
+                padded, 1, width, arithmetic=arithmetic, precision=precision
+            )
+            re, im = evaluator.evaluate_batch(batch).to_decimal()[2 * row]
+            if arithmetic == "double":
+                function = python[name]
+                args = function.arguments
+                args = args if isinstance(args, tuple) else (args,)
+                body = eval(
+                    _compiled(f"lambda {','.join(args)}: {function.expr}", False),
+                    {"cmath": cmath, "math": math},
+                )
+                reference = complex(
+                    body(*(complex(float(x), float(y)) for x, y in arguments))
+                )
+                error = abs(complex(float(re), float(im)) - reference)
+                scale = max(abs(reference), 1.0)
+            else:
+                with mpmath.workdps(60):
+                    reference = references[row]
+                    value = mpmath.mpc(mpmath.mpf(re), mpmath.mpf(im))
+                    error = float(abs(value - reference))
+                    scale = float(max(abs(reference), 1))
+            assert error <= tolerance * scale, (arithmetic, name, arguments, re, im)
+
+
 def test_standard_helpers_keep_loop_sm_by_name(loop_sm_compiled_model, gmu):
     """The digest rule: loop_sm's cond, reglog and complexconjugate are the
     UFO-standard bodies (resolved by name, so its plans are unchanged); the
@@ -519,38 +641,35 @@ def test_scalar_predicates_of_numbers_are_decided():
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize("carrier", ["double-double", "arbitrary"])
 def test_counterterm_scalars_equal_mpmath(gmu, gmu_ufo, gmu_plan, carrier):
-    """The plan's CT values at the working digits of a double-double input
-    (32 + guard) and at 60 digits equal an mpmath transliteration of the
-    UFO's source, every literal exact, at twice as many digits: to 1e-28 and
-    1e-55 relative."""
+    """The plan's CT values in the native double-double carrier and at the
+    working digits of a 60-digit evaluation equal an mpmath transliteration
+    of the UFO's source (every literal exact) at 64 and 140 digits: to 1e-28
+    and 1e-55 relative; the plan's zeros are zero there."""
 
     import mpmath
 
     from pyamplicol.loops.v2.assemble import Precision
 
-    precision = (
-        Precision.double_double()
-        if carrier == "double-double"
-        else Precision.arbitrary(60)
-    )
-    digits = precision.working_digits
-    tolerance = (
-        mpmath.mpf("1e-28") if carrier == "double-double" else mpmath.mpf("1e-55")
-    )
-    reference, _environment = _ufo_values(gmu_ufo, _oracle_card(gmu), digits=2 * digits)
-    values = _plan_values(
-        gmu_plan.plan, gmu.card, arithmetic="arbitrary", precision=digits
-    )
-    worst = max(
-        (
-            abs(mpmath.mpc(mpmath.mpf(re), mpmath.mpf(im)) - reference[key])
-            / abs(reference[key]),
-            key,
+    if carrier == "double-double":
+        options, digits, tolerance = {"arithmetic": "double-double"}, 64, "1e-28"
+    else:
+        working = Precision.arbitrary(60).working_digits
+        options = {"arithmetic": "arbitrary", "precision": working}
+        digits, tolerance = 2 * working, "1e-55"
+    reference, _environment = _ufo_values(gmu_ufo, _oracle_card(gmu), digits=digits)
+    values = _plan_values(gmu_plan.plan, gmu.card, **options)
+    with mpmath.workdps(digits):
+        # Relative error; absolute where the source value is exactly zero at
+        # the card (a coefficient the plan cannot prove zero symbolically).
+        worst = max(
+            (
+                _relative(mpmath.mpc(mpmath.mpf(re), mpmath.mpf(im)), reference[key]),
+                key,
+            )
+            for key, (re, im) in values.items()
         )
-        for key, (re, im) in values.items()
-    )
-    assert worst[0] <= tolerance, worst
-    assert all(reference[key] == 0 for key in gmu_plan.zero)
+        assert worst[0] <= float(tolerance), worst
+        assert all(reference[key] == 0 for key in gmu_plan.zero)
 
 
 @pytest.mark.loop_nightly
