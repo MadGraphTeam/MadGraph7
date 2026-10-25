@@ -480,10 +480,6 @@ def export_trees(
     # The kernels the pruned program still uses; their plane applications
     # are compiled after the pruning, so a dropped kernel compiles none.
     kernels = (*saved, *ct_saved)
-    planes = _plane_applications(kernels)
-    referenced = ct is not None and bool(
-        slice_.counterterm_program.recursion.model.coefficients
-    )
     return NativeTrees(
         program,
         kernels,
@@ -494,30 +490,8 @@ def export_trees(
         tuple(components),
         parameter_evaluator,
         () if counterterms is None else counterterms.outputs,
-        (*planes, _parameter_plane(parameter_evaluator, referenced)),
+        _plane_applications((*kernels, parameter_evaluator)),
     )
-
-
-def _parameter_plane(state: bytes, referenced: bool) -> bytes:
-    """The parameter program's binary64 plane application. With CT
-    reference parameters (WP3.2 EWI-3) a refusal of the plane check is a
-    ``NotImplementedError`` (the plan is then stored without native point
-    inputs): SymJIT and the exact evaluator may give an exactly real
-    intermediate's zero imaginary part different signs, and the electroweak
-    CT scalars take helpers on their branch cuts (``regsqrt`` of a negative
-    real, ``grreglog``), so the two evaluations can take different sides
-    (WP3.2 EWI-N, risk M13)."""
-
-    try:
-        (plane,) = _plane_applications((state,))
-    except ValueError as error:  # the native compile's refusal
-        if not referenced:
-            raise
-        raise NotImplementedError(
-            "the binary64 plane application of the parameter program with "
-            f"counterterm reference parameters is refused: {error}"
-        ) from error
-    return plane
 
 
 @dataclass(frozen=True)
