@@ -160,6 +160,12 @@ def test_missing_providers_follow_the_specification():
     assert gate.outside_protocol(record) == {
         "recola": {"seconds": 180.0, "mode": "compute_ir_poles 1"}
     }
+    # The import's upper-bound reason travels with the timing (never a limit).
+    record["providers"]["recola"]["production_upper_bound"] = "poles on top"
+    assert gate.outside_protocol(record)["recola"]["production_upper_bound"] == (
+        "poles on top"
+    )
+    assert gate._times(record, "median_seconds_per_point") == {"madloop": 500.0}
 
 
 def test_imported_campaign_timings_are_the_stream_points(tmp_path):
@@ -199,6 +205,19 @@ def test_imported_campaign_timings_are_the_stream_points(tmp_path):
     assert result["median_seconds_per_point"] == 2.0
     assert result["cpu"] == 7
     assert result["setup"] == {"generation_seconds": 10.0}
+    # IR poles on top of the production work with the protocol's Collier
+    # cache (off at seven legs): the time bounds the production time from
+    # above. With another cache setting, or in the protocol, no bound.
+    assert "compute_ir_poles 1" in result["production_upper_bound"]
+    record = json.loads((run / "recola-result.json").read_text())
+    for settings in (
+        {"compute_ir_poles": 1, "collier_cache": "on"},
+        {"compute_ir_poles": 0, "collier_cache": "off"},
+    ):
+        record["settings"] = settings
+        (run / "recola-result.json").write_text(json.dumps(record))
+        other = providers.imported(streams.spec("uux_ggggg"), "recola", trees)
+        assert "production_upper_bound" not in other
     points["points"] = points["points"][::-1]
     (run / "points.json").write_text(json.dumps(points))
     with pytest.raises(RuntimeError):
@@ -992,6 +1011,62 @@ def test_report_builder_labels_the_floor_and_reports_addendum_h_checks():
     (lower,) = ward["lower_multiplicity"]
     assert lower["key"] == "gg_gggg" and lower["passed"] is True
     assert lower["max_virtual_ratio"] == 3e-10
+
+
+def test_an_upper_bound_outside_the_protocol_bounds_the_fastest_provider():
+    """A matched provider's timing outside the protocol that does the
+    production work and more (production_upper_bound) bounds its production
+    time from above: below the fastest protocol-mode time it is the fastest
+    as a bound, and the ratio to it is a lower bound (u u~ > g g g g g:
+    Recola's reference run with the IR poles, faster than MadLoop's
+    production build). Above it, or without the reason, it changes nothing."""
+
+    builder = _report_builder()
+    recola = {
+        "unavailable": "no production-mode timing",
+        "median_seconds_per_point": 182.0,
+        "points": 3,
+        "mode": "reference campaign: compute_ir_poles 1, Collier cache off",
+        "production_upper_bound": "poles on top of the production work",
+    }
+    madloop = {"median_seconds_per_point": 569.0, "points": 3, "mode": "production"}
+    proc = {"providers": {"madloop": madloop, "recola": dict(recola)}}
+    runtime = builder._provider_runtime(proc)
+    fastest = runtime["fastest"]
+    assert fastest["key"] == "recola" and fastest["bound"] == "upper"
+    assert fastest["seconds_per_point"] == 182.0
+    assert fastest["protocol_fastest"]["key"] == "madloop"
+    out = runtime["providers"]["recola"]["outside_protocol"]
+    assert out["production_upper_bound"] == recola["production_upper_bound"]
+    summary = _pyamplicol_record("uux_ggggg", [1.8] * 3)["batches"]["128"]
+    summary["uncertainty"] = 0.01
+    config = {"revision": "0" * 40, "inputs": "native", "batches": {"128": summary}}
+    decisions = {"decisions": [], "source": "test"}
+    cell = builder._timing_of(
+        {"key": "uux_ggggg"}, "native/full", config, "src", fastest, decisions
+    )
+    assert cell["ratio_to_fastest"] == pytest.approx(1.8 / 182.0)
+    assert cell["ratio_to_fastest_bound"] == "lower"
+    # A bound above the fastest protocol-mode time, or a timing outside the
+    # protocol without the reason, leaves the protocol-mode fastest.
+    proc["providers"]["madloop"] = dict(madloop, median_seconds_per_point=100.0)
+    assert builder._provider_runtime(proc)["fastest"] == {
+        "name": "MadLoop",
+        "key": "madloop",
+        "seconds_per_point": 100.0,
+    }
+    del proc["providers"]["recola"]["production_upper_bound"]
+    proc["providers"]["madloop"] = madloop
+    assert "bound" not in builder._provider_runtime(proc)["fastest"]
+    plain = builder._timing_of(
+        {"key": "uux_ggggg"},
+        "native/full",
+        config,
+        "src",
+        builder._provider_runtime(proc)["fastest"],
+        decisions,
+    )
+    assert "ratio_to_fastest_bound" not in plain
 
 
 def test_a_campaign_timed_on_tool_revisions_of_its_slice_revision(monkeypatch):
