@@ -322,10 +322,9 @@ def build_loop_kernel_catalogue(
     conjugation here; ghosts are not added) default to the particles the
     model declares as loop particles of those entries, closed under
     conjugation, plus the ghosts coupled to them. Loop requests pass the
-    species their families route, ghosts included
-    (``assemble._family_loop_species``): electroweak UV rules declare no loop
-    particles, and a request whose leg 1 is a lepton has no counterterm rule
-    at its root.
+    species their families route (``assemble._family_loop_species``):
+    electroweak UV rules declare no loop particles, and a request whose leg 1
+    is a lepton has no counterterm rule at its root.
     """
 
     _sym._ensure_symbolica()

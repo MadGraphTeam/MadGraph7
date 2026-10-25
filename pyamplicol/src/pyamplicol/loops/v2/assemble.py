@@ -1706,11 +1706,12 @@ class LoopSlice:
         entries = [e for site in root_sites for e in site.rule.entries]
         entries += _conjugate_site_entries(root_sites, conjugates, program, data)
         entries += [e for rows in ordinary for e in rows]
-        loop_species = _family_loop_species(loop_catalogue, selection, data)
-        _check_declared_loop_species(root_sites, loop_species)
+        _check_declared_loop_species(
+            root_sites, _eligible_loop_species(loop_catalogue, selection, data)
+        )
         catalogue = build_loop_kernel_catalogue(
             compiled,
-            loop_species=loop_species,
+            loop_species=_family_loop_species(families, data),
             counterterm_entries=list({id(e): e for e in entries}.values()),
         )
         closure = SiteClosure(blocks, data, catalogue, conjugates)
@@ -3606,17 +3607,39 @@ class _BlockRows:
         return tuple(sign * value for value in self._rows[(entry.current_id, variant)])
 
 
-def _family_loop_species(
+def _family_loop_species(families: FamilySet, data) -> tuple[int, ...]:
+    """PDG codes of the loop species the families route (WP3.2 EWI-1): the
+    cut species and the loop lines of every admitted and certified-scaleless
+    family's routings, with the members of merged closed-loop flavour
+    classes. The request's loop content, not the loop particles its
+    counterterm rules declare (an electroweak UV rule declares none, and a
+    lepton at leg 1 has no counterterm rule at the root); species the
+    families never route (a unitary-gauge W with joint corrections on a
+    gluon process) get no kernels."""
+
+    names: set[str] = set()
+    for group in (families.families, families.scaleless_families):
+        for family in group.values():
+            for closure in family.closures:
+                cut, positions = families.routing(closure)
+                names.add(cut)
+                for position in positions:
+                    names.update((position.vertex.loop_in, position.vertex.loop_out))
+    names.update(
+        member
+        for member, representative in families.merged.items()
+        if representative in names
+    )
+    pdg = {entry["name"]: int(entry["pdg_code"]) for entry in data["particles"]}
+    return tuple(sorted(pdg[name] for name in names))
+
+
+def _eligible_loop_species(
     loop_catalogue: ModelLoopCatalogue, selection: LoopOrderSelection, data
 ) -> tuple[int, ...]:
-    """PDG codes of the loop species the families may route (WP3.2 EWI-1).
-
-    The species of ``loop_catalogue`` perturbative in a requested correction
-    (the family recursion's eligibility, ``families._Recursion``), vetoed
-    particles excluded, ghosts included: the request's loop content, not the
-    loop particles its counterterm rules declare (an electroweak UV rule
-    declares none, and a lepton at leg 1 has no counterterm rule at the root).
-    """
+    """PDG codes of the species perturbative in a requested correction (the
+    family recursion's eligibility, ``families._Recursion``), vetoed
+    particles excluded, ghosts included."""
 
     pdg = {entry["name"]: int(entry["pdg_code"]) for entry in data["particles"]}
     return tuple(
@@ -3657,9 +3680,11 @@ def _conjugate_site_entries(sites, conjugates: ConjugateVertices, program, data)
 
 
 def _check_declared_loop_species(sites, loop_species: Sequence[int]) -> None:
-    """The loop particles of every admitted counterterm alternative are loop
-    species of the families: a rule admitted for loops the families never
-    route would renormalise a loop the virtual does not contain."""
+    """The loop particles of every admitted counterterm alternative are
+    eligible loop species of the request (``_eligible_loop_species``): a rule
+    admitted for loops of species the request cannot route (vetoed or not
+    perturbative in its corrections) would renormalise a loop the virtual
+    does not contain."""
 
     known = {abs(pdg) for pdg in loop_species}
     for site in sites:
