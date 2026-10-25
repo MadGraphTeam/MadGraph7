@@ -431,6 +431,34 @@ fn overlap_degrees(
     })
 }
 
+/// The overlap degrees under a colour history (`DirectedColour.overlap`):
+/// per (bra set, ket set, offset) query over sets of (tensor, N_c power),
+/// the largest N_c degree of a nonzero overlap plus both powers and the
+/// offset (`cells::tensor_overlap_degrees`).
+#[pyfunction]
+#[pyo3(signature = (bras, kets, queries, threads=None))]
+fn tensor_overlap_degrees(
+    py: Python<'_>,
+    bras: Vec<Vec<(RawTensor, i32)>>,
+    kets: Vec<Vec<(RawTensor, i32)>>,
+    queries: Vec<(usize, usize, i32)>,
+    threads: Option<usize>,
+) -> PyResult<Vec<Option<i32>>> {
+    let sets = |raw: Vec<Vec<(RawTensor, i32)>>| -> PyResult<Vec<Vec<(Tensor, i32)>>> {
+        raw.into_iter()
+            .map(|set| {
+                set.into_iter()
+                    .map(|(t, p)| Ok((tensor(t)?, p)))
+                    .collect::<PyResult<Vec<_>>>()
+            })
+            .collect()
+    };
+    let (bras, kets) = (sets(bras)?, sets(kets)?);
+    on_threads(py, threads, || {
+        cells::tensor_overlap_degrees(&bras, &kets, &queries)
+    })
+}
+
 /// `_prune_colour`'s class liveness per (class, loop rank) query.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
@@ -588,6 +616,7 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(face_counts, module)?)?;
     module.add_function(wrap_pyfunction!(project_records, module)?)?;
     module.add_function(wrap_pyfunction!(overlap_degrees, module)?)?;
+    module.add_function(wrap_pyfunction!(tensor_overlap_degrees, module)?)?;
     module.add_function(wrap_pyfunction!(live_classes, module)?)?;
     Ok(())
 }

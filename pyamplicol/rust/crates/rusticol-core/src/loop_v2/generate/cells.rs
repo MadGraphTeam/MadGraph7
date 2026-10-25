@@ -1719,6 +1719,143 @@ pub fn overlap_degrees(
         .collect())
 }
 
+/// The overlap degrees of `LoopSlice.degrees` under a colour history
+/// (`observables.DirectedColour.overlap`, design §7.7; the complete-family
+/// degrees of `ObservableSlice._family_degrees`): per (bra set, ket set,
+/// offset) query over sets of general tensors with their N_c powers, the
+/// largest N_c degree of a nonzero `<left|right>` plus both powers and the
+/// offset (None if every overlap vanishes). For a history whose ket steps
+/// are all gluon emissions the bra sets hold the operator images
+/// ket^dagger bra(left) of the Born keys and the ket sets the literal
+/// structures (single tensors); otherwise both hold the connected images.
+///
+/// Each distinct (bra term structure, ket term structure) overlap is counted
+/// once per ket tensor, in parallel over the distinct ket tensors; the
+/// result does not depend on the thread count. The tensors' 1/sqrt(2)
+/// normalisations scale whole overlaps by nonzero factors, so they do not
+/// move a degree; an odd total power is refused as `contract` refuses it.
+pub fn tensor_overlap_degrees(
+    bras: &[Vec<(Tensor, i32)>],
+    kets: &[Vec<(Tensor, i32)>],
+    queries: &[(usize, usize, i32)],
+) -> RusticolResult<Vec<Option<i32>>> {
+    // Distinct ket tensors, and the bra sets each one meets.
+    let mut ket_ids: FastMap<&Tensor, usize> = FastMap::default();
+    let mut ket_tensors: Vec<&Tensor> = Vec::new();
+    let mut meets: Vec<Vec<usize>> = Vec::new();
+    let mut task_ids: FastMap<(usize, usize), usize> = FastMap::default();
+    let mut tasks: Vec<(usize, usize)> = Vec::new();
+    let mut plans: Vec<Vec<(usize, i32)>> = Vec::with_capacity(queries.len());
+    for &(bra, ket, offset) in queries {
+        if bra >= bras.len() {
+            return Err(invalid("bra key set out of range"));
+        }
+        let ket_set = kets
+            .get(ket)
+            .ok_or_else(|| invalid("ket key set out of range"))?;
+        let mut plan = Vec::with_capacity(ket_set.len());
+        for (right, q) in ket_set {
+            let k = *ket_ids.entry(right).or_insert_with(|| {
+                ket_tensors.push(right);
+                meets.push(Vec::new());
+                ket_tensors.len() - 1
+            });
+            let id = *task_ids.entry((bra, k)).or_insert_with(|| {
+                tasks.push((bra, k));
+                meets[k].push(bra);
+                tasks.len() - 1
+            });
+            plan.push((id, q + offset));
+        }
+        plans.push(plan);
+    }
+    // Distinct bra term structures (the cache index of the overlaps).
+    let mut structure_ids: FastMap<&Structure, usize> = FastMap::default();
+    let mut entries: Vec<Vec<(&Tensor, i32, Vec<usize>)>> = Vec::with_capacity(bras.len());
+    for set in bras {
+        let mut out = Vec::with_capacity(set.len());
+        for (image, p) in set {
+            let ids = image
+                .terms
+                .iter()
+                .map(|term| {
+                    let next = structure_ids.len();
+                    *structure_ids.entry(&term.structure).or_insert(next)
+                })
+                .collect();
+            out.push((image, *p, ids));
+        }
+        entries.push(out);
+    }
+    let per_ket: Vec<RusticolResult<Vec<(usize, Option<i32>)>>> = (0..ket_tensors.len())
+        .into_par_iter()
+        .map(|k| {
+            let ket = ket_tensors[k];
+            // Structure overlaps with each ket term: (bra structure, ket term).
+            let mut cache: FastMap<(usize, usize), Vec<(i32, Integer)>> = FastMap::default();
+            let mut out = Vec::with_capacity(meets[k].len());
+            for &bra in &meets[k] {
+                let mut best: Option<i32> = None;
+                for (image, p, ids) in &entries[bra] {
+                    if image.legs != ket.legs {
+                        return Err(invalid(
+                            "bra and ket connections must have identical typed output legs",
+                        ));
+                    }
+                    if (image.normalization + ket.normalization) % 2 == 1 {
+                        return Err(invalid(
+                            "bra/ket normalization has an odd inverse sqrt(2) power",
+                        ));
+                    }
+                    let mut cell = Laurent::new();
+                    for (x, &s) in image.terms.iter().zip(ids) {
+                        for (t, y) in ket.terms.iter().enumerate() {
+                            let laurent = match cache.entry((s, t)) {
+                                std::collections::hash_map::Entry::Occupied(found) => {
+                                    found.into_mut()
+                                }
+                                std::collections::hash_map::Entry::Vacant(slot) => slot.insert(
+                                    trace_laurent(&overlap_traces(&x.structure, &y.structure)?)?,
+                                ),
+                            };
+                            if laurent.is_empty() {
+                                continue;
+                            }
+                            let coefficient = x.coefficient.conj().mul(&y.coefficient);
+                            for (nc, factor) in laurent.iter() {
+                                add_laurent(
+                                    &mut cell,
+                                    nc + x.nc_power + y.nc_power,
+                                    coefficient.scale(&Rational::from(factor.clone())),
+                                );
+                            }
+                        }
+                    }
+                    if let Some(&power) = cell.keys().next_back() {
+                        best = Some(best.map_or(power + p, |b| b.max(power + p)));
+                    }
+                }
+                out.push((bra, best));
+            }
+            Ok(out)
+        })
+        .collect();
+    let mut leading: FastMap<(usize, usize), Option<i32>> = FastMap::default();
+    for (k, found) in per_ket.into_iter().enumerate() {
+        for (bra, best) in found? {
+            leading.insert((bra, k), best);
+        }
+    }
+    Ok(plans
+        .into_iter()
+        .map(|plan| {
+            plan.into_iter()
+                .filter_map(|(id, shift)| leading[&tasks[id]].map(|d| d + shift))
+                .max()
+        })
+        .collect())
+}
+
 /// One liveness criterion: a table's cells and its degree per sector.
 pub type Criterion<'a> = (&'a [Vec<Arc<Laurent>>], Vec<Option<i32>>);
 

@@ -2376,6 +2376,11 @@ class LoopSlice:
         found = self._cache.get("degrees") if inclusive else None
         if found is not None:
             return found
+        from . import native_cells  # WP3.1 C3 switch: the "degrees" stage
+
+        if inclusive and (found := native_cells.slice_degrees(self)) is not None:
+            self._cache["degrees"] = found
+            return found
         overlaps = overlaps or self.overlaps
         table = table or self.table
         _plan, layout = self._scalar_plan(LAURENT_POWERS)
@@ -2507,6 +2512,11 @@ class LoopSlice:
 
         found = self._cache.get("dipoles")
         if found is not None:
+            return found
+        from . import dipoles  # WP3.1 C4 switch: the "dipoles" stage
+
+        if (found := dipoles.slice_operators(self)) is not None:
+            self._cache["dipoles"] = found
             return found
         legs = self.basis.legs
         coloured = [leg.label for leg in legs if leg.representation != 1]
@@ -4080,6 +4090,11 @@ class _AdjointOrbits:
     partition the legs, so two sites are related iff each block holds equally
     many legs of each class and the same other legs).
     """
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> _AdjointOrbits:
+        from . import native_cells  # WP3.1 C3 switch: the "orbits" stage
+
+        return super().__new__(native_cells.orbits_class(cls))
 
     def __init__(
         self,

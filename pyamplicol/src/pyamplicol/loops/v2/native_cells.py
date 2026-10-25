@@ -32,8 +32,11 @@ thread count (``threads`` selects a private pool; None the global one).
 from __future__ import annotations
 
 import hashlib
+import weakref
 from collections import defaultdict
-from collections.abc import Hashable, Iterable, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import replace
 from fractions import Fraction
 from functools import cache
 from itertools import product
@@ -75,6 +78,39 @@ __all__ = [
 ]
 
 _KINDS = {"adjoint-ring": 0, "fundamental-trace": 1}
+
+# Rule 1 (RUST-MIGRATION §2): the switched stages of package C, each one flag
+# dispatched inside its Python stage, which stays the oracle:
+#   "cells"   colour.seed_cells (the slice's, the companion's and the
+#             prune's tables) and DirectedColour._table (directed tables);
+#   "degrees" LoopSlice.degrees, the inclusive metric (_prune_colour and the
+#             companion read it);
+#   "orbits"  assemble._AdjointOrbits (classes and rename);
+#   "dipoles" LoopSlice.dipoles (``dipoles``: orbit representatives);
+#   "family"  ObservableSlice._family_degrees (complete-family degrees).
+# Rule 2: no stage has a per-request Python fallback; a native refusal is
+# raised (fail closed).
+STAGES: frozenset[str] = frozenset({"cells", "degrees", "orbits", "dipoles", "family"})
+NATIVE_STAGES: frozenset[str] = STAGES
+_DECODED = 0
+
+
+@contextmanager
+def native_stages(stages: Iterable[str]) -> Iterator[None]:
+    """``NATIVE_STAGES`` set to ``stages`` for the block and restored after
+    it: ``native_stages(())`` is the oracle lane of the tests and tools."""
+
+    global NATIVE_STAGES
+    chosen = frozenset(stages)
+    if unknown := chosen - STAGES:
+        raise ValueError(f"unknown native colour stages {sorted(unknown)}")
+    before = NATIVE_STAGES
+    NATIVE_STAGES = chosen
+    try:
+        yield
+    finally:
+        NATIVE_STAGES = before
+
 
 # The binding's plain-tuple encodings (``v2_colour.rs``).
 RawStructure = tuple[list[tuple[int, list[int], int]], list[list[int]]]
@@ -457,6 +493,95 @@ def _max(a: int | None, b: int | None) -> int | None:
     return b if a is None else a if b is None else max(a, b)
 
 
+class _DegreeKeys:
+    """The key sets of ``LoopSlice.degrees``, collected as the oracle
+    collects them (``_scalar_plan``'s grades, ``_terms_of`` per site, the CT
+    program's closure terms): the Born key sets per Born order, the
+    counterterm key sets per loop order and the field queries per sector.
+    ``orbits`` closes one counterterm site per relabelling orbit (the
+    inclusive metric); without it every site is closed (a directed colour
+    history is not invariant under the relabellings)."""
+
+    def __init__(self, slice_: Any, orbits: bool):
+        from .assemble import WholeRuleTerm
+        from .ct_sites import LAURENT_POWERS
+
+        _plan, layout = slice_._scalar_plan(LAURENT_POWERS)
+
+        def grades(name: str, powers: Iterable[int] = LAURENT_POWERS) -> set[int]:
+            return {g for power in powers for g, _c in layout.get((name, power), ())}
+
+        def keys(terms: Iterable[Any], grade_of: Any) -> set[tuple[ColorTensor, int]]:
+            return {
+                (item.tensor, item.nc_power + grade)
+                for term in terms
+                for item in term.colour.terms
+                for grade in grade_of(term)
+            }
+
+        self.born = {
+            order: frozenset(keys(terms, lambda t: grades(t.entry.coupling.name, (0,))))
+            for order, terms in slice_.born_terms.items()
+        }
+        self.orbits = (
+            _Orbits(slice_.basis.legs, slice_.blocks.process, self.born.values())
+            if orbits
+            else None
+        )
+        counterterms: dict[Orders, set[tuple[ColorTensor, int]]] = defaultdict(set)
+        closed: set[Hashable] = set()
+        for site in slice_.sites.sites:
+            if self.orbits is not None:
+                identity = self.orbits.site_key(site)
+                if identity in closed:
+                    continue
+                closed.add(identity)
+            counterterms[site.orders] |= keys(
+                slice_._terms_of(site),
+                lambda t: (
+                    {d for d, _e in t.grades}
+                    if isinstance(t, WholeRuleTerm)
+                    else grades(t.entry.coupling.name)
+                ),
+            )
+        if slice_.counterterm_program is not None:
+            for item in slice_.counterterm_program.closure.terms:
+                term = item.term
+                if isinstance(term, WholeRuleTerm):
+                    found = {d + item.grade for d, _e in term.grades}
+                else:
+                    found = {
+                        g + item.grade
+                        for g, _c in layout.get(item.coupling, ())
+                        if item.coupling[1] in LAURENT_POWERS
+                    }
+                counterterms[item.orders] |= {
+                    (part.tensor, part.nc_power + grade)
+                    for part in term.colour.terms
+                    for grade in found
+                }
+        self.counterterms = dict(counterterms)
+        # Per sector: (pairs, [(Born order a, ket key, offset)]) with the ket
+        # keys ("born", order) or ("ct", order) (``_DegreeKeys.ket``).
+        self.sectors: list[tuple[Orders, Any, list[tuple[Orders, Any, int]]]] = []
+        for sector, pairs in slice_.sectors:
+            found_queries = [(a, ("ct", b), 0) for a, b in pairs]
+            for insertion in slice_.fields:
+                if (
+                    a := next((a for a, b in pairs if b == insertion.orders), None)
+                ) is None or insertion.born_order not in self.born:
+                    continue
+                for grade in grades(slice_.field_names[insertion.identity]):
+                    found_queries.append((a, ("born", insertion.born_order), grade))
+            self.sectors.append((sector, pairs, found_queries))
+
+    def ket(self, key: tuple[str, Orders]) -> KeySet:
+        kind, order = key
+        if kind == "born":
+            return self.born[order]
+        return self.counterterms.get(order, set())
+
+
 def degrees(
     slice_: Any, table_handle: Any = None, threads: int | None = None
 ) -> dict[str, dict[Orders, int | None]]:
@@ -465,66 +590,13 @@ def degrees(
     ``table_handle`` is the slice table's ``NativeCellTable`` (default: its
     cells built natively from its classes).
 
-    Phase-0 harness: the key sets are collected here as the oracle collects
-    them, on its private members (``_scalar_plan``, ``_terms_of``, the CT
-    program's closure terms), so this copy can drift from the oracle and
-    the collection stays Python (one pass over the CT program's closure
-    terms in the recursion form). The phase-1 switch hands
-    ``LoopSlice.degrees``' own key sets to the native batch
-    (``overlap_degrees``) and deletes this copy."""
+    The key sets are collected as the oracle collects them (``_DegreeKeys``,
+    on its private members), so this copy follows the oracle's key rules;
+    the oracle tests compare the two on every control."""
 
-    from .assemble import WholeRuleTerm
-    from .ct_sites import LAURENT_POWERS
-
-    _plan, layout = slice_._scalar_plan(LAURENT_POWERS)
-
-    def grades(name: str, powers: Iterable[int] = LAURENT_POWERS) -> set[int]:
-        return {g for power in powers for g, _c in layout.get((name, power), ())}
-
-    def keys(terms: Iterable[Any], grade_of: Any) -> set[tuple[ColorTensor, int]]:
-        return {
-            (item.tensor, item.nc_power + grade)
-            for term in terms
-            for item in term.colour.terms
-            for grade in grade_of(term)
-        }
-
-    born = {
-        order: frozenset(keys(terms, lambda t: grades(t.entry.coupling.name, (0,))))
-        for order, terms in slice_.born_terms.items()
-    }
-    orbits = _Orbits(slice_.basis.legs, slice_.blocks.process, born.values())
-    counterterms: dict[Orders, set[tuple[ColorTensor, int]]] = defaultdict(set)
-    closed: set[Hashable] = set()
-    for site in slice_.sites.sites:
-        identity = orbits.site_key(site)
-        if identity in closed:
-            continue
-        closed.add(identity)
-        counterterms[site.orders] |= keys(
-            slice_._terms_of(site),
-            lambda t: (
-                {d for d, _e in t.grades}
-                if isinstance(t, WholeRuleTerm)
-                else grades(t.entry.coupling.name)
-            ),
-        )
-    if slice_.counterterm_program is not None:
-        for item in slice_.counterterm_program.closure.terms:
-            term = item.term
-            if isinstance(term, WholeRuleTerm):
-                found = {d + item.grade for d, _e in term.grades}
-            else:
-                found = {
-                    g + item.grade
-                    for g, _c in layout.get(item.coupling, ())
-                    if item.coupling[1] in LAURENT_POWERS
-                }
-            counterterms[item.orders] |= {
-                (part.tensor, part.nc_power + grade)
-                for part in term.colour.terms
-                for grade in found
-            }
+    keys = _DegreeKeys(slice_, orbits=True)
+    born = keys.born
+    assert keys.orbits is not None
     # Key sets and queries (bra set, ket set, offset).
     sets: list[list[tuple[RawStructure, int]]] = []
     set_ids: dict[Any, int] = {}
@@ -538,40 +610,24 @@ def degrees(
 
     queries: list[tuple[int, int, int]] = []
 
-    def query(bra: Orders, ket_key: Any, ket: KeySet, offset: int = 0) -> int:
-        queries.append((set_id(("born", bra), born[bra]), set_id(ket_key, ket), offset))
+    def query(bra: Orders, ket_key: Any, offset: int = 0) -> int:
+        bra_set = set_id(("born", bra), born[bra])
+        queries.append((bra_set, set_id(ket_key, keys.ket(ket_key)), offset))
         return len(queries) - 1
 
     born_queries = [
-        (add_orders(a, b), query(a, ("born", b), born[b]))
-        for a, b in product(born, repeat=2)
+        (add_orders(a, b), query(a, ("born", b))) for a, b in product(born, repeat=2)
     ]
     born_grades = slice_._born_grades()
     table = slice_.table
     if table_handle is None:
         table_handle = cell_table(slice_.basis, table.classes, threads=threads)
-    sector_queries = []
-    for sector, pairs in slice_.sectors:
-        found_queries = [
-            query(a, ("ct", b), counterterms.get(b, set())) for a, b in pairs
-        ]
-        for insertion in slice_.fields:
-            if (
-                a := next((a for a, b in pairs if b == insertion.orders), None)
-            ) is None or insertion.born_order not in born:
-                continue
-            for grade in grades(slice_.field_names[insertion.identity]):
-                found_queries.append(
-                    query(
-                        a,
-                        ("born", insertion.born_order),
-                        born[insertion.born_order],
-                        grade,
-                    )
-                )
-        sector_queries.append((sector, pairs, found_queries))
+    sector_queries = [
+        (sector, pairs, [query(a, key, offset) for a, key, offset in found])
+        for sector, pairs, found in keys.sectors
+    ]
     values = _native().overlap_degrees(
-        _legs(slice_.basis.legs), sets, queries, orbits.native, threads
+        _legs(slice_.basis.legs), sets, queries, keys.orbits.native, threads
     )
     out: dict[str, dict[Orders, int | None]] = {"born": {}, "virtual": {}}
     for squared, q in born_queries:
@@ -639,6 +695,230 @@ def live_classes(
         threads,
     )
     return dict(zip(queries, live, strict=True))
+
+
+# ------------------------------------------------- C5: directed colour
+
+
+# Native cell tables of the directed tables built under the "cells" stage,
+# per ``DirectedColour`` and direction (``swapped``), for the family degrees.
+_DIRECTED: weakref.WeakKeyDictionary[Any, dict[bool, Any]] = weakref.WeakKeyDictionary()
+
+
+def directed_table(directed: Any, table: Any, swapped: bool) -> Any:
+    """``DirectedColour._table`` of a direction whose ket steps are all gluon
+    emissions, natively (the "cells" stage; None when it is off): the
+    operator images ket^dagger bra(b) (``DirectedColour.operator``, the
+    oracle's own) replace the Born basis, and the native engine of the
+    shared ``_PrimitiveCells`` (``directed._cells``), rebased onto them,
+    forms the cells; the relabelling caches are shared by every directed
+    table of the slice, as in Python. The native table is kept for the
+    family degrees (``family_degrees``)."""
+
+    if "cells" not in NATIVE_STAGES:
+        return None
+    images = replace(
+        table.basis,
+        tensors=tuple(directed.operator(b, swapped) for b in table.basis.tensors),
+    )
+    shared = directed._cells
+    engine = NativeCells(images) if shared is None else shared.native().rebased(images)
+    handle = engine.table(table.classes)
+    _DIRECTED.setdefault(directed, {})[swapped] = handle
+    return replace(table, cells=_decoded(handle))
+
+
+def _raw_single(legs: list[tuple[int, int]], tensor: ColorTensor) -> RawTensor:
+    return (legs, [("1", "0", 0, _structure(tensor))], 0)
+
+
+class _FamilyBatch:
+    """The overlap queries of a complete family's history pairs, for one
+    ``tensor_overlap_degrees`` batch: bra and ket key sets of tensors and
+    (bra set, ket set, offset) queries."""
+
+    def __init__(self, slice_: Any):
+        self.legs = slice_.basis.legs
+        self.raw_legs = _legs(self.legs)
+        self.keys = _DegreeKeys(slice_, orbits=False)
+        self.bra_sets: list[list[tuple[RawTensor, int]]] = []
+        self.ket_sets: list[list[tuple[RawTensor, int]]] = []
+        self.queries: list[tuple[int, int, int]] = []
+        self._literal_kets: dict[Any, int] = {}
+
+    def _literal_ket(self, key: Any) -> int:
+        found = self._literal_kets.get(key)
+        if found is None:
+            found = self._literal_kets[key] = len(self.ket_sets)
+            self.ket_sets.append(
+                [(_raw_single(self.raw_legs, t), q) for t, q in self.keys.ket(key)]
+            )
+        return found
+
+    def pair(self, pair: Any) -> tuple[list[tuple[Orders, int]], list[Any]]:
+        """The queries of one history pair (a ``DirectedColour``): its Born
+        queries (squared order, query) and per sector (sector, pairs,
+        queries), as ``LoopSlice.degrees`` forms them with its overlaps."""
+
+        from .observables import _literal
+
+        absorbable = pair._absorbable(False)
+
+        def image(tensor: ColorTensor, bra: bool) -> Any:
+            literal = _literal(tensor, self.legs)
+            if absorbable:
+                return pair.operator(literal) if bra else literal
+            return pair._image(literal, bra)
+
+        # One bra set per Born order: the images of its keys, each with its
+        # largest N_c power (the degree of an overlap does not depend on it).
+        bras: dict[Orders, int] = {}
+        for a, born in self.keys.born.items():
+            powers: dict[ColorTensor, int] = {}
+            for t, p in born:
+                powers[t] = max(p, powers.get(t, p))
+            bras[a] = len(self.bra_sets)
+            self.bra_sets.append(
+                [(_tensor(image(t, True)), p) for t, p in powers.items()]
+            )
+        kets: dict[Any, int] = {}
+
+        def ket(key: Any) -> int:
+            if absorbable:
+                return self._literal_ket(key)
+            found = kets.get(key)
+            if found is None:
+                found = kets[key] = len(self.ket_sets)
+                self.ket_sets.append(
+                    [(_tensor(image(t, False)), q) for t, q in self.keys.ket(key)]
+                )
+            return found
+
+        def query(a: Orders, key: Any, offset: int = 0) -> int:
+            self.queries.append((bras[a], ket(key), offset))
+            return len(self.queries) - 1
+
+        born_queries = [
+            (add_orders(a, b), query(a, ("born", b)))
+            for a, b in product(self.keys.born, repeat=2)
+        ]
+        sector_queries = [
+            (sector, pairs, [query(a, key, offset) for a, key, offset in found])
+            for sector, pairs, found in self.keys.sectors
+        ]
+        return born_queries, sector_queries
+
+
+def family_degrees(
+    observables: Any, family: Sequence[Any], tables: list[Any] | None = None
+) -> dict[str, dict[Orders, int | None]] | None:
+    """``ObservableSlice._family_degrees`` natively (the "family" stage; None
+    when it is off): for every history pair (alpha, beta) of the complete
+    family, the pair's directed table (``DirectedColour``, its table built
+    natively under the "cells" stage) and the degrees of
+    ``LoopSlice.degrees(overlaps=pair.overlap, table=pair.table)``, with
+    every overlap degree of every pair in one native batch
+    (``tensor_overlap_degrees``): the bra sets hold the operator images of
+    the Born keys (``DirectedColour.operator``), or for a direction with a
+    quark-pair splitting the connected bra images with the connected ket
+    images (``DirectedColour._image``, the generic contraction).
+    ``tables`` collects every pair's table (the pruning criteria)."""
+
+    if "family" not in NATIVE_STAGES:
+        return None
+    from pyamplicol.color.correlator_matrices import ColorCorrelator
+
+    from .observables import DirectedColour
+
+    slice_ = observables.slice
+    born_grades = slice_._born_grades()
+    batch = _FamilyBatch(slice_)
+    # Per pair: (Born queries, sector queries, table, native table or None).
+    pairs_out: list[tuple[list[tuple[Orders, int]], list[Any], Any, Any]] = []
+    for alpha, beta in product(family, repeat=2):
+        pair = DirectedColour(
+            slice_.table,
+            ColorCorrelator("family", alpha.emissions, beta.emissions),
+            observables._cells,
+            observables._literals,
+        )
+        if tables is not None:
+            tables.append(pair.table)
+        born_queries, sector_queries = batch.pair(pair)
+        handle = _DIRECTED.get(pair, {}).get(False)
+        pairs_out.append((born_queries, sector_queries, pair.table, handle))
+    values = _native().tensor_overlap_degrees(
+        batch.bra_sets, batch.ket_sets, batch.queries, None
+    )
+    out: dict[str, dict[Orders, int | None]] = {"born": {}, "virtual": {}}
+    for born_queries, sector_queries, table, handle in pairs_out:
+        for squared, q in born_queries:
+            out["born"][squared] = _max(out["born"].get(squared), values[q])
+        for sector, sector_pairs, found in sector_queries:
+            value = (
+                table.degree(sector_pairs, born_grades)
+                if handle is None
+                else table_degree(table, sector_pairs, born_grades, handle)
+            )
+            for q in found:
+                value = _max(value, values[q])
+            out["virtual"][sector] = _max(out["virtual"].get(sector), value)
+    return out
+
+
+# --------------------------------------------------- phase-1 switches
+
+
+def _decoded(handle: Any) -> Cells:
+    """The cells of a native table, decoded and counted (rule 9)."""
+
+    global _DECODED
+    cells = decode(handle)
+    _DECODED += sum(len(row) for row in cells)
+    return cells
+
+
+def decoded_cells() -> int:
+    """Cells the switched stages decoded into Python objects (rule 9: every
+    seed and directed table's own cells once, for their Python consumers;
+    the degrees decode no cell)."""
+
+    return _DECODED
+
+
+def switched_seed_cells(
+    basis: BornBasis,
+    classes: Sequence[ConnectedColorTensor | Primitive],
+    primitive_cells: Any = None,
+) -> Cells:
+    """``colour.seed_cells`` under the "cells" stage: the native engine of
+    ``primitive_cells`` (a ``colour._PrimitiveCells``, whose native twin
+    shares its caches with its rebased copies' twins) or a fresh one."""
+
+    if primitive_cells is None:
+        engine = NativeCells(basis)
+    elif primitive_cells.basis is not basis:
+        raise ValueError("primitive cells of another basis")
+    else:
+        engine = primitive_cells.native()
+    return _decoded(engine.table(classes))
+
+
+def slice_degrees(slice_: Any) -> dict[str, dict[Orders, int | None]] | None:
+    """``LoopSlice.degrees()`` (inclusive) under the "degrees" stage, or None
+    when it is off (the switch in ``LoopSlice.degrees`` caches it)."""
+
+    if "degrees" not in NATIVE_STAGES:
+        return None
+    return degrees(slice_)
+
+
+def orbits_class(cls: type) -> type:
+    """The class ``assemble._AdjointOrbits(...)`` instantiates: the native
+    ``_Orbits`` (classes and ``rename`` in rusticol-core) under the "orbits"
+    stage."""
+
+    return _Orbits if cls is _AdjointOrbits and "orbits" in NATIVE_STAGES else cls
 
 
 # -------------------------------------------------------------- C4: dipoles
