@@ -34,9 +34,9 @@ from .contact_decomposition import (
 )
 from .contracts import (
     DEFAULT_FEYNMAN_PROPAGATOR_SOURCE,
+    MODEL_GAUGES,
     MODEL_SUPPLIED_PROPAGATOR_SOURCE,
     PROPAGATOR_SOURCE_FIELD,
-    MODEL_GAUGES,
     TENSOR_ORDERING_CONTRACT_VERSION,
     CompiledModelIR,
     ModelGauge,
@@ -429,18 +429,38 @@ def compile_model_source(
     cache_dir: Path | None = None,
     use_cache: bool = True,
     require_supported: bool = True,
-    gauge: ModelGauge = "unitary",
+    gauge: ModelGauge | None = None,
 ) -> CompiledModel:
     """Compile (or load from the model cache) one model source.
 
-    ``gauge`` selects the gauge of the massive vectors
-    (``ModelCompileOptions``); it enters the compiled record and the cache
-    key, and ``"feynman"`` is refused unless the UFO declares gauge 1.
+    ``gauge`` selects the gauge of the massive vectors (``with_model_gauge``;
+    ``None`` keeps the source's: unitary for a UFO or JSON source, the
+    recorded one for a compiled model). The two gauges share every compiled
+    record but the Goldstone dispositions, so the model cache holds the
+    gauge-independent compile and the gauge is applied to it.
     """
 
-    options = ModelCompileOptions(
-        restriction=restriction, simplify=simplify, gauge=gauge
+    compiled = _compile_model_source(
+        source,
+        restriction=restriction,
+        simplify=simplify,
+        cache_dir=cache_dir,
+        use_cache=use_cache,
+        require_supported=require_supported,
     )
+    return compiled if gauge is None else with_model_gauge(compiled, gauge)
+
+
+def _compile_model_source(
+    source: str | Path = "BUILTIN_SM",
+    *,
+    restriction: str = "default",
+    simplify: bool = True,
+    cache_dir: Path | None = None,
+    use_cache: bool = True,
+    require_supported: bool = True,
+) -> CompiledModel:
+    options = ModelCompileOptions(restriction=restriction, simplify=simplify)
     source_kind, resolved, detected_payload = _detect_model_source_payload(source)
     if source_kind in {"pyamplicol", "prepared"}:
         if restriction != DEFAULT_MODEL_RESTRICTION or not simplify:
@@ -448,7 +468,6 @@ def compile_model_source(
                 "restriction and simplification options cannot be applied to an "
                 "already compiled pyAmpliCol model"
             )
-        _require_compiled_gauge_option(gauge)
         if source_kind == "prepared":
             from .prepared import load_prepared_model_bundle
 
@@ -468,7 +487,6 @@ def compile_model_source(
             detected_payload,
             serialized_path=Path(resolved),
         )
-    _require_admissible_gauge(source_kind, resolved, options.gauge)
     source_digest, fingerprint, cache_path = _compilation_cache_identity(
         source_kind,
         resolved,
@@ -517,7 +535,7 @@ def compile_model_source(
     model_ir = (
         compile_builtin_model_ir(model_payload)
         if source_kind == "built-in-sm"
-        else compile_ufo_model_ir(model_payload, gauge=options.gauge)
+        else compile_ufo_model_ir(model_payload)
     )
     phase_timings["tensor_lowering"] = time.perf_counter() - phase_started
     contact_term_ids = {term.id for term in model_ir.vertex_terms if term.valence > 3}
@@ -616,13 +634,34 @@ def load_cached_model_source(
     simplify: bool = True,
     cache_dir: Path | None = None,
     require_supported: bool = True,
-    gauge: ModelGauge = "unitary",
+    gauge: ModelGauge | None = None,
+) -> CompiledModel | None:
+    """Load an already compiled source without compiling or writing a cache;
+    ``gauge`` as in ``compile_model_source``."""
+
+    compiled = _load_cached_model_source(
+        source,
+        restriction=restriction,
+        simplify=simplify,
+        cache_dir=cache_dir,
+        require_supported=require_supported,
+    )
+    if compiled is None or gauge is None:
+        return compiled
+    return with_model_gauge(compiled, gauge)
+
+
+def _load_cached_model_source(
+    source: str | Path,
+    *,
+    restriction: str = DEFAULT_MODEL_RESTRICTION,
+    simplify: bool = True,
+    cache_dir: Path | None = None,
+    require_supported: bool = True,
 ) -> CompiledModel | None:
     """Load an already compiled source without compiling or writing a cache."""
 
-    options = ModelCompileOptions(
-        restriction=restriction, simplify=simplify, gauge=gauge
-    )
+    options = ModelCompileOptions(restriction=restriction, simplify=simplify)
     source_kind, resolved, detected_payload = _detect_model_source_payload(source)
     if source_kind in {"pyamplicol", "prepared"}:
         if restriction != DEFAULT_MODEL_RESTRICTION or not simplify:
@@ -630,7 +669,6 @@ def load_cached_model_source(
                 "restriction and simplification options cannot be applied to an "
                 "already compiled pyAmpliCol model"
             )
-        _require_compiled_gauge_option(gauge)
         if source_kind == "prepared":
             from .prepared import load_prepared_model_bundle
 
@@ -653,7 +691,6 @@ def load_cached_model_source(
         _raise_for_unsupported(compiled, require_supported=require_supported)
         return compiled
 
-    _require_admissible_gauge(source_kind, resolved, options.gauge)
     _, _, cache_path = _compilation_cache_identity(
         source_kind,
         resolved,
@@ -665,6 +702,82 @@ def load_cached_model_source(
     compiled = load_compiled_model(cache_path)
     _raise_for_unsupported(compiled, require_supported=require_supported)
     return compiled
+
+
+def declared_model_gauges(compiled: CompiledModel) -> tuple[int, ...] | None:
+    """The gauges the source UFO of ``compiled`` declares (its module-level
+    ``gauge`` list, MG5's convention: 0 unitary, 1 Feynman), from the raw
+    source records the compile keeps; ``None`` when it declares none or no
+    raw source is kept (JSON and built-in models)."""
+
+    raw = compiled.raw_loop_model
+    declared = None if raw is None else raw.metadata.get("gauge")
+    if not isinstance(declared, (list, tuple)) or not all(
+        type(item) is int for item in declared
+    ):
+        return None
+    return tuple(declared)
+
+
+def with_model_gauge(compiled: CompiledModel, gauge: ModelGauge) -> CompiledModel:
+    """``compiled`` with its massive vectors in ``gauge``
+    (``contracts.ModelGauge``).
+
+    The 't Hooft-Feynman gauge is admissible only for a model whose source
+    declares gauge 1 (``declared_model_gauges``): its Goldstone vertices and
+    counterterms are written for it. Only the Goldstone dispositions
+    (``compiler_gauge``) and the recorded gauge change: every vertex, kernel,
+    propagator and parameter record is the compile's own, and the gauge is
+    recorded in the compile options (``ModelCompileOptions.gauge``). A
+    prepared bundle carries the gauge it was prepared in and is refused.
+    """
+
+    if gauge not in MODEL_GAUGES:
+        raise ValueError(
+            f"model gauge must be one of {', '.join(MODEL_GAUGES)}, not {gauge!r}"
+        )
+    if compiled.ir.gauge == gauge:
+        return compiled
+    if compiled.prepared_bundle is not None:
+        raise ValueError(
+            "a prepared model bundle carries the gauge it was prepared in "
+            f"({compiled.ir.gauge}); prepare the model in {gauge} gauge instead"
+        )
+    if gauge == "feynman":
+        declared = declared_model_gauges(compiled)
+        if declared is None or 1 not in declared:
+            raise ValueError(
+                f"model gauge {gauge!r} needs a UFO model that declares gauge 1 "
+                f"('t Hooft-Feynman); {compiled.name!r} declares "
+                f"{'none' if declared is None else list(declared)}"
+            )
+    from .compiler_gauge import compile_goldstone_partner_records
+
+    ir = compiled.ir
+    options = {
+        key: value
+        for key, value in dict(
+            _mapping(compiled.source.get("options", {}), "source options")
+        ).items()
+        if key != "gauge"
+    }
+    return replace(
+        compiled,
+        source={
+            **compiled.source,
+            # As ``ModelCompileOptions.canonical_payload`` records it.
+            "options": {**options, **({} if gauge == "unitary" else {"gauge": gauge})},
+        },
+        ir=replace(
+            ir,
+            gauge=gauge,
+            goldstone_partners=compile_goldstone_partner_records(
+                ir.particles, ir.parameters, ir.propagators, gauge=gauge
+            ),
+        ),
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
 
 
 def load_compiled_model(path: Path) -> CompiledModel:
@@ -686,66 +799,6 @@ def load_compiled_model(path: Path) -> CompiledModel:
     if not isinstance(payload, dict):
         raise ValueError(f"compiled model root must be an object: {path}")
     return CompiledModel.from_dict(payload, serialized_path=Path(path))
-
-
-def declared_model_gauges(source: str | Path) -> tuple[int, ...] | None:
-    """The gauges a UFO model directory declares (its ``__init__``'s
-    ``gauge`` list, MG5 convention: 0 unitary, 1 Feynman), or ``None`` when
-    it declares none. The declaration is read as a literal, without importing
-    the model."""
-
-    import ast
-
-    path = Path(source) / "__init__.py"
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    except (OSError, SyntaxError, UnicodeDecodeError):
-        return None
-    declared = None
-    for node in tree.body:
-        if (
-            isinstance(node, ast.Assign)
-            and len(node.targets) == 1
-            and isinstance(node.targets[0], ast.Name)
-            and node.targets[0].id == "gauge"
-        ):
-            try:
-                value = ast.literal_eval(node.value)
-            except ValueError:
-                return None
-            if not isinstance(value, (list, tuple)) or not all(
-                type(item) is int for item in value
-            ):
-                return None
-            declared = tuple(value)
-    return declared
-
-
-def _require_admissible_gauge(
-    source_kind: str, resolved: str | Path, gauge: ModelGauge
-) -> None:
-    """'t Hooft-Feynman gauge only for a UFO model that declares gauge 1:
-    its counterterms and Goldstone vertices are written for that gauge."""
-
-    if gauge == "unitary":
-        return
-    declared = (
-        declared_model_gauges(resolved) if source_kind == "ufo" else None
-    )
-    if declared is None or 1 not in declared:
-        raise ValueError(
-            f"model gauge {gauge!r} needs a UFO model that declares gauge 1 "
-            f"('t Hooft-Feynman); {Path(str(resolved)).name!r} declares "
-            f"{'none' if declared is None else list(declared)}"
-        )
-
-
-def _require_compiled_gauge_option(gauge: ModelGauge) -> None:
-    if gauge != "unitary":
-        raise ValueError(
-            "a gauge option cannot be applied to an already compiled pyAmpliCol "
-            "model; it carries the gauge it was compiled in"
-        )
 
 
 def preflight_model(
@@ -1828,7 +1881,8 @@ def _counterterm_ir(
                 payload,
                 str(tree_kernel_variant),
                 sorted(u1_projected_vertices),
-                str(gauge),
+                # Only off the default (unitary keys are unchanged).
+                *(() if gauge == "unitary" else (str(gauge),)),
                 _COUNTERTERM_IR_FINGERPRINT[0],
             ],
             separators=(",", ":"),
