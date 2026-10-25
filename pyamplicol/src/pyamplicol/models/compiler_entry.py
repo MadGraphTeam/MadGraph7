@@ -620,6 +620,15 @@ def _contact_stage_structure(split: Any, stage: str) -> str:
     }[kind]
 
 
+# Kernel-equivalence proofs of this process by the sha256 of their key
+# (``_annotate_oriented_kernel_evaluation_equivalence``): a proof is a pure
+# function of its key, so a compile reuses the proofs of earlier compiles,
+# e.g. a counterterm-lowered model those of its base model's vertices and
+# of the lowered models of other processes. Cleared beyond the bound.
+_KERNEL_PROOFS: dict[str, tuple[Any, ...]] = {}
+_KERNEL_PROOF_BOUND = 1 << 16
+
+
 def _annotate_oriented_kernel_evaluation_equivalence(
     kernels: Sequence[CompiledOrientedKernel],
     particles: Sequence[CompiledParticleRecord],
@@ -638,7 +647,6 @@ def _annotate_oriented_kernel_evaluation_equivalence(
     particle_by_name = {particle.name: particle for particle in particles}
     term_by_id = {term.id: term for term in terms}
     annotated: list[CompiledOrientedKernel] = []
-    proofs: dict[tuple[object, ...], tuple[object, ...]] = {}
     parsed: dict[int, _sym.Expression] = {}
 
     def term_coupling(term_id: int) -> _sym.Expression:
@@ -693,17 +701,24 @@ def _annotate_oriented_kernel_evaluation_equivalence(
             )
             for input_order, swap_sides in (((0, 1), False), ((1, 0), True))
         }
-        key = (
-            dimensions,
-            coupling.to_canonical_string(),
-            *(
-                tuple(component.to_canonical_string() for component in components)
-                for components in remapped.values()
-            ),
-        )
-        proof = proofs.get(key)
+        key = hashlib.sha256(
+            json.dumps(
+                [
+                    dimensions,
+                    coupling.to_canonical_string(),
+                    *(
+                        [component.to_canonical_string() for component in components]
+                        for components in remapped.values()
+                    ),
+                ],
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        proof = _KERNEL_PROOFS.get(key)
         if proof is None:
-            proof = proofs[key] = _kernel_equivalence_proof(
+            if len(_KERNEL_PROOFS) >= _KERNEL_PROOF_BOUND:
+                _KERNEL_PROOFS.clear()
+            proof = _KERNEL_PROOFS[key] = _kernel_equivalence_proof(
                 remapped, coupling, dimensions
             )
         class_digest, factor, input_order, input_exchange_factor = proof
@@ -746,60 +761,84 @@ def _kernel_equivalence_proof(
     """(class digest, factor, input order, input exchange factor) of one
     oriented kernel (``_annotate_oriented_kernel_evaluation_equivalence``)
     from its ``remapped`` components per input order, its ``coupling`` and
-    the component ``dimensions`` of its two inputs and its output."""
+    the component ``dimensions`` of its two inputs and its output.
 
-    candidates: list[tuple[str, tuple[int, int], tuple[float, float], str]] = []
-    components_by_input_order: dict[tuple[int, int], tuple[_sym.Expression, ...]] = {}
-    for input_order, components in remapped.items():
-        oriented_components = tuple(
-            (component * coupling).expand() for component in components
-        )
-        components_by_input_order[input_order] = oriented_components
-        oriented_dimensions = (
-            dimensions[input_order[0]],
-            dimensions[input_order[1]],
-            dimensions[2],
-        )
-        for sign in (1, -1):
+    The class is the least signature (input dimensions and canonical
+    component strings) over the input orders and overall signs. The
+    canonical strings of large expanded components dominate the cost, so
+    they are formed lazily: the signatures share their prefix up to the
+    first component, and a JSON string token is never a proper prefix of
+    another, so the first component whose tokens differ decides the order
+    of two signatures exactly. Only the candidates tied so far get their
+    next component's string, and the least signature is then formed whole,
+    with ties kept in candidate order as ``min`` keeps them: the result is
+    the eager comparison of every complete signature."""
+
+    oriented: dict[tuple[int, int], tuple[_sym.Expression, ...]] = {
+        input_order: tuple((component * coupling).expand() for component in components)
+        for input_order, components in remapped.items()
+    }
+    candidates = [(input_order, sign) for input_order in oriented for sign in (1, -1)]
+    strings: dict[tuple[tuple[int, int], int, int], str] = {}
+
+    def component_string(candidate: tuple[tuple[int, int], int], index: int) -> str:
+        input_order, sign = candidate
+        key = (input_order, sign, index)
+        if key not in strings:
             # Horner/factor collection optimizes evaluation, but is not a
             # unique algebraic normal form: mirrored kernels can retain
             # different factorizations of the same coupling polynomial.
             # Proof identities must use expanded expressions, while the
             # stored runtime components remain optimized and unchanged.
-            component_strings = tuple(
-                (sign * component).expand().to_canonical_string()
-                for component in oriented_components
+            strings[key] = (
+                (sign * oriented[input_order][index]).expand().to_canonical_string()
             )
-            signature = json.dumps(
-                {
-                    "input_dimensions": list(oriented_dimensions[:2]),
-                    "output_dimension": oriented_dimensions[2],
-                    "components": list(component_strings),
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-            candidates.append(
-                (
-                    signature,
-                    input_order,
-                    (float(sign), 0.0),
-                    hashlib.sha256(signature.encode("utf-8")).hexdigest(),
-                )
-            )
-    _signature, input_order, factor, class_digest = min(
-        candidates,
-        key=lambda candidate: candidate[0],
-    )
+        return strings[key]
+
+    def signature(candidate: tuple[tuple[int, int], int]) -> str:
+        input_order, _sign = candidate
+        return json.dumps(
+            {
+                "input_dimensions": [
+                    dimensions[input_order[0]],
+                    dimensions[input_order[1]],
+                ],
+                "output_dimension": dimensions[2],
+                "components": [
+                    component_string(candidate, index)
+                    for index in range(len(oriented[input_order]))
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    tied = candidates
+    counts = {len(components) for components in oriented.values()}
+    if len(counts) == 1:
+        for index in range(counts.pop()):
+            if len(tied) == 1:
+                break
+            tokens = {
+                candidate: json.dumps(component_string(candidate, index))
+                for candidate in tied
+            }
+            least = min(tokens.values())
+            tied = [candidate for candidate in tied if tokens[candidate] == least]
+    winner = min(tied, key=signature)
+    input_order, sign = winner
+    class_digest = hashlib.sha256(signature(winner).encode("utf-8")).hexdigest()
+    factor = (float(sign), 0.0)
     input_exchange_factor: tuple[float, float] | None = None
     if dimensions[0] == dimensions[1]:
-        direct_components = components_by_input_order[(0, 1)]
-        swapped_components = components_by_input_order[(1, 0)]
-        zero = _sym.E("0").to_canonical_string()
+        direct_components = oriented[(0, 1)]
+        swapped_components = oriented[(1, 0)]
+        zero = _sym.E("0")
         for exchange_sign in (1, -1):
+            # A structural zero test: no canonical string of a non-zero
+            # difference is formed.
             if all(
-                (swapped - exchange_sign * direct).expand().to_canonical_string()
-                == zero
+                (swapped - exchange_sign * direct).expand() == zero
                 for direct, swapped in zip(
                     direct_components,
                     swapped_components,

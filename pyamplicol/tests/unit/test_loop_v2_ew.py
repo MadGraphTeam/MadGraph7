@@ -689,6 +689,100 @@ def test_validate_builds_the_electroweak_fixture_request(gmu, loop_reference):
     assert request.process == "g g > t t~"
 
 
+def _eager_kernel_proof(remapped, coupling, dimensions):
+    """The kernel-equivalence proof as first written: every signature of
+    every input order and sign formed whole, the least one taken
+    (``compiler_entry._kernel_equivalence_proof`` before its lazy form)."""
+
+    import hashlib
+    import json
+
+    candidates, oriented = [], {}
+    for order, components in remapped.items():
+        oriented[order] = tuple((c * coupling).expand() for c in components)
+        for sign in (1, -1):
+            signature = json.dumps(
+                {
+                    "input_dimensions": [dimensions[order[0]], dimensions[order[1]]],
+                    "output_dimension": dimensions[2],
+                    "components": [
+                        (sign * c).expand().to_canonical_string()
+                        for c in oriented[order]
+                    ],
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            candidates.append((signature, order, (float(sign), 0.0)))
+    signature, order, factor = min(candidates, key=lambda c: c[0])
+    exchange = None
+    if dimensions[0] == dimensions[1]:
+        for sign in (1, -1):
+            if all(
+                (s - sign * d).expand().to_canonical_string() == "0"
+                for d, s in zip(oriented[(0, 1)], oriented[(1, 0)], strict=True)
+            ):
+                exchange = (float(sign), 0.0)
+                break
+    digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()
+    return digest, factor, order, exchange
+
+
+def test_lazy_kernel_proof_equals_the_eager_one():
+    """The tree compiler's kernel-equivalence proof forms the canonical
+    strings of the candidates' components lazily (WP3.2 M1: they dominate
+    the counterterm-lowered model's compile on the G_mu UFO): its class
+    digest, factor, input order and exchange factor equal the eager
+    comparison of every complete signature, including candidates tied on
+    their first components (zeros, symmetric and antisymmetric kernels) and
+    unequal input dimensions."""
+
+    import random
+
+    from symbolica import E, Expression
+
+    from pyamplicol.models import compiler_symbolica
+    from pyamplicol.models.compiler_entry import _kernel_equivalence_proof
+
+    compiler_symbolica._ensure_symbolica()
+    x, y, z, g = (E(name) for name in ("x", "y", "z", "g"))
+    cases = [
+        ({(0, 1): (x * y, E("0"), y), (1, 0): (y * x, E("0"), -y)}, g, (4, 4, 4)),
+        ({(0, 1): (E("0"), x - y), (1, 0): (E("0"), y - x)}, g + 1, (2, 2, 1)),
+        ({(0, 1): (x, y), (1, 0): (y, x)}, g, (4, 1, 4)),
+        ({(0, 1): (x + y,), (1, 0): (y + x,)}, E("1"), (1, 1, 1)),
+        ({(0, 1): (x - y, z), (1, 0): (y - x, -z)}, g * z, (3, 3, 3)),
+    ]
+    terms = [x, y, z, x * y, x**2, y * z, E("2") * x, E("-3/2") * z, Expression.I * y]
+    rng = random.Random(7)
+    for _ in range(40):
+        count = rng.randint(1, 4)
+
+        def component():
+            if rng.random() < 0.2:
+                return E("0")
+            return sum(
+                (rng.choice((1, -1)) * rng.choice(terms) for _ in range(3)), E("0")
+            )
+
+        direct = tuple(component() for _ in range(count))
+        swapped = tuple(
+            rng.choice((1, -1)) * c if rng.random() < 0.5 else component()
+            for c in direct
+        )
+        dimensions = (rng.choice((1, 4)), rng.choice((1, 4)), rng.choice((1, 4)))
+        coupling = rng.choice((E("1"), g, g + x, E("-1") * g))
+        cases.append(({(0, 1): direct, (1, 0): swapped}, coupling, dimensions))
+    for remapped, coupling, dimensions in cases:
+        assert _kernel_equivalence_proof(
+            remapped, coupling, dimensions
+        ) == _eager_kernel_proof(remapped, coupling, dimensions), (
+            remapped,
+            coupling,
+            dimensions,
+        )
+
+
 # ------------------------------------------------------------------ nightly
 
 
