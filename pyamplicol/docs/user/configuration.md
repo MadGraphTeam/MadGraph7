@@ -641,7 +641,15 @@ does not admit yet fails at generation with the reason, for example:
   has a unitary-gauge propagator" (loop lines need Feynman gauge). With the Z,
   W, Higgs and Goldstones in `particle_veto`, the photon-only QED corrections
   generate; the model's electroweak counterterms, written with the
-  complex-mass scheme's UFO helpers (`recms`, `regsqrt`, ...), are lowered;
+  complex-mass scheme's UFO helpers (`recms`, `regsqrt`, ...), are lowered.
+  Their finite part is not yet the photon-only one: the veto drops every
+  counterterm whose declared loop particles include a vetoed particle, and
+  `loop_qcd_qed_sm` declares some R2 couplings for the photon and Z loops
+  together (e.g. the `u u~ g` R2, `R2_GUU2Cp`, with loop particles `u` and
+  `Z`), so the photon's part of such a coupling is dropped too. R2
+  counterterms carry no poles, and the UV poles of such a request cancel
+  (checked on `u u~ > d d~`); its finite part is incomplete until the engine
+  handles such shared couplings;
 - more than one colour-singlet fermion line (`e- e+ > m- m+`,
   `u u~ > e- e+ m- m+`): "the Koszul signs between the blocks that carry them
   ... are not implemented yet".
