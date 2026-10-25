@@ -463,27 +463,6 @@ class CoefficientLowering:
         self._scalars: dict[tuple[int, tuple[str, int]], bool | None] = {}
         self._powers: dict[tuple[int, str], frozenset[int] | None] = {}
 
-    @classmethod
-    def of_helpers(cls, helpers: Mapping[int, str]) -> CoefficientLowering:
-        """The helper resolution alone (``_resolve``), without a model: the
-        UFO-standard helpers ``helpers`` (scalar-library record -> name,
-        ``cond``/``reglog``/``complexconjugate``) are resolved and no
-        parameter is substituted."""
-
-        from symbolica import E
-
-        from pyamplicol._internal.physics.symbols import symbols
-
-        lowering = cls.__new__(cls)
-        lowering._helpers = lowering._standard = dict(helpers)
-        lowering._fixed, lowering._substitution = [], {}
-        lowering._zero = E("0")
-        lowering._log, lowering._conj = symbols.qualified(
-            "symbolica::log", "symbolica::conj"
-        )
-        lowering.assumptions = set()
-        return lowering
-
     def __call__(self, entry: Any, power: int) -> Any:
         referenced = self._referenced(entry)
         if referenced is not None:
@@ -1340,7 +1319,7 @@ def _referenced_scalars(
 ) -> Any:
     """The coefficient plan of the referenced CT scalars the lowered rows
     ``values`` (and their left-out cells) read, at the generation's fixed
-    parameters (``_coefficient_plan``), or ``None`` when they read none.
+    parameters (``coefficient_plan``), or ``None`` when they read none.
 
     ``values`` is updated in place: a reference that vanishes at the fixed
     parameters is a structural zero (rows that vanish then have no vertex
@@ -1367,7 +1346,7 @@ def _referenced_scalars(
     )
     if not read:
         return None
-    found = _coefficient_plan(
+    found = coefficient_plan(
         coefficients.program,
         {references[name][:2] for name in read},
         fixed_parameters,
@@ -1495,32 +1474,20 @@ def coefficient_plan(
     program: Any,
     outputs: Iterable[tuple[str, int]],
     fixed_parameters: Mapping[str, Any],
-) -> _CoefficientPlan:
-    """The coefficient plan of the CT scalars' Laurent coefficients
-    ``outputs`` ((name, epsilon power)) of a source scalar ``program`` at the
-    generation's ``fixed_parameters``, as the lowering forms it
-    (``_coefficient_plan``; the model's UFO-standard ``cond`` decided lazily)."""
-
-    return _coefficient_plan(
-        program, outputs, fixed_parameters, standard_helpers(program.library)
-    )
-
-
-def _coefficient_plan(
-    program: Any,
-    outputs: Iterable[tuple[str, int]],
-    fixed_parameters: Mapping[str, Any],
-    standard: Mapping[int, str],
+    standard: Mapping[int, str] | None = None,
 ) -> _CoefficientPlan:
     """The scalar plan (``scalar_bindings.prepare_scalar_bindings``) of the
-    referenced CT scalars' coefficients ``outputs`` ((name, epsilon power)),
-    every helper a scalar-library function, with the generation's fixed
-    parameters substituted lazily: the plan reads only the other external
-    parameters. Outputs that vanish identically there are ``zero`` (their
-    references are structural zeros); outputs that are not finite, as
-    expressions or in binary64 at the model's default card, are
-    ``nonfinite`` (M2: never lowered, the rules reading them are refused when
-    a tree of the request can hold them)."""
+    CT scalars' Laurent coefficients ``outputs`` ((name, epsilon power)) of
+    a source scalar ``program``, every helper a scalar-library function,
+    with the generation's ``fixed_parameters`` substituted lazily (the
+    model's UFO-standard helpers ``standard``, by default
+    ``standard_helpers`` of the program's library, resolved; a ``cond``
+    decided lazily): the plan reads only the other external parameters.
+    Outputs that vanish identically there are ``zero`` (their references
+    are structural zeros); outputs that are not finite, as expressions or in
+    binary64 at the model's default card, are ``nonfinite`` (M2: never
+    lowered, the rules reading them are refused when a tree of the request
+    can hold them)."""
 
     from dataclasses import replace as replaced
     from decimal import Decimal
@@ -1529,6 +1496,8 @@ def _coefficient_plan(
     from pyamplicol.loops.scalar_frontend import ScalarExpression
 
     library = program.library
+    if standard is None:
+        standard = standard_helpers(library)
     free = prepare_scalar_bindings(library.raw, sorted(outputs), program=program)
     # (real, imaginary) decimal strings, as ``ScalarBindingPlan.fixed_parameters``.
     fixed = {

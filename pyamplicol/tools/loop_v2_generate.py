@@ -401,6 +401,10 @@ def _fixture_request(reference: Mapping[str, Any], compiled: Any, args) -> tuple
 
 
 def _validate(args) -> dict[str, Any]:
+    from pyamplicol.generation.loop_artifact import (
+        LOOP_V2_NATIVE_POINT_INPUTS,
+        LOOP_V2_POINT_INPUTS,
+    )
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.v2.assemble import LoopSlice
     from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
@@ -448,11 +452,11 @@ def _validate(args) -> dict[str, Any]:
         try:
             executor = NativeExecutor(slice_, forward=False, inputs="native")
         except NotImplementedError as error:
-            record["point_inputs"] = "regenerated-at-load"
+            record["point_inputs"] = LOOP_V2_POINT_INPUTS
             record["native_refusal"] = str(error)
             record["passed"] = False
             return record
-        record["point_inputs"] = "native-v1"
+        record["point_inputs"] = LOOP_V2_NATIVE_POINT_INPUTS
         trees = executor.exported.trees
         record["tree_program_mb"] = round(
             (len(trees.json()) + sum(len(saved) for saved in trees.kernels)) / 1e6, 2
