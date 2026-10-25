@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cache, cached_property
 from hashlib import sha256
 from threading import Lock
 from typing import Any
@@ -32,7 +32,13 @@ def _symbol(qualified_name: str, *, is_real: bool = False) -> Any:
 
 
 def _safe_namespace_part(value: object) -> str:
-    text = str(value).strip()
+    return _safe_text_part(str(value).strip())
+
+
+# Pure string maps, memoized: the model compiler names a kernel component
+# symbol per kernel, side and index (about 10^5 lookups per model compile).
+@cache
+def _safe_text_part(text: str) -> str:
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", text):
         return text
     readable = re.sub(r"[^A-Za-z0-9_]+", "_", text).strip("_") or "unnamed"
@@ -43,9 +49,12 @@ def _safe_namespace_part(value: object) -> str:
 
 
 def _safe_symbol_path(value: object) -> str:
-    return "::".join(
-        _safe_namespace_part(part) for part in str(value).split("::") if part
-    )
+    return _safe_text_path(str(value))
+
+
+@cache
+def _safe_text_path(text: str) -> str:
+    return "::".join(_safe_text_part(part.strip()) for part in text.split("::") if part)
 
 
 @dataclass(frozen=True)
