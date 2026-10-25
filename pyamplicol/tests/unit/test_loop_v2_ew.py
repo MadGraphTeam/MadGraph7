@@ -859,6 +859,85 @@ def test_counterterm_loops_are_loops_of_the_selected_corrections(
     )
 
 
+# ------------------------------------------------------------ native inputs
+
+# Native against Python inputs, as ``test_loop_v2_native_trees`` checks them:
+# every component on the scale of its sector's complete virtual.
+NATIVE_TOLERANCES = (("double", 1e-12, 3), ("double-double", 1e-26, 1))
+
+
+def _native_deviation(native, python) -> float:
+    from decimal import Decimal
+
+    def real(value) -> Decimal:
+        if isinstance(value, complex):
+            assert value.imag == 0
+            value = value.real
+        return Decimal(value)
+
+    worst = Decimal(0)
+    for mine, theirs in zip(native, python, strict=True):
+        assert mine.components.keys() == theirs.components.keys()
+        for name, sectors in theirs.components.items():
+            for sector, value in sectors.items():
+                scale = max(
+                    abs(real(x))
+                    for x in theirs.components["virtual"][sector].coefficients
+                )
+                for x, y in zip(
+                    mine.components[name][sector].coefficients,
+                    value.coefficients,
+                    strict=True,
+                ):
+                    worst = max(worst, abs(real(x) - real(y)) / scale)
+    return float(worst)
+
+
+def test_counterterm_references_are_native_parameter_program_inputs(
+    gmu, loop_native, loop_reference
+):
+    """The G_mu UFO's QCD CT scalars (G_UVb, tMass_UV, ...) call its CMS
+    reglog, so g g > t t~ with QCD corrections lowers them on reference
+    parameters (EWI-3). The native parameter program binds them per point
+    from the coefficient plan (``native_trees._CountertermReferences``): the
+    plan exports native point inputs (no load-time regeneration, ADDENDUM G)
+    and every component of the native virtual equals the Python inputs'
+    (``CountertermModel.coefficient_values``) in binary64 at the fixture's
+    three points and scales, and in double-double at one."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    request = SliceRequest(
+        "g g > t t~",
+        {"QCD": 2, "QED": 0},
+        {"QCD": 4, "QED": 0},
+        corrections=("QCD",),
+        fixed_parameters=_G_MU_FIXED,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(gmu.compiled, request, loop_native)
+    model = slice_.counterterm_program.recursion.model
+    assert {scalar for scalar, _power, _part in model.coefficients.values()} >= {
+        "G_UVb",
+        "tMass_UV",
+    }
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    record = native.exported.trees.program["parameters"]
+    assert any(item[0] == "output" for item in record["counterterm_model"])
+    python = NativeExecutor(slice_, forward=False, exported=native.exported)
+    fixture = loop_reference("required/gg_ttx")
+    points, scales = fixture["points"], [str(int(mu) ** 2) for mu in fixture["mu_r"]]
+    for arithmetic, tolerance, count in NATIVE_TOLERANCES:
+        options = {"parameters": {"aS": "0.118", "MT": "173"}}
+        if arithmetic == "double-double":
+            options["precision"] = Precision.double_double()
+        mine = native.evaluate(points[:count], scales[:count], **options)
+        theirs = python.evaluate(points[:count], scales[:count], **options)
+        assert _native_deviation(mine, theirs) <= tolerance, arithmetic
+
+
 # ------------------------------------------------------------------ nightly
 
 
@@ -993,8 +1072,13 @@ LADDER = [
     # (EWI-3). Their CT roots declare no loop species since the admission
     # takes only loops of the selected corrections (the QCD R2 of u u~ a
     # with a gluon loop declared the gluon and the quark before); the
-    # catalogue takes the families' species since EWI-1. The bare and
-    # counterterm UV poles cancel (renormalisation is complete).
+    # catalogue takes the families' species since EWI-1. Validated: the bare
+    # and counterterm UV poles cancel (UV renormalisation is complete). Not
+    # validated: the finite part. loop_qcd_qed_sm writes the photon and Z
+    # parts of the u u~ g R2 in one coupling (R2_GUU2Cp, (1 + lhv)/cw^2 (Qu^2
+    # + I3u^2/sw^2 - 2 Qu I3u) / 16 + ...) with the loop particles [[u, Z]],
+    # so the photon-only particle_veto drops its photon part too (r2 = 0):
+    # a veto that splits such a coupling is for the [U2] guard (EWI-7).
     _rung(
         "uudd_qed_photon_uv",
         "loop_qcd_qed_sm",
@@ -1183,7 +1267,8 @@ def test_electroweak_ladder_reaches_its_blocker(
         raise AssertionError(f"stopped before its blocker: {error!r}") from error
     if poles == "uv":
         # Bare UV poles + counterterm UV poles = 0 per sector and coefficient
-        # (REQUIREMENTS_ADDENDUM I): renormalisation is complete.
+        # (REQUIREMENTS_ADDENDUM I): UV renormalisation is complete (the
+        # finite part is not checked here).
         for sector, bare in result.components["bare"].items():
             counterterms = result.components["uv"][sector]
             for index in (1, 2):

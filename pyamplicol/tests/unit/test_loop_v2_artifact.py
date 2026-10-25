@@ -2565,7 +2565,9 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
     parameter-program references, WP3.2 EWI-3): no inert rule is left for a
     UFO helper; the G0-photon mixing between spins, which the tree recursion
     cannot lower, enters no tree of g g > g g and the generation record lists
-    it inert (REQUIREMENTS_ADDENDUM J)."""
+    it inert (REQUIREMENTS_ADDENDUM J). The referenced CT scalars are native
+    parameter-program outputs, so the v2 artifact stores native point
+    inputs."""
 
     from pyamplicol import Runtime
     from pyamplicol.api import ProcessRequest, ProcessSet
@@ -2590,6 +2592,9 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
     }
     assert "PYAMPLICOL_CT_V306" in unreachable, sorted(inert)
     assert not any("UFO helper" in reason for reason in inert.values()), inert
+    # The referenced CT scalars are native parameter-program outputs: no
+    # load-time regeneration (REQUIREMENTS_ADDENDUM G).
+    assert runtimes["v2"].inspect()["point_inputs"] == "native-v2"
     reference = runtimes["legacy"].evaluate(
         [POINT], mu_r2="1000000", arithmetic="arbitrary", precision=ARBITRARY_DIGITS
     )
