@@ -1564,6 +1564,93 @@ def test_pdf_reweighting_is_off_under_the_other_scale_scheme(t_channel_momenta):
     assert out["pdf_scale2"] == pytest.approx(fact2)
 
 
+def write_flat_pdf_grid(path, value):
+    """An lhagrid1 file with x f(x, Q) = value for every parton, x and Q."""
+    xs = np.geomspace(1e-7, 1.0, 30)
+    qs = np.geomspace(1.0, 1e5, 20)
+    pids = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 21]
+    with open(path, "w") as f:
+        f.write("PdfType: central\nFormat: lhagrid1\n---\n")
+        f.write(" ".join(f"{x:.12e}" for x in xs) + "\n")
+        f.write(" ".join(f"{q:.12e}" for q in qs) + "\n")
+        f.write(" ".join(str(pid) for pid in pids) + "\n")
+        row = " ".join(f"{value:.6e}" for _ in pids) + "\n"
+        f.write(row * (len(xs) * len(qs)))
+        f.write("---\n")
+
+
+def t_channel_integrand_weights(tmp_path, pdf_value, batch_size=4000):
+    """Weights and momenta of the t-channel process run through a whole
+    Integrand under MLM pdf reweighting, with the built-in flat test matrix
+    element and a flat PDF of the given value."""
+    context = ms.Context(device=ms.cpu_device(), thread_count=1)
+    alphas_file = tmp_path / "alphas.info"
+    alphas_file.write_text(
+        "AlphaS_Qs: [1.0, 10.0, 100.0, 1000.0, 100000.0]\n"
+        "AlphaS_Vals: [0.3, 0.2, 0.12, 0.1, 0.08]\n"
+    )
+    alphas_grid = ms.AlphaSGrid(str(alphas_file))
+    alphas_grid.initialize_globals(context)
+    pdf_file = tmp_path / "flat.dat"
+    write_flat_pdf_grid(pdf_file, pdf_value)
+    pdf_grid = ms.PdfGrid(str(pdf_file))
+    pdf_grid.initialize_globals(context)
+
+    diagrams = t_channel_diagram()
+    mapping = ms.PhaseSpaceMapping(
+        make_topologies(diagrams)[0],
+        CM_ENERGY,
+        permutations=diagrams[0]["permutations"],
+    )
+    # 0xBADCAFE: the built-in flat test matrix element, no library needed
+    matrix_element = ms.MatrixElement(
+        0xBADCAFE,
+        len(T_CHANNEL_PDGS),
+        ms.Integrand.matrix_element_inputs,
+        ms.Integrand.matrix_element_outputs,
+        1,
+        True,
+    )
+    diff_xs = ms.DifferentialCrossSection(
+        matrix_element=matrix_element,
+        cm_energy=CM_ENERGY,
+        running_coupling=None,
+        energy_scale=ms.CachedScale(),
+        pdf1=ms.CachedPdf(),
+        pdf2=ms.CachedPdf(),
+    )
+    integrand = ms.Integrand(
+        mapping,
+        [diff_xs],
+        pid_options=[T_CHANNEL_PDGS],
+        pdf_grid=pdf_grid,
+        running_coupling=ms.RunningCoupling(alphas_grid),
+        energy_scale=ms.EnergyScale(t_channel_clustering(pdf_reweighting=True)),
+        channel_indices=[0],
+    )
+    out = ms.FunctionRuntime(integrand.function(), context)(
+        np.array([batch_size], dtype=np.int64)
+    )
+    return np.asarray(out[0]), np.asarray(out[1])
+
+
+def test_a_density_too_small_to_divide_by_drops_the_event(tmp_path):
+    """reweight.f sets rewgt = 0 when the density it would divide by is under
+    1e-10. With x f = 1e-12 everywhere every step of the ladder is such a
+    division, so every event with a step on it must come out at zero.
+
+    A ramp in the denominator used to let these through at num den 1e20 - a
+    hundredth of the weight per step here, not zero."""
+    weights, momenta = t_channel_integrand_weights(tmp_path, 1e-12)
+    out = pdf_outputs(t_channel_clustering(pdf_reweighting=True), momenta)
+    stepped = (out["pdf_rw_active"] == 1.0).any(axis=1)
+    assert stepped.any() and not stepped.all(), "both kinds needed"
+    assert np.all(weights[stepped] == 0.0)
+    # The other vetoes (alpha_s and the 2 GeV scale floor) still drop the odd
+    # event of the rest, so only most of those survive.
+    assert np.mean(weights[~stepped] > 0.0) > 0.9
+
+
 # --------------------------------------------------------------------------
 # the merging cut must not fire at a vertex that produced no radiation
 # --------------------------------------------------------------------------
@@ -2239,3 +2326,4 @@ def test_clustering_follows_the_diagrams_the_flavours_allow():
     for other in (same, unknown):
         for a, b in zip(union, other[:5]):
             np.testing.assert_array_equal(a, b)
+
