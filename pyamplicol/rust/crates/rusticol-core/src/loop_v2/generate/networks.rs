@@ -470,7 +470,7 @@ fn power_of_two(exponent: i64) -> Exact {
     let two = Rational::from(2);
     let mut magnitude = Rational::from(1);
     for _ in 0..exponent.unsigned_abs() {
-        magnitude = magnitude * &two;
+        magnitude *= &two;
     }
     Exact {
         re: if exponent >= 0 {
