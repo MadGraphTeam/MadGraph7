@@ -35,6 +35,9 @@ where
         n: usize,
         prototype: T,
     ) -> ExecutionResult<Self> {
+        // The expressions may call the source-scalar primitives: install them
+        // before parsing (the extension's import no longer does).
+        super::register_scalar_primitives();
         let parse =
             |text: &str| Atom::parse(text, "pyamplicol_loop", Default::default()).map_err(error);
         let variables = [
@@ -83,6 +86,13 @@ where
             sampling_values: Vec::new(),
             sampling_statuses: Vec::new(),
         })
+    }
+
+    /// Pole residues the masters of every epsilon sector keep.
+    pub(super) fn set_pole_selection(&mut self, selection: crate::PoleSelection) {
+        for sector in &mut self.sectors {
+            sector.set_pole_selection(selection);
+        }
     }
 
     fn evaluate(

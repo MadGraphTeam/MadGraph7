@@ -1645,7 +1645,7 @@ dependencies = [
 [[package]]
 name = "ninjars"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082"
 dependencies = [
  "feynkit-kinematics",
  "symbolica",
@@ -1655,7 +1655,7 @@ dependencies = [
 [[package]]
 name = "ninjars-graph"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082"
 dependencies = [
  "feynkit-amplitude",
  "feynkit-generator",
@@ -1674,7 +1674,7 @@ dependencies = [
 [[package]]
 name = "ninjars-positional"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082"
 dependencies = [
  "symbolica",
  "thiserror",
@@ -1683,7 +1683,7 @@ dependencies = [
 [[package]]
 name = "ninjars-symbolica"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars.git?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+source = "git+https://github.com/alphal00p/ninjars.git?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082"
 dependencies = [
  "ninjars",
  "ninjars-positional",
@@ -1841,7 +1841,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "oneloop"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=8ec256fc26cb361b20e10f59c19beb35717ef32c#8ec256fc26cb361b20e10f59c19beb35717ef32c"
+source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5#5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5"
 dependencies = [
  "bincode",
  "symbolica",
@@ -2026,6 +2026,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "200b9ff220857e53e184257720a14553b2f4aa02577d2ed9842d45d4b9654810"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "pyamplicol"
+version = "1.0.1"
+dependencies = [
+ "symbolica",
 ]
 
 [[package]]
@@ -2325,6 +2332,7 @@ dependencies = [
  "libloading",
  "ninjars",
  "num-complex",
+ "pyamplicol",
  "rayon",
  "serde",
  "serde_json",
@@ -2339,6 +2347,7 @@ dependencies = [
 name = "rusticol-loop-python"
 version = "0.1.0"
 dependencies = [
+ "pyamplicol",
  "pyo3",
  "rusticol-core",
  "rusticol-loop-reduction",
@@ -2355,6 +2364,7 @@ dependencies = [
  "ninjars-graph",
  "ninjars-symbolica",
  "oneloop",
+ "pyamplicol",
  "rusticol-core",
  "serde",
  "serde_json",

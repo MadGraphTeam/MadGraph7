@@ -754,12 +754,12 @@ All are [L] unless marked.
 
 ```sh
 # arXiv e-print fetcher used for this survey (writes to landscape/src/<id>/x/)
-/shared/external/pyLoopAmpliCol/workspace/venv/bin/python -I \
-  /shared/external/pyLoopAmpliCol/workspace/tmp/engine-v2/landscape/scripts/fetch.py <arXiv-id> ...
+/shared/vhirschi/t3code/pyamplicol/workspace/venv/bin/python -I \
+  /shared/vhirschi/t3code/pyamplicol/workspace/tmp/engine-v2/landscape/scripts/fetch.py <arXiv-id> ...
 # Timing lines are found with: LC_ALL=C grep -a -n -i -E "GHz|seconds|[0-9] ?ms\b|time per" <dir>/*.tex
 # The PoS PDF text was extracted with a FlateDecode inflater into
 #   workspace/tmp/engine-v2/landscape/pdf_recola_pos/pos235_023.txt :
-/shared/external/pyLoopAmpliCol/workspace/venv/bin/python -I \
-  /shared/external/pyLoopAmpliCol/workspace/tmp/engine-v2/landscape/scripts/pdftext.py \
-  /shared/external/pyLoopAmpliCol/workspace/tmp/engine-v2/landscape/pdf_recola_pos/pos235_023.pdf
+/shared/vhirschi/t3code/pyamplicol/workspace/venv/bin/python -I \
+  /shared/vhirschi/t3code/pyamplicol/workspace/tmp/engine-v2/landscape/scripts/pdftext.py \
+  /shared/vhirschi/t3code/pyamplicol/workspace/tmp/engine-v2/landscape/pdf_recola_pos/pos235_023.pdf
 ```

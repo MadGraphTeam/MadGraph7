@@ -132,8 +132,8 @@ pub fn load_loop_artifact(
             .iter()
             .any(|capability| capability == LOOP_V2_RUNTIME_CAPABILITY),
         "plan v4 processes (rusticol.loop-runtime.v4) are not evaluated by this \
-         runtime yet: their trees, Born amplitudes and counterterm scalars are \
-         computed by the Python runtime (pyamplicol Runtime.load)",
+         runtime yet: the standalone SDK has no plan v4 runtime; evaluate them \
+         with the Python runtime (pyamplicol Runtime.load)",
     )?;
     require(
         artifact.manifest().runtime.required_runtime_capabilities == [LOOP_RUNTIME_CAPABILITY]
@@ -343,8 +343,9 @@ pub struct LoopV2Sector {
 /// output is served (always: observable columns are contracted directly, and
 /// `color_contraction` is "auto" or "direct" since generation refuses the
 /// forced seed FFT). `poles` lists the pole selections an evaluation may
-/// request (`PoleSelection`): every pole ("all") or the finite part only
-/// ("none"); the UV and IR selections are added with the pole split.
+/// request (`PoleSelection`, DESIGN.md §12.4): every pole ("all"), the finite
+/// part only ("none"), and the ultraviolet ("uv") or infrared ("ir") parts:
+/// always all four ([`LOOP_V2_POLE_SELECTIONS`]).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoopV2ExecutionMetadata {
@@ -384,6 +385,11 @@ pub struct LoopV2StateLeg {
     pub incoming: bool,
 }
 
+/// The pole selections a plan v4 process declares (one artifact serves every
+/// selection). No older declaration is admitted (AGENTS.md: no backward
+/// compatibility of internal artifact formats).
+pub const LOOP_V2_POLE_SELECTIONS: [&str; 4] = ["all", "none", "uv", "ir"];
+
 #[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -397,8 +403,24 @@ struct ExecutionV4 {
     required_runtime_capabilities: Vec<String>,
     runtime_path: String,
     plan_sha256: String,
+    /// SHA-256 of the companion plan of the certified-scaleless families
+    /// (`LOOP_PROGRAM_V4_SCALELESS_MEMBER`); null without such families. The
+    /// key is required (an absent key is not read as null: no compatibility
+    /// of internal artifact formats, AGENTS.md).
+    #[serde(deserialize_with = "required_nullable")]
+    scaleless_plan_sha256: Option<String>,
     point_inputs: String,
     request: serde_json::Value,
+}
+
+/// A nullable key that must be present: serde reads an absent `Option` field
+/// as `None` unless the field has its own deserializer.
+#[cfg(feature = "loop-v2")]
+fn required_nullable<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)
 }
 
 /// How a plan v4 process obtains its per-point inputs (trees, Born
@@ -410,14 +432,21 @@ pub const LOOP_V2_POINT_INPUTS: &str = "regenerated-at-load";
 /// Native point inputs (WP3.1): the PACBIN also holds the process's native
 /// program (`loops/v2/native_process.py`): its assembly record and tree
 /// program (zlib JSON, kind `LoopRuntimePlan`), its parameter evaluator and
-/// kernel evaluators (saved exact Symbolica states), so a load regenerates
-/// nothing.
-pub const LOOP_V2_NATIVE_POINT_INPUTS: &str = "native-v1";
+/// kernel evaluators (saved exact Symbolica states, for DoubleFloat and
+/// arbitrary precision) and their binary64 SymJIT plane applications
+/// (storage-v4 IR, kind `SymjitApplication`, recompiled at load), so a load
+/// regenerates nothing and binary64 touches no Symbolica state.
+pub const LOOP_V2_NATIVE_POINT_INPUTS: &str = "native-v2";
+
+/// Former point-input declarations, refused with a request to regenerate:
+/// `native-v1` stored no plane applications.
+pub const LOOP_V2_RETIRED_POINT_INPUTS: [&str; 1] = ["native-v1"];
 
 /// The PACBIN members of native point inputs.
 pub const LOOP_V2_NATIVE_RECORD_MEMBER: &str = "point-inputs/native-process.json.zlib";
 pub const LOOP_V2_NATIVE_TREES_MEMBER: &str = "point-inputs/tree-program.json.zlib";
 pub const LOOP_V2_NATIVE_PARAMETERS_MEMBER: &str = "point-inputs/parameters.state";
+pub const LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER: &str = "point-inputs/parameters.symjit";
 
 #[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
@@ -434,6 +463,9 @@ struct PhysicsV4 {
 
 /// A plan v4 process admitted from its artifact. `plan_json` is the stored
 /// plan (its SHA-256 is `plan_sha256`); `request` is the generation recipe.
+/// `scaleless_*` is the companion plan of the certified-scaleless families
+/// that the "uv" and "ir" pole selections run (DESIGN.md §12.4), when the
+/// process has such families.
 #[cfg(feature = "loop-v2")]
 pub struct LoadedLoopV2Artifact {
     pub artifact_id: String,
@@ -445,6 +477,9 @@ pub struct LoadedLoopV2Artifact {
     pub plan_sha256: String,
     pub plan_json: Vec<u8>,
     pub program: Arc<crate::loop_v2::plan::LoopProgramV4>,
+    pub scaleless_plan_sha256: Option<String>,
+    pub scaleless_plan_json: Option<Vec<u8>>,
+    pub scaleless_program: Option<Arc<crate::loop_v2::plan::LoopProgramV4>>,
 }
 
 #[cfg(feature = "loop-v2")]
@@ -491,6 +526,12 @@ pub fn load_loop_v2_artifact(
         None => artifact.read_payload(&path)?,
     };
     let execution: ExecutionV4 = parse(&bytes)?;
+    // Internal formats are not kept backward compatible (AGENTS.md).
+    require(
+        !LOOP_V2_RETIRED_POINT_INPUTS.contains(&execution.point_inputs.as_str()),
+        "the artifact's point inputs are no longer supported (native-v1 stored \
+         no SymJIT plane applications); regenerate the artifact",
+    )?;
     require(
         execution.schema_version == 4
             && execution.kind == LOOP_RUNTIME_KIND
@@ -552,11 +593,21 @@ pub fn load_loop_v2_artifact(
     if execution.point_inputs == LOOP_V2_NATIVE_POINT_INPUTS {
         use crate::pacbin::PacbinMemberKind;
         for (member, kind) in [
-            (LOOP_V2_NATIVE_RECORD_MEMBER, PacbinMemberKind::LoopRuntimePlan),
-            (LOOP_V2_NATIVE_TREES_MEMBER, PacbinMemberKind::LoopRuntimePlan),
+            (
+                LOOP_V2_NATIVE_RECORD_MEMBER,
+                PacbinMemberKind::LoopRuntimePlan,
+            ),
+            (
+                LOOP_V2_NATIVE_TREES_MEMBER,
+                PacbinMemberKind::LoopRuntimePlan,
+            ),
             (
                 LOOP_V2_NATIVE_PARAMETERS_MEMBER,
                 PacbinMemberKind::SymbolicaExactState,
+            ),
+            (
+                LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER,
+                PacbinMemberKind::SymjitApplication,
             ),
         ] {
             require(
@@ -596,6 +647,33 @@ pub fn load_loop_v2_artifact(
         )?;
         Arc::new(program)
     };
+    // The companion plan of the certified-scaleless families: declared by
+    // digest exactly when stored.
+    let scaleless_plan_json = crate::loop_runtime::read_loop_program_v4_scaleless_json(&reader)?;
+    require(
+        scaleless_plan_json.is_some() == execution.scaleless_plan_sha256.is_some(),
+        "the companion plan of certified-scaleless families is stored exactly \
+         when declared",
+    )?;
+    let scaleless_program = match (&scaleless_plan_json, &execution.scaleless_plan_sha256) {
+        (Some(json), Some(digest)) => {
+            require(
+                format!("{:x}", Sha256::digest(json)) == *digest,
+                "the stored companion plan v4 differs from its declared digest",
+            )?;
+            let companion = crate::loop_v2::plan::LoopProgramV4::load(json)?;
+            require(
+                !companion.families.is_empty()
+                    && companion.legs == program.legs
+                    && companion.rows == program.rows
+                    && companion.columns == program.columns,
+                "the companion plan's legs, helicity rows or sectors disagree \
+                 with the process plan",
+            )?;
+            Some(Arc::new(companion))
+        }
+        _ => None,
+    };
     Ok(LoadedLoopV2Artifact {
         artifact_id: artifact.manifest().artifact_id.clone(),
         selection,
@@ -606,6 +684,9 @@ pub fn load_loop_v2_artifact(
         plan_sha256: execution.plan_sha256,
         plan_json,
         program,
+        scaleless_plan_sha256: execution.scaleless_plan_sha256,
+        scaleless_plan_json,
+        scaleless_program,
     })
 }
 
@@ -621,12 +702,16 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
             && metadata.interference == ORDINARY_INTERFERENCE
             && metadata.scheme_status == "declared-not-certified"
             && metadata.schedule == "backward"
-            && metadata.poles == ["all", "none"]
             && metadata.accuracy_retest == "reduction-direction"
             && metadata.rescue_policy == "caller"
             && metadata.stability_checks == ["rotation", "reduction-direction"]
             && matches!(metadata.color_contraction.as_str(), "auto" | "direct"),
         "unsupported contribution, convention or feature declaration",
+    )?;
+    require(
+        metadata.poles == LOOP_V2_POLE_SELECTIONS,
+        "unsupported pole selections (plan v4 serves all, none, uv and ir): \
+         regenerate the artifact",
     )?;
     require(
         metadata.arithmetic == ["double", "double-double", "arbitrary"],

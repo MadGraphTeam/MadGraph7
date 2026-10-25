@@ -127,7 +127,7 @@ def generate(compiled: Any, native: Any, key: str, accuracy: str) -> Any:
         born,
         loop,
         fixed_parameters={"MB": "0"},
-        ignored_particle_ids=ignored,
+        particle_veto=ignored,
         accuracy=accuracy,
         colour_declaration=declaration,
     )
@@ -294,7 +294,7 @@ def measure(options: argparse.Namespace) -> int:
                     start = time.perf_counter()
                     output = executor.evaluate(
                         inputs,
-                        poles=False,
+                        poles="none",
                         check=False,
                         schedule=schedule,
                         chunk_families=options.chunk_families,

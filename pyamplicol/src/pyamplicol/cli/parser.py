@@ -378,6 +378,17 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--particle-veto",
+        dest="generation.particle_veto",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="PARTICLE",
+        help=(
+            "v2 virtuals: remove PARTICLE (and its antiparticle) from every tree "
+            "vertex and its loops from the counterterms; repeat for each particle"
+        ),
+    )
+    parser.add_argument(
         "--validation",
         dest="generation.validation.enabled",
         action=argparse.BooleanOptionalAction,
@@ -612,7 +623,11 @@ def _add_evaluation_options(
         dest="evaluation.poles",
         choices=tuple(selection.value for selection in PoleSelection),
         default=argparse.SUPPRESS,
-        help="v2 virtuals: the poles computed; 'none' evaluates the finite part only",
+        help=(
+            "v2 virtuals: the poles computed; 'none' evaluates the finite part "
+            "only, 'uv' gives the bare loop's UV poles, 'ir' the renormalised "
+            "virtual's IR poles"
+        ),
     )
     parser.add_argument(
         "--stability-rotation",

@@ -157,6 +157,13 @@ mode = "error"
 workers = "auto"
 # generation.emit_api_bundle: Emit Python/Rust/C/C++/Fortran/UMAMI API bundle. Default true.
 emit_api_bundle = true
+# generation.particle_veto: Model particle names (a name vetoes its
+# antiparticle too) removed from every tree vertex of one-loop generation with
+# loop.engine "v2": Born, loop blocks, loop vertices and propagators and the
+# counterterm program; counterterm terms whose loop content (UFO
+# loop_particles) holds a vetoed particle are dropped. Virtual-only. Default
+# empty. Example: the five-flavour QCD of a model with a top quark.
+# particle_veto = ["t"]
 [generation.validation]
 # generation.validation.enabled: Run generation validation. Default true.
 enabled = true
@@ -309,7 +316,11 @@ model_parameters = "data/model_parameters.json"
 momenta = "data/pp_zjj_momenta.json"
 # evaluation.poles: v2 virtuals: the pole selection. "all" also computes the
 # 1/eps and 1/eps^2 coefficients; "none" evaluates the finite part only (the
-# poles are absent). Default "all".
+# poles are absent); "uv" returns the UV poles of the bare (unrenormalised)
+# loop amplitude and "ir" the IR (Catani) poles of the renormalised virtual,
+# for inclusive, correlated and resolved evaluations alike (both origins'
+# parts per component, counterterms included, are in pole_parts). The finite
+# part is the same under every selection. Default "all".
 poles = "all"
 
 [evaluation.stability]

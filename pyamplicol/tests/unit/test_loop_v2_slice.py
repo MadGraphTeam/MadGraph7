@@ -45,6 +45,7 @@ from pathlib import Path
 
 import pytest
 
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.v2.assemble import (
     COMPONENTS,
     Laurent,
@@ -171,7 +172,8 @@ def test_born_and_components_equal_legacy(evaluated, name, carrier):
 def test_massive_quark_line_equals_legacy(slices, carrier):
     """uu~ -> tt~: an open massive fermion line through the loop, read with
     the transposed mass sign (``conventions.TreeReading.mass_signs``), gives
-    the legacy Born and components (no IR-pole prediction with massive legs)."""
+    the legacy Born and components (no IR-pole prediction: the default top
+    width makes the emitters unstable)."""
 
     fixture = _fixture("tt")
     results = fixture["results"]["arbitrary-200"]
@@ -204,7 +206,7 @@ def _request(name: str, **options) -> SliceRequest:
         control.born_order_bounds,
         control.loop_order_bounds,
         fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-        ignored_particle_ids=ignored,
+        particle_veto=ignored,
         **options,
     )
 
@@ -284,8 +286,9 @@ def test_uux_emepgg_colour_projections_are_generable(
 ):
     """WP2.4 acceptance control uu~ -> e-e+gg (photon and Z): its LC/NLC slice
     generates (the generator certifies the closed-quark A g g triangles,
-    Furry, and admits the Z on loop quark lines). Comparing its projections
-    with a legacy O1 capture (then in PROJECTED) is open."""
+    Furry, and admits the Z on loop quark lines). Its projections equal the
+    formal N_c projections of the full-colour cells
+    (``test_loop_v2_ew_lines``, nightly); a legacy O1 capture is open."""
 
     from pyamplicol.models.loading import load_compiled_model
     from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
@@ -568,7 +571,11 @@ def test_born_closure_is_the_tree_runtime_born(slices, name):
     assert not any(tensor.normalization_power for tensor in basis.tensors)
     with numbers.scope():
         closure = slice_._point(
-            point, Fraction(fixture["scales_squared"][0]), PARAMETERS, precision, True
+            point,
+            Fraction(fixture["scales_squared"][0]),
+            PARAMETERS,
+            precision,
+            PoleSelection.ALL,
         )
         roots = assemble.TreeRows(slice_.blocks.born_dag, slice_.compiled).evaluate(
             [[assemble._to_decimal(x) for x in leg] for leg in point],
@@ -874,7 +881,7 @@ def test_schedules_agree_exactly_on_physical_rows(slices, name):
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
 @pytest.mark.parametrize("name", SLICE)
 def test_finite_only_equals_the_finite_part(slices, evaluated, name, carrier):
-    """poles=False: the same slice, finite parts equal, pole parts absent."""
+    """poles="none": the same slice, finite parts equal, pole parts absent."""
 
     fixture = _fixture(name)
     for full, point, scale in zip(
@@ -888,7 +895,7 @@ def test_finite_only_equals_the_finite_part(slices, evaluated, name, carrier):
             scale,
             parameters=PARAMETERS,
             precision=CARRIERS[carrier],
-            poles=False,
+            poles="none",
         )
         assert finite.ir_poles is None and finite.stability is None
         assert len(finite.totals) == 7
@@ -945,7 +952,7 @@ def test_stability_checks_are_optional_and_combinable(slices, evaluated):
     assert full.families and all(
         float(x) >= 0 for errors in full.families.values() for x in errors
     )
-    finite = run(StabilityChecks(ROTATIONS[:1], True), poles=False)
+    finite = run(StabilityChecks(ROTATIONS[:1], True), poles="none")
     assert len(finite.coefficients) == 1 and finite.finite == finite.coefficients[0]
 
 

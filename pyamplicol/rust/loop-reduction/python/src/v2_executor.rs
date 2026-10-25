@@ -368,19 +368,25 @@ enum Carriers {
 struct V2Executor {
     executor: Executor,
     carrier: Carriers,
+    /// The binary64 reduction engine: `fast` (production) or `generic`
+    /// (oracle and cost reference of selected master poles).
+    engine: String,
     backend: Option<V2ReductionBackend>,
     trees: Option<Trees>,
 }
 
 /// The reduction backend of a carrier, built on first use. A free function
 /// of the backend slot, so an evaluation can borrow the executor alongside.
-fn backend_of(
-    slot: &mut Option<V2ReductionBackend>,
+/// `engine` is the binary64 reduction engine; the extended carriers always
+/// reduce with the generic engine.
+fn backend_of<'a>(
+    slot: &'a mut Option<V2ReductionBackend>,
     carrier: Carriers,
-) -> PyResult<&mut V2ReductionBackend> {
+    engine: &str,
+) -> PyResult<&'a mut V2ReductionBackend> {
     if slot.is_none() {
         let reducer = match carrier {
-            Carriers::Double => runtime::V2Reducer::new("double", None, "fast", true),
+            Carriers::Double => runtime::V2Reducer::new("double", None, engine, true),
             Carriers::DoubleDouble => {
                 runtime::V2Reducer::new("double-double", None, "generic", true)
             }
@@ -392,7 +398,10 @@ fn backend_of(
             }
         }
         .map_err(error)?;
-        *slot = Some(V2ReductionBackend { reducer });
+        *slot = Some(V2ReductionBackend {
+            reducer,
+            masters: v2::master_selection("both")?,
+        });
     }
     Ok(slot.as_mut().expect("backend"))
 }
@@ -428,9 +437,20 @@ where
     let mut batch = batch(inputs, &zero)?;
     let mut born = None;
     let mut counterterms = None;
+    let mut tree_seconds = None;
     if inputs.contains("parameters")? {
         let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
-        let native = trees.fill(executor.plan(), inputs, &mut batch, options.poles, &zero)?;
+        // The counterterm pole outputs are formed unless finite-only (the
+        // split modes read the same per-power outputs).
+        let poles = !matches!(
+            options.poles,
+            rusticol_core::loop_execution::v2::Poles::None
+        );
+        let started = std::time::Instant::now();
+        let native = trees.fill(executor.plan(), inputs, &mut batch, poles, &zero)?;
+        // The report's "trees" stage: the whole native input fill, then its
+        // parts (`TreeInputs::seconds`).
+        tree_seconds = Some((started.elapsed().as_secs_f64(), native.seconds.clone()));
         let export = |points: Vec<Vec<T>>| -> Vec<Values> {
             points
                 .iter()
@@ -440,9 +460,13 @@ where
         born = native.born_squared.map(export);
         counterterms = native.counterterms.map(export);
     }
-    let (results, report) = py
+    let (results, mut report) = py
         .detach(|| executor.evaluate(&batch, &zero, backend, options))
         .map_err(error)?;
+    if let Some((total, parts)) = tree_seconds {
+        report.seconds.insert("trees", total);
+        report.seconds.extend(parts);
+    }
     Ok(export_evaluation(results, report, bits, born, counterterms))
 }
 
@@ -507,10 +531,12 @@ fn numerators_with<T: Exchanged>(
 
 #[pymethods]
 impl V2Executor {
-    /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON
-    /// and the saved exact evaluator of each stage.
+    /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON,
+    /// the saved exact evaluator of each kernel and of the parameter program
+    /// (last), and their binary64 SymJIT plane applications in the same order
+    /// (or None: binary64 then runs the exact states).
     #[new]
-    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", trees=None))]
+    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         plan: &str,
@@ -519,8 +545,12 @@ impl V2Executor {
         lanes: usize,
         threads: Option<usize>,
         forms: &str,
-        trees: Option<(String, Vec<Vec<u8>>)>,
+        engine: &str,
+        trees: Option<(String, Vec<Vec<u8>>, Option<Vec<Vec<u8>>>)>,
     ) -> PyResult<Self> {
+        if !matches!(engine, "fast" | "generic") {
+            return Err(error("engine must be fast or generic"));
+        }
         let policy = match forms {
             "rule" => FormPolicy::Rule,
             "fused" => FormPolicy::Fused,
@@ -540,17 +570,20 @@ impl V2Executor {
         };
         let plan = Arc::new(LoopProgramV4::load_with(plan.as_bytes(), policy).map_err(error)?);
         let trees = trees
-            .map(|(json, kernels)| {
-                TreeProgram::load(json.as_bytes(), &kernels, &plan).map(|program| Trees {
-                    program,
-                    runtime: Mutex::new(None),
-                })
+            .map(|(json, kernels, planes)| {
+                TreeProgram::load(json.as_bytes(), &kernels, planes.as_deref(), &plan).map(
+                    |program| Trees {
+                        program,
+                        runtime: Mutex::new(None),
+                    },
+                )
             })
             .transpose()
             .map_err(error)?;
         Ok(Self {
             executor: Executor::new(plan, lanes, threads).map_err(error)?,
             carrier,
+            engine: engine.to_owned(),
             backend: None,
             trees,
         })
@@ -661,14 +694,16 @@ impl V2Executor {
     /// (the re-test integrals or None), `bare` (per point and column),
     /// `budget` (re-test error budgets), `failures` and `report`. `schedule`
     /// `M` dresses the plan's schedule-M families by M (streamed in parts of
-    /// `part_chunks` chunks) and the others by B.
-    #[pyo3(signature = (inputs, *, poles=true, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None))]
+    /// `part_chunks` chunks) and the others by B. `poles` is `"all"`, `"none"`
+    /// or `"split"` (each lane's UV residue as a fourth column, DESIGN.md
+    /// §12.4); `master_poles` selects the masters' residues (generic engine).
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both"))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
         py: Python<'_>,
         inputs: &Bound<'_, PyDict>,
-        poles: bool,
+        poles: Option<Bound<'_, PyAny>>,
         check: bool,
         reverse: bool,
         rotation: usize,
@@ -677,7 +712,13 @@ impl V2Executor {
         chunk_families: Option<usize>,
         schedule: &str,
         part_chunks: Option<usize>,
+        master_poles: &str,
     ) -> PyResult<Evaluation> {
+        let poles = match poles {
+            Some(value) => v2::poles_option(&value)?,
+            None => V2Options::default().poles,
+        };
+        let masters = v2::master_selection(master_poles)?;
         let mut options = V2Options {
             poles,
             check: check.then_some(ReductionCheck {
@@ -701,7 +742,14 @@ impl V2Executor {
         }
         let bits = self.bits()?;
         let carrier = self.carrier;
-        let backend = backend_of(&mut self.backend, carrier)?;
+        // The generic reduction builds Symbolica expressions and the exact
+        // tree kernels decode Symbolica states: pyAmpliCol's library key
+        // (binary64 with the fast engine and plane kernels touches neither).
+        let _unlock = (self.engine == "generic" || !matches!(carrier, Carriers::Double))
+            .then(pyamplicol::unlock)
+            .flatten();
+        let backend = backend_of(&mut self.backend, carrier, &self.engine)?;
+        backend.masters = masters;
         let executor = &self.executor;
         let trees = self.trees.as_mut();
         match carrier {
@@ -736,7 +784,8 @@ impl V2Executor {
 /// Admit one plan v4 process of an artifact through the native loader
 /// (`rusticol_core::loop_artifact::open_loop_v2_artifact`) and describe it as
 /// JSON: identity, plan digest, families, reduction buckets, program shape,
-/// the declared metadata and the generation request.
+/// the declared metadata, the generation request and the companion plan of
+/// certified-scaleless families (digest and families, or null).
 #[pyfunction]
 #[pyo3(signature = (path, process=None))]
 fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
@@ -764,11 +813,46 @@ fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyRes
         "columns": program.columns,
         "metadata": loaded.metadata,
         "request": loaded.request,
+        "scaleless_plan_sha256": loaded.scaleless_plan_sha256,
+        "scaleless_families": loaded.scaleless_program.as_ref().map(|p| p.families.len()),
     }))
     .map_err(error)
 }
 
+/// Generation: the binary64 SymJIT plane application of a saved exact
+/// evaluator of a tree program (a kernel or the parameter program), checked
+/// against the evaluator (`rusticol_core::loop_v2::trees::compile_plane_
+/// application`): `(application, inputs, outputs)`.
+#[pyfunction]
+#[pyo3(signature = (state, optimization_level=2, compress=false))]
+fn compile_v2_plane<'py>(
+    py: Python<'py>,
+    state: &[u8],
+    optimization_level: u8,
+    compress: bool,
+) -> PyResult<(Bound<'py, pyo3::types::PyBytes>, usize, usize)> {
+    let (plane, inputs, outputs) = py
+        .detach(|| {
+            rusticol_core::loop_v2::trees::compile_plane_application(
+                state,
+                optimization_level,
+                compress,
+            )
+        })
+        .map_err(error)?;
+    Ok((pyo3::types::PyBytes::new(py, &plane), inputs, outputs))
+}
+
+/// Whether pyAmpliCol's Symbolica library key unlocks the native code of
+/// this process (crate `pyamplicol`).
+#[pyfunction]
+fn native_library_key_active() -> bool {
+    pyamplicol::is_active()
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Executor>()?;
+    module.add_function(wrap_pyfunction!(compile_v2_plane, module)?)?;
+    module.add_function(wrap_pyfunction!(native_library_key_active, module)?)?;
     module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)
 }

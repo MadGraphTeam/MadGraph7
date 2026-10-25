@@ -70,6 +70,18 @@ Conventions a consumer relies on:
   rules, so trees that propagate one take the full kernels
   (``with_ward_kernels``). The DAGs do not depend on the variant, so the
   switch keeps them (``TreeBlocks.with_kernels``).
+* **Native DAG.** Under ``dag_input.NATIVE_DAG`` the loop-request DAG of the
+  blocks is the native builder's (WP3.1 A4, ``dag_input.loop_request_blocks``):
+  ``TreeBlocks.blocks_dag`` is then a ``dag_input.NativeDag`` handle, its
+  blocks and the Ward-kernel and coloured-width queries come from the
+  native columns, and reading a ``GenericDAG`` attribute of the handle
+  (the per-point Python rows, ``assemble.TreeRows``) decodes it once,
+  counted (``dag_input.decode_count``). The tree engine's loop-request
+  mode (``GenericDAGCompiler(loop_blocks=True)`` with ``_blocks``) is the
+  oracle, and the stage for a request with a feature the native builder
+  lists as not covered (``dag_input.NATIVE_FALLBACKS``;
+  ``TreeBlocks.dag_fallback`` names it, ``dag_input.fallback_record``
+  collects a slice's); any other refusal is raised.
 * **Families.** ``TreeBlocks.block_table`` is the WP1.3 ``BlockTable`` view of
   the blocks in a native model's incoming field names, and
   ``requested_loop_blocks`` turns ``FamilySet.block_requests()`` back into the
@@ -82,11 +94,10 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from itertools import combinations, pairwise
 from types import MappingProxyType
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pyamplicol.generation.dag_compiler import (
     DAGProgressCallback,
-    GenericDAGCompiler,
     LoopBlockReachability,
     compile_generic_dag,
 )
@@ -108,6 +119,9 @@ from pyamplicol.models.base import CouplingOrders, Model, QuantumNumberFlow
 from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND, TreeKernelVariant
 from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 from pyamplicol.processes.ir import CanonicalProcessIR
+
+if TYPE_CHECKING:
+    from .dag_input import NativeDag
 
 BlockClass = Literal["plain", "ward", "spin-source", "counterterm"]
 
@@ -401,14 +415,22 @@ class BornRoot:
 
 @dataclass(frozen=True)
 class TreeBlocks:
-    """Blocks and Born of one loop request (design §3.2 exports)."""
+    """Blocks and Born of one loop request (design §3.2 exports).
+
+    ``blocks_dag`` is the loop-request DAG of the blocks: a ``GenericDAG``,
+    or the native builder's ``dag_input.NativeDag`` handle (module
+    docstring, "Native DAG"); ``dag_fallback`` names the listed feature
+    (``"<NativeFallback.key>: <detail>"``) for which the tree engine built it
+    under ``dag_input.NATIVE_DAG``.
+    """
 
     process: CanonicalProcessIR
-    blocks_dag: GenericDAG
-    born_dag: GenericDAG
+    blocks_dag: GenericDAG | NativeDag
+    born_dag: GenericDAG | NativeDag
     blocks: tuple[Block, ...]
     born_roots: tuple[BornRoot, ...]
     kernel_variant: TreeKernelVariant
+    dag_fallback: str | None = None
 
     def blocks_on(self, mask: int) -> tuple[Block, ...]:
         return tuple(block for block in self.blocks if block.key.external_mask == mask)
@@ -422,8 +444,8 @@ class TreeBlocks:
         variant = model_tree_kernel_variant(model)
         return replace(
             self,
-            blocks=_blocks(self.blocks_dag, model, variant),
-            born_roots=_born_roots(self.born_dag, model),
+            blocks=_dag_blocks(self.blocks_dag, model, variant),
+            born_roots=_dag_born_roots(self.born_dag, model),
             kernel_variant=variant,
         )
 
@@ -524,6 +546,15 @@ class TreeBlockTable:
         return self._currents.get(mask, ())
 
 
+def vetoed_particle_ids(veto: Iterable[int]) -> tuple[int, ...]:
+    """The tree engine's ignored particle ids (``GenericDAGCompiler``'s
+    ``ignored_particle_ids``, signed PDG codes) of vetoed |PDG| codes
+    (``particle_veto``): both charge states of every vetoed particle, so that
+    no tree vertex with one is used."""
+
+    return tuple(sorted({sign * abs(int(pdg)) for pdg in veto for sign in (1, -1)}))
+
+
 def build_tree_blocks(
     process: CanonicalProcessIR,
     model: Model,
@@ -554,28 +585,86 @@ def build_tree_blocks(
         ignored_vertex_kinds=ignored_kinds,
         progress_callback=progress_callback,
     )
-    blocks_dag = GenericDAGCompiler(
-        model=model,
-        max_coupling_orders=block_coupling_orders,
+    kernel_variant = model_tree_kernel_variant(model)
+    from .dag_input import loop_request_blocks
+
+    blocks_dag, blocks, fallback = loop_request_blocks(
+        process,
+        model,
+        block_coupling_orders=block_coupling_orders,
+        reachability=reachability,
         ignored_particle_ids=ignored_particles,
         ignored_vertex_kinds=ignored_kinds,
         progress_callback=progress_callback,
-        loop_blocks=True,
-        loop_block_reachability=reachability,
-    ).compile(replace(process, color_accuracy="full"))
-    kernel_variant = model_tree_kernel_variant(model)
+        kernel_variant=kernel_variant,
+    )
     return TreeBlocks(
         process=process,
         blocks_dag=blocks_dag,
         born_dag=born_dag,
-        blocks=_blocks(blocks_dag, model, kernel_variant),
+        blocks=blocks,
         born_roots=_born_roots(born_dag, model),
         kernel_variant=kernel_variant,
+        dag_fallback=fallback,
+    )
+
+
+def _dag_blocks(
+    dag: GenericDAG | NativeDag, model: Model, kernel_variant: TreeKernelVariant
+) -> tuple[Block, ...]:
+    """``_blocks`` of a loop-request DAG, natively for a ``NativeDag``
+    (``NativeDag.blocks``, equal to ``_blocks`` of its decoded DAG)."""
+
+    from .dag_input import NativeDag
+
+    if isinstance(dag, NativeDag):
+        return dag.blocks(kernel_variant)
+    return _blocks(dag, model, kernel_variant)
+
+
+def _dag_born_roots(dag: GenericDAG | NativeDag, model: Model) -> tuple[BornRoot, ...]:
+    """``_born_roots`` of a Born DAG; none for a ``NativeDag`` (the program
+    DAG a counterterm program also keeps as its ``born_dag``: a loop-request
+    DAG has no amplitude roots), which is not decoded for them."""
+
+    from .dag_input import NativeDag
+
+    if isinstance(dag, NativeDag):
+        return ()
+    return _born_roots(dag, model)
+
+
+def propagated_species(
+    dag: GenericDAG | NativeDag,
+) -> tuple[tuple[int, bool], ...]:
+    """Distinct ``(particle id, amputated)`` of the non-source,
+    non-auxiliary currents of ``dag``, sorted; ``amputated``: the current's
+    momentum leaves exactly one leg out. The current scan of
+    ``ward_breaking_fields`` and ``artifact.coloured_widths``: native for a
+    ``NativeDag`` (``NativeDag.propagated_species``), so neither decodes it."""
+
+    from .dag_input import NativeDag
+
+    if isinstance(dag, NativeDag):
+        return dag.propagated_species()
+    sources = set(dag.sources)
+    legs = (1 << len(dag.process.legs)) - 1
+    return tuple(
+        sorted(
+            {
+                (
+                    int(current.index.particle_id),
+                    (legs & ~current.index.momentum_mask).bit_count() == 1,
+                )
+                for current_id, current in enumerate(dag.currents)
+                if current_id not in sources and current.index.auxiliary_kind is None
+            }
+        )
     )
 
 
 def ward_breaking_fields(
-    dags: Iterable[GenericDAG],
+    dags: Iterable[GenericDAG | NativeDag],
     compiled: Any,
     fixed_parameters: Mapping[str, Any] = MappingProxyType({}),
 ) -> frozenset[str]:
@@ -606,12 +695,8 @@ def ward_breaking_fields(
 
     out = set()
     for dag in dags:
-        sources = set(dag.sources)
-        for current_id, current in enumerate(dag.currents):
-            index = current.index
-            if current_id in sources or index.auxiliary_kind is not None:
-                continue
-            record = particles.get(int(index.particle_id))
+        for particle_id, _amputated in propagated_species(dag):
+            record = particles.get(particle_id)
             if record is None or abs(int(record.color)) == 1:
                 continue
             width = str(record.width)
@@ -897,8 +982,10 @@ __all__ = [
     "block_colour_flow",
     "build_tree_blocks",
     "identity_pairing_sign",
+    "propagated_species",
     "requested_loop_blocks",
     "u1_grades",
+    "vetoed_particle_ids",
     "ward_breaking_fields",
     "with_ward_kernels",
 ]

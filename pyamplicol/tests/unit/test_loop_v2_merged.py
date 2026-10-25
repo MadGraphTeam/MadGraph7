@@ -114,7 +114,7 @@ def slices(loop_sm_compiled_model, loop_native):
                 born,
                 loop,
                 fixed_parameters=FIXED,
-                ignored_particle_ids=ignored,
+                particle_veto=ignored,
                 accuracy=accuracy,
                 colour_declaration=None if accuracy == "full" else declaration,
             )
@@ -395,7 +395,7 @@ def test_native_evaluation_with_m_equals_b(slices, name):
         }
         error = deviation(reference, mine.components["virtual"])
         assert error <= max(1e-12, mine.stability.relative), (error, mine.stability)
-    finite = executor.evaluate(points, scales, schedule="M", poles=False, **options)
+    finite = executor.evaluate(points, scales, schedule="M", poles="none", **options)
     for value, full in zip(finite, m, strict=True):
         for component in COMPONENTS:
             for sector, laurent in value.components[component].items():

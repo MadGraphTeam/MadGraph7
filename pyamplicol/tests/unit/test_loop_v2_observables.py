@@ -252,7 +252,7 @@ def test_mixed_sectors_match_madloop_split_orders(generate, loop_reference):
         correlators=CorrelatorConfig(
             color_correlations=(ColorCorrelator.dipole("casimir", 1, 1),)
         ),
-        ignored_particle_ids=(23, 24, -24, 25, 250, 251, -251),
+        particle_veto=(23, 24, 25, 250, 251),
     )
     point = _points("uudd_qcd")[0]
     histories = (INCLUSIVE, "casimir")
@@ -546,7 +546,7 @@ def test_finite_only_observables(generate):
         point, "1000000", correlations=("T12",), parameters=PARAMETERS
     )["T12"]
     finite = observables.evaluate(
-        point, "1000000", correlations=("T12",), parameters=PARAMETERS, poles=False
+        point, "1000000", correlations=("T12",), parameters=PARAMETERS, poles="none"
     )["T12"]
     assert len(finite.totals) == 7
     for name in COMPONENTS:

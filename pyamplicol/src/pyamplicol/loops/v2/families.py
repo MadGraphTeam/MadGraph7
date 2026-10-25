@@ -463,6 +463,12 @@ class FamilySet:
     ``merged`` maps every member of a merged closed-loop flavour class to its
     representative (design §4.3); routings use representatives only and a
     closure's multiplicity is the class size.
+
+    ``scaleless_families`` keeps the certified-scaleless families (logged in
+    ``scaleless``) with their routings: their integrals vanish, but their UV
+    and IR poles do not separately (B0(0;0,0) = 1/eps_UV - 1/eps_IR), so the
+    ``uv`` and ``ir`` pole selections dress them (design §12.4). Their
+    closures are interned after every admitted family's.
     """
 
     legs: tuple[ExternalLeg, ...]
@@ -471,6 +477,7 @@ class FamilySet:
     scaleless: tuple[LoggedFamily, ...]
     rejected: tuple[LoggedFamily, ...]
     merged: Mapping[str, str]
+    scaleless_families: Mapping[FamilyKey, Family] = field(default_factory=dict)
 
     def routing(self, closure: Closure) -> tuple[str, tuple[Position, ...]]:
         return self.prefixes.path(closure.state)
@@ -643,27 +650,17 @@ class _Recursion:
         families = {}
         scaleless = []
         for key in sorted(admitted):
-            routings = admitted[key]
             rejected.pop(key, None)
             if certified_scaleless(key, self.legs):
                 scaleless.append(LoggedFamily(key, "certified-scaleless"))
                 continue
-            closures = []
-            rank = 0
-            for (cut, positions), symmetric in routings:
-                state = graph.root(cut)
-                for position in positions:
-                    state = graph.extend(state, position)
-                closures.append(
-                    Closure(state, symmetric, self.multiplicity.get(cut, 1))
-                )
-                rank = max(rank, sum(p.vertex.q_degree for p in positions))
-            if rank > len(key) + 2:
-                raise ValueError(
-                    f"family {key} has structural rank {rank} > N + 2, outside "
-                    "the integrand-reduction domain"
-                )
-            families[key] = Family(key, rank, tuple(closures))
+            families[key] = self._family(graph, key, admitted[key])
+        # The scaleless families after every admitted one: the admitted
+        # families' prefix states do not depend on them.
+        scaleless_families = {
+            entry.key: self._family(graph, entry.key, admitted[entry.key])
+            for entry in scaleless
+        }
         return FamilySet(
             self.legs,
             families,
@@ -673,7 +670,24 @@ class _Recursion:
                 LoggedFamily(key, reason) for key, reason in sorted(rejected.items())
             ),
             self.merged,
+            scaleless_families,
         )
+
+    def _family(self, graph: PrefixGraph, key: FamilyKey, routings) -> Family:
+        closures = []
+        rank = 0
+        for (cut, positions), symmetric in routings:
+            state = graph.root(cut)
+            for position in positions:
+                state = graph.extend(state, position)
+            closures.append(Closure(state, symmetric, self.multiplicity.get(cut, 1)))
+            rank = max(rank, sum(p.vertex.q_degree for p in positions))
+        if rank > len(key) + 2:
+            raise ValueError(
+                f"family {key} has structural rank {rank} > N + 2, outside "
+                "the integrand-reduction domain"
+            )
+        return Family(key, rank, tuple(closures))
 
     def _close(self, cut, positions, admitted, rejected) -> None:
         count = len(positions)
@@ -873,10 +887,9 @@ class ModelLoopCatalogue:
     an order when it enters a vertex of that single order), which production
     modules may not import.
 
-    ``ignored_particle_ids`` are particles the request excludes: neither
-    orientation of them runs in a loop line (|PDG| codes, as the counterterm
-    and field rules' forbidden species), so a request that drops a particle
-    from its trees and counterterms drops its closed loops too.
+    ``veto`` (|PDG| codes, ``particle_veto``) removes those particles from the
+    loops: they are no loop species, and no vertex with one of them is a loop
+    vertex.
     """
 
     def __init__(
@@ -884,10 +897,11 @@ class ModelLoopCatalogue:
         model: Any,
         *,
         species_orders: Mapping[int, frozenset[str]] | None = None,
-        ignored_particle_ids: Iterable[int] = (),
+        veto: Iterable[int] = (),
     ):
         data = model_data(model)
-        excluded = frozenset(abs(int(pdg)) for pdg in ignored_particle_ids)
+        veto = frozenset(abs(int(pdg)) for pdg in veto)
+        vetoed = {p["name"] for p in data["particles"] if abs(p["pdg_code"]) in veto}
         self._species: dict[str, LoopSpecies] = {}
         coupling_orders = {
             entry["name"]: tuple(
@@ -903,6 +917,8 @@ class ModelLoopCatalogue:
         }
         rules = []
         for rule in data["vertex_rules"]:
+            if vetoed.intersection(rule["particles"]):
+                continue
             orders = {
                 add_orders(coupling_orders[name])
                 for row in rule["couplings"]
@@ -923,10 +939,7 @@ class ModelLoopCatalogue:
         for particle in data["particles"]:
             name = particle["name"]
             self._conjugate[name] = particle["antiname"]
-            if (
-                not particle.get("propagating", True)
-                or abs(int(particle["pdg_code"])) in excluded
-            ):
+            if not particle.get("propagating", True) or name in vetoed:
                 continue
             self._species[name] = LoopSpecies(
                 name,

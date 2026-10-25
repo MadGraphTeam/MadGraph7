@@ -2115,11 +2115,36 @@ pub mod v2 {
         M,
     }
 
+    /// The Laurent columns of every reduction lane (DESIGN.md §12.4).
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub enum Poles {
+        /// The finite part only (finite-only mode).
+        None,
+        /// `[finite, 1/ε, 1/ε²]` with `ε_UV = ε_IR`.
+        #[default]
+        All,
+        /// `[finite, 1/ε, 1/ε², 1/ε_UV]`: the combined Laurent integrals and
+        /// the ultraviolet part of the single pole (the double pole is
+        /// infrared), for the `uv` and `ir` pole selections.
+        Split,
+    }
+
+    impl Poles {
+        /// Values per lane.
+        pub fn width(self) -> usize {
+            match self {
+                Self::None => 1,
+                Self::All => 3,
+                Self::Split => 4,
+            }
+        }
+    }
+
     /// Options of one evaluation.
     #[derive(Clone, Copy, Debug)]
     pub struct V2Options {
-        /// Return the 1/ε and 1/ε² coefficients (finite-only otherwise).
-        pub poles: bool,
+        /// The Laurent columns of every lane (finite-only, combined, split).
+        pub poles: Poles,
         /// Reduce every lane a second time in this frame (stability estimate).
         pub check: Option<ReductionCheck>,
         pub chunk_families: usize,
@@ -2133,7 +2158,7 @@ pub mod v2 {
     impl Default for V2Options {
         fn default() -> Self {
             Self {
-                poles: true,
+                poles: Poles::All,
                 check: None,
                 chunk_families: DEFAULT_CHUNK_FAMILIES,
                 schedule: Schedule::B,
@@ -2167,13 +2192,22 @@ pub mod v2 {
         pub coefficients: Vec<Complex<T>>,
     }
 
-    /// One reduction lane: its raw Laurent integrals `[finite, 1/ε, 1/ε²]`
-    /// (finite only without poles), or the reducer status of a failed lane.
+    /// One reduction lane: its raw Laurent integrals in the columns of
+    /// [`Poles`], or the reducer status of a failed lane.
     pub type LaneOutcome<T> = Result<Vec<Complex<T>>, String>;
 
     /// Direct outcomes, and the re-test outcomes when a check was asked; one
     /// vector per group in its lane order.
     pub type Reduced<T> = (Vec<Vec<LaneOutcome<T>>>, Option<Vec<Vec<LaneOutcome<T>>>>);
+
+    /// Development counters a [`V2Backend`] collects inside the executor's
+    /// `reduction` stage: seconds of its sub-stages (e.g. the master
+    /// integrals) and counts. They are added to the run's [`Report`].
+    #[derive(Clone, Debug, Default)]
+    pub struct BackendStatistics {
+        pub seconds: Vec<(&'static str, f64)>,
+        pub counts: Vec<(&'static str, u64)>,
+    }
 
     /// The reduction side of the v2 path: NinjaRS engines and caches.
     pub trait V2Backend<T> {
@@ -2182,10 +2216,28 @@ pub mod v2 {
         fn reduce(
             &mut self,
             groups: &[FamilyLanes<T>],
-            poles: bool,
+            poles: Poles,
             check: Option<ReductionCheck>,
         ) -> RusticolResult<Reduced<T>>;
+        /// The counters collected since the last call (none by default).
+        fn take_statistics(&mut self) -> BackendStatistics {
+            BackendStatistics::default()
+        }
     }
+
+    /// Modelled kernel work of the chosen forms of `steps` (complex
+    /// multiply-adds per lane, as the `loop_v2_schedules` bench counts it).
+    fn modelled_work<'a>(steps: impl Iterator<Item = &'a crate::loop_v2::plan::Step>) -> u64 {
+        steps
+            .map(|step| match (step.split.is_some(), step.costs) {
+                (true, (_, Some(split))) => split.work,
+                (_, (fused, _)) => fused.work,
+            })
+            .sum()
+    }
+
+    /// Report count of the modelled dressing work (complex MAC per lane).
+    const DRESSING_WORK: &str = "dressing work (modelled complex MAC per lane)";
 
     /// One point's family numerators: (family, loop orders, rank, per
     /// column the coefficients in the family's trie frame).
@@ -2271,7 +2323,11 @@ pub mod v2 {
                     "unsupported SIMD lane count {lanes} (1, 2, 4, 8, 16 or 32)"
                 )));
             }
-            let mut builder = rayon::ThreadPoolBuilder::new();
+            // The DoubleFloat and arbitrary-precision reduction builds
+            // Symbolica expressions on these workers: pyAmpliCol's library
+            // key unlocks them for their lifetime (`crate::licence`).
+            let mut builder =
+                rayon::ThreadPoolBuilder::new().start_handler(|_| crate::licence::unlock_thread());
             if let Some(threads) = threads {
                 builder = builder.num_threads(threads.max(1));
             }
@@ -2453,6 +2509,7 @@ pub mod v2 {
             "split steps",
             steps().filter(|s| s.split.is_some()).count() as u64,
         );
+        report.count(DRESSING_WORK, modelled_work(steps()));
         let numerators: Vec<_> = runs.into_iter().map(|run| run.numerator).collect();
         report.peak(
             "family numerators (one bucket chunk)",
@@ -2655,6 +2712,13 @@ pub mod v2 {
                 self.backend
                     .reduce(&groups, self.options.poles, self.options.check)?;
             report.time("reduction", start);
+            let statistics = self.backend.take_statistics();
+            for (stage, seconds) in statistics.seconds {
+                *report.seconds.entry(stage).or_default() += seconds;
+            }
+            for (name, value) in statistics.counts {
+                report.count(name, value);
+            }
             let sink = &mut *self.sink;
             for (index, group) in groups.iter().enumerate() {
                 for (row, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
@@ -2702,7 +2766,7 @@ pub mod v2 {
         options: V2Options,
     ) -> RusticolResult<(Vec<PointResult<T>>, Report)> {
         let points = batch.points();
-        let width = if options.poles { 3 } else { 1 };
+        let width = options.poles.width();
         let mut report = Report {
             lanes: L,
             real_bytes: std::mem::size_of::<T>(),
@@ -2760,6 +2824,12 @@ pub mod v2 {
                     reduction.reduce(&done, &mut report)
                 })?;
                 merged_report(&mut report, &stats, L);
+                if let Some(merged) = merged {
+                    report.count(
+                        DRESSING_WORK,
+                        modelled_work(merged.states.iter().map(|state| &state.step)),
+                    );
+                }
             }
         }
         let Lanes {
@@ -2841,7 +2911,8 @@ pub mod v2 {
         /// Two scalar bubble families of a two-leg "process": one seeded
         /// trace step each, the factor a constant, so each family numerator
         /// is `2 conj(A0)` at rank 0.
-        const PLAN: &[u8] = br#"{"schema":4,"legs":2,"rows":1,"helicities":[[0],[0]],"columns":1,"average":1,
+        const PLAN: &[u8] =
+            br#"{"schema":4,"legs":2,"rows":1,"helicities":[[0],[0]],"columns":1,"average":1,
             "born_components":1,"constants":1,"masses":1,"block_rows":[],
             "kernels":[{"inputs":[],"outputs":[[[0,[]]]]}],
             "contents":[{"d_in":1,"d_out":1,"degree":0,"rows":1,"mask":0,"row_helicities":[[]],
@@ -2869,10 +2940,10 @@ pub mod v2 {
             fn reduce(
                 &mut self,
                 groups: &[FamilyLanes<f64>],
-                poles: bool,
+                poles: Poles,
                 check: Option<ReductionCheck>,
             ) -> RusticolResult<Reduced<f64>> {
-                assert!(poles && check.is_none());
+                assert!(poles == Poles::All && check.is_none());
                 let first = self.calls.is_empty();
                 self.calls
                     .push(groups.iter().flat_map(|g| g.points.clone()).collect());

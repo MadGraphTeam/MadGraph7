@@ -13,6 +13,7 @@ mod stability;
 mod states;
 mod v2;
 mod v2_colour;
+mod v2_dag;
 mod v2_executor;
 mod v2_generate;
 mod virtual_runtime;
@@ -239,8 +240,15 @@ fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 /// Register the same native loop core in the ordinary pyAmpliCol extension.
+///
+/// Importing the extension touches no Symbolica state: the source-scalar
+/// primitives are installed by the paths that decode saved evaluators or
+/// parse expressions (`runtime::register_scalar_primitives`). Without a
+/// licence key in the environment, Symbolica's first state access takes the
+/// user's single restricted-thread permit, so an import-time registration made
+/// every second unlicensed pyAmpliCol process abort, tree-only ones included
+/// (requirements addendum G; docs/user/symbolica-and-licensing.md).
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    runtime::register_scalar_primitives();
     portable::register(module)?;
     physical::register(module)?;
     virtual_runtime::register(module)?;
@@ -251,6 +259,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     dual_weights::register(module)?;
     module.add_class::<PolynomialPlan>()?;
     v2::register(module)?;
+    v2_dag::register(module)?;
     v2_executor::register(module)?;
     v2_generate::register(module)?;
     v2_colour::register(module)?;

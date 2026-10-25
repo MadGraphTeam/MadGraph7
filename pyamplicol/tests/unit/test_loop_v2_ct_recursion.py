@@ -44,7 +44,7 @@ def ct_slice(loop_sm_compiled_model):
 
 @pytest.fixture(scope="module")
 def lowered_ct_model(loop_sm_compiled_model, tmp_path_factory):
-    """``forbidden |PDG| codes -> LoweredSource``: loop_sm with every
+    """``vetoed |PDG| codes -> LoweredSource``: loop_sm with every
     lowerable CT rule in its tree model, once per veto; the prepared model
     source of the tree generator is built on first use."""
 
@@ -58,14 +58,14 @@ def lowered_ct_model(loop_sm_compiled_model, tmp_path_factory):
     )
     built = {}
 
-    def build(forbidden=()):
-        key = tuple(sorted(forbidden))
+    def build(veto=()):
+        key = tuple(sorted(veto))
         if key not in built:
             model = lower_model_counterterms(
                 compiled,
                 prepared.counterterms.rules,
                 fixed_parameters=prepared.structure.fixed_parameters,
-                forbidden=key,
+                veto=key,
             )
             built[key] = LoweredSource(model, tmp_path_factory)
         return built[key]
@@ -105,13 +105,7 @@ def _recursion(ct, lowered):
     from pyamplicol.loops.v2.ct_recursion import CountertermRecursion
 
     return CountertermRecursion.build(
-        lowered,
-        ct.rules,
-        ct.families,
-        ct.data,
-        ct.selection,
-        ct.blocks.born_orders,
-        forbidden=ct.vetoed,
+        lowered, ct.rules, ct.selection, ct.blocks.born_orders
     )
 
 
@@ -414,10 +408,265 @@ def test_lowered_couplings_are_exact_model_expressions(lowered_ct_model):
 
 
 @pytest.mark.loop_fast
+def test_lowered_model_compile_is_cached_by_content(
+    loop_sm_compiled_model, tmp_path, monkeypatch
+):
+    """The compile of a CT-lowered payload (most of the lowering) is cached
+    by content like a compiled model: a warm entry gives the identical IR
+    without compiling, a damaged entry is recompiled, and another payload or
+    kernel variant is another entry."""
+
+    import json
+
+    import pyamplicol.models.compiler_entry as compiler_entry
+    from pyamplicol.models.loading import (
+        COUNTERTERM_IR_CACHE_SUFFIX,
+        compile_counterterm_model_ir,
+        load_compiled_model,
+    )
+
+    model = load_compiled_model(loop_sm_compiled_model).model
+    payload = json.loads(json.dumps(model))
+    keep = {"G", "u", "u~"}
+    payload["vertex_rules"] = [
+        rule for rule in payload["vertex_rules"] if set(rule["particles"]) <= keep
+    ]
+
+    def compile_ir(variant="full", data=payload):
+        return compile_counterterm_model_ir(
+            data,
+            tree_kernel_variant=variant,
+            u1_projected_vertices=frozenset(),
+            cache_dir=tmp_path,
+        )
+
+    cold = compile_ir()
+    (entry,) = tmp_path.glob(f"*{COUNTERTERM_IR_CACHE_SUFFIX}")
+    assert cold.oriented_kernels and cold.tree_kernel_variant == "full"
+
+    calls = []
+    original = compiler_entry.compile_ufo_model_ir
+
+    def counted(*args, **kwargs):
+        calls.append(kwargs.get("tree_kernel_variant"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(compiler_entry, "compile_ufo_model_ir", counted)
+    assert compile_ir() == cold and not calls
+    entry.write_text("{", encoding="utf-8")
+    assert compile_ir() == cold and calls == ["full"]
+    assert compile_ir() == cold and calls == ["full"]
+    assert compile_ir("transverse").tree_kernel_variant == "transverse"
+    fewer = {**payload, "vertex_rules": payload["vertex_rules"][:-1]}
+    assert len(compile_ir(data=fewer).vertex_terms) < len(cold.vertex_terms)
+    assert calls == ["full", "transverse", "full"]
+    assert len(list(tmp_path.glob(f"*{COUNTERTERM_IR_CACHE_SUFFIX}"))) == 3
+
+
+@pytest.mark.loop_fast
+def test_lowered_model_cache_keeps_the_most_recently_used(tmp_path):
+    """The lowering cache is bounded: beyond ``COUNTERTERM_IR_CACHE_KEPT``
+    entries the least recently used go, each with its Weyl table, and
+    nothing else in the directory is touched."""
+
+    import os
+
+    from pyamplicol.models.loading import (
+        COUNTERTERM_IR_CACHE_SUFFIX,
+        COUNTERTERM_WEYL_CACHE_SUFFIX,
+        _evict_counterterm_entries,
+    )
+
+    for age in range(5):
+        for suffix in (COUNTERTERM_IR_CACHE_SUFFIX, COUNTERTERM_WEYL_CACHE_SUFFIX):
+            path = tmp_path / f"k{age}{suffix}"
+            path.write_text("{}", encoding="utf-8")
+            os.utime(path, ns=(10**18 - age * 10**9,) * 2)  # k0 newest
+    other = tmp_path / "loop-sm.json.pyAmplicol-model.json"
+    other.write_text("{}", encoding="utf-8")
+    os.utime(tmp_path / f"k4{COUNTERTERM_IR_CACHE_SUFFIX}", ns=(10**18 + 1,) * 2)
+    _evict_counterterm_entries(tmp_path, kept=3)
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
+        [
+            other.name,
+            *(
+                f"k{k}{s}"
+                for k in (0, 1, 4)
+                for s in (COUNTERTERM_IR_CACHE_SUFFIX, COUNTERTERM_WEYL_CACHE_SUFFIX)
+            ),
+        ]
+    )
+
+
+@pytest.mark.loop_fast
+def test_lowered_model_weyl_support_is_cached(
+    loop_sm_compiled_model, tmp_path, monkeypatch
+):
+    """The Weyl-projection support of a lowered model (every decision
+    ``allowed_quantum_flows`` can ask) is probed once and kept next to its
+    lowering-cache entry: the warm table is the probed one and a tree model
+    seeded with it answers like an unseeded one without a probe; a damaged
+    table, or other parameter defaults, is probed again."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.external_kernels import ExternalModelKernelMixin
+    from pyamplicol.models.loading import (
+        COUNTERTERM_IR_CACHE_SUFFIX,
+        COUNTERTERM_WEYL_CACHE_SUFFIX,
+        CountertermLoweredModel,
+        counterterm_weyl_support,
+        load_compiled_model,
+    )
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    entry = (tmp_path / f"key{COUNTERTERM_IR_CACHE_SUFFIX}", "key")
+
+    def flows(model):
+        def index(pdg, chirality):
+            return SimpleNamespace(
+                particle_id=pdg,
+                chirality=chirality,
+                flavour_flow=(pdg,),
+                coupling_orders=(),
+            )
+
+        def chiralities(pdg):
+            return (-1, 0, 1) if model.is_chiral_eligible(pdg) else (0,)
+
+        return [
+            model.allowed_quantum_flows(vertex, index(left, a), index(right, b))
+            for vertex in model.vertices
+            for left, right, _ in (vertex.particles,)
+            for a in chiralities(left)
+            for b in chiralities(right)
+        ]
+
+    unseeded = CompiledUFOModel(compiled)
+    expected = flows(unseeded)
+    probed = unseeded.weyl_projection_support()
+    # Discriminating: some chiral projections vanish, others do not.
+    assert any(probed.values()) and not all(probed.values())
+    assert counterterm_weyl_support(CompiledUFOModel(compiled), entry) == probed
+    (table,) = tmp_path.glob(f"*{COUNTERTERM_WEYL_CACHE_SUFFIX}")
+
+    probes = []
+    original = ExternalModelKernelMixin._projected_kernel_components
+
+    def counted(self, *args, **kwargs):
+        probes.append(kwargs.get("result_chirality"))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        ExternalModelKernelMixin, "_projected_kernel_components", counted
+    )
+    assert counterterm_weyl_support(CompiledUFOModel(compiled), entry) == probed
+    lowered = CountertermLoweredModel(compiled, {}, (), cache_entry=entry)
+    seeded = lowered.tree_model()
+    assert flows(seeded) == expected and not probes
+    assert flows(lowered.tree_model()) == expected and not probes
+
+    table.write_text("{", encoding="utf-8")
+    assert counterterm_weyl_support(CompiledUFOModel(compiled), entry) == probed
+    assert probes
+    probes.clear()
+    assert counterterm_weyl_support(CompiledUFOModel(compiled), entry) == probed
+    assert not probes
+    name, (real, imag) = next(
+        (name, value)
+        for name, value in sorted(compiled.parameter_defaults.items())
+        if value[0]
+    )
+    other = replace(
+        compiled,
+        parameter_defaults={**compiled.parameter_defaults, name: (2 * real, imag)},
+    )
+    counterterm_weyl_support(CompiledUFOModel(other), entry)
+    assert probes
+
+
+@pytest.mark.loop_fast
+def test_constant_factors_are_decided_not_assumed():
+    """Helper arguments free of model parameters are decided when the CT
+    couplings are lowered: loop_qcd_qed_sm's reglog(2 pi) is log(2 pi) with no
+    assumption, and only the parameter factors of reglog(4 pi MU_R^2/MW^2)
+    are assumed non-zero. The branch a cond does not take adds nothing. The
+    runtime check decides every assumption, builtin constants included, and
+    still refuses parameters that make one vanish or singular."""
+
+    import re
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.loops.v2.ct_recursion import (
+        CoefficientLowering,
+        CountertermCouplingError,
+        CountertermModel,
+    )
+
+    # The helper resolution alone (UFO function bindings value_0 = cond,
+    # value_1 = reglog), without a compiled model.
+    lowering = CoefficientLowering.__new__(CoefficientLowering)
+    lowering._helpers = {0: "cond", 1: "reglog"}
+    lowering._zero = E("0")
+    lowering._log = symbols.qualified("symbolica::log")
+    lowering.assumptions = set()
+    helper = "pyamplicol_scalar_model_test::value_"
+    assert lowering._resolve(E(f"{helper}1(2*𝜋)")) == E("log(2*𝜋)")
+    assert not lowering.assumptions
+    lowering._resolve(E(f"{helper}1(4*𝜋*UFO::{{}}::MU_R^2/UFO::{{}}::MW^2)"))
+    assert lowering.assumptions == {"UFO::{}::MU_R^2*UFO::{}::MW^(-2)"}
+    # cond(0, 1, reglog(MZ)): the untaken branch's argument is no assumption.
+    assert lowering._resolve(E(f"{helper}0(0, 1, {helper}1(UFO::{{}}::MZ))")) == E("1")
+    assert lowering.assumptions == {"UFO::{}::MU_R^2*UFO::{}::MW^(-2)"}
+    assert lowering._resolve(E(f"{helper}1(0)")) == E("0")
+    with pytest.raises(CountertermCouplingError, match="undecided"):
+        lowering._resolve(E(f"{helper}1(sin(𝜋)*UFO::{{}}::MW)"))
+
+    # The runtime check decides assumptions with builtin constants too (with
+    # or without model parameters next to them).
+    defaults = {"MT": (173.0, 0.0), "MU_R": (91.188, 0.0)}
+    model = CountertermModel(
+        lowered=SimpleNamespace(compiled=SimpleNamespace(parameter_defaults=defaults)),
+        multiplicities={},
+        switches={},
+        assumptions=(
+            "2*𝜋",
+            "UFO::{}::MT",
+            "UFO::{}::MT^(-2)*UFO::{}::MU_R^2*𝜋",
+            "UFO::{}::MT^2*UFO::{}::MU_R^(-2)",
+        ),
+        residual={},
+    )
+    model.check_parameters({})
+    model.check_parameters({"MT": 4.5, "MU_R": 1000.0})
+    with pytest.raises(ValueError, match=re.escape("make UFO::{}::MT vanish")):
+        model.check_parameters({"MT": 0.0})
+    with pytest.raises(ValueError, match="singular"):
+        replace(model, assumptions=model.assumptions[2:3]).check_parameters({"MT": 0.0})
+    undecided = replace(model, assumptions=("sin(𝜋)*UFO::{}::MT",))
+    with pytest.raises(ValueError, match="cannot decide"):
+        undecided.check_parameters({})
+
+    from pyamplicol.loops.v2.ct_recursion import decide_constant
+
+    assert [
+        decide_constant(E(value))
+        for value in ("2*𝜋", "1/(4*𝜋)", "0", "0.0", "𝜋-𝜋", "0^(-2)", "sin(𝜋)")
+    ] == ["non-zero"] * 2 + ["zero"] * 3 + ["singular", "undecided"]
+
+
+@pytest.mark.loop_fast
 def test_rules_split_between_recursion_and_sites(ct_slice, lowered_ct_model):
-    """Only the fixed-SU(3) four-gluon R2 stays a site; every two-point,
-    three-gluon, quark-gluon and four-gluon rule is in the recursion with its
-    admitted alternatives."""
+    """Only the fixed-SU(3) four-gluon R2 stays out of the tree-route program
+    (its multi-trace colour); every two-point, three-gluon, quark-gluon and
+    four-gluon rule is in the recursion with every loop-content alternative
+    (the plain rule: no veto, no matching to the process's loops)."""
 
     ct = ct_slice("gg_gg")
     recursion = _recursion(ct, lowered_ct_model().model)
@@ -427,13 +676,10 @@ def test_rules_split_between_recursion_and_sites(ct_slice, lowered_ct_model):
         assert {e.vertex_name for e in rule.entries} == {"V_R2RGA"}, reason
         assert "multi-trace" in reason
     assert any(len(rule.particle_pdgs) == 2 for rule in recursion.rules.values())
-    # Pure-gluon rules are admitted with all their alternatives (every quark
-    # flavour, the top and the gluon run in the loops of g g > g g); rules
-    # with quark legs have no witness in this process.
+    # Every rule is admitted with all its alternatives, also the rules with
+    # quark legs, which no tree of g g > g g holds.
     for name, rule in recursion.rules.items():
-        gluons = set(rule.particle_pdgs) == {21}
-        expected = tuple(range(len(rule.alternatives))) if gluons else ()
-        assert recursion.admission[name] == expected, name
+        assert recursion.admission[name] == tuple(range(len(rule.alternatives)))
     assert recursion.slots == (("r2", 0, 0), ("uv_local", -1, 0), ("uv_local", 0, 0))
     assert recursion.coupling_order_limits() == {
         "QCD": 4,
@@ -505,6 +751,360 @@ def test_two_point_insertions_are_clone_lines(lowered_ct_model):
         (0, 2, 1): (-1.0, -0.0),
         (2, 0, 1): (1.0, 0.0),
     }
+
+
+# Vertices the plain rule admits that no tree of the request holds (by their
+# UFO vertex names): REQUIREMENTS_ADDENDUM J's inert rules when unlowerable.
+UNREACHABLE_VERTICES = {
+    "gg_gg": {"V_R2GUU", "V_R2UU"},  # g g > g g: no quark current
+    # u u~ > e- e+ / z: no gluon current, and the veto removes the Z.
+    "dy": {"V_R2GG", "V_R2uuZ"},
+}
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize("name", ("gg_gg", "uux_ddxg", "dy"))
+def test_insertion_reachability_is_sound_against_the_site_oracle(ct_slice, name):
+    """The reachability that makes an unlowerable CT vertex inert
+    (``ct_closure.InsertionReachability``, REQUIREMENTS_ADDENDUM J) is sound:
+    every rule the site oracle closes on the slice's exact tree currents
+    (every partition of the legs, the plain admission, no witness) enters a
+    tree for it. It also discriminates: the quark vertices enter no tree of
+    g g > g g, nor the gluon and (vetoed) Z vertices a tree of Drell-Yan.
+    Were every admitted rule unlowerable, the reachable ones would be refused
+    and the others inert (``CountertermRecursion.with_inert``)."""
+
+    from pyamplicol.loops.v2.blocks import vetoed_particle_ids
+    from pyamplicol.loops.v2.ct_closure import (
+        InsertionReachability,
+        program_order_limits,
+    )
+    from pyamplicol.loops.v2.ct_recursion import (
+        CountertermRecursion,
+        admitted_alternatives,
+    )
+    from pyamplicol.loops.v2.ct_sites import generate_counterterm_sites
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import COUNTERTERM_INSERTION_ORDER
+    from pyamplicol.processes.model import build_model_process_ir
+
+    ct = ct_slice(name)
+    text = ct.control.process.split(" / ")[0]
+    limits = program_order_limits(
+        ct.compiled, ct.blocks.born_orders, ct.selection.loop_orders
+    )
+    reachability = InsertionReachability.build(
+        CompiledUFOModel(ct.compiled),
+        build_model_process_ir(text, ct.compiled.ir, color_accuracy="full"),
+        {**limits, COUNTERTERM_INSERTION_ORDER: 2},
+        ignored_particle_ids=vetoed_particle_ids(ct.vetoed),
+    )
+    admission = {
+        rule_name: admitted_alternatives(rule, ct.vetoed, ct.selection.corrections)
+        for rule_name, rule in ct.rules.items()
+    }
+    sites = generate_counterterm_sites(
+        None,
+        ct.table,
+        ct.rules,
+        ct.data,
+        ct.selection,
+        forbidden=ct.vetoed,
+        whole_rules=True,
+        admission=admission,
+    ).sites
+    closed = {site.rule_name for site in sites}
+    assert closed
+    reachable = {
+        rule_name
+        for rule_name, rule in ct.rules.items()
+        if admission[rule_name] and reachability.admits(rule)
+    }
+    assert closed <= reachable, sorted(closed - reachable)
+    unreachable = {
+        entry.vertex_name
+        for rule_name, rule in ct.rules.items()
+        if admission[rule_name] and rule_name not in reachable
+        for entry in rule.entries
+    }
+    assert UNREACHABLE_VERTICES.get(name, set()) <= unreachable, sorted(unreachable)
+    assert (
+        not {entry.vertex_name for site in sites for entry in site.rule.entries}
+        & unreachable
+    )
+    # The inert rule itself, as if every admitted rule could not be lowered:
+    # the reachable ones stay refused, the others become inert.
+    admitted = {rule_name for rule_name in ct.rules if admission[rule_name]}
+    every = CountertermRecursion(
+        None, {}, {}, {}, dict.fromkeys(admitted, "not lowered (test)"), (), ()
+    )
+    split = every.with_inert(ct.rules, reachability.admits)
+    assert set(split.residual) == reachable
+    assert set(split.inert) == admitted - reachable
+    assert all("enters no tree" in reason for reason in split.inert.values())
+
+
+@pytest.mark.loop_fast
+def test_insertion_reachability_tells_a_vertex_from_its_conjugate(
+    loop_sm_compiled_model,
+):
+    """Charged currents tell a CT vertex from its conjugate
+    (``ct_closure.InsertionReachability``). At a CT root (leg 1 alone) the
+    current entering a leg of field f is anti(f); inside a current the tree
+    engine puts the current of particle p on the leg of p. In u d~ > e+ ve
+    the R2 of [d~ u W-] enters at the root and the lepton vertex [e+ ve W-]
+    inside the W+ current of legs 3 and 4; their conjugates [u~ d W+] and
+    [ve~ e- W+] and the vertices of other quark flavours enter no tree. With
+    a gluon, [u~ d W+] enters the current of legs 1 and 5 as well. A
+    two-point vertex enters internal lines only (an external line takes the
+    field factor): in u u~ > d d~ the s-channel gluon holds [g g], and no
+    tree has an internal quark line for [u~ u] or [d~ d]."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.loops.v2.ct_closure import (
+        InsertionReachability,
+        program_order_limits,
+    )
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import (
+        COUNTERTERM_INSERTION_ORDER,
+        load_compiled_model,
+    )
+    from pyamplicol.processes.model import build_model_process_ir
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    rules = prepare_loop_request_model(compiled).counterterms.rules
+    model = CompiledUFOModel(compiled)
+
+    def reachability(text, born, loop):
+        limits = program_order_limits(compiled, (born,), (loop,))
+        return InsertionReachability.build(
+            model,
+            build_model_process_ir(text, compiled.ir, color_accuracy="full"),
+            {**limits, COUNTERTERM_INSERTION_ORDER: 2},
+        )
+
+    def admitted(reach, *pdgs):
+        """Whether the loop_sm rules of exactly these fields are admitted
+        (all of them alike; at least one exists)."""
+
+        found = {
+            reach.admits(rule)
+            for rule in rules.values()
+            if sorted(rule.particle_pdgs) == sorted(pdgs)
+        }
+        assert len(found) == 1, (pdgs, found)
+        return found.pop()
+
+    def vertex(*pdgs):
+        return SimpleNamespace(particle_pdgs=pdgs, entries=(), order=(("QED", 1),))
+
+    charged = reachability("u d~ > e+ ve", (("QED", 2),), (("QCD", 2), ("QED", 2)))
+    assert admitted(charged, -1, 2, -24)  # V_R2dxuW, at the root
+    assert not admitted(charged, -2, 1, 24)  # V_R2uxdW, its conjugate
+    assert not admitted(charged, -3, 2, -24)  # V_R2sxuW: no s quark
+    assert not admitted(charged, -1, 4, -24)  # V_R2dxcW: no c quark
+    assert charged.admits(vertex(-11, 12, -24))  # inside the W+ of e+ ve
+    assert not charged.admits(vertex(-12, 11, 24))
+
+    gluon = reachability(
+        "u d~ > e+ ve g", (("QCD", 1), ("QED", 2)), (("QCD", 3), ("QED", 2))
+    )
+    assert admitted(gluon, -1, 2, -24)  # at the root
+    assert admitted(gluon, -2, 1, 24)  # inside the current of u~ and g
+    assert not admitted(gluon, -3, 2, -24)
+
+    neutral = reachability("u u~ > d d~", (("QCD", 2),), (("QCD", 4),))
+    assert admitted(neutral, 21, 21)
+    assert not admitted(neutral, -2, 2)
+    assert not admitted(neutral, -1, 1)
+
+
+def _program_and_rules(compiled_path, text, born, loop, veto=()):
+    """The production CT program (``ct_closure.counterterm_program_blocks``,
+    as ``LoopSlice.generate`` builds it) of ``text`` on a compiled model,
+    with the request's rules, native model, selection and the CT-lowered
+    model's process IR."""
+
+    import json
+
+    from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
+    from pyamplicol.loops.v2.blocks import (
+        build_tree_blocks,
+        vetoed_particle_ids,
+        with_ward_kernels,
+    )
+    from pyamplicol.loops.v2.ct_closure import counterterm_program_blocks
+    from pyamplicol.loops.v2.families import LoopOrderSelection, add_orders
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.processes.model import build_model_process_ir
+
+    compiled = load_compiled_model(compiled_path)
+    request = SliceRequest(
+        text,
+        born,
+        loop,
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+        particle_veto=tuple(veto),
+    )
+    prepared, continuation, fixed, _scale, _alpha = prepare_request_model(
+        compiled, request
+    )
+    data = json.loads(prepared.structure.native.to_json())
+    selection = LoopOrderSelection(
+        frozenset(request.corrections),
+        frozenset(add_orders(tuple(o.items())) for o in request.exact_loop_orders),
+    )
+    blocks = build_tree_blocks(
+        build_model_process_ir(text, compiled.ir, color_accuracy="full"),
+        CompiledUFOModel(compiled),
+        born_coupling_orders=dict(request.born_orders),
+        block_coupling_orders=request.loop_order_bounds,
+        ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+    )
+    blocks, compiled = with_ward_kernels(blocks, compiled, fixed)
+    program = counterterm_program_blocks(
+        compiled,
+        prepared,
+        text,
+        data,
+        selection,
+        blocks.born_orders,
+        veto=request.particle_veto,
+        fixed_parameters=fixed,
+        declaration=request.colour_declaration,
+        continuation=continuation,
+        scope=(
+            tuple(sorted(request.born_orders.items())),
+            tuple(sorted(request.loop_order_bounds.items())),
+            request.compatibility,
+        ),
+    )
+    return program, prepared.counterterms.rules, data, selection
+
+
+def _rules_in_program(program, rules, data, selection):
+    """``(rules of the CT vertices and clone lines the program's DAG
+    interactions use, rules of its CT-root sites)``, read from the lowered
+    model: interaction vertex kind -> kernel terms -> couplings -> lowered
+    structures -> rule."""
+
+    from pyamplicol.loops.v2.ct_closure import CountertermClosure
+    from pyamplicol.loops.v2.ct_recursion import rule_key
+
+    model = program.recursion.model
+    lowered = model.lowered.compiled
+    name = {rule_key(rule): rule_name for rule_name, rule in rules.items()}
+    of_structure = {
+        structure: name[key]
+        for key, structures in model.structures.items()
+        for structure in structures
+    }
+    by_coupling: dict[str, set[str]] = {}
+    for structure, coupling in model.lowered.couplings.items():
+        by_coupling.setdefault(coupling, set()).add(of_structure[structure])
+    by_clone: dict[str, set[str]] = {}
+    for structure, clone in model.lowered.insertions.items():
+        by_clone.setdefault(clone, set()).add(of_structure[structure])
+    coupling = {int(term.id): term.coupling for term in lowered.ir.vertex_terms}
+    by_kind: dict[int, set[str]] = {}
+    for kernel in lowered.ir.oriented_kernels:
+        for term_id in kernel.term_ids or (kernel.term_id,):
+            by_kind.setdefault(int(kernel.kind), set()).update(
+                by_coupling.get(coupling.get(int(term_id), ""), ())
+            )
+    particle = {int(p.pdg_code): p.name for p in lowered.ir.particles}
+    dag = program.blocks.blocks_dag
+    inside = set().union(
+        *(by_kind.get(int(i.vertex_kind), set()) for i in dag.interactions),
+        *(
+            by_clone.get(particle[int(c.index.particle_id)], set())
+            for c in dag.currents
+        ),
+    )
+    root = {
+        site.rule_name
+        for site in CountertermClosure.root_sites(program, data, selection)
+    }
+    return inside, root
+
+
+@pytest.mark.loop_physics
+def test_insertion_reachability_is_sound_against_the_program_dag(
+    loop_sm_compiled_model,
+):
+    """``ct_closure.InsertionReachability`` admits every rule the production
+    CT program itself uses, in its DAG (CT vertices and clone lines inside
+    the currents) or at its CT roots, on a charged-current request: in
+    u d~ > w+ g the R2 of [u~ d W+] sits inside the current of legs 1 and 4
+    and that of its conjugate [d~ u W-] at the root (a reading of every
+    vertex by its incoming fields admits only the latter)."""
+
+    from pyamplicol.loops.v2.ct_closure import InsertionReachability
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.processes.model import build_model_process_ir
+
+    program, rules, data, selection = _program_and_rules(
+        loop_sm_compiled_model,
+        "u d~ > w+ g",
+        {"QCD": 1, "QED": 1},
+        {"QCD": 3, "QED": 1},
+    )
+    inside, root = _rules_in_program(program, rules, data, selection)
+    lowered = program.recursion.model.lowered.compiled
+    reachability = InsertionReachability.build(
+        CompiledUFOModel(lowered),
+        build_model_process_ir("u d~ > w+ g", lowered.ir, color_accuracy="full"),
+        program.recursion.coupling_order_limits(),
+    )
+    used = inside | root
+    assert used and used <= set(program.recursion.rules)
+    assert not {n for n in used if not reachability.admits(rules[n])}
+
+    def of_fields(*pdgs):
+        return {n for n in used if sorted(rules[n].particle_pdgs) == sorted(pdgs)}
+
+    assert of_fields(-2, 1, 24) and of_fields(-2, 1, 24) <= inside - root
+    assert of_fields(-1, 2, -24) and of_fields(-1, 2, -24) <= root - inside
+
+
+@pytest.mark.loop_physics
+def test_unlowerable_charged_vertex_in_a_current_is_refused(
+    loop_sm_compiled_model, monkeypatch
+):
+    """REQUIREMENTS_ADDENDUM J: an unlowerable CT vertex that can enter a
+    tree is refused, also when it enters only inside a current. With the R2
+    of [u~ d W+] made unlowerable, u d~ > w+ g is refused naming it (its
+    vertex sits in the current of legs 1 and 4); its conjugate stays
+    lowered."""
+
+    from collections import OrderedDict
+
+    from pyamplicol.loops.v2 import ct_closure, ct_recursion
+
+    original = ct_recursion.TreeVocabulary.rule_reason
+
+    def rule_reason(self, rule):
+        if rule.kind == "R2" and sorted(rule.particle_pdgs) == [-2, 1, 24]:
+            return "made unlowerable (test)"
+        return original(self, rule)
+
+    monkeypatch.setattr(ct_recursion.TreeVocabulary, "rule_reason", rule_reason)
+    # A lowered model of this request without the patch must not be reused,
+    # nor this one kept.
+    monkeypatch.setattr(ct_closure, "_LOWERED", OrderedDict())
+    with pytest.raises(
+        ct_recursion.UnloweredCountertermError, match=r"\[u~ d W\+\] \(made"
+    ):
+        _program_and_rules(
+            loop_sm_compiled_model,
+            "u d~ > w+ g",
+            {"QCD": 1, "QED": 1},
+            {"QCD": 3, "QED": 1},
+        )
 
 
 # The tree route (form 1) is a test of the lowering; the closure, the

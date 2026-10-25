@@ -55,6 +55,29 @@ def test_generate_accepts_on_the_fly_execution_mode_override() -> None:
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.ON_THE_FLY
 
 
+def test_generate_accepts_a_repeated_particle_veto() -> None:
+    config = (
+        parse_cli(
+            (
+                "generate",
+                "--loop-coupling-order",
+                "QCD",
+                "--loop-engine",
+                "v2",
+                "--particle-veto",
+                "t",
+                "--particle-veto",
+                "b",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert config.generation.particle_veto == ("t", "b")
+    with pytest.raises(ConfigurationError, match="particle_veto requires"):
+        parse_cli(("generate", "--particle-veto", "t")).resolve()
+
+
 def test_generate_defaults_to_recurrence_execution() -> None:
     config = parse_cli(("generate",)).resolve().effective
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
@@ -681,6 +704,22 @@ def test_runtime_color_flow_flags_remain_available() -> None:
     assert benchmark.resolve().effective.evaluation.process == "d d~ > z g"
     assert benchmark.resolve().effective.benchmark.precision == 80
     assert benchmark.resolve().effective.benchmark.color_flow_ids == ("flow:2,4,1",)
+
+
+@pytest.mark.parametrize("selection", ["all", "none", "uv", "ir"])
+def test_evaluate_pole_selection_takes_every_pole_selection(selection: str) -> None:
+    from pyamplicol.config import PoleSelection
+
+    config = parse_cli(("evaluate", "--poles", selection)).resolve().effective
+    assert config.evaluation.poles is PoleSelection(selection)
+
+
+def test_evaluate_pole_selection_names_its_choices(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit):
+        parse_cli(("evaluate", "--poles", "both"))
+    assert "(choose from 'all', 'none', 'uv', 'ir')" in capsys.readouterr().err
 
 
 def test_profile_is_primary_cli_spelling_for_typed_benchmark_config(

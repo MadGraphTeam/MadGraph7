@@ -21,6 +21,7 @@ from itertools import product
 
 import pytest
 
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.v2.ct_sites import LAURENT_POWERS, ColourOverlaps, add_colour
 from pyamplicol.loops.v2.families import add_orders
 from tools.loop_reference import legacy_capture
@@ -48,7 +49,7 @@ CT_COMPONENTS = ("uv_local", "r2")
 
 @pytest.fixture(scope="module")
 def closure_ct_model(loop_sm_compiled_model):
-    """``forbidden |PDG| codes -> CountertermModel``: loop_sm lowered for the
+    """``vetoed |PDG| codes -> CountertermModel``: loop_sm lowered for the
     closure's loop-request blocks (multi-trace colours included), per veto
     (and per set ``dirac`` of Weyl fields propagated as Dirac fields)."""
 
@@ -62,14 +63,14 @@ def closure_ct_model(loop_sm_compiled_model):
     )
     built = {}
 
-    def build(forbidden=(), dirac=()):
-        key = (tuple(sorted(forbidden)), tuple(sorted(dirac)))
+    def build(veto=(), dirac=()):
+        key = (tuple(sorted(veto)), tuple(sorted(dirac)))
         if key not in built:
             built[key] = lower_model_counterterms(
                 compiled,
                 prepared.counterterms.rules,
                 fixed_parameters=prepared.structure.fixed_parameters,
-                forbidden=key[0],
+                veto=key[0],
                 multi_trace=True,
                 dirac_fields=key[1],
             )
@@ -100,9 +101,7 @@ def _closure(ct, lowered):
         recursion, process, ignored_particle_ids=ct.vetoed
     )
     ordinary = _ordinary_entries(ct)
-    sites = CountertermClosure.root_sites(
-        program, ct.families, ct.rules, ct.data, ct.selection, forbidden=ct.vetoed
-    )
+    sites = CountertermClosure.root_sites(program, ct.data, ct.selection)
     # The request's rules declare the loop species (as the slice's sites do).
     every = [entry for rule in ct.rules.values() for entry in rule.entries]
     entries = [*counterterm_closure_entries(sites, ordinary), *every]
@@ -634,21 +633,21 @@ def test_slice_counterterms_from_recursion_equal_sites(
     slice_routes, monkeypatch, name, carrier
 ):
     """O6 on the slice: every component of the request with its counterterms
-    from the recursion (production) equals the request with every CT rule
-    closed at sites; the recursion leaves no QCD rule to site closure."""
+    from the recursion (production: the plain admission, no site closure)
+    equals the request with every CT rule closed at sites (witness
+    admission); the recursion lowers every QCD rule."""
 
     _certify_furry_zeros(monkeypatch)
     recursion = slice_routes(name, "recursion")
     assert slice_routes(name, "sites").counterterm_program is None
     program = recursion.counterterm_program
     residual = program.recursion.residual
-    # No rule stays a site closure: no rule is demoted for the U(1) part of a
-    # gluon, and the Levi-Civita cells of the R2 of the Z with gluons cancel
-    # between the quark doublets (design §6.1).
+    # Every rule is lowered: no rule is refused for the U(1) part of a gluon,
+    # and the Levi-Civita cells of the R2 of the Z with gluons cancel between
+    # the quark doublets (design §6.1).
     rules = recursion.prepared.counterterms.rules
     assert not residual, residual
-    # The rules of interest are lowered and admitted by the request's
-    # witnesses.
+    # The rules of interest are lowered and admitted.
     pdgs = SLICE_O6[name][3]
 
     def about(rule):
@@ -667,10 +666,12 @@ def test_slice_counterterms_from_recursion_equal_sites(
 def test_generation_leaves_the_program_rows_to_the_first_point(
     loop_sm_compiled_model, loop_native, monkeypatch
 ):
-    """Generation builds the CT program and its root terms but not the
-    program's Python tree rows: a native evaluation never needs them, and at
-    seven legs their evaluator would cost hours. The first point compiles
-    them, after the block rows."""
+    """Generation builds the CT program and its root terms but no Python
+    tree rows: a native evaluation never needs them, and at seven legs their
+    evaluators would cost hours. The first point compiles the block rows,
+    then the program's (the rows are lazy, RUST-MIGRATION.md §10 decision 5;
+    their rounding does not depend on the CT route,
+    ``test_lazy_block_rows_do_not_depend_on_the_counterterm_route``)."""
 
     from pyamplicol.loops.v2 import assemble
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
@@ -700,7 +701,7 @@ def test_generation_leaves_the_program_rows_to_the_first_point(
     assert program is not None and program.closure.terms
     blocks = id(route.blocks.blocks_dag)
     counterterms = id(program.blocks.blocks.blocks_dag)
-    assert built == [blocks]
+    assert built == []
     route.evaluate(
         _slice_point((0,) * 4),
         SLICE_SCALE_SQUARED,
@@ -758,7 +759,7 @@ def _counterterms_per_route(compiled, native, process, qcd, point, **options):
                 _fraction(SLICE_SCALE_SQUARED),
                 dict(SLICE_PARAMETERS),
                 Precision.double(),
-                True,
+                PoleSelection.ALL,
             )
         values[route] = (dict(evaluation.born), dict(evaluation.counterterms))
     return values
@@ -821,6 +822,7 @@ def test_six_leg_four_gluon_counterterms_from_recursion_equal_sites(
 _SIX_GLUON_SCRIPT = """
 import json, sys
 from pyamplicol import licensing
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.v2.assemble import (
     LoopSlice, Precision, SliceRequest, _fraction, _Numbers,
@@ -838,7 +840,7 @@ for route in ("recursion", "sites"):
         assert not generated.counterterm_program.recursion.residual
     with _Numbers(Precision.double()).scope():
         evaluation = generated._point(exact, _fraction(scale),
-            json.loads(parameters), Precision.double(), True)
+            json.loads(parameters), Precision.double(), PoleSelection.ALL)
     out[route] = [[[repr(k), float(v)] for k, v in part.items()]
                   for part in (evaluation.born, evaluation.counterterms)]
 out["serial"] = (licensing._SPENSO_POLICY_APPLIED, licensing._SPENSO_SERIAL)

@@ -140,6 +140,11 @@ pub struct FamilyOutput {
     pub state_species: Vec<u32>,
     pub families: Vec<Family>,
     pub scaleless: Vec<FamilyKey>,
+    /// The certified-scaleless families with their routings, in `scaleless`
+    /// order; their prefix states are interned after every admitted
+    /// family's, so the admitted families' states do not depend on them
+    /// (the poles companion, `FamilySet.scaleless_families`).
+    pub scaleless_families: Vec<Family>,
     pub rejected: Vec<(FamilyKey, Rejection)>,
 }
 
@@ -601,22 +606,19 @@ pub fn generate_families(input: &FamilyInput) -> Result<FamilyOutput, String> {
             (output.state_parent.len() - 1) as u32
         })
     };
-    for key in keys {
-        let routings = admitted.remove(&key).expect("admitted key");
-        rejected.remove(&key);
-        if certified_scaleless(&key, &input.legs, &input.massless) {
-            output.scaleless.push(key);
-            continue;
-        }
+    let mut family = |output: &mut FamilyOutput,
+                      key: FamilyKey,
+                      routings: Vec<(u32, Vec<u32>, bool)>|
+     -> Family {
         let mut closures = Vec::with_capacity(routings.len());
         let mut rank = 0;
         for (cut, positions, symmetric) in routings {
-            let mut state = intern(&mut output, -1, cut, cut);
+            let mut state = intern(output, -1, cut, cut);
             let mut degree = 0;
             for position in positions {
                 let data = &recursion.position_data[position as usize];
                 degree += data.q_degree;
-                state = intern(&mut output, i64::from(state), position, data.loop_out);
+                state = intern(output, i64::from(state), position, data.loop_out);
             }
             rank = rank.max(degree);
             closures.push(Closure {
@@ -625,11 +627,28 @@ pub fn generate_families(input: &FamilyInput) -> Result<FamilyOutput, String> {
                 multiplicity: input.multiplicity.get(cut as usize).copied().unwrap_or(1),
             });
         }
-        output.families.push(Family {
+        Family {
             key,
             rank,
             closures,
-        });
+        }
+    };
+    let mut scaleless = Vec::new();
+    for key in keys {
+        let routings = admitted.remove(&key).expect("admitted key");
+        rejected.remove(&key);
+        if certified_scaleless(&key, &input.legs, &input.massless) {
+            output.scaleless.push(key.clone());
+            scaleless.push((key, routings));
+            continue;
+        }
+        let built = family(&mut output, key, routings);
+        output.families.push(built);
+    }
+    // The scaleless families after every admitted one.
+    for (key, routings) in scaleless {
+        let built = family(&mut output, key, routings);
+        output.scaleless_families.push(built);
     }
     let mut logged: Vec<(FamilyKey, Rejection)> = rejected.into_iter().collect();
     logged.sort_unstable_by(|a, b| a.0.cmp(&b.0));

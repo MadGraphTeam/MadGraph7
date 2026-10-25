@@ -35,7 +35,7 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   reduction-direction check) return one estimate per point that bounds the
   true error, and no estimate without checks;
 * a fresh interpreter loads and evaluates the stored native point inputs
-  (``point_inputs = "native-v1"``, WP3.1) with generation forbidden, with
+  (``point_inputs = "native-v2"``, WP3.1) with generation forbidden, with
   bitwise-identical binary64 values also after unrelated Symbolica symbols
   were created; a call that needs the generation objects (correlated and
   resolved outputs) regenerates the slice and refuses a stored plan that
@@ -74,6 +74,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import subprocess
 import sys
 from decimal import Decimal
@@ -92,7 +93,7 @@ from pyamplicol.api.errors import (
     EvaluationError,
     GenerationError,
 )
-from pyamplicol.api.virtual_results import parse_rotation
+from pyamplicol.api.virtual_results import POLE_COMPONENTS, POLE_ORIGINS, parse_rotation
 from pyamplicol.config import PoleSelection
 from pyamplicol.loops.v2.stability import Rotation
 
@@ -109,6 +110,8 @@ ARBITRARY_TOLERANCE = Decimal("1e-40")
 OBSERVABLES = LEGACY / "observables"
 BINARY64_CHECKS = VirtualStabilityChecks(("z:3/5:4/5",), True)
 GG_PARAMETERS = {"aS": "0.118", "MT": "173"}
+# Certified-scaleless families of the companion plans (poles "uv" and "ir").
+SCALELESS_FAMILIES = {"gg": 4, "uux_ddxg": 1}
 POINT = [[500, 0, 0, 500], [500, 0, 0, -500], [500, 300, 0, 400], [500, -300, 0, -400]]
 
 SCHEME = """
@@ -273,6 +276,7 @@ def test_finite_only_results_have_absent_poles_and_estimates_are_typed():
     from pyamplicol.api.virtual_results import (
         VirtualEvaluation,
         VirtualLaneDiagnostic,
+        VirtualPoleParts,
     )
     from pyamplicol.config import R2Strategy
     from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
@@ -313,9 +317,8 @@ def test_finite_only_results_have_absent_poles_and_estimates_are_typed():
             r2,
             poles=PoleSelection.NONE,
         )
-    # The selection is a PoleSelection (poles-uvir adds "uv" and "ir"), never
-    # a boolean.
-    for bad, error in ((False, TypeError), ("uv", ValueError)):
+    # The selection is a PoleSelection, never a boolean.
+    for bad, error in ((False, TypeError), ("both", ValueError)):
         with pytest.raises(error, match=r"pole selection|PoleSelection"):
             VirtualEvaluation(
                 ((1.0,),),
@@ -326,6 +329,51 @@ def test_finite_only_results_have_absent_poles_and_estimates_are_typed():
                 r2,
                 poles=bad,
             )
+    # Pole parts exist exactly under "uv" and "ir", with every component.
+    parts = VirtualPoleParts(
+        *({name: ((-2.0, 0.5, 0.0),) for name in POLE_COMPONENTS} for _ in "ui")
+    )
+    split = VirtualEvaluation(
+        ((1.0,),),
+        (((-2.0, 0.5, 0.0),),),
+        ((("QCD", 4),),),
+        (sector,),
+        (lane,),
+        r2,
+        poles="uv",
+        pole_parts=(parts,),
+    )
+    assert split.poles is PoleSelection.UV
+    assert split.pole_part("ir", "bare") == ((LaurentCoefficients(-2.0, 0.5, 0.0),),)
+    assert split.for_order((("QCD", 6),)).pole_parts == split.pole_parts
+    with pytest.raises(ValueError, match="pole component"):
+        split.pole_part("uv", "counterterms")
+    for selection, given, message in (
+        ("ir", None, "carries its pole parts"),
+        ("all", (parts,), "exist exactly under"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            VirtualEvaluation(
+                ((1.0,),),
+                (((-2.0, 1.0, 3.0),),),
+                ((("QCD", 4),),),
+                (sector,),
+                (lane,),
+                r2,
+                poles=selection,
+                pole_parts=given,
+            )
+    with pytest.raises(ValueError, match="pole parts name the components"):
+        VirtualEvaluation(
+            ((1.0,),),
+            (((-2.0, 0.5, 0.0),),),
+            ((("QCD", 4),),),
+            (sector,),
+            (lane,),
+            r2,
+            poles="uv",
+            pole_parts=(VirtualPoleParts({"virtual": ((0.0, 0.0, 0.0),)}, {}),),
+        )
     with pytest.raises(ValueError, match="pole estimates"):
         VirtualEvaluation(
             ((1.0,),),
@@ -353,6 +401,61 @@ def test_finite_only_results_have_absent_poles_and_estimates_are_typed():
 
 
 @pytest.mark.loop_fast
+def test_resolved_pole_parts_follow_the_resolved_axes():
+    """Resolved pole parts per sector, helicity and colour component: summed
+    by ``total()``, kept by ``for_order``, rendered per entry."""
+
+    from dataclasses import replace
+
+    import prettytable
+
+    from pyamplicol.api.virtual_results import (
+        ResolvedVirtualEvaluation,
+        VirtualLaneDiagnostic,
+        VirtualPoleParts,
+    )
+    from pyamplicol.config import R2Strategy
+    from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
+    from pyamplicol.loops.strategy import R2Selection
+    from pyamplicol.reporting.virtual import virtual_evaluation_summary
+
+    sector = VirtualOrderSector(
+        (("QCD", 6),), (BornLoopPair((("QCD", 2),), (("QCD", 4),)),)
+    )
+    entries = (((-2.0, 0.25, -1.0),), ((-1.0, 0.75, -3.0),))
+    parts = VirtualPoleParts(
+        *({name: (entries,) for name in POLE_COMPONENTS} for _ in "ui")
+    )
+    result = ResolvedVirtualEvaluation(
+        ((((1.0,), (2.0,)),),),
+        ((entries,),),
+        ((("QCD", 4),),),
+        (sector,),
+        (VirtualLaneDiagnostic("success", "double", 53, False),),
+        R2Selection(R2Strategy.MODEL, R2Strategy.MODEL, "test"),
+        ("h0", "h1"),
+        ("full",),
+        ("full",),
+        "full",
+        poles="ir",
+        pole_parts=(parts,),
+    )
+    total = result.total()
+    assert total.poles is PoleSelection.IR
+    assert total.pole_part("uv", "bare") == ((LaurentCoefficients(-3.0, 1.0, -4.0),),)
+    assert result.pole_part("ir")[0] == ((entries,),)[0]
+    assert result.for_order((("QCD", 6),)).pole_parts == result.pole_parts
+    text = virtual_evaluation_summary(result, prettytable=prettytable)
+    assert (
+        "infrared poles of the renormalised virtual" in text
+        and "Pole parts by origin" in text
+    )
+    assert text.count("uv_external_fields") == 4  # 2 helicities x 2 origins
+    with pytest.raises(ValueError, match="carries its pole parts"):
+        replace(result, pole_parts=None)
+
+
+@pytest.mark.loop_fast
 def test_configuration_selects_the_engine_and_the_runtime_options(tmp_path):
     from pyamplicol.config import ConfigurationError, LoopEngine, resolve_config
 
@@ -372,10 +475,13 @@ def test_configuration_selects_the_engine_and_the_runtime_options(tmp_path):
     assert default.loop.engine is LoopEngine.LEGACY
     assert default.evaluation.poles is PoleSelection.ALL
     assert default.evaluation.stability_checks.to_checks() is None
-    for value in ("false", '"uv"'):
+    for value in ("false", '"both"'):
         card.write_text(f'action = "generate"\n[evaluation]\npoles = {value}\n')
         with pytest.raises(ConfigurationError, match=r"evaluation\.poles"):
             resolve_config(card)
+    for value in ("uv", "ir"):
+        card.write_text(f'action = "generate"\n[evaluation]\npoles = "{value}"\n')
+        assert resolve_config(card).effective.evaluation.poles is PoleSelection(value)
     card.write_text(
         'action = "generate"\n[evaluation.stability_checks]\n'
         'rotations = ["z:3/5:4/5"]\nrotation_count = 2\n'
@@ -408,7 +514,7 @@ def test_slice_request_records_round_trip():
         ({"QCD": 4, "QED": 0}, {"QCD": 2, "QED": 2}),
         corrections=("QCD", "QED"),
         fixed_parameters={"MB": "0"},
-        ignored_particle_ids=(23,),
+        particle_veto=(23,),
         accuracy="lc",
         colour_declaration=declaration,
         scale_parameter="MU_R",
@@ -435,6 +541,37 @@ def test_slice_request_records_round_trip():
         request_from_record(
             {key: value for key, value in record.items() if key != "compress_colour"}
         )
+
+
+@pytest.mark.loop_fast
+def test_particle_veto_is_resolved_to_pdg_codes_and_refuses_the_site_oracle():
+    """``generation.particle_veto`` names resolve to |PDG| codes (a name
+    vetoes its antiparticle); the request keeps them sorted and unsigned;
+    plan v4 refuses the site-closure counterterm oracle."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.api.errors import ArtifactError
+    from pyamplicol.generation.loop_service import particle_veto_codes
+    from pyamplicol.loops.v2.artifact import generate_process
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
+    particles = [
+        {"name": "t", "antiname": "t~", "pdg_code": 6},
+        {"name": "t~", "antiname": "t", "pdg_code": -6},
+        {"name": "Z", "antiname": "Z", "pdg_code": 23},
+    ]
+    model = SimpleNamespace(model={"particles": particles})
+    assert particle_veto_codes(model, ("t~", "Z", "t")) == (6, 23)
+    with pytest.raises(GenerationError, match=r"does not have: \['b'\]"):
+        particle_veto_codes(model, ("b",))
+    request = SliceRequest(
+        "g g > g g", {"QCD": 2}, {"QCD": 4}, particle_veto=(-6, 23, 6)
+    )
+    assert request.particle_veto == (6, 23)
+    with pytest.raises(ArtifactError, match="tree recursion"):
+        generate_process(None, replace(request, counterterms="sites"), None)
 
 
 @pytest.mark.loop_fast
@@ -575,11 +712,87 @@ def test_public_generation_publishes_plan_v4(full_colour):
     assert info["engine"] == "v2" and info["schedule"] == "backward"
     assert info["families"] == 42
     assert sum(count for _n, _r, count in info["buckets"]) == 42
-    assert info["poles"] == ["all", "none"] and not info["rescue_available"]
-    # The public path takes its counterterms from the tree recursion (WP2.2).
+    assert info["poles"] == ["all", "none", "uv", "ir"]
+    assert not info["rescue_available"]
+    execution = json.loads(
+        (full_colour / "processes/uux_ddxg/execution.json").read_text()
+    )
+    assert info["scaleless_plan_sha256"] == execution["scaleless_plan_sha256"]
+    # The public path takes its counterterms from the tree recursion (WP2.2):
+    # no counterterm site closure, no veto unless requested (ADDENDUM J).
     assert info["request"]["counterterms"] == "recursion"
+    assert info["request"]["particle_veto"] == []
+    from pyamplicol.loops.v2 import artifact
+
+    with artifact._slices_lock:
+        generated = [
+            item.slice
+            for (_model, _record, plan), item in artifact._slices.items()
+            if plan == info["plan_sha256"]
+        ]
+    assert generated
+    for slice_ in generated:
+        assert slice_.counterterm_program is not None
+        assert slice_.sites.sites == () and not slice_.site_terms
+        assert slice_.counterterm_program.closure.terms
+    # The generation record names the request's inert CT rules (ADDENDUM J).
+    (record,) = (
+        r
+        for r in manifest.extensions["generation"]["concrete_processes"]
+        if r["id"] == "uux_ddxg"
+    )
+    assert record["filters"]["counterterms_inert"] == dict(
+        sorted(generated[0].counterterm_program.recursion.inert.items())
+    )
+    # No native stage fell back (RUST-MIGRATION rule 2: the record would
+    # name it).
+    assert "native_fallbacks" not in record["filters"]
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
+
+
+@pytest.mark.loop_physics
+def test_public_particle_veto_equals_njet_five_flavours(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """``[generation] particle_veto = ["t"]`` through the public path: stored
+    in the request record (|PDG| codes) and the generation filters (names),
+    and g g > g g is massless five-flavour QCD, equal to NJet's Nf=5 virtual
+    at two of its points (binary64, 1e-12)."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.artifacts import load_manifest
+
+    entries = (("gg", "g g > g g"),)
+    card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries).replace(
+        "emit_api_bundle = false", 'emit_api_bundle = false\nparticle_veto = ["t"]'
+    )
+    output = _generate(card, tmp_path, entries)
+    manifest = load_manifest(output, verify_payloads=True)
+    (record,) = manifest.extensions["generation"]["concrete_processes"]
+    assert record["filters"]["particle_veto"] == ["t"]
+    _forget_generation()
+    runtime = Runtime.load(output, process="gg", model_parameters={"aS": "0.118"})
+    assert runtime.inspect()["request"]["particle_veto"] == [6]
+    controls = json.loads(
+        (ROOT / "tests/fixtures/loop/required/njet_nf5_controls.json").read_text()
+    )["processes"]["gg_gg"]
+    points = controls["points"][:2]
+    scales = [str(int(mu) ** 2) for mu in controls["mu_r"][:2]]
+    result = runtime.evaluate(points, mu_r2=scales)
+    for index, row in enumerate(controls["rows"][:2]):
+        ((born,),) = (result.born_values[index],)
+        assert abs(float(born) - float(row["born"])) <= 1e-12 * abs(float(born))
+        ((laurent,),) = (result.values[index],)
+        floor = abs(float(born)) * 0.118 / (2 * math.pi)
+        for mine, key in zip(
+            laurent, ("finite", "single_pole", "double_pole"), strict=True
+        ):
+            reference = float(row[key])
+            assert abs(float(mine) - reference) <= 1e-12 * max(abs(reference), floor), (
+                index,
+                key,
+            )
 
 
 @pytest.mark.loop_physics
@@ -708,11 +921,91 @@ def test_finite_only_and_stability_estimates(full_colour):
     assert estimate.single_pole is None and dict(estimate.checks).keys() == {
         "reduction-direction"
     }
-    # Selections this build does not serve and booleans are refused.
-    with pytest.raises(ValueError, match="unknown pole selection 'uv'"):
-        runtime.evaluate(points[:1], mu_r2=scales[:1], poles="uv")
+    # Unknown selections and booleans are refused.
+    with pytest.raises(ValueError, match="unknown pole selection 'both'"):
+        runtime.evaluate(points[:1], mu_r2=scales[:1], poles="both")
     with pytest.raises(TypeError, match="PoleSelection"):
         runtime.evaluate(points[:1], mu_r2=scales[:1], poles=False)
+    with pytest.raises(ValueError, match="poles 'uv' or 'ir'"):
+        full.pole_part("uv")
+    # The UV and IR selections (design §12.4, user decision 2026-10-23) from
+    # the same artifact: the finite part bitwise that of "all"; "uv" gives
+    # the bare loop's UV poles, which the counterterms' UV poles cancel, and
+    # "ir" the renormalised virtual's IR poles, those of "all"; both origins'
+    # parts per component. ``clear`` rebuilds the companion executor too
+    # (same bits).
+    split = {}
+    for selection in (PoleSelection.UV, PoleSelection.IR):
+        split[selection] = runtime.evaluate(points, mu_r2=scales, poles=selection)
+        assert split[selection].poles is selection
+        assert split[selection].pole_parts is not None
+    runtime.clear()
+    again = runtime.evaluate(points, mu_r2=scales, poles="uv")
+    assert again.values == split[PoleSelection.UV].values
+    assert again.pole_parts == split[PoleSelection.UV].pole_parts
+    uv, ir = split[PoleSelection.UV], split[PoleSelection.IR]
+    assert uv.pole_parts == ir.pole_parts
+    for index, point in enumerate(full.values):
+        (whole,) = point
+        scale = max(abs(x) for x in whole)
+        assert uv.values[index][0].finite == ir.values[index][0].finite == whole.finite
+        assert ir.values[index] == ir.pole_part("ir")[index]
+        (u,) = uv.values[index]
+        (i,) = ir.values[index]
+        (bare_uv,) = uv.pole_part("uv", "bare")[index]
+        assert u == (whole.finite, bare_uv.single_pole, bare_uv.double_pole)
+        assert u.double_pole == 0
+        assert abs(i.single_pole - whole.single_pole) <= 1e-12 * scale
+        assert abs(i.double_pole - whole.double_pole) <= 1e-12 * scale
+        parts = uv.pole_parts[index]
+        for component in POLE_COMPONENTS:
+            (a,) = parts.uv[component]
+            (b,) = parts.ir[component]
+            assert a.finite == b.finite and a.double_pole == 0
+        counterterms = parts.uv["uv"][0].single_pole + parts.uv["r2"][0].single_pole
+        assert abs(u.single_pole) > 1e-3 * scale
+        assert abs(u.single_pole + counterterms) <= 1e-12 * scale
+        assert abs(parts.uv["virtual"][0].single_pole) <= 1e-12 * scale
+    # Stability estimates exist in the split selections too.
+    (estimate,) = runtime.evaluate(
+        points[:1],
+        mu_r2=scales[:1],
+        poles="ir",
+        stability_checks=VirtualStabilityChecks(reduction_direction=True),
+    ).stability
+    assert estimate.single_pole is not None and estimate.relative < 1e-9
+
+
+@pytest.mark.loop_physics
+def test_correlated_and_resolved_calls_split_the_poles(full_colour):
+    """``poles="uv"``/``"ir"`` on correlated and resolved calls (design
+    §12.4): finite parts bitwise those of ``"all"``; the resolved sum and the
+    Born-metric correlated output carry the inclusive evaluation's pole parts
+    for every component; ``for_order`` keeps them."""
+
+    from pyamplicol import Runtime
+
+    runtime = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
+    options = {"mu_r2": "1000000"}
+    inclusive = runtime.evaluate([POINT], poles="ir", **options)
+    born = runtime.evaluate_correlated([POINT], poles="uv", **options)
+    resolved = runtime.evaluate_resolved([POINT], poles="ir", **options)
+    full = runtime.evaluate_resolved([POINT], **options)
+    assert resolved.poles is PoleSelection.IR and born.poles is PoleSelection.UV
+    assert resolved.finite == full.finite
+    assert resolved.pole_part("ir") == resolved.values
+    total = resolved.total()
+    scale = max(abs(x) for x in inclusive.values[0][0])
+    for origin in ("uv", "ir"):
+        for component in POLE_COMPONENTS:
+            expected = inclusive.pole_part(origin, component)[0][0]
+            for other in (total, born):
+                got = other.pole_part(origin, component)[0][0]
+                for x, y in zip(got, expected, strict=True):
+                    assert abs(complex(x) - y) <= 1e-12 * scale, (origin, component)
+    order = resolved.sectors[0].order
+    assert resolved.for_order(order).pole_parts == resolved.pole_parts
+    assert born.for_order(order).pole_parts == born.pole_parts
 
 
 @pytest.mark.loop_physics
@@ -781,7 +1074,7 @@ def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
     from pyamplicol import Runtime
 
     here = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
-    assert here.inspect()["point_inputs"] == "native-v1"
+    assert here.inspect()["point_inputs"] == "native-v2"
     value = here.evaluate([POINT], mu_r2="1000000")
     expected = [
         here.inspect()["plan_sha256"],
@@ -892,6 +1185,9 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
         )
         assert admitted["runtime_capability"] == "rusticol.loop-runtime.v4"
         assert admitted["plan_sha256"] == execution["plan_sha256"]
+        # The companion plan of the certified-scaleless families (poles uv/ir).
+        assert admitted["scaleless_plan_sha256"] == execution["scaleless_plan_sha256"]
+        assert admitted["scaleless_families"] == SCALELESS_FAMILIES[process]
         assert admitted["families"] == families == physics["metadata"]["families"]
         assert admitted["buckets"] == physics["metadata"]["buckets"]
         assert admitted["metadata"] == physics["metadata"]
@@ -935,6 +1231,23 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
         physics["metadata"]["poles"] = ["all", "none", "uv"]
         return physics
 
+    def undeclared_companion(execution):
+        execution["scaleless_plan_sha256"] = None
+        return execution
+
+    def foreign_companion(execution):
+        execution["scaleless_plan_sha256"] = "0" * 64
+        return execution
+
+    def absent_companion_key(execution):
+        # Required, also when null: an absent key is not read as null.
+        del execution["scaleless_plan_sha256"]
+        return execution
+
+    def before_split(physics):
+        physics["metadata"]["poles"] = ["all", "none"]
+        return physics
+
     for name, edits, reason, loaded in (
         (
             "buckets",
@@ -957,14 +1270,40 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
         (
             "poles",
             {"processes/gg/physics.json": unserved_poles},
-            "unsupported contribution, convention or feature declaration",
-            "unsupported contribution, convention or feature declaration",
+            "unsupported pole selections",
+            "unsupported pole selections",
         ),
         (
             "resolved",
             {"processes/gg/physics.json": unresolved},
             "serve resolved output",
             "serve resolved output",
+        ),
+        (
+            "companion",
+            {"processes/gg/execution.json": undeclared_companion},
+            "stored exactly when declared",
+            "stored exactly when declared",
+        ),
+        (
+            "companion-digest",
+            {"processes/gg/execution.json": foreign_companion},
+            "companion plan v4 differs from its declared digest",
+            "companion plan v4 differs from its declared digest",
+        ),
+        (
+            "companion-key",
+            {"processes/gg/execution.json": absent_companion_key},
+            "missing field `scaleless_plan_sha256`",
+            "missing field `scaleless_plan_sha256`",
+        ),
+        (
+            # The declaration before the UV/IR split: refused (no backward
+            # compatibility of internal artifact formats, AGENTS.md).
+            "before-split",
+            {"processes/gg/physics.json": before_split},
+            "unsupported pole selections .*regenerate",
+            "unsupported pole selections .*regenerate",
         ),
         (
             "spin",
@@ -997,12 +1336,12 @@ def test_inspect_summarizes_v2_loop_artifacts(full_colour):
     assert loop.sectors == (("QCD^6", (("QCD^2", "QCD^4"),)),)
     assert loop.families == 24 and sum(b[2] for b in loop.buckets) == 24
     assert loop.color_degrees is None and loop.schedule == "backward"
-    assert loop.poles == ("all", "none")
+    assert loop.poles == ("all", "none", "uv", "ir")
     assert loop.stability_checks == ("rotation", "reduction-direction")
     assert loop.arithmetic == ("double", "double-double", "arbitrary")
     assert loop.resolved and not loop.correlations
     assert loop.color_correlations == () and loop.spin_correlations == ()
-    assert loop.point_inputs == "native-v1"
+    assert loop.point_inputs == "native-v2"
     execution = json.loads((full_colour / "processes/gg/execution.json").read_text())
     assert loop.plan_sha256 == execution["plan_sha256"]
     assert by_id["uux_ddxg"].loop.families == 42
@@ -1134,6 +1473,35 @@ def test_cli_generates_and_evaluates_through_v2(
     assert code == 0, stderr.getvalue()
     payload = json.loads(stdout.getvalue())
     assert payload["poles"] == "all" and payload["stability"] is None
+    assert payload["pole_parts"] is None
+    full = payload["values"]
+    stdout = io.StringIO()
+    code = run_cli(
+        (
+            "evaluate",
+            str(output),
+            "--process",
+            "gg",
+            "--momenta",
+            str(momenta),
+            "--mu-r2",
+            "1000000",
+            "--json",
+            "--progress",
+            "off",
+            "--poles",
+            "ir",
+        ),
+        stdout=stdout,
+        stderr=stderr,
+    )
+    assert code == 0, stderr.getvalue()
+    payload = json.loads(stdout.getvalue())
+    assert payload["poles"] == "ir" and payload["shape"] == [2, 1, 3]
+    assert [point[0][0] for point in payload["values"]] == [p[0][0] for p in full]
+    (parts, _) = payload["pole_parts"]
+    assert parts["ir"]["virtual"] == payload["values"][0]
+    assert set(parts["uv"]) == set(POLE_COMPONENTS) and parts["uv"]["bare"][0][2] == 0
     stdout = io.StringIO()
     code = run_cli(
         (
@@ -1161,6 +1529,31 @@ def test_cli_generates_and_evaluates_through_v2(
     text = stdout.getvalue()
     assert "Finite-only evaluation" in text and "Stability estimates" in text
     assert "reduction-direction" in text and "absent" in text
+    stdout = io.StringIO()
+    code = run_cli(
+        (
+            "evaluate",
+            str(output),
+            "--process",
+            "gg",
+            "--momenta",
+            str(momenta),
+            "--mu-r2",
+            "1000000",
+            "--poles",
+            "uv",
+            "--color",
+            "never",
+            "--progress",
+            "off",
+        ),
+        stdout=stdout,
+        stderr=stderr,
+    )
+    assert code == 0, stderr.getvalue()
+    text = stdout.getvalue()
+    assert "ultraviolet poles of the bare loop amplitude" in text
+    assert "Pole parts by origin" in text and "uv_external_fields" in text
 
 
 @pytest.mark.loop_physics
@@ -1703,12 +2096,14 @@ def test_finite_only_correlated_and_resolved_from_the_same_artifact(
 
 
 def _strings(path: Path) -> str:
-    """The text of one artifact file; a PACBIN's plan member decompressed."""
+    """The text of one artifact file; a PACBIN's plan members (the process
+    plan and the companion of certified-scaleless families) decompressed."""
 
-    from pyamplicol.loops.v2.artifact import read_plan
+    from pyamplicol.loops.v2.artifact import SCALELESS_PLAN_MEMBER, read_plan
 
     if path.name == "loop-runtime.pacbin":
-        return read_plan(path) + path.read_bytes().decode("latin-1")
+        plans = (read_plan(path), read_plan(path, SCALELESS_PLAN_MEMBER))
+        return "".join(p or "" for p in plans) + path.read_bytes().decode("latin-1")
     return path.read_bytes().decode("latin-1")
 
 
@@ -1769,9 +2164,15 @@ def test_artifacts_hold_no_host_paths_and_load_relocated(
             "from pyamplicol import Runtime",
             "r = Runtime.load(sys.argv[1], process='gg', model_parameters=PARAMETERS)",
             "v = r.evaluate(POINTS, mu_r2='1000000')",
-            "print(json.dumps([r.inspect()['plan_sha256'], v.born_values, v.values]))",
+            "s = [r.evaluate(POINTS, mu_r2='1000000', poles=p) for p in ('uv', 'ir')]",
+            "s = [[e.values, [e.pole_part(o, c) for o in ORIGINS for c in PARTS]]"
+            " for e in s]",
+            "d = r.inspect()['plan_sha256']",
+            "print(json.dumps([d, v.born_values, v.values, s]))",
         )
     )
+    script = script.replace("ORIGINS", repr(POLE_ORIGINS))
+    script = script.replace("PARTS", repr(POLE_COMPONENTS))
     script = script.replace("PARAMETERS", repr(GG_PARAMETERS))
     script = script.replace("POINTS", repr(points))
     # A fresh interpreter in another working directory evaluates the copy's
@@ -1783,12 +2184,20 @@ def test_artifacts_hold_no_host_paths_and_load_relocated(
         check=True,
         cwd=tmp_path,
     )
-    digest, born, values = json.loads(process.stdout.strip().splitlines()[-1])
+    digest, born, values, split = json.loads(process.stdout.strip().splitlines()[-1])
     here = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
     original = here.evaluate(points, mu_r2="1000000")
     assert digest == here.inspect()["plan_sha256"]
     assert born == [list(point) for point in original.born_values]
     assert values == [[list(laurent) for laurent in point] for point in original.values]
+    # The "uv" and "ir" selections run the stored companion plan: bitwise too.
+    for selection, (got, parts) in zip(("uv", "ir"), split, strict=True):
+        local = here.evaluate(points, mu_r2="1000000", poles=selection)
+        expected = [
+            local.values,
+            [local.pole_part(o, c) for o in POLE_ORIGINS for c in POLE_COMPONENTS],
+        ]
+        assert [got, parts] == json.loads(json.dumps(expected)), selection
 
 
 @pytest.mark.loop_physics
@@ -1858,11 +2267,10 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     """u u~ > d d~ with QCD and electroweak Born amplitudes (explicit limits
     QCD 2, QED 2): the dry run derives one loop order per Born amplitude
     order (QCD^4 and QCD^2 QED^2, not the limits raised by two) and does not
-    claim loop admission; in the SM the generation fails closed on the W
-    exchange of the electroweak Born: its root closure at leg 1 needs the
-    conjugate rule of a vertex that is not closed under conjugation (the
-    chiral Z on loop quark lines, which stopped it earlier, is supported
-    since WP3.1 I-AX). With photon exchange only
+    claim loop admission; in the SM it generates, the W exchange of the
+    electroweak Born closing at leg 1 through the conjugate rule of its
+    vertex (WP3.2 EWI-2; its values against MadLoop with the Wolfenstein CKM:
+    ``test_loop_v2_ew_lines``). With photon exchange only
     (Z, W and scalars excluded through the slice request) the public
     generator and runtime, regenerating at load, equal MadLoop's split-order
     control in every squared order (MadLoop binary64): each Born order within
@@ -1896,19 +2304,13 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
         {"QCD": 2, "QED": 2},
     ]
     assert coverage["loop_admission_checked"] is False
-    with pytest.raises(
-        GenerationError,
-        match=r"is not closed under conjugation; the tree reading of its legs "
-        r"needs its conjugate rule",
-    ):
-        generator.generate(processes, tmp_path / "a")
-    assert not (tmp_path / "a").exists()
+    generator.generate(processes, tmp_path / "a")
 
     request = loop_service._v2_request
     monkeypatch.setattr(
         loop_service,
         "_v2_request",
-        lambda *args: replace(request(*args), ignored_particle_ids=PHOTON_ONLY),
+        lambda *args: replace(request(*args), particle_veto=PHOTON_ONLY),
     )
     generator.generate(processes, tmp_path / "b")
     reference = loop_reference("mixed-uudd-qcd-control")
@@ -2067,7 +2469,9 @@ def test_coloured_width_fixed_to_zero_equals_legacy_at_sixty_digits(
     )
 
 
-def _qed_model_generator(model: Path, tmp_path: Path, name: str, entries, *, engine):
+def _qed_model_generator(
+    model: Path, tmp_path: Path, name: str, entries, *, engine, fixed='MB = "0"'
+):
     from pyamplicol.api import Generator
     from pyamplicol.config import resolve_config
 
@@ -2076,9 +2480,10 @@ def _qed_model_generator(model: Path, tmp_path: Path, name: str, entries, *, eng
     )
     card = tmp_path / f"{name}.toml"
     card.write_text(
-        text.replace('fixed_parameters = {MB = "0"}', COMPATIBILITY).replace(
-            'engine = "v2"', f'engine = "{engine}"'
-        )
+        text.replace(
+            'fixed_parameters = {MB = "0"}',
+            COMPATIBILITY.replace('{MB = "0"}', f"{{{fixed}}}"),
+        ).replace('engine = "v2"', f'engine = "{engine}"')
         if engine
         else text
     )
@@ -2092,11 +2497,22 @@ def test_qed_declaring_model_names_its_blockers(
     """MG5_aMC's loop_qcd_qed_sm with QCD and QED corrections through the
     public v2 path (its MU_R, at LHA code LOOP 666, is resolved at the public
     boundary). Without the compatibility profile both engines refuse its G-
-    Goldstone flag, which the dry run reports from the model preparation;
-    with it, u u~ > d d~ stops in counterterm admission: QED-order witnesses
-    without a rule or certified zero (WP3.2/WP3.5)."""
+    Goldstone flag, which the dry run reports from the model preparation.
+    With it, u u~ > d d~ at the card's W and Z widths is refused by the
+    electroweak width policy (WP3.2 EWI-0b, the user's decision [U8]: the
+    widths fixed to zero, or the complex-mass scheme), before its tree
+    kernels and the counterterm lowering. With those widths fixed to zero it
+    stops at the electroweak counterterms that the tree recursion cannot
+    lower and whose vertices can enter a tree of the request: couplings with
+    the complex-mass scheme's UFO helper recms (WP3.2). There is no site
+    fallback. The unlowerable G0-photon mixing between spins is inert
+    (REQUIREMENTS_ADDENDUM J): the model's tree model absorbs the Goldstones
+    into the massive vectors (``CompiledUFOModel.inactive_goldstone_names``),
+    so it holds no G0 vertex and no tree of any request on this model holds
+    the mixing."""
 
     from pyamplicol.api import ProcessRequest, ProcessSet
+    from pyamplicol.loops.v2.ew_policy import ElectroweakWidthError
     from pyamplicol.models.loading import compile_model_source
 
     entries = (("uudd", "u u~ > d d~"),)
@@ -2114,12 +2530,29 @@ def test_qed_declaring_model_names_its_blockers(
         loop_qcd_qed_sm_ufo, tmp_path, "b", entries, engine="v2"
     )
     with pytest.raises(
-        GenerationError,
-        match=r"divergent witnesses without a counterterm rule or certified zero"
-        r".*'QED': 2",
+        ElectroweakWidthError,
+        match=r"'u u~ > d d~': an electroweak request .* with a width that is not "
+        r"fixed to zero: W\+ \(WW\), W- \(WW\), Z \(WZ\)\..* fixed_parameters "
+        r'\(WW = "0", WZ = "0"\); .*complex-mass scheme',
     ):
         profiled.generate(processes, tmp_path / "b")
     assert not (tmp_path / "b").exists()
+    zero_widths = _qed_model_generator(
+        loop_qcd_qed_sm_ufo,
+        tmp_path,
+        "c",
+        entries,
+        engine="v2",
+        fixed='MB = "0", WW = "0", WZ = "0"',
+    )
+    with pytest.raises(
+        GenerationError,
+        match=r"counterterm rules the tree recursion cannot lower, whose vertices "
+        r"can enter a tree of the request: .*UFO helper 'recms'",
+    ) as refused:
+        zero_widths.generate(processes, tmp_path / "c")
+    assert "G0" not in str(refused.value)
+    assert not (tmp_path / "c").exists()
 
 
 @pytest.mark.loop_nightly
@@ -2131,10 +2564,14 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
     equals the legacy engine: Born and the QCD^6 virtual in binary64 (1e-12)
     and at 60 digits (1e-40, legacy at 60 digits). v2 also lists the
     QCD^4 QED^2 sector, a structural zero (no one-loop g g > g g amplitude of
-    order QCD^2 QED^2), which legacy omits."""
+    order QCD^2 QED^2), which legacy omits. The electroweak CT rules the tree
+    recursion cannot lower enter no tree of g g > g g: the generation record
+    lists them inert (REQUIREMENTS_ADDENDUM J), the G0-photon mixing among
+    them."""
 
     from pyamplicol import Runtime
     from pyamplicol.api import ProcessRequest, ProcessSet
+    from pyamplicol.artifacts import load_manifest
 
     entries = (("gg", "g g > g g"),)
     processes = ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),))
@@ -2146,6 +2583,15 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
         runtimes[engine] = Runtime.load(
             tmp_path / engine, process="gg", model_parameters=GG_PARAMETERS
         )
+    (record,) = load_manifest(tmp_path / "v2").extensions["generation"][
+        "concrete_processes"
+    ]
+    inert = record["filters"]["counterterms_inert"]
+    unreachable = {
+        name: reason for name, reason in inert.items() if "enters no tree" in reason
+    }
+    assert "PYAMPLICOL_CT_V306" in unreachable, sorted(inert)
+    assert any("UFO helper 'recms'" in reason for reason in unreachable.values())
     reference = runtimes["legacy"].evaluate(
         [POINT], mu_r2="1000000", arithmetic="arbitrary", precision=ARBITRARY_DIGITS
     )
@@ -2176,8 +2622,11 @@ def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
     loop_sm_compiled_model, loop_native, tmp_path
 ):
     """gg -> gggg (1100 families, 45 MB of plan JSON without the forward
-    oracle) publishes < 20 MB (8.8 MB measured with the native point inputs,
-    7.4 MB without; 5.3 MB of it the compiled model)."""
+    oracle, and the companion plan of 6 certified-scaleless families)
+    publishes < 20 MB (measured: 11 MB with the native point inputs and the
+    counterterm program of the recursion; 8.8 MB on the slice without native
+    point inputs, 5.3 MB of it the compiled model and 3.5 MB the plan PACBIN
+    with the companion)."""
 
     from pyamplicol.loops.v2.artifact import admit, plan_digest, read_plan
 
@@ -2196,3 +2645,6 @@ def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
     admitted = admit(loop_native, output, "gg4g")
     assert admitted["families"] == 1100
     assert admitted["plan_sha256"] == execution["plan_sha256"]
+    # The companion plan of the certified-scaleless families (poles uv, ir).
+    assert admitted["scaleless_families"] == 6
+    assert admitted["scaleless_plan_sha256"] == execution["scaleless_plan_sha256"]

@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence, Set
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
@@ -3827,34 +3827,49 @@ def assign_recursive_current_evaluation_reuse(
     This recovers AmpliCol-style reflection fan-out, but also recognizes exact
     reuse across colour sectors and helicity subgraphs.  No approximate
     numerical comparison or process/model-family classification is involved.
+    Classes never cross contracts, so only the currents that share their
+    contract with another current get term vectors.
     """
 
     if not dag.interactions:
         return dag
 
     equivalence_by_kind: dict[int, VertexEvaluationEquivalence] = {}
-    contracts = {
-        _current_evaluation_contract(current) for current in dag.currents
-    }
-    if len(contracts) == len(dag.currents):
-        # Every class key starts with the evaluation contract, so a current
-        # whose contract no other current shares is its own representative:
-        # the derivation would return the identity for every current.
-        current_equivalences = tuple(
-            _CurrentValueEquivalence(current_id, (1.0, 0.0))
-            for current_id in sorted(current.id for current in dag.currents)
-        )
-    else:
-        current_equivalences = _derive_current_value_equivalences(
-            dag,
-            model,
-            equivalence_by_kind=equivalence_by_kind,
-        )
+    coupling_identities = _CouplingIdentities(model)
+    current_equivalences = _derive_current_value_equivalences(
+        dag,
+        model,
+        equivalence_by_kind=equivalence_by_kind,
+        derived_current_ids=_shared_contract_current_ids(dag),
+        coupling_identities=coupling_identities,
+    )
     return _rewrite_interaction_evaluation_reuse(
         dag,
         model,
         current_equivalences=current_equivalences,
         equivalence_by_kind=equivalence_by_kind,
+        coupling_identities=coupling_identities,
+    )
+
+
+def _shared_contract_current_ids(dag: GenericDAG) -> frozenset[int]:
+    """Return the currents whose evaluation contract another current shares.
+
+    Every class key of the derivation starts with the evaluation contract:
+    the source key, the exact and opposite term-vector keys and the
+    projective key.  A current whose contract no other current has is
+    therefore always its own representative with factor one, so only the
+    returned currents need their term vectors derived.
+    """
+
+    members_by_contract: dict[_CurrentContract, list[int]] = defaultdict(list)
+    for current in dag.currents:
+        members_by_contract[_current_evaluation_contract(current)].append(current.id)
+    return frozenset(
+        current_id
+        for member_ids in members_by_contract.values()
+        if len(member_ids) > 1
+        for current_id in member_ids
     )
 
 
@@ -3968,9 +3983,13 @@ def _rewrite_interaction_evaluation_reuse(
     *,
     current_equivalences: tuple[_CurrentValueEquivalence, ...],
     equivalence_by_kind: dict[int, VertexEvaluationEquivalence],
+    coupling_identities: _CouplingIdentities | None = None,
 ) -> GenericDAG:
     evaluation_group_by_key: dict[_EvaluationKey, int] = {}
     interactions: list[InteractionNode] = []
+    identity = coupling_identities or _CouplingIdentities(model)
+    # Rewritten interactions share one tuple per factor (bit pattern).
+    factors: dict[tuple[float, float, float, float], _ComplexWeight] = {}
 
     for interaction in dag.interactions:
         kernel_equivalence = _kernel_equivalence(
@@ -3993,19 +4012,52 @@ def _rewrite_interaction_evaluation_reuse(
             canonical_inputs,
             int(result.index.particle_id),
             int(result.index.chirality),
-            _runtime_coupling_identity(
-                model,
-                vertex_kind=interaction.vertex_kind,
-                vertex_particles=interaction.vertex_particles,
-                coupling=interaction.coupling,
+            identity(
+                interaction.vertex_kind,
+                interaction.vertex_particles,
+                interaction.coupling,
             ),
         )
         evaluation_group_id = evaluation_group_by_key.setdefault(
             evaluation_key,
             len(evaluation_group_by_key),
         )
+        if interaction.evaluation_group_id == evaluation_group_id and (
+            _complex_weight_bits_identical(
+                interaction.evaluation_factor, evaluation_factor
+            )
+        ):
+            # Bit for bit what ``replace`` would build.
+            interactions.append(interaction)
+            continue
+        evaluation_factor = factors.setdefault(
+            (
+                evaluation_factor[0],
+                evaluation_factor[1],
+                copysign(1.0, evaluation_factor[0]),
+                copysign(1.0, evaluation_factor[1]),
+            ),
+            evaluation_factor,
+        )
+        # ``replace`` without its field introspection (every field is an
+        # init field and InteractionNode has no __post_init__).
         interactions.append(
-            replace(
+            InteractionNode(
+                id=interaction.id,
+                vertex_kind=interaction.vertex_kind,
+                vertex_particles=interaction.vertex_particles,
+                left_id=interaction.left_id,
+                right_id=interaction.right_id,
+                result_id=interaction.result_id,
+                coupling=interaction.coupling,
+                color_weight=interaction.color_weight,
+                lowering_backend=interaction.lowering_backend,
+                full_tensor_network_ready=interaction.full_tensor_network_ready,
+                evaluation_group_id=evaluation_group_id,
+                evaluation_factor=evaluation_factor,
+            )
+            if type(interaction) is InteractionNode
+            else replace(
                 interaction,
                 evaluation_group_id=evaluation_group_id,
                 evaluation_factor=evaluation_factor,
@@ -4723,9 +4775,25 @@ def _derive_current_value_equivalences(
     authenticated_relations: (
         Mapping[int, _CurrentValueEquivalence] | None
     ) = None,
+    derived_current_ids: Set[int] | None = None,
+    coupling_identities: _CouplingIdentities | None = None,
 ) -> tuple[_CurrentValueEquivalence, ...]:
-    """Derive current classes in increasing external-subset order."""
+    """Derive current classes in increasing external-subset order.
 
+    ``derived_current_ids`` restricts the term-vector derivation to the given
+    currents and makes every other current its own representative.  That is
+    exact when the set contains ``_shared_contract_current_ids(dag)``, because
+    classes never cross evaluation contracts.  The structural checks (source
+    metadata, parents from an earlier subset) still cover every current.
+    """
+
+    if derived_current_ids is not None and (
+        discovery is not None or authenticated_relations is not None
+    ):
+        raise ValueError(
+            "a restricted current-value derivation cannot discover or "
+            "authenticate relations"
+        )
     kernel_equivalences = {} if equivalence_by_kind is None else equivalence_by_kind
     interactions_by_result: dict[int, list[InteractionNode]] = defaultdict(list)
     for interaction in dag.interactions:
@@ -4748,6 +4816,13 @@ def _derive_current_value_equivalences(
         key=lambda current: (len(current.index.external_labels), current.id),
     )
     for current in ordered_currents:
+        if derived_current_ids is not None and current.id not in derived_current_ids:
+            current_equivalences[current.id] = _own_representative_equivalence(
+                current,
+                interactions_by_result[current.id],
+                current_equivalences,
+            )
+            continue
         contract = _current_evaluation_contract(current)
         if current.is_source:
             if current.source_leg_label is None or current.source_helicity is None:
@@ -4776,6 +4851,7 @@ def _derive_current_value_equivalences(
             model,
             current_equivalences=current_equivalences,
             equivalence_by_kind=kernel_equivalences,
+            coupling_identities=coupling_identities,
         )
         equivalence = _classify_current_term_vector(
             current_id=current.id,
@@ -4830,6 +4906,34 @@ def _derive_current_value_equivalences(
             "current-value equivalence derivation left an unclassified current"
         )
     return tuple(item for item in current_equivalences if item is not None)
+
+
+def _own_representative_equivalence(
+    current: CurrentNode,
+    interactions: list[InteractionNode],
+    current_equivalences: list[_CurrentValueEquivalence | None],
+) -> _CurrentValueEquivalence:
+    """Classify a current with an evaluation contract of its own.
+
+    It keeps the full derivation's structural refusals: a source without
+    physical metadata, and a generated current with a parent that is not yet
+    classified.
+    """
+
+    if current.is_source:
+        if current.source_leg_label is None or current.source_helicity is None:
+            raise ValueError(
+                f"source current {current.id} lacks physical source metadata"
+            )
+    elif any(
+        current_equivalences[interaction.left_id] is None
+        or current_equivalences[interaction.right_id] is None
+        for interaction in interactions
+    ):
+        raise ValueError(
+            "current-value equivalence requires parents from an earlier subset"
+        )
+    return _CurrentValueEquivalence(representative_id=current.id, factor=(1.0, 0.0))
 
 
 def verify_dag_relation_certificates(
@@ -5428,6 +5532,7 @@ def _exact_representable_complex_ratio(
 
 
 _EXACT_UNITS = frozenset({(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)})
+_UNIT = (1.0, 0.0)
 
 
 def _exact_representable_complex_product(
@@ -5438,6 +5543,12 @@ def _exact_representable_complex_product(
 
     if not _complex_weight_is_finite(left) or not _complex_weight_is_finite(right):
         return None
+    if left == _UNIT:
+        # 1 * z: every component is z's own up to the sign of a zero, which
+        # the canonical form drops (as for the general product below).
+        return _canonical_complex_weight(right)
+    if right == _UNIT:
+        return _canonical_complex_weight(left)
     if left in _EXACT_UNITS or right in _EXACT_UNITS:
         # A factor +-1 or +-i only swaps and negates the other's finite
         # components, so the binary64 product is exact.
@@ -5568,8 +5679,10 @@ def _current_term_vector(
     *,
     current_equivalences: list[_CurrentValueEquivalence | None],
     equivalence_by_kind: dict[int, VertexEvaluationEquivalence],
+    coupling_identities: _CouplingIdentities | None = None,
 ) -> _CurrentTermVector:
     coefficients_by_key: dict[_EvaluationKey, list[_ComplexWeight]] = defaultdict(list)
+    identity = coupling_identities or _CouplingIdentities(model)
     for interaction in interactions:
         kernel_equivalence = _kernel_equivalence(
             model,
@@ -5594,11 +5707,10 @@ def _current_term_vector(
             canonical_inputs,
             int(current.index.particle_id),
             int(current.index.chirality),
-            _runtime_coupling_identity(
-                model,
-                vertex_kind=interaction.vertex_kind,
-                vertex_particles=interaction.vertex_particles,
-                coupling=interaction.coupling,
+            identity(
+                interaction.vertex_kind,
+                interaction.vertex_particles,
+                interaction.coupling,
             ),
         )
         coefficient = _complex_weight_mul(
@@ -5652,6 +5764,52 @@ def _runtime_coupling_identity(
     )
     provenance = tuple((0, "") if name is None else (1, str(name)) for name in names)
     return coupling, provenance
+
+
+class _CouplingIdentities:
+    """``_runtime_coupling_identity`` of one model, memoized for one pass.
+
+    The provenance depends on the vertex and the coupling's values only (a
+    signed zero names the same parameters), so it is cached by value; the
+    identity keeps the interaction's own coupling.
+    """
+
+    __slots__ = ("_model", "_provenance")
+
+    def __init__(self, model: Model) -> None:
+        self._model = model
+        self._provenance: dict[tuple[object, ...], tuple[tuple[int, str], ...]] = {}
+
+    def __call__(
+        self,
+        vertex_kind: int,
+        vertex_particles: tuple[int, int, int],
+        coupling: tuple[float, float],
+    ) -> tuple[tuple[float, float], tuple[tuple[int, str], ...]]:
+        key = (vertex_kind, vertex_particles, coupling)
+        provenance = self._provenance.get(key)
+        if provenance is None:
+            provenance = _runtime_coupling_identity(
+                self._model,
+                vertex_kind=vertex_kind,
+                vertex_particles=vertex_particles,
+                coupling=coupling,
+            )[1]
+            self._provenance[key] = provenance
+        return coupling, provenance
+
+
+def _complex_weight_bits_identical(
+    left: _ComplexWeight,
+    right: _ComplexWeight,
+) -> bool:
+    """Bitwise equality of two finite complex weights (signed zeros differ)."""
+
+    return (
+        left == right
+        and copysign(1.0, left[0]) == copysign(1.0, right[0])
+        and copysign(1.0, left[1]) == copysign(1.0, right[1])
+    )
 
 
 def _negate_term_vector(vector: _CurrentTermVector) -> _CurrentTermVector:
