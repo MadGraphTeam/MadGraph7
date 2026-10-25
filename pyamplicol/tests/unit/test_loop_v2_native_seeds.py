@@ -697,6 +697,14 @@ def test_native_seeds_in_the_slice(
         unpruned.colour, frames=frames, keep=stage.reading_keep(unpruned)
     )
     assert_same_schedules(by_liveness, by_callback)
+    # The one-line switch offered to ``_prune_colour``'s owner.
+    proposed = native_seeds.prune_keep(unpruned)
+    assert proposed is not None
+    assert proposed.flags == stage.reading_keep(unpruned).flags
+    assert_same_schedules(
+        generation.schedules(unpruned.colour, frames=frames, keep=proposed),
+        by_callback,
+    )
     assert_same_schedules(by_callback, native.plan)
 
 

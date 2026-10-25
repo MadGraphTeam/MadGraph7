@@ -148,6 +148,25 @@ def python_oracle() -> Iterator[None]:
         NATIVE = saved
 
 
+def prune_keep(
+    slice_: Any, observables: Iterable[tuple[SeedTable, Mapping[Orders, Any]]] = ()
+) -> generator_input.ReadingKeep | None:
+    """``LoopSlice._prune_colour``'s ``keep`` as native prune flags (B1):
+    the native liveness (``NativeSeedStage.reading_keep``) of the seed stage
+    that read the slice's complete schedule build in-crate, when the slice's
+    table is still that stage's; None otherwise (the Python callback then
+    applies). ``NativeGeneration.schedules(..., keep=prune_keep(...))``
+    rebuilds the pruned schedules without a Python callback; the switch of
+    ``_prune_colour`` to it is its owner's one line."""
+
+    generation = getattr(slice_, "generation", None)
+    base = getattr(generation, "base", None)
+    stage: NativeSeedStage | None = getattr(base, "seed_stage", None)
+    if stage is None or stage.table is not slice_.table:
+        return None
+    return stage.reading_keep(slice_, observables)
+
+
 class _Networks:
     """Colour networks as the native reducer reads them (``NetworkSpec``):
     external legs keep their labels, "in"/"out" are the loop lines (-1,
@@ -434,6 +453,9 @@ class NativeSeedStage:
             source = None
             contents, offsets, ids = _skeleton_tables(skeletons)
         self.build_source = source
+        if source is not None and source.complete and build:
+            # The prune's native liveness reads this stage (``prune_keep``).
+            source.seed_stage = self
         self._step("skeleton_tables")
         encoder = _Encoder(self.adjoint, compressed)
         names = sorted(

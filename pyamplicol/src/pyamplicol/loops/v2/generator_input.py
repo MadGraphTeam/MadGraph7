@@ -266,6 +266,9 @@ class NativeBuild:
         self.skeletons = skeletons
         self.complete = complete
         self.plan: LoopSchedules | None = None
+        # The seed stage that read the build in-crate (a complete build;
+        # ``native_seeds.prune_keep`` reads its native liveness).
+        self.seed_stage: Any = None
         self.first_leaf: Skeleton | None = None
         self.leaves = 0
         self._readings: tuple[bytes, bytes, list[int]] | None = None
