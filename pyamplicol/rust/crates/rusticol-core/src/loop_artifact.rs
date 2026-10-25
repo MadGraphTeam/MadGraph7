@@ -447,6 +447,23 @@ pub const LOOP_V2_NATIVE_RECORD_MEMBER: &str = "point-inputs/native-process.json
 pub const LOOP_V2_NATIVE_TREES_MEMBER: &str = "point-inputs/tree-program.json.zlib";
 pub const LOOP_V2_NATIVE_PARAMETERS_MEMBER: &str = "point-inputs/parameters.state";
 pub const LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER: &str = "point-inputs/parameters.symjit";
+/// The interaction kernels' saved evaluators and plane applications,
+/// `kernel-0.state` / `kernel-0.symjit` onwards.
+pub const LOOP_V2_NATIVE_KERNEL_PREFIX: &str = "point-inputs/kernel-";
+
+/// The native point inputs of a plan v4 process
+/// ([`LOOP_V2_NATIVE_POINT_INPUTS`]): the assembly record and the tree
+/// program (JSON), the interaction kernels' and the parameter program's
+/// saved exact evaluators and their binary64 SymJIT plane applications
+/// (`loop_v2::trees::TreeProgram::load` order: the kernels, then the
+/// parameter program).
+#[cfg(feature = "loop-v2")]
+pub struct LoopV2NativeInputs {
+    pub record_json: Vec<u8>,
+    pub trees_json: Vec<u8>,
+    pub evaluators: Vec<Vec<u8>>,
+    pub planes: Vec<Vec<u8>>,
+}
 
 #[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
@@ -480,6 +497,12 @@ pub struct LoadedLoopV2Artifact {
     pub scaleless_plan_sha256: Option<String>,
     pub scaleless_plan_json: Option<Vec<u8>>,
     pub scaleless_program: Option<Arc<crate::loop_v2::plan::LoopProgramV4>>,
+    /// The execution payload's path and its PACBIN's runtime path, and the
+    /// declared point inputs ([`read_loop_v2_native_inputs`] reads the
+    /// native ones on demand: the Python runtime reads them itself).
+    pub execution_path: String,
+    pub runtime_path: String,
+    pub point_inputs: String,
 }
 
 #[cfg(feature = "loop-v2")]
@@ -687,7 +710,74 @@ pub fn load_loop_v2_artifact(
         scaleless_plan_sha256: execution.scaleless_plan_sha256,
         scaleless_plan_json,
         scaleless_program,
+        execution_path: path,
+        runtime_path: execution.runtime_path,
+        point_inputs: execution.point_inputs,
     })
+}
+
+/// The native point inputs of an admitted plan v4 process (its declared
+/// `point_inputs` is [`LOOP_V2_NATIVE_POINT_INPUTS`]; `None` otherwise):
+/// read from the process's PACBIN, the zlib JSON members inflated.
+#[cfg(feature = "loop-v2")]
+pub fn read_loop_v2_native_inputs(
+    artifact: &VerifiedArtifact,
+    loaded: &LoadedLoopV2Artifact,
+) -> RusticolResult<Option<LoopV2NativeInputs>> {
+    use crate::pacbin::PacbinMemberKind;
+    use std::io::Read;
+
+    if loaded.point_inputs != LOOP_V2_NATIVE_POINT_INPUTS {
+        return Ok(None);
+    }
+    let root = artifact.root().join(
+        Path::new(&loaded.execution_path)
+            .parent()
+            .unwrap_or(Path::new("")),
+    );
+    let store = artifact.evaluator_payload_store(&root)?;
+    let reader = store.source(&loaded.runtime_path)?.pacbin()?;
+    let member = |name: &str, kind: PacbinMemberKind| -> RusticolResult<Vec<u8>> {
+        require(
+            reader.member(name)?.kind() == kind,
+            "native point inputs member of the wrong kind",
+        )?;
+        Ok(reader.member_bytes(name)?.to_vec())
+    };
+    let inflate = |name: &str| -> RusticolResult<Vec<u8>> {
+        let mut json = Vec::new();
+        flate2::read::ZlibDecoder::new(
+            member(name, PacbinMemberKind::LoopRuntimePlan)?.as_slice(),
+        )
+        .read_to_end(&mut json)
+        .map_err(|error| RusticolError::integrity(format!("{name} is not a zlib stream: {error}")))?;
+        Ok(json)
+    };
+    let mut evaluators = Vec::new();
+    let mut planes = Vec::new();
+    loop {
+        let state = format!("{LOOP_V2_NATIVE_KERNEL_PREFIX}{}.state", evaluators.len());
+        if reader.member(&state).is_err() {
+            break;
+        }
+        let plane = format!("{LOOP_V2_NATIVE_KERNEL_PREFIX}{}.symjit", evaluators.len());
+        evaluators.push(member(&state, PacbinMemberKind::SymbolicaExactState)?);
+        planes.push(member(&plane, PacbinMemberKind::SymjitApplication)?);
+    }
+    evaluators.push(member(
+        LOOP_V2_NATIVE_PARAMETERS_MEMBER,
+        PacbinMemberKind::SymbolicaExactState,
+    )?);
+    planes.push(member(
+        LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER,
+        PacbinMemberKind::SymjitApplication,
+    )?);
+    Ok(Some(LoopV2NativeInputs {
+        record_json: inflate(LOOP_V2_NATIVE_RECORD_MEMBER)?,
+        trees_json: inflate(LOOP_V2_NATIVE_TREES_MEMBER)?,
+        evaluators,
+        planes,
+    }))
 }
 
 #[cfg(feature = "loop-v2")]

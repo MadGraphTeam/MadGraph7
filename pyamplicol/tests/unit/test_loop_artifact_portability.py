@@ -24,13 +24,13 @@ cross-host acceptance (its docstring), on:
   no load-time regeneration (``point_inputs = "native-v2"``: the native
   programs and the binary64 SymJIT plane application of every saved
   evaluator, storage-v4 IR recompiled at load);
-* the loop SDK (C ABI through ``rusticol_virtual_open``): bitwise equal to the
-  Python API at both locations and usable without a licence by concurrent
-  processes (expected failures until the SDK evaluates plan v4,
-  generation-scale-2); the legacy loop SDK, whose evaluation decodes exact
-  states, runs without a licence in concurrent processes while another
-  process holds the user's restricted permit (pyAmpliCol's Symbolica library
-  key in the native code, crate ``rust/crates/pyamplicol``);
+* the loop SDK (C ABI through ``rusticol_virtual_open``, which dispatches a
+  plan v4 artifact to the native ``V2Runtime``): bitwise equal to the Python
+  API at both locations and usable without a licence by concurrent processes;
+  the legacy loop SDK, whose evaluation decodes exact states, runs without a
+  licence in concurrent processes while another process holds the user's
+  restricted permit (pyAmpliCol's Symbolica library key in the native code,
+  crate ``rust/crates/pyamplicol``);
 * unlicensed concurrent processes (Symbolica's restricted mode admits one
   thread per user, so any state access of the Rust copy of Symbolica aborts
   while another process holds the permit): two pyAmpliCol processes without
@@ -70,10 +70,6 @@ _spec = importlib.util.spec_from_file_location("loop_artifact_portability", TOOL
 portability = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(portability)
 
-SDK_WITHOUT_V4 = (
-    "the loop SDK refuses plan v4 until generation-scale-2 (V2Runtime and the "
-    "rusticol_virtual_open dispatch)"
-)
 RESTRICTED = "restricted Symbolica"
 # Disables pyAmpliCol's Symbolica library key in the native code
 # (``pyamplicol::DISABLE_VARIABLE``, crate ``rust/crates/pyamplicol``).
@@ -848,16 +844,10 @@ def loop_sdk_client(tmp_path_factory):
     )
 
 
-def _sdk_evaluates_v4(loop_native) -> bool:
-    return hasattr(loop_native, "evaluate_v2_artifact")
-
-
 @pytest.mark.loop_physics
 def test_loop_v4_sdk_equals_python_bitwise_at_both_locations(
-    request, loop_artifact, loop_sdk_client, loop_native, tmp_path
+    loop_artifact, loop_sdk_client, tmp_path
 ):
-    if not _sdk_evaluates_v4(loop_native):
-        request.applymarker(pytest.mark.xfail(reason=SDK_WITHOUT_V4, strict=True))
     artifact, _, _ = loop_artifact("gg")
     verdict = portability.check(
         artifact, "gg", tmp_path, count=2, client=loop_sdk_client, instances=1
@@ -869,15 +859,13 @@ def test_loop_v4_sdk_equals_python_bitwise_at_both_locations(
 
 @pytest.mark.loop_physics
 def test_loop_v4_sdk_needs_no_symbolica_licence(
-    request, loop_artifact, loop_sdk_client, loop_native, tmp_path
+    loop_artifact, loop_sdk_client, tmp_path
 ):
     """The f64 SDK follows the tree engine's rule: no Symbolica licence, so
     concurrent unlicensed SDK processes (a Monte Carlo farm) all run. A
     Symbolica state access takes the user's single restricted-thread permit,
     so the instances run while another process holds it: any access aborts."""
 
-    if not _sdk_evaluates_v4(loop_native):
-        request.applymarker(pytest.mark.xfail(reason=SDK_WITHOUT_V4, strict=True))
     artifact, _, _ = loop_artifact("gg")
     points = tmp_path / "points.json"
     points.write_text(json.dumps(portability.points(4, 1)))
