@@ -34,10 +34,12 @@ from .contact_decomposition import (
 )
 from .contracts import (
     DEFAULT_FEYNMAN_PROPAGATOR_SOURCE,
+    MODEL_GAUGES,
     MODEL_SUPPLIED_PROPAGATOR_SOURCE,
     PROPAGATOR_SOURCE_FIELD,
     TENSOR_ORDERING_CONTRACT_VERSION,
     CompiledModelIR,
+    ModelGauge,
     TreeKernelVariant,
 )
 
@@ -142,8 +144,17 @@ def _require_ufo_model_loader() -> None:
 
 @dataclass(frozen=True, slots=True)
 class ModelCompileOptions:
+    """How a model source is compiled.
+
+    ``gauge`` is the gauge of the massive vectors (``contracts.ModelGauge``):
+    ``"unitary"`` (the default) or ``"feynman"``, the 't Hooft-Feynman gauge
+    with explicit Goldstones, admissible only for a UFO model whose ``gauge``
+    declaration lists 1 (``declared_model_gauges``).
+    """
+
     restriction: str = DEFAULT_MODEL_RESTRICTION
     simplify: bool = True
+    gauge: ModelGauge = "unitary"
 
     def __post_init__(self) -> None:
         restriction_path = Path(self.restriction).expanduser()
@@ -156,6 +167,11 @@ class ModelCompileOptions:
             )
         if not isinstance(self.simplify, bool):
             raise TypeError("model simplification must be a boolean")
+        if self.gauge not in MODEL_GAUGES:
+            raise ValueError(
+                f"model gauge must be one of {', '.join(MODEL_GAUGES)}, "
+                f"not {self.gauge!r}"
+            )
 
     def canonical_payload(self) -> dict[str, object]:
         restriction_path = Path(self.restriction).expanduser()
@@ -169,6 +185,9 @@ class ModelCompileOptions:
         return {
             "restriction": restriction,
             "simplify": self.simplify,
+            # Only off the default, so unitary-gauge compiles keep their record
+            # and cache key.
+            **({} if self.gauge == "unitary" else {"gauge": self.gauge}),
         }
 
 
@@ -410,6 +429,36 @@ def compile_model_source(
     cache_dir: Path | None = None,
     use_cache: bool = True,
     require_supported: bool = True,
+    gauge: ModelGauge | None = None,
+) -> CompiledModel:
+    """Compile (or load from the model cache) one model source.
+
+    ``gauge`` selects the gauge of the massive vectors (``with_model_gauge``;
+    ``None`` keeps the source's: unitary for a UFO or JSON source, the
+    recorded one for a compiled model). The two gauges share every compiled
+    record but the Goldstone dispositions, so the model cache holds the
+    gauge-independent compile and the gauge is applied to it.
+    """
+
+    compiled = _compile_model_source(
+        source,
+        restriction=restriction,
+        simplify=simplify,
+        cache_dir=cache_dir,
+        use_cache=use_cache,
+        require_supported=require_supported,
+    )
+    return compiled if gauge is None else with_model_gauge(compiled, gauge)
+
+
+def _compile_model_source(
+    source: str | Path = "BUILTIN_SM",
+    *,
+    restriction: str = "default",
+    simplify: bool = True,
+    cache_dir: Path | None = None,
+    use_cache: bool = True,
+    require_supported: bool = True,
 ) -> CompiledModel:
     options = ModelCompileOptions(restriction=restriction, simplify=simplify)
     source_kind, resolved, detected_payload = _detect_model_source_payload(source)
@@ -585,6 +634,30 @@ def load_cached_model_source(
     simplify: bool = True,
     cache_dir: Path | None = None,
     require_supported: bool = True,
+    gauge: ModelGauge | None = None,
+) -> CompiledModel | None:
+    """Load an already compiled source without compiling or writing a cache;
+    ``gauge`` as in ``compile_model_source``."""
+
+    compiled = _load_cached_model_source(
+        source,
+        restriction=restriction,
+        simplify=simplify,
+        cache_dir=cache_dir,
+        require_supported=require_supported,
+    )
+    if compiled is None or gauge is None:
+        return compiled
+    return with_model_gauge(compiled, gauge)
+
+
+def _load_cached_model_source(
+    source: str | Path,
+    *,
+    restriction: str = DEFAULT_MODEL_RESTRICTION,
+    simplify: bool = True,
+    cache_dir: Path | None = None,
+    require_supported: bool = True,
 ) -> CompiledModel | None:
     """Load an already compiled source without compiling or writing a cache."""
 
@@ -629,6 +702,82 @@ def load_cached_model_source(
     compiled = load_compiled_model(cache_path)
     _raise_for_unsupported(compiled, require_supported=require_supported)
     return compiled
+
+
+def declared_model_gauges(compiled: CompiledModel) -> tuple[int, ...] | None:
+    """The gauges the source UFO of ``compiled`` declares (its module-level
+    ``gauge`` list, MG5's convention: 0 unitary, 1 Feynman), from the raw
+    source records the compile keeps; ``None`` when it declares none or no
+    raw source is kept (JSON and built-in models)."""
+
+    raw = compiled.raw_loop_model
+    declared = None if raw is None else raw.metadata.get("gauge")
+    if not isinstance(declared, (list, tuple)) or not all(
+        type(item) is int for item in declared
+    ):
+        return None
+    return tuple(declared)
+
+
+def with_model_gauge(compiled: CompiledModel, gauge: ModelGauge) -> CompiledModel:
+    """``compiled`` with its massive vectors in ``gauge``
+    (``contracts.ModelGauge``).
+
+    The 't Hooft-Feynman gauge is admissible only for a model whose source
+    declares gauge 1 (``declared_model_gauges``): its Goldstone vertices and
+    counterterms are written for it. Only the Goldstone dispositions
+    (``compiler_gauge``) and the recorded gauge change: every vertex, kernel,
+    propagator and parameter record is the compile's own, and the gauge is
+    recorded in the compile options (``ModelCompileOptions.gauge``). A
+    prepared bundle carries the gauge it was prepared in and is refused.
+    """
+
+    if gauge not in MODEL_GAUGES:
+        raise ValueError(
+            f"model gauge must be one of {', '.join(MODEL_GAUGES)}, not {gauge!r}"
+        )
+    if compiled.ir.gauge == gauge:
+        return compiled
+    if compiled.prepared_bundle is not None:
+        raise ValueError(
+            "a prepared model bundle carries the gauge it was prepared in "
+            f"({compiled.ir.gauge}); prepare the model in {gauge} gauge instead"
+        )
+    if gauge == "feynman":
+        declared = declared_model_gauges(compiled)
+        if declared is None or 1 not in declared:
+            raise ValueError(
+                f"model gauge {gauge!r} needs a UFO model that declares gauge 1 "
+                f"('t Hooft-Feynman); {compiled.name!r} declares "
+                f"{'none' if declared is None else list(declared)}"
+            )
+    from .compiler_gauge import compile_goldstone_partner_records
+
+    ir = compiled.ir
+    options = {
+        key: value
+        for key, value in dict(
+            _mapping(compiled.source.get("options", {}), "source options")
+        ).items()
+        if key != "gauge"
+    }
+    return replace(
+        compiled,
+        source={
+            **compiled.source,
+            # As ``ModelCompileOptions.canonical_payload`` records it.
+            "options": {**options, **({} if gauge == "unitary" else {"gauge": gauge})},
+        },
+        ir=replace(
+            ir,
+            gauge=gauge,
+            goldstone_partners=compile_goldstone_partner_records(
+                ir.particles, ir.parameters, ir.propagators, gauge=gauge
+            ),
+        ),
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
 
 
 def load_compiled_model(path: Path) -> CompiledModel:
@@ -1560,6 +1709,7 @@ def lower_counterterm_vertices(
         payload,
         tree_kernel_variant=tree_kernel_variant,
         u1_projected_vertices=frozenset(vertex_members) if multi_trace else frozenset(),
+        gauge=compiled.ir.gauge,
     )
     # Couplings the model's restriction makes vanish (e.g. off-diagonal CKM
     # entries) are structural zeros: their terms are dropped, not lowered.
@@ -1684,6 +1834,7 @@ def compile_counterterm_model_ir(
     tree_kernel_variant: TreeKernelVariant,
     u1_projected_vertices: frozenset[str],
     cache_dir: Path | None = None,
+    gauge: ModelGauge = "unitary",
 ) -> CompiledModelIR:
     """``compile_ufo_model_ir`` of a CT-lowered payload, content-addressed.
 
@@ -1693,9 +1844,9 @@ def compile_counterterm_model_ir(
     proofs) is cached like a compiled model (``compile_model_source``): in
     ``cache_dir`` (default: the model cache, ``$PYAMPLICOL_CACHE_DIR/models``
     or the platform cache) under the SHA-256 of the payload (in its own key
-    order), the variant, the projected vertices and the compiler's code
-    identity (``compiler_fingerprint`` without the package version: Symbolica,
-    the model-compiler sources and contracts).
+    order), the variant, the projected vertices, the gauge and the compiler's
+    code identity (``compiler_fingerprint`` without the package version:
+    Symbolica, the model-compiler sources and contracts).
     The IR round-trips exactly (``CompiledModelIR.to_dict``/``from_dict``); an
     unreadable or foreign entry is recompiled, and a cache that cannot be
     written leaves the result uncached.
@@ -1706,6 +1857,7 @@ def compile_counterterm_model_ir(
         tree_kernel_variant=tree_kernel_variant,
         u1_projected_vertices=u1_projected_vertices,
         cache_dir=cache_dir,
+        gauge=gauge,
     )[0]
 
 
@@ -1715,6 +1867,7 @@ def _counterterm_ir(
     tree_kernel_variant: TreeKernelVariant,
     u1_projected_vertices: frozenset[str],
     cache_dir: Path | None = None,
+    gauge: ModelGauge = "unitary",
 ) -> tuple[CompiledModelIR, tuple[Path, str]]:
     """``compile_counterterm_model_ir`` and its cache entry (file, key)."""
 
@@ -1728,6 +1881,8 @@ def _counterterm_ir(
                 payload,
                 str(tree_kernel_variant),
                 sorted(u1_projected_vertices),
+                # Only off the default (unitary keys are unchanged).
+                *(() if gauge == "unitary" else (str(gauge),)),
                 _COUNTERTERM_IR_FINGERPRINT[0],
             ],
             separators=(",", ":"),
@@ -1752,6 +1907,7 @@ def _counterterm_ir(
         payload,
         tree_kernel_variant=tree_kernel_variant,
         u1_projected_vertices=u1_projected_vertices,
+        gauge=gauge,
     )
     with suppress(OSError):
         _atomic_write_json(

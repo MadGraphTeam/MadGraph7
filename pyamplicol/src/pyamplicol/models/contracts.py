@@ -60,6 +60,17 @@ U1_PROJECTION_SUFFIX = "::u1-projection"
 TreeKernelVariant: TypeAlias = Literal["transverse", "full"]
 TREE_KERNEL_VARIANTS: tuple[TreeKernelVariant, ...] = ("transverse", "full")
 
+# The gauge of a compiled tree model's massive vectors. ``unitary`` is the
+# compile-time default: a massive vector propagates with
+# -i (g - p p / M^2) / (p^2 - M^2 + i M W) and absorbs its Goldstone, whose
+# vertices leave the tree model. ``feynman`` is the 't Hooft-Feynman gauge
+# (xi = 1): the vector propagates with -i g / (p^2 - M^2 + i M W) and its
+# Goldstone is an explicit field of the tree model (``compiler_gauge``). It is
+# admissible only on a UFO model that declares gauge 1 (``models.loading``);
+# a model's UFO counterterms are Feynman-gauge rules.
+ModelGauge: TypeAlias = Literal["unitary", "feynman"]
+MODEL_GAUGES: tuple[ModelGauge, ...] = ("unitary", "feynman")
+
 _CANONICAL_COMPONENT_DIMENSIONS = {-1: 1, 1: 1, 2: 4, 3: 4, 5: 16}
 
 
@@ -390,7 +401,14 @@ class CompiledPropagatorRecord:
 
 @dataclass(frozen=True)
 class CompiledGoldstonePartnerRecord:
-    """Compiler-owned disposition of one UFO-declared Goldstone mode."""
+    """Compiler-owned disposition of one UFO-declared Goldstone mode.
+
+    ``absorbed``: the unitary-gauge ``vector`` absorbs it (its vertices leave
+    the tree model). ``explicit``: a propagating field of the tree model, the
+    partner of the 't Hooft-Feynman-gauge ``vector`` (a ``feynman`` model), or
+    of no vector (``vector`` is ``None``). ``model-supplied``: ``vector`` has a
+    model-supplied propagator, which is applied as written.
+    """
 
     goldstone: str
     vector: str | None
@@ -405,8 +423,8 @@ class CompiledGoldstonePartnerRecord:
             raise ValueError(f"invalid compiled Goldstone policy {self.policy!r}")
         if not self.goldstone or not self.mass_expression or not self.association_basis:
             raise ValueError("compiled Goldstone metadata must not be empty")
-        if self.policy == "explicit" and self.vector is not None:
-            raise ValueError("an explicit Goldstone mode cannot name a vector partner")
+        if self.policy == "explicit" and self.vector == "":
+            raise ValueError("an explicit Goldstone partner must not be empty")
         if self.policy != "explicit" and not self.vector:
             raise ValueError(
                 f"a {self.policy} Goldstone mode must name its vector partner"
@@ -1099,12 +1117,15 @@ class CompiledModelIR:
     current_orderings: tuple[CompiledCurrentOrderingRecord, ...] = ()
     goldstone_partners: tuple[CompiledGoldstonePartnerRecord, ...] = ()
     tree_kernel_variant: TreeKernelVariant = "transverse"
+    gauge: ModelGauge = "unitary"
 
     def __post_init__(self) -> None:
         if self.tree_kernel_variant not in TREE_KERNEL_VARIANTS:
             raise ValueError(
                 f"unsupported tree kernel variant {self.tree_kernel_variant!r}"
             )
+        if self.gauge not in MODEL_GAUGES:
+            raise ValueError(f"unsupported model gauge {self.gauge!r}")
         self._validate_particle_identities()
         self._validate_goldstone_partners()
         self._validate_contractions()
@@ -1196,6 +1217,7 @@ class CompiledModelIR:
             self.particles,
             self.parameters,
             self.propagators,
+            gauge=self.gauge,
         )
         if self.goldstone_partners != expected:
             raise ValueError(
@@ -1812,6 +1834,8 @@ class CompiledModelIR:
                 if self.tree_kernel_variant == "transverse"
                 else {"tree_kernel_variant": self.tree_kernel_variant}
             ),
+            # Likewise only off the default: unitary-gauge IR is unchanged.
+            **({} if self.gauge == "unitary" else {"gauge": self.gauge}),
         }
 
     @staticmethod
@@ -2088,6 +2112,7 @@ class CompiledModelIR:
                 TreeKernelVariant,
                 str(payload.get("tree_kernel_variant", "transverse")),
             ),
+            gauge=cast(ModelGauge, str(payload.get("gauge", "unitary"))),
         )
 
 
@@ -2364,6 +2389,7 @@ def _compiled_lc_color_closure_terms(
 
 
 __all__ = [
+    "MODEL_GAUGES",
     "SUPPORTED_COLOR_REPRESENTATIONS",
     "TENSOR_ORDERING_CONTRACT_VERSION",
     "TREE_KERNEL_VARIANTS",
@@ -2384,6 +2410,7 @@ __all__ = [
     "CompiledParticleRecord",
     "CompiledPropagatorRecord",
     "CompiledVertexTerm",
+    "ModelGauge",
     "TensorAxisIR",
     "TensorIndexBindingIR",
     "TensorOrderingIR",
