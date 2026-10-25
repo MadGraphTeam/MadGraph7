@@ -48,10 +48,8 @@ and column plans among them) are ``loop_physics``, six legs and the no-key
 process ``loop_nightly``; seven-leg evidence is the stored S8 digest of
 bounded runs (RUST-MIGRATION.md rule 6).
 
-The electroweak control vetoes the top through ``SliceRequest``'s
-``ignored_particle_ids``, which ct-simplify renames ``particle_veto``: the
-rename lands here in phase 1, when ct-simplify reaches this branch with
-G-int (it is not on the pinned generation-scale base).
+The electroweak control vetoes the top through ``SliceRequest``'s public
+``particle_veto`` (REQUIREMENTS_ADDENDUM J).
 """
 
 from __future__ import annotations
@@ -99,11 +97,11 @@ def slices(loop_sm_compiled_model, loop_native):
 
     def build(name: str) -> LoopSlice:
         if name not in built:
-            process, born, ignored = PROCESSES[name]
+            process, born, veto = PROCESSES[name]
             loop = {k: v + (2 if k == "QCD" else 0) for k, v in born.items()}
             options: dict[str, object] = {}
-            if ignored:  # only the electroweak control vetoes a particle
-                options["ignored_particle_ids"] = ignored
+            if veto:  # only the electroweak control vetoes a particle
+                options["particle_veto"] = veto
             if name in SITES:
                 options["counterterms"] = "sites"
             request = SliceRequest(
