@@ -438,6 +438,10 @@ pub const LOOP_V2_POINT_INPUTS: &str = "regenerated-at-load";
 /// regenerates nothing and binary64 touches no Symbolica state.
 pub const LOOP_V2_NATIVE_POINT_INPUTS: &str = "native-v2";
 
+/// Former point-input declarations, refused with a request to regenerate:
+/// `native-v1` stored no plane applications.
+pub const LOOP_V2_RETIRED_POINT_INPUTS: [&str; 1] = ["native-v1"];
+
 /// The PACBIN members of native point inputs.
 pub const LOOP_V2_NATIVE_RECORD_MEMBER: &str = "point-inputs/native-process.json.zlib";
 pub const LOOP_V2_NATIVE_TREES_MEMBER: &str = "point-inputs/tree-program.json.zlib";
@@ -522,6 +526,12 @@ pub fn load_loop_v2_artifact(
         None => artifact.read_payload(&path)?,
     };
     let execution: ExecutionV4 = parse(&bytes)?;
+    // Internal formats are not kept backward compatible (AGENTS.md).
+    require(
+        !LOOP_V2_RETIRED_POINT_INPUTS.contains(&execution.point_inputs.as_str()),
+        "the artifact's point inputs are no longer supported (native-v1 stored \
+         no SymJIT plane applications); regenerate the artifact",
+    )?;
     require(
         execution.schema_version == 4
             && execution.kind == LOOP_RUNTIME_KIND
