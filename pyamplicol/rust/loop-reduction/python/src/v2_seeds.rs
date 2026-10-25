@@ -6,6 +6,7 @@
 //! distinct contents and the skeletons as little-endian content-id spans)
 //! and decodes the output. No Symbolica licence call is made.
 use super::*;
+use crate::v2_generate::V2Generation;
 use rusticol_core::loop_v2::generate::seeds::{
     self, Kind, LivenessSpec, Seed, SeedOutput, SeedSpec, TensorSpec, Word,
 };
@@ -71,6 +72,30 @@ impl SeedBuilder {
             .collect();
         let core = py
             .detach(|| seeds::SeedBuilder::new(spec, offsets, contents))
+            .map_err(error)?;
+        Ok(Self { core, output: None })
+    }
+
+    /// The stage fed in-crate by a retained schedule build of `generation`
+    /// (`V2Generation`, handle `handle`): its readings
+    /// (`reference_executor.reading_skeletons`) are the stage's skeletons,
+    /// and `spec`'s contents are the build's distinct reading contents in
+    /// the order `V2Generation.readings` lists them.
+    #[staticmethod]
+    fn from_generation(
+        py: Python<'_>,
+        generation: &Bound<'_, V2Generation>,
+        handle: usize,
+        spec: &str,
+    ) -> PyResult<Self> {
+        let spec: SeedSpec = serde_json::from_str(spec).map_err(error)?;
+        let retained = generation.get().retained(handle)?;
+        let core = py
+            .detach(|| {
+                let readings = retained.readings();
+                let (_used, dense) = readings.dense();
+                seeds::SeedBuilder::new(spec, readings.offsets, dense)
+            })
             .map_err(error)?;
         Ok(Self { core, output: None })
     }

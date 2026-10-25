@@ -4,11 +4,13 @@
 //! the JSON tables of `loops/v2/generator_input.py`; outputs are plain tuples
 //! of ids that the module decodes into the Python generator's objects.
 use super::*;
+use rusticol_core::loop_v2::generate::arena::{self, Arena, Readings};
 use rusticol_core::loop_v2::generate::cycles;
 use rusticol_core::loop_v2::generate::families::{FamilyInput, FamilyOutput, generate_families};
 use rusticol_core::loop_v2::generate::schedules::{
-    Content, ScheduleInput, build_schedules, build_skeletons,
+    Content, FamilySchedule, Retained, ScheduleInput, build_skeletons,
 };
+use std::sync::Arc;
 
 type Key = Vec<(u64, u32)>;
 type RawFamily = (Key, i64, Vec<(u32, bool, u32)>);
@@ -24,9 +26,11 @@ type RawFamilies = (
 );
 type RawContent = (u32, u32, u32, u64, u32, Vec<(u32, Vec<u32>)>, i64);
 type RawNode = (usize, u32, Vec<u32>, i64, Vec<(u32, u32)>);
+/// `(family, skeletons, viewed, frame, leaves, nodes, rank, masters)`; a
+/// rebuild sends no skeletons (its base's are reused).
 type RawSchedule = (
     usize,
-    Vec<RawSkeleton>,
+    Option<Vec<RawSkeleton>>,
     Vec<usize>,
     (usize, bool),
     Vec<(usize, Vec<u32>)>,
@@ -36,7 +40,11 @@ type RawSchedule = (
 );
 type RawSkeleton = (Vec<u32>, bool, u32);
 type RawSkeletons = (Vec<RawContent>, Vec<Vec<(u16, i64)>>, Vec<Vec<RawSkeleton>>);
+/// `(handle, first new content id, new contents, labels, orders,
+/// schedules)`.
 type RawSchedules = (
+    usize,
+    usize,
     Vec<RawContent>,
     Vec<u32>,
     Vec<Vec<(u16, i64)>>,
@@ -45,11 +53,98 @@ type RawSchedules = (
 
 /// One process's native generation: the family recursion runs at
 /// construction (`families.generate_families`); later stages read its
-/// output in place.
+/// output in place. Every schedule build is retained in the generation's
+/// arena (`loop_v2::generate::arena`) under the handle it returns.
 #[pyclass(frozen)]
-struct V2Generation {
+pub(crate) struct V2Generation {
     input: FamilyInput,
     families: FamilyOutput,
+    arena: Arena,
+}
+
+impl V2Generation {
+    /// A retained build (for the in-crate readers, `v2_seeds.rs`).
+    pub(crate) fn retained(&self, handle: usize) -> PyResult<Arc<Retained>> {
+        self.arena.get(handle).map_err(error)
+    }
+
+    fn raw_schedules(
+        build: &Retained,
+        handle: usize,
+        first: usize,
+        skeletons: bool,
+    ) -> RawSchedules {
+        let raw = |s: &FamilySchedule| -> RawSchedule {
+            (
+                s.family,
+                skeletons.then(|| {
+                    build
+                        .family_skeletons(s.family)
+                        .iter()
+                        .map(|k| (k.contents.clone(), k.half_weight, k.multiplicity))
+                        .collect()
+                }),
+                s.viewed.clone(),
+                s.frame,
+                s.leaves.clone(),
+                build
+                    .nodes(s)
+                    .iter()
+                    .map(|n| {
+                        (
+                            n.depth,
+                            n.orders,
+                            n.suffix.clone(),
+                            n.rank_in,
+                            n.edges.clone(),
+                        )
+                    })
+                    .collect(),
+                s.rank,
+                s.masters.clone(),
+            )
+        };
+        (
+            handle,
+            first,
+            build.contents()[first..]
+                .iter()
+                .cloned()
+                .map(raw_content)
+                .collect(),
+            build.labels().to_vec(),
+            build.order_vectors(),
+            build.schedules().iter().map(raw).collect(),
+        )
+    }
+}
+
+/// Little-endian bytes of a reading table: `(u64 offsets, u32 contents)`.
+fn reading_bytes(readings: &Readings) -> (Vec<u8>, Vec<u8>) {
+    (
+        readings
+            .offsets
+            .iter()
+            .flat_map(|&o| (o as u64).to_le_bytes())
+            .collect(),
+        readings
+            .contents
+            .iter()
+            .flat_map(|c| c.to_le_bytes())
+            .collect(),
+    )
+}
+
+/// Flags as bytes (one per flag, 0 or 1).
+fn flags(bytes: &[u8]) -> PyResult<Vec<bool>> {
+    bytes
+        .iter()
+        .map(|&b| match b {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(error("keep flags must be 0 or 1 bytes")),
+        })
+        .collect()
 }
 
 #[pymethods]
@@ -58,7 +153,11 @@ impl V2Generation {
     fn new(py: Python<'_>, input: &str) -> PyResult<Self> {
         let input: FamilyInput = serde_json::from_str(input).map_err(error)?;
         let families = py.detach(|| generate_families(&input)).map_err(error)?;
-        Ok(Self { input, families })
+        Ok(Self {
+            input,
+            families,
+            arena: Arena::default(),
+        })
     }
 
     /// `(positions, state_parents, state_labels, state_species, families,
@@ -132,40 +231,85 @@ impl V2Generation {
     }
 
     /// Skeletons, the view and the schedule-B tries
-    /// (`schedules.build_schedules`). Returns `(contents, labels, orders,
-    /// schedules)`; see `loops/v2/generator_input.py`.
+    /// (`schedules.build_schedules`), retained in the arena. Returns
+    /// `(handle, 0, contents, labels, orders, schedules)` with every
+    /// family's skeletons; see `loops/v2/generator_input.py`.
     fn schedules(&self, py: Python<'_>, input: &str) -> PyResult<RawSchedules> {
         let input: ScheduleInput = serde_json::from_str(input).map_err(error)?;
-        let output = py
-            .detach(|| build_schedules(&self.input, &self.families, &input))
+        let build = py
+            .detach(|| arena::build_retained(&self.input, &self.families, &input))
             .map_err(error)?;
-        Ok((
-            output.contents.into_iter().map(raw_content).collect(),
-            output.labels,
-            output.orders,
-            output
-                .schedules
-                .into_iter()
-                .map(|s| {
-                    (
-                        s.family,
-                        s.skeletons
-                            .into_iter()
-                            .map(|k| (k.contents, k.half_weight, k.multiplicity))
-                            .collect(),
-                        s.viewed,
-                        s.frame,
-                        s.leaves,
-                        s.nodes
-                            .into_iter()
-                            .map(|n| (n.depth, n.orders, n.suffix, n.rank_in, n.edges))
-                            .collect(),
-                        s.rank,
-                        s.masters,
-                    )
-                })
-                .collect(),
-        ))
+        let raw_build = |build: &Retained, handle| Self::raw_schedules(build, handle, 0, true);
+        let raw = raw_build(&build, self.arena.len());
+        let handle = self.arena.insert(build);
+        debug_assert_eq!(handle, raw.0);
+        Ok(raw)
+    }
+
+    /// The schedules of `input` (its fixed frames and keep flags) rebuilt
+    /// from the skeletons of the complete build `base` (the LC/NLC prune):
+    /// retained under a new handle. `keep` holds one byte per skeleton of
+    /// every scheduled family in order, or with `readings` one per reading
+    /// of the base (`Retained::readings`; a skeleton is kept when its F
+    /// reading is). Returns `(handle, first new content id, the new
+    /// contents, labels, orders, schedules)`, without skeletons.
+    #[pyo3(signature = (base, input, keep, readings = false))]
+    fn rebuild(
+        &self,
+        py: Python<'_>,
+        base: usize,
+        input: &str,
+        keep: &[u8],
+        readings: bool,
+    ) -> PyResult<RawSchedules> {
+        let mut input: ScheduleInput = serde_json::from_str(input).map_err(error)?;
+        if input.keep.is_some() {
+            return Err(error("rebuild keep flags come as bytes"));
+        }
+        let retained = self.retained(base)?;
+        let keep = flags(keep)?;
+        input.keep = Some(if readings {
+            arena::keep_from_readings(&retained, &keep).map_err(error)?
+        } else {
+            let mut rest = keep.as_slice();
+            let mut out = Vec::new();
+            for family in 0..retained.family_count() {
+                let count = retained.family_skeletons(family).len();
+                if rest.len() < count {
+                    return Err(error("too few keep flags for the base's skeletons"));
+                }
+                out.push(rest[..count].to_vec());
+                rest = &rest[count..];
+            }
+            if !rest.is_empty() {
+                return Err(error("too many keep flags for the base's skeletons"));
+            }
+            out
+        });
+        let build = py
+            .detach(|| arena::rebuild(&self.input, &self.families, &retained, &input))
+            .map_err(error)?;
+        let first = retained.content_count();
+        let raw = Self::raw_schedules(&build, self.arena.len(), first, false);
+        self.arena.insert(build);
+        Ok(raw)
+    }
+
+    /// The readings of a build (`reference_executor.reading_skeletons`):
+    /// little-endian `(u64 offsets, u32 content ids)` bytes and the distinct
+    /// content ids, first seen (the seed stage's content order).
+    fn readings(&self, py: Python<'_>, handle: usize) -> PyResult<(Vec<u8>, Vec<u8>, Vec<u32>)> {
+        let retained = self.retained(handle)?;
+        Ok(py.detach(|| {
+            let readings = retained.readings();
+            let (offsets, contents) = reading_bytes(&readings);
+            (offsets, contents, readings.dense().0)
+        }))
+    }
+
+    /// `MonomialLayout`'s rank bound of a build (`Retained::max_rank`).
+    fn max_rank(&self, handle: usize) -> PyResult<i64> {
+        self.retained(handle)?.max_rank().map_err(error)
     }
 }
 

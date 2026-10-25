@@ -14,8 +14,11 @@
 //! - [`cycles`]: SU(N_c) overlaps of trace products by cycle counting (the
 //!   exact colour contractions of `colour.py`);
 //! - [`seeds`]: seed combinations and seed classes (`colour.py`
-//!   `build_seed_table` / `extend_seed_table`).
+//!   `build_seed_table` / `extend_seed_table`);
+//! - [`arena`]: the retained schedule builds of a generation, read in place
+//!   by the seed stage, the LC/NLC prune rebuild and plan lowering.
 
+pub mod arena;
 pub mod cycles;
 pub mod families;
 pub mod orders;

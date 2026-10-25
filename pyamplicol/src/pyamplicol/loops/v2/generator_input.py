@@ -13,6 +13,18 @@ whichever engine produced them.
 ``NativeGeneration`` runs ``families.generate_families`` and
 ``schedules.build_schedules`` natively, the latter also for the poles
 companion's certified-scaleless families (``scaleless_companion``).
+
+**Retained arena** (WP3.1 B1, package native-seeds). The native generation
+keeps every schedule build (``loop_v2::generate::arena``) and this module
+keeps the Python objects decoded from it (``NativeBuild``): the contents by
+arena id and, for a build of every skeleton, every skeleton of every
+scheduled family. The LC/NLC prune (``schedules(frames=..., keep=...)``)
+rebuilds the tries natively from those skeletons instead of rebuilding and
+decoding them again: ``keep`` is evaluated on the retained skeleton objects
+(or comes as per-reading flags of the native prune liveness,
+``ReadingKeep``), and the rebuilt plan reuses the retained objects. The seed
+stage reads a build's readings in-crate (``NativeBuild.readings_of``), and
+``NativeBuild.max_rank`` answers ``MonomialLayout``'s rank bound.
 """
 
 from __future__ import annotations
@@ -21,11 +33,15 @@ import copy
 import gc
 import itertools
 import json
+import sys
+import weakref
+from array import array
 from collections import defaultdict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fractions import Fraction
+from operator import attrgetter
 from typing import Any
 
 from .families import (
@@ -220,6 +236,145 @@ _ONE = Fraction(1)
 _HALF = Fraction(1, 2)
 
 
+class NativeBuild:
+    """A schedule build retained by the native generation (its arena
+    handle) with the Python objects decoded from it.
+
+    ``contents`` are the decoded contents by arena content id. A build of
+    every skeleton (``complete``) also keeps ``skeletons``: every skeleton
+    of every scheduled family, in the native order, which its rebuilds
+    reuse. ``plan`` is the decoded ``LoopSchedules``.
+    """
+
+    def __init__(
+        self,
+        generation: NativeGeneration,
+        handle: int,
+        colour: ColourModel,
+        payload: Mapping[str, Any],
+        ordered: list,
+        contents: list[Content],
+        skeletons: list[list[Skeleton]],
+        complete: bool,
+    ):
+        self.generation = generation
+        self.handle = handle
+        self.colour = colour
+        self.payload = payload
+        self.ordered = ordered
+        self.contents = contents
+        self.skeletons = skeletons
+        self.complete = complete
+        self.plan: LoopSchedules | None = None
+        self.first_leaf: Skeleton | None = None
+        self.leaves = 0
+        self._readings: tuple[bytes, bytes, list[int]] | None = None
+        _LIVE_BUILDS.add(self)
+
+    @property
+    def native(self) -> Any:
+        """The native generation holding the build (``V2Generation``)."""
+
+        return self.generation._native
+
+    def readings(self) -> tuple[bytes, bytes, list[int]]:
+        """The build's readings (``reference_executor.reading_skeletons``):
+        little-endian u64 offsets and u32 arena content ids, and the
+        distinct content ids, first seen."""
+
+        if self._readings is None:
+            self._readings = self.native.readings(self.handle)
+        return self._readings
+
+    def readings_of(self, skeletons: Sequence[Skeleton]) -> list[int] | None:
+        """The distinct reading contents (arena ids, first seen) when
+        ``skeletons`` are exactly this build's readings: the same content
+        objects in the same places. None otherwise."""
+
+        if 2 * self.leaves != len(skeletons) or not skeletons:
+            return None
+        if skeletons[0] is not self.first_leaf:
+            return None
+        offsets, ids, used = self.readings()
+        index = {id(content): i for i, content in enumerate(self.contents)}
+        contents = attrgetter("contents")
+        try:
+            given = array(
+                "I",
+                map(
+                    index.__getitem__,
+                    map(id, itertools.chain.from_iterable(map(contents, skeletons))),
+                ),
+            )
+        except KeyError:
+            return None
+        spans = array("Q", itertools.accumulate(map(len, map(contents, skeletons))))
+        spans.insert(0, 0)
+        if sys.byteorder != "little":
+            given.byteswap()
+            spans.byteswap()
+        if given.tobytes() != ids or spans.tobytes() != offsets:
+            return None
+        return used
+
+    def max_rank(self) -> int:
+        """``MonomialLayout``'s rank bound of the build's plan: the largest
+        ``rank_in`` plus edge q-degree over every trie node."""
+
+        return int(self.native.max_rank(self.handle))
+
+
+#: Live retained builds, for the in-crate seed stage (``build_of``).
+_LIVE_BUILDS: weakref.WeakSet[NativeBuild] = weakref.WeakSet()
+
+
+def build_of(skeletons: Sequence[Skeleton]) -> tuple[NativeBuild, list[int]] | None:
+    """The retained build whose readings are ``skeletons`` and its distinct
+    reading contents (``NativeBuild.readings_of``), or None."""
+
+    if not skeletons:
+        return None
+    for build in sorted(_LIVE_BUILDS, key=attrgetter("handle"), reverse=True):
+        if build.first_leaf is skeletons[0]:
+            used = build.readings_of(skeletons)
+            if used is not None:
+                return build, used
+    return None
+
+
+@dataclass(frozen=True, eq=False)
+class ReadingKeep:
+    """Prune flags per reading of a complete build (one byte each; the F
+    reading of a skeleton decides it): the native prune liveness
+    (``native_seeds.NativeSeedStage.keep``). ``NativeGeneration.schedules``
+    takes it in place of a ``keep`` callable."""
+
+    build: NativeBuild
+    flags: bytes
+
+    def __call__(self, skeleton: Skeleton) -> bool:
+        kept = self._kept()
+        found = kept.get(id(skeleton))
+        if found is None or found[0] is not skeleton:
+            raise KeyError("the skeleton is not a reading of the pruned build")
+        return found[1]
+
+    def _kept(self) -> dict[int, tuple[Skeleton, bool]]:
+        cache = self.__dict__.get("_cache")
+        if cache is None:
+            cache = {}
+            plan = self.build.plan
+            if plan is None:
+                raise RuntimeError("the build has no decoded plan")
+            r = 0
+            for schedule in plan.schedules.values():
+                for skeleton, _ring in schedule.trie.leaves:
+                    cache[id(skeleton)] = (skeleton, bool(self.flags[r]))
+                    r += 2
+            object.__setattr__(self, "_cache", cache)
+        return cache
+
+
 class NativeGeneration:
     """The native generator stages of one process (WP3.1 I8/I9).
 
@@ -232,6 +387,10 @@ class NativeGeneration:
 
     ``scaleless_companion`` returns the same generation scheduling a subset
     of the certified-scaleless families instead (the poles companion).
+
+    Every build is retained (``NativeBuild``, module docstring); ``base`` is
+    the last build of every skeleton, which a pruned rebuild reuses, and
+    ``build_of_plan`` finds the build of a decoded plan.
     """
 
     def __init__(
@@ -253,6 +412,16 @@ class NativeGeneration:
         # Indices into the native certified-scaleless families scheduled
         # instead of the admitted ones (``scaleless_companion``).
         self._scaleless: list[int] | None = None
+        # The last build of every skeleton of this family list (a rebuild's
+        # base) and every build by id of its decoded plan.
+        self.base: NativeBuild | None = None
+        self._builds: dict[int, NativeBuild] = {}
+
+    def build_of_plan(self, plan: LoopSchedules) -> NativeBuild | None:
+        """The retained build ``plan`` was decoded from, or None."""
+
+        build = self._builds.get(id(plan))
+        return build if build is not None and build.plan is plan else None
 
     def _position(self, vertex: int, blocks) -> Position:
         tables = self.tables
@@ -284,6 +453,8 @@ class NativeGeneration:
         twin = copy.copy(self)
         twin._families = families
         twin._scaleless = [index[key] for key in families.families]
+        twin.base = None
+        twin._builds = {}
         return twin
 
     def _decode_families(self) -> FamilySet:
@@ -368,8 +539,30 @@ class NativeGeneration:
         Without ``frames`` the policy is ``cheapest(lambda mask: 2 **
         mask.bit_count(), model)``; with ``frames`` (a family's stored frame,
         e.g. ``_prune_colour``'s ``same_frame``) only that frame's trie is
-        built. ``keep`` filters skeletons as ``SkeletonView(keep=...)``.
+        built. ``keep`` filters skeletons as ``SkeletonView(keep=...)``; it
+        may also be a ``ReadingKeep`` of the base build. With a base build
+        of the same colour model the filtered schedules are rebuilt from its
+        retained skeletons (``keep`` evaluated on them).
         """
+
+        base = self.base
+        if keep is not None and base is not None and base.colour is colour:
+            return self._rebuild(base, colour, model, frames, keep)
+        if isinstance(keep, ReadingKeep):
+            raise ValueError("reading flags need their complete build as the base")
+        payload, ordered = self._colour_payload(colour)
+        keys = list(self.families().families)
+        payload = {**payload, "policy": self._policy(model, frames, keys)}
+        if keep is not None:
+            payload["keep"] = self._keep_flags(keep, payload, ordered, keys)
+        raw = self._native.schedules(_json(payload))
+        with _no_cyclic_gc():
+            return self._decode(colour, keep, payload, ordered, raw, None)
+
+    def _colour_payload(self, colour: ColourModel) -> tuple[dict[str, Any], list]:
+        """The colour states of the used positions as ranks, their
+        reflections (and the scheduled certified-scaleless families), and
+        the ordered states the ranks index."""
 
         families = self.families()
         if self._scaleless is None:
@@ -395,9 +588,22 @@ class NativeGeneration:
         state_rows: list[list[int] | None] = [None] * len(self._positions)
         for position, found in per_position.items():
             state_rows[position] = [rank[state] for state in found]
-        keys = list(families.families)
+        payload: dict[str, Any] = {
+            "states": state_rows,
+            "reflected": [rank[reflection[state]] for state in ordered],
+        }
+        if self._scaleless is not None:
+            payload["scaleless"] = self._scaleless
+        return payload, ordered
+
+    @staticmethod
+    def _policy(
+        model: CostModel,
+        frames: Mapping[FamilyKey, FamilyFrame] | None,
+        keys: Sequence[FamilyKey],
+    ) -> dict[str, Any]:
         if frames is None:
-            policy: dict[str, Any] = {
+            return {
                 "kind": "cheapest",
                 "model": {
                     name: getattr(model, name)
@@ -412,34 +618,39 @@ class NativeGeneration:
                     )
                 },
             }
-        else:
-            policy = {
-                "kind": "fixed",
-                "frames": [
-                    (
-                        [frames[key].start, frames[key].reflected]
-                        if key in frames
-                        else None
-                    )
-                    for key in keys
-                ],
-            }
-        payload: dict[str, Any] = {
-            "states": state_rows,
-            "reflected": [rank[reflection[state]] for state in ordered],
-            "policy": policy,
+        return {
+            "kind": "fixed",
+            "frames": [
+                ([frames[key].start, frames[key].reflected] if key in frames else None)
+                for key in keys
+            ],
         }
-        if self._scaleless is not None:
-            payload["scaleless"] = self._scaleless
-        if keep is not None:
-            payload["keep"] = self._keep_flags(keep, ordered, payload, keys)
-        raw_contents, labels, raw_orders, raw_schedules = self._native.schedules(
-            _json(payload)
-        )
-        with _no_cyclic_gc():
-            return self._decode(
-                colour, keep, ordered, raw_contents, labels, raw_orders, raw_schedules
+
+    def _rebuild(
+        self,
+        base: NativeBuild,
+        colour: ColourModel,
+        model: CostModel,
+        frames: Mapping[FamilyKey, FamilyFrame] | None,
+        keep: Callable[[Skeleton], bool],
+    ) -> LoopSchedules:
+        """The filtered schedules rebuilt from ``base``'s skeletons."""
+
+        keys = list(self.families().families)
+        payload = {**base.payload, "policy": self._policy(model, frames, keys)}
+        if isinstance(keep, ReadingKeep):
+            if keep.build is not base:
+                raise ValueError("reading flags of another build than the base")
+            raw = self._native.rebuild(
+                base.handle, _json(payload), keep.flags, readings=True
             )
+        else:
+            flags = bytes(
+                map(bool, map(keep, itertools.chain.from_iterable(base.skeletons)))
+            )
+            raw = self._native.rebuild(base.handle, _json(payload), flags)
+        with _no_cyclic_gc():
+            return self._decode(colour, keep, payload, base.ordered, raw, base)
 
     def _path_positions(self, families: FamilySet) -> set[int]:
         """The positions on the prefix paths of ``families``' closures."""
@@ -457,8 +668,9 @@ class NativeGeneration:
                     state = parent[state]
         return found
 
-    def _keep_flags(self, keep, ordered, payload, keys) -> list[list[bool]]:
-        """``keep`` evaluated on every skeleton of every family."""
+    def _keep_flags(self, keep, payload, ordered, keys) -> list[list[bool]]:
+        """``keep`` evaluated on every skeleton of every family (without a
+        base build to reuse)."""
 
         raw_contents, raw_orders, raw_skeletons = self._native.skeletons(_json(payload))
         orders = self._orders(raw_orders)
@@ -496,12 +708,30 @@ class NativeGeneration:
         )
 
     def _decode(
-        self, colour, keep, ordered, raw_contents, labels, raw_orders, raw_schedules
+        self,
+        colour: ColourModel,
+        keep: Callable[[Skeleton], bool] | None,
+        payload: Mapping[str, Any],
+        ordered: list,
+        raw: tuple,
+        base: NativeBuild | None,
     ) -> LoopSchedules:
+        """The ``LoopSchedules`` of a native build (``base``: the build a
+        rebuild reused, whose contents and skeletons it shares)."""
+
+        handle, first, raw_contents, labels, raw_orders, raw_schedules = raw
         families = self.families()
         catalogue = self.catalogue
         orders = self._orders(raw_orders)
-        contents = [self._content(ordered, orders, raw) for raw in raw_contents]
+        if base is None:
+            if first != 0:
+                raise ValueError("a first build starts at content 0")
+            contents = []
+        else:
+            if first != len(base.contents):
+                raise ValueError("a rebuild continues its base's contents")
+            contents = list(base.contents)
+        contents.extend(self._content(ordered, orders, raw) for raw in raw_contents)
         view = SkeletonView(catalogue, colour, keep=keep)
         view._contents = [contents[c] for c in labels]
         view._labels = {content: label for label, content in enumerate(view._contents)}
@@ -510,15 +740,18 @@ class NativeGeneration:
                 label,
                 content.mask,
                 catalogue.species(content.loop_out).mass,
-                raw_contents[c][6],
+                content.q_degree,
             )
-            for label, (c, content) in enumerate(
-                zip(labels, view._contents, strict=True)
-            )
+            for label, content in enumerate(view._contents)
         ]
         segment = segments.__getitem__
         keys = list(families.families)
+        retained: list[list[Skeleton]] = [] if base is None else base.skeletons
+        if base is None:
+            by_family: dict[int, list[Skeleton]] = {}
         out = {}
+        first_leaf = None
+        leaves_count = 0
         for (
             index,
             raw_skeletons,
@@ -530,7 +763,13 @@ class NativeGeneration:
             masters,
         ) in raw_schedules:
             key = keys[index]
-            skeletons = [self._skeleton(key, contents, raw) for raw in raw_skeletons]
+            if base is None:
+                skeletons = [
+                    self._skeleton(key, contents, raw) for raw in raw_skeletons
+                ]
+                by_family[index] = skeletons
+            else:
+                skeletons = retained[index]
             chosen = [skeletons[i] for i in viewed]
             frame = FamilyFrame(start, reflected)
             trie = SuffixTrie(
@@ -549,6 +788,9 @@ class NativeGeneration:
                 ),
                 rank,
             )
+            if first_leaf is None and trie.leaves:
+                first_leaf = trie.leaves[0][0]
+            leaves_count += len(trie.leaves)
             out[key] = FamilySchedule(
                 families.families[key],
                 trie,
@@ -558,7 +800,23 @@ class NativeGeneration:
                     for raw, scaleless in masters
                 ),
             )
-        return LoopSchedules(families, view, out)
+        plan = LoopSchedules(families, view, out)
+        complete = base is None and "keep" not in payload
+        if base is None:
+            # Families without a viewed skeleton have none (a complete build
+            # views every family with a skeleton).
+            retained = [by_family.get(i, []) for i in range(len(keys))]
+        send = {k: v for k, v in payload.items() if k not in ("policy", "keep")}
+        build = NativeBuild(
+            self, handle, colour, send, ordered, contents, retained, complete
+        )
+        build.plan = plan
+        build.first_leaf = first_leaf
+        build.leaves = leaves_count
+        self._builds[id(plan)] = build
+        if complete:
+            self.base = build
+        return plan
 
 
 @contextmanager

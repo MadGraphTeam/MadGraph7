@@ -67,6 +67,7 @@ from typing import Any, cast
 
 from pyamplicol.color.connections import ConnectedColorTensor, ExactColorCoefficient
 
+from . import generator_input
 from .colour import (
     COMPRESSION_THEOREMS,
     BornBasis,
@@ -232,6 +233,9 @@ class NativeSeedStage:
             leg.label for leg in colour.legs if leg.representation == 8
         )
         self._builder: Any = None
+        # The retained schedule build whose readings fed the stage in-crate
+        # (``generator_input.build_of``), or None (bytes tables).
+        self.build_source: Any = None
         self._skeletons: list[Skeleton] = []
         self._orders: list[Orders] = []
         self._names: list[str] = []
@@ -287,7 +291,17 @@ class NativeSeedStage:
         self.timings = {}
         self._step("")
         compressed = CompressedColour(colour) if compress else None
-        contents, offsets, ids = _skeleton_tables(skeletons)
+        # B1: the readings of a retained schedule build feed the stage
+        # in-crate; any other skeleton list goes as bytes tables.
+        found = generator_input.build_of(skeletons)
+        if found is not None:
+            source, used = found
+            contents = [source.contents[c] for c in used]
+            offsets = ids = b""
+        else:
+            source = None
+            contents, offsets, ids = _skeleton_tables(skeletons)
+        self.build_source = source
         self._step("skeleton_tables")
         encoder = _Encoder(self.adjoint, compressed)
         names = sorted(
@@ -319,7 +333,12 @@ class NativeSeedStage:
         }
         text = json.dumps(spec, separators=(",", ":"))
         self._step("content_tables")
-        builder = self.native.SeedBuilder(text, offsets, ids)
+        if source is not None:
+            builder = self.native.SeedBuilder.from_generation(
+                source.native, source.handle, text
+            )
+        else:
+            builder = self.native.SeedBuilder(text, offsets, ids)
         self._step("native_input")
         candidates = builder.analyse()
         self._step("native_combinations")
@@ -366,9 +385,10 @@ class NativeSeedStage:
             else:
                 classes.append(encoder.primitive(primitive))
         rows = [tuple((c, coefficients[x]) for c, x in row) for row in raw_rows]
+        if len(skeleton_rows) != len(skeletons):
+            raise RuntimeError("the native seed rows do not match the skeletons")
         out = dict(class_of)
-        for skeleton, row in zip(skeletons, skeleton_rows, strict=True):
-            out[skeleton] = rows[row]
+        out.update(zip(skeletons, map(rows.__getitem__, skeleton_rows), strict=True))
         self._step("decode")
         self.counts = {
             "skeletons": len(skeletons),
@@ -505,6 +525,25 @@ class NativeSeedStage:
             for o, flag in zip(orders, row, strict=True)
         }
         return flags, list(keep)
+
+    def reading_keep(
+        self,
+        slice_: Any,
+        observables: Iterable[tuple[SeedTable, Mapping[Orders, Any]]] = (),
+    ) -> generator_input.ReadingKeep:
+        """``_prune_colour``'s ``keep`` as prune flags per reading of the
+        retained build that fed this stage in-crate (B1): the native LC/NLC
+        prune liveness (B3) with the slice's degrees, Born grades and
+        sectors. ``NativeGeneration.schedules`` rebuilds the pruned plan from
+        them without a Python callback."""
+
+        source = self.build_source
+        if source is None or not source.complete:
+            raise RuntimeError(
+                "reading flags need a stage fed by a complete retained build"
+            )
+        _flags, keep = self.keep(slice_, observables)
+        return generator_input.ReadingKeep(source, bytes(map(bool, keep)))
 
 
 class _Encoder:
