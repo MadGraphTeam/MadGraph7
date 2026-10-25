@@ -638,6 +638,7 @@ def _annotate_oriented_kernel_evaluation_equivalence(
     particle_by_name = {particle.name: particle for particle in particles}
     term_by_id = {term.id: term for term in terms}
     annotated: list[CompiledOrientedKernel] = []
+    proofs: dict[tuple[object, ...], tuple[object, ...]] = {}
     for kernel in kernels:
         derived_couplings = {
             symbols.derived_coupling(model_symbols.model_name, term_id): _sym.E(
@@ -664,81 +665,41 @@ def _annotate_oriented_kernel_evaluation_equivalence(
                 particle_by_name[kernel.particles[2]],
             )
         )
-        candidates: list[tuple[str, tuple[int, int], tuple[float, float], str]] = []
-        components_by_input_order: dict[
-            tuple[int, int], tuple[_sym.Expression, ...]
-        ] = {}
-        for input_order, swap_sides in (((0, 1), False), ((1, 0), True)):
-            oriented_components = tuple(
-                (
-                    _replace_expression_symbols(
-                        _remap_kernel_symbols(
-                            _sym.E(component),
-                            old_kind=kernel.kind,
-                            new_kind=0,
-                            model_symbols=model_symbols,
-                            swap_sides=swap_sides,
-                        ),
-                        derived_couplings,
-                    )
-                    * coupling
-                ).expand()
+        # The kernel's components in the canonical kernel symbols, with the
+        # coupling aliases resolved, per input order: with the dimensions and
+        # the coupling they determine the proof below exactly, so kernels
+        # with equal ones (the vertex copies of counterterm clone lines,
+        # ``ct_line_insertions``) share one proof.
+        remapped = {
+            input_order: tuple(
+                _replace_expression_symbols(
+                    _remap_kernel_symbols(
+                        _sym.E(component),
+                        old_kind=kernel.kind,
+                        new_kind=0,
+                        model_symbols=model_symbols,
+                        swap_sides=swap_sides,
+                    ),
+                    derived_couplings,
+                )
                 for component in kernel.component_expressions
             )
-            components_by_input_order[input_order] = oriented_components
-            oriented_dimensions = (
-                dimensions[input_order[0]],
-                dimensions[input_order[1]],
-                dimensions[2],
-            )
-            for sign in (1, -1):
-                # Horner/factor collection optimizes evaluation, but is not a
-                # unique algebraic normal form: mirrored kernels can retain
-                # different factorizations of the same coupling polynomial.
-                # Proof identities must use expanded expressions, while the
-                # stored runtime components remain optimized and unchanged.
-                component_strings = tuple(
-                    (sign * component).expand().to_canonical_string()
-                    for component in oriented_components
-                )
-                signature = json.dumps(
-                    {
-                        "input_dimensions": list(oriented_dimensions[:2]),
-                        "output_dimension": oriented_dimensions[2],
-                        "components": list(component_strings),
-                    },
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                candidates.append(
-                    (
-                        signature,
-                        input_order,
-                        (float(sign), 0.0),
-                        hashlib.sha256(signature.encode("utf-8")).hexdigest(),
-                    )
-                )
-        _signature, input_order, factor, class_digest = min(
-            candidates,
-            key=lambda candidate: candidate[0],
+            for input_order, swap_sides in (((0, 1), False), ((1, 0), True))
+        }
+        key = (
+            dimensions,
+            coupling.to_canonical_string(),
+            *(
+                tuple(component.to_canonical_string() for component in components)
+                for components in remapped.values()
+            ),
         )
-        input_exchange_factor: tuple[float, float] | None = None
-        if dimensions[0] == dimensions[1]:
-            direct_components = components_by_input_order[(0, 1)]
-            swapped_components = components_by_input_order[(1, 0)]
-            zero = _sym.E("0").to_canonical_string()
-            for exchange_sign in (1, -1):
-                if all(
-                    (swapped - exchange_sign * direct).expand().to_canonical_string()
-                    == zero
-                    for direct, swapped in zip(
-                        direct_components,
-                        swapped_components,
-                        strict=True,
-                    )
-                ):
-                    input_exchange_factor = (float(exchange_sign), 0.0)
-                    break
+        proof = proofs.get(key)
+        if proof is None:
+            proof = proofs[key] = _kernel_equivalence_proof(
+                remapped, coupling, dimensions
+            )
+        class_digest, factor, input_order, input_exchange_factor = proof
         annotated.append(
             replace(
                 kernel,
@@ -768,6 +729,79 @@ def _annotate_oriented_kernel_evaluation_equivalence(
             )
         )
     return tuple(normalized)
+
+
+def _kernel_equivalence_proof(
+    remapped: Mapping[tuple[int, int], tuple[_sym.Expression, ...]],
+    coupling: _sym.Expression,
+    dimensions: tuple[int, int, int],
+) -> tuple[str, tuple[float, float], tuple[int, int], tuple[float, float] | None]:
+    """(class digest, factor, input order, input exchange factor) of one
+    oriented kernel (``_annotate_oriented_kernel_evaluation_equivalence``)
+    from its ``remapped`` components per input order, its ``coupling`` and
+    the component ``dimensions`` of its two inputs and its output."""
+
+    candidates: list[tuple[str, tuple[int, int], tuple[float, float], str]] = []
+    components_by_input_order: dict[tuple[int, int], tuple[_sym.Expression, ...]] = {}
+    for input_order, components in remapped.items():
+        oriented_components = tuple(
+            (component * coupling).expand() for component in components
+        )
+        components_by_input_order[input_order] = oriented_components
+        oriented_dimensions = (
+            dimensions[input_order[0]],
+            dimensions[input_order[1]],
+            dimensions[2],
+        )
+        for sign in (1, -1):
+            # Horner/factor collection optimizes evaluation, but is not a
+            # unique algebraic normal form: mirrored kernels can retain
+            # different factorizations of the same coupling polynomial.
+            # Proof identities must use expanded expressions, while the
+            # stored runtime components remain optimized and unchanged.
+            component_strings = tuple(
+                (sign * component).expand().to_canonical_string()
+                for component in oriented_components
+            )
+            signature = json.dumps(
+                {
+                    "input_dimensions": list(oriented_dimensions[:2]),
+                    "output_dimension": oriented_dimensions[2],
+                    "components": list(component_strings),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            candidates.append(
+                (
+                    signature,
+                    input_order,
+                    (float(sign), 0.0),
+                    hashlib.sha256(signature.encode("utf-8")).hexdigest(),
+                )
+            )
+    _signature, input_order, factor, class_digest = min(
+        candidates,
+        key=lambda candidate: candidate[0],
+    )
+    input_exchange_factor: tuple[float, float] | None = None
+    if dimensions[0] == dimensions[1]:
+        direct_components = components_by_input_order[(0, 1)]
+        swapped_components = components_by_input_order[(1, 0)]
+        zero = _sym.E("0").to_canonical_string()
+        for exchange_sign in (1, -1):
+            if all(
+                (swapped - exchange_sign * direct).expand().to_canonical_string()
+                == zero
+                for direct, swapped in zip(
+                    direct_components,
+                    swapped_components,
+                    strict=True,
+                )
+            ):
+                input_exchange_factor = (float(exchange_sign), 0.0)
+                break
+    return class_digest, factor, input_order, input_exchange_factor
 
 
 def _compile_oriented_kernels(

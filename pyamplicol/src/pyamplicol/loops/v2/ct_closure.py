@@ -780,9 +780,6 @@ def program_propagated_currents(dag: Any) -> tuple[int, ...]:
 # declaration, request scope) keys; a request of another key evicts the oldest.
 _LOWERED: OrderedDict[tuple[object, ...], tuple[Any, Any]] = OrderedDict()
 _LOWERED_KEPT = 4
-# Digits of the referenced counterterm scalars' coefficients in binary64
-# (``assemble._COUPLING_DIGITS``: correctly rounded once).
-_COEFFICIENT_DIGITS = 32
 
 
 def program_order_limits(
@@ -1106,7 +1103,9 @@ class CountertermProgram:
         values.update(
             {
                 name: str(v)
-                for name, v in recursion.parameter_values(poles=poles).items()
+                for name, v in recursion.parameter_values(
+                    poles=poles, card=parameters, numbers=numbers
+                ).items()
             }
         )
         key = tuple(sorted(values.items()))
@@ -1115,19 +1114,8 @@ class CountertermProgram:
                 {name: complex(float(v)) for name, v in parameters.items()}
             )
             self._parameter_work = (key, {})
-        digits = numbers.precision.working_digits
-        if recursion.model.coefficients:
-            # The referenced counterterm scalars' coefficients, from their
-            # exact bodies (``CountertermModel.coefficient_values``); binary64
-            # rounds the 32-digit values once, as the couplings do.
-            coefficients = self._parameter_work[1].setdefault(
-                ("coefficients", digits),
-                recursion.model.coefficient_values(
-                    parameters, max(digits, _COEFFICIENT_DIGITS)
-                ),
-            )
-            values.update(coefficients)
         rows = self.rows.evaluate(point, values, numbers, sources=sources)
+        digits = numbers.precision.working_digits
         factors = self._parameter_work[1].setdefault(digits, {})
         scales = {}
         for term in self.closure.terms:
