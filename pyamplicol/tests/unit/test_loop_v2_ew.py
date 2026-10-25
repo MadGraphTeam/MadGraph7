@@ -624,10 +624,18 @@ def test_lowering_never_forms_an_untaken_branch(loop_sm_compiled_model, capfd):
     lowering = CoefficientLowering(compiled, {"MB": "0"})
     cond, reglog = library.helpers["cond"][0], library.helpers["reglog"][0]
     mb, mu = E("UFO::{}::MB"), E("UFO::{}::MU_R")
-    capfd.readouterr()
+    def warned() -> bool:
+        # Symbolica logs "Created infinity ..." on the process's stdout.
+        captured = capfd.readouterr()
+        return "Created" in captured.out + captured.err
+
+    warned()
     assert lowering._finite(lowering._resolve(cond(mb, E("1"), mb**-2))) == E("1")
     assert lowering._finite(lowering._resolve(reglog(mb**2 / mu**2))) == E("0")
-    assert "Created" not in capfd.readouterr().err
+    assert not warned()
+    # The detector's control: forming the branch not taken eagerly warns.
+    assert (mb**-2).replace(mb, E("0")).is_finite() is False
+    assert warned()
     with pytest.raises(CountertermCouplingError, match="not finite"):
         lowering._finite(lowering._resolve(cond(mu, E("1"), mb**-1)))
 
