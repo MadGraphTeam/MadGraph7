@@ -405,7 +405,10 @@ class NativeGeneration:
         self.catalogue = catalogue
         self.legs = tuple(table.legs)
         self._merged = merged
-        self._native = native.V2Generation(_json(payload))
+        #: The native family input (JSON), e.g. to rebuild the generation in
+        #: another process.
+        self.input_json = _json(payload)
+        self._native = native.V2Generation(self.input_json)
         self._families: FamilySet | None = None
         self._positions: list[Position] = []
         self._state_positions: list[int] = []
@@ -416,6 +419,10 @@ class NativeGeneration:
         # base) and every build by id of its decoded plan.
         self.base: NativeBuild | None = None
         self._builds: dict[int, NativeBuild] = {}
+        # Python decodes of native output (RUST-MIGRATION rule 9): complete
+        # and filtered builds, rebuilds from a base, and skeleton lists
+        # decoded to evaluate a keep callback without a base.
+        self.decodes: dict[str, int] = defaultdict(int)
 
     def build_of_plan(self, plan: LoopSchedules) -> NativeBuild | None:
         """The retained build ``plan`` was decoded from, or None."""
@@ -455,6 +462,7 @@ class NativeGeneration:
         twin._scaleless = [index[key] for key in families.families]
         twin.base = None
         twin._builds = {}
+        twin.decodes = defaultdict(int)
         return twin
 
     def _decode_families(self) -> FamilySet:
@@ -672,6 +680,7 @@ class NativeGeneration:
         """``keep`` evaluated on every skeleton of every family (without a
         base build to reuse)."""
 
+        self.decodes["skeletons"] += 1
         raw_contents, raw_orders, raw_skeletons = self._native.skeletons(_json(payload))
         orders = self._orders(raw_orders)
         contents = [self._content(ordered, orders, raw) for raw in raw_contents]
@@ -720,6 +729,7 @@ class NativeGeneration:
         rebuild reused, whose contents and skeletons it shares)."""
 
         handle, first, raw_contents, labels, raw_orders, raw_schedules = raw
+        self.decodes["build" if base is None else "rebuild"] += 1
         families = self.families()
         catalogue = self.catalogue
         orders = self._orders(raw_orders)

@@ -2,25 +2,35 @@
 """Native seed combinations and classes equal the Python seed tables (WP3.1
 I10, package native-seeds B2/B3).
 
-``loops.v2.colour.build_seed_table`` / ``extend_seed_table`` are the
-oracles: the native stages (``loops.v2.native_seeds``) give equal tables
+``loops.v2.colour.build_seed_table`` / ``extend_seed_table`` with the
+switch off (``native_seeds.python_oracle``) are the oracles: the native
+stages (``loops.v2.native_seeds``, the production default) give equal tables
 (classes in the same order, orders, cells, certificates) and an equal
 ``class_of`` (same skeleton order, same rows), with and without certified
 compressions, for builds and extensions; the native prune liveness equals
-``LoopSlice._prune_colour``'s; the binding needs no Symbolica key and its
+``LoopSlice._prune_colour``'s; the bindings need no Symbolica key and their
 output does not depend on the thread count.
 
+B1 (the retained arena): a slice's seed stage reads its schedule build's
+readings in-crate, the LC/NLC prune rebuilds the schedules from the retained
+skeletons (with the callback or the native liveness: equal plans) and
+decodes nothing else, and the arena answers the rank bound.
+
 Default tier: three 4-5-leg controls (adjoint rings and fundamental traces,
-quark rings, two quark lines with generic seeds). ``loop_physics``: the
-slice (readings, LC/NLC prune, S5 digests). ``loop_nightly``: six legs.
+quark rings, two quark lines with generic seeds) and g g > g g at LC.
+``loop_physics``: the slice (readings, LC/NLC prune, S5 digests, plan bytes).
+``loop_nightly``: six legs.
 """
 
 from __future__ import annotations
 
+import dataclasses
+import itertools
 import json
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -40,9 +50,24 @@ from pyamplicol.loops.v2.families import (
     generate_families,
 )
 from pyamplicol.loops.v2.skeletons import family_skeletons
+from tests.unit.test_loop_v2_generate import assert_same_schedules
 from tools.loop_reference import legacy_capture
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def python_build(colour, skeletons, basis=None, *, compress=False):
+    """The Python oracle of ``build_seed_table``."""
+
+    with native_seeds.python_oracle():
+        return build_seed_table(colour, skeletons, basis, compress=compress)
+
+
+def python_extend(table, class_of, colour, skeletons, *, compress=False):
+    """The Python oracle of ``extend_seed_table``."""
+
+    with native_seeds.python_oracle():
+        return extend_seed_table(table, class_of, colour, skeletons, compress=compress)
 
 
 def assert_same_tables(native, python) -> None:
@@ -112,17 +137,51 @@ def controls(loop_sm_compiled_model):
                 for s in family_skeletons(families, family, colour, catalogue)
             ]
             built[name] = colour, skeletons
+            generations[name] = (
+                blocks.block_table(data),
+                catalogue,
+                LoopOrderSelection(frozenset({"QCD"}), frozenset({loop})),
+            )
         return built[name]
 
+    generations: dict = {}
+    build.generations = generations  # type: ignore[attr-defined]
     return build
+
+
+def _native_generation(controls, loop_native, name: str):
+    """(seed colour, native generation, Python families, catalogue) of a
+    control (``controls``)."""
+
+    from pyamplicol.loops.v2.generator_input import NativeGeneration
+
+    colour, _skeletons = controls(name)
+    table, catalogue, selection = controls.generations[name]
+    return (
+        colour,
+        NativeGeneration(table, catalogue, selection, loop_native),
+        generate_families(table, catalogue, selection),
+        catalogue,
+    )
 
 
 CONTROLS = ["gg_gg", "uux_ggg", "uux_ddxg"]
 
 
-@pytest.mark.loop_fast
-@pytest.mark.parametrize("compress", [True, False])
-@pytest.mark.parametrize("name", CONTROLS)
+@pytest.mark.parametrize(
+    ("name", "compress"),
+    [
+        pytest.param(name, compress, marks=mark)
+        for name in CONTROLS
+        for compress in (True, False)
+        # Generic seeds of u u~ > g g g only (5 s): uux_ddxg has generic ones.
+        for mark in [
+            pytest.mark.loop_physics
+            if (name, compress) == ("uux_ggg", False)
+            else pytest.mark.loop_fast
+        ]
+    ],
+)
 def test_native_seed_tables_equal_python(controls, loop_native, name, compress):
     """Build on two thirds of the skeletons, then extend with an overlapping
     later part (new skeletons and skeletons already seeded): tables and
@@ -130,7 +189,7 @@ def test_native_seed_tables_equal_python(controls, loop_native, name, compress):
 
     colour, skeletons = controls(name)
     first = skeletons[: (2 * len(skeletons)) // 3]
-    python = build_seed_table(colour, first, compress=compress)
+    python = python_build(colour, first, compress=compress)
     stage = native_seeds.NativeSeedStage(colour, loop_native)
     native = stage.build(first, compress=compress)
     assert_same_tables(native, python)
@@ -140,8 +199,10 @@ def test_native_seed_tables_equal_python(controls, loop_native, name, compress):
     rest = skeletons[len(first) // 2 :]
     assert_same_tables(
         native_seeds.extend_seed_table(*native, colour, rest, compress=compress),
-        extend_seed_table(*python, colour, rest, compress=compress),
+        python_extend(*python, colour, rest, compress=compress),
     )
+    # The switch: the colour functions run the native stages.
+    assert_same_tables(build_seed_table(colour, first, compress=compress), python)
 
 
 @pytest.mark.loop_fast
@@ -153,12 +214,12 @@ def test_native_extension_of_an_uncompressed_table(controls, loop_native):
     colour, skeletons = controls("uux_ddxg")
     half = len(skeletons) // 2
     for built, extended in ((True, False), (False, True)):
-        table = build_seed_table(colour, skeletons[:half], compress=built)
+        table = python_build(colour, skeletons[:half], compress=built)
         assert_same_tables(
             native_seeds.extend_seed_table(
                 *table, colour, skeletons, compress=extended, native=loop_native
             ),
-            extend_seed_table(*table, colour, skeletons, compress=extended),
+            python_extend(*table, colour, skeletons, compress=extended),
         )
 
 
@@ -198,37 +259,11 @@ print(json.dumps([candidates, combination, needs, out, builder.coefficients(),
 """
 
 
-def _no_key_run(threads: str | None) -> list:
-    env = {
-        key: value
-        for key, value in os.environ.items()
-        if key not in ("SYMBOLICA_LICENSE", "SYMBOLICA_MASTER_LICENSE")
-    }
-    env["SYMBOLICA_HIDE_BANNER"] = "1"
-    if threads is not None:
-        env["RAYON_NUM_THREADS"] = threads
-    result = subprocess.run(
-        [sys.executable, "-c", _NO_KEY_SCRIPT],
-        capture_output=True,
-        text=True,
-        env=env,
-        cwd=ROOT,
-        timeout=120,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr[-4000:]
-    return json.loads(result.stdout.strip().splitlines()[-1])
+def _check_no_key_seeds(one: list) -> None:
+    """The phase-0 binding on adjoint rings 1234, 1324, 4321 (the reflection
+    of 1234, sign +1) and a position with two decomposition terms on the
+    word 34."""
 
-
-@pytest.mark.loop_fast
-def test_native_seeds_need_no_key_and_no_thread_count(loop_native):
-    """The binding makes no Symbolica licence call (a process without a key
-    runs every step) and its output is the same with one and many threads:
-    adjoint rings 1234, 1324, 4321 (the reflection of 1234, sign +1) and a
-    position with two decomposition terms on the word 34."""
-
-    one, many = _no_key_run("1"), _no_key_run("16")
-    assert one == many
     candidates, combination, needs, out, coefficients, orders, skeleton_orders = one
     assert candidates == [["adjoint-ring", [0, 1, 2]]]
     assert needs == [[], []]
@@ -243,6 +278,167 @@ def test_native_seeds_need_no_key_and_no_thread_count(loop_native):
     assert coefficients[combination[0][1]] == ["1/2", "1/3"]
     assert [orders[o] for o in skeleton_orders] == [[[0, 4]]] * 5
     assert len(class_orders) == 3
+
+
+def _no_key_runs(threads: Sequence[str], script: str, *args: str) -> list[list]:
+    """The last two JSON lines of ``script`` run without a Symbolica key,
+    once per Rayon thread count of ``threads`` (concurrently)."""
+
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in ("SYMBOLICA_LICENSE", "SYMBOLICA_MASTER_LICENSE")
+    }
+    env["SYMBOLICA_HIDE_BANNER"] = "1"
+    runs = [
+        subprocess.Popen(
+            [sys.executable, "-c", script, *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env={**env, "RAYON_NUM_THREADS": count},
+            cwd=ROOT,
+        )
+        for count in threads
+    ]
+    out = []
+    for run in runs:
+        stdout, stderr = run.communicate(timeout=120)
+        assert run.returncode == 0, stderr[-4000:]
+        out.append([json.loads(line) for line in stdout.strip().splitlines()[-2:]])
+    return out
+
+
+_ARENA_SCRIPT = r"""
+import hashlib, json, sys
+from pyamplicol.loops.native import load_loop_native
+
+native = load_loop_native()
+data = json.loads(open(sys.argv[1]).read())
+generation = native.V2Generation(data["families"])
+built = generation.schedules(data["schedules"])
+rebuilt = generation.rebuild(built[0], data["schedules"], bytes(data["keep"]))
+readings = generation.readings(built[0])
+seeds = native.SeedBuilder.from_generation(generation, built[0], data["spec"])
+candidates = seeds.analyse()
+needs = seeds.needs(data["certified"])
+out = seeds.complete(*data["reductions"])
+digest = hashlib.sha256(
+    repr((built, rebuilt, readings, candidates, needs, out, seeds.coefficients()))
+    .encode()
+).hexdigest()
+print(json.dumps([digest, generation.max_rank(rebuilt[0]), len(out[3])]))
+"""
+
+
+@pytest.mark.loop_fast
+def test_retained_arena(controls, loop_native, tmp_path):
+    """B1 on u u~ > g g g (seed colour model): the readings of a retained
+    build feed the seed stage in-crate (equal to the Python oracle and to the
+    bytes tables); a skeleton list that is not exactly a build's readings
+    takes the bytes tables. A filtered build is rebuilt from the retained
+    skeletons, with a keep callback or with flags per reading
+    (``ReadingKeep``), equal to the Python ``build_schedules``, decoding only
+    the build and its rebuilds. The arena's rank bound is ``MonomialLayout``'s.
+    Every native seeds binding (phase 0 and B1) runs without a Symbolica
+    key, with equal output on one and many threads."""
+
+    from pyamplicol.loops.v2 import generator_input
+    from pyamplicol.loops.v2 import reference_executor as rx
+    from pyamplicol.loops.v2.schedules import SkeletonView, build_schedules
+
+    colour, generation, families, catalogue = _native_generation(
+        controls, loop_native, "uux_ggg"
+    )
+    plan = generation.schedules(colour)
+    base = generation.base
+    assert base is not None and base.complete and base.plan is plan
+    readings = rx.reading_skeletons(plan)
+    found = generator_input.build_of(readings)
+    assert found is not None and found[0] is base
+    assert generator_input.build_of(readings[:-2]) is None
+    assert generator_input.build_of(list(reversed(readings))) is None
+    swapped = list(readings)
+    swapped[1] = dataclasses.replace(
+        swapped[1],
+        contents=tuple(dataclasses.replace(c) for c in swapped[1].contents),
+    )
+    assert swapped == readings
+    assert generator_input.build_of(swapped) is None
+    stage = native_seeds.NativeSeedStage(colour, loop_native)
+    in_crate = stage.build(readings, compress=True)
+    assert stage.build_source is base
+    replay = stage.spec_text, stage.reductions_text
+    assert stage.counts["ring_reductions"] and stage.counts["generic_seeds"]
+    by_bytes = stage.build(swapped, compress=True)
+    assert stage.build_source is None
+    assert_same_tables(in_crate, by_bytes)
+    assert_same_tables(in_crate, python_build(colour, readings, compress=True))
+
+    # The prune: every family's frame, a filter on the F readings.
+    frames = {key: schedule.trie.frame for key, schedule in plan.schedules.items()}
+
+    def keep(skeleton):
+        return skeleton.contents[0].mask % 3 != 1 or len(skeleton.contents) > 3
+
+    flags = bytes(keep(s) if i % 2 == 0 else i % 3 == 0 for i, s in enumerate(readings))
+    by_callback = generation.schedules(colour, frames=frames, keep=keep)
+    by_flags = generation.schedules(
+        colour, frames=frames, keep=generator_input.ReadingKeep(base, flags)
+    )
+    python = build_schedules(
+        families,
+        catalogue,
+        colour,
+        policy=lambda family, candidates: next(
+            trie for frame, trie in candidates if frame == frames[family.key]
+        ),
+        view=SkeletonView(catalogue, colour, keep=keep),
+    )
+    assert_same_schedules(by_callback, python)
+    assert_same_schedules(by_flags, python)
+    assert len(by_callback.view._contents) < len(plan.view._contents)
+    assert dict(generation.decodes) == {"build": 1, "rebuild": 2}
+    for schedules in (plan, by_callback):
+        build = generation.build_of_plan(schedules)
+        assert build is not None
+        assert build.max_rank() == max(
+            node.rank_in + max(segment.q_degree for segment, _ in node.edges)
+            for schedule in schedules.schedules.values()
+            for node in schedule.trie.nodes
+        )
+
+    # No key, one and many threads: the arena and the in-crate seed feed.
+    inputs = tmp_path / "arena.json"
+    inputs.write_text(
+        json.dumps(
+            {
+                "families": generation.input_json,
+                "schedules": json.dumps(
+                    {
+                        **base.payload,
+                        "policy": {
+                            "kind": "fixed",
+                            "frames": [
+                                [frame.start, frame.reflected]
+                                for frame in frames.values()
+                            ],
+                        },
+                    }
+                ),
+                "keep": [
+                    int(keep(s)) for s in itertools.chain.from_iterable(base.skeletons)
+                ],
+                "spec": replay[0],
+                "reductions": replay[1],
+                "certified": list(in_crate[0].certificates),
+            }
+        )
+    )
+    one, many = _no_key_runs(("1", "16"), _NO_KEY_SCRIPT + _ARENA_SCRIPT, str(inputs))
+    assert one == many
+    _check_no_key_seeds(one[0])
+    assert one[1][2] == len(readings)
 
 
 @pytest.mark.loop_fast
@@ -350,65 +546,61 @@ SLICE_CASES = [
 ]
 
 
+def _colour_options(accuracy: str) -> dict:
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+    if accuracy == "full":
+        return {}
+    return {
+        "accuracy": accuracy,
+        "colour_declaration": LoopColorDeclaration.from_dict(
+            json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+        ),
+    }
+
+
+@pytest.fixture
+def seed_stages(monkeypatch):
+    """Every native seed stage run (``NativeSeedStage``), in order."""
+
+    stages: list = []
+    run = native_seeds.NativeSeedStage._run
+
+    def recorded(self, *args, **kwargs):
+        stages.append(self)
+        return run(self, *args, **kwargs)
+
+    monkeypatch.setattr(native_seeds.NativeSeedStage, "_run", recorded)
+    return stages
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(("process", "born", "loop", "accuracy"), SLICE_CASES)
 def test_native_seeds_in_the_slice(
-    loop_sm_compiled_model, loop_native, monkeypatch, process, born, loop, accuracy
+    loop_sm_compiled_model, loop_native, seed_stages, process, born, loop, accuracy
 ):
-    """``LoopSlice.generate`` with the native stages in place of
-    ``build_seed_table`` and ``extend_seed_table`` (the phase-1 switch) has
-    the Python run's S5 digest at FC, LC and NLC (prune included), for the
-    main slice and its poles companion (``scaleless``), and with
-    ``colour_contraction="direct"`` the same plan bytes (S8); the native
-    prune liveness equals ``_prune_colour``'s on every reading."""
+    """``LoopSlice.generate`` with the switch on (the native
+    ``build_seed_table`` and ``extend_seed_table``) has the Python run's S5
+    digest at FC, LC and NLC (prune included), for the main slice and its
+    poles companion (``scaleless``), and with ``colour_contraction="direct"``
+    the same plan bytes (S8). B1: each slice's seed table read its schedule
+    build in-crate and the prune rebuilt the schedules from the retained
+    skeletons (one decode per build and rebuild, no skeleton-list decode);
+    the native prune liveness equals ``_prune_colour``'s callback on every
+    reading, and the schedules rebuilt from it equal the callback's."""
 
     from pyamplicol.loops.v2 import assemble, snapshot
+    from pyamplicol.loops.v2.plan_export import export_plan
     from pyamplicol.models.loading import load_compiled_model
-    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
 
     compiled = load_compiled_model(loop_sm_compiled_model)
-    options = {}
-    if accuracy != "full":
-        options = {
-            "accuracy": accuracy,
-            "colour_declaration": LoopColorDeclaration.from_dict(
-                json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
-            ),
-        }
     request = _slice_request(
-        process, born, loop, colour_contraction="direct", **options
+        process, born, loop, colour_contraction="direct", **_colour_options(accuracy)
     )
-    python = assemble.LoopSlice.generate(compiled, request, loop_native)
-    stages: list = []
-
-    def build(colour, skeletons, basis=None, *, compress=False):
-        stage = native_seeds.NativeSeedStage(colour, loop_native)
-        stages.append(stage)
-        return stage.build(skeletons, basis, compress=compress)
-
-    def extend(table, class_of, colour, skeletons, *, compress=False):
-        stage = native_seeds.NativeSeedStage(colour, loop_native)
-        stages.append(stage)
-        return stage.extend(table, class_of, skeletons, compress=compress)
-
-    with monkeypatch.context() as patch:
-        patch.setattr(assemble, "build_seed_table", build)
-        patch.setattr(assemble, "extend_seed_table", extend)
-        native = assemble.LoopSlice.generate(
-            compiled, request, loop_native, prune=False
-        )
-        built = stages[0]
-        if accuracy != "full":
-            flags, keep = built.keep(native)
-            assert any(flags.values())
-            oracle = _oracle_keep(native, assemble.LoopSlice._prune_colour)
-            assert keep == [oracle(s) for s in built._skeletons]
-            # LC prunes skeletons of g g > g g g; NLC keeps every u u~ > g g g one.
-            assert any(keep) and all(keep) == (accuracy == "nlc")
-    with monkeypatch.context() as patch:
-        patch.setattr(assemble, "build_seed_table", build)
-        patch.setattr(assemble, "extend_seed_table", extend)
-        native = assemble.LoopSlice.generate(compiled, request, loop_native)
+    with native_seeds.python_oracle():
+        python = assemble.LoopSlice.generate(compiled, request, loop_native)
+    assert not seed_stages
+    native = assemble.LoopSlice.generate(compiled, request, loop_native)
     assert snapshot.digest(snapshot.seeds_records(native)) == snapshot.digest(
         snapshot.seeds_records(python)
     )
@@ -416,14 +608,47 @@ def test_native_seeds_in_the_slice(
     assert snapshot.digest(snapshot.seeds_records(native.scaleless)) == (
         snapshot.digest(snapshot.seeds_records(python.scaleless))
     )
-    # Main slice and companion, each built (and at LC/NLC extended) natively.
-    assert len([s for s in stages if s._skeletons]) >= 2
-    from pyamplicol.loops.v2.plan_export import export_plan
-
     assert (
         export_plan(native, forward=False).json()
         == export_plan(python, forward=False).json()
     )
+    # B1: main slice and companion seeded in-crate from complete builds;
+    # at LC/NLC each extended after a rebuild from the retained skeletons.
+    built = [stage for stage in seed_stages if stage.kind == "build"]
+    assert len(built) == 2  # the main slice and the companion
+    assert all(s.build_source is not None and s.build_source.complete for s in built)
+    pruned = accuracy != "full"
+    for slice_ in (native, native.scaleless):
+        decodes = dict(slice_.generation.decodes)
+        assert decodes == ({"build": 1, "rebuild": 1} if pruned else {"build": 1})
+        build = slice_.generation.build_of_plan(slice_.plan)
+        assert build is not None
+        assert build.max_rank() == max(
+            node.rank_in + max(segment.q_degree for segment, _ in node.edges)
+            for schedule in slice_.plan.schedules.values()
+            for node in schedule.trie.nodes
+        )
+    if not pruned:
+        return
+    del seed_stages[:]
+    unpruned = assemble.LoopSlice.generate(compiled, request, loop_native, prune=False)
+    stage = seed_stages[0]
+    flags, keep = stage.keep(unpruned)
+    assert any(flags.values())
+    oracle = _oracle_keep(unpruned, assemble.LoopSlice._prune_colour)
+    assert keep == [oracle(s) for s in stage._skeletons]
+    # LC prunes skeletons of g g > g g g; NLC keeps every u u~ > g g g one.
+    assert any(keep) and all(keep) == (accuracy == "nlc")
+    frames = {
+        key: schedule.trie.frame for key, schedule in unpruned.plan.schedules.items()
+    }
+    generation = unpruned.generation
+    by_callback = generation.schedules(unpruned.colour, frames=frames, keep=oracle)
+    by_liveness = generation.schedules(
+        unpruned.colour, frames=frames, keep=stage.reading_keep(unpruned)
+    )
+    assert_same_schedules(by_liveness, by_callback)
+    assert_same_schedules(by_callback, native.plan)
 
 
 class _Captured(Exception):
@@ -461,7 +686,8 @@ def test_native_prune_liveness_with_directed_colour_tables(
 ):
     """The observables' LC prune (``ObservableSlice.of`` passes the directed
     colour tables of a dipole as extra criteria): native ``keep`` with those
-    criteria equals ``_prune_colour``'s callback on every reading."""
+    criteria equals ``_prune_colour``'s callback on every reading, and the
+    schedules rebuilt from the native liveness (B1) equal the pruned plan."""
 
     from pyamplicol.color.correlator_matrices import ColorCorrelator
     from pyamplicol.correlators import CorrelatorConfig
@@ -489,7 +715,14 @@ def test_native_prune_liveness_with_directed_colour_tables(
             (bool(observables), keep == [oracle(s) for s in stage._skeletons])
         )
         assert any(keep) or not observables
+        frames = {
+            key: schedule.trie.frame for key, schedule in self.plan.schedules.items()
+        }
+        native = self.generation.schedules(
+            self.colour, frames=frames, keep=stage.reading_keep(self, observables)
+        )
         prune(self, observables)
+        assert_same_schedules(native, self.plan)
 
     monkeypatch.setattr(assemble, "build_seed_table", build)
     monkeypatch.setattr(assemble.LoopSlice, "_prune_colour", checking)
@@ -542,9 +775,7 @@ def test_native_seeds_at_six_legs(
 
     def build(colour, skeletons, basis=None, *, compress=False):
         skeletons = list(skeletons)
-        captured["python"] = build_seed_table(
-            colour, skeletons, basis, compress=compress
-        )
+        captured["python"] = python_build(colour, skeletons, basis, compress=compress)
         captured["native"] = native_seeds.build_seed_table(
             colour, skeletons, basis, compress=compress, native=loop_native
         )

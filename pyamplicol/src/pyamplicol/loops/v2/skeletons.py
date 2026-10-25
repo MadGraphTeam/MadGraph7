@@ -168,6 +168,9 @@ class Skeleton:
     weight: Fraction  # automorphism weight 1/|Stab|
     multiplicity: int = 1  # merged closed-loop flavours (design §4.3)
     _hash: int | None = field(default=None, init=False, repr=False, compare=False)
+    # ``orders``, computed once: the seed stage and the LC/NLC prune read it
+    # per skeleton (millions at seven legs).
+    _orders: Orders | None = field(default=None, init=False, repr=False, compare=False)
 
     def __hash__(self) -> int:
         if self._hash is None:
@@ -197,7 +200,11 @@ class Skeleton:
     @property
     def orders(self) -> Orders:
         """Coupling orders of the loop amplitude (its sector offset, §3.6)."""
-        return add_orders(*(content.orders for content in self.contents))
+        if self._orders is None:
+            object.__setattr__(
+                self, "_orders", add_orders(*(c.orders for c in self.contents))
+            )
+        return self._orders  # type: ignore[return-value]
 
 
 def reflect_content(

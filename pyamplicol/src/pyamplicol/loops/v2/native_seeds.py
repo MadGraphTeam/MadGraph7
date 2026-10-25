@@ -33,8 +33,15 @@ adjoint label replaced by a slot (``_template``), so the native code
 reproduces ``_ring_relabelling`` and the ``repr`` orders of
 ``canonical_primitive`` without the network.
 
-Phase 0 of the package: these functions are not wired into
-``colour.build_seed_table`` yet (the switch lands after G-int).
+**The switch** (phase 1): ``colour.build_seed_table`` and
+``colour.extend_seed_table`` dispatch here while ``NATIVE`` is on (the
+default); ``python_oracle()`` runs the Python stages. **B1:** the readings
+of a retained native schedule build (``generator_input.NativeBuild``) feed
+the stage in-crate (``SeedBuilder.from_generation``) instead of bytes
+tables, once ``NativeBuild.readings_of`` has checked that the skeletons are
+exactly those readings; ``NativeSeedStage.reading_keep`` gives the prune
+liveness as flags per reading, from which ``NativeGeneration.schedules``
+rebuilds the pruned plan natively.
 
 **Design note: a lazy ``seed_fourier``** (RUST-MIGRATION.md §10 item 7, for
 phase 1). ``LoopSlice._plan_contraction`` certifies the seed FFT eagerly
@@ -60,7 +67,8 @@ import json
 import sys
 import time
 from array import array
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from fractions import Fraction
 from typing import Any, cast
@@ -99,6 +107,28 @@ __all__ = [
 ]
 
 _POSITIONS = {"adjoint": 0, "fundamental": 1, "exact": 2}
+
+#: The switch (RUST-MIGRATION rule 1): ``colour.build_seed_table`` and
+#: ``colour.extend_seed_table`` dispatch to this module's native stages, so
+#: the main slice, the poles companion, the LC/NLC prune and the
+#: observables' prune all take them. Off, the Python stages run: they are
+#: the oracle (``python_oracle``). The native stage covers every input the
+#: Python stage covers (the exact colour algebra stays in Python, called per
+#: distinct object), so no feature has a per-request Python fallback; any
+#: native failure fails closed.
+NATIVE = True
+
+
+@contextmanager
+def python_oracle() -> Iterator[None]:
+    """Run the Python seed stages (the oracle) inside the block."""
+
+    global NATIVE
+    saved, NATIVE = NATIVE, False
+    try:
+        yield
+    finally:
+        NATIVE = saved
 
 
 def _native(native: Any) -> Any:
@@ -242,6 +272,11 @@ class NativeSeedStage:
         self._class_orders: list[list[int]] = []
         self.timings: dict[str, float] = {}
         self.counts: dict[str, int] = {}
+        # The stage's native inputs (JSON): the content tables and the
+        # reduced ring and generic tensors (e.g. to replay it elsewhere).
+        self.spec_text = ""
+        self.reductions_text = ("[]", "[]")
+        self.kind = ""
         self.table: SeedTable | None = None
         self._clock = 0.0
 
@@ -288,6 +323,7 @@ class NativeSeedStage:
         build: bool,
     ) -> tuple[SeedTable, dict[Skeleton, SeedCombination]]:
         colour = self.colour
+        self.kind = "build" if build else "extend"
         self.timings = {}
         self._step("")
         compressed = CompressedColour(colour) if compress else None
@@ -331,7 +367,7 @@ class NativeSeedStage:
             "existing": existing,
             "tensors": encoder.tensors,
         }
-        text = json.dumps(spec, separators=(",", ":"))
+        text = self.spec_text = json.dumps(spec, separators=(",", ":"))
         self._step("content_tables")
         if source is not None:
             builder = self.native.SeedBuilder.from_generation(
@@ -362,12 +398,15 @@ class NativeSeedStage:
         ]
         generic_seeds = [colour.seed(skeletons[s]) for s in generics]
         self._step("reductions")
-        new_classes, class_orders, raw_rows, skeleton_rows = builder.complete(
+        self.reductions_text = (
             json.dumps(ring_tensors, separators=(",", ":")),
             json.dumps(
                 [encoder.key_tensor(seed) for seed in generic_seeds],
                 separators=(",", ":"),
             ),
+        )
+        new_classes, class_orders, raw_rows, skeleton_rows = builder.complete(
+            *self.reductions_text
         )
         self._step("native_classes")
         coefficients = [
