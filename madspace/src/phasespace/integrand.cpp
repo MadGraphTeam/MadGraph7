@@ -907,7 +907,10 @@ ValueVec Integrand::mlm_weights(
             : 1e30;
         auto ones = fb.full({1., batch_size_acc});
         Value factor, veto;
-        for (std::size_t i = 0; i < slot_count; ++i) {
+        // Slot 0 is the first clustering of the history, which can only ever
+        // record where a beam line's density already sits, so it never
+        // carries a ratio.
+        for (std::size_t i = 1; i < slot_count; ++i) {
             std::vector<me_int_t> column{static_cast<me_int_t>(i)};
             auto pick = [&](const char* name) {
                 return fb.squeeze(fb.select(scales.at(name), column));

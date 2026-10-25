@@ -182,6 +182,7 @@ public:
     const std::vector<double>& bw_widths() const { return _bw_widths; }
     AlphasScheme alphas_scheme() const { return _alphas_scheme; }
     bool pdf_reweighting() const { return _pdf_reweighting; }
+    ScaleScheme scale_scheme() const { return _scale_scheme; }
     ClusteringMeasure clustering_measure() const { return _clustering_measure; }
     ClusteringHistory clustering_history() const { return _clustering_history; }
     // Offset of each diagram's own state machine in cluster_state_machine,
