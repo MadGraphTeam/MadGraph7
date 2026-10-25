@@ -1507,7 +1507,7 @@ class NativeDag:
     # ``dataclasses.fields`` and ``dataclasses.replace`` see the
     # ``GenericDAG``'s fields (``replace`` reads them, so it decodes, counted,
     # and returns a ``GenericDAG``).
-    __dataclass_fields__ = GenericDAG.__dataclass_fields__  # type: ignore[attr-defined]
+    __dataclass_fields__ = GenericDAG.__dataclass_fields__
 
     def __getattr__(self, name: str) -> Any:
         # Only attributes the handle does not have, and only the GenericDAG's.
