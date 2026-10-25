@@ -367,9 +367,13 @@ readings = generation.readings(built[0])
 seeds = native.SeedBuilder.from_generation(generation, built[0], data["spec"])
 candidates = seeds.analyse()
 needs = seeds.needs(data["certified"])
-out = seeds.complete(*data["reductions"])
+seeds.reduce(*data["reduce"])
+out = seeds.complete_reduced()
+rings = [seeds.ring_tensor(k) for k in range(len(needs[0]))]
+generics = [seeds.generic_tensor(g) for g in range(len(needs[1]))]
 digest = hashlib.sha256(
-    repr((built, rebuilt, readings, candidates, needs, out, seeds.coefficients()))
+    repr((built, rebuilt, readings, candidates, needs, out, rings, generics,
+          seeds.coefficients()))
     .encode()
 ).hexdigest()
 print(json.dumps([digest, generation.max_rank(rebuilt[0]), len(out[3])]))
@@ -413,7 +417,7 @@ def test_retained_arena(controls, loop_native, tmp_path):
     stage = native_seeds.NativeSeedStage(colour, loop_native)
     in_crate = stage.build(readings, compress=True)
     assert stage.build_source is base
-    replay = stage.spec_text, stage.reductions_text
+    replay = stage.spec_text, stage.reduce_inputs
     assert stage.counts["ring_reductions"] and stage.counts["generic_seeds"]
     by_bytes = stage.build(swapped, compress=True)
     assert stage.build_source is None
@@ -475,7 +479,7 @@ def test_retained_arena(controls, loop_native, tmp_path):
                     int(keep(s)) for s in itertools.chain.from_iterable(base.skeletons)
                 ],
                 "spec": replay[0],
-                "reductions": replay[1],
+                "reduce": replay[1],
                 "certified": list(in_crate[0].certificates),
             }
         )

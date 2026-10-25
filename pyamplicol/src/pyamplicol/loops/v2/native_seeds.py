@@ -363,9 +363,11 @@ class NativeSeedStage:
         self._class_orders: list[list[int]] = []
         self.timings: dict[str, float] = {}
         self.counts: dict[str, int] = {}
-        # The stage's native inputs (JSON): the content tables and the
-        # reduced ring and generic tensors (e.g. to replay it elsewhere).
+        # The stage's native inputs (JSON), e.g. to replay it elsewhere: the
+        # content tables, and the inputs of the in-crate reductions (legs,
+        # exact descriptor and content networks) or the reduced tensors.
         self.spec_text = ""
+        self.reduce_inputs: tuple[list[int], list[int], str, str] | None = None
         self.reductions_text = ("[]", "[]")
         self.kind = ""
         # The stage's needs (ring needs, generic skeletons) and its encoder.
@@ -493,7 +495,8 @@ class NativeSeedStage:
             # The quark rings and generic seeds reduced in-crate; the ring
             # tensors also fill ``_reduced_primitive``'s cache (the cells).
             networks = _Networks()
-            builder.reduce(
+            exact_networks = compressed or CompressedColour(colour)
+            self.reduce_inputs = (
                 [leg.label for leg in legs],
                 [leg.label for leg in colour.legs],
                 networks.encode(
@@ -501,15 +504,11 @@ class NativeSeedStage:
                     for d in builder.ring_exact_descriptors()
                 ),
                 networks.encode(
-                    (
-                        c,
-                        (compressed or CompressedColour(colour))._exact_network(
-                            contents[c]
-                        ),
-                    )
+                    (c, exact_networks._exact_network(contents[c]))
                     for c in builder.generic_contents()
                 ),
             )
+            builder.reduce(*self.reduce_inputs)
             self._step("reductions")
             for k, need in enumerate(rings):
                 _prime_reduction(encoder.ring(need), legs, builder.ring_tensor(k))
@@ -517,7 +516,6 @@ class NativeSeedStage:
             def generic_seeds(g: int) -> ConnectedColorTensor:
                 return _decoded(builder.generic_tensor(g), colour.legs)
 
-            self.reductions_text = ("", "")
             new_classes, class_orders, raw_rows, skeleton_rows = (
                 builder.complete_reduced()
             )
@@ -564,7 +562,7 @@ class NativeSeedStage:
             "skeletons": len(skeletons),
             "contents": len(contents),
             "ring_reductions": len(rings),
-            "generic_seeds": len(generic_seeds),
+            "generic_seeds": len(generics),
             "new_classes": len(new_classes),
             "rows": len(raw_rows),
         }
