@@ -10,7 +10,8 @@ use crate::v2_generate::V2Generation;
 use rusticol_core::loop_v2::generate::FastMap;
 use rusticol_core::loop_v2::generate::networks::Network;
 use rusticol_core::loop_v2::generate::seeds::{
-    self, Kind, LivenessSpec, NetworkSpec, Seed, SeedOutput, SeedSpec, Tensor, TensorSpec, Word,
+    self, FactoredSpec, Kind, LivenessSpec, NetworkSpec, Seed, SeedOutput, SeedSpec, Tensor,
+    TensorSpec, Word,
 };
 
 /// A primitive: `(kind, letters, input descriptor indices)`.
@@ -60,6 +61,13 @@ fn networks(text: &str) -> PyResult<FastMap<u32, Network>> {
         .iter()
         .map(|(key, spec)| Ok((*key, seeds::parse_network(spec).map_err(error)?)))
         .collect()
+}
+
+/// `{"factors": [...], "contents": [[key, [factor ids]]]}` JSON to networks
+/// by key (`seeds::factored_networks`).
+fn factored_networks(text: &str) -> PyResult<FastMap<u32, Network>> {
+    let spec: FactoredSpec = serde_json::from_str(text).map_err(error)?;
+    seeds::factored_networks(&spec).map_err(error)
 }
 
 fn words<const N: usize>(bytes: &[u8]) -> PyResult<Vec<[u8; N]>> {
@@ -253,9 +261,10 @@ impl SeedBuilder {
         self.core.ring_exact_descriptors().map_err(error)
     }
 
-    /// Reduce the needs natively (after `needs`): `exact` and `contents`
-    /// are JSON lists of `[input descriptor index or content id, network]`
-    /// (`loops/v2/native_seeds.py`); legs are the tensors' leg labels.
+    /// Reduce the needs natively (after `needs`): `exact` is a JSON list of
+    /// `[input descriptor index, network]`, `contents` the factored networks
+    /// of the generic contents (`loops/v2/native_seeds.py`); legs are the
+    /// tensors' leg labels.
     fn reduce(
         &mut self,
         py: Python<'_>,
@@ -264,7 +273,7 @@ impl SeedBuilder {
         exact: &str,
         contents: &str,
     ) -> PyResult<()> {
-        let (exact, contents) = (networks(exact)?, networks(contents)?);
+        let (exact, contents) = (networks(exact)?, factored_networks(contents)?);
         let core = &mut self.core;
         py.detach(|| core.reduce(&ring_legs, &seed_legs, &exact, &contents))
             .map_err(error)

@@ -91,6 +91,7 @@ from .colour import (
     BornBasis,
     CompressedColour,
     CompressionCertificate,
+    PositionColour,
     Primitive,
     PrimitiveKind,
     SeedColour,
@@ -100,6 +101,7 @@ from .colour import (
     _combination_tensor,
     _lie_vertices,
     _reduced_primitive,
+    block_colour_network,
     born_basis,
     canonical_seed,
     relabel,
@@ -181,9 +183,66 @@ class _Networks:
             separators=(",", ":"),
         )
 
-    @staticmethod
-    def network(network: Any) -> list[Any]:
+    def factored(self, colour: SeedColour, items: Iterable[tuple[int, Content]]) -> str:
+        """The exact networks of contents (``CompressedColour._exact_network``)
+        as products of distinct factors, which the native side expands
+        (``multiply``): each vertex structure relabelled to its slots
+        ("in", "out", ("block", j)) and each attached block's word
+        (``block_colour_network`` on ("block", j)) is encoded once; a content
+        lists its factor ids in ``_exact_network``'s order. One local
+        numbering over every factor keeps a label shared by name (the
+        reducer is invariant under any injective renaming of local labels)."""
+
         local: dict[Any, int] = {}
+        factors: list[list[Any]] = []
+        vertex_ids: dict[tuple[Any, ...], int] = {}
+        block_ids: dict[tuple[int, int], int] = {}
+        blocks_alive: list[Any] = []
+        out: list[list[Any]] = []
+        for key, content in items:
+            state = content.colour
+            if not isinstance(state, PositionColour):
+                raise TypeError("seed classes need PositionColour contents")
+            in_leg, out_leg, *attached = state.legs
+            vertex = (state.rule, state.colour_index, tuple(state.legs))
+            f = vertex_ids.get(vertex)
+            if f is None:
+                slots: dict[int, Any] = {in_leg: "in", out_leg: "out"}
+                slots.update((leg, ("block", j)) for j, leg in enumerate(attached))
+
+                def rename(label: Any, slots: dict[int, Any] = slots) -> Any:
+                    kind, value = label
+                    return slots[value] if kind == "leg" else ("dummy", value)
+
+                f = vertex_ids[vertex] = len(factors)
+                factors.append(
+                    self.network(relabel(colour.vertex_network(state), rename), local)
+                )
+            ids = [f]
+            for j, block in enumerate(colour.attached_blocks(content)):
+                b = block_ids.get((id(block), j))
+                if b is None:
+                    blocks_alive.append(block)
+                    b = block_ids[id(block), j] = len(factors)
+                    factors.append(
+                        self.network(
+                            block_colour_network(
+                                block.colour_flow,
+                                colour._representations,
+                                colour.field_colour(block),
+                                ("block", j),
+                            ),
+                            local,
+                        )
+                    )
+                ids.append(b)
+            out.append([key, ids])
+        return json.dumps({"factors": factors, "contents": out}, separators=(",", ":"))
+
+    @staticmethod
+    def network(network: Any, local: dict[Any, int] | None = None) -> list[Any]:
+        if local is None:
+            local = {}
 
         def label(value: Any) -> int:
             if isinstance(value, int):
@@ -520,7 +579,6 @@ class NativeSeedStage:
             # The quark rings and generic seeds reduced in-crate; the ring
             # tensors also fill ``_reduced_primitive``'s cache (the cells).
             networks = _Networks()
-            exact_networks = compressed or CompressedColour(colour)
             self.reduce_inputs = (
                 [leg.label for leg in legs],
                 [leg.label for leg in colour.legs],
@@ -528,9 +586,8 @@ class NativeSeedStage:
                     (d, encoder._objects[d][1])
                     for d in builder.ring_exact_descriptors()
                 ),
-                networks.encode(
-                    (c, exact_networks._exact_network(contents[c]))
-                    for c in builder.generic_contents()
+                networks.factored(
+                    colour, ((c, contents[c]) for c in builder.generic_contents())
                 ),
             )
             builder.reduce(*self.reduce_inputs)

@@ -1580,6 +1580,41 @@ pub fn parse_network(spec: &NetworkSpec) -> RusticolResult<Network> {
         .collect()
 }
 
+/// Factored networks (`native_seeds._Networks.factored`): the distinct
+/// factor networks and, per key, the factor ids whose expanded product
+/// ([`networks::multiply`], in list order) is its network
+/// (`CompressedColour._exact_network`: the relabelled vertex structure, then
+/// each attached block's word).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FactoredSpec {
+    pub factors: Vec<NetworkSpec>,
+    pub contents: Vec<(u32, Vec<u32>)>,
+}
+
+/// The networks of a [`FactoredSpec`] by key.
+pub fn factored_networks(spec: &FactoredSpec) -> RusticolResult<FastMap<u32, Network>> {
+    let factors = spec
+        .factors
+        .iter()
+        .map(parse_network)
+        .collect::<RusticolResult<Vec<Network>>>()?;
+    spec.contents
+        .iter()
+        .map(|(key, ids)| {
+            let parts = ids
+                .iter()
+                .map(|&f| {
+                    factors
+                        .get(f as usize)
+                        .ok_or_else(|| invalid("a content refers to an unknown network factor"))
+                })
+                .collect::<RusticolResult<Vec<&Network>>>()?;
+            Ok((*key, networks::multiply(parts)))
+        })
+        .collect()
+}
+
 /// `_adjoint_chain(letters, in, out, p)`: `(F^l_1 ... F^l_k)_{in out}` with
 /// local chain labels.
 fn adjoint_chain(letters: &[i64]) -> Network {
