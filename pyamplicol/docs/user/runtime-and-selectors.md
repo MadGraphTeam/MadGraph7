@@ -629,6 +629,13 @@ coefficients for higher-precision evaluation; native evaluation continues to
 use their binary64 values.
 This matters when subtracting matrix elements at different multiplicities.
 
+One-loop virtuals of the v2 engine choose their arithmetic with the
+evaluation's `arithmetic` (`"double"`, `"double-double"`, or `"arbitrary"` with
+`precision` digits). Every arithmetic takes each external leg's p² in the loop
+integrals to be its squared mass, so a binary64-rounded point gives the same
+finite part and poles in all three, to binary64's accuracy (see
+[Configuration, the v2 loop engine](configuration.md#the-v2-loop-engine)).
+
 After updating from a version that rounded these definitions during generation,
 regenerate the prepared model and process output: increasing `precision` cannot
 repair coefficients already rounded in an older output. The prepared-model
