@@ -58,13 +58,21 @@ Colour, kinematics and signs of a site term (design §6.4, §6.6):
   kernel therefore takes each row on the leg of its tree particle, while the
   momenta keep the physical reading: UFO leg i carries the momentum flowing
   into the vertex from the block of incoming field i, i.e. minus its leg-mask
-  momentum (initial legs negated). Vertices whose particle multiset is not
-  closed under conjugation (e.g. W couplings) need their conjugate rule for
-  that reading and are refused;
+  momentum (initial legs negated). A vertex whose particle multiset is not
+  closed under conjugation (a W coupling) has no leg for the tree particles
+  of its blocks: the tree engine reads them through the model's conjugate
+  rule, so its kernels and couplings are the conjugate rule's, which differ
+  from the vertex's own by complex conjugation and the exchange of chiral
+  projectors (``ConjugateVertices``), while its colour stays the incoming
+  reading of the vertex (WP3.2 EWI-2);
 * ``Block.wick_sign`` turns each block into its Feynman-rule current and the
   root sign completes FeynKit's diagram sign: the parity of the full coloured
   fermion line listing over the product of the blocks' listings
-  (``loops.v2.blocks``). One coloured fermion line may close at the root.
+  (``loops.v2.blocks``). One coloured fermion line may close at the root,
+  and one colour-singlet fermion line: the blocks carry the tree engine's
+  Koszul signs of colour-singlet fermions (``generation/fermion_ordering.py``),
+  so the root completes them with the sign of the merge that joins the
+  line's two ends (``SiteClosure._singlet_root_sign``).
 
 Entries whose Lorentz structure the catalogue cannot normalise (a
 Levi-Civita tensor) have no ``ct-site`` kernel. Where the same UFO colour and
@@ -127,7 +135,6 @@ from .colour import (
     multiply,
     reduce_network,
 )
-from .conventions import tree_reading_legs
 from .families import (
     BlockCurrent,
     BlockTable,
@@ -788,16 +795,96 @@ class SiteTerm:
     colour: ConnectedColorTensor = field(repr=False)
 
 
+class ConjugateVertices:
+    """The model's conjugate rule of each vertex not closed under conjugation.
+
+    The root closure attaches each block to the UFO leg of its incoming field
+    f (the families' reading) and reads it, as the tree engine does, as the
+    current of tree particle anti(f) on the leg of that particle. A vertex
+    whose particles are not closed under conjugation has no such leg; the
+    tree engine reads those blocks through the vertex of the antiparticles
+    at the same coupling orders, the conjugate rule (a Hermitian Lagrangian
+    holds it): [u~ d W+] for the blocks of [d~ u W-]. Its couplings and
+    Lorentz structures are the vertex's own complex-conjugated with the chiral
+    projectors exchanged (the CKM phase of [u~ b W+], the Yukawas of
+    [t~ b G+]), so the root takes the conjugate rule's entries.
+
+    ``groups`` are (name, entries) of one ordinary vertex or counterterm rule
+    each (``KernelBasisEntry``, one collection and kind per group). A group's
+    conjugate is the group of the same collection, kind and coupling orders on
+    the antiparticles; it must be unique, and both must have one colour
+    structure (the closure keeps the vertex's own colour, the incoming
+    reading of the colour seeds, and the pairing of several structures with
+    the conjugate's is not established). Otherwise ``of`` refuses.
+    """
+
+    def __init__(self, groups: Iterable[tuple[str, Sequence[Any]]], native_model: Any):
+        data = model_data(native_model)
+        self._anti = {p["name"]: p["antiname"] for p in data["particles"]}
+        self._groups: dict[tuple, list[tuple[str, tuple[Any, ...]]]] = defaultdict(list)
+        for name, entries in groups:
+            entries = tuple(entries)
+            if entries:
+                self._groups[self._key(entries, entries[0].particle_names)].append(
+                    (name, entries)
+                )
+
+    @staticmethod
+    def _key(entries: Sequence[Any], names: Sequence[str]) -> tuple:
+        first = entries[0]
+        return (
+            first.collection,
+            first.kind,
+            tuple(sorted(names)),
+            frozenset(add_orders(tuple(entry.order)) for entry in entries),
+        )
+
+    def named(self, entries: Sequence[Any]) -> tuple[str, tuple[Any, ...]]:
+        """(name, entries) of the conjugate rule of a vertex's ``entries``."""
+
+        first = entries[0]
+        names = [self._anti[name] for name in first.particle_names]
+        found = self._groups.get(self._key(entries, names), [])
+        if len(found) != 1:
+            raise NotImplementedError(
+                f"{first.vertex_name} [{' '.join(first.particle_names)}] is not "
+                f"closed under conjugation and has {len(found)} conjugate rules "
+                f"[{' '.join(names)}] at its coupling orders; its tree reading "
+                "needs exactly one"
+            )
+        name, conjugate = found[0]
+        for group in (entries, conjugate):
+            if len({entry.color_index for entry in group}) != 1:
+                raise NotImplementedError(
+                    f"{group[0].vertex_name} is read through its conjugate rule "
+                    "and has several colour structures, whose pairing with the "
+                    "conjugate's is not established"
+                )
+        return name, conjugate
+
+    def of(self, entries: Sequence[Any]) -> tuple[Any, ...]:
+        """The entries of the conjugate rule of a vertex's ``entries``."""
+
+        return self.named(entries)[1]
+
+
 class SiteClosure:
     """Kinematic and colour terms of vertices closed at the root of tree blocks.
 
     ``blocks`` are the loop request's tree blocks, ``native_model`` the native
     model of the block currents' field names and ``catalogue`` a kernel
-    catalogue with ``ct-site`` bindings for every entry that is closed.
+    catalogue with ``ct-site`` bindings for every entry that is closed (the
+    conjugate rules of the vertices not closed under conjugation included).
+    ``conjugates`` finds those conjugate rules; without it such vertices are
+    refused.
     """
 
     def __init__(
-        self, blocks: TreeBlocks, native_model: Any, catalogue: LoopKernelCatalogue
+        self,
+        blocks: TreeBlocks,
+        native_model: Any,
+        catalogue: LoopKernelCatalogue,
+        conjugates: ConjugateVertices | None = None,
     ):
         data = model_data(native_model)
         self.tree = blocks
@@ -828,11 +915,13 @@ class SiteClosure:
                     BlockCurrent(key.external_mask, field_name, key.coupling_orders)
                 ].append(block)
         self._colours: dict[tuple, ConnectedColorTensor] = {}
-        # Vertices read through their fermion flow (``_kernel_legs``).
+        self._conjugates = conjugates
+        # Vertices read through their conjugate rule (``vertex_terms``).
         self.conjugate_readings: set[str] = set()
 
     def share_colours(self, other: SiteClosure) -> None:
-        """Share ``other``'s closed vertex colours (one cache for both).
+        """Share ``other``'s closed vertex colours (one cache for both) and,
+        unless this closure has its own, its conjugate rules.
 
         A closed colour depends on the vertex colour, the attached fields and
         the blocks' colour flows (its key) and on the process legs and the
@@ -848,6 +937,9 @@ class SiteClosure:
         ):
             raise ValueError("closures of different processes or models")
         self._colours = other._colours
+        if self._conjugates is None:
+            self._conjugates = other._conjugates
+        self.conjugate_readings = other.conjugate_readings
 
     @property
     def fermion_ends(self) -> Mapping[int, int]:
@@ -863,6 +955,13 @@ class SiteClosure:
         entries = tuple(
             entry for entry in site.rule.entries if entry_cell(entry) not in cancelled
         )
+        if len(entries) != len(site.rule.entries) and not self._conjugation_closed(
+            site.rule.entries[0].particle_names
+        ):
+            raise NotImplementedError(
+                f"{site.rule_name}: cancelled cells of a vertex read through its "
+                "conjugate rule"
+            )
         return self.vertex_terms(entries, site.blocks)
 
     def cancelled_cells(
@@ -922,6 +1021,20 @@ class SiteClosure:
                 raise ValueError(f"no tree block for {current}")
             options.append(rows)
         sign = self._root_sign(attachments)
+        entries = tuple(entries)
+        colour_entry = None
+        if entries and not self._conjugation_closed(entries[0].particle_names):
+            # The tree engine reads these blocks through the conjugate rule
+            # (module docstring): its entries give kernels and couplings, the
+            # vertex's single colour structure the colour.
+            if self._conjugates is None:
+                raise NotImplementedError(
+                    f"{entries[0].vertex_name} is not closed under conjugation; "
+                    "the tree reading of its legs needs its conjugate rule"
+                )
+            colour_entry = entries[0]
+            entries = self._conjugates.of(entries)
+            self.conjugate_readings.add(colour_entry.vertex_name)
         out = []
         for entry in entries:
             legs = self._kernel_legs(entry, attachments)
@@ -943,10 +1056,15 @@ class SiteClosure:
                         choice,
                         legs,
                         sign * wick,
-                        self._colour(entry, attachments, choice),
+                        self._colour(colour_entry or entry, attachments, choice),
                     )
                 )
         return tuple(out)
+
+    def _conjugation_closed(self, names: Sequence[str]) -> bool:
+        """Whether a vertex's particle multiset is closed under conjugation."""
+
+        return sorted(names) == sorted(self._by_name[n]["antiname"] for n in names)
 
     def value(
         self,
@@ -982,15 +1100,9 @@ class SiteClosure:
         self, entry: Any, attachments: Sequence[BlockCurrent]
     ) -> tuple[int, ...]:
         """Attachment index per kernel leg: the block whose tree particle is the
-        leg's particle (the tree engine's reading of a vertex).
-
-        A vertex whose particles are not closed under conjugation (a W
-        coupling) has no such block for some leg: the tree engine reads it
-        through its conjugate rule. Its fermion line is read by its fermion
-        flow instead (``conventions.tree_reading_legs``): the line's two
-        fermion legs exchange their blocks (the transposed Dirac chain) and
-        every boson keeps its own, the conjugate rule's leg of that block.
-        """
+        leg's particle (the tree engine's reading of a vertex). ``entry`` is
+        an entry of the attached vertex, or of its conjugate rule when the
+        vertex is not closed under conjugation (``vertex_terms``)."""
 
         free = list(range(len(attachments)))
         legs = []
@@ -998,32 +1110,13 @@ class SiteClosure:
             wanted = self._by_name[name]["antiname"]
             index = next((i for i in free if attachments[i].field == wanted), None)
             if index is None:
-                return self._fermion_flow_legs(entry, attachments)
+                raise ValueError(
+                    f"{entry.vertex_name}: no attachment of tree particle {name} "
+                    f"among {[a.field for a in attachments]}"
+                )
             free.remove(index)
             legs.append(index)
         return tuple(legs)
-
-    def _fermion_flow_legs(
-        self, entry: Any, attachments: Sequence[BlockCurrent]
-    ) -> tuple[int, ...]:
-        names = tuple(entry.particle_names)
-        if tuple(current.field for current in attachments) != names:
-            raise ValueError(
-                f"{entry.vertex_name}: attachments {[a.field for a in attachments]} "
-                f"are not on its legs {list(names)}"
-            )
-        spins = {name: int(self._by_name[name]["spin"]) for name in names}
-        if sum(spin == 2 for spin in spins.values()) != 2:
-            raise NotImplementedError(
-                f"{entry.vertex_name} is not closed under conjugation and has no "
-                "single fermion line; its tree reading needs its conjugate rule"
-            )
-        antinames = {name: self._by_name[name]["antiname"] for name in names}
-        legs = tree_reading_legs(
-            names, tuple(range(1, len(names) + 1)), spins, antinames
-        )
-        self.conjugate_readings.add(entry.vertex_name)
-        return tuple(leg - 1 for leg in legs)
 
     def close(
         self, network: ColourNetwork, attachments: Sequence[BlockCurrent]

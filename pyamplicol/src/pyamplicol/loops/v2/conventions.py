@@ -17,12 +17,17 @@ sites and loop skeletons share one phase: the tree engine's i-factors (vertex
 and propagator factors of the UFO rules) are in the rows and kernels, and the
 loop integral needs no further phase.
 
-Fermion legs of loop segments are read as the tree engine reads a vertex: the
-current of tree particle p fills the UFO leg named p (``tree_reading_legs``).
+Legs of loop segments are read as the tree engine reads a vertex: the
+current of tree particle p fills the UFO leg named p (``TreeReading.vertex``).
 The families and the colour seeds read the conjugate ("incoming") legs; for
 spinor legs the two readings transpose the Dirac chain, and only the tree
-reading matches the tree runtime's fermion rows (bosons are self-conjugate
-and unaffected).
+reading matches the tree runtime's fermion rows (self-conjugate bosons are
+unaffected). A vertex whose particles are not closed under conjugation (a W
+on a loop quark line) has no leg for the tree particles of its currents: the
+tree engine reads them through the model's conjugate rule, whose couplings
+and Lorentz structures are the rule's own complex-conjugated with the chiral
+projectors exchanged, so the segment takes the conjugate rule's kernels
+(WP3.2 EWI-2; the root closure does the same, ``ct_sites.SiteClosure``).
 
 Leaf weight of a skeleton (``LeafWeights``), design §3.3:
 
@@ -78,15 +83,16 @@ factor (design §6.4).
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
+from types import MappingProxyType
 from typing import Any
 
 from pyamplicol.generation.fermion_ordering import _fermion_rep_requires_exterior_sign
 
 from .blocks import _open_last, _parity, identity_pairing_sign
-from .families import ZERO, mass_name, model_data
+from .families import ZERO, add_orders, mass_name, model_data
 from .skeletons import Content, Skeleton
 
 GHOST_SPIN = -1
@@ -127,22 +133,18 @@ def tree_reading_legs(
     spins: Mapping[str, int],
     antinames: Mapping[str, str],
 ) -> tuple[int, ...]:
-    """The UFO legs of one vertex reading with fermion legs read as the tree
-    engine reads them (module docstring).
+    """The UFO legs of one reading of a vertex closed under conjugation, with
+    every leg read as the tree engine reads it (module docstring).
 
     ``legs`` are 1-based UFO legs in the incoming reading (loop in, loop out,
-    blocks); each fermion leg is exchanged with the other leg of its fermion
-    line. A vertex with two fermion legs has one line, whatever their
-    flavours (a W vertex joins t and b): its two legs are exchanged, as the
-    tree engine reads the vertex through its conjugate rule. With more
-    fermion legs each pairs with the leg of its conjugate particle.
+    blocks); each fermion leg is exchanged with the leg of its conjugate (the
+    other leg of its fermion line), each charged boson with a leg of its
+    antiparticle; self-conjugate bosons keep their leg. Vertices not closed
+    under conjugation are read through their conjugate rule
+    (``TreeReading.vertex``).
     """
 
     fermions = [leg for leg in legs if spins[particles[leg - 1]] == FERMION_SPIN]
-    if len(fermions) == 2:
-        first, second = fermions
-        swap = {first: second, second: first}
-        return tuple(swap.get(leg, leg) for leg in legs)
     swap = {}
     for leg in fermions:
         partners = [
@@ -155,7 +157,87 @@ def tree_reading_legs(
                 f"vertex {tuple(particles)} has more than one fermion line"
             )
         swap[leg] = partners[0]
+    charged = [
+        leg
+        for leg in legs
+        if leg not in swap and antinames[particles[leg - 1]] != particles[leg - 1]
+    ]
+    if charged:
+        targets = _antiparticle_legs(
+            [particles[leg - 1] for leg in charged], particles, antinames, swap.values()
+        )
+        swap.update(zip(charged, targets, strict=True))
     return tuple(swap.get(leg, leg) for leg in legs)
+
+
+def _antiparticle_legs(
+    items: Sequence[str],
+    particles: Sequence[str],
+    antinames: Mapping[str, str],
+    taken: Iterable[int] = (),
+) -> tuple[int, ...]:
+    """1-based legs of ``particles`` holding the antiparticle of each item,
+    each leg used once (identical legs in order: a UFO vertex is symmetric
+    under the exchange of identical legs)."""
+
+    free = [leg for leg in range(1, len(particles) + 1) if leg not in set(taken)]
+    out = []
+    for item in items:
+        wanted = antinames[item]
+        leg = next((leg for leg in free if particles[leg - 1] == wanted), None)
+        if leg is None:
+            raise FermionSignError(
+                f"vertex {tuple(particles)} has no leg for the antiparticle of {item}"
+            )
+        free.remove(leg)
+        out.append(leg)
+    return tuple(out)
+
+
+def conjugate_vertex_rules(data: Mapping[str, Any]) -> dict[str, str | None]:
+    """The conjugate rule of every vertex rule of a native model (``data``).
+
+    A rule whose particles are closed under conjugation is its own conjugate;
+    otherwise the conjugate is the rule of the antiparticles at the same
+    coupling orders (a Hermitian Lagrangian holds it: the W couplings of
+    [d~ u W-] and [u~ d W+]). None marks a rule without a unique conjugate,
+    or with several colour structures (their pairing with the conjugate's is
+    not established), which the readings refuse.
+    """
+
+    antinames = {p["name"]: p["antiname"] for p in data["particles"]}
+    orders_of = {
+        entry["name"]: add_orders(
+            tuple((name, power) for name, power in entry["orders"])
+        )
+        for entry in data["couplings"]
+    }
+
+    def orders(rule) -> frozenset:
+        return frozenset(
+            orders_of[name] for row in rule["couplings"] for name in row if name
+        )
+
+    by_fields: dict[tuple, list[Mapping[str, Any]]] = {}
+    for rule in data["vertex_rules"]:
+        key = (tuple(sorted(rule["particles"])), orders(rule))
+        by_fields.setdefault(key, []).append(rule)
+    out: dict[str, str | None] = {}
+    for rule in data["vertex_rules"]:
+        fields = tuple(sorted(rule["particles"]))
+        conjugate = tuple(sorted(antinames[name] for name in rule["particles"]))
+        if conjugate == fields:
+            out[rule["name"]] = rule["name"]
+            continue
+        found = by_fields.get((conjugate, orders(rule)), [])
+        out[rule["name"]] = (
+            found[0]["name"]
+            if len(found) == 1
+            and len(rule["color_structures"]) == 1
+            and len(found[0]["color_structures"]) == 1
+            else None
+        )
+    return out
 
 
 class TreeReading:
@@ -169,10 +251,57 @@ class TreeReading:
         self._spins = {p["name"]: int(p["spin"]) for p in data["particles"]}
         self._antinames = {p["name"]: p["antiname"] for p in data["particles"]}
         self._masses = {p["name"]: mass_name(p["mass"]) for p in data["particles"]}
+        self._conjugates = conjugate_vertex_rules(data)
 
     def __call__(self, rule: str, legs: tuple[int, ...]) -> tuple[int, ...]:
         return tree_reading_legs(
             self._particles[rule], legs, self._spins, self._antinames
+        )
+
+    def conjugate(self, rule: str) -> str:
+        """The rule the tree engine reads for the families' ``rule``: itself
+        when closed under conjugation, else its conjugate rule."""
+
+        found = self._conjugates.get(rule)
+        if found is None:
+            raise FermionSignError(
+                f"vertex {rule} {tuple(self._particles[rule])} is not closed under "
+                "conjugation and has no unique conjugate rule with one colour "
+                "structure; its tree reading is not established"
+            )
+        return found
+
+    def vertex(
+        self, rule: str, legs: tuple[int, ...]
+    ) -> tuple[str, tuple[int, ...], Mapping[int, int] | None]:
+        """(rule read, its legs, colour index of the read rule per colour index
+        of ``rule``, None for the identity) for a reading of the families'
+        ``rule``.
+
+        ``legs`` are the 1-based UFO legs of ``rule`` in the incoming reading
+        (loop in, loop out, blocks). The tree engine reads the current of tree
+        particle p on the UFO leg of p (``models.compiler_entry.
+        _compile_oriented_kernels``); the incoming reading puts the current of
+        field f, the tree particle anti(f), on the leg of f. A rule closed
+        under conjugation is read on its own legs (``tree_reading_legs``). A
+        rule that is not (a W coupling of a loop quark line) has no leg for
+        anti(f): the tree engine reads those currents through the conjugate
+        rule, with its couplings and Lorentz structures, which differ from
+        the rule's own by complex conjugation and the exchange of chiral
+        projectors (the CKM phase of [u~ b W+]; the Yukawas of [t~ b G+]). The
+        colour stays the incoming reading of ``rule`` (the colour seeds).
+        """
+
+        read = self.conjugate(rule)
+        if read == rule:
+            return rule, self(rule, legs), None
+        own = self._particles[rule]
+        return (
+            read,
+            _antiparticle_legs(
+                [own[leg - 1] for leg in legs], self._particles[read], self._antinames
+            ),
+            _FIRST,
         )
 
     def mass_signs(self, loop_out: str) -> Mapping[str, int]:
@@ -183,6 +312,10 @@ class TreeReading:
         if self._spins[loop_out] != FERMION_SPIN or mass == ZERO:
             return {}
         return {mass: -1}
+
+
+# Open rules have one colour structure (``conjugate_vertex_rules``).
+_FIRST: Mapping[int, int] = MappingProxyType({0: 0})
 
 
 class LeafWeights:
@@ -355,5 +488,6 @@ __all__ = [
     "LeafWeights",
     "Normalisation",
     "TreeReading",
+    "conjugate_vertex_rules",
     "tree_reading_legs",
 ]

@@ -72,7 +72,7 @@ from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
-from itertools import product
+from itertools import permutations, product
 from typing import Any, Literal, NamedTuple
 
 from pyamplicol.color.connections import (
@@ -124,6 +124,7 @@ from .conventions import (
 )
 from .ct_sites import (
     LAURENT_POWERS,
+    ConjugateVertices,
     CountertermSites,
     SiteClosure,
     SiteTerm,
@@ -858,6 +859,8 @@ def _born_block_requests(
     positions consume, and the Born root of a process whose leg 1 is a lepton
     (e+ e- > u u~: the quark pair's photon current) or of a mixed-order Born
     (the W exchange of u u~ > d d~) attaches currents no loop position does.
+    A vertex of the model attaches leg 1 alone and one current of the
+    vertex's fields per part of the other legs, within ``born_orders``.
     """
 
     full = (1 << len(table.legs)) - 1
@@ -867,9 +870,9 @@ def _born_block_requests(
         entry["name"]: tuple(sorted((name, power) for name, power in entry["orders"]))
         for entry in data["couplings"]
     }
-    out: set[BlockCurrent] = set()
+    by_arity: dict[int, list[tuple[tuple[str, ...], set[Orders]]]] = defaultdict(list)
     for rule in data["vertex_rules"]:
-        fields = sorted(rule["particles"])
+        fields = tuple(rule["particles"])
         if any(spins[name] == -1 for name in fields):
             continue
         orders = {
@@ -878,19 +881,38 @@ def _born_block_requests(
             for name in row
             if name is not None
         }
-        for parts in _set_partitions(full, len(fields), len(fields)):
-            if 1 not in parts:
-                continue
-            for choice in product(*(table.currents(part) for part in parts)):
-                if sorted(block.field for block in choice) != fields:
-                    continue
-                if any(
-                    orders_within(
-                        add_orders(order, *(block.orders for block in choice)), cap
-                    )
-                    for order in orders
-                ):
-                    out.update(choice)
+        by_arity[len(fields)].append((fields, orders))
+    by_field: dict[int, dict[str, list[BlockCurrent]]] = {}
+
+    def currents(mask: int) -> dict[str, list[BlockCurrent]]:
+        found = by_field.get(mask)
+        if found is None:
+            found = by_field[mask] = defaultdict(list)
+            for block in table.currents(mask):
+                found[block.field].append(block)
+        return found
+
+    out: set[BlockCurrent] = set()
+    for arity, rules in sorted(by_arity.items()):
+        for rest in _set_partitions(full & ~1, arity - 1, arity - 1):
+            pools = [currents(part) for part in (1, *rest)]
+            for fields, orders in rules:
+                for arrangement in set(permutations(fields)):
+                    options = [
+                        pool.get(name, ())
+                        for pool, name in zip(pools, arrangement, strict=True)
+                    ]
+                    if not all(options):
+                        continue
+                    for choice in product(*options):
+                        if any(
+                            orders_within(
+                                add_orders(order, *(block.orders for block in choice)),
+                                cap,
+                            )
+                            for order in orders
+                        ):
+                            out.update(choice)
     return frozenset(out)
 
 
@@ -1620,21 +1642,30 @@ class LoopSlice:
             forbidden=request.particle_veto,
         )
         ordinary = _ordinary_entries(prepared, data)
-        entries = [e for site in sites.sites for e in site.rule.entries]
-        if program is not None:
-            entries += [e for site in program.root_sites for e in site.rule.entries]
+        root_sites = (*sites.sites, *(() if program is None else program.root_sites))
+        # The root closure reads a vertex not closed under conjugation (a W
+        # coupling) through its conjugate rule (WP3.2 EWI-2).
+        conjugates = ConjugateVertices(
+            (
+                *((rows[0].vertex_name, rows) for rows in ordinary),
+                *(
+                    (name, rule.entries)
+                    for name, rule in prepared.counterterms.rules.items()
+                ),
+            ),
+            data,
+        )
+        entries = [e for site in root_sites for e in site.rule.entries]
+        entries += _conjugate_site_entries(root_sites, conjugates, program, data)
         entries += [e for rows in ordinary for e in rows]
         loop_species = _family_loop_species(loop_catalogue, selection, data)
-        _check_declared_loop_species(
-            (*sites.sites, *(() if program is None else program.root_sites)),
-            loop_species,
-        )
+        _check_declared_loop_species(root_sites, loop_species)
         catalogue = build_loop_kernel_catalogue(
             compiled,
             loop_species=loop_species,
             counterterm_entries=list({id(e): e for e in entries}.values()),
         )
-        closure = SiteClosure(blocks, data, catalogue)
+        closure = SiteClosure(blocks, data, catalogue, conjugates)
         # Oracle sites: cells without a site kernel that cancel between the
         # rules closed on the same blocks (the Levi-Civita R2 of a Z with
         # gluons over complete quark doublets) are left out; any other such
@@ -1646,8 +1677,12 @@ class LoopSlice:
         )
         readings = rx.reading_skeletons(plan)
         weights = LeafWeights(data, closure.fermion_ends)
+        reading = TreeReading(data)
         for skeleton in readings:
             weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
+            for content in skeleton.contents:
+                for term in content.terms:
+                    reading.conjugate(term.vertex.rule)  # refuses unread vertices
         if program is not None:
             # The program's root terms and the Born close the same vertices
             # on blocks of the same words: one colour cache serves both.
@@ -1714,7 +1749,7 @@ class LoopSlice:
                 ),
             ),
             native=native,
-            reading=TreeReading(data),
+            reading=reading,
             weights=weights,
             scale_parameter=scale_parameter,
             alpha_s_parameter=alpha_s_parameter,
@@ -3543,6 +3578,34 @@ def _family_loop_species(
             if loop_catalogue.species(name).perturbative_orders & selection.corrections
         )
     )
+
+
+def _conjugate_site_entries(sites, conjugates: ConjugateVertices, program, data):
+    """Entries of the conjugate rules through which the root closure reads
+    the counterterm ``sites`` whose vertices are not closed under conjugation
+    (``ct_sites.ConjugateVertices``), for the kernel catalogue.
+
+    The production program reads such a root site through its conjugate
+    rule, so that rule must be lowered: a conjugate rule the program records
+    as inert (its vertex enters no tree inside a current) is refused.
+    """
+
+    anti = {p["name"]: p["antiname"] for p in data["particles"]}
+    inert = {} if program is None else program.recursion.inert
+    out: dict[int, Any] = {}
+    for site in sites:
+        names = site.rule.entries[0].particle_names if site.rule.entries else ()
+        if not names or sorted(names) == sorted(anti[n] for n in names):
+            continue
+        name, entries = conjugates.named(site.rule.entries)
+        if name in inert:
+            raise NotImplementedError(
+                f"counterterm root site {site.rule_name} is read through its "
+                f"conjugate rule {name}, which the program leaves inert "
+                f"({inert[name]})"
+            )
+        out.update((id(entry), entry) for entry in entries)
+    return list(out.values())
 
 
 def _check_declared_loop_species(sites, loop_species: Sequence[int]) -> None:
