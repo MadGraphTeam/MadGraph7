@@ -13,9 +13,10 @@ remains and enters the recursion.
 Oracles: the exact cancellation of the coefficients; the slice with its
 counterterms from the recursion equals the slice with every rule closed at
 sites (O6), each route checking the cancellation on its own (the lowered
-model with the request's admission, the site closure per block assignment);
-where the cell does not cancel (a synthetic anomalous coupling) both routes
-refuse the request. The slice requests use the synthetic model of
+model with the rules' multiplicities, the site closure per block
+assignment); where the cell does not cancel (a synthetic anomalous coupling,
+or a ``particle_veto`` breaking a quark doublet) both routes refuse the
+request. The slice requests use the synthetic model of
 ``test_loop_v2_ct_two_point``, whose Z couples to quarks through the vector
 structure only (axial loop couplings need the electroweak sign oracles,
 WP3.2); its counterterm vertices are loop_sm's.
@@ -53,10 +54,15 @@ def test_levi_civita_cells_cancel_between_quark_doublets(
     Levi-Civita cells of the g g Z and g g g Z R2 are left out with their
     exact coefficients, opposite between the up- and down-type loop groups,
     and the vector d-symbol cell of g g g Z is lowered. The cancellation
-    needs equal numbers of admitted up- and down-type flavours."""
+    needs equal numbers of admitted up- and down-type flavours, which a top
+    veto breaks."""
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
-    from pyamplicol.loops.v2.ct_recursion import rule_key, uncancelled_rules
+    from pyamplicol.loops.v2.ct_recursion import (
+        admitted_alternatives,
+        rule_key,
+        uncancelled_rules,
+    )
     from pyamplicol.loops.v2.ct_sites import vanishes_identically
     from pyamplicol.models.loading import load_compiled_model
 
@@ -83,8 +89,12 @@ def test_levi_civita_cells_cancel_between_quark_doublets(
         assert vanishes_identically(compiled, up[0] + down[0])
         assert not vanishes_identically(compiled, up[0])
         weights = dict.fromkeys(unlowered, 3)
+        assert {model.weights[rule_key(rules[name])] for name in members} == {3}
         assert not uncancelled_rules(unlowered, weights, _vanishes(compiled))
-        weights[members[0]] = 2  # one flavour fewer in one loop group
+        # particle_veto = [t]: the u, c, t group keeps two flavours.
+        top = {name: admitted_alternatives(rules[name], (6,)) for name in members}
+        assert sorted(map(len, top.values())) == [2, 3]
+        weights.update({name: len(top[name]) for name in members})
         assert uncancelled_rules(unlowered, weights, _vanishes(compiled)) == set(
             members
         )
@@ -150,9 +160,12 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
 ):
     """O6 with the Levi-Civita cells cancelled: the g g Z (and g g g Z)
     rules are admitted in the recursion with their cell left out (no rule is
-    residual), the site closure closes the same cells with the catalogue's
+    residual; the plain admission also admits the g g g Z rules where no tree
+    holds them), the site closure closes the same cells with the catalogue's
     Levi-Civita kernels (WP3.1 I-AX, ``test_loop_v2_levi_civita``), whose
     up- and down-type terms cancel, and every component agrees."""
+
+    from pyamplicol.loops.v2.ct_recursion import rule_key
 
     _certify_furry_zeros(monkeypatch)
     recursion = cancellation_routes(name, "recursion")
@@ -161,11 +174,12 @@ def test_cancelled_counterterms_from_recursion_equal_sites(
     assert not program.residual
     cancelled = {
         vertex
-        for rule, cells in program.cancelled.items()
-        if cells and program.admission[rule]
+        for rule in program.rules
+        if program.model.unlowered.get(rule_key(rules[rule]))
+        and program.admission[rule]
         for vertex in _vertices(rules[rule])
     }
-    assert cancelled == CANCELLATION_O6[name][4]
+    assert CANCELLATION_O6[name][4] <= cancelled <= GGZ_VERTICES
     sites = cancellation_routes(name, "sites")
     closed = {
         vertex
@@ -278,49 +292,120 @@ def anomalous_model(loop_sm_ufo, tmp_path_factory):
 
 
 @pytest.mark.loop_physics
-def test_uncancelled_levi_civita_cells_close_at_sites(
-    anomalous_model, loop_native, monkeypatch
+@pytest.mark.parametrize("counterterms", ("recursion", "sites"))
+def test_uncancelled_levi_civita_cells_refuse_or_close_at_sites(
+    anomalous_model, loop_native, monkeypatch, counterterms
 ):
     """Where the g g Z cell does not cancel (an anomalous model) the
-    lowering has no tree kernel for it and leaves its rules to sites; the
-    site closure closes them with the catalogue's Levi-Civita kernel (WP3.1
-    I-AX), so both routes keep the cell and agree (they refused the request
-    while the catalogue had no Levi-Civita kernel)."""
+    lowering has no tree kernel for it: as the vertex enters a tree of
+    u u~ > e- e+ g (two gluon currents and a Z) the recursion refuses the
+    request (no site fallback, REQUIREMENTS_ADDENDUM J). The site oracle
+    closes the cell with the catalogue's Levi-Civita kernel (WP3.1 I-AX,
+    ``test_loop_v2_levi_civita``). Neither drops the cell."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.ct_recursion import UnloweredCountertermError
     from pyamplicol.models.loading import load_compiled_model
 
     _certify_furry_zeros(monkeypatch)
     compiled = load_compiled_model(anomalous_model)
-    built = {}
-
-    def routes(name, counterterms):
-        if counterterms not in built:
-            built[counterterms] = LoopSlice.generate(
-                compiled,
-                SliceRequest(
-                    "u u~ > e- e+ g",
-                    {"QCD": 1, "QED": 2},
-                    {"QCD": 3, "QED": 2},
-                    fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-                    counterterms=counterterms,
-                ),
-                loop_native,
-            )
-        return built[counterterms]
-
-    residual = routes("anomalous", "recursion").counterterm_program.recursion.residual
-    rules = {name: reason for name, reason in residual.items() if "R2_GGZ" in reason}
-    assert len(rules) == 2, residual
-    assert all("does not cancel" in reason for reason in rules.values())
-    sites = routes("anomalous", "sites")
+    request = SliceRequest(
+        "u u~ > e- e+ g",
+        {"QCD": 1, "QED": 2},
+        {"QCD": 3, "QED": 2},
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+        counterterms=counterterms,
+    )
+    if counterterms == "recursion":
+        with pytest.raises(
+            UnloweredCountertermError,
+            match=r"can enter a tree.*\[G G Z\].*R2_GGZ.*does not cancel",
+        ):
+            LoopSlice.generate(compiled, request, loop_native)
+        return
+    sites = LoopSlice.generate(compiled, request, loop_native)
     assert {
         term.entry.lorentz_name
         for site, terms in sites.site_terms.items()
         if _vertices(site.rule) & GGZ_VERTICES
         for term in terms
     } & LEVI_CIVITA
-    worst = _route_differences(
-        routes, "anomalous", "double", SLICE_PARAMETERS, masses=(0,) * 5
+
+
+@pytest.mark.loop_physics
+def test_uncancelled_cells_in_no_tree_are_inert(
+    anomalous_model,
+    two_point_model,  # noqa: F811
+    loop_native,
+):
+    """REQUIREMENTS_ADDENDUM J: a CT vertex that cannot enter any tree of the
+    request is inert. In u u~ > e- e+ (QCD corrections) the plain rule admits
+    the anomalous g g Z R2 (a QCD correction, its orders within the
+    program's), whose uncancelled Levi-Civita cell cannot be lowered; but no
+    tree of the request holds two gluon currents, so the vertex enters none
+    (``ct_closure.InsertionReachability``). Its rules are recorded inert and
+    the request generates, with the components of the model whose cell
+    cancels (one point, binary64). In u u~ > e- e+ g the same vertex enters
+    a tree and the request is refused (the test above)."""
+
+    from decimal import Decimal, localcontext
+
+    from pyamplicol.loops.v2.assemble import (
+        COMPONENTS,
+        LoopSlice,
+        Precision,
+        SliceRequest,
     )
-    assert all(value <= SLICE_TOLERANCE["double"] for value in worst.values()), worst
+    from pyamplicol.models.loading import load_compiled_model
+
+    from .test_loop_v2_ct_closure import SLICE_SCALE_SQUARED, _slice_point
+
+    request = SliceRequest(
+        "u u~ > e- e+",
+        {"QCD": 0, "QED": 2},
+        {"QCD": 2, "QED": 2},
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+    )
+    slices = [
+        LoopSlice.generate(load_compiled_model(path), request, loop_native)
+        for path in (anomalous_model, two_point_model)
+    ]
+    recursion = slices[0].counterterm_program.recursion
+    rules = slices[0].prepared.counterterms.rules
+    inert = {
+        name for name, reason in recursion.inert.items() if "enters no tree" in reason
+    }
+    assert {vertex for name in inert for vertex in _vertices(rules[name])} == {"V_GGZ"}
+    assert not recursion.residual and not inert & set(recursion.rules)
+    cancelling = slices[1].counterterm_program.recursion
+    assert not cancelling.residual and not cancelling.inert.keys() & inert
+    point = _slice_point((0,) * 4)
+    mine, reference = (
+        route.evaluate(
+            point,
+            SLICE_SCALE_SQUARED,
+            parameters=SLICE_PARAMETERS,
+            precision=Precision.double(),
+        )
+        for route in slices
+    )
+    with localcontext() as context:
+        context.prec = 60
+        for component in COMPONENTS:
+            assert mine.components[component].keys() == (
+                reference.components[component].keys()
+            ), component
+            for sector, laurent in reference.components[component].items():
+                values = [Decimal(str(x)) for x in laurent.coefficients]
+                ours = [
+                    Decimal(str(x))
+                    for x in mine.components[component][sector].coefficients
+                ]
+                scale = max(map(abs, values)) or 1
+                assert all(
+                    abs(a - b) <= SLICE_TOLERANCE["double"] * scale
+                    for a, b in zip(ours, values, strict=True)
+                ), (component, sector)
+    assert any(
+        any(laurent.coefficients) for laurent in reference.components["r2"].values()
+    )

@@ -150,6 +150,7 @@ certification performed during generation.
 | C++ or ASM process artifact | concrete target; CPU features when native specialization is enabled | No; requires exact compatible target/features. |
 | C++ or ASM prepared bundle | target-native | No. |
 | Compiled model IR (`.json`) | architecture-independent | Yes; it contains no executable prepared backend. |
+| Plan v4 virtual (one-loop, `loop.engine = "v2"`) process artifact | `portable-64le`, empty CPU-feature set | **Yes**: it holds no native code. The plan's kernels are exact term lists evaluated natively; the tree, Born, counterterm and parameter programs (`point_inputs = "native-v2"`) are stored as SymJIT storage-v4 IR, rebuilt for the receiving CPU at load and run in f64, and as saved Symbolica states, run in double-double and arbitrary precision. The SymJIT applications are always compiled at -O2, whatever `evaluator.jit.optimization_level` says. A plain load regenerates nothing; exact flavour members served by a representative still regenerate at load, and correlated and resolved calls and the `"uv"`/`"ir"` pole selections on first use (their companion's tree inputs are not stored yet). |
 
 For a portable compiled all-JIT artifact, Rusticol verifies that every
 executable leaf and nested selector path is O1 or O2 SymJIT. Eager and
@@ -161,6 +162,85 @@ loaded.
 `portable-64le` is an executable portability claim, not a claim that benchmark
 results transfer between hosts. Profiling measurements and campaign currents
 remain host/profile-specific.
+
+### CPU requirements of SymJIT kernels
+
+The SymJIT code generator (2.27) that rebuilds JIT kernels at load needs, on
+x86-64, a CPU with **AVX and FMA3** (Intel Haswell, AMD Piledriver or newer).
+SymJIT also generates AArch64 code, but pyAmpliCol has not tested the
+relocation checks below on AArch64 (expected to hold, untested). Its x86-64
+kernels use AVX and FMA3 instructions
+even on its SSE fallback, so on an older CPU (or a virtual machine whose CPU
+model masks AVX or FMA3) they would end the process with an illegal
+instruction. pyAmpliCol refuses such a CPU when it would compile a kernel,
+with a `CompatibilityError` naming the missing feature. Generate C++
+evaluators on that host instead. Plan v4 virtual artifacts are not refused:
+on such a CPU their f64 evaluation runs the saved Symbolica states instead of
+the SymJIT applications (no licence is needed either way; values may differ
+from an AVX host in the last bits). The upstream fixes (FMA3 check, an SSE
+path without AVX instructions, no panic on a bad `symjit.toml`) are filed as
+SymJIT issues [22](https://github.com/siravan/symjit/issues/22) and
+[23](https://github.com/siravan/symjit/issues/23) with pull requests
+[24](https://github.com/siravan/symjit/pull/24) and
+[25](https://github.com/siravan/symjit/pull/25); pyAmpliCol keeps its own CPU
+check until a SymJIT release with these fixes is pinned.
+
+A `symjit.toml` in the working directory, or `SYMJIT_TOML`, is read by
+SymJIT 2.27 whenever it loads a complex kernel; if that file is malformed or
+unreadable, loading fails. Keep such files out of the directories that
+evaluate pyAmpliCol artifacts.
+
+### Bitwise reproducibility
+
+With the same pyAmpliCol build, a relocated artifact gives bitwise-identical
+binary64 results on hosts of the same SymJIT code-path class: x86-64 with AVX
+and FMA3 (tested, on this class's hosts and under emulation). AArch64 hosts
+are expected to form one class too, but that is untested. Across classes,
+kernels may round differently in the
+last bits (fused multiply-add), so compare with a tolerance there. This holds
+for plan v4 virtual artifacts too: their f64 tree, Born and counterterm
+programs are SymJIT applications.
+
+### Checking portability
+
+`tools/loop_artifact_portability.py` (source checkout) checks an artifact on
+one host and records results to compare across hosts:
+
+```console
+python tools/loop_artifact_portability.py scan artifacts/gg_ggggg
+python tools/loop_artifact_portability.py check artifacts/gg_ggggg --process gg5g --scratch /tmp/portability
+python tools/loop_artifact_portability.py points --legs 7 --count 2 --out points.json
+python tools/loop_artifact_portability.py evaluate artifacts/gg_ggggg --process gg5g --points points.json --out here.json
+# copy the artifact, points.json and the script to the other host, run evaluate there, then:
+python tools/loop_artifact_portability.py compare here.json there.json
+```
+
+`scan` looks for absolute paths, user and host names in every file and
+PACBIN member and checks the target; `check` also evaluates the original and a
+relocated copy in fresh interpreters with other working, home and temporary
+directories, and reports any generation call made while loading. `evaluate`
+and `check` take `--arithmetic double-double` or `--arithmetic arbitrary
+--precision 32` for virtual processes.
+
+For a tree artifact with its API bundle, `tree-capi` checks the C
+distribution path: it compiles the artifact's own `API/c/check_standalone.c`
+against the C API (`capi-build`, from a wheel's `rusticol-config` or a static
+archive), runs it at the original and at a relocated copy, and compares every
+resolved value bitwise with the bundle's Python example:
+
+```console
+python tools/loop_artifact_portability.py capi-build artifacts/pp_jjj --out build/check_standalone --rusticol-config .venv/bin/rusticol-config
+python tools/loop_artifact_portability.py tree-capi artifacts/pp_jjj --client build/check_standalone --scratch /tmp/portability-c
+```
+
+By default it runs without `SYMBOLICA_LICENSE`, in two concurrent processes,
+while a plain Symbolica process holds your restricted Symbolica thread (see
+[Symbolica and Licensing](symbolica-and-licensing.md)): a run that touches
+Symbolica then aborts at once. For those seconds any other unlicensed
+Symbolica process of yours aborts too, so do not run it beside unlicensed
+work (`--no-permit` turns the hold off). `sdk` and `check` take the same hold
+with `--hold-permit`; `check --hold-permit` also runs `--instances` concurrent
+Python evaluations of the relocated copy while the permit is held.
 
 ## Why some JIT artifacts are still target-specific
 

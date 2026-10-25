@@ -34,6 +34,20 @@ from .external_helpers import _spin_dimension
 
 
 class ExternalModelCatalogMixin:
+    # Set by ``CompiledUFOModel`` (``weyl_projection_support``).
+    vertices: tuple[Vertex, ...]
+    _weyl_projection_support: dict[tuple[int, int, int, int], bool]
+
+    if TYPE_CHECKING:
+        # Provided by ``ExternalModelKernelMixin`` (the symbolic probe).
+        def _weyl_projection_is_nonzero(
+            self,
+            kind: int,
+            left_chirality: int,
+            right_chirality: int,
+            result_chirality: int,
+        ) -> bool: ...
+
     def particle(self, pdg: int) -> Particle:
         try:
             return self.particles[int(pdg)]
@@ -200,18 +214,8 @@ class ExternalModelCatalogMixin:
         result_particle = vertex.particles[2]
         left_chirality = int(getattr(left_index, "chirality", 0))
         right_chirality = int(getattr(right_index, "chirality", 0))
-        result_chiralities = (
-            (0,)
-            if (
-                self.is_chiral_eligible(result_particle)
-                and left_chirality == 0
-                and right_chirality == 0
-            )
-            else (
-                (-1, 1)
-                if self.is_chiral_eligible(result_particle)
-                else (0,)
-            )
+        result_chiralities = self._result_chiralities(
+            result_particle, left_chirality, right_chirality
         )
         return tuple(
             QuantumFlow(
@@ -235,6 +239,54 @@ class ExternalModelCatalogMixin:
                 result_chirality,
             )
         )
+
+    def _result_chiralities(
+        self, result_particle: int, left_chirality: int, right_chirality: int
+    ) -> tuple[int, ...]:
+        """The result chiralities ``allowed_quantum_flows`` tries."""
+
+        if not self.is_chiral_eligible(result_particle):
+            return (0,)
+        if left_chirality == 0 and right_chirality == 0:
+            return (0,)
+        return (-1, 1)
+
+    def weyl_projection_support(self) -> dict[tuple[int, int, int, int], bool]:
+        """Every Weyl-projection decision ``allowed_quantum_flows`` can ask
+        of this model: (kind, left, right, result chirality) -> whether the
+        projected kernel is not identically zero, for each vertex and the
+        chiralities its particles' currents can carry. A pure function of
+        the compiled model and its runtime parameters (one symbolic probe
+        each); ``seed_weyl_projection_support`` gives it to another instance
+        of the same compiled model and parameters."""
+
+        def chiralities(pdg: int) -> tuple[int, ...]:
+            return (-1, 0, 1) if self.is_chiral_eligible(pdg) else (0,)
+
+        support = {}
+        for vertex in self.vertices:
+            left, right, result = vertex.particles
+            for left_chirality in chiralities(left):
+                for right_chirality in chiralities(right):
+                    for result_chirality in self._result_chiralities(
+                        result, left_chirality, right_chirality
+                    ):
+                        key = (
+                            int(vertex.kind),
+                            left_chirality,
+                            right_chirality,
+                            result_chirality,
+                        )
+                        support[key] = self._weyl_projection_is_nonzero(*key)
+        return support
+
+    def seed_weyl_projection_support(
+        self, support: Mapping[tuple[int, int, int, int], bool]
+    ) -> None:
+        """Take ``weyl_projection_support`` of another instance of the same
+        compiled model and runtime parameters (no probe is repeated)."""
+
+        self._weyl_projection_support.update(support)
 
     def recurrence_quantum_flow_contract(
         self,

@@ -107,6 +107,7 @@ _NON_NATIVE_RUST_PATHS = frozenset(
         Path("rust/crates/rusticol-core/src/engine/source_metadata_tests.rs"),
         Path("rust/crates/rusticol-core/src/engine_tests.rs"),
         Path("rust/crates/rusticol-core/src/loop_v2/kernels_tests.rs"),
+        Path("rust/crates/rusticol-core/src/loop_v2/trees_tests.rs"),
         Path("rust/crates/rusticol-core/src/metadata_tests.rs"),
         Path("rust/crates/rusticol-core/src/pacbin_tests.rs"),
         Path("rust/crates/rusticol-core/src/recurrence/direct_backend_tests.rs"),

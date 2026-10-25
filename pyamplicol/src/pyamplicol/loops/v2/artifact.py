@@ -34,14 +34,17 @@ absolute path, user or host name is stored (``tests/unit/test_loop_v2_artifact
 
 Point inputs. Every point needs the block rows of the trees, the Born
 amplitudes and the counterterm and external-field components. With
-``point_inputs = "native-v1"`` (WP3.1) the PACBIN also holds the process's
+``point_inputs = "native-v2"`` (WP3.1) the PACBIN also holds the process's
 native program (``native_process.NativeProcess``): its assembly record and
 tree program (``point-inputs/*.json.zlib``: the interaction program, the Born
-and counterterm closures, the interferences) and its saved exact evaluators
+and counterterm closures, the interferences), its saved exact evaluators
 (``point-inputs/*.state``: the parameter program and the interaction
-kernels). A load then regenerates nothing: the native executor binds every
-parameter-dependent value from the external parameters and forms all of it
-per point. Correlated and resolved calls, and flavour members served by a
+kernels, run by DoubleFloat and arbitrary precision) and their binary64
+SymJIT plane applications (``point-inputs/*.symjit``: storage-v4 IR,
+recompiled for the loading CPU; binary64 then touches no Symbolica state,
+DESIGN §3.7). A load then regenerates nothing: the native executor binds
+every parameter-dependent value from the external parameters and forms all
+of it per point. Correlated and resolved calls, and flavour members served by a
 representative, still need the generation objects: those regenerate the
 slice on first use from the artifact's own compiled model and the saved
 request (the recursive generator, no diagram is listed) and require the
@@ -126,6 +129,9 @@ NATIVE_RECORD_MEMBER = "point-inputs/native-process.json.zlib"
 NATIVE_TREES_MEMBER = "point-inputs/tree-program.json.zlib"
 NATIVE_PARAMETERS_MEMBER = "point-inputs/parameters.state"
 NATIVE_KERNEL_MEMBER = "point-inputs/kernel-{}.state"
+# Their binary64 SymJIT plane applications (storage-v4 IR).
+NATIVE_PARAMETERS_PLANE_MEMBER = "point-inputs/parameters.symjit"
+NATIVE_KERNEL_PLANE_MEMBER = "point-inputs/kernel-{}.symjit"
 # The companion plan of the certified-scaleless families (rusticol-core
 # ``loop_runtime::LOOP_PROGRAM_V4_SCALELESS_MEMBER``).
 SCALELESS_PLAN_MEMBER = "schedule/loop-plan-v4-scaleless.json.zlib"
@@ -243,25 +249,26 @@ def born_amplitude_orders(
     compiled: Any,
     process: str,
     bounds: Mapping[str, int],
-    ignored_particle_ids: Sequence[int] = (),
+    particle_veto: Sequence[int] = (),
 ) -> tuple[tuple[Orders, ...], Any]:
     """The Born amplitude orders of ``process`` within the coupling-order
     ``bounds`` and the Born DAG they are read from, before any loop
     generation: one tree DAG, compiled as ``blocks.build_tree_blocks``
-    compiles the Born of a slice."""
+    compiles the Born of a slice (without the vetoed |PDG| codes
+    ``particle_veto``)."""
 
     from pyamplicol.generation.dag_compiler import compile_generic_dag
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.processes.model import build_model_process_ir
 
-    from .blocks import _born_roots
+    from .blocks import _born_roots, vetoed_particle_ids
 
     model = CompiledUFOModel(compiled)
     dag = compile_generic_dag(
         build_model_process_ir(process, compiled.ir, color_accuracy="full"),
         model=model,
         max_coupling_orders=dict(bounds),
-        ignored_particle_ids=tuple(ignored_particle_ids),
+        ignored_particle_ids=vetoed_particle_ids(particle_veto),
     )
     orders = {root.coupling_orders for root in _born_roots(dag, model)}
     return tuple(sorted(orders)), dag
@@ -283,21 +290,17 @@ def coloured_widths(
 
     from pyamplicol.models.compiler_kernels import _is_compile_time_zero_parameter
 
+    from .blocks import propagated_species
+
     particles = {int(record.pdg_code): record for record in compiled.ir.particles}
     parameters = {record.name: record for record in compiled.ir.parameters}
     out: dict[str, str] = {}
     for dag in dags:
-        sources = set(dag.sources)
-        legs = (1 << len(dag.process.legs)) - 1
-        for current_id, current in enumerate(dag.currents):
-            index = current.index
-            if (
-                current_id in sources
-                or index.auxiliary_kind is not None
-                or (legs & ~index.momentum_mask).bit_count() == 1
-            ):
+        # The current scan (native for a ``dag_input.NativeDag``: no decode).
+        for particle_id, amputated in propagated_species(dag):
+            if amputated:
                 continue
-            record = particles.get(int(index.particle_id))
+            record = particles.get(particle_id)
             if record is None or abs(int(record.color)) == 1:
                 continue
             width = str(record.width)
@@ -370,6 +373,7 @@ def write_plan(
 
     plan = PacbinMemberKind.LOOP_RUNTIME_PLAN
     state = PacbinMemberKind.SYMBOLICA_EXACT_STATE
+    symjit = PacbinMemberKind.SYMJIT_APPLICATION
     # (logical path, kind, bytes); JSON members are zlib streams.
     members = [(PLAN_MEMBER, plan, zlib.compress(plan_json.encode(), 6))]
     if scaleless_json is not None:
@@ -388,11 +392,19 @@ def write_plan(
             ),
             (NATIVE_TREES_MEMBER, plan, zlib.compress(stored["tree-program.json"], 6)),
             (NATIVE_PARAMETERS_MEMBER, state, stored["parameters.bin"]),
+            (NATIVE_PARAMETERS_PLANE_MEMBER, symjit, stored["parameters.symjit"]),
         ]
         k = 0
         while f"kernel-{k}.bin" in stored:
             members.append(
                 (NATIVE_KERNEL_MEMBER.format(k), state, stored[f"kernel-{k}.bin"])
+            )
+            members.append(
+                (
+                    NATIVE_KERNEL_PLANE_MEMBER.format(k),
+                    symjit,
+                    stored[f"kernel-{k}.symjit"],
+                )
             )
             k += 1
     write_pacbin(
@@ -438,6 +450,7 @@ def read_native_process(path: Path, plan_json: str) -> Any:
         names = {member.logical_path for member in reader.index.members}
         json_kind = PacbinMemberKind.LOOP_RUNTIME_PLAN
         state = PacbinMemberKind.SYMBOLICA_EXACT_STATE
+        symjit = PacbinMemberKind.SYMJIT_APPLICATION
         members["native-process.json"] = zlib.decompress(
             read(reader, NATIVE_RECORD_MEMBER, json_kind)
         )
@@ -445,10 +458,16 @@ def read_native_process(path: Path, plan_json: str) -> Any:
             read(reader, NATIVE_TREES_MEMBER, json_kind)
         )
         members["parameters.bin"] = read(reader, NATIVE_PARAMETERS_MEMBER, state)
+        members["parameters.symjit"] = read(
+            reader, NATIVE_PARAMETERS_PLANE_MEMBER, symjit
+        )
         k = 0
         while NATIVE_KERNEL_MEMBER.format(k) in names:
             members[f"kernel-{k}.bin"] = read(
                 reader, NATIVE_KERNEL_MEMBER.format(k), state
+            )
+            members[f"kernel-{k}.symjit"] = read(
+                reader, NATIVE_KERNEL_PLANE_MEMBER.format(k), symjit
             )
             k += 1
     return NativeProcess.from_members(plan_json, members)
@@ -499,8 +518,10 @@ class GeneratedProcess:
             return None
         return plan_digest(self.scaleless_plan_json)
 
-    def executor(self) -> Any:
-        """A native executor of the slice on the stored plans."""
+    def executor(self, inputs: str = "python") -> Any:
+        """A native executor of the slice on the stored plans; ``inputs=
+        "native"`` forms the point inputs from the plan's tree program (the
+        stored native process's lane, ``native_process``)."""
 
         from .plan_export import NativeExecutor
 
@@ -512,6 +533,7 @@ class GeneratedProcess:
             exported=self.exported,
             plan_json=self.plan_json,
             scaleless=scaleless,
+            inputs=inputs,
         )
 
     def born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
@@ -568,6 +590,28 @@ class GeneratedProcess:
     def spin_correlations(self) -> tuple[tuple[int, ...], ...]:
         return tuple(tuple(legs) for legs in self.observables.spin_classes)
 
+    def inert_counterterms(self) -> dict[str, str]:
+        """The CT rules the request admits that contribute nothing, by name,
+        with the reason (``CountertermRecursion.inert``, REQUIREMENTS_ADDENDUM
+        J): the generation record's ``counterterms_inert``. Rule names and
+        reasons come from the model, so the record holds no path."""
+
+        program = self.slice.counterterm_program
+        if program is None:
+            return {}
+        return dict(sorted(program.recursion.inert.items()))
+
+    def native_fallbacks(self) -> dict[str, str]:
+        """The generation stages that took the tree engine instead of the
+        native loop-request DAG builder, each with the listed feature it
+        does not cover (``dag_input.fallback_record``, RUST-MIGRATION rule
+        2): the generation record's ``native_fallbacks``; empty when every
+        stage was native (the record then has no entry)."""
+
+        from .dag_input import fallback_record
+
+        return fallback_record(self.slice)
+
 
 def _order_text(order: Orders) -> str:
     return " ".join(f"{name}^{power}" for name, power in canonical_order(order))
@@ -600,6 +644,12 @@ def generate_process(
     from .observables import ObservableSlice
     from .plan_export import export_plan
 
+    if request.counterterms != "recursion":
+        # Site closure (with its loop matching) is the O6 test oracle only.
+        raise ArtifactError(
+            "plan v4 processes take their counterterms from the tree recursion; "
+            f"counterterms={request.counterterms!r} is a test oracle"
+        )
     declared = correlators is not None and bool(
         correlators.color_correlations
         or correlators.spin_correlations
@@ -994,7 +1044,10 @@ class V2VirtualRuntime:
         if self._native_process is None or not splits(pole_mode(poles)):
             return self._executor
         if self._split_executor is None:
-            self._split_executor = self._regenerated().executor()
+            # Native inputs from the regenerated plan's tree program (the
+            # stored one, regenerated bitwise): the finite part is that of
+            # the other selections, and the companion forms its own rows.
+            self._split_executor = self._regenerated().executor(inputs="native")
         return self._split_executor
 
     def _observable_runtime(self) -> Any:

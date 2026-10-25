@@ -21,13 +21,49 @@ LOOP_REFERENCES = TESTS / "fixtures" / "loop"
 LOOP_MARKERS = ("loop_fast", "loop_physics", "loop_nightly")
 DEFERRED_MARKER = "deferred_direct_r2"
 
-_MAIN_CHECKOUT = Path("/shared/external/pyLoopAmpliCol/pyamplicol")
-_WORKSPACE = Path(
-    os.environ.get(
-        "PYAMPLICOL_LOOP_WORKSPACE", "/shared/external/pyLoopAmpliCol/workspace"
-    )
-)
 _MG5 = Path("FOR_REFERENCE_ONLY/MG5_aMC_v3_7_0")
+
+
+def _main_checkout() -> Path | None:
+    """The repository's main checkout (it holds the untracked reference
+    sources), derived from this checkout's own location: the parent of git's
+    common directory, which a linked worktree shares with it."""
+
+    import subprocess
+
+    try:
+        common = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=TESTS.parent,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return Path(common).parent if common else None
+
+
+def _workspace(main: Path | None) -> Path | None:
+    """The loop workspace: ``PYAMPLICOL_LOOP_WORKSPACE``, else a ``workspace``
+    directory beside the main checkout. No host path is assumed."""
+
+    if configured := os.environ.get("PYAMPLICOL_LOOP_WORKSPACE"):
+        return Path(configured)
+    if main is not None and (main.parent / "workspace").is_dir():
+        return main.parent / "workspace"
+    return None
+
+
+_MAIN_CHECKOUT = _main_checkout()
+_WORKSPACE = _workspace(_MAIN_CHECKOUT)
+
+
+def _under(root: Path | None, *relative: str | Path) -> tuple[Path, ...]:
+    """Default candidates below a root that may be unknown."""
+
+    return () if root is None else tuple(root / part for part in relative)
+
 
 # fixture name -> (overriding environment variables, default candidates)
 _EXTERNAL_INPUTS: dict[str, tuple[tuple[str, ...], tuple[Path, ...]]] = {
@@ -35,29 +71,29 @@ _EXTERNAL_INPUTS: dict[str, tuple[tuple[str, ...], tuple[Path, ...]]] = {
         ("PYAMPLICOL_NLO_UFO_REFERENCE",),
         (
             TESTS.parent / _MG5 / "models/loop_sm",
-            _MAIN_CHECKOUT / _MG5 / "models/loop_sm",
-            _WORKSPACE / "reference/sources/MG5_aMC_v3_7_0/models/loop_sm",
+            *_under(_MAIN_CHECKOUT, _MG5 / "models/loop_sm"),
+            *_under(_WORKSPACE, "reference/sources/MG5_aMC_v3_7_0/models/loop_sm"),
         ),
     ),
     "loop_gmu_ufo": (
         ("PYAMPLICOL_EW_UFO_REFERENCE", "PYAMPLICOL_EW_UFO"),
-        (_WORKSPACE / "reference/models/loop_qcd_qed_sm_Gmu_py3",),
+        _under(_WORKSPACE, "reference/models/loop_qcd_qed_sm_Gmu_py3"),
     ),
     "loop_qcd_qed_sm_ufo": (
         ("PYAMPLICOL_EW_NLO_UFO_REFERENCE",),
-        (_WORKSPACE / "reference/models/loop_qcd_qed_sm",),
+        _under(_WORKSPACE, "reference/models/loop_qcd_qed_sm"),
     ),
     "sgluon_nlo_ufo": (
         ("PYAMPLICOL_SGLUON_UFO_REFERENCE",),
-        (_WORKSPACE / "reference/models/bsm-candidates/sgluons_NLO_py3",),
+        _under(_WORKSPACE, "reference/models/bsm-candidates/sgluons_NLO_py3"),
     ),
     "madgraph_source": (
         ("PYAMPLICOL_MADGRAPH_SOURCE",),
-        (_WORKSPACE / "reference/sources/MG5_aMC_v3_7_0",),
+        _under(_WORKSPACE, "reference/sources/MG5_aMC_v3_7_0"),
     ),
     "saved_loop_fixtures": (
         ("PYAMPLICOL_LOOP_SAVED_FIXTURES",),
-        (_WORKSPACE / "fixtures",),
+        _under(_WORKSPACE, "fixtures"),
     ),
     # An installed wheel (target directory with bin/rusticol-config) is a
     # release-build product of the checkout under test, so it has no default.

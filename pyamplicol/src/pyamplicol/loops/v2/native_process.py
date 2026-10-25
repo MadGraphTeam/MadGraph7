@@ -121,17 +121,23 @@ class NativeProcess:
     def members(self) -> dict[str, bytes]:
         """The process as named byte members: the assembly record and the
         tree program (JSON), the tree program's saved kernels and its
-        parameter evaluator (the plan is stored on its own)."""
+        parameter evaluator, and their binary64 SymJIT plane applications
+        (the plan is stored on its own)."""
 
+        trees = self.trees
+        if len(trees.planes) != len(trees.kernels) + 1:
+            raise ValueError("a native process stores a plane application per state")
         out = {
             "native-process.json": json.dumps(
                 self.record, separators=(",", ":"), sort_keys=True
             ).encode(),
-            "tree-program.json": self.trees.json().encode(),
-            "parameters.bin": bytes(self.trees.parameters),
+            "tree-program.json": trees.json().encode(),
+            "parameters.bin": bytes(trees.parameters),
+            "parameters.symjit": bytes(trees.planes[-1]),
         }
-        for k, saved in enumerate(self.trees.kernels):
+        for k, saved in enumerate(trees.kernels):
             out[f"kernel-{k}.bin"] = bytes(saved)
+            out[f"kernel-{k}.symjit"] = bytes(trees.planes[k])
         return out
 
     @classmethod
@@ -147,6 +153,8 @@ class NativeProcess:
         kernels = []
         while f"kernel-{len(kernels)}.bin" in members:
             kernels.append(bytes(members[f"kernel-{len(kernels)}.bin"]))
+        planes = [bytes(members[f"kernel-{k}.symjit"]) for k in range(len(kernels))]
+        planes.append(bytes(members["parameters.symjit"]))
         meta = record["trees"]
         trees = NativeTrees(
             program,
@@ -164,6 +172,7 @@ class NativeProcess:
                 (str(component), _orders_of(sector), int(power))
                 for component, sector, power in meta["counterterm_outputs"]
             ),
+            tuple(planes),
         )
         return cls(plan_json, trees, record)
 
