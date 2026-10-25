@@ -39,9 +39,11 @@ default); ``python_oracle()`` runs the Python stages. **B1:** the readings
 of a retained native schedule build (``generator_input.NativeBuild``) feed
 the stage in-crate (``SeedBuilder.from_generation``) instead of bytes
 tables, once ``NativeBuild.readings_of`` has checked that the skeletons are
-exactly those readings; ``NativeSeedStage.reading_keep`` gives the prune
-liveness as flags per reading, from which ``NativeGeneration.schedules``
-rebuilds the pruned plan natively.
+exactly those readings; ``NativeSeedStage.reading_keep`` (``prune_keep``
+for a slice) gives the prune liveness as flags per reading, from which
+``NativeGeneration.schedules`` rebuilds the pruned plan natively. The exact
+reductions (quark rings, generic seeds) run in-crate too
+(``NATIVE_REDUCTIONS``, ``networks.rs``).
 
 **Design note: a lazy ``seed_fourier``** (RUST-MIGRATION.md §10 item 7, for
 phase 1). ``LoopSlice._plan_contraction`` certifies the seed FFT eagerly
