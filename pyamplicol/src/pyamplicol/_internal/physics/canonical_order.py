@@ -36,8 +36,6 @@ from collections.abc import Callable, Iterable
 from threading import RLock
 from typing import Any
 
-from .symbols import symbols
-
 CANONICAL_NAMESPACE = "pyamplicol_canonical"
 # Tensor heads (``spenso::tensor`` tag), for tensor networks on canonical
 # symbols (``CanonicalRenaming(tensor_heads=...)``).
@@ -57,17 +55,27 @@ _NATURAL = re.compile(r"([0-9]+)")
 # A binary64 literal of a canonical string (symbol names have no dots).
 _FLOAT = re.compile(r"[0-9]\.[0-9]")
 _TENSOR_TAG = "{spenso::tensor}"
+# A symbol of a canonical string: ``namespace(::namespace)*::{attributes}::name``,
+# or a bare built-in name (``conj``). Any other word it matches (the imaginary
+# unit) is in no renaming and stays as it is.
+_SYMBOL_TOKEN = re.compile(
+    r"(?<![\w:])(?:(?:[^\W\d]\w*::)+\{[^{}]*\}::)?[^\W\d]\w*(?!\w)"
+)
+# The canonical strings of the pools' symbols.
+_TOKENS: list[str] = []
+_TENSOR_TOKENS: list[str] = []
 
 
 def canonical_symbols(count: int) -> list[Any]:
     """The first ``count`` canonical symbols, ordered alike in every process
-    (module docstring). A block costs about 0.1 s once per process; each new
-    block is checked (``_check_block``), so a misaligned block or a Symbolica
-    whose order no longer follows the id bytes raises instead of silently
-    making records depend on the process history again."""
+    (module docstring). Each new block is checked (``_check_block``), so a
+    misaligned block or a Symbolica whose order no longer follows the id
+    bytes raises instead of silently making records depend on the process
+    history again."""
 
     with _POOL_LOCK:
-        _extend(_POOL, count, CANONICAL_NAMESPACE, tensor=False)
+        while len(_POOL) < count:
+            _new_blocks()
         return _POOL[:count]
 
 
@@ -85,29 +93,39 @@ def canonical_tensor_names(count: int) -> list[Any]:
             f"a canonical renaming with tensor heads is limited to {_BLOCK} symbols"
         )
     with _POOL_LOCK:
-        _extend(_TENSOR_POOL, count, CANONICAL_TENSOR_NAMESPACE, tensor=True)
+        if not _TENSOR_POOL:
+            _new_blocks()
         return _TENSOR_POOL[:count]
 
 
-def _extend(pool: list[Any], count: int, namespace: str, *, tensor: bool) -> None:
+def _new_blocks() -> None:
+    """The next block of canonical symbols; the first time, the block of
+    canonical tensor heads right after it (one padding for both; about 0.3 s
+    once per process)."""
+
     from symbolica import Expression, S
 
-    while len(pool) < count:
-        start = len(pool)
+    def block(namespace: str, start: int, *, tensor: bool) -> list[Any]:
         padding = -len(Expression.get_all_symbol_names()) % _BLOCK
         if padding:
-            symbols.qualified(*(f"{namespace}::pad{start}_{k}" for k in range(padding)))
+            S(*(f"{namespace}::pad{start}_{k}" for k in range(padding)))
         names = [f"{namespace}::c{start + k}" for k in range(_BLOCK)]
         if tensor:
             from symbolica.community.tensor import TensorName
 
             for name in names:
                 TensorName(name)
-            block = list(S(*names))
-        else:
-            block = list(symbols.qualified(*names))
-        _check_block(block)
-        pool.extend(block)
+        created = list(S(*names))
+        _check_block(created)
+        return created
+
+    plain = block(CANONICAL_NAMESPACE, len(_POOL), tensor=False)
+    _POOL.extend(plain)
+    _TOKENS.extend(symbol.to_canonical_string() for symbol in plain)
+    if not _TENSOR_POOL:
+        tensors = block(CANONICAL_TENSOR_NAMESPACE, 0, tensor=True)
+        _TENSOR_POOL.extend(tensors)
+        _TENSOR_TOKENS.extend(symbol.to_canonical_string() for symbol in tensors)
 
 
 def _check_block(block: list[Any]) -> None:
@@ -141,13 +159,11 @@ class CanonicalRenaming:
     """The canonical renaming of a set of symbols: each renamed symbol, in
     the natural order of the canonical names, gets the canonical symbol of
     its index ``k`` (a tensor head, ``tensor_heads``, the canonical tensor
-    head ``k``). ``kept`` symbols keep their names; any other symbol of a
-    renamed text is left as it is."""
+    head ``k``). Every other symbol of a renamed text keeps its name."""
 
     def __init__(
         self,
         renamed: Iterable[Any],
-        kept: Iterable[Any] = (),
         *,
         tensor_heads: Iterable[Any] = (),
     ) -> None:
@@ -159,37 +175,38 @@ class CanonicalRenaming:
         for token in heads:
             if f"::{_TENSOR_TAG}::" not in token:
                 raise ValueError(f"not a plain Spenso tensor head: {token}")
+        for token in tokens:
+            if not _SYMBOL_TOKEN.fullmatch(token):
+                raise ValueError(f"unexpected canonical symbol token: {token}")
         self.renamed = sorted(tokens, key=_natural_key)
         self.index = {token: k for k, token in enumerate(self.renamed)}
         self.symbols = [tokens[token] for token in self.renamed]
-        every = [*self.renamed, *(symbol.to_canonical_string() for symbol in kept)]
-        # Longest first: a token never loses to one of its prefixes, and a
-        # matched token (an attributed head's ``ns::{...}::name``) is consumed
-        # whole, so nothing inside it is renamed.
-        alternatives = "|".join(
-            re.escape(token) for token in sorted(set(every), key=len, reverse=True)
-        )
-        self.pattern = (
-            re.compile(rf"(?<![\w:])(?:{alternatives})(?!\w)") if every else None
-        )
-        self.pool = canonical_symbols(len(self.renamed))
-        tensors = canonical_tensor_names(len(self.renamed)) if heads else []
+        count = len(self.renamed)
+        self.pool = canonical_symbols(count)
+        tensors = canonical_tensor_names(count) if heads else []
         self.canonical_symbols = [
             tensors[k] if token in heads else self.pool[k]
             for k, token in enumerate(self.renamed)
         ]
+        self._tensor = [token in heads for token in self.renamed]
         self._targets = {
-            token: symbol.to_canonical_string()
-            for token, symbol in zip(self.renamed, self.canonical_symbols, strict=True)
+            token: (_TENSOR_TOKENS if tensor else _TOKENS)[k]
+            for k, (token, tensor) in enumerate(
+                zip(self.renamed, self._tensor, strict=True)
+            )
         }
 
     def to_canonical(self, text: str) -> str:
-        """A canonical string with the renamed symbols' canonical tokens."""
+        """A canonical string with the renamed symbols' canonical tokens.
 
-        if self.pattern is None:
+        Every symbol of a canonical string is written in full
+        (``namespace::{attributes}::name``), so each token is replaced or
+        kept whole."""
+
+        if not self._targets:
             return text
         targets = self._targets
-        return self.pattern.sub(
+        return _SYMBOL_TOKEN.sub(
             lambda match: targets.get(match.group(0), match.group(0)), text
         )
 
@@ -216,12 +233,9 @@ class CanonicalRenaming:
         """The qualified name of a renamed symbol's canonical symbol (for a
         tensor head, the name of its ``TensorName``)."""
 
-        token = original.to_canonical_string()
-        k = self.index[token]
+        k = self.index[original.to_canonical_string()]
         namespace = (
-            CANONICAL_TENSOR_NAMESPACE
-            if self.canonical_symbols[k] is not self.pool[k]
-            else CANONICAL_NAMESPACE
+            CANONICAL_TENSOR_NAMESPACE if self._tensor[k] else CANONICAL_NAMESPACE
         )
         return f"{namespace}::c{k}"
 
@@ -236,11 +250,8 @@ class CanonicalRenaming:
 def _renaming(expression: Any, keep: Callable[[Any], bool] | None) -> CanonicalRenaming:
     every = expression.get_all_symbols(True)
     if keep is None:
-        return CanonicalRenaming(every, ())
-    return CanonicalRenaming(
-        (symbol for symbol in every if not keep(symbol)),
-        (symbol for symbol in every if keep(symbol)),
-    )
+        return CanonicalRenaming(every)
+    return CanonicalRenaming(symbol for symbol in every if not keep(symbol))
 
 
 def canonical_expression(

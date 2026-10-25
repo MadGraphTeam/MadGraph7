@@ -585,19 +585,17 @@ def _execute_dense_network(
         for component in components:
             for symbol in _as_expression(component).get_all_symbols(True):
                 every[symbol.to_canonical_string()] = symbol
-    renamed, kept, tensor_heads = [], [], []
+    renamed, tensor_heads = [], []
     for token, symbol in every.items():
-        tags, attributes = symbol.get_tags(), symbol.get_attributes()
         if token.split("::", 1)[0] in _BUILTIN_NAMESPACES:
-            kept.append(symbol)
-        elif not tags and not attributes:
+            continue
+        tags, attributes = symbol.get_tags(), symbol.get_attributes()
+        if not tags and not attributes:
             renamed.append(symbol)
         elif tags == ["spenso::tensor"] and not attributes:
             renamed.append(symbol)
             tensor_heads.append(symbol)
-        else:
-            kept.append(symbol)
-    renaming = CanonicalRenaming(renamed, kept, tensor_heads=tensor_heads)
+    renaming = CanonicalRenaming(renamed, tensor_heads=tensor_heads)
     library = _sym.TensorLibrary.hep_lib_atom()
     for head, (_name, representations, components) in zip(
         heads, tensors.tensors, strict=True
