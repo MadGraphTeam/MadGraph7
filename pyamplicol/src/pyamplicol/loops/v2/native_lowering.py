@@ -22,8 +22,12 @@ encodings:
 
 The model is fed with the records of a Python ``ExportedPlan``
 (``plan_export``), read from the Python objects themselves
-(``V2PlanModel.from_program``: exactly the values ``json.dumps`` writes as
-the loader's types, else an error naming the record). ``ExportedPlan.json()``
+(``V2PlanModel.from_program``). It accepts only records the writer writes
+back as ``json.dumps`` writes them: the loader's types, every record's keys
+in the writer's order (the exporter's), no ``None`` under a key the writer
+omits when absent (a step's ``rows``, an edge's ``links``, ``column_rows``);
+anything else is an error naming the record, so the native JSON of an
+accepted program is ``json.dumps``'s byte for byte. ``ExportedPlan.json()``
 and ``ExportedPlan.binary()`` take this route (the D2' switch inside
 ``export_plan``'s result, so the main plan, the companion's and the
 observables' column plans all do); ``NATIVE_JSON`` switches the JSON back to
@@ -43,12 +47,21 @@ from typing import Any
 NATIVE_JSON = True
 
 
+_NATIVE: list[Any] = []
+
+
 def _native(native: Any | None) -> Any:
+    """``native``, else the staged loop core, verified once per process
+    (each ``load_loop_native`` re-verifies the native build, about 0.2 s;
+    ``dag_input._native`` likewise)."""
+
     if native is not None:
         return native
-    from pyamplicol.loops.native import load_loop_native
+    if not _NATIVE:
+        from pyamplicol.loops.native import load_loop_native
 
-    return load_loop_native()
+        _NATIVE.append(load_loop_native())
+    return _NATIVE[0]
 
 
 def _program(exported: Any) -> Any:
