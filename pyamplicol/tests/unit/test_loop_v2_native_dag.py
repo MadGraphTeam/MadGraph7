@@ -270,8 +270,10 @@ def test_native_builder_needs_no_symbolica_licence(
     # the propagated species (Ward and coloured-width queries).
     request["blocks"] = str(tmp_path / "block-tables.json")
     Path(request["blocks"]).write_text(loop_blocks._tables())
+    # ``Vec<u8>`` fields (words, traces) arrive as ``bytes``, which the
+    # decoder reads as int sequences: compared as lists on both sides.
     expected["blocks"] = json.loads(
-        json.dumps(loop_blocks._handle.blocks(loop_blocks._tables()))
+        json.dumps(loop_blocks._handle.blocks(loop_blocks._tables()), default=list)
     )
     full = (1 << len(process.legs)) - 1
     request["full"] = full
@@ -385,7 +387,7 @@ def test_native_builder_needs_no_symbolica_licence(
         "    out['digests'].append(native.V2Dag.build(open(path).read()).digest())\n"
         "handle = native.V2Dag.build(open(request['build'][0]).read())\n"
         "tables = open(request['blocks']).read()\n"
-        "out['blocks'] = json.loads(json.dumps(handle.blocks(tables)))\n"
+        "out['blocks'] = json.loads(json.dumps(handle.blocks(tables), default=list))\n"
         "species = handle.propagated_species(request['full'])\n"
         "out['species'] = [list(x) for x in species]\n"
         "for columns, tables, rewritten in request['reuse']:\n"
