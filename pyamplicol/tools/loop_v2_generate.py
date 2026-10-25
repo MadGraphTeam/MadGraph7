@@ -67,6 +67,7 @@ import json
 import resource
 import sys
 import time
+from collections.abc import Mapping
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -364,20 +365,16 @@ def _carrier(args) -> tuple[str, Any]:
     return carrier, Precision.arbitrary(int(getattr(args, "digits", None) or 60))
 
 
-def _validate(args) -> dict[str, Any]:
-    from pyamplicol.loops.native import load_loop_native
-    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
-    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
-    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+def _fixture_request(reference: Mapping[str, Any], compiled: Any, args) -> tuple:
+    """(``SliceRequest``, ignored fixed parameters) of a required fixture on
+    ``compiled``: an electroweak fixture (``correction`` "EW") takes the QCD
+    and QED corrections, the G_mu UFO's compatibility profile and scale
+    parameter (unless ``args`` names others); the fixture's fixed parameters
+    the model lacks (the providers' WTau) are ignored and returned."""
 
-    reference = json.loads(
-        (ROOT / "tests/fixtures/loop/required" / f"{args.name}.json").read_text()
-    )
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
     electroweak = reference["correction"] == "EW"
-    if set(reference["born_orders"]) - {"QCD", "QED"} or reference[
-        "correction"
-    ] not in ("QCD", "EW"):
-        raise SystemExit("validate covers QCD and EW (QCD + QED) corrections")
     process = reference["process"].split(" [")[0]
     process = " ".join(t for t in process.split() if "=" not in t)
     born = dict(reference["born_orders"])  # bounds: QED=0 excludes EW Borns
@@ -385,9 +382,6 @@ def _validate(args) -> dict[str, Any]:
     # NJet's massless five-flavour QCD is loop_sm without the top
     # (``test_loop_v2_topfree``); its fixtures name the scheme.
     top_free = reference.get("scheme") == "massless-qcd-nf5"
-    compiled = _fixture_model(args, electroweak)
-    # The fixture's fixed parameters the model has (the EW fixtures also fix
-    # the providers' WTau, which the G_mu UFO lacks).
     externals = _external_parameters(compiled)
     fixed = dict(reference.get("fixed_parameters", {"MB": "0"}))
     ignored = sorted(name for name in fixed if name not in externals)
@@ -403,6 +397,26 @@ def _validate(args) -> dict[str, Any]:
         scale_parameter=getattr(args, "scale_parameter", None)
         or (_EW_SCALE_PARAMETER if electroweak else None),
     )
+    return request, ignored
+
+
+def _validate(args) -> dict[str, Any]:
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
+    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+
+    reference = json.loads(
+        (ROOT / "tests/fixtures/loop/required" / f"{args.name}.json").read_text()
+    )
+    electroweak = reference["correction"] == "EW"
+    if set(reference["born_orders"]) - {"QCD", "QED"} or reference[
+        "correction"
+    ] not in ("QCD", "EW"):
+        raise SystemExit("validate covers QCD and EW (QCD + QED) corrections")
+    compiled = _fixture_model(args, electroweak)
+    request, ignored = _fixture_request(reference, compiled, args)
+    process = request.process
     parameters = dict(reference["parameters"])
     carrier, precision = _carrier(args)
     record: dict[str, Any] = {

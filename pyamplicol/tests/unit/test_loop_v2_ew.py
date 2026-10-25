@@ -635,6 +635,31 @@ def test_scalar_predicates_of_numbers_are_decided():
     assert taken == E("1") and not lowering.assumptions
 
 
+def test_validate_builds_the_electroweak_fixture_request(gmu, loop_reference):
+    """``tools/loop_v2_generate.py validate`` on an EW fixture: QCD and QED
+    corrections, the G_mu compatibility profile and scale parameter, the
+    fixture's fixed parameters without the providers' WTau (recorded)."""
+
+    import argparse
+
+    from tools import loop_v2_generate
+
+    reference = loop_reference(CARD_FIXTURE)
+    request, ignored = loop_v2_generate._fixture_request(
+        reference, gmu.compiled, argparse.Namespace()
+    )
+    assert request.corrections == ("QCD", "QED")
+    assert (request.compatibility, request.scale_parameter) == (
+        "gmu_particle_anti",
+        "MU_R",
+    )
+    assert ignored == ["WTau"]
+    assert {k: request.fixed_parameters[k] for k in ("WT", "WW", "WZ", "WH")} == {
+        k: "0" for k in ("WT", "WW", "WZ", "WH")
+    }
+    assert request.process == "g g > t t~"
+
+
 # ------------------------------------------------------------------ nightly
 
 
