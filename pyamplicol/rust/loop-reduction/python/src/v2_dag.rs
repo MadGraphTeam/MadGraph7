@@ -63,16 +63,19 @@ struct PyBlock {
     pairing_sign: i32,
 }
 
+/// One row's helicity assignment: `(leg label, helicity)` per leg.
+type Assignment = Vec<(u8, i32)>;
+
 /// The distinct helicity assignments of the blocks' rows, in first-seen
 /// order, and each row's index into them.
 #[derive(Default)]
 struct Assignments {
-    index: HashMap<Vec<(u8, i32)>, u32>,
-    table: Vec<Vec<(u8, i32)>>,
+    index: HashMap<Assignment, u32>,
+    table: Vec<Assignment>,
 }
 
 impl Assignments {
-    fn intern(&mut self, helicities: Vec<(u8, i32)>) -> u32 {
+    fn intern(&mut self, helicities: Assignment) -> u32 {
         if let Some(found) = self.index.get(&helicities) {
             return *found;
         }
@@ -134,11 +137,7 @@ impl V2Dag {
     /// The blocks (`loops/v2/blocks._blocks`) for `dag_input.block_input`,
     /// and the distinct helicity assignments their rows index (Python
     /// builds each assignment once).
-    fn blocks(
-        &self,
-        py: Python<'_>,
-        tables: &str,
-    ) -> PyResult<(Vec<PyBlock>, Vec<Vec<(u8, i32)>>)> {
+    fn blocks(&self, py: Python<'_>, tables: &str) -> PyResult<(Vec<PyBlock>, Vec<Assignment>)> {
         let tables = tables.to_owned();
         let raw = py
             .detach(|| {
