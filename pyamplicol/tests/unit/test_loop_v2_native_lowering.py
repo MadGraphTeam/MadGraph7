@@ -38,12 +38,16 @@ Per plan:
   member's, and no plan written today needs padding (the bound's soundness
   against the loader's real allocations: the reader's Rust tests,
   ``tests/loop_v2_plan_derive_bound.rs``);
-* the Python records convert exactly as ``json.dumps`` writes them (a bool
-  for a number, a float, a wrong-length entry, an unknown key are refused
-  with the record's path);
+* the Python records convert only as the writer writes them back as
+  ``json.dumps`` (a bool for a number, a float, a wrong-length entry, an
+  unknown key, keys out of the writer's order and ``None`` under a key the
+  writer omits are refused with the record's path);
 * a read decodes on one thread under an address-space limit (the wide member
   with the default pool loads or is refused, never aborts), and a thread pool
-  that cannot start leaves every read on one thread;
+  that cannot start (its start shown failed) leaves every read on one thread;
+  these children read ``/proc`` and rely on Linux's ``RLIMIT_AS`` and
+  ``RLIMIT_NPROC``: Linux only, reported as skipped elsewhere (and the pool's
+  when the limit is not enforced, as for root);
 * the leaf weights (``conventions.LeafWeights``, D1) give the full rule's
   sign on every reading of the main slice and of its companion, with its
   refusals;
@@ -61,8 +65,8 @@ and column plans among them) are ``loop_physics``, six legs and the no-key
 process ``loop_nightly``; seven-leg evidence is the stored S8 digest of
 bounded runs (RUST-MIGRATION.md rule 6).
 
-The electroweak control vetoes the top through ``SliceRequest``'s public
-``particle_veto`` (REQUIREMENTS_ADDENDUM J).
+The electroweak control vetoes the Z (``|PDG|`` 23) through
+``SliceRequest``'s public ``particle_veto`` (REQUIREMENTS_ADDENDUM J).
 """
 
 from __future__ import annotations
@@ -125,6 +129,22 @@ def slices(loop_sm_compiled_model, loop_native):
         return built[name]
 
     return build
+
+
+@pytest.fixture(scope="module")
+def stored(slices):
+    """The stored form of the g g > t t~ plan (``forward=False``; read only)."""
+
+    return export_plan(slices("gg_ttx"), forward=False)
+
+
+# The fail-closed children read ``/proc/self/status`` and rely on Linux's
+# ``RLIMIT_AS`` and ``RLIMIT_NPROC`` semantics.
+LINUX_ONLY = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="the fail-closed children read /proc and rely on Linux's RLIMIT_AS "
+    "and RLIMIT_NPROC",
+)
 
 
 def _host_markers() -> list[bytes]:
@@ -201,24 +221,24 @@ def check_companion_plans(slice_, native, resolved=None) -> None:
 
 
 @pytest.mark.loop_fast
-def test_massive_plan_forward_links_and_resolved_columns(slices, loop_native):
-    """g g > t t~ (mass flips): schedule F; schedule B with derived and with
+def test_massive_plan_links_and_resolved_columns(slices, stored, loop_native):
+    """g g > t t~ (mass flips): schedule B, stored, with derived and with
     written row links (the loader checks those against its derivation); the
-    observables' helicity-resolved columns (``column_rows``); the companion's
-    plan (its tree-program and column plans: ``loop_physics``)."""
+    observables' helicity-resolved columns (``column_rows``). Schedule F and
+    the companion's plans (with its tree-program and column plans) are
+    ``loop_physics`` (``test_quark_line_massive_and_electroweak_plans``); the
+    default tier checks a companion's plan on g g > g g."""
 
     from pyamplicol.loops.v2.observables import ColumnPlan, ObservableSlice
 
     slice_ = slices("gg_ttx")
-    check(export_plan(slice_), loop_native)
+    check(stored, loop_native)
     check(export_plan(slice_, forward=False, links=True), loop_native)
     observables = ObservableSlice.of(slice_)
     plan = ColumnPlan(observables, observables.resolved_columns("helicity-colour", {}))
     resolved = export_plan(slice_, forward=False, columns=plan.seed_columns)
     assert any(rows is not None for rows in resolved.program["column_rows"])
     check(resolved, loop_native)
-    assert slice_.scaleless is not None
-    check(export_plan(slice_.scaleless, forward=False), loop_native)
 
 
 @pytest.mark.parametrize(
@@ -247,12 +267,11 @@ def test_merged_plan(slices, loop_native, name):
 
 
 @pytest.mark.loop_fast
-def test_strings_follow_ensure_ascii(slices, loop_native):
+def test_strings_follow_ensure_ascii(stored, loop_native):
     """Leaf weights and kernel input kinds are strings: escapes, control
     characters, DEL, non-ASCII and astral characters as ``json.dumps``."""
 
-    exported = export_plan(slices("gg_ttx"), forward=False)
-    program = json.loads(exported.json())
+    program = json.loads(stored.json())
     texts = ['"', "\\", "\n\r\t\b\f", "\x01\x1f\x7f", "\u00e9/~ ", "\U0001f600\u2028"]
     leaves = [leaf for family in program["families"] for leaf in family["leaves"]]
     for leaf, text in zip(leaves, texts, strict=False):
@@ -276,16 +295,18 @@ def test_strings_follow_ensure_ascii(slices, loop_native):
 
 
 @pytest.mark.loop_fast
-def test_program_records_convert_as_json_writes_them(slices, loop_native):
-    """``V2PlanModel.from_program`` reads what ``json.dumps`` writes as the
-    loader's types: tuples as lists; a bool for a number, a number for a
-    flag, a float, a too long or short entry, an unknown or non-str key and
-    a missing field are refused, the error naming the record."""
+def test_program_records_convert_as_json_writes_them(stored, loop_native):
+    """``V2PlanModel.from_program`` reads only what the writer writes back as
+    ``json.dumps`` writes it: tuples as lists; a bool for a number, a number
+    for a flag, a float, a too long or short entry, an unknown or non-str key,
+    a missing field, keys out of the writer's order (a record's, the plan's
+    reversed or sorted) and ``None`` under a key the writer omits when absent
+    (``column_rows``, a step's ``rows``, an edge's ``links``) are refused, the
+    error naming the record."""
 
-    exported = export_plan(slices("gg_ttx"), forward=False)
-    program = json.loads(exported.python_json())
-    expected = exported.python_json().encode()
-    tupled = json.loads(exported.python_json())
+    program = json.loads(stored.python_json())
+    expected = stored.python_json().encode()
+    tupled = json.loads(stored.python_json())
     tupled["factors"] = [tuple(factor) for factor in tupled["factors"]]
     model = loop_native.V2PlanModel.from_program(tupled)
     assert bytes(model.json()) == expected
@@ -318,6 +339,33 @@ def test_program_records_convert_as_json_writes_them(slices, loop_native):
         at(".families[0].leaves[0].weight", "expected a str"),
     )
     refused(lambda p: p.update(rows=2**64), "beyond 64 bits")
+    order = "out of the writer's key order"
+    with pytest.raises(ValueError, match=order):
+        loop_native.V2PlanModel.from_program(dict(reversed(list(program.items()))))
+    with pytest.raises(ValueError, match=order):
+        loop_native.V2PlanModel.from_program(
+            json.loads(json.dumps(program, sort_keys=True))
+        )
+
+    def reorder(record: dict, key: str) -> None:
+        record[key] = record.pop(key)  # moved to the end
+
+    refused(
+        lambda p: reorder(p["families"][0], "rank"),
+        re.escape('.families[0]: key "rank" after "steps": ' + order),
+    )
+    omitted = "None where the writer omits the key"
+    refused(lambda p: p.update(column_rows=None), at(".column_rows", omitted))
+    refused(
+        lambda p: p["families"][0]["steps"][0].update(rows=None),
+        at(".families[0].steps[0].rows", omitted),
+    )
+    refused(
+        lambda p: p["families"][0]["steps"][0]["edges"][0].update(links=None),
+        at(".families[0].steps[0].edges[0].links", omitted),
+    )
+    # Written, they follow the record's other keys as the exporter appends
+    # them: accepted (``check`` of the written-links and resolved plans).
 
 
 def _reading_outcome(sign, skeleton) -> object:
@@ -389,13 +437,11 @@ def test_leaf_weights_equal_the_full_rule(slices):
 
 
 @pytest.mark.loop_fast
-def test_foreign_and_damaged_members_are_refused(slices, loop_native, tmp_path):
+def test_foreign_and_damaged_members_are_refused(stored, loop_native):
     """Foreign formats and schemas, extended members and unknown JSON fields
-    are refused; truncations, single-byte corruptions and crafted
-    decompression bombs fail closed (``_fail_closed``)."""
+    are refused."""
 
-    exported = export_plan(slices("gg_ttx"), forward=False)
-    member = native_lowering.plan_binary(exported, loop_native)
+    member = native_lowering.plan_binary(stored, loop_native)
     damaged = [
         member + bytes(8),
         b"LOOPPLAX" + member[8:],
@@ -406,11 +452,57 @@ def test_foreign_and_damaged_members_are_refused(slices, loop_native, tmp_path):
     for data in damaged:
         with pytest.raises(ValueError):
             loop_native.V2PlanModel.from_binary(data)
-    program = json.loads(exported.json())
+    program = json.loads(stored.json())
     program["families"][0]["unknown"] = 1
     with pytest.raises(ValueError, match="unknown field"):
         loop_native.V2PlanModel.from_json(json.dumps(program).encode())
-    _fail_closed(loop_native, member, json.loads(exported.json()), tmp_path)
+
+
+@pytest.mark.loop_fast
+@LINUX_ONLY
+def test_readers_fail_closed_under_limits(stored, loop_native, tmp_path):
+    """Truncations, single-byte corruptions and crafted decompression and
+    derivation bombs fail closed, and valid list-dominated members load or
+    are refused under tight address-space limits, never aborting
+    (``_fail_closed``, in children under ``RLIMIT_AS``)."""
+
+    member = native_lowering.plan_binary(stored, loop_native)
+    _fail_closed(loop_native, member, json.loads(stored.python_json()), tmp_path)
+
+
+@pytest.mark.loop_fast
+@LINUX_ONLY
+def test_a_pool_that_cannot_start_leaves_reads_on_one_thread(
+    stored, loop_native, tmp_path
+):
+    """A thread pool that cannot start (``_POOL_LIMIT``: no thread may be
+    spawned): its start is shown failed (``v2_plan_read_pool``), every read
+    decodes on one thread to the parent's digest, also once the limit is
+    lifted, never a refusal or rayon's panic. Reported as skipped where the
+    start cannot be made to fail: ``RLIMIT_NPROC`` not enforced (root,
+    ``CAP_SYS_RESOURCE``), or reads that are sequential without a pool (an
+    address-space or data limit, strict overcommit)."""
+
+    member = native_lowering.plan_binary(stored, loop_native)
+    path = tmp_path / "pool.bin"
+    path.write_bytes(member)
+    child = _children(_POOL_LIMIT, str(path), RAYON_NUM_THREADS="8")
+    out = _collect("pool", child, 120)
+    assert isinstance(out, dict)
+    if out["sequential"]:
+        pytest.skip(
+            "reads decode on one thread here without starting a pool (an "
+            "address-space or data limit, or strict overcommit)"
+        )
+    if not out["enforced"]:
+        pytest.skip(
+            "RLIMIT_NPROC is not enforced for this user (root or "
+            "CAP_SYS_RESOURCE): the pool's start cannot be made to fail"
+        )
+    digest = native_lowering.read(member, loop_native)
+    assert out["pool_before"] is None, out
+    assert out["rows"] == [digest] * 3, out
+    assert out["pool"] is False and out["pool_after"] is False, out
 
 
 @pytest.mark.loop_physics
@@ -450,34 +542,39 @@ def test_six_leg_plans(slices, loop_native, name):
 
 
 @pytest.mark.loop_nightly
-def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
-    """``V2PlanModel``, ``v2_plan_load`` and ``v2_plan_read`` in a process
-    without a key (RUST-MIGRATION.md rule 4): the JSON written byte-identical,
-    the binary round trip bitwise, the derivation bound (``derive_bound``),
-    and equal load digests from both encodings and from ``read_binary``.
+def test_plan_bindings_need_no_symbolica_licence(stored, loop_native, tmp_path):
+    """``V2PlanModel``, ``v2_plan_load``, ``v2_plan_read`` and
+    ``v2_plan_read_pool`` in a process without a key (RUST-MIGRATION.md rule
+    4): the JSON written byte-identical from the JSON and from the Python
+    records (``from_program``), the binary round trip bitwise, the derivation
+    bound (``derive_bound``), equal load digests from both encodings and from
+    ``read_binary``, and the reader's record of the pool.
 
     The child imports the extension, which starts a restricted Symbolica
     instance: like ``test_native_builder_needs_no_symbolica_licence`` it must
     not overlap another unlicensed Symbolica process of the user.
     """
 
-    exported = export_plan(slices("gg_ttx"), forward=False)
-    text = exported.json().encode()
-    member = native_lowering.plan_binary(exported, loop_native)
+    text = stored.json().encode()
+    member = native_lowering.plan_binary(stored, loop_native)
     expected = native_lowering.load(text, loop_native, digest=True).digest
     records = tmp_path / "records.json"
-    records.write_text(json.dumps(exported.program, sort_keys=True))
+    records.write_text(json.dumps(stored.program, sort_keys=True))
+    program = tmp_path / "program.json"
+    program.write_text(stored.python_json())
     written = tmp_path / "written.json", tmp_path / "written.bin"
     environment = {
         key: value for key, value in os.environ.items() if key != "SYMBOLICA_LICENSE"
     }
     script = (
-        "import sys\n"
+        "import json, sys\n"
         "from pathlib import Path\n"
         "from pyamplicol.loops.native import load_loop_native\n"
         "native = load_loop_native()\n"
         "model = native.V2PlanModel.from_json(Path(sys.argv[1]).read_bytes())\n"
         "text, member = bytes(model.json()), bytes(model.binary())\n"
+        "program = json.loads(Path(sys.argv[4]).read_text())\n"
+        "assert bytes(native.V2PlanModel.from_program(program).json()) == text\n"
         "again = native.V2PlanModel.from_binary(member)\n"
         "assert bytes(again.json()) == text and bytes(again.binary()) == member\n"
         "assert all(isinstance(x, int) and x > 0 for x in again.derive_bound())\n"
@@ -486,9 +583,11 @@ def test_plan_bindings_need_no_symbolica_licence(slices, loop_native, tmp_path):
         "for data in (text, member):\n"
         "    print(native.v2_plan_load(data, digest=True)[3])\n"
         "print(native.v2_plan_read(member))\n"
+        # None where reads never start a pool (an address-space limit).
+        "assert native.v2_plan_read_pool() in (True, None)\n"
     )
     result = subprocess.run(
-        [sys.executable, "-c", script, str(records), *map(str, written)],
+        [sys.executable, "-c", script, str(records), *map(str, written), str(program)],
         env=environment,
         capture_output=True,
         text=True,
@@ -789,26 +888,42 @@ print(json.dumps(rows))
 """
 
 # A thread pool that cannot start (no thread may be spawned: RLIMIT_NPROC's
-# soft limit at one process): every read decodes on one thread, also once the
-# limit is lifted (rayon never starts a global pool after a failed start);
-# never a refusal or rayon's panic.
+# soft limit at one process, shown enforced by a Python thread that cannot
+# start): every read decodes on one thread, also once the limit is lifted
+# (rayon never starts a global pool after a failed start); never a refusal or
+# rayon's panic. The reader's record of the pool (``v2_plan_read_pool``):
+# none before the first read, failed after. ``sequential``: reads here never
+# start a pool (``binary.rs``, ``allocations_can_fail``).
 _POOL_LIMIT = """
-import json, resource, sys
+import json, resource, sys, threading
 from pathlib import Path
 from pyamplicol.loops.native import load_loop_native
 native = load_loop_native()
 member = Path(sys.argv[1]).read_bytes()
+limited = [resource.getrlimit(r)[0] != resource.RLIM_INFINITY
+           for r in (resource.RLIMIT_AS, resource.RLIMIT_DATA)]
+strict = Path('/proc/sys/vm/overcommit_memory').read_text().strip() == '2'
+out = {'sequential': any(limited) or strict,
+       'pool_before': native.v2_plan_read_pool()}
 hard = resource.getrlimit(resource.RLIMIT_NPROC)[1]
 resource.setrlimit(resource.RLIMIT_NPROC, (1, hard))
+try:
+    threading.Thread(target=lambda: None).start()
+    out['enforced'] = False
+except RuntimeError:
+    out['enforced'] = True
 rows = []
 for limited in (True, True, False):
     if not limited:
+        out['pool'] = native.v2_plan_read_pool()
         resource.setrlimit(resource.RLIMIT_NPROC, (hard, hard))
     try:
         rows.append(native.v2_plan_read(member))
     except ValueError as error:
         rows.append(str(error))
-print(json.dumps(rows))
+out['rows'] = rows
+out['pool_after'] = native.v2_plan_read_pool()
+print(json.dumps(out))
 """
 
 
@@ -859,9 +974,8 @@ def _under_limits(native, tmp_path: Path) -> dict[str, tuple[subprocess.Popen, b
     The wide member (parallel sections) is read likewise with the default
     pool (8 threads, default malloc arenas): under the limit the read decodes
     on one thread (``read_threads``), so it is refused with an error until it
-    loads, never aborting (the evidence audit's abort of fix round 7). A
-    thread pool that cannot start (``_POOL_LIMIT``). Started here, collected
-    by ``_fail_closed``."""
+    loads, never aborting (the evidence audit's abort of fix round 7).
+    Started here, collected by ``_fail_closed``."""
 
     def member(contents: int, entries: int, width: int) -> bytes:
         fused = [[i // width, i % width, 0, 0, 0, 0] for i in range(entries)]
@@ -903,12 +1017,6 @@ def _under_limits(native, tmp_path: Path) -> dict[str, tuple[subprocess.Popen, b
         _UNDER_LIMITS, str(path), json.dumps(HEADROOMS), RAYON_NUM_THREADS="8"
     )
     children["wide, default pool"] = (pooled, wide)
-    path = tmp_path / "pool.bin"
-    path.write_bytes(members["shared 64 x 4096"][0])
-    children["pool"] = (
-        _children(_POOL_LIMIT, str(path), RAYON_NUM_THREADS="8"),
-        members["shared 64 x 4096"][0],
-    )
     return children
 
 
@@ -923,9 +1031,8 @@ def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
     the derivation bombs (``_derivation_bombs``). In a child under an
     address-space limit of 1 GiB above its size: a reader that decoded or
     derived a bomb would fail there instead of exhausting the host; the
-    list-dominated and multi-precision members under tighter limits and a
-    thread pool that cannot start (``_under_limits``, children run
-    concurrently with it). The child
+    list-dominated and multi-precision members under tighter limits
+    (``_under_limits``, children run concurrently with it). The child
     decodes with one thread (sequentially), this process with its pool (the
     wide member in parallel chunks): equal models (RUST-MIGRATION.md rule 5).
     """
@@ -968,9 +1075,6 @@ def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
         rows = _collect(name, child, 120)
         assert isinstance(rows, list)
         digest = native_lowering.read(data, native)
-        if name == "pool":
-            assert rows == [digest] * 3, rows
-            continue
         if name == "wide, default pool":
             assert rows[-1] == digest, rows
             continue
