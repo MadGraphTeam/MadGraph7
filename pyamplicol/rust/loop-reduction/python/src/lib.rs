@@ -239,8 +239,15 @@ fn _loop_reduction(module: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 /// Register the same native loop core in the ordinary pyAmpliCol extension.
+///
+/// Importing the extension touches no Symbolica state: the source-scalar
+/// primitives are installed by the paths that decode saved evaluators or
+/// parse expressions (`runtime::register_scalar_primitives`). Without a
+/// licence key in the environment, Symbolica's first state access takes the
+/// user's single restricted-thread permit, so an import-time registration made
+/// every second unlicensed pyAmpliCol process abort, tree-only ones included
+/// (requirements addendum G; docs/user/symbolica-and-licensing.md).
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    runtime::register_scalar_primitives();
     portable::register(module)?;
     physical::register(module)?;
     virtual_runtime::register(module)?;

@@ -20,6 +20,8 @@ mod eager_tables;
 mod engine;
 mod error;
 #[cfg(feature = "symbolica-runtime")]
+mod licence;
+#[cfg(feature = "symbolica-runtime")]
 pub mod loop_execution;
 #[cfg(feature = "symbolica-runtime")]
 pub mod loop_artifact;
@@ -30,6 +32,7 @@ pub mod loop_v2;
 mod metadata;
 pub mod pacbin;
 pub mod recurrence;
+pub mod scalar_primitives;
 #[cfg(feature = "symbolica-runtime")]
 pub mod source_bindings;
 #[cfg(feature = "symbolica-runtime")]
@@ -153,6 +156,37 @@ pub mod __private {
             output_complex_count,
             optimization_level,
             compress,
+        )
+    }
+
+    /// Unstable diagnostic bridge: the CPU features that decide SymJIT's code
+    /// path on this CPU and whether its load-time code generation runs here
+    /// (the loaders' CPU gate).
+    #[doc(hidden)]
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    pub fn symjit_host_cpu() -> (Vec<&'static str>, bool) {
+        (
+            crate::engine::symjit_cpu_features(),
+            crate::engine::symjit_host_cpu_supported(),
+        )
+    }
+
+    /// Unstable cold-path bridge: evaluate a stored complex plane application
+    /// through the production loader ((re, im) per value, row-major by point).
+    #[doc(hidden)]
+    pub fn evaluate_plane_application_bytes(
+        application: &[u8],
+        input_complex_count: usize,
+        output_complex_count: usize,
+        inputs: &[f64],
+        point_count: usize,
+    ) -> RusticolResult<Vec<f64>> {
+        crate::engine::evaluate_plane_application_bytes(
+            application,
+            input_complex_count,
+            output_complex_count,
+            inputs,
+            point_count,
         )
     }
 
