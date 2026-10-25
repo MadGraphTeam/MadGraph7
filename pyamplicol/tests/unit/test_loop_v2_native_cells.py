@@ -21,12 +21,15 @@ stage native) and the oracle lane (``native_cells.native_stages(())``):
   degrees (``ObservableSlice._family_degrees``), with the pruned slices;
 * rule 9: generation decodes each table's cells once, the degrees none.
 
-Default tier (``loop_fast``, about 30 s): g g > g g (FC; adjoint rings and
-fundamental traces), u u~ > g g g (LC; quark rings and generic classes) and
-the dipole family of g g > g g at LC. Wider controls are ``loop_physics``
-(g g > g g g and u u~ > g g g for the dipoles, as WP3.1 I5c asks; the
-directed tables of WP2.5's controls; contractions beyond the subset-sum label
-limit), six legs ``loop_nightly``.
+Default tier (``loop_fast``, about 25 s): every stage against its Python
+oracle on the production lane's slices of g g > g g (FC; adjoint rings and
+fundamental traces) and u u~ > g g g (LC; quark rings and generic classes),
+the directed tables and the dipole family of g g > g g, native operator
+images on random tensors. ``loop_physics`` generates every control in both
+lanes (the default ones, g g > g g g and u u~ > g g g for the dipoles as
+WP3.1 I5c asks, LC and NLC controls; end to end and stage by stage), the
+directed tables and families of WP2.5's controls and contractions beyond the
+subset-sum label limit; six legs are ``loop_nightly``.
 """
 
 from __future__ import annotations
@@ -363,44 +366,44 @@ def test_stored_dipole_orbits_are_validated(slices):
 # ------------------------------------------------- switched generation
 
 
-def _companion(slice_):
-    twin = slice_.scaleless
-    return twin if twin is not None else None
-
-
 def _switched_equal(native: Generated, oracle: Generated) -> None:
     """The production lane equals the oracle lane: S1, S4, S5 and S8 (the
-    plan bytes), the companion's tables and S5, the degrees and (FC) the
-    dipoles; rule 9: the generation decoded each table's cells once."""
+    plan bytes), the companion's S5, the degrees and (FC) the dipoles; rule
+    9 on both lanes."""
 
     a, b = native.slice, oracle.slice
     assert snapshot.stage_digests(a) == python(snapshot.stage_digests, b)
     assert a.table.cells == b.table.cells
-    twins = [(a, b)]
-    if _companion(a) is not None or _companion(b) is not None:
-        twins.append((a.scaleless, b.scaleless))
+    assert (a.scaleless is None) == (b.scaleless is None)
+    if a.scaleless is not None:
         assert snapshot.digest(snapshot.seeds_records(a.scaleless)) == (
             snapshot.digest(snapshot.seeds_records(b.scaleless))
         )
     assert a.degrees() == python(b.degrees)
-    # Rule 9: each table built during generation decoded its own cells once
-    # (an extension decodes only its new classes); no degree decodes.
-    assert native.decoded == sum(len(x.table.classes) * len(x.basis) for x, _y in twins)
+    _decodes(native)
     assert oracle.decoded == 0
-    before = native_cells.decoded_cells()
-    native_cells.degrees(a)
-    assert native_cells.decoded_cells() == before
     if a.request.accuracy == "full":
         assert a.dipoles() == python(b.dipoles)
 
 
-@pytest.mark.loop_fast
-def test_switched_generation_equals_python(slices):
-    """The production lane equals the oracle lane end to end (g g > g g;
-    the LC/NLC controls, whose prune the lanes must agree on, are
-    ``loop_physics``: two generations each)."""
+def _decodes(native: Generated) -> None:
+    """Rule 9: each table built during generation decoded its own cells
+    once (an extension decodes only its new classes); the degrees decode
+    none."""
 
-    _switched_equal(slices("gg_gg"), slices("gg_gg", "python"))
+    tables = [native.slice]
+    if native.slice.scaleless is not None:
+        tables.append(native.slice.scaleless)
+    assert native.decoded == sum(len(x.table.classes) * len(x.basis) for x in tables)
+    before = native_cells.decoded_cells()
+    native_cells.degrees(native.slice)
+    assert native_cells.decoded_cells() == before
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize("name", sorted(DEFAULT))
+def test_generation_decodes_each_table_once(slices, name):
+    _decodes(slices(name))
 
 
 def _seed_cells_equal(native: Generated, oracle: Generated | None = None) -> None:
@@ -802,28 +805,90 @@ def _directed_equal(native: Any, oracle: Any) -> None:
             assert native._families[family] == expected
 
 
+def _emissions(connection) -> list[tuple[int, int]]:
+    return [(e.emitter_label, e.emitted_label) for e in connection.emissions]
+
+
+@pytest.mark.loop_fast
+def test_native_operator_images_equal_python():
+    """``cells::operator_image`` (``connect``, then ``absorb`` by the SU(N_c)
+    completeness relation) gives the colour vectors of
+    ``DirectedColour.operator`` (``observables.connect`` and ``absorb``):
+    equal legs and normalisation, and equal exact overlaps with random
+    tensors, for dipoles, Casimirs, ordered histories and emitter chains on
+    gluon and quark legs."""
+
+    from pyamplicol.color.connections import ColorConnection
+    from pyamplicol.loops.v2.observables import absorb, connect
+
+    rng = random.Random(20261025)
+    for quarks, gluons in (((), 4), (((1, 2),), 3), (((1, 2), (3, 4)), 2)):
+        legs = [ColorLeg(q, 3) for q, _ in quarks] + [
+            ColorLeg(b, -3) for _, b in quarks
+        ]
+        labels = list(range(10, 10 + gluons))
+        legs += [ColorLeg(a, 8) for a in labels]
+        legs = sorted(legs)
+        coloured = [leg.label for leg in legs]
+        histories = [
+            ColorCorrelator.dipole("d", rng.choice(coloured), rng.choice(coloured))
+            for _ in range(4)
+        ]
+        a, b, c = (rng.choice(coloured) for _ in range(3))
+        histories += [
+            ColorCorrelator("casimir", (EmitGluon(a, -1),), (EmitGluon(a, -1),)),
+            ColorCorrelator(
+                "ordered",
+                (EmitGluon(a, -1), EmitGluon(a, -2)),
+                (EmitGluon(b, -1), EmitGluon(c, -2)),
+            ),
+            ColorCorrelator(
+                "chain",
+                (EmitGluon(a, -1), EmitGluon(-1, -2)),
+                (EmitGluon(b, -1), EmitGluon(c, -2)),
+            ),
+        ]
+        tensors = [_random_tensor(rng, legs, labels, quarks) for _ in range(5)]
+        kets = [_random_tensor(rng, legs, labels, quarks) for _ in range(5)]
+        for history in histories:
+            bra = ColorConnection(tuple(legs), history.bra)
+            ket = ColorConnection(tuple(legs), history.ket)
+            native = native_cells.operator_images(
+                tensors, _emissions(bra), _emissions(ket)
+            )
+            for tensor, image in zip(tensors, native, strict=True):
+                expected = connect(tensor, bra)
+                for emission in reversed(ket.emissions):
+                    expected = absorb(expected, emission)
+                assert image.legs == expected.legs
+                assert image.normalization_power == expected.normalization_power
+                for other in [*kets, *tensors]:
+                    assert colour.contract_colour(image, other) == (
+                        colour.contract_colour(expected, other)
+                    ), history
+
+
 @pytest.mark.loop_fast
 def test_directed_tables_and_family_degrees_equal_python(slices):
     """The directed tables of g g > g g (both directions; a dipole, a Casimir
-    and an ordered history) in both lanes, and the complete-family degrees
+    and an ordered history) against the Python route, and the complete-family degrees
     of the dipole against the Python ones on the same slice (the ordered
     history's 28-member family and the LC/NLC families with their prune
     are ``loop_physics``)."""
 
     from pyamplicol.correlators import CorrelatorConfig
-    from pyamplicol.loops.v2.observables import ObservableSlice
+    from pyamplicol.loops.v2.observables import DirectedColour, ObservableSlice
 
     correlators = CorrelatorConfig(
         color_correlations=tuple(HISTORIES[h] for h in ("T12", "casimir", "ordered"))
     )
-    native = ObservableSlice.of(slices("gg_gg").slice, correlators=correlators)
-    oracle = python(
-        ObservableSlice.of, slices("gg_gg", "python").slice, correlators=correlators
-    )
+    slice_ = slices("gg_gg").slice
+    native = ObservableSlice.of(slice_, correlators=correlators)
     for history in native.histories:
         if not history.bra:
             continue
-        mine, theirs = native.directed(history), oracle.directed(history)
+        mine = native.directed(history)
+        theirs = python(DirectedColour, slice_.table, history)
         assert mine.table.cells == theirs.table.cells, history.id
         assert mine.swapped.cells == python(getattr, theirs, "swapped").cells
     for history in (HISTORIES["T12"],):
@@ -983,8 +1048,11 @@ def _all_equal(name: str, slices, monkeypatch) -> None:
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("name", sorted([*PHYSICS, "uux_ggg_lc"]))
+@pytest.mark.parametrize("name", sorted([*PHYSICS, *DEFAULT]))
 def test_wider_controls_equal_python(slices, monkeypatch, name):
+    """Every control generated in both lanes: equal end to end (S1, S4, S5,
+    S8, the companion, the prune) and stage by stage."""
+
     _all_equal(name, slices, monkeypatch)
 
 
