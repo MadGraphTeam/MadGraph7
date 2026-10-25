@@ -935,7 +935,10 @@ class CatalogueKinematics:
     use. ``momenta`` are the external momenta, all incoming (exact).
     ``reading(rule, legs)`` maps the UFO legs of a routing term (loop in, loop
     out, blocks; the colour seeds' incoming reading) to the legs its kernels
-    read; physical tree rows need ``conventions.TreeReading``.
+    read; physical tree rows need ``conventions.TreeReading``, whose
+    ``vertex(rule, legs)`` also names the rule whose kernels are read (the
+    conjugate rule of a vertex not closed under conjugation) and its colour
+    indices.
     """
 
     def __init__(
@@ -1022,13 +1025,21 @@ class CatalogueKinematics:
         if found is not None:
             return found
         out = []
+        vertex_reading = getattr(self.reading, "vertex", None)
         for rule, indices, legs, orders, attachments in self._routing_terms(content):
-            if self.reading is not None:
+            read = rule
+            if vertex_reading is not None:
+                # The tree reading may take the conjugate rule's kernels (a
+                # vertex not closed under conjugation, ``TreeReading.vertex``).
+                read, legs, colour_map = vertex_reading(rule, legs)
+                if colour_map is not None:
+                    indices = tuple(colour_map[index] for index in indices)
+            elif self.reading is not None:
                 legs = self.reading(rule, legs)
             vertex_terms = [
                 term
                 for index in indices
-                for term in self._terms[(rule, index)]
+                for term in self._terms[(read, index)]
                 if add_orders(tuple(term.coupling_orders)) == add_orders(orders)
             ]
             if not vertex_terms:
@@ -1069,7 +1080,7 @@ class CatalogueKinematics:
                     for parts in product(*(slot.rows for slot in slots))
                 )
                 key = (
-                    rule,
+                    read,
                     tuple(indices),
                     legs,
                     chiralities,
