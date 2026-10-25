@@ -898,7 +898,6 @@ def test_every_referenced_coupling_equals_the_ufo_coupling(gmu, gmu_ufo, gmu_pla
 
 # Blockers (PLAN wp32 §2): the exception and message each request stops at.
 B2 = ("LoopKernelCatalogueError", r"declares no loop species")
-B2_RUNTIME = ("ValueError", r"lowers to no kernel")
 B3 = ("LoopKernelCatalogueError", r"loop line -?\d+ has a unitary-gauge propagator")
 B5 = ("FermionSignError", r"has more than one fermion line")
 B6 = ("NotImplementedError", r"is not closed under conjugation")
@@ -979,16 +978,19 @@ LADDER = [
         {"QCD": 2, "QED": 2},
         B2,
     ),
-    # Q3: photon-only QED corrections of u u~ > d d~ generate (EWI-3); the
-    # photon loop line lowers to no kernel (B2 at runtime). Once it does,
-    # the bare and counterterm UV poles must cancel.
+    # Q3: photon-only QED corrections of u u~ > d d~ pass the CT lowering
+    # (EWI-3). Their CT roots declare no loop species since the admission
+    # takes only loops of the selected corrections (the QCD R2 of u u~ a
+    # with a gluon loop declared the gluon and the quark before), so the
+    # catalogue has none (B2) until it takes the families' species (EWI-1).
+    # Then the bare and counterterm UV poles must cancel.
     _rung(
         "uudd_qed_photon_uv",
         "loop_qcd_qed_sm",
         "u u~ > d d~",
         {"QCD": 2, "QED": 0},
         {"QCD": 2, "QED": 2},
-        B2_RUNTIME,
+        B2,
         corrections=("QED",),
         particle_veto=_PHOTON_ONLY,
         point=_MASSLESS_POINT,
