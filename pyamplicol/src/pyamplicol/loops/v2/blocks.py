@@ -71,7 +71,7 @@ Conventions a consumer relies on:
   (``with_ward_kernels``). The DAGs do not depend on the variant, so the
   switch keeps them (``TreeBlocks.with_kernels``).
 * **Native DAG.** Under ``dag_input.NATIVE_DAG`` the loop-request DAG of the
-  blocks is the native builder's (WP3.1 A4, ``dag_input.native_blocks``):
+  blocks is the native builder's (WP3.1 A4, ``dag_input.loop_request_blocks``):
   ``TreeBlocks.blocks_dag`` is then a ``dag_input.NativeDag`` handle, its
   blocks and the Ward-kernel and coloured-width queries come from the
   native columns, and reading a ``GenericDAG`` attribute of the handle
@@ -90,7 +90,6 @@ Conventions a consumer relies on:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from itertools import combinations, pairwise
@@ -99,7 +98,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pyamplicol.generation.dag_compiler import (
     DAGProgressCallback,
-    GenericDAGCompiler,
     LoopBlockReachability,
     compile_generic_dag,
 )
@@ -124,8 +122,6 @@ from pyamplicol.processes.ir import CanonicalProcessIR
 
 if TYPE_CHECKING:
     from .dag_input import NativeDag
-
-_LOG = logging.getLogger(__name__)
 
 BlockClass = Literal["plain", "ward", "spin-source", "counterterm"]
 
@@ -590,6 +586,8 @@ def build_tree_blocks(
         progress_callback=progress_callback,
     )
     kernel_variant = model_tree_kernel_variant(model)
+    from .dag_input import loop_request_blocks
+
     blocks_dag, blocks, fallback = loop_request_blocks(
         process,
         model,
@@ -609,71 +607,6 @@ def build_tree_blocks(
         kernel_variant=kernel_variant,
         dag_fallback=fallback,
     )
-
-
-def loop_request_blocks(
-    process: CanonicalProcessIR,
-    model: Model,
-    *,
-    block_coupling_orders: Mapping[str, int] | None,
-    reachability: LoopBlockReachability | None = None,
-    ignored_particle_ids: Iterable[int] = (),
-    ignored_vertex_kinds: Iterable[int] = (),
-    progress_callback: DAGProgressCallback | None = None,
-    kernel_variant: TreeKernelVariant,
-) -> tuple[GenericDAG | NativeDag, tuple[Block, ...], str | None]:
-    """The loop-request DAG of the blocks of ``build_tree_blocks``, its
-    blocks and the fallback reason (module docstring, "Native DAG").
-
-    Under ``dag_input.NATIVE_DAG`` the native builder makes the DAG (a
-    ``dag_input.NativeDag``) and its blocks; otherwise, or for a feature it
-    does not cover (the returned reason), the tree engine's loop-request
-    mode, the oracle. The process is compiled at full colour.
-    """
-
-    from . import dag_input
-
-    ignored_particles = tuple(ignored_particle_ids)
-    ignored_kinds = tuple(ignored_vertex_kinds)
-    full = replace(process, color_accuracy="full")
-    fallback = None
-    if dag_input.NATIVE_DAG:
-        try:
-            native = dag_input.native_blocks(
-                full,
-                model,
-                max_coupling_orders=block_coupling_orders,
-                ignored_particle_ids=ignored_particles,
-                ignored_vertex_kinds=ignored_kinds,
-                reachability=reachability,
-            )
-            blocks = native.blocks(kernel_variant)
-            # The Ward-kernel and coloured-width scans are answered now, so
-            # the native columns are not held to the end of generation; the
-            # per-point rows and the trees export rebuild and decode them.
-            native.propagated_species()
-            native.release()
-            return native, blocks, None
-        except dag_input.NativeDagUnsupported as error:
-            # Only a listed feature falls back (rule 2); any other refusal
-            # is raised.
-            fallback = dag_input.listed_fallback(error)
-            _LOG.warning(
-                "%s: the tree engine builds the loop-request blocks "
-                "(the native builder does not cover %s)",
-                process.process,
-                fallback,
-            )
-    dag = GenericDAGCompiler(
-        model=model,
-        max_coupling_orders=block_coupling_orders,
-        ignored_particle_ids=ignored_particles,
-        ignored_vertex_kinds=ignored_kinds,
-        progress_callback=progress_callback,
-        loop_blocks=True,
-        loop_block_reachability=reachability,
-    ).compile(full)
-    return dag, _blocks(dag, model, kernel_variant), fallback
 
 
 def _dag_blocks(
@@ -1049,7 +982,6 @@ __all__ = [
     "block_colour_flow",
     "build_tree_blocks",
     "identity_pairing_sign",
-    "loop_request_blocks",
     "propagated_species",
     "requested_loop_blocks",
     "u1_grades",

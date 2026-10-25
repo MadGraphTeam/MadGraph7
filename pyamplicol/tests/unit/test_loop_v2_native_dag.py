@@ -245,6 +245,21 @@ _PROGRAM_PROBE = (
 )
 
 
+def _portability_tool():
+    """``tools/loop_artifact_portability.py`` (its ``RestrictedPermit``)."""
+
+    import importlib.util
+
+    path = (
+        Path(__file__).resolve().parents[2] / "tools" / "loop_artifact_portability.py"
+    )
+    spec = importlib.util.spec_from_file_location("_native_dag_portability", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @pytest.mark.loop_nightly
 def test_native_builder_needs_no_symbolica_licence(
     models, loop_sm_compiled_model, tmp_path, monkeypatch
@@ -260,9 +275,12 @@ def test_native_builder_needs_no_symbolica_licence(
     CT DAG of u u~ > d d~ g (the projection gate off, as in the
     ``loop_physics`` test).
 
-    The child imports the extension, which starts a restricted Symbolica
-    instance: like ``test_six_gluon_generation_completes_without_a_personal_key``
-    it must not overlap another unlicensed Symbolica process of the user.
+    The child runs while another process holds the restricted Symbolica
+    permit of a private lock directory (``RestrictedPermit`` of
+    ``tools/loop_artifact_portability.py``), with pyAmpliCol's native library
+    key off: a binding that touched Symbolica state would abort, and no
+    other unlicensed Symbolica process of the user (whose permit lives in
+    the default lock directory) can clash with it.
     """
 
     import json
@@ -441,14 +459,38 @@ def test_native_builder_needs_no_symbolica_licence(
     environment = {
         key: value for key, value in os.environ.items() if key != "SYMBOLICA_LICENSE"
     }
-    result = subprocess.run(
-        [sys.executable, "-c", script, str(tmp_path / "request.json")],
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=300,
-    )
+    # pyAmpliCol's library key off in the native code (crate ``pyamplicol``):
+    # its copy of Symbolica is in restricted mode.
+    environment["PYAMPLICOL_NATIVE_LIBRARY_KEY"] = "off"
+    portability = _portability_tool()
+    lock = tmp_path / "symbolica-locks"
+    lock.mkdir(mode=0o700)
+    with portability.RestrictedPermit(lock_dir=str(lock)) as permit:
+        result = subprocess.run(
+            [sys.executable, "-c", script, str(tmp_path / "request.json")],
+            env=permit.environment(environment),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    # The positive control: a plain Symbolica process aborted meanwhile.
+    assert permit.record["verified"], permit.record
+    if result.returncode != 0:
+        restricted = any(
+            marker in result.stdout + result.stderr
+            for marker in portability.RESTRICTED_MARKERS
+        )
+        pytest.fail(
+            f"the unlicensed child exited with {result.returncode}"
+            + (
+                " in Symbolica's restricted mode: a binding touched Symbolica "
+                "state (rule 4)"
+                if restricted
+                else ""
+            )
+            + f"; its permit is private ({lock}), so no other process clashed"
+            + f"\nstdout: {result.stdout[-2000:]}\nstderr: {result.stderr[-2000:]}"
+        )
     out = json.loads(result.stdout.strip().splitlines()[-1])
     assert out["digests"] == expected["digests"]
     assert out["blocks"] == expected["blocks"]
@@ -1005,13 +1047,45 @@ def _assert_switch_equal(compiled, model, text, orders, **options):
     return python, native
 
 
+def _native_progress(events, stage, dag, blocks):
+    """The native stage's events among a ``progress_callback``'s
+    (``dag_input._progress``): its start, then its finish with the counts."""
+
+    currents, interactions, _sources = dag.counts()
+    assert [event for event in events if event["step"] == "native-dag"] == [
+        {"step": "native-dag", "stage": stage, "state": "start"},
+        {
+            "step": "native-dag",
+            "stage": stage,
+            "state": "done",
+            "current_count": currents,
+            "interaction_count": interactions,
+            "block_count": len(blocks),
+        },
+    ]
+
+
 @pytest.mark.loop_fast
 def test_switched_tree_blocks_equal_the_oracle_stage(models):
     """A4: ``build_tree_blocks`` takes the native builder under
-    ``NATIVE_DAG`` (u u~ > d d~ g: quark lines, connection signs)."""
+    ``NATIVE_DAG`` (u u~ > d d~ g: quark lines, connection signs), and
+    reports the native stage's start and finish to ``progress_callback``."""
 
     compiled, model = models
-    _assert_switch_equal(compiled, model, "u u~ > d d~ g", {"QCD": 5}, born={"QCD": 3})
+    _python_route, native = _assert_switch_equal(
+        compiled, model, "u u~ > d d~ g", {"QCD": 5}, born={"QCD": 3}
+    )
+    events: list = []
+    again = _tree_blocks(
+        model,
+        _process(compiled, "u u~ > d d~ g"),
+        {"QCD": 5},
+        True,
+        born={"QCD": 3},
+        progress_callback=events.append,
+    )
+    assert again.blocks == native.blocks
+    _native_progress(events, "loop-blocks", again.blocks_dag, again.blocks)
 
 
 @pytest.mark.loop_fast
@@ -1032,12 +1106,18 @@ def test_switched_counterterm_program_equals_the_oracle_stage(
         loop_sm_compiled_model, "g g > g g g", {"QCD": 3}, {"QCD": 5}
     )
     before = dag_input.decode_count()
+    events: list = []
     with _flag(True):
         native = ct_closure.CountertermBlocks.build(
-            python.recursion, python.blocks.blocks_dag.process
+            python.recursion,
+            python.blocks.blocks_dag.process,
+            progress_callback=events.append,
         )
     assert isinstance(native.blocks.blocks_dag, dag_input.NativeDag)
     assert native.blocks.dag_fallback is None
+    _native_progress(
+        events, "counterterm-program", native.blocks.blocks_dag, native.blocks.blocks
+    )
     assert snapshot.counterterm_program_digest(native) == (
         snapshot.counterterm_program_digest(python)
     )
@@ -1068,6 +1148,7 @@ def _assert_counterterm_trees_equal(python_blocks, native_blocks):
     from collections.abc import Mapping
     from dataclasses import fields
 
+    from pyamplicol.loops.v2 import snapshot
     from pyamplicol.loops.v2.ct_closure import CountertermProgram
     from pyamplicol.loops.v2.native_trees import _CountertermTrees
 
@@ -1084,6 +1165,9 @@ def _assert_counterterm_trees_equal(python_blocks, native_blocks):
     assert dag.released and not dag.decoded
     oracle = _CountertermTrees.of(python, 1234)
     assert json.dumps(native.record) == json.dumps(oracle.record)
+    assert snapshot.counterterm_trees_digest(native) == (
+        snapshot.counterterm_trees_digest(oracle)
+    )
     # Every field ``of`` fills (a field added there is compared too): the
     # blocks are the programs' own objects, the rows compared below.
     for field in fields(_CountertermTrees):
@@ -1391,6 +1475,37 @@ def test_native_tables_refuse_each_listed_feature(models, key, monkeypatch):
         build()
     assert refused.value.feature == expected, str(refused.value)
     assert dag_input.listed_fallback(refused.value).startswith(f"{expected}: ")
+
+
+@pytest.mark.loop_fast
+def test_native_tables_refuse_negative_orders_in_limited_names(models, monkeypatch):
+    """Fail closed (no listed fallback) for a reachable vertex with a
+    negative coupling order in a limited name: the oracle bounds each
+    current's accumulated orders, which a negative order can bring back
+    within the limit, while the tables prune vertices by their own orders.
+    An unlimited name is not pruned, so its negative orders build."""
+
+    compiled, model = models
+    process = _process(compiled, "u u~ > d d~ g")
+    original = model.vertex_coupling_orders
+
+    def negative(vertex):
+        orders = tuple(original(vertex))
+        if 21 in {abs(int(p)) for p in vertex.particles}:
+            return (*orders, ("NEG", -1))
+        return orders
+
+    monkeypatch.setattr(model, "vertex_coupling_orders", negative)
+    monkeypatch.setattr(dag_input, "_MODEL_ROWS", {})
+    with pytest.raises(dag_input.NativeDagUnsupported, match="NEG\\^-1") as refused:
+        dag_input.native_blocks(
+            process, model, max_coupling_orders={"QCD": 5, "NEG": 0}
+        )
+    assert refused.value.feature is None
+    # The switch site raises it (rule 2: fail closed).
+    with pytest.raises(dag_input.NativeDagUnsupported, match="NEG\\^-1"):
+        _tree_blocks(model, process, {"QCD": 5, "NEG": 0}, True, born={"QCD": 3})
+    dag_input.native_blocks(process, model, max_coupling_orders={"QCD": 5})
 
 
 @pytest.mark.loop_physics

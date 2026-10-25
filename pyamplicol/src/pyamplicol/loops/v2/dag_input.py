@@ -77,19 +77,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import struct
 import sys
 from array import array
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from types import SimpleNamespace
 from typing import Any, TypeVar, cast
 
 from pyamplicol.color.plan_types import GenericColorPlan
 from pyamplicol.generation.dag_compiler import (
     AttachableLoopBlocks,
+    DAGProgressCallback,
+    GenericDAGCompiler,
     LoopBlockReachability,
 )
 from pyamplicol.generation.dag_types import (
@@ -108,7 +111,10 @@ from .blocks import (
     BlockKey,
     BlockRow,
     RequestedLoopBlocks,
+    _blocks,
 )
+
+_LOG = logging.getLogger(__name__)
 
 # Rule 1: the one flag of the native loop-request DAG stage (A4). On, the
 # loop-block DAG of ``blocks.build_tree_blocks`` and the counterterm program
@@ -749,12 +755,33 @@ def _order_bounded(
     """Whether a vertex of these coupling orders can enter a current within
     ``limits`` (normalised as the recursion's): orders only add up along a
     tree, so one vertex beyond a limit puts every current holding it beyond
-    too (a vertex with a negative order bounds nothing)."""
+    too. That holds while no reachable vertex has a negative order in a
+    limited name (``_require_unpruned_orders``)."""
 
     values = {str(name).upper(): int(value) for name, value in orders}
-    if any(value < 0 for value in values.values()):
-        return True
     return all(values.get(name, 0) <= limit for name, limit in limits.items())
+
+
+def _require_unpruned_orders(
+    vertex: Any, orders: Iterable[tuple[str, int]], limits: Mapping[str, int]
+) -> None:
+    """Fail closed (``NativeDagUnsupported``, no listed fallback) for a
+    reachable vertex with a negative coupling order in a limited name: the
+    oracle bounds the accumulated orders of each current (left, right and
+    vertex), which a negative order can bring back within the limit, so the
+    per-vertex prune of the tables (``_order_bounded``) could drop a vertex
+    the oracle keeps."""
+
+    for name, value in orders:
+        key = str(name).upper()
+        if int(value) < 0 and key in limits:
+            raise NativeDagUnsupported(
+                f"vertex {int(vertex.kind)} {tuple(int(p) for p in vertex.particles)} "
+                f"has the negative coupling order {key}^{int(value)} under the "
+                f"limit {key} <= {limits[key]}: the native tables prune vertices "
+                "by their own orders, which is exact for non-negative orders only "
+                "(dag_input.NATIVE_DAG = False builds it with the tree engine)"
+            )
 
 
 def _reachable_vertices(
@@ -772,7 +799,9 @@ def _reachable_vertices(
     A species is reachable when it is a leg's or the result of a usable
     vertex within the order limits whose inputs are reachable (a fixed
     point over species: a superset of every current's particle, whatever
-    its leg set). The native recursion looks up only pairs of its
+    its leg set; a usable vertex met there with a negative order in a
+    limited name is refused, ``_require_unpruned_orders``). The native
+    recursion looks up only pairs of its
     currents' particles (a missing pair accepts nothing), so the tables of
     the other species are never read; the oracle pays their model probes
     only for the vertices it reaches, and so does this table.
@@ -803,9 +832,12 @@ def _reachable_vertices(
                 )
                 accepted[(left, right)] = vertices
                 for vertex in vertices:
+                    if not admitted(vertex):
+                        continue
+                    orders = model.vertex_coupling_orders(vertex)
+                    _require_unpruned_orders(vertex, orders, limits)
                     if (
-                        admitted(vertex)
-                        and _order_bounded(model.vertex_coupling_orders(vertex), limits)
+                        _order_bounded(orders, limits)
                         and int(vertex.particles[2]) not in reached
                     ):
                         reached.add(int(vertex.particles[2]))
@@ -1644,8 +1676,6 @@ class NativeDag:
     ) -> tuple[tuple[Block, ...], dict[int, int]]:
         """The blocks and, for the clone blocks, block id -> clone particle."""
 
-        from dataclasses import replace
-
         from .blocks import _checked_kernel_variant
 
         variant = _checked_kernel_variant("plain", kernel_variant)
@@ -1811,6 +1841,102 @@ def native_blocks(
     )
 
 
+def _progress(
+    callback: DAGProgressCallback | None,
+    stage: str,
+    built: tuple[NativeDag, int] | None = None,
+) -> None:
+    """A native stage's progress through the tree engine's callback
+    (``GenericDAGCompiler``'s ``{"step": ...}`` events): ``native-dag`` for
+    ``stage`` with ``state`` ``start``, then ``done`` with the DAG's current
+    and interaction counts and the block count (``built``)."""
+
+    if callback is None:
+        return
+    if built is None:
+        callback({"step": "native-dag", "stage": stage, "state": "start"})
+        return
+    dag, blocks = built
+    currents, interactions, _sources = dag.counts()
+    callback(
+        {
+            "step": "native-dag",
+            "stage": stage,
+            "state": "done",
+            "current_count": currents,
+            "interaction_count": interactions,
+            "block_count": blocks,
+        }
+    )
+
+
+def loop_request_blocks(
+    process: CanonicalProcessIR,
+    model: Any,
+    *,
+    block_coupling_orders: Mapping[str, int] | None,
+    reachability: LoopBlockReachability | None = None,
+    ignored_particle_ids: Iterable[int] = (),
+    ignored_vertex_kinds: Iterable[int] = (),
+    progress_callback: DAGProgressCallback | None = None,
+    kernel_variant: TreeKernelVariant,
+) -> tuple[GenericDAG | NativeDag, tuple[Block, ...], str | None]:
+    """The loop-request DAG of the blocks of ``blocks.build_tree_blocks``,
+    its blocks and the fallback reason (the switch of A4).
+
+    Under ``NATIVE_DAG`` the native builder makes the DAG (a ``NativeDag``)
+    and its blocks (``native_blocks``; ``progress_callback`` gets the
+    stage's start and finish, ``_progress``); otherwise, or for a listed
+    feature it does not cover (the returned reason, ``listed_fallback``),
+    the tree engine's loop-request mode, the oracle. The process is
+    compiled at full colour.
+    """
+
+    ignored_particles = tuple(ignored_particle_ids)
+    ignored_kinds = tuple(ignored_vertex_kinds)
+    full = replace(process, color_accuracy="full")
+    fallback = None
+    if NATIVE_DAG:
+        try:
+            _progress(progress_callback, "loop-blocks")
+            native = native_blocks(
+                full,
+                model,
+                max_coupling_orders=block_coupling_orders,
+                ignored_particle_ids=ignored_particles,
+                ignored_vertex_kinds=ignored_kinds,
+                reachability=reachability,
+            )
+            blocks = native.blocks(kernel_variant)
+            # The Ward-kernel and coloured-width scans are answered now, so
+            # the native columns are not held to the end of generation; the
+            # per-point rows and the trees export rebuild and decode them.
+            native.propagated_species()
+            _progress(progress_callback, "loop-blocks", (native, len(blocks)))
+            native.release()
+            return native, blocks, None
+        except NativeDagUnsupported as error:
+            # Only a listed feature falls back (rule 2); any other refusal
+            # is raised.
+            fallback = listed_fallback(error)
+            _LOG.warning(
+                "%s: the tree engine builds the loop-request blocks "
+                "(the native builder does not cover %s)",
+                process.process,
+                fallback,
+            )
+    dag = GenericDAGCompiler(
+        model=model,
+        max_coupling_orders=block_coupling_orders,
+        ignored_particle_ids=ignored_particles,
+        ignored_vertex_kinds=ignored_kinds,
+        progress_callback=progress_callback,
+        loop_blocks=True,
+        loop_block_reachability=reachability,
+    ).compile(full)
+    return dag, _blocks(dag, model, kernel_variant), fallback
+
+
 @dataclass(frozen=True)
 class NativeCountertermBlocks:
     """The native twin of ``ct_closure.CountertermBlocks``: the CT program's
@@ -1829,15 +1955,15 @@ def native_counterterm_blocks(
     process: CanonicalProcessIR,
     *,
     ignored_particle_ids: Iterable[int] = (),
+    progress_callback: DAGProgressCallback | None = None,
 ) -> NativeCountertermBlocks:
     """The native twin of ``ct_closure.CountertermBlocks.build(recursion,
     process, ignored_particle_ids=...)``: the loop-request recursion of the
     CT-lowered model (``recursion.model.lowered``) over the leg sets without
     leg 1 except all other legs (``RootReachability``), within the program's
     order limits and without the vetoed particles (DESIGN §6.1 items 1-6 and
-    8), grouped into blocks with the clone lines of ``_clone_lines``."""
-
-    from dataclasses import replace
+    8), grouped into blocks with the clone lines of ``_clone_lines``;
+    ``progress_callback`` gets the stage's start and finish (``_progress``)."""
 
     from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 
@@ -1849,6 +1975,7 @@ def native_counterterm_blocks(
     model = recursion.model.lowered.tree_model()
     full = (1 << len(process.legs)) - 1
     process = replace(process, color_accuracy="full")
+    _progress(progress_callback, "counterterm-program")
     lines = _clone_lines(recursion)
     tables = dag_input(
         process,
@@ -1866,6 +1993,7 @@ def native_counterterm_blocks(
     )
     variant = model_tree_kernel_variant(model)
     blocks, clone_particles = dag._blocks_and_clones(variant)
+    _progress(progress_callback, "counterterm-program", (dag, len(blocks)))
     return NativeCountertermBlocks(
         recursion,
         dag,
@@ -2195,12 +2323,13 @@ def native_interaction_program(
     """``native_trees._interaction_program`` of ``rows`` and its native
     ``program`` (``native_tree_rows``; its pole steps those of the pole
     orders given there): the native steps, and the kernels in their first
-    use, each built from the representative the oracle builds it from by the
-    oracle's recipe (the model's component expressions with its kernel
-    functions inlined, on canonical symbols, reading only the model
-    parameters they hold, saved as exact Symbolica evaluators; vertex
-    kernels first, then propagators; shapes ``[inputs, outputs,
-    model_inputs]`` of TREE_SCHEMA 3).
+    use, each built from the representative the oracle builds it from by
+    the oracle's own recipe (``native_trees._vertex_kernel``,
+    ``_propagator_kernel``, ``_saved_kernel``: the model's component
+    expressions with its kernel functions inlined, on canonical symbols,
+    reading only the model parameters they hold, saved as exact Symbolica
+    evaluators; vertex kernels first, then propagators; shapes ``[inputs,
+    outputs, model_inputs]`` of TREE_SCHEMA 3).
 
     The model functions are inlined into every kernel in one
     ``_specialize_stage_symbolica_functions`` call (the oracle calls it per
@@ -2211,38 +2340,21 @@ def native_interaction_program(
     definition) do not depend on the functions defined after them; each
     kernel then keeps the functions it calls (``_retained_functions``)."""
 
-    from symbolica import Expression, FunctionDefinition
-
-    from pyamplicol._internal.physics.symbols import symbols as registry
     from pyamplicol.generation.stage_parameters import (
-        _logical_model_parameter_symbols,
         _model_symbolica_functions,
         _specialize_stage_symbolica_functions,
     )
-    from pyamplicol.models._physics_ir import PropagatorIR
 
-    from .assemble import _canonical_stage
-    from .native_trees import _exact_weight, _fraction_text
-
-    records = rows._records
-    model_symbols = [
-        registry.qualified(f"pyamplicol_v2_trees::m{i}") for i in range(len(records))
-    ]
-    model = rows.model.with_runtime_parameters(
-        _logical_model_parameter_symbols(
-            records,
-            {
-                str(r["name"]): sym
-                for r, sym in zip(records, model_symbols, strict=True)
-            },
-        )
+    from .native_trees import (
+        _exact_weight,
+        _fraction_text,
+        _kernel_model,
+        _propagator_kernel,
+        _saved_kernel,
+        _vertex_kernel,
     )
 
-    def symbols(name: str, count: int) -> list[Any]:
-        return [
-            registry.qualified(f"pyamplicol_v2_trees::{name}{i}") for i in range(count)
-        ]
-
+    model_symbols, model = _kernel_model(rows.model, rows._records)
     uses = program.kernels()
     vertex_rows = dict(
         zip(
@@ -2258,33 +2370,13 @@ def native_interaction_program(
         if kind == "kernels":
             # key: (vertex kind, result pdg, result chirality, left
             # chirality, right chirality, left dimension, right dimension).
-            lhs, rhs = symbols("l", key[5]), symbols("r", key[6])
-            pl, pr = symbols("pl", 4), symbols("pr", 4)
-            inputs = [*lhs, *rhs, *pl, *pr]
-            components = model.vertex_component_expression(
-                key[0],
-                lhs,
-                rhs,
-                result_particle_id=key[1],
-                result_chirality=key[2],
-                left_chirality=key[3],
-                right_chirality=key[4],
-                coupling=tuple(vertex_rows[item][2]),
-                left_momentum=pl,
-                right_momentum=pr,
+            inputs, components = _vertex_kernel(
+                model, tuple(key), tuple(vertex_rows[item][2])
             )
         else:
             # key: (particle id, chirality, dimension).
-            value, momentum = symbols("v", key[2]), symbols("p", 4)
-            inputs = [*value, *momentum]
-            components = model.propagator_component_expression(
-                key[0],
-                value,
-                momentum,
-                chirality=key[1],
-                propagator=PropagatorIR.from_json_dict(
-                    dict(rows.propagators[(key[0], key[1])])
-                ),
+            inputs, components = _propagator_kernel(
+                model, key[0], key[1], key[2], rows.propagators[(key[0], key[1])]
             )
         built.append((kind, inputs, tuple(components)))
     definitions = _model_symbolica_functions(model)
@@ -2299,42 +2391,9 @@ def native_interaction_program(
         specialised = rewritten[position : position + len(components)]
         position += len(components)
         retained = _retained_functions(specialised, definitions) if specialised else ()
-        # The oracle's model inputs (TREE_SCHEMA 3): the model parameters
-        # the kernel's expressions and retained functions hold, in the model
-        # block's order.
-        held = {
-            symbol.to_canonical_string()
-            for expression in (*specialised, *(body for _f, _a, body in retained))
-            for symbol in expression.get_all_symbols()
-        }
-        model_inputs = [
-            k
-            for k, symbol in enumerate(model_symbols)
-            if symbol.to_canonical_string() in held
-        ]
-        outputs, parameters, functions = _canonical_stage(
-            SimpleNamespace(
-                output_expressions=list(specialised),
-                parameter_symbols=[
-                    *inputs,
-                    *(model_symbols[k] for k in model_inputs),
-                ],
-                symbolica_functions=list(retained),
-            )
-        )
-        evaluator = Expression.evaluator_multiple(
-            outputs,
-            parameters,
-            functions=[
-                FunctionDefinition(function, arguments, body, inlining="always")
-                for function, arguments, body in functions
-            ],
-            jit_compile=False,
-        )
-        saved[kind].append(bytes(evaluator.save()))
-        shapes[kind].append(
-            [len(inputs) + len(model_inputs), len(outputs), model_inputs]
-        )
+        kernel, shape = _saved_kernel(model_symbols, inputs, specialised, retained)
+        saved[kind].append(kernel)
+        shapes[kind].append(shape)
     texts = []
     for real, imag in program.weights():
         weight = _exact_weight(complex(real, imag))

@@ -311,7 +311,8 @@ class CountertermBlocks:
         Under ``dag_input.NATIVE_DAG`` the native builder makes the program
         (``dag_input.native_counterterm_blocks``, WP3.1 A4): its DAG is a
         ``dag_input.NativeDag`` handle, decoded only by the per-point Python
-        rows (``CountertermProgram.rows``). The tree engine's loop-request
+        rows (``CountertermProgram.rows``); ``progress_callback`` gets the
+        native stage's start and finish. The tree engine's loop-request
         mode below is the oracle, and the stage for a request the native
         builder does not cover (``TreeBlocks.dag_fallback`` names it)."""
 
@@ -321,7 +322,10 @@ class CountertermBlocks:
         if dag_input.NATIVE_DAG:
             try:
                 native = dag_input.native_counterterm_blocks(
-                    recursion, process, ignored_particle_ids=ignored_particle_ids
+                    recursion,
+                    process,
+                    ignored_particle_ids=ignored_particle_ids,
+                    progress_callback=progress_callback,
                 )
             except dag_input.NativeDagUnsupported as error:
                 # Only a listed feature falls back (rule 2).

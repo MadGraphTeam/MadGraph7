@@ -10,7 +10,7 @@ native lane (``RUST-MIGRATION.md`` §2 rule 6).
 
 Stages (digests: ``loops.v2.snapshot``):
 
-* ``s1p``: S1', the loop-request block DAG (``blocks.loop_request_blocks``,
+* ``s1p``: S1', the loop-request block DAG (``dag_input.loop_request_blocks``,
   the stage of ``build_tree_blocks``: default reachability, the request's
   loop-order bounds) and its blocks.
 * ``s1pp``: S1'', the counterterm program's DAG, its blocks and clone lines
@@ -127,7 +127,8 @@ def _native_dag(on: bool) -> contextlib.AbstractContextManager[None]:
 
 def _s1p(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> None:
     from pyamplicol.loops.v2 import snapshot
-    from pyamplicol.loops.v2.blocks import TreeBlocks, loop_request_blocks
+    from pyamplicol.loops.v2.blocks import TreeBlocks
+    from pyamplicol.loops.v2.dag_input import loop_request_blocks
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
     from pyamplicol.processes.model import build_model_process_ir
@@ -246,9 +247,7 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
 
 
 def _pct(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> None:
-    import hashlib
-
-    from pyamplicol.loops.v2 import dag_input
+    from pyamplicol.loops.v2 import dag_input, snapshot
     from pyamplicol.loops.v2.ct_closure import CountertermProgram
     from pyamplicol.loops.v2.native_trees import _CountertermTrees
 
@@ -264,18 +263,11 @@ def _pct(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> Non
             "CT interaction program",
             lambda: _CountertermTrees.of(CountertermProgram(blocks, ()), 0),
         )
-    hasher = hashlib.sha256()
-    hasher.update(
-        clock(
-            "P-ct json", lambda: json.dumps(trees.record, separators=(",", ":"))
-        ).encode()
-    )
-    for saved in trees.saved:
-        hasher.update(hashlib.sha256(saved).digest())
+    digest = clock("P-ct digest", lambda: snapshot.counterterm_trees_digest(trees))
     steps = trees.record["interactions"]["steps"]
     record["counts"]["program rows"] = sum(len(step["interactions"]) for step in steps)
     record["counts"]["kernels"] = len(trees.saved)
-    record["digests"]["P-ct"] = hasher.hexdigest()
+    record["digests"]["P-ct"] = digest
 
 
 def main(argv: list[str] | None = None) -> int:

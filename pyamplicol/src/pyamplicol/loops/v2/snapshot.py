@@ -28,7 +28,9 @@ recursion), so that seven legs cost a fraction of their stage:
 * ``S2`` the Born and counterterm root-closure terms
   (``root_closure_digest``);
 * ``P`` the native interaction programs and their saved kernels
-  (``programs_digest``).
+  (``programs_digest``);
+* ``P-ct`` the counterterm program's interaction program and saved kernels
+  in the native lane's export (``counterterm_trees_digest``).
 
 The DAG part of ``S1'``/``S1''`` is ``dag_input.NativeDag.digest`` (every
 current and interaction field, floats by their bits; a Python ``GenericDAG``
@@ -336,4 +338,18 @@ def programs_digest(trees: Any) -> str:
     for kernel in (*trees.kernels, trees.parameters):
         hasher.update(len(kernel).to_bytes(8, "little"))
         hasher.update(bytes(kernel))
+    return hasher.hexdigest()
+
+
+def counterterm_trees_digest(trees: Any) -> str:
+    """P-ct: the counterterm program's interaction program and saved kernels
+    of ``native_trees._CountertermTrees`` (``_CountertermTrees.of``, A5): the
+    SHA-256 of its ``record`` as compact JSON, then of each saved kernel's
+    SHA-256 in order. Untagged, so it equals the P-ct digests the stage
+    records of ``tools/loop_v2_dag.py`` hold since A5."""
+
+    hasher = hashlib.sha256()
+    hasher.update(json.dumps(trees.record, separators=(",", ":")).encode())
+    for saved in trees.saved:
+        hasher.update(hashlib.sha256(saved).digest())
     return hasher.hexdigest()

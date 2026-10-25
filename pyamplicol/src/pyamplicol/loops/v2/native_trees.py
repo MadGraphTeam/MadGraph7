@@ -1219,6 +1219,151 @@ def _parameter_program(
     return record, bytes(evaluator.save())
 
 
+# ------------------------------------------------- interaction-program kernels
+#
+# The kernel recipe of the interaction programs, shared by the oracle
+# (``_interaction_program``) and the native emission of a counterterm
+# program's (``dag_input.native_interaction_program``, WP3.1 A5), so the two
+# cannot drift apart.
+
+
+def _kernel_symbols(name: str, count: int) -> list[Any]:
+    """The formal symbols ``pyamplicol_v2_trees::<name><i>``, ``i < count``."""
+
+    from pyamplicol._internal.physics.symbols import symbols as registry
+
+    return [registry.qualified(f"pyamplicol_v2_trees::{name}{i}") for i in range(count)]
+
+
+def _kernel_model(
+    model: Any, records: Sequence[dict[str, Any]]
+) -> tuple[list[Any], Any]:
+    """The model block's symbols (``m<i>`` for the ``i``-th parameter
+    record) and ``model`` reading its runtime parameters from them."""
+
+    from pyamplicol.generation.stage_parameters import (
+        _logical_model_parameter_symbols,
+    )
+
+    model_symbols = _kernel_symbols("m", len(records))
+    return model_symbols, model.with_runtime_parameters(
+        _logical_model_parameter_symbols(
+            records,
+            {
+                str(r["name"]): sym
+                for r, sym in zip(records, model_symbols, strict=True)
+            },
+        )
+    )
+
+
+def _vertex_kernel(
+    model: Any, key: tuple[int, ...], coupling: Any
+) -> tuple[list[Any], Sequence[Any]]:
+    """The formal inputs ``[left, right, p_left, p_right]`` and the
+    components (``vertex_component_expression``) of the vertex kernel
+    ``key``: (vertex kind, result particle id, result chirality, left
+    chirality, right chirality, left dimension, right dimension)."""
+
+    lhs, rhs = _kernel_symbols("l", key[5]), _kernel_symbols("r", key[6])
+    pl, pr = _kernel_symbols("pl", 4), _kernel_symbols("pr", 4)
+    return [*lhs, *rhs, *pl, *pr], model.vertex_component_expression(
+        key[0],
+        lhs,
+        rhs,
+        result_particle_id=key[1],
+        result_chirality=key[2],
+        left_chirality=key[3],
+        right_chirality=key[4],
+        coupling=coupling,
+        left_momentum=pl,
+        right_momentum=pr,
+    )
+
+
+def _propagator_kernel(
+    model: Any,
+    particle_id: int,
+    chirality: int,
+    dimension: int,
+    propagator: Mapping[str, Any],
+) -> tuple[list[Any], Sequence[Any]]:
+    """The formal inputs ``[value, p]`` and the components
+    (``propagator_component_expression``) of a propagator kernel."""
+
+    from pyamplicol.models._physics_ir import PropagatorIR
+
+    value, momentum = _kernel_symbols("v", dimension), _kernel_symbols("p", 4)
+    return [*value, *momentum], model.propagator_component_expression(
+        particle_id,
+        value,
+        momentum,
+        chirality=chirality,
+        propagator=PropagatorIR.from_json_dict(dict(propagator)),
+    )
+
+
+def _saved_kernel(
+    model_symbols: Sequence[Any],
+    inputs: Sequence[Any],
+    outputs: Sequence[Any],
+    retained: Sequence[tuple[Any, Any, Any]],
+) -> tuple[bytes, list[Any]]:
+    """A kernel saved as an exact Symbolica evaluator, and its shape
+    ``[inputs, outputs, model inputs]`` (TREE_SCHEMA 3): ``outputs`` are its
+    components with the model's kernel functions inlined
+    (``_specialize_stage_symbolica_functions``), ``retained`` the functions
+    they still call; the evaluator reads ``inputs`` and then the model
+    parameters the expressions hold (``model inputs``: their indices into
+    ``model_symbols``, the model block)."""
+
+    from symbolica import Expression, FunctionDefinition
+
+    from .assemble import _canonical_stage
+
+    # The kernel reads the model parameters its expressions hold, in the
+    # model block's order: a counterterm program's model block holds every
+    # coupling, multiplicity and slot switch of the request (160-190 at
+    # six legs), a kernel a few, and each kernel row copied all of them.
+    held = {
+        symbol.to_canonical_string()
+        for expression in (*outputs, *(body for _f, _a, body in retained))
+        for symbol in expression.get_all_symbols()
+    }
+    model_inputs = [
+        k
+        for k, symbol in enumerate(model_symbols)
+        if symbol.to_canonical_string() in held
+    ]
+    # On canonical symbols the kernel's term order, and so its binary64
+    # rounding, does not depend on the symbols created earlier in the
+    # interpreter (``assemble._canonical_stage``).
+    canonical, parameters, functions = _canonical_stage(
+        SimpleNamespace(
+            output_expressions=list(outputs),
+            parameter_symbols=[
+                *inputs,
+                *(model_symbols[k] for k in model_inputs),
+            ],
+            symbolica_functions=list(retained),
+        )
+    )
+    evaluator = Expression.evaluator_multiple(
+        canonical,
+        parameters,
+        functions=[
+            FunctionDefinition(function, arguments, body, inlining="always")
+            for function, arguments, body in functions
+        ],
+        jit_compile=False,
+    )
+    return bytes(evaluator.save()), [
+        len(inputs) + len(model_inputs),
+        len(canonical),
+        model_inputs,
+    ]
+
+
 def _interaction_program(
     trees: Any, pole_currents: frozenset[int] = frozenset()
 ) -> tuple[dict[str, Any], tuple[bytes, ...]]:
@@ -1241,34 +1386,17 @@ def _interaction_program(
     ``pole_currents`` are currents only epsilon-pole terms read (a
     counterterm program's pole slots): per step the indices of the
     interactions and outputs of such currents (``pole_interactions``,
-    ``pole_outputs``), which finite-only evaluations skip."""
+    ``pole_outputs``), which finite-only evaluations skip. The kernels
+    follow the shared recipe (``_vertex_kernel``, ``_propagator_kernel``,
+    ``_saved_kernel``)."""
 
-    from symbolica import Expression, FunctionDefinition
-
-    from pyamplicol._internal.physics.symbols import symbols as registry
     from pyamplicol.generation.stage_parameters import (
-        _logical_model_parameter_symbols,
         _model_symbolica_functions,
         _specialize_stage_symbolica_functions,
     )
-    from pyamplicol.models._physics_ir import PropagatorIR
-
-    from .assemble import _canonical_stage
 
     dag, schema = trees.dag, trees.schema
-    records = trees._records
-    model_symbols = [
-        registry.qualified(f"pyamplicol_v2_trees::m{i}") for i in range(len(records))
-    ]
-    model = trees.model.with_runtime_parameters(
-        _logical_model_parameter_symbols(
-            records,
-            {
-                str(r["name"]): sym
-                for r, sym in zip(records, model_symbols, strict=True)
-            },
-        )
-    )
+    model_symbols, model = _kernel_model(trees.model, trees._records)
     value_count = trees._value_count
     value_slots = {
         int(slot["value_slot_id"]): slot
@@ -1283,13 +1411,8 @@ def _interaction_program(
         for slot in schema["momentum_slots"]
     }
     saved: dict[str, list[bytes]] = {"kernels": [], "propagators": []}
-    shapes: dict[str, list[list[int]]] = {"kernels": [], "propagators": []}
+    shapes: dict[str, list[list[Any]]] = {"kernels": [], "propagators": []}
     ids: dict[tuple, int] = {}
-
-    def symbols(name: str, count: int) -> list[Any]:
-        return [
-            registry.qualified(f"pyamplicol_v2_trees::{name}{i}") for i in range(count)
-        ]
 
     def compile_kernel(kind: str, key: tuple, build) -> int:
         found = ids.get((kind, key))
@@ -1300,47 +1423,10 @@ def _interaction_program(
         outputs, retained = _specialize_stage_symbolica_functions(
             list(components), _model_symbolica_functions(model)
         )
-        # The kernel reads the model parameters its expressions hold, in the
-        # model block's order: a counterterm program's model block holds every
-        # coupling, multiplicity and slot switch of the request (160-190 at
-        # six legs), a kernel a few, and each kernel row copied all of them.
-        held = {
-            symbol.to_canonical_string()
-            for expression in (*outputs, *(body for _f, _a, body in retained))
-            for symbol in expression.get_all_symbols()
-        }
-        model_inputs = [
-            k
-            for k, symbol in enumerate(model_symbols)
-            if symbol.to_canonical_string() in held
-        ]
-        # On canonical symbols the kernel's term order, and so its binary64
-        # rounding, does not depend on the symbols created earlier in the
-        # interpreter (``assemble._canonical_stage``).
-        outputs, parameters, functions = _canonical_stage(
-            SimpleNamespace(
-                output_expressions=list(outputs),
-                parameter_symbols=[
-                    *inputs,
-                    *(model_symbols[k] for k in model_inputs),
-                ],
-                symbolica_functions=list(retained),
-            )
-        )
-        evaluator = Expression.evaluator_multiple(
-            outputs,
-            parameters,
-            functions=[
-                FunctionDefinition(function, arguments, body, inlining="always")
-                for function, arguments, body in functions
-            ],
-            jit_compile=False,
-        )
+        kernel, shape = _saved_kernel(model_symbols, inputs, outputs, retained)
         found = ids[(kind, key)] = len(saved[kind])
-        saved[kind].append(bytes(evaluator.save()))
-        shapes[kind].append(
-            [len(inputs) + len(model_inputs), len(outputs), model_inputs]
-        )
+        saved[kind].append(kernel)
+        shapes[kind].append(shape)
         return found
 
     # Per current: (particle id, chirality, dimension) and its momentum
@@ -1394,26 +1480,9 @@ def _interaction_program(
         found = ids.get(("kernels", key))
         if found is not None:
             return found
-        left = dag.currents[interaction.left_id]
-        right = dag.currents[interaction.right_id]
-
-        def build():
-            lhs, rhs = symbols("l", left.dimension), symbols("r", right.dimension)
-            pl, pr = symbols("pl", 4), symbols("pr", 4)
-            return [*lhs, *rhs, *pl, *pr], model.vertex_component_expression(
-                key[0],
-                lhs,
-                rhs,
-                result_particle_id=key[1],
-                result_chirality=key[2],
-                left_chirality=key[3],
-                right_chirality=key[4],
-                coupling=interaction.coupling,
-                left_momentum=pl,
-                right_momentum=pr,
-            )
-
-        return compile_kernel("kernels", key, build)
+        return compile_kernel(
+            "kernels", key, lambda: _vertex_kernel(model, key, interaction.coupling)
+        )
 
     def propagator(current_id: int, slot: Mapping[str, Any]) -> int:
         current = current_slots[current_id]
@@ -1425,17 +1494,13 @@ def _interaction_program(
             json.dumps(slot["propagator"], sort_keys=True),
         )
 
-        def build():
-            value, momentum = symbols("v", dimension), symbols("p", 4)
-            return [*value, *momentum], model.propagator_component_expression(
-                key[0],
-                value,
-                momentum,
-                chirality=key[1],
-                propagator=PropagatorIR.from_json_dict(dict(slot["propagator"])),
-            )
-
-        return compile_kernel("propagators", key, build)
+        return compile_kernel(
+            "propagators",
+            key,
+            lambda: _propagator_kernel(
+                model, key[0], key[1], dimension, slot["propagator"]
+            ),
+        )
 
     steps = []
     for stage in schema["stages"]:
