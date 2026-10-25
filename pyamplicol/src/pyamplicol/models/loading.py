@@ -36,8 +36,10 @@ from .contracts import (
     DEFAULT_FEYNMAN_PROPAGATOR_SOURCE,
     MODEL_SUPPLIED_PROPAGATOR_SOURCE,
     PROPAGATOR_SOURCE_FIELD,
+    MODEL_GAUGES,
     TENSOR_ORDERING_CONTRACT_VERSION,
     CompiledModelIR,
+    ModelGauge,
     TreeKernelVariant,
 )
 
@@ -142,8 +144,17 @@ def _require_ufo_model_loader() -> None:
 
 @dataclass(frozen=True, slots=True)
 class ModelCompileOptions:
+    """How a model source is compiled.
+
+    ``gauge`` is the gauge of the massive vectors (``contracts.ModelGauge``):
+    ``"unitary"`` (the default) or ``"feynman"``, the 't Hooft-Feynman gauge
+    with explicit Goldstones, admissible only for a UFO model whose ``gauge``
+    declaration lists 1 (``declared_model_gauges``).
+    """
+
     restriction: str = DEFAULT_MODEL_RESTRICTION
     simplify: bool = True
+    gauge: ModelGauge = "unitary"
 
     def __post_init__(self) -> None:
         restriction_path = Path(self.restriction).expanduser()
@@ -156,6 +167,11 @@ class ModelCompileOptions:
             )
         if not isinstance(self.simplify, bool):
             raise TypeError("model simplification must be a boolean")
+        if self.gauge not in MODEL_GAUGES:
+            raise ValueError(
+                f"model gauge must be one of {', '.join(MODEL_GAUGES)}, "
+                f"not {self.gauge!r}"
+            )
 
     def canonical_payload(self) -> dict[str, object]:
         restriction_path = Path(self.restriction).expanduser()
@@ -169,6 +185,9 @@ class ModelCompileOptions:
         return {
             "restriction": restriction,
             "simplify": self.simplify,
+            # Only off the default, so unitary-gauge compiles keep their record
+            # and cache key.
+            **({} if self.gauge == "unitary" else {"gauge": self.gauge}),
         }
 
 
@@ -410,8 +429,18 @@ def compile_model_source(
     cache_dir: Path | None = None,
     use_cache: bool = True,
     require_supported: bool = True,
+    gauge: ModelGauge = "unitary",
 ) -> CompiledModel:
-    options = ModelCompileOptions(restriction=restriction, simplify=simplify)
+    """Compile (or load from the model cache) one model source.
+
+    ``gauge`` selects the gauge of the massive vectors
+    (``ModelCompileOptions``); it enters the compiled record and the cache
+    key, and ``"feynman"`` is refused unless the UFO declares gauge 1.
+    """
+
+    options = ModelCompileOptions(
+        restriction=restriction, simplify=simplify, gauge=gauge
+    )
     source_kind, resolved, detected_payload = _detect_model_source_payload(source)
     if source_kind in {"pyamplicol", "prepared"}:
         if restriction != DEFAULT_MODEL_RESTRICTION or not simplify:
@@ -419,6 +448,7 @@ def compile_model_source(
                 "restriction and simplification options cannot be applied to an "
                 "already compiled pyAmpliCol model"
             )
+        _require_compiled_gauge_option(gauge)
         if source_kind == "prepared":
             from .prepared import load_prepared_model_bundle
 
@@ -438,6 +468,7 @@ def compile_model_source(
             detected_payload,
             serialized_path=Path(resolved),
         )
+    _require_admissible_gauge(source_kind, resolved, options.gauge)
     source_digest, fingerprint, cache_path = _compilation_cache_identity(
         source_kind,
         resolved,
@@ -486,7 +517,7 @@ def compile_model_source(
     model_ir = (
         compile_builtin_model_ir(model_payload)
         if source_kind == "built-in-sm"
-        else compile_ufo_model_ir(model_payload)
+        else compile_ufo_model_ir(model_payload, gauge=options.gauge)
     )
     phase_timings["tensor_lowering"] = time.perf_counter() - phase_started
     contact_term_ids = {term.id for term in model_ir.vertex_terms if term.valence > 3}
@@ -585,10 +616,13 @@ def load_cached_model_source(
     simplify: bool = True,
     cache_dir: Path | None = None,
     require_supported: bool = True,
+    gauge: ModelGauge = "unitary",
 ) -> CompiledModel | None:
     """Load an already compiled source without compiling or writing a cache."""
 
-    options = ModelCompileOptions(restriction=restriction, simplify=simplify)
+    options = ModelCompileOptions(
+        restriction=restriction, simplify=simplify, gauge=gauge
+    )
     source_kind, resolved, detected_payload = _detect_model_source_payload(source)
     if source_kind in {"pyamplicol", "prepared"}:
         if restriction != DEFAULT_MODEL_RESTRICTION or not simplify:
@@ -596,6 +630,7 @@ def load_cached_model_source(
                 "restriction and simplification options cannot be applied to an "
                 "already compiled pyAmpliCol model"
             )
+        _require_compiled_gauge_option(gauge)
         if source_kind == "prepared":
             from .prepared import load_prepared_model_bundle
 
@@ -618,6 +653,7 @@ def load_cached_model_source(
         _raise_for_unsupported(compiled, require_supported=require_supported)
         return compiled
 
+    _require_admissible_gauge(source_kind, resolved, options.gauge)
     _, _, cache_path = _compilation_cache_identity(
         source_kind,
         resolved,
@@ -650,6 +686,66 @@ def load_compiled_model(path: Path) -> CompiledModel:
     if not isinstance(payload, dict):
         raise ValueError(f"compiled model root must be an object: {path}")
     return CompiledModel.from_dict(payload, serialized_path=Path(path))
+
+
+def declared_model_gauges(source: str | Path) -> tuple[int, ...] | None:
+    """The gauges a UFO model directory declares (its ``__init__``'s
+    ``gauge`` list, MG5 convention: 0 unitary, 1 Feynman), or ``None`` when
+    it declares none. The declaration is read as a literal, without importing
+    the model."""
+
+    import ast
+
+    path = Path(source) / "__init__.py"
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return None
+    declared = None
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "gauge"
+        ):
+            try:
+                value = ast.literal_eval(node.value)
+            except ValueError:
+                return None
+            if not isinstance(value, (list, tuple)) or not all(
+                type(item) is int for item in value
+            ):
+                return None
+            declared = tuple(value)
+    return declared
+
+
+def _require_admissible_gauge(
+    source_kind: str, resolved: str | Path, gauge: ModelGauge
+) -> None:
+    """'t Hooft-Feynman gauge only for a UFO model that declares gauge 1:
+    its counterterms and Goldstone vertices are written for that gauge."""
+
+    if gauge == "unitary":
+        return
+    declared = (
+        declared_model_gauges(resolved) if source_kind == "ufo" else None
+    )
+    if declared is None or 1 not in declared:
+        raise ValueError(
+            f"model gauge {gauge!r} needs a UFO model that declares gauge 1 "
+            f"('t Hooft-Feynman); {Path(str(resolved)).name!r} declares "
+            f"{'none' if declared is None else list(declared)}"
+        )
+
+
+def _require_compiled_gauge_option(gauge: ModelGauge) -> None:
+    if gauge != "unitary":
+        raise ValueError(
+            "a gauge option cannot be applied to an already compiled pyAmpliCol "
+            "model; it carries the gauge it was compiled in"
+        )
 
 
 def preflight_model(
@@ -1560,6 +1656,7 @@ def lower_counterterm_vertices(
         payload,
         tree_kernel_variant=tree_kernel_variant,
         u1_projected_vertices=frozenset(vertex_members) if multi_trace else frozenset(),
+        gauge=compiled.ir.gauge,
     )
     # Couplings the model's restriction makes vanish (e.g. off-diagonal CKM
     # entries) are structural zeros: their terms are dropped, not lowered.
@@ -1684,6 +1781,7 @@ def compile_counterterm_model_ir(
     tree_kernel_variant: TreeKernelVariant,
     u1_projected_vertices: frozenset[str],
     cache_dir: Path | None = None,
+    gauge: ModelGauge = "unitary",
 ) -> CompiledModelIR:
     """``compile_ufo_model_ir`` of a CT-lowered payload, content-addressed.
 
@@ -1693,9 +1791,9 @@ def compile_counterterm_model_ir(
     proofs) is cached like a compiled model (``compile_model_source``): in
     ``cache_dir`` (default: the model cache, ``$PYAMPLICOL_CACHE_DIR/models``
     or the platform cache) under the SHA-256 of the payload (in its own key
-    order), the variant, the projected vertices and the compiler's code
-    identity (``compiler_fingerprint`` without the package version: Symbolica,
-    the model-compiler sources and contracts).
+    order), the variant, the projected vertices, the gauge and the compiler's
+    code identity (``compiler_fingerprint`` without the package version:
+    Symbolica, the model-compiler sources and contracts).
     The IR round-trips exactly (``CompiledModelIR.to_dict``/``from_dict``); an
     unreadable or foreign entry is recompiled, and a cache that cannot be
     written leaves the result uncached.
@@ -1706,6 +1804,7 @@ def compile_counterterm_model_ir(
         tree_kernel_variant=tree_kernel_variant,
         u1_projected_vertices=u1_projected_vertices,
         cache_dir=cache_dir,
+        gauge=gauge,
     )[0]
 
 
@@ -1715,6 +1814,7 @@ def _counterterm_ir(
     tree_kernel_variant: TreeKernelVariant,
     u1_projected_vertices: frozenset[str],
     cache_dir: Path | None = None,
+    gauge: ModelGauge = "unitary",
 ) -> tuple[CompiledModelIR, tuple[Path, str]]:
     """``compile_counterterm_model_ir`` and its cache entry (file, key)."""
 
@@ -1728,6 +1828,7 @@ def _counterterm_ir(
                 payload,
                 str(tree_kernel_variant),
                 sorted(u1_projected_vertices),
+                str(gauge),
                 _COUNTERTERM_IR_FINGERPRINT[0],
             ],
             separators=(",", ":"),
@@ -1752,6 +1853,7 @@ def _counterterm_ir(
         payload,
         tree_kernel_variant=tree_kernel_variant,
         u1_projected_vertices=u1_projected_vertices,
+        gauge=gauge,
     )
     with suppress(OSError):
         _atomic_write_json(

@@ -371,7 +371,9 @@ def compile_tree_kernel_variant(
         )
     return replace(
         compiled,
-        ir=compile_ufo_model_ir(compiled.model, tree_kernel_variant=variant),
+        ir=compile_ufo_model_ir(
+            compiled.model, tree_kernel_variant=variant, gauge=compiled.ir.gauge
+        ),
         _serialized_path=None,
         _prepared_bundle=None,
     )
