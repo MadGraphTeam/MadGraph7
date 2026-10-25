@@ -66,6 +66,19 @@ def lowest_leg(mask: int) -> int:
     return (mask & -mask).bit_length() - 1
 
 
+def onshell_leg(arc: int, full: int) -> int | None:
+    """The external leg whose mass shell fixes the invariant p(arc)^2: the
+    leg of a single-leg arc or of a single-leg complement (momentum
+    conservation), else None. Such an invariant is the leg's squared mass by
+    definition of the external state, never the p^2 of the given (possibly
+    rounded) momenta (design §11.1, on-shell external invariants)."""
+
+    for legs in (arc, full ^ arc):
+        if legs and legs & (legs - 1) == 0:
+            return lowest_leg(legs)
+    return None
+
+
 # --------------------------------------------------------------------------- records
 
 

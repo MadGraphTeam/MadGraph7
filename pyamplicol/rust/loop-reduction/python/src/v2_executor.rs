@@ -5,16 +5,17 @@
 //! A `V2Executor` loads one plan v4 for one carrier: `double` (binary64,
 //! NinjaRS fast engine), `double-double` and `arbitrary` (decimal digits;
 //! the generic engine), or `exact` (rational numerators only). Batch inputs
-//! are a dict of exact momenta, scales and squared masses (decimal or
-//! fraction strings) and carrier values of kernel constants, block rows and
-//! Born components (float pairs in binary64, string pairs otherwise).
+//! are a dict of exact momenta, scales, squared masses and the legs'
+//! squared masses (`leg_masses`; decimal or fraction strings) and carrier
+//! values of kernel constants, block rows and Born components (float pairs in
+//! binary64, string pairs otherwise).
 //! With a tree program (`trees=`, WP3.1) the block rows and Born components
 //! are formed natively instead: the batch then carries `parameters`, the
 //! exact external parameter values of the program
 //! (`TreeProgram::parameter_names`), from which the kernel constants, masses,
 //! couplings and model parameters are bound natively (the scale parameter
-//! from each point's mu_R²); it has no `constants`, `masses`, `block_rows`
-//! or `born`.
+//! from each point's mu_R²); it has no `constants`, `masses`, `leg_masses`,
+//! `block_rows` or `born`.
 use super::*;
 use pyo3::IntoPyObject;
 use pyo3::types::PyDict;
@@ -151,6 +152,23 @@ fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch
         } else {
             rationals(item(inputs, "masses")?.extract()?)?
         },
+        // The legs' squared masses, the on-shell invariants (DESIGN §11.1);
+        // bound natively from the external parameters like `masses`. A
+        // synthetic batch without external states (timing tools) may omit
+        // them: its invariants then all come from the momenta.
+        // "" leaves a leg unbound (its mass is no model parameter).
+        leg_masses: match inputs.get_item("leg_masses")? {
+            Some(values) if !native => values
+                .extract::<Vec<String>>()?
+                .into_iter()
+                .map(|text| {
+                    (!text.is_empty())
+                        .then(|| parse_rational(&text).map_err(error))
+                        .transpose()
+                })
+                .collect::<PyResult<_>>()?,
+            _ => Vec::new(),
+        },
         constants: if native {
             Vec::new()
         } else {
@@ -205,6 +223,7 @@ impl Trees {
             .map_err(error)?;
         batch.constants = bound.constants;
         batch.masses = bound.masses;
+        batch.leg_masses = bound.leg_masses;
         let out = self
             .program
             .inputs(
