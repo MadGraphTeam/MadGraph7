@@ -306,19 +306,29 @@ def reference_name(scalar: str, power: int, part: str) -> str:
     return f"{_PREFIX}P_{scalar}_E{tag}_{part.upper()}"
 
 
-def _reference_default(name: str) -> float:
-    """The declared default of a reference parameter: a binary fraction in
-    [1, 1.5) fixed by the name, so that no lowered coupling vanishes at the
-    defaults by a coincidence of equal values (``lower_counterterm_vertices``
-    treats a coupling that vanishes there as a structural zero). It is never
-    evaluated: the CT program binds every reference at the card
-    (``CountertermRecursion.parameter_values``), and the native export refuses
-    a program parameter it cannot form (WP3.2 EWI-N)."""
+def _reference_defaults(names: Iterable[str]) -> dict[str, float]:
+    """The declared defaults of reference parameters: binary64 numbers in
+    [1, 2) with 48 bits fixed by each name, distinct (checked), so that no
+    lowered coupling vanishes at the defaults by a coincidence
+    (``lower_counterterm_vertices`` treats a coupling that vanishes there as
+    a structural zero; the couplings' symbolic zeros are dropped before,
+    ``lower_model_counterterms``). A difference of two references cannot
+    vanish, and a rational relation between them only by a 48-bit
+    coincidence. The defaults are never evaluated: the CT program binds
+    every reference at the card (``CountertermRecursion.parameter_values``
+    in Python, the parameter program's outputs natively)."""
 
     import hashlib
 
-    digest = int(hashlib.sha256(name.encode()).hexdigest()[:5], 16)
-    return 1.0 + digest / 2.0**21
+    found = {
+        name: 1.0 + int(hashlib.sha256(name.encode()).hexdigest()[:12], 16) / 2.0**48
+        for name in names
+    }
+    if len(set(found.values())) != len(found):
+        raise CountertermCouplingError(
+            "two counterterm reference parameters share a default"
+        )
+    return found
 
 
 def _linear_degree(expression: Any, symbols_: frozenset) -> float:
@@ -452,6 +462,27 @@ class CoefficientLowering:
         self._names: dict[int, dict[str, tuple[str, int]]] = {}
         self._scalars: dict[tuple[int, tuple[str, int]], bool | None] = {}
         self._powers: dict[tuple[int, str], frozenset[int] | None] = {}
+
+    @classmethod
+    def of_helpers(cls, helpers: Mapping[int, str]) -> CoefficientLowering:
+        """The helper resolution alone (``_resolve``), without a model: the
+        UFO-standard helpers ``helpers`` (scalar-library record -> name,
+        ``cond``/``reglog``/``complexconjugate``) are resolved and no
+        parameter is substituted."""
+
+        from symbolica import E
+
+        from pyamplicol._internal.physics.symbols import symbols
+
+        lowering = cls.__new__(cls)
+        lowering._helpers = lowering._standard = dict(helpers)
+        lowering._fixed, lowering._substitution = [], {}
+        lowering._zero = E("0")
+        lowering._log, lowering._conj = symbols.qualified(
+            "symbolica::log", "symbolica::conj"
+        )
+        lowering.assumptions = set()
+        return lowering
 
     def __call__(self, entry: Any, power: int) -> Any:
         referenced = self._referenced(entry)
@@ -667,7 +698,7 @@ class CoefficientLowering:
         if kind == AtomType.Num:
             return atom
         if kind == AtomType.Var:
-            return getattr(self, "_substitution", {}).get(atom, atom)
+            return self._substitution.get(atom, atom)
         if kind in (AtomType.Add, AtomType.Mul, AtomType.Pow):
             children = [self._resolve(child) for child in atom]
             if kind == AtomType.Add:
@@ -683,10 +714,8 @@ class CoefficientLowering:
         ):
             return symbols.qualified(name)(*(self._resolve(child) for child in atom))
         record = int(head.removeprefix("value_"))
-        # Only UFO-standard bodies are resolved by name (``standard_helpers``;
-        # a lowering assembled without a model, as in a test of the
-        # resolution alone, resolves its named helpers).
-        helper = getattr(self, "_standard", self._helpers).get(record)
+        # Only UFO-standard bodies are resolved by name (``standard_helpers``).
+        helper = self._standard.get(record)
         if helper == "cond":
             # The branch that is not taken is never resolved: its conditions
             # are no assumptions, and its fixed-parameter singularities (a
@@ -795,42 +824,11 @@ def _decided_conditionals(expression: Any) -> Any:
     """``expression`` with every scalar-library predicate of exact real
     numbers decided and every ``symbolica::if`` whose condition is then an
     exact number reduced to its taken branch (the branch not taken is never
-    formed). E.g. the CMS switch ``if(equal(0, 1), 1, 0)`` of the G_mu UFO's
-    ``CMSParam`` at its real-mass value 0 is 0."""
+    formed; ``lazily_fixed`` without replacements). E.g. the CMS switch
+    ``if(equal(0, 1), 1, 0)`` of the G_mu UFO's ``CMSParam`` at its
+    real-mass value 0 is 0."""
 
-    from symbolica import AtomType
-
-    from pyamplicol._internal.physics.symbols import symbols
-
-    def walk(atom: Any) -> Any:
-        kind = atom.get_type()
-        if kind in (AtomType.Num, AtomType.Var):
-            return atom
-        if kind in (AtomType.Add, AtomType.Mul, AtomType.Pow):
-            children = [walk(child) for child in atom]
-            if kind == AtomType.Add:
-                return reduce(add, children)
-            if kind == AtomType.Mul:
-                return reduce(mul, children)
-            return children[0] ** children[1]
-        name = atom.get_name()
-        children = list(atom)
-        if name == _IF and len(children) == 3:
-            condition = walk(children[0])
-            number = _exact_number(condition)
-            if number is not None:
-                return walk(children[1] if number != 0 else children[2])
-            return symbols.qualified(name)(
-                condition, *(walk(child) for child in children[1:])
-            )
-        children = [walk(child) for child in children]
-        if name.startswith(_PREDICATE_PREFIX):
-            decided = _decided_predicate(name, children)
-            if decided is not None:
-                return decided
-        return symbols.qualified(name)(*children)
-
-    return walk(expression)
+    return lazily_fixed(expression, {})
 
 
 # Working precisions (decimal digits) of the numerical decision of constants.
@@ -1273,7 +1271,7 @@ def lower_model_counterterms(
         read = _reads(
             (v for rows in values.values() for v in rows.values()), references
         )
-        parameters.update({name: _reference_default(name) for name in sorted(read)})
+        parameters.update(_reference_defaults(sorted(read)))
         # A coupling that vanishes once the model's internal parameters are
         # resolved (an off-diagonal CKM entry of a diagonal restriction) has
         # no vertex term: dropped here, so ``lower_counterterm_vertices``
@@ -1421,7 +1419,11 @@ def _reads(rows: Iterable[Any], names: frozenset[str]) -> frozenset[str]:
     )
 
 
-def lazily_fixed(expression: Any, values: Mapping[Any, Any], conds: Any) -> Any:
+def lazily_fixed(
+    expression: Any,
+    values: Mapping[Any, Any],
+    conds: Mapping[str, str] = MappingProxyType({}),
+) -> Any:
     """``expression`` with the symbols of ``values`` replaced, top down: a
     conditional (``symbolica::if``, or a call of a UFO-standard ``cond``
     helper of ``conds``: head name -> ``"value"`` or ``"diagnostic"``) whose
@@ -1429,8 +1431,9 @@ def lazily_fixed(expression: Any, values: Mapping[Any, Any], conds: Any) -> Any:
     branch, so the branch that is not taken is never formed (e.g. the
     1/MB^2 of ``cond(MB, ...)`` at MB = 0, an infinity no evaluator accepts),
     and a decided ``cond`` diagnostic is 0. Scalar-library predicates of
-    exact numbers are decided; subexpressions free of those symbols are kept
-    as they are."""
+    exact numbers are decided. With ``values``, subexpressions free of their
+    symbols are kept as they are; without, the whole expression is walked
+    (``_decided_conditionals``)."""
 
     from symbolica import AtomType, E
 
@@ -1438,15 +1441,17 @@ def lazily_fixed(expression: Any, values: Mapping[Any, Any], conds: Any) -> Any:
 
     keys = frozenset(values)
 
-    def walk(atom: Any) -> Any:
-        if not keys.intersection(atom.get_all_symbols(False)):
+    def walk(atom: Any, everywhere: bool) -> Any:
+        if not everywhere and not keys.intersection(atom.get_all_symbols(False)):
             return atom
         kind = atom.get_type()
+        if kind == AtomType.Num:
+            return atom
         if kind == AtomType.Var:
             return values.get(atom, atom)
         children = list(atom)
         if kind in (AtomType.Add, AtomType.Mul, AtomType.Pow):
-            children = [walk(child) for child in children]
+            children = [walk(child, everywhere) for child in children]
             if kind == AtomType.Add:
                 return reduce(add, children)
             if kind == AtomType.Mul:
@@ -1455,24 +1460,24 @@ def lazily_fixed(expression: Any, values: Mapping[Any, Any], conds: Any) -> Any:
         name = atom.get_name()
         role = "if" if name == _IF else conds.get(name)
         if role is not None and len(children) == 3:
-            condition = walk(children[0])
-            number = _exact_number(_decided_conditionals(condition))
+            condition = walk(children[0], everywhere)
+            number = _exact_number(condition if everywhere else walk(condition, True))
             if number is not None:
                 if role == "diagnostic":
                     return E("0")
                 # if(c, a, b) takes a for c != 0; cond(c, a, b) for c == 0.
                 taken = (number != 0) if role == "if" else (number == 0)
-                return walk(children[1] if taken else children[2])
-            children = [condition, *(walk(child) for child in children[1:])]
+                return walk(children[1] if taken else children[2], everywhere)
+            children = [condition, *(walk(child, everywhere) for child in children[1:])]
         else:
-            children = [walk(child) for child in children]
+            children = [walk(child, everywhere) for child in children]
         if name.startswith(_PREDICATE_PREFIX):
             decided = _decided_predicate(name, children)
             if decided is not None:
                 return decided
         return symbols.qualified(name)(*children)
 
-    return walk(expression)
+    return walk(expression, not keys)
 
 
 @dataclass(frozen=True)
@@ -1520,23 +1525,19 @@ def _coefficient_plan(
     from dataclasses import replace as replaced
     from decimal import Decimal
 
-    from pyamplicol.loops.scalar_bindings import (
-        _normalize_parameter_values,
-        prepare_scalar_bindings,
-    )
+    from pyamplicol.loops.scalar_bindings import prepare_scalar_bindings
     from pyamplicol.loops.scalar_frontend import ScalarExpression
 
     library = program.library
     free = prepare_scalar_bindings(library.raw, sorted(outputs), program=program)
-    fixed = _normalize_parameter_values(
-        {
-            name: value if isinstance(value, (str, tuple)) else str(value)
-            for name, value in fixed_parameters.items()
-            if name in free.external_names
-        },
-        free.external_names,
-        free.external_types,
-    )
+    # (real, imaginary) decimal strings, as ``ScalarBindingPlan.fixed_parameters``.
+    fixed = {
+        name: tuple(str(part) for part in value)
+        if isinstance(value, tuple)
+        else (str(value), "0")
+        for name, value in fixed_parameters.items()
+        if name in free.external_names
+    }
     inputs = dict(zip(free.external_names, free.input_symbols, strict=True))
     substitution = {
         inputs[name]: library.lower(f"complex({Decimal(re)},{Decimal(im)})").value
@@ -1573,6 +1574,10 @@ def _coefficient_plan(
     ]
     if not selected:
         return _CoefficientPlan(None, zero, frozenset(nonfinite))
+    real = _RealArguments(
+        {free.input_symbols[i] for i in kept if free.external_types[i] == "real"},
+        library.predicates["real_part"],
+    )
     plan = replaced(
         free,
         external_names=tuple(free.external_names[i] for i in kept),
@@ -1580,7 +1585,10 @@ def _coefficient_plan(
         input_symbols=tuple(free.input_symbols[i] for i in kept),
         defaults=tuple(free.defaults[i] for i in kept),
         outputs=tuple(free.outputs[i] for i in selected),
-        expressions=tuple(expressions[i] for i in selected),
+        expressions=tuple(
+            ScalarExpression(real(e.value), real(e.diagnostic))
+            for e in (expressions[i] for i in selected)
+        ),
         fixed_parameters=MappingProxyType(fixed),
     )
     nonfinite |= _nonfinite_at_defaults(plan)
@@ -1600,25 +1608,116 @@ def _coefficient_plan(
     return _CoefficientPlan(plan, zero, frozenset(nonfinite))
 
 
+class _RealArguments:
+    """Manifestly real arguments of branch-cut functions made exactly real.
+
+    A helper call (the scalar library's functions: ``regsqrt``, ``reglog``,
+    ``grreglog``, ...), a logarithm or a fractional power whose argument is
+    a rational function with real coefficients of real model inputs (and of
+    real parts) reads that argument through the scalar library's real
+    projection. Its value is unchanged, but its imaginary part is then a
+    positive zero in every carrier and evaluator: the sign of an exactly
+    real intermediate's zero imaginary part depends on the evaluation order
+    (SymJIT's and Symbolica's differ), and on a branch cut (``regsqrt`` of a
+    negative real, at real masses ``MZ^4 - 4 MW^2 MZ^2``) it picks the side.
+    With the projection every lane takes the side of the UFO's own Python
+    evaluation (a real float is the complex number with +0 imaginary part).
+    """
+
+    def __init__(self, reals: Iterable[Any], real_part: Any):
+        from symbolica import Expression
+
+        self.reals = frozenset(reals) | {Expression.PI, Expression.E}
+        self.real_part = real_part
+        self.projections = frozenset(
+            f"{_PREDICATE_PREFIX}{name}" for name in ("real_part", "imaginary_part")
+        )
+        self._real: dict[Any, bool] = {}
+        self._done: dict[Any, Any] = {}
+
+    def is_real(self, atom: Any) -> bool:
+        from symbolica import AtomType
+
+        found = self._real.get(atom)
+        if found is not None:
+            return found
+        kind = atom.get_type()
+        if kind == AtomType.Num:
+            found = _exact_number(atom) is not None
+        elif kind == AtomType.Var:
+            found = atom in self.reals
+        elif kind in (AtomType.Add, AtomType.Mul):
+            found = all(self.is_real(child) for child in atom)
+        elif kind == AtomType.Pow:
+            base, exponent = list(atom)
+            number = _exact_number(exponent)
+            found = (
+                number is not None and number.denominator == 1 and self.is_real(base)
+            )
+        else:
+            found = atom.get_name() in self.projections
+        self._real[atom] = found
+        return found
+
+    def __call__(self, atom: Any) -> Any:
+        from symbolica import AtomType
+
+        from pyamplicol._internal.physics.symbols import symbols
+
+        kind = atom.get_type()
+        if kind in (AtomType.Num, AtomType.Var):
+            return atom
+        found = self._done.get(atom)
+        if found is not None:
+            return found
+        children = [self(child) for child in atom]
+        if kind == AtomType.Add:
+            found = reduce(add, children)
+        elif kind == AtomType.Mul:
+            found = reduce(mul, children)
+        elif kind == AtomType.Pow:
+            base, exponent = children
+            number = _exact_number(exponent)
+            if (number is None or number.denominator != 1) and self._wrapped(base):
+                base = self.real_part(base)
+            found = base**exponent
+        else:
+            name = atom.get_name()
+            if name.startswith("pyamplicol_scalar_model_") or name in (
+                "symbolica::log",
+                "symbolica::sqrt",
+            ):
+                children = [
+                    self.real_part(child) if self._wrapped(child) else child
+                    for child in children
+                ]
+            found = symbols.qualified(name)(*children)
+        self._done[atom] = found
+        return found
+
+    def _wrapped(self, atom: Any) -> bool:
+        """Whether ``atom`` is a compound manifestly real argument."""
+
+        from symbolica import AtomType
+
+        return atom.get_type() not in (AtomType.Num, AtomType.Var) and (
+            self.is_real(atom) and atom.get_name() not in self.projections
+            if atom.get_type() == AtomType.Fn
+            else self.is_real(atom)
+        )
+
+
 def _nonfinite_at_defaults(plan: Any) -> set[tuple[str, int]]:
     """Outputs of ``plan`` whose value or active diagnostic is not finite at
-    the model's default parameters in binary64."""
+    the model's default parameters in binary64 (the plan's own saved exact
+    programs, evaluated as ``scalar_bindings.NativeScalarBindings`` does,
+    without failing on the first non-finite one)."""
 
     from decimal import Decimal
 
     from pyamplicol.loops.native import load_loop_native
-    from pyamplicol.loops.scalar_bindings import (
-        NativeScalarBindings,
-        SourceBindingFailure,
-    )
 
     backend = load_loop_native()
-    try:
-        NativeScalarBindings(plan, backend=backend)
-        return set()
-    except SourceBindingFailure as failure:
-        if failure.stage != "model scalar values and active diagnostics":
-            raise
     prepared = plan.prepared
     options = {"arithmetic": "double", "precision": None}
     empty = backend.NativeBatch.from_decimal([], 1, 0, **options)

@@ -133,18 +133,24 @@ def gmu_ufo(loop_gmu_ufo):
             del sys.modules[module]
 
 
+def _counterterm_outputs(raw) -> list[tuple[str, int]]:
+    """(name, epsilon power) of every CT parameter's Laurent coefficient."""
+
+    outputs = []
+    for record in raw.collections["counterterm_parameters"]:
+        source = raw.exact_value("counterterm_parameters", record["id"])
+        terms = source["terms"] if source["kind"] == "laurent" else ((0, "0"),)
+        outputs += [(record["name"], int(power)) for power, _text in terms]
+    return outputs
+
+
 @pytest.fixture(scope="module")
 def gmu_plan(gmu):
     """The coefficient plan of every CT parameter's Laurent coefficients."""
 
     from pyamplicol.loops.v2.ct_recursion import coefficient_plan
 
-    outputs = []
-    for record in gmu.raw.collections["counterterm_parameters"]:
-        source = gmu.raw.exact_value("counterterm_parameters", record["id"])
-        terms = source["terms"] if source["kind"] == "laurent" else ((0, "0"),)
-        outputs += [(record["name"], int(power)) for power, _text in terms]
-    return coefficient_plan(gmu.program, outputs, gmu.fixed)
+    return coefficient_plan(gmu.program, _counterterm_outputs(gmu.raw), gmu.fixed)
 
 
 # ---------------------------------------------------------------- UFO oracle
@@ -374,6 +380,49 @@ def test_both_reglog_conventions_agree_at_real_masses(gmu, gmu_ufo):
     standard, _environment = _ufo_values(gmu_ufo, card, wrap=wrap)
     assert hits
     worst = max((_relative(standard[key], source[key]), key) for key in source)
+    assert worst[0] <= DOUBLE_TOLERANCE, worst
+
+
+def test_model_cms_reglog_conventions_agree_at_real_masses(gmu, gmu_plan):
+    """[U3] through ``loops.model_cms`` and the production lowering: the
+    model's reglog record under each convention of
+    ``prepare_gmu_complex_mass_declarations`` ("source": the G_mu override,
+    unchanged; "ufo-standard": the principal log), bound in the real-mass
+    G_mu model, gives the same CT values at the fixture card in binary64
+    (``coefficient_plan``, every helper a scalar-library function) and the
+    same structural zeros. The transform's own model enables CMSParam,
+    where the conventions differ (eCoup_Gmu_UV_EW and eCoup_DGmua0_UV_EW at
+    zero widths): WP3.2 EWI-10."""
+
+    from pyamplicol.loops.model_cms import prepare_gmu_complex_mass_declarations
+    from pyamplicol.loops.scalar_frontend import lower_scalar_program
+    from pyamplicol.loops.v2.ct_recursion import coefficient_plan
+    from pyamplicol.models.loop_import import RawLoopModel
+
+    reglog = gmu.raw.metadata["function_bindings"]["reglog"]
+    records = {
+        convention: prepare_gmu_complex_mass_declarations(
+            gmu.raw, reglog_convention=convention
+        ).derived.to_dict()["collections"]["functions"][reglog]
+        for convention in ("source", "ufo-standard")
+    }
+    payload = gmu.raw.to_dict()
+    assert records["source"] == payload["collections"]["functions"][reglog]
+    assert records["ufo-standard"] != records["source"]
+    payload["collections"]["functions"][reglog] = records["ufo-standard"]
+    raw = RawLoopModel.from_dict(payload)
+    standard = coefficient_plan(
+        lower_scalar_program(raw), _counterterm_outputs(raw), gmu.fixed
+    )
+    assert standard.zero == gmu_plan.zero and not standard.nonfinite
+    card = _oracle_card(gmu)
+    source = _plan_values(gmu_plan.plan, card)
+    values = _plan_values(standard.plan, card)
+    assert values.keys() == source.keys()
+    worst = max(
+        (_relative(complex(*map(float, values[k])), complex(*map(float, v))), k)
+        for k, v in source.items()
+    )
     assert worst[0] <= DOUBLE_TOLERANCE, worst
 
 
@@ -665,10 +714,7 @@ def test_scalar_predicates_of_numbers_are_decided():
         "zero",
     ]
     assert decide_constant(choose(less(E("𝜋"), E("4")), E("1"), E("0"))) == "undecided"
-    lowering = CoefficientLowering.__new__(CoefficientLowering)
-    lowering._helpers = {0: "cond"}
-    lowering._zero = E("0")
-    lowering.assumptions = set()
+    lowering = CoefficientLowering.of_helpers({0: "cond"})
     helper = "pyamplicol_scalar_model_test::value_0"
     taken = lowering._resolve(E(f"{helper}(x, 1, 2)").replace(E("x"), off))
     assert taken == E("1") and not lowering.assumptions

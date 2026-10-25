@@ -602,7 +602,6 @@ def test_constant_factors_are_decided_not_assumed():
 
     from symbolica import E
 
-    from pyamplicol._internal.physics.symbols import symbols
     from pyamplicol.loops.v2.ct_recursion import (
         CoefficientLowering,
         CountertermCouplingError,
@@ -611,11 +610,7 @@ def test_constant_factors_are_decided_not_assumed():
 
     # The helper resolution alone (UFO function bindings value_0 = cond,
     # value_1 = reglog), without a compiled model.
-    lowering = CoefficientLowering.__new__(CoefficientLowering)
-    lowering._helpers = {0: "cond", 1: "reglog"}
-    lowering._zero = E("0")
-    lowering._log = symbols.qualified("symbolica::log")
-    lowering.assumptions = set()
+    lowering = CoefficientLowering.of_helpers({0: "cond", 1: "reglog"})
     helper = "pyamplicol_scalar_model_test::value_"
     assert lowering._resolve(E(f"{helper}1(2*𝜋)")) == E("log(2*𝜋)")
     assert not lowering.assumptions

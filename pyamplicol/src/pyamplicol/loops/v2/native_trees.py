@@ -480,6 +480,10 @@ def export_trees(
     # The kernels the pruned program still uses; their plane applications
     # are compiled after the pruning, so a dropped kernel compiles none.
     kernels = (*saved, *ct_saved)
+    planes = _plane_applications(kernels)
+    referenced = ct is not None and bool(
+        slice_.counterterm_program.recursion.model.coefficients
+    )
     return NativeTrees(
         program,
         kernels,
@@ -490,8 +494,30 @@ def export_trees(
         tuple(components),
         parameter_evaluator,
         () if counterterms is None else counterterms.outputs,
-        _plane_applications((*kernels, parameter_evaluator)),
+        (*planes, _parameter_plane(parameter_evaluator, referenced)),
     )
+
+
+def _parameter_plane(state: bytes, referenced: bool) -> bytes:
+    """The parameter program's binary64 plane application. With CT
+    reference parameters (WP3.2 EWI-3) a refusal of the plane check is a
+    ``NotImplementedError`` (the plan is then stored without native point
+    inputs): SymJIT and the exact evaluator may give an exactly real
+    intermediate's zero imaginary part different signs, and the electroweak
+    CT scalars take helpers on their branch cuts (``regsqrt`` of a negative
+    real, ``grreglog``), so the two evaluations can take different sides
+    (WP3.2 EWI-N, risk M13)."""
+
+    try:
+        (plane,) = _plane_applications((state,))
+    except ValueError as error:  # the native compile's refusal
+        if not referenced:
+            raise
+        raise NotImplementedError(
+            "the binary64 plane application of the parameter program with "
+            f"counterterm reference parameters is refused: {error}"
+        ) from error
+    return plane
 
 
 @dataclass(frozen=True)
@@ -934,6 +960,16 @@ class _CountertermReferences:
         ]
         return projection(self.columns[key][0])
 
+    def finiteness(self, diagnostic: Any) -> Any:
+        """1 for a finite active ``diagnostic``, NaN otherwise (the scalar
+        library's ``equal(d, d)``): what the executor checks. The diagnostic's
+        own value only marks the singularities of the active branches and
+        need not be well conditioned (e.g. the electroweak helpers' 1e-10
+        regulators), so it is not an output the binary64 plane application
+        must reproduce."""
+
+        return self.library.predicates["equal"](diagnostic, diagnostic)
+
 
 def _parameter_program(
     slice_: Any,
@@ -1067,7 +1103,7 @@ def _parameter_program(
                         finite.append(
                             output(
                                 ("ct-reference-diagnostic", key),
-                                lambda d=diagnostic: d,
+                                lambda d=diagnostic: references.finiteness(d),
                             )
                         )
                     continue
