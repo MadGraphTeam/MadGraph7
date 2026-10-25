@@ -595,7 +595,7 @@ out['read'] = native.v2_plan_read(member)
 out['derived'] = {}
 for name, data in derived.items():
     try:
-        native.v2_plan_read(data)
+        native.v2_plan_load(data, digest=False)
         out['derived'][name] = 'LOADED'
     except ValueError as error:
         out['derived'][name] = str(error)
@@ -605,9 +605,13 @@ print(json.dumps(out))
 
 
 # Address-space headrooms (MiB above a fresh child's size) the list-dominated
-# members are read under, ascending until one loads (``_under_limits``).
+# members are read under, ascending until one loads (``_under_limits``); a
+# decimal-power member steps by 1 MiB.
 HEADROOMS = (4, 8, 16, 24, 32, 40, 48, 64, 96, 128, 192)
 
+# The reader under each headroom without the digest (``program_digest``
+# formats the program beyond the reader's bound: a diagnostic), the digest of
+# the member that loads without a limit.
 _UNDER_LIMITS = """
 import json, resource, sys
 from pathlib import Path
@@ -621,29 +625,88 @@ for mb in json.loads(sys.argv[2]):
     limit = size * 1024 + mb * 2**20
     resource.setrlimit(resource.RLIMIT_AS, (limit, resource.RLIM_INFINITY))
     try:
-        rows.append(native.v2_plan_read(member))
+        native.v2_plan_load(member, digest=False)
+        rows.append('LOADED')
     except ValueError as error:
         rows.append(str(error))
     resource.setrlimit(resource.RLIMIT_AS, (resource.RLIM_INFINITY,) * 2)
     if 'allocator refuses' not in rows[-1]:
         break
+if rows[-1] == 'LOADED':
+    rows[-1] = native.v2_plan_read(member)
+print(json.dumps(rows))
+"""
+
+# A thread pool that cannot start (64 threads' stacks beyond 64 MiB of
+# headroom): a ValueError at every read, also once the limit is lifted (rayon
+# never starts a global pool after a failed start), never rayon's panic.
+_POOL_LIMIT = """
+import json, resource, sys
+from pathlib import Path
+from pyamplicol.loops.native import load_loop_native
+native = load_loop_native()
+member = Path(sys.argv[1]).read_bytes()
+status = Path('/proc/self/status').read_text().splitlines()
+size = next(int(l.split()[1]) for l in status if l.startswith('VmSize:'))
+resource.setrlimit(resource.RLIMIT_AS, (size * 1024 + 2**26, resource.RLIM_INFINITY))
+rows = []
+for limited in (True, True, False):
+    if not limited:
+        resource.setrlimit(resource.RLIMIT_AS, (resource.RLIM_INFINITY,) * 2)
+    try:
+        native.v2_plan_load(member, digest=False)
+        rows.append('LOADED')
+    except ValueError as error:
+        rows.append(str(error))
 print(json.dumps(rows))
 """
 
 
-def _under_limits(native, tmp_path: Path) -> None:
+def _children(script: str, *arguments: str, **env: str) -> subprocess.Popen:
+    """A fresh child running ``script`` (started now, collected by
+    ``_collect``: the fail-closed children run concurrently)."""
+
+    return subprocess.Popen(
+        [sys.executable, "-c", script, *arguments],
+        env=os.environ | env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _collect(name: str, child: subprocess.Popen, timeout: int) -> object:
+    """The JSON last line ``child`` prints (killed beyond ``timeout``)."""
+
+    try:
+        stdout, stderr = child.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.communicate()
+        raise
+    assert child.returncode == 0, (name, child.returncode, stderr[-2000:])
+    return json.loads(stdout.splitlines()[-1])
+
+
+def _under_limits(native, tmp_path: Path) -> dict[str, tuple[subprocess.Popen, bytes]]:
     """Valid members whose loader derivations follow their lists at several
     times their decoded size (the evidence audit's abort windows: a probe of
     twice the decoded size passed and the segment layouts' sets aborted; a
     decode used the address space to its edge and the thread pool's first
     use aborted): one content of 2^17 distinct fused entries, and 64 contents
-    sharing one list of 4096 (stored once, copied per content). Each is read
-    in a fresh child (one rayon thread, the pool not yet started; one malloc
-    arena, since glibc's per-thread arenas reserve 64 MB of address space
-    each, which a failing allocation falls back to: hidden headroom) under
-    address-space limits of ``HEADROOMS`` above its size, ascending: refused
-    by a probe ("which the allocator refuses") until it loads, to the
-    parent's digest, never aborting; refused at the smallest."""
+    sharing one list of 4096 (stored once, copied per content); and a weight
+    of a 10^5-digit mantissa over 10^(3 x 10^6) (GMP numbers, allocated by C
+    ``malloc`` outside the counting allocator of the Rust bound tests: the
+    power, the product, the normalising gcd and divisions; the address space
+    they take against the bound is measured there,
+    ``weights_fit_their_bound_in_address_space``). Each is read in a fresh
+    child (one rayon thread, the pool not yet started; one malloc arena,
+    since glibc's per-thread arenas reserve 64 MB of address space each,
+    which a failing allocation falls back to: hidden headroom) under
+    address-space limits above its size, ascending (``HEADROOMS``; the weight
+    by 1 MiB): refused by a probe ("which the allocator refuses") until it
+    loads, to the parent's digest, never aborting; refused at the smallest.
+    Started here, collected by ``_fail_closed``."""
 
     def member(contents: int, entries: int, width: int) -> bytes:
         fused = [[i // width, i % width, 0, 0, 0, 0] for i in range(entries)]
@@ -654,24 +717,34 @@ def _under_limits(native, tmp_path: Path) -> None:
         text = json.dumps(plan, separators=(",", ":")).encode()
         return bytes(native.V2PlanModel.from_json(text).binary())
 
+    weight = ("1234567890" * 10**4) + "e-3000000"
+    plan = _empty_plan() | {"legs": 1, "rows": 1, "columns": 1, "helicities": [[1]]}
+    plan |= {"born_components": 1, "seed_classes": [{"columns": [[[0, weight, "0"]]]}]}
+    text = json.dumps(plan, separators=(",", ":")).encode()
     members = {
-        "fused 2^17": member(1, 2**17, 512),
-        "shared 64 x 4096": member(64, 4096, 64),
+        "fused 2^17": (member(1, 2**17, 512), HEADROOMS),
+        "shared 64 x 4096": (member(64, 4096, 64), HEADROOMS),
+        "weight 1e5 digits e-3e6": (
+            bytes(native.V2PlanModel.from_json(text).binary()),
+            tuple(range(1, 97)),
+        ),
     }
-    for k, (name, data) in enumerate(members.items()):
+    children = {}
+    for k, (name, (data, headrooms)) in enumerate(members.items()):
         path = tmp_path / f"limits-{k}.bin"
         path.write_bytes(data)
-        result = subprocess.run(
-            [sys.executable, "-c", _UNDER_LIMITS, str(path), json.dumps(HEADROOMS)],
-            env=os.environ | {"RAYON_NUM_THREADS": "1", "MALLOC_ARENA_MAX": "1"},
-            capture_output=True,
-            text=True,
-            timeout=120,
+        child = _children(
+            _UNDER_LIMITS,
+            str(path),
+            json.dumps(headrooms),
+            RAYON_NUM_THREADS="1",
+            MALLOC_ARENA_MAX="1",
         )
-        assert result.returncode == 0, (name, result.returncode, result.stderr[-2000:])
-        rows = json.loads(result.stdout.splitlines()[-1])
-        assert len(rows) > 1 and all("allocator refuses" in r for r in rows[:-1]), rows
-        assert rows[-1] == native_lowering.read(data, native), (name, rows)
+        children[name] = (child, data)
+    path = tmp_path / "pool.bin"
+    path.write_bytes(members["shared 64 x 4096"][0])
+    children["pool"] = (_children(_POOL_LIMIT, str(path), RAYON_NUM_THREADS="64"), b"")
+    return children
 
 
 def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
@@ -685,7 +758,9 @@ def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
     the derivation bombs (``_derivation_bombs``). In a child under an
     address-space limit of 1 GiB above its size: a reader that decoded or
     derived a bomb would fail there instead of exhausting the host; the
-    list-dominated members then under tighter limits (``_under_limits``). The child
+    list-dominated and multi-precision members under tighter limits and a
+    thread pool that cannot start (``_under_limits``, children run
+    concurrently with it). The child
     decodes with one thread (sequentially), this process with its pool (the
     wide member in parallel chunks): equal models (RUST-MIGRATION.md rule 5).
     """
@@ -705,15 +780,10 @@ def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
     stored.write_bytes(member)
     wide.write_bytes(_wide_member(native))
     arguments = [str(stored), str(crafted), str(wide), str(derived)]
-    result = subprocess.run(
-        [sys.executable, "-c", _FAIL_CLOSED, *arguments],
-        env=os.environ | {"RAYON_NUM_THREADS": "1"},
-        capture_output=True,
-        text=True,
-        timeout=300,
-    )
-    assert result.returncode == 0, (result.returncode, result.stderr[-2000:])
-    out = json.loads(result.stdout.splitlines()[-1])
+    child = _children(_FAIL_CLOSED, *arguments, RAYON_NUM_THREADS="1")
+    limits = _under_limits(native, tmp_path)
+    out = _collect("fail closed", child, 300)
+    assert isinstance(out, dict)
     here = [
         hashlib.sha256(bytes(native.V2PlanModel.from_binary(data).json())).hexdigest()
         for data in (member, wide.read_bytes())
@@ -729,4 +799,11 @@ def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
         # Unpadded, a bomb is the size of the plan's own member (wider values).
         small = len(data) <= len(member) + 1024
         assert small or name.endswith(" padded"), (name, len(data))
-    _under_limits(native, tmp_path)
+    for name, (child, data) in limits.items():
+        rows = _collect(name, child, 120)
+        assert isinstance(rows, list)
+        if name == "pool":
+            assert all("thread pool cannot start" in r for r in rows), rows
+            continue
+        assert len(rows) > 1 and all("allocator refuses" in r for r in rows[:-1]), rows
+        assert rows[-1] == native_lowering.read(data, native), (name, rows)
