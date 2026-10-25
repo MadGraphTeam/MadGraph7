@@ -125,6 +125,7 @@ mod derive;
 mod json;
 
 pub use derive::{DERIVED_PER_BYTE, DeriveBound, RANKS, margin};
+pub use json::OMITTED_WHEN_ABSENT;
 
 use super::{
     BindingFile, ClosureFile, ContentFile, EdgeFile, EntryFile, FamilyFile, FormPolicy,
@@ -1441,6 +1442,20 @@ fn allocations_can_fail() -> bool {
     false
 }
 
+/// Whether the reader found the global thread pool up when it first needed
+/// it ([`read_threads`]): started by it or by another component before.
+static GLOBAL_POOL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// The reader's record of the global thread pool: `None` before a read
+/// needed it (or where every read is sequential: [`read_threads`]), else
+/// whether it was up. A diagnostic: a test that makes the pool's start fail
+/// (no thread may be spawned) checks that the start failed, so that its
+/// reads ran on one thread for that reason.
+#[doc(hidden)]
+pub fn read_pool() -> Option<bool> {
+    GLOBAL_POOL.get().copied()
+}
+
 /// The threads a read decodes with (module docs, "Parallel decoding"): one
 /// where an allocation can fail ([`allocations_can_fail`]), since only the
 /// sequential decode charges, probes and makes fallibly every allocation it
@@ -1461,14 +1476,14 @@ fn read_threads() -> usize {
     if rayon::current_thread_index().is_some() {
         return rayon::current_num_threads();
     }
-    static GLOBAL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    let started = *GLOBAL.get_or_init(|| match rayon::ThreadPoolBuilder::new().build_global() {
-        Ok(()) => true,
-        Err(error) => match std::error::Error::source(&error) {
-            Some(_) => false,
-            None => std::panic::catch_unwind(rayon::current_num_threads).is_ok(),
-        },
-    });
+    let started =
+        *GLOBAL_POOL.get_or_init(|| match rayon::ThreadPoolBuilder::new().build_global() {
+            Ok(()) => true,
+            Err(error) => match std::error::Error::source(&error) {
+                Some(_) => false,
+                None => std::panic::catch_unwind(rayon::current_num_threads).is_ok(),
+            },
+        });
     if started {
         rayon::current_num_threads()
     } else {
@@ -1847,7 +1862,7 @@ fresh_records! {
     SeedKeyFile { classes },
     FamilyFile { sequence, rank, orders, leaves, steps },
     LeafFile { seed, weight },
-    StepFile { seeded, trace, out, rows, d_alpha, d_out, degree, rank_in, edges },
+    StepFile { seeded, trace, out, d_alpha, d_out, degree, rank_in, edges, rows },
     EdgeFile { leaf, child, factor, links },
     ForwardFile { states },
     StateFile { parent, factor, seeded, rows, d_alpha, d_out, degree, rank, links, closures },
@@ -1855,7 +1870,7 @@ fresh_records! {
     MergedFile { families, entries, states, chunks },
     EntryFile { seed, weight },
     MergedStateFile { seeded, rows, d_alpha, d_out, degree, rank_in, edges, closure },
-    MergedEdgeFile { entry, parent, factor, weight, links },
+    MergedEdgeFile { entry, parent, factor, links, weight },
     MergedClosureFile { family, accumulator, relabel },
 }
 

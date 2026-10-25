@@ -10,7 +10,7 @@
 use super::*;
 use pyo3::types::{PyBool, PyBytes, PyDict, PyInt, PyList, PyString, PyTuple};
 use rusticol_core::loop_v2::plan::binary::{
-    PlanModel, column_names, is_binary, program_digest, read_binary,
+    OMITTED_WHEN_ABSENT, PlanModel, column_names, is_binary, program_digest, read_binary, read_pool,
 };
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
@@ -31,10 +31,12 @@ impl V2PlanModel {
     }
 
     /// The model of an exported plan's records (`ExportedPlan.program`),
-    /// read from the Python objects: exactly the values `json.dumps` writes
-    /// as the loader's types (`Records`), so the native JSON is
-    /// `json.dumps(program, separators=(",", ":"))` byte for byte, or the
-    /// conversion fails with the record's path.
+    /// read from the Python objects. Only records the writer writes back as
+    /// `json.dumps(program, separators=(",", ":"))` are accepted (`Records`:
+    /// the loader's types, every record's keys in the writer's order, no
+    /// `None` under a key the writer omits when absent), so the native JSON
+    /// of an accepted program is `json.dumps`'s byte for byte; anything else
+    /// fails with the record's path.
     #[staticmethod]
     fn from_program(program: &Bound<'_, PyAny>) -> PyResult<Self> {
         PlanModel::from_records(Records(program))
@@ -116,6 +118,14 @@ fn v2_plan_load(
     .map_err(|e: rusticol_core::RusticolError| error(e))
 }
 
+/// The reader's record of the global thread pool (`read_pool`): `None`
+/// before a read needed it, else whether it was up. A diagnostic of the
+/// pool-failure fallback's test.
+#[pyfunction]
+fn v2_plan_read_pool() -> Option<bool> {
+    read_pool()
+}
+
 /// The SHA-256 of the program the production readers load from a plan
 /// (`program_digest`): a binary member through `read_binary`, the one reader
 /// of the member, and a JSON through `LoopProgramV4::load`. A diagnostic: the
@@ -137,13 +147,18 @@ fn v2_plan_read(py: Python<'_>, data: &[u8]) -> PyResult<String> {
 // ------------------------------------------------------- Python records
 
 /// A plan's records as Python objects, read as the loader's file form (a
-/// `serde` deserializer over them). Only the values `json.dumps` writes as
-/// the expected JSON are accepted: an `int` that is not a `bool` for a
-/// number, a `bool` for a flag, a `str`, `None` for an absent option, a
-/// `list` or `tuple` of the expected length, a `dict` with `str` keys for a
-/// record (unknown keys refused). Anything else (a float, a `bool` for a
-/// number, a number beyond the field's type) fails with the record's path,
-/// never writes other bytes than `json.dumps`.
+/// `serde` deserializer over them). Only what the JSON writer writes back as
+/// `json.dumps` writes it is accepted: an `int` that is not a `bool` for a
+/// number, a `bool` for a flag, a `str`, `None` for an absent option written
+/// as `null`, a `list` or `tuple` of the expected length, a `dict` with `str`
+/// keys for a record, its keys in the record's field order (the writer's,
+/// `plan.rs` file form; unknown keys refused) and without `None` under a key
+/// the writer omits when absent ([`OMITTED_WHEN_ABSENT`]). Anything else (a
+/// float, a `bool` for a number, a number beyond the field's type, keys out
+/// of order, an explicit `None` the writer would drop) fails with the
+/// record's path: an accepted program's native JSON is `json.dumps`'s byte
+/// for byte (`tests/unit/test_loop_v2_native_lowering.py` checks it on every
+/// control).
 struct Records<'a, 'py>(&'a Bound<'py, PyAny>);
 
 /// Why the records do not convert, with the path to the value.
@@ -223,7 +238,12 @@ impl<'py> Records<'_, 'py> {
         }
     }
 
-    fn record<'de, V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+    /// A record (`fields` in the writer's order) or a map (`None`).
+    fn record<'de, V: Visitor<'de>>(
+        self,
+        fields: Option<&'static [&'static str]>,
+        visitor: V,
+    ) -> Result<V::Value, RecordError> {
         let dict = self
             .0
             .cast::<PyDict>()
@@ -232,6 +252,8 @@ impl<'py> Records<'_, 'py> {
             items: dict.iter(),
             value: None,
             key: String::new(),
+            fields,
+            next: 0,
         })
     }
 }
@@ -250,7 +272,7 @@ impl<'de> de::Deserializer<'de> for Records<'_, '_> {
         } else if value.is_instance_of::<PyString>() {
             self.deserialize_str(visitor)
         } else if value.is_instance_of::<PyDict>() {
-            self.record(visitor)
+            self.record(None, visitor)
         } else {
             self.sequence(visitor)
         }
@@ -312,16 +334,16 @@ impl<'de> de::Deserializer<'de> for Records<'_, '_> {
     }
 
     fn deserialize_map<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
-        self.record(visitor)
+        self.record(None, visitor)
     }
 
     fn deserialize_struct<V: Visitor<'de>>(
         self,
         _name: &'static str,
-        _fields: &'static [&'static str],
+        fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, RecordError> {
-        self.record(visitor)
+        self.record(Some(fields), visitor)
     }
 
     fn deserialize_ignored_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
@@ -415,6 +437,10 @@ struct Fields<'py, I> {
     value: Option<Bound<'py, PyAny>>,
     /// The key of the value read next (the error's path).
     key: String,
+    /// A record's fields in the writer's order (`None` for a map).
+    fields: Option<&'static [&'static str]>,
+    /// The first of `fields` the next key may be.
+    next: usize,
 }
 
 impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAccess<'de>
@@ -435,6 +461,27 @@ impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAc
         let name = name
             .to_str()
             .map_err(|_| RecordError("a key with lone surrogates".to_owned()))?;
+        if let Some(fields) = self.fields {
+            // The writer's order: each key after the previous one. A key of
+            // the record met earlier is out of order; an unknown key is the
+            // field visitor's refusal below.
+            match fields[self.next..].iter().position(|&field| field == name) {
+                Some(skipped) => self.next += skipped + 1,
+                None if fields.contains(&name) => {
+                    let after = self.key.as_str();
+                    return Err(RecordError(format!(
+                        "key {name:?} after {after:?}: out of the writer's key order {fields:?}"
+                    )));
+                }
+                None => {}
+            }
+            if value.is_none() && OMITTED_WHEN_ABSENT.contains(&name) {
+                return Err(RecordError(format!(
+                    ".{name}: None where the writer omits the key (json.dumps would \
+                     write null)"
+                )));
+            }
+        }
         self.key.clear();
         self.key.push_str(name);
         self.value = Some(value);
@@ -457,5 +504,6 @@ impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAc
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2PlanModel>()?;
     module.add_function(wrap_pyfunction!(v2_plan_load, module)?)?;
-    module.add_function(wrap_pyfunction!(v2_plan_read, module)?)
+    module.add_function(wrap_pyfunction!(v2_plan_read, module)?)?;
+    module.add_function(wrap_pyfunction!(v2_plan_read_pool, module)?)
 }

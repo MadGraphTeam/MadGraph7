@@ -18,6 +18,15 @@ use super::super::{
     ClosureFile, ContentFile, FamilyFile, KernelFile, MergedFile, PlanFile, StateFile, TermFile,
 };
 
+/// The keys the writer omits when their value is absent, where `json.dumps`
+/// of a record holding them as `None` would write `null`: a step's `rows`,
+/// an edge's `links` and the plan's `column_rows`. Every other key of these
+/// names holds a value that cannot be absent, and every other optional value
+/// is written as `null`. A records reader that accepts only what this writer
+/// writes back byte for byte refuses `None` under these keys
+/// (`V2PlanModel.from_program`).
+pub const OMITTED_WHEN_ABSENT: [&str; 3] = ["rows", "links", "column_rows"];
+
 struct Out(Vec<u8>);
 
 impl Out {

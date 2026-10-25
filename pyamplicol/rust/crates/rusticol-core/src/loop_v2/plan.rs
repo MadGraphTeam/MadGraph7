@@ -68,6 +68,11 @@ fn require(condition: bool, message: &str) -> RusticolResult<()> {
 }
 
 // ------------------------------------------------------------------ file form
+//
+// Every record declares its fields in the order the exporter writes them
+// (`plan_export`, the JSON writer `binary/json.rs`): the Python records'
+// reader (`V2PlanModel.from_program`) refuses keys out of this order, so the
+// native JSON of the records it accepts is `json.dumps`'s.
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -185,14 +190,15 @@ struct StepFile {
     trace: i64,
     /// The legs the step leaves open (its rows are restricted to them).
     out: u64,
-    /// Derived by the loader (`links`); checked when written.
-    #[serde(default)]
-    rows: Option<usize>,
     d_alpha: usize,
     d_out: usize,
     degree: usize,
     rank_in: usize,
     edges: Vec<EdgeFile>,
+    /// Derived by the loader (`links`); checked when written (appended by
+    /// the exporter after the other keys).
+    #[serde(default)]
+    rows: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -273,8 +279,8 @@ struct MergedEdgeFile {
     entry: i64,
     parent: i64,
     factor: usize,
-    weight: Option<[String; 2]>,
     links: Vec<u32>,
+    weight: Option<[String; 2]>,
 }
 
 #[derive(Deserialize)]
