@@ -166,6 +166,11 @@ fn error(message: impl Into<String>) -> String {
 // ------------------------------------------------------------- reduction
 
 /// A Fierz term: integer coefficient, N_c power and its traces (rows).
+///
+/// Each Fierz step removes one contracted label pair and splits a term into
+/// coefficients +c and -c, so after k steps |c| <= 2^k: the checked i64
+/// suffices for networks of fewer than 63 contracted pairs (a refusal
+/// beyond, never a wrong value).
 type FierzTerm = (i64, i64, Vec<Vec<Label>>);
 /// A Fierz input: traces and the sorted sentinel labels.
 type FierzKey = (Vec<Vec<Label>>, Vec<Label>);
@@ -460,17 +465,18 @@ fn integer(value: i64) -> Exact {
     }
 }
 
-/// `Fraction(2) ** exponent`.
+/// `Fraction(2) ** exponent`, exact for every exponent (a bignum power).
 fn power_of_two(exponent: i64) -> Exact {
-    let magnitude = 1i64
-        .checked_shl(exponent.unsigned_abs() as u32)
-        .filter(|_| exponent.unsigned_abs() < 62)
-        .expect("1/sqrt(2) powers fit 62 bits");
+    let two = Rational::from(2);
+    let mut magnitude = Rational::from(1);
+    for _ in 0..exponent.unsigned_abs() {
+        magnitude = magnitude * &two;
+    }
     Exact {
         re: if exponent >= 0 {
-            Rational::from(magnitude)
+            magnitude
         } else {
-            Rational::from((1, magnitude))
+            Rational::from(1) / &magnitude
         },
         im: Rational::from(0),
     }
@@ -677,5 +683,13 @@ mod tests {
             .map(|(c, _, p)| (c.text().0, *p))
             .collect();
         assert_eq!(terms, vec![("-1/1".to_string(), 0), ("1/1".to_string(), 2)]);
+    }
+
+    #[test]
+    fn powers_of_two_are_exact_beyond_machine_words() {
+        let big = "1180591620717411303424/1"; // 2^70
+        assert_eq!(power_of_two(70).text().0, big);
+        assert_eq!(power_of_two(-70).text().0, "1/1180591620717411303424");
+        assert_eq!(power_of_two(0).text().0, "1/1");
     }
 }
