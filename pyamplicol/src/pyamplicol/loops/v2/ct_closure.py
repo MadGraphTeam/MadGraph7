@@ -320,16 +320,16 @@ class CountertermBlocks:
 
         fallback = None
         if dag_input.NATIVE_DAG:
+            stage = "counterterm-program"
+            dag_input.native_progress(progress_callback, stage)
             try:
                 native = dag_input.native_counterterm_blocks(
-                    recursion,
-                    process,
-                    ignored_particle_ids=ignored_particle_ids,
-                    progress_callback=progress_callback,
+                    recursion, process, ignored_particle_ids=ignored_particle_ids
                 )
             except dag_input.NativeDagUnsupported as error:
                 # Only a listed feature falls back (rule 2).
                 fallback = dag_input.listed_fallback(error)
+                dag_input.native_progress(progress_callback, stage, fallback=fallback)
                 _LOG.warning(
                     "%s: the tree engine builds the counterterm program "
                     "(the native builder does not cover %s)",
@@ -354,6 +354,9 @@ class CountertermBlocks:
                 # generation; the per-point rows and the export rebuild and
                 # decode them.
                 u1_leaking_structures(program)
+                dag_input.native_progress(
+                    progress_callback, stage, (native.dag, len(native.blocks))
+                )
                 native.dag.release()
                 return program
 

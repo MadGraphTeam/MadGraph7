@@ -1049,7 +1049,8 @@ def _assert_switch_equal(compiled, model, text, orders, **options):
 
 def _native_progress(events, stage, dag, blocks):
     """The native stage's events among a ``progress_callback``'s
-    (``dag_input._progress``): its start, then its finish with the counts."""
+    (``dag_input.native_progress``): its start, then its finish with the
+    counts."""
 
     currents, interactions, _sources = dag.counts()
     assert [event for event in events if event["step"] == "native-dag"] == [
@@ -1258,18 +1259,43 @@ def test_native_stage_falls_back_with_a_record(
 
         monkeypatch.setattr(dag_input, "native_blocks", refuse)
         monkeypatch.setattr(dag_input, "native_counterterm_blocks", refuse)
-        fallen = _tree_blocks(model, process, {"QCD": 5}, True)
+        events: list = []
+        fallen = _tree_blocks(
+            model, process, {"QCD": 5}, True, progress_callback=events.append
+        )
         assert fallen.dag_fallback == f"{item.key}: {item.feature}"
         assert fallen.blocks == python.blocks
+        # The native stage's events: its start, then the fallback.
+        assert [e for e in events if e["step"] == "native-dag"] == [
+            {"step": "native-dag", "stage": "loop-blocks", "state": "start"},
+            {
+                "step": "native-dag",
+                "stage": "loop-blocks",
+                "state": "fallback",
+                "feature": fallen.dag_fallback,
+            },
+        ]
     # The counterterm program takes the same path (one feature: the oracle
     # stage costs seconds).
+    events = []
     with _flag(True):
         again = ct_closure.CountertermBlocks.build(
-            program.recursion, program.blocks.blocks_dag.process
+            program.recursion,
+            program.blocks.blocks_dag.process,
+            progress_callback=events.append,
         )
     last = dag_input.NATIVE_FALLBACKS[-1]
     assert again.blocks.dag_fallback == f"{last.key}: {last.feature}"
     assert again.blocks.blocks == program.blocks.blocks
+    assert [e for e in events if e["step"] == "native-dag"] == [
+        {"step": "native-dag", "stage": "counterterm-program", "state": "start"},
+        {
+            "step": "native-dag",
+            "stage": "counterterm-program",
+            "state": "fallback",
+            "feature": again.blocks.dag_fallback,
+        },
+    ]
     record = dag_input.fallback_record(
         SimpleNamespace(
             blocks=fallen, counterterm_program=SimpleNamespace(blocks=again)

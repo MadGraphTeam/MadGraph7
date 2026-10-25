@@ -1841,17 +1841,31 @@ def native_blocks(
     )
 
 
-def _progress(
+def native_progress(
     callback: DAGProgressCallback | None,
     stage: str,
     built: tuple[NativeDag, int] | None = None,
+    *,
+    fallback: str | None = None,
 ) -> None:
     """A native stage's progress through the tree engine's callback
     (``GenericDAGCompiler``'s ``{"step": ...}`` events): ``native-dag`` for
     ``stage`` with ``state`` ``start``, then ``done`` with the DAG's current
-    and interaction counts and the block count (``built``)."""
+    and interaction counts and the block count (``built``), or ``fallback``
+    with the listed feature (``listed_fallback``) before the tree engine
+    reports its own steps."""
 
     if callback is None:
+        return
+    if fallback is not None:
+        callback(
+            {
+                "step": "native-dag",
+                "stage": stage,
+                "state": "fallback",
+                "feature": fallback,
+            }
+        )
         return
     if built is None:
         callback({"step": "native-dag", "stage": stage, "state": "start"})
@@ -1886,7 +1900,7 @@ def loop_request_blocks(
 
     Under ``NATIVE_DAG`` the native builder makes the DAG (a ``NativeDag``)
     and its blocks (``native_blocks``; ``progress_callback`` gets the
-    stage's start and finish, ``_progress``); otherwise, or for a listed
+    stage's start and finish, ``native_progress``); otherwise, or for a listed
     feature it does not cover (the returned reason, ``listed_fallback``),
     the tree engine's loop-request mode, the oracle. The process is
     compiled at full colour.
@@ -1897,8 +1911,8 @@ def loop_request_blocks(
     full = replace(process, color_accuracy="full")
     fallback = None
     if NATIVE_DAG:
+        native_progress(progress_callback, "loop-blocks")
         try:
-            _progress(progress_callback, "loop-blocks")
             native = native_blocks(
                 full,
                 model,
@@ -1912,13 +1926,14 @@ def loop_request_blocks(
             # the native columns are not held to the end of generation; the
             # per-point rows and the trees export rebuild and decode them.
             native.propagated_species()
-            _progress(progress_callback, "loop-blocks", (native, len(blocks)))
+            native_progress(progress_callback, "loop-blocks", (native, len(blocks)))
             native.release()
             return native, blocks, None
         except NativeDagUnsupported as error:
             # Only a listed feature falls back (rule 2); any other refusal
             # is raised.
             fallback = listed_fallback(error)
+            native_progress(progress_callback, "loop-blocks", fallback=fallback)
             _LOG.warning(
                 "%s: the tree engine builds the loop-request blocks "
                 "(the native builder does not cover %s)",
@@ -1955,15 +1970,13 @@ def native_counterterm_blocks(
     process: CanonicalProcessIR,
     *,
     ignored_particle_ids: Iterable[int] = (),
-    progress_callback: DAGProgressCallback | None = None,
 ) -> NativeCountertermBlocks:
     """The native twin of ``ct_closure.CountertermBlocks.build(recursion,
     process, ignored_particle_ids=...)``: the loop-request recursion of the
     CT-lowered model (``recursion.model.lowered``) over the leg sets without
     leg 1 except all other legs (``RootReachability``), within the program's
     order limits and without the vetoed particles (DESIGN §6.1 items 1-6 and
-    8), grouped into blocks with the clone lines of ``_clone_lines``;
-    ``progress_callback`` gets the stage's start and finish (``_progress``)."""
+    8), grouped into blocks with the clone lines of ``_clone_lines``."""
 
     from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 
@@ -1975,7 +1988,6 @@ def native_counterterm_blocks(
     model = recursion.model.lowered.tree_model()
     full = (1 << len(process.legs)) - 1
     process = replace(process, color_accuracy="full")
-    _progress(progress_callback, "counterterm-program")
     lines = _clone_lines(recursion)
     tables = dag_input(
         process,
@@ -1993,7 +2005,6 @@ def native_counterterm_blocks(
     )
     variant = model_tree_kernel_variant(model)
     blocks, clone_particles = dag._blocks_and_clones(variant)
-    _progress(progress_callback, "counterterm-program", (dag, len(blocks)))
     return NativeCountertermBlocks(
         recursion,
         dag,
