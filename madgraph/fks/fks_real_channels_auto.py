@@ -28,6 +28,14 @@ is not covered has a structure that no Born channel follows: a t-channel
 exchange or a resonance opened by the extra parton, as in u a > w+ h d or
 u g > w+ d b b~ (gluon fusion into b b~).  Only then can the dedicated
 real-emission channels improve the integration.
+
+Only the propagators that can enhance the integrand count (peaking()).
+Their masses enter through the threshold of the legs on their side, where a
+resonance of the diagram counts with its mass, and a massless propagator
+peaks only if its side is made of massless partons (coloured, or FKS
+partons of the real process, like photons and leptons in QED corrections).
+The decision is then the same whether a resonance is external or decayed
+(p p > w+ j and p p > e+ ve j [QCD], p p > w+ and p p > e+ ve [QED]).
 """
 
 import logging
@@ -63,7 +71,8 @@ def diagram_propagators(diagram, legs):
 
 
 class RealChannelAnalyser(object):
-    """Classify the real-emission diagrams of FKS matrix elements"""
+    """Read the masses and widths of the real-emission diagrams of FKS
+    matrix elements"""
 
     def __init__(self, model, parameters):
         self.model = model
@@ -83,56 +92,136 @@ class RealChannelAnalyser(object):
             return None
         return self.value(part.get('mass'))
 
-    def peaking(self, side, pdg, s_channel, legs, initial, final_masses):
-        """True if the propagator can enhance the integrand away from the
-        soft and collinear limits"""
-
+    def coloured(self, pdg):
         part = self.model.get_particle(pdg)
-        if not part:
-            # fake propagator of a multi-leg vertex
-            return False
-        allnum = set(final_masses) | initial
-        other = frozenset(allnum - side)
-        # the s-channel propagator carrying all of sqrt(s-hat): no peak
-        if side == initial or other == initial:
-            return False
-        mass = self.value(part.get('mass'))
-        # final-state legs on the side of the propagator without the
-        # initial state (with one initial leg for a t-channel propagator)
-        finals = side if not (side & initial) else other - initial
-        side_masses = [final_masses[n] for n in finals]
-        if mass is None or None in side_masses:
-            return True
-        if mass == 0.:
-            # a true (collinear-type) peak only if nothing on its side is
-            # massive; otherwise the virtuality is bounded by these masses
-            # and the propagator is as smooth as a massive one
-            return sum(side_masses) == 0.
-        if s_channel:
-            width = self.value(part.get('width'))
-            if width == 0.:
-                return False
-            # resonant only if heavier than the particles it decays into
-            return mass > sum(side_masses) * (1. + 1e-10)
-        # t-channel: enhanced when light compared to the hard scale,
-        # bounded below by the final-state masses (without any final-state
-        # mass, s-hat is set by the cuts, which exceed the EW masses)
-        threshold = sum(final_masses.values())
-        return threshold == 0. or mass < 0.5 * threshold
+        return bool(part) and part.get('color') != 1
 
-    def peak_propagators(self, amplitude):
+    def propagators(self, amplitude):
         """For each diagram of amplitude (a real-emission base amplitude),
-        its peaking propagators as [legs on one side, |pdg|]"""
+        its propagators as [legs on one side, |pdg|, s-channel, mass,
+        width]. The fake propagators of multi-leg vertices are dropped"""
 
         legs = amplitude['process']['legs']
-        initial = frozenset(l['number'] for l in legs if not l['state'])
-        final_masses = dict((l['number'], self.mass(l['id']))
-                            for l in legs if l['state'])
-        return [[[sorted(side), abs(pdg)] for side, pdg, s_channel in
-                 diagram_propagators(diagram, legs)
-                 if self.peaking(side, pdg, s_channel, legs, initial,
-                                 final_masses)]
-                for diagram in amplitude['diagrams']]
+        result = []
+        for diagram in amplitude['diagrams']:
+            props = []
+            for side, pdg, s_channel in diagram_propagators(diagram, legs):
+                part = self.model.get_particle(pdg)
+                if not part:
+                    continue
+                props.append([sorted(side), abs(pdg), bool(s_channel),
+                              self.value(part.get('mass')),
+                              self.value(part.get('width'))])
+            result.append(props)
+        return result
+
+
+def threshold(finals, masses, resonances, strict=False):
+    """Lower bound of the invariant mass of the final-state legs finals:
+    the masses of the resonances of the diagram that they contain (a
+    resonance pins the invariant mass of its decay products to its mass),
+    plus the masses of the other legs. The resonances of a tree diagram are
+    nested or disjoint, so the largest ones are disjoint. With strict, a
+    resonance on exactly finals is not used."""
+    total = 0.
+    left = set(finals)
+    for products, mass in sorted(resonances.items(), key=lambda r: -len(r[0])):
+        if products <= left and not (strict and products == finals):
+            total += mass
+            left -= products
+    return total + sum(masses[n] for n in left)
+
+
+def final_sides(side, initial, allnum):
+    """The final-state legs on each side of a propagator: one set for an
+    s-channel propagator (the side without the initial state), two for a
+    t-channel propagator (the final-state legs attached to each beam)"""
+    other = frozenset(allnum - side)
+    if not side & initial:
+        return [frozenset(side)]
+    if not other & initial:
+        return [other]
+    return [frozenset(side - initial), other - initial]
+
+
+def diagram_resonances(props, initial, masses):
+    """The s-channel massive propagators of a diagram that can go on shell:
+    {final-state legs: mass}. Built from the innermost one out, since the
+    threshold of a resonance includes the resonances it decays into"""
+
+    allnum = set(masses) | initial
+    candidates = []
+    for side, apdg, s_channel, mass, width in props:
+        sides = final_sides(frozenset(side), initial, allnum)
+        if len(sides) == 1 and mass and width != 0.:
+            candidates.append((sides[0], mass))
+    resonances = {}
+    for finals, mass in sorted(candidates, key=lambda c: len(c[0])):
+        if mass > threshold(finals, masses, resonances, strict=True) * \
+           (1. + 1e-10):
+            resonances[finals] = mass
+    return resonances
+
+
+def peaking(prop, initial, masses, partons, resonances, hard=0.):
+    """True if the propagator can enhance the integrand away from the
+    soft and collinear limits. masses are those of the final-state legs,
+    partons the final-state legs that are partons of the real process
+    (coloured, or the i or j of one of its sectors), hard the threshold of
+    the Born process (born_threshold)"""
+
+    side, apdg, s_channel, mass, width = prop
+    side = frozenset(side)
+    allnum = set(masses) | initial
+    # the s-channel propagator carrying all of sqrt(s-hat): no peak
+    if side == initial or allnum - side == initial:
+        return False
+    if mass is None or None in masses.values():
+        return True
+    sides = final_sides(side, initial, allnum)
+    if mass == 0.:
+        # a peak only if all the legs on one side are massless partons,
+        # with no resonance among them: its virtuality then only stays away
+        # from zero by the soft and collinear limits, or by the jet cuts.
+        # Otherwise it is bounded by a mass, a resonance, or (for leptons,
+        # or photons in QCD corrections) by the cuts that the Born already
+        # needs on them, and as smooth as a massive one
+        return any(all(n in partons for n in finals) and
+                   threshold(finals, masses, resonances) == 0.
+                   for finals in sides)
+    if len(sides) == 1:
+        return sides[0] in resonances
+    # t-channel: enhanced when light compared to the hard scale, bounded
+    # below by the final-state threshold of this diagram and of the Born
+    # (without any, s-hat is set by the cuts, which exceed the EW masses)
+    total = max(threshold(frozenset(masses), masses, resonances), hard)
+    return total == 0. or mass < 0.5 * total
+
+
+def peak_propagators(diagrams, initial, masses, partons, hard=0.):
+    """For each diagram (as given by RealChannelAnalyser.propagators), its
+    peaking propagators as [legs on one side, |pdg|]"""
+
+    result = []
+    for props in diagrams:
+        resonances = diagram_resonances(props, initial, masses)
+        result.append([[prop[0], prop[1]] for prop in props
+                       if peaking(prop, initial, masses, partons, resonances,
+                                  hard)])
+    return result
+
+
+def born_threshold(diagrams, initial, masses):
+    """The hard scale of a Born process: the largest threshold of its final
+    state over its diagrams, with the resonances (also the one carrying all
+    of sqrt(s-hat), as in u d~ > e+ ve). It is the same whether a resonance
+    is external (w+) or decayed (e+ ve). 0 if a mass is unknown"""
+
+    if None in masses.values():
+        return 0.
+    return max([threshold(frozenset(masses), masses,
+                          diagram_resonances(props, initial, masses))
+                for props in diagrams] + [0.])
 
 
 def canonical(side, nexternal):
@@ -240,6 +329,23 @@ def leg_list(process):
     return [[l['number'], l['id'], bool(l['state'])] for l in process['legs']]
 
 
+def flavours(matrix_element):
+    """The pdg codes of all the processes of a matrix element: a directory
+    can hold several flavours with the same matrix element (u g > u g and
+    d g > d g), with the same leg positions"""
+    result = []
+    for process in matrix_element.get('processes'):
+        pdgs = [l['id'] for l in process['legs']]
+        if pdgs not in result:
+            result.append(pdgs)
+    return result
+
+
+def with_flavour(legs, pdgs):
+    """legs (as [number, pdg, state]) with the pdg codes pdgs"""
+    return [(n, pdg, state) for (n, old, state), pdg in zip(legs, pdgs)]
+
+
 def born_structure(born_amplitude):
     """Legs and propagators of the Born diagrams of a directory"""
     legs = born_amplitude['process']['legs']
@@ -255,64 +361,114 @@ def real_structures(fks_matrix_element):
     """The information needed by decide() for one Born directory (an
     FKSHelasProcess), as JSON-friendly data"""
 
-    born = fks_matrix_element.born_me.get('base_amplitude')
+    born_amp = fks_matrix_element.born_me.get('base_amplitude')
+    born = born_structure(born_amp)
+    born['flavours'] = flavours(fks_matrix_element.born_me)
+    legs = born_amp['process']['legs']
+    analyser = get_analyser(born_amp['process']['model'])
+    born['threshold'] = born_threshold(
+        analyser.propagators(born_amp),
+        frozenset(l['number'] for l in legs if not l['state']),
+        dict((l['number'], analyser.mass(l['id'])) for l in legs if l['state']))
     reals = []
     for real in fks_matrix_element.real_processes:
         amp = real.matrix_element.get('base_amplitude')
         analyser = get_analyser(amp['process']['model'])
         reals.append({
             'legs': leg_list(amp['process']),
+            'masses': [analyser.mass(l['id']) for l in amp['process']['legs']],
+            'coloured': [l['number'] for l in amp['process']['legs']
+                         if analyser.coloured(l['id'])],
+            'flavours': flavours(real.matrix_element),
             'sectors': sorted(set((info['i'], info['j'],
                 bool(info.get('need_color_links') or
                      info.get('need_charge_links')), info['ij'])
                 for info in real.fks_infos)),
-            'peaks': analyser.peak_propagators(amp)})
-    return {'born': born_structure(born), 'reals': reals}
+            'diagrams': analyser.propagators(amp)})
+    return {'born': born, 'reals': reals}
 
 
-def decide(directories, n_hard_channels):
+def collect_reals(directories):
     """Combine the structures (real_structures) of all the Born
-    directories. The sectors of a real process are collected over all the
-    directories it belongs to, since the sector functions are normalised
-    over all of them.
-    Return (default of real_channels_x0, summary)"""
+    directories, per real process (keyed by its pdg codes and states, in a
+    canonical leg order). The sectors of a real process are collected over
+    all the directories it belongs to, since the sector functions are
+    normalised over all of them, and over all the flavours that a
+    directory holds"""
 
     reals = {}
     for directory in directories:
-        born_legs = [tuple(l) for l in directory['born']['legs']]
+        born = directory['born']
+        born_legs = [tuple(l) for l in born['legs']]
+        born_flavours = [with_flavour(born_legs, pdgs) for pdgs in
+                         born.get('flavours', [[l[1] for l in born_legs]])]
         born_props = set((frozenset(side), apdg)
-                         for side, apdg in directory['born']['props'])
+                         for side, apdg in born['props'])
         for real in directory['reals']:
-            legs = [tuple(l) for l in real['legs']]
-            # the same real process can have its final-state legs in a
-            # different order in another directory: relabel them
-            order = sorted(legs, key=lambda l: (l[2], l[2] and l[1], l[0]))
-            relabel = dict((l[0], n + 1) for n, l in enumerate(order))
-            legs = [(relabel[n], pdg, state) for n, pdg, state in order]
-            key = tuple(l[1:] for l in legs)
-            if key not in reals:
-                reals[key] = {
-                    'peaks': [[[sorted(relabel[k] for k in side), apdg]
-                               for side, apdg in diagram]
-                              for diagram in real['peaks']],
-                    'nexternal': len(legs), 'sectors': []}
-            sectors = [(relabel[i], relabel[j], soft, ij)
-                       for i, j, soft, ij in real['sectors']]
-            for i, j, soft, ij in identical_permutations(sectors, legs):
-                mapping = leg_map(legs, born_legs, i, j, ij)
-                reals[key]['sectors'].append(Sector(
-                    i, j, soft, mapping, born_props, len(born_legs)))
+            for pdgs in real.get('flavours', [[l[1] for l in real['legs']]]):
+                legs = with_flavour(real['legs'], pdgs)
+                # the same real process can have its final-state legs in a
+                # different order in another directory: relabel them
+                order = sorted(legs, key=lambda l: (l[2], l[2] and l[1], l[0]))
+                relabel = dict((l[0], n + 1) for n, l in enumerate(order))
+                legs = [(relabel[n], pdg, state) for n, pdg, state in order]
+                key = tuple(l[1:] for l in legs)
+                if key not in reals:
+                    reals[key] = {
+                        'diagrams': [[[sorted(relabel[k] for k in prop[0])]
+                                      + prop[1:] for prop in diagram]
+                                     for diagram in real['diagrams']],
+                        'masses': dict((relabel[n], mass) for (n, pdg, state),
+                                       mass in zip(real['legs'], real['masses'])
+                                       if state),
+                        'coloured': set(relabel[n]
+                                        for n in real.get('coloured', [])),
+                        'nexternal': len(legs), 'sectors': [], 'hard': 0.}
+                # the hard scale of all the Born processes it comes from
+                reals[key]['hard'] = max(reals[key]['hard'],
+                                         born.get('threshold') or 0.)
+                sectors = [(relabel[i], relabel[j], soft, ij)
+                           for i, j, soft, ij in real['sectors']]
+                for i, j, soft, ij in identical_permutations(sectors, legs):
+                    # the Born flavour that this real flavour comes from
+                    mapping = None
+                    for flavour in born_flavours:
+                        mapping = leg_map(legs, flavour, i, j, ij)
+                        if mapping is not None:
+                            break
+                    reals[key]['sectors'].append(Sector(
+                        i, j, soft, mapping, born_props, len(born_legs)))
+    return reals
+
+
+def decide(directories, n_hard_channels):
+    """Return (default of real_channels_x0, summary) for the structures
+    (real_structures) of all the Born directories of a process"""
+
+    reals = collect_reals(directories)
     summary = {'n_reals': len(reals), 'n_diagrams': 0, 'n_uncovered': 0,
-               'reals_uncovered': [], 'n_hard_channels': n_hard_channels}
+               'reals_uncovered': [], 'uncovered_peaks': {},
+               'n_hard_channels': n_hard_channels}
     for key, entry in reals.items():
-        uncovered = [n + 1 for n, peaks in enumerate(entry['peaks'])
-                     if not covered(peaks, entry['sectors'],
+        initial = frozenset(n + 1 for n, (pdg, state) in enumerate(key)
+                            if not state)
+        # the coloured legs, and the other ones that are the i or j of a
+        # sector (photons and leptons in QED corrections)
+        partons = entry['coloured'] | set(
+            n for sector in entry['sectors'] for n in (sector.i, sector.j))
+        partons -= initial
+        peaks = peak_propagators(entry['diagrams'], initial, entry['masses'],
+                                 partons, entry['hard'])
+        uncovered = [n + 1 for n, diagram in enumerate(peaks)
+                     if not covered(diagram, entry['sectors'],
                                     entry['nexternal'])]
-        summary['n_diagrams'] += len(entry['peaks'])
+        summary['n_diagrams'] += len(peaks)
         summary['n_uncovered'] += len(uncovered)
         if uncovered:
             summary['reals_uncovered'].append(
-                ([pdg for pdg, state in key], uncovered, len(entry['peaks'])))
+                ([pdg for pdg, state in key], uncovered, len(peaks)))
+            summary['uncovered_peaks'][tuple(pdg for pdg, state in key)] = \
+                dict((n, peaks[n - 1]) for n in uncovered)
     if not summary['n_uncovered'] or n_hard_channels > MAX_HARD_CHANNELS:
         return -1., summary
     return AUTO_X0, summary

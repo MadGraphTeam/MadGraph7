@@ -30,12 +30,28 @@ of one FKS sector `(i,j)`. They follow a propagator of a real-emission diagram
 when it does not separate `i` from `j`, when it only becomes singular as `i`
 gets soft, or when the same propagator, with `i` merged into `j`, appears in
 a Born diagram. Only propagators that can enhance the integrand are
-considered: massless ones with only massless particles on one side,
-resonances that can go on shell, and t-channel propagators lighter than half
-of the sum of the final-state masses. A real-emission diagram is not followed
-if no FKS sector of its process follows all of these propagators, as in
-`u a > w+ h d` (the photon couples to a t-channel W) or `u g > w+ b b~ d`
-(gluon fusion into `b b~` in the 4-flavour scheme).
+considered:
+
+- massless ones with only massless partons on one side (coloured
+  particles, or the `i` or `j` of a sector of the real process, like photons
+  and leptons in QED corrections), and no resonance among them. Otherwise
+  the virtuality is bounded by a mass, by a resonance, or, for leptons (and
+  photons in QCD corrections), by the cuts that the Born already needs on
+  them, and the propagator is as smooth as a massive one;
+- resonances that can go on shell (heavier than what they decay into);
+- t-channel propagators lighter than half of the threshold of the final
+  state, or of the Born (the largest one over its diagrams).
+
+Thresholds count a resonance of the diagram with its mass, so that the
+default does not depend on whether a resonance is external or decayed:
+`p p > w+ j` and `p p > e+ ve j [QCD]` are both off, `p p > w+ h` and
+`p p > e+ ve h [QED]` both on. A real-emission diagram is not followed if no
+FKS sector of its process follows all of these propagators, as in
+`u a > w+ h d` (the photon couples to a t-channel W), `u g > w+ b b~ d`
+(gluon fusion into `b b~` in the 4-flavour scheme), `d~ u > d~ u z` in
+`p p > z j [QED]` (a W decaying into `u d~`), or `a b~ > w+ w- b~` in
+`p p > w+ w- [QED]` (a top decaying into `w- b~`). The sectors are collected
+over all the Born directories and all the flavours that a directory holds.
 
 If such diagrams exist and there are at most 1000 hard channels in total,
 `output` reports it and writes `0.05 = real_channels_x0` in the run card;
