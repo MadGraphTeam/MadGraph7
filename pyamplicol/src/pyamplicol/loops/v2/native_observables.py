@@ -266,7 +266,14 @@ def _source_slots(source_fill: Mapping[str, Any]) -> list[list[Any]]:
 
 # The plan fields an observable column set changes (``plan_export.
 # export_plan(columns=...)``: its seed records and Born components).
-SEED_FIELDS = ("seed_classes", "seeds", "columns", "column_rows", "born_components")
+SEED_FIELDS = (
+    "seed_classes",
+    "seeds",
+    "columns",
+    "column_rows",
+    "column_weights",
+    "born_components",
+)
 
 
 def _seed_overlay(base: Mapping[str, Any], columns: Mapping[str, Any]) -> dict:
@@ -296,11 +303,14 @@ def _seed_overlay(base: Mapping[str, Any], columns: Mapping[str, Any]) -> dict:
 
 def with_overlay(base_json: str, overlay: Mapping[str, Any]) -> str:
     """The plan JSON of a column set: the process (or companion) plan with
-    the set's seed records (``_seed_overlay``; a None field is absent)."""
+    the set's seed records (``_seed_overlay``, ``_overlay_of``): a field the
+    overlay lacks keeps the plan's, a None field is absent."""
 
     merged = json.loads(base_json)
     for key in SEED_FIELDS:
-        value = overlay.get(key)
+        if key not in overlay:
+            continue
+        value = overlay[key]
         if value is None:
             merged.pop(key, None)
         else:
@@ -354,13 +364,18 @@ def _overlay_of(seeds: Mapping[str, Any]) -> dict[str, Any] | None:
 
     if seeds.get("same"):
         return None
-    return {
+    overlay = {
         "seed_classes": seeds["seed_classes"],
         "seeds": seeds["seeds"],
         "columns": seeds["columns"],
         "column_rows": seeds["column_rows"],
+        "column_weights": seeds["column_weights"],
         "born_components": len(seeds["born_components"]),
     }
+    if overlay["seed_classes"] is None:
+        # The plan's own seed records (``export_plan``): not stored again.
+        del overlay["seed_classes"], overlay["seeds"]
+    return overlay
 
 
 @dataclass(frozen=True)

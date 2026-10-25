@@ -37,9 +37,8 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 * a fresh interpreter loads and evaluates the stored native point inputs
   (``point_inputs = "native-v2"``, WP3.1) with generation forbidden, with
   bitwise-identical binary64 values also after unrelated Symbolica symbols
-  were created; a call that needs the generation objects (correlated and
-  resolved outputs) regenerates the slice and refuses a stored plan that
-  differs from the regenerated one;
+  were created; the regeneration path (a process stored without native
+  inputs) refuses a stored plan that differs from the regenerated one;
 * the native artifact loader (``load_loop_v2_artifact``) admits each plan v4
   process, cross-checks families, buckets, legs, helicity rows and sectors
   against the declarations, and refuses tampered declarations and digests;
@@ -66,7 +65,8 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 * requests v2 does not cover yet fail with the reason and leave
   ``loop.engine = "legacy"`` (the default) selectable; the slice request
   records every ``SliceRequest`` field; a generation run's staged
-  validation reuses its processes; O1 loads regenerate from the record;
+  validation reuses its processes; O1 loads read the stored observable
+  columns (nothing regenerates);
 * a six-gluon plan v4 artifact stays below 20 MB (nightly).
 """
 
@@ -1067,9 +1067,11 @@ def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
     """A new interpreter loads the artifact's native point inputs and
     evaluates them with generation forbidden (no slice is regenerated),
     giving the same plan and bitwise-identical binary64 Born and virtual
-    values whatever Symbolica symbols it created before; a call that
-    regenerates the slice (the correlated outputs) refuses a stored plan
-    unequal to the regenerated one."""
+    values whatever Symbolica symbols it created before. The correlation
+    catalogue reads the stored observable columns (nothing regenerates,
+    ``test_loop_v2_stored_process.py``); the regeneration path of a process
+    stored without native inputs refuses a stored plan unequal to the
+    regenerated one."""
 
     from pyamplicol import Runtime
 
@@ -1127,8 +1129,10 @@ def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
     monkeypatch.setattr(artifact, "_slices", type(artifact._slices)())
     monkeypatch.setattr(artifact, "generate_process", drifted)
     loaded = Runtime.load(full_colour, process="gg")
+    # The stored columns serve the catalogue without the generator.
+    assert [item.id for item in loaded.available_color_correlations()] == ["born"]
     with pytest.raises(ArtifactError, match="differs from the stored one"):
-        loaded.available_color_correlations()
+        loaded._backend._regenerated()
 
 
 def _rewrite_payloads(source: Path, destination: Path, edits) -> Path:
@@ -1984,8 +1988,8 @@ def _assert_public_o1(observables_artifact, name: str, carriers) -> None:
     representative = record["processes"][0][0]
     assert [process["id"] for process in manifest.processes] == [representative]
     points, scales = record["points"], record["scales_squared"]
-    # The first load regenerates from the request record (correlators,
-    # colour declaration); members are re-admitted on that slice.
+    # Without the generation objects of this interpreter: the loads read the
+    # stored observable columns and the members listed at generation.
     _forget_generation()
     for process, _expression in record["processes"]:
         expected = record["results"]["arbitrary-200"][process]

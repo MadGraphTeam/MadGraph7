@@ -79,6 +79,12 @@ struct PlanFile {
     /// columns); absent when every column keeps every row.
     #[serde(default)]
     column_rows: Option<Vec<Option<Vec<usize>>>>,
+    /// Per observable column the seed-weight column it reads (columns that
+    /// differ only by their rows share one: helicity-resolved columns);
+    /// absent when every column has its own (the seed classes then hold one
+    /// weight list per column).
+    #[serde(default)]
+    column_weights: Option<Vec<usize>>,
 }
 
 /// One exported kernel term: (constant id, monomial as (input, power)).
@@ -793,6 +799,9 @@ pub struct LoopProgramV4 {
     pub columns: usize,
     /// The Born helicity rows each column seeds.
     pub column_rows: ColumnRows,
+    /// The seed-weight column of each observable column (an index into
+    /// every `Seed::columns`).
+    pub column_weights: Vec<usize>,
     pub average: u64,
     pub born_components: usize,
     pub constants: usize,
@@ -1385,11 +1394,25 @@ impl LoopProgramV4 {
             .into_iter()
             .map(|vertex| vertex.ok_or_else(|| invalid("a vertex id no term defines")))
             .collect::<RusticolResult<Vec<_>>>()?;
+        // Per observable column its seed-weight column: shared (the
+        // file's `column_weights`) or its own.
+        let column_weights = match &file.column_weights {
+            Some(weights) => {
+                require(weights.len() == columns, "column weights")?;
+                weights.clone()
+            }
+            None => (0..columns).collect(),
+        };
+        let weight_columns = column_weights.iter().max().map_or(0, |w| w + 1);
+        require(
+            file.column_weights.is_none() || weight_columns <= columns,
+            "column weights",
+        )?;
         let seed_classes = file
             .seed_classes
             .iter()
             .map(|s| {
-                require(s.columns.len() == columns, "seed columns")?;
+                require(s.columns.len() == weight_columns, "seed columns")?;
                 Ok(Seed {
                     columns: s
                         .columns
@@ -1467,6 +1490,7 @@ impl LoopProgramV4 {
             rows: file.rows,
             columns,
             column_rows: ColumnRows::new(file.rows, columns, file.column_rows.as_deref())?,
+            column_weights,
             average: file.average,
             born_components: file.born_components,
             constants: file.constants,

@@ -130,9 +130,11 @@ class ExportedPlan:
     # The tree program of native per-point inputs (``native_trees``).
     trees: Any = None
     # Per named observable column set (``export_plan(column_sets=...)``) the
-    # seed records that replace the plan's for that set: ``seed_classes``,
-    # ``seeds``, ``columns`` (count), ``column_rows`` (or None) and the
-    # Born components they read (``born_components``, keys).
+    # seed records that replace the plan's for that set: ``seed_classes`` and
+    # ``seeds`` (None: the plan's own), ``columns`` (count), ``column_rows``
+    # and ``column_weights`` (or None) and the Born components they read
+    # (``born_components``, keys); ``{"same": True, ...}`` when the plan's
+    # own columns serve the set.
     column_seeds: Mapping[str, Mapping[str, Any]] | None = None
 
     def json(self) -> str:
@@ -325,7 +327,9 @@ class _Exporter:
             found = self.seeds[key] = len(self.seeds)
         return found
 
-    def seed_records(self, columns: Sequence[Any]) -> tuple[list[dict], list[dict]]:
+    def seed_records(
+        self, columns: Sequence[Any]
+    ) -> tuple[list[dict], list[dict], list[int] | None]:
         """The seed classes and seed keys of the plan: the projection of
         ``assemble.SectorSeeds`` (``SeedTable.seeds``) in two levels.
 
@@ -338,6 +342,12 @@ class _Exporter:
         degree P and Born basis elements; its helicity rows are the plan's
         ``column_rows``. The admitted entries of each column are indexed by
         (class, loop order) once, in ``SeedTable.admitted`` order.
+
+        Columns that differ only by their helicity rows have equal weights:
+        they share one seed-weight column (the third value, per column its
+        weight column, the plan's ``column_weights``; None when every column
+        has its own, so the sector columns of the inclusive plan are written
+        as before). A class record holds one weight list per weight column.
         """
 
         slice_ = self.slice_
@@ -347,7 +357,14 @@ class _Exporter:
         # Per column, once: its table, degree and, per (class, loop order),
         # its admitted Born entries (table order).
         indexed = []
+        weight_of_column: list[int] = []
+        weight_columns: dict[tuple[Any, ...], int] = {}
         for column in columns:
+            key = (id(column.table), column.degree, column.pairs, column.basis)
+            found = weight_columns.get(key)
+            if found is not None:
+                weight_of_column.append(found)
+                continue
             table, degree = column.table, column.degree
             if accuracy != "full" and degree is None:
                 degree = table.degree(column.pairs, born_grades)
@@ -357,6 +374,8 @@ class _Exporter:
                 if column.basis is not None and b not in column.basis:
                     continue
                 entries.setdefault((c, order), []).append((b, born_order))
+            weight_columns[key] = len(indexed)
+            weight_of_column.append(len(indexed))
             indexed.append((table, degree, entries))
         classes: dict[tuple[int, Orders], int] = {}
         class_records: list[dict] = []
@@ -418,7 +437,8 @@ class _Exporter:
                     ]
                 }
             )
-        return class_records, records
+        shared = weight_of_column != list(range(len(weight_of_column)))
+        return class_records, records, weight_of_column if shared else None
 
     # -- schedule B -----------------------------------------------------------
 
@@ -817,7 +837,7 @@ def export_plan(
     )
     columns_given = columns
     columns = tuple(sector_columns(slice_) if columns is None else columns)
-    seed_classes, seeds = exporter.seed_records(columns)
+    seed_classes, seeds, column_weights = exporter.seed_records(columns)
     native_trees = None
     if trees:
         from .native_trees import export_trees
@@ -859,6 +879,8 @@ def export_plan(
             else sorted(row_index[row] for row in column.rows)
             for column in columns
         ]
+    if column_weights is not None:
+        program["column_weights"] = column_weights
     born_components = tuple(exporter.born_components)
     column_seeds = None
     if column_sets is not None:
@@ -884,10 +906,16 @@ def export_plan(
                 # without declared histories): the plan serves the set.
                 column_seeds[name] = {"same": True, "born_components": born_components}
                 continue
-            set_classes, set_seeds = exporter.seed_records(set_columns)
+            set_classes, set_seeds, set_weights = exporter.seed_records(set_columns)
+            if set_classes == seed_classes and set_seeds == seeds:
+                # The plan's own seed records under other columns (the
+                # helicity-resolved columns at full colour share its weight
+                # columns): the set stores only its column fields.
+                set_classes = set_seeds = None
             column_seeds[name] = {
                 "seed_classes": set_classes,
                 "seeds": set_seeds,
+                "column_weights": set_weights,
                 "columns": len(set_columns),
                 "column_rows": [
                     None
