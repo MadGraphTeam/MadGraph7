@@ -242,8 +242,9 @@ class TestMECmdRWGT(unittest.TestCase):
     def test_nlo_reweighting_new_parameter(self):
         """ NLO-mode reweighting of p p > e+ e- [QCD] to a larger Z width.
         The virtual (rw_mevirt) must be importable and evaluated with the new
-        width. Its finite part is proportional to the Born here, so the NLO
-        weights must follow the LO ones.
+        width. Its finite part is proportional to the Born here, so the ratio
+        of the virtuals must be the one of the Borns at every configuration,
+        and the NLO weights must follow the LO ones.
         """
 
         me_cmd = self.get_aMCcmd(pjoin(_pickle_path, 'dy_nlo.lhe.gz'))
@@ -258,8 +259,29 @@ class TestMECmdRWGT(unittest.TestCase):
         ff.write(cmd_lines)
         ff.close()
 
-        with misc.stdchannel_redirected(sys.stdout, os.devnull):
-            me_cmd.exec_cmd('reweight run_01 --from_cards', precmd=True)
+        # record the matrix elements the reweighting evaluates (it runs in
+        # this process: force_run), per kinematic configuration
+        evaluated = {}
+        keep = []
+        calculate = RGWTcmd.ReweightInterface.calculate_matrix_element
+        def record(rwgt, event, hypp_id, scale2=0, alphas=None):
+            value = calculate(rwgt, event, hypp_id, scale2=scale2, alphas=alphas)
+            keep.append(event)
+            evaluated.setdefault(id(event), {})[str(hypp_id)] = value
+            return value
+
+        with misc.TMP_variable(RGWTcmd.ReweightInterface, 'calculate_matrix_element', record):
+            with misc.stdchannel_redirected(sys.stdout, os.devnull):
+                me_cmd.exec_cmd('reweight run_01 --from_cards', precmd=True)
+
+        # the virtual is evaluated with the new width: V'/V = B'/B exactly
+        checked = 0
+        for me in evaluated.values():
+            if not all(k in me for k in ('0', '1', 'V0', 'V1')):
+                continue
+            self.assertAlmostEqual((me['V1'] / me['V0']) / (me['1'] / me['0']), 1., delta=1e-6)
+            checked += 1
+        self.assertGreater(checked, 10)
 
         lhe = lhe_parser.EventFile(pjoin(self.run_dir,'Events','run_01', 'events.lhe.gz'))
         orig, lo, nlo = 0., 0., 0.
@@ -270,8 +292,11 @@ class TestMECmdRWGT(unittest.TestCase):
             nlo += rwgt_data['wz26_nlo']
         # sigma ~ 1/Gamma_Z: the weights do move
         self.assertLess(lo/orig, 0.97)
-        # with the virtual left at the original width, nlo/lo = 1.015
-        self.assertAlmostEqual(nlo/lo, 1., delta=1e-3)
+        # The change of the virtual is carried by the Born of the same point
+        # while the virt-trick terms keep their weights: exact in expectation
+        # only, so nlo/lo fluctuates at the 1e-3 level on these 100 events.
+        # With the virtual left at the original width, nlo/lo = 1.015.
+        self.assertAlmostEqual(nlo/lo, 1., delta=5e-3)
 
     def test_reweighting_failure_out_of_process(self):
         """ aMC@NLO runs the reweighting in child processes, split over the
