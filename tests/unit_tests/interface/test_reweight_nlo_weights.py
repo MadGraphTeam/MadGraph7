@@ -114,15 +114,21 @@ class TestSoftLimitEvent(unittest.TestCase):
             born = [q for k, q in enumerate(born) if k != i_fks]
             born = _boost_to_cm(born)
             sborn = (born[0][0] + born[1][0])**2
-            # the soft parton: energy lam*sqrt(shat_Born), massless, along its
-            # direction in the real emission (rest frame of the real)
+            # the soft parton: energy lam*sqrt(shat_Born), massless. Its
+            # direction is the one of the real emission (rest frame of the
+            # real) for an initial-state j_fks; for a final-state one the FKS
+            # angle y_ij is kept, measured from the Born j_fks (the mother)
             k = p[i_fks]
             self.assertAlmostEqual(k[0], 1e-6 * math.sqrt(sborn), delta=1e-12 * math.sqrt(sborn))
             self.assertAlmostEqual(k[0]**2 - sum(x * x for x in k[1:]), 0, delta=1e-12 * sborn)
-            real = _boost_to_cm(_config(nlo, w, w.real_related))[i_fks]
-            cos = sum(k[m] * real[m] for m in (1, 2, 3)) / \
-                  math.sqrt(sum(x * x for x in k[1:]) * sum(x * x for x in real[1:]))
-            self.assertAlmostEqual(cos, 1, delta=1e-9)
+            real = _boost_to_cm(_config(nlo, w, w.real_related))
+            cos = lambda a, b: sum(a[m] * b[m] for m in (1, 2, 3)) / \
+                  math.sqrt(sum(x * x for x in a[1:]) * sum(x * x for x in b[1:]))
+            if j_fks < 2:
+                self.assertAlmostEqual(cos(k, real[i_fks]), 1, delta=1e-9)
+            else:
+                self.assertAlmostEqual(cos(k, p[j_fks]), cos(real[i_fks], real[j_fks]),
+                                       delta=1e-5)
             # the other momenta are the Born up to O(lam)
             others = [q for n, q in enumerate(p) if n != i_fks]
             for q, b in zip(others, born):
@@ -249,6 +255,42 @@ class TestWriteCardAtomically(unittest.TestCase):
                 stop.set()
                 thread.join()
             self.assertEqual(os.listdir(tmpdir), ['param_card.dat'])
+        finally:
+            shutil.rmtree(tmpdir)
+
+
+class TestVirtualScale(unittest.TestCase):
+    """The virtual's smatrixhel takes mu^2 (the reweighter passes Q_ES^2) and
+    must hand it unchanged to <prefix>GET_ME, whose UPDATE_AS_PARAM2 sets
+    MU_R = sqrt(SCALE2). The dispatcher used to pass DSQRT(SCALES2): the
+    virtual then ran at sqrt(mu) and its parameter dependence (here the EFT
+    counter-term logs) was wrong."""
+
+    class FakeModel(dict):
+        def get(self, key, default=None):
+            return dict.get(self, key, default)
+
+    def test_dispatcher_passes_the_squared_scale(self):
+        import madgraph.loop.loop_exporters as loop_exporters
+        tmpdir = tempfile.mkdtemp(prefix='rwgt_virt')
+        try:
+            os.mkdir(os.path.join(tmpdir, 'SubProcesses'))
+            exporter = loop_exporters.LoopProcessExporterFortranSA.__new__(
+                                    loop_exporters.LoopProcessExporterFortranSA)
+            exporter.dir_path = tmpdir
+            exporter.opt = {'output_options': {}}
+            exporter.density_prefixes = set()
+            exporter.model = self.FakeModel({'parameters': {('external',): []},
+                                             'running_elements': [],
+                                             'merged_particles': {}})
+            exporter.prefix_info = {((2, -2, 6, -6), 1): ['ML5_0_', 'tag', 16, 4]}
+            exporter.write_f2py_splitter()
+            text = open(os.path.join(tmpdir, 'SubProcesses', 'all_matrix.f')).read()
+            self.assertIn('CALL ML5_0_GET_ME(P, ALPHAS, SCALES2, NHEL', text)
+            self.assertNotIn('SQRT(SCALES2)', text.upper())
+            get_me = open(os.path.join(exporter.template_dir, os.pardir,
+                                       'loop_optimized', 'check_py.f.inc')).read()
+            self.assertIn('UPDATE_AS_PARAM2(SCALE2, ALPHAS)', get_me)
         finally:
             shutil.rmtree(tmpdir)
 

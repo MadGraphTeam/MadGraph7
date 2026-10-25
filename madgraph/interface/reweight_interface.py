@@ -119,7 +119,8 @@ class ReweightInterface(extended_cmd.Cmd):
         self.use_eventid = False
         self.inc_sudakov = False
         self.event_path = event_path
-        self.path2prefix = {} # store the f2pyprefix associated to a library 
+        self.path2prefix = {} # store the f2pyprefix associated to a library
+        self.scale2_is_rooted = set() # loop libraries expecting mu^4 (see load_module)
         if event_path:
             logger.info("Extracting the banner ...")
             self.do_import(event_path, allow_madspin=allow_madspin)
@@ -1522,24 +1523,28 @@ class ReweightInterface(extended_cmd.Cmd):
                 # arXiv:1405.0301): at a phase-space point the sample carries
                 # the surrogate S (type 15, S = c_k(x) B_k per split order)
                 # and, with probability f, the residual (V - S)/f (type 14,
-                # in a 'virt' event of its own). Only E[W15 + W14] = V is
-                # fixed, so any new surrogate S' that is a function of the
-                # point keeps the reweighting exact, provided types 15 and 14
-                # share it. S' = S * V_new/V_orig rescales both with the ratio
-                # of the virtual, and S itself is never needed. The Born
-                # (type 2) follows the Born like any other contribution.
-                if '_nlo' in type_nlo and c_wgt.type in [14, 15]:
-                    # the Ellis-Sexton scale, already squared in the LHE
-                    # (smatrixhel takes mu_R^2)
-                    scale2 = c_wgt.scales2[0]
-                    if ('V', icev, alphas, scale2) not in me_cache:
-                        me_cache[('V', icev, alphas, scale2)] = (
-                            self.calculate_matrix_element(cevent, 'V0', scale2=scale2, alphas=alphas),
-                            self.calculate_matrix_element(cevent, 'V1', scale2=scale2, alphas=alphas))
-                    w_origV, w_newV = me_cache[('V', icev, alphas, scale2)]
-                    ratio_V = w_newV / w_origV
+                # in a 'virt' event of its own). E[W15 + W14] = V_orig, so
+                # both are kept as they are and the change of the virtual,
+                # V_new - V_orig, goes on the Born (type 2) of the same
+                # point: W2 (B_new + V_new - V_orig) / B_orig. A ratio of
+                # virtuals would be exact as well, but V_orig changes sign
+                # over the phase space and V_new/V_orig has no finite
+                # variance; B_orig, a full squared matrix element, does not
+                # vanish.
+                if '_nlo' in type_nlo and c_wgt.type == 2:
+                    # the virtual's own g_s, and the Ellis-Sexton scale
+                    # (already squared in the LHE; smatrixhel takes mu^2)
+                    virt = next((w for w in cevent.wgts if w.type in (14, 15)), c_wgt)
+                    alphas_V = virt.gs**2 / (4 * math.pi)
+                    scale2 = virt.scales2[0]
+                    if ('V', icev, alphas_V, scale2) not in me_cache:
+                        me_cache[('V', icev, alphas_V, scale2)] = (
+                            self.calculate_matrix_element(cevent, 'V0', scale2=scale2, alphas=alphas_V),
+                            self.calculate_matrix_element(cevent, 'V1', scale2=scale2, alphas=alphas_V))
+                    w_origV, w_newV = me_cache[('V', icev, alphas_V, scale2)]
+                    ratio_BV = (w_new + w_newV - w_origV) / w_orig
                 else:
-                    ratio_V = "should not be used"
+                    ratio_BV = "should not be used"
 
                 orig_wgt += c_wgt.ref_wgt
                 #add the information to the input
@@ -1553,7 +1558,9 @@ class ReweightInterface(extended_cmd.Cmd):
                 
                 if '_nlo' in type_nlo:
                     if c_wgt.type in [14, 15]:
-                        R = ratio_V
+                        R = 1.
+                    elif c_wgt.type == 2:
+                        R = ratio_BV
                     else:
                         R = ratio_T
                     
@@ -1677,10 +1684,35 @@ class ReweightInterface(extended_cmd.Cmd):
         others = [k for k in range(nexternal) if k != i_fks]
         born = dict(zip(others, to_cm([born[k] for k in others], add(born[0], born[1]))))
         real = to_cm(real, add(real[0], real[1]))
+        def unit(v):
+            n = math.sqrt(sum(x * x for x in v))
+            return [x / n for x in v] if n else None
         direction = real[i_fks][1:]
         norm = math.sqrt(sum(x * x for x in direction))
         if norm == 0:
             return None
+        if j_fks >= nincoming:
+            # final-state j_fks (genps_fks.f, generate_momenta_*_final): the
+            # FKS angles of i_fks are measured from the mother i_fks + j_fks,
+            # which is along the Born j_fks: cos(theta) = y_ij, the cosine
+            # between i_fks and j_fks in the real kinematics, at the azimuth
+            # i_fks has around the mother. Copying the direction of i_fks
+            # instead changes its angle to a recoiling j_fks (massive top).
+            pi, pj = unit(real[i_fks][1:]), unit(real[j_fks][1:])
+            mother = unit([real[i_fks][k] + real[j_fks][k] for k in (1, 2, 3)])
+            axis = unit(born[j_fks][1:])
+            if pj is None or mother is None or axis is None:
+                return None
+            y = sum(a * b for a, b in zip(pi, pj))
+            perp = [a - sum(x * m for x, m in zip(pi, mother)) * m for a, m in zip(pi, mother)]
+            perp = [a - sum(x * b for x, b in zip(perp, axis)) * b for a, b in zip(perp, axis)]
+            perp = unit(perp)
+            if perp is None:
+                direction = axis
+            else:
+                s = math.sqrt(max(0., 1 - y * y))
+                direction = [y * a + s * b for a, b in zip(axis, perp)]
+            norm = 1.
         energy = lam * (born[0][0] + born[1][0])
         k = [energy] + [energy * x / norm for x in direction]
         # the final state of the Born takes the transverse recoil, keeping its
@@ -1972,10 +2004,11 @@ class ReweightInterface(extended_cmd.Cmd):
                     scale2 = event.scale**2
                 else:
                     scale2 = 0
+            me_scale2 = scale2**2 if base in self.scale2_is_rooted else scale2
 
             with misc.chdir(Pdir):
                 with misc.stdchannel_redirected(sys.stdout, os.devnull):
-                    new_value = module.smatrixhel(pdg, pid, p, alphas, scale2, nhel)
+                    new_value = module.smatrixhel(pdg, pid, p, alphas, me_scale2, nhel)
                     #misc.sprint(new_value)
                     if new_value == 0:
                         raise Exception("Invalid matrix element")
@@ -2817,6 +2850,12 @@ class ReweightInterface(extended_cmd.Cmd):
                 fprefix = ''
                 # Param card not available -> no initialisation
                 self.f2pylib[(onedir,tag)] = mymod
+                # loop libraries written before the fix of the dispatcher passed
+                # DSQRT(SCALES2) to get_me, which takes the square root again:
+                # such a (re-used) library needs mu^4 to run at mu.
+                allmatrix = pjoin(pdir, 'all_matrix.f')
+                if os.path.exists(allmatrix) and 'DSQRT(SCALES2)' in open(allmatrix).read():
+                    self.scale2_is_rooted.add(onedir)
                 if hasattr(mymod, 'set_madloop_path'):
                     mymod.set_madloop_path(pjoin(path_me,onedir,'SubProcesses','MadLoop5_resources'))
                 if (self.second_model or self.second_process or self.dedicated_path):

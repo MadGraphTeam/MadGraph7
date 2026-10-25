@@ -381,7 +381,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
             all_iden += ' idens(%s) = %s \n' % (i, iden)
 
         formatting = {'python_information':'\n'.join(info), 
-                      'smatrixhel': dispatch(lambda prefix: ' call %sget_me(p, ALPHAS, DSQRT(SCALES2), NHEL, ANS, RETURNCODE)' % prefix),
+                      # get_me takes the squared scale (UPDATE_AS_PARAM2 sets MU_R = sqrt(SCALE2))
+                      'smatrixhel': dispatch(lambda prefix: ' call %sget_me(p, ALPHAS, SCALES2, NHEL, ANS, RETURNCODE)' % prefix),
                       'maxpart': max_nexternal,
                       'nb_me': len(allids),
                       'pdgs': ','.join([str(pdg[i]) if i<len(pdg) else '0' 
