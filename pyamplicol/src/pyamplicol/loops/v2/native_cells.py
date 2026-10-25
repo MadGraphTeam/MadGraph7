@@ -72,6 +72,7 @@ __all__ = [
     "face_count",
     "gram",
     "live_classes",
+    "operator_images",
     "project_records",
     "seed_cells",
     "table_degree",
@@ -201,25 +202,30 @@ class NativeCells:
     generic overlaps) against one basis: a native engine with the
     relabelling caches. ``rebased`` gives an engine against another basis
     on the same legs that shares them both ways (the native caches and the
-    registered quark rings), as ``_PrimitiveCells.rebased`` does."""
+    registered quark rings), as ``_PrimitiveCells.rebased`` does;
+    ``directed`` one against the operator images of its basis under a
+    colour history of gluon emissions, formed natively (its ``basis`` is
+    None: the images stay native)."""
 
     def __init__(
         self,
-        basis: BornBasis,
+        basis: BornBasis | None,
         *,
         _engine: Any = None,
         _rings: dict[Primitive, int] | None = None,
+        _on_legs: Sequence[Any] | None = None,
     ):
         self.basis = basis
-        self._engine = (
-            _native().NativeCellEngine(
+        self.legs = tuple(basis.legs if basis is not None else _on_legs or ())
+        if _engine is None:
+            if basis is None:
+                raise ValueError("native cells need a basis")
+            _engine = _native().NativeCellEngine(
                 _legs(basis.legs), [_tensor(b) for b in basis.tensors]
             )
-            if _engine is None
-            else _engine
-        )
+        self._engine = _engine
         self._adjoint = frozenset(
-            leg.label for leg in basis.legs if leg.representation == 8
+            leg.label for leg in self.legs if leg.representation == 8
         )
         # Canonical quark ring -> native ring id, shared with the rebased
         # engines (the native ring registry is shared too).
@@ -228,10 +234,24 @@ class NativeCells:
     def rebased(self, basis: BornBasis) -> NativeCells:
         """The cells against ``basis`` (same legs), sharing the caches."""
 
-        if basis.legs != self.basis.legs:
+        if tuple(basis.legs) != self.legs:
             raise ValueError("rebased primitive cells need the same colour legs")
         engine = self._engine.rebased([_tensor(b) for b in basis.tensors])
         return NativeCells(basis, _engine=engine, _rings=self._rings)
+
+    def directed(
+        self,
+        born: Sequence[tuple[int, int]],
+        loop_side: Sequence[tuple[int, int]],
+        threads: int | None = None,
+    ) -> NativeCells:
+        """The cells against the operator images ket^dagger bra(b) of this
+        basis (``DirectedColour.operator``) under a history whose Born and
+        loop sides are the gluon emissions (emitter, emitted) ``born`` and
+        ``loop_side``, formed natively; the caches are shared."""
+
+        engine = self._engine.directed(list(born), list(loop_side), threads)
+        return NativeCells(None, _engine=engine, _rings=self._rings, _on_legs=self.legs)
 
     def _class(self, seed: ConnectedColorTensor | Primitive) -> RawClass:
         if not isinstance(seed, Primitive):
@@ -242,7 +262,7 @@ class NativeCells:
         canonical, back = _ring_relabelling(seed, self._adjoint)
         ring = self._rings.get(canonical)
         if ring is None:
-            reduced = _reduced_primitive(canonical, self.basis.legs)
+            reduced = _reduced_primitive(canonical, self.legs)
             ring = self._rings[canonical] = self._engine.register_ring(_tensor(reduced))
         return (2, [], ring, [(b, a) for a, b in back.items()], None)
 
@@ -705,27 +725,93 @@ def live_classes(
 _DIRECTED: weakref.WeakKeyDictionary[Any, dict[bool, Any]] = weakref.WeakKeyDictionary()
 
 
+def _gluon_emissions(emissions: Iterable[Any]) -> list[tuple[int, int]] | None:
+    """(emitter, emitted) of a colour connection's steps if they are all
+    gluon emissions, else None (a quark-pair splitting)."""
+
+    from pyamplicol.color.connections import EmitGluon
+
+    out = []
+    for emission in emissions:
+        if not isinstance(emission, EmitGluon):
+            return None
+        out.append((emission.emitter_label, emission.emitted_label))
+    return out
+
+
 def directed_table(directed: Any, table: Any, swapped: bool) -> Any:
     """``DirectedColour._table`` of a direction whose ket steps are all gluon
     emissions, natively (the "cells" stage; None when it is off): the
-    operator images ket^dagger bra(b) (``DirectedColour.operator``, the
-    oracle's own) replace the Born basis, and the native engine of the
-    shared ``_PrimitiveCells`` (``directed._cells``), rebased onto them,
-    forms the cells; the relabelling caches are shared by every directed
-    table of the slice, as in Python. The native table is kept for the
-    family degrees (``family_degrees``)."""
+    operator images ket^dagger bra(b) replace the Born basis, and the native
+    engine of the shared ``_PrimitiveCells`` (``directed._cells``), rebased
+    onto them, forms the cells; the relabelling caches are shared by every
+    directed table of the slice, as in Python. The images are formed
+    natively (``cells::operator_image``) when the Born side's steps are
+    gluon emissions too, otherwise by the oracle's ``DirectedColour.operator``.
+    The native table is kept for the family degrees (``family_degrees``)."""
 
     if "cells" not in NATIVE_STAGES:
         return None
-    images = replace(
-        table.basis,
-        tensors=tuple(directed.operator(b, swapped) for b in table.basis.tensors),
-    )
+    born, loop_side = directed._sides(swapped)
     shared = directed._cells
-    engine = NativeCells(images) if shared is None else shared.native().rebased(images)
+    if shared is None:
+        base = NativeCells(table.basis)
+    elif shared.basis is table.basis:
+        base = shared.native()
+    else:
+        base = shared.native().rebased(table.basis)
+    emissions = _gluon_emissions(born.emissions)
+    absorbed = _gluon_emissions(loop_side.emissions)
+    if emissions is not None and absorbed is not None:
+        engine = base.directed(emissions, absorbed)
+    else:
+        images = replace(
+            table.basis,
+            tensors=tuple(directed.operator(b, swapped) for b in table.basis.tensors),
+        )
+        engine = base.rebased(images)
     handle = engine.table(table.classes)
     _DIRECTED.setdefault(directed, {})[swapped] = handle
     return replace(table, cells=_decoded(handle))
+
+
+def _from_raw(raw: RawTensor) -> ConnectedColorTensor:
+    from pyamplicol.color.connections import ColorLeg, OpenColorString, TensorTerm
+
+    legs, terms, normalization = raw
+    decoder = _Decoder()
+    return ConnectedColorTensor(
+        tuple(ColorLeg(label, representation) for label, representation in legs),
+        tuple(
+            TensorTerm(
+                decoder.coefficient(re, im),
+                ColorTensor(
+                    tuple(OpenColorString(q, tuple(w), qb) for q, w, qb in strings),
+                    tuple(tuple(trace) for trace in traces),
+                ),
+                power,
+            )
+            for re, im, power, (strings, traces) in terms
+        ),
+        normalization,
+    )
+
+
+def operator_images(
+    tensors: Sequence[ConnectedColorTensor],
+    born: Sequence[tuple[int, int]],
+    loop_side: Sequence[tuple[int, int]],
+) -> list[ConnectedColorTensor]:
+    """``DirectedColour.operator`` of each tensor under a history whose Born
+    and loop sides are the gluon emissions (emitter, emitted) ``born`` and
+    ``loop_side``, formed natively (``cells::operator_image``): the same
+    colour vectors as the oracle's images (equal overlaps with every
+    tensor), not necessarily the same term lists."""
+
+    raw = _native().operator_images(
+        [_tensor(t) for t in tensors], list(born), list(loop_side)
+    )
+    return [_from_raw(image) for image in raw]
 
 
 def _raw_single(legs: list[tuple[int, int]], tensor: ColorTensor) -> RawTensor:
@@ -733,45 +819,97 @@ def _raw_single(legs: list[tuple[int, int]], tensor: ColorTensor) -> RawTensor:
 
 
 class _FamilyBatch:
-    """The overlap queries of a complete family's history pairs, for one
-    ``tensor_overlap_degrees`` batch: bra and ket key sets of tensors and
-    (bra set, ket set, offset) queries."""
+    """The overlap queries of a complete family's history pairs, in two
+    native batches: pairs of gluon-emission histories with their operator
+    images formed natively (``directed_overlap_degrees``: literal bra and
+    ket structures, one history per pair), the others with the connected
+    images of the oracle (``tensor_overlap_degrees``)."""
 
     def __init__(self, slice_: Any):
         self.legs = slice_.basis.legs
         self.raw_legs = _legs(self.legs)
         self.keys = _DegreeKeys(slice_, orbits=False)
+        # Gluon-emission pairs: shared literal sets, one history per pair.
+        self.structure_sets: list[list[tuple[RawStructure, int]]] = []
+        self._structure_ids: dict[Any, int] = {}
+        self.histories: list[tuple[list[tuple[int, int]], list[tuple[int, int]]]] = []
+        self.directed_queries: list[tuple[int, int, int, int]] = []
+        # The other pairs: tensor sets.
         self.bra_sets: list[list[tuple[RawTensor, int]]] = []
         self.ket_sets: list[list[tuple[RawTensor, int]]] = []
-        self.queries: list[tuple[int, int, int]] = []
-        self._literal_kets: dict[Any, int] = {}
+        self.tensor_queries: list[tuple[int, int, int]] = []
 
-    def _literal_ket(self, key: Any) -> int:
-        found = self._literal_kets.get(key)
+    def _structures(self, key: Any) -> int:
+        """A literal key set (("bra", order): the Born keys with their
+        largest N_c power each; ("born" | "ct", order): the ket keys)."""
+
+        found = self._structure_ids.get(key)
         if found is None:
-            found = self._literal_kets[key] = len(self.ket_sets)
-            self.ket_sets.append(
-                [(_raw_single(self.raw_legs, t), q) for t, q in self.keys.ket(key)]
-            )
+            kind, order = key
+            if kind == "bra":
+                powers: dict[ColorTensor, int] = {}
+                for t, p in self.keys.born[order]:
+                    powers[t] = max(p, powers.get(t, p))
+                values = [(_structure(t), p) for t, p in powers.items()]
+            else:
+                values = [(_structure(t), q) for t, q in self.keys.ket(key)]
+            found = self._structure_ids[key] = len(self.structure_sets)
+            self.structure_sets.append(values)
         return found
 
-    def pair(self, pair: Any) -> tuple[list[tuple[Orders, int]], list[Any]]:
+    def pair(self, pair: Any) -> tuple[list[tuple[Orders, Any]], list[Any]]:
         """The queries of one history pair (a ``DirectedColour``): its Born
         queries (squared order, query) and per sector (sector, pairs,
-        queries), as ``LoopSlice.degrees`` forms them with its overlaps."""
+        queries), as ``LoopSlice.degrees`` forms them with its overlaps; a
+        query is ("directed" | "tensor", index)."""
+
+        bra_side, ket_side = pair._sides(False)
+        emissions = _gluon_emissions(bra_side.emissions)
+        absorbed = _gluon_emissions(ket_side.emissions)
+        if emissions is not None and absorbed is not None:
+            history = len(self.histories)
+            self.histories.append((emissions, absorbed))
+
+            def query(a: Orders, key: Any, offset: int = 0) -> tuple[str, int]:
+                self.directed_queries.append(
+                    (
+                        history,
+                        self._structures(("bra", a)),
+                        self._structures(key),
+                        offset,
+                    )
+                )
+                return "directed", len(self.directed_queries) - 1
+
+        else:
+            query = self._tensor_queries(pair)
+        born_queries = [
+            (add_orders(a, b), query(a, ("born", b)))
+            for a, b in product(self.keys.born, repeat=2)
+        ]
+        sector_queries = [
+            (sector, pairs, [query(a, key, offset) for a, key, offset in found])
+            for sector, pairs, found in self.keys.sectors
+        ]
+        return born_queries, sector_queries
+
+    def _tensor_queries(self, pair: Any) -> Any:
+        """The query former of a pair whose overlaps take the oracle's
+        images: operator images of the Born keys against literal kets when
+        its ket steps are gluon emissions, else the connected images of
+        both sides (the generic contraction)."""
 
         from .observables import _literal
 
         absorbable = pair._absorbable(False)
+        legs = self.legs
 
         def image(tensor: ColorTensor, bra: bool) -> Any:
-            literal = _literal(tensor, self.legs)
+            literal = _literal(tensor, legs)
             if absorbable:
                 return pair.operator(literal) if bra else literal
             return pair._image(literal, bra)
 
-        # One bra set per Born order: the images of its keys, each with its
-        # largest N_c power (the degree of an overlap does not depend on it).
         bras: dict[Orders, int] = {}
         for a, born in self.keys.born.items():
             powers: dict[ColorTensor, int] = {}
@@ -784,8 +922,6 @@ class _FamilyBatch:
         kets: dict[Any, int] = {}
 
         def ket(key: Any) -> int:
-            if absorbable:
-                return self._literal_ket(key)
             found = kets.get(key)
             if found is None:
                 found = kets[key] = len(self.ket_sets)
@@ -794,19 +930,29 @@ class _FamilyBatch:
                 )
             return found
 
-        def query(a: Orders, key: Any, offset: int = 0) -> int:
-            self.queries.append((bras[a], ket(key), offset))
-            return len(self.queries) - 1
+        def query(a: Orders, key: Any, offset: int = 0) -> tuple[str, int]:
+            self.tensor_queries.append((bras[a], ket(key), offset))
+            return "tensor", len(self.tensor_queries) - 1
 
-        born_queries = [
-            (add_orders(a, b), query(a, ("born", b)))
-            for a, b in product(self.keys.born, repeat=2)
-        ]
-        sector_queries = [
-            (sector, pairs, [query(a, key, offset) for a, key, offset in found])
-            for sector, pairs, found in self.keys.sectors
-        ]
-        return born_queries, sector_queries
+        return query
+
+    def evaluate(self, threads: int | None = None) -> dict[str, list[int | None]]:
+        native = _native()
+        out: dict[str, list[int | None]] = {"directed": [], "tensor": []}
+        if self.directed_queries:
+            out["directed"] = native.directed_overlap_degrees(
+                self.raw_legs,
+                self.structure_sets,
+                self.structure_sets,
+                self.histories,
+                self.directed_queries,
+                threads,
+            )
+        if self.tensor_queries:
+            out["tensor"] = native.tensor_overlap_degrees(
+                self.bra_sets, self.ket_sets, self.tensor_queries, threads
+            )
+        return out
 
 
 def family_degrees(
@@ -817,12 +963,9 @@ def family_degrees(
     family, the pair's directed table (``DirectedColour``, its table built
     natively under the "cells" stage) and the degrees of
     ``LoopSlice.degrees(overlaps=pair.overlap, table=pair.table)``, with
-    every overlap degree of every pair in one native batch
-    (``tensor_overlap_degrees``): the bra sets hold the operator images of
-    the Born keys (``DirectedColour.operator``), or for a direction with a
-    quark-pair splitting the connected bra images with the connected ket
-    images (``DirectedColour._image``, the generic contraction).
-    ``tables`` collects every pair's table (the pruning criteria)."""
+    every overlap degree of every pair in native batches
+    (``_FamilyBatch``). ``tables`` collects every pair's table (the pruning
+    criteria)."""
 
     if "family" not in NATIVE_STAGES:
         return None
@@ -834,7 +977,7 @@ def family_degrees(
     born_grades = slice_._born_grades()
     batch = _FamilyBatch(slice_)
     # Per pair: (Born queries, sector queries, table, native table or None).
-    pairs_out: list[tuple[list[tuple[Orders, int]], list[Any], Any, Any]] = []
+    pairs_out: list[tuple[list[Any], list[Any], Any, Any]] = []
     for alpha, beta in product(family, repeat=2):
         pair = DirectedColour(
             slice_.table,
@@ -847,21 +990,19 @@ def family_degrees(
         born_queries, sector_queries = batch.pair(pair)
         handle = _DIRECTED.get(pair, {}).get(False)
         pairs_out.append((born_queries, sector_queries, pair.table, handle))
-    values = _native().tensor_overlap_degrees(
-        batch.bra_sets, batch.ket_sets, batch.queries, None
-    )
+    values = batch.evaluate()
     out: dict[str, dict[Orders, int | None]] = {"born": {}, "virtual": {}}
     for born_queries, sector_queries, table, handle in pairs_out:
-        for squared, q in born_queries:
-            out["born"][squared] = _max(out["born"].get(squared), values[q])
+        for squared, (kind, q) in born_queries:
+            out["born"][squared] = _max(out["born"].get(squared), values[kind][q])
         for sector, sector_pairs, found in sector_queries:
             value = (
                 table.degree(sector_pairs, born_grades)
                 if handle is None
                 else table_degree(table, sector_pairs, born_grades, handle)
             )
-            for q in found:
-                value = _max(value, values[q])
+            for kind, q in found:
+                value = _max(value, values[kind][q])
             out["virtual"][sector] = _max(out["virtual"].get(sector), value)
     return out
 

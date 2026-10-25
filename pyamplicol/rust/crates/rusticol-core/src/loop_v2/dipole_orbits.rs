@@ -25,7 +25,7 @@
 //! only: no basis tensors, no Python, no Symbolica state or licence.
 
 use super::generate::cells::{
-    Exact, Label, Leg, OpenString, Structure, Tensor, Term, at_three, contract, fraction_text,
+    Exact, Label, Leg, Structure, Tensor, Term, at_three, contract, emit, fraction_text,
 };
 use super::generate::{FastMap, FastSet};
 use crate::loop_v2::dress::parse_rational;
@@ -75,64 +75,6 @@ struct Stored {
     scales: Vec<(String, String)>,
     representatives: Vec<(usize, usize, usize, usize, String)>,
     gram: Vec<(usize, usize, String)>,
-}
-
-/// `color.connections._emit`: emit gluon `emitted` from the leg `emitter`
-/// of a structure, as (sign, image) terms.
-fn emit(
-    structure: &Structure,
-    emitter: Label,
-    emitted: Label,
-) -> RusticolResult<Vec<(i64, Structure)>> {
-    let both = |before: &[Label], after: &[Label]| -> [(i64, Vec<Label>); 2] {
-        let mut forward = before.to_vec();
-        forward.extend([emitter, emitted]);
-        forward.extend(after);
-        let mut backward = before.to_vec();
-        backward.extend([emitted, emitter]);
-        backward.extend(after);
-        [(1, forward), (-1, backward)]
-    };
-    for (index, string) in structure.strings.iter().enumerate() {
-        let replace = |word: Vec<Label>| {
-            let mut strings = structure.strings.clone();
-            strings[index] = OpenString {
-                q: string.q,
-                word,
-                qbar: string.qbar,
-            };
-            Structure::new(strings, structure.traces.clone())
-        };
-        if emitter == string.q {
-            let mut word = vec![emitted];
-            word.extend(&string.word);
-            return Ok(vec![(1, replace(word))]);
-        }
-        if emitter == string.qbar {
-            let mut word = string.word.clone();
-            word.push(emitted);
-            return Ok(vec![(-1, replace(word))]);
-        }
-        if let Some(position) = string.word.iter().position(|&a| a == emitter) {
-            return Ok(both(&string.word[..position], &string.word[position + 1..])
-                .into_iter()
-                .map(|(sign, word)| (sign, replace(word)))
-                .collect());
-        }
-    }
-    for (index, trace) in structure.traces.iter().enumerate() {
-        if let Some(position) = trace.iter().position(|&a| a == emitter) {
-            return Ok(both(&trace[..position], &trace[position + 1..])
-                .into_iter()
-                .map(|(sign, word)| {
-                    let mut traces = structure.traces.clone();
-                    traces[index] = word;
-                    (sign, Structure::new(structure.strings.clone(), traces))
-                })
-                .collect());
-        }
-    }
-    Err(invalid(format!("emitter {emitter} has no tensor index")))
 }
 
 /// `T_i |term>` (`apply_color_connection` with `EmitGluon(i, x)`): the image

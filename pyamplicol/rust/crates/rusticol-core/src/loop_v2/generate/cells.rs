@@ -677,6 +677,404 @@ pub fn contract(left: &Tensor, right: &Tensor) -> RusticolResult<Laurent> {
     Ok(out)
 }
 
+/// `color.connections._emit`: emit gluon `emitted` from the leg `emitter`
+/// of a structure, as (sign, image) terms.
+pub fn emit(
+    structure: &Structure,
+    emitter: Label,
+    emitted: Label,
+) -> RusticolResult<Vec<(i64, Structure)>> {
+    let both = |before: &[Label], after: &[Label]| -> [(i64, Vec<Label>); 2] {
+        let mut forward = before.to_vec();
+        forward.extend([emitter, emitted]);
+        forward.extend(after);
+        let mut backward = before.to_vec();
+        backward.extend([emitted, emitter]);
+        backward.extend(after);
+        [(1, forward), (-1, backward)]
+    };
+    for (index, string) in structure.strings.iter().enumerate() {
+        let replace = |word: Vec<Label>| {
+            let mut strings = structure.strings.clone();
+            strings[index] = OpenString {
+                q: string.q,
+                word,
+                qbar: string.qbar,
+            };
+            Structure::new(strings, structure.traces.clone())
+        };
+        if emitter == string.q {
+            let mut word = vec![emitted];
+            word.extend(&string.word);
+            return Ok(vec![(1, replace(word))]);
+        }
+        if emitter == string.qbar {
+            let mut word = string.word.clone();
+            word.push(emitted);
+            return Ok(vec![(-1, replace(word))]);
+        }
+        if let Some(position) = string.word.iter().position(|&a| a == emitter) {
+            return Ok(both(&string.word[..position], &string.word[position + 1..])
+                .into_iter()
+                .map(|(sign, word)| (sign, replace(word)))
+                .collect());
+        }
+    }
+    for (index, trace) in structure.traces.iter().enumerate() {
+        if let Some(position) = trace.iter().position(|&a| a == emitter) {
+            return Ok(both(&trace[..position], &trace[position + 1..])
+                .into_iter()
+                .map(|(sign, word)| {
+                    let mut traces = structure.traces.clone();
+                    traces[index] = word;
+                    (sign, Structure::new(structure.strings.clone(), traces))
+                })
+                .collect());
+        }
+    }
+    Err(invalid(format!("emitter {emitter} has no tensor index")))
+}
+
+/// A gluon emission `EmitGluon(emitter, emitted)` of a colour history:
+/// T^emitted on the emitter's colour index.
+pub type Emission = (Label, Label);
+
+/// `observables.connect` for gluon emissions (`apply_color_connection` per
+/// term): each emission applied in order to every term, coefficients and
+/// N_c powers kept, on the output legs (the emitted adjoint labels added)
+/// with one more 1/sqrt(2) per emission.
+pub fn connect(tensor: &Tensor, emissions: &[Emission]) -> RusticolResult<Tensor> {
+    let mut legs = tensor.legs.clone();
+    let mut terms = tensor.terms.clone();
+    for &(emitter, emitted) in emissions {
+        if !legs.iter().any(|leg| leg.0 == emitter && leg.1 != 1) {
+            return Err(invalid(format!("emitter {emitter} is not a coloured leg")));
+        }
+        if legs.iter().any(|leg| leg.0 == emitted) {
+            return Err(invalid(format!("emitted label {emitted} is already a leg")));
+        }
+        let mut next = Vec::with_capacity(2 * terms.len());
+        for term in &terms {
+            for (sign, structure) in emit(&term.structure, emitter, emitted)? {
+                next.push(Term {
+                    coefficient: term.coefficient.scale(&Rational::from(sign)),
+                    structure,
+                    nc_power: term.nc_power,
+                });
+            }
+        }
+        terms = combine_terms(next);
+        legs.push((emitted, ADJOINT));
+    }
+    Ok(Tensor::connected(
+        legs,
+        terms,
+        tensor.normalization + emissions.len() as u32,
+    ))
+}
+
+/// The SU(N_c) completeness relation on the two occurrences of `label` in a
+/// structure, with generators normalised to `Tr(tau^a tau^b) = delta^ab`:
+/// `tau^a_ij tau^a_kl = delta_il delta_kj - delta_ij delta_kl / N_c`, as
+/// (sign, N_c power, structure) terms. Words read in matrix order (open
+/// strings q -> word -> qbar, traces cyclic); an empty trace (N_c) and a
+/// single-letter one (zero) are left to `combine_terms`.
+pub fn fierz_pair(
+    structure: &Structure,
+    label: Label,
+) -> RusticolResult<Vec<(i64, i32, Structure)>> {
+    // Occurrences: (in a string?, index, position).
+    let mut found: Vec<(bool, usize, usize)> = Vec::with_capacity(2);
+    for (s, string) in structure.strings.iter().enumerate() {
+        for (p, &a) in string.word.iter().enumerate() {
+            if a == label {
+                found.push((true, s, p));
+            }
+        }
+    }
+    for (t, trace) in structure.traces.iter().enumerate() {
+        for (p, &a) in trace.iter().enumerate() {
+            if a == label {
+                found.push((false, t, p));
+            }
+        }
+    }
+    if found.len() != 2 {
+        return Err(invalid(format!(
+            "label {label} occurs {} times, not twice",
+            found.len()
+        )));
+    }
+    // A trace rotated to start at position p, with that letter dropped.
+    let rotated = |trace: &[Label], p: usize| -> Vec<Label> {
+        trace[p + 1..].iter().chain(&trace[..p]).copied().collect()
+    };
+    let concat = |a: &[Label], b: &[Label]| -> Vec<Label> { a.iter().chain(b).copied().collect() };
+    let traces_without = |drop: &[usize]| -> Vec<Vec<Label>> {
+        structure
+            .traces
+            .iter()
+            .enumerate()
+            .filter(|(t, _)| !drop.contains(t))
+            .map(|(_, trace)| trace.clone())
+            .collect()
+    };
+    let strings_with = |replaced: &[(usize, OpenString)]| -> Vec<OpenString> {
+        let mut strings = structure.strings.clone();
+        for (s, string) in replaced {
+            strings[*s] = string.clone();
+        }
+        strings
+    };
+    let (first, second) = (found[0], found[1]);
+    Ok(match (first, second) {
+        // Tr(a Y a X) = Tr(Y) Tr(X) - Tr(Y X)/N.
+        ((false, t, p), (false, t2, _)) if t == t2 => {
+            let rest = rotated(&structure.traces[t], p);
+            let k = rest
+                .iter()
+                .position(|&a| a == label)
+                .ok_or_else(|| invalid("trace occurrence lost"))?;
+            let (y, x) = (&rest[..k], &rest[k + 1..]);
+            let others = traces_without(&[t]);
+            let mut split = others.clone();
+            split.extend([y.to_vec(), x.to_vec()]);
+            let mut joined = others;
+            joined.push(concat(y, x));
+            vec![
+                (1, 0, Structure::new(structure.strings.clone(), split)),
+                (-1, -1, Structure::new(structure.strings.clone(), joined)),
+            ]
+        }
+        // Tr(a X) Tr(a Y) = Tr(X Y) - Tr(X) Tr(Y)/N.
+        ((false, t, p), (false, t2, p2)) => {
+            let x = rotated(&structure.traces[t], p);
+            let y = rotated(&structure.traces[t2], p2);
+            let others = traces_without(&[t, t2]);
+            let mut joined = others.clone();
+            joined.push(concat(&x, &y));
+            let mut split = others;
+            split.extend([x, y]);
+            vec![
+                (1, 0, Structure::new(structure.strings.clone(), joined)),
+                (-1, -1, Structure::new(structure.strings.clone(), split)),
+            ]
+        }
+        // (U a V a Z) = (U Z) Tr(V) - (U V Z)/N.
+        ((true, s, p), (true, s2, p2)) if s == s2 => {
+            let string = &structure.strings[s];
+            let (u, v, z) = (
+                &string.word[..p],
+                &string.word[p + 1..p2],
+                &string.word[p2 + 1..],
+            );
+            let outer = OpenString {
+                q: string.q,
+                word: concat(u, z),
+                qbar: string.qbar,
+            };
+            let all = OpenString {
+                q: string.q,
+                word: concat(&concat(u, v), z),
+                qbar: string.qbar,
+            };
+            let mut traces = structure.traces.clone();
+            traces.push(v.to_vec());
+            vec![
+                (1, 0, Structure::new(strings_with(&[(s, outer)]), traces)),
+                (
+                    -1,
+                    -1,
+                    Structure::new(strings_with(&[(s, all)]), structure.traces.clone()),
+                ),
+            ]
+        }
+        // (U a Z) Tr(a Y) = (U Y Z) - (U Z) Tr(Y)/N.
+        ((true, s, p), (false, t, p2)) => {
+            let string = &structure.strings[s];
+            let (u, z) = (&string.word[..p], &string.word[p + 1..]);
+            let y = rotated(&structure.traces[t], p2);
+            let inserted = OpenString {
+                q: string.q,
+                word: concat(&concat(u, &y), z),
+                qbar: string.qbar,
+            };
+            let outer = OpenString {
+                q: string.q,
+                word: concat(u, z),
+                qbar: string.qbar,
+            };
+            let others = traces_without(&[t]);
+            let mut split = others.clone();
+            split.push(y);
+            vec![
+                (1, 0, Structure::new(strings_with(&[(s, inserted)]), others)),
+                (-1, -1, Structure::new(strings_with(&[(s, outer)]), split)),
+            ]
+        }
+        // (U a Z)_{q1 qb1} (P a R)_{q2 qb2}
+        //   = (U R)_{q1 qb2} (P Z)_{q2 qb1} - (U Z)_{q1 qb1} (P R)_{q2 qb2}/N.
+        ((true, s, p), (true, s2, p2)) => {
+            let (one, two) = (&structure.strings[s], &structure.strings[s2]);
+            let (u, z) = (&one.word[..p], &one.word[p + 1..]);
+            let (pp, r) = (&two.word[..p2], &two.word[p2 + 1..]);
+            let crossed = [
+                (
+                    s,
+                    OpenString {
+                        q: one.q,
+                        word: concat(u, r),
+                        qbar: two.qbar,
+                    },
+                ),
+                (
+                    s2,
+                    OpenString {
+                        q: two.q,
+                        word: concat(pp, z),
+                        qbar: one.qbar,
+                    },
+                ),
+            ];
+            let kept = [
+                (
+                    s,
+                    OpenString {
+                        q: one.q,
+                        word: concat(u, z),
+                        qbar: one.qbar,
+                    },
+                ),
+                (
+                    s2,
+                    OpenString {
+                        q: two.q,
+                        word: concat(pp, r),
+                        qbar: two.qbar,
+                    },
+                ),
+            ];
+            vec![
+                (
+                    1,
+                    0,
+                    Structure::new(strings_with(&crossed), structure.traces.clone()),
+                ),
+                (
+                    -1,
+                    -1,
+                    Structure::new(strings_with(&kept), structure.traces.clone()),
+                ),
+            ]
+        }
+        ((false, _, _), (true, _, _)) => {
+            return Err(invalid("trace occurrence listed before a string one"));
+        }
+    })
+}
+
+/// `observables.absorb`: the adjoint of one gluon emission, sum_a T^a_e X_a
+/// (the emitted label a of `tensor` contracted with a generator on its
+/// emitter e: a fresh label emitted from e and identified with a, then
+/// Fierz-reduced), so that <X|E Y> = <absorb(X, E)|Y> for every Y on the
+/// emitter's legs; the emission's 1/sqrt(2) stays in the normalisation.
+pub fn absorb(tensor: &Tensor, (emitter, emitted): Emission) -> RusticolResult<Tensor> {
+    let legs: Vec<Leg> = tensor
+        .legs
+        .iter()
+        .filter(|leg| leg.0 != emitted)
+        .copied()
+        .collect();
+    if legs.len() + 1 != tensor.legs.len() {
+        return Err(invalid(format!("absorbed label {emitted} is not a leg")));
+    }
+    if !legs.iter().any(|leg| leg.0 == emitter && leg.1 != 1) {
+        return Err(invalid(format!("emitter {emitter} is not a coloured leg")));
+    }
+    let fresh = tensor.legs.iter().map(|leg| leg.0).min().unwrap_or(0) - 1;
+    let join = |a: Label| if a == fresh { emitted } else { a };
+    let mut terms = Vec::new();
+    for term in &tensor.terms {
+        for (sign, structure) in emit(&term.structure, emitter, fresh)? {
+            for (fierz, power, reduced) in fierz_pair(&structure.relabelled(&join), emitted)? {
+                terms.push(Term {
+                    coefficient: term.coefficient.scale(&Rational::from(sign * fierz)),
+                    structure: reduced,
+                    nc_power: term.nc_power + power,
+                });
+            }
+        }
+    }
+    Ok(Tensor::connected(legs, terms, tensor.normalization + 1))
+}
+
+/// `DirectedColour.operator`: ket^dagger bra |tensor> on the Born legs, so
+/// that <bra(t)|ket(k)> = <operator(t)|k> for every k: the Born side's
+/// emissions applied (`connect`), then the loop side's absorbed in reverse.
+pub fn operator_image(
+    tensor: &Tensor,
+    born: &[Emission],
+    loop_side: &[Emission],
+) -> RusticolResult<Tensor> {
+    let mut image = connect(tensor, born)?;
+    for &emission in loop_side.iter().rev() {
+        image = absorb(&image, emission)?;
+    }
+    Ok(image)
+}
+
+/// `tensor_overlap_degrees` with the bra sets given as literal structures
+/// and the colour histories (Born side, loop side) whose operator images
+/// form them (`DirectedColour.overlap` of a history whose steps are all
+/// gluon emissions): per (history, bra set, ket set, offset) query. Each
+/// distinct (history, structure) image is formed once, in parallel.
+pub fn directed_overlap_degrees(
+    legs: &[Leg],
+    bras: &[Vec<(Structure, i32)>],
+    kets: &[Vec<(Structure, i32)>],
+    histories: &[(Vec<Emission>, Vec<Emission>)],
+    queries: &[(usize, usize, usize, i32)],
+) -> RusticolResult<Vec<Option<i32>>> {
+    let mut legs = legs.to_vec();
+    legs.sort();
+    // The (history, bra set) pairs the queries need, as image sets.
+    let mut set_ids: FastMap<(usize, usize), usize> = FastMap::default();
+    let mut needed: Vec<(usize, usize)> = Vec::new();
+    let mut plain: Vec<(usize, usize, i32)> = Vec::with_capacity(queries.len());
+    for &(history, bra, ket, offset) in queries {
+        if history >= histories.len() || bra >= bras.len() {
+            return Err(invalid("history or bra key set out of range"));
+        }
+        let id = *set_ids.entry((history, bra)).or_insert_with(|| {
+            needed.push((history, bra));
+            needed.len() - 1
+        });
+        plain.push((id, ket, offset));
+    }
+    let image_sets: Vec<Vec<(Tensor, i32)>> = needed
+        .par_iter()
+        .map(|&(history, bra)| {
+            let (born, loop_side) = &histories[history];
+            bras[bra]
+                .iter()
+                .map(|(structure, p)| {
+                    let literal = Tensor::single(&legs, structure.clone());
+                    Ok((operator_image(&literal, born, loop_side)?, *p))
+                })
+                .collect::<RusticolResult<Vec<_>>>()
+        })
+        .collect::<RusticolResult<_>>()?;
+    let ket_sets: Vec<Vec<(Tensor, i32)>> = kets
+        .iter()
+        .map(|set| {
+            set.iter()
+                .map(|(structure, q)| (Tensor::single(&legs, structure.clone()), *q))
+                .collect()
+        })
+        .collect();
+    tensor_overlap_degrees(&image_sets, &ket_sets, &plain)
+}
+
 // --------------------------------------------------------------- primitives
 
 /// The kind of a certified primitive seed class (`colour.Primitive.kind`).
@@ -904,6 +1302,18 @@ impl CellEngine {
             return Err(invalid("rebased primitive cells need the same colour legs"));
         }
         Ok(Self::on(self.legs.clone(), basis, Arc::clone(&self.shared)))
+    }
+
+    /// The engine against the operator images of this basis under a colour
+    /// history whose steps are all gluon emissions ([`operator_image`],
+    /// formed in parallel), sharing the caches (`DirectedColour._table`).
+    pub fn directed(&self, born: &[Emission], loop_side: &[Emission]) -> RusticolResult<Self> {
+        let images = self
+            .basis
+            .par_iter()
+            .map(|b| operator_image(b, born, loop_side))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        self.rebased(images)
     }
 
     /// The sizes of the shared caches ([`CacheSizes`]).

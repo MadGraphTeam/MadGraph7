@@ -66,6 +66,34 @@ fn raw_laurent(cell: &Laurent) -> RawLaurent {
         .collect()
 }
 
+fn raw_tensor(tensor: &Tensor) -> RawTensor {
+    (
+        tensor.legs.clone(),
+        tensor
+            .terms
+            .iter()
+            .map(|term| {
+                let (re, im) = term.coefficient.texts();
+                let structure = &term.structure;
+                (
+                    re,
+                    im,
+                    term.nc_power,
+                    (
+                        structure
+                            .strings
+                            .iter()
+                            .map(|s| (s.q, s.word.clone(), s.qbar))
+                            .collect(),
+                        structure.traces.clone(),
+                    ),
+                )
+            })
+            .collect(),
+        tensor.normalization,
+    )
+}
+
 fn class(raw: RawClass) -> PyResult<ClassInput> {
     let (kind, word, ring, forward, generic) = raw;
     Ok(match kind {
@@ -229,6 +257,22 @@ impl NativeCellEngine {
         Ok(Self {
             engine: self.engine.rebased(basis).map_err(error)?,
         })
+    }
+
+    /// The engine against the operator images of this basis under a colour
+    /// history of gluon emissions (`born`, `loop_side`: (emitter, emitted)
+    /// in order), sharing the caches (`DirectedColour._table`).
+    #[pyo3(signature = (born, loop_side, threads=None))]
+    fn directed(
+        &self,
+        py: Python<'_>,
+        born: Vec<(i64, i64)>,
+        loop_side: Vec<(i64, i64)>,
+        threads: Option<usize>,
+    ) -> PyResult<Self> {
+        let engine = &self.engine;
+        let directed = on_threads(py, threads, || engine.directed(&born, &loop_side))?;
+        Ok(Self { engine: directed })
     }
 
     /// Register a canonical quark ring by its reduced tensor.
@@ -459,6 +503,57 @@ fn tensor_overlap_degrees(
     })
 }
 
+/// `DirectedColour.operator` of literal tensors under a colour history of
+/// gluon emissions (`cells::operator_image`), as raw tensors (exact texts).
+#[pyfunction]
+#[pyo3(signature = (tensors, born, loop_side))]
+fn operator_images(
+    py: Python<'_>,
+    tensors: Vec<RawTensor>,
+    born: Vec<(i64, i64)>,
+    loop_side: Vec<(i64, i64)>,
+) -> PyResult<Vec<RawTensor>> {
+    let tensors = tensors
+        .into_iter()
+        .map(tensor)
+        .collect::<PyResult<Vec<_>>>()?;
+    let images = py
+        .detach(|| {
+            tensors
+                .iter()
+                .map(|t| cells::operator_image(t, &born, &loop_side))
+                .collect::<rusticol_core::RusticolResult<Vec<_>>>()
+        })
+        .map_err(error)?;
+    Ok(images.iter().map(raw_tensor).collect())
+}
+
+/// The overlap degrees under colour histories of gluon emissions, with the
+/// operator images of the bra structures formed natively
+/// (`cells::directed_overlap_degrees`): per (history, bra set, ket set,
+/// offset) query.
+#[pyfunction]
+#[pyo3(signature = (legs, bras, kets, histories, queries, threads=None))]
+fn directed_overlap_degrees(
+    py: Python<'_>,
+    legs: Vec<(i64, i32)>,
+    bras: Vec<Vec<(RawStructure, i32)>>,
+    kets: Vec<Vec<(RawStructure, i32)>>,
+    histories: Vec<(Vec<(i64, i64)>, Vec<(i64, i64)>)>,
+    queries: Vec<(usize, usize, usize, i32)>,
+    threads: Option<usize>,
+) -> PyResult<Vec<Option<i32>>> {
+    let sets = |raw: Vec<Vec<(RawStructure, i32)>>| -> Vec<Vec<(Structure, i32)>> {
+        raw.into_iter()
+            .map(|set| set.into_iter().map(|(s, p)| (structure(s), p)).collect())
+            .collect()
+    };
+    let (bras, kets) = (sets(bras), sets(kets));
+    on_threads(py, threads, || {
+        cells::directed_overlap_degrees(&legs, &bras, &kets, &histories, &queries)
+    })
+}
+
 /// `_prune_colour`'s class liveness per (class, loop rank) query.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
@@ -617,6 +712,8 @@ pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(project_records, module)?)?;
     module.add_function(wrap_pyfunction!(overlap_degrees, module)?)?;
     module.add_function(wrap_pyfunction!(tensor_overlap_degrees, module)?)?;
+    module.add_function(wrap_pyfunction!(directed_overlap_degrees, module)?)?;
+    module.add_function(wrap_pyfunction!(operator_images, module)?)?;
     module.add_function(wrap_pyfunction!(live_classes, module)?)?;
     Ok(())
 }
