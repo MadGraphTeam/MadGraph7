@@ -3,14 +3,17 @@
 //! Python entry points of the native plan model (WP3.1 package D2,
 //! `rusticol_core::loop_v2::plan::binary`): the plan v4 model with its
 //! byte-identical JSON writer and its binary columnar member, and the loader
-//! from either encoding. In phase 0 the model is fed with the records of a
-//! Python `ExportedPlan` (`loops/v2/native_lowering.py`).
+//! from either encoding. The model is fed with the records of a Python
+//! `ExportedPlan` (`loops/v2/native_lowering.py`): read from the Python
+//! objects themselves (`from_program`, the production route of
+//! `ExportedPlan.json()` and `ExportedPlan.binary()`), or from a JSON.
 use super::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBool, PyBytes, PyDict, PyInt, PyList, PyString, PyTuple};
 use rusticol_core::loop_v2::plan::binary::{
     PlanModel, column_names, is_binary, program_digest, read_binary,
 };
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
+use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use std::time::Instant;
 
 /// A plan v4 model (`PlanModel`).
@@ -25,6 +28,18 @@ impl V2PlanModel {
         py.detach(|| PlanModel::from_json(json))
             .map(Self)
             .map_err(error)
+    }
+
+    /// The model of an exported plan's records (`ExportedPlan.program`),
+    /// read from the Python objects: exactly the values `json.dumps` writes
+    /// as the loader's types (`Records`), so the native JSON is
+    /// `json.dumps(program, separators=(",", ":"))` byte for byte, or the
+    /// conversion fails with the record's path.
+    #[staticmethod]
+    fn from_program(program: &Bound<'_, PyAny>) -> PyResult<Self> {
+        PlanModel::from_records(Records(program))
+            .map(Self)
+            .map_err(|failure| error(format!("loop v2 plan records: {failure}")))
     }
 
     /// The model of a binary plan member.
@@ -117,6 +132,326 @@ fn v2_plan_read(py: Python<'_>, data: &[u8]) -> PyResult<String> {
         Ok(program_digest(&program))
     })
     .map_err(|e: rusticol_core::RusticolError| error(e))
+}
+
+// ------------------------------------------------------- Python records
+
+/// A plan's records as Python objects, read as the loader's file form (a
+/// `serde` deserializer over them). Only the values `json.dumps` writes as
+/// the expected JSON are accepted: an `int` that is not a `bool` for a
+/// number, a `bool` for a flag, a `str`, `None` for an absent option, a
+/// `list` or `tuple` of the expected length, a `dict` with `str` keys for a
+/// record (unknown keys refused). Anything else (a float, a `bool` for a
+/// number, a number beyond the field's type) fails with the record's path,
+/// never writes other bytes than `json.dumps`.
+struct Records<'a, 'py>(&'a Bound<'py, PyAny>);
+
+/// Why the records do not convert, with the path to the value.
+#[derive(Debug)]
+struct RecordError(String);
+
+impl std::fmt::Display for RecordError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for RecordError {}
+
+impl de::Error for RecordError {
+    fn custom<T: std::fmt::Display>(message: T) -> Self {
+        Self(message.to_string())
+    }
+}
+
+impl RecordError {
+    /// The error with the key or index it was found under prepended (a path
+    /// such as `.families[3].leaves[0].weight: expected a str, ...`).
+    fn at(self, place: impl std::fmt::Display) -> Self {
+        if self.0.starts_with(['.', '[']) {
+            Self(format!("{place}{}", self.0))
+        } else {
+            Self(format!("{place}: {}", self.0))
+        }
+    }
+}
+
+impl<'py> Records<'_, 'py> {
+    fn unexpected(&self, expected: &str) -> RecordError {
+        let found = self
+            .0
+            .get_type()
+            .name()
+            .map_or_else(|_| "?".to_owned(), |name| name.to_string());
+        RecordError(format!("expected {expected}, found a Python {found}"))
+    }
+
+    fn integer<'de, V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        let value = self.0;
+        if value.is_instance_of::<PyBool>() || !value.is_instance_of::<PyInt>() {
+            return Err(self.unexpected("an integer"));
+        }
+        if let Ok(small) = value.extract::<i64>() {
+            visitor.visit_i64(small)
+        } else if let Ok(large) = value.extract::<u64>() {
+            visitor.visit_u64(large)
+        } else {
+            Err(RecordError("an integer beyond 64 bits".to_owned()))
+        }
+    }
+
+    fn sequence<'de, V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        let value = self.0;
+        if let Ok(list) = value.cast::<PyList>() {
+            let mut items = Items {
+                items: list.iter(),
+                index: 0,
+            };
+            let out = visitor.visit_seq(&mut items)?;
+            items.end()?;
+            Ok(out)
+        } else if let Ok(tuple) = value.cast::<PyTuple>() {
+            let mut items = Items {
+                items: tuple.iter(),
+                index: 0,
+            };
+            let out = visitor.visit_seq(&mut items)?;
+            items.end()?;
+            Ok(out)
+        } else {
+            Err(self.unexpected("a list"))
+        }
+    }
+
+    fn record<'de, V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        let dict = self
+            .0
+            .cast::<PyDict>()
+            .map_err(|_| self.unexpected("a dict"))?;
+        visitor.visit_map(Fields {
+            items: dict.iter(),
+            value: None,
+            key: String::new(),
+        })
+    }
+}
+
+impl<'de> de::Deserializer<'de> for Records<'_, '_> {
+    type Error = RecordError;
+
+    fn deserialize_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        let value = self.0;
+        if value.is_none() {
+            visitor.visit_unit()
+        } else if let Ok(flag) = value.cast::<PyBool>() {
+            visitor.visit_bool(flag.is_true())
+        } else if value.is_instance_of::<PyInt>() {
+            self.integer(visitor)
+        } else if value.is_instance_of::<PyString>() {
+            self.deserialize_str(visitor)
+        } else if value.is_instance_of::<PyDict>() {
+            self.record(visitor)
+        } else {
+            self.sequence(visitor)
+        }
+    }
+
+    fn deserialize_bool<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        match self.0.cast::<PyBool>() {
+            Ok(flag) => visitor.visit_bool(flag.is_true()),
+            Err(_) => Err(self.unexpected("a bool")),
+        }
+    }
+
+    fn deserialize_str<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        let text = self
+            .0
+            .cast::<PyString>()
+            .map_err(|_| self.unexpected("a str"))?;
+        visitor.visit_str(
+            text.to_str()
+                .map_err(|_| RecordError("a str with lone surrogates".to_owned()))?,
+        )
+    }
+
+    fn deserialize_string<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.deserialize_str(visitor)
+    }
+
+    fn deserialize_identifier<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.deserialize_str(visitor)
+    }
+
+    fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        if self.0.is_none() {
+            visitor.visit_none()
+        } else {
+            visitor.visit_some(self)
+        }
+    }
+
+    fn deserialize_seq<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.sequence(visitor)
+    }
+
+    fn deserialize_tuple<V: Visitor<'de>>(
+        self,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, RecordError> {
+        self.sequence(visitor)
+    }
+
+    fn deserialize_tuple_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, RecordError> {
+        self.sequence(visitor)
+    }
+
+    fn deserialize_map<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.record(visitor)
+    }
+
+    fn deserialize_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        _fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, RecordError> {
+        self.record(visitor)
+    }
+
+    fn deserialize_ignored_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        visitor.visit_unit()
+    }
+
+    fn deserialize_i8<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.integer(visitor)
+    }
+
+    fn deserialize_i16<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.integer(visitor)
+    }
+
+    fn deserialize_i32<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.integer(visitor)
+    }
+
+    fn deserialize_i64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.integer(visitor)
+    }
+
+    fn deserialize_u8<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.integer(visitor)
+    }
+
+    fn deserialize_u16<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.integer(visitor)
+    }
+
+    fn deserialize_u32<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.integer(visitor)
+    }
+
+    fn deserialize_u64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
+        self.integer(visitor)
+    }
+
+    serde::forward_to_deserialize_any! {
+        i128 u128 f32 f64 char bytes byte_buf unit unit_struct newtype_struct enum
+    }
+}
+
+/// The items of a Python list or tuple, each read as one value.
+struct Items<I> {
+    items: I,
+    index: usize,
+}
+
+impl<'py, I: ExactSizeIterator<Item = Bound<'py, PyAny>>> Items<I> {
+    /// Every item read: a longer list than its type (an array or a tuple)
+    /// is refused, as a JSON reader refuses it.
+    fn end(self) -> Result<(), RecordError> {
+        match self.items.len() {
+            0 => Ok(()),
+            more => Err(RecordError(format!(
+                "{more} more items than expected after item {}",
+                self.index
+            ))),
+        }
+    }
+}
+
+impl<'de, 'py, I: ExactSizeIterator<Item = Bound<'py, PyAny>>> SeqAccess<'de> for Items<I> {
+    type Error = RecordError;
+
+    fn next_element_seed<T: DeserializeSeed<'de>>(
+        &mut self,
+        seed: T,
+    ) -> Result<Option<T::Value>, RecordError> {
+        match self.items.next() {
+            None => Ok(None),
+            Some(item) => {
+                let index = self.index;
+                self.index += 1;
+                seed.deserialize(Records(&item))
+                    .map(Some)
+                    .map_err(|error| error.at(format!("[{index}]")))
+            }
+        }
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        Some(self.items.len())
+    }
+}
+
+/// The fields of a Python dict (`str` keys), each read as one value.
+struct Fields<'py, I> {
+    items: I,
+    value: Option<Bound<'py, PyAny>>,
+    /// The key of the value read next (the error's path).
+    key: String,
+}
+
+impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAccess<'de>
+    for Fields<'py, I>
+{
+    type Error = RecordError;
+
+    fn next_key_seed<K: DeserializeSeed<'de>>(
+        &mut self,
+        seed: K,
+    ) -> Result<Option<K::Value>, RecordError> {
+        let Some((key, value)) = self.items.next() else {
+            return Ok(None);
+        };
+        let name = key
+            .cast::<PyString>()
+            .map_err(|_| Records(&key).unexpected("a str key"))?;
+        let name = name
+            .to_str()
+            .map_err(|_| RecordError("a key with lone surrogates".to_owned()))?;
+        self.key.clear();
+        self.key.push_str(name);
+        self.value = Some(value);
+        seed.deserialize(Records(&key)).map(Some)
+    }
+
+    fn next_value_seed<V: DeserializeSeed<'de>>(
+        &mut self,
+        seed: V,
+    ) -> Result<V::Value, RecordError> {
+        let value = self
+            .value
+            .take()
+            .ok_or_else(|| RecordError("a value without its key".to_owned()))?;
+        seed.deserialize(Records(&value))
+            .map_err(|error| error.at(format!(".{}", self.key)))
+    }
 }
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
