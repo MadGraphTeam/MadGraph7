@@ -35,7 +35,7 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   reduction-direction check) return one estimate per point that bounds the
   true error, and no estimate without checks;
 * a fresh interpreter loads and evaluates the stored native point inputs
-  (``point_inputs = "native-v1"``, WP3.1) with generation forbidden, with
+  (``point_inputs = "native-v2"``, WP3.1) with generation forbidden, with
   bitwise-identical binary64 values also after unrelated Symbolica symbols
   were created; a call that needs the generation objects (correlated and
   resolved outputs) regenerates the slice and refuses a stored plan that
@@ -1071,7 +1071,7 @@ def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
     from pyamplicol import Runtime
 
     here = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
-    assert here.inspect()["point_inputs"] == "native-v1"
+    assert here.inspect()["point_inputs"] == "native-v2"
     value = here.evaluate([POINT], mu_r2="1000000")
     expected = [
         here.inspect()["plan_sha256"],
@@ -1338,7 +1338,7 @@ def test_inspect_summarizes_v2_loop_artifacts(full_colour):
     assert loop.arithmetic == ("double", "double-double", "arbitrary")
     assert loop.resolved and not loop.correlations
     assert loop.color_correlations == () and loop.spin_correlations == ()
-    assert loop.point_inputs == "native-v1"
+    assert loop.point_inputs == "native-v2"
     execution = json.loads((full_colour / "processes/gg/execution.json").read_text())
     assert loop.plan_sha256 == execution["plan_sha256"]
     assert by_id["uux_ddxg"].loop.families == 42
@@ -2264,11 +2264,10 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     """u u~ > d d~ with QCD and electroweak Born amplitudes (explicit limits
     QCD 2, QED 2): the dry run derives one loop order per Born amplitude
     order (QCD^4 and QCD^2 QED^2, not the limits raised by two) and does not
-    claim loop admission; in the SM the generation fails closed on the W
-    exchange of the electroweak Born: its root closure at leg 1 needs the
-    conjugate rule of a vertex that is not closed under conjugation (the
-    chiral Z on loop quark lines, which stopped it earlier, is supported
-    since WP3.1 I-AX). With photon exchange only
+    claim loop admission; in the SM it generates, the W exchange of the
+    electroweak Born closing at leg 1 through the conjugate rule of its
+    vertex (WP3.2 EWI-2; its values against MadLoop with the Wolfenstein CKM:
+    ``test_loop_v2_ew_lines``). With photon exchange only
     (Z, W and scalars excluded through the slice request) the public
     generator and runtime, regenerating at load, equal MadLoop's split-order
     control in every squared order (MadLoop binary64): each Born order within
@@ -2302,13 +2301,7 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
         {"QCD": 2, "QED": 2},
     ]
     assert coverage["loop_admission_checked"] is False
-    with pytest.raises(
-        GenerationError,
-        match=r"is not closed under conjugation; the tree reading of its legs "
-        r"needs its conjugate rule",
-    ):
-        generator.generate(processes, tmp_path / "a")
-    assert not (tmp_path / "a").exists()
+    generator.generate(processes, tmp_path / "a")
 
     request = loop_service._v2_request
     monkeypatch.setattr(
@@ -2473,7 +2466,9 @@ def test_coloured_width_fixed_to_zero_equals_legacy_at_sixty_digits(
     )
 
 
-def _qed_model_generator(model: Path, tmp_path: Path, name: str, entries, *, engine):
+def _qed_model_generator(
+    model: Path, tmp_path: Path, name: str, entries, *, engine, fixed='MB = "0"'
+):
     from pyamplicol.api import Generator
     from pyamplicol.config import resolve_config
 
@@ -2482,9 +2477,10 @@ def _qed_model_generator(model: Path, tmp_path: Path, name: str, entries, *, eng
     )
     card = tmp_path / f"{name}.toml"
     card.write_text(
-        text.replace('fixed_parameters = {MB = "0"}', COMPATIBILITY).replace(
-            'engine = "v2"', f'engine = "{engine}"'
-        )
+        text.replace(
+            'fixed_parameters = {MB = "0"}',
+            COMPATIBILITY.replace('{MB = "0"}', f"{{{fixed}}}"),
+        ).replace('engine = "v2"', f'engine = "{engine}"')
         if engine
         else text
     )
@@ -2498,17 +2494,22 @@ def test_qed_declaring_model_names_its_blockers(
     """MG5_aMC's loop_qcd_qed_sm with QCD and QED corrections through the
     public v2 path (its MU_R, at LHA code LOOP 666, is resolved at the public
     boundary). Without the compatibility profile both engines refuse its G-
-    Goldstone flag, which the dry run reports from the model preparation;
-    with it, u u~ > d d~ stops at the electroweak counterterms that the tree
-    recursion cannot lower and whose vertices can enter a tree of the
-    request: couplings with the complex-mass scheme's UFO helper recms
-    (WP3.2). There is no site fallback. The unlowerable G0-photon mixing
-    between spins is inert (REQUIREMENTS_ADDENDUM J): the model's tree model
-    absorbs the Goldstones into the massive vectors (``CompiledUFOModel.
-    inactive_goldstone_names``), so it holds no G0 vertex and no tree of any
-    request on this model holds the mixing."""
+    Goldstone flag, which the dry run reports from the model preparation.
+    With it, u u~ > d d~ at the card's W and Z widths is refused by the
+    electroweak width policy (WP3.2 EWI-0b, the user's decision [U8]: the
+    widths fixed to zero, or the complex-mass scheme), before its tree
+    kernels and the counterterm lowering. With those widths fixed to zero it
+    stops at the electroweak counterterms that the tree recursion cannot
+    lower and whose vertices can enter a tree of the request: couplings with
+    the complex-mass scheme's UFO helper recms (WP3.2). There is no site
+    fallback. The unlowerable G0-photon mixing between spins is inert
+    (REQUIREMENTS_ADDENDUM J): the model's tree model absorbs the Goldstones
+    into the massive vectors (``CompiledUFOModel.inactive_goldstone_names``),
+    so it holds no G0 vertex and no tree of any request on this model holds
+    the mixing."""
 
     from pyamplicol.api import ProcessRequest, ProcessSet
+    from pyamplicol.loops.v2.ew_policy import ElectroweakWidthError
     from pyamplicol.models.loading import compile_model_source
 
     entries = (("uudd", "u u~ > d d~"),)
@@ -2526,13 +2527,29 @@ def test_qed_declaring_model_names_its_blockers(
         loop_qcd_qed_sm_ufo, tmp_path, "b", entries, engine="v2"
     )
     with pytest.raises(
+        ElectroweakWidthError,
+        match=r"'u u~ > d d~': an electroweak request .* with a width that is not "
+        r"fixed to zero: W\+ \(WW\), W- \(WW\), Z \(WZ\)\..* fixed_parameters "
+        r'\(WW = "0", WZ = "0"\); .*complex-mass scheme',
+    ):
+        profiled.generate(processes, tmp_path / "b")
+    assert not (tmp_path / "b").exists()
+    zero_widths = _qed_model_generator(
+        loop_qcd_qed_sm_ufo,
+        tmp_path,
+        "c",
+        entries,
+        engine="v2",
+        fixed='MB = "0", WW = "0", WZ = "0"',
+    )
+    with pytest.raises(
         GenerationError,
         match=r"counterterm rules the tree recursion cannot lower, whose vertices "
         r"can enter a tree of the request: .*UFO helper 'recms'",
     ) as refused:
-        profiled.generate(processes, tmp_path / "b")
+        zero_widths.generate(processes, tmp_path / "c")
     assert "G0" not in str(refused.value)
-    assert not (tmp_path / "b").exists()
+    assert not (tmp_path / "c").exists()
 
 
 @pytest.mark.loop_nightly

@@ -132,8 +132,8 @@ pub fn load_loop_artifact(
             .iter()
             .any(|capability| capability == LOOP_V2_RUNTIME_CAPABILITY),
         "plan v4 processes (rusticol.loop-runtime.v4) are not evaluated by this \
-         runtime yet: their trees, Born amplitudes and counterterm scalars are \
-         computed by the Python runtime (pyamplicol Runtime.load)",
+         runtime yet: the standalone SDK has no plan v4 runtime; evaluate them \
+         with the Python runtime (pyamplicol Runtime.load)",
     )?;
     require(
         artifact.manifest().runtime.required_runtime_capabilities == [LOOP_RUNTIME_CAPABILITY]
@@ -432,14 +432,21 @@ pub const LOOP_V2_POINT_INPUTS: &str = "regenerated-at-load";
 /// Native point inputs (WP3.1): the PACBIN also holds the process's native
 /// program (`loops/v2/native_process.py`): its assembly record and tree
 /// program (zlib JSON, kind `LoopRuntimePlan`), its parameter evaluator and
-/// kernel evaluators (saved exact Symbolica states), so a load regenerates
-/// nothing.
-pub const LOOP_V2_NATIVE_POINT_INPUTS: &str = "native-v1";
+/// kernel evaluators (saved exact Symbolica states, for DoubleFloat and
+/// arbitrary precision) and their binary64 SymJIT plane applications
+/// (storage-v4 IR, kind `SymjitApplication`, recompiled at load), so a load
+/// regenerates nothing and binary64 touches no Symbolica state.
+pub const LOOP_V2_NATIVE_POINT_INPUTS: &str = "native-v2";
+
+/// Former point-input declarations, refused with a request to regenerate:
+/// `native-v1` stored no plane applications.
+pub const LOOP_V2_RETIRED_POINT_INPUTS: [&str; 1] = ["native-v1"];
 
 /// The PACBIN members of native point inputs.
 pub const LOOP_V2_NATIVE_RECORD_MEMBER: &str = "point-inputs/native-process.json.zlib";
 pub const LOOP_V2_NATIVE_TREES_MEMBER: &str = "point-inputs/tree-program.json.zlib";
 pub const LOOP_V2_NATIVE_PARAMETERS_MEMBER: &str = "point-inputs/parameters.state";
+pub const LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER: &str = "point-inputs/parameters.symjit";
 
 #[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
@@ -519,6 +526,12 @@ pub fn load_loop_v2_artifact(
         None => artifact.read_payload(&path)?,
     };
     let execution: ExecutionV4 = parse(&bytes)?;
+    // Internal formats are not kept backward compatible (AGENTS.md).
+    require(
+        !LOOP_V2_RETIRED_POINT_INPUTS.contains(&execution.point_inputs.as_str()),
+        "the artifact's point inputs are no longer supported (native-v1 stored \
+         no SymJIT plane applications); regenerate the artifact",
+    )?;
     require(
         execution.schema_version == 4
             && execution.kind == LOOP_RUNTIME_KIND
@@ -591,6 +604,10 @@ pub fn load_loop_v2_artifact(
             (
                 LOOP_V2_NATIVE_PARAMETERS_MEMBER,
                 PacbinMemberKind::SymbolicaExactState,
+            ),
+            (
+                LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER,
+                PacbinMemberKind::SymjitApplication,
             ),
         ] {
             require(

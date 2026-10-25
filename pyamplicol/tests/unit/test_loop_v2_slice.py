@@ -286,8 +286,9 @@ def test_uux_emepgg_colour_projections_are_generable(
 ):
     """WP2.4 acceptance control uu~ -> e-e+gg (photon and Z): its LC/NLC slice
     generates (the generator certifies the closed-quark A g g triangles,
-    Furry, and admits the Z on loop quark lines). Comparing its projections
-    with a legacy O1 capture (then in PROJECTED) is open."""
+    Furry, and admits the Z on loop quark lines). Its projections equal the
+    formal N_c projections of the full-colour cells
+    (``test_loop_v2_ew_lines``, nightly); a legacy O1 capture is open."""
 
     from pyamplicol.models.loading import load_compiled_model
     from pyamplicol.models.loop_color_declaration import LoopColorDeclaration

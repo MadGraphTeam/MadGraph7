@@ -652,7 +652,11 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         )
         candidate_version_line = f'version = "{candidate_version}"'
         assert candidate_version_line in cargo
-        assert lock.count(candidate_version_line) == 3
+        # Every crate inheriting the workspace version, the key crate
+        # ``pyamplicol`` included (maturin builds with ``--locked``).
+        inheriting = backend._workspace_version_crates(overlay)
+        assert "pyamplicol" in inheriting
+        assert lock.count(candidate_version_line) == len(inheriting)
         candidate_core = (
             overlay / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
         ).read_text(encoding="utf-8")
@@ -1792,6 +1796,33 @@ def test_python_extension_rebuilds_and_refreshes_embedded_sdk() -> None:
 
     assert "PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256" in build_script
     assert "remove_dir_all(&sdk_output)" in build_script
+
+
+def test_candidate_lock_follows_every_crate_inheriting_the_workspace_version() -> None:
+    """A candidate build rewrites the workspace version; every workspace member
+    that inherits it (``version.workspace = true``) must move in Cargo.lock too,
+    or maturin's ``--locked`` build refuses the lock. Members with their own
+    version (the loop crates) keep theirs."""
+
+    with (ROOT / "Cargo.toml").open("rb") as stream:
+        base = tomllib.load(stream)["workspace"]["package"]["version"]
+    with (ROOT / "Cargo.lock").open("rb") as stream:
+        lock = tomllib.load(stream)["package"]
+    local = {p["name"]: p["version"] for p in lock if "source" not in p}
+    inheriting = backend._workspace_version_crates(ROOT)
+    assert "pyamplicol" in inheriting and "rusticol-core" in inheriting
+    assert {name for name, version in local.items() if version == base} == set(
+        inheriting
+    )
+    candidate = f"{base}-dev.0+candidate.0123456789ab"
+    rewritten = tomllib.loads(
+        backend._candidate_lock_text(
+            ROOT, (ROOT / "Cargo.lock").read_text(encoding="utf-8"), base, candidate
+        )
+    )["package"]
+    after = {p["name"]: p["version"] for p in rewritten if "source" not in p}
+    assert {name for name in after if after[name] == candidate} == set(inheriting)
+    assert all(after[name] == local[name] for name in local if name not in inheriting)
 
 
 def test_sdk_build_restores_maturin_pruned_sdist_workspace_member(

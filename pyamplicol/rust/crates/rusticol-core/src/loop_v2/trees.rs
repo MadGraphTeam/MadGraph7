@@ -42,11 +42,21 @@
 //!
 //! Every value derives from the stored program and the external parameters:
 //! no Python per batch or point.
+//!
+//! **Carriers.** Each kernel and the parameter program come as a saved exact
+//! evaluator and, from the generation (`native_trees.py`), as a SymJIT
+//! storage-v4 plane application (IR, recompiled for the loading CPU and
+//! sealed, `evaluator::symjit_plane`; DESIGN §3.7): binary64 runs the plane
+//! applications and touches no Symbolica state, so it needs no licence;
+//! DoubleFloat and arbitrary precision decode the exact states in the
+//! carrier, under pyAmpliCol's Symbolica library key (`crate::licence`), as
+//! binary64 does on an x86-64 CPU without AVX and FMA3 (where SymJIT cannot
+//! compile).
 
 use super::dress::{Carrier, cast, parse_rational};
 use super::interference::{Entry, Interference, InterferenceRuntime, Ket};
 use super::plan::LoopProgramV4;
-use crate::engine::SchemaSources;
+use crate::engine::{PlaneDescriptor, SchemaSources, SymjitPlaneKernel, SymjitPlaneLayout};
 use crate::{RusticolError, RusticolResult};
 use rayon::prelude::*;
 use serde::Deserialize;
@@ -56,7 +66,119 @@ use symbolica::domains::rational::Rational;
 use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
 
 /// The tree-program schema this executor runs.
-pub const TREE_SCHEMA: u32 = 2;
+pub const TREE_SCHEMA: u32 = 3;
+
+/// Generation: the binary64 SymJIT plane application of a saved exact
+/// evaluator of a tree program (a kernel or the parameter program), with its
+/// input and output counts. The evaluator is the one binary64 would run
+/// without it (its coefficients, registered constants included, cast as
+/// [`TreeProgram::runtime`] casts them), compiled at `opt_level` into
+/// storage-v4 IR (`evaluator::symjit_plane`).
+#[cfg(feature = "python-generation-bridge")]
+pub fn compile_plane_application(
+    saved: &[u8],
+    opt_level: u8,
+    compress: bool,
+) -> RusticolResult<(Vec<u8>, usize, usize)> {
+    let _unlock = crate::licence::unlock();
+    let zero = 0.0_f64;
+    let complex = |re: &Rational, im: &Rational| Complex::new(cast(&zero, re), cast(&zero, im));
+    let evaluator = crate::engine::decode_exact_evaluator_state(saved)?.map_coeff_with_prec(
+        &|r| complex(&r.re, &r.im),
+        symbolica::domains::float::FloatLike::get_precision(&zero),
+    );
+    let (plane, inputs, outputs) =
+        crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(
+            &evaluator, opt_level, compress,
+        )?;
+    verify_plane(&plane, evaluator.into_batch_evaluator(), (inputs, outputs))?;
+    Ok((plane, inputs, outputs))
+}
+
+/// Refuse a plane application that disagrees with its evaluator at two fixed
+/// real points (inputs in (0.5, 1.5)): a translation error (a constant or a
+/// function read wrongly) changes an output at O(1), while the two
+/// evaluations' rounding differs by orders of magnitude less (the criterion
+/// of the tree engine's exporter, `symbolica_helpers._verify_symjit_plane_
+/// constants`).
+#[cfg(feature = "python-generation-bridge")]
+fn verify_plane(
+    plane: &[u8],
+    mut evaluator: BatchExpressionEvaluator<Complex<f64>>,
+    shape: (usize, usize),
+) -> RusticolResult<()> {
+    const ROWS: usize = 2;
+    let (inputs, outputs) = shape;
+    // A low-discrepancy sequence: deterministic, distinct per input.
+    let values: Vec<Complex<f64>> = (0..ROWS * inputs)
+        .map(|k| {
+            Complex::new(
+                0.5 + (0.618_033_988_749_894_8 * (k + 1) as f64).fract(),
+                0.0,
+            )
+        })
+        .collect();
+    let mut expected = vec![Complex::new(0.0, 0.0); ROWS * outputs];
+    evaluator
+        .evaluate_batch(&values, &mut expected, ROWS)
+        .map_err(|e| invalid(format!("plane check: {e}")))?;
+    let got = evaluate_plane_application(plane, shape, &values, ROWS)?;
+    let parts = |values: &[Complex<f64>]| -> Vec<f64> {
+        values.iter().flat_map(|z| [z.re, z.im]).collect()
+    };
+    let (expected, got) = (parts(&expected), parts(&got));
+    let scale = expected
+        .iter()
+        .filter(|x| x.is_finite())
+        .fold(0.0_f64, |m, x| m.max(x.abs()));
+    for (index, (&e, &g)) in expected.iter().zip(&got).enumerate() {
+        let agree = e.to_bits() == g.to_bits()
+            || (e.is_nan() && g.is_nan())
+            || (e - g).abs() <= 1e-6 * e.abs()
+            || (e - g).abs() <= 1e-12 * scale;
+        if !agree {
+            return Err(invalid(format!(
+                "the SymJIT plane application disagrees with its exact evaluator \
+                 (value {index}: {g:e} against {e:e}); keep this program on the \
+                 exact evaluator"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// The binary64 rows of a plane application (`compile_plane_application`)
+/// through the production loader, row-major: a cold-path check of an export
+/// against its exact evaluator.
+#[cfg(feature = "python-generation-bridge")]
+pub fn evaluate_plane_application(
+    plane: &[u8],
+    shape: (usize, usize),
+    inputs: &[Complex<f64>],
+    rows: usize,
+) -> RusticolResult<Vec<Complex<f64>>> {
+    let mut kernel = BinaryPlane::load(plane, shape)?;
+    let mut outputs = vec![Complex::new(0.0, 0.0); rows * shape.1];
+    kernel.evaluate(inputs, &mut outputs, rows)?;
+    Ok(outputs)
+}
+
+/// The binary64 rows of a saved exact evaluator (Symbolica's evaluation of
+/// the state), row-major: the reference of `evaluate_plane_application`.
+#[cfg(feature = "python-generation-bridge")]
+pub fn evaluate_exact_state(
+    saved: &[u8],
+    inputs: &[Complex<f64>],
+    rows: usize,
+) -> RusticolResult<Vec<Complex<f64>>> {
+    let mut kernel = exact_kernel(saved, &0.0_f64)?;
+    let mut outputs = vec![Complex::new(0.0, 0.0); rows * kernel.output_len()];
+    let _unlock = crate::licence::unlock();
+    kernel
+        .evaluate_batch(inputs, &mut outputs, rows)
+        .map_err(invalid)?;
+    Ok(outputs)
+}
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::compatibility(format!("loop v2 trees: {}", message.into()))
@@ -168,11 +290,13 @@ struct CountertermTreesFile {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct InteractionFile {
-    /// (inputs, outputs) per vertex kernel: inputs `[left, right, p_left,
-    /// p_right, model]`.
-    kernels: Vec<(usize, usize)>,
-    /// (inputs, outputs) per propagator kernel: inputs `[value, p, model]`.
-    propagators: Vec<(usize, usize)>,
+    /// (inputs, outputs, model parameters) per vertex kernel: inputs
+    /// `[left, right, p_left, p_right, model]`, `model` the listed model
+    /// parameters (indices into the state's model block, increasing).
+    kernels: Vec<(usize, usize, Vec<usize>)>,
+    /// (inputs, outputs, model parameters) per propagator kernel: inputs
+    /// `[value, p, model]`.
+    propagators: Vec<(usize, usize, Vec<usize>)>,
     steps: Vec<StepFile>,
 }
 
@@ -324,6 +448,16 @@ struct Step {
 struct Interactions {
     /// Saved exact evaluators: vertex kernels, then propagator kernels.
     saved: Vec<Vec<u8>>,
+    /// Per kernel (vertex kernels, then propagator kernels) the model
+    /// parameters it reads: indices into the state's model block, so
+    /// state components `model_offset + index` (tree schema 3). No kernel
+    /// reads the whole block.
+    models: Vec<Vec<usize>>,
+    /// Their binary64 plane applications, in the same order (none: binary64
+    /// runs the exact states).
+    planes: Option<Vec<Vec<u8>>>,
+    /// (inputs, outputs) of each kernel, in the same order.
+    shapes: Vec<(usize, usize)>,
     steps: Vec<Step>,
 }
 
@@ -331,8 +465,12 @@ struct Interactions {
 #[derive(Clone, Copy)]
 struct StateLayout {
     size: usize,
+    /// The model block: state components `model_offset ..
+    /// model_offset + model_block`, filled per point. Kernels read the
+    /// subsets `Interactions::models` of it (schema 3; the field was
+    /// `model_count` while every kernel read the whole block).
     model_offset: usize,
-    model_count: usize,
+    model_block: usize,
 }
 
 /// The counterterm program (`CountertermTreesFile`).
@@ -373,6 +511,9 @@ struct Parameters {
     names: Vec<String>,
     defaults: Vec<Rational>,
     saved: Vec<u8>,
+    /// The binary64 plane application of the program (none: binary64 runs
+    /// the exact state).
+    plane: Option<Vec<u8>>,
     outputs: usize,
     model: Vec<ModelSource>,
     counterterm_model: Vec<ModelSource>,
@@ -466,18 +607,23 @@ pub struct TreeInputs<T> {
     /// The counterterm and external-field outputs (component, sector,
     /// epsilon power), divided by the average (with counterterms).
     pub counterterms: Option<Vec<Vec<T>>>,
+    /// Wall seconds per stage: the interaction programs (`"trees:
+    /// programs"`, with the states), the Born and counterterm root closures
+    /// (`"trees: closures"`) and the rest (`"trees: interferences"`: block
+    /// rows, interferences, Born components and |A0|²).
+    pub seconds: Vec<(&'static str, f64)>,
 }
 
 /// The carrier form of a program: its kernel evaluators and exact weights.
 pub struct TreeRuntime<T> {
     /// The parameter program.
-    parameters: BatchExpressionEvaluator<Complex<T>>,
+    parameters: Kernel<T>,
     /// The interaction program's kernels and, per step and kernel group,
     /// its interactions' weights.
-    kernels: Vec<BatchExpressionEvaluator<Complex<T>>>,
+    kernels: Vec<Kernel<T>>,
     edge_weights: Vec<Vec<Vec<Complex<T>>>>,
     /// The counterterm program's kernels and interaction weights.
-    counterterm_kernels: Vec<BatchExpressionEvaluator<Complex<T>>>,
+    counterterm_kernels: Vec<Kernel<T>>,
     counterterm_edge_weights: Vec<Vec<Vec<Complex<T>>>>,
     /// The closure terms' colour weights.
     weights: Vec<Complex<T>>,
@@ -486,21 +632,264 @@ pub struct TreeRuntime<T> {
     interference: Option<InterferenceRuntime<T>>,
 }
 
+/// One kernel (or the parameter program) in carrier `T`: its exact
+/// evaluator in the carrier, or in binary64 its SymJIT plane application.
+pub enum Kernel<T> {
+    Exact(BatchExpressionEvaluator<Complex<T>>),
+    Plane(Box<dyn PlaneRows<T> + Send>),
+}
+
+impl<T> TreeRuntime<T> {
+    /// Whether any program runs an exact Symbolica evaluator (DoubleFloat,
+    /// arbitrary precision, or binary64 without SymJIT on this CPU): its
+    /// evaluations hold pyAmpliCol's library key; plane applications need
+    /// none.
+    fn runs_exact_states(&self) -> bool {
+        std::iter::once(&self.parameters)
+            .chain(&self.kernels)
+            .chain(&self.counterterm_kernels)
+            .any(|kernel| matches!(kernel, Kernel::Exact(_)))
+    }
+}
+
+/// A plane application (binary64 only): row-major batch evaluation, and its
+/// split-complex planes for callers that fill them directly (the
+/// interaction program, `run_interactions`).
+pub trait PlaneRows<T> {
+    /// `rows` evaluations: inputs and outputs row-major.
+    fn evaluate(
+        &mut self,
+        inputs: &[Complex<T>],
+        outputs: &mut [Complex<T>],
+        rows: usize,
+    ) -> RusticolResult<()>;
+    fn input_len(&self) -> usize;
+    fn output_len(&self) -> usize;
+    /// The planes of a call of `rows` rows, `stride` values apart: input
+    /// `k`'s real parts start at `2k * stride`, its imaginary parts at
+    /// `(2k + 1) * stride`, the outputs' planes follow the inputs' in the
+    /// same form. The caller fills the first `rows` values of every input
+    /// plane, then calls [`Self::run`]; other contents are unspecified.
+    fn planes(&mut self, rows: usize) -> (&mut [T], usize);
+    /// Run the kernel on the `rows` rows filled after [`Self::planes`]:
+    /// the planes, the outputs' first `rows` values written.
+    fn run(&mut self, rows: usize) -> RusticolResult<&[T]>;
+}
+
+impl<T> Kernel<T>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    /// `rows` evaluations: inputs and outputs row-major.
+    fn evaluate_batch(
+        &mut self,
+        inputs: &[Complex<T>],
+        outputs: &mut [Complex<T>],
+        rows: usize,
+    ) -> Result<(), String> {
+        match self {
+            Kernel::Exact(evaluator) => evaluator
+                .evaluate_batch(inputs, outputs, rows)
+                .map_err(|e| e.to_string()),
+            Kernel::Plane(plane) => plane
+                .evaluate(inputs, outputs, rows)
+                .map_err(|e| e.message().to_owned()),
+        }
+    }
+
+    fn input_len(&self) -> usize {
+        match self {
+            Kernel::Exact(evaluator) => evaluator.get_input_len(),
+            Kernel::Plane(plane) => plane.input_len(),
+        }
+    }
+
+    fn output_len(&self) -> usize {
+        match self {
+            Kernel::Exact(evaluator) => evaluator.get_output_len(),
+            Kernel::Plane(plane) => plane.output_len(),
+        }
+    }
+}
+
+/// A saved exact evaluator in carrier `T`, under pyAmpliCol's library key
+/// (decoding and mapping create Symbolica state).
+fn exact_kernel<T: Carrier + Real>(saved: &[u8], zero: &T) -> RusticolResult<Kernel<T>>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    let _unlock = crate::licence::unlock();
+    let complex = |re: &Rational, im: &Rational| Complex::new(cast(zero, re), cast(zero, im));
+    Ok(Kernel::Exact(
+        crate::engine::decode_exact_evaluator_state(saved)?
+            .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
+            .into_batch_evaluator(),
+    ))
+}
+
+/// A binary64 plane application on split-complex planes (inputs re, im,
+/// then outputs), filled by the caller ([`PlaneRows::planes`]) or
+/// transposed from row-major rows ([`PlaneRows::evaluate`]).
+///
+/// SymJIT's SIMD and scalar kernels of one application round differently in
+/// the last bits, and a call runs its aligned blocks of `simd_lanes` rows in
+/// SIMD and the rest in scalar code. Rows are therefore padded to whole SIMD
+/// blocks (copies of the last row, discarded), so every row runs in SIMD and
+/// a point's value does not depend on the batch it is evaluated in. (A block
+/// whose lanes take different branches of a branching program is replayed
+/// in scalar code by SymJIT; the programs branch on parameters only, which
+/// the points of a batch share.)
+///
+/// The planes lie `stride` values apart, one cache line more than the padded
+/// rows: with a power-of-two plane length (4096 rows) every plane's row maps
+/// to the same cache set, and the kernel and the fill touch all planes at
+/// one row together. The buffer only grows; nothing is zeroed per call.
+struct BinaryPlane {
+    kernel: SymjitPlaneKernel,
+    inputs: usize,
+    outputs: usize,
+    planes: Vec<f64>,
+    /// The plane stride of the current call ([`PlaneRows::planes`]).
+    stride: usize,
+}
+
+/// `f64` values per cache line.
+const PLANE_LINE: usize = 8;
+
+impl BinaryPlane {
+    fn load(bytes: &[u8], (inputs, outputs): (usize, usize)) -> RusticolResult<Self> {
+        let layout = SymjitPlaneLayout::complex(inputs, outputs);
+        Ok(Self {
+            kernel: SymjitPlaneKernel::load_bytes(bytes, "<loop v2 tree kernel>", layout)?,
+            inputs,
+            outputs,
+            planes: Vec::new(),
+            stride: 0,
+        })
+    }
+
+    /// `rows` padded to whole SIMD blocks.
+    fn padded(&self, rows: usize) -> usize {
+        let lanes = self.kernel.simd_lanes();
+        rows.div_ceil(lanes) * lanes
+    }
+
+    fn plane_count(&self) -> usize {
+        2 * (self.inputs + self.outputs)
+    }
+}
+
+impl PlaneRows<f64> for BinaryPlane {
+    fn evaluate(
+        &mut self,
+        inputs: &[Complex<f64>],
+        outputs: &mut [Complex<f64>],
+        rows: usize,
+    ) -> RusticolResult<()> {
+        require(
+            inputs.len() == rows * self.inputs && outputs.len() == rows * self.outputs,
+            "plane kernel rows",
+        )?;
+        if rows == 0 {
+            return Ok(());
+        }
+        let (width_in, width_out) = (self.inputs, self.outputs);
+        let (planes, stride) = self.planes(rows);
+        // One plane at a time: contiguous stores.
+        for input in 0..width_in {
+            let (re, im) = planes[2 * input * stride..][..2 * stride].split_at_mut(stride);
+            for (row, values) in inputs.chunks_exact(width_in).enumerate() {
+                re[row] = values[input].re;
+                im[row] = values[input].im;
+            }
+        }
+        let planes = self.run(rows)?;
+        let base = 2 * width_in * stride;
+        for output in 0..width_out {
+            let re = &planes[base + 2 * output * stride..][..rows];
+            let im = &planes[base + (2 * output + 1) * stride..][..rows];
+            for (row, values) in outputs.chunks_exact_mut(width_out).enumerate() {
+                values[output] = Complex::new(re[row], im[row]);
+            }
+        }
+        Ok(())
+    }
+
+    fn input_len(&self) -> usize {
+        self.inputs
+    }
+
+    fn output_len(&self) -> usize {
+        self.outputs
+    }
+
+    fn planes(&mut self, rows: usize) -> (&mut [f64], usize) {
+        let stride = self.padded(rows).div_ceil(PLANE_LINE) * PLANE_LINE + PLANE_LINE;
+        let total = self.plane_count() * stride;
+        if self.planes.len() < total {
+            self.planes.resize(total, 0.0);
+        }
+        self.stride = stride;
+        (&mut self.planes[..total], stride)
+    }
+
+    fn run(&mut self, rows: usize) -> RusticolResult<&[f64]> {
+        let (stride, padded) = (self.stride, self.padded(rows));
+        let total = self.plane_count() * stride;
+        require(
+            rows > 0 && padded < stride && self.planes.len() >= total,
+            "plane kernel rows",
+        )?;
+        let planes = &mut self.planes[..total];
+        // Whole SIMD blocks: padding rows repeat the last row.
+        for plane in planes[..2 * self.inputs * stride].chunks_exact_mut(stride) {
+            let last = plane[rows - 1];
+            plane[rows..padded].fill(last);
+        }
+        let descriptors = planes
+            .chunks_exact_mut(stride)
+            .map(|plane| PlaneDescriptor::from_slice(&mut plane[..padded]))
+            .collect();
+        let mut table = self.kernel.build_raw_table(descriptors)?;
+        self.kernel.execute_table(&mut table, 0, padded)?;
+        drop(table);
+        Ok(&self.planes[..total])
+    }
+}
+
 /// Validate and group an interaction program (`InteractionFile`); `saved`
 /// holds its kernels' evaluators, vertex kernels first.
 fn load_interactions(
     program: InteractionFile,
     saved: &[Vec<u8>],
+    planes: Option<&[Vec<u8>]>,
     state_size: usize,
     model_count: usize,
 ) -> RusticolResult<Interactions> {
     let kernels = program.kernels.len();
     require(
-        saved.len() == kernels + program.propagators.len(),
+        saved.len() == kernels + program.propagators.len()
+            && planes.is_none_or(|planes| planes.len() == saved.len()),
         "interaction kernel evaluator count",
     )?;
-    for bytes in saved {
-        drop(crate::engine::decode_exact_evaluator_state(bytes)?);
+    // Without plane applications every carrier decodes the exact states:
+    // validate them now. With them, a carrier that needs the exact states
+    // decodes them when its runtime is built (binary64 never does).
+    if planes.is_none() {
+        for bytes in saved {
+            drop(crate::engine::decode_exact_evaluator_state(bytes)?);
+        }
+    }
+    let mut models = Vec::with_capacity(saved.len());
+    let mut shapes = Vec::with_capacity(saved.len());
+    for (inputs, outputs, model) in program.kernels.iter().chain(&program.propagators) {
+        require(
+            model.windows(2).all(|pair| pair[0] < pair[1])
+                && model.last().is_none_or(|&last| last < model_count),
+            "kernel model parameter indices",
+        )?;
+        models.push(model.clone());
+        shapes.push((*inputs, *outputs));
     }
     let within = |start: usize, length: usize| start + length <= state_size;
     let mut steps = Vec::with_capacity(program.steps.len());
@@ -526,14 +915,14 @@ fn load_interactions(
         for (index, (kernel, left, ld, right, rd, pl, pr, accumulator, re, im)) in
             step.interactions.into_iter().enumerate()
         {
-            let &(inputs, outputs) = program
+            let (inputs, outputs, model) = program
                 .kernels
                 .get(kernel)
                 .ok_or_else(|| invalid("interaction kernel index"))?;
             require(
                 accumulator < step.accumulators.len()
-                    && outputs == step.accumulators[accumulator]
-                    && inputs == ld + rd + 8 + model_count
+                    && *outputs == step.accumulators[accumulator]
+                    && *inputs == ld + rd + 8 + model.len()
                     && within(left, ld)
                     && within(right, rd)
                     && within(pl, 4)
@@ -568,13 +957,13 @@ fn load_interactions(
                 None
             } else {
                 let index = usize::try_from(propagator).map_err(|_| invalid("propagator"))?;
-                let &(inputs, outputs) = program
+                let (inputs, outputs, model) = program
                     .propagators
                     .get(index)
                     .ok_or_else(|| invalid("propagator index"))?;
                 require(
-                    inputs == step.accumulators[accumulator] + 4 + model_count
-                        && outputs == dimension
+                    *inputs == step.accumulators[accumulator] + 4 + model.len()
+                        && *outputs == dimension
                         && within(momentum, 4),
                     "propagator output",
                 )?;
@@ -597,6 +986,9 @@ fn load_interactions(
     }
     Ok(Interactions {
         saved: saved.to_vec(),
+        models,
+        planes: planes.map(<[Vec<u8>]>::to_vec),
+        shapes,
         steps,
     })
 }
@@ -607,6 +999,7 @@ fn load_interactions(
 fn load_parameters(
     file: ParameterFile,
     saved: &[u8],
+    plane: Option<&[u8]>,
     model_count: usize,
     counterterm_model_count: usize,
     couplings: usize,
@@ -671,10 +1064,10 @@ fn load_parameters(
     };
     let model = sources(&file.model)?;
     let counterterm_model = sources(&file.counterterm_model)?;
-    // Helper functions call the scalar library's predicates.
-    crate::source_scalar::register_scalar_primitives();
-    let evaluator = crate::engine::decode_exact_evaluator_state(saved)?;
-    drop(evaluator);
+    if plane.is_none() {
+        // Validated when its runtime is built otherwise (`load_interactions`).
+        drop(crate::engine::decode_exact_evaluator_state(saved)?);
+    }
     Ok(Parameters {
         names: file.names,
         defaults: file
@@ -683,6 +1076,7 @@ fn load_parameters(
             .map(|value| exact(value))
             .collect::<RusticolResult<_>>()?,
         saved: saved.to_vec(),
+        plane: plane.map(<[u8]>::to_vec),
         outputs: file.outputs,
         model,
         counterterm_model,
@@ -878,8 +1272,14 @@ fn load_counterterms(
 impl TreeProgram {
     /// Load a program exported by `loops/v2/native_trees.py` for `plan`.
     /// `kernels` holds the interaction program's saved exact evaluators and,
-    /// last, the parameter program's.
-    pub fn load(json: &[u8], kernels: &[Vec<u8>], plan: &LoopProgramV4) -> RusticolResult<Self> {
+    /// last, the parameter program's; `planes`, when given, their binary64
+    /// SymJIT plane applications in the same order.
+    pub fn load(
+        json: &[u8],
+        kernels: &[Vec<u8>],
+        planes: Option<&[Vec<u8>]>,
+        plan: &LoopProgramV4,
+    ) -> RusticolResult<Self> {
         let file: TreeFile = serde_json::from_slice(json).map_err(|e| invalid(e.to_string()))?;
         require(
             file.schema == TREE_SCHEMA,
@@ -903,12 +1303,28 @@ impl TreeProgram {
         let (parameter_evaluator, kernels) = kernels
             .split_last()
             .ok_or_else(|| invalid("the parameter program's evaluator is missing"))?;
+        require(
+            planes.is_none_or(|planes| planes.len() == kernels.len() + 1),
+            "a plane application per saved evaluator",
+        )?;
+        let (parameter_plane, planes) = match planes.and_then(<[Vec<u8>]>::split_last) {
+            Some((parameter, planes)) => (Some(parameter.as_slice()), Some(planes)),
+            None => (None, None),
+        };
         let own = file.interactions.kernels.len() + file.interactions.propagators.len();
         require(kernels.len() >= own, "interaction kernel evaluator count")?;
         let (kernels, counterterm_kernels) = kernels.split_at(own);
+        let (planes, counterterm_planes) = match planes {
+            Some(planes) => {
+                let (own, counterterm) = planes.split_at(own);
+                (Some(own), Some(counterterm))
+            }
+            None => (None, None),
+        };
         let interactions = load_interactions(
             file.interactions,
             kernels,
+            planes,
             file.state_size,
             file.model_count,
         )?;
@@ -929,13 +1345,14 @@ impl TreeProgram {
                     layout: StateLayout {
                         size: ct.state_size,
                         model_offset: ct.model_offset,
-                        model_count: ct.model_count,
+                        model_block: ct.model_count,
                     },
                     momentum_slots: ct.momentum_slots,
                     sources: SchemaSources::from_value(&ct.source_fill)?,
                     interactions: load_interactions(
                         ct.interactions,
                         counterterm_kernels,
+                        counterterm_planes,
                         ct.state_size,
                         ct.model_count,
                     )?,
@@ -956,10 +1373,11 @@ impl TreeProgram {
         let parameters = load_parameters(
             file.parameters,
             parameter_evaluator,
+            parameter_plane,
             file.model_count,
             counterterm_trees
                 .as_ref()
-                .map_or(0, |ct| ct.layout.model_count),
+                .map_or(0, |ct| ct.layout.model_block),
             file.born.couplings,
             file.counterterms.as_ref().map_or(0, |ct| ct.couplings),
             plan,
@@ -1135,6 +1553,12 @@ impl TreeProgram {
     where
         Complex<T>: Real + EvaluationDomain,
     {
+        // Exact states under the key; plane applications touch no Symbolica
+        // state.
+        let _unlock = runtime
+            .runs_exact_states()
+            .then(crate::licence::unlock)
+            .flatten();
         let program = &self.parameters;
         let points = scales.len();
         let width = program.names.len();
@@ -1271,25 +1695,31 @@ impl TreeProgram {
     }
 
     /// The program in carrier `T` (kernel evaluators and exact weights
-    /// cast).
-    pub fn runtime<T: Carrier + Real>(&self, zero: &T) -> RusticolResult<TreeRuntime<T>>
+    /// cast): binary64 loads the plane applications when the program has
+    /// them, other carriers decode the exact states (`TreeCarrier::kernel`).
+    pub fn runtime<T: TreeCarrier + Real>(&self, zero: &T) -> RusticolResult<TreeRuntime<T>>
     where
         Complex<T>: Real + EvaluationDomain,
     {
         let complex = |re: &Rational, im: &Rational| Complex::new(cast(zero, re), cast(zero, im));
         let two = cast(zero, &Rational::from(2));
         let root = two.sqrt();
-        let parameters = crate::engine::decode_exact_evaluator_state(&self.parameters.saved)?
-            .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
-            .into_batch_evaluator();
+        let program = &self.parameters;
+        let parameters = T::kernel(
+            &program.saved,
+            program.plane.as_deref(),
+            (program.names.len(), program.outputs),
+            zero,
+        )?;
         let kernels_of = |program: &Interactions| {
             program
                 .saved
                 .iter()
-                .map(|saved| {
-                    Ok(crate::engine::decode_exact_evaluator_state(saved)?
-                        .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
-                        .into_batch_evaluator())
+                .zip(&program.shapes)
+                .enumerate()
+                .map(|(k, (saved, &shape))| {
+                    let plane = program.planes.as_ref().map(|planes| planes[k].as_slice());
+                    T::kernel(saved, plane, shape, zero)
                 })
                 .collect::<RusticolResult<Vec<_>>>()
         };
@@ -1380,6 +1810,12 @@ impl TreeProgram {
     where
         Complex<T>: Real + EvaluationDomain,
     {
+        // Exact states under the key; plane applications touch no Symbolica
+        // state.
+        let _unlock = runtime
+            .runs_exact_states()
+            .then(crate::licence::unlock)
+            .flatten();
         let points = momenta.len();
         require(
             batch.model.len() == points
@@ -1406,7 +1842,7 @@ impl TreeProgram {
                     && batch
                         .counterterm_model
                         .iter()
-                        .all(|model| model.len() == ct.layout.model_count),
+                        .all(|model| model.len() == ct.layout.model_block),
                 "counterterm program model parameter count",
             )?;
         }
@@ -1434,8 +1870,9 @@ impl TreeProgram {
         let layout = StateLayout {
             size: self.state_size,
             model_offset: self.model_offset,
-            model_count: self.model_count,
+            model_block: self.model_count,
         };
+        let started = std::time::Instant::now();
         let mut states = Self::states(
             layout,
             &self.sources,
@@ -1496,14 +1933,56 @@ impl TreeProgram {
                 .counterterms
                 .as_ref()
                 .map(|_| Vec::with_capacity(points)),
+            seconds: Vec::with_capacity(3),
         };
-        for (index, (point, state)) in incoming
+        out.seconds
+            .push(("trees: programs", started.elapsed().as_secs_f64()));
+        let started = std::time::Instant::now();
+        // The root closures of every point, lanes of points at a time.
+        let momenta: Vec<Vec<[T; 4]>> = incoming
             .iter()
-            .zip(states.chunks_exact(self.state_size))
-            .enumerate()
-        {
-            let ct_state =
-                &counterterm_states[index * counterterm_size..(index + 1) * counterterm_size];
+            .map(|point| self.mask_momenta(point, zero))
+            .collect();
+        let states = (states.as_slice(), self.state_size);
+        let counterterm_states = (counterterm_states.as_slice(), counterterm_size);
+        let mut amplitudes = self.close(
+            &self.terms,
+            &runtime.weights,
+            &vec![batch.couplings.as_slice(); points],
+            None,
+            self.components,
+            plan,
+            &momenta,
+            states,
+            counterterm_states,
+            constants,
+            zero,
+        );
+        let kets = match (&self.counterterms, &runtime.interference) {
+            (Some(ct), Some(_)) => self.close(
+                &ct.terms,
+                &runtime.weights,
+                &batch
+                    .counterterm_couplings
+                    .iter()
+                    .map(Vec::as_slice)
+                    .collect::<Vec<_>>(),
+                (!poles).then_some(ct.finite_slot.as_slice()),
+                ct.components,
+                plan,
+                &momenta,
+                states,
+                counterterm_states,
+                constants,
+                zero,
+            ),
+            _ => Vec::new(),
+        };
+        out.seconds
+            .push(("trees: closures", started.elapsed().as_secs_f64()));
+        let started = std::time::Instant::now();
+        for (index, state) in states.0.chunks_exact(self.state_size).enumerate() {
+            let amplitudes = std::mem::take(&mut amplitudes[index]);
             let mut rows = Vec::new();
             for &(start, dimension, sign) in &self.block_rows {
                 for value in &state[start..start + dimension] {
@@ -1515,42 +1994,17 @@ impl TreeProgram {
                 }
             }
             out.block_rows.push(rows);
-            let momenta = self.mask_momenta(point, zero);
-            let amplitudes = self.close(
-                &self.terms,
-                &runtime.weights,
-                &batch.couplings,
-                None,
-                self.components,
-                plan,
-                &momenta,
-                (state, ct_state),
-                constants,
-                zero,
-            );
             if let (Some(ct), Some(interference), Some(out)) = (
                 &self.counterterms,
                 &runtime.interference,
                 &mut out.counterterms,
             ) {
                 let couplings = &batch.counterterm_couplings[index];
-                let ket = self.close(
-                    &ct.terms,
-                    &runtime.weights,
-                    couplings,
-                    (!poles).then_some(ct.finite_slot.as_slice()),
-                    ct.components,
-                    plan,
-                    &momenta,
-                    (state, ct_state),
-                    constants,
-                    zero,
-                );
                 let values = ct.interference.evaluate(
                     interference,
                     &amplitudes,
                     self.components,
-                    &ket,
+                    &kets[index],
                     ct.components,
                     self.rows,
                     couplings,
@@ -1577,6 +2031,8 @@ impl TreeProgram {
             }
             out.amplitudes.push(amplitudes);
         }
+        out.seconds
+            .push(("trees: interferences", started.elapsed().as_secs_f64()));
         Ok(out)
     }
 
@@ -1650,94 +2106,56 @@ impl TreeProgram {
             .collect()
     }
 
-    /// The root closure of one point: per Born row, every closure term's
-    /// kernel on its blocks' rows (in the trees' or the counterterm
-    /// program's state) and momenta (`momenta`: per leg mask),
-    /// times its sign and per contribution its coupling and colour weight,
-    /// accumulated into `width` components. `active`: the coupling slots
-    /// to evaluate (none: all). Rows run in parallel.
+    /// The root closures of a batch's points: per point and Born row, every
+    /// closure term's kernel on its blocks' rows (in the trees' or the
+    /// counterterm program's state, each `(states, size)` with one state per
+    /// point) and momenta (`momenta`: per point and leg mask), times its sign
+    /// and per contribution its coupling (`couplings`: per point) and colour
+    /// weight, accumulated into `width` components per row. `active`: the
+    /// coupling slots to evaluate (none: all).
+    ///
+    /// Points run in lanes (`Closure::lanes`): every lane performs one point's
+    /// operations in the scalar order, so a point's values do not depend on
+    /// its batch; lanes and Born rows run in parallel. The batch runs in
+    /// lanes of 8 points, its last `points % 8` in one chunk of 1, 2, 4 or
+    /// 8 lanes (`lane_runs`).
     #[allow(clippy::too_many_arguments)]
     fn close<T: Carrier>(
         &self,
         terms: &[Term],
         weights: &[Complex<T>],
-        couplings: &[Complex<T>],
+        couplings: &[&[Complex<T>]],
         active: Option<&[bool]>,
         width: usize,
         plan: &LoopProgramV4,
-        momenta: &[[T; 4]],
-        (state, ct_state): (&[Complex<T>], &[Complex<T>]),
+        momenta: &[Vec<[T; 4]>],
+        states: (&[Complex<T>], usize),
+        counterterm_states: (&[Complex<T>], usize),
         constants: &[Complex<T>],
         zero: &T,
-    ) -> Vec<Complex<T>> {
-        let czero = Complex::new(zero.clone(), zero.clone());
-        let mut out = vec![czero.clone(); self.rows * width];
-        // Closure block starts index the trees' state, then the counterterm
-        // program's.
-        let read = |index: usize| {
-            if index < state.len() {
-                state[index].clone()
-            } else {
-                ct_state[index - state.len()].clone()
-            }
+    ) -> Vec<Vec<Complex<T>>> {
+        let closure = Closure {
+            program: self,
+            terms,
+            weights,
+            couplings,
+            active,
+            width,
+            plan,
+            momenta,
+            states,
+            counterterm_states,
+            constants,
         };
-        if width == 0 {
-            return out;
-        }
-        out.par_chunks_mut(width)
-            .enumerate()
-            .for_each(|(row, target)| {
-                let mut x = Vec::new();
-                let mut starts = Vec::new();
-                for term in terms {
-                    if active
-                        .is_some_and(|active| term.contributions.iter().all(|(c, ..)| !active[*c]))
-                    {
-                        continue;
-                    }
-                    starts.clear();
-                    for &block in &term.blocks {
-                        match self.blocks[block][row] {
-                            Some(start) => starts.push(start),
-                            None => break,
-                        }
-                    }
-                    if starts.len() != term.blocks.len() {
-                        continue;
-                    }
-                    x.clear();
-                    for input in &self.layouts[term.layout] {
-                        x.push(match *input {
-                            TermInput::Current { slot, component } => {
-                                read(starts[slot] + component)
-                            }
-                            TermInput::Momentum { slot, mu } => {
-                                Complex::new(momenta[term.masks[slot]][mu].clone(), zero.clone())
-                            }
-                        });
-                    }
-                    let mut value = czero.clone();
-                    for entry in &plan.kernels[term.kernel].outputs[0] {
-                        let mut product = constants[entry.constant].clone();
-                        for &(input, exponent) in &entry.monomial {
-                            for _ in 0..exponent {
-                                product *= x[input].clone();
-                            }
-                        }
-                        value += product;
-                    }
-                    if term.sign < 0 {
-                        value = -value;
-                    }
-                    for &(coupling, component, weight) in &term.contributions {
-                        if active.is_some_and(|active| !active[coupling]) {
-                            continue;
-                        }
-                        target[component] +=
-                            couplings[coupling].clone() * weights[weight].clone() * value.clone();
-                    }
-                }
+        let mut out = Vec::with_capacity(momenta.len());
+        for (first, count, lanes) in lane_runs(momenta.len()) {
+            out.extend(match lanes {
+                8 => closure.lanes::<8>(first, count, zero),
+                4 => closure.lanes::<4>(first, count, zero),
+                2 => closure.lanes::<2>(first, count, zero),
+                _ => closure.lanes::<1>(first, count, zero),
             });
+        }
         out
     }
 
@@ -1763,6 +2181,289 @@ impl TreeProgram {
     }
 }
 
+/// The runs (first point, points, lane width) a batch of `points` points
+/// closes in: lanes of 8 points, then the remaining `points % 8` in one
+/// chunk of the narrowest width that holds them (1, 2, 4 or 8; a chunk's
+/// unused lanes repeat its run's last point and are dropped). A chunk
+/// costs about its instruction count at any width (g g > g g g g full
+/// colour, binary64 closures per chunk of width 8 / 4 / 2 / 1: 487 / 449 /
+/// 350 / 249 ms), so the batch runs in the fewest chunks, its last one as
+/// narrow as it can be.
+fn lane_runs(points: usize) -> Vec<(usize, usize, usize)> {
+    let full = points / 8 * 8;
+    let rest = points - full;
+    let mut runs = Vec::with_capacity(2);
+    if full > 0 {
+        runs.push((0, full, 8));
+    }
+    if rest > 0 {
+        runs.push((full, rest, rest.next_power_of_two()));
+    }
+    runs
+}
+
+/// The root closure of a batch (`TreeProgram::close`).
+struct Closure<'a, T> {
+    program: &'a TreeProgram,
+    terms: &'a [Term],
+    weights: &'a [Complex<T>],
+    couplings: &'a [&'a [Complex<T>]],
+    active: Option<&'a [bool]>,
+    width: usize,
+    plan: &'a LoopProgramV4,
+    momenta: &'a [Vec<[T; 4]>],
+    states: (&'a [Complex<T>], usize),
+    counterterm_states: (&'a [Complex<T>], usize),
+    constants: &'a [Complex<T>],
+}
+
+/// `(x_re, x_im) *= y` on complex lanes (`y`: `L` real parts, then `L`
+/// imaginary parts), per lane as `Complex<T>`'s product. The lanes are
+/// arrays, so a product chain stays in registers.
+#[inline(always)]
+fn lane_mul<T: Carrier, const L: usize>(x_re: &mut [T; L], x_im: &mut [T; L], y: &[T]) {
+    let (y_re, y_im) = y[..2 * L].split_at(L);
+    for l in 0..L {
+        let re = x_re[l].clone() * &y_re[l] - x_im[l].clone() * &y_im[l];
+        let im = x_re[l].clone() * &y_im[l] + x_im[l].clone() * &y_re[l];
+        x_re[l] = re;
+        x_im[l] = im;
+    }
+}
+
+/// `Σ_terms constant × Π input^power` of a closure kernel on complex lanes
+/// (`x`: per kernel input `L` real parts, then `L` imaginary parts), per
+/// lane in the scalar order of `Complex<T>`: each term's product from its
+/// constant, the terms summed from zero.
+#[inline(always)]
+fn kernel_lanes<T: Carrier, const L: usize>(
+    kernel: &[super::plan::KernelTerm],
+    constants: &[Complex<T>],
+    x: &[T],
+    zero: &T,
+) -> ([T; L], [T; L]) {
+    let v = 2 * L;
+    let mut value_re: [T; L] = std::array::from_fn(|_| zero.clone());
+    let mut value_im: [T; L] = std::array::from_fn(|_| zero.clone());
+    for entry in kernel {
+        let constant = &constants[entry.constant];
+        let mut re: [T; L] = std::array::from_fn(|_| constant.re.clone());
+        let mut im: [T; L] = std::array::from_fn(|_| constant.im.clone());
+        for &(input, exponent) in &entry.monomial {
+            let factor = &x[input * v..(input + 1) * v];
+            for _ in 0..exponent {
+                lane_mul::<T, L>(&mut re, &mut im, factor);
+            }
+        }
+        for l in 0..L {
+            value_re[l] += &re[l];
+            value_im[l] += &im[l];
+        }
+    }
+    (value_re, value_im)
+}
+
+/// `kernel_lanes` compiled for AVX-512 and AVX2 (wider vectors for the same
+/// operations: the products and sums of a lane are those of `Complex<T>`,
+/// never fused, so the values are bitwise the baseline's).
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+fn kernel_lanes_avx512<T: Carrier, const L: usize>(
+    kernel: &[super::plan::KernelTerm],
+    constants: &[Complex<T>],
+    x: &[T],
+    zero: &T,
+) -> ([T; L], [T; L]) {
+    kernel_lanes::<T, L>(kernel, constants, x, zero)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+fn kernel_lanes_avx2<T: Carrier, const L: usize>(
+    kernel: &[super::plan::KernelTerm],
+    constants: &[Complex<T>],
+    x: &[T],
+    zero: &T,
+) -> ([T; L], [T; L]) {
+    kernel_lanes::<T, L>(kernel, constants, x, zero)
+}
+
+/// The vector width the closure kernels run in: binary64 lanes take the
+/// widest the running CPU reports (never a build-host feature), the other
+/// carriers the baseline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Wide {
+    Baseline,
+    #[cfg(target_arch = "x86_64")]
+    Avx2,
+    #[cfg(target_arch = "x86_64")]
+    Avx512,
+}
+
+/// Caps the closure kernels' vector width (`Wide::detect`) at `baseline`
+/// or `avx2`, so that one AVX-512 host runs the code paths of an AVX2-only
+/// or a baseline x86-64 host (the bitwise check of
+/// `tests/unit/test_loop_v2_native_trees.py`); any other value, or none,
+/// caps nothing. It never enables a feature the CPU lacks.
+const CLOSURE_SIMD_ENV: &str = "RUSTICOL_TEST_CLOSURE_SIMD";
+
+impl Wide {
+    fn detect<T: 'static>() -> Self {
+        #[cfg(target_arch = "x86_64")]
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+            static CAP: std::sync::OnceLock<Wide> = std::sync::OnceLock::new();
+            let cap =
+                *CAP.get_or_init(|| Self::cap(std::env::var(CLOSURE_SIMD_ENV).ok().as_deref()));
+            if cap == Self::Avx512 && std::arch::is_x86_feature_detected!("avx512f") {
+                return Self::Avx512;
+            }
+            if cap != Self::Baseline && std::arch::is_x86_feature_detected!("avx2") {
+                return Self::Avx2;
+            }
+        }
+        Self::Baseline
+    }
+
+    /// The widest width `CLOSURE_SIMD_ENV`'s value allows.
+    #[cfg(target_arch = "x86_64")]
+    fn cap(value: Option<&str>) -> Self {
+        match value {
+            Some("baseline") => Self::Baseline,
+            Some("avx2") => Self::Avx2,
+            _ => Self::Avx512,
+        }
+    }
+}
+
+impl<T: Carrier> Closure<'_, T> {
+    /// The closures of points `first .. first + points` in lanes of `L`
+    /// points (the unused lanes of a last chunk repeat the run's last point
+    /// and are dropped): per lane
+    /// chunk and Born row, the terms in order, each lane in the scalar
+    /// operations of `Complex<T>` (the kernel's terms `constant × Π
+    /// input^power` summed from zero, the sign, then per contribution
+    /// `(coupling × weight) × value` added to its component).
+    fn lanes<const L: usize>(&self, first: usize, points: usize, zero: &T) -> Vec<Vec<Complex<T>>> {
+        let program = self.program;
+        let rows = program.rows;
+        let width = self.width;
+        let czero = Complex::new(zero.clone(), zero.clone());
+        let mut out = vec![vec![czero; rows * width]; points];
+        if width == 0 || rows == 0 {
+            return out;
+        }
+        let v = 2 * L;
+        let chunks = points.div_ceil(L);
+        let inputs = program.layouts.iter().map(Vec::len).max().unwrap_or(0);
+        let (state, size) = self.states;
+        let (ct_state, ct_size) = self.counterterm_states;
+        let wide = Wide::detect::<T>();
+        // Per (lane chunk, row): `width` complex lane vectors.
+        let mut sums = vec![zero.clone(); chunks * rows * width * v];
+        sums.par_chunks_mut(width * v).enumerate().for_each_init(
+            || (vec![zero.clone(); inputs * v], Vec::new()),
+            |(x, starts), (task, target)| {
+                let (chunk, row) = (task / rows, task % rows);
+                let lanes: [usize; L] =
+                    std::array::from_fn(|l| first + (chunk * L + l).min(points - 1));
+                for term in self.terms {
+                    if self
+                        .active
+                        .is_some_and(|active| term.contributions.iter().all(|(c, ..)| !active[*c]))
+                    {
+                        continue;
+                    }
+                    starts.clear();
+                    for &block in &term.blocks {
+                        match program.blocks[block][row] {
+                            Some(start) => starts.push(start),
+                            None => break,
+                        }
+                    }
+                    if starts.len() != term.blocks.len() {
+                        continue;
+                    }
+                    for (input, lane) in program.layouts[term.layout]
+                        .iter()
+                        .zip(x.chunks_exact_mut(v))
+                    {
+                        let (re, im) = lane.split_at_mut(L);
+                        match *input {
+                            TermInput::Current { slot, component } => {
+                                let index = starts[slot] + component;
+                                let (values, stride, index) = if index < size {
+                                    (state, size, index)
+                                } else {
+                                    (ct_state, ct_size, index - size)
+                                };
+                                for (l, &point) in lanes.iter().enumerate() {
+                                    let value = &values[point * stride + index];
+                                    re[l] = value.re.clone();
+                                    im[l] = value.im.clone();
+                                }
+                            }
+                            TermInput::Momentum { slot, mu } => {
+                                let mask = term.masks[slot];
+                                for (l, &point) in lanes.iter().enumerate() {
+                                    re[l] = self.momenta[point][mask][mu].clone();
+                                    im[l] = zero.clone();
+                                }
+                            }
+                        }
+                    }
+                    let kernel = &self.plan.kernels[term.kernel].outputs[0];
+                    let (mut value_re, mut value_im) = match wide {
+                        // SAFETY: `wide` holds only the features this CPU
+                        // reports (`Wide::detect`).
+                        #[cfg(target_arch = "x86_64")]
+                        Wide::Avx512 => unsafe {
+                            kernel_lanes_avx512::<T, L>(kernel, self.constants, x, zero)
+                        },
+                        #[cfg(target_arch = "x86_64")]
+                        Wide::Avx2 => unsafe {
+                            kernel_lanes_avx2::<T, L>(kernel, self.constants, x, zero)
+                        },
+                        Wide::Baseline => kernel_lanes::<T, L>(kernel, self.constants, x, zero),
+                    };
+                    if term.sign < 0 {
+                        for l in 0..L {
+                            value_re[l] = -value_re[l].clone();
+                            value_im[l] = -value_im[l].clone();
+                        }
+                    }
+                    for &(coupling, component, weight) in &term.contributions {
+                        if self.active.is_some_and(|active| !active[coupling]) {
+                            continue;
+                        }
+                        let weight = &self.weights[weight];
+                        let (re, im) = target[component * v..(component + 1) * v].split_at_mut(L);
+                        for (l, &point) in lanes.iter().enumerate() {
+                            let factor = self.couplings[point][coupling].clone() * weight;
+                            re[l] +=
+                                factor.re.clone() * &value_re[l] - factor.im.clone() * &value_im[l];
+                            im[l] +=
+                                factor.re.clone() * &value_im[l] + factor.im.clone() * &value_re[l];
+                        }
+                    }
+                }
+            },
+        );
+        for (task, target) in sums.chunks_exact(width * v).enumerate() {
+            let (chunk, row) = (task / rows, task % rows);
+            for l in 0..L.min(points - chunk * L) {
+                let values = &mut out[chunk * L + l][row * width..(row + 1) * width];
+                for (component, item) in values.iter_mut().enumerate() {
+                    *item = Complex::new(
+                        target[component * v + l].clone(),
+                        target[component * v + L + l].clone(),
+                    );
+                }
+            }
+        }
+        out
+    }
+}
+
 /// The interaction program on the states of a batch: per step, each
 /// vertex kernel runs batched over its interactions and the points,
 /// weighted sums accumulate per output current, then each output slot
@@ -1771,7 +2472,7 @@ impl TreeProgram {
 fn run_interactions<T: Carrier>(
     program: &Interactions,
     layout: StateLayout,
-    kernels: &mut [BatchExpressionEvaluator<Complex<T>>],
+    kernels: &mut [Kernel<T>],
     edge_weights: &[Vec<Vec<Complex<T>>>],
     states: &mut [Complex<T>],
     points: usize,
@@ -1786,7 +2487,11 @@ where
     // current reads them, and kernel rows are independent, so every other
     // value is bitwise unchanged.
     const ROWS: usize = 4096;
-    let model = layout.model_offset..layout.model_offset + layout.model_count;
+    let model = |kernel: usize| {
+        program.models[kernel]
+            .iter()
+            .map(move |&index| layout.model_offset + index)
+    };
     let mut parameters = Vec::new();
     let mut outputs = Vec::new();
     for (step, weights) in program.steps.iter().zip(edge_weights) {
@@ -1801,7 +2506,20 @@ where
                 continue;
             }
             let evaluator = &mut kernels[*kernel];
-            let width = evaluator.get_output_len();
+            if let Kernel::Plane(plane) = evaluator {
+                let models = &program.models[*kernel];
+                plane_interactions(
+                    plane.as_mut(),
+                    layout,
+                    models,
+                    &active,
+                    states,
+                    step,
+                    &mut sums,
+                )?;
+                continue;
+            }
+            let width = evaluator.output_len();
             let per_call = (ROWS / points.max(1)).max(1);
             for chunk in active.chunks(per_call) {
                 let rows = chunk.len() * points;
@@ -1818,7 +2536,7 @@ where
                         parameters.extend_from_slice(
                             &state[edge.right_momentum..edge.right_momentum + 4],
                         );
-                        parameters.extend_from_slice(&state[model.clone()]);
+                        parameters.extend(model(*kernel).map(|index| state[index].clone()));
                     }
                 }
                 outputs.clear();
@@ -1850,14 +2568,26 @@ where
                 continue;
             };
             let evaluator = &mut kernels[kernel];
-            let width = evaluator.get_output_len();
-            let inputs = evaluator.get_input_len();
-            let value = inputs - 4 - layout.model_count;
+            if let Kernel::Plane(plane) = evaluator {
+                let sums = (sums.as_slice(), step.width, accumulator);
+                plane_propagator(
+                    plane.as_mut(),
+                    layout,
+                    &program.models[kernel],
+                    sums,
+                    (momentum, start, dimension),
+                    states,
+                )?;
+                continue;
+            }
+            let width = evaluator.output_len();
+            let inputs = evaluator.input_len();
+            let value = inputs - 4 - program.models[kernel].len();
             parameters.clear();
             for (point, state) in states.chunks_exact(layout.size).enumerate() {
                 parameters.extend_from_slice(&sums[point * step.width + accumulator..][..value]);
                 parameters.extend_from_slice(&state[momentum..momentum + 4]);
-                parameters.extend_from_slice(&state[model.clone()]);
+                parameters.extend(model(kernel).map(|index| state[index].clone()));
             }
             outputs.clear();
             outputs.resize(points * width, czero.clone());
@@ -1875,6 +2605,182 @@ where
     Ok(())
 }
 
+/// Rows (interaction x point) per plane-kernel call: a call's planes stay in
+/// the core's L2 cache.
+const PLANE_ROWS: usize = 1024;
+
+/// Fill input planes `first..first + count` of a plane call: row (edge,
+/// point) of input `first + k` is the point's state value at
+/// `start(edge) + k`. One plane at a time: contiguous stores.
+#[allow(clippy::too_many_arguments)]
+fn fill_planes<T: Clone>(
+    planes: &mut [T],
+    stride: usize,
+    first: usize,
+    count: usize,
+    edges: &[(&Edge, &Complex<T>)],
+    states: &[Complex<T>],
+    size: usize,
+    start: impl Fn(&Edge) -> usize,
+) {
+    for k in 0..count {
+        let (re, im) = planes[2 * (first + k) * stride..][..2 * stride].split_at_mut(stride);
+        let mut row = 0;
+        for (edge, _) in edges {
+            let at = start(edge) + k;
+            for state in states.chunks_exact(size) {
+                re[row] = state[at].re.clone();
+                im[row] = state[at].im.clone();
+                row += 1;
+            }
+        }
+    }
+}
+
+/// One kernel group of a step on a plane kernel (`run_interactions`): the
+/// input planes filled from the states, without row-major rows (the model
+/// inputs are the kernel's `models`, state components `model_offset +
+/// index`); the outputs accumulated in the row-major path's order, so the
+/// sums are bitwise the same.
+fn plane_interactions<T: Carrier>(
+    plane: &mut dyn PlaneRows<T>,
+    layout: StateLayout,
+    models: &[usize],
+    active: &[(&Edge, &Complex<T>)],
+    states: &[Complex<T>],
+    step: &Step,
+    sums: &mut [Complex<T>],
+) -> RusticolResult<()>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    let points = states.len() / layout.size.max(1);
+    let Some(&(first, _)) = active.first() else {
+        return Ok(());
+    };
+    if points == 0 {
+        return Ok(());
+    }
+    let (left, right) = (first.left_dimension, first.right_dimension);
+    let inputs = left + right + 8 + models.len();
+    require(
+        plane.input_len() == inputs
+            && active
+                .iter()
+                .all(|(edge, _)| edge.left_dimension == left && edge.right_dimension == right),
+        "interaction kernel inputs",
+    )?;
+    let width = plane.output_len();
+    let size = layout.size;
+    for chunk in active.chunks((PLANE_ROWS / points).max(1)) {
+        let rows = chunk.len() * points;
+        let (planes, stride) = plane.planes(rows);
+        fill_planes(planes, stride, 0, left, chunk, states, size, |edge| {
+            edge.left
+        });
+        fill_planes(planes, stride, left, right, chunk, states, size, |edge| {
+            edge.right
+        });
+        let momenta = left + right;
+        fill_planes(planes, stride, momenta, 4, chunk, states, size, |edge| {
+            edge.left_momentum
+        });
+        fill_planes(
+            planes,
+            stride,
+            momenta + 4,
+            4,
+            chunk,
+            states,
+            size,
+            |edge| edge.right_momentum,
+        );
+        for (k, &index) in models.iter().enumerate() {
+            fill_planes(
+                planes,
+                stride,
+                momenta + 8 + k,
+                1,
+                chunk,
+                states,
+                size,
+                |_| layout.model_offset + index,
+            );
+        }
+        let planes = plane
+            .run(rows)
+            .map_err(|e| invalid(format!("interaction kernel: {}", e.message())))?;
+        let base = 2 * inputs * stride;
+        let mut row = 0;
+        for &(edge, weight) in chunk {
+            for point in 0..points {
+                let target = &mut sums[point * step.width + edge.accumulator..];
+                for (output, sum) in (0..width).zip(target.iter_mut()) {
+                    let at = base + 2 * output * stride + row;
+                    let value = Complex::new(planes[at].clone(), planes[at + stride].clone());
+                    *sum += weight.clone() * value;
+                }
+                row += 1;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A propagator output on a plane kernel (`run_interactions`): its input
+/// planes filled from the step's sums (`(sums, width, accumulator)`), the
+/// momentum at `momentum` and the kernel's `models` (state components
+/// `model_offset + index`), its first `dimension` outputs written to the
+/// states at `start`.
+fn plane_propagator<T: Clone>(
+    plane: &mut dyn PlaneRows<T>,
+    layout: StateLayout,
+    models: &[usize],
+    (sums, sum_width, accumulator): (&[Complex<T>], usize, usize),
+    (momentum, start, dimension): (usize, usize, usize),
+    states: &mut [Complex<T>],
+) -> RusticolResult<()> {
+    let points = states.len() / layout.size.max(1);
+    if points == 0 {
+        return Ok(());
+    }
+    let inputs = plane.input_len();
+    let value = inputs
+        .checked_sub(4 + models.len())
+        .ok_or_else(|| invalid("propagator kernel inputs"))?;
+    require(dimension <= plane.output_len(), "propagator kernel outputs")?;
+    let (planes, stride) = plane.planes(points);
+    for k in 0..value {
+        let (re, im) = planes[2 * k * stride..][..2 * stride].split_at_mut(stride);
+        for point in 0..points {
+            let sum = &sums[point * sum_width + accumulator + k];
+            re[point] = sum.re.clone();
+            im[point] = sum.im.clone();
+        }
+    }
+    let state_inputs = (0..4)
+        .map(|mu| momentum + mu)
+        .chain(models.iter().map(|&index| layout.model_offset + index));
+    for (k, at) in state_inputs.enumerate() {
+        let (re, im) = planes[2 * (value + k) * stride..][..2 * stride].split_at_mut(stride);
+        for (point, state) in states.chunks_exact(layout.size).enumerate() {
+            re[point] = state[at].re.clone();
+            im[point] = state[at].im.clone();
+        }
+    }
+    let planes = plane
+        .run(points)
+        .map_err(|e| invalid(format!("propagator kernel: {}", e.message())))?;
+    let base = 2 * inputs * stride;
+    for (point, state) in states.chunks_exact_mut(layout.size).enumerate() {
+        for (output, slot) in state[start..start + dimension].iter_mut().enumerate() {
+            let at = base + 2 * output * stride + point;
+            *slot = Complex::new(planes[at].clone(), planes[at + stride].clone());
+        }
+    }
+    Ok(())
+}
+
 /// A carrier with source wavefunctions: binary64, DoubleFloat or MPFR (the
 /// exact carrier has none, wavefunctions being irrational). The external
 /// masses are carrier values (binary64 ones in binary64, as the tree
@@ -1886,6 +2792,16 @@ pub trait TreeCarrier: Carrier + PartialOrd {
         point: &[[Self; 4]],
         state: &mut [Complex<Self>],
     ) -> RusticolResult<()>;
+
+    /// A kernel of `shape` (inputs, outputs) from its saved exact evaluator
+    /// and, when stored, its binary64 plane application: binary64 runs the
+    /// plane application, the other carriers the exact state.
+    fn kernel(
+        saved: &[u8],
+        plane: Option<&[u8]>,
+        shape: (usize, usize),
+        zero: &Self,
+    ) -> RusticolResult<Kernel<Self>>;
 }
 
 impl TreeCarrier for f64 {
@@ -1896,6 +2812,24 @@ impl TreeCarrier for f64 {
         state: &mut [Complex<Self>],
     ) -> RusticolResult<()> {
         sources.fill_f64(masses, point, state)
+    }
+
+    fn kernel(
+        saved: &[u8],
+        plane: Option<&[u8]>,
+        shape: (usize, usize),
+        zero: &Self,
+    ) -> RusticolResult<Kernel<Self>> {
+        match plane {
+            // On an x86-64 CPU without AVX and FMA3, where SymJIT cannot
+            // compile (`symjit_plane::require_symjit_host_cpu`), binary64
+            // runs the exact states (under the library key, as the extended
+            // carriers do).
+            Some(bytes) if crate::engine::symjit_host_cpu_supported() => {
+                Ok(Kernel::Plane(Box::new(BinaryPlane::load(bytes, shape)?)))
+            }
+            _ => exact_kernel(saved, zero),
+        }
     }
 }
 
@@ -1908,6 +2842,15 @@ impl TreeCarrier for DoubleFloat {
     ) -> RusticolResult<()> {
         sources.fill_double_float(masses, point, state)
     }
+
+    fn kernel(
+        _saved: &[u8],
+        _plane: Option<&[u8]>,
+        _shape: (usize, usize),
+        zero: &Self,
+    ) -> RusticolResult<Kernel<Self>> {
+        exact_kernel(_saved, zero)
+    }
 }
 
 impl TreeCarrier for Float {
@@ -1919,4 +2862,17 @@ impl TreeCarrier for Float {
     ) -> RusticolResult<()> {
         sources.fill_float(masses, point, state)
     }
+
+    fn kernel(
+        _saved: &[u8],
+        _plane: Option<&[u8]>,
+        _shape: (usize, usize),
+        zero: &Self,
+    ) -> RusticolResult<Kernel<Self>> {
+        exact_kernel(_saved, zero)
+    }
 }
+
+#[cfg(test)]
+#[path = "trees_tests.rs"]
+mod tests;
