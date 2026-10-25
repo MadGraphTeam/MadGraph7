@@ -29,6 +29,9 @@ on-shell, momentum-conserving 140-digit neighbour in MPFR:
 * MPFR at the rounded point equals MPFR at the on-shell neighbour within
   1e-13: the rounded momenta only move the value at their own (analytic)
   order.
+
+The loop_fast test keeps only the binary64-against-MPFR check at the
+reproducer point.
 """
 
 from __future__ import annotations
@@ -238,6 +241,32 @@ def test_a_single_leg_fixes_its_arc_and_the_complement():
     assert onshell_leg(0b11011, full) == 2
     assert onshell_leg(0b00110, full) is None
     assert onshell_leg(0, full) is None
+
+
+@pytest.mark.loop_fast
+def test_the_massive_b_reproducer_agrees_in_binary64_and_arbitrary_precision(
+    executors,
+):
+    """The defect's point, lean: binary64 (3.0434) and MPFR (previously
+    -50.574) in the production path agree to binary64's accuracy. The
+    loop_physics test below adds DoubleFloat, the on-shell neighbour and the
+    Python reference."""
+
+    _slice, executor = executors("bbx_ttx")
+    point = _reproducer_point()
+    (reference,) = executor.evaluate(
+        [point], [SCALE], parameters=PARAMETERS, precision=Precision.arbitrary(32)
+    )
+    (double,) = executor.evaluate(
+        [point],
+        [SCALE],
+        parameters=PARAMETERS,
+        stability=StabilityChecks(reduction_direction=True),
+    )
+    estimate = double.stability.relative
+    assert estimate <= ESTIMATE_CAP, estimate
+    error = deviation(_binary64(_virtual(reference)), _virtual(double))
+    assert error <= max(BINARY64, ESTIMATE_MARGIN * estimate), (error, estimate)
 
 
 @pytest.mark.loop_physics
