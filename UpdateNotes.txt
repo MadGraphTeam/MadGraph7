@@ -5,6 +5,9 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: new command 'install cuttools_iregi' recompiling CutTools and IREGI (vendor/)
+       with the current fortran compiler. The error raised when CutTools/IREGI were
+       compiled with another compiler (e.g. after a gfortran update) now points to it.
    OM: compute_widths (and the 'auto' widths of a param_card) integrates the
        N-body decays (N>2) with madspace instead of MadEvent: 6 s instead of
        26 s for the Higgs of heft up to 3 bodies, with a more precise result.
