@@ -240,6 +240,8 @@ impl PlanModel {
     /// allocator must grant the bound's peak (a fallible probe, with its
     /// margin) before deriving (module docs, "Bounded derivation").
     pub fn program(self, policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
+        // A plan of another schema is refused as such before its bound.
+        require(self.file.schema == PLAN_SCHEMA, "unsupported plan schema")?;
         let bound = derive::bound(&self.file)?;
         if let Some(member) = self.member {
             require(
@@ -254,6 +256,7 @@ impl PlanModel {
     /// [`Self::program`] without the probe of the derivations' peak (the
     /// bound's refusals kept): `LoopProgramV4::load_unprobed`.
     pub(super) fn program_unprobed(self, policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
+        require(self.file.schema == PLAN_SCHEMA, "unsupported plan schema")?;
         derive::bound(&self.file)?;
         LoopProgramV4::from_file(self.file, policy)
     }
