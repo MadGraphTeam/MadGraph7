@@ -34,7 +34,10 @@ instrumentation.
   that did not finish are reported as such;
 * the universal double pole of the physical rows at full and leading colour,
   and the top-free g g > g g g g g row's NJet reference at the stream's
-  first points;
+  first points; stability rows at the reference fixture's own points
+  (``stability --fixture``) carry their deviations from its references, stay
+  apart from the stream's rows in the gate and give the report its estimate
+  at the fixture's worst point;
 * a stored process (``--store``) loads as the public runtime loads an
   artifact, regenerates nothing and times bitwise the generating run's
   values; a load of another configuration or native build is refused, and
@@ -703,6 +706,162 @@ def test_top_free_seven_gluon_row_is_checked_against_njet():
     assert "finite" not in row["catani"] and set(errors["catani"]) == {"born"}
     assert set(errors[fixture["primary_provider"]]) == {"born", "finite"}
     assert max(errors[fixture["primary_provider"]].values()) == 0.0
+
+
+def test_stability_rows_at_the_reference_fixtures_points():
+    """``stability --fixture``: the rows are the fixture's points at its own
+    scales (NJet's ten seven-gluon points at mu_R = 1000 GeV, not the
+    stream's scales), each with its finite part's deviation from every
+    reference of the fixture that states one (not Catani's, which has none)."""
+
+    import types
+
+    from tools.loop_benchmark import pyamplicol_v2
+
+    name, fixture = pyamplicol_v2.reference_fixture("gg_ggggg")
+    assert name == "gg_ggggg_njet"
+    seen = {}
+
+    def evaluate(points, scales, **options):
+        seen.update(points=points, scales=scales, options=options)
+        out = []
+        for index in (4, 8):
+            ref = fixture["rows"][index]["providers"]["njet_dd_oneloop_R1"]
+            finite = float(ref["finite"]) * (1 + 3e-8)
+            out.append(
+                types.SimpleNamespace(
+                    born={"total": float(ref["born"])},
+                    components={
+                        "virtual": {"total": types.SimpleNamespace(finite=finite)}
+                    },
+                    stability=types.SimpleNamespace(
+                        relative=1e-6, coefficients=[1e-6], checks={"rotation-0": 4e-7}
+                    ),
+                )
+            )
+        return out
+
+    run = types.SimpleNamespace(
+        key="gg_ggggg",
+        options=types.SimpleNamespace(lanes=16),
+        parameters={"aS": "0.118"},
+        executor=types.SimpleNamespace(evaluate=evaluate),
+    )
+    rows = pyamplicol_v2.stability_rows(run, [4, 8], ["double"], (name, fixture))
+    points, scales = pyamplicol_v2.fixture_batch(fixture, [4, 8])
+    assert seen["points"] == points and seen["scales"] == scales
+    assert scales == [str(Fraction(1000) ** 2)] * 2
+    assert [r["index"] for r in rows] == [4, 8]
+    for row in rows:
+        assert row["fixture"] == name and row["mu_r"] == "1000"
+        deviations = row["deviation_vs_references"]
+        assert "catani" not in deviations
+        assert deviations["njet_dd_oneloop_R1"] == pytest.approx(3e-8, rel=1e-6)
+        assert row["estimate"] == 1e-6
+
+
+def test_fixture_stability_rows_stay_apart_and_decide_the_worst_point(tmp_path):
+    """The gate keeps a ``stability --fixture`` record's rows apart from the
+    stream's (``fixture_stability``: their indices are the fixture's); the
+    report builder takes the estimate at the fixture's worst point from them,
+    never from the stream's rows of the same index."""
+
+    import json
+
+    check_rows = [
+        {
+            "index": i,
+            "mu_r": "1000",
+            "born": 1.0,
+            "finite": 2.0,
+            "errors": {
+                "njet_dd_oneloop_R1": {"born": 1e-13, "finite": dev},
+                "njet_double_R2": {"born": 1e-13, "finite": 2 * dev},
+            },
+        }
+        for i, dev in enumerate([1e-9, 2e-9, 3.7e-8, 5e-10])
+    ]
+    timing = _pyamplicol_record(
+        "gg_ggggg",
+        [7.0, 7.1, 7.2],
+        accuracy_check={
+            "fixture": "gg_ggggg_njet",
+            "points": 4,
+            "points_are_stream_points": [0, 1, 2],
+            "metric": "test",
+            "tolerance": 2e-8,
+            "tolerance_source": "required",
+            "max_error": 7.4e-8,
+            "passed": False,
+            "rows": check_rows,
+        },
+    )
+
+    def stability(fixture, rows):
+        return {
+            "kind": "stability",
+            "process": "gg_ggggg",
+            "accuracy": "full",
+            "inputs": "native",
+            "lanes": 16,
+            "schedule": "B",
+            "revision": "0" * 40,
+            **({"fixture": fixture} if fixture else {}),
+            "rows": rows,
+        }
+
+    stream_row = {"index": 2, "arithmetic": "double", "born": 1.0, "finite": 1.0}
+    fixture_rows = [
+        {
+            "index": 2,
+            "arithmetic": "double",
+            "born": 1.0,
+            "finite": 2.0,
+            "estimate": 1.3e-6,
+        },
+        {
+            "index": 2,
+            "arithmetic": "double-double",
+            "born": 1.0,
+            "finite": 2.0,
+            "estimate": 1e-20,
+            "deviation_vs_references": {
+                "njet_dd_oneloop_R1": 4e-13,
+                "njet_double_R2": 4e-8,
+            },
+        },
+    ]
+    paths = []
+    for index, record in enumerate(
+        (
+            timing,
+            stability(None, [{**stream_row, "estimate": 1e-9}]),
+            stability("gg_ggggg_njet", fixture_rows),
+        )
+    ):
+        path = tmp_path / f"record-{index}.json"
+        path.write_text(json.dumps(record))
+        paths.append(path)
+    document, _ = gate.build(paths, None)
+    (proc,) = document["processes"]
+    assert [r["estimate"] for r in proc["stability"]] == [1e-9]
+    assert {r["fixture"] for r in proc["fixture_stability"]} == {"gg_ggggg_njet"}
+    assert {r["configuration"] for r in proc["fixture_stability"]} == {"native/full"}
+    builder = _report_builder()
+    cfg = proc["pyamplicol"]["native/full"]
+    out = builder._validation_g1(proc, cfg, "native/full", "src", "native/full")
+    (ref,) = out["references"]
+    assert ref["key"] == "njet_dd_oneloop_R1" and out["max_finite"] == 3.7e-8
+    wp = out["worst_point"]
+    assert wp["index"] == 2 and wp["fixture"] == "gg_ggggg_njet"
+    assert wp["estimate"] == 1.3e-6 and wp["within_estimate"] is True
+    # The double-double deviation from the shown references only (NJet DD).
+    assert wp["dd_closest"] == 4e-13
+    assert wp["source"].endswith(".fixture_stability (native/full)")
+    # Without fixture rows, the stream's row of the same index is no estimate.
+    del proc["fixture_stability"]
+    out = builder._validation_g1(proc, cfg, "native/full", "src", "native/full")
+    assert "worst_point" not in out
 
 
 @pytest.mark.loop_physics
