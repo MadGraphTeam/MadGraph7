@@ -51,11 +51,30 @@ of coloured legs (j, k), (1/C_j) [C_j (mu^2/s_jk)^eps V^(S)_jk + Gamma_j]
 <T_j.T_k>, with V^(S) = 1/eps^2 (both massless), 1/(2 eps^2) + ln(m^2/s)/
 (2 eps) (one massive, mass m), ln(rho)/(v eps) (both massive) and Gamma_j =
 gamma_j/eps (massless) or C_j/eps (massive); n_f light flavours in gamma_g.
+
+``qed_catani_poles`` is the same operator for QED corrections (WP3.2 EWI-6;
+Catani-Seymour hep-ph/9605323 with the abelian substitution, massive legs as
+in hep-ph/0201036, QED with masses Dittmaier hep-ph/9904440): T_j.T_k ->
+Q_j Q_k with the legs' all-incoming charges (Q eta of the outgoing-particle
+convention; sum_j Q_j = 0), C_j -> Q_j^2, gamma_f = 3/2 Q_f^2 (massless
+fermions), gamma_s = 2 Q_s^2 (massless scalars), massive legs soft only. The
+correlator is Q_j Q_k times the colour-summed Born interference of the
+sector (``_ir_poles``), the prefactor alpha / 2 pi with alpha the coupling of
+the loops (``qed_coupling``: the model's photon coupling, alpha_Gmu in a
+G_mu model), not alpha(0). An on-shell external photon adds -gamma_gamma/eps
+per photon only where its coupling is not alpha(0)
+(``EXTERNAL_PHOTON_CONVENTIONS``): with alpha(0), delta Z_e^alpha(0) + 1/2
+delta Z_AA has no light-fermion pole; with the loops' coupling the photon's
+gamma_gamma = -2/3 sum_f N_c^f Q_f^2 (massless charged fermions) stays. The
+convention is the user's pending decision [U9] (``EXTERNAL_PHOTON_CONVENTION``
+is None): until it is taken there is no prediction with an external photon,
+and the generation refuses electroweak requests with one (``ew_policy``).
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+import re
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from fractions import Fraction
 from typing import Any
 
@@ -258,12 +277,217 @@ def _minkowski_dot(a: Sequence[Fraction], b: Sequence[Fraction]) -> Fraction:
     return a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3]
 
 
+# ------------------------------------------------------------------ QED Catani
+
+# UFO spins (2s + 1) of the charged massless emitters with a QED gamma.
+_FERMION_SPIN, _SCALAR_SPIN = 2, 1
+# The coupling of an on-shell external photon: "alpha0" (alpha(0) with its
+# charge-renormalisation term, the recommended default of [U9], MadLoop's and
+# OpenLoops' convention) or "loop-coupling" (the loops' alpha, e.g. alpha_Gmu
+# throughout). ``EXTERNAL_PHOTON_CONVENTION`` is the production choice: None
+# until the user decides [U9] (no prediction with an external photon).
+EXTERNAL_PHOTON_CONVENTIONS = ("alpha0", "loop-coupling")
+EXTERNAL_PHOTON_CONVENTION: str | None = None
+
+
+def exact_charge(charge: float | Fraction | str) -> Fraction:
+    """A UFO electric charge as an exact rational: UFO models write charges
+    as Python floats (2/3 -> 0.6666666666666666), so the float is mapped to
+    the nearest fraction with denominator <= 1000 and that fraction must
+    reproduce it to 1e-12."""
+
+    if isinstance(charge, Fraction):
+        return charge
+    value = Fraction(charge) if isinstance(charge, str) else Fraction(float(charge))
+    exact = value.limit_denominator(1000)
+    if abs(float(exact) - float(value)) > 1e-12 * max(1.0, abs(float(value))):
+        raise ValueError(f"electric charge {charge!r} is not a small rational")
+    return exact
+
+
+def qed_gamma(spin: int, charge: Fraction) -> Fraction | None:
+    """gamma_j of a massless charged leg (3/2 Q^2 for a fermion, 2 Q^2 for a
+    scalar); None where QED Catani makes no prediction (a massless charged
+    vector)."""
+
+    if spin == _FERMION_SPIN:
+        return Fraction(3, 2) * charge * charge
+    if spin == _SCALAR_SPIN:
+        return 2 * charge * charge
+    return None
+
+
+def photon_gamma(light_charges: Iterable[tuple[Fraction, int]]) -> Fraction:
+    """gamma_gamma = -2/3 sum_f N_c^f Q_f^2 over the massless charged fermion
+    flavours, given as (charge, colour dimension) once per flavour."""
+
+    return -Fraction(2, 3) * sum(
+        (colours * charge * charge for charge, colours in light_charges),
+        Fraction(0),
+    )
+
+
+def qed_catani_poles(
+    charges: Mapping[int, Fraction],
+    momenta: Mapping[int, Sequence[Fraction]],
+    masses: Mapping[int, Fraction],
+    born: Any,
+    *,
+    gamma: Callable[[int], Fraction | None],
+    mu2: Any,
+    log: Callable[[Any], Any],
+    real: Callable[[Any], Any],
+    sqrt: Callable[[Any], Any],
+    photons: int = 0,
+    gamma_photon: Fraction | None = None,
+    convention: str | None = EXTERNAL_PHOTON_CONVENTION,
+) -> tuple[Any, Any] | None:
+    """(single, double) pole of the renormalised virtual over (alpha/2pi) for
+    one sector's QED correction; None where the operator makes no
+    prediction.
+
+    ``charges`` are the all-incoming charges of the external legs (an
+    outgoing leg carries its antiparticle's), every leg with a non-zero one;
+    ``born`` the colour-summed Born interference the QED correction of the
+    sector dresses; ``masses`` the legs' squared masses (``catani_poles``);
+    ``gamma(j)`` gamma_j of a massless charged leg (``qed_gamma``).
+    ``photons`` on-shell external photons add -gamma_gamma/eps each under
+    the ``"loop-coupling"`` convention and nothing under ``"alpha0"``
+    (module docstring); with ``convention`` None (the user's decision [U9]
+    pending) there is no prediction with photons.
+    """
+
+    if photons:
+        if convention not in EXTERNAL_PHOTON_CONVENTIONS:
+            return None
+        if convention == "loop-coupling" and gamma_photon is None:
+            raise ValueError("the loop-coupling convention needs gamma_gamma")
+    if sum(charges.values(), Fraction(0)) != 0:
+        raise ValueError(
+            f"the legs' all-incoming charges do not add to zero: {charges}"
+        )
+    charged = sorted(label for label, charge in charges.items() if charge != 0)
+    gammas = {}
+    for label in charged:
+        if masses[label] == 0:
+            value = gamma(label)
+            if value is None:
+                return None
+            gammas[label] = value
+    prediction = catani_poles(
+        charged,
+        {label: charges[label] for label in charged},
+        momenta,
+        masses,
+        lambda j, k: real(charges[j] * charges[k]) * born,
+        casimir=lambda charge: charge * charge,
+        gamma=lambda j: gammas[j],
+        mu2=mu2,
+        log=log,
+        real=real,
+        sqrt=sqrt,
+    )
+    if prediction is None:
+        return None
+    single, double = prediction
+    if photons and convention == "loop-coupling":
+        single = single - real(photons * gamma_photon) * born
+    return single, double
+
+
+# The UFO Lorentz structure of a plain vector coupling, Gamma(mu, i, j).
+_GAMMA = re.compile(
+    r"^UFO::\{\}::Gamma\(UFO::\{\}::idx\(1,(\d)\),UFO::\{\}::idx\(1,(\d)\),"
+    r"UFO::\{\}::idx\(1,(\d)\)\)$"
+)
+
+
+def qed_coupling(
+    compiled: Any, is_photon: Callable[[Any], bool]
+) -> tuple[str, tuple[tuple[str, str], ...]] | None:
+    """alpha = e^2 / 4 pi of the model's QED vertices, as a Symbolica
+    expression in its external parameters: its canonical text and the
+    (symbol, parameter name) pairs it holds (``reference_executor``'s
+    ``("expr", ...)`` factor); None if the model has no such vertex, its
+    photon couplings are not charge-universal or the expression holds a
+    symbol that is no external parameter.
+
+    e is read from every photon vertex with a charged fermion pair whose only
+    term is the plain vector coupling Gamma(mu, i, j) (UFO's FFV1): the
+    coupling is +-i e Q_f, so alpha = -(coupling / Q_f)^2 / (4 pi), which all
+    of them must give. No parameter name is assumed: in a G_mu model this is
+    alpha_Gmu, in an alpha(M_Z) model alpha(M_Z), the coupling of the loops.
+    """
+
+    from symbolica import E, Expression
+
+    from pyamplicol._internal.physics.symbols import symbols as registry
+
+    particles = {record.name: record for record in compiled.ir.particles}
+    terms: dict[str, list[Any]] = {}
+    for term in compiled.ir.vertex_terms:
+        terms.setdefault(term.vertex, []).append(term)
+    found: set[str] = set()
+    expressions = []
+    for vertex in sorted(terms):
+        cells = terms[vertex]
+        if len(cells) != 1 or len(cells[0].particles) != 3:
+            continue
+        (term,) = cells
+        records = [particles.get(name) for name in term.particles]
+        if any(record is None for record in records):
+            continue
+        photons = [i for i, record in enumerate(records) if is_photon(record)]
+        fermions = [i for i, record in enumerate(records) if int(record.spin) == 2]
+        if len(photons) != 1 or len(fermions) != 2:
+            continue
+        match = _GAMMA.match(term.lorentz_source)
+        if match is None or int(match.group(1)) != photons[0] + 1:
+            continue
+        charge = exact_charge(records[fermions[0]].charge)
+        if charge == 0 or exact_charge(records[fermions[1]].charge) != -charge:
+            continue
+        coupling = E(term.coupling_expression)
+        alpha = (
+            -(coupling**2) / (4 * Expression.PI * E(str(charge * charge)))
+        ).expand()
+        text = alpha.to_canonical_string()
+        if text not in found:
+            found.add(text)
+            expressions.append(alpha)
+    if len(found) != 1:
+        return None
+    (alpha,) = expressions
+    model = registry.model(compiled.name)
+    names = {
+        model.symbol(record.name).to_canonical_string(): record.name
+        for record in compiled.ir.parameters
+        if record.nature == "external"
+    }
+    pairs = []
+    for symbol in alpha.get_all_symbols(False):
+        if symbol.get_name() == "symbolica::𝜋":
+            continue
+        text = symbol.to_canonical_string()
+        if text not in names:
+            return None
+        pairs.append((text, names[text]))
+    return alpha.to_canonical_string(), tuple(sorted(pairs))
+
+
 __all__ = [
+    "EXTERNAL_PHOTON_CONVENTION",
+    "EXTERNAL_PHOTON_CONVENTIONS",
     "LOCAL_UV",
     "ORIGINS",
     "catani_poles",
+    "exact_charge",
     "has_poles",
+    "photon_gamma",
     "pole_mode",
+    "qed_catani_poles",
+    "qed_coupling",
+    "qed_gamma",
     "reducer_poles",
     "select_lane",
     "select_sector",
