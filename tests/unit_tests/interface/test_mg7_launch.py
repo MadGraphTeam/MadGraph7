@@ -1594,7 +1594,7 @@ class MG7AutoPtjMjjCutNamesTest(unittest.TestCase):
         self.launch = mg7_launch
 
     def make_process(self, cuts, xqcut=20.0, auto=True):
-        return types.SimpleNamespace(run_card={
+        return types.SimpleNamespace(is_decay=False, run_card={
             'beam': {'dynamical_scale_choice': 'mlm'},
             'phasespace': {'xqcut': xqcut, 'auto_ptj_mjj': auto},
             'multiparticles': {'jet': [21, 1, 2, -1, -2],
