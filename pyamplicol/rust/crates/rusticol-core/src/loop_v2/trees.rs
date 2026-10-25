@@ -56,7 +56,7 @@ use symbolica::domains::rational::Rational;
 use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
 
 /// The tree-program schema this executor runs.
-pub const TREE_SCHEMA: u32 = 2;
+pub const TREE_SCHEMA: u32 = 3;
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::compatibility(format!("loop v2 trees: {}", message.into()))
@@ -168,11 +168,13 @@ struct CountertermTreesFile {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct InteractionFile {
-    /// (inputs, outputs) per vertex kernel: inputs `[left, right, p_left,
-    /// p_right, model]`.
-    kernels: Vec<(usize, usize)>,
-    /// (inputs, outputs) per propagator kernel: inputs `[value, p, model]`.
-    propagators: Vec<(usize, usize)>,
+    /// (inputs, outputs, model parameters) per vertex kernel: inputs
+    /// `[left, right, p_left, p_right, model]`, `model` the listed model
+    /// parameters (indices into the state's model block, increasing).
+    kernels: Vec<(usize, usize, Vec<usize>)>,
+    /// (inputs, outputs, model parameters) per propagator kernel: inputs
+    /// `[value, p, model]`.
+    propagators: Vec<(usize, usize, Vec<usize>)>,
     steps: Vec<StepFile>,
 }
 
@@ -324,6 +326,9 @@ struct Step {
 struct Interactions {
     /// Saved exact evaluators: vertex kernels, then propagator kernels.
     saved: Vec<Vec<u8>>,
+    /// Per kernel (vertex kernels, then propagator kernels) the state
+    /// indices of the model parameters it reads.
+    models: Vec<Vec<usize>>,
     steps: Vec<Step>,
 }
 
@@ -507,6 +512,15 @@ fn load_interactions(
     for bytes in saved {
         drop(crate::engine::decode_exact_evaluator_state(bytes)?);
     }
+    let mut models = Vec::with_capacity(saved.len());
+    for (_inputs, _outputs, model) in program.kernels.iter().chain(&program.propagators) {
+        require(
+            model.windows(2).all(|pair| pair[0] < pair[1])
+                && model.last().is_none_or(|&last| last < model_count),
+            "kernel model parameter indices",
+        )?;
+        models.push(model.clone());
+    }
     let within = |start: usize, length: usize| start + length <= state_size;
     let mut steps = Vec::with_capacity(program.steps.len());
     for step in program.steps {
@@ -531,14 +545,14 @@ fn load_interactions(
         for (index, (kernel, left, ld, right, rd, pl, pr, accumulator, re, im)) in
             step.interactions.into_iter().enumerate()
         {
-            let &(inputs, outputs) = program
+            let (inputs, outputs, model) = program
                 .kernels
                 .get(kernel)
                 .ok_or_else(|| invalid("interaction kernel index"))?;
             require(
                 accumulator < step.accumulators.len()
-                    && outputs == step.accumulators[accumulator]
-                    && inputs == ld + rd + 8 + model_count
+                    && *outputs == step.accumulators[accumulator]
+                    && *inputs == ld + rd + 8 + model.len()
                     && within(left, ld)
                     && within(right, rd)
                     && within(pl, 4)
@@ -573,13 +587,13 @@ fn load_interactions(
                 None
             } else {
                 let index = usize::try_from(propagator).map_err(|_| invalid("propagator"))?;
-                let &(inputs, outputs) = program
+                let (inputs, outputs, model) = program
                     .propagators
                     .get(index)
                     .ok_or_else(|| invalid("propagator index"))?;
                 require(
-                    inputs == step.accumulators[accumulator] + 4 + model_count
-                        && outputs == dimension
+                    *inputs == step.accumulators[accumulator] + 4 + model.len()
+                        && *outputs == dimension
                         && within(momentum, 4),
                     "propagator output",
                 )?;
@@ -602,6 +616,7 @@ fn load_interactions(
     }
     Ok(Interactions {
         saved: saved.to_vec(),
+        models,
         steps,
     })
 }
@@ -1937,7 +1952,11 @@ where
     // current reads them, and kernel rows are independent, so every other
     // value is bitwise unchanged.
     const ROWS: usize = 4096;
-    let model = layout.model_offset..layout.model_offset + layout.model_count;
+    let model = |kernel: usize| {
+        program.models[kernel]
+            .iter()
+            .map(move |&index| layout.model_offset + index)
+    };
     let mut parameters = Vec::new();
     let mut outputs = Vec::new();
     for (step, weights) in program.steps.iter().zip(edge_weights) {
@@ -1969,7 +1988,7 @@ where
                         parameters.extend_from_slice(
                             &state[edge.right_momentum..edge.right_momentum + 4],
                         );
-                        parameters.extend_from_slice(&state[model.clone()]);
+                        parameters.extend(model(*kernel).map(|index| state[index].clone()));
                     }
                 }
                 outputs.clear();
@@ -2003,12 +2022,12 @@ where
             let evaluator = &mut kernels[kernel];
             let width = evaluator.get_output_len();
             let inputs = evaluator.get_input_len();
-            let value = inputs - 4 - layout.model_count;
+            let value = inputs - 4 - program.models[kernel].len();
             parameters.clear();
             for (point, state) in states.chunks_exact(layout.size).enumerate() {
                 parameters.extend_from_slice(&sums[point * step.width + accumulator..][..value]);
                 parameters.extend_from_slice(&state[momentum..momentum + 4]);
-                parameters.extend_from_slice(&state[model.clone()]);
+                parameters.extend(model(kernel).map(|index| state[index].clone()));
             }
             outputs.clear();
             outputs.resize(points * width, czero.clone());

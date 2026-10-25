@@ -66,7 +66,7 @@ from pyamplicol.color.contraction_types import NC
 
 from .families import Orders, add_orders
 
-TREE_SCHEMA = 2
+TREE_SCHEMA = 3
 
 # Prune the exported tree program to what its outputs read
 # (``prune_program``); False exports the unpruned program (the oracle of
@@ -1149,7 +1149,9 @@ def _interaction_program(
     expressions (``vertex_component_expression``,
     ``propagator_component_expression``, as the stage program sums them per
     current) on formal inputs ``[left, right, p_left, p_right, model]`` and
-    ``[value, p, model]``, one per distinct shape, saved as exact Symbolica
+    ``[value, p, model]``, where ``model`` is the model parameters the
+    kernel's expressions hold (their state indices are the third entry of
+    the kernel's shape), one per distinct shape, saved as exact Symbolica
     evaluators. The program's size is that of the DAG; the saved evaluators
     come first for the kernels, then for the propagators.
 
@@ -1215,13 +1217,30 @@ def _interaction_program(
         outputs, retained = _specialize_stage_symbolica_functions(
             list(components), _model_symbolica_functions(model)
         )
+        # The kernel reads the model parameters its expressions hold, in the
+        # state's order: a counterterm program's model block holds every
+        # coupling, multiplicity and slot switch of the request (160-190 at
+        # six legs), a kernel a few, and each kernel row copied all of them.
+        held = {
+            symbol.to_canonical_string()
+            for expression in (*outputs, *(body for _f, _a, body in retained))
+            for symbol in expression.get_all_symbols()
+        }
+        model_inputs = [
+            k
+            for k, symbol in enumerate(model_symbols)
+            if symbol.to_canonical_string() in held
+        ]
         # On canonical symbols the kernel's term order, and so its binary64
         # rounding, does not depend on the symbols created earlier in the
         # interpreter (``assemble._canonical_stage``).
         outputs, parameters, functions = _canonical_stage(
             SimpleNamespace(
                 output_expressions=list(outputs),
-                parameter_symbols=[*inputs, *model_symbols],
+                parameter_symbols=[
+                    *inputs,
+                    *(model_symbols[k] for k in model_inputs),
+                ],
                 symbolica_functions=list(retained),
             )
         )
@@ -1236,7 +1255,9 @@ def _interaction_program(
         )
         found = ids[(kind, key)] = len(saved[kind])
         saved[kind].append(bytes(evaluator.save()))
-        shapes[kind].append([len(inputs) + len(model_symbols), len(outputs)])
+        shapes[kind].append(
+            [len(inputs) + len(model_inputs), len(outputs), model_inputs]
+        )
         return found
 
     # Per current: (particle id, chirality, dimension) and its momentum
