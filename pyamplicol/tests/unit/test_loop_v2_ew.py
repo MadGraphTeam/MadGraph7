@@ -19,10 +19,15 @@ both UFOs:
   binary64; every coefficient the plan proves zero is zero there;
 * an mpmath transliteration of the same source (every number literal exact)
   for the plan at double-double and arbitrary precision (nightly);
-* the branch side: at real masses some helper arguments lie exactly on a
-  branch cut, and their side changes the Higgs two-point CTs by O(1); the
-  plan takes the +0 side (the UFO's Python evaluation, mpmath's principal
-  branch), and the -0 side differs (discriminating).
+* MadLoop's own values (the binding convention): every Laurent piece of
+  every CT parameter MG5_aMC's Fortran model library writes, in double and
+  quadruple precision (``madloop-ct-parameters.json``,
+  ``tools/loop_reference/madloop_ct_parameters.py``), for the plan in
+  binary64, double-double and arbitrary precision. This pins the branch
+  side: at real masses some helper arguments lie exactly on a branch cut,
+  their side changes the Higgs two-point CTs by O(1), and MadLoop's helpers
+  give a vanishing imaginary part of either sign the +0 side; the -0 side
+  differs from MadLoop's values (discriminating).
 
 Further checks:
 
@@ -62,6 +67,11 @@ CARD_FIXTURE = "required/gg_ttx_ew"
 # binary64: measured 3.6e-15 against 60-digit mpmath for the plan, 3.7e-15
 # for the UFO's own evaluation).
 DOUBLE_TOLERANCE = 1e-13
+# MadLoop's own CT values at ``_oracle_card`` (both UFOs).
+MADLOOP_FIXTURE = "madloop-ct-parameters"
+# Relative agreement with MadLoop's quadruple precision (measured: 6.0e-31
+# for the double-double plan, 2.8e-33 for the arbitrary-precision one).
+QUADRUPLE_TOLERANCE = 1e-28
 
 
 def _gmu_card(loop_reference) -> tuple[dict[str, str], dict[str, str]]:
@@ -455,38 +465,102 @@ def _on_cut(zero: float):
     return wrap, moved
 
 
-def test_counterterm_branch_sides_are_the_positive_zero_side(ew):
-    """Branch sides matter at real masses: a helper argument exactly on the
-    negative real axis (e.g. ``regsqrt`` of a negative real, a logarithm of a
-    negative real) takes the side its zero imaginary part's sign selects,
-    and the Higgs two-point CT parameters change by O(1) with it
-    (``_SIDE_SENSITIVE``). The convention is the +0 side: a real float of
-    the UFO's own Python evaluation (and a real Fortran argument converted
-    to complex) has a +0 imaginary part, and mpmath, the double-double and
-    arbitrary-precision oracle, has no negative zero (its principal branch
-    is the +0 side). Pinned on both electroweak UFOs: every on-cut argument
-    given +0 leaves the UFO's evaluation unchanged and the plan (binary64,
-    ``ct_recursion._RealArguments``) equals it; given -0 the side-sensitive
-    parameters differ from the plan (discriminating)."""
+def _madloop(ew, loop_reference) -> dict:
+    """MadLoop's record of ``ew``'s UFO (``MADLOOP_FIXTURE``), whose card is
+    the oracle card on every parameter MadLoop's restricted model reads."""
 
+    from decimal import Decimal
+
+    found = loop_reference(MADLOOP_FIXTURE)["models"][ew.name]
     card = _oracle_card(ew.model)
-    natural, _environment = _ufo_values(ew.ufo, card)
-    sides = {}
-    for side, zero in (("+0", 0.0), ("-0", -0.0)):
-        wrap, moved = _on_cut(zero)
-        sides[side], _environment = _ufo_values(ew.ufo, card, wrap=wrap)
-        assert moved, side
-    worst = max((_relative(sides["+0"][key], natural[key]), key) for key in natural)
-    assert worst[0] <= DOUBLE_TOLERANCE, worst
-    values = _plan_values(ew.plan.plan, ew.model.card, arithmetic="double")
-    plan = {
-        key: complex(float(re), float(im)) for key, (re, im) in values.items()
-    } | dict.fromkeys(ew.plan.zero, 0j)
-    worst = max((_relative(plan[key], sides["+0"][key]), key) for key in plan)
-    assert worst[0] <= DOUBLE_TOLERANCE, worst
+    assert found["card"]
+    for name, value in found["card"].items():
+        assert Decimal(value) == Decimal(card[name]), name
+    return found
+
+
+def _complex_decimal(pair, digits: int = 60):
+    """A (real, imaginary) pair of decimal strings as an mpmath number."""
+
+    import mpmath
+
+    with mpmath.workdps(digits):
+        return mpmath.mpc(mpmath.mpf(pair[0]), mpmath.mpf(pair[1]))
+
+
+# (plan carrier options, MadLoop precision, tolerance); MadLoop's quadruple
+# precision reads the card through a binary64 buffer (its lha_read.f), so the
+# plan is bound at the card's binary64 values there.
+_MADLOOP_CARRIERS = {
+    "double": ({"arithmetic": "double"}, "double", DOUBLE_TOLERANCE),
+    "double-double": (
+        {"arithmetic": "double-double"},
+        "quadruple",
+        QUADRUPLE_TOLERANCE,
+    ),
+    "arbitrary": ({"arithmetic": "arbitrary"}, "quadruple", QUADRUPLE_TOLERANCE),
+}
+
+
+@pytest.mark.parametrize("carrier", list(_MADLOOP_CARRIERS))
+def test_counterterm_scalars_equal_madloop(ew, loop_reference, carrier):
+    """MadLoop's own values are the convention (user, slice-status DECISIONS
+    2026-10-25 ~14:10 and ~16:45): every Laurent piece of every CT parameter
+    MG5_aMC's Fortran model library writes for the UFO (``MADLOOP_FIXTURE``:
+    143 on G_mu, 139 on loop_qcd_qed_sm) equals the plan's coefficient, in
+    binary64 against MadLoop's double precision and in double-double and
+    arbitrary precision (the working digits of a 60-digit evaluation)
+    against its quadruple precision; a piece the plan proves zero is zero
+    there.
+
+    Branch sides: at real masses some helper arguments lie exactly on a
+    branch cut (e.g. ``regsqrt(MZ^2 (MZ^2 - 4 MW^2))``), and their side
+    changes the Higgs two-point CTs by O(1). MadLoop's helpers give a
+    vanishing imaginary part of either sign the +0 side, which
+    ``ct_recursion._RealArguments`` takes in every lane; the UFO's own
+    Python evaluation with those arguments on the -0 side differs from
+    MadLoop's values (``_SIDE_SENSITIVE``, discriminating)."""
+
+    from decimal import Decimal
+
+    import mpmath
+
+    from pyamplicol.loops.v2.assemble import Precision
+
+    found = _madloop(ew, loop_reference)
+    options, precision, tolerance = _MADLOOP_CARRIERS[carrier]
+    if carrier == "arbitrary":
+        options = {**options, "precision": Precision.arbitrary(60).working_digits}
+    card = _oracle_card(ew.model)
+    if precision == "quadruple":
+        card = {name: str(Decimal(float(value))) for name, value in card.items()}
+    values = _plan_values(ew.plan.plan, card, **options)
+    reference = {
+        (name, int(power)): pieces[precision]
+        for name, powers in found["values"].items()
+        for power, pieces in powers.items()
+    }
+    assert len(reference) == found["pieces"] > 100
+    assert set(reference) <= set(values) | ew.plan.zero
+    with mpmath.workdps(60):
+        worst = max(
+            (
+                _relative(
+                    _complex_decimal(values.get(key, ("0", "0"))),
+                    _complex_decimal(pair),
+                ),
+                key,
+            )
+            for key, pair in reference.items()
+        )
+    assert worst[0] <= tolerance, worst
+    if carrier != "double":
+        return
+    wrap, _moved = _on_cut(-0.0)
+    minus, _environment = _ufo_values(ew.ufo, _oracle_card(ew.model), wrap=wrap)
     for key, minimum in _SIDE_SENSITIVE.items():
-        assert _relative(sides["-0"][key], sides["+0"][key]) > minimum, key
-        assert _relative(plan[key], sides["-0"][key]) > minimum, key
+        madloop = complex(*(float(part) for part in reference[key]))
+        assert _relative(minus[key], madloop) > minimum, key
 
 
 def test_both_reglog_conventions_agree_at_real_masses(gmu, gmu_ufo):
@@ -1180,8 +1254,8 @@ def test_counterterm_scalars_equal_mpmath(ew, carrier):
     60-digit evaluation equal an mpmath transliteration of the UFO's source
     (every literal exact) at 64 and 140 digits: to 1e-28 and 1e-55
     relative; the plan's zeros are zero there. mpmath has no negative zero:
-    its principal branch is the +0 side of the cut, the plan's convention
-    (``test_counterterm_branch_sides_are_the_positive_zero_side``)."""
+    its principal branch is the +0 side of the cut, MadLoop's and the plan's
+    (``test_counterterm_scalars_equal_madloop``)."""
 
     import mpmath
 
