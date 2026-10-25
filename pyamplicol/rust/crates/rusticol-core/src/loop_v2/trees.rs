@@ -609,8 +609,9 @@ struct ColumnProgramFile {
 }
 
 /// One column: its program, its direct and (directed histories) swapped
-/// metric (indices into `ColumnsFile::cells`), the Born rows and bra basis
-/// elements it keeps (None: all).
+/// metric (indices into `ColumnsFile::cells`, whose None entry is the Born
+/// metric of the counterterm interference itself), the Born rows and bra
+/// basis elements it keeps (None: all).
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ColumnFile {
@@ -624,7 +625,7 @@ struct ColumnFile {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ColumnsFile {
-    cells: Vec<CellsFile>,
+    cells: Vec<Option<CellsFile>>,
     programs: Vec<ColumnProgramFile>,
     columns: Vec<ColumnFile>,
     /// (leg label, state component start, phase re, phase im) per vector
@@ -2069,15 +2070,20 @@ impl TreeProgram {
                 .programs
                 .get(program)
                 .ok_or_else(|| invalid("a column's program index"))?;
-            let metric = file
+            let metric = match file
                 .cells
                 .get(cells)
-                .ok_or_else(|| invalid("a column's metric index"))?;
+                .ok_or_else(|| invalid("a column's metric index"))?
+            {
+                Some(metric) => load_cells(metric)?,
+                // The Born metric: the counterterm interference's own cells.
+                None => ct.interference.cells().to_vec(),
+            };
             programs.push(Interference::new(
                 layout.basis,
                 layout.orders,
                 layout.tensors,
-                load_cells(metric)?,
+                metric,
                 &layout.born,
                 &layout.ket,
                 layout.vectors,

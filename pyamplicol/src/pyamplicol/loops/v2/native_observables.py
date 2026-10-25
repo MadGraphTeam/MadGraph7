@@ -112,8 +112,9 @@ class _Metrics:
     """The exact overlap cells (Born basis element, ket tensor, N_c power,
     re, im) of every colour metric the stored columns read, formed once per
     process: the Born metric is the counterterm record's own (``record
-    ["cells"]``, ``native_trees._counterterm_program``), a directed history's
-    (and its swap) the history's operator overlaps."""
+    ["cells"]``, ``native_trees._counterterm_program``), stored as None (the
+    native columns read the tree program's), a directed history's (and its
+    swap) the history's operator overlaps."""
 
     def __init__(self, observables: Any, record: Mapping[str, Any], ket_literals):
         self.observables = observables
@@ -123,20 +124,18 @@ class _Metrics:
         self.basis = [tensor.terms[0].tensor for tensor in slice_.basis.tensors]
         self._found: dict[tuple[Any, bool], list[list[Any]]] = {}
 
-    def cells(self, column: Any, swapped: bool) -> tuple[tuple[Any, bool], list]:
+    def cells(self, column: Any, swapped: bool) -> tuple[tuple[Any, bool], list | None]:
         key = (column.history.id if column.directed else None, swapped)
+        if not column.directed:
+            return key, None
         found = self._found.get(key)
         if found is None:
-            if not column.directed:
-                found = [list(cell) for cell in self.record["cells"]]
-            else:
-                directed = self.observables.directed(column.history)
+            directed = self.observables.directed(column.history)
 
-                def overlap(left, right):
-                    return directed.overlap(left, right, swapped=swapped)
+            def overlap(left, right):
+                return directed.overlap(left, right, swapped=swapped)
 
-                found = _cells(self.basis, self.ket_literals, overlap)
-            self._found[key] = found
+            found = self._found[key] = _cells(self.basis, self.ket_literals, overlap)
         return key, found
 
 
@@ -160,7 +159,7 @@ class _Programs:
         self.outputs = outputs
         self.born_orders = born_orders
         self.squared_orders = squared_orders
-        self.cells: list[list[list[Any]]] = []
+        self.cells: list[list[list[Any]] | None] = []
         self.programs: list[dict[str, Any]] = []
         self._cells: dict[tuple[Any, bool], int] = {}
         self._programs: dict[str, int] = {}

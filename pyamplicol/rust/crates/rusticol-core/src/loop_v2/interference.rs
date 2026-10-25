@@ -339,6 +339,12 @@ impl Interference {
         self.basis
     }
 
+    /// The overlap cells (basis element, ket tensor, N_c power, exact
+    /// weight) of the program's metric.
+    pub fn cells(&self) -> &[(usize, usize, i32, [Rational; 2])] {
+        &self.cells
+    }
+
     /// The outputs of one point: `born` holds `rows x born components`,
     /// `ket` `rows x ket components`, `couplings` the point's coupling
     /// slots. Without `poles`, outputs of a nonzero epsilon power stay zero.
