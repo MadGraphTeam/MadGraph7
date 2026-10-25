@@ -76,13 +76,13 @@ def test_model_tensors_keep_supported_singlet_projection() -> None:
         (
             "UFO::ProjM(UFO::idx(1,1),UFO::idx(1,2))",
             (2, 2),
-            "projp",
+            "projm",
             ("ufo_s_1_1", "ufo_s_1_2"),
         ),
         (
             "UFO::ProjP(UFO::idx(1,1),UFO::idx(1,2))",
             (2, 2),
-            "projm",
+            "projp",
             ("ufo_s_1_1", "ufo_s_1_2"),
         ),
         (
@@ -131,6 +131,66 @@ def test_vertex_spinor_slots_follow_the_standard_ufo_fermion_order() -> None:
 
     assert gamma(2, 1) == gamma(1, 2, vertex=False)
     assert gamma(2, 1) != gamma(2, 1, vertex=False)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    (
+        # A pseudoscalar written with projectors or with gamma^5 (UFO FFS2).
+        ("ProjM(2,1)-ProjP(2,1)", "-Gamma5(2,1)"),
+        ("ProjM(2,1)+ProjP(2,1)", "Identity(2,1)"),
+        # gamma^mu gamma^5 (the axial current) both ways: the chain keeps its
+        # order next to a projector difference as next to Gamma5.
+        (
+            "Gamma(3,2,-1)*ProjP(-1,1)-Gamma(3,2,-1)*ProjM(-1,1)",
+            "Gamma(3,2,-1)*Gamma5(-1,1)",
+        ),
+        ("Gamma(3,2,-1)*ProjM(-1,1)", "ProjP(2,-1)*Gamma(3,-1,1)"),
+        # Sigma^{mu nu} as its gamma-matrix commutator.
+        (
+            "Sigma(3,4,2,1)",
+            "1/2*complex(0,1)*(Gamma(3,2,-1)*Gamma(4,-1,1)-Gamma(4,2,-1)*Gamma(3,-1,1))",
+        ),
+    ),
+)
+def test_vertex_spinor_chains_keep_their_order_and_chirality(
+    left: str, right: str
+) -> None:
+    """UFO identities between Lorentz structures hold after lowering: a lone
+    projector keeps its chirality and a product of gamma matrices keeps its
+    order, so pseudoscalar (Goldstone) couplings written with projectors equal
+    their gamma^5 form, and chiral currents their gamma^5 form."""
+
+    from symbolica import E
+    from symbolica.community.tensor import TensorLibrary, TensorNetwork, as_tensor
+    from ufo_model_loader.symbolica_processing import wrap_indices
+
+    from pyamplicol.loops.model_expressions import parse_exact_ufo
+    from pyamplicol.models.compiler_kernels import _ordered_dense_tensor_components
+
+    spins = (2, 2, 3, 3) if "4" in left else (2, 2, 3) if "(3" in left else (2, 2, 1)
+    axes = (
+        "ufo_s_1_1",
+        "ufo_s_1_2",
+        *(f"ufo_l_1_{leg}" for leg, spin in enumerate(spins, 1) if spin == 3),
+    )
+
+    def dense(source: str) -> tuple[object, ...]:
+        wrapped = wrap_indices(parse_exact_ufo(source)).to_canonical_string()
+        expression = E(normalize_lorentz_expression(wrapped, spins).expression)
+        library = TensorLibrary.hep_lib_atom()
+        network = TensorNetwork(as_tensor(expression), library)
+        network.execute(library=library)
+        result = network.result_tensor(library)
+        return tuple(
+            E(str(value)).expand()
+            for value in _ordered_dense_tensor_components(result, axes).values
+        )
+
+    assert all(
+        (mine - theirs).expand() == E("0")
+        for mine, theirs in zip(dense(left), dense(right), strict=True)
+    )
 
 
 def test_lorentz_clifford_contraction_preserves_4d_normalization() -> None:

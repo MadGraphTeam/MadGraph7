@@ -34,7 +34,7 @@ from .compiler_contacts import (
     projected_contact_partial_components,
 )
 from .compiler_contractions import compile_contraction_records
-from .compiler_gauge import compile_goldstone_partner_records
+from .compiler_gauge import close_goldstone_flags, compile_goldstone_partner_records
 from .compiler_kernels import (
     _canonicalize_oriented_kernel_component,
     _fuse_oriented_kernels,
@@ -72,6 +72,7 @@ from .contracts import (
     CompiledParticleRecord,
     CompiledPropagatorRecord,
     CompiledVertexTerm,
+    ModelGauge,
     TreeKernelVariant,
     compiled_particle_component_dimension,
 )
@@ -102,12 +103,19 @@ def compile_ufo_model_ir(
     *,
     tree_kernel_variant: TreeKernelVariant = "transverse",
     u1_projected_vertices: frozenset[str] = frozenset(),
+    gauge: ModelGauge = "unitary",
 ) -> CompiledModelIR:
     """Compile one UFO payload; ``tree_kernel_variant`` selects YM lowering.
 
     The variant changes only the component expressions of oriented kernels
     proven eligible for the transverse massless Yang-Mills replacement. Kernel
     kinds, particles and every other record are identical in both variants.
+
+    ``gauge`` is the gauge of the massive vectors (``contracts.ModelGauge``):
+    it decides the Goldstone partner records (``compiler_gauge``) and is
+    recorded in the IR; every other record is the same in both gauges (the
+    oriented kernels of Goldstone vertices exist in both; a unitary-gauge tree
+    model leaves out those of absorbed Goldstones).
 
     ``u1_projected_vertices`` names vertex rules whose colour-flow stages get
     the U(1) projection of their gluon legs
@@ -120,7 +128,9 @@ def compile_ufo_model_ir(
     _sym._ensure_symbolica()
     model_name = str(model.get("name", "unnamed-model"))
     model_symbols = symbols.model(model_name)
-    particles = tuple(_particle(item) for item in _mappings(model.get("particles")))
+    particles = close_goldstone_flags(
+        tuple(_particle(item) for item in _mappings(model.get("particles")))
+    )
     particle_by_name = {particle.name: particle for particle in particles}
     lorentz_by_name = {
         str(item["name"]): item for item in _mappings(model.get("lorentz_structures"))
@@ -348,6 +358,7 @@ def compile_ufo_model_ir(
         particles,
         parameter_records,
         propagators,
+        gauge=gauge,
     )
     return CompiledModelIR(
         name=model_name,
@@ -364,6 +375,7 @@ def compile_ufo_model_ir(
         current_orderings=current_orderings,
         goldstone_partners=goldstone_partners,
         tree_kernel_variant=tree_kernel_variant,
+        gauge=gauge,
     )
 
 

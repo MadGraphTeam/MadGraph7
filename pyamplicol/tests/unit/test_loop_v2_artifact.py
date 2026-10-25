@@ -744,6 +744,9 @@ def test_public_generation_publishes_plan_v4(full_colour):
     assert record["filters"]["counterterms_inert"] == dict(
         sorted(generated[0].counterterm_program.recursion.inert.items())
     )
+    # No native stage fell back (RUST-MIGRATION rule 2: the record would
+    # name it).
+    assert "native_fallbacks" not in record["filters"]
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
 
