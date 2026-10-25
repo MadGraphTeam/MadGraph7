@@ -624,6 +624,7 @@ def test_lowering_never_forms_an_untaken_branch(loop_sm_compiled_model, capfd):
     lowering = CoefficientLowering(compiled, {"MB": "0"})
     cond, reglog = library.helpers["cond"][0], library.helpers["reglog"][0]
     mb, mu = E("UFO::{}::MB"), E("UFO::{}::MU_R")
+
     def warned() -> bool:
         # Symbolica logs "Created infinity ..." on the process's stdout.
         captured = capfd.readouterr()
