@@ -2162,3 +2162,7 @@ impl TreeCarrier for Float {
         sources.fill_float(masses, point, state)
     }
 }
+
+#[cfg(test)]
+#[path = "trees_tests.rs"]
+mod tests;
