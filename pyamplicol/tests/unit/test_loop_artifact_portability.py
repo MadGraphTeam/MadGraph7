@@ -536,8 +536,8 @@ def test_loop_v4_artifact_loads_without_regeneration(loop_artifact, name):
     python = verdict["python"]
     assert {r["point_inputs"] for r in python.values()} == {"native-v2"}
     assert verdict["no_generation"], python
-    # Loading is a small fraction of generating (measured: 4 % at gg -> gggg,
-    # 2 % at gg -> ggggg).
+    # Loading is a small fraction of generating (measured with native-v2:
+    # 3 % at gg -> gggg, 1.4 % at gg -> ggggg).
     assert python["relocated"]["seconds"]["load"] < 0.25 * generation, python
 
 
