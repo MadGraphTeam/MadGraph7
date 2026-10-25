@@ -61,7 +61,7 @@ import struct
 import sys
 from array import array
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from types import SimpleNamespace
 from typing import Any
 
@@ -1267,6 +1267,10 @@ def _decode(
 # ------------------------------------------------------------------ handle
 
 
+# The ``GenericDAG`` fields a materialized ``NativeDag`` holds itself.
+_DAG_FIELDS = tuple(field.name for field in fields(GenericDAG))
+
+
 class NativeDag:
     """A native columnar loop-request DAG and its queries.
 
@@ -1361,7 +1365,14 @@ class NativeDag:
             if released:
                 # The rebuilt columns are not held while Python decodes.
                 self.release()
-            self._decoded = self._decode_columns(data)
+            decoded = self._decode_columns(data)
+            self._decoded = decoded
+            # The decoded fields become the handle's own attributes, so the
+            # consumers' reads in their loops (``dag.currents[i]``, the
+            # runtime schema's and the export's) do not go through
+            # ``__getattr__`` (0.7 M calls in the u u~ > g g g g export).
+            for name in _DAG_FIELDS:
+                self.__dict__.setdefault(name, getattr(decoded, name))
         return self._decoded
 
     @property
