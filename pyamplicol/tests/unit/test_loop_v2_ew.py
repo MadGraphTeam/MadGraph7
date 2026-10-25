@@ -30,9 +30,10 @@ every helper a function of the model's scalar library
   taken, refuses a coefficient that is not finite, and decides the scalar
   library's predicates of exact numbers (the CMS switch ``CMSParam``).
 
-The ladder (nightly): one strict xfail per electroweak request, each naming
-the blocker its generation reaches (PLAN wp32 §2); an increment that lifts
-a blocker flips its rungs.
+The ladder (nightly): one rung per electroweak request, a strict xfail
+naming the blocker its generation reaches (PLAN wp32 §2) or, once its
+blockers are lifted, a plain test that generates and runs its check; an
+increment that lifts a blocker flips its rungs.
 """
 
 from __future__ import annotations
@@ -906,10 +907,14 @@ def test_every_referenced_coupling_equals_the_ufo_coupling(gmu, gmu_ufo, gmu_pla
 # ------------------------------------------------------------------- ladder
 
 # Blockers (PLAN wp32 §2): the exception and message each request stops at.
-B2 = ("LoopKernelCatalogueError", r"declares no loop species")
+# B1 (the CT helpers) is lifted by EWI-3; B2 (loop species), B5 (a W on a
+# loop quark line) and B6 (a W at the root) by EWI-1 and EWI-2 (ew-lines).
 B3 = ("LoopKernelCatalogueError", r"loop line -?\d+ has a unitary-gauge propagator")
-B5 = ("FermionSignError", r"has more than one fermion line")
-B6 = ("NotImplementedError", r"is not closed under conjugation")
+# B4: more than one colour-singlet fermion line, refused when the request is
+# prepared, before any tree or counterterm is built
+# (``ct_sites.require_one_singlet_line``, until EWI-5).
+B4 = ("FermionSignError", r"colour-singlet fermion lines .*Koszul signs")
+LIFTED = None  # the rung generates (and runs its check)
 _PHOTON_ONLY = (23, 24, 25, 250, 251)  # Z, W, H and the Goldstones vetoed
 # Electroweak requests need every propagating width fixed to zero outside
 # the complex-mass scheme (``ew_policy``, the user's decision [U8]).
@@ -940,7 +945,8 @@ _GB_TW_POINT = [
 
 
 def _rung(name, model, process, born, loop, blocker, **options):
-    """One ladder rung: a strict xfail raising its blocker's exception."""
+    """One ladder rung: a strict xfail raising its blocker's exception, or a
+    plain test once its blockers are lifted (``LIFTED``)."""
 
     import pyamplicol.loops.v2.catalogue as catalogue
     import pyamplicol.loops.v2.conventions as conventions
@@ -948,58 +954,54 @@ def _rung(name, model, process, born, loop, blocker, **options):
     errors = {
         "LoopKernelCatalogueError": catalogue.LoopKernelCatalogueError,
         "FermionSignError": conventions.FermionSignError,
-        "ValueError": ValueError,
-        "NotImplementedError": NotImplementedError,
     }
-    return pytest.param(
-        model,
-        process,
-        born,
-        loop,
-        blocker,
-        options,
-        id=name,
-        marks=pytest.mark.xfail(
+    marks = ()
+    if blocker is not LIFTED:
+        marks = pytest.mark.xfail(
             strict=True, raises=errors[blocker[0]], reason=f"blocker: {blocker[1]}"
-        ),
+        )
+    return pytest.param(
+        model, process, born, loop, blocker, options, id=name, marks=marks
     )
 
 
 LADDER = [
-    # Photon-only QED corrections of a lepton process: the families' photon
-    # and lepton species are not in the kernel catalogue (B2, WP3.2 EWI-1).
+    # Photon-only QED corrections of a lepton process: two colour-singlet
+    # fermion lines (B4, EWI-5; B2 was lifted by EWI-1).
     _rung(
         "qq_eemm_photon",
         "loop_qcd_qed_sm",
         "e- e+ > m- m+",
         {"QED": 2, "QCD": 0},
         {"QED": 4, "QCD": 0},
-        B2,
+        B4,
         corrections=("QED",),
         particle_veto=_PHOTON_ONLY,
         fixed_parameters=_ZERO_WIDTHS,
     ),
+    # Lifted by EWI-1 (B2 at the root: a lepton as leg 1); its values
+    # against legacy: ``test_loop_v2_ew_lines`` (epem_uux).
     _rung(
         "sm_epem_uux",
         "loop_sm",
         "e+ e- > u u~",
         {"QCD": 0, "QED": 2},
         {"QCD": 2, "QED": 2},
-        B2,
+        LIFTED,
     ),
     # Q3: photon-only QED corrections of u u~ > d d~ pass the CT lowering
     # (EWI-3). Their CT roots declare no loop species since the admission
     # takes only loops of the selected corrections (the QCD R2 of u u~ a
-    # with a gluon loop declared the gluon and the quark before), so the
-    # catalogue has none (B2) until it takes the families' species (EWI-1).
-    # Then the bare and counterterm UV poles must cancel.
+    # with a gluon loop declared the gluon and the quark before); the
+    # catalogue takes the families' species since EWI-1. The bare and
+    # counterterm UV poles cancel (renormalisation is complete).
     _rung(
         "uudd_qed_photon_uv",
         "loop_qcd_qed_sm",
         "u u~ > d d~",
         {"QCD": 2, "QED": 0},
         {"QCD": 2, "QED": 2},
-        B2,
+        LIFTED,
         corrections=("QED",),
         particle_veto=_PHOTON_ONLY,
         point=_MASSLESS_POINT,
@@ -1026,32 +1028,38 @@ LADDER = [
         corrections=("QCD", "QED"),
         fixed_parameters=_ZERO_WIDTHS,
     ),
+    # Lifted by EWI-2 (B5: the W on a loop quark line); its values against
+    # legacy: ``test_loop_v2_ew_lines`` (gb_twm).
     _rung(
         "gb_twm",
         "loop_sm",
         "g b > t w-",
         {"QCD": 1, "QED": 1},
         {"QCD": 3, "QED": 1},
-        B5,
+        LIFTED,
         fixed_parameters={"MB": "0", "WT": "0"},
         point=_GB_TW_POINT,
     ),
+    # Lifted by EWI-2 (B6: the W at the root, read through the conjugate
+    # rule); its values against legacy: ``test_loop_v2_ew_lines`` (udx_epve).
     _rung(
         "udx_epve",
         "loop_sm",
         "u d~ > e+ ve",
         {"QCD": 0, "QED": 2},
         {"QCD": 2, "QED": 2},
-        B6,
+        LIFTED,
     ),
-    # The G_mu ladder of PLAN wp32 §1 (real masses, widths zero).
+    # The G_mu ladder of PLAN wp32 §1 (real masses, widths zero). e- e+ >
+    # m- m+ has two colour-singlet fermion lines: B4 (EWI-5) is refused
+    # before its CT lowering, which M1 measured before that guard (EWI-1).
     _rung(
         "gmu_eemm",
         "loop_gmu",
         "e- e+ > m- m+",
         {"QED": 2, "QCD": 0},
         {"QED": 4, "QCD": 0},
-        B3,
+        B4,
         corrections=("QED",),
         fixed_parameters=_G_MU_FIXED,
     ),
@@ -1146,9 +1154,9 @@ def _check_admitted_loops(slice_, request) -> None:
 def test_electroweak_ladder_reaches_its_blocker(
     ladder_models, loop_native, model, process, born, loop, blocker, options
 ):
-    """Each rung generates past the CT lowering (WP3.2 EWI-3) and stops at
-    its named blocker; a rung whose blocker is lifted runs its check (the UV
-    poles cancel) and flips its strict xfail."""
+    """Each rung stops at its named blocker, never in the CT lowering
+    (WP3.2 EWI-3); a rung whose blockers are lifted generates, runs its
+    check (the UV poles cancel) and is a plain test."""
 
     import re
 
@@ -1168,6 +1176,8 @@ def test_electroweak_ladder_reaches_its_blocker(
                 point, "1000000", parameters={"aS": "0.118", "MT": "173"}, poles=poles
             )
     except Exception as error:
+        if blocker is LIFTED:
+            raise
         if type(error).__name__ == blocker[0] and re.search(blocker[1], str(error)):
             raise
         raise AssertionError(f"stopped before its blocker: {error!r}") from error
