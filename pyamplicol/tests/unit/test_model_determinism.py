@@ -97,6 +97,106 @@ def test_compiled_model_does_not_depend_on_the_process_history(tmp_path):
     )
 
 
+# One summand of scalar_gravity's three-graviton vertex (its Lorentz record,
+# with two spin-2 inputs and the three leg momenta). Prints the hashes of the
+# components of Spenso's own network and of ``_execute_dense_network``.
+_NETWORK = """
+import hashlib
+import sys
+
+from symbolica import S
+
+# The index symbols in increasing or decreasing order.
+for k in range(1, 13) if sys.argv[1] == "forward" else range(12, 0, -1):
+    for family in ("c", "l_1", "s", "l_2"):
+        S(f"spynso3::ufo_{family}_{k}")
+from pyamplicol._internal.physics.symbols import ModelSymbolRegistry
+from pyamplicol.models import compiler_kernels as ck
+from pyamplicol.models import compiler_symbolica as sym
+
+sym._ensure_symbolica()
+names = ModelSymbolRegistry("determinism-network")
+p = [sym.TensorName(names.ufo_momentum_tensor_name(leg)) for leg in (1, 2, 3)]
+P = [f"{names.ufo_momentum_tensor_name(leg)}(spenso::mink(4,spynso3::ufo_{{}}))"
+     for leg in (1, 2, 3)]
+G = "spenso::g(spenso::mink(4,spynso3::ufo_{}),spenso::mink(4,spynso3::ufo_{}))"
+source = (
+    f"-(({P[0]}*{P[1]}+{P[1]}*{P[2]})*{G}"
+    f"+({P[0]}*{P[1]}+{P[1]}*{P[2]})*{G}"
+    f"-2*{G}*{P[0]}*{P[1]}-2*{G}*{P[0]}*{P[1]}"
+    f"+{G}*{P[0]}*{P[1]}+{G}*{P[0]}*{P[2]}"
+    f"+{G}*{P[0]}*{P[1]}+{G}*{P[0]}*{P[2]})*{G}"
+).format(
+    "l_2_3", "l_2_1", "l_2_3", "l_2_1", "l_1_2", "l_1_3",
+    "l_1_3", "l_2_1", "l_1_3", "l_2_1", "l_1_2", "l_2_3",
+    "l_1_2", "l_2_1", "l_2_3", "l_1_3",
+    "l_1_2", "l_2_1", "l_1_3", "l_2_3",
+    "l_2_3", "l_2_1", "l_1_2", "l_1_3",
+    "l_2_3", "l_2_1", "l_1_3", "l_1_2",
+    "l_1_3", "l_2_1", "l_1_2", "l_2_3",
+    "l_1_3", "l_2_1", "l_2_3", "l_1_2",
+    "l_1_1", "l_2_2",
+)
+for mode in ("spenso", "canonical"):
+    library = (
+        ck.DenseTensors() if mode == "canonical" else sym.TensorLibrary.hep_lib_atom()
+    )
+    expression = sym.E(source)
+    for side, leg in (("left", 1), ("right", 2)):
+        components = [names.kernel_component(0, side, i) for i in range(16)]
+        expression = expression * ck._input_tensor_expression(
+            library, kind=0, side=side, spin=5, leg=leg,
+            components=components, model_symbols=names,
+        )
+    left = [names.kernel_momentum(0, "left", i) for i in range(4)]
+    right = [names.kernel_momentum(0, "right", i) for i in range(4)]
+    momenta = (left, right, [-(a + b) for a, b in zip(left, right)])
+    for leg, momentum in enumerate(momenta, start=1):
+        ck.register_dense(
+            library, names.ufo_momentum_tensor_name(leg),
+            (sym.Representation.mink(4),), momentum,
+        )
+    labels = ck._spin_axis_labels(5, 3)
+    if mode == "canonical":
+        values = ck._execute_dense_network(expression, library, labels).values
+    else:
+        network = sym.TensorNetwork(sym.as_tensor(expression), library)
+        network.execute(library=library)
+        values = ck._ordered_dense_tensor_components(
+            network.result_tensor(library), labels
+        ).values
+    text = "|".join(ck._as_expression(v).to_canonical_string() for v in values)
+    print(mode, hashlib.sha256(text.encode()).hexdigest())
+"""
+
+
+def test_tensor_networks_do_not_depend_on_the_process_history():
+    """Spenso contracts a network in an order that follows the symbol ids:
+    the index symbols created in increasing and in decreasing order give
+    components of different (equal) structure for a three-graviton summand
+    (Spenso's own network); ``_execute_dense_network`` gives the same
+    components in both histories."""
+
+    runs = [
+        subprocess.Popen(
+            [sys.executable, "-c", _NETWORK, history],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for history in ("forward", "reverse")
+    ]
+    hashes = []
+    for run in runs:
+        out, err = run.communicate(timeout=600)
+        assert run.returncode == 0, err[-4000:]
+        hashes.append(dict(line.split() for line in out.strip().splitlines()[-2:]))
+    forward, reverse = hashes
+    assert forward["spenso"] != reverse["spenso"], hashes
+    assert forward["canonical"] == reverse["canonical"], hashes
+
+
 def test_canonical_forms_round_trip_and_ignore_symbol_order():
     """``canonical_plain`` parses back to its expression and is the same
     string for an expression built on symbols created in another order;
