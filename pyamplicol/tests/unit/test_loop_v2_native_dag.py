@@ -1195,6 +1195,20 @@ def test_native_stage_falls_back_with_a_record(
         "loop_blocks": fallen.dag_fallback,
         "counterterm_program": again.blocks.dag_fallback,
     }
+    # The generation record's entry (``generation_filters``).
+    from pyamplicol.loops.v2.artifact import GeneratedProcess
+
+    generated = GeneratedProcess(
+        SimpleNamespace(
+            slice=SimpleNamespace(
+                blocks=fallen, counterterm_program=SimpleNamespace(blocks=again)
+            )
+        ),
+        None,
+        {},
+        "",
+    )
+    assert generated.native_fallbacks() == record
     assert (
         dag_input.fallback_record(
             SimpleNamespace(blocks=python, counterterm_program=None)

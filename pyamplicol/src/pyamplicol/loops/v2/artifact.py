@@ -601,6 +601,17 @@ class GeneratedProcess:
             return {}
         return dict(sorted(program.recursion.inert.items()))
 
+    def native_fallbacks(self) -> dict[str, str]:
+        """The generation stages that took the tree engine instead of the
+        native loop-request DAG builder, each with the listed feature it
+        does not cover (``dag_input.fallback_record``, RUST-MIGRATION rule
+        2): the generation record's ``native_fallbacks``; empty when every
+        stage was native (the record then has no entry)."""
+
+        from .dag_input import fallback_record
+
+        return fallback_record(self.slice)
+
 
 def _order_text(order: Orders) -> str:
     return " ".join(f"{name}^{power}" for name, power in canonical_order(order))
