@@ -537,6 +537,34 @@ def test_gate_document_applies_the_floor_and_reads_no_old_root(tmp_path, no_old_
     assert no_old_root == []
 
 
+def test_a_repeat_at_another_batch_keeps_the_earlier_checks(tmp_path):
+    """The seven-gluon leading-colour row: a B = 64 run without physical rows
+    after a B = 16 run with them decides the timing, keeps the B = 16 times
+    as an earlier run and the physical rows with their revision."""
+
+    import json
+
+    first = _pyamplicol_record(
+        "gg_ggggg", [15.7, 15.9, 16.2], accuracy="lc", physical=[{"index": 0}]
+    )
+    first["batches"] = {"16": first["batches"]["128"]}
+    second = _pyamplicol_record("gg_ggggg", [15.5, 15.6, 15.8], accuracy="lc")
+    second["batches"] = {"64": second["batches"]["128"]}
+    second["revision"] = "1" * 40
+    paths = []
+    for index, record in enumerate((first, second)):
+        path = tmp_path / f"record-{index}.json"
+        path.write_text(json.dumps(record))
+        paths.append(path)
+    document, _ = gate.build(paths, None)
+    (row,) = document["processes"]
+    config = row["pyamplicol"]["native/lc"]
+    assert set(config["batches"]) == {"64"} and config["revision"] == "1" * 40
+    assert set(config["earlier_runs"][0]["batches"]) == {"16"}
+    assert config["physical"] == [{"index": 0}]
+    assert config["checks_from_earlier_run"] == {"physical": "0" * 40}
+
+
 def test_universal_double_pole_at_full_and_leading_colour():
     import math
 
