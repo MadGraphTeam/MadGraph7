@@ -35,7 +35,7 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   reduction-direction check) return one estimate per point that bounds the
   true error, and no estimate without checks;
 * a fresh interpreter loads and evaluates the stored native point inputs
-  (``point_inputs = "native-v1"``, WP3.1) with generation forbidden, with
+  (``point_inputs = "native-v2"``, WP3.1) with generation forbidden, with
   bitwise-identical binary64 values also after unrelated Symbolica symbols
   were created; a call that needs the generation objects (correlated and
   resolved outputs) regenerates the slice and refuses a stored plan that
@@ -1071,7 +1071,7 @@ def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
     from pyamplicol import Runtime
 
     here = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
-    assert here.inspect()["point_inputs"] == "native-v1"
+    assert here.inspect()["point_inputs"] == "native-v2"
     value = here.evaluate([POINT], mu_r2="1000000")
     expected = [
         here.inspect()["plan_sha256"],
@@ -1338,7 +1338,7 @@ def test_inspect_summarizes_v2_loop_artifacts(full_colour):
     assert loop.arithmetic == ("double", "double-double", "arbitrary")
     assert loop.resolved and not loop.correlations
     assert loop.color_correlations == () and loop.spin_correlations == ()
-    assert loop.point_inputs == "native-v1"
+    assert loop.point_inputs == "native-v2"
     execution = json.loads((full_colour / "processes/gg/execution.json").read_text())
     assert loop.plan_sha256 == execution["plan_sha256"]
     assert by_id["uux_ddxg"].loop.families == 42
