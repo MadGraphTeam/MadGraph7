@@ -971,6 +971,7 @@ def _load_external_model(
             # projection need not parse or evaluate their finite coefficients.
             include_counterterm_finite_parts=not source.is_dir(),
         )
+        _canonical_loader_values(model)
         from .loop_import import adapt_raw_ufo_model
 
         raw_loop_model = None
@@ -1011,6 +1012,72 @@ def _load_external_model(
         if raw_loop_import_error is not None:
             result["raw_loop_import_error"] = raw_loop_import_error
         return result
+
+
+def _canonical_loader_values(model: Any) -> None:
+    """Re-evaluate the loader's internal parameters and couplings on
+    canonical symbols.
+
+    ufo_model_loader evaluates them in binary64 in Symbolica's normal-form
+    order, which depends on the process history (``canonical_order``): the
+    same card gave loop_sm's ``yb = sqrt(2) ymb / v`` one ulp apart in two
+    processes, and with it every coupling built from it. Each value is
+    evaluated again by the loader's own function, with its model functions
+    and the values of the parameters it depends on, on the expression whose
+    variables are renamed to canonical symbols (function heads, which select
+    the model functions, keep theirs; their calls are evaluated first and
+    in a fixed order). Values in the loader's dependency order, as the loader
+    computes them; external and constant parameters keep the card's values.
+    """
+
+    from ufo_model_loader.symbolica_processing import (
+        evaluate_symbolica_expression_safe,
+    )
+
+    from .._internal.physics.canonical_order import canonical_expression
+    from .._internal.physics.symbols import symbols
+
+    functions = model.get_model_functions()
+    values: dict[Any, complex] = model.get_model_variables()
+
+    def evaluate(expression: Any) -> complex:
+        # Symbolica's own constants (pi) keep their symbols, as the heads.
+        variables = set(expression.get_all_symbols(False)).intersection(values)
+        canonical, renaming = canonical_expression(
+            expression, keep=lambda symbol: symbol not in variables
+        )
+        pool = {
+            renaming.pool[index]: values[symbol]
+            for index, symbol in enumerate(renaming.symbols)
+        }
+        return evaluate_symbolica_expression_safe(canonical, pool, functions)
+
+    pending = []
+    heads = set()
+    for parameter in model.parameters:
+        head = symbols.qualified(f"UFO::{parameter.name}")
+        heads.add(head)
+        if parameter.nature == "external" or parameter.expression is None:
+            if parameter.value is not None:
+                values[head] = parameter.value
+            continue
+        pending.append((parameter, head))
+    while pending:
+        remaining = []
+        for parameter, head in pending:
+            dependencies = heads.intersection(parameter.expression.get_all_symbols(False))
+            if dependencies <= values.keys():
+                parameter.value = evaluate(parameter.expression)
+                values[head] = parameter.value
+            else:
+                remaining.append((parameter, head))
+        if len(remaining) == len(pending):
+            names = ", ".join(parameter.name for parameter, _ in remaining)
+            raise ValueError(f"UFO parameters depend on unknown symbols: {names}")
+        pending = remaining
+    for coupling in model.couplings:
+        if coupling.expression is not None and coupling.value is not None:
+            coupling.value = evaluate(coupling.expression)
 
 
 def _classify_external_propagators(model: Any) -> dict[str, str]:

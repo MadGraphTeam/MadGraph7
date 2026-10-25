@@ -8,6 +8,7 @@ import re
 from collections.abc import Mapping, Sequence
 from itertools import product
 
+from .._internal.physics.canonical_order import canonical_apply
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
 from .compiler_records import _replace_evaluator_constants, _sequence
@@ -169,9 +170,16 @@ def _fuse_oriented_kernels(
 def _canonicalize_oriented_kernel_component(
     expression: _sym.Expression,
 ) -> _sym.Expression:
-    """Cancel numeric sums, factor couplings, and group primitive inputs."""
+    """Cancel numeric sums, factor couplings, and group primitive inputs.
 
-    return expression.expand_num().collect_factors().collect_horner()
+    The factorisation and the Horner scheme depend on Symbolica's symbol
+    order, so they run on canonical symbols (``canonical_order``): the same
+    kernel in every process history."""
+
+    return canonical_apply(
+        lambda canonical: canonical.expand_num().collect_factors().collect_horner(),
+        expression,
+    )
 
 
 def _remap_kernel_symbols(
