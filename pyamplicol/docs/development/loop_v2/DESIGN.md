@@ -1468,7 +1468,7 @@ At gg→gggg the LC inputs split into the interaction programs 40.4 ms (FC 50.7)
 
 The pass's own traced allocation peak falls from 1,130 to 20 MiB (FC) and from 402 to 21 MiB (LC); at uu~→gggg it takes 0.12 s (FC) and 0.13 s (LC), from 0.32 and 0.20 s.
 
-**Merging artifact-portability.** Its plane paths in `loop_v2/trees.rs` (`plane_interactions`, `plane_propagator`) fill the whole model block per kernel row; with schema 3 they must fill `program.models[kernel]` (state components `model_offset + index`) as `run_interactions` does, and a propagator's value width is `inputs − 4 − models[kernel].len()`. They merge without conflict markers, so `StateLayout::model_count` is renamed `model_block`: unchanged plane code fails to compile after the merge instead of misaligning its inputs.
+**Merging artifact-portability.** Its plane paths in `loop_v2/trees.rs` (`plane_interactions`, `plane_propagator`) fill the whole model block per kernel row; with schema 3 they must fill `program.models[kernel]` (state components `model_offset + index`) as `run_interactions` does, and a propagator's value width is `inputs − 4 − models[kernel].len()`. They merge without conflict markers, so `StateLayout::model_count` is renamed `model_block`: unchanged plane code fails to compile after the merge instead of misaligning its inputs (`git merge-tree` against `work/v2-artifact-portability` `85bafee8`: 4 conflict hunks in `trees.rs`, 1 in `native_trees.py`, and `layout.model_count` left in both plane functions). lc-perf also changed `load_interactions`, which artifact-portability rewrites: it reads each kernel's (inputs, outputs, model indices) shape and requires the indices increasing and inside the model block.
 
 ### 7.6 Next-to-leading colour
 
