@@ -916,7 +916,7 @@ class Model:
                 auxiliary_policy or self.auxiliary_kind(particle_id) or rule.kernel
             )
         default_numerator, default_denominator = _propagator_formula_metadata(
-            rule.kind, rule.gauge
+            rule.kind, rule.gauge, rule.mass_class
         )
         result = PropagatorIR(
             identity=self._particle_identity_ir(particle_id),
@@ -1520,6 +1520,7 @@ class Model:
 def _propagator_formula_metadata(
     kind: PropagatorKind,
     gauge: PropagatorGauge | None,
+    mass_class: PropagatorMassClass = "massless",
 ) -> tuple[str | None, str | None]:
     """Return descriptive formulas for the implemented propagator kernel."""
 
@@ -1535,6 +1536,8 @@ def _propagator_formula_metadata(
             "momentum_squared-mass_squared+i*mass*width",
         )
     if kind == "vector" and gauge == "feynman":
+        if mass_class == "massive":
+            return ("-i*metric", "momentum_squared-mass_squared+i*mass*width")
         return ("-i*metric", "momentum_squared")
     if kind == "vector" and gauge == "unitary":
         return (
