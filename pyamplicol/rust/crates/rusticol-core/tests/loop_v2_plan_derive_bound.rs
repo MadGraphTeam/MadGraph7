@@ -389,9 +389,11 @@ fn exported_plans_stay_within_their_bound() {
 
 /// The environment variable naming the plan JSON a child of
 /// [`weights_fit_their_bound_in_address_space`] loads.
+#[cfg(target_os = "linux")]
 const ADDRESS_PLAN: &str = "LOOP_PLAN_BOUND_ADDRESS_PLAN";
 
-/// This process's `/proc/self/status` field `name` (kB), in bytes.
+/// This process's `/proc/self/status` field `name` (kB), in bytes (Linux).
+#[cfg(target_os = "linux")]
 fn status(name: &str) -> u64 {
     let status = std::fs::read_to_string("/proc/self/status").unwrap();
     let line = status.lines().find(|line| line.starts_with(name)).unwrap();
@@ -407,6 +409,7 @@ fn status(name: &str) -> u64 {
 /// The multi-precision weights at `digits` digits, named: a power of ten of
 /// either sign, a long mantissa times or over one (the product; the
 /// normalising gcd and divisions), a long fraction with a common factor.
+#[cfg(target_os = "linux")]
 fn address_cases(digits: usize) -> Vec<(String, String)> {
     let text = |n: usize| "1234567890".repeat(n.div_ceil(10))[..n].to_string();
     let mantissa = text(digits / 10);
@@ -440,9 +443,11 @@ fn address_cases(digits: usize) -> Vec<(String, String)> {
 /// of them (its brk heap below the dynamic mmap threshold, fragmented, and
 /// the mappings above it); an address-space limit sees both. The child reads
 /// the plan from a file and derives through the JSON load
-/// (`LoopProgramV4::load`: the same derivations without the reader's probe,
-/// which would otherwise be the peak): `VmPeak` after it over `VmSize` before
-/// it (nothing before it peaks above its size).
+/// (`LoopProgramV4::load_unprobed`: the derivations of `LoopProgramV4::load`
+/// without its probe of their peak, which would otherwise be the peak):
+/// `VmPeak` after it over `VmSize` before it (nothing before it peaks above
+/// its size). Linux only (`/proc/self/status`).
+#[cfg(target_os = "linux")]
 fn address_space(name: &str, json: &[u8]) -> u64 {
     let path = std::env::temp_dir().join(format!(
         "loop_v2_plan_derive_bound-{}.json",
@@ -471,13 +476,15 @@ fn address_space(name: &str, json: &[u8]) -> u64 {
 /// A plan whose weight is a GMP number takes, in address space, at most its
 /// bound's `memory` (the reader probes that with its margin): 10^6 and
 /// 3 × 10^6 digits by default, up to 10^`LOOP_PLAN_BOUND_ADDRESS_SCALE`
-/// digits with that variable (evidence runs; scale 8 takes minutes).
+/// digits with that variable (evidence runs; scale 8 takes minutes). Linux
+/// only: the address space is read from `/proc/self/status`.
+#[cfg(target_os = "linux")]
 #[test]
 fn weights_fit_their_bound_in_address_space() {
     if let Some(path) = std::env::var_os(ADDRESS_PLAN) {
         let json = std::fs::read(path).unwrap();
         let before = status("VmSize:");
-        let program = LoopProgramV4::load(&json).unwrap();
+        let program = LoopProgramV4::load_unprobed(&json, FormPolicy::Rule).unwrap();
         let peak = status("VmPeak:");
         drop(program);
         println!("ADDRESS {before} {peak}");

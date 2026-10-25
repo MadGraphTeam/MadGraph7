@@ -23,7 +23,22 @@
 //! [`LoopProgramV4::load`] parses and validates the JSON and derives the
 //! executor tables: segment layouts per content (open-loop and seeded
 //! forms), product tables per (input rank, degree), per-family factor sets
-//! and row links expanded over the observable columns.
+//! and row links expanded over the observable columns. [`read_binary`] loads
+//! the binary plan member ([`binary`]) through the same validation and
+//! derivations.
+//!
+//! Both loads fail closed, with an error, on plans whose derivations would
+//! crash or exhaust the process: before deriving, the bound of the
+//! derivations (`binary::derive`) refuses the values the derivations would
+//! trust beyond the plan's tables (a fused entry's q-degree above its
+//! content's, before the segment layouts whose monomial indices recurse once
+//! per unit of exponent; a decimal weight's power of ten of 2^32 or more;
+//! vertex ids, family and step ranks), and the allocator must grant the
+//! bound's peak (a fallible probe); the tables the derivations size by plan
+//! scalars are reserved fallibly. A member also pays for its derivations
+//! per byte; a JSON is not bounded per byte (it cannot be padded, and its
+//! derivations follow its scalars), so a crafted JSON makes the loader
+//! allocate at most what the allocator grants.
 
 use super::observables::ColumnRows;
 use super::poly::{MonomialProductTable, SegmentEntry, SegmentLayout};
@@ -31,6 +46,7 @@ use crate::{RusticolError, RusticolResult};
 
 pub mod binary;
 mod links;
+pub use binary::{read_binary, read_binary_with};
 use ninjars::fast::tensor_layout::ncoeff;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -862,7 +878,7 @@ impl Tables {
 fn expand_links(flat: &[u32], columns: usize) -> RusticolResult<Vec<super::kernels::RowLink>> {
     require(flat.len().is_multiple_of(3), "row links are not triples")?;
     let columns = u32::try_from(columns).map_err(|_| invalid("too many columns"))?;
-    let mut out = Vec::with_capacity(flat.len() / 3 * columns as usize);
+    let mut out = reserved(flat.len() / 3 * columns as usize, "row links")?;
     for link in flat.chunks_exact(3) {
         for o in 0..columns {
             let row = |r: u32| {
@@ -878,6 +894,17 @@ fn expand_links(flat: &[u32], columns: usize) -> RusticolResult<Vec<super::kerne
         }
     }
     Ok(out)
+}
+
+/// An empty list with room for exactly `len` items (`Vec::with_capacity`),
+/// or an error when the allocator refuses it: the loader's tables sized by
+/// plan scalars, beyond the bound's probe of their peak.
+fn reserved<T>(len: usize, what: &str) -> RusticolResult<Vec<T>> {
+    let mut items = Vec::new();
+    items
+        .try_reserve_exact(len)
+        .map_err(|_| invalid(format!("the allocator refuses {len} {what}")))?;
+    Ok(items)
 }
 
 fn exact(value: &str) -> RusticolResult<Rational> {
@@ -1096,7 +1123,8 @@ fn split_candidate(
                 targets.push(BTreeSet::new());
                 groups.len() - 1
             });
-            let mut row_of = vec![None; content.rows];
+            let mut row_of = reserved(content.rows, "content rows")?;
+            row_of.resize(content.rows, None);
             for (k, (row, _blocks)) in term.rows.iter().enumerate() {
                 row_of[*row] = Some(k as u32);
             }
@@ -1174,11 +1202,20 @@ impl LoopProgramV4 {
         Self::load_with(json, FormPolicy::Rule)
     }
 
-    /// [`Self::load`] with an explicit kernel-form policy.
+    /// [`Self::load`] with an explicit kernel-form policy. The derivations
+    /// are bounded (module docs): refused values and an ungranted peak give
+    /// an error before deriving.
     pub fn load_with(json: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
-        let file: PlanFile =
-            serde_json::from_slice(json).map_err(|error| invalid(error.to_string()))?;
-        Self::from_file(file, policy)
+        binary::PlanModel::from_json(json)?.program(policy)
+    }
+
+    /// The derivations of a plan JSON after the bound's refusals, without
+    /// the probe of their peak: the address-space measurement of the bound
+    /// (`tests/loop_v2_plan_derive_bound.rs`), where the probe would be the
+    /// peak. Loaders call [`Self::load`].
+    #[doc(hidden)]
+    pub fn load_unprobed(json: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
+        binary::PlanModel::from_json(json)?.program_unprobed(policy)
     }
 
     fn from_file(file: PlanFile, policy: FormPolicy) -> RusticolResult<Self> {
@@ -1349,6 +1386,9 @@ impl LoopProgramV4 {
                         require(!t.split.is_empty(), "a vertex without split kernels")?;
                         let (vertex, fused) = term_vertex(t, c, &split, width)?;
                         if vertices.len() <= id {
+                            vertices
+                                .try_reserve(id + 1 - vertices.len())
+                                .map_err(|_| invalid("the allocator refuses the vertex table"))?;
                             vertices.resize(id + 1, None);
                         }
                         match &vertices[id] {
