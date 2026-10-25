@@ -1518,8 +1518,17 @@ class ReweightInterface(extended_cmd.Cmd):
                         obj, key = soft_events[skey], skey
                 w_orig, w_new = tree_me(obj, key, alphas)
                 ratio_T = w_new / w_orig
-                if '_nlo' in type_nlo and c_wgt.type in [2, 14, 15]:
-                    w_orig, w_new = tree_me(cevent, icev, alphas)
+                # The virtual and the virt-trick (sect. 2.4.3 of
+                # arXiv:1405.0301): at a phase-space point the sample carries
+                # the surrogate S (type 15, S = c_k(x) B_k per split order)
+                # and, with probability f, the residual (V - S)/f (type 14,
+                # in a 'virt' event of its own). Only E[W15 + W14] = V is
+                # fixed, so any new surrogate S' that is a function of the
+                # point keeps the reweighting exact, provided types 15 and 14
+                # share it. S' = S * V_new/V_orig rescales both with the ratio
+                # of the virtual, and S itself is never needed. The Born
+                # (type 2) follows the Born like any other contribution.
+                if '_nlo' in type_nlo and c_wgt.type in [14, 15]:
                     # the Ellis-Sexton scale, already squared in the LHE
                     # (smatrixhel takes mu_R^2)
                     scale2 = c_wgt.scales2[0]
@@ -1528,9 +1537,9 @@ class ReweightInterface(extended_cmd.Cmd):
                             self.calculate_matrix_element(cevent, 'V0', scale2=scale2, alphas=alphas),
                             self.calculate_matrix_element(cevent, 'V1', scale2=scale2, alphas=alphas))
                     w_origV, w_newV = me_cache[('V', icev, alphas, scale2)]
-                    ratio_BV = (w_newV + w_new) / (w_origV + w_orig)
+                    ratio_V = w_newV / w_origV
                 else:
-                    ratio_BV = "should not be used"
+                    ratio_V = "should not be used"
 
                 orig_wgt += c_wgt.ref_wgt
                 #add the information to the input
@@ -1543,8 +1552,8 @@ class ReweightInterface(extended_cmd.Cmd):
                 ref_wgts.append(c_wgt.ref_wgt)
                 
                 if '_nlo' in type_nlo:
-                    if c_wgt.type in  [2,14,15]:
-                        R = ratio_BV
+                    if c_wgt.type in [14, 15]:
+                        R = ratio_V
                     else:
                         R = ratio_T
                     
