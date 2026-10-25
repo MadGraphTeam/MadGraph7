@@ -26,7 +26,10 @@ instrumentation.
 * below 5 ms per point the gate does not block (the user's rule of
   2026-10-24): the verdict says so and keeps the checks;
 * provider files are resolved relative to the reference root only: the
-  absolute paths stored in the records (an old root) are never touched;
+  absolute paths stored in the records (an old root) are never touched; an
+  imported MadLoop timing takes its generation from the specification's
+  export, an imported Recola run keeps its generation, and reference runs
+  that did not finish are reported as such;
 * the universal double pole of the physical rows at full and leading colour,
   and the top-free g g > g g g g g row's NJet reference at the stream's
   first points;
@@ -787,3 +790,88 @@ def test_report_builder_labels_the_floor_and_reports_addendum_h_checks():
     (lower,) = ward["lower_multiplicity"]
     assert lower["key"] == "gg_gggg" and lower["passed"] is True
     assert lower["max_virtual_ratio"] == 3e-10
+
+
+def test_an_imported_madloop_timing_takes_the_specified_exports_generation(
+    tmp_path, no_old_root
+):
+    """A MadLoop timing imported from the reference campaign names no export
+    (u u~ > g g g g g): its generation is read from the specification's
+    ``madloop.export`` under the reference root, and an imported Recola run
+    without a production-mode timing keeps its generation in the report."""
+
+    import json
+
+    times = {"graph_generation_s": 5.0, "source_export_s": 7.0, "compile_s": 1.0}
+    export = tmp_path / "ref" / gate._specified_export("uux_ggggg")
+    export.mkdir(parents=True)
+    (export.parent / f"{export.name}.generation.json").write_text(json.dumps(times))
+    rows = [{"born": 1.0, "finite": 0.5, "seconds": 500.0}] * 2
+    imported = {
+        "provider": "madloop",
+        "protocol_mode": True,
+        "imported_from": "runs/required/uux_ggggg/madloop-production-result.json",
+        "points": 2,
+        "mean_seconds_per_point": 500.0,
+        "median_seconds_per_point": 500.0,
+        "rows": rows,
+    }
+    providers = {
+        "kind": "providers",
+        "process": "uux_ggggg",
+        "cpu": 172,
+        "points": 2,
+        "providers": {"madloop": imported},
+    }
+    paths = []
+    for index, record in enumerate(
+        [providers, _pyamplicol_record("uux_ggggg", [3.0, 3.1, 3.2])]
+    ):
+        path = tmp_path / f"record-{index}.json"
+        path.write_text(json.dumps(record))
+        paths.append(path)
+    document, _ = gate.build(paths, tmp_path / "ref")
+    (row,) = document["processes"]
+    madloop = row["providers"]["madloop"]
+    assert madloop["export"] == gate._specified_export("uux_ggggg")
+    assert madloop["generation"]["total_s"] == 13.0
+    # Without the reference root: the name only, no generation.
+    document, _ = gate.build(paths, None)
+    assert document["processes"][0]["providers"]["madloop"]["generation"] is None
+    assert no_old_root == []
+
+    builder = _report_builder()
+    recola = {
+        "unavailable": "no production-mode timing",
+        "imported_from": "runs/required/uux_ggggg/recola-result.json",
+        "setup": {"generation_seconds": 11.0},
+    }
+    gens = builder._provider_generation_g1(
+        {
+            "providers": {
+                "madloop": row["providers"]["madloop"],
+                "recola": recola,
+                "openloops": {"unavailable": "no library"},
+            }
+        }
+    )
+    assert gens["madloop"]["seconds"] == 13.0 and gens["recola"] == {"seconds": 11.0}
+    assert gens["openloops"] is None
+    # A provider that never ran (no imported run) has no generation.
+    stopped = builder._provider_generation_g1(
+        {"providers": {"recola": {"unavailable": "stopped"}}}
+    )
+    assert stopped["recola"] is None
+    # Reference runs that did not finish are reported as such.
+    gens, unfinished = builder._reference_generation(
+        {
+            "madloop": {"status": "exporting", "graph_generation_s": 60.0},
+            "recola": {"status": "running", "updated": "2026-10-20"},
+            "openloops": None,
+        }
+    )
+    assert gens == {"madloop": None, "recola": None, "openloops": None}
+    assert unfinished == {
+        "madloop": {"status": "exporting", "graph_generation_s": 60.0},
+        "recola": {"status": "running", "since": "2026-10-20"},
+    }
