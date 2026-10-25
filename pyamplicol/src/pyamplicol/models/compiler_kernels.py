@@ -583,7 +583,7 @@ def _execute_dense_network(
         heads.append(head)
         every[head.to_canonical_string()] = head
         for component in components:
-            for symbol in _as_expression(component).get_all_symbols(True):
+            for symbol in _network_component(component).get_all_symbols(True):
                 every[symbol.to_canonical_string()] = symbol
     renamed, tensor_heads = [], []
     for token, symbol in every.items():
@@ -604,7 +604,7 @@ def _execute_dense_network(
             _sym.Tensor.dense(
                 _sym.TensorName(renaming.name(head))(*representations),
                 [
-                    renaming.canonical(_as_expression(component))
+                    renaming.canonical(_network_component(component))
                     for component in components
                 ],
             )
@@ -663,6 +663,14 @@ def _spin_axis_labels(spin: int, leg: int) -> tuple[str, ...]:
     if spin == 5:
         return (f"ufo_l_1_{leg}", f"ufo_l_2_{leg}")
     return ()
+
+
+def _network_component(value: object) -> _sym.Expression:
+    """A dense tensor component as an expression (an integer as a number)."""
+
+    if isinstance(value, int) and not isinstance(value, bool):
+        return _sym.Expression.num(value)
+    return _as_expression(value)
 
 
 def _ordered_dense_tensor_components(
