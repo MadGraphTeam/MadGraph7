@@ -473,3 +473,51 @@ def test_per_correction_sectors_and_sums():
     assert Point(("QCD", "QED"), one, None)._ir_poles() is None
     assert Point(("QCD", "QED"), None, other)._ir_poles() is None
     assert Point(("QCD", "QNP"), one, other)._ir_poles() is None
+
+
+# ---------------------------------------------------------------- engine
+
+
+@pytest.mark.loop_nightly
+def test_joint_request_predicts_the_poles_of_every_sector(
+    loop_qcd_qed_sm_ufo, loop_native
+):
+    """g g > g g with QCD and QED corrections on loop_qcd_qed_sm (the joint
+    request that generates today: no electroweak counterterm enters its
+    trees, no width propagates in them): one Python point in binary64. Its
+    QCD^6 sector's IR poles equal the prediction, the QCD operator alone
+    (the joint request's prediction there was 0 before WP3.2 EWI-0b/EWI-6);
+    the QCD^4 QED^2 sector (no one-loop amplitude of order QCD^2 QED^2) and
+    its prediction are 0, and the QED operator adds nothing (no charged
+    leg). Nightly: 2 min cold (generation 104 s at host load 200)."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import compile_model_source
+
+    compiled = compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
+    request = SliceRequest(
+        "g g > g g",
+        {"QCD": 2, "QED": 0},
+        ({"QCD": 4, "QED": 0}, {"QCD": 2, "QED": 2}),
+        corrections=("QCD", "QED"),
+        fixed_parameters={"MB": "0"},
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    assert slice_.alpha_s_parameter == "aS"
+    point = [[500, 0, 0, 500], [500, 0, 0, -500], [500, 300, 0, 400]]
+    point.append([500, -300, 0, -400])
+    result = slice_.evaluate(point, "1000000", parameters={"aS": "0.118", "MT": "173"})
+    qcd = (("QCD", 6),)
+    assert set(result.ir_poles) == {qcd, (("QCD", 4), ("QED", 2))}
+    for sector, virtual in result.components["virtual"].items():
+        single, double = (float(x) for x in result.ir_poles[sector])
+        if sector != qcd:
+            assert (single, double) == (0.0, 0.0)
+            assert virtual.single_pole == virtual.double_pole == 0
+            continue
+        scale = max(abs(single), abs(double))
+        assert scale > 0
+        assert abs(complex(virtual.single_pole) - single) <= 1e-12 * scale
+        assert abs(complex(virtual.double_pole) - double) <= 1e-12 * scale
