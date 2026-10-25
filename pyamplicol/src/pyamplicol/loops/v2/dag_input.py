@@ -1819,7 +1819,7 @@ def native_tree_rows(
 
     model = CompiledUFOModel(compiled)
     handle = dag._native_handle()
-    with _exact_u1_subtraction_weights():
+    with _exact_u1_subtraction_weights():  # type: ignore[no-untyped-call]
         text, propagators = _program_input(dag, model, pole_orders)
         program = _call(handle.program, text)
         value_count = int(program.value_count())
@@ -2093,14 +2093,14 @@ def native_interaction_program(
     shapes: dict[str, list[list[int]]] = {"kernels": [], "propagators": []}
     position = 0
     for kind, inputs, components in built:
-        outputs = rewritten[position : position + len(components)]
+        specialised = rewritten[position : position + len(components)]
         position += len(components)
         outputs, parameters, functions = _canonical_stage(
             SimpleNamespace(
-                output_expressions=list(outputs),
+                output_expressions=list(specialised),
                 parameter_symbols=[*inputs, *model_symbols],
                 symbolica_functions=list(
-                    _retained_functions(outputs, definitions) if outputs else ()
+                    _retained_functions(specialised, definitions) if specialised else ()
                 ),
             )
         )
