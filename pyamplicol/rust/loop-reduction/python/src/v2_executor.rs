@@ -437,6 +437,7 @@ where
     let mut batch = batch(inputs, &zero)?;
     let mut born = None;
     let mut counterterms = None;
+    let mut tree_seconds = None;
     if inputs.contains("parameters")? {
         let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
         // The counterterm pole outputs are formed unless finite-only (the
@@ -445,7 +446,11 @@ where
             options.poles,
             rusticol_core::loop_execution::v2::Poles::None
         );
+        let started = std::time::Instant::now();
         let native = trees.fill(executor.plan(), inputs, &mut batch, poles, &zero)?;
+        // The report's "trees" stage: the whole native input fill, then its
+        // parts (`TreeInputs::seconds`).
+        tree_seconds = Some((started.elapsed().as_secs_f64(), native.seconds.clone()));
         let export = |points: Vec<Vec<T>>| -> Vec<Values> {
             points
                 .iter()
@@ -455,9 +460,13 @@ where
         born = native.born_squared.map(export);
         counterterms = native.counterterms.map(export);
     }
-    let (results, report) = py
+    let (results, mut report) = py
         .detach(|| executor.evaluate(&batch, &zero, backend, options))
         .map_err(error)?;
+    if let Some((total, parts)) = tree_seconds {
+        report.seconds.insert("trees", total);
+        report.seconds.extend(parts);
+    }
     Ok(export_evaluation(results, report, bits, born, counterterms))
 }
 

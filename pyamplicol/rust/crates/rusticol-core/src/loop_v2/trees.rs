@@ -56,7 +56,7 @@ use symbolica::domains::rational::Rational;
 use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
 
 /// The tree-program schema this executor runs.
-pub const TREE_SCHEMA: u32 = 2;
+pub const TREE_SCHEMA: u32 = 3;
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::compatibility(format!("loop v2 trees: {}", message.into()))
@@ -168,11 +168,13 @@ struct CountertermTreesFile {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct InteractionFile {
-    /// (inputs, outputs) per vertex kernel: inputs `[left, right, p_left,
-    /// p_right, model]`.
-    kernels: Vec<(usize, usize)>,
-    /// (inputs, outputs) per propagator kernel: inputs `[value, p, model]`.
-    propagators: Vec<(usize, usize)>,
+    /// (inputs, outputs, model parameters) per vertex kernel: inputs
+    /// `[left, right, p_left, p_right, model]`, `model` the listed model
+    /// parameters (indices into the state's model block, increasing).
+    kernels: Vec<(usize, usize, Vec<usize>)>,
+    /// (inputs, outputs, model parameters) per propagator kernel: inputs
+    /// `[value, p, model]`.
+    propagators: Vec<(usize, usize, Vec<usize>)>,
     steps: Vec<StepFile>,
 }
 
@@ -324,6 +326,11 @@ struct Step {
 struct Interactions {
     /// Saved exact evaluators: vertex kernels, then propagator kernels.
     saved: Vec<Vec<u8>>,
+    /// Per kernel (vertex kernels, then propagator kernels) the model
+    /// parameters it reads: indices into the state's model block, so
+    /// state components `model_offset + index` (tree schema 3). No kernel
+    /// reads the whole block.
+    models: Vec<Vec<usize>>,
     steps: Vec<Step>,
 }
 
@@ -331,8 +338,12 @@ struct Interactions {
 #[derive(Clone, Copy)]
 struct StateLayout {
     size: usize,
+    /// The model block: state components `model_offset ..
+    /// model_offset + model_block`, filled per point. Kernels read the
+    /// subsets `Interactions::models` of it (schema 3; the field was
+    /// `model_count` while every kernel read the whole block).
     model_offset: usize,
-    model_count: usize,
+    model_block: usize,
 }
 
 /// The counterterm program (`CountertermTreesFile`).
@@ -466,6 +477,11 @@ pub struct TreeInputs<T> {
     /// The counterterm and external-field outputs (component, sector,
     /// epsilon power), divided by the average (with counterterms).
     pub counterterms: Option<Vec<Vec<T>>>,
+    /// Wall seconds per stage: the interaction programs (`"trees:
+    /// programs"`, with the states), the Born and counterterm root closures
+    /// (`"trees: closures"`) and the rest (`"trees: interferences"`: block
+    /// rows, interferences, Born components and |A0|²).
+    pub seconds: Vec<(&'static str, f64)>,
 }
 
 /// The carrier form of a program: its kernel evaluators and exact weights.
@@ -502,6 +518,15 @@ fn load_interactions(
     for bytes in saved {
         drop(crate::engine::decode_exact_evaluator_state(bytes)?);
     }
+    let mut models = Vec::with_capacity(saved.len());
+    for (_inputs, _outputs, model) in program.kernels.iter().chain(&program.propagators) {
+        require(
+            model.windows(2).all(|pair| pair[0] < pair[1])
+                && model.last().is_none_or(|&last| last < model_count),
+            "kernel model parameter indices",
+        )?;
+        models.push(model.clone());
+    }
     let within = |start: usize, length: usize| start + length <= state_size;
     let mut steps = Vec::with_capacity(program.steps.len());
     for step in program.steps {
@@ -526,14 +551,14 @@ fn load_interactions(
         for (index, (kernel, left, ld, right, rd, pl, pr, accumulator, re, im)) in
             step.interactions.into_iter().enumerate()
         {
-            let &(inputs, outputs) = program
+            let (inputs, outputs, model) = program
                 .kernels
                 .get(kernel)
                 .ok_or_else(|| invalid("interaction kernel index"))?;
             require(
                 accumulator < step.accumulators.len()
-                    && outputs == step.accumulators[accumulator]
-                    && inputs == ld + rd + 8 + model_count
+                    && *outputs == step.accumulators[accumulator]
+                    && *inputs == ld + rd + 8 + model.len()
                     && within(left, ld)
                     && within(right, rd)
                     && within(pl, 4)
@@ -568,13 +593,13 @@ fn load_interactions(
                 None
             } else {
                 let index = usize::try_from(propagator).map_err(|_| invalid("propagator"))?;
-                let &(inputs, outputs) = program
+                let (inputs, outputs, model) = program
                     .propagators
                     .get(index)
                     .ok_or_else(|| invalid("propagator index"))?;
                 require(
-                    inputs == step.accumulators[accumulator] + 4 + model_count
-                        && outputs == dimension
+                    *inputs == step.accumulators[accumulator] + 4 + model.len()
+                        && *outputs == dimension
                         && within(momentum, 4),
                     "propagator output",
                 )?;
@@ -597,6 +622,7 @@ fn load_interactions(
     }
     Ok(Interactions {
         saved: saved.to_vec(),
+        models,
         steps,
     })
 }
@@ -929,7 +955,7 @@ impl TreeProgram {
                     layout: StateLayout {
                         size: ct.state_size,
                         model_offset: ct.model_offset,
-                        model_count: ct.model_count,
+                        model_block: ct.model_count,
                     },
                     momentum_slots: ct.momentum_slots,
                     sources: SchemaSources::from_value(&ct.source_fill)?,
@@ -959,7 +985,7 @@ impl TreeProgram {
             file.model_count,
             counterterm_trees
                 .as_ref()
-                .map_or(0, |ct| ct.layout.model_count),
+                .map_or(0, |ct| ct.layout.model_block),
             file.born.couplings,
             file.counterterms.as_ref().map_or(0, |ct| ct.couplings),
             plan,
@@ -1406,7 +1432,7 @@ impl TreeProgram {
                     && batch
                         .counterterm_model
                         .iter()
-                        .all(|model| model.len() == ct.layout.model_count),
+                        .all(|model| model.len() == ct.layout.model_block),
                 "counterterm program model parameter count",
             )?;
         }
@@ -1434,8 +1460,9 @@ impl TreeProgram {
         let layout = StateLayout {
             size: self.state_size,
             model_offset: self.model_offset,
-            model_count: self.model_count,
+            model_block: self.model_count,
         };
+        let started = std::time::Instant::now();
         let mut states = Self::states(
             layout,
             &self.sources,
@@ -1496,14 +1523,56 @@ impl TreeProgram {
                 .counterterms
                 .as_ref()
                 .map(|_| Vec::with_capacity(points)),
+            seconds: Vec::with_capacity(3),
         };
-        for (index, (point, state)) in incoming
+        out.seconds
+            .push(("trees: programs", started.elapsed().as_secs_f64()));
+        let started = std::time::Instant::now();
+        // The root closures of every point, lanes of points at a time.
+        let momenta: Vec<Vec<[T; 4]>> = incoming
             .iter()
-            .zip(states.chunks_exact(self.state_size))
-            .enumerate()
-        {
-            let ct_state =
-                &counterterm_states[index * counterterm_size..(index + 1) * counterterm_size];
+            .map(|point| self.mask_momenta(point, zero))
+            .collect();
+        let states = (states.as_slice(), self.state_size);
+        let counterterm_states = (counterterm_states.as_slice(), counterterm_size);
+        let mut amplitudes = self.close(
+            &self.terms,
+            &runtime.weights,
+            &vec![batch.couplings.as_slice(); points],
+            None,
+            self.components,
+            plan,
+            &momenta,
+            states,
+            counterterm_states,
+            constants,
+            zero,
+        );
+        let kets = match (&self.counterterms, &runtime.interference) {
+            (Some(ct), Some(_)) => self.close(
+                &ct.terms,
+                &runtime.weights,
+                &batch
+                    .counterterm_couplings
+                    .iter()
+                    .map(Vec::as_slice)
+                    .collect::<Vec<_>>(),
+                (!poles).then_some(ct.finite_slot.as_slice()),
+                ct.components,
+                plan,
+                &momenta,
+                states,
+                counterterm_states,
+                constants,
+                zero,
+            ),
+            _ => Vec::new(),
+        };
+        out.seconds
+            .push(("trees: closures", started.elapsed().as_secs_f64()));
+        let started = std::time::Instant::now();
+        for (index, state) in states.0.chunks_exact(self.state_size).enumerate() {
+            let amplitudes = std::mem::take(&mut amplitudes[index]);
             let mut rows = Vec::new();
             for &(start, dimension, sign) in &self.block_rows {
                 for value in &state[start..start + dimension] {
@@ -1515,42 +1584,17 @@ impl TreeProgram {
                 }
             }
             out.block_rows.push(rows);
-            let momenta = self.mask_momenta(point, zero);
-            let amplitudes = self.close(
-                &self.terms,
-                &runtime.weights,
-                &batch.couplings,
-                None,
-                self.components,
-                plan,
-                &momenta,
-                (state, ct_state),
-                constants,
-                zero,
-            );
             if let (Some(ct), Some(interference), Some(out)) = (
                 &self.counterterms,
                 &runtime.interference,
                 &mut out.counterterms,
             ) {
                 let couplings = &batch.counterterm_couplings[index];
-                let ket = self.close(
-                    &ct.terms,
-                    &runtime.weights,
-                    couplings,
-                    (!poles).then_some(ct.finite_slot.as_slice()),
-                    ct.components,
-                    plan,
-                    &momenta,
-                    (state, ct_state),
-                    constants,
-                    zero,
-                );
                 let values = ct.interference.evaluate(
                     interference,
                     &amplitudes,
                     self.components,
-                    &ket,
+                    &kets[index],
                     ct.components,
                     self.rows,
                     couplings,
@@ -1577,6 +1621,8 @@ impl TreeProgram {
             }
             out.amplitudes.push(amplitudes);
         }
+        out.seconds
+            .push(("trees: interferences", started.elapsed().as_secs_f64()));
         Ok(out)
     }
 
@@ -1650,94 +1696,56 @@ impl TreeProgram {
             .collect()
     }
 
-    /// The root closure of one point: per Born row, every closure term's
-    /// kernel on its blocks' rows (in the trees' or the counterterm
-    /// program's state) and momenta (`momenta`: per leg mask),
-    /// times its sign and per contribution its coupling and colour weight,
-    /// accumulated into `width` components. `active`: the coupling slots
-    /// to evaluate (none: all). Rows run in parallel.
+    /// The root closures of a batch's points: per point and Born row, every
+    /// closure term's kernel on its blocks' rows (in the trees' or the
+    /// counterterm program's state, each `(states, size)` with one state per
+    /// point) and momenta (`momenta`: per point and leg mask), times its sign
+    /// and per contribution its coupling (`couplings`: per point) and colour
+    /// weight, accumulated into `width` components per row. `active`: the
+    /// coupling slots to evaluate (none: all).
+    ///
+    /// Points run in lanes (`Closure::lanes`): every lane performs one point's
+    /// operations in the scalar order, so a point's values do not depend on
+    /// its batch; lanes and Born rows run in parallel. The batch runs in
+    /// lanes of 8 points, its last `points % 8` in one chunk of 1, 2, 4 or
+    /// 8 lanes (`lane_runs`).
     #[allow(clippy::too_many_arguments)]
     fn close<T: Carrier>(
         &self,
         terms: &[Term],
         weights: &[Complex<T>],
-        couplings: &[Complex<T>],
+        couplings: &[&[Complex<T>]],
         active: Option<&[bool]>,
         width: usize,
         plan: &LoopProgramV4,
-        momenta: &[[T; 4]],
-        (state, ct_state): (&[Complex<T>], &[Complex<T>]),
+        momenta: &[Vec<[T; 4]>],
+        states: (&[Complex<T>], usize),
+        counterterm_states: (&[Complex<T>], usize),
         constants: &[Complex<T>],
         zero: &T,
-    ) -> Vec<Complex<T>> {
-        let czero = Complex::new(zero.clone(), zero.clone());
-        let mut out = vec![czero.clone(); self.rows * width];
-        // Closure block starts index the trees' state, then the counterterm
-        // program's.
-        let read = |index: usize| {
-            if index < state.len() {
-                state[index].clone()
-            } else {
-                ct_state[index - state.len()].clone()
-            }
+    ) -> Vec<Vec<Complex<T>>> {
+        let closure = Closure {
+            program: self,
+            terms,
+            weights,
+            couplings,
+            active,
+            width,
+            plan,
+            momenta,
+            states,
+            counterterm_states,
+            constants,
         };
-        if width == 0 {
-            return out;
-        }
-        out.par_chunks_mut(width)
-            .enumerate()
-            .for_each(|(row, target)| {
-                let mut x = Vec::new();
-                let mut starts = Vec::new();
-                for term in terms {
-                    if active
-                        .is_some_and(|active| term.contributions.iter().all(|(c, ..)| !active[*c]))
-                    {
-                        continue;
-                    }
-                    starts.clear();
-                    for &block in &term.blocks {
-                        match self.blocks[block][row] {
-                            Some(start) => starts.push(start),
-                            None => break,
-                        }
-                    }
-                    if starts.len() != term.blocks.len() {
-                        continue;
-                    }
-                    x.clear();
-                    for input in &self.layouts[term.layout] {
-                        x.push(match *input {
-                            TermInput::Current { slot, component } => {
-                                read(starts[slot] + component)
-                            }
-                            TermInput::Momentum { slot, mu } => {
-                                Complex::new(momenta[term.masks[slot]][mu].clone(), zero.clone())
-                            }
-                        });
-                    }
-                    let mut value = czero.clone();
-                    for entry in &plan.kernels[term.kernel].outputs[0] {
-                        let mut product = constants[entry.constant].clone();
-                        for &(input, exponent) in &entry.monomial {
-                            for _ in 0..exponent {
-                                product *= x[input].clone();
-                            }
-                        }
-                        value += product;
-                    }
-                    if term.sign < 0 {
-                        value = -value;
-                    }
-                    for &(coupling, component, weight) in &term.contributions {
-                        if active.is_some_and(|active| !active[coupling]) {
-                            continue;
-                        }
-                        target[component] +=
-                            couplings[coupling].clone() * weights[weight].clone() * value.clone();
-                    }
-                }
+        let mut out = Vec::with_capacity(momenta.len());
+        for (first, count, lanes) in lane_runs(momenta.len()) {
+            out.extend(match lanes {
+                8 => closure.lanes::<8>(first, count, zero),
+                4 => closure.lanes::<4>(first, count, zero),
+                2 => closure.lanes::<2>(first, count, zero),
+                _ => closure.lanes::<1>(first, count, zero),
             });
+        }
         out
     }
 
@@ -1760,6 +1768,289 @@ impl TreeProgram {
         out.into_iter()
             .map(|value| value / runtime.average.clone())
             .collect()
+    }
+}
+
+/// The runs (first point, points, lane width) a batch of `points` points
+/// closes in: lanes of 8 points, then the remaining `points % 8` in one
+/// chunk of the narrowest width that holds them (1, 2, 4 or 8; a chunk's
+/// unused lanes repeat its run's last point and are dropped). A chunk
+/// costs about its instruction count at any width (g g > g g g g full
+/// colour, binary64 closures per chunk of width 8 / 4 / 2 / 1: 487 / 449 /
+/// 350 / 249 ms), so the batch runs in the fewest chunks, its last one as
+/// narrow as it can be.
+fn lane_runs(points: usize) -> Vec<(usize, usize, usize)> {
+    let full = points / 8 * 8;
+    let rest = points - full;
+    let mut runs = Vec::with_capacity(2);
+    if full > 0 {
+        runs.push((0, full, 8));
+    }
+    if rest > 0 {
+        runs.push((full, rest, rest.next_power_of_two()));
+    }
+    runs
+}
+
+/// The root closure of a batch (`TreeProgram::close`).
+struct Closure<'a, T> {
+    program: &'a TreeProgram,
+    terms: &'a [Term],
+    weights: &'a [Complex<T>],
+    couplings: &'a [&'a [Complex<T>]],
+    active: Option<&'a [bool]>,
+    width: usize,
+    plan: &'a LoopProgramV4,
+    momenta: &'a [Vec<[T; 4]>],
+    states: (&'a [Complex<T>], usize),
+    counterterm_states: (&'a [Complex<T>], usize),
+    constants: &'a [Complex<T>],
+}
+
+/// `(x_re, x_im) *= y` on complex lanes (`y`: `L` real parts, then `L`
+/// imaginary parts), per lane as `Complex<T>`'s product. The lanes are
+/// arrays, so a product chain stays in registers.
+#[inline(always)]
+fn lane_mul<T: Carrier, const L: usize>(x_re: &mut [T; L], x_im: &mut [T; L], y: &[T]) {
+    let (y_re, y_im) = y[..2 * L].split_at(L);
+    for l in 0..L {
+        let re = x_re[l].clone() * &y_re[l] - x_im[l].clone() * &y_im[l];
+        let im = x_re[l].clone() * &y_im[l] + x_im[l].clone() * &y_re[l];
+        x_re[l] = re;
+        x_im[l] = im;
+    }
+}
+
+/// `Σ_terms constant × Π input^power` of a closure kernel on complex lanes
+/// (`x`: per kernel input `L` real parts, then `L` imaginary parts), per
+/// lane in the scalar order of `Complex<T>`: each term's product from its
+/// constant, the terms summed from zero.
+#[inline(always)]
+fn kernel_lanes<T: Carrier, const L: usize>(
+    kernel: &[super::plan::KernelTerm],
+    constants: &[Complex<T>],
+    x: &[T],
+    zero: &T,
+) -> ([T; L], [T; L]) {
+    let v = 2 * L;
+    let mut value_re: [T; L] = std::array::from_fn(|_| zero.clone());
+    let mut value_im: [T; L] = std::array::from_fn(|_| zero.clone());
+    for entry in kernel {
+        let constant = &constants[entry.constant];
+        let mut re: [T; L] = std::array::from_fn(|_| constant.re.clone());
+        let mut im: [T; L] = std::array::from_fn(|_| constant.im.clone());
+        for &(input, exponent) in &entry.monomial {
+            let factor = &x[input * v..(input + 1) * v];
+            for _ in 0..exponent {
+                lane_mul::<T, L>(&mut re, &mut im, factor);
+            }
+        }
+        for l in 0..L {
+            value_re[l] += &re[l];
+            value_im[l] += &im[l];
+        }
+    }
+    (value_re, value_im)
+}
+
+/// `kernel_lanes` compiled for AVX-512 and AVX2 (wider vectors for the same
+/// operations: the products and sums of a lane are those of `Complex<T>`,
+/// never fused, so the values are bitwise the baseline's).
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+fn kernel_lanes_avx512<T: Carrier, const L: usize>(
+    kernel: &[super::plan::KernelTerm],
+    constants: &[Complex<T>],
+    x: &[T],
+    zero: &T,
+) -> ([T; L], [T; L]) {
+    kernel_lanes::<T, L>(kernel, constants, x, zero)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+fn kernel_lanes_avx2<T: Carrier, const L: usize>(
+    kernel: &[super::plan::KernelTerm],
+    constants: &[Complex<T>],
+    x: &[T],
+    zero: &T,
+) -> ([T; L], [T; L]) {
+    kernel_lanes::<T, L>(kernel, constants, x, zero)
+}
+
+/// The vector width the closure kernels run in: binary64 lanes take the
+/// widest the running CPU reports (never a build-host feature), the other
+/// carriers the baseline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Wide {
+    Baseline,
+    #[cfg(target_arch = "x86_64")]
+    Avx2,
+    #[cfg(target_arch = "x86_64")]
+    Avx512,
+}
+
+/// Caps the closure kernels' vector width (`Wide::detect`) at `baseline`
+/// or `avx2`, so that one AVX-512 host runs the code paths of an AVX2-only
+/// or a baseline x86-64 host (the bitwise check of
+/// `tests/unit/test_loop_v2_native_trees.py`); any other value, or none,
+/// caps nothing. It never enables a feature the CPU lacks.
+const CLOSURE_SIMD_ENV: &str = "RUSTICOL_TEST_CLOSURE_SIMD";
+
+impl Wide {
+    fn detect<T: 'static>() -> Self {
+        #[cfg(target_arch = "x86_64")]
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+            static CAP: std::sync::OnceLock<Wide> = std::sync::OnceLock::new();
+            let cap =
+                *CAP.get_or_init(|| Self::cap(std::env::var(CLOSURE_SIMD_ENV).ok().as_deref()));
+            if cap == Self::Avx512 && std::arch::is_x86_feature_detected!("avx512f") {
+                return Self::Avx512;
+            }
+            if cap != Self::Baseline && std::arch::is_x86_feature_detected!("avx2") {
+                return Self::Avx2;
+            }
+        }
+        Self::Baseline
+    }
+
+    /// The widest width `CLOSURE_SIMD_ENV`'s value allows.
+    #[cfg(target_arch = "x86_64")]
+    fn cap(value: Option<&str>) -> Self {
+        match value {
+            Some("baseline") => Self::Baseline,
+            Some("avx2") => Self::Avx2,
+            _ => Self::Avx512,
+        }
+    }
+}
+
+impl<T: Carrier> Closure<'_, T> {
+    /// The closures of points `first .. first + points` in lanes of `L`
+    /// points (the unused lanes of a last chunk repeat the run's last point
+    /// and are dropped): per lane
+    /// chunk and Born row, the terms in order, each lane in the scalar
+    /// operations of `Complex<T>` (the kernel's terms `constant × Π
+    /// input^power` summed from zero, the sign, then per contribution
+    /// `(coupling × weight) × value` added to its component).
+    fn lanes<const L: usize>(&self, first: usize, points: usize, zero: &T) -> Vec<Vec<Complex<T>>> {
+        let program = self.program;
+        let rows = program.rows;
+        let width = self.width;
+        let czero = Complex::new(zero.clone(), zero.clone());
+        let mut out = vec![vec![czero; rows * width]; points];
+        if width == 0 || rows == 0 {
+            return out;
+        }
+        let v = 2 * L;
+        let chunks = points.div_ceil(L);
+        let inputs = program.layouts.iter().map(Vec::len).max().unwrap_or(0);
+        let (state, size) = self.states;
+        let (ct_state, ct_size) = self.counterterm_states;
+        let wide = Wide::detect::<T>();
+        // Per (lane chunk, row): `width` complex lane vectors.
+        let mut sums = vec![zero.clone(); chunks * rows * width * v];
+        sums.par_chunks_mut(width * v).enumerate().for_each_init(
+            || (vec![zero.clone(); inputs * v], Vec::new()),
+            |(x, starts), (task, target)| {
+                let (chunk, row) = (task / rows, task % rows);
+                let lanes: [usize; L] =
+                    std::array::from_fn(|l| first + (chunk * L + l).min(points - 1));
+                for term in self.terms {
+                    if self
+                        .active
+                        .is_some_and(|active| term.contributions.iter().all(|(c, ..)| !active[*c]))
+                    {
+                        continue;
+                    }
+                    starts.clear();
+                    for &block in &term.blocks {
+                        match program.blocks[block][row] {
+                            Some(start) => starts.push(start),
+                            None => break,
+                        }
+                    }
+                    if starts.len() != term.blocks.len() {
+                        continue;
+                    }
+                    for (input, lane) in program.layouts[term.layout]
+                        .iter()
+                        .zip(x.chunks_exact_mut(v))
+                    {
+                        let (re, im) = lane.split_at_mut(L);
+                        match *input {
+                            TermInput::Current { slot, component } => {
+                                let index = starts[slot] + component;
+                                let (values, stride, index) = if index < size {
+                                    (state, size, index)
+                                } else {
+                                    (ct_state, ct_size, index - size)
+                                };
+                                for (l, &point) in lanes.iter().enumerate() {
+                                    let value = &values[point * stride + index];
+                                    re[l] = value.re.clone();
+                                    im[l] = value.im.clone();
+                                }
+                            }
+                            TermInput::Momentum { slot, mu } => {
+                                let mask = term.masks[slot];
+                                for (l, &point) in lanes.iter().enumerate() {
+                                    re[l] = self.momenta[point][mask][mu].clone();
+                                    im[l] = zero.clone();
+                                }
+                            }
+                        }
+                    }
+                    let kernel = &self.plan.kernels[term.kernel].outputs[0];
+                    let (mut value_re, mut value_im) = match wide {
+                        // SAFETY: `wide` holds only the features this CPU
+                        // reports (`Wide::detect`).
+                        #[cfg(target_arch = "x86_64")]
+                        Wide::Avx512 => unsafe {
+                            kernel_lanes_avx512::<T, L>(kernel, self.constants, x, zero)
+                        },
+                        #[cfg(target_arch = "x86_64")]
+                        Wide::Avx2 => unsafe {
+                            kernel_lanes_avx2::<T, L>(kernel, self.constants, x, zero)
+                        },
+                        Wide::Baseline => kernel_lanes::<T, L>(kernel, self.constants, x, zero),
+                    };
+                    if term.sign < 0 {
+                        for l in 0..L {
+                            value_re[l] = -value_re[l].clone();
+                            value_im[l] = -value_im[l].clone();
+                        }
+                    }
+                    for &(coupling, component, weight) in &term.contributions {
+                        if self.active.is_some_and(|active| !active[coupling]) {
+                            continue;
+                        }
+                        let weight = &self.weights[weight];
+                        let (re, im) = target[component * v..(component + 1) * v].split_at_mut(L);
+                        for (l, &point) in lanes.iter().enumerate() {
+                            let factor = self.couplings[point][coupling].clone() * weight;
+                            re[l] +=
+                                factor.re.clone() * &value_re[l] - factor.im.clone() * &value_im[l];
+                            im[l] +=
+                                factor.re.clone() * &value_im[l] + factor.im.clone() * &value_re[l];
+                        }
+                    }
+                }
+            },
+        );
+        for (task, target) in sums.chunks_exact(width * v).enumerate() {
+            let (chunk, row) = (task / rows, task % rows);
+            for l in 0..L.min(points - chunk * L) {
+                let values = &mut out[chunk * L + l][row * width..(row + 1) * width];
+                for (component, item) in values.iter_mut().enumerate() {
+                    *item = Complex::new(
+                        target[component * v + l].clone(),
+                        target[component * v + L + l].clone(),
+                    );
+                }
+            }
+        }
+        out
     }
 }
 
@@ -1786,7 +2077,11 @@ where
     // current reads them, and kernel rows are independent, so every other
     // value is bitwise unchanged.
     const ROWS: usize = 4096;
-    let model = layout.model_offset..layout.model_offset + layout.model_count;
+    let model = |kernel: usize| {
+        program.models[kernel]
+            .iter()
+            .map(move |&index| layout.model_offset + index)
+    };
     let mut parameters = Vec::new();
     let mut outputs = Vec::new();
     for (step, weights) in program.steps.iter().zip(edge_weights) {
@@ -1818,7 +2113,7 @@ where
                         parameters.extend_from_slice(
                             &state[edge.right_momentum..edge.right_momentum + 4],
                         );
-                        parameters.extend_from_slice(&state[model.clone()]);
+                        parameters.extend(model(*kernel).map(|index| state[index].clone()));
                     }
                 }
                 outputs.clear();
@@ -1852,12 +2147,12 @@ where
             let evaluator = &mut kernels[kernel];
             let width = evaluator.get_output_len();
             let inputs = evaluator.get_input_len();
-            let value = inputs - 4 - layout.model_count;
+            let value = inputs - 4 - program.models[kernel].len();
             parameters.clear();
             for (point, state) in states.chunks_exact(layout.size).enumerate() {
                 parameters.extend_from_slice(&sums[point * step.width + accumulator..][..value]);
                 parameters.extend_from_slice(&state[momentum..momentum + 4]);
-                parameters.extend_from_slice(&state[model.clone()]);
+                parameters.extend(model(kernel).map(|index| state[index].clone()));
             }
             outputs.clear();
             outputs.resize(points * width, czero.clone());
@@ -1920,3 +2215,7 @@ impl TreeCarrier for Float {
         sources.fill_float(masses, point, state)
     }
 }
+
+#[cfg(test)]
+#[path = "trees_tests.rs"]
+mod tests;
