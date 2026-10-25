@@ -2501,11 +2501,12 @@ def test_qed_declaring_model_names_its_blockers(
     With it, u u~ > d d~ at the card's W and Z widths is refused by the
     electroweak width policy (WP3.2 EWI-0b, the user's decision [U8]: the
     widths fixed to zero, or the complex-mass scheme), before its tree
-    kernels and the counterterm lowering. With those widths fixed to zero it
-    stops at the electroweak counterterms that the tree recursion cannot
-    lower and whose vertices can enter a tree of the request: couplings with
-    the complex-mass scheme's UFO helper recms (WP3.2). There is no site
-    fallback. The unlowerable G0-photon mixing between spins is inert
+    kernels and the counterterm lowering. With those widths fixed to zero
+    its electroweak counterterms are lowered (their CT scalars with the
+    complex-mass scheme's helper recms and the CMS reglog are
+    parameter-program references, WP3.2 EWI-3), and the request stops at the
+    next blocker, the unitary-gauge W and Z on loop lines (WP3.2 EWI-4b).
+    The unlowerable G0-photon mixing between spins stays inert
     (REQUIREMENTS_ADDENDUM J): the model's tree model absorbs the Goldstones
     into the massive vectors (``CompiledUFOModel.inactive_goldstone_names``),
     so it holds no G0 vertex and no tree of any request on this model holds
@@ -2546,9 +2547,7 @@ def test_qed_declaring_model_names_its_blockers(
         fixed='MB = "0", WW = "0", WZ = "0"',
     )
     with pytest.raises(
-        GenerationError,
-        match=r"counterterm rules the tree recursion cannot lower, whose vertices "
-        r"can enter a tree of the request: .*UFO helper 'recms'",
+        GenerationError, match=r"loop line -?\d+ has a unitary-gauge propagator"
     ) as refused:
         zero_widths.generate(processes, tmp_path / "c")
     assert "G0" not in str(refused.value)
@@ -2564,10 +2563,14 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
     equals the legacy engine: Born and the QCD^6 virtual in binary64 (1e-12)
     and at 60 digits (1e-40, legacy at 60 digits). v2 also lists the
     QCD^4 QED^2 sector, a structural zero (no one-loop g g > g g amplitude of
-    order QCD^2 QED^2), which legacy omits. The electroweak CT rules the tree
-    recursion cannot lower enter no tree of g g > g g: the generation record
-    lists them inert (REQUIREMENTS_ADDENDUM J), the G0-photon mixing among
-    them."""
+    order QCD^2 QED^2), which legacy omits. The electroweak CT rules are
+    lowered (their CT scalars with the complex-mass scheme's helpers are
+    parameter-program references, WP3.2 EWI-3): no inert rule is left for a
+    UFO helper; the G0-photon mixing between spins, which the tree recursion
+    cannot lower, enters no tree of g g > g g and the generation record lists
+    it inert (REQUIREMENTS_ADDENDUM J). The referenced CT scalars are native
+    parameter-program outputs, so the v2 artifact stores native point
+    inputs."""
 
     from pyamplicol import Runtime
     from pyamplicol.api import ProcessRequest, ProcessSet
@@ -2591,7 +2594,10 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
         name: reason for name, reason in inert.items() if "enters no tree" in reason
     }
     assert "PYAMPLICOL_CT_V306" in unreachable, sorted(inert)
-    assert any("UFO helper 'recms'" in reason for reason in unreachable.values())
+    assert not any("UFO helper" in reason for reason in inert.values()), inert
+    # The referenced CT scalars are native parameter-program outputs: no
+    # load-time regeneration (REQUIREMENTS_ADDENDUM G).
+    assert runtimes["v2"].inspect()["point_inputs"] == "native-v2"
     reference = runtimes["legacy"].evaluate(
         [POINT], mu_r2="1000000", arithmetic="arbitrary", precision=ARBITRARY_DIGITS
     )

@@ -652,14 +652,23 @@ generated together, each squared coupling order a separate partial result. A
 correction the model does not expand perturbatively is refused. What the engine
 does not admit yet fails at generation with the reason, for example:
 
-- Z or W couplings on a quark line inside a QCD loop (`u u~ > d d~` with mixed
-  Born orders in the SM: "not a pure vector coupling; its sign needs the
-  electroweak oracles"), and electroweak bosons in the final state with QCD
-  corrections (`u u~ > e- e+ g g`);
-- QED corrections to quark processes with MG5_aMC's `loop_qcd_qed_sm`
-  (`u u~ > d d~` with QCD and QED corrections): its electroweak counterterms use
-  the complex-mass scheme's UFO helpers (`recms`, `regsqrt`) and a Goldstone-photon
-  mixing between spins ("counterterm rules the tree recursion cannot lower").
+- QED corrections with W or Z bosons in the loops with MG5_aMC's
+  `loop_qcd_qed_sm` (`u u~ > d d~` with QCD and QED corrections): "loop line …
+  has a unitary-gauge propagator" (loop lines need Feynman gauge). With the Z,
+  W, Higgs and Goldstones in `particle_veto`, the photon-only QED corrections
+  generate; the model's electroweak counterterms, written with the
+  complex-mass scheme's UFO helpers (`recms`, `regsqrt`, ...), are lowered.
+  Their finite part is not yet the photon-only one: the veto drops every
+  counterterm whose declared loop particles include a vetoed particle, and
+  `loop_qcd_qed_sm` declares some R2 couplings for the photon and Z loops
+  together (e.g. the `u u~ g` R2, `R2_GUU2Cp`, with loop particles `u` and
+  `Z`), so the photon's part of such a coupling is dropped too. R2
+  counterterms carry no poles, and the UV poles of such a request cancel
+  (checked on `u u~ > d d~`); its finite part is incomplete until the engine
+  handles such shared couplings;
+- more than one colour-singlet fermion line (`e- e+ > m- m+`,
+  `u u~ > e- e+ m- m+`): "the Koszul signs between the blocks that carry them
+  ... are not implemented yet".
 
 The model's UV and R2 counterterms are taken as declared (`uv_complete`,
 `model_r2_complete`): the engine does not check them against the loops.
