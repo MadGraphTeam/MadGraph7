@@ -636,6 +636,9 @@ def _derivation_bombs(native, program: dict) -> dict[str, tuple[bytes, str]]:
     The first two as written (the writer pads them to pay for their
     derivations: refused by the fallible reservation under the child's
     limit) and unpadded (a few kB: beyond the member's derivation bound).
+    The production JSON load (``LoopProgramV4::load``, hardened in phase 1)
+    refuses the plans themselves alike, as JSON (``... json``; the decimal
+    power there is 2^32, which numerica would panic on).
     """
 
     def member(plan: dict) -> bytes:
@@ -671,11 +674,26 @@ def _derivation_bombs(native, program: dict) -> dict[str, tuple[bytes, str]]:
         assert struct.unpack_from("<Q", padded, 32)[0] > 0, name
         bombs[f"{name} padded"] = (padded, refused)
         bombs[f"{name} unpadded"] = (_unpadded(padded), bound)
-    bombs["vertex 2^40"] = (member(vertex), "a vertex id beyond the terms")
-    bombs["family rank 1e6"] = (member(rank), "family rank exceeds propagators")
-    bombs["fused exponent 2^20"] = (member(exponent), "q-degree above its content's")
+        # The JSON load (``LoopProgramV4::load``, phase 1): the same probe.
+        bombs[f"{name} json"] = (_text(plan), refused)
+    for name, plan, expected in (
+        ("vertex 2^40", vertex, "a vertex id beyond the terms"),
+        ("family rank 1e6", rank, "family rank exceeds propagators"),
+        ("fused exponent 2^20", exponent, "q-degree above its content's"),
+    ):
+        bombs[name] = (member(plan), expected)
+        bombs[f"{name} json"] = (_text(plan), expected)
     bombs["decimal power 1e9"] = (_unpadded(member(power)), bound)
+    # A JSON is not bounded per byte (it cannot be padded): its decimal power
+    # of 10^9 is charged and granted, so the JSON case is a power numerica
+    # cannot raise (it panics at 2^32), refused before deriving.
+    power["families"][0]["leaves"][0]["weight"] = "1e4294967296"
+    bombs["decimal power 2^32 json"] = (_text(power), "power of ten beyond 2^32")
     return bombs
+
+
+def _text(plan: dict) -> bytes:
+    return json.dumps(plan, separators=(",", ":")).encode()
 
 
 _FAIL_CLOSED = """
@@ -945,7 +963,7 @@ def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
         assert expected in out["derived"][str(k)], (name, out["derived"][str(k)])
         # Unpadded, a bomb is the size of the plan's own member (wider values).
         small = len(data) <= len(member) + 1024
-        assert small or name.endswith(" padded"), (name, len(data))
+        assert small or name.endswith((" padded", " json")), (name, len(data))
     for name, (child, data) in limits.items():
         rows = _collect(name, child, 120)
         assert isinstance(rows, list)
