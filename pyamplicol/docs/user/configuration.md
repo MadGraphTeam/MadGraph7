@@ -688,15 +688,27 @@ use them (for example a width only loop propagators would carry), as with the
 legacy engine. The renormalisation-scale parameter is the external
 parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
 
-Loading a v2 process rebuilds its per-point tree inputs from the artifact, which
-takes about the process's generation time, until those inputs run natively; the
-standalone SDK bundle needs `engine = "legacy"` until then. A v2 artifact holds
-no absolute path, user or host name of the generating host, and a copy moved to
-another directory loads with bitwise-identical results. Loading regenerates the
-stored plan and requires it to be identical, so the copy needs the same
-pyAmpliCol build (Python package and native extension) as the one that
-generated it; relocation is tested on the generating host only, not yet on
-another machine.
+A v2 artifact stores its whole program: the loop plan and its per-point tree,
+Born, counterterm and parameter programs (`point_inputs = "native-v2"`), the
+latter as SymJIT IR recompiled for the loading CPU and as saved Symbolica states
+for double-double and arbitrary precision. A plain load (`evaluate` with
+`poles = "all"` or `"none"`) regenerates nothing and takes a small fraction of
+the generation time. Still regenerated from the artifact, until their inputs are
+stored too: exact flavour members served by their representative (at load), and
+correlated and resolved calls and the `"uv"` and `"ir"` pole selections (on
+first use; the latter also evaluate the companion of the certified-scaleless
+families, whose tree inputs are not stored). The SymJIT IR is always compiled at
+-O2 (the portable level), whatever `evaluator.jit.optimization_level` says. The
+artifact holds no absolute path, user or host name of the generating host; a
+copy moved to another directory, user or machine loads without regeneration and,
+with the same pyAmpliCol build (Python package and native extension), gives
+bitwise-identical binary64 results on CPUs of the same SymJIT class (x86-64 with
+AVX and FMA3; AArch64 is expected to behave the same but is untested); other CPU
+levels (checked under emulation) run the saved states and agree to rounding
+([portability](artifacts-and-portability.md#cpu-requirements-of-symjit-kernels)).
+Binary64 evaluation needs no Symbolica licence; double-double and arbitrary
+precision use pyAmpliCol's own Symbolica key. The standalone SDK bundle needs
+`engine = "legacy"` until the v4 SDK runtime exists.
 
 To evaluate numerical colour/spin requests, set
 `evaluation.correlated_requests = "data/requests.json"`. The file maps output

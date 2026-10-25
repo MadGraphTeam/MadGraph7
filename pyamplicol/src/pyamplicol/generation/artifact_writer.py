@@ -1033,12 +1033,12 @@ def write_schema_v3_artifact(
                 else "no root API-bundle emitter is installed",
             }
         )
-    if v2_loop:
-        # Prepared v2 virtual artifacts are relocatable (requirements addendum
-        # G): the recorded configuration keeps file names, not the generating
-        # host's absolute paths (model source, output, caches).
-        requested_config = cast(dict[str, object], _portable_paths(requested_config))
-        effective_config = cast(dict[str, object], _portable_paths(effective_config))
+    # Prepared artifacts are relocatable (requirements addendum G): the
+    # recorded configuration keeps file names, not the generating host's
+    # absolute paths (model source, output, caches), for every engine. No
+    # loader reads these paths; the append check compares the same form.
+    requested_config = cast(dict[str, object], _portable_paths(requested_config))
+    effective_config = cast(dict[str, object], _portable_paths(effective_config))
     requested_bytes = _toml_bytes(requested_config)
     effective_bytes = _toml_bytes(effective_config)
     required_runtime_capabilities = set(
