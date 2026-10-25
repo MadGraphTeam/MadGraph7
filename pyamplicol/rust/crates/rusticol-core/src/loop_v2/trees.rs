@@ -1775,11 +1775,11 @@ struct Closure<'a, T> {
     constants: &'a [Complex<T>],
 }
 
-/// `x *= y` on complex lane vectors (`L` real parts, then `L` imaginary
-/// parts), per lane as `Complex<T>`'s product.
+/// `(x_re, x_im) *= y` on complex lanes (`y`: `L` real parts, then `L`
+/// imaginary parts), per lane as `Complex<T>`'s product. The lanes are
+/// arrays, so a product chain stays in registers.
 #[inline(always)]
-fn lane_mul<T: Carrier, const L: usize>(x: &mut [T], y: &[T]) {
-    let (x_re, x_im) = x[..2 * L].split_at_mut(L);
+fn lane_mul<T: Carrier, const L: usize>(x_re: &mut [T; L], x_im: &mut [T; L], y: &[T]) {
     let (y_re, y_im) = y[..2 * L].split_at(L);
     for l in 0..L {
         let re = x_re[l].clone() * &y_re[l] - x_im[l].clone() * &y_im[l];
@@ -1814,15 +1814,8 @@ impl<T: Carrier> Closure<'_, T> {
         // Per (lane chunk, row): `width` complex lane vectors.
         let mut sums = vec![zero.clone(); chunks * rows * width * v];
         sums.par_chunks_mut(width * v).enumerate().for_each_init(
-            || {
-                (
-                    vec![zero.clone(); inputs * v],
-                    vec![zero.clone(); v],
-                    vec![zero.clone(); v],
-                    Vec::new(),
-                )
-            },
-            |(x, value, product, starts), (task, target)| {
+            || (vec![zero.clone(); inputs * v], Vec::new()),
+            |(x, starts), (task, target)| {
                 let (chunk, row) = (task / rows, task % rows);
                 let lanes: [usize; L] = std::array::from_fn(|l| (chunk * L + l).min(points - 1));
                 for term in self.terms {
@@ -1870,32 +1863,29 @@ impl<T: Carrier> Closure<'_, T> {
                             }
                         }
                     }
-                    for item in value.iter_mut() {
-                        *item = zero.clone();
-                    }
+                    let mut value_re: [T; L] = std::array::from_fn(|_| zero.clone());
+                    let mut value_im: [T; L] = std::array::from_fn(|_| zero.clone());
                     for entry in &self.plan.kernels[term.kernel].outputs[0] {
                         let constant = &self.constants[entry.constant];
-                        let (re, im) = product.split_at_mut(L);
-                        for l in 0..L {
-                            re[l] = constant.re.clone();
-                            im[l] = constant.im.clone();
-                        }
+                        let mut re: [T; L] = std::array::from_fn(|_| constant.re.clone());
+                        let mut im: [T; L] = std::array::from_fn(|_| constant.im.clone());
                         for &(input, exponent) in &entry.monomial {
                             let factor = &x[input * v..(input + 1) * v];
                             for _ in 0..exponent {
-                                lane_mul::<T, L>(product, factor);
+                                lane_mul::<T, L>(&mut re, &mut im, factor);
                             }
                         }
-                        for (sum, item) in value.iter_mut().zip(product.iter()) {
-                            *sum += item;
+                        for l in 0..L {
+                            value_re[l] += &re[l];
+                            value_im[l] += &im[l];
                         }
                     }
                     if term.sign < 0 {
-                        for item in value.iter_mut() {
-                            *item = -item.clone();
+                        for l in 0..L {
+                            value_re[l] = -value_re[l].clone();
+                            value_im[l] = -value_im[l].clone();
                         }
                     }
-                    let (value_re, value_im) = value.split_at(L);
                     for &(coupling, component, weight) in &term.contributions {
                         if self.active.is_some_and(|active| !active[coupling]) {
                             continue;
