@@ -1545,7 +1545,7 @@ def coefficient_plan(
         return _CoefficientPlan(None, zero, frozenset(nonfinite))
     real = _RealArguments(
         {free.input_symbols[i] for i in kept if free.external_types[i] == "real"},
-        library.predicates["real_part"],
+        library,
     )
     plan = replaced(
         free,
@@ -1577,29 +1577,53 @@ def coefficient_plan(
     return _CoefficientPlan(plan, zero, frozenset(nonfinite))
 
 
-class _RealArguments:
-    """Manifestly real arguments of branch-cut functions made exactly real.
+# The helpers whose MadLoop implementations (MG5_aMC's Fortran model library,
+# double and quadruple precision) normalise a zero imaginary part of their
+# complex arguments, of either sign, to +0 before taking a branch:
+# REGLOG, REGLOGP, REGLOGM, REGSQRT and GRREGLOG (``_RealArguments``).
+_MADLOOP_NORMALISED_HELPERS = ("reglog", "reglogp", "reglogm", "regsqrt", "grreglog")
 
-    A helper call (the scalar library's functions: ``regsqrt``, ``reglog``,
-    ``grreglog``, ...), a logarithm or a fractional power whose argument is
-    a rational function with real coefficients of real model inputs (and of
-    real parts) reads that argument through the scalar library's real
-    projection. Its value is unchanged, but its imaginary part is then a
-    positive zero in every carrier and evaluator: the sign of an exactly
-    real intermediate's zero imaginary part depends on the evaluation order
-    (SymJIT's and Symbolica's differ), and on a branch cut (``regsqrt`` of a
-    negative real, at real masses ``MZ^4 - 4 MW^2 MZ^2``) it picks the side.
-    With the projection every lane takes the side of the UFO's own Python
-    evaluation (a real float is the complex number with +0 imaginary part).
+
+class _RealArguments:
+    """Branch-cut arguments that are real take the +0 side, MadLoop's.
+
+    MadLoop's helpers ``reglog``, ``reglogp``, ``reglogm``, ``regsqrt`` and
+    ``grreglog`` (MG5_aMC's Fortran model functions) replace a zero
+    imaginary part of their argument, of either sign, by +0 before taking a
+    branch: an argument exactly on the negative real axis takes the side of
+    a positive imaginary part. That side matters at real masses (e.g.
+    ``regsqrt(MZ^2 (MZ^2 - 4 MW^2))`` or the logarithms of the Higgs
+    two-point counterterms, whose values change by O(1) with it), and the
+    sign of an exactly real intermediate's zero imaginary part depends on
+    the evaluation order (SymJIT's and Symbolica's differ). Every lane takes
+    MadLoop's side:
+
+    * an argument of a helper call (the scalar library's functions), a
+      logarithm or a fractional power that is a rational function with real
+      coefficients of real model inputs (and of real parts) reads it through
+      the scalar library's real projection (``real_part``): value unchanged,
+      imaginary part +0 in every carrier and evaluator, decided once;
+    * any other argument of the five helpers above is normalised at runtime
+      as MadLoop does: ``if(imaginary_part(z) == 0, real_part(z), z)``.
     """
 
-    def __init__(self, reals: Iterable[Any], real_part: Any):
+    def __init__(self, reals: Iterable[Any], library: Any):
         from symbolica import Expression
 
         self.reals = frozenset(reals) | {Expression.PI, Expression.E}
-        self.real_part = real_part
+        self.real_part = library.predicates["real_part"]
+        self.imaginary_part = library.predicates["imaginary_part"]
+        self.equal = library.predicates["equal"]
+        self.choose = library.choose
+        self.zero = library.zero
         self.projections = frozenset(
             f"{_PREDICATE_PREFIX}{name}" for name in ("real_part", "imaginary_part")
+        )
+        self.normalised = frozenset(
+            head.get_name()
+            for name in _MADLOOP_NORMALISED_HELPERS
+            if name in library.helpers
+            for head in library.helpers[name][:2]
         )
         self._real: dict[Any, bool] = {}
         self._done: dict[Any, Any] = {}
@@ -1656,13 +1680,29 @@ class _RealArguments:
                 "symbolica::log",
                 "symbolica::sqrt",
             ):
-                children = [
-                    self.real_part(child) if self._wrapped(child) else child
-                    for child in children
-                ]
+                normalised = name in self.normalised
+                children = [self._argument(child, normalised) for child in children]
             found = symbols.qualified(name)(*children)
         self._done[atom] = found
         return found
+
+    def _argument(self, atom: Any, normalised: bool) -> Any:
+        """A branch-cut function's argument on MadLoop's side: the real
+        projection of a compound manifestly real one; for the helpers
+        MadLoop normalises (``normalised``), a runtime +0 for a vanishing
+        imaginary part of any other one that is not an exact number."""
+
+        from symbolica import AtomType
+
+        if self._wrapped(atom):
+            return self.real_part(atom)
+        if normalised and atom.get_type() != AtomType.Num and not self.is_real(atom):
+            return self.choose(
+                self.equal(self.imaginary_part(atom), self.zero),
+                self.real_part(atom),
+                atom,
+            )
+        return atom
 
     def _wrapped(self, atom: Any) -> bool:
         """Whether ``atom`` is a compound manifestly real argument (a sum,
