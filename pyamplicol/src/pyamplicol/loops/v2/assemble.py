@@ -178,6 +178,7 @@ from .schedules import (
     build_schedules,
     cheapest,
 )
+from .skeletons import Skeleton
 from .stability import (
     ROTATION,
     Budget,
@@ -828,6 +829,10 @@ def _exact_u1_subtraction_weights():
 # block current the tree model allows (the families and every result are
 # unchanged, ``tests/unit/test_loop_v2_generate.py``).
 LOOP_BLOCK_REACHABILITY = True
+# The certified-scaleless companion compresses its seeds with the slice's
+# certificates (``LoopSlice._companion_seeds``); False builds its own table
+# (its generic seeds: the oracle).
+SHARED_COMPANION_CERTIFICATES = True
 
 
 def _field_level_table(data, process, selection, request, cap=None) -> ModelBlockTable:
@@ -1948,9 +1953,7 @@ class LoopSlice:
         readings = rx.reading_skeletons(plan)
         for skeleton in readings:
             self.weights.fermion_sign(skeleton)
-        table, class_of = build_seed_table(
-            self.colour, readings, self.basis, compress=self.request.compress_colour
-        )
+        table, class_of = self._companion_seeds(readings)
         twin = replace(
             self,
             families=twin_families,
@@ -1965,6 +1968,42 @@ class LoopSlice:
         if self.request.accuracy != "full" and prune is not False:
             twin._prune_colour()
         return twin
+
+    def _companion_seeds(
+        self, readings: Sequence[Skeleton]
+    ) -> tuple[SeedTable, dict[Skeleton, SeedCombination]]:
+        """The seed table of the certified-scaleless companion's readings.
+
+        The companion shares this slice's colour (blocks, vertices, Born
+        basis), so the compressions this slice's table certified
+        (``SeedTable.certificates``: a certificate holds for every skeleton
+        of its kind in the process, by its theorem, ``COMPRESSION_THEOREMS``)
+        compress the companion's readings too (``extend_seed_table`` on an
+        empty table with those certificates): the companion's bubbles with a
+        quartic partner are adjoint rings. On its own (``build_seed_table``)
+        the companion has no single-legged instance to certify them from
+        five legs on (one of its two blocks spans at least two legs), so
+        every reading kept its generic seed, an exact colour-network
+        reduction each (g g > g g g g: 8,640 readings, 1,080 classes, 60 s;
+        g g > g g g g g: about 30 min of the generation). With
+        ``SHARED_COMPANION_CERTIFICATES`` off it builds its own table (the
+        oracle).
+        """
+
+        compress = self.request.compress_colour
+        if not SHARED_COMPANION_CERTIFICATES or not compress:
+            return build_seed_table(
+                self.colour, readings, self.basis, compress=compress
+            )
+        empty = SeedTable(
+            self.basis,
+            (),
+            (),
+            (),
+            self.colour.formal_nc,
+            certificates=dict(self.table.certificates),
+        )
+        return extend_seed_table(empty, {}, self.colour, readings, compress=True)
 
     def _plan_contraction(self) -> None:
         """Certify the seed FFT's orbits per ``colour_contraction``."""
