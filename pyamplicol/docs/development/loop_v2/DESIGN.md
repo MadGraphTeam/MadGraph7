@@ -125,7 +125,7 @@ G0 column: bold rows are measured programs (production code generation, 16 lanes
 | gg→tt̄e⁻e⁺g (QCD) | FC | 0.027–0.076 | 2.68 (gg→tt̄gg) | **0.069–0.200** | — | 0.55 | 2.8 |
 | gg→tt̄e⁻e⁺g (QCD) | LC | 0.0041–0.0110 | 11.1 (gg→tt̄gg) | **0.042–0.119** | — | — | — |
 
-Every gated FC row keeps a margin with the native inputs (headroom 1.55–2.9 against the upper estimate); the thinnest is still uu~→e⁻e⁺dd~g (1.7) and gg→tt̄gg (1.55, measured at 0.31 of its G1 limit). LC is no longer cheaper end to end at n ≥ 6 (its native trees dominate); the recipe's 1.05–1.10 returns only with compiled trees. With the integrated Python inputs every row would fail (§5.7).
+Every gated FC row keeps a margin with the native inputs (headroom 1.55–2.9 against the upper estimate); the thinnest is still uu~→e⁻e⁺dd~g (1.7) and gg→tt̄gg (1.55, measured at 0.31 of its G1 limit). At `4e9b5a9e` LC was no longer cheaper end to end at n ≥ 6 (its native trees dominated); since lc-perf (§7.5, Table 7.5b) LC is 0.18–0.70 of FC per point on every row, 0.37–0.39 at the 2→4 gluon rows. With the integrated Python inputs every row would fail (§5.7).
 
 **Table 1b. Providers on this host (s/pt, one pinned core) and the speed gate.** "Production" is each provider's fastest default output: finite part, with I-operator poles (OpenLoops) or no poles (Recola). "Protocol" is the required-references campaign's mode, which computes all actual poles (MASTER_PLAN §5.8 item 6).
 
@@ -1420,6 +1420,35 @@ LC prunes skeletons before any numerics, by the face rule of the leading-colour 
 With a massive b the gluon-process ratios are 0.26 (dressing), 0.33 (families) and 0.27–0.30 (time), because FC then has one more closed-quark class. The inherited engine measures LC/FC ≈ 1, because it projects after computing everything (`colour-measurements.json` [V-s]).
 
 The same face rule makes seeds composition-independent within an ordering, so schedule M is valid at LC without any decomposition theorem [I] (§2.2).
+
+**Native per-point inputs at LC (package lc-perf, 25 Oct; measured).** With the WP3.1 native inputs (`4e9b5a9e`) LC was slower than FC per point on five G1 rows and on gg→tt̄e⁻e⁺g (QCD) and uu~→ggggg (LC/FC 0.98–1.28): the LC dressing was a third of FC's, but its trees, Born and counterterm inputs cost more than FC's (gg→gggg: about 930 of 1,033 ms against 650 of 913 ms). Three causes, all in `native_trees.py` and `loop_v2::trees`, none LC-specific code:
+
+1. **Graded counterterm slots.** The LC/NLC counterterm program carries each CT slot per N_c grade of its formal-N_c continuation (`counterterm_slot_order(..., grade)`, §6.7), so it was larger than FC's (gg→gggg: 764,800 against 499,160 interactions), and its closure formed every ket component, including those whose N_c powers lie below what the projection keeps. `prune_program` now drops the ket components no interference can read (`_live_ket`: no overlap cell the projection keeps), the closure terms left empty, then every current that no closure term and no plan block row reads (through other currents too), and the kernels no interaction uses (gg→gggg LC: ket 860 → 240, CT interactions 764,800 → 179,280; FC 499,160 → 240,120). The LC Born metric was already diagonal in the colour orderings (120 cells against FC's 14,400 at gg→gggg) and the LC seeds diagonal (§7.2), so the squaring needed no change.
+2. **Whole model blocks as kernel inputs.** Every vertex and propagator kernel of both interaction programs took the whole model block of its state as inputs and copied it per row: 20 of a gluon vertex's 36 inputs in the trees, 161–189 of 177–203 in the counterterm program (its model holds every coupling, multiplicity and slot switch of the request). A kernel now reads the model parameters its expressions hold (tree schema 3: the third entry of a kernel's shape lists their state indices).
+3. **Latency-bound closures.** The Born and counterterm root closures ran per point and Born row, each kernel monomial a serial chain of complex products. They now run over the batch in lanes of 8 points (4, 2, 1 for smaller batches; a partial last chunk repeats its last point and drops it), the lanes in fixed-size arrays, and for binary64 in AVX-512 or AVX2 when the running CPU has them (chosen at run time, never from the build host).
+
+Every value is bitwise unchanged: each lane performs one point's operations in `Complex<T>`'s order, products and sums are never fused, a pruned component only ever met zero metric cells, and kept currents sum the same interactions in the same order. Checks: `test_pruned_tree_program_is_bitwise_the_unpruned_one` (LC, NLC, FC: every native input and the evaluation with and without poles), `test_native_inputs_do_not_depend_on_the_batch` (nine points in one batch against each alone), the Rust `wide_closure_kernels_are_bitwise_the_baseline`, and native inputs plus evaluations (poles none and all) of 11-point batches on nine process/accuracy pairs, bitwise equal before and after (gg→ggg LC/FC, uu~→ggg LC/NLC/FC, uu~→dd~g LC/FC, uu~→e⁻e⁺gg LC, gg→tt̄gg LC).
+
+**Table 7.5b. LC against FC per point** (ms; finite part, poles off, no stability checks, binary64, one pinned thread on idle cores 176–188, B = 128 median of three blocks after a warm-up block, B = 1 median of three rounds of eight single-point calls; LC and FC of a row on paired cores in one session, 25 Oct 02:21–03:10 UTC; before = gate G1 at `4e9b5a9e`, B = 128 medians of three, and the 2→5 rows of measure-g1-7leg on the same slice). "Trees" is the native trees, Born and counterterm inputs (report stage `trees`), "loop" seeds, factors, dressing, scatter and reduction.
+
+| Process | FC | LC | **LC/FC** | LC/FC before | FC before | LC before | Trees FC / LC | Loop FC / LC | B = 1: FC / LC (LC/FC) |
+|---|---|---|---|---|---|---|---|---|---|
+| gg→gg | 1.54 | 0.74 | **0.48** | 0.71 | 2.21 | 1.56 | 0.23 / 0.12 | 1.09 / 0.40 | 14.5 / 4.6 (0.32) |
+| uu~→dd~g | 2.47 | 1.27 | **0.52** | 0.71 | 2.67 | 1.89 | 0.12 / 0.10 | 1.53 / 0.89 | 11.6 / 4.6 (0.40) |
+| uu~→uu~g | 3.27 | 1.69 | **0.52** | 0.72 | 3.78 | 2.72 | 0.19 / 0.16 | 2.08 / 1.16 | 18.6 / 8.1 (0.44) |
+| uu~→e⁻e⁺g | 0.73 | 0.51 | **0.70** | 0.77 | 0.80 | 0.62 | 0.06 / 0.05 | 0.47 / 0.28 | 3.7 / 1.4 (0.39) |
+| uu~→ggg | 6.18 | 3.73 | **0.60** | 1.18 | 10.18 | 12.00 | 0.82 / 0.58 | 4.02 / 1.92 | 46.4 / 16.7 (0.36) |
+| gg→ggg | 23.2 | 9.37 | **0.40** | 0.98 | 45.4 | 44.7 | 5.21 / 3.32 | 14.9 / 5.36 | 203 / 68.7 (0.34) |
+| uu~→e⁻e⁺gg | 5.94 | 1.94 | **0.33** | 0.55 | 6.23 | 3.42 | 0.24 / 0.20 | 4.29 / 1.25 | 43.6 / 8.3 (0.19) |
+| gg→gggg | 423 | 167 | **0.39** | 1.13 | 913 | 1,033 | 124 / 62.0 | 272 / 102 | 3,825 / 1,414 (0.37) |
+| gg→tt̄gg | 105 | 39.8 | **0.38** | 1.18 | 183 | 217 | 16.4 / 10.8 | 74.6 / 21.4 | 811 / 277 (0.34) |
+| uu~→gggg | 93.2 | 35.0 | **0.37** | 1.28 | 170 | 218 | 16.8 / 11.0 | 63.0 / 21.9 | 794 / 243 (0.31) |
+| uu~→e⁻e⁺dd~g | 17.9 | 6.43 | **0.36** | 0.84 | 24.7 | 20.9 | 0.67 / 0.60 | 14.0 / 4.96 | 136 / 35.2 (0.26) |
+| uu~→e⁻e⁺ggg | 64.3 | 13.4 | **0.21** | 0.64 | 82.2 | 52.7 | 2.72 / 1.89 | 54.4 / 8.61 | 648 / 85.9 (0.13) |
+| gg→tt̄e⁻e⁺g (QCD) | 68.8 | 12.4 | **0.18** | 1.21 | 153 | 185 | 4.43 / 3.57 | 55.2 / 7.84 | 655 / 95.4 (0.15) |
+UUX_GGGGG_ROW
+
+At gg→gggg the LC inputs split into the interaction programs 40.4 ms (FC 50.7), the closures 19.7 ms (FC 60.9) and the interferences 0.7 ms (FC 11.4). What is left of the LC inputs: the counterterm program recomputes the plain tree currents the trees' program already holds (2,320 of its 6,736 outputs at uu~→gggg LC, about a sixth of its finite interactions), and the closure kernels are expanded monomial sums (a three-gluon closure: 72 monomials, 288 complex products, where a contracted form needs about 30; a factorised form changes the rounding). The interaction-program kernels are interpreted Symbolica evaluators until the binary64 plane applications of artifact-portability land.
 
 ### 7.6 Next-to-leading colour
 
