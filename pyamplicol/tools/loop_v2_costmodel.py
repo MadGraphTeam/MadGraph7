@@ -1375,7 +1375,16 @@ def program_text(
 # ------------------------------------------------------------- gate G1
 
 # G1 benchmark keys (tools/loop_benchmark) of the processes with a design row.
-G1_PROCESSES = {"gg_gg": "gg>gg", "gg_gggg": "gg>gggg", "gg_ttxgg": "gg>tt~gg"}
+G1_PROCESSES = {
+    "gg_gg": "gg>gg",
+    "gg_gggg": "gg>gggg",
+    "gg_ttxgg": "gg>tt~gg",
+    "gg_ggggg": "gg>ggggg",
+    "uux_ggggg": "uu~>ggggg",
+    "uux_emepggg": "uu~>e-e+ggg",
+    "uux_emepddxg": "uu~>e-e+dd~g",
+    "gg_ttxemepg_qcd": "gg>tt~e-e+g",
+}
 G1_COLOUR = {"full": "FC", "lc": "LC", "nlc": "NLC"}
 # Gate G0's measured dressing per point (DESIGN §5.4, rule, 16 lanes,
 # production code generation, fused-factor builds included), seconds.
@@ -1454,9 +1463,9 @@ def g1_recalibration(document: Mapping[str, object]) -> list[dict[str, object]]:
 
 
 # The G1 benchmark key whose measured outer factor stands for a design row's
-# class (same colour where measured, else full colour): pure gluon from
-# g g > g g g g, quark lines with gluons from u u~ > g g g g, V+jets from
-# u u~ > e- e+ g g, top pairs from g g > t t~ g g.
+# class (same colour where measured, else full colour) when G1 did not time
+# the row itself: pure gluon from g g > g g g g, quark lines with gluons from
+# u u~ > g g g g, V+jets from u u~ > e- e+ g g, top pairs from g g > t t~ g g.
 G1_OUTER_CLASS = {
     "gg>gg": "gg_gg",
     "gg>gggg": "gg_gggg",
@@ -1467,8 +1476,25 @@ G1_OUTER_CLASS = {
     "gg>tt~gg": "gg_ttxgg",
     "gg>tt~e-e+g": "gg_ttxgg",
 }
-# The NinjaRS stage with masters measured against the model R (G1 Table).
+# The NinjaRS stage with masters measured against the model R (G1 Table of
+# 2026-10-24, six legs and fewer): the band used when a document has no
+# measured design row (``g1_reduction_band``).
 G1_REDUCTION_OVER_MODEL = (0.97, 1.39)
+
+
+def g1_reduction_band(rows: Sequence[Mapping[str, object]]) -> tuple[float, float]:
+    """The measured NinjaRS stage over the model R, lowest and highest over
+    the full-colour native-input rows with a design row (``g1_recalibration``)."""
+
+    values = [
+        value
+        for row in rows
+        if row["configuration"] == "native/full" and row.get("design")
+        for value in row["design"]["reduction_over_model"]  # type: ignore[index]
+    ]
+    if not values:
+        return G1_REDUCTION_OVER_MODEL
+    return (min(values), max(values))
 
 
 def g1_estimates(document: Mapping[str, object]) -> list[dict[str, object]]:
@@ -1481,13 +1507,24 @@ def g1_estimates(document: Mapping[str, object]) -> list[dict[str, object]]:
     Born and counterterm inputs, seeds, scatter, glue) the measured
     total / (dressing + reduction) of the row's class representative
     (``G1_OUTER_CLASS``; the same colour where measured, else full colour,
-    marked ``inferred``). A row that G1 measured itself also carries its
-    measured total. The gate limit is 1.3 x the best production provider of
-    DESIGN Table 1b where the row has one."""
+    marked ``inferred``); a row that G1 timed itself takes its own measured
+    outer factor and carries its measured total. The gate limit is G1's
+    binding limit at the largest batch where G1 has one, else 1.3 x the best
+    production provider of DESIGN Table 1b."""
 
     outer: dict[tuple[str, str], float] = {}
     measured: dict[tuple[str, str], float] = {}
-    for row in g1_recalibration(document):
+    limits: dict[str, float] = {}
+    for process in document["processes"]:  # type: ignore[index]
+        config = process["pyamplicol"].get("native/full")
+        if not config or not config["batches"]:
+            continue
+        verdict = config["batches"][max(config["batches"], key=int)]["gate"]
+        if "binding_limit" in verdict:
+            limits[process["key"]] = verdict["binding_limit"]
+    recalibration = g1_recalibration(document)
+    band = g1_reduction_band(recalibration)
+    for row in recalibration:
         name = row["configuration"]
         if not str(name).startswith("native/") or str(name).count("/") != 1:
             continue
@@ -1497,7 +1534,10 @@ def g1_estimates(document: Mapping[str, object]) -> list[dict[str, object]]:
         measured[str(row["process"]), colour] = float(row["total"])  # type: ignore[arg-type]
     out: list[dict[str, object]] = []
     for row in PROCESSES:
+        own = next((k for k, v in G1_PROCESSES.items() if v == row.process), None)
         key = G1_OUTER_CLASS.get(row.process)
+        if own is not None and ((own, row.colour) in outer or (own, "FC") in outer):
+            key = own
         if key is None:
             continue
         factor = outer.get((key, row.colour))
@@ -1508,16 +1548,16 @@ def g1_estimates(document: Mapping[str, object]) -> list[dict[str, object]]:
             continue
         r_lo, r_hi = (value / 1e3 for value in row.ninjars_ms)
         low = (
-            row.dress_structured * QUARTIC[0] / DESIGN_THROUGHPUT[0]
-            + r_lo * G1_REDUCTION_OVER_MODEL[0]
+            row.dress_structured * QUARTIC[0] / DESIGN_THROUGHPUT[0] + r_lo * band[0]
         ) * factor
         high = (
-            row.dress_dense * QUARTIC[1] / DESIGN_THROUGHPUT[1]
-            + r_hi * G1_REDUCTION_OVER_MODEL[1]
+            row.dress_dense * QUARTIC[1] / DESIGN_THROUGHPUT[1] + r_hi * band[1]
         ) * factor
         recipe = predict(row, None, "none")
-        own = next((k for k, v in G1_PROCESSES.items() if v == row.process), None)
-        limit = gate(row.process) if row.colour == "FC" else None
+        limit = None
+        if row.colour == "FC":
+            limit = limits.get(own) if own else None
+            limit = gate(row.process) if limit is None else limit
         out.append(
             {
                 "process": row.process,
@@ -1527,6 +1567,7 @@ def g1_estimates(document: Mapping[str, object]) -> list[dict[str, object]]:
                 "outer_class": key,
                 "outer_factor": factor,
                 "outer_inferred": inferred,
+                "ninjars_over_model": list(band),
                 "estimate": [low, high],
                 "measured": measured.get((own, row.colour)) if own else None,
                 "gate": limit,

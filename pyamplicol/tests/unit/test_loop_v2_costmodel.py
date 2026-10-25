@@ -268,6 +268,91 @@ def test_reports_without_programs_do_not_pass_the_gate(tmp_path: Path) -> None:
     assert costmodel.main([str(probe)]) == 1
 
 
+def _g1_configuration(
+    accuracy: str, total: float, dressing: float, reduction: float, limit=None
+) -> dict:
+    """A gate-tool configuration (g1.json processes[].pyamplicol) whose
+    largest batch carries the terms g1_recalibration reads."""
+    gate = {} if limit is None else {"binding_limit": limit}
+    largest = {
+        "median_seconds_per_point": total,
+        "stages_per_point": {"dressing": dressing, "reduction": reduction},
+        "gate": gate,
+    }
+    small = {"median_seconds_per_point": 9.0, "stages_per_point": {}, "gate": {}}
+    return {"accuracy": accuracy, "batches": {"16": small, "128": largest}}
+
+
+@pytest.mark.loop_fast
+def test_g1_estimates_take_a_timed_rows_own_terms() -> None:
+    """A design row G1 timed itself (u u~ > g g g g g) takes its own outer
+    factor, measured total and binding gate limit at the largest batch; a
+    row G1 did not time takes its class representative (u u~ > e- e+ d d~ g
+    from u u~ > e- e+ g g, its LC inferred from FC) and Table 1b's limit; the
+    NinjaRS band is the measured one over the timed design rows."""
+    document = {
+        "processes": [
+            {
+                "key": "uux_ggggg",
+                "pyamplicol": {
+                    "native/full": _g1_configuration("full", 3.0, 1.0, 0.5, 600.0),
+                    "native/lc": _g1_configuration("lc", 1.0, 0.25, 0.25),
+                    # Not a main configuration: no outer factor of its own.
+                    "native/full/L1": _g1_configuration("full", 99.0, 1.0, 1.0),
+                },
+            },
+            {
+                "key": "uux_gggg",
+                "pyamplicol": {"native/full": _g1_configuration("full", 1.5, 0.4, 0.1)},
+            },
+            {
+                "key": "uux_emepgg",
+                "pyamplicol": {
+                    "native/full": _g1_configuration("full", 0.05, 0.01, 0.01, 0.06)
+                },
+            },
+        ]
+    }
+    model = _row("uu~>ggggg")
+    r_lo, r_hi = (value / 1e3 for value in model.ninjars_ms)
+    band = (0.5 / r_hi, 0.5 / r_lo)
+    recalibration = costmodel.g1_recalibration(document)
+    assert costmodel.g1_reduction_band(recalibration) == pytest.approx(band)
+    assert costmodel.g1_reduction_band([]) == costmodel.G1_REDUCTION_OVER_MODEL
+
+    rows = {(r["process"], r["colour"]): r for r in costmodel.g1_estimates(document)}
+    fc, lc = rows["uu~>ggggg", "FC"], rows["uu~>ggggg", "LC"]
+    assert (fc["outer_class"], fc["outer_factor"], fc["outer_inferred"]) == (
+        "uux_ggggg",
+        2.0,
+        False,
+    )
+    assert (fc["measured"], fc["gate"]) == (3.0, 600.0)
+    assert fc["ninjars_over_model"] == pytest.approx(list(band))
+    low = (
+        model.dress_structured * costmodel.QUARTIC[0] / costmodel.DESIGN_THROUGHPUT[0]
+        + r_lo * band[0]
+    ) * 2.0
+    assert fc["estimate"][0] == pytest.approx(low)
+    assert (lc["outer_class"], lc["outer_factor"], lc["outer_inferred"]) == (
+        "uux_ggggg",
+        2.0,
+        False,
+    )
+    assert (lc["measured"], lc["gate"]) == (1.0, None)
+
+    # Not timed: the class representative's factor (u u~ > g g g g's 3.0 is
+    # not used above), Table 1b's limit (G1's binding limit belongs to the
+    # representative, not to this row).
+    dd_fc, dd_lc = rows["uu~>e-e+dd~g", "FC"], rows["uu~>e-e+dd~g", "LC"]
+    assert (dd_fc["outer_class"], dd_fc["outer_factor"]) == ("uux_emepgg", 2.5)
+    assert dd_fc["measured"] is None
+    assert dd_fc["gate"] == costmodel.gate("uu~>e-e+dd~g")
+    assert (dd_lc["outer_factor"], dd_lc["outer_inferred"]) == (2.5, True)
+    # Rows without a measured class representative are not estimated.
+    assert ("gg>tt~gg", "FC") not in rows
+
+
 @pytest.mark.loop_fast
 def test_lane_count_holds_up_in_every_program_and_report() -> None:
     def report(at: dict[int, float]):
