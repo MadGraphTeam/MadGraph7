@@ -1128,6 +1128,8 @@ def lower_model_counterterms(
     them, and a rule above them is inert. ``None`` lowers the whole model.
     """
 
+    from symbolica import E
+
     dirac_fields = frozenset(dirac_fields)
     veto = frozenset(abs(int(pdg)) for pdg in veto)
     vocabulary = TreeVocabulary(
@@ -1248,10 +1250,21 @@ def lower_model_counterterms(
             (v for rows in values.values() for v in rows.values()), references
         )
         parameters.update({name: _reference_default(name) for name in sorted(read)})
+        # A coupling that vanishes once the model's internal parameters are
+        # resolved (an off-diagonal CKM entry of a diagonal restriction) has
+        # no vertex term: dropped here, so ``lower_counterterm_vertices``
+        # compiles the tree model once instead of again without it.
+        couplings = {
+            structure: expression
+            for structure, expression in _coupling_expressions(
+                values, multiplicities, switches
+            ).items()
+            if not vanishes(E(expression))
+        }
         try:
             lowered = lower_counterterm_vertices(
                 compiled,
-                _coupling_expressions(values, multiplicities, switches),
+                couplings,
                 parameters=parameters,
                 excluded_particles=excluded,
                 multi_trace=multi_trace,
@@ -1446,6 +1459,21 @@ class _CoefficientPlan:
     plan: Any
     zero: frozenset[tuple[str, int]]
     nonfinite: frozenset[tuple[str, int]]
+
+
+def coefficient_plan(
+    program: Any,
+    outputs: Iterable[tuple[str, int]],
+    fixed_parameters: Mapping[str, Any],
+) -> _CoefficientPlan:
+    """The coefficient plan of the CT scalars' Laurent coefficients
+    ``outputs`` ((name, epsilon power)) of a source scalar ``program`` at the
+    generation's ``fixed_parameters``, as the lowering forms it
+    (``_coefficient_plan``; the model's UFO-standard ``cond`` decided lazily)."""
+
+    return _coefficient_plan(
+        program, outputs, fixed_parameters, standard_helpers(program.library)
+    )
 
 
 def _coefficient_plan(

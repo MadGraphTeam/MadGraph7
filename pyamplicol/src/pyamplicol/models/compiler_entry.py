@@ -639,10 +639,17 @@ def _annotate_oriented_kernel_evaluation_equivalence(
     term_by_id = {term.id: term for term in terms}
     annotated: list[CompiledOrientedKernel] = []
     proofs: dict[tuple[object, ...], tuple[object, ...]] = {}
+    parsed: dict[int, _sym.Expression] = {}
+
+    def term_coupling(term_id: int) -> _sym.Expression:
+        if term_id not in parsed:
+            parsed[term_id] = _sym.E(term_by_id[term_id].coupling_expression)
+        return parsed[term_id]
+
     for kernel in kernels:
         derived_couplings = {
-            symbols.derived_coupling(model_symbols.model_name, term_id): _sym.E(
-                term_by_id[term_id].coupling_expression
+            symbols.derived_coupling(model_symbols.model_name, term_id): term_coupling(
+                term_id
             )
             for name in kernel.runtime_parameters
             if name.startswith("derived_coupling_")
@@ -816,13 +823,23 @@ def _compile_oriented_kernels(
     particle_by_name = {particle.name: particle for particle in particles}
     parameter_by_name = {parameter.name: parameter for parameter in parameters}
     propagator_by_name = {propagator.name: propagator for propagator in propagators}
-    external_parameters = {
-        parameter.name for parameter in parameters if parameter.nature == "external"
+    external_symbols = {
+        parameter.name: model_symbols.symbol(parameter.name)
+        for parameter in parameters
+        if parameter.nature == "external"
     }
     kernels: list[CompiledOrientedKernel] = []
     for term in terms:
         if term.valence != 3:
             continue
+        coupling_symbols = set(_sym.E(term.coupling_expression).get_all_symbols(False))
+        runtime_parameters = tuple(
+            sorted(
+                name
+                for name, symbol in external_symbols.items()
+                if symbol in coupling_symbols
+            )
+        )
         oriented_result_particles: set[str] = set()
         for result_leg in range(3):
             result_source_name = term.particles[result_leg]
@@ -861,16 +878,6 @@ def _compile_oriented_kernels(
                             propagator_by_name,
                         )
                     ),
-                )
-                coupling_symbols = set(
-                    _sym.E(term.coupling_expression).get_all_symbols(False)
-                )
-                runtime_parameters = tuple(
-                    sorted(
-                        name
-                        for name in external_parameters
-                        if model_symbols.symbol(name) in coupling_symbols
-                    )
                 )
                 kernels.append(
                     CompiledOrientedKernel(
