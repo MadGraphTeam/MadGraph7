@@ -176,6 +176,10 @@ class ExternalModelEvaluationMixin:
                     "model-supplied UFO propagator lowered without gauge conversion"
                 ),
             )
+        # A massive vector takes the compiled model's gauge: unitary (its
+        # Goldstone absorbed) or 't Hooft-Feynman (its Goldstone explicit,
+        # ``compiler_gauge``). A massless vector is Feynman-gauge in both.
+        feynman_massive = massive and self.compiled.ir.gauge == "feynman"
         standard_contracts: dict[
             int,
             tuple[PropagatorKind, str, PropagatorGauge | None],
@@ -185,11 +189,13 @@ class ExternalModelEvaluationMixin:
             3: (
                 "vector",
                 (
-                    "ufo_massive_vector_propagator"
+                    "ufo_massive_vector_propagator_feynman"
+                    if feynman_massive
+                    else "ufo_massive_vector_propagator"
                     if massive
                     else "ufo_massless_vector_propagator"
                 ),
-                "unitary" if massive else "feynman",
+                "unitary" if massive and not feynman_massive else "feynman",
             ),
             5: (
                 "spin2",
@@ -218,7 +224,11 @@ class ExternalModelEvaluationMixin:
             mass_class="massive" if massive else "massless",
             gauge=gauge,
             goldstone_policy=(
-                "absorbed" if spin == 3 and massive else "not-applicable"
+                "explicit"
+                if spin == 3 and feynman_massive
+                else "absorbed"
+                if spin == 3 and massive
+                else "not-applicable"
             ),
             description="UFO propagator with runtime mass and width",
         )
@@ -313,6 +323,9 @@ class ExternalModelEvaluationMixin:
             current_momentum = tuple(momentum)
             if metadata.gauge == "feynman":
                 denominator = _minkowski_square_expression(current_momentum)
+                if metadata.mass_class == "massive":
+                    # 't Hooft-Feynman gauge: -i g / (p^2 - M^2 + i M W).
+                    denominator = denominator - mass * mass + imaginary * mass * width
                 return tuple(
                     -imaginary * component / denominator for component in current
                 )
