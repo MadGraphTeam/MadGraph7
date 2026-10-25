@@ -167,6 +167,10 @@ fn error(message: impl Into<String>) -> String {
 
 /// A Fierz term: integer coefficient, N_c power and its traces (rows).
 type FierzTerm = (i64, i64, Vec<Vec<Label>>);
+/// A Fierz input: traces and the sorted sentinel labels.
+type FierzKey = (Vec<Vec<Label>>, Vec<Label>);
+/// Joined strings: open strings, traces of closed loops, empty loops.
+type Joined = (Vec<NetString>, Vec<Vec<Label>>, i64);
 
 /// `reduce_network(network, legs, external)` with the legs' labels external,
 /// memoising the Fierz reductions of trace shapes (`_fierz`'s cache).
@@ -174,7 +178,7 @@ type FierzTerm = (i64, i64, Vec<Vec<Label>>);
 pub struct Reducer {
     external: Vec<Label>,
     first: Label,
-    fierz: FastMap<(Vec<Vec<Label>>, Vec<Label>), Vec<FierzTerm>>,
+    fierz: FastMap<FierzKey, Vec<FierzTerm>>,
 }
 
 impl Reducer {
@@ -290,10 +294,7 @@ impl Reducer {
 
     /// `_join_strings`: open strings (external row to external column),
     /// traces of closed loops and the number of empty loops.
-    fn join_strings(
-        &self,
-        strings: &[NetString],
-    ) -> Result<(Vec<NetString>, Vec<Vec<Label>>, i64), String> {
+    fn join_strings(&self, strings: &[NetString]) -> Result<Joined, String> {
         let mut by_row: FastMap<Label, usize> = FastMap::default();
         for (i, string) in strings.iter().enumerate() {
             if by_row.insert(string.row, i).is_some() {
