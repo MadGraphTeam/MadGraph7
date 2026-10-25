@@ -70,25 +70,27 @@ fn wide_closure_kernels_are_bitwise_the_baseline() {
 }
 
 #[test]
-fn lane_runs_cover_the_batch_without_padding() {
+fn lane_runs_cover_the_batch_in_the_fewest_chunks() {
     for points in 0..40 {
         let runs = lane_runs(points);
         let mut next = 0;
+        let mut chunks = 0;
         for &(first, count, lanes) in &runs {
             assert_eq!(first, next);
-            assert!(count > 0 && count % lanes == 0, "{points}: {runs:?}");
+            assert!(
+                count > 0 && lanes.is_power_of_two() && lanes <= 8,
+                "{runs:?}"
+            );
             next += count;
+            chunks += count.div_ceil(lanes);
         }
         assert_eq!(next, points);
-        // Lanes of 8 first, then at most one run of 4, 2 and 1 each.
-        let widths: Vec<usize> = runs.iter().map(|run| run.2).collect();
-        assert!(
-            widths.windows(2).all(|pair| pair[0] > pair[1]),
-            "{widths:?}"
-        );
+        assert_eq!(chunks, points.div_ceil(8), "{points}: {runs:?}");
     }
     assert_eq!(lane_runs(9), vec![(0, 8, 8), (8, 1, 1)]);
-    assert_eq!(lane_runs(7), vec![(0, 4, 4), (4, 2, 2), (6, 1, 1)]);
+    assert_eq!(lane_runs(11), vec![(0, 8, 8), (8, 3, 4)]);
+    assert_eq!(lane_runs(7), vec![(0, 7, 8)]);
+    assert_eq!(lane_runs(16), vec![(0, 16, 8)]);
 }
 
 #[cfg(target_arch = "x86_64")]

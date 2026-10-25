@@ -1707,8 +1707,8 @@ impl TreeProgram {
     /// Points run in lanes (`Closure::lanes`): every lane performs one point's
     /// operations in the scalar order, so a point's values do not depend on
     /// its batch; lanes and Born rows run in parallel. The batch runs in
-    /// lanes of 8 points, its last `points % 8` in lanes of 4, 2 and 1
-    /// (`lane_runs`), so no lane repeats a point.
+    /// lanes of 8 points, its last `points % 8` in one chunk of 1, 2, 4 or
+    /// 8 lanes (`lane_runs`).
     #[allow(clippy::too_many_arguments)]
     fn close<T: Carrier>(
         &self,
@@ -1772,17 +1772,22 @@ impl TreeProgram {
 }
 
 /// The runs (first point, points, lane width) a batch of `points` points
-/// closes in: lanes of 8 points, then the remainder in lanes of 4, 2 and 1
-/// (at most one each), every run a whole number of lanes.
+/// closes in: lanes of 8 points, then the remaining `points % 8` in one
+/// chunk of the narrowest width that holds them (1, 2, 4 or 8; a chunk's
+/// unused lanes repeat its run's last point and are dropped). A chunk
+/// costs about its instruction count at any width (g g > g g g g full
+/// colour, binary64 closures per chunk of width 8 / 4 / 2 / 1: 487 / 449 /
+/// 350 / 249 ms), so the batch runs in the fewest chunks, its last one as
+/// narrow as it can be.
 fn lane_runs(points: usize) -> Vec<(usize, usize, usize)> {
-    let mut runs = Vec::new();
-    let mut first = 0;
-    for lanes in [8, 4, 2, 1] {
-        let count = (points - first) / lanes * lanes;
-        if count > 0 {
-            runs.push((first, count, lanes));
-            first += count;
-        }
+    let full = points / 8 * 8;
+    let rest = points - full;
+    let mut runs = Vec::with_capacity(2);
+    if full > 0 {
+        runs.push((0, full, 8));
+    }
+    if rest > 0 {
+        runs.push((full, rest, rest.next_power_of_two()));
     }
     runs
 }
@@ -1922,8 +1927,8 @@ impl Wide {
 
 impl<T: Carrier> Closure<'_, T> {
     /// The closures of points `first .. first + points` in lanes of `L`
-    /// points (`lane_runs` makes `L` divide `points`; otherwise the last
-    /// lanes would repeat the run's last point and be dropped): per lane
+    /// points (the unused lanes of a last chunk repeat the run's last point
+    /// and are dropped): per lane
     /// chunk and Born row, the terms in order, each lane in the scalar
     /// operations of `Complex<T>` (the kernel's terms `constant × Π
     /// input^power` summed from zero, the sign, then per contribution

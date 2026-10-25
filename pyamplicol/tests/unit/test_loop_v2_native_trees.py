@@ -582,20 +582,20 @@ def test_pruned_tree_program_is_bitwise_the_unpruned_one(
 )
 def test_native_inputs_do_not_depend_on_the_batch(executors, name, stream):
     """The root closures run over a batch's points in lanes (8 at a time,
-    the rest in lanes of 4, 2 and 1): each point's native inputs,
-    counterterms included, are bitwise those of the point alone (nine
-    distinct points of the gate-G1 stream at three scales: a lane of 8 and
-    a lane of 1)."""
+    the rest in one chunk of 1, 2, 4 or 8 lanes): each point's native
+    inputs, counterterms included, are bitwise those of the point alone
+    (lanes of 1; eleven distinct points of the gate-G1 stream at three
+    scales: a chunk of 8 and one of 4 lanes holding 3 points)."""
 
     from tools.loop_benchmark import streams
 
     native, _python = executors(name)
     frozen = streams.load(stream)
-    points = [streams.exact(frozen, k) for k in range(9)]
-    scales = [("250000", "1000000", "4000000")[k % 3] for k in range(9)]
+    points = [streams.exact(frozen, k) for k in range(11)]
+    scales = [("250000", "1000000", "4000000")[k % 3] for k in range(11)]
     batch = native.native_inputs(points, scales, PARAMETERS)
     assert batch[4] is not None
-    for k in range(9):
+    for k in range(11):
         alone = native.native_inputs(points[k : k + 1], scales[k : k + 1], PARAMETERS)
         assert repr([None if x is None else x[0] for x in alone]) == repr(
             [None if x is None else x[k] for x in batch]
@@ -633,7 +633,7 @@ def test_closure_simd_widths_are_bitwise_equal(executors, tmp_path, name, stream
     ``RUSTICOL_TEST_CLOSURE_SIMD`` caps the width: the stored process,
     loaded in fresh interpreters capped at AVX2 and at the baseline, gives
     bitwise the native inputs and evaluations (poles none and all) of the
-    uncapped run on nine points (a lane of 8 and a lane of 1)."""
+    uncapped run on eleven points (a chunk of 8 lanes and one of 4)."""
 
     import os
     import pickle
@@ -649,8 +649,8 @@ def test_closure_simd_widths_are_bitwise_equal(executors, tmp_path, name, stream
         (tmp_path / "members" / member).write_bytes(data)
     (tmp_path / "plan.json").write_text(native._plan_json)
     frozen = streams.load(stream)
-    points = [streams.exact(frozen, k) for k in range(9)]
-    scales = [("250000", "1000000", "4000000")[k % 3] for k in range(9)]
+    points = [streams.exact(frozen, k) for k in range(11)]
+    scales = [("250000", "1000000", "4000000")[k % 3] for k in range(11)]
     # Exact (Fraction) stream points: pickled, not rounded.
     (tmp_path / "points.pickle").write_bytes(
         pickle.dumps({"points": points, "scales": scales, "parameters": PARAMETERS})
