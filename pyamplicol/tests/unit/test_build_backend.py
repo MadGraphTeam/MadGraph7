@@ -652,7 +652,11 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         )
         candidate_version_line = f'version = "{candidate_version}"'
         assert candidate_version_line in cargo
-        assert lock.count(candidate_version_line) == 3
+        # Every crate inheriting the workspace version, the key crate
+        # ``pyamplicol`` included (maturin builds with ``--locked``).
+        inheriting = backend._workspace_version_crates(overlay)
+        assert "pyamplicol" in inheriting
+        assert lock.count(candidate_version_line) == len(inheriting)
         candidate_core = (
             overlay / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
         ).read_text(encoding="utf-8")
