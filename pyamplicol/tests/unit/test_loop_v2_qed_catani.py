@@ -425,6 +425,34 @@ def test_engine_operator_makes_no_prediction_with_an_external_photon(gmu):
     assert evaluation._ir_poles() is None
 
 
+@pytest.mark.loop_physics
+def test_charged_massive_legs_must_be_stable_for_the_qed_operator(gmu):
+    """Catani's operators describe stable emitters: with QED corrections an
+    external W (colourless, charged) with a width that is not zero gives no
+    prediction, as a coloured one does with QCD; QCD corrections do not
+    dress it."""
+
+    point = [[1, 0, 0, 1], [1, 0, 0, -1], [1, 0, Q(3, 5), Q(4, 5)]]
+    point.append([1, 0, Q(-3, 5), Q(-4, 5)])
+    sector = (("QCD", 2), ("QED", 4))
+
+    def stable(corrections, width):
+        return _OperatorPoint(
+            gmu,
+            (2, -1, 24, 21),
+            point,
+            1,
+            {**CONTROL_PARAMETERS, "WW": width},
+            {(("QCD", 2), ("QED", 2)): 1.0},
+            sector,
+            corrections=corrections,
+        )._stable_coloured_legs()
+
+    assert not stable(("QCD", "QED"), "2.085")
+    assert stable(("QCD", "QED"), "0")
+    assert stable(("QCD",), "2.085")
+
+
 @pytest.mark.loop_fast
 def test_per_correction_sectors_and_sums():
     """Each correction dresses the Born interferences whose squared order
