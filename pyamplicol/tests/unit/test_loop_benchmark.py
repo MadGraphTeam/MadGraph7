@@ -994,6 +994,29 @@ def test_report_builder_labels_the_floor_and_reports_addendum_h_checks():
     assert lower["max_virtual_ratio"] == 3e-10
 
 
+def test_a_campaign_timed_on_tool_revisions_of_its_slice_revision(monkeypatch):
+    """A G1 campaign whose configurations are all recorded at its tool
+    revisions (slice_tool_revisions: benchmark-tool commits on top of
+    slice_revision, whose engine _check_tool_revisions compares) is
+    consistent; one with no configuration at slice_revision or at a tool
+    revision (an older campaign under a new label) stops the build."""
+
+    builder = _report_builder()
+    monkeypatch.setattr(builder, "_check_tool_revisions", lambda g1: None)
+    cfg = {"revision": "b" * 40, "branch": "HEAD"}
+    g1 = {
+        "slice_revision": "a" * 8,
+        "slice_tool_revisions": "cccccccc,bbbbbbbb",
+        "processes": [{"key": "gg_gg", "pyamplicol": {"native/full": cfg}}],
+    }
+    sides = builder._sides(g1)
+    assert sides["predicates"]["integrated"](cfg)
+    assert sides["revisions"] == {"integrated": "a" * 8}
+    g1["slice_tool_revisions"] = "cccccccc"
+    with pytest.raises(ValueError, match="no configuration is recorded"):
+        builder._sides(g1)
+
+
 def test_an_imported_madloop_timing_takes_the_specified_exports_generation(
     tmp_path, no_old_root
 ):
