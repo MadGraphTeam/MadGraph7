@@ -894,6 +894,18 @@ def test_directed_tables_and_family_degrees_equal_python(slices):
         theirs = python(DirectedColour, slice_.table, history)
         assert mine.table.cells == theirs.table.cells, history.id
         assert mine.swapped.cells == python(getattr, theirs, "swapped").cells
+    # Rule 5: the native images and their cells do not depend on the
+    # thread count.
+    engine = native_cells.NativeCells(slice_.table.basis)
+    one, four = (
+        native_cells.decode(
+            engine.directed([(1, -1), (1, -2)], [(2, -1), (3, -2)], threads).table(
+                slice_.table.classes, threads
+            )
+        )
+        for threads in (1, 4)
+    )
+    assert one == four
     for history in (HISTORIES["T12"],):
         family = native.family(history)
         assert native_cells.family_degrees(native, family) == python(
