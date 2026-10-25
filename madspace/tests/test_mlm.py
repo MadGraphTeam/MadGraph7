@@ -2327,3 +2327,59 @@ def test_clustering_follows_the_diagrams_the_flavours_allow():
         for a, b in zip(union, other[:5]):
             np.testing.assert_array_equal(a, b)
 
+
+# --------------------------------------------------------------------------
+# 2 -> 1: the 0-jet sample of p p > z + jets
+# --------------------------------------------------------------------------
+
+
+def drell_yan_two_to_one_clustering(**kwargs):
+    """u u~ > z: nothing to cluster. cluster.f handles it as its "special
+    2 -> 1 case", pt2ijcl = the invariant mass squared of the z, and
+    setclscales sets both scales from that."""
+    kwargs.setdefault("cm_energy", CM_ENERGY)
+    kwargs.setdefault("external_pdg_ids", [2, -2, 23])
+    return ms.MLMClustering(
+        [ms.Topology(ms.Diagram([0.0, 0.0], [M_Z], [], [["i0", "i1", "o0"]]))],
+        [[[0, 1, 2]]],
+        [[0]],
+        **kwargs,
+    )
+
+
+def two_to_one_momenta(batch_size=BATCH_SIZE, seed=SEED):
+    """Unequal beam energies, so that the event is not at rest in the lab."""
+    rng = np.random.default_rng(seed)
+    e1 = rng.uniform(20.0, 500.0, batch_size)
+    e2 = rng.uniform(20.0, 500.0, batch_size)
+    p = np.zeros((batch_size, 3, 4))
+    p[:, 0] = np.stack([e1, 0 * e1, 0 * e1, e1], axis=1)
+    p[:, 1] = np.stack([e2, 0 * e2, 0 * e2, -e2], axis=1)
+    p[:, 2] = p[:, 0] + p[:, 1]
+    return p, np.sqrt(4.0 * e1 * e2)
+
+
+@pytest.mark.parametrize(
+    "scale_scheme",
+    [ms.MLMClustering.ScaleScheme.clustering_mean, ms.MLMClustering.ScaleScheme.madevent],
+)
+@pytest.mark.parametrize(
+    "history",
+    list(ms.MLMClustering.ClusteringHistory.__members__.values()),
+)
+def test_a_two_to_one_process_takes_its_scales_from_shat(scale_scheme, history):
+    """Used to throw "MLM clustering found no valid clustering for this
+    process", which killed the 0-jet sample of every p p > z @0 + jets run."""
+    clustering = drell_yan_two_to_one_clustering(
+        scale_scheme=scale_scheme, clustering_history=history, xqcut=20.0
+    )
+    momenta, shat_root = two_to_one_momenta()
+    ren, fact1, fact2, outgoing, diagram, xqcut_weight = run_all(clustering, momenta)
+    np.testing.assert_allclose(ren, shat_root, rtol=1e-12)
+    np.testing.assert_allclose(fact1, shat_root, rtol=1e-12)
+    np.testing.assert_allclose(fact2, shat_root, rtol=1e-12)
+    # the z is no jet: written at the collider energy, where no veto trips
+    assert np.all(outgoing == CM_ENERGY)
+    assert np.all(diagram == 0)
+    # nothing was emitted, so nothing can fail the merging cut
+    assert np.all(xqcut_weight == 1.0)
