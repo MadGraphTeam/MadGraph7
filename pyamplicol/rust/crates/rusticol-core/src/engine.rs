@@ -2409,6 +2409,12 @@ where
         out: &mut [Complex<Self>],
         binary_precision: Option<u32>,
     ) -> RusticolResult<()>;
+
+    /// A binary64 constant of the artifact (normalization, colour weight, model parameter,
+    /// mass) at the working precision. The binary64 value itself is exact, but `From<f64>`
+    /// gives a 53-bit `Float`, and a `Float` product is rounded to the smaller precision of its
+    /// factors, so every result would carry only binary64 accuracy.
+    fn from_f64_constant(value: f64, binary_precision: Option<u32>) -> Self;
 }
 
 #[cfg(feature = "symbolica-runtime")]
@@ -2432,6 +2438,10 @@ impl RusticolHighPrecisionNumber for DoubleFloat {
             .expect("double evaluator initialized")
             .evaluate(params, out);
         Ok(())
+    }
+
+    fn from_f64_constant(value: f64, _binary_precision: Option<u32>) -> Self {
+        DoubleFloat::from(value)
     }
 }
 
@@ -2475,6 +2485,13 @@ impl RusticolHighPrecisionNumber for Float {
             .1
             .evaluate(params, out);
         Ok(())
+    }
+
+    fn from_f64_constant(value: f64, binary_precision: Option<u32>) -> Self {
+        match binary_precision {
+            Some(precision) => Float::with_val(precision, value),
+            None => Float::from(value),
+        }
     }
 }
 
@@ -4737,6 +4754,8 @@ use momentum::*;
 mod sources;
 #[cfg(feature = "symbolica-runtime")]
 pub(crate) use sources::SchemaSources;
+#[cfg(feature = "symbolica-runtime")]
+use sources::{CarrierMasses, masses_at_precision};
 
 mod validation;
 use validation::*;

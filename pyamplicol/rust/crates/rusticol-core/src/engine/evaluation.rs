@@ -2462,6 +2462,7 @@ impl ExecutionRuntime {
         let value_parameter_count = self.value_parameter_count;
         let model_parameter_start = self.value_parameter_count + self.momentum_parameter_count;
         let model_parameter_values = &self.model_parameter_values_f64;
+        let masses = masses_at_precision::<T>(particle_masses, binary_precision);
 
         let source_start = Instant::now();
         for (row, point) in batch.iter().enumerate() {
@@ -2470,7 +2471,7 @@ impl ExecutionRuntime {
             Self::fill_sources_row_generic(
                 sources,
                 external_count,
-                particle_masses,
+                &CarrierMasses(&masses),
                 row_state,
                 point,
             )?;
@@ -2500,6 +2501,7 @@ impl ExecutionRuntime {
                 model_parameter_start,
                 model_parameter_values,
                 row_state,
+                binary_precision,
             )?;
         }
         let model_parameter_setup_elapsed = model_parameter_start_time.elapsed();
@@ -2572,7 +2574,7 @@ impl ExecutionRuntime {
             .evaluate_raw_sums_generic(n_points, state.as_slice(), binary_precision)?;
 
         let reduction_start = Instant::now();
-        let factor = T::from(self.normalization_factor);
+        let factor = T::from_f64_constant(self.normalization_factor, binary_precision);
         let values = raw_sums
             .into_iter()
             .map(|value| value * factor.clone())
@@ -2639,6 +2641,7 @@ impl ExecutionRuntime {
                 mapping_index,
                 &mut physical_values,
                 &mut covered_groups,
+                binary_precision,
             )?;
             mapping_profile.amplitude_input_pack_s = amplitude_input_pack_s;
             mapping_profile.amplitude_evaluator_call_s = amplitude_evaluator_call_s;
@@ -2652,8 +2655,13 @@ impl ExecutionRuntime {
             .amplitude_stage
             .as_ref()
             .expect("generic amplitude stage checked")
-            .reduce_color_topology_replay_generic(&physical_values, &covered_groups, n_points)?;
-        let factor = T::from(self.normalization_factor);
+            .reduce_color_topology_replay_generic(
+                &physical_values,
+                &covered_groups,
+                n_points,
+                binary_precision,
+            )?;
+        let factor = T::from_f64_constant(self.normalization_factor, binary_precision);
         let values = raw_sums
             .into_iter()
             .map(|value| value * factor.clone())
@@ -2806,6 +2814,7 @@ impl ExecutionRuntime {
                     entry_chunk,
                     source_group.source_component_count,
                     component_count,
+                    binary_precision,
                 )?;
                 replay_reduction_elapsed += reduction_start.elapsed();
                 let post_reduction_orchestration_start = Instant::now();
@@ -2864,6 +2873,7 @@ impl ExecutionRuntime {
         let value_parameter_count = self.value_parameter_count;
         let model_parameter_start = self.value_parameter_count + self.momentum_parameter_count;
         let model_parameter_values = &self.model_parameter_values_f64;
+        let masses = masses_at_precision::<T>(particle_masses, binary_precision);
 
         let source_start = Instant::now();
         for (row, point) in batch.iter().enumerate() {
@@ -2872,7 +2882,7 @@ impl ExecutionRuntime {
             Self::fill_sources_row_generic(
                 sources,
                 external_count,
-                particle_masses,
+                &CarrierMasses(&masses),
                 row_state,
                 point,
             )?;
@@ -2902,6 +2912,7 @@ impl ExecutionRuntime {
                 model_parameter_start,
                 model_parameter_values,
                 row_state,
+                binary_precision,
             )?;
         }
         let model_parameter_setup_elapsed = model_parameter_start_time.elapsed();
@@ -3081,6 +3092,7 @@ fn accumulate_selected_lc_replay_resolved_generic<T>(
     replay_entries: &[LcResolvedReplayEntry],
     source_component_count: usize,
     target_component_count: usize,
+    binary_precision: Option<u32>,
 ) -> RusticolResult<()>
 where
     T: RusticolHighPrecisionNumber,
@@ -3111,7 +3123,7 @@ where
                 }
                 target[target_row + route.target_index] +=
                     materialized.values[source_row + route.source_index].clone()
-                        * T::from(route.weight);
+                        * T::from_f64_constant(route.weight, binary_precision);
             }
         }
     }

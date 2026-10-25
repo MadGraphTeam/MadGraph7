@@ -4630,7 +4630,7 @@ impl NativeRuntime {
         if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
             let (mut values, _profile) = self.runtime.run_double(&batch)?;
-            self.apply_process_group_factor_high_precision(&mut values);
+            self.apply_process_group_factor_high_precision(&mut values, None);
             return Ok(NativeDecimalEvaluation {
                 values: format_decimal_values(values, decimal_digits),
                 decimal_digits,
@@ -4639,7 +4639,7 @@ impl NativeRuntime {
         let binary_precision = decimal_digits_to_bits(decimal_digits);
         let batch = self.prepare_float_batch(momenta, point_count, binary_precision)?;
         let (mut values, _profile) = self.runtime.run_float(&batch, binary_precision)?;
-        self.apply_process_group_factor_high_precision(&mut values);
+        self.apply_process_group_factor_high_precision(&mut values, Some(binary_precision));
         Ok(NativeDecimalEvaluation {
             values: format_decimal_values(values, decimal_digits),
             decimal_digits,
@@ -4647,7 +4647,11 @@ impl NativeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn apply_process_group_factor_high_precision<T>(&self, values: &mut [T])
+    fn apply_process_group_factor_high_precision<T>(
+        &self,
+        values: &mut [T],
+        binary_precision: Option<u32>,
+    )
     where
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
@@ -4657,8 +4661,8 @@ impl NativeRuntime {
             denominator,
         } = self.process_group_factor();
         if numerator != denominator {
-            let numerator = T::from(numerator as f64);
-            let denominator = T::from(denominator as f64);
+            let numerator = T::from_f64_constant(numerator as f64, binary_precision);
+            let denominator = T::from_f64_constant(denominator as f64, binary_precision);
             for value in values {
                 *value = value.clone() * numerator.clone() / denominator.clone();
             }
@@ -4734,7 +4738,7 @@ impl NativeRuntime {
                 selected_helicities.as_ref(),
                 selected_colors.as_ref(),
             )?;
-            self.apply_process_group_factor_high_precision(&mut resolved.values);
+            self.apply_process_group_factor_high_precision(&mut resolved.values, None);
             decimal_resolved_evaluation(resolved, &physics.manifest, decimal_digits)?
         } else {
             let binary_precision = decimal_digits_to_bits(decimal_digits);
@@ -4745,7 +4749,10 @@ impl NativeRuntime {
                 selected_helicities.as_ref(),
                 selected_colors.as_ref(),
             )?;
-            self.apply_process_group_factor_high_precision(&mut resolved.values);
+            self.apply_process_group_factor_high_precision(
+                &mut resolved.values,
+                Some(binary_precision),
+            );
             decimal_resolved_evaluation(resolved, &physics.manifest, decimal_digits)?
         };
         self.publish_color_ids(&mut evaluation.color_ids);

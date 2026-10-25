@@ -3565,7 +3565,7 @@ impl AmplitudeRuntime {
                             continue;
                         };
                         sum += amplitudes[row_offset + *index].clone()
-                            * c_generic(T::from(factor.re), T::from(factor.im));
+                            * c_generic(T::from_f64_constant(factor.re, binary_precision), T::from_f64_constant(factor.im, binary_precision));
                     }
                     group_values[group_row + group_index] = sum;
                 }
@@ -3581,9 +3581,9 @@ impl AmplitudeRuntime {
                         left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
-                    *full_value += T::from(normalization_factor * entry.symmetry_factor)
-                        * (T::from(entry.weight_re) * product_re
-                            - T::from(entry.weight_im) * product_im);
+                    *full_value += T::from_f64_constant(normalization_factor * entry.symmetry_factor, binary_precision)
+                        * (T::from_f64_constant(entry.weight_re, binary_precision) * product_re
+                            - T::from_f64_constant(entry.weight_im, binary_precision) * product_im);
                 }
             }
         } else {
@@ -3619,7 +3619,7 @@ impl AmplitudeRuntime {
                             continue;
                         };
                         sum += amplitudes[row_offset + *index].clone()
-                            * c_generic(T::from(factor.re), T::from(factor.im));
+                            * c_generic(T::from_f64_constant(factor.re, binary_precision), T::from_f64_constant(factor.im, binary_precision));
                     }
                     let color_weights = reduction
                         .physical_color_ids
@@ -3645,11 +3645,11 @@ impl AmplitudeRuntime {
                             group.id
                         )));
                     }
-                    let contribution = T::from(normalization_factor * group.all_sector_weight)
+                    let contribution = T::from_f64_constant(normalization_factor * group.all_sector_weight, binary_precision)
                         * (sum.re.clone() * sum.re + sum.im.clone() * sum.im);
                     for (color_index, weight) in color_weights {
                         full_values[color_row + color_index] +=
-                            contribution.clone() * T::from(weight / total_color_weight);
+                            contribution.clone() * T::from_f64_constant(weight / total_color_weight, binary_precision);
                     }
                 }
             }
@@ -3787,6 +3787,7 @@ impl AmplitudeRuntime {
             self.has_coherent_groups,
             &self.raw_sum_all_sector_weights,
             self.color_contraction.as_ref(),
+            binary_precision,
         )?;
         Ok((raw_sums, input_pack_s, evaluator_call_s))
     }
@@ -3803,6 +3804,7 @@ impl AmplitudeRuntime {
         has_coherent_groups: bool,
         all_sector_weights: &[f64],
         color_contraction: Option<&ColorContractionRuntime>,
+        binary_precision: Option<u32>,
     ) -> RusticolResult<Vec<T>>
     where
         T: RusticolHighPrecisionNumber,
@@ -3834,9 +3836,9 @@ impl AmplitudeRuntime {
                         left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
-                    *raw_sum += T::from(entry.symmetry_factor)
-                        * (T::from(entry.weight_re) * product_re
-                            - T::from(entry.weight_im) * product_im);
+                    *raw_sum += T::from_f64_constant(entry.symmetry_factor, binary_precision)
+                        * (T::from_f64_constant(entry.weight_re, binary_precision) * product_re
+                            - T::from_f64_constant(entry.weight_im, binary_precision) * product_im);
                 }
             }
             return Ok(raw_sums);
@@ -3852,14 +3854,14 @@ impl AmplitudeRuntime {
                         sum_re += value.re.clone();
                         sum_im += value.im.clone();
                     }
-                    *raw_sum += T::from(group.all_sector_weight)
+                    *raw_sum += T::from_f64_constant(group.all_sector_weight, binary_precision)
                         * (sum_re.clone() * sum_re + sum_im.clone() * sum_im);
                 }
                 continue;
             }
             for index in 0..output_length {
                 let value = &evaluated[row_offset + index];
-                *raw_sum += T::from(all_sector_weights[index])
+                *raw_sum += T::from_f64_constant(all_sector_weights[index], binary_precision)
                     * (value.re.clone() * value.re.clone() + value.im.clone() * value.im.clone());
             }
         }
@@ -3890,6 +3892,7 @@ impl AmplitudeRuntime {
         mapping_index: usize,
         physical_values: &mut [Complex<T>],
         covered_groups: &mut [bool],
+        binary_precision: Option<u32>,
     ) -> RusticolResult<()>
     where
         T: RusticolHighPrecisionNumber,
@@ -3921,8 +3924,8 @@ impl AmplitudeRuntime {
                 ));
             }
             let source_group = &self.raw_sum_groups[route.source_group_index];
-            let factor_re = T::from(route.factor.re);
-            let factor_im = T::from(route.factor.im);
+            let factor_re = T::from_f64_constant(route.factor.re, binary_precision);
+            let factor_im = T::from_f64_constant(route.factor.im, binary_precision);
             for row in 0..batch_size {
                 let mut sum = complex_zero::<T>();
                 for output_index in &source_group.indices {
@@ -3946,6 +3949,7 @@ impl AmplitudeRuntime {
         physical_values: &[Complex<T>],
         covered_groups: &[bool],
         batch_size: usize,
+        binary_precision: Option<u32>,
     ) -> RusticolResult<Vec<T>>
     where
         T: RusticolHighPrecisionNumber,
@@ -3969,6 +3973,7 @@ impl AmplitudeRuntime {
             true,
             &replay.unit_weights,
             replay.color_contraction.as_ref(),
+            binary_precision,
         )
     }
 
@@ -4059,12 +4064,12 @@ impl AmplitudeRuntime {
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
                     let coefficient = normalization_factor * entry.symmetry_factor;
-                    let contribution = T::from(coefficient)
-                        * (T::from(entry.weight_re) * product_re
-                            - T::from(entry.weight_im) * product_im);
+                    let contribution = T::from_f64_constant(coefficient, binary_precision)
+                        * (T::from_f64_constant(entry.weight_re, binary_precision) * product_re
+                            - T::from_f64_constant(entry.weight_im, binary_precision) * product_im);
                     for (helicity_index, weight) in left_weights {
                         full_values[(row * helicity_count + helicity_index) * color_count] +=
-                            contribution.clone() * T::from(weight);
+                            contribution.clone() * T::from_f64_constant(weight, binary_precision);
                     }
                 }
             }
@@ -4088,13 +4093,13 @@ impl AmplitudeRuntime {
                         sum_re += evaluated[row_offset + *index].re.clone();
                         sum_im += evaluated[row_offset + *index].im.clone();
                     }
-                    let contribution = T::from(normalization_factor * group.all_sector_weight)
+                    let contribution = T::from_f64_constant(normalization_factor * group.all_sector_weight, binary_precision)
                         * (sum_re.clone() * sum_re + sum_im.clone() * sum_im);
                     for (helicity_index, color_index, weight) in
                         physics.normalized_member_weights(reduction)?
                     {
                         full_values[(row * helicity_count + helicity_index) * color_count
-                            + color_index] += contribution.clone() * T::from(weight);
+                            + color_index] += contribution.clone() * T::from_f64_constant(weight, binary_precision);
                     }
                 }
             }

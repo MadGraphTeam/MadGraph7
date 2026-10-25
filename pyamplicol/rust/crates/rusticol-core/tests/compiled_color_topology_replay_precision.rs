@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: 0BSD
-//! Double-double totals of a compiled full-colour pure-gluon artifact, whose
-//! amplitudes use the contracted-color topology replay. The momenta are exact massless integer points, so ratios of totals
+//! Double-double and arbitrary-precision totals of a compiled full-colour
+//! pure-gluon artifact, whose amplitudes use the contracted-color topology
+//! replay. The momenta are exact massless integer points, so ratios of totals
 //! between points cancel the couplings and equal the exact tree-level ratios
 //! of 9/2 (3 - tu/s² - su/t² - st/u²).
 //!
@@ -41,7 +42,7 @@ fn relative_difference(a: &Float, b: &Float) -> f64 {
 }
 
 #[test]
-fn compiled_color_topology_replay_totals_in_double_double() {
+fn compiled_color_topology_replay_totals_in_double_double_and_arbitrary_precision() {
     let Some(path) = std::env::var_os("RUSTICOL_COMPILED_COLOR_REPLAY_ARTIFACT") else {
         return;
     };
@@ -64,7 +65,7 @@ fn compiled_color_topology_replay_totals_in_double_double() {
         .evaluate_f64(&flat.iter().map(|x| *x as f64).collect::<Vec<_>>(), POINTS.len())
         .unwrap();
     let decimal: Vec<String> = flat.iter().map(ToString::to_string).collect();
-    for (digits, tolerance) in [(32, 1e-27)] {
+    for (digits, tolerance) in [(32, 1e-27), (64, 1e-58)] {
         let values = runtime
             .evaluate_with_precision(&decimal, POINTS.len(), digits)
             .unwrap()

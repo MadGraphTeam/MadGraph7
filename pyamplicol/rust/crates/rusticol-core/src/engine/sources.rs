@@ -207,6 +207,7 @@ impl ExecutionRuntime {
         particle_masses: &M,
         row: &mut [Complex<T>],
         point: &[[T; 4]],
+        binary_precision: Option<u32>,
     ) -> RusticolResult<()>
     where
         T: RusticolHighPrecisionNumber,
@@ -243,8 +244,8 @@ impl ExecutionRuntime {
             )?;
             if runtime_state.factor != c64(1.0, 0.0) {
                 let factor = c_generic(
-                    T::from(runtime_state.factor.re),
-                    T::from(runtime_state.factor.im),
+                    T::from_f64_constant(runtime_state.factor.re, binary_precision),
+                    T::from_f64_constant(runtime_state.factor.im, binary_precision),
                 );
                 for component in &mut row[start..stop] {
                     *component *= factor.clone();
@@ -504,6 +505,7 @@ impl ExecutionRuntime {
         model_parameter_start: usize,
         model_parameter_values: &[f64],
         row: &mut [Complex<T>],
+        binary_precision: Option<u32>,
     ) -> RusticolResult<()>
     where
         T: RusticolHighPrecisionNumber,
@@ -516,7 +518,8 @@ impl ExecutionRuntime {
             ));
         }
         for (index, value) in model_parameter_values.iter().enumerate() {
-            row[model_parameter_start + index] = c_generic(T::from(*value), T::new_zero());
+            row[model_parameter_start + index] =
+                c_generic(T::from_f64_constant(*value, binary_precision), T::new_zero());
         }
         Ok(())
     }
@@ -822,7 +825,23 @@ impl<T: From<f64>> SourceMasses<T> for BTreeMap<i32, f64> {
 
 /// Masses in the carrier `T` by PDG code.
 #[cfg(feature = "symbolica-runtime")]
-pub(super) struct CarrierMasses<'a, T>(&'a BTreeMap<i32, T>);
+pub(super) struct CarrierMasses<'a, T>(pub(super) &'a BTreeMap<i32, T>);
+
+/// The binary64 mass table at the working precision, for [`CarrierMasses`].
+#[cfg(feature = "symbolica-runtime")]
+pub(super) fn masses_at_precision<T>(
+    masses: &BTreeMap<i32, f64>,
+    binary_precision: Option<u32>,
+) -> BTreeMap<i32, T>
+where
+    T: RusticolHighPrecisionNumber,
+    Complex<T>: Real + EvaluationDomain,
+{
+    masses
+        .iter()
+        .map(|(pdg, mass)| (*pdg, T::from_f64_constant(*mass, binary_precision)))
+        .collect()
+}
 
 #[cfg(feature = "symbolica-runtime")]
 impl<T: Real + Clone> SourceMasses<T> for CarrierMasses<'_, T> {
