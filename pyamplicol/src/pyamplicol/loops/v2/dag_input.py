@@ -1220,12 +1220,14 @@ def native_counterterm_blocks(
 
     from dataclasses import replace
 
-    from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 
     from .ct_closure import RootReachability, _clone_lines
 
-    model = CompiledUFOModel(recursion.model.lowered.compiled)
+    # As ``CountertermBlocks.build``: the lowered model's Weyl-projection
+    # support comes decided from the lowering cache (most of the input
+    # tables' cost otherwise).
+    model = recursion.model.lowered.tree_model()
     full = (1 << len(process.legs)) - 1
     process = replace(process, color_accuracy="full")
     lines = _clone_lines(recursion)
