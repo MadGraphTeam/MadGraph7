@@ -306,13 +306,13 @@ class CountertermBlocks:
         of the lowered model at full colour)."""
 
         from pyamplicol.generation.dag_compiler import GenericDAGCompiler
-        from pyamplicol.models.external import CompiledUFOModel
         from pyamplicol.models.prepared_catalog_builder import (
             model_tree_kernel_variant,
         )
 
-        lowered = recursion.model.lowered
-        model = CompiledUFOModel(lowered.compiled)
+        # The lowered model's Weyl-projection support comes decided from
+        # the lowering cache (``CountertermLoweredModel.tree_model``).
+        model = recursion.model.lowered.tree_model()
         full = (1 << len(process.legs)) - 1
         dag = GenericDAGCompiler(
             model=model,
@@ -425,16 +425,22 @@ class CountertermClosure:
         ordinary: Sequence[Sequence[Any]],
         native_model: Any,
         catalogue: Any,
+        *,
+        colours: SiteClosure | None = None,
     ) -> CountertermClosure:
         """Root terms of ``program``.
 
         ``sites`` are its ``root_sites``, ``ordinary`` the model's ordinary
         tree vertex entries by vertex (the Born closure's) and ``catalogue`` a
-        loop kernel catalogue binding all of their entries.
+        loop kernel catalogue binding all of their entries. ``colours`` (the
+        slice's Born closure) shares its closed colours with the program's
+        closure (``SiteClosure.share_colours``).
         """
 
         recursion = program.recursion
         closure = SiteClosure(program.blocks, native_model, catalogue)
+        if colours is not None:
+            closure.share_colours(colours)
         table = program.blocks.block_table(native_model)
         legs = table.legs
         full = (1 << len(legs)) - 1
@@ -936,10 +942,8 @@ def counterterm_program_blocks(
             # A rule that cannot be lowered is inert when its vertex enters
             # no tree of the program (REQUIREMENTS_ADDENDUM J), and refused
             # otherwise; there is no site fallback.
-            from pyamplicol.models.external import CompiledUFOModel
-
             reachability = InsertionReachability.build(
-                CompiledUFOModel(lowered.lowered.compiled),
+                lowered.lowered.tree_model(),
                 ir,
                 recursion.coupling_order_limits(),
                 ignored_particle_ids=vetoed_particle_ids(veto),
@@ -1055,13 +1059,24 @@ class CountertermProgram:
         )
 
     def bind(
-        self, ordinary: Sequence[Sequence[Any]], native_model: Any, catalogue: Any
+        self,
+        ordinary: Sequence[Sequence[Any]],
+        native_model: Any,
+        catalogue: Any,
+        *,
+        colours: SiteClosure | None = None,
     ) -> CountertermProgram:
         """Attach the root terms (``catalogue`` binds the
-        ``counterterm_closure_entries``)."""
+        ``counterterm_closure_entries``; ``colours``, the slice's Born
+        closure, shares its closed colours)."""
 
         self.closure = CountertermClosure.build(
-            self.blocks, self.root_sites, ordinary, native_model, catalogue
+            self.blocks,
+            self.root_sites,
+            ordinary,
+            native_model,
+            catalogue,
+            colours=colours,
         )
         return self
 

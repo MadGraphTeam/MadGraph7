@@ -616,10 +616,18 @@ def _counterterm_program(
                 literal.append(tensor)
         return found
 
+    # The closures share their closed colours (``SiteClosure._closed``), so
+    # most terms repeat a (colour, multiplicity); the colour is kept with
+    # its items so that its id stays its own.
+    items_of: dict[tuple[int, int], tuple[Any, list[tuple[Any, ...]]]] = {}
+
     def colour_items(colour: Any, multiplicity: int) -> list[tuple[Any, ...]]:
         """(ket tensor, N_c power, weight re, weight im) per literal tensor."""
 
-        return [
+        found = items_of.get((id(colour), multiplicity))
+        if found is not None:
+            return found[1]
+        items = [
             (
                 tensor_index(item.tensor),
                 item.nc_power,
@@ -628,6 +636,8 @@ def _counterterm_program(
             )
             for item in colour.terms
         ]
+        items_of[(id(colour), multiplicity)] = (colour, items)
+        return items
 
     def contribute(out, slot, vector, grade, items, power2) -> None:
         for t, nc_power, real, imag in items:
@@ -1229,19 +1239,59 @@ def _interaction_program(
         shapes[kind].append([len(inputs) + len(model_symbols), len(outputs)])
         return found
 
+    # Per current: (particle id, chirality, dimension) and its momentum
+    # start; per stored colour weight: its exact (real, imaginary) texts. A
+    # program repeats them for most of its interactions (g g > g g g g's
+    # counterterm program: 0.5 M interactions, a handful of weights).
+    current_keys: dict[int, tuple[int, int, int]] = {}
+    momenta: dict[int, int] = {}
+    weight_texts: dict[tuple[float, float], tuple[str, str]] = {}
+
+    def current_key(current_id: int) -> tuple[int, int, int]:
+        found = current_keys.get(current_id)
+        if found is None:
+            current = dag.currents[current_id]
+            found = current_keys[current_id] = (
+                int(current.index.particle_id),
+                int(current.index.chirality),
+                int(current.dimension),
+            )
+        return found
+
+    def momentum_of(current_id: int) -> int:
+        found = momenta.get(current_id)
+        if found is None:
+            mask = dag.currents[current_id].index.momentum_mask
+            found = momenta[current_id] = momentum_start[mask]
+        return found
+
+    def weight_text(color_weight: tuple[float, float]) -> tuple[str, str]:
+        found = weight_texts.get(color_weight)
+        if found is None:
+            weight = _exact_weight(complex(*color_weight))
+            found = (_fraction_text(weight.real), _fraction_text(weight.imag))
+            # Equal binary64 pairs (0.0 and -0.0 included) give equal texts.
+            weight_texts[color_weight] = found
+        return found
+
     def vertex(interaction: Any) -> int:
-        left = dag.currents[interaction.left_id]
-        right = dag.currents[interaction.right_id]
-        result = dag.currents[interaction.result_id]
+        left_key = current_key(interaction.left_id)
+        right_key = current_key(interaction.right_id)
+        result_key = current_key(interaction.result_id)
         key = (
             int(interaction.vertex_kind),
-            int(result.index.particle_id),
-            int(result.index.chirality),
-            int(left.index.chirality),
-            int(right.index.chirality),
-            int(left.dimension),
-            int(right.dimension),
+            result_key[0],
+            result_key[1],
+            left_key[1],
+            right_key[1],
+            left_key[2],
+            right_key[2],
         )
+        found = ids.get(("kernels", key))
+        if found is not None:
+            return found
+        left = dag.currents[interaction.left_id]
+        right = dag.currents[interaction.right_id]
 
         def build():
             lhs, rhs = symbols("l", left.dimension), symbols("r", right.dimension)
@@ -1310,7 +1360,7 @@ def _interaction_program(
             if int(interaction.result_id) in pole_currents:
                 pole_rows.append(len(rows))
             left, right = inputs[interaction.left_id], inputs[interaction.right_id]
-            weight = _exact_weight(complex(*interaction.color_weight))
+            real, imag = weight_text(tuple(interaction.color_weight))
             rows.append(
                 [
                     vertex(interaction),
@@ -1318,15 +1368,11 @@ def _interaction_program(
                     int(left["dimension"]),
                     int(right["component_start"]),
                     int(right["dimension"]),
-                    momentum_start[
-                        dag.currents[interaction.left_id].index.momentum_mask
-                    ],
-                    momentum_start[
-                        dag.currents[interaction.right_id].index.momentum_mask
-                    ],
+                    momentum_of(interaction.left_id),
+                    momentum_of(interaction.right_id),
                     accumulators[int(interaction.result_id)],
-                    _fraction_text(weight.real),
-                    _fraction_text(weight.imag),
+                    real,
+                    imag,
                 ]
             )
         outputs = []

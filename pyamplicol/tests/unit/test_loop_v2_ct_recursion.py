@@ -408,6 +408,186 @@ def test_lowered_couplings_are_exact_model_expressions(lowered_ct_model):
 
 
 @pytest.mark.loop_fast
+def test_lowered_model_compile_is_cached_by_content(
+    loop_sm_compiled_model, tmp_path, monkeypatch
+):
+    """The compile of a CT-lowered payload (most of the lowering) is cached
+    by content like a compiled model: a warm entry gives the identical IR
+    without compiling, a damaged entry is recompiled, and another payload or
+    kernel variant is another entry."""
+
+    import json
+
+    import pyamplicol.models.compiler_entry as compiler_entry
+    from pyamplicol.models.loading import (
+        COUNTERTERM_IR_CACHE_SUFFIX,
+        compile_counterterm_model_ir,
+        load_compiled_model,
+    )
+
+    model = load_compiled_model(loop_sm_compiled_model).model
+    payload = json.loads(json.dumps(model))
+    keep = {"G", "u", "u~"}
+    payload["vertex_rules"] = [
+        rule for rule in payload["vertex_rules"] if set(rule["particles"]) <= keep
+    ]
+
+    def compile_ir(variant="full", data=payload):
+        return compile_counterterm_model_ir(
+            data,
+            tree_kernel_variant=variant,
+            u1_projected_vertices=frozenset(),
+            cache_dir=tmp_path,
+        )
+
+    cold = compile_ir()
+    (entry,) = tmp_path.glob(f"*{COUNTERTERM_IR_CACHE_SUFFIX}")
+    assert cold.oriented_kernels and cold.tree_kernel_variant == "full"
+
+    calls = []
+    original = compiler_entry.compile_ufo_model_ir
+
+    def counted(*args, **kwargs):
+        calls.append(kwargs.get("tree_kernel_variant"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(compiler_entry, "compile_ufo_model_ir", counted)
+    assert compile_ir() == cold and not calls
+    entry.write_text("{", encoding="utf-8")
+    assert compile_ir() == cold and calls == ["full"]
+    assert compile_ir() == cold and calls == ["full"]
+    assert compile_ir("transverse").tree_kernel_variant == "transverse"
+    fewer = {**payload, "vertex_rules": payload["vertex_rules"][:-1]}
+    assert len(compile_ir(data=fewer).vertex_terms) < len(cold.vertex_terms)
+    assert calls == ["full", "transverse", "full"]
+    assert len(list(tmp_path.glob(f"*{COUNTERTERM_IR_CACHE_SUFFIX}"))) == 3
+
+
+@pytest.mark.loop_fast
+def test_lowered_model_cache_keeps_the_most_recently_used(tmp_path):
+    """The lowering cache is bounded: beyond ``COUNTERTERM_IR_CACHE_KEPT``
+    entries the least recently used go, each with its Weyl table, and
+    nothing else in the directory is touched."""
+
+    import os
+
+    from pyamplicol.models.loading import (
+        COUNTERTERM_IR_CACHE_SUFFIX,
+        COUNTERTERM_WEYL_CACHE_SUFFIX,
+        _evict_counterterm_entries,
+    )
+
+    for age in range(5):
+        for suffix in (COUNTERTERM_IR_CACHE_SUFFIX, COUNTERTERM_WEYL_CACHE_SUFFIX):
+            path = tmp_path / f"k{age}{suffix}"
+            path.write_text("{}", encoding="utf-8")
+            os.utime(path, ns=(10**18 - age * 10**9,) * 2)  # k0 newest
+    other = tmp_path / "loop-sm.json.pyAmplicol-model.json"
+    other.write_text("{}", encoding="utf-8")
+    os.utime(tmp_path / f"k4{COUNTERTERM_IR_CACHE_SUFFIX}", ns=(10**18 + 1,) * 2)
+    _evict_counterterm_entries(tmp_path, kept=3)
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
+        [
+            other.name,
+            *(
+                f"k{k}{s}"
+                for k in (0, 1, 4)
+                for s in (COUNTERTERM_IR_CACHE_SUFFIX, COUNTERTERM_WEYL_CACHE_SUFFIX)
+            ),
+        ]
+    )
+
+
+@pytest.mark.loop_fast
+def test_lowered_model_weyl_support_is_cached(
+    loop_sm_compiled_model, tmp_path, monkeypatch
+):
+    """The Weyl-projection support of a lowered model (every decision
+    ``allowed_quantum_flows`` can ask) is probed once and kept next to its
+    lowering-cache entry: the warm table is the probed one and a tree model
+    seeded with it answers like an unseeded one without a probe; a damaged
+    table, or other parameter defaults, is probed again."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.external_kernels import ExternalModelKernelMixin
+    from pyamplicol.models.loading import (
+        COUNTERTERM_IR_CACHE_SUFFIX,
+        COUNTERTERM_WEYL_CACHE_SUFFIX,
+        CountertermLoweredModel,
+        counterterm_weyl_support,
+        load_compiled_model,
+    )
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    entry = (tmp_path / f"key{COUNTERTERM_IR_CACHE_SUFFIX}", "key")
+
+    def flows(model):
+        def index(pdg, chirality):
+            return SimpleNamespace(
+                particle_id=pdg,
+                chirality=chirality,
+                flavour_flow=(pdg,),
+                coupling_orders=(),
+            )
+
+        def chiralities(pdg):
+            return (-1, 0, 1) if model.is_chiral_eligible(pdg) else (0,)
+
+        return [
+            model.allowed_quantum_flows(vertex, index(left, a), index(right, b))
+            for vertex in model.vertices
+            for left, right, _ in (vertex.particles,)
+            for a in chiralities(left)
+            for b in chiralities(right)
+        ]
+
+    unseeded = CompiledUFOModel(compiled)
+    expected = flows(unseeded)
+    probed = unseeded.weyl_projection_support()
+    # Discriminating: some chiral projections vanish, others do not.
+    assert any(probed.values()) and not all(probed.values())
+    assert counterterm_weyl_support(CompiledUFOModel(compiled), entry) == probed
+    (table,) = tmp_path.glob(f"*{COUNTERTERM_WEYL_CACHE_SUFFIX}")
+
+    probes = []
+    original = ExternalModelKernelMixin._projected_kernel_components
+
+    def counted(self, *args, **kwargs):
+        probes.append(kwargs.get("result_chirality"))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        ExternalModelKernelMixin, "_projected_kernel_components", counted
+    )
+    assert counterterm_weyl_support(CompiledUFOModel(compiled), entry) == probed
+    lowered = CountertermLoweredModel(compiled, {}, (), cache_entry=entry)
+    seeded = lowered.tree_model()
+    assert flows(seeded) == expected and not probes
+    assert flows(lowered.tree_model()) == expected and not probes
+
+    table.write_text("{", encoding="utf-8")
+    assert counterterm_weyl_support(CompiledUFOModel(compiled), entry) == probed
+    assert probes
+    probes.clear()
+    assert counterterm_weyl_support(CompiledUFOModel(compiled), entry) == probed
+    assert not probes
+    name, (real, imag) = next(
+        (name, value)
+        for name, value in sorted(compiled.parameter_defaults.items())
+        if value[0]
+    )
+    other = replace(
+        compiled,
+        parameter_defaults={**compiled.parameter_defaults, name: (2 * real, imag)},
+    )
+    counterterm_weyl_support(CompiledUFOModel(other), entry)
+    assert probes
+
+
+@pytest.mark.loop_fast
 def test_constant_factors_are_decided_not_assumed():
     """Helper arguments free of model parameters are decided when the CT
     couplings are lowered: loop_qcd_qed_sm's reglog(2 pi) is log(2 pi) with no

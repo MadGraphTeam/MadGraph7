@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from copy import copy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -19,6 +19,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .external import CompiledUFOModel
     from .loop_import import RawLoopModel
     from .prepared import PreparedModelBundle
 
@@ -342,8 +343,16 @@ class CompiledModel:
 
 
 def compiler_fingerprint() -> dict[str, object]:
+    return {"pyamplicol": package_version(), **_compiler_code_identity()}
+
+
+def _compiler_code_identity() -> dict[str, object]:
+    """``compiler_fingerprint`` without the package version: what a compile's
+    result depends on (the model-compiler sources, Symbolica and the
+    contracts). The version check of a source checkout (``package_version``
+    verifies the staged native runtime) is about a fifth of a second."""
+
     return {
-        "pyamplicol": package_version(),
         "ufo_model_loader": _distribution_version("ufo-model-loader", "missing"),
         "symbolica": _distribution_version("symbolica", "missing"),
         "compiled_model_schema_version": COMPILED_MODEL_SCHEMA_VERSION,
@@ -1187,12 +1196,34 @@ class CountertermLoweredModel:
     line_factors: Mapping[str, str] = field(default_factory=dict)
     line_fields: Mapping[str, str] = field(default_factory=dict)
     dirac_fields: frozenset[str] = frozenset()
+    # The lowering-cache entry of ``compiled`` (file, key), which also keeps
+    # its Weyl-projection support (``tree_model``); None: not cached.
+    cache_entry: tuple[Path, str] | None = field(
+        default=None, compare=False, repr=False
+    )
+    _weyl_support: list[Mapping[tuple[int, int, int, int], bool]] = field(
+        default_factory=list, compare=False, repr=False
+    )
 
     @property
     def slot_orders(self) -> tuple[str, ...]:
         return tuple(
             sorted({s.slot_order for s in (*self.couplings, *self.insertions)})
         )
+
+    def tree_model(self) -> CompiledUFOModel:
+        """The tree model of ``compiled`` (a new ``CompiledUFOModel``) with
+        its Weyl-projection support decided (``counterterm_weyl_support``:
+        from the lowering cache, or probed once and stored there), so that
+        no tree recursion over the lowered model repeats those probes."""
+
+        from .external import CompiledUFOModel
+
+        model = CompiledUFOModel(self.compiled)
+        if not self._weyl_support:
+            self._weyl_support.append(counterterm_weyl_support(model, self.cache_entry))
+        model.seed_weyl_projection_support(self._weyl_support[0])
+        return model
 
 
 _METRIC_LORENTZ_PREFIX = f"{_COUNTERTERM_PARAMETER_BLOCK}_METRIC"
@@ -1376,7 +1407,6 @@ def lower_counterterm_vertices(
     caller bounds its rules first). With ``None`` the whole model is kept.
     """
 
-    from .compiler_entry import compile_ufo_model_ir
     from .ct_color_flow import tree_colour_source
     from .ct_line_insertions import lower_line_insertions
 
@@ -1526,7 +1556,7 @@ def lower_counterterm_vertices(
     started = time.perf_counter()
     # The multi-trace currents project the gluon legs of the counterterm
     # vertices onto SU(N) (U(1)-subtraction auxiliaries, design §6.1).
-    ir = compile_ufo_model_ir(
+    ir, entry = _counterterm_ir(
         payload,
         tree_kernel_variant=tree_kernel_variant,
         u1_projected_vertices=frozenset(vertex_members) if multi_trace else frozenset(),
@@ -1633,7 +1663,195 @@ def lower_counterterm_vertices(
         line_factors=lines.factors,
         line_fields=lines.reads_as,
         dirac_fields=lines.dirac_fields,
+        cache_entry=entry,
     )
+
+
+COUNTERTERM_IR_CACHE_SUFFIX = ".pyAmplicol-counterterm-ir.json"
+_COUNTERTERM_IR_CACHE_KIND = "pyamplicol-counterterm-model-ir"
+COUNTERTERM_WEYL_CACHE_SUFFIX = ".pyAmplicol-counterterm-weyl.json"
+_COUNTERTERM_WEYL_CACHE_KIND = "pyamplicol-counterterm-weyl-support"
+_COUNTERTERM_IR_FINGERPRINT: list[dict[str, object]] = []
+# Lowered models one cache directory keeps, least recently used out first:
+# an entry is 14-19 MB for loop_sm's six-leg QCD scopes, and every change of
+# the compiler's code identity writes new ones (``_counterterm_ir``).
+COUNTERTERM_IR_CACHE_KEPT = 64
+
+
+def compile_counterterm_model_ir(
+    payload: Mapping[str, object],
+    *,
+    tree_kernel_variant: TreeKernelVariant,
+    u1_projected_vertices: frozenset[str],
+    cache_dir: Path | None = None,
+) -> CompiledModelIR:
+    """``compile_ufo_model_ir`` of a CT-lowered payload, content-addressed.
+
+    The lowered model of a request scope is the same for every process of
+    that scope (``lower_counterterm_vertices``), so its compile (most of the
+    lowering: oriented kernels, contact decompositions and their Symbolica
+    proofs) is cached like a compiled model (``compile_model_source``): in
+    ``cache_dir`` (default: the model cache, ``$PYAMPLICOL_CACHE_DIR/models``
+    or the platform cache) under the SHA-256 of the payload (in its own key
+    order), the variant, the projected vertices and the compiler's code
+    identity (``compiler_fingerprint`` without the package version: Symbolica,
+    the model-compiler sources and contracts).
+    The IR round-trips exactly (``CompiledModelIR.to_dict``/``from_dict``); an
+    unreadable or foreign entry is recompiled, and a cache that cannot be
+    written leaves the result uncached.
+    """
+
+    return _counterterm_ir(
+        payload,
+        tree_kernel_variant=tree_kernel_variant,
+        u1_projected_vertices=u1_projected_vertices,
+        cache_dir=cache_dir,
+    )[0]
+
+
+def _counterterm_ir(
+    payload: Mapping[str, object],
+    *,
+    tree_kernel_variant: TreeKernelVariant,
+    u1_projected_vertices: frozenset[str],
+    cache_dir: Path | None = None,
+) -> tuple[CompiledModelIR, tuple[Path, str]]:
+    """``compile_counterterm_model_ir`` and its cache entry (file, key)."""
+
+    from .compiler_entry import compile_ufo_model_ir
+
+    if not _COUNTERTERM_IR_FINGERPRINT:
+        _COUNTERTERM_IR_FINGERPRINT.append(_compiler_code_identity())
+    key = hashlib.sha256(
+        json.dumps(
+            [
+                payload,
+                str(tree_kernel_variant),
+                sorted(u1_projected_vertices),
+                _COUNTERTERM_IR_FINGERPRINT[0],
+            ],
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    path = (cache_dir or _default_model_cache_dir()) / (
+        f"{key}{COUNTERTERM_IR_CACHE_SUFFIX}"
+    )
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            stored.get("kind") == _COUNTERTERM_IR_CACHE_KIND
+            and stored.get("key") == key
+        ):
+            ir = CompiledModelIR.from_dict(_mapping(stored["ir"], "ir"))
+            with suppress(OSError):
+                os.utime(path)  # recently used (``_evict_counterterm_entries``)
+            return ir, (path, key)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass
+    ir = compile_ufo_model_ir(
+        payload,
+        tree_kernel_variant=tree_kernel_variant,
+        u1_projected_vertices=u1_projected_vertices,
+    )
+    with suppress(OSError):
+        _atomic_write_json(
+            path,
+            {"kind": _COUNTERTERM_IR_CACHE_KIND, "key": key, "ir": ir.to_dict()},
+            compact=True,
+        )
+        _evict_counterterm_entries(path.parent)
+    return ir, (path, key)
+
+
+def _evict_counterterm_entries(
+    directory: Path, kept: int = COUNTERTERM_IR_CACHE_KEPT
+) -> None:
+    """Remove the CT lowering entries of ``directory`` (with their Weyl
+    tables, ``counterterm_weyl_support``) beyond the ``kept`` most recently
+    used. Only these two kinds of file are touched; an entry another process
+    loses is recompiled on its next miss, never trusted half-read."""
+
+    entries = []
+    for path in directory.glob(f"*{COUNTERTERM_IR_CACHE_SUFFIX}"):
+        with suppress(OSError):
+            entries.append((path.stat().st_mtime_ns, path.name, path))
+    entries.sort(reverse=True)
+    for _used, name, path in entries[kept:]:
+        key = name[: -len(COUNTERTERM_IR_CACHE_SUFFIX)]
+        for stale in (path, path.with_name(f"{key}{COUNTERTERM_WEYL_CACHE_SUFFIX}")):
+            with suppress(OSError):
+                stale.unlink()
+
+
+def counterterm_weyl_support(
+    model: CompiledUFOModel, entry: tuple[Path, str] | None
+) -> dict[tuple[int, int, int, int], bool]:
+    """``model.weyl_projection_support()`` of a CT-lowered model (a
+    ``CompiledUFOModel`` without runtime parameters), kept next to its
+    lowering-cache ``entry`` (``compile_counterterm_model_ir``: file, key) as
+    ``<key>.pyAmplicol-counterterm-weyl.json``.
+
+    The probes are symbolic zero tests of the projected kernels at the
+    model's parameter defaults, so the stored table is keyed by the entry's
+    key (payload and compiler code) and the defaults. An unreadable, foreign
+    or malformed table is probed again; without an entry nothing is stored.
+    """
+
+    compiled = model.compiled
+    if compiled is None:
+        raise ValueError("the Weyl support of a model without its compiled model")
+    defaults = hashlib.sha256(
+        json.dumps(
+            sorted(
+                (str(name), [float(part) for part in value])
+                for name, value in compiled.parameter_defaults.items()
+            ),
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    if entry is None:
+        return model.weyl_projection_support()
+    file, key = entry
+    path = file.with_name(f"{key}{COUNTERTERM_WEYL_CACHE_SUFFIX}")
+    with suppress(OSError, ValueError, KeyError, TypeError):
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            stored["kind"] == _COUNTERTERM_WEYL_CACHE_KIND
+            and stored["key"] == key
+            and stored["defaults"] == defaults
+        ):
+            return dict(_weyl_support_rows(stored["support"]))
+    support = model.weyl_projection_support()
+    with suppress(OSError):
+        _atomic_write_json(
+            path,
+            {
+                "kind": _COUNTERTERM_WEYL_CACHE_KIND,
+                "key": key,
+                "defaults": defaults,
+                "support": [
+                    [*probe, value] for probe, value in sorted(support.items())
+                ],
+            },
+            compact=True,
+        )
+    return support
+
+
+def _weyl_support_rows(
+    rows: object,
+) -> Iterator[tuple[tuple[int, int, int, int], bool]]:
+    if not isinstance(rows, list):
+        raise ValueError("Weyl support rows must be a list")
+    for row in rows:
+        if (
+            not isinstance(row, list)
+            or len(row) != 5
+            or not all(type(item) is int for item in row[:4])
+            or type(row[4]) is not bool
+        ):
+            raise ValueError(f"malformed Weyl support row {row!r}")
+        yield (row[0], row[1], row[2], row[3]), row[4]
 
 
 def _weyl_fields(compiled: CompiledModel) -> frozenset[str]:
