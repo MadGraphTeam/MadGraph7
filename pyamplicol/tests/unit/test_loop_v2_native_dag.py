@@ -213,6 +213,24 @@ def test_native_builder_sources_never_name_symbolica():
             assert "symbolica::" not in text, path
 
 
+def test_native_builder_is_sequential():
+    """Rule 5: the builder, its derivation and its binding run on the calling
+    thread (no Rayon pool, no spawned thread), so the columns are the same
+    with 1 and N threads; ``test_native_build_is_deterministic`` repeats a
+    build. (The seven-leg S1'/S1'' records of the A4 report ran with eight
+    threads and equal the Python oracle's.)"""
+
+    root = Path(__file__).resolve().parents[2] / "rust"
+    sources = [
+        *sorted((root / "crates/rusticol-core/src/loop_v2/dag").glob("*.rs")),
+        root / "loop-reduction/python/src/v2_dag.rs",
+    ]
+    for path in sources:
+        text = path.read_text()
+        for name in ("rayon", "par_iter", "into_par_iter", "thread::spawn", "scope("):
+            assert name not in text, (path, name)
+
+
 @pytest.mark.loop_nightly
 def test_native_builder_needs_no_symbolica_licence(
     models, loop_sm_compiled_model, tmp_path, monkeypatch
