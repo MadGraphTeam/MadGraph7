@@ -59,7 +59,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.loop_benchmark import gate, streams  # noqa: E402
+from tools.loop_benchmark import gate, providers, streams  # noqa: E402
 
 pytestmark = pytest.mark.loop_fast
 
@@ -766,6 +766,16 @@ def test_universal_double_pole_at_full_and_leading_colour():
         pytest.approx(-alpha * 9)
     )
     assert pyamplicol_v2.universal_double_pole("gg_ggggg", "nlc") is None
+    # One source each: full colour is the providers' conversion (the
+    # toolkit's double_pole_factor), and without quarks leading colour
+    # equals it bitwise (C_A leads with N_c).
+    for key in ("uux_ddxg", "gg_ggggg"):
+        assert pyamplicol_v2.universal_double_pole(key, "full") == (
+            providers.universal_double_pole(streams.spec(key))
+        )
+    assert pyamplicol_v2.universal_double_pole("gg_ggggg", "lc") == (
+        pyamplicol_v2.universal_double_pole("gg_ggggg", "full")
+    )
 
 
 def test_top_free_seven_gluon_row_is_checked_against_njet():
