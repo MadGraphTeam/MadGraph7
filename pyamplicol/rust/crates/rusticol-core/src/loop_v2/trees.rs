@@ -623,6 +623,19 @@ pub enum Kernel<T> {
     Plane(Box<dyn PlaneRows<T> + Send>),
 }
 
+impl<T> TreeRuntime<T> {
+    /// Whether any program runs an exact Symbolica evaluator (DoubleFloat,
+    /// arbitrary precision, or binary64 without SymJIT on this CPU): its
+    /// evaluations hold pyAmpliCol's library key; plane applications need
+    /// none.
+    fn runs_exact_states(&self) -> bool {
+        std::iter::once(&self.parameters)
+            .chain(&self.kernels)
+            .chain(&self.counterterm_kernels)
+            .any(|kernel| matches!(kernel, Kernel::Exact(_)))
+    }
+}
+
 /// A plane application (binary64 only): row-major batch evaluation, and its
 /// split-complex planes for callers that fill them directly (the
 /// interaction program, `run_interactions`).
@@ -1518,8 +1531,12 @@ impl TreeProgram {
     where
         Complex<T>: Real + EvaluationDomain,
     {
-        // Exact kernels (DoubleFloat, arbitrary precision) under the key.
-        let _unlock = crate::licence::unlock();
+        // Exact states under the key; plane applications touch no Symbolica
+        // state.
+        let _unlock = runtime
+            .runs_exact_states()
+            .then(crate::licence::unlock)
+            .flatten();
         let program = &self.parameters;
         let points = scales.len();
         let width = program.names.len();
@@ -1771,8 +1788,12 @@ impl TreeProgram {
     where
         Complex<T>: Real + EvaluationDomain,
     {
-        // Exact kernels (DoubleFloat, arbitrary precision) under the key.
-        let _unlock = crate::licence::unlock();
+        // Exact states under the key; plane applications touch no Symbolica
+        // state.
+        let _unlock = runtime
+            .runs_exact_states()
+            .then(crate::licence::unlock)
+            .flatten();
         let points = momenta.len();
         require(
             batch.model.len() == points
@@ -2249,7 +2270,15 @@ where
             let evaluator = &mut kernels[kernel];
             if let Kernel::Plane(plane) = evaluator {
                 let sums = (sums.as_slice(), step.width, accumulator);
-                plane_propagator(plane.as_mut(), layout, sums, momentum, start, dimension, states)?;
+                plane_propagator(
+                    plane.as_mut(),
+                    layout,
+                    sums,
+                    momentum,
+                    start,
+                    dimension,
+                    states,
+                )?;
                 continue;
             }
             let width = evaluator.output_len();
@@ -2331,7 +2360,11 @@ where
     if points == 0 {
         return Ok(());
     }
-    let (left, right, model) = (first.left_dimension, first.right_dimension, layout.model_count);
+    let (left, right, model) = (
+        first.left_dimension,
+        first.right_dimension,
+        layout.model_count,
+    );
     let inputs = left + right + 8 + model;
     require(
         plane.input_len() == inputs
@@ -2345,18 +2378,36 @@ where
     for chunk in active.chunks((PLANE_ROWS / points).max(1)) {
         let rows = chunk.len() * points;
         let (planes, stride) = plane.planes(rows);
-        fill_planes(planes, stride, 0, left, chunk, states, size, |edge| edge.left);
-        fill_planes(planes, stride, left, right, chunk, states, size, |edge| edge.right);
+        fill_planes(planes, stride, 0, left, chunk, states, size, |edge| {
+            edge.left
+        });
+        fill_planes(planes, stride, left, right, chunk, states, size, |edge| {
+            edge.right
+        });
         let momenta = left + right;
         fill_planes(planes, stride, momenta, 4, chunk, states, size, |edge| {
             edge.left_momentum
         });
-        fill_planes(planes, stride, momenta + 4, 4, chunk, states, size, |edge| {
-            edge.right_momentum
-        });
-        fill_planes(planes, stride, momenta + 8, model, chunk, states, size, |_| {
-            layout.model_offset
-        });
+        fill_planes(
+            planes,
+            stride,
+            momenta + 4,
+            4,
+            chunk,
+            states,
+            size,
+            |edge| edge.right_momentum,
+        );
+        fill_planes(
+            planes,
+            stride,
+            momenta + 8,
+            model,
+            chunk,
+            states,
+            size,
+            |_| layout.model_offset,
+        );
         let planes = plane
             .run(rows)
             .map_err(|e| invalid(format!("interaction kernel: {}", e.message())))?;
