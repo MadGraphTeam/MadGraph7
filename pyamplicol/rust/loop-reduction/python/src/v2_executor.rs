@@ -835,7 +835,7 @@ fn compile_v2_plane<'py>(
 }
 
 /// Whether pyAmpliCol's Symbolica library key unlocks the native code of
-/// this process (`rusticol_core::licence`).
+/// this process (crate `pyamplicol`).
 #[pyfunction]
 fn native_library_key_active() -> bool {
     pyamplicol::is_active()
