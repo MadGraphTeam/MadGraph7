@@ -322,11 +322,29 @@ class TreeReading:
 _FIRST: Mapping[int, int] = MappingProxyType({0: 0})
 
 
+# The kind of a content for ``LeafWeights.fermion_sign``: no fermion line
+# (its loop line a ghost, or another boson), or a fermion line or anything
+# else the full sign must read.
+_BOSONIC, _GHOST, _FERMIONIC = 0, 1, 2
+
+
 class LeafWeights:
     """Leaf weights w_s of skeletons (module docstring), a ``LeafWeight``.
 
     ``ends`` maps the label of every coloured external fermion to its
     all-outgoing representation (+3 or -3), as ``SiteClosure`` records them.
+
+    eps_s depends on the skeleton's ``contents`` alone, and every caller asks
+    for it per reading: generation checks every reading of every skeleton
+    (F and B, ``fermion_sign``, which refuses fermion lines it does not
+    cover), the plan export every F leaf (``__call__``). ``fermion_sign``
+    therefore computes it once per distinct ``contents`` tuple
+    (``_fermion_sign``, the full rule; a refusal is raised again at every
+    call, nothing being kept for it), and a tuple whose contents carry no
+    fermion line takes a fast path: per content, once, its kind
+    (``_content_kind``), and the tuple's sign is -1 for a closed ghost loop,
+    else +1 (WP3.1 D1, RUST-MIGRATION.md §3.D; equal to ``_fermion_sign``
+    on every reading of the controls).
     """
 
     def __init__(self, native_model: Any, ends: Mapping[int, int]):
@@ -338,17 +356,60 @@ class LeafWeights:
             for entry in (*data["parameters"], *data["couplings"])
         }
         self._ends = dict(ends)
+        # The coloured fermion ends as a leg mask (``_content_kind``).
+        self._end_mask = sum(1 << (label - 1) for label in self._ends)
         self._signs: dict[tuple[Content, ...], int] = {}
+        self._kinds: dict[Content, int] = {}
         self._depends: dict[str, frozenset[str]] = {}
 
     def __call__(self, skeleton: Skeleton, contents: Sequence[Content]) -> Fraction:
-        sign = self._signs.get(skeleton.contents)
-        if sign is None:
-            sign = self._signs[skeleton.contents] = self.fermion_sign(skeleton)
-        return skeleton.weight * skeleton.multiplicity * sign
+        return skeleton.weight * skeleton.multiplicity * self.fermion_sign(skeleton)
 
     def fermion_sign(self, skeleton: Skeleton) -> int:
-        """eps_s of a skeleton (reading-independent)."""
+        """eps_s of a skeleton (reading-independent), once per distinct
+        ``contents`` tuple (class docstring)."""
+
+        contents = skeleton.contents
+        kinds = self._kinds
+        ghost = True
+        for content in contents:
+            kind = kinds.get(content)
+            if kind is None:
+                kind = kinds[content] = self._content_kind(content)
+            if kind == _FERMIONIC:
+                break
+            ghost = ghost and kind == _GHOST
+        else:
+            # No fermion line: no propagator, closed-loop or line-parity sign
+            # and no mass-free coupling to require (``_fermion_sign``).
+            return -1 if ghost else 1
+        sign = self._signs.get(contents)
+        if sign is None:
+            sign = self._signs[contents] = self._fermion_sign(skeleton)
+        return sign
+
+    def _content_kind(self, content: Content) -> int:
+        """Whether ``_fermion_sign`` reads anything of ``content`` but its
+        loop line's ghost spin: a fermion loop line, a fermion block, a
+        block holding a coloured fermion end (the inputs of
+        ``_line_parity`` and ``_require_mass_free_couplings``), or another
+        than one routing term (refused there) make it fermionic."""
+
+        if (
+            self._fermion(content.loop_in)
+            or self._fermion(content.loop_out)
+            or len(content.terms) != 1
+        ):
+            return _FERMIONIC
+        for block in content.terms[0].blocks:
+            if block.mask & self._end_mask or self._fermion(block.field):
+                return _FERMIONIC
+        spin = int(self._particles[content.loop_out]["spin"])
+        return _GHOST if spin == GHOST_SPIN else _BOSONIC
+
+    def _fermion_sign(self, skeleton: Skeleton) -> int:
+        """eps_s of a skeleton by the full rule (the oracle of
+        ``fermion_sign``'s cache and fast path)."""
 
         self._require_mass_free_couplings(skeleton.contents)
         spins = [int(self._particles[name]["spin"]) for name in skeleton.species]
