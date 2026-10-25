@@ -732,6 +732,9 @@ def _oracle_keep(slice_, prune, observables=()):
         if slice_.generation is not None:
             patch.setattr(slice_.generation, "schedules", native)
         patch.setattr(assemble, "build_schedules", python)
+        # The callback itself, also once ``_prune_colour`` passes the native
+        # liveness (``prune_keep``) when there is one.
+        patch.setattr(native_seeds, "prune_keep", lambda *a, **k: None)
         with pytest.raises(_Captured):
             prune(slice_, observables)
     return seen["keep"]
