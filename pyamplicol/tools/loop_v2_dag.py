@@ -22,6 +22,13 @@ Stages (digests: ``loops.v2.snapshot``):
   by their S1' digest; rule 6: no oracle run repeats an upstream Python
   stage whose native twin is proven equal).
 
+* ``pct``: P-ct, the counterterm program's interaction program and saved
+  kernels in the native lane's export (``native_trees._CountertermTrees.of``),
+  chained after the native S1'' chain (``--blocks`` as for ``s1pp``; the CT
+  DAG is always the native builder's, equal to Python's by S1''): ``native``
+  is A5's program (``dag_input.NATIVE_PROGRAM``), ``python`` the oracle on
+  the decoded DAG (``TreeRows`` and ``_interaction_program``).
+
 Lanes: ``python`` (the oracle: ``dag_input.NATIVE_DAG`` off) or ``native``
 (the production stage with the flag on). A record whose stage fell back to
 the tree engine names the reason (``fallback``).
@@ -240,11 +247,50 @@ def _s1pp(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> No
         "clones": len(program.clones),
     }
     record["digests"] = {"S1''": digest}
+    if args.stage == "pct":
+        record["_program"] = program
+
+
+def _pct(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> None:
+    import hashlib
+
+    from pyamplicol.loops.v2 import dag_input
+    from pyamplicol.loops.v2.ct_closure import CountertermProgram
+    from pyamplicol.loops.v2.native_trees import _CountertermTrees
+
+    lane = args.lane
+    args.lane = "native"
+    try:
+        _s1pp(args, clock, record)
+    finally:
+        args.lane = lane
+    blocks = record.pop("_program")
+    before = dag_input.NATIVE_PROGRAM
+    dag_input.NATIVE_PROGRAM = lane == "native"
+    try:
+        trees = clock(
+            "CT interaction program",
+            lambda: _CountertermTrees.of(CountertermProgram(blocks, ()), 0),
+        )
+    finally:
+        dag_input.NATIVE_PROGRAM = before
+    hasher = hashlib.sha256()
+    hasher.update(
+        clock(
+            "P-ct json", lambda: json.dumps(trees.record, separators=(",", ":"))
+        ).encode()
+    )
+    for saved in trees.saved:
+        hasher.update(hashlib.sha256(saved).digest())
+    steps = trees.record["interactions"]["steps"]
+    record["counts"]["program rows"] = sum(len(step["interactions"]) for step in steps)
+    record["counts"]["kernels"] = len(trees.saved)
+    record["digests"]["P-ct"] = hasher.hexdigest()
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("stage", choices=("s1p", "s1pp"))
+    parser.add_argument("stage", choices=("s1p", "s1pp", "pct"))
     parser.add_argument("process")
     parser.add_argument("--born", required=True, help="Born bounds, e.g. QCD=5,QED=0")
     parser.add_argument(
@@ -255,8 +301,8 @@ def main(argv: list[str] | None = None) -> int:
         "--blocks",
         choices=("python", "native"),
         default="python",
-        help="s1pp: the loop blocks upstream of the CT program in Python, or "
-        "native (equal by S1')",
+        help="s1pp, pct: the loop blocks upstream of the CT program in Python, "
+        "or native (equal by S1')",
     )
     parser.add_argument(
         "--ignore",
@@ -301,7 +347,7 @@ def main(argv: list[str] | None = None) -> int:
         ).strip()
     except (OSError, subprocess.CalledProcessError):
         record["commit"] = None
-    stage = _s1p if args.stage == "s1p" else _s1pp
+    stage = {"s1p": _s1p, "s1pp": _s1pp, "pct": _pct}[args.stage]
     clock = _Clock(args.log)
     start = time.perf_counter()
     stage(args, clock, record)
