@@ -21,6 +21,8 @@ instrumentation.
   imported timings must be the stream's points;
 * a repeat of a configuration keeps the earlier run's checks it lacks, and a
   checkpoint record is marked partial;
+* the timing runs on a frozen setup heap: the generation's objects are out
+  of the cyclic collector's scans, and the record states their count;
 * the Ward rows are divided by the physical scale of their point and judged
   with the O10 test's binary64 bound;
 * below 5 ms per point the gate does not block (the user's rule of
@@ -614,6 +616,47 @@ def test_a_repeat_at_another_batch_keeps_the_earlier_checks(tmp_path):
     paths[1].write_text(json.dumps(second))
     document, _ = gate.build(paths, None)
     assert document["processes"][0]["pyamplicol"]["native/lc"]["partial"] is True
+
+
+def test_the_timing_runs_on_a_frozen_setup_heap():
+    import gc
+    import types
+
+    from tools.loop_benchmark import pyamplicol_v2
+
+    run = pyamplicol_v2.Run.__new__(pyamplicol_v2.Run)
+    run.options = types.SimpleNamespace(
+        load=None, generate_only=False, physical_points=None, stability_points=None
+    )
+    run.record = {}
+    order: list[str] = []
+    seen: list[object] = []
+    # A cycle, tracked by the collector, standing for the generated slice.
+    setup: dict[str, list] = {"slice": []}
+    setup["slice"].append(setup)
+
+    def generate():
+        order.append("generate")
+        run.held = setup
+
+    def timing():
+        order.append("timing")
+        seen.append(gc.get_freeze_count())
+        seen.append(any(o is setup for o in gc.get_objects()))
+
+    run.generate = generate
+    run.accuracy = lambda: order.append("accuracy")
+    run.timing = timing
+    run.close = lambda: None
+    try:
+        record = run.run()
+    finally:
+        gc.unfreeze()
+    assert order == ["generate", "accuracy", "timing"]
+    # Frozen objects are in the permanent generation, which no collection
+    # (and gc.get_objects) visits.
+    assert seen[0] > 0 and seen[1] is False
+    assert record["gc_frozen_objects"] == seen[0]
 
 
 def test_universal_double_pole_at_full_and_leading_colour():
