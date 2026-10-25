@@ -357,14 +357,12 @@ class _Exporter:
         # Per column, once: its table, degree and, per (class, loop order),
         # its admitted Born entries (table order).
         indexed = []
-        weight_of_column: list[int] = []
-        weight_columns: dict[tuple[Any, ...], int] = {}
-        for column in columns:
-            key = (id(column.table), column.degree, column.pairs, column.basis)
-            found = weight_columns.get(key)
-            if found is not None:
-                weight_of_column.append(found)
-                continue
+        keys, weight_of_column = weight_columns(columns)
+        first: dict[int, int] = {}
+        for k, w in enumerate(weight_of_column):
+            first.setdefault(w, k)
+        for w in range(len(keys)):
+            column = columns[first[w]]
             table, degree = column.table, column.degree
             if accuracy != "full" and degree is None:
                 degree = table.degree(column.pairs, born_grades)
@@ -374,8 +372,6 @@ class _Exporter:
                 if column.basis is not None and b not in column.basis:
                     continue
                 entries.setdefault((c, order), []).append((b, born_order))
-            weight_columns[key] = len(indexed)
-            weight_of_column.append(len(indexed))
             indexed.append((table, degree, entries))
         classes: dict[tuple[int, Orders], int] = {}
         class_records: list[dict] = []
@@ -756,6 +752,22 @@ class SeedColumn:
     basis: frozenset | None = None
 
 
+def weight_columns(
+    columns: Sequence[SeedColumn],
+) -> tuple[list[tuple[Any, ...]], list[int]]:
+    """The distinct seed-weight columns of ``columns`` (keys: table identity,
+    degree, sector pairs, basis elements; a column's helicity rows do not
+    change its weights) in first-use order, and per column its weight
+    column (``_Exporter.seed_records``, the plan's ``column_weights``)."""
+
+    keys: dict[tuple[Any, ...], int] = {}
+    of_column = []
+    for column in columns:
+        key = (id(column.table), column.degree, column.pairs, column.basis)
+        of_column.append(keys.setdefault(key, len(keys)))
+    return list(keys), of_column
+
+
 def sector_columns(slice_: Any) -> tuple[SeedColumn, ...]:
     """One column per squared-order sector (the inclusive virtual)."""
 
@@ -897,6 +909,7 @@ def export_plan(
                 and a.basis == b.basis
             )
 
+        plan_keys = weight_columns(columns)
         for name, set_columns in column_sets.items():
             set_columns = tuple(set_columns)
             if len(set_columns) == len(columns) and all(
@@ -906,12 +919,17 @@ def export_plan(
                 # without declared histories): the plan serves the set.
                 column_seeds[name] = {"same": True, "born_components": born_components}
                 continue
-            set_classes, set_seeds, set_weights = exporter.seed_records(set_columns)
-            if set_classes == seed_classes and set_seeds == seeds:
-                # The plan's own seed records under other columns (the
-                # helicity-resolved columns at full colour share its weight
-                # columns): the set stores only its column fields.
+            set_keys, of_column = weight_columns(set_columns)
+            if plan_keys == (set_keys, list(range(len(set_keys)))):
+                # The plan's own weight columns under other columns (the
+                # helicity-resolved columns at full colour): the plan's seed
+                # records serve the set, which stores only its column fields.
                 set_classes = set_seeds = None
+                set_weights = (
+                    None if of_column == list(range(len(of_column))) else of_column
+                )
+            else:
+                set_classes, set_seeds, set_weights = exporter.seed_records(set_columns)
             column_seeds[name] = {
                 "seed_classes": set_classes,
                 "seeds": set_seeds,
