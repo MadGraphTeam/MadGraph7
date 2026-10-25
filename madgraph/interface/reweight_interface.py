@@ -1511,7 +1511,7 @@ class ReweightInterface(extended_cmd.Cmd):
                 alphas = c_wgt.gs**2 / (4 * math.pi)
                 obj, key = cevent, icev
                 if born_kinematics and c_wgt.type in (4, 8):
-                    skey = (c_wgt.born_related, c_wgt.real_related, tuple(c_wgt.to_merge_pdg))
+                    skey = self.soft_limit_key(c_wgt)
                     if skey not in soft_events:
                         soft_events[skey] = self.get_soft_limit_event(event.nloweight, c_wgt)
                     if soft_events[skey] is not None:
@@ -1614,6 +1614,15 @@ class ReweightInterface(extended_cmd.Cmd):
             assert not wgt_tree
 
         return final_weight 
+
+    @staticmethod
+    def soft_limit_key(c_wgt):
+        """what identifies the configuration of get_soft_limit_event: the
+        Born and real kinematics, the FKS pair, and the flavours, since one
+        momentum configuration is shared by the contributions of the several
+        flavours (IPROC) of an event"""
+        return (c_wgt.born_related, c_wgt.real_related,
+                tuple(c_wgt.to_merge_pdg), tuple(c_wgt.pdgs))
 
     @staticmethod
     def get_soft_limit_event(nloweight, c_wgt, lam=1e-6):

@@ -131,6 +131,22 @@ class TestSoftLimitEvent(unittest.TestCase):
                 for mu in range(4):
                     self.assertAlmostEqual(q[mu], b[mu], delta=1e-5 * math.sqrt(sborn))
 
+    def test_key_follows_the_flavours(self):
+        """two contributions sharing their kinematics but not their flavours
+        (several IPROC of one event) get distinct soft configurations"""
+
+        rw = reweight_interface.ReweightInterface
+        swap = {1: 3, 3: 1, 2: 4, 4: 2}
+        nlo, w = [(nlo, w) for nlo, w in self.contribs
+                  if any(abs(p) in swap for p in w.pdgs)][0]
+        other = copy.copy(w)
+        other.pdgs = [swap[abs(p)] * (1 if p > 0 else -1) if abs(p) in swap else p
+                      for p in w.pdgs]
+        self.assertNotEqual(other.pdgs, list(w.pdgs))
+        self.assertNotEqual(rw.soft_limit_key(w), rw.soft_limit_key(other))
+        self.assertEqual(rw.soft_limit_key(w), rw.soft_limit_key(copy.copy(w)))
+        self.assertEqual(rw.get_soft_limit_event(nlo, other).pdgs, other.pdgs)
+
     def test_not_built(self):
         """no soft limit for an initial-state or a non-vector FKS parton: the
         counter-term then follows the Born"""
