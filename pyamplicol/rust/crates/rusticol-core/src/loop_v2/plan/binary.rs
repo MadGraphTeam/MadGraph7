@@ -59,13 +59,23 @@
 //!
 //! **Parallel decoding.** The top-level lists whose records hold no shared
 //! list (seed classes, seed keys, families) decode in parallel chunks when
-//! the rayon pool has more than one thread and the list at least
+//! the read has more than one thread and the list at least
 //! [`PARALLEL_RECORDS`] records: a sequential skip pass reads, checks and
 //! charges every value of the list without building records (so the bound
 //! holds before any of its records allocates) and notes the cursors' state at
 //! each chunk's start; the chunks then decode from those states, each
 //! required to end at the next one's with exactly the charges the pass made.
-//! The model is the sequential decoding's for any thread count.
+//! The model is the sequential decoding's for any thread count. A read
+//! decodes on one thread where an allocation can fail before the host's
+//! memory is exhausted (an address-space or data limit, strict overcommit:
+//! `read_threads`): the parallel decode adds per-thread state the probes do
+//! not see (the workers' malloc arenas, created lazily, and rayon's queues),
+//! so only the sequential decode, which charges, probes and makes fallibly
+//! every allocation, keeps the fail-closed contract there. Elsewhere the
+//! per-chunk state is still allocated fallibly, and a section whose chunks
+//! cannot allocate it, or fail, is decoded again sequentially from its start.
+//! A thread pool that cannot start makes every read of the process decode on
+//! one thread.
 //!
 //! **Bounded derivation.** The loader's derivations
 //! ([`LoopProgramV4::from_file`], shared with the JSON load) size tables by
@@ -95,8 +105,9 @@
 //! host's RAM plus swap, where the per-member-byte bounds are the guard. The
 //! decoded model is probed likewise before decoding, with the thread pool
 //! started first. The production JSON load (`LoopProgramV4::load`, `plan.rs`)
-//! is not bounded so: that is the loader's work of phase 1, together with
-//! fallible reservations in the derivations themselves.
+//! takes the same refusals and probe through [`PlanModel::program`], without
+//! the per-byte bound (a JSON cannot be padded), and the derivations reserve
+//! their scalar-sized tables fallibly.
 //!
 //! Reading fails closed with an error, never a panic or an allocation abort:
 //! headers, widths, payload sizes and the padding are checked, every value is
@@ -104,8 +115,8 @@
 //! string takes its bytes from what the byte column still holds, the list
 //! reservations and copies are fallible (`TryCopy`), the string table is
 //! shared as decoded (one fixed-size `Arc` header besides it), and the thread
-//! pool is started fallibly (`pool_threads`: a pool that cannot start is an
-//! error, not rayon's panic). This holds for [`read_binary`]
+//! pool is started fallibly (`read_threads`: a pool that cannot start leaves
+//! the read on one thread, never rayon's panic). This holds for [`read_binary`]
 //! ([`PlanModel::from_binary`] and [`PlanModel::program`]); the test tool
 //! [`program_digest`] is outside it (it formats the loaded program, a
 //! multi-precision weight as decimal digits, beyond the derivations' bound).
@@ -177,6 +188,17 @@ impl PlanModel {
         Ok(Self { file, member: None })
     }
 
+    /// The model of a plan's records read by any `serde` deserializer of the
+    /// loader's file form (unknown fields refused, as [`Self::from_json`]):
+    /// the exporter's Python records without a JSON in between (the
+    /// `V2PlanModel.from_program` binding).
+    pub fn from_records<'de, D: serde::Deserializer<'de>>(records: D) -> Result<Self, D::Error> {
+        Ok(Self {
+            file: serde::Deserialize::deserialize(records)?,
+            member: None,
+        })
+    }
+
     /// The model of a binary plan member ([`Self::binary`]).
     pub fn from_binary(bytes: &[u8]) -> RusticolResult<Self> {
         let mut reader = Reader::new(bytes)?;
@@ -228,6 +250,13 @@ impl PlanModel {
         derive::reserve("the loader's derivations need", bound.memory)?;
         LoopProgramV4::from_file(self.file, policy)
     }
+
+    /// [`Self::program`] without the probe of the derivations' peak (the
+    /// bound's refusals kept): `LoopProgramV4::load_unprobed`.
+    pub(super) fn program_unprobed(self, policy: FormPolicy) -> RusticolResult<LoopProgramV4> {
+        derive::bound(&self.file)?;
+        LoopProgramV4::from_file(self.file, policy)
+    }
 }
 
 /// The validated program of a binary plan member ([`PlanModel::binary`])
@@ -235,10 +264,8 @@ impl PlanModel {
 /// the one reader of the member, for the loader and for an artifact's PACBIN
 /// plan member. It decodes within the member's declared size and derives
 /// within the member's derivation bound (module docs), else it fails with an
-/// error. RUST-MIGRATION.md §3.D names it `loop_v2::plan::read_binary`;
-/// in phase 0 it lives here (`plan.rs` takes only this module's `mod` line),
-/// and its re-export from `plan.rs` comes with phase 1, when the loader is
-/// this package's.
+/// error. Re-exported as `loop_v2::plan::read_binary` (RUST-MIGRATION.md
+/// §3.D).
 pub fn read_binary(member: &[u8]) -> RusticolResult<LoopProgramV4> {
     read_binary_with(member, FormPolicy::Rule)
 }
@@ -1351,7 +1378,7 @@ struct Reader<'a> {
     tables: Vec<Option<Box<dyn Any>>>,
     /// In the skip pass of [`Reader::records`].
     skip: bool,
-    /// The rayon pool's threads ([`pool_threads`]).
+    /// The threads the read decodes with ([`read_threads`]).
     threads: usize,
 }
 
@@ -1375,33 +1402,75 @@ impl Budget {
     }
 }
 
-/// The rayon pool's thread count for a read: inside a pool's worker that
-/// pool's, else the global pool's, started fallibly first. rayon starts the
-/// global pool lazily at its first use and panics there when a worker cannot
-/// be spawned (under an address-space limit: `WouldBlock`), and never starts
-/// it after a failed start (any later use panics too). The reader starts it
-/// itself and refuses with an error instead, at every read once a start has
-/// failed (the outcome is kept: rayon's own is final). A pool another
-/// component started first is used as it is.
-fn pool_threads() -> RusticolResult<usize> {
-    static GLOBAL: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
-    if rayon::current_thread_index().is_none() {
-        let started = GLOBAL.get_or_init(|| match rayon::ThreadPoolBuilder::new().build_global() {
-            Ok(()) => Ok(()),
-            Err(error) => match std::error::Error::source(&error) {
-                Some(cause) => Err(format!("the thread pool cannot start: {cause}")),
-                // Started before, or its start failed before (outside this
-                // reader), which only a use reveals: it panics.
-                None => std::panic::catch_unwind(rayon::current_num_threads)
-                    .map(drop)
-                    .map_err(|_| "the thread pool failed to start in this process".to_owned()),
-            },
-        });
-        if let Err(error) = started {
-            return Err(invalid(format!("binary plan: {error}")));
+/// Whether an allocation of this process can fail before the host's memory
+/// is exhausted: under an address-space or data-segment limit (`RLIMIT_AS`,
+/// `RLIMIT_DATA`) or strict overcommit accounting (Linux
+/// `vm.overcommit_memory = 2`). Elsewhere an allocation the reader's probes
+/// granted does not fail later (Linux's default overcommit; a cgroup limit
+/// kills, it does not refuse).
+fn allocations_can_fail() -> bool {
+    #[cfg(unix)]
+    {
+        let limited = |resource| {
+            let mut limit = libc::rlimit {
+                rlim_cur: 0,
+                rlim_max: 0,
+            };
+            // SAFETY: `getrlimit` writes the `rlimit` it is given.
+            let status = unsafe { libc::getrlimit(resource, &mut limit) };
+            status != 0 || limit.rlim_cur != libc::RLIM_INFINITY
+        };
+        if limited(libc::RLIMIT_AS) || limited(libc::RLIMIT_DATA) {
+            return true;
         }
     }
-    Ok(rayon::current_num_threads())
+    #[cfg(target_os = "linux")]
+    {
+        use std::io::Read;
+        let mut mode = [0u8; 1];
+        let strict = std::fs::File::open("/proc/sys/vm/overcommit_memory")
+            .and_then(|mut file| file.read_exact(&mut mode))
+            .is_ok_and(|()| mode[0] == b'2');
+        if strict {
+            return true;
+        }
+    }
+    false
+}
+
+/// The threads a read decodes with (module docs, "Parallel decoding"): one
+/// where an allocation can fail ([`allocations_can_fail`]), since only the
+/// sequential decode charges, probes and makes fallibly every allocation it
+/// makes (the parallel one adds per-thread state: the workers' malloc arenas,
+/// created lazily after the probes, rayon's queues and the chunks' cursors);
+/// else inside a pool's worker that pool's, else the global pool's, started
+/// first. rayon starts the global pool lazily at its first use and panics
+/// there when a worker cannot be spawned, and never starts it after a failed
+/// start (any later use panics too): the reader starts it itself, and a
+/// pool that cannot start, or whose start failed before (outside this
+/// reader, revealed by one caught use), makes every read of the process
+/// decode on one thread, never a refusal or rayon's panic. A pool another
+/// component started first is used as it is.
+fn read_threads() -> usize {
+    if allocations_can_fail() {
+        return 1;
+    }
+    if rayon::current_thread_index().is_some() {
+        return rayon::current_num_threads();
+    }
+    static GLOBAL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let started = *GLOBAL.get_or_init(|| match rayon::ThreadPoolBuilder::new().build_global() {
+        Ok(()) => true,
+        Err(error) => match std::error::Error::source(&error) {
+            Some(_) => false,
+            None => std::panic::catch_unwind(rayon::current_num_threads).is_ok(),
+        },
+    });
+    if started {
+        rayon::current_num_threads()
+    } else {
+        1
+    }
 }
 
 #[cold]
@@ -1464,10 +1533,8 @@ impl<'a> Reader<'a> {
         let padding = usize::try_from(u64_at(&mut bytes)?)
             .map_err(|_| invalid("binary plan: padding length"))?;
         // The allocator must grant the declared model before decoding starts
-        // (a probe, with its margin), the thread pool being up first: its
-        // per-thread state would otherwise be allocated mid-decode, at the
-        // edge of an address space the decode may have used to its limit.
-        let threads = pool_threads()?;
+        // (a probe, with its margin), the thread pool being up first.
+        let threads = read_threads();
         derive::reserve("binary plan: the decoded model needs", declared)?;
         let mut cursors = Vec::with_capacity(COLUMN_NAMES.len());
         for _ in COLUMN_NAMES {
@@ -1566,21 +1633,122 @@ impl<'a> Reader<'a> {
         )
     }
 
-    /// The cursors' positions and running values and the charges so far.
-    fn state(&self) -> (Vec<(usize, i64)>, u64) {
-        let cursors = self.cursors.iter();
-        let state = cursors.map(|c| (c.position, c.previous)).collect();
-        (state, self.budget.used)
+    /// The cursors' positions and running values and the charges so far, or
+    /// `None` when the allocator refuses the list (the parallel decode then
+    /// gives way to the sequential one).
+    fn state(&self) -> Option<State> {
+        let mut cursors = Vec::new();
+        cursors.try_reserve_exact(self.cursors.len()).ok()?;
+        cursors.extend(self.cursors.iter().map(|c| (c.position, c.previous)));
+        Some((cursors, self.budget.used))
     }
 
-    /// Places the cursors at a [`Self::state`] (positions and running values).
-    fn restore(&mut self, state: &[(usize, i64)]) {
-        for (cursor, &(position, previous)) in self.cursors.iter_mut().zip(state) {
+    /// Whether the cursors and the charges are at `state`.
+    fn at(&self, (cursors, used): &State) -> bool {
+        self.budget.used == *used
+            && self.cursors.len() == cursors.len()
+            && self
+                .cursors
+                .iter()
+                .zip(cursors)
+                .all(|(c, &(position, previous))| c.position == position && c.previous == previous)
+    }
+
+    /// Places the cursors and the charges at a [`Self::state`].
+    fn restore(&mut self, (cursors, used): &State) {
+        for (cursor, &(position, previous)) in self.cursors.iter_mut().zip(cursors) {
             cursor.position = position;
             cursor.previous = previous;
         }
+        self.budget.used = *used;
+    }
+
+    /// The `len` records of a top-level list in parallel chunks (module docs,
+    /// "Parallel decoding"): `Ok(true)` once decoded, `Ok(false)` when a
+    /// chunk's state cannot be allocated or a chunk fails (the caller decodes
+    /// the section sequentially from its start), an error when the skip pass
+    /// refuses the member.
+    fn parallel<T, F>(
+        &mut self,
+        col: Col,
+        len: usize,
+        items: &mut Vec<T>,
+        visit: &F,
+    ) -> RusticolResult<bool>
+    where
+        T: Fresh + Send,
+        F: Fn(&mut Self, &mut T) -> RusticolResult<()> + Sync,
+    {
+        let threads = self.threads;
+        let chunk = len.div_ceil(8 * threads).max(1);
+        // Skip pass: every value of the section read, checked and charged
+        // against the declaration before any record allocates, and the
+        // cursors' state at each chunk's start.
+        let mut starts: Vec<State> = Vec::new();
+        if starts.try_reserve_exact(len.div_ceil(chunk) + 1).is_err() {
+            return Ok(false);
+        }
+        self.skip = true;
+        for k in 0..len {
+            if k % chunk == 0 {
+                let Some(state) = self.state() else {
+                    self.skip = false;
+                    return Ok(false);
+                };
+                starts.push(state);
+            }
+            if let Err(error) = visit(self, &mut T::fresh()) {
+                self.skip = false;
+                return Err(error);
+            }
+        }
+        self.skip = false;
+        let Some(end) = self.state() else {
+            return Ok(false);
+        };
+        starts.push(end);
+        // The chunks, decoded in parallel from their start states: each must
+        // end at the next one's with exactly the charges the pass made.
+        let Ok(buffer) = reserved(len, col) else {
+            return Ok(false);
+        };
+        *items = buffer;
+        items.resize_with(len, T::fresh);
+        let (cursors, strings) = (&self.cursors, &self.strings);
+        let decoded = items
+            .par_chunks_mut(chunk)
+            .zip(starts.par_windows(2))
+            .try_for_each(|(records, window)| {
+                let [start, end] = window else {
+                    return Err(());
+                };
+                let mut copy = Vec::new();
+                copy.try_reserve_exact(cursors.len()).map_err(drop)?;
+                copy.extend_from_slice(cursors);
+                let mut reader = Reader {
+                    cursors: copy,
+                    strings: Arc::clone(strings),
+                    budget: Budget {
+                        declared: end.1,
+                        used: 0,
+                    },
+                    tables: Vec::new(),
+                    skip: false,
+                    threads,
+                };
+                reader.restore(start);
+                for record in records {
+                    visit(&mut reader, record).map_err(drop)?;
+                }
+                if reader.at(end) { Ok(()) } else { Err(()) }
+            });
+        Ok(decoded.is_ok())
     }
 }
+
+/// The cursors' positions and running values, and the charges, at one point
+/// of a read ([`Reader::state`]).
+type State = (Vec<(usize, i64)>, u64);
 
 impl Stream for Reader<'_> {
     const READ: bool = true;
@@ -1631,60 +1799,20 @@ impl Stream for Reader<'_> {
     {
         let len = self.len(col, 0)?;
         self.budget.charge(col, allocation(len, size_of::<T>()))?;
-        let threads = self.threads;
-        if threads == 1 || self.skip || len < PARALLEL_RECORDS {
+        if self.threads == 1 || self.skip || len < PARALLEL_RECORDS {
             return fill(self, col, len, items, visit);
         }
-        // Skip pass: every value of the section read, checked and charged
-        // against the declaration before any record allocates, and the
-        // cursors' state at each chunk's start.
-        let chunk = len.div_ceil(8 * threads).max(1);
-        let mut starts = Vec::new();
-        self.skip = true;
-        for k in 0..len {
-            if k % chunk == 0 {
-                starts.push(self.state());
-            }
-            let pass = visit(self, &mut T::fresh());
-            if pass.is_err() {
-                self.skip = false;
-                return pass;
-            }
+        // The section's start, where the sequential decode takes over when
+        // the parallel one cannot run.
+        let Some(section) = self.state() else {
+            return fill(self, col, len, items, visit);
+        };
+        if self.parallel(col, len, items, &visit)? {
+            return Ok(());
         }
-        self.skip = false;
-        starts.push(self.state());
-        // The chunks, decoded in parallel from their start states: each must
-        // end at the next one's with exactly the charges the pass made.
-        *items = reserved(len, col)?;
-        items.resize_with(len, T::fresh);
-        let (cursors, strings) = (&self.cursors, &self.strings);
-        items
-            .par_chunks_mut(chunk)
-            .zip(starts.par_windows(2))
-            .try_for_each(|(records, window)| {
-                let [(start, used), (end, until)] = window else {
-                    return Err(invalid("binary plan: a parallel chunk"));
-                };
-                let mut reader = Reader {
-                    cursors: cursors.clone(),
-                    strings: Arc::clone(strings),
-                    budget: Budget {
-                        declared: until - used,
-                        used: 0,
-                    },
-                    tables: Vec::new(),
-                    skip: false,
-                    threads,
-                };
-                reader.restore(start);
-                for record in records {
-                    visit(&mut reader, record)?;
-                }
-                require(
-                    reader.state() == (end.clone(), until - used),
-                    "binary plan: a parallel chunk ends elsewhere",
-                )
-            })
+        *items = Vec::new();
+        self.restore(&section);
+        fill(self, col, len, items, visit)
     }
 }
 
