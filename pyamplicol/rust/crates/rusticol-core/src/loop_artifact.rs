@@ -746,11 +746,11 @@ pub fn read_loop_v2_native_inputs(
     };
     let inflate = |name: &str| -> RusticolResult<Vec<u8>> {
         let mut json = Vec::new();
-        flate2::read::ZlibDecoder::new(
-            member(name, PacbinMemberKind::LoopRuntimePlan)?.as_slice(),
-        )
-        .read_to_end(&mut json)
-        .map_err(|error| RusticolError::integrity(format!("{name} is not a zlib stream: {error}")))?;
+        flate2::read::ZlibDecoder::new(member(name, PacbinMemberKind::LoopRuntimePlan)?.as_slice())
+            .read_to_end(&mut json)
+            .map_err(|error| {
+                RusticolError::integrity(format!("{name} is not a zlib stream: {error}"))
+            })?;
         Ok(json)
     };
     let mut evaluators = Vec::new();

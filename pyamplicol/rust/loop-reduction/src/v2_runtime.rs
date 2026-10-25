@@ -34,7 +34,7 @@
 //! stored natively yet). The pole selection is all or none (finite-only); the
 //! split selections ("uv", "ir") go through the Python API.
 
-use crate::runtime::{PoleSelection, V2ReductionBackend, V2Reducer};
+use crate::runtime::{PoleSelection, V2Reducer, V2ReductionBackend};
 use rusticol_core::VerifiedArtifact;
 use rusticol_core::loop_artifact::{
     LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact, LoopV2ExecutionMetadata,
@@ -162,14 +162,23 @@ impl V2Runtime {
         let runtime = trees.runtime(&0.0)?;
         let executor = V2Executor::new(program, V2_LANES, threads)?;
         // The Python API's binary64 backend (`v2_executor.backend_of`).
-        let reducer = V2Reducer::new("double", None, "fast", true)
-            .map_err(|e| invalid(e.to_string()))?;
+        let reducer =
+            V2Reducer::new("double", None, "fast", true).map_err(|e| invalid(e.to_string()))?;
         let metadata = &artifact.metadata;
-        let squared: Vec<Orders> = record.trees.squared_orders.iter().map(|o| canonical(o)).collect();
+        let squared: Vec<Orders> = record
+            .trees
+            .squared_orders
+            .iter()
+            .map(|o| canonical(o))
+            .collect();
         let born_index = metadata
             .born_orders
             .iter()
-            .map(|order| squared.iter().position(|o| *o == canonical(&order_pairs(order))))
+            .map(|order| {
+                squared
+                    .iter()
+                    .position(|o| *o == canonical(&order_pairs(order)))
+            })
             .collect();
         let sectors: Vec<Orders> = record.sectors.iter().map(|(s, _)| canonical(s)).collect();
         let sector_index = metadata
@@ -262,7 +271,11 @@ impl V2Runtime {
                 if let Some(value) = self.record.fixed_parameters.get(name) {
                     return parse_rational(value).map_err(|e| invalid(e.message()));
                 }
-                Ok(self.parameters.get(name).cloned().unwrap_or_else(|| default.clone()))
+                Ok(self
+                    .parameters
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| default.clone()))
             })
             .collect()
     }
@@ -329,9 +342,9 @@ impl V2Runtime {
             poles: if poles { Poles::All } else { Poles::None },
             ..V2Options::default()
         };
-        let (results, _report) = self
-            .executor
-            .evaluate(&batch, &zero, &mut self.backend, options)?;
+        let (results, _report) =
+            self.executor
+                .evaluate(&batch, &zero, &mut self.backend, options)?;
         let born = inputs
             .born_squared
             .ok_or_else(|| invalid("the tree program forms no |A0|²"))?;
@@ -341,7 +354,8 @@ impl V2Runtime {
         let width = if poles { 3 } else { 1 };
         let average = self.record.average as f64;
         // Python: numbers.pair(0, 1) * (1 / (16 * pi * pi * average)).
-        let factor = 1.0 / (LOOP_FACTOR_DENOMINATOR * std::f64::consts::PI * std::f64::consts::PI * average);
+        let factor =
+            1.0 / (LOOP_FACTOR_DENOMINATOR * std::f64::consts::PI * std::f64::consts::PI * average);
         let sectors = self.record.sectors.len();
         let outputs: Vec<(String, usize, i32)> = self
             .record
@@ -382,7 +396,10 @@ impl V2Runtime {
                 local.insert((component.as_str(), *s, *power), *value);
             }
             let component = |name: &str, s: usize, k: usize| -> f64 {
-                local.get(&(name, s, LAURENT_POWERS[k])).copied().unwrap_or(0.0)
+                local
+                    .get(&(name, s, LAURENT_POWERS[k]))
+                    .copied()
+                    .unwrap_or(0.0)
             };
             let mut virtual_values = Vec::with_capacity(self.sector_index.len());
             for &s in &self.sector_index {
