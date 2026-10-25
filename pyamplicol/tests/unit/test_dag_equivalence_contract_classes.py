@@ -15,7 +15,9 @@ full derivation:
   changes that list;
 * the structural refusals of the full derivation hold for every current;
 * the loop blocks and the CT program, whose closed colour components share
-  contracts, of two QCD controls (``loop_physics``; six legs nightly).
+  contracts, of two QCD controls (``loop_physics``; six legs nightly), on
+  the Python stages (``dag_input.NATIVE_DAG`` off), and the native stages'
+  DAGs equal to them.
 """
 
 from __future__ import annotations
@@ -310,8 +312,12 @@ def test_loop_blocks_and_counterterm_program_equal_the_full_derivation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Every reuse pass of the slice's generation (Born, loop blocks, CT
-    program) gives the full derivation's classes."""
+    program) gives the full derivation's classes on the Python stages (the
+    oracle: ``dag_input.NATIVE_DAG`` off); the native stages (WP3.1 A4, the
+    production default) give the same loop-block and CT DAGs, evaluation
+    groups and factors included (their S1'/S1'' digests)."""
 
+    from pyamplicol.loops.v2 import dag_input, snapshot
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.models.loading import load_compiled_model
     from tools.loop_reference import legacy_capture
@@ -327,19 +333,31 @@ def test_loop_blocks_and_counterterm_program_equal_the_full_derivation(
             calls.append((len(dag.currents), len(derived)))
         return result
 
-    monkeypatch.setattr(dag_equivalence, "_derive_current_value_equivalences", checked)
     process, qcd = LOOP_CONTROLS[name]
-    LoopSlice.generate(
-        load_compiled_model(loop_sm_compiled_model),
-        SliceRequest(
-            process,
-            {"QCD": qcd},
-            {"QCD": qcd + 2},
-            fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-        ),
-        loop_native,
+    request = SliceRequest(
+        process,
+        {"QCD": qcd},
+        {"QCD": qcd + 2},
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
     )
+    with monkeypatch.context() as patch:
+        patch.setattr(dag_equivalence, "_derive_current_value_equivalences", checked)
+        patch.setattr(dag_input, "NATIVE_DAG", False)
+        python = LoopSlice.generate(
+            load_compiled_model(loop_sm_compiled_model), request, loop_native
+        )
     # Born, loop blocks and CT program; the CT program's closed colour
     # components share contracts.
     assert len(calls) >= 3
     assert any(shared for _currents, shared in calls)
+    monkeypatch.setattr(dag_input, "NATIVE_DAG", True)
+    native = LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model), request, loop_native
+    )
+    assert isinstance(native.blocks.blocks_dag, dag_input.NativeDag)
+    assert snapshot.loop_blocks_digest(native.blocks) == (
+        snapshot.loop_blocks_digest(python.blocks)
+    )
+    assert snapshot.counterterm_program_digest(
+        native.counterterm_program.blocks
+    ) == snapshot.counterterm_program_digest(python.counterterm_program.blocks)
