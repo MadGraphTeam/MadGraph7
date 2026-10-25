@@ -252,7 +252,11 @@ class CountertermSites:
     k_max: int
 
     def coupling_outputs(self) -> tuple[tuple[str, int], ...]:
-        """Source scalar outputs (coupling name, epsilon power) of every site."""
+        """Source scalar outputs (coupling name, epsilon power) of every
+        site's own rule. A closure reads a vertex not closed under
+        conjugation through its conjugate rule and binds that rule's
+        couplings (``SiteClosure.read_entries``, which the slice's scalar
+        plan takes, ``assemble.LoopSlice._scalar_plan``)."""
         return tuple(
             sorted(
                 {
@@ -1041,11 +1045,10 @@ class SiteClosure:
             options.append(rows)
         sign = self._root_sign(attachments)
         entries = tuple(entries)
-        read = self.read_entries(entries)
         # A vertex read through its conjugate rule keeps its own single
         # colour structure (``read_entries``).
-        colour_entry = None if read is entries else entries[0]
-        entries = read
+        colour_entry = None if self._self_conjugate(entries) else entries[0]
+        entries = self.read_entries(entries)
         out = []
         for entry in entries:
             legs = self._kernel_legs(entry, attachments)
@@ -1304,7 +1307,7 @@ def _singlet_fermion_legs(process: Any) -> list[Any]:
 
 def require_one_singlet_line(process: Any) -> None:
     """Refuse a process with more than one colour-singlet fermion line
-    (more than two lepton legs: u u~ > e- e+ mu- mu+, e+ e- > e+ e-) until
+    (more than two lepton legs: u u~ > e- e+ m- m+, e+ e- > e+ e-) until
     WP3.2 EWI-5.
 
     The tree engine signs every merge of currents whose supports hold
@@ -1314,11 +1317,12 @@ def require_one_singlet_line(process: Any) -> None:
     loop's leaf weights would have to supply it. With one singlet line no
     other block holds a singlet fermion, so the only such merge is the
     line's own (``SiteClosure._singlet_root_sign``). With two lines the
-    blocks' supports interleave in the leg order (u u~ > e- mu- e+ mu+: the
-    supports {3, 5} and {4, 6} have a Koszul sign of -1) and the Born and
-    the virtual would be silently wrong (Born closure / tree runtime 0.53 at
-    an exact point), so every such process is refused, wherever its lines
-    sit, before any tree is built.
+    supports of two blocks can interleave in the leg order (u u~ > e- m- e+
+    m+: the supports {3, 5} and {4, 6} have a Koszul sign of -1; e- e- e+ e+
+    has such a pairing too), and the Born and the virtual would be silently
+    wrong (Born closure / tree runtime 0.53 and 0.34 at an exact point), so
+    every such process is refused, wherever its lines sit, before any tree
+    is built.
     """
 
     legs = _singlet_fermion_legs(process)
