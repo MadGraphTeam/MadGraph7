@@ -23,7 +23,7 @@ from collections.abc import Hashable, Iterator, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from itertools import permutations, product
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from .families import (
     Closure,
@@ -101,7 +101,11 @@ class PlanarWords:
         return tuple(sorted(out))
 
     def reflected(self, state: Hashable) -> Hashable:
-        return tuple(reversed(state))
+        return tuple(reversed(cast(tuple[int, ...], state)))
+
+
+#: A content's label: (colour state, loop in, loop out, mask, orders).
+_Label = tuple[Hashable, str, str, int, Orders]
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -139,7 +143,7 @@ class Content:
             )
         return self._hash  # type: ignore[return-value]
 
-    def __reduce__(self):
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
         return Content, (
             self.colour,
             self.loop_in,
@@ -181,7 +185,7 @@ class Skeleton:
             )
         return self._hash  # type: ignore[return-value]
 
-    def __reduce__(self):
+    def __reduce__(self) -> tuple[Any, tuple[Any, ...]]:
         return Skeleton, (self.family, self.contents, self.weight, self.multiplicity)
 
     @property
@@ -241,10 +245,10 @@ def family_skeletons(
     catalogue: LoopVertexCatalogue,
 ) -> tuple[Skeleton, ...]:
     """The skeletons of one family, in the F frame of its routings."""
-    rings: dict[tuple, list[set[Position]]] = {}
-    combos: dict[tuple, set[tuple[Position, ...]]] = {}
-    symmetric: dict[tuple, bool] = {}
-    multiplicity: dict[tuple, int] = {}
+    rings: dict[tuple[_Label, ...], list[set[Position]]] = {}
+    combos: dict[tuple[_Label, ...], set[tuple[Position, ...]]] = {}
+    symmetric: dict[tuple[_Label, ...], bool] = {}
+    multiplicity: dict[tuple[_Label, ...], int] = {}
     for closure in family.closures:
         for labels, positions in _labelled_rings(families, closure, colour):
             slots = rings.setdefault(labels, [set() for _ in positions])
@@ -286,7 +290,7 @@ def family_skeletons(
 
 def _labelled_rings(
     families: FamilySet, closure: Closure, colour: ColourModel
-) -> Iterator[tuple[tuple, tuple[Position, ...]]]:
+) -> Iterator[tuple[tuple[_Label, ...], tuple[Position, ...]]]:
     _cut, positions = families.routing(closure)
     options = [colour.states(position) for position in positions]
     for states in product(*options):

@@ -37,12 +37,12 @@ import sys
 import weakref
 from array import array
 from collections import defaultdict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from fractions import Fraction
 from operator import attrgetter
-from typing import Any
+from typing import Any, cast
 
 from .families import (
     BlockCurrent,
@@ -227,7 +227,7 @@ def family_input(
     return tables, payload, merged
 
 
-def _key(tables: _Tables, raw) -> tuple[tuple[int, MassId], ...]:
+def _key(tables: _Tables, raw: Iterable[Any]) -> tuple[tuple[int, MassId], ...]:
     masses = tables.masses
     return tuple([(mask, masses[mass]) for mask, mass in raw])
 
@@ -252,7 +252,7 @@ class NativeBuild:
         handle: int,
         colour: ColourModel,
         payload: Mapping[str, Any],
-        ordered: list,
+        ordered: list[Hashable],
         contents: list[Content],
         skeletons: list[list[Skeleton]],
         complete: bool,
@@ -430,7 +430,7 @@ class NativeGeneration:
         build = self._builds.get(id(plan))
         return build if build is not None and build.plan is plan else None
 
-    def _position(self, vertex: int, blocks) -> Position:
+    def _position(self, vertex: int, blocks: Iterable[int]) -> Position:
         tables = self.tables
         return Position(
             tables.vertices[vertex], tuple(tables.currents[index] for index in blocks)
@@ -496,7 +496,7 @@ class NativeGeneration:
                 self._state_positions.append(label)
             graph.species.append(fields[name])
 
-        def decoded(raws) -> dict[FamilyKey, Family]:
+        def decoded(raws: Iterable[Any]) -> dict[FamilyKey, Family]:
             out = {}
             for raw, rank, closures in raws:
                 key = _key(tables, raw)
@@ -567,7 +567,9 @@ class NativeGeneration:
         with _no_cyclic_gc():
             return self._decode(colour, keep, payload, ordered, raw, None)
 
-    def _colour_payload(self, colour: ColourModel) -> tuple[dict[str, Any], list]:
+    def _colour_payload(
+        self, colour: ColourModel
+    ) -> tuple[dict[str, Any], list[Hashable]]:
         """The colour states of the used positions as ranks, their
         reflections (and the scheduled certified-scaleless families), and
         the ordered states the ranks index."""
@@ -578,7 +580,7 @@ class NativeGeneration:
         else:
             used = sorted(self._path_positions(families))
         per_position = {p: colour.states(self._positions[p]) for p in used}
-        states: set = set()
+        states: set[Hashable] = set()
         for found in per_position.values():
             states.update(found)
         pending = list(states)
@@ -589,7 +591,8 @@ class NativeGeneration:
             if mirror not in states:
                 states.add(mirror)
                 pending.append(mirror)
-        ordered = sorted(states)
+        # Colour states are totally ordered (checked); typed as Any to sort.
+        ordered: list[Any] = sorted(cast(set[Any], states))
         if any(not a < b for a, b in itertools.pairwise(ordered)):
             raise ValueError("colour states must be totally ordered")
         rank = {state: i for i, state in enumerate(ordered)}
@@ -676,7 +679,13 @@ class NativeGeneration:
                     state = parent[state]
         return found
 
-    def _keep_flags(self, keep, payload, ordered, keys) -> list[list[bool]]:
+    def _keep_flags(
+        self,
+        keep: Callable[[Skeleton], bool],
+        payload: Mapping[str, Any],
+        ordered: list[Hashable],
+        keys: Sequence[FamilyKey],
+    ) -> list[list[bool]]:
         """``keep`` evaluated on every skeleton of every family (without a
         base build to reuse)."""
 
@@ -689,11 +698,13 @@ class NativeGeneration:
             for key, family in zip(keys, raw_skeletons, strict=True)
         ]
 
-    def _orders(self, raw_orders) -> list[Orders]:
+    def _orders(self, raw_orders: Iterable[Iterable[tuple[int, int]]]) -> list[Orders]:
         names = self.tables.order_names
         return [tuple((names[n], power) for n, power in o) for o in raw_orders]
 
-    def _content(self, states, orders, raw) -> Content:
+    def _content(
+        self, states: Sequence[Hashable], orders: Sequence[Orders], raw: Sequence[Any]
+    ) -> Content:
         state, loop_in, loop_out, mask, order, terms, _q_degree = raw
         fields = self.tables.fields
         position = self._position
@@ -707,7 +718,9 @@ class NativeGeneration:
         )
 
     @staticmethod
-    def _skeleton(key, contents, raw) -> Skeleton:
+    def _skeleton(
+        key: FamilyKey, contents: Sequence[Content], raw: Sequence[Any]
+    ) -> Skeleton:
         ids, half, multiplicity = raw
         return Skeleton(
             key,
@@ -721,8 +734,8 @@ class NativeGeneration:
         colour: ColourModel,
         keep: Callable[[Skeleton], bool] | None,
         payload: Mapping[str, Any],
-        ordered: list,
-        raw: tuple,
+        ordered: list[Hashable],
+        raw: tuple[Any, ...],
         base: NativeBuild | None,
     ) -> LoopSchedules:
         """The ``LoopSchedules`` of a native build (``base``: the build a
@@ -830,7 +843,7 @@ class NativeGeneration:
 
 
 @contextmanager
-def _no_cyclic_gc():
+def _no_cyclic_gc() -> Iterator[None]:
     """Decoding builds millions of acyclic objects; the cyclic collector
     would traverse the growing heap again and again while they are made."""
 
