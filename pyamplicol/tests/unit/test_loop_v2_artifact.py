@@ -2470,7 +2470,14 @@ def test_coloured_width_fixed_to_zero_equals_legacy_at_sixty_digits(
 
 
 def _qed_model_generator(
-    model: Path, tmp_path: Path, name: str, entries, *, engine, fixed='MB = "0"'
+    model: Path,
+    tmp_path: Path,
+    name: str,
+    entries,
+    *,
+    engine,
+    fixed='MB = "0"',
+    post_build_validation=True,
 ):
     from pyamplicol.api import Generator
     from pyamplicol.config import resolve_config
@@ -2478,6 +2485,10 @@ def _qed_model_generator(
     text = _card(model, tmp_path / name, entries).replace(
         'loop_coupling_orders = ["QCD"]', 'loop_coupling_orders = ["QCD", "QED"]'
     )
+    if not post_build_validation:
+        text = text.replace(
+            "post_build_validation = true", "post_build_validation = false"
+        )
     card = tmp_path / f"{name}.toml"
     card.write_text(
         text.replace(
@@ -2580,8 +2591,21 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
     processes = ProcessSet((ProcessRequest.parse("g g > g g", name="gg"),))
     runtimes = {}
     for engine in ("v2", "legacy"):
+        # The legacy engine is the oracle at 60 digits. Its own binary64
+        # post-build round trip (source against saved execution, 1e-12
+        # relative) is not run: at its sample point the legacy binary64
+        # finite part (-6.458, a cancellation against a Born of 113.8) is
+        # only good to 1.7e-12 and 3.1e-12 relative of its own 60-digit
+        # value (two Symbolica symbol histories), so the round trip's
+        # outcome is decided by the evaluation order (it failed from an
+        # empty model cache, passed from a filled one). v2 runs its own.
         _qed_model_generator(
-            loop_qcd_qed_sm_ufo, tmp_path, engine, entries, engine=engine
+            loop_qcd_qed_sm_ufo,
+            tmp_path,
+            engine,
+            entries,
+            engine=engine,
+            post_build_validation=engine == "v2",
         ).generate(processes, tmp_path / engine)
         runtimes[engine] = Runtime.load(
             tmp_path / engine, process="gg", model_parameters=GG_PARAMETERS
