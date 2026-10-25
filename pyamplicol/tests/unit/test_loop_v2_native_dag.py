@@ -231,6 +231,31 @@ def test_native_builder_is_sequential():
             assert name not in text, (path, name)
 
 
+# The A5 bindings' outputs as JSON values (the no-key child runs the same).
+_PROGRAM_PROBE = (
+    "def program_record(handle, text):\n"
+    "    program = handle.program(text)\n"
+    "    starts, variants = program.slots()\n"
+    "    texts = [('re%d' % k, 'im%d' % k) for k in range(len(program.weights()))]\n"
+    "    uses = program.kernels()\n"
+    "    vertex = [item for kind, _key, item in uses if kind == 'kernels']\n"
+    "    record = {\n"
+    "        'species': handle.current_species(),\n"
+    "        'value_count': program.value_count(),\n"
+    "        'masks': program.momentum_masks(),\n"
+    "        'slots': [bytes(starts).hex(), bytes(variants).hex()],\n"
+    "        'kernels': uses,\n"
+    "        'weights': program.weights(),\n"
+    "        'signatures': program.signatures(),\n"
+    "        'particles': program.particles(),\n"
+    "        'steps': program.steps(texts),\n"
+    "        'sources': handle.source_rows(),\n"
+    "        'interactions': handle.interaction_rows(vertex + program.signatures()),\n"
+    "    }\n"
+    "    return json.loads(json.dumps(record, default=list))\n"
+)
+
+
 @pytest.mark.loop_nightly
 def test_native_builder_needs_no_symbolica_licence(
     models, loop_sm_compiled_model, tmp_path, monkeypatch
@@ -375,6 +400,23 @@ def test_native_builder_needs_no_symbolica_licence(
     assert leaking
     (tmp_path / "u1.bin").write_bytes(native.dag.columns())
     request["u1"] = [str(tmp_path / "u1.bin"), arguments]
+    # A5's bindings: the interaction program of the CT DAG (its pole slots)
+    # and the source and interaction rows the export reads.
+    lowered = CompiledUFOModel(program.recursion.model.lowered.compiled)
+    pole_orders = sorted(
+        {
+            ct_closure.counterterm_slot_order(*slot)
+            for slot in program.recursion.slots
+            if slot[1] != 0
+        }
+    )
+    assert pole_orders
+    text, _payloads = dag_input._program_input(native.dag, lowered, pole_orders)
+    request["program"] = [str(tmp_path / "u1.bin"), text]
+    probe: dict = {"json": json}
+    exec(_PROGRAM_PROBE, probe)
+    expected["program"] = probe["program_record"](native.dag._native_handle(), text)
+    assert any(step.get("pole_interactions") for step in expected["program"]["steps"])
     (tmp_path / "request.json").write_text(json.dumps(request))
 
     script = (
@@ -401,6 +443,10 @@ def test_native_builder_needs_no_symbolica_licence(
         "columns, arguments = request['u1']\n"
         "handle = native.V2Dag.from_columns(open(columns, 'rb').read())\n"
         "out['u1'] = sorted(handle.u1_leaking(*arguments))\n"
+        + _PROGRAM_PROBE
+        + "columns, text = request['program']\n"
+        "handle = native.V2Dag.from_columns(open(columns, 'rb').read())\n"
+        "out['program'] = program_record(handle, text)\n"
         "print(json.dumps(out))\n"
     )
     environment = {
@@ -427,6 +473,7 @@ def test_native_builder_needs_no_symbolica_licence(
         )
         assert decoded.interactions == interactions
     assert out["u1"] == leaking
+    assert out["program"] == expected["program"]
 
 
 @pytest.mark.loop_physics
@@ -1013,6 +1060,77 @@ def test_switched_counterterm_program_equals_the_oracle_stage(
     assert dag_input.decode_count() == before
 
 
+def _assert_counterterm_trees_equal(python_blocks, native_blocks):
+    """A5: the native lane's counterterm program of a native CT DAG
+    (``_CountertermTrees.of`` under ``NATIVE_PROGRAM``) equals the oracle's
+    (``TreeRows`` and ``_interaction_program`` on the decoded DAG): the
+    record (interaction program, layout, source fill), the saved kernels
+    byte for byte, the value slots and what ``_parameter_program`` reads;
+    nothing is decoded and released columns are released again."""
+
+    import json
+
+    from pyamplicol.loops.v2.ct_closure import CountertermProgram
+    from pyamplicol.loops.v2.native_trees import _CountertermTrees
+
+    # The root sites do not enter the tree program.
+    python = CountertermProgram(python_blocks, ())
+    program = CountertermProgram(native_blocks, ())
+    dag = program.blocks.blocks.blocks_dag
+    assert type(dag) is dag_input.NativeDag
+    dag.release()
+    before = (dag_input.decode_count(), dag_input.rebuild_count())
+    native = _CountertermTrees.of(program, 1234)
+    assert dag_input.decode_count() == before[0]
+    assert dag_input.rebuild_count() == before[1] + 1
+    assert dag.released and not dag.decoded
+    oracle = _CountertermTrees.of(python, 1234)
+    assert json.dumps(native.record) == json.dumps(oracle.record)
+    assert native.saved == oracle.saved
+    assert dict(native.slots) == dict(oracle.slots)
+    assert native.fixed == oracle.fixed
+    assert len(native.blocks) == len(oracle.blocks)
+    for name in ("_records", "_definitions", "_value_count", "_offset", "_size"):
+        assert getattr(native.rows, name) == getattr(oracle.rows, name), name
+    assert native.rows.compiled.name == oracle.rows.compiled.name
+    return native, oracle
+
+
+@pytest.mark.loop_fast
+def test_native_counterterm_trees_equal_the_oracle(loop_sm_compiled_model):
+    """A5 on the g g > g g g CT program (multi-trace colour states, clone
+    lines, pole slots)."""
+
+    python = _python_program(
+        loop_sm_compiled_model, "g g > g g g", {"QCD": 3}, {"QCD": 5}
+    )
+    with _flag(True):
+        blocks = ct_closure.CountertermBlocks.build(
+            python.recursion, python.blocks.blocks_dag.process
+        )
+    native, _oracle = _assert_counterterm_trees_equal(python, blocks)
+    steps = native.record["interactions"]["steps"]
+    assert any(step.get("pole_interactions") for step in steps)
+    # Off, or on a DAG the tree engine built, the oracle runs.
+    with _program_flag(False):
+        program = ct_closure.CountertermProgram(blocks, ())
+        assert dag_input.native_counterterm_trees(program, 0) is None
+    program = ct_closure.CountertermProgram(python, ())
+    assert dag_input.native_counterterm_trees(program, 0) is None
+
+
+@contextlib.contextmanager
+def _program_flag(on):
+    """``dag_input.NATIVE_PROGRAM`` set to ``on``."""
+
+    before = dag_input.NATIVE_PROGRAM
+    dag_input.NATIVE_PROGRAM = on
+    try:
+        yield
+    finally:
+        dag_input.NATIVE_PROGRAM = before
+
+
 class _Delegating:
     """A model the native tables do not cover (not a ``CompiledUFOModel``)
     that answers every query like the one it wraps."""
@@ -1123,9 +1241,10 @@ def test_switched_generation_is_output_identical_and_decodes_nothing(
     ``LoopSlice.generate`` with the native DAG stage gives the oracle
     stage's S1, S4, S5, S8 (plan bytes, also with native trees), S1', S1'',
     S2 and P digests. Rule 9: the generation and the plan export decode no
-    native DAG; the native-trees export decodes exactly the two A5 consumers
-    of the consumer table (the loop-block and CT DAGs' interaction
-    programs, ``RUST-MIGRATION.md`` §3.A)."""
+    native DAG; the native-trees export decodes exactly the remaining A5
+    consumer of the consumer table (the loop-block DAG's tree rows,
+    ``RUST-MIGRATION.md`` §3.A): the CT program's interaction program is
+    native (``NATIVE_PROGRAM``)."""
 
     from pyamplicol.loops.v2.assemble import SliceRequest
     from pyamplicol.models.loading import load_compiled_model
@@ -1144,9 +1263,9 @@ def test_switched_generation_is_output_identical_and_decodes_nothing(
         compiled, request, loop_native, True
     )
     assert python_decodes == [0, 0, 0]
-    assert decodes == [0, 0, 2]
+    assert decodes == [0, 0, 1]
     assert isinstance(switched.blocks.blocks_dag, dag_input.NativeDag)
     program = switched.counterterm_program.blocks.blocks
     assert isinstance(program.blocks_dag, dag_input.NativeDag)
-    assert switched.blocks.blocks_dag.decoded and program.blocks_dag.decoded
+    assert switched.blocks.blocks_dag.decoded and not program.blocks_dag.decoded
     assert digests == expected

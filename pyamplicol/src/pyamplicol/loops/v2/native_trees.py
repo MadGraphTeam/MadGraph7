@@ -451,6 +451,14 @@ class _CountertermTrees:
 
     @classmethod
     def of(cls, program: Any, offset: int) -> _CountertermTrees:
+        # A5: the interaction program of a native CT DAG, without its decode
+        # and runtime schema (``dag_input.NATIVE_PROGRAM``; this path stays
+        # the oracle).
+        from .dag_input import native_counterterm_trees
+
+        native = native_counterterm_trees(program, offset)
+        if native is not None:
+            return native  # type: ignore[no-any-return]
         rows = program.rows
         schema = rows.schema
         value_count = rows._value_count

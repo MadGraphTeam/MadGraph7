@@ -10,9 +10,13 @@
 //! `NativeDagUnsupported` for it). Long work releases the GIL.
 use super::*;
 use pyo3::IntoPyObject;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyDict, PyList, PyString};
 use rusticol_core::loop_v2::dag::{
-    self, ColumnarDag, DagError, blocks::BlockInput, input::DagInput, reuse::ReuseTables,
+    self, ColumnarDag, DagError,
+    blocks::BlockInput,
+    input::DagInput,
+    program::{KernelUse, Program, ProgramInput, Variant},
+    reuse::ReuseTables,
 };
 use std::collections::HashMap;
 
@@ -90,6 +94,133 @@ impl Assignments {
 #[pyclass(frozen)]
 struct V2Dag {
     dag: ColumnarDag,
+}
+
+/// One source current for the runtime schema's source records
+/// (`dag_input.native_tree_rows`): `(current id, pdg, chirality, spin
+/// state, colour, dimension, leg or -1, helicity or NO_HELICITY, helicity
+/// ancestry)`.
+type SourceRow = (u32, i64, i8, i32, ColourTuple, i32, i32, i32, u64);
+
+/// `(vertex kind, vertex particles, coupling)` of an interaction.
+type InteractionRow = (i64, [i64; 3], (f64, f64));
+
+/// The interaction program of a [`V2Dag`] (`ColumnarDag::program`).
+#[pyclass(frozen)]
+struct V2Program {
+    program: Program,
+}
+
+#[pymethods]
+impl V2Program {
+    /// Value components (the runtime schema's `value_component_count`).
+    fn value_count(&self) -> u64 {
+        self.program.value_count
+    }
+
+    /// The momentum slots' masks, in slot order.
+    fn momentum_masks(&self) -> Vec<u64> {
+        self.program.momentum_masks.clone()
+    }
+
+    /// Per current its value slot's start (little-endian `u64`) and variant
+    /// (`u8`: 0 source, 1 unpropagated, 2 propagated).
+    fn slots<'py>(&self, py: Python<'py>) -> (Bound<'py, PyBytes>, Bound<'py, PyBytes>) {
+        let starts: Vec<u8> = self
+            .program
+            .starts
+            .iter()
+            .flat_map(|start| start.to_le_bytes())
+            .collect();
+        let variants: Vec<u8> = self
+            .program
+            .variants
+            .iter()
+            .map(|variant| match variant {
+                Variant::Source => 0,
+                Variant::Unpropagated => 1,
+                Variant::Propagated => 2,
+            })
+            .collect();
+        (PyBytes::new(py, &starts), PyBytes::new(py, &variants))
+    }
+
+    /// The kernels in first use: `("kernels", vertex key, interaction)` or
+    /// `("propagators", (pdg, chirality, dimension), current)`.
+    fn kernels(&self) -> Vec<(&'static str, Vec<i64>, u32)> {
+        self.program
+            .kernels
+            .iter()
+            .map(|kernel| match kernel {
+                KernelUse::Vertex { key, interaction } => ("kernels", key.to_vec(), *interaction),
+                KernelUse::Propagator { key, current } => ("propagators", key.to_vec(), *current),
+            })
+            .collect()
+    }
+
+    /// The distinct colour weights `(re, im)`, in first use.
+    fn weights(&self) -> Vec<(f64, f64)> {
+        self.program
+            .weights
+            .iter()
+            .map(|[re, im]| (*re, *im))
+            .collect()
+    }
+
+    /// One interaction per distinct (vertex, coupling), in first occurrence.
+    fn signatures(&self) -> Vec<u32> {
+        self.program.signatures.clone()
+    }
+
+    /// The distinct particle ids of the currents, sorted.
+    fn particles(&self) -> Vec<i64> {
+        self.program.particles.clone()
+    }
+
+    /// The steps of `native_trees._interaction_program`, with `texts[w]` the
+    /// exact `(re, im)` texts of weight `w`.
+    fn steps<'py>(
+        &self,
+        py: Python<'py>,
+        texts: Vec<(Bound<'py, PyString>, Bound<'py, PyString>)>,
+    ) -> PyResult<Bound<'py, PyList>> {
+        if texts.len() != self.program.weights.len() {
+            return Err(PyValueError::new_err("one text pair per colour weight"));
+        }
+        let int =
+            |value: i64| -> PyResult<Bound<'py, PyAny>> { Ok(value.into_pyobject(py)?.into_any()) };
+        let ints = |values: &[i64]| -> PyResult<Bound<'py, PyList>> {
+            PyList::new(py, values.iter().copied())
+        };
+        let steps = PyList::empty(py);
+        for step in &self.program.steps {
+            let rows = PyList::empty(py);
+            for row in &step.rows {
+                let (real, imag) = &texts[row[8] as usize];
+                let mut items: Vec<Bound<'py, PyAny>> = Vec::with_capacity(10);
+                for value in &row[..8] {
+                    items.push(int(*value)?);
+                }
+                items.push(real.clone().into_any());
+                items.push(imag.clone().into_any());
+                rows.append(PyList::new(py, items)?)?;
+            }
+            let outputs = PyList::empty(py);
+            for output in &step.outputs {
+                outputs.append(ints(output)?)?;
+            }
+            let record = PyDict::new(py);
+            record.set_item("interactions", rows)?;
+            record.set_item("accumulators", ints(&step.accumulators)?)?;
+            record.set_item("outputs", outputs)?;
+            if !step.pole_rows.is_empty() || !step.pole_outputs.is_empty() {
+                record.set_item("pole_interactions", PyList::new(py, step.pole_rows.iter())?)?;
+                record.set_item("pole_outputs", PyList::new(py, step.pole_outputs.iter())?)?;
+            }
+            steps.append(record)?;
+        }
+        Ok(steps)
+    }
 }
 
 #[pymethods]
@@ -250,6 +381,69 @@ impl V2Dag {
         py.detach(|| self.dag.propagated_species(full_mask))
     }
 
+    /// Distinct `(particle id, chirality)` of the currents, sorted.
+    fn current_species(&self) -> Vec<(i64, i8)> {
+        self.dag.current_species()
+    }
+
+    /// The interaction program for `dag_input.program_input`'s JSON
+    /// (`ColumnarDag::program`).
+    fn program(&self, py: Python<'_>, input: &str) -> PyResult<V2Program> {
+        let input = input.to_owned();
+        py.detach(|| {
+            let input = ProgramInput::from_json(&input)?;
+            self.dag.program(&input)
+        })
+        .map(|program| V2Program { program })
+        .map_err(dag_error)
+    }
+
+    /// The source currents, in `sources` order (see [`SourceRow`]).
+    fn source_rows(&self) -> Vec<SourceRow> {
+        let t = &self.dag.tables;
+        self.dag
+            .sources
+            .iter()
+            .map(|source| {
+                let id = *source as usize;
+                let colour = &t.colours[self.dag.c_colour[id] as usize];
+                (
+                    *source,
+                    t.species[self.dag.c_species[id] as usize].pdg,
+                    self.dag.c_chirality[id],
+                    self.dag.c_spin[id],
+                    (
+                        colour.accuracy.clone(),
+                        colour.sector_id,
+                        colour.line_groups.clone(),
+                        colour.basis_key.clone(),
+                        colour.traces.clone(),
+                        colour.lines.clone(),
+                    ),
+                    self.dag.c_dimension[id],
+                    self.dag.c_leg[id],
+                    self.dag.c_helicity[id],
+                    self.dag.c_ancestry[id],
+                )
+            })
+            .collect()
+    }
+
+    /// `(vertex kind, vertex particles, coupling)` of the interactions `ids`.
+    fn interaction_rows(&self, ids: Vec<u32>) -> PyResult<Vec<InteractionRow>> {
+        ids.into_iter()
+            .map(|id| {
+                let k = id as usize;
+                if k >= self.dag.interaction_count() {
+                    return Err(PyValueError::new_err(format!("no interaction {id}")));
+                }
+                let vertex = &self.dag.tables.vertices[self.dag.i_vertex[k] as usize];
+                let [re, im] = self.dag.i_coupling[k];
+                Ok((vertex.kind, vertex.particles, (re, im)))
+            })
+            .collect()
+    }
+
     /// Coloured particle ids propagated by non-source, non-auxiliary
     /// currents (the current scan of `blocks.ward_breaking_fields`).
     fn coloured_propagated(&self, py: Python<'_>, tables: &str) -> PyResult<Vec<i64>> {
@@ -263,5 +457,6 @@ impl V2Dag {
 }
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<V2Dag>()
+    module.add_class::<V2Dag>()?;
+    module.add_class::<V2Program>()
 }

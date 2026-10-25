@@ -1676,6 +1676,466 @@ def u1_leaking_structures(program: NativeCountertermBlocks) -> frozenset[Any]:
     return _u1_leaking(program.recursion, program.dag)
 
 
+# ------------------------------------------------------------------ program (A5)
+
+PROGRAM_INPUT_SCHEMA = "pyamplicol.loop-v2.dag-program-input/1"
+
+# Rule 1: the flag of the native interaction-program emission (A5, R2). On,
+# the native lane's export (``native_trees._CountertermTrees.of``) builds the
+# counterterm program's interaction program from the native DAG
+# (``V2Dag.program``) and the model's kernels, without decoding the DAG or
+# building its runtime schema; off (or for a DAG the tree engine built), the
+# Python ``TreeRows`` and ``native_trees._interaction_program``, which stay
+# the oracle.
+NATIVE_PROGRAM = True
+
+_VARIANTS = ("source", "unpropagated", "propagated")
+
+
+def _canonical(value: Any) -> Any:
+    """``value`` as the runtime schema's canonical mapping holds it
+    (``assemble._canonical_runtime_schema``: canonical JSON, sorted keys)."""
+
+    return json.loads(
+        json.dumps(value, allow_nan=False, separators=(",", ":"), sort_keys=True)
+    )
+
+
+class _ValueSlots(Mapping[tuple[int, str], tuple[int, int]]):
+    """``(current id, variant) -> (component start, dimension)`` of a native
+    program's value slots (one per current), as ``_CountertermTrees.slots``
+    maps the runtime schema's, without a Python dict per slot."""
+
+    def __init__(self, starts: bytes, variants: bytes, value_count: int) -> None:
+        self._starts = array("Q")
+        self._starts.frombytes(starts)
+        if sys.byteorder != "little":
+            self._starts.byteswap()
+        self._variants = variants
+        self._value_count = value_count
+
+    def _slot(self, current: int) -> tuple[int, int]:
+        start = self._starts[current]
+        stop = (
+            self._starts[current + 1]
+            if current + 1 < len(self._starts)
+            else self._value_count
+        )
+        return int(start), int(stop - start)
+
+    def __getitem__(self, key: tuple[int, str]) -> tuple[int, int]:
+        current, variant = key
+        if (
+            not isinstance(current, int)
+            or not 0 <= current < len(self._variants)
+            or _VARIANTS[self._variants[current]] != variant
+        ):
+            raise KeyError(key)
+        return self._slot(current)
+
+    def __iter__(self) -> Any:
+        for current, variant in enumerate(self._variants):
+            yield (current, _VARIANTS[variant])
+
+    def __len__(self) -> int:
+        return len(self._variants)
+
+
+@dataclass(frozen=True)
+class NativeTreeRows:
+    """What the native lane's export reads of a DAG's ``assemble.TreeRows``
+    (``native_trees._CountertermTrees``, ``_parameter_program``), from the
+    native DAG: the runtime schema's model parameters (``_records``), source
+    fill, momentum slots, value slots and parameter layout, and the model's
+    derived-parameter definitions. No ``GenericDAG`` and no Θ(DAG) schema
+    mapping is built."""
+
+    compiled: Any
+    model: Any
+    dag: NativeDag
+    _records: list[dict[str, Any]]
+    _definitions: dict[str, Any]
+    _value_count: int
+    _offset: int
+    _size: int
+    momentum_slots: list[list[int]]
+    source_fill: dict[str, Any]
+    slots: _ValueSlots
+    # (particle id, chirality) -> the canonical propagator payload.
+    propagators: Mapping[tuple[int, int], Any]
+
+
+def _program_input(
+    dag: NativeDag, model: Any, pole_orders: Iterable[str]
+) -> tuple[str, dict[tuple[int, int], Any]]:
+    """``V2Dag.program``'s JSON input (schema ``PROGRAM_INPUT_SCHEMA``): per
+    ``(particle id, chirality)`` of the DAG's currents whether the model's
+    propagator applies (``Model._propagator_ir``, asked for every current as
+    the runtime schema does), and the pole orders; with the canonical
+    propagator payloads."""
+
+    propagators: dict[tuple[int, int], Any] = {}
+    applies = []
+    for pdg, chirality in dag._native_handle().current_species():
+        propagator = model._propagator_ir(int(pdg), int(chirality))
+        propagators[(int(pdg), int(chirality))] = _canonical(propagator.to_json_dict())
+        applies.append([int(pdg), int(chirality), bool(propagator.applies_propagator)])
+    text = json.dumps(
+        {
+            "schema": PROGRAM_INPUT_SCHEMA,
+            "propagators": applies,
+            "pole_orders": sorted(str(name) for name in pole_orders),
+        },
+        separators=(",", ":"),
+    )
+    return text, propagators
+
+
+def native_tree_rows(
+    dag: NativeDag, compiled: Any, *, pole_orders: Iterable[str] = ()
+) -> tuple[NativeTreeRows, Any]:
+    """The export's view of ``TreeRows(dag, compiled)`` and the DAG's native
+    interaction program (``V2Program``), for a loop-request DAG
+    whose every current is propagated (the slice's tree rows; a CT
+    program's, ``ct_closure.program_propagated_currents``), with the
+    program's pole currents those of a non-zero power of ``pole_orders``.
+
+    The Θ(DAG) layout is native (``V2Dag.program``, its module docs); the
+    model's parts run the runtime schema's own functions on the few currents
+    and interactions they read: the propagators of every (particle,
+    chirality) (``Model._propagator_ir``), the source records of the sources
+    (``runtime_schema._source_records``) and the model-parameter records of
+    one interaction per distinct (vertex, coupling) and one current per
+    particle (``build_runtime_model_parameter_records``), canonical as the
+    schema mapping holds them."""
+
+    from pyamplicol.generation.physics_metadata import (
+        build_runtime_model_parameter_records,
+    )
+    from pyamplicol.generation.runtime_schema import _source_records, _spin_state
+    from pyamplicol.models.external import CompiledUFOModel
+
+    from .assemble import _exact_u1_subtraction_weights
+
+    model = CompiledUFOModel(compiled)
+    handle = dag._native_handle()
+    with _exact_u1_subtraction_weights():
+        text, propagators = _program_input(dag, model, pole_orders)
+        program = _call(handle.program, text)
+        value_count = int(program.value_count())
+        starts, variants = program.slots()
+        slots = _ValueSlots(bytes(starts), bytes(variants), value_count)
+        # The source records, from the oracle's function on the sources.
+        currents: dict[int, Any] = {}
+        current_slots: dict[int, dict[str, Any]] = {}
+        value_slots: dict[tuple[int, str], dict[str, Any]] = {}
+        colour_payloads: dict[Any, dict[str, Any]] = {}
+        source_ids = []
+        for (
+            current,
+            pdg,
+            chirality,
+            spin,
+            colour,
+            dimension,
+            leg,
+            helicity,
+            ancestry,
+        ) in handle.source_rows():
+            colour_state = _colour_state(
+                dict(
+                    zip(
+                        (
+                            "accuracy",
+                            "sector_id",
+                            "line_groups",
+                            "basis_key",
+                            "traces",
+                            "lines",
+                        ),
+                        colour,
+                        strict=True,
+                    )
+                )
+            )
+            colour_payloads.setdefault(colour_state, colour_state.to_json_dict())
+            currents[current] = SimpleNamespace(
+                id=current,
+                index=SimpleNamespace(
+                    particle_id=pdg,
+                    chirality=chirality,
+                    spin_state=spin,
+                    color_state=colour_state,
+                ),
+                dimension=dimension,
+                is_source=True,
+                source_leg_label=None if leg == _NO_LEG else leg,
+                source_helicity=None if helicity == _NO_HELICITY else helicity,
+            )
+            start, size = slots[(current, "source")]
+            current_slots[current] = {
+                "component_start": start,
+                "component_stop": start + size,
+                "spin_state": _spin_state(spin),
+                "helicity_ancestry": hex(ancestry),
+            }
+            value_slots[(current, "source")] = {
+                "value_slot_id": current,
+                "current_id": current,
+                "variant": "source",
+                "component_start": start,
+                "component_stop": start + size,
+                "dimension": dimension,
+            }
+            source_ids.append(current)
+        sources = SimpleNamespace(
+            process=dag.process, sources=tuple(source_ids), currents=currents
+        )
+        source_fill = _canonical(
+            {
+                "source_count": len(source_ids),
+                "sources": _source_records(
+                    sources,  # type: ignore[arg-type]
+                    model,
+                    current_slots=current_slots,  # type: ignore[arg-type]
+                    value_slots=value_slots,
+                    color_state_payloads=colour_payloads,
+                ),
+            }
+        )
+        # The model-parameter records, from the oracle's function on the
+        # distinct (vertex, coupling) and particles.
+        signatures = program.signatures()
+        parameters = build_runtime_model_parameter_records(
+            SimpleNamespace(  # type: ignore[arg-type]
+                interactions=tuple(
+                    SimpleNamespace(
+                        vertex_kind=kind,
+                        vertex_particles=tuple(particles),
+                        coupling=tuple(coupling),
+                    )
+                    for kind, particles, coupling in handle.interaction_rows(signatures)
+                ),
+                currents=tuple(
+                    SimpleNamespace(index=SimpleNamespace(particle_id=pdg))
+                    for pdg in program.particles()
+                ),
+            ),
+            model,
+            amplitude_stage={"roots": []},
+        )
+    records = sorted(_canonical(parameters), key=lambda r: r["parameter_index"])
+    definitions = {
+        record.name: record.resolved_expression
+        for record in compiled.ir.parameters
+        if record.nature == "internal"
+    }
+    definitions.update(
+        {
+            f"derived_coupling_{term.id}": term.coupling_expression
+            for term in compiled.ir.vertex_terms
+        }
+    )
+    masks = [int(mask) for mask in program.momentum_masks()]
+    offset = value_count + 4 * len(masks)
+    rows = NativeTreeRows(
+        compiled=compiled,
+        model=model,
+        dag=dag,
+        _records=records,
+        _definitions=definitions,
+        _value_count=value_count,
+        _offset=offset,
+        _size=offset + len(records),
+        momentum_slots=[
+            [value_count + 4 * slot, mask] for slot, mask in enumerate(masks)
+        ],
+        source_fill=source_fill,
+        slots=slots,
+        propagators=propagators,
+    )
+    return rows, program
+
+
+def native_interaction_program(
+    rows: NativeTreeRows, program: Any
+) -> tuple[dict[str, Any], tuple[bytes, ...]]:
+    """``native_trees._interaction_program`` of ``rows`` and its native
+    ``program`` (``native_tree_rows``; its pole steps those of the pole
+    orders given there): the native steps and the
+    kernels, compiled once per shape in their first use from the
+    representative the oracle builds them from, by the oracle's recipe
+    (model component expressions on canonical symbols, saved exact
+    Symbolica evaluators; vertex kernels first, then propagators)."""
+
+    from symbolica import Expression, FunctionDefinition
+
+    from pyamplicol._internal.physics.symbols import symbols as registry
+    from pyamplicol.generation.stage_parameters import (
+        _logical_model_parameter_symbols,
+        _model_symbolica_functions,
+        _specialize_stage_symbolica_functions,
+    )
+    from pyamplicol.models._physics_ir import PropagatorIR
+
+    from .assemble import _canonical_stage
+    from .native_trees import _exact_weight, _fraction_text
+
+    records = rows._records
+    model_symbols = [
+        registry.qualified(f"pyamplicol_v2_trees::m{i}") for i in range(len(records))
+    ]
+    model = rows.model.with_runtime_parameters(
+        _logical_model_parameter_symbols(
+            records,
+            {
+                str(r["name"]): sym
+                for r, sym in zip(records, model_symbols, strict=True)
+            },
+        )
+    )
+    saved: dict[str, list[bytes]] = {"kernels": [], "propagators": []}
+    shapes: dict[str, list[list[int]]] = {"kernels": [], "propagators": []}
+
+    def symbols(name: str, count: int) -> list[Any]:
+        return [
+            registry.qualified(f"pyamplicol_v2_trees::{name}{i}") for i in range(count)
+        ]
+
+    def compile_kernel(kind: str, build: Any) -> None:
+        inputs, components = build()
+        outputs, retained = _specialize_stage_symbolica_functions(
+            list(components), _model_symbolica_functions(model)
+        )
+        outputs, parameters, functions = _canonical_stage(
+            SimpleNamespace(
+                output_expressions=list(outputs),
+                parameter_symbols=[*inputs, *model_symbols],
+                symbolica_functions=list(retained),
+            )
+        )
+        evaluator = Expression.evaluator_multiple(
+            outputs,
+            parameters,
+            functions=[
+                FunctionDefinition(function, arguments, body, inlining="always")
+                for function, arguments, body in functions
+            ],
+            jit_compile=False,
+        )
+        saved[kind].append(bytes(evaluator.save()))
+        shapes[kind].append([len(inputs) + len(model_symbols), len(outputs)])
+
+    uses = program.kernels()
+    vertex_rows = dict(
+        zip(
+            (item for kind, _key, item in uses if kind == "kernels"),
+            rows.dag._native_handle().interaction_rows(
+                [item for kind, _key, item in uses if kind == "kernels"]
+            ),
+            strict=True,
+        )
+    )
+    for kind, key, item in uses:
+        if kind == "kernels":
+            # key: (vertex kind, result pdg, result chirality, left
+            # chirality, right chirality, left dimension, right dimension).
+            coupling = tuple(vertex_rows[item][2])
+
+            def build(
+                key: Sequence[int] = key,
+                coupling: tuple[float, ...] = coupling,
+            ) -> tuple[list[Any], Any]:
+                lhs, rhs = symbols("l", key[5]), symbols("r", key[6])
+                pl, pr = symbols("pl", 4), symbols("pr", 4)
+                return [*lhs, *rhs, *pl, *pr], model.vertex_component_expression(
+                    key[0],
+                    lhs,
+                    rhs,
+                    result_particle_id=key[1],
+                    result_chirality=key[2],
+                    left_chirality=key[3],
+                    right_chirality=key[4],
+                    coupling=coupling,
+                    left_momentum=pl,
+                    right_momentum=pr,
+                )
+
+        else:
+            payload = rows.propagators[(key[0], key[1])]
+
+            def build(
+                key: Sequence[int] = key, payload: Any = payload
+            ) -> tuple[list[Any], Any]:
+                value, momentum = symbols("v", key[2]), symbols("p", 4)
+                return [*value, *momentum], model.propagator_component_expression(
+                    key[0],
+                    value,
+                    momentum,
+                    chirality=key[1],
+                    propagator=PropagatorIR.from_json_dict(dict(payload)),
+                )
+
+        compile_kernel(kind, build)
+    texts = []
+    for real, imag in program.weights():
+        weight = _exact_weight(complex(real, imag))
+        texts.append((_fraction_text(weight.real), _fraction_text(weight.imag)))
+    record = {
+        "kernels": shapes["kernels"],
+        "propagators": shapes["propagators"],
+        "steps": program.steps(texts),
+    }
+    return record, (*saved["kernels"], *saved["propagators"])
+
+
+def native_counterterm_trees(program: Any, offset: int) -> Any:
+    """``native_trees._CountertermTrees.of(program, offset)`` from the CT
+    program's native DAG (``NATIVE_PROGRAM``); ``None`` where the program's
+    DAG is the tree engine's (or the flag is off): the caller takes the
+    Python ``TreeRows``."""
+
+    from pyamplicol.models.loading import counterterm_slot_order
+
+    from .native_trees import _CountertermTrees
+
+    dag = program.blocks.blocks.blocks_dag
+    if not NATIVE_PROGRAM or type(dag) is not NativeDag:
+        return None
+    pole_orders = {
+        counterterm_slot_order(*slot)
+        for slot in program.recursion.slots
+        if slot[1] != 0
+    }
+    released = dag.released
+    rows, native = native_tree_rows(
+        dag, program.recursion.model.lowered.compiled, pole_orders=pole_orders
+    )
+    interactions, saved = native_interaction_program(rows, native)
+    del native
+    if released:
+        # As after generation: the columns are not held to the end.
+        dag.release()
+    model_count = len(rows._records)
+    record = {
+        "offset": offset,
+        "state_size": max(rows._size, rows._offset + model_count),
+        "model_offset": rows._offset,
+        "model_count": model_count,
+        "momentum_slots": rows.momentum_slots,
+        "source_fill": rows.source_fill,
+        "interactions": interactions,
+    }
+    return _CountertermTrees(
+        rows,
+        record,
+        tuple(saved),
+        rows.slots,
+        frozenset(id(block) for block in program.blocks.blocks.blocks),
+        dict(program.recursion.parameter_values(poles=True)),
+    )
+
+
 # ------------------------------------------------------------------ reuse oracle
 
 REUSE_SCHEMA = "pyamplicol.loop-v2.dag-reuse/1"
