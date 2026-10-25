@@ -59,7 +59,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
 from pyamplicol.color.contraction_types import NC
@@ -448,6 +448,10 @@ class _CountertermTrees:
     # ``id`` of every block of the program.
     blocks: frozenset[int]
     fixed: Mapping[str, int]
+    # The referenced counterterm scalars' coefficient parameters
+    # (``ct_recursion.CountertermModel.coefficients``) and their scalar plan.
+    coefficients: Mapping[str, tuple[str, int, str]] = MappingProxyType({})
+    coefficient_plan: Any = None
 
     @classmethod
     def of(cls, program: Any, offset: int) -> _CountertermTrees:
@@ -501,6 +505,8 @@ class _CountertermTrees:
             slots,
             frozenset(id(block) for block in program.blocks.blocks.blocks),
             dict(program.recursion.parameter_values(poles=True)),
+            MappingProxyType(dict(program.recursion.model.coefficients)),
+            program.recursion.model.coefficient_plan,
         )
 
 
@@ -894,9 +900,47 @@ def _parameter_program(
     # multiplicities and slot switches of the request (integers fixed per
     # process; every slot on, finite-only evaluations skip the pole terms).
     counterterm_model = []
+    # Diagnostics and helper bodies of the referenced counterterm scalars.
+    coefficient_finite: list[int] = []
+    coefficient_helpers: dict[Any, Any] = {}
     if counterterm_trees is not None:
         ct_rows = counterterm_trees.rows
         fixed = counterterm_trees.fixed
+        coefficients = counterterm_trees.coefficients
+        coefficient_output: dict[str, int] = {}
+        if coefficients:
+            # Their Laurent coefficients, from the scalar library's exact
+            # bodies on the program's inputs (the helpers stay calls); the
+            # lowered couplings read each as (real part, imaginary part).
+            plan = counterterm_trees.coefficient_plan
+            plan_replacements = []
+            for name, symbol in zip(
+                plan.external_names, plan.input_symbols, strict=True
+            ):
+                if name not in index:
+                    raise NotImplementedError(
+                        f"the counterterm scalars read {name!r}, which the tree "
+                        "program has not"
+                    )
+                plan_replacements.append(Replacement(symbol, symbol_of[name]))
+            column = {output_: i for i, output_ in enumerate(plan.outputs)}
+            for name, (scalar_name, power, _part) in sorted(coefficients.items()):
+                expression = plan.expressions[column[(scalar_name, power)]]
+                coefficient_output[name] = output(
+                    ("ct-coefficient", scalar_name, power),
+                    lambda e=expression: e.value.replace_multiple(plan_replacements),
+                )
+                if expression.diagnostic != 0:
+                    coefficient_finite.append(
+                        output(
+                            ("ct-coefficient-diagnostic", scalar_name, power),
+                            lambda e=expression: e.diagnostic.replace_multiple(
+                                plan_replacements
+                            ),
+                        )
+                    )
+            for head, body in plan.program.library._bodies.items():
+                coefficient_helpers.setdefault(head, body)
         ct_symbols = symbols.model(ct_rows.compiled.name)
         ct_externals = []
         for record in ct_rows._records:
@@ -908,6 +952,18 @@ def _parameter_program(
                 ct_externals.append(Replacement(symbol, symbol_of[name]))
             elif name in fixed:
                 ct_externals.append(Replacement(symbol, Expression.num(fixed[name])))
+            elif name in coefficients:
+                # The couplings read a coefficient only as real + i imaginary
+                # part (``CoefficientLowering``): the complex value stands for
+                # the real part and the imaginary part is zero.
+                ct_externals.append(
+                    Replacement(
+                        symbol,
+                        outputs[coefficient_output[name]]
+                        if coefficients[name][2] == "re"
+                        else Expression.num(0),
+                    )
+                )
             else:
                 raise NotImplementedError(
                     f"the counterterm program reads {name!r}, which the trees have not"
@@ -918,6 +974,15 @@ def _parameter_program(
                 name = str(record["name"])
                 if name in index:
                     counterterm_model.append(["input", index[name], False])
+                    continue
+                if name in coefficients:
+                    counterterm_model.append(
+                        [
+                            "output",
+                            coefficient_output[name],
+                            coefficients[name][2] == "im",
+                        ]
+                    )
                     continue
                 o = output(("ct-fixed", name), lambda v=fixed[name]: Expression.num(v))
                 counterterm_model.append(["output", o, False])
@@ -975,7 +1040,7 @@ def _parameter_program(
 
     # Counterterm and field couplings per epsilon power and N_c grade; they
     # may read the renormalisation scale (one value per point).
-    counterterm_outputs, finite = [], []
+    counterterm_outputs, finite = [], list(coefficient_finite)
     used: set[int] = set()
 
     def scalar(name: str, power: int, grade: int) -> Any:
@@ -1018,7 +1083,7 @@ def _parameter_program(
         )
     # The scalar library's helper functions (e.g. ``cond``, ``reglog``) the
     # counterterm and field couplings call; every plan shares the library.
-    helpers: dict[Any, Any] = {}
+    helpers: dict[Any, Any] = dict(coefficient_helpers)
     for p in sorted(used):
         for head, body in plans[p].program.library._bodies.items():
             if helpers.setdefault(head, body) != body:

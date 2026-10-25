@@ -75,6 +75,7 @@ from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import reduce
 from operator import add, mul
+from types import MappingProxyType
 from typing import Any
 
 from pyamplicol.models.ct_color_flow import (
@@ -144,13 +145,50 @@ def _coefficient_is_zero(entry: Any, power: int) -> bool:
     return entry.coupling.value.coefficient(power).expand() == E("0")
 
 
-def rule_terms(rule: Any) -> tuple[tuple[Any, CountertermStructure], ...]:
+def _degree(expression: Any, symbols_: frozenset) -> float:
+    """Polynomial degree of ``expression`` in ``symbols_`` (infinite when one
+    of them is in a function argument, a denominator or a non-integer
+    power)."""
+
+    from symbolica import AtomType
+
+    kind = expression.get_type()
+    if kind == AtomType.Num:
+        return 0
+    if kind == AtomType.Var:
+        return 1 if expression in symbols_ else 0
+    children = list(expression)
+    if kind == AtomType.Add:
+        return max(_degree(child, symbols_) for child in children)
+    if kind == AtomType.Mul:
+        return sum(_degree(child, symbols_) for child in children)
+    if kind == AtomType.Pow:
+        base, exponent = children
+        degree = _degree(base, symbols_)
+        if not degree:
+            return 0 if not _degree(exponent, symbols_) else float("inf")
+        if exponent.get_type() == AtomType.Num:
+            number = exponent.to_canonical_string()
+            if number.isdigit():
+                return degree * int(number)
+        return float("inf")
+    if any(_degree(child, symbols_) for child in children):
+        return float("inf")
+    return 0
+
+
+def rule_terms(
+    rule: Any, is_zero: Any = None
+) -> tuple[tuple[Any, CountertermStructure], ...]:
     """(entry, lowered vertex term) of one rule, per entry and non-zero power.
 
     A Laurent coefficient that vanishes identically in the model's source
-    program (e.g. the poles of an R2 coupling) has no slot.
+    program (e.g. the poles of an R2 coupling) has no slot. ``is_zero``
+    (``entry, power -> bool``, default ``_coefficient_is_zero``) decides it,
+    e.g. ``CoefficientLowering.is_zero``.
     """
 
+    is_zero = _coefficient_is_zero if is_zero is None else is_zero
     component = COMPONENT_BY_KIND[rule.kind]
     return tuple(
         (
@@ -166,7 +204,7 @@ def rule_terms(rule: Any) -> tuple[tuple[Any, CountertermStructure], ...]:
         )
         for entry in rule.entries
         for power in COUNTERTERM_POWERS
-        if not _coefficient_is_zero(entry, power)
+        if not is_zero(entry, power)
     )
 
 
@@ -240,6 +278,65 @@ class TreeVocabulary:
 # ------------------------------------------------------------------- coefficients
 
 
+# The UFO-standard bodies of the helpers the lowering resolves at generation
+# (MadGraph's ``function_library``), with their arguments. A model's bound
+# body is resolved only when it is structurally this one (the scalar
+# library's lowering of both is equal); a model that rebinds the name (the
+# G_mu UFO's ``reglog`` with reglogm semantics) keeps its own body.
+_STANDARD_HELPERS = {
+    "cond": (
+        ("condition", "ExprTrue", "ExprFalse"),
+        "(ExprTrue if condition==0.0 else ExprFalse)",
+    ),
+    "reglog": (("z",), "(0.0 if z==0.0 else cmath.log(z))"),
+    "complexconjugate": (("z",), "z.conjugate()"),
+}
+
+
+def standard_helpers(library: Any) -> dict[int, str]:
+    """Record ids of the helpers of a ``ScalarFunctionLibrary`` whose bound
+    bodies are the UFO-standard ``cond``, ``reglog`` or ``complexconjugate``
+    (``_STANDARD_HELPERS``), with that name."""
+
+    out: dict[int, str] = {}
+    for name, (value, diagnostic, arguments) in library.helpers.items():
+        standard = _STANDARD_HELPERS.get(name)
+        if standard is None or len(standard[0]) != len(arguments):
+            continue
+        parameters, body = library._bodies[value]
+        lowered = library.lower(
+            standard[1],
+            locals=dict(zip(standard[0], parameters, strict=True)),
+            closed=True,
+        )
+        if (
+            lowered.value == body
+            and lowered.diagnostic == library._bodies[diagnostic][1]
+        ):
+            out[int(value.get_name().rsplit("_", 1)[1])] = name
+    return out
+
+
+def _counterterm_coefficient_name(scalar: str, power: int, part: str) -> str:
+    """The lowered model's external parameter of one part (``"RE"`` or
+    ``"IM"``) of a counterterm scalar's epsilon^``power`` coefficient."""
+
+    return f"{_PREFIX}P_{scalar}_EPS{-power}_{part}"
+
+
+def _coefficient_default(name: str) -> float:
+    """A generic default of a coefficient parameter: a binary fraction in
+    [1, 1.5) fixed by the name, so that no lowered coupling vanishes at the
+    defaults by a coincidence of equal values (``lower_counterterm_vertices``).
+    The defaults are never evaluated: the runtime binds every coefficient
+    (``CountertermModel.coefficient_values``)."""
+
+    import hashlib
+
+    digest = int(hashlib.sha256(name.encode()).hexdigest()[:5], 16)
+    return 1.0 + digest / 2.0**21
+
+
 class CoefficientLowering:
     """Laurent coefficients of CT couplings as exact tree-model expressions.
 
@@ -252,17 +349,36 @@ class CoefficientLowering:
       ``Ncol``, ``lhv`` in loop_sm, exact from their UFO source literals) are
       substituted; the compiled payload keeps such constants only as binary64
       values, which would cap arbitrary precision at about 1e-16, and
-    * the UFO helper calls are resolved: ``cond(c, a, b)`` is ``a`` for a
-      vanishing number ``c`` and ``b`` otherwise, ``reglog(z)`` is 0 for a
-      vanishing number and ``log(z)`` otherwise, ``complexconjugate`` is
-      ``conj``. Only the selected branch of a ``cond`` is resolved. A ``c``
-      or ``z`` free of model parameters (numbers, builtin constants such as
-      ``𝜋`` and builtin functions of them) is decided here
+    * the UFO-standard helper calls are resolved (``standard_helpers``: the
+      model's bound body is the UFO-standard one): ``cond(c, a, b)`` is ``a``
+      for a vanishing number ``c`` and ``b`` otherwise, ``reglog(z)`` is 0 for
+      a vanishing number and ``log(z)`` otherwise, ``complexconjugate`` is
+      ``conj``. Only the selected branch of a ``cond`` is resolved, and the
+      fixed parameters are substituted while resolving, so the branch that is
+      not taken is never formed (no infinity of a fixed zero mass in it).
+      A ``c`` or ``z`` free of model parameters (numbers, builtin constants
+      such as ``𝜋`` and builtin functions of them) is decided here
       (``decide_constant``); one that depends on model parameters is
       recorded in ``assumptions`` without its constant factors (the
       parameter-dependent product that must not vanish at runtime, checked
-      by ``CountertermModel.check_parameters``). An undecidable constant and
-      any other helper raise ``CountertermCouplingError``.
+      by ``CountertermModel.check_parameters``). An undecidable constant, a
+      non-finite coefficient and any other helper raise
+      ``CountertermCouplingError``.
+
+    **Referenced counterterm scalars** (WP3.2 EWI-3). A coupling that reads a
+    counterterm scalar (a UFO ``CTParameter``, or a parameter with epsilon)
+    whose body calls any other helper (the electroweak ``re``, ``recms``,
+    ``regsqrt``, ``reglogp``, ``grreglog``, or a rebound ``reglog``) is not
+    inlined: the NLOCT couplings are linear in their counterterm scalars, so
+    each Laurent coefficient of the coupling is a linear combination of the
+    scalars' own coefficients, and the lowering writes it on one external
+    parameter pair (real, imaginary part) of the lowered model per scalar and
+    epsilon power (``coefficients``). The runtime binds those parameters from
+    the scalars' exact bodies, with the helpers as the model's scalar library
+    functions (``CountertermModel.coefficient_plan``, the scalar program the
+    Born and site couplings use), so every counterterm body is evaluated once
+    per point and one helper semantics serves every lane. A coupling that is
+    not linear in its counterterm scalars raises ``CountertermCouplingError``.
     """
 
     def __init__(
@@ -297,21 +413,232 @@ class CoefficientLowering:
         self._zero = E("0")
         self._log, self._conj = symbols.qualified("symbolica::log", "symbolica::conj")
         self.assumptions: set[str] = set()
+        # Fixed parameters and constants are substituted at the leaves while
+        # resolving (``_resolve``): an untaken branch is never formed.
+        self._substitution = dict(self._fixed)
+        from pyamplicol.loops.scalar_frontend import ScalarFunctionLibrary
+
+        self._standard = standard_helpers(
+            ScalarFunctionLibrary(compiled.raw_loop_model)
+        )
+        # Referenced counterterm scalars: parameter name -> (scalar name,
+        # epsilon power, "re" | "im"), and the scalar program they belong to.
+        self.coefficients: dict[str, tuple[str, int, str]] = {}
+        self.program: Any = None
+        self._referenced_couplings: dict[tuple[int, int], Any] = {}
+        self._scalar_names: dict[int, dict[str, tuple[str, int]]] = {}
+        self._library_bodies: dict[tuple[int, tuple[str, int]], bool] = {}
+        self._scalar_powers: dict[tuple[int, str], frozenset[int]] = {}
 
     def __call__(self, entry: Any, power: int) -> Any:
-        expression = entry.coupling.value.coefficient(power)
-        for symbol, value in self._fixed:
-            expression = expression.replace(symbol, value)
-        return self._resolve(expression).expand()
+        referenced = self._referenced(entry)
+        if referenced is not None:
+            return self._referenced_coefficient(entry, power, referenced)
+        return self._finite(self._resolve(entry.coupling.value.coefficient(power)))
 
     def payload_expression(self, expression: Any) -> Any:
         """An expression in source (``UFO::name``) symbols, e.g. a whole-rule
         coefficient, as a coefficient in the payload's symbols."""
 
-        expression = _payload_symbols(expression)
-        for symbol, value in self._fixed:
-            expression = expression.replace(symbol, value)
-        return self._resolve(expression).expand()
+        return self._finite(self._resolve(_payload_symbols(expression)))
+
+    def is_zero(self, entry: Any, power: int) -> bool:
+        """Whether the epsilon^``power`` coefficient of ``entry``'s coupling
+        vanishes identically: in the referenced form when the coupling reads
+        a referenced counterterm scalar (no inlined body is expanded),
+        otherwise in the source scalar program (``_coefficient_is_zero``)."""
+
+        referenced = self._referenced(entry)
+        if referenced is None:
+            return _coefficient_is_zero(entry, power)
+        return _is_zero(self._referenced_coefficient(entry, power, referenced))
+
+    def _finite(self, value: Any) -> Any:
+        value = value.expand()
+        if value.is_finite() is False:
+            raise CountertermCouplingError(
+                f"counterterm coefficient {value} is not finite (an infinite or "
+                "indeterminate value of the model's fixed parameters)"
+            )
+        return value
+
+    # -- referenced counterterm scalars -----------------------------------------
+
+    def _referenced(self, entry: Any) -> Any:
+        """``(coupling value, ((scalar name, symbol), ...))`` when the coupling
+        of ``entry`` reads a counterterm scalar that needs the model's scalar
+        library (class docstring), else ``None``."""
+
+        from symbolica import E
+
+        from pyamplicol.loops.scalar_frontend import SourceScalarDefinition
+
+        program = getattr(entry, "scalar_program", None)
+        coupling = entry.coupling
+        if (
+            program is None
+            or not isinstance(coupling, SourceScalarDefinition)
+            or coupling.collection != "couplings"
+        ):
+            return None
+        key = (id(program), coupling.id)
+        if key in self._referenced_couplings:
+            return self._referenced_couplings[key]
+        library = program.library
+        names = self._names(program)
+        original = library.lower_value(
+            library.raw.exact_value("couplings", coupling.id)
+        )
+        scalars = tuple(
+            sorted(
+                (symbol.get_name().rsplit("::", 1)[-1], symbol)
+                for symbol in original.value.get_all_symbols(False)
+                if symbol.get_name().startswith("UFO::")
+                and symbol.get_name().rsplit("::", 1)[-1] in names
+                and self._counterterm_scalar(
+                    program, names[symbol.get_name().rsplit("::", 1)[-1]]
+                )
+            )
+        )
+        found = None
+        if any(self._needs_library(program, names[name]) for name, _ in scalars):
+            if original.diagnostic != E("0"):
+                raise CountertermCouplingError(
+                    f"the coupling {coupling.name} has a conditional of its own"
+                )
+            symbols_ = frozenset(symbol for _name, symbol in scalars)
+            if _degree(original.value, symbols_) > 1:
+                raise CountertermCouplingError(
+                    f"the coupling {coupling.name} is not linear in its "
+                    "counterterm scalars "
+                    + ", ".join(name for name, _symbol in scalars)
+                )
+            if self.program is None:
+                self.program = program
+            elif self.program is not program:
+                raise CountertermCouplingError(
+                    "counterterm couplings of two scalar programs in one lowering"
+                )
+            found = (original.value, scalars)
+        self._referenced_couplings[key] = found
+        return found
+
+    def _names(self, program: Any) -> dict[str, tuple[str, int]]:
+        found = self._scalar_names.get(id(program))
+        if found is None:
+            found = self._scalar_names[id(program)] = {
+                definition.name: key for key, definition in program.definitions.items()
+            }
+        return found
+
+    @staticmethod
+    def _counterterm_scalar(program: Any, key: tuple[str, int]) -> bool:
+        """A UFO counterterm parameter, or a scalar with an epsilon pole."""
+
+        from pyamplicol.loops.model_expressions import epsilon_symbol
+
+        if key[0] == "counterterm_parameters":
+            return True
+        if key[0] != "parameters":
+            return False
+        value = program.definitions[key].value.expression
+        return epsilon_symbol() in value.get_all_symbols()
+
+    def _needs_library(self, program: Any, key: tuple[str, int]) -> bool:
+        """Whether the scalar's body calls a helper that is not resolved at
+        generation (not UFO-standard, ``standard_helpers``)."""
+
+        cached = self._library_bodies.get((id(program), key))
+        if cached is None:
+            definition = program.definitions[key]
+            cached = False
+            for expression in (definition.value.expression, definition.diagnostic):
+                for symbol in expression.get_all_symbols(True):
+                    name = symbol.get_name()
+                    head = name.rsplit("::", 1)[-1]
+                    if (
+                        name.startswith("pyamplicol_scalar_model_")
+                        and head.startswith(("value_", "diagnostic_"))
+                        and int(head.rsplit("_", 1)[1]) not in self._standard
+                    ):
+                        cached = True
+                        break
+                if cached:
+                    break
+            self._library_bodies[(id(program), key)] = cached
+        return cached
+
+    def _powers(self, program: Any, name: str) -> frozenset[int]:
+        """Epsilon powers of a counterterm scalar's non-zero coefficients:
+        those of its source Laurent terms (every counterterm power when its
+        source reads other counterterm scalars)."""
+
+        from symbolica import E
+
+        cached = self._scalar_powers.get((id(program), name))
+        if cached is not None:
+            return cached
+        library = program.library
+        key = self._names(program)[name]
+        source = library.raw.exact_value(*key)
+        original = library.lower_value(source)
+        names = self._names(program)
+        dependent = any(
+            symbol.get_name().rsplit("::", 1)[-1] in names
+            and self._counterterm_scalar(
+                program, names[symbol.get_name().rsplit("::", 1)[-1]]
+            )
+            for symbol in original.value.get_all_symbols(False)
+            if symbol.get_name().startswith("UFO::")
+        )
+        if dependent:
+            powers = frozenset(COUNTERTERM_POWERS)
+        elif source["kind"] == "laurent":
+            powers = frozenset(
+                int(power)
+                for power, text in source["terms"]
+                if library.lower(text).value != E("0")
+            )
+        else:
+            powers = frozenset((0,))
+        self._scalar_powers[(id(program), name)] = powers
+        return powers
+
+    def _referenced_coefficient(
+        self, entry: Any, power: int, referenced: tuple[Any, Any]
+    ) -> Any:
+        """The epsilon^``power`` coefficient of a linear coupling on the
+        coefficient parameters of its counterterm scalars."""
+
+        from symbolica import E, Expression, Replacement
+
+        value, scalars = referenced
+        program = entry.scalar_program
+        replacements = []
+        for name, symbol in scalars:
+            if power not in self._powers(program, name):
+                replacements.append(Replacement(symbol, E("0")))
+                continue
+            real, imaginary = (
+                _counterterm_coefficient_name(name, power, part)
+                for part in ("RE", "IM")
+            )
+            self.coefficients[real] = (name, power, "re")
+            self.coefficients[imaginary] = (name, power, "im")
+            replacements.append(
+                Replacement(
+                    symbol,
+                    E(f"UFO::{{}}::{real}")
+                    + E(f"UFO::{{}}::{imaginary}") * Expression.I,
+                )
+            )
+        coefficient = value.replace_multiple(replacements)
+        if power:
+            # The coupling's part free of counterterm scalars has no pole.
+            coefficient -= value.replace_multiple(
+                [Replacement(symbol, E("0")) for _name, symbol in scalars]
+            )
+        return self._finite(self._resolve(_payload_symbols(coefficient)))
 
     def _resolve(self, atom: Any) -> Any:
         from symbolica import AtomType
@@ -319,8 +646,10 @@ class CoefficientLowering:
         from pyamplicol._internal.physics.symbols import symbols
 
         kind = atom.get_type()
-        if kind in (AtomType.Num, AtomType.Var):
+        if kind == AtomType.Num:
             return atom
+        if kind == AtomType.Var:
+            return getattr(self, "_substitution", {}).get(atom, atom)
         if kind in (AtomType.Add, AtomType.Mul, AtomType.Pow):
             children = [self._resolve(child) for child in atom]
             if kind == AtomType.Add:
@@ -335,7 +664,11 @@ class CoefficientLowering:
             name.startswith("pyamplicol_scalar_model_") and head.startswith("value_")
         ):
             return symbols.qualified(name)(*(self._resolve(child) for child in atom))
-        helper = self._helpers.get(int(head.removeprefix("value_")))
+        record = int(head.removeprefix("value_"))
+        # Only UFO-standard bodies are resolved by name (a lowering built
+        # without a model, e.g. in a test of the resolution alone, resolves
+        # its named helpers).
+        helper = getattr(self, "_standard", self._helpers).get(record)
         if helper == "cond":
             # The branch that is not taken is never resolved: its conditions
             # are no assumptions (and its fixed-parameter singularities, e.g.
@@ -353,8 +686,9 @@ class CoefficientLowering:
             (argument,) = children
             return self._conj(argument)
         raise CountertermCouplingError(
-            f"counterterm coefficient uses the UFO helper {helper!r}, which the "
-            "tree model has no exact form of"
+            f"counterterm coefficient uses the UFO helper "
+            f"{self._helpers.get(record, helper)!r}, which the tree model has no "
+            "exact form of"
         )
 
     def _vanishes(self, value: Any) -> bool:
@@ -516,6 +850,13 @@ class CountertermModel:
     with the multiplicities ``weights`` (module docstring): cell -> (why it is
     not lowered, {Laurent power: exact coefficient}). ``veto`` are the
     vetoed |PDG| codes (``particle_veto``).
+
+    ``coefficients`` maps every external parameter of the lowered model that
+    holds a part of a referenced counterterm scalar's Laurent coefficient
+    (``CoefficientLowering``) to (scalar name, epsilon power, ``"re"`` or
+    ``"im"``); ``coefficient_plan`` (a ``scalar_bindings.ScalarBindingPlan``
+    over those (scalar, power) outputs, with the model's scalar library) binds
+    them at runtime (``coefficient_values``).
     """
 
     lowered: CountertermLoweredModel
@@ -532,6 +873,40 @@ class CountertermModel:
     weights: Mapping[RuleKey, int] = field(default_factory=dict)
     inert: frozenset[RuleKey] = frozenset()
     veto: frozenset[int] = frozenset()
+    coefficients: Mapping[str, tuple[str, int, str]] = field(default_factory=dict)
+    coefficient_plan: Any = field(default=None, compare=False, repr=False)
+
+    def coefficient_values(
+        self, parameters: Mapping[str, str], digits: int, *, backend: Any = None
+    ) -> dict[str, str]:
+        """The coefficient parameters (``coefficients``) at the model
+        ``parameters`` (decimal strings; absent ones take their exact source
+        defaults, fixed ones keep their generation values) as decimal strings,
+        evaluated by the scalar library in arbitrary precision with
+        ``digits`` digits. A non-finite value or active diagnostic raises
+        ``scalar_bindings.SourceBindingFailure``."""
+
+        if not self.coefficients:
+            return {}
+        from pyamplicol.loops.scalar_bindings import NativeScalarBindings
+
+        plan = self.coefficient_plan
+        state = NativeScalarBindings(
+            plan,
+            arithmetic="arbitrary",
+            precision=digits,
+            backend=backend,
+            parameters={
+                name: value
+                for name, value in parameters.items()
+                if name in plan.external_names
+            },
+        )
+        values = dict(zip(plan.outputs, state.values.to_decimal(), strict=True))
+        return {
+            name: values[(scalar, power)][part == "im"]
+            for name, (scalar, power, part) in self.coefficients.items()
+        }
 
     def check_parameters(self, values: Mapping[str, Any]) -> None:
         """Fail if runtime model parameter ``values`` break an assumption.
@@ -677,14 +1052,16 @@ def lower_model_counterterms(
                         continue
                     powers = cells.setdefault(entry_cell(entry), (reason, {}))[1]
                     for power in COUNTERTERM_POWERS:
-                        if _coefficient_is_zero(entry, power):
+                        if coefficients.is_zero(entry, power):
                             continue
                         value = coefficients(entry, power)
                         powers[power] = (
                             powers[power] + value if power in powers else value
                         )
             for entry, structure in (
-                rule_terms(rule) if rule.whole_rule_continuation is None else ()
+                rule_terms(rule, coefficients.is_zero)
+                if rule.whole_rule_continuation is None
+                else ()
             ):
                 if entry_cell(entry) in cells:
                     continue
@@ -708,6 +1085,24 @@ def lower_model_counterterms(
                 continue
         # A coefficient the fixed parameters make vanish has no vertex term.
         values[key] = {s: value for s, value in rows.items() if not _is_zero(value)}
+
+    # Referenced counterterm scalars: every coefficient must be finite at the
+    # model's default card (with the request's fixed parameters); a rule that
+    # reads a non-finite one is not lowered.
+    plan = None
+    if coefficients.coefficients:
+        plan, nonfinite = _coefficient_plan(
+            coefficients, values, fixed_parameters or {}
+        )
+        for key in sorted(values, key=repr):
+            bad = _reads(values[key], nonfinite)
+            if bad:
+                del values[key]
+                residual[key] = (
+                    "its counterterm coefficients "
+                    + ", ".join(sorted(bad))
+                    + " are not finite at the model's default parameters"
+                )
 
     def vanishes(expression: Any) -> bool:
         return vanishes_identically(compiled, expression)
@@ -734,6 +1129,11 @@ def lower_model_counterterms(
         if abs(int(item["pdg_code"])) in veto
     }
     parameters = dict.fromkeys((*multiplicities.values(), *switches.values()), 1.0)
+    read = _reads(
+        {s: v for rows in values.values() for s, v in rows.items()},
+        frozenset(coefficients.coefficients),
+    )
+    parameters.update({name: _coefficient_default(name) for name in sorted(read)})
     refused: dict[CountertermStructure, str] = {}
     while True:
         try:
@@ -778,7 +1178,255 @@ def lower_model_counterterms(
             weights={key: weights[key] for key in unlowered},
             inert=frozenset(inert),
             veto=veto,
+            coefficients={
+                name: coefficients.coefficients[name]
+                for name in sorted(
+                    _reads(
+                        {s: v for rows in values.values() for s, v in rows.items()},
+                        frozenset(coefficients.coefficients),
+                    )
+                )
+            },
+            coefficient_plan=plan,
         )
+
+
+def _reads(rows: Mapping[Any, Any], names: frozenset[str]) -> frozenset[str]:
+    """The parameters of ``names`` the expressions of ``rows`` read."""
+
+    if not names:
+        return frozenset()
+    out = set()
+    for value in rows.values():
+        for symbol in value.get_all_symbols(False):
+            name = symbol.get_name().rsplit("::", 1)[-1]
+            if name in names:
+                out.add(name)
+    return frozenset(out)
+
+
+# The scalar library's predicates (``scalar_frontend``) and conditional.
+_PREDICATE_PREFIX = "pyamplicol_scalar_v1::"
+_IF = "symbolica::if"
+
+
+def _exact_real(value: Any) -> Fraction | None:
+    """The rational of an exact real number atom, else ``None``."""
+
+    from symbolica import AtomType
+
+    if value.get_type() != AtomType.Num:
+        return None
+    try:
+        return Fraction(value.to_canonical_string())
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def _decided_predicate(name: str, arguments: list[Any]) -> Any:
+    """A scalar-library predicate on exact real numbers, decided (``1`` or
+    ``0``; the projections give the number), else ``None``."""
+
+    from symbolica import E
+
+    head = name.removeprefix(_PREDICATE_PREFIX)
+    numbers = [_exact_real(argument) for argument in arguments]
+    if any(number is None for number in numbers):
+        return None
+    if head in ("real_part", "imaginary_part") and len(numbers) == 1:
+        return arguments[0] if head == "real_part" else E("0")
+    if head == "truth" and len(numbers) == 1:
+        return E("1" if numbers[0] != 0 else "0")
+    if len(numbers) != 2:
+        return None
+    left, right = numbers
+    decision = {
+        "equal": left == right,
+        "less": left < right,
+        "less_equal": left <= right,
+    }.get(head)
+    return None if decision is None else E("1" if decision else "0")
+
+
+def lazily_fixed(expression: Any, values: Mapping[Any, Any], conds: Any) -> Any:
+    """``expression`` with the symbols of ``values`` replaced, top down:
+    a conditional (``symbolica::if``, or a call of a UFO-standard ``cond``
+    helper of ``conds``: head name -> ``"value"`` or ``"diagnostic"``) whose
+    condition the replacement decides keeps only its taken branch, so the
+    branch that is not taken is never formed (e.g. the 1/MB^2 of a
+    ``cond(MB, ...)`` at MB = 0, which Symbolica would make an infinity that
+    no evaluator accepts). A decided ``cond`` diagnostic is finite, i.e. 0.
+    Subexpressions free of those symbols are kept as they are."""
+
+    from symbolica import AtomType, E
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    keys = frozenset(values)
+
+    def walk(atom: Any) -> Any:
+        if not keys.intersection(atom.get_all_symbols(False)):
+            return atom
+        kind = atom.get_type()
+        if kind == AtomType.Var:
+            return values.get(atom, atom)
+        children = list(atom)
+        if kind in (AtomType.Add, AtomType.Mul, AtomType.Pow):
+            children = [walk(child) for child in children]
+            if kind == AtomType.Add:
+                return reduce(add, children)
+            if kind == AtomType.Mul:
+                return reduce(mul, children)
+            return children[0] ** children[1]
+        name = atom.get_name()
+        role = _IF if name == _IF else conds.get(name)
+        if role is not None and len(children) == 3:
+            condition = walk(children[0])
+            number = _exact_real(condition)
+            if number is not None:
+                if role == "diagnostic":
+                    return E("0")
+                # if(c, a, b) takes a for c != 0; cond(c, a, b) for c == 0.
+                taken = (number != 0) if role == _IF else (number == 0)
+                return walk(children[1] if taken else children[2])
+            children = [condition, *(walk(child) for child in children[1:])]
+        else:
+            children = [walk(child) for child in children]
+        if name.startswith(_PREDICATE_PREFIX):
+            decided = _decided_predicate(name, children)
+            if decided is not None:
+                return decided
+        return symbols.qualified(name)(*children)
+
+    return walk(expression)
+
+
+def _coefficient_plan(
+    coefficients: CoefficientLowering,
+    values: Mapping[RuleKey, Mapping[CountertermStructure, Any]],
+    fixed_parameters: Mapping[str, Any],
+) -> tuple[Any, frozenset[str]]:
+    """The scalar plan of the referenced counterterm scalars the lowered
+    ``values`` read, and the coefficient parameters that are not finite (or
+    whose active diagnostic is not) at the model's default card in binary64
+    (hygiene: a non-finite value is never lowered).
+
+    The fixed parameters are the plan's generation constants, substituted
+    lazily (``lazily_fixed``)."""
+
+    from dataclasses import replace as replaced
+    from decimal import Decimal
+
+    from pyamplicol.loops.scalar_bindings import (
+        _normalize_parameter_values,
+        prepare_scalar_bindings,
+    )
+    from pyamplicol.loops.scalar_frontend import ScalarExpression
+
+    read = _reads(
+        {s: v for rows in values.values() for s, v in rows.items()},
+        frozenset(coefficients.coefficients),
+    )
+    outputs = sorted({coefficients.coefficients[name][:2] for name in read})
+    if not outputs:
+        return None, frozenset()
+    program = coefficients.program
+    library = program.library
+    free = prepare_scalar_bindings(library.raw, outputs, program=program)
+    fixed = _normalize_parameter_values(
+        dict(fixed_parameters), free.external_names, free.external_types
+    )
+    inputs = dict(zip(free.external_names, free.input_symbols, strict=True))
+    substitution = {
+        inputs[name]: library.lower(f"complex({Decimal(re)},{Decimal(im)})").value
+        for name, (re, im) in fixed.items()
+    }
+    conds = {}
+    if "cond" in standard_helpers(library).values():
+        value, diagnostic, _arguments = library.helpers["cond"]
+        conds[value.get_name()] = "value"
+        conds[diagnostic.get_name()] = "diagnostic"
+    kept = [i for i, name in enumerate(free.external_names) if name not in fixed]
+    plan = replaced(
+        free,
+        external_names=tuple(free.external_names[i] for i in kept),
+        external_types=tuple(free.external_types[i] for i in kept),
+        input_symbols=tuple(free.input_symbols[i] for i in kept),
+        defaults=tuple(free.defaults[i] for i in kept),
+        expressions=tuple(
+            ScalarExpression(
+                lazily_fixed(e.value, substitution, conds),
+                lazily_fixed(e.diagnostic, substitution, conds),
+            )
+            for e in free.expressions
+        ),
+        fixed_parameters=MappingProxyType(fixed),
+    )
+    nonfinite = {
+        output
+        for output, e in zip(plan.outputs, plan.expressions, strict=True)
+        if e.value.is_finite() is False or e.diagnostic.is_finite() is False
+    }
+    if nonfinite:
+        # Never handed to an evaluator: Symbolica refuses infinite constants.
+        plan = replaced(
+            plan,
+            outputs=tuple(o for o in plan.outputs if o not in nonfinite),
+            expressions=tuple(
+                e
+                for o, e in zip(plan.outputs, plan.expressions, strict=True)
+                if o not in nonfinite
+            ),
+        )
+    if plan.outputs:
+        nonfinite |= _nonfinite_at_defaults(plan)
+    bad = frozenset(
+        name for name in read if coefficients.coefficients[name][:2] in nonfinite
+    )
+    return (plan if plan.outputs else None), bad
+
+
+def _nonfinite_at_defaults(plan: Any) -> set[tuple[str, int]]:
+    """Outputs of ``plan`` whose value or active diagnostic is not finite at
+    the model's default parameters in binary64."""
+
+    from decimal import Decimal
+
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.scalar_bindings import (
+        NativeScalarBindings,
+        SourceBindingFailure,
+    )
+
+    backend = load_loop_native()
+    try:
+        NativeScalarBindings(plan, backend=backend)
+        return set()
+    except SourceBindingFailure as failure:
+        if failure.stage != "model scalar values and active diagnostics":
+            raise
+    prepared = plan.prepared
+    options = {"arithmetic": "double", "precision": None}
+    empty = backend.NativeBatch.from_decimal([], 1, 0, **options)
+    arguments = empty
+    if prepared.defaults_state is not None:
+        defaults = backend.CoefficientEvaluator(prepared.defaults_state, **options)
+        arguments = defaults.evaluate_batch(empty).take_columns(
+            list(range(0, 2 * len(prepared.external_names), 2))
+        )
+    computed = (
+        backend.CoefficientEvaluator(prepared.values_state, **options)
+        .evaluate_batch(arguments)
+        .to_decimal()
+    )
+    return {
+        output
+        for index, output in enumerate(plan.outputs)
+        if not all(
+            Decimal(x).is_finite()
+            for x in (*computed[2 * index], *computed[2 * index + 1])
+        )
+    }
 
 
 def uncancelled_rules(
