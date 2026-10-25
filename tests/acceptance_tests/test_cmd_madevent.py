@@ -483,8 +483,19 @@ class TestMECmdShell(unittest.TestCase):
         self.assertGreater(len(set(biased_events_wgts)),1)
         # Make sure that there is significantly more events in the ptj tail
         self.assertGreater(biased_median_ptj,5.0*unbiased_median_ptj)
-        # Make sure that the cross-section is close enough for the bias and unbiased samples
-        self.assertLess((abs(biased_events.cross-unbiased_events.cross)/abs(unbiased_events.cross)),0.1)
+        # Make sure that the cross-section is close enough for the bias and
+        # unbiased samples. The biased sample estimates it from its event
+        # weights, which have a long tail (low ptj events carry large
+        # weights): its statistical error is ~4.5% for 10k events, so a
+        # fixed 10% (~2 sigma) tolerance fails for some seeds.
+        nb = len(biased_events_wgts)
+        mean_wgt = sum(biased_events_wgts) / nb
+        stat_err = math.sqrt(sum((w - mean_wgt)**2 for w in biased_events_wgts)
+                             / (nb - 1) / nb)
+        self.assertLess(abs(biased_events.cross-unbiased_events.cross),
+                        4 * stat_err,
+                        'biased %s +- %s vs unbiased %s' % (biased_events.cross,
+                                                stat_err, unbiased_events.cross))
 
     def test_madspin_gridpack(self):
 
@@ -2071,6 +2082,53 @@ class TestMECmdShell(unittest.TestCase):
                     )
                 )
 
+
+    def test_t_channel_survey_grid(self):
+        """check that refining on the survey grid is not biased for
+        u q > z u q (all channels pure t-channel chains). With the grid
+        defined on [-1,1] while the variables are in [0,1], the survey grid
+        starved the regions close to the kinematic end-points (below the
+        lowest x seen): the rare huge weights from there biased the refine
+        low (96.6 pb, -2.3%, averaged over 4 seeds).
+        Reference (fixed scale 91.188, default PDF) from high statistics
+        (8 iterations up to 2.5M points per channel, pooled over seeds):
+        98.840 +- 0.017 pb; madspace gives 98.78 +- 0.02 pb.
+        Only the grouped output is checked here (the non-grouped one is
+        test_madevent_merged_flavor_nogroup_symmetry)."""
+
+        from unittest import mock
+        gen_ximprove = MECmd.gen_ximprove
+
+        target = 98.84
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('define q = u d')
+        mg_cmd.exec_cmd('generate u q > z u q')
+        mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 10000, user=True)
+        run_card.set('iseed', 21, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('scale', 91.188, user=True)
+        run_card.set('dsqrt_q2fact1', 91.188, user=True)
+        run_card.set('dsqrt_q2fact2', 91.188, user=True)
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        # never split the refine jobs: they then restart from the
+        # survey grid (with a fixed grid)
+        with mock.patch.object(gen_ximprove.gen_ximprove_v4, 'max_request_event', 10**9):
+            self.do('generate_events -f')
+        val = self.cmd_line.results.current['cross']
+        err = self.cmd_line.results.current['error']
+        self.assertLess(abs(val - target) / target, 0.012,
+                        '%s +- %s vs %s' % (val, err, target))
 
     def test_madevent_merged_flavor_nogroup_symmetry(self):
         """u q > z u q (q = u d) without subprocess grouping: one
