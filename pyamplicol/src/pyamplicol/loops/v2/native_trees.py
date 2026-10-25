@@ -452,17 +452,41 @@ class _CountertermTrees:
     @classmethod
     def of(cls, program: Any, offset: int) -> _CountertermTrees:
         # A5: the interaction program of a native CT DAG, without its decode
-        # and runtime schema (``dag_input.NATIVE_PROGRAM``; this path stays
-        # the oracle).
+        # and runtime schema (``dag_input.NATIVE_PROGRAM``); ``_program`` on
+        # the Python rows stays the oracle. Both give the rows, value slots,
+        # momentum slots, source fill, interaction program and saved kernels.
         from .dag_input import native_counterterm_trees
 
-        native = native_counterterm_trees(program, offset)
-        if native is not None:
-            return native  # type: ignore[no-any-return]
+        native = native_counterterm_trees(program)
+        rows, slots, momentum_slots, source_fill, interactions, saved = (
+            cls._program(program) if native is None else native
+        )
+        model_count = len(rows._records)
+        record = {
+            "offset": offset,
+            "state_size": max(rows._size, rows._offset + model_count),
+            "model_offset": rows._offset,
+            "model_count": model_count,
+            "momentum_slots": momentum_slots,
+            "source_fill": source_fill,
+            "interactions": interactions,
+        }
+        return cls(
+            rows,
+            record,
+            tuple(saved),
+            slots,
+            frozenset(id(block) for block in program.blocks.blocks.blocks),
+            dict(program.recursion.parameter_values(poles=True)),
+        )
+
+    @staticmethod
+    def _program(program: Any) -> tuple[Any, ...]:
+        """The parts of ``of`` from the program's Python ``TreeRows``."""
+
         rows = program.rows
         schema = rows.schema
         value_count = rows._value_count
-        model_count = len(rows._records)
         slots: dict[tuple[int, str], tuple[int, int]] = {}
         for record in schema["value_storage"]["value_slots"]:
             key = (int(record["current_id"]), str(record["variant"]))
@@ -493,23 +517,7 @@ class _CountertermTrees:
             )
         )
         interactions, saved = _interaction_program(rows, pole_currents)
-        record = {
-            "offset": offset,
-            "state_size": max(rows._size, rows._offset + model_count),
-            "model_offset": rows._offset,
-            "model_count": model_count,
-            "momentum_slots": momentum_slots,
-            "source_fill": schema["source_fill"],
-            "interactions": interactions,
-        }
-        return cls(
-            rows,
-            record,
-            tuple(saved),
-            slots,
-            frozenset(id(block) for block in program.blocks.blocks.blocks),
-            dict(program.recursion.parameter_values(poles=True)),
-        )
+        return rows, slots, momentum_slots, schema["source_fill"], interactions, saved
 
 
 @dataclass(frozen=True)
