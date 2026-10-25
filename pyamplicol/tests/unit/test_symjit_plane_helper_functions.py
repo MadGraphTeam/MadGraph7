@@ -146,8 +146,8 @@ SYMJIT_RANDOM_CALL_TAG = (
     "SymJIT 2.27.3 tags every external call with a rand::random() constant "
     "(compiler.rs translate_external_fun, against CSE), so the stored IR of a "
     "program calling the scalar primitives differs between compilations; the "
-    "values do not (upstream patch prepared: "
-    "workspace/reports/engine-v2/upstream/symjit-x86-portability/)"
+    "values do not, and a stored application recompiles to the same code at "
+    "every load (still in SymJIT 2.28.1; not filed upstream yet)"
 )
 
 
