@@ -883,6 +883,58 @@ def test_fixture_stability_rows_stay_apart_and_decide_the_worst_point(tmp_path):
     assert "worst_point" not in out
 
 
+def test_a_worst_deviation_the_double_double_value_repeats_is_the_references():
+    """Beyond the binary64 estimate E, a worst deviation that pyAmpliCol's
+    double-double value repeats is the reference's own (u u~ > g g g g g,
+    Recola at point 0); one the DD value removes stays pyAmpliCol's (no
+    attribution), and so does a deviation within E."""
+
+    builder = _report_builder()
+
+    def vs(dev):
+        return {
+            "points": 3,
+            "max_finite_deviation": dev,
+            "median_finite_deviation": dev,
+            "worst_point": 0,
+        }
+
+    cfg = {"values_vs_providers": {"madloop": vs(1.2e-12), "recola": vs(2.9e-10)}}
+
+    def row(arithmetic, estimate, devs):
+        return {
+            "index": 0,
+            "arithmetic": arithmetic,
+            "configuration": "native/full",
+            "estimate": estimate,
+            "deviation_vs_providers": devs,
+        }
+
+    def worst(dd_recola, b64_estimate=1.9e-11):
+        proc = {
+            "key": "uux_ggggg",
+            "stability": [
+                row("double", b64_estimate, {"madloop": 1.2e-12, "recola": 2.9e-10}),
+                row("double-double", 1e-27, {"madloop": 1.4e-12, "recola": dd_recola}),
+            ],
+        }
+        out = builder._validation_g1(proc, cfg, "native/full", "src", "native/full")
+        return out["worst_point"]
+
+    wp = worst(2.9e-10)
+    assert wp["within_estimate"] is False and wp["dd_closest"] == 1.4e-12
+    assert wp["reference_own"] == {
+        "key": "recola",
+        "short": "Rc",
+        "dd_deviation": 2.9e-10,
+        "dd_estimate": 1e-27,
+    }
+    # The DD value agrees with the reference: the binary64 loss is ours.
+    assert "reference_own" not in worst(1e-15)
+    # Within E: nothing to attribute.
+    assert "reference_own" not in worst(2.9e-10, b64_estimate=1e-9)
+
+
 @pytest.mark.loop_physics
 def test_a_stored_process_loads_and_evaluates_bitwise_equal(tmp_path, loop_native):
     import json
