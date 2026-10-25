@@ -376,6 +376,36 @@ def test_gate_floor_below_five_milliseconds():
     # At 5 ms and above the gate applies.
     assert gate.gate_verdict(0.005, {"openloops": 0.001})["status"] == "fail"
     assert gate.gate_verdict(0.006, {"openloops": 0.005})["status"] == "pass"
+    # The batched time decides (floor_basis): a B = 1 time above 5 ms of a
+    # configuration batched below it is not gated either, and conversely.
+    one = gate.gate_verdict(0.009, times, floor_basis=0.003)
+    assert one["status"] == gate.GATE_FLOOR_STATUS
+    assert one["floor_basis_seconds"] == 0.003
+    assert gate.gate_verdict(0.004, times, floor_basis=0.006)["status"] == "fail"
+
+
+def test_floor_basis_is_the_largest_batch_and_the_default_configuration():
+    def config(inputs, accuracy, batches):
+        return {
+            "inputs": inputs,
+            "accuracy": accuracy,
+            "batches": {
+                str(b): {"median_seconds_per_point": t} for b, t in batches.items()
+            },
+        }
+
+    bases = gate.floor_bases(
+        {
+            "native/full": config("native", "full", {1: 0.009, 32: 0.003, 128: 0.0027}),
+            "native/full/L1": config("native", "full", {1: 0.004}),
+            "python/full": config("python", "full", {1: 0.1}),
+        }
+    )
+    assert bases == {
+        "native/full": 0.0027,
+        "native/full/L1": 0.0027,
+        "python/full": None,
+    }
 
 
 OLD_ROOT = "/nonexistent-old-root/workspace/reference"
