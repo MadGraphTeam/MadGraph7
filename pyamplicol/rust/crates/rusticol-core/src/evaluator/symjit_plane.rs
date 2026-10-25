@@ -861,9 +861,10 @@ pub(crate) fn compile_symbolica_evaluator_to_plane_application_bytes(
 /// output in fresh temporaries, its constants appended to the program's and
 /// its labels renumbered past every label in use; the call's destination
 /// receives the body's output last, so a destination that is also an
-/// argument is read before it is written. Nested sub-evaluators inline
-/// recursively. The evaluated arithmetic is unchanged (the Python twin is
-/// `evaluators/symbolica_helpers._InlinedProgram`).
+/// argument is read before it is written. Nested sub-evaluators inline in
+/// turn, on an explicit stack of bodies (no depth limit: the export is a
+/// finite tree of owned bodies). The evaluated arithmetic is unchanged (the
+/// Python twin is `evaluators/symbolica_helpers._InlinedProgram`).
 #[cfg(all(
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
@@ -879,48 +880,86 @@ struct InlinedProgram {
     feature = "symbolica-runtime",
     any(test, feature = "python-generation-bridge")
 ))]
-impl InlinedProgram {
-    const MAX_DEPTH: usize = 64;
+type Exported = symbolica::evaluate::ExportedInstructions<symbolica::domains::float::Complex<f64>>;
 
-    fn of(
-        exported: &symbolica::evaluate::ExportedInstructions<
-            symbolica::domains::float::Complex<f64>,
-        >,
-    ) -> RusticolResult<Self> {
-        let mut program = Self {
+/// A body being inlined: its next instruction, its slots in the program's
+/// slots, its label offset and, for a call, the call's destination and the
+/// body's output temporary.
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+struct InlineFrame<'a> {
+    program: &'a Exported,
+    next: usize,
+    /// `None` for the top level (its slots are the program's).
+    call: Option<InlineCall>,
+    offset: usize,
+}
+
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+struct InlineCall {
+    destination: symbolica::evaluate::Slot,
+    arguments: Vec<symbolica::evaluate::Slot>,
+    temporaries: usize,
+    output: usize,
+    constants: usize,
+}
+
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+impl InlineFrame<'_> {
+    fn slot(&self, slot: symbolica::evaluate::Slot) -> symbolica::evaluate::Slot {
+        use symbolica::evaluate::Slot;
+        let Some(call) = &self.call else {
+            return slot;
+        };
+        match slot {
+            Slot::Param(index) => call.arguments[index],
+            Slot::Temp(index) => Slot::Temp(call.temporaries + index),
+            Slot::Out(index) => Slot::Temp(call.output + index),
+            Slot::Const(index) => Slot::Const(call.constants + index),
+        }
+    }
+}
+
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+impl InlinedProgram {
+    fn of(exported: &Exported) -> RusticolResult<Self> {
+        use symbolica::evaluate::{Instruction as I, Slot};
+        let mut inlined = Self {
             rows: Vec::new(),
             constants: exported.constants.clone(),
             temporaries: exported.temporary_count,
             next_label: 1 + max_label(&exported.instructions).unwrap_or(0),
         };
-        program.emit(exported, &|slot| slot, 0)?;
-        Ok(program)
-    }
-
-    fn emit(
-        &mut self,
-        program: &symbolica::evaluate::ExportedInstructions<
-            symbolica::domains::float::Complex<f64>,
-        >,
-        slot_of: &dyn Fn(symbolica::evaluate::Slot) -> symbolica::evaluate::Slot,
-        depth: usize,
-    ) -> RusticolResult<()> {
-        use symbolica::evaluate::{Instruction as I, Slot};
-        if depth > Self::MAX_DEPTH {
-            return Err(RusticolError::serialization(
-                "Symbolica function bodies nest too deeply",
-            ));
-        }
-        let offset = if depth == 0 {
-            0
-        } else {
-            let offset = self.next_label;
-            self.next_label += 1 + max_label(&program.instructions).unwrap_or(0);
-            offset
-        };
-        let writes_parameter = |slot: &Slot| depth > 0 && matches!(slot, Slot::Param(_));
-        let list = |slots: &[Slot]| slots.iter().map(|&slot| slot_of(slot)).collect::<Vec<_>>();
-        for row in &program.instructions {
+        let mut stack = vec![InlineFrame {
+            program: exported,
+            next: 0,
+            call: None,
+            offset: 0,
+        }];
+        while let Some(frame) = stack.last_mut() {
+            let program = frame.program;
+            let Some(row) = program.instructions.get(frame.next) else {
+                if let Some(call) = &frame.call {
+                    inlined
+                        .rows
+                        .push(I::Assign(call.destination, Slot::Temp(call.output)));
+                }
+                stack.pop();
+                continue;
+            };
+            frame.next += 1;
+            let frame = &*frame;
             let destination = match row {
                 I::Add(o, ..)
                 | I::Mul(o, ..)
@@ -931,20 +970,25 @@ impl InlinedProgram {
                 | I::Join(o, ..) => Some(*o),
                 I::IfElse(..) | I::Goto(_) | I::Label(_) => None,
             };
-            if destination.as_ref().is_some_and(writes_parameter) {
+            if frame.call.is_some() && matches!(destination, Some(Slot::Param(_))) {
                 return Err(RusticolError::serialization(
                     "a Symbolica function body writes one of its parameters",
                 ));
             }
+            let list = |slots: &[Slot]| slots.iter().map(|&slot| frame.slot(slot)).collect();
+            let offset = frame.offset;
             let mapped = match row {
-                I::Add(o, args, reals) => I::Add(slot_of(*o), list(args), *reals),
-                I::Mul(o, args, reals) => I::Mul(slot_of(*o), list(args), *reals),
+                I::Add(o, args, reals) => I::Add(frame.slot(*o), list(args), *reals),
+                I::Mul(o, args, reals) => I::Mul(frame.slot(*o), list(args), *reals),
                 I::Pow(o, base, exponent, real) => {
-                    I::Pow(slot_of(*o), slot_of(*base), *exponent, *real)
+                    I::Pow(frame.slot(*o), frame.slot(*base), *exponent, *real)
                 }
-                I::Powf(o, base, exponent, real) => {
-                    I::Powf(slot_of(*o), slot_of(*base), slot_of(*exponent), *real)
-                }
+                I::Powf(o, base, exponent, real) => I::Powf(
+                    frame.slot(*o),
+                    frame.slot(*base),
+                    frame.slot(*exponent),
+                    *real,
+                ),
                 I::Fun(o, call, real) => {
                     let (symbol, tags, args) = &**call;
                     let body = program
@@ -952,39 +996,41 @@ impl InlinedProgram {
                         .iter()
                         .find(|sub| sub.symbol == *symbol && sub.tags == *tags);
                     if let Some(body) = body {
-                        self.inline(slot_of(*o), list(args), &body.instructions, depth)?;
+                        let entered =
+                            inlined.enter(frame.slot(*o), list(args), &body.instructions)?;
+                        stack.push(entered);
                         continue;
                     }
                     I::Fun(
-                        slot_of(*o),
+                        frame.slot(*o),
                         Box::new((*symbol, tags.clone(), list(args))),
                         *real,
                     )
                 }
-                I::Assign(o, value) => I::Assign(slot_of(*o), slot_of(*value)),
-                I::IfElse(condition, label) => I::IfElse(slot_of(*condition), label + offset),
+                I::Assign(o, value) => I::Assign(frame.slot(*o), frame.slot(*value)),
+                I::IfElse(condition, label) => I::IfElse(frame.slot(*condition), label + offset),
                 I::Goto(label) => I::Goto(label + offset),
                 I::Label(label) => I::Label(label + offset),
                 I::Join(o, condition, yes, no) => I::Join(
-                    slot_of(*o),
-                    slot_of(*condition),
-                    slot_of(*yes),
-                    slot_of(*no),
+                    frame.slot(*o),
+                    frame.slot(*condition),
+                    frame.slot(*yes),
+                    frame.slot(*no),
                 ),
             };
-            self.rows.push(mapped);
+            inlined.rows.push(mapped);
         }
-        Ok(())
+        Ok(inlined)
     }
 
-    fn inline(
+    /// The frame of a call's body: its temporaries, output and constants
+    /// appended to the program's, its labels past every label in use.
+    fn enter<'a>(
         &mut self,
         destination: symbolica::evaluate::Slot,
         arguments: Vec<symbolica::evaluate::Slot>,
-        body: &symbolica::evaluate::ExportedInstructions<symbolica::domains::float::Complex<f64>>,
-        depth: usize,
-    ) -> RusticolResult<()> {
-        use symbolica::evaluate::{Instruction as I, Slot};
+        body: &'a Exported,
+    ) -> RusticolResult<InlineFrame<'a>> {
         if body.output_count != 1 || arguments.len() != body.input_count {
             return Err(RusticolError::serialization(
                 "a Symbolica function body must have one output and the call's arity",
@@ -995,15 +1041,20 @@ impl InlinedProgram {
         self.temporaries = output + 1;
         let constants = self.constants.len();
         self.constants.extend(body.constants.iter().cloned());
-        let slot_of = move |slot: Slot| match slot {
-            Slot::Param(index) => arguments[index],
-            Slot::Temp(index) => Slot::Temp(temporaries + index),
-            Slot::Out(index) => Slot::Temp(output + index),
-            Slot::Const(index) => Slot::Const(constants + index),
-        };
-        self.emit(body, &slot_of, depth + 1)?;
-        self.rows.push(I::Assign(destination, Slot::Temp(output)));
-        Ok(())
+        let offset = self.next_label;
+        self.next_label += 1 + max_label(&body.instructions).unwrap_or(0);
+        Ok(InlineFrame {
+            program: body,
+            next: 0,
+            call: Some(InlineCall {
+                destination,
+                arguments,
+                temporaries,
+                output,
+                constants,
+            }),
+            offset,
+        })
     }
 }
 

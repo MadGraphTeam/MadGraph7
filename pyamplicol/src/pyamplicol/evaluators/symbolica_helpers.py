@@ -63,7 +63,6 @@ _SLOT_KINDS = frozenset({"param", "out", "temp", "const"})
 _WRITING_KINDS = frozenset(
     {"add", "mul", "pow", "powf", "fun", "external_fun", "assign", "join"}
 )
-_MAX_INLINE_DEPTH = 64
 
 
 class _QuotedName:
@@ -116,8 +115,10 @@ class _InlinedProgram:
     and output in fresh temporaries, its constants appended to the program's
     and its labels renumbered past every label in use; the call's destination
     receives the body's output last, so a destination that is also an
-    argument is read before it is written. Nested sub-evaluators inline
-    recursively. The evaluated arithmetic is unchanged.
+    argument is read before it is written. Nested sub-evaluators inline in
+    turn, on an explicit stack of bodies (no depth limit: the export is a
+    finite tree of bodies). The evaluated arithmetic is unchanged (the Rust
+    twin is ``rusticol-core`` ``symjit_plane::InlinedProgram``).
     """
 
     def __init__(self, exported: Any):
@@ -125,36 +126,38 @@ class _InlinedProgram:
         self.constants = list(exported.constants)
         self.temporary_count = exported.temporary_count
         self.next_label = 1 + max(_instruction_labels(exported.instructions), default=0)
-        self._emit(exported, lambda slot: slot, 0)
+        self._inline_all(exported)
 
     def result(self) -> tuple[list[Any], int, list[Any]]:
         return self.rows, self.temporary_count, self.constants
 
-    def _emit(self, program: Any, slot_of: Any, depth: int) -> None:
-        if depth > _MAX_INLINE_DEPTH:
-            raise NativeEvaluationError("Symbolica function bodies nest too deeply")
-        bodies = {
-            (repr(sub.function), tuple(map(repr, sub.tags))): sub.evaluator
-            for sub in program.sub_evaluators
-        }
-        label_offset = 0 if depth == 0 else self.next_label
-        if depth:
-            self.next_label += 1 + max(
-                _instruction_labels(program.instructions), default=0
-            )
-        for row in program.instructions:
+    def _inline_all(self, exported: Any) -> None:
+        # A frame: (a body's sub-evaluators, its instructions iterator, its
+        # slot map, its label offset, the call's (destination, output) or
+        # None at the top level).
+        stack = [self._frame(exported, lambda slot: slot, 0, None)]
+        while stack:
+            bodies, rows, slot_of, label_offset, call = stack[-1]
+            row = next(rows, None)
+            if row is None:
+                stack.pop()
+                if call is not None:
+                    destination, output = call
+                    self.rows.append(("assign", destination, ("temp", output)))
+                continue
             kind = row[0]
             body = None
             if kind == "fun":
                 body = bodies.get((repr(row[2]), tuple(map(repr, row[3]))))
             if body is not None:
-                self._inline(row[1], [slot_of(a) for a in row[4]], body, slot_of, depth)
+                arguments = [slot_of(a) for a in row[4]]
+                stack.append(self._enter(slot_of(row[1]), arguments, body))
             elif kind == "if_else":
                 self.rows.append((kind, slot_of(row[1]), row[2] + label_offset))
             elif kind in {"goto", "label"}:
                 self.rows.append((kind, row[1] + label_offset))
             elif kind in _WRITING_KINDS:
-                if depth and row[1][0] == "param":
+                if call is not None and row[1][0] == "param":
                     raise NativeEvaluationError(
                         "a Symbolica function body writes one of its parameters"
                     )
@@ -164,14 +167,21 @@ class _InlinedProgram:
                     f"cannot inline the Symbolica instruction kind {kind!r}"
                 )
 
-    def _inline(
-        self,
-        destination: Any,
-        arguments: list[Any],
-        body: Any,
-        slot_of: Any,
-        depth: int,
-    ) -> None:
+    @staticmethod
+    def _frame(program: Any, slot_of: Any, label_offset: int, call: Any) -> tuple:
+        bodies = {
+            (repr(sub.function), tuple(map(repr, sub.tags))): sub.evaluator
+            for sub in program.sub_evaluators
+        }
+        return (
+            bodies,
+            iter(program.instructions),
+            slot_of,
+            label_offset,
+            call,
+        )
+
+    def _enter(self, destination: Any, arguments: list[Any], body: Any) -> tuple:
         if body.output_count != 1:
             raise NativeEvaluationError(
                 "a Symbolica function body must have exactly one output"
@@ -185,6 +195,8 @@ class _InlinedProgram:
         self.temporary_count = output_base + body.output_count
         constant_base = len(self.constants)
         self.constants.extend(body.constants)
+        label_offset = self.next_label
+        self.next_label += 1 + max(_instruction_labels(body.instructions), default=0)
 
         def body_slot(slot: Any) -> Any:
             kind, index = slot
@@ -196,8 +208,7 @@ class _InlinedProgram:
                 return ("temp", output_base + index)
             return ("const", constant_base + index)
 
-        self._emit(body, body_slot, depth + 1)
-        self.rows.append(("assign", slot_of(destination), ("temp", output_base)))
+        return self._frame(body, body_slot, label_offset, (destination, output_base))
 
 
 def _map_slots(row: Any, slot_of: Any) -> tuple[Any, ...]:
