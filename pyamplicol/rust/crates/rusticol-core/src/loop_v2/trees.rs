@@ -1789,6 +1789,90 @@ fn lane_mul<T: Carrier, const L: usize>(x_re: &mut [T; L], x_im: &mut [T; L], y:
     }
 }
 
+/// `Σ_terms constant × Π input^power` of a closure kernel on complex lanes
+/// (`x`: per kernel input `L` real parts, then `L` imaginary parts), per
+/// lane in the scalar order of `Complex<T>`: each term's product from its
+/// constant, the terms summed from zero.
+#[inline(always)]
+fn kernel_lanes<T: Carrier, const L: usize>(
+    kernel: &[super::plan::KernelTerm],
+    constants: &[Complex<T>],
+    x: &[T],
+    zero: &T,
+) -> ([T; L], [T; L]) {
+    let v = 2 * L;
+    let mut value_re: [T; L] = std::array::from_fn(|_| zero.clone());
+    let mut value_im: [T; L] = std::array::from_fn(|_| zero.clone());
+    for entry in kernel {
+        let constant = &constants[entry.constant];
+        let mut re: [T; L] = std::array::from_fn(|_| constant.re.clone());
+        let mut im: [T; L] = std::array::from_fn(|_| constant.im.clone());
+        for &(input, exponent) in &entry.monomial {
+            let factor = &x[input * v..(input + 1) * v];
+            for _ in 0..exponent {
+                lane_mul::<T, L>(&mut re, &mut im, factor);
+            }
+        }
+        for l in 0..L {
+            value_re[l] += &re[l];
+            value_im[l] += &im[l];
+        }
+    }
+    (value_re, value_im)
+}
+
+/// `kernel_lanes` compiled for AVX-512 and AVX2 (wider vectors for the same
+/// operations: the products and sums of a lane are those of `Complex<T>`,
+/// never fused, so the values are bitwise the baseline's).
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+fn kernel_lanes_avx512<T: Carrier, const L: usize>(
+    kernel: &[super::plan::KernelTerm],
+    constants: &[Complex<T>],
+    x: &[T],
+    zero: &T,
+) -> ([T; L], [T; L]) {
+    kernel_lanes::<T, L>(kernel, constants, x, zero)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+fn kernel_lanes_avx2<T: Carrier, const L: usize>(
+    kernel: &[super::plan::KernelTerm],
+    constants: &[Complex<T>],
+    x: &[T],
+    zero: &T,
+) -> ([T; L], [T; L]) {
+    kernel_lanes::<T, L>(kernel, constants, x, zero)
+}
+
+/// The vector width the closure kernels run in: binary64 lanes take the
+/// widest the running CPU reports (never a build-host feature), the other
+/// carriers the baseline.
+#[derive(Clone, Copy)]
+enum Wide {
+    Baseline,
+    #[cfg(target_arch = "x86_64")]
+    Avx2,
+    #[cfg(target_arch = "x86_64")]
+    Avx512,
+}
+
+impl Wide {
+    fn detect<T: 'static>() -> Self {
+        #[cfg(target_arch = "x86_64")]
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
+            if std::arch::is_x86_feature_detected!("avx512f") {
+                return Self::Avx512;
+            }
+            if std::arch::is_x86_feature_detected!("avx2") {
+                return Self::Avx2;
+            }
+        }
+        Self::Baseline
+    }
+}
+
 impl<T: Carrier> Closure<'_, T> {
     /// Every point's closure in lanes of `L` points (the last lanes of a
     /// batch that `L` does not divide repeat its last point and are
@@ -1811,6 +1895,7 @@ impl<T: Carrier> Closure<'_, T> {
         let inputs = program.layouts.iter().map(Vec::len).max().unwrap_or(0);
         let (state, size) = self.states;
         let (ct_state, ct_size) = self.counterterm_states;
+        let wide = Wide::detect::<T>();
         // Per (lane chunk, row): `width` complex lane vectors.
         let mut sums = vec![zero.clone(); chunks * rows * width * v];
         sums.par_chunks_mut(width * v).enumerate().for_each_init(
@@ -1863,23 +1948,20 @@ impl<T: Carrier> Closure<'_, T> {
                             }
                         }
                     }
-                    let mut value_re: [T; L] = std::array::from_fn(|_| zero.clone());
-                    let mut value_im: [T; L] = std::array::from_fn(|_| zero.clone());
-                    for entry in &self.plan.kernels[term.kernel].outputs[0] {
-                        let constant = &self.constants[entry.constant];
-                        let mut re: [T; L] = std::array::from_fn(|_| constant.re.clone());
-                        let mut im: [T; L] = std::array::from_fn(|_| constant.im.clone());
-                        for &(input, exponent) in &entry.monomial {
-                            let factor = &x[input * v..(input + 1) * v];
-                            for _ in 0..exponent {
-                                lane_mul::<T, L>(&mut re, &mut im, factor);
-                            }
-                        }
-                        for l in 0..L {
-                            value_re[l] += &re[l];
-                            value_im[l] += &im[l];
-                        }
-                    }
+                    let kernel = &self.plan.kernels[term.kernel].outputs[0];
+                    let (mut value_re, mut value_im) = match wide {
+                        // SAFETY: `wide` holds only the features this CPU
+                        // reports (`Wide::detect`).
+                        #[cfg(target_arch = "x86_64")]
+                        Wide::Avx512 => unsafe {
+                            kernel_lanes_avx512::<T, L>(kernel, self.constants, x, zero)
+                        },
+                        #[cfg(target_arch = "x86_64")]
+                        Wide::Avx2 => unsafe {
+                            kernel_lanes_avx2::<T, L>(kernel, self.constants, x, zero)
+                        },
+                        Wide::Baseline => kernel_lanes::<T, L>(kernel, self.constants, x, zero),
+                    };
                     if term.sign < 0 {
                         for l in 0..L {
                             value_re[l] = -value_re[l].clone();
