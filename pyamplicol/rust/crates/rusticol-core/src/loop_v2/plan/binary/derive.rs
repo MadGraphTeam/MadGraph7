@@ -824,11 +824,18 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         let (mut edges_here, mut parts_here) = (0u64, 0u64);
         let mut outputs = buffer::<(u64, usize)>(f.steps.len())?;
         for (index, s) in f.steps.iter().enumerate() {
+            // The loader's own message for a trace step (`from_file`).
             let rank_out = s
                 .rank_in
                 .checked_add(s.degree)
                 .filter(|&rank| rank <= f.rank)
-                .ok_or_else(|| invalid("a step above its family's rank"))?;
+                .ok_or_else(|| {
+                    invalid(if s.trace >= 0 {
+                        "a trace step above the family rank"
+                    } else {
+                        "a step above the family rank"
+                    })
+                })?;
             let (mut targets, mut step): (u64, u64) = (0, 0);
             let edges = s.edges.len() as u64;
             tally.keep(edges, size_of::<Edge>());
@@ -921,11 +928,19 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         let mut weighted = 0u64;
         let mut ranks = buffer::<usize>(merged.states.len())?;
         for (index, s) in merged.states.iter().enumerate() {
+            // A closing state is above its own family's rank too: the
+            // loader's refusal of that closure ("merged closure").
             let rank_out = s
                 .rank_in
                 .checked_add(s.degree)
                 .filter(|&rank| rank <= largest_rank)
-                .ok_or_else(|| invalid("a merged state above every family's rank"))?;
+                .ok_or_else(|| {
+                    invalid(if s.closure.is_some() {
+                        "a merged closure above the family rank"
+                    } else {
+                        "a merged state above every family's rank"
+                    })
+                })?;
             let edges = s.edges.len() as u64;
             tally.keep(edges, size_of::<Edge>());
             tally.keep(edges, size_of::<Option<usize>>());
