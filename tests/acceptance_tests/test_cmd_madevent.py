@@ -2072,6 +2072,54 @@ class TestMECmdShell(unittest.TestCase):
                 )
 
 
+    def test_t_channel_survey_grid(self):
+        """check that refining on the survey grid is not biased for
+        u q > z u q (all channels pure t-channel chains). With the t-channel
+        invariants sampled in units of the hadronic s and the grid defined
+        on [-1,1], the survey grid starved the regions close to the
+        kinematic end-points (u -> 0, and below the lowest x seen): the
+        rare huge weights from there biased the refine low (96.6 pb, -2.3%,
+        averaged over 4 seeds).
+        Reference (fixed scale 91.188, default PDF) from high statistics
+        (8 iterations up to 2.5M points per channel, pooled over seeds):
+        98.840 +- 0.017 pb; madspace gives 98.78 +- 0.02 pb.
+        Only the grouped output is checked: the flavour-merged non-grouped
+        output (P1_uQ_zuQ) is ~4.5% high for an unrelated reason."""
+
+        from unittest import mock
+        gen_ximprove = MECmd.gen_ximprove
+
+        target = 98.84
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('define q = u d')
+        mg_cmd.exec_cmd('generate u q > z u q')
+        mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 10000, user=True)
+        run_card.set('iseed', 21, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('scale', 91.188, user=True)
+        run_card.set('dsqrt_q2fact1', 91.188, user=True)
+        run_card.set('dsqrt_q2fact2', 91.188, user=True)
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        # never split the refine jobs: they then restart from the
+        # survey grid (with a fixed grid)
+        with mock.patch.object(gen_ximprove.gen_ximprove_v4, 'max_request_event', 10**9):
+            self.do('generate_events -f')
+        val = self.cmd_line.results.current['cross']
+        err = self.cmd_line.results.current['error']
+        self.assertLess(abs(val - target) / target, 0.012,
+                        '%s +- %s vs %s' % (val, err, target))
+
     def test_e_p_collision(self):
         """check that e p > e j gives the correct result"""
         

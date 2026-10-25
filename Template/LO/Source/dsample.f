@@ -878,7 +878,7 @@ c
 c
 c     Local
 c
-      integer i,k
+      integer i
       integer ngu, ngd
 c
 c     Global
@@ -930,20 +930,16 @@ c
             do i=1,ngd-1
 c               grid(2,i,j) = ((1d0-a)/(xo-a))**(1d0-dble(i)/dble(ngd))
                grid(2,ngd-i,j) = xo-(grid(2,ngd+i,j)-xo)
-               if (grid(2,ngd-i,j) .lt. -1d0) then
-                  write(*,*) 'Error grid set too low',grid(2,ngd-i,j)
-                  do k=1,ng
-                     write(*,*) k,grid(2,k,j)
-                  enddo
-                  stop
-               endif
             enddo
 c
-c     tjs, ja 2/25/11
-c     Make sure sample all the way down to zero only if minimum positive
-c     
-            if (grid(2,1,j) .gt. 0) grid(2,1,j) = 0d0
-c            write(*,*) "Adjusted bin 1 to zero"
+c     The mirrored bins must stay inside [xgmin, xo]: otherwise use
+c     equal bins (a bin below xgmin has a negative width)
+c
+            if (grid(2,1,j) .le. xgmin) then
+               do i=1,ngd-1
+                  grid(2,i,j) = xgmin + (xo-xgmin)*dble(i)/dble(ngd)
+               enddo
+            endif
 
          elseif (itype .eq. 2) then
             do i=2,ng-1
@@ -1303,7 +1299,9 @@ c            ddum(j) = tx(2,j)                 !Use last value
 
 c     t-channel invariant: denser sampling near the large-|t| edge of the
 c     range allowed for this point (density (1-a)+a/(2 sqrt(1-r)) in its
-c     relative position r)
+c     relative position r). genps.f samples t relative to that range, so
+c     the edge sits at the top of the grid, which can now learn it; this
+c     map still lowers the variance there
       if (tsoft(Minvar(j,ipole)) .and. xbin_max .gt. xbin_min
      &     .and. nzoom .le. 0) then
          call tsoft_map((ddum(j)-xbin_min)/(xbin_max-xbin_min),tsr,tsrho)
@@ -1311,10 +1309,10 @@ c     relative position r)
          wgt = wgt/tsrho
       endif
 c     t-chain invariant mass: denser sampling near its threshold (r -> 0),
-c     with the density of tsoft_map mirrored. The threshold moves with the
-c     other variables, so the grid cannot follow it: in p p > w+ w+ j j
-c     QCD=0 the large weights sat there (r ~ 0.04), and in VBF H the
-c     extreme weights (up to 2000x) disappear with it
+c     with the density of tsoft_map mirrored. In p p > w+ w+ j j QCD=0 the
+c     large weights sat there (r ~ 0.04), and in VBF H the extreme weights
+c     (up to 2000x) disappear with it. genps.f samples that mass relative
+c     to its range, so the threshold is at the bottom of the grid
       if (msoft .and. xbin_max .gt. xbin_min .and. nzoom .le. 0) then
          call tsoft_map(1d0-(ddum(j)-xbin_min)/(xbin_max-xbin_min),
      &        tsr,tsrho)
