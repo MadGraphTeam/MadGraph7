@@ -34,14 +34,17 @@ absolute path, user or host name is stored (``tests/unit/test_loop_v2_artifact
 
 Point inputs. Every point needs the block rows of the trees, the Born
 amplitudes and the counterterm and external-field components. With
-``point_inputs = "native-v1"`` (WP3.1) the PACBIN also holds the process's
+``point_inputs = "native-v2"`` (WP3.1) the PACBIN also holds the process's
 native program (``native_process.NativeProcess``): its assembly record and
 tree program (``point-inputs/*.json.zlib``: the interaction program, the Born
-and counterterm closures, the interferences) and its saved exact evaluators
+and counterterm closures, the interferences), its saved exact evaluators
 (``point-inputs/*.state``: the parameter program and the interaction
-kernels). A load then regenerates nothing: the native executor binds every
-parameter-dependent value from the external parameters and forms all of it
-per point. Correlated and resolved calls, and flavour members served by a
+kernels, run by DoubleFloat and arbitrary precision) and their binary64
+SymJIT plane applications (``point-inputs/*.symjit``: storage-v4 IR,
+recompiled for the loading CPU; binary64 then touches no Symbolica state,
+DESIGN §3.7). A load then regenerates nothing: the native executor binds
+every parameter-dependent value from the external parameters and forms all
+of it per point. Correlated and resolved calls, and flavour members served by a
 representative, still need the generation objects: those regenerate the
 slice on first use from the artifact's own compiled model and the saved
 request (the recursive generator, no diagram is listed) and require the
@@ -126,6 +129,9 @@ NATIVE_RECORD_MEMBER = "point-inputs/native-process.json.zlib"
 NATIVE_TREES_MEMBER = "point-inputs/tree-program.json.zlib"
 NATIVE_PARAMETERS_MEMBER = "point-inputs/parameters.state"
 NATIVE_KERNEL_MEMBER = "point-inputs/kernel-{}.state"
+# Their binary64 SymJIT plane applications (storage-v4 IR).
+NATIVE_PARAMETERS_PLANE_MEMBER = "point-inputs/parameters.symjit"
+NATIVE_KERNEL_PLANE_MEMBER = "point-inputs/kernel-{}.symjit"
 # The companion plan of the certified-scaleless families (rusticol-core
 # ``loop_runtime::LOOP_PROGRAM_V4_SCALELESS_MEMBER``).
 SCALELESS_PLAN_MEMBER = "schedule/loop-plan-v4-scaleless.json.zlib"
@@ -367,6 +373,7 @@ def write_plan(
 
     plan = PacbinMemberKind.LOOP_RUNTIME_PLAN
     state = PacbinMemberKind.SYMBOLICA_EXACT_STATE
+    symjit = PacbinMemberKind.SYMJIT_APPLICATION
     # (logical path, kind, bytes); JSON members are zlib streams.
     members = [(PLAN_MEMBER, plan, zlib.compress(plan_json.encode(), 6))]
     if scaleless_json is not None:
@@ -385,11 +392,19 @@ def write_plan(
             ),
             (NATIVE_TREES_MEMBER, plan, zlib.compress(stored["tree-program.json"], 6)),
             (NATIVE_PARAMETERS_MEMBER, state, stored["parameters.bin"]),
+            (NATIVE_PARAMETERS_PLANE_MEMBER, symjit, stored["parameters.symjit"]),
         ]
         k = 0
         while f"kernel-{k}.bin" in stored:
             members.append(
                 (NATIVE_KERNEL_MEMBER.format(k), state, stored[f"kernel-{k}.bin"])
+            )
+            members.append(
+                (
+                    NATIVE_KERNEL_PLANE_MEMBER.format(k),
+                    symjit,
+                    stored[f"kernel-{k}.symjit"],
+                )
             )
             k += 1
     write_pacbin(
@@ -435,6 +450,7 @@ def read_native_process(path: Path, plan_json: str) -> Any:
         names = {member.logical_path for member in reader.index.members}
         json_kind = PacbinMemberKind.LOOP_RUNTIME_PLAN
         state = PacbinMemberKind.SYMBOLICA_EXACT_STATE
+        symjit = PacbinMemberKind.SYMJIT_APPLICATION
         members["native-process.json"] = zlib.decompress(
             read(reader, NATIVE_RECORD_MEMBER, json_kind)
         )
@@ -442,10 +458,16 @@ def read_native_process(path: Path, plan_json: str) -> Any:
             read(reader, NATIVE_TREES_MEMBER, json_kind)
         )
         members["parameters.bin"] = read(reader, NATIVE_PARAMETERS_MEMBER, state)
+        members["parameters.symjit"] = read(
+            reader, NATIVE_PARAMETERS_PLANE_MEMBER, symjit
+        )
         k = 0
         while NATIVE_KERNEL_MEMBER.format(k) in names:
             members[f"kernel-{k}.bin"] = read(
                 reader, NATIVE_KERNEL_MEMBER.format(k), state
+            )
+            members[f"kernel-{k}.symjit"] = read(
+                reader, NATIVE_KERNEL_PLANE_MEMBER.format(k), symjit
             )
             k += 1
     return NativeProcess.from_members(plan_json, members)

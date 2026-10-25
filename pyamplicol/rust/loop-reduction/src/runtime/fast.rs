@@ -62,6 +62,9 @@ impl FastReductions {
         n: usize,
         tensor: bool,
     ) -> ExecutionResult<Self> {
+        // The expressions may call the source-scalar primitives: install them
+        // before parsing (the extension's import no longer does).
+        super::register_scalar_primitives();
         let parse =
             |text: &str| Atom::parse(text, "pyamplicol_loop", Default::default()).map_err(error);
         let variables = [

@@ -29,6 +29,15 @@ the same program for the native executor (``rusticol-core``
   (component, epsilon power, loop orders), and the field insertions, each
   interfered with the Born per sector (``loop_v2::interference``).
 
+* **carriers**: every kernel and the parameter program also come as a
+  binary64 SymJIT plane application (storage-v4 IR at -O2, the default
+  ``jit_optimization_level``; ``_plane_applications``), compiled from the
+  saved state's own binary64 evaluator and checked against it natively
+  (``compile_v2_plane``); the native lane runs them in binary64, recompiled
+  for the loading CPU, and touches no Symbolica state, so binary64 needs no
+  licence (DESIGN §3.7); DoubleFloat and arbitrary precision run the exact
+  states.
+
 * **parameters**: one saved exact evaluator from the external model
   parameters to every parameter-dependent value of the native lane
   (``_parameter_program``): the tree program's derived model parameters (the
@@ -54,8 +63,9 @@ path.
 
 from __future__ import annotations
 
+import hashlib
 import json
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
@@ -94,16 +104,61 @@ class NativeTrees:
     # (component, sector, epsilon power) of each native counterterm and
     # external-field output (``_counterterm_program``); empty without them.
     counterterm_outputs: tuple[tuple[str, Orders, int], ...] = ()
+    # The binary64 SymJIT plane application of each saved evaluator: the
+    # kernels, then the parameter program (``_plane_applications``).
+    planes: tuple[bytes, ...] = ()
 
     def json(self) -> str:
         return json.dumps(self.program, separators=(",", ":"))
 
-    def executor_argument(self) -> tuple[str, list[bytes]]:
-        return self.json(), [*self.kernels, self.parameters]
+    def executor_argument(self) -> tuple[str, list[bytes], list[bytes] | None]:
+        if self.planes and len(self.planes) != len(self.kernels) + 1:
+            raise ValueError("a plane application per saved evaluator")
+        return (
+            self.json(),
+            [*self.kernels, self.parameters],
+            list(self.planes) if self.planes else None,
+        )
 
     @property
     def parameter_names(self) -> tuple[str, ...]:
         return tuple(self.program["parameters"]["names"])
+
+
+# The SymJIT optimisation level of the plane applications: always -O2, the
+# default ``jit_optimization_level`` (``evaluators.symbolica_settings``) and a
+# portable level (O0 and O3 SymJIT is target-specific), whatever the run's
+# ``evaluator.jit.optimization_level`` says (docs/user/configuration.md).
+_PLANE_OPTIMIZATION_LEVEL = 2
+# Plane applications by saved state (SHA-256): the generation and staged
+# validation of a run export the same kernels repeatedly.
+_PLANES: OrderedDict[bytes, bytes] = OrderedDict()
+_PLANES_KEPT = 4096
+
+
+def _plane_applications(states: Sequence[bytes]) -> tuple[bytes, ...]:
+    """The binary64 SymJIT plane application of each saved exact evaluator
+    (storage-v4 IR; the native ``compile_v2_plane`` checks it against the
+    evaluator and refuses a disagreement)."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    native = load_loop_native()
+    out = []
+    for state in states:
+        key = hashlib.sha256(state).digest()
+        plane = _PLANES.get(key)
+        if plane is None:
+            compiled, _inputs, _outputs = native.compile_v2_plane(
+                bytes(state), _PLANE_OPTIMIZATION_LEVEL, False
+            )
+            plane = _PLANES[key] = bytes(compiled)
+            while len(_PLANES) > _PLANES_KEPT:
+                _PLANES.popitem(last=False)
+        else:
+            _PLANES.move_to_end(key)
+        out.append(plane)
+    return tuple(out)
 
 
 def _fraction_text(value: Fraction) -> str:
@@ -422,9 +477,12 @@ def export_trees(
     ct_saved = () if ct is None else ct.saved
     if PRUNE:
         program, saved, ct_saved = prune_program(program, saved, ct_saved)
+    # The kernels the pruned program still uses; their plane applications
+    # are compiled after the pruning, so a dropped kernel compiles none.
+    kernels = (*saved, *ct_saved)
     return NativeTrees(
         program,
-        (*saved, *ct_saved),
+        kernels,
         tuple(couplings),
         born_orders,
         squared_orders,
@@ -432,6 +490,7 @@ def export_trees(
         tuple(components),
         parameter_evaluator,
         () if counterterms is None else counterterms.outputs,
+        _plane_applications((*kernels, parameter_evaluator)),
     )
 
 
@@ -1114,13 +1173,20 @@ def _parameter_program(
             raise NotImplementedError(f"the loop mass {mass.mass!r} is no input")
         else:
             plan_masses.append(index[mass.mass])
+    # The helpers in the order of their names, not the library's (which
+    # follows the model's function bindings: a model compiled from its UFO
+    # source and the same model read from the cache list them in different
+    # orders), so their canonical names and the saved state do not depend on
+    # how the model was obtained.
     canonical, parameters, functions = _canonical_stage(
         SimpleNamespace(
             output_expressions=outputs,
             parameter_symbols=inputs,
             symbolica_functions=[
                 (head, tuple(arguments), body)
-                for head, (arguments, body) in helpers.items()
+                for head, (arguments, body) in sorted(
+                    helpers.items(), key=lambda item: item[0].to_canonical_string()
+                )
             ],
         )
     )
