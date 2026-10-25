@@ -38,6 +38,7 @@ from pyamplicol.loops.v2 import ct_closure, dag_input
 from pyamplicol.loops.v2.blocks import (
     RequestedLoopBlocks,
     _blocks,
+    propagated_species,
     vetoed_particle_ids,
     ward_breaking_fields,
 )
@@ -94,19 +95,6 @@ def _native(model, process, orders, **options):
     )
 
 
-def _propagated(dag, model):
-    """The current scan of ``ward_breaking_fields`` before its width test."""
-
-    sources = set(dag.sources)
-    return frozenset(
-        int(current.index.particle_id)
-        for current_id, current in enumerate(dag.currents)
-        if current_id not in sources
-        and current.index.auxiliary_kind is None
-        and abs(int(model.color_rep(current.index.particle_id))) != 1
-    )
-
-
 def _assert_equal(compiled, model, text, orders, **options):
     process = _process(compiled, text)
     python = _python(model, process, orders, **options)
@@ -124,7 +112,7 @@ def _assert_equal(compiled, model, text, orders, **options):
     for variant in VARIANTS:
         expected = _blocks(python, model, variant)
         assert native.blocks(variant) == expected
-    assert native.coloured_propagated() == _propagated(python, model)
+    assert native.propagated_species() == propagated_species(python)
     return python, native
 
 
@@ -393,7 +381,7 @@ def test_native_builder_needs_no_symbolica_licence(
         return found
 
     monkeypatch.setattr(dag_input.NativeDag, "u1_leaking", recorded)
-    assert dag_input.u1_leaking_structures(native) == (
+    assert ct_closure._u1_leaking(native.recursion, native.dag) == (
         ct_closure.u1_leaking_structures(program)
     )
     ((arguments, leaking),) = scans
@@ -501,7 +489,7 @@ def test_native_loop_blocks_with_top_widths_select_full_kernels(models):
     compiled, model = models
     python, native = _assert_equal(compiled, model, "g g > t t~ g g", {"QCD": 6})
     top = next(r for r in compiled.ir.particles if r.name == "t")
-    assert int(top.pdg_code) in native.coloured_propagated()
+    assert (int(top.pdg_code), False) in native.propagated_species()
     assert {"t", "t~"} <= ward_breaking_fields((python,), compiled)
 
 
@@ -826,10 +814,10 @@ def _assert_ct_equal(compiled_path, text, born, loop, veto=(), *, rebuild=False)
     assert native.kernel_variant == program.blocks.kernel_variant
     assert native.blocks == program.blocks.blocks
     assert dict(native.clones) == dict(program.clones)
-    assert dag_input.u1_leaking_structures(native) == (
+    assert ct_closure._u1_leaking(native.recursion, native.dag) == (
         ct_closure.u1_leaking_structures(program)
     )
-    assert native.dag.coloured_propagated() == _propagated(dag, lowered)
+    assert native.dag.propagated_species() == propagated_species(dag)
     if rebuild:
         again = dag_input.native_counterterm_blocks(
             program.recursion, dag.process, ignored_particle_ids=ignored
@@ -901,7 +889,7 @@ def test_native_u1_leakage_scan_equals_the_closure(loop_sm_compiled_model, monke
     monkeypatch.setattr(ct_closure, "u1_projected", lambda compiled: False)
     leaking = ct_closure.u1_leaking_structures(program)
     assert leaking
-    assert dag_input.u1_leaking_structures(native) == leaking
+    assert ct_closure._u1_leaking(native.recursion, native.dag) == leaking
 
 
 @pytest.mark.loop_physics
@@ -979,7 +967,6 @@ def _assert_switch_equal(compiled, model, text, orders, **options):
 
     from pyamplicol.loops.v2 import snapshot
     from pyamplicol.loops.v2.artifact import coloured_widths
-    from pyamplicol.loops.v2.blocks import propagated_species
 
     process = _process(compiled, text)
     python = _tree_blocks(model, process, orders, False, **dict(options))

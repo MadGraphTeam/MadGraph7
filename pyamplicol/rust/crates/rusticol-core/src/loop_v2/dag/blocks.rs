@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: 0BSD
 
 //! Block grouping of a loop-request DAG (`loops/v2/blocks._blocks`) and the
-//! Ward-kernel query (`ward_breaking_fields`' current scan).
+//! current scans of generation's queries (`propagated_species`: the
+//! Ward-kernel and coloured-width scans; `u1_leaking`).
 //!
 //! A block is the set of currents with one `BlockKey` (the full current
 //! index without its helicity ancestry); its rows are their helicity
@@ -319,26 +320,6 @@ impl ColumnarDag {
             set[*source as usize] = true;
         }
         set
-    }
-
-    /// Particle ids that a non-source, non-auxiliary current propagates and
-    /// whose colour representation is not a singlet (`ward_breaking_fields`
-    /// filters them by width and custom propagators).
-    pub fn coloured_propagated(&self, tables: &BlockInput) -> Vec<i64> {
-        let sources = self.sources_set();
-        let mut out = BTreeSet::new();
-        for (id, source) in sources.iter().enumerate() {
-            let species = &self.tables.species[self.c_species[id] as usize];
-            if *source || species.auxiliary.is_some() {
-                continue;
-            }
-            if let Some((Some(rep), _)) = tables.particles.get(&species.pdg)
-                && rep.abs() != 1
-            {
-                out.insert(species.pdg);
-            }
-        }
-        out.into_iter().collect()
     }
 
     /// Distinct `(particle id, amputated)` of the non-source, non-auxiliary

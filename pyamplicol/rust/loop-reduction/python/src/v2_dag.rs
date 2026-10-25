@@ -465,17 +465,6 @@ impl V2Dag {
             })
             .collect()
     }
-
-    /// Coloured particle ids propagated by non-source, non-auxiliary
-    /// currents (the current scan of `blocks.ward_breaking_fields`).
-    fn coloured_propagated(&self, py: Python<'_>, tables: &str) -> PyResult<Vec<i64>> {
-        let tables = tables.to_owned();
-        py.detach(|| {
-            let tables = BlockInput::from_json(&tables)?;
-            Ok(self.dag.coloured_propagated(&tables))
-        })
-        .map_err(dag_error)
-    }
 }
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {

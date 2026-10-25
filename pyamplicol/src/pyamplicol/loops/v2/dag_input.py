@@ -855,7 +855,7 @@ def block_input(
     model: Any,
     clone_fields: Mapping[int, int] | None = None,
 ) -> str:
-    """The JSON tables of ``V2Dag.blocks`` / ``coloured_propagated``;
+    """The JSON tables of ``V2Dag.blocks``;
     ``clone_fields`` maps the clone particles of a CT program to the fields
     their lines are read as (``ct_closure._clone_lines``)."""
 
@@ -1510,7 +1510,7 @@ class NativeDag:
         rest_mask: int,
     ) -> frozenset[int]:
         """The vertex kinds the DAG scan of ``ct_closure.u1_leaking_structures``
-        reports (see ``u1_leaking_structures``)."""
+        reports (``ct_closure._u1_leaking`` dispatches to it)."""
 
         arguments = (
             tuple(sorted(int(k) for k in kinds)),
@@ -1525,17 +1525,6 @@ class NativeDag:
                 self._native_handle().u1_leaking(
                     *map(list, arguments[:3]), *arguments[3:]
                 )
-            ),
-        )
-
-    def coloured_propagated(self) -> frozenset[int]:
-        """Coloured particle ids that non-source, non-auxiliary currents
-        propagate (the DAG scan of ``blocks.ward_breaking_fields``)."""
-
-        return self._answer(  # type: ignore[no-any-return]
-            "coloured",
-            lambda: frozenset(
-                _call(self._native_handle().coloured_propagated, self._tables())
             ),
         )
 
@@ -1664,16 +1653,6 @@ def native_counterterm_blocks(
         {block_id: lines[clone] for block_id, clone in clone_particles.items()},
         variant,
     )
-
-
-def u1_leaking_structures(program: NativeCountertermBlocks) -> frozenset[Any]:
-    """``ct_closure.u1_leaking_structures`` on a native CT program (its
-    model-level gates and kinds-to-structures map; the DAG scan is native,
-    ``NativeDag.u1_leaking``)."""
-
-    from .ct_closure import _u1_leaking
-
-    return _u1_leaking(program.recursion, program.dag)
 
 
 # ------------------------------------------------------------------ program (A5)
@@ -2397,5 +2376,4 @@ __all__ = [
     "rebuild_count",
     "reuse_tables",
     "stage_digest",
-    "u1_leaking_structures",
 ]
