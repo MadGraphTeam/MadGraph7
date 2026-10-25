@@ -110,11 +110,23 @@ GENERATION_CODE = frozenset(
         ("pyamplicol/loops/v2/assemble.py", "LoopSlice.generate"),
         ("pyamplicol/loops/v2/plan_export.py", "export_plan"),
         ("pyamplicol/models/loading.py", "compile_model_source"),
-        ("pyamplicol/generation/service.py", "Generator.generate"),
+        ("pyamplicol/generation/service.py", "GenerationBackend.generate"),
+        ("pyamplicol/api/services.py", "Generator.generate"),
+        # The native-trees export: the tree, counterterm and parameter
+        # programs and their SymJIT plane applications.
+        ("pyamplicol/loops/v2/native_trees.py", "export_trees"),
+        ("pyamplicol/loops/v2/native_trees.py", "_plane_applications"),
+        ("pyamplicol/loops/v2/native_trees.py", "_interaction_program"),
+        ("pyamplicol/loops/v2/native_trees.py", "_counterterm_program"),
+        ("pyamplicol/loops/v2/native_trees.py", "_parameter_program"),
     }
 )
 GENERATION_FILES = (
     "pyamplicol/generation/dag_compiler.py",
+    # The native generator's and the native DAG's inputs (they call
+    # `_loop.V2Generation` and `_loop.V2Dag`).
+    "pyamplicol/loops/v2/generator_input.py",
+    "pyamplicol/loops/v2/dag_input.py",
     "pyamplicol/loops/v2/blocks.py",
     "pyamplicol/loops/v2/skeletons.py",
     "pyamplicol/loops/v2/schedules.py",
@@ -715,6 +727,29 @@ def _without_licence(env: dict[str, str] | None = None) -> dict[str, str]:
     return env
 
 
+def symbolica_lock_dir(env: dict[str, str] | None = None) -> str:
+    """The directory of Symbolica's restricted-thread permit in ``env``, by
+    Symbolica's own rule (``license.rs``, ``lock_directory``):
+    ``SYMBOLICA_LOCK_DIR``, else ``$XDG_RUNTIME_DIR/symbolica/locks``, else
+    the cache directory's ``symbolica/locks``. ``RestrictedPermit``, its
+    control and every instance it covers get it as ``SYMBOLICA_LOCK_DIR``,
+    so a fresh ``HOME`` or ``XDG_CACHE_HOME`` (``_fresh``) or a missing
+    ``XDG_RUNTIME_DIR`` (cron, batch jobs, containers) cannot move an
+    instance to another permit."""
+
+    env = dict(os.environ if env is None else env)
+    explicit = env.get("SYMBOLICA_LOCK_DIR")
+    if explicit:
+        return explicit
+    runtime = env.get("XDG_RUNTIME_DIR")
+    if runtime and os.path.isabs(runtime):
+        return os.path.join(runtime, "symbolica", "locks")
+    cache = env.get("XDG_CACHE_HOME")
+    if not (cache and os.path.isabs(cache)):
+        cache = os.path.join(env.get("HOME") or os.path.expanduser("~"), ".cache")
+    return os.path.join(cache, "symbolica", "locks")
+
+
 class RestrictedPermit:
     """Holds this user's restricted Symbolica thread permit inside the
     ``with`` block (``HOLDER_SOURCE``, without ``SYMBOLICA_LICENSE``).
@@ -736,9 +771,17 @@ class RestrictedPermit:
         self.python = python
         self.process: subprocess.Popen[str] | None = None
         self.record: dict[str, Any] = {}
+        # The permit's directory, explicit for the holder, the control and
+        # every covered instance (``environment``).
+        self.lock_dir = symbolica_lock_dir()
+
+    def environment(self, env: dict[str, str]) -> dict[str, str]:
+        """``env`` bound to this permit's lock directory."""
+
+        return {**env, "SYMBOLICA_LOCK_DIR": self.lock_dir}
 
     def __enter__(self) -> RestrictedPermit:
-        env = _without_licence()
+        env = self.environment(_without_licence())
         self.process = subprocess.Popen(
             [self.python, "-c", HOLDER_SOURCE],
             stdin=subprocess.PIPE,
@@ -772,6 +815,7 @@ class RestrictedPermit:
         self.record = {
             "control_returncode": control.returncode,
             "verified": control.returncode != 0 and restricted,
+            "lock_dir_explicit": True,
         }
         return self
 
@@ -884,6 +928,7 @@ def _run_instances(
     env = dict(os.environ) if licence else _without_licence()
     permit = RestrictedPermit() if hold_permit else None
     if permit is not None:
+        env = permit.environment(env)
         permit.__enter__()
     try:
         start = time.perf_counter()
@@ -1174,8 +1219,11 @@ def compare(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------- check
 
 
-def _fresh(scratch: Path, label: str, licence: bool) -> tuple[dict[str, str], Path]:
-    """Another working, home and temporary directory and user name."""
+def _fresh(
+    scratch: Path, label: str, licence: bool, permit: RestrictedPermit | None = None
+) -> tuple[dict[str, str], Path]:
+    """Another working, home and temporary directory and user name (bound to
+    ``permit``'s lock directory, if any)."""
 
     base = scratch / f"env-{label}"
     for name in ("cwd", "home", "tmp"):
@@ -1190,6 +1238,8 @@ def _fresh(scratch: Path, label: str, licence: bool) -> tuple[dict[str, str], Pa
     )
     if not licence:
         env.pop("SYMBOLICA_LICENSE", None)
+    if permit is not None:
+        env = permit.environment(env)
     return env, base / "cwd"
 
 
@@ -1230,11 +1280,11 @@ def _run_evaluate_concurrently(
     permit (then every one completing touched no Symbolica state that needs
     a licence or the permit)."""
 
-    def run() -> dict[str, Any]:
+    def run(permit: RestrictedPermit | None) -> dict[str, Any]:
         started = time.perf_counter()
         processes = []
         for k in range(instances):
-            env, cwd = _fresh(scratch, f"concurrent-{k}", licence)
+            env, cwd = _fresh(scratch, f"concurrent-{k}", licence, permit)
             out = scratch / f"concurrent-{k}.json"
             command = [
                 sys.executable,
@@ -1272,10 +1322,10 @@ def _run_evaluate_concurrently(
 
     if hold_permit:
         with RestrictedPermit() as permit:
-            record = run()
+            record = run(permit)
         record["permit"] = permit.record
     else:
-        record = run()
+        record = run(None)
         record["permit"] = None
     return record
 

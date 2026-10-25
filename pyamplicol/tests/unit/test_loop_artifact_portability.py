@@ -349,7 +349,7 @@ def _held_evaluations(
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
-                    env=_unlicensed(extra_env),
+                    env=permit.environment(_unlicensed(extra_env)),
                     cwd=scratch,
                     preexec_fn=portability._no_core,
                 )
