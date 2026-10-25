@@ -87,7 +87,7 @@ from pyamplicol.color.connections import (
 from pyamplicol.color.contraction_types import NC
 from pyamplicol.config import PoleSelection
 
-from . import generator_input
+from . import ew_policy, generator_input
 from . import reference_executor as rx
 from .blocks import (
     TreeBlocks,
@@ -154,9 +154,16 @@ from .generator_input import NativeGeneration
 from .poles import (
     ORIGINS,
     catani_poles,
+    coupling_value,
+    dressed_born,
+    exact_charge,
     has_poles,
     pole_mode,
+    qed_catani_poles,
+    qed_coupling,
+    qed_gamma,
     reducer_poles,
+    sector_sum,
     select_lane,
     select_sector,
     split_sector,
@@ -1264,9 +1271,10 @@ class PointResult:
     sectors (Born, then each component's Laurent coefficients; 7 entries in
     finite-only mode). ``families`` keeps each reduction lane's raw integrals
     ``(family, loop order, sector) -> Laurent``. ``ir_poles`` is Catani's
-    prediction of the virtual's (single, double) poles per sector (massless
-    and massive coloured legs), ``None`` in finite-only and ``"uv"`` mode, at
-    leading colour and for non-QCD corrections; ``stability`` is ``None``
+    prediction of the virtual's (single, double) poles per sector (the QCD
+    and QED operators, massless and massive legs), ``None`` in finite-only
+    and ``"uv"`` mode, at leading colour and where the operators make no
+    prediction (a correction without one); ``stability`` is ``None``
     unless checks were asked. ``colour_contraction`` is the seed contraction
     used ("direct" or "symmetric-group-fft").
 
@@ -1406,11 +1414,21 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     scale_parameter = _external_parameter(
         compiled, request.scale_parameter, _LHA_SCALE, fixed
     )
-    alpha_s_parameter = (
-        _external_parameter(compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed)
-        if set(request.corrections) == {"QCD"}
-        else None
-    )
+    alpha_s_parameter = None
+    if set(request.corrections) == {"QCD"}:
+        alpha_s_parameter = _external_parameter(
+            compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
+        )
+    elif "QCD" in request.corrections:
+        # The QCD operator of a joint request's IR-pole prediction (WP3.2
+        # EWI-6); without an identified alpha_s it makes none.
+        try:
+            alpha_s_parameter = _external_parameter(
+                compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
+            )
+        except ValueError:
+            if request.alpha_s_parameter is not None:
+                raise
     prepared = prepare_loop_request_model(
         compiled,
         born_order_bounds=dict(request.born_orders),
@@ -1554,6 +1572,13 @@ class LoopSlice:
         process = build_model_process_ir(
             request.process, compiled.ir, color_accuracy="full"
         )
+        # Fail-closed guards of electroweak requests (WP3.2 EWI-0b), before
+        # any tree, family or counterterm generation (``ew_policy``).
+        electroweak = ew_policy.electroweak(
+            compiled, request, structure.perturbative_species_orders
+        )
+        if electroweak:
+            ew_policy.require_no_external_photons(compiled, request, process, fixed)
         loop_catalogue = ModelLoopCatalogue(
             data,
             species_orders=structure.perturbative_species_orders,
@@ -1577,6 +1602,14 @@ class LoopSlice:
                     )
                 ),
             )
+            if electroweak:
+                # Widths in the Born or the loop-side trees, before their
+                # kernels (a width takes the full ones, 38 s at g g > t t~
+                # on the G_mu model) and the counterterm lowering
+                # (``ew_policy.require_zero_widths``).
+                ew_policy.require_zero_widths(
+                    model, request, (blocks.born_dag, blocks.blocks_dag), fixed
+                )
             # Trees that propagate a coloured particle with a width (or a
             # model-supplied propagator) take the full tree kernels: the
             # transverse Yang-Mills ones are then not the Feynman rules
@@ -3206,14 +3239,11 @@ class _PointEvaluation:
                         zero,
                     )
                 )
-        # Catani's operator is the full-colour pole prediction of QCD
-        # corrections (massless and stable massive coloured legs); in "uv"
-        # mode the renormalised virtual has no IR pole to predict.
-        checked = (
-            slice_.request.accuracy == "full"
-            and slice_.alpha_s_parameter
-            and self._stable_coloured_legs()
-        )
+        # Catani's operators are the full-colour pole prediction of QCD and
+        # QED corrections (massless and stable massive coloured or charged
+        # legs; ``_ir_poles``); in "uv" mode the renormalised virtual has no
+        # IR pole to predict.
+        checked = slice_.request.accuracy == "full" and self._stable_coloured_legs()
         ir_poles = (
             self._ir_poles() if self.poles and self.mode != "uv" and checked else None
         )
@@ -3302,29 +3332,61 @@ class _PointEvaluation:
     # -- IR poles ----------------------------------------------------------------------
 
     def _stable_coloured_legs(self) -> bool:
-        """Whether every massive coloured leg has a zero width: Catani's
-        operator describes stable (real-mass) emitters."""
+        """Whether every massive leg that a requested correction dresses has
+        a zero width (coloured legs for QCD, charged legs for QED): Catani's
+        operators describe stable (real-mass) emitters."""
 
         values = _kernel_parameters(self.slice.compiled, self.parameters)
+        charged = (
+            _charged_fields(self.slice.compiled)
+            if "QED" in self.slice.request.corrections
+            else frozenset()
+        )
         return all(
             leg.mass.width == ZERO or values.get(leg.mass.width, 0) == 0
             for leg in self.slice.families.legs
-            if abs(leg.colour) != 1 and leg.mass.mass != ZERO
+            if (abs(leg.colour) != 1 or leg.field in charged) and leg.mass.mass != ZERO
         )
 
     def _ir_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
-        """Catani's single and double poles of the renormalised virtual, or
-        None where the operator makes no prediction (``poles.catani_poles``).
+        """Catani's single and double poles of the renormalised virtual per
+        sector, or None where the operators make no prediction.
+
+        One operator per correction (WP3.2 EWI-6), each over the Born
+        interferences of the amplitude orders a, b whose orders plus that
+        correction's two powers are the sector (cross-order interferences
+        included): QCD (``_qcd_poles``: alpha_s / 2 pi, colour-correlated
+        <T_i.T_j>) and QED (``_qed_poles``: alpha / 2 pi, Q_i Q_j times the
+        colour-summed Born). A sector's prediction is their sum
+        (``poles.sector_sum``); a correction without an operator, or one of
+        them making no prediction, gives none (never a partial sum).
+        """
+
+        operators = {"QCD": self._qcd_poles, "QED": self._qed_poles}
+        predictions = []
+        for name in self.slice.request.corrections:
+            operator = operators.get(name)
+            prediction = None if operator is None else operator()
+            if prediction is None:
+                return None
+            predictions.append(prediction)
+        return sector_sum(predictions)
+
+    def _qcd_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
+        """The QCD operator per sector (``poles.catani_poles``), or None
+        where it makes no prediction.
 
         V_poles = (alpha_s / 2 pi) sum_i sum_{j != i} (1/C_i) (C_i/eps^2 +
         gamma_i/eps) (1 + eps log(mu^2 / |2 p_i.p_j|)) <T_i.T_j> for massless
-        coloured legs, QCD corrections, n_f light flavours in gamma_g; massive
-        emitters take the massive form. The legs' masses are the model's
-        runtime values (a symbolic mass bound to 0 is massless), not the p^2
-        of the given (possibly rounded) momenta.
+        coloured legs, n_f light flavours in gamma_g; massive emitters take
+        the massive form. The legs' masses are the model's runtime values (a
+        symbolic mass bound to 0 is massless), not the p^2 of the given
+        (possibly rounded) momenta.
         """
 
         slice_, numbers = self.slice, self.numbers
+        if slice_.alpha_s_parameter is None:
+            return None
         legs = {leg.label: leg for leg in slice_.basis.legs}
         coloured = sorted(
             label for label, leg in legs.items() if leg.representation != 1
@@ -3353,7 +3415,7 @@ class _PointEvaluation:
         alpha = numbers.real(values[slice_.alpha_s_parameter])
         prefactor = alpha / (2 * numbers.pi)
         mu2 = numbers.real(self.scale)
-        correction = add_orders(tuple((name, 2) for name in slice_.request.corrections))
+        correction = add_orders((("QCD", 2),))
         out = {}
         for sector, _pairs in slice_.sectors:
 
@@ -3385,6 +3447,96 @@ class _PointEvaluation:
             single, double = prediction
             out[sector] = (prefactor * single, prefactor * double)
         return out
+
+    def _qed_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
+        """The QED operator per sector (``poles.qed_catani_poles``), or None
+        where it makes no prediction.
+
+        The correlator is Q_i Q_j (the legs' all-incoming charges) times the
+        colour-summed Born interferences that the sector's QED correction
+        dresses (``poles.dressed_born``, cross-order ones included); the
+        prefactor alpha / 2 pi takes alpha of the model's photon couplings at
+        this point (``_qed_alpha``: alpha_Gmu in a G_mu model), the coupling
+        of the loops. A leg is massless where the model's runtime mass is
+        zero (``ZERO``, a compile-time zero or a value bound to 0). No
+        prediction for a charged leg of unknown mass, a massless charged
+        vector or an on-shell external photon: the engine does not yet couple
+        such a photon with alpha(0), the user's convention [U9] (WP3.2
+        EWI-6b), and ``ew_policy`` refuses electroweak requests with one.
+        """
+
+        slice_, numbers = self.slice, self.numbers
+        compiled = slice_.compiled
+        parameters = {record.name: record for record in compiled.ir.parameters}
+        records = {record.name: record for record in compiled.ir.particles}
+        fixed = slice_.request.fixed_parameters
+        values = _kernel_parameters(compiled, self.parameters)
+        charges: dict[int, Fraction] = {}
+        masses: dict[int, Fraction] = {}
+        spins: dict[int, int] = {}
+        for leg in slice_.families.legs:
+            record = records[leg.field]
+            if ew_policy.is_photon(record, parameters, fixed):
+                return None
+            charge = exact_charge(record.charge)
+            if charge == 0:
+                continue
+            label, name = leg.index + 1, leg.mass.mass
+            if name == ZERO or ew_policy.is_zero(name, parameters, {}):
+                masses[label] = Fraction(0)
+            elif name in values:
+                masses[label] = values[name] ** 2
+            else:
+                return None
+            charges[label] = charge
+            spins[label] = int(record.spin)
+        alpha = self._qed_alpha()
+        if alpha is None:
+            return None
+        prefactor = alpha / (2 * numbers.pi)
+        mu2 = numbers.real(self.scale)
+        zero = numbers.real(0)
+        out = {}
+        for sector, _pairs in slice_.sectors:
+            prediction = qed_catani_poles(
+                charges,
+                {label: self.incoming[label - 1] for label in charges},
+                masses,
+                dressed_born(self.born, sector, "QED", zero),
+                gamma=lambda j: qed_gamma(spins[j], charges[j]),
+                mu2=mu2,
+                log=lambda x: _log(x, numbers),
+                real=numbers.real,
+                sqrt=lambda x: math.sqrt(x) if numbers.double else x.sqrt(),
+            )
+            if prediction is None:
+                return None
+            single, double = prediction
+            out[sector] = (prefactor * single, prefactor * double)
+        return out
+
+    def _qed_alpha(self) -> Any:
+        """alpha of the model's photon couplings at this point's parameters
+        in the carrier (``poles.qed_coupling``, ``poles.coupling_value``), or
+        None if the model has no charge-universal one."""
+
+        slice_ = self.slice
+        cache = slice_._cache
+        if "qed-coupling" not in cache:
+            compiled = slice_.compiled
+            parameters = {record.name: record for record in compiled.ir.parameters}
+            fixed = slice_.request.fixed_parameters
+            cache["qed-coupling"] = qed_coupling(
+                compiled, lambda r: ew_policy.is_photon(r, parameters, fixed)
+            )
+        coupling = cache["qed-coupling"]
+        if coupling is None:
+            return None
+        return coupling_value(
+            coupling,
+            _kernel_parameters(slice_.compiled, self.parameters),
+            self.numbers.carrier,
+        )
 
     def _sandwich(self, left, right, matrix) -> Any:
         slice_ = self.slice
@@ -3783,6 +3935,14 @@ def _mass_values(
         mass: Fraction(0) if mass.massless else values[mass.mass] ** 2
         for mass in masses
     }
+
+
+def _charged_fields(compiled) -> frozenset[str]:
+    """Names of the model's electrically charged particles."""
+
+    return frozenset(
+        str(record.name) for record in compiled.ir.particles if float(record.charge)
+    )
 
 
 def _light_flavours(data, values: Mapping[str, Fraction]) -> int:
