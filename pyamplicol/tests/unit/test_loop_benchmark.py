@@ -15,10 +15,12 @@ instrumentation.
   stays at or below it for gluons;
 * the particle names of the slice request come from the model's PDG codes,
   and the gate statistic has its uncertainty band (pass, fail, inconclusive);
-* a matched provider without a production-mode timing (HANDOFF §0.1) makes a
-  passing verdict "partial", and an imported campaign timing outside the
-  protocol stays beside the verdict; imported timings must be the stream's
-  points;
+* the gate is taken on the available providers: a matched provider without
+  a production-mode timing (HANDOFF §0.1) is listed beside the verdict, and
+  an imported campaign timing outside the protocol stays beside it;
+  imported timings must be the stream's points;
+* a repeat of a configuration keeps the earlier run's checks it lacks, and a
+  checkpoint record is marked partial;
 * the Ward rows are divided by the physical scale of their point and judged
   with the O10 test's binary64 bound;
 * below 5 ms per point the gate does not block (the user's rule of
@@ -104,12 +106,13 @@ def test_gate_band_decides_and_inconclusive_straddles_the_limit():
     assert gate.half_range([2.0]) is None
 
 
-def test_gate_partial_without_a_matched_provider_and_outside_the_protocol():
+def test_gate_on_the_available_providers_with_the_missing_ones_beside():
     times = {"madloop": 100.0}
     missing = {"recola": "no production-mode timing (HANDOFF §0.1)"}
     outside = {"recola": {"seconds": 20.0, "mode": "compute_ir_poles 1"}}
     verdict = gate.gate_verdict(5.0, times, missing=missing, outside=outside)
-    assert verdict["status"] == "partial"
+    # Addendum D: each available provider; the missing ones are listed.
+    assert verdict["status"] == "pass" and set(verdict["checks"]) == {"madloop"}
     assert verdict["missing"] == missing
     assert verdict["outside_protocol"]["recola"]["ratio"] == pytest.approx(0.25)
     # The timing outside the protocol never decides: a failed check fails.
