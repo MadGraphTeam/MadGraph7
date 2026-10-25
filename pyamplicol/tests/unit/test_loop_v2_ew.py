@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: 0BSD
 """Electroweak counterterms in the tree recursion (WP3.2 EWI-0, EWI-3).
 
-The G_mu UFO (``loop_qcd_qed_sm_Gmu_py3``) writes its UV counterterm
-parameters with the electroweak helpers ``re``, ``recms``, ``regsqrt``,
-``grreglog``, ``reglogp``/``reglogm``, ``arg`` and a rebound (CMS)
-``reglog``. ``ct_recursion.CoefficientLowering`` keeps every such CT scalar a
+The electroweak UFOs (G_mu, ``loop_qcd_qed_sm_Gmu_py3``, and MG5_aMC's
+``loop_qcd_qed_sm``) write their UV counterterm parameters with the
+electroweak helpers ``re``, ``recms``, ``regsqrt``, ``grreglog``,
+``reglogp``/``reglogm``, ``arg`` and a rebound (CMS) ``reglog``.
+``ct_recursion.CoefficientLowering`` keeps every such CT scalar a
 parameter-program reference: the couplings are linear in them, and the
 counterterm program binds them at the card from the scalars' exact bodies,
 every helper a function of the model's scalar library
-(``ct_recursion.coefficient_plan``). Oracles, model-level (no process):
+(``ct_recursion.coefficient_plan``). Oracles, model-level (no process), on
+both UFOs:
 
 * the UFO's own Python evaluation of ``parameters.py`` and
   ``CT_parameters.py`` (imported under a private name, ``cmath``, the
@@ -17,10 +19,14 @@ every helper a function of the model's scalar library
   binary64; every coefficient the plan proves zero is zero there;
 * an mpmath transliteration of the same source (every number literal exact)
   for the plan at double-double and arbitrary precision (nightly);
-* the branch side: the CT values with every helper argument on or within
-  1e-12 relative of a branch cut moved to the other side equal the
-  unflipped ones (real masses take only real parts);
-* the referenced couplings: each CT coupling's Laurent coefficients, formed
+* the branch side: at real masses some helper arguments lie exactly on a
+  branch cut, and their side changes the Higgs two-point CTs by O(1); the
+  plan takes the +0 side (the UFO's Python evaluation, mpmath's principal
+  branch), and the -0 side differs (discriminating).
+
+Further checks:
+
+* the referenced couplings (G_mu): each CT coupling's Laurent coefficients, formed
   on the reference parameters and bound with the plan, equal the UFO's
   coupling expression at the oracle's CT values;
 * the digest rule: loop_sm's ``cond``, ``reglog`` and ``complexconjugate``
@@ -66,11 +72,11 @@ def _gmu_card(loop_reference) -> tuple[dict[str, str], dict[str, str]]:
     return card, dict(fixture["fixed_parameters"])
 
 
-@pytest.fixture(scope="module")
-def gmu(loop_gmu_ufo, loop_reference):
-    """The G_mu model's restricted source scalar program, its fixed
-    parameters (the default restriction's and the fixture's, without the
-    fixture's WTau, which the UFO lacks) and the fixture card."""
+def _ew_model(ufo, loop_reference):
+    """An electroweak UFO's restricted source scalar program, its fixed
+    parameters (the default restriction's and those of the fixture's fixed
+    parameters the model has: the G_mu UFO lacks the fixture's WTau) and the
+    fixture card."""
 
     from types import SimpleNamespace
 
@@ -81,7 +87,7 @@ def gmu(loop_gmu_ufo, loop_reference):
     from pyamplicol.loops.scalar_frontend import lower_scalar_program
     from pyamplicol.models.loading import compile_model_source
 
-    compiled = compile_model_source(loop_gmu_ufo, require_supported=False)
+    compiled = compile_model_source(ufo, require_supported=False)
     derived = prepare_loop_restrictions(compiled.raw_loop_model).derived
     card, fixed = _gmu_card(loop_reference)
     externals = {
@@ -102,35 +108,79 @@ def gmu(loop_gmu_ufo, loop_reference):
 
 
 @pytest.fixture(scope="module")
-def gmu_ufo(loop_gmu_ufo):
-    """The UFO's ``parameters``, ``CT_parameters`` and ``function_library``
-    modules, imported as a private package (no bytecode written)."""
+def gmu(loop_gmu_ufo, loop_reference):
+    """The G_mu UFO (``_ew_model``) at the fixture card."""
 
-    name = "_pyamplicol_test_ufo_gmu"
-    spec = importlib.util.spec_from_file_location(
-        name,
-        loop_gmu_ufo / "__init__.py",
-        submodule_search_locations=[str(loop_gmu_ufo)],
-    )
-    package = importlib.util.module_from_spec(spec)
-    sys.modules[name] = package
+    return _ew_model(loop_gmu_ufo, loop_reference)
+
+
+@pytest.fixture(scope="module")
+def qcd_qed(loop_qcd_qed_sm_ufo, loop_reference):
+    """MG5_aMC's loop_qcd_qed_sm (alpha(M_Z) scheme, ``_ew_model``) at the
+    same card (its own aEWM1; the card's Gf is no parameter of it)."""
+
+    return _ew_model(loop_qcd_qed_sm_ufo, loop_reference)
+
+
+# The UFO modules the oracle reads.
+_UFO_PARTS = ("parameters", "CT_parameters", "function_library", "CT_couplings")
+
+
+def _import_ufo(path, name):
+    """The UFO's ``parameters``, ``CT_parameters``, ``function_library`` and
+    ``CT_couplings`` modules, imported privately (no bytecode written): a
+    UFO with relative imports (the G_mu ``_py3`` conversion) as the package
+    ``name``; one with Python-2-style sibling imports (``from object_library
+    import ...``, loop_qcd_qed_sm) from its directory, as top-level modules
+    whose names shadow no module already loaded. A generator: the modules
+    are removed and the shadowed ones restored when it resumes."""
+
+    relative = "from .object_library" in (path / "function_library.py").read_text()
+    siblings = {"__init__"} | {source.stem for source in path.glob("*.py")}
+    before = set(sys.modules)
+    shadowed = {key: sys.modules.pop(key) for key in siblings & before}
     previous = sys.dont_write_bytecode
     sys.dont_write_bytecode = True
     try:
         with warnings.catch_warnings():
             # The UFO's texnames hold invalid escape sequences.
             warnings.simplefilter("ignore", DeprecationWarning)
-            spec.loader.exec_module(package)
+            if relative:
+                spec = importlib.util.spec_from_file_location(
+                    name, path / "__init__.py", submodule_search_locations=[str(path)]
+                )
+                package = importlib.util.module_from_spec(spec)
+                sys.modules[name] = package
+                spec.loader.exec_module(package)
+                prefix = f"{name}."
+            else:
+                sys.path.insert(0, str(path))
+                prefix = ""
             modules = tuple(
-                importlib.import_module(f"{name}.{part}")
-                for part in ("parameters", "CT_parameters", "function_library")
+                importlib.import_module(f"{prefix}{part}") for part in _UFO_PARTS
             )
-            importlib.import_module(f"{name}.CT_couplings")
         yield modules
     finally:
         sys.dont_write_bytecode = previous
-        for module in [m for m in sys.modules if m == name or m.startswith(f"{name}.")]:
-            del sys.modules[module]
+        if not relative and sys.path and sys.path[0] == str(path):
+            del sys.path[0]
+        for key in set(sys.modules) - before:
+            del sys.modules[key]
+        sys.modules.update(shadowed)
+
+
+@pytest.fixture(scope="module")
+def gmu_ufo(loop_gmu_ufo):
+    """The G_mu UFO's oracle modules (``_import_ufo``)."""
+
+    yield from _import_ufo(loop_gmu_ufo, "_pyamplicol_test_ufo_gmu")
+
+
+@pytest.fixture(scope="module")
+def qcd_qed_ufo(loop_qcd_qed_sm_ufo):
+    """loop_qcd_qed_sm's oracle modules (``_import_ufo``)."""
+
+    yield from _import_ufo(loop_qcd_qed_sm_ufo, "_pyamplicol_test_ufo_qcd_qed")
 
 
 def _counterterm_outputs(raw) -> list[tuple[str, int]]:
@@ -144,13 +194,46 @@ def _counterterm_outputs(raw) -> list[tuple[str, int]]:
     return outputs
 
 
-@pytest.fixture(scope="module")
-def gmu_plan(gmu):
-    """The coefficient plan of every CT parameter's Laurent coefficients."""
-
+def _plan(model):
     from pyamplicol.loops.v2.ct_recursion import coefficient_plan
 
-    return coefficient_plan(gmu.program, _counterterm_outputs(gmu.raw), gmu.fixed)
+    return coefficient_plan(model.program, _counterterm_outputs(model.raw), model.fixed)
+
+
+@pytest.fixture(scope="module")
+def gmu_plan(gmu):
+    """The coefficient plan of every G_mu CT parameter's Laurent
+    coefficients."""
+
+    return _plan(gmu)
+
+
+@pytest.fixture(scope="module")
+def qcd_qed_plan(qcd_qed):
+    """The coefficient plan of every loop_qcd_qed_sm CT parameter's Laurent
+    coefficients."""
+
+    return _plan(qcd_qed)
+
+
+# The CT-value oracles run on both electroweak UFOs.
+EW_MODELS = ("gmu", "qcd_qed")
+
+
+@pytest.fixture(scope="module", params=EW_MODELS)
+def ew(request):
+    """(model, its UFO oracle modules, its coefficient plan) of each
+    electroweak UFO of ``EW_MODELS``."""
+
+    from types import SimpleNamespace
+
+    name = request.param
+    return SimpleNamespace(
+        name=name,
+        model=request.getfixturevalue(name),
+        ufo=request.getfixturevalue(f"{name}_ufo"),
+        plan=request.getfixturevalue(f"{name}_plan"),
+    )
 
 
 # ---------------------------------------------------------------- UFO oracle
@@ -219,7 +302,7 @@ def _ufo_values(modules, card, *, digits=None, wrap=None) -> dict:
 
 
 def _ufo_source_values(modules, card, *, exact, wrap) -> dict:
-    parameters, counterterms, functions = modules
+    parameters, counterterms, functions, _couplings = modules
     if exact:
         import mpmath
 
@@ -273,10 +356,18 @@ def _ufo_source_values(modules, card, *, exact, wrap) -> dict:
     return values, environment
 
 
-def _oracle_card(gmu) -> dict[str, str]:
-    """The fixture card with every fixed parameter, as decimal strings."""
+def _oracle_card(model) -> dict[str, str]:
+    """The fixture card with every fixed parameter and every other external
+    parameter at the restricted model's value (the restriction card's: e.g.
+    loop_qcd_qed_sm's aEWM1 128.93, not its source default 127.9), as
+    decimal strings."""
 
-    return {**gmu.card, **{name: real for name, (real, _imag) in gmu.fixed.items()}}
+    defaults = {
+        name: repr(real)
+        for name, (real, _imag) in model.compiled.parameter_defaults.items()
+    }
+    fixed = {name: real for name, (real, _imag) in model.fixed.items()}
+    return {**defaults, **model.card, **fixed}
 
 
 def _plan_values(plan, card, **options) -> dict:
@@ -300,18 +391,19 @@ def _relative(value, reference) -> float:
 # --------------------------------------------------------------------- tests
 
 
-def test_counterterm_scalars_equal_the_ufo_python_evaluation(gmu, gmu_ufo, gmu_plan):
-    """Every Laurent coefficient of the G_mu CT parameters from the plan
-    (binary64, native scalar bindings) equals the UFO's own Python
-    evaluation at the fixture card; the coefficients the plan proves zero
-    at the fixed parameters are zero there, and none is singular."""
+def test_counterterm_scalars_equal_the_ufo_python_evaluation(ew):
+    """Every Laurent coefficient of the CT parameters of each electroweak
+    UFO (G_mu, loop_qcd_qed_sm) from the plan (binary64, native scalar
+    bindings) equals the UFO's own Python evaluation at the fixture card;
+    the coefficients the plan proves zero at the fixed parameters are zero
+    there, and none is singular."""
 
-    found = gmu_plan
+    found = ew.plan
     assert not found.nonfinite
-    reference, _environment = _ufo_values(gmu_ufo, _oracle_card(gmu))
+    reference, _environment = _ufo_values(ew.ufo, _oracle_card(ew.model))
     assert set(reference) == set(found.plan.outputs) | found.zero
     assert found.zero and all(reference[key] == 0 for key in found.zero)
-    values = _plan_values(found.plan, gmu.card, arithmetic="double")
+    values = _plan_values(found.plan, ew.model.card, arithmetic="double")
     worst = max(
         (_relative(complex(float(re), float(im)), reference[key]), key)
         for key, (re, im) in values.items()
@@ -322,36 +414,74 @@ def test_counterterm_scalars_equal_the_ufo_python_evaluation(gmu, gmu_ufo, gmu_p
     assert sum(1 for value in reference.values() if abs(value) > 1e-3) > 50
 
 
-def test_counterterm_branch_sides_do_not_matter_at_real_masses(gmu, gmu_ufo):
-    """Every argument of a branch-cut helper (``regsqrt``, the logarithms,
-    ``grreglog``, ``arg``) on the negative real axis or within 1e-12 of it
-    (relative) is moved to the other side of the cut: the CT values are
-    unchanged, since real masses keep only real parts. Many arguments are
-    on or near the cut (discriminating)."""
+# The branch-cut helpers of the electroweak UFOs.
+_BRANCH_HELPERS = frozenset(
+    ("regsqrt", "reglog", "reglogp", "reglogm", "grreglog", "arg")
+)
+# CT parameters whose helpers take an argument exactly on the cut at the
+# card, so the side changes them at real masses (measured on both UFOs:
+# HWcft_UV_EW by 80 %, HMass2_UV_EW by 1.7 %; the minimum asserted).
+_SIDE_SENSITIVE = {("HWcft_UV_EW", 0): 0.5, ("HMass2_UV_EW", 0): 0.01}
 
-    flipped = []
+
+def _on_cut(zero: float):
+    """(wrap, moved): ``wrap(name, function)`` gives every argument of a
+    branch-cut helper exactly on the negative real axis (imaginary part
+    zero, of either sign) the imaginary part ``zero`` (+0.0 or -0.0) and
+    records it in ``moved``; arguments off the axis, among them the UFOs'
+    deliberate +-1e-10 i regulators, are left alone."""
+
+    moved = []
+
+    def side(z):
+        z = complex(z)
+        if z.real < 0 and z.imag == 0:
+            moved.append(z)
+            return complex(z.real, zero)
+        return z
 
     def wrap(name, function):
-        if name not in {"regsqrt", "reglog", "reglogp", "reglogm", "grreglog", "arg"}:
+        if name not in _BRANCH_HELPERS:
             return function
-
-        def side(z):
-            z = complex(z)
-            if z.real < 0 and abs(z.imag) <= 1e-12 * abs(z.real):
-                flipped.append(z)
-                return complex(z.real, -z.imag if z.imag else -0.0)
-            return z
-
         if name == "grreglog":
             return lambda switch, z1, z2: function(switch, side(z1), side(z2))
         return lambda z: function(side(z))
 
-    card = _oracle_card(gmu)
-    reference, _environment = _ufo_values(gmu_ufo, card)
-    moved, _environment = _ufo_values(gmu_ufo, card, wrap=wrap)
-    assert len(flipped) > 100
-    worst = max((_relative(moved[key], reference[key]), key) for key in reference)
+    return wrap, moved
+
+
+def test_counterterm_branch_sides_are_the_positive_zero_side(ew):
+    """Branch sides matter at real masses: a helper argument exactly on the
+    negative real axis (e.g. ``regsqrt`` of a negative real, a logarithm of a
+    negative real) takes the side its zero imaginary part's sign selects,
+    and the Higgs two-point CT parameters change by O(1) with it
+    (``_SIDE_SENSITIVE``). The convention is the +0 side: a real float of
+    the UFO's own Python evaluation (and a real Fortran argument converted
+    to complex) has a +0 imaginary part, and mpmath, the double-double and
+    arbitrary-precision oracle, has no negative zero (its principal branch
+    is the +0 side). Pinned on both electroweak UFOs: every on-cut argument
+    given +0 leaves the UFO's evaluation unchanged and the plan (binary64,
+    ``ct_recursion._RealArguments``) equals it; given -0 the side-sensitive
+    parameters differ from the plan (discriminating)."""
+
+    card = _oracle_card(ew.model)
+    natural, _environment = _ufo_values(ew.ufo, card)
+    sides = {}
+    for side, zero in (("+0", 0.0), ("-0", -0.0)):
+        wrap, moved = _on_cut(zero)
+        sides[side], _environment = _ufo_values(ew.ufo, card, wrap=wrap)
+        assert moved, side
+    worst = max((_relative(sides["+0"][key], natural[key]), key) for key in natural)
     assert worst[0] <= DOUBLE_TOLERANCE, worst
+    values = _plan_values(ew.plan.plan, ew.model.card, arithmetic="double")
+    plan = {
+        key: complex(float(re), float(im)) for key, (re, im) in values.items()
+    } | dict.fromkeys(ew.plan.zero, 0j)
+    worst = max((_relative(plan[key], sides["+0"][key]), key) for key in plan)
+    assert worst[0] <= DOUBLE_TOLERANCE, worst
+    for key, minimum in _SIDE_SENSITIVE.items():
+        assert _relative(sides["-0"][key], sides["+0"][key]) > minimum, key
+        assert _relative(plan[key], sides["-0"][key]) > minimum, key
 
 
 def test_both_reglog_conventions_agree_at_real_masses(gmu, gmu_ufo):
@@ -456,10 +586,7 @@ def _check_referenced_couplings(gmu, gmu_ufo, gmu_plan, *, every: int) -> None:
     }
     bound.update(dict.fromkeys(gmu_plan.zero, 0j))
     ct_names = {name for name, _power in reference}
-    couplings = gmu_ufo[0].__name__.rsplit(".", 1)[0] + ".CT_couplings"
-    sources = {
-        c.name: c.value for c in importlib.import_module(couplings).all_couplings
-    }
+    sources = {c.name: c.value for c in gmu_ufo[3].all_couplings}
     checked = 0
     for record in gmu.raw.collections["couplings"][::every]:
         entry = SimpleNamespace(
@@ -691,16 +818,19 @@ def test_lowering_never_forms_an_untaken_branch(loop_sm_compiled_model, capfd):
         lowering._finite(lowering._resolve(cond(mu, E("1"), mb**-1)))
 
 
-def test_scalar_predicates_of_numbers_are_decided():
+def test_scalar_predicates_of_numbers_are_decided(loop_sm_compiled_model):
     """The scalar library's predicates and conditionals of exact numbers are
     decided: the G_mu UFO's CMS switch at its real-mass value,
-    if(equal(CMSParam = 0, 1), 1, 0), is zero, so a cond on it takes its
-    branch without an assumption; an inexact one stays undecided."""
+    if(equal(CMSParam = 0, 1), 1, 0), is zero, so a UFO-standard cond on it
+    (loop_sm's) takes its branch without an assumption; an inexact one stays
+    undecided."""
 
     from symbolica import E
 
     from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.loops.scalar_frontend import ScalarFunctionLibrary
     from pyamplicol.loops.v2.ct_recursion import CoefficientLowering, decide_constant
+    from pyamplicol.models.loading import load_compiled_model
 
     choose = symbols.qualified("symbolica::if")
     equal, less = (
@@ -714,9 +844,10 @@ def test_scalar_predicates_of_numbers_are_decided():
         "zero",
     ]
     assert decide_constant(choose(less(E("𝜋"), E("4")), E("1"), E("0"))) == "undecided"
-    lowering = CoefficientLowering.of_helpers({0: "cond"})
-    helper = "pyamplicol_scalar_model_test::value_0"
-    taken = lowering._resolve(E(f"{helper}(x, 1, 2)").replace(E("x"), off))
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    cond = ScalarFunctionLibrary(compiled.raw_loop_model).helpers["cond"][0]
+    lowering = CoefficientLowering(compiled, {})
+    taken = lowering._resolve(cond(off, E("1"), E("2")))
     assert taken == E("1") and not lowering.assumptions
 
 
@@ -743,6 +874,50 @@ def test_validate_builds_the_electroweak_fixture_request(gmu, loop_reference):
         k: "0" for k in ("WT", "WW", "WZ", "WH")
     }
     assert request.process == "g g > t t~"
+
+
+def test_validate_carriers_and_refused_native_inputs(tmp_path, monkeypatch):
+    """``tools/loop_v2_generate.py validate``: ``--carrier`` f64, dd and ap
+    (``--digits``) select binary64, double-double and arbitrary precision
+    (the older ``--precision`` still reads); with ``--inputs native`` a
+    process whose trees cannot be exported natively is a failure (exit 1,
+    ``point_inputs`` "regenerated-at-load" with the refusal recorded), never
+    a fallback to Python inputs."""
+
+    import argparse
+    import json
+    from types import SimpleNamespace
+
+    from pyamplicol.loops import native as native_module
+    from pyamplicol.loops.v2 import plan_export
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision
+    from tools import loop_v2_generate
+
+    def carrier(**options):
+        return loop_v2_generate._carrier(argparse.Namespace(**options))
+
+    assert carrier(carrier="f64") == ("f64", None)
+    assert carrier(carrier="dd") == ("dd", Precision.double_double())
+    assert carrier(carrier="ap", digits=40) == ("ap", Precision.arbitrary(40))
+    assert carrier(precision="dd") == ("dd", Precision.double_double())
+    assert carrier(precision="double") == ("f64", None)
+
+    class Refused:
+        def __init__(self, *args, **options):
+            raise NotImplementedError("a Weyl-line counterterm root term")
+
+    model = SimpleNamespace(raw_loop_model=None, parameter_defaults={"MB": "4.7"})
+    monkeypatch.setattr(loop_v2_generate, "_fixture_model", lambda *a: model)
+    monkeypatch.setattr(LoopSlice, "generate", lambda *a, **k: object())
+    monkeypatch.setattr(native_module, "load_loop_native", lambda: None)
+    monkeypatch.setattr(plan_export, "NativeExecutor", Refused)
+    out = tmp_path / "record.json"
+    arguments = ["validate", "gg_ttx", "--inputs", "native", "--carrier", "dd"]
+    assert loop_v2_generate.main([*arguments, "--json", str(out)]) == 1
+    record = json.loads(out.read_text())
+    assert record["passed"] is False and record["carrier"] == "dd"
+    assert record["point_inputs"] == "regenerated-at-load"
+    assert record["native_refusal"] == "a Weyl-line counterterm root term"
 
 
 def _eager_kernel_proof(remapped, coupling, dimensions):
@@ -909,6 +1084,7 @@ def test_counterterm_loops_are_loops_of_the_selected_corrections(
 
 # Native against Python inputs, as ``test_loop_v2_native_trees`` checks them:
 # every component on the scale of its sector's complete virtual.
+# (arithmetic, tolerance, points)
 NATIVE_TOLERANCES = (("double", 1e-12, 3), ("double-double", 1e-26, 1))
 
 
@@ -939,17 +1115,20 @@ def _native_deviation(native, python) -> float:
     return float(worst)
 
 
+@pytest.mark.loop_nightly
 def test_counterterm_references_are_native_parameter_program_inputs(
     gmu, loop_native, loop_reference
 ):
-    """The G_mu UFO's QCD CT scalars (G_UVb, tMass_UV, ...) call its CMS
+    """The G_mu UFO's QCD CT scalars (G_UVb, G_UVt, tMass_UV) call its CMS
     reglog, so g g > t t~ with QCD corrections lowers them on reference
     parameters (EWI-3). The native parameter program binds them per point
     from the coefficient plan (``native_trees._CountertermReferences``): the
     plan exports native point inputs (no load-time regeneration, ADDENDUM G)
     and every component of the native virtual equals the Python inputs'
     (``CountertermModel.coefficient_values``) in binary64 at the fixture's
-    three points and scales, and in double-double at one."""
+    three points and scales, and in double-double at one. Nightly: the cold
+    G_mu CT lowering takes 83 s (pinned idle cores), whatever the QCD
+    request (review minor 13: the default tier holds no EW CT lowering)."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
     from pyamplicol.loops.v2.plan_export import NativeExecutor
@@ -967,6 +1146,7 @@ def test_counterterm_references_are_native_parameter_program_inputs(
     model = slice_.counterterm_program.recursion.model
     assert {scalar for scalar, _power, _part in model.coefficients.values()} >= {
         "G_UVb",
+        "G_UVt",
         "tMass_UV",
     }
     native = NativeExecutor(slice_, forward=False, inputs="native")
@@ -989,11 +1169,14 @@ def test_counterterm_references_are_native_parameter_program_inputs(
 
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize("carrier", ["double-double", "arbitrary"])
-def test_counterterm_scalars_equal_mpmath(gmu, gmu_ufo, gmu_plan, carrier):
-    """The plan's CT values in the native double-double carrier and at the
-    working digits of a 60-digit evaluation equal an mpmath transliteration
-    of the UFO's source (every literal exact) at 64 and 140 digits: to 1e-28
-    and 1e-55 relative; the plan's zeros are zero there."""
+def test_counterterm_scalars_equal_mpmath(ew, carrier):
+    """The plan's CT values of each electroweak UFO (G_mu, loop_qcd_qed_sm)
+    in the native double-double carrier and at the working digits of a
+    60-digit evaluation equal an mpmath transliteration of the UFO's source
+    (every literal exact) at 64 and 140 digits: to 1e-28 and 1e-55
+    relative; the plan's zeros are zero there. mpmath has no negative zero:
+    its principal branch is the +0 side of the cut, the plan's convention
+    (``test_counterterm_branch_sides_are_the_positive_zero_side``)."""
 
     import mpmath
 
@@ -1005,8 +1188,8 @@ def test_counterterm_scalars_equal_mpmath(gmu, gmu_ufo, gmu_plan, carrier):
         working = Precision.arbitrary(60).working_digits
         options = {"arithmetic": "arbitrary", "precision": working}
         digits, tolerance = 2 * working, "1e-55"
-    reference, _environment = _ufo_values(gmu_ufo, _oracle_card(gmu), digits=digits)
-    values = _plan_values(gmu_plan.plan, gmu.card, **options)
+    reference, _environment = _ufo_values(ew.ufo, _oracle_card(ew.model), digits=digits)
+    values = _plan_values(ew.plan.plan, ew.model.card, **options)
     with mpmath.workdps(digits):
         # Relative error; absolute where the source value is exactly zero at
         # the card (a coefficient the plan cannot prove zero symbolically).
@@ -1018,7 +1201,7 @@ def test_counterterm_scalars_equal_mpmath(gmu, gmu_ufo, gmu_plan, carrier):
             for key, (re, im) in values.items()
         )
         assert worst[0] <= float(tolerance), worst
-        assert all(reference[key] == 0 for key in gmu_plan.zero)
+        assert all(reference[key] == 0 for key in ew.plan.zero)
 
 
 @pytest.mark.loop_nightly
