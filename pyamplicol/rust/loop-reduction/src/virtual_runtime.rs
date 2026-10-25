@@ -187,6 +187,8 @@ impl VirtualRuntime {
         r2_strategy: &str,
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Self> {
+        // Saved exact evaluators are Symbolica state (pyAmpliCol's library key).
+        let _unlock = pyamplicol::unlock();
         crate::runtime::register_scalar_primitives();
         Self::bind(
             Arc::new(open_loop_artifact(path, process)?),
@@ -387,6 +389,7 @@ impl VirtualRuntime {
         &self.binding_validation
     }
     pub fn update_parameters(&self, changes: &SourceOverrides) -> RusticolResult<u64> {
+        let _unlock = pyamplicol::unlock();
         Ok(self
             .binding_validation
             .update(&self.owner, &self.backend, changes)?
@@ -420,6 +423,8 @@ impl VirtualRuntime {
         r2_strategy: Option<&str>,
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Self> {
+        // Saved exact evaluators are Symbolica state (pyAmpliCol's library key).
+        let _unlock = pyamplicol::unlock();
         let mut exact = self.parameter_overrides()?;
         if let Some(changes) = parameters {
             exact.extend(changes.clone());
@@ -517,6 +522,8 @@ impl VirtualRuntime {
         observable: LoopObservable,
         policy: &VerificationPolicy,
     ) -> RusticolResult<VerifiedLoopResult> {
+        // Saved exact evaluators are Symbolica state (pyAmpliCol's library key).
+        let _unlock = pyamplicol::unlock();
         self.require_observable(observable)?;
         strategy(r2_strategy.unwrap_or(&self.requested_strategy))?;
         let inputs = bind_public_momenta(
@@ -557,6 +564,8 @@ impl VirtualRuntime {
         observable: LoopObservable,
         partial: bool,
     ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
+        // Saved exact evaluators are Symbolica state (pyAmpliCol's library key).
+        let _unlock = pyamplicol::unlock();
         self.require_observable(observable)?;
         strategy(r2_strategy.unwrap_or(&self.requested_strategy))?;
         let inputs = bind_public_momenta(

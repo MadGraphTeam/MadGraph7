@@ -1005,6 +1005,62 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
     )
 
 
+def _workspace_version_crates(workspace: Path) -> tuple[str, ...]:
+    """The workspace members whose package version is the workspace's own
+    (``version.workspace = true``): a candidate build rewrites the workspace
+    version, so their ``Cargo.lock`` entries must follow it, or a ``--locked``
+    build refuses to update the lock. Members with their own version keep it."""
+
+    try:
+        with (workspace / "Cargo.toml").open("rb") as stream:
+            members = tomllib.load(stream)["workspace"]["members"]
+    except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
+        raise RuntimeError("Cargo workspace member inventory is invalid") from error
+    if not isinstance(members, list) or not all(
+        isinstance(member, str) for member in members
+    ):
+        raise RuntimeError("Cargo workspace member inventory is invalid")
+    names = []
+    for member in members:
+        manifest = workspace / member / "Cargo.toml"
+        try:
+            with manifest.open("rb") as stream:
+                package = tomllib.load(stream)["package"]
+        except (KeyError, OSError, tomllib.TOMLDecodeError) as error:
+            raise RuntimeError(
+                f"Cargo workspace member {member} has no valid package manifest"
+            ) from error
+        if package.get("version") == {"workspace": True}:
+            names.append(str(package["name"]))
+    if not names:
+        raise RuntimeError("no Cargo workspace member inherits the workspace version")
+    return tuple(sorted(names))
+
+
+def _candidate_lock_text(
+    workspace: Path, lock_text: str, base_version: str, cargo_version: str
+) -> str:
+    """``lock_text`` with the entries of ``_workspace_version_crates`` moved
+    from ``base_version`` to the candidate ``cargo_version``."""
+
+    for package_name in _workspace_version_crates(workspace):
+        pattern = (
+            rf'(?m)(\[\[package\]\]\nname = "{re.escape(package_name)}"\n)'
+            rf'version = "{re.escape(base_version)}"'
+        )
+        lock_text, count = re.subn(
+            pattern,
+            rf'\g<1>version = "{cargo_version}"',
+            lock_text,
+            count=1,
+        )
+        if count != 1:
+            raise RuntimeError(
+                f"could not derive candidate lock entry for {package_name}"
+            )
+    return lock_text
+
+
 def _mark_candidate(
     overlay: Path,
     base_version: str,
@@ -1041,27 +1097,15 @@ def _mark_candidate(
     cargo.write_text(updated, encoding="utf-8")
 
     lock = overlay / "Cargo.lock"
-    lock_text = lock.read_text(encoding="utf-8")
-    for package_name in (
-        "rusticol-capi",
-        "rusticol-core",
-        "rusticol-python",
-    ):
-        pattern = (
-            rf'(?m)(\[\[package\]\]\nname = "{package_name}"\n)'
-            rf'version = "{re.escape(base_version)}"'
-        )
-        lock_text, count = re.subn(
-            pattern,
-            rf'\g<1>version = "{cargo_version}"',
-            lock_text,
-            count=1,
-        )
-        if count != 1:
-            raise RuntimeError(
-                f"could not derive candidate lock entry for {package_name}"
-            )
-    lock.write_text(lock_text, encoding="utf-8")
+    lock.write_text(
+        _candidate_lock_text(
+            overlay,
+            lock.read_text(encoding="utf-8"),
+            base_version,
+            cargo_version,
+        ),
+        encoding="utf-8",
+    )
 
     package = overlay / "src" / "pyamplicol"
     package.mkdir(parents=True, exist_ok=True)

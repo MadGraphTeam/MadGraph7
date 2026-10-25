@@ -19,11 +19,11 @@ python-generation-bridge = ["f64-symjit"]
 # Non-default parity seam for the private Python development harness.  This
 # feature is deliberately absent from production/default builds.
 on-the-fly-test-support = ["f64-symjit"]
-symbolica-runtime = ["dep:symbolica"]
+symbolica-runtime = ["dep:symbolica", "dep:pyamplicol"]
 # Native core of the loop engine v2: plan v4 and its executor (open-loop
 # polynomials in the NinjaRS tensor layout). Enabled by the loop consumer
 # (rusticol-loop-reduction), so the native extension ships it.
-loop-v2 = ["dep:flate2", "dep:ninjars", "symbolica-runtime"]
+loop-v2 = ["dep:flate2", "dep:ninjars", "symbolica-runtime", "f64-symjit"]
 
 [dependencies]
 bincode.workspace = true
@@ -31,6 +31,9 @@ flate2 = { workspace = true, optional = true }
 libloading = { version = "0.9", optional = true }
 libc.workspace = true
 ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "41a4c00e7635e3ab188fc26bacf0aae6941e8082", optional = true }
+# pyAmpliCol's Symbolica library key (the crate named after the package the
+# key is issued for).
+pyamplicol = { path = "../pyamplicol", optional = true }
 num-complex = { version = "0.4", optional = true }
 rayon.workspace = true
 serde.workspace = true

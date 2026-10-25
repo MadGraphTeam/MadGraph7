@@ -531,8 +531,10 @@ fn numerators_with<T: Exchanged>(
 
 #[pymethods]
 impl V2Executor {
-    /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON
-    /// and the saved exact evaluator of each stage.
+    /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON,
+    /// the saved exact evaluator of each kernel and of the parameter program
+    /// (last), and their binary64 SymJIT plane applications in the same order
+    /// (or None: binary64 then runs the exact states).
     #[new]
     #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None))]
     #[allow(clippy::too_many_arguments)]
@@ -544,7 +546,7 @@ impl V2Executor {
         threads: Option<usize>,
         forms: &str,
         engine: &str,
-        trees: Option<(String, Vec<Vec<u8>>)>,
+        trees: Option<(String, Vec<Vec<u8>>, Option<Vec<Vec<u8>>>)>,
     ) -> PyResult<Self> {
         if !matches!(engine, "fast" | "generic") {
             return Err(error("engine must be fast or generic"));
@@ -568,11 +570,13 @@ impl V2Executor {
         };
         let plan = Arc::new(LoopProgramV4::load_with(plan.as_bytes(), policy).map_err(error)?);
         let trees = trees
-            .map(|(json, kernels)| {
-                TreeProgram::load(json.as_bytes(), &kernels, &plan).map(|program| Trees {
-                    program,
-                    runtime: Mutex::new(None),
-                })
+            .map(|(json, kernels, planes)| {
+                TreeProgram::load(json.as_bytes(), &kernels, planes.as_deref(), &plan).map(
+                    |program| Trees {
+                        program,
+                        runtime: Mutex::new(None),
+                    },
+                )
             })
             .transpose()
             .map_err(error)?;
@@ -738,6 +742,12 @@ impl V2Executor {
         }
         let bits = self.bits()?;
         let carrier = self.carrier;
+        // The generic reduction builds Symbolica expressions and the exact
+        // tree kernels decode Symbolica states: pyAmpliCol's library key
+        // (binary64 with the fast engine and plane kernels touches neither).
+        let _unlock = (self.engine == "generic" || !matches!(carrier, Carriers::Double))
+            .then(pyamplicol::unlock)
+            .flatten();
         let backend = backend_of(&mut self.backend, carrier, &self.engine)?;
         backend.masters = masters;
         let executor = &self.executor;
@@ -809,7 +819,40 @@ fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyRes
     .map_err(error)
 }
 
+/// Generation: the binary64 SymJIT plane application of a saved exact
+/// evaluator of a tree program (a kernel or the parameter program), checked
+/// against the evaluator (`rusticol_core::loop_v2::trees::compile_plane_
+/// application`): `(application, inputs, outputs)`.
+#[pyfunction]
+#[pyo3(signature = (state, optimization_level=2, compress=false))]
+fn compile_v2_plane<'py>(
+    py: Python<'py>,
+    state: &[u8],
+    optimization_level: u8,
+    compress: bool,
+) -> PyResult<(Bound<'py, pyo3::types::PyBytes>, usize, usize)> {
+    let (plane, inputs, outputs) = py
+        .detach(|| {
+            rusticol_core::loop_v2::trees::compile_plane_application(
+                state,
+                optimization_level,
+                compress,
+            )
+        })
+        .map_err(error)?;
+    Ok((pyo3::types::PyBytes::new(py, &plane), inputs, outputs))
+}
+
+/// Whether pyAmpliCol's Symbolica library key unlocks the native code of
+/// this process (crate `pyamplicol`).
+#[pyfunction]
+fn native_library_key_active() -> bool {
+    pyamplicol::is_active()
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Executor>()?;
+    module.add_function(wrap_pyfunction!(compile_v2_plane, module)?)?;
+    module.add_function(wrap_pyfunction!(native_library_key_active, module)?)?;
     module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)
 }

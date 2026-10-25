@@ -2323,7 +2323,11 @@ pub mod v2 {
                     "unsupported SIMD lane count {lanes} (1, 2, 4, 8, 16 or 32)"
                 )));
             }
-            let mut builder = rayon::ThreadPoolBuilder::new();
+            // The DoubleFloat and arbitrary-precision reduction builds
+            // Symbolica expressions on these workers: pyAmpliCol's library
+            // key unlocks them for their lifetime (`crate::licence`).
+            let mut builder =
+                rayon::ThreadPoolBuilder::new().start_handler(|_| crate::licence::unlock_thread());
             if let Some(threads) = threads {
                 builder = builder.num_threads(threads.max(1));
             }
