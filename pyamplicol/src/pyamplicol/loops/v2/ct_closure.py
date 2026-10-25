@@ -869,6 +869,7 @@ def lowered_counterterm_model(
             multi_trace=True,
             continuation=continuation,
             order_limits=order_limits,
+            species_orders=prepared.structure.perturbative_species_orders,
         )
         found = _LOWERED[key] = (compiled, lowered)
         while len(_LOWERED) > _LOWERED_KEPT:

@@ -783,6 +783,72 @@ def test_lazy_kernel_proof_equals_the_eager_one():
         )
 
 
+def _rule(rules, kind, particles, alternative):
+    """The prepared CT rule of ``kind`` on the field multiset ``particles``
+    with the loop alternative ``alternative`` (|PDG| codes)."""
+
+    (rule,) = [
+        rule
+        for rule in rules.values()
+        if rule.kind == kind
+        and rule.entries
+        and sorted(rule.entries[0].particle_names) == sorted(particles)
+        and tuple(alternative) in rule.alternatives
+    ]
+    return rule
+
+
+def test_counterterm_loops_are_loops_of_the_selected_corrections(
+    gmu, loop_sm_compiled_model
+):
+    """The plain admission (design §6.2) with the model's perturbative species
+    facts: a counterterm's loop alternative is admitted only as a loop of a
+    selected correction, every particle of it perturbative in one (the
+    families' eligible species). The UFO declares no correction type of a CT
+    vertex, so this tells the QCD correction of the photon vertex (the R2 of
+    u u~ a with a u-gluon loop, orders QCD^2 QED) from the QED one (its UV
+    counterterm with a u-photon loop) when a mixed-order Born admits both by
+    coupling orders (u u~ > d d~ with QED corrections, Q3). Without facts the
+    rule is the old one, and loop_sm's QCD admission is unchanged rule by
+    rule."""
+
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.loops.v2.ct_recursion import admitted_alternatives
+    from pyamplicol.models.loading import load_compiled_model
+
+    prepared = prepare_loop_request_model(
+        gmu.compiled, fixed_parameters={}, compatibility="gmu_particle_anti"
+    )
+    species = prepared.structure.perturbative_species_orders
+    rules = prepared.counterterms.rules
+    gluon_loop = _rule(rules, "R2", ("A", "u", "u~"), (2, 21))
+    photon_loop = _rule(rules, "UVloop", ("A", "u", "u~"), (2, 22))
+    admitted = {
+        (name, corrections): admitted_alternatives(rule, (), corrections, species)
+        for name, rule in (("gluon", gluon_loop), ("photon", photon_loop))
+        for corrections in (("QCD",), ("QED",), ("QCD", "QED"))
+    }
+    assert admitted == {
+        ("gluon", ("QCD",)): (0,),
+        ("gluon", ("QED",)): (),
+        ("gluon", ("QCD", "QED")): (0,),
+        ("photon", ("QCD",)): (),
+        ("photon", ("QED",)): (0,),
+        ("photon", ("QCD", "QED")): (0,),
+    }
+    assert admitted_alternatives(gluon_loop, (), ("QED",)) == (0,)
+    assert admitted_alternatives(gluon_loop, (), None, species) == (0,)
+    loop_sm = prepare_loop_request_model(
+        load_compiled_model(loop_sm_compiled_model), fixed_parameters={}
+    )
+    facts = loop_sm.structure.perturbative_species_orders
+    assert all(
+        admitted_alternatives(rule, (), ("QCD",), facts)
+        == admitted_alternatives(rule, (), ("QCD",))
+        for rule in loop_sm.counterterms.rules.values()
+    )
+
+
 # ------------------------------------------------------------------ nightly
 
 
@@ -1042,6 +1108,26 @@ def ladder_models(request):
     return get
 
 
+def _check_admitted_loops(slice_, request) -> None:
+    """Every loop alternative the request's CT program admits is a loop of a
+    selected correction (``ct_recursion.admitted_alternatives`` with the
+    model's perturbative species facts)."""
+
+    program = slice_.counterterm_program
+    if program is None:
+        return
+    recursion = program.recursion
+    species = recursion.model.species_orders
+    assert species is not None
+    corrections = frozenset(request.corrections)
+    for name, indices in recursion.admission.items():
+        for index in indices:
+            alternative = recursion.rules[name].alternatives[index]
+            assert all(
+                species.get(abs(pdg), frozenset()) & corrections for pdg in alternative
+            ), (name, alternative)
+
+
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize(
     ("model", "process", "born", "loop", "blocker", "options"), LADDER
@@ -1065,6 +1151,7 @@ def test_electroweak_ladder_reaches_its_blocker(
     request = SliceRequest(process, born, loop, **options)
     try:
         slice_ = LoopSlice.generate(ladder_models(model), request, loop_native)
+        _check_admitted_loops(slice_, request)
         if point is not None:
             result = slice_.evaluate(
                 point, "1000000", parameters={"aS": "0.118", "MT": "173"}, poles=poles

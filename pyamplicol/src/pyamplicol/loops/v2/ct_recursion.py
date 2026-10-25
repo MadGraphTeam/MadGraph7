@@ -49,10 +49,12 @@ Born x CT interference directly; no CT tree and no site is listed:
   taken branch); no loop_sm rule is among them. A request that admits such
   a rule is refused (``UnloweredCountertermError``) when the rule's vertex
   can enter a tree of it (``ct_closure.InsertionReachability``, the tree
-  engine's field and coupling-order reachability); there is no site fallback. Rules that can be
-  in no tree of the program (ghost legs; orders above its limits; a vertex
-  no tree of the request holds, REQUIREMENTS_ADDENDUM J) or have no admitted
-  loop content are ``inert`` and contribute nothing. With
+  engine's field and coupling-order reachability); there is no site
+  fallback. Rules that can be in no tree of the program (ghost legs; orders
+  above its limits; a vertex no tree of the request holds,
+  REQUIREMENTS_ADDENDUM J) or have no admitted loop content (vetoed, or no
+  loop of a selected correction, ``admitted_alternatives``) are ``inert``
+  and contribute nothing. With
   ``multi_trace`` (the production closure, ``ct_closure``) the d-symbol, d·d,
   d·f and δδ colours of the four-gluon and gggV R2 (``models.ct_color_flow``)
   and the whole-rule colour continuations (``whole_rule_rows``) are lowered;
@@ -973,7 +975,9 @@ class CountertermModel:
     the cells the lowered model leaves out because they cancel between rules
     with the multiplicities ``weights`` (module docstring): cell -> (why it is
     not lowered, {Laurent power: exact coefficient}). ``veto`` are the
-    vetoed |PDG| codes (``particle_veto``).
+    vetoed |PDG| codes (``particle_veto``) and ``species_orders`` the
+    model's perturbative species facts of the admission
+    (``admitted_alternatives``), ``None`` when the lowering had none.
 
     ``coefficients`` maps every reference parameter of the lowered model
     (``CoefficientLowering``: a part of a referenced CT scalar's Laurent
@@ -998,6 +1002,9 @@ class CountertermModel:
     weights: Mapping[RuleKey, int] = field(default_factory=dict)
     inert: frozenset[RuleKey] = frozenset()
     veto: frozenset[int] = frozenset()
+    species_orders: Mapping[int, frozenset[str]] | None = field(
+        default=None, repr=False
+    )
     coefficients: Mapping[str, tuple[str, int, str]] = field(default_factory=dict)
     coefficient_plan: Any = field(default=None, compare=False, repr=False)
     # (card, digits) -> reference values (``coefficient_values``).
@@ -1099,6 +1106,7 @@ def lower_model_counterterms(
     continuation: Any = None,
     dirac_fields: Iterable[str] = (),
     order_limits: Mapping[str, int] | None = None,
+    species_orders: Mapping[int, frozenset[str]] | None = None,
 ) -> CountertermModel:
     """The tree model of ``compiled`` with every lowerable rule's CT vertices.
 
@@ -1133,6 +1141,11 @@ def lower_model_counterterms(
     tree program the model serves (``CountertermRecursion.coupling_order_limits``
     of a request): the model then keeps only the vertices and rules within
     them, and a rule above them is inert. ``None`` lowers the whole model.
+
+    ``species_orders`` (the prepared structure's
+    ``perturbative_species_orders``) admit an alternative only as a loop of a
+    selected correction (``admitted_alternatives``); a rule without one is
+    inert.
     """
 
     from symbolica import E
@@ -1169,7 +1182,9 @@ def lower_model_counterterms(
             if beyond:
                 reason = f"its orders {beyond[0]} exceed the program's limits"
                 inert.add(key)
-        if reason is None and not admitted_alternatives(rule, veto, corrections):
+        if reason is None and not admitted_alternatives(
+            rule, veto, corrections, species_orders
+        ):
             reason = "no admitted loop content (particle_veto or correction)"
             inert.add(key)
         if reason is not None:
@@ -1209,7 +1224,9 @@ def lower_model_counterterms(
             continue
         if cells:
             unlowered[key] = cells
-            weights[key] = len(admitted_alternatives(rule, veto, corrections))
+            weights[key] = len(
+                admitted_alternatives(rule, veto, corrections, species_orders)
+            )
         if multi_trace:
             rows = _without_u1_terms(rows, nc)
         if nc is not None:
@@ -1310,6 +1327,7 @@ def lower_model_counterterms(
             weights={key: weights[key] for key in unlowered},
             inert=frozenset(inert),
             veto=veto,
+            species_orders=species_orders,
             coefficients={name: coefficients.references[name] for name in sorted(read)},
             coefficient_plan=plan if read else None,
         )
@@ -1903,6 +1921,7 @@ def admitted_alternatives(
     rule: Any,
     veto: Iterable[int] = (),
     corrections: Iterable[str] | None = None,
+    species_orders: Mapping[int, frozenset[str]] | None = None,
 ) -> tuple[int, ...]:
     """Indices of the loop-content alternatives of ``rule`` that are admitted.
 
@@ -1913,6 +1932,17 @@ def admitted_alternatives(
     needs a selected correction among its own orders. No loop routing is
     consulted: the coupling orders and the exactly-once insertion bound the
     trees the rule enters.
+
+    With ``species_orders`` (|PDG| -> the orders the species is perturbative
+    in, MadLoop's ``is_perturbating`` facts: the prepared structure's
+    ``perturbative_species_orders``) an alternative is also a loop of a
+    selected correction: each of its particles is perturbative in one, as
+    every line of the request's loops (the families' eligible species). The
+    UFO declares no correction type of a CT vertex, so this is what tells a
+    QCD loop from a QED one: under QED corrections the R2 of u u~ a with a
+    u-gluon loop (orders QCD^2 QED, the QCD correction of the photon vertex)
+    is not admitted, while its u-photon twin of u u~ g is. A species without
+    facts is no loop species.
     """
 
     veto = frozenset(abs(int(pdg)) for pdg in veto)
@@ -1924,10 +1954,19 @@ def admitted_alternatives(
             return ()
         if rule.kind == "UVtree" and not corrections & {n for n, _ in rule.order}:
             return ()
+
+    def selected(alternative: Iterable[int]) -> bool:
+        if corrections is None or species_orders is None:
+            return True
+        return all(
+            species_orders.get(abs(int(pdg)), frozenset()) & corrections
+            for pdg in alternative
+        )
+
     return tuple(
         index
         for index, alternative in enumerate(rule.alternatives)
-        if not veto.intersection(alternative)
+        if not veto.intersection(alternative) and selected(alternative)
     )
 
 
@@ -1978,7 +2017,9 @@ class CountertermRecursion:
         admission: dict[str, tuple[int, ...]] = {}
         for name, rule in rules.items():
             key = rule_key(rule)
-            admitted = admitted_alternatives(rule, model.veto, selection.corrections)
+            admitted = admitted_alternatives(
+                rule, model.veto, selection.corrections, model.species_orders
+            )
             if key in model.multiplicities:
                 # The left-out cells cancel with the multiplicities the
                 # lowering assumed: the loop groups of one vertex share its
