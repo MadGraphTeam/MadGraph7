@@ -1,12 +1,16 @@
 # SPDX-License-Identifier: 0BSD
 """The native plan model: byte-identical plan JSON and the binary plan member
-(WP3.1 package D2, ``loops/v2/native_lowering.py``).
+(WP3.1 package D2, D2' and D1; ``loops/v2/native_lowering.py``).
 
-The native model is fed with an exported plan's records (sorted keys, spaced
-separators: the writer must restore the exporter's order and compact form).
+The native model is fed with an exported plan's records, read from the Python
+objects (``V2PlanModel.from_program``, the route of ``ExportedPlan.json()``
+and ``ExportedPlan.binary()``), and from a JSON with sorted keys and spaced
+separators (the writer must restore the exporter's order and compact form).
 Per plan:
 
-* the native JSON writer gives ``ExportedPlan.json()`` byte for byte;
+* ``ExportedPlan.json()`` (the native writer, ``NATIVE_JSON``) and the native
+  JSON from either route give ``json.dumps`` (``ExportedPlan.python_json()``)
+  byte for byte; ``ExportedPlan.binary()`` is the model's member;
 * the binary member decodes to the same model (its JSON again identical, its
   re-encoding bitwise), loads to the same executor tables as the JSON (digest
   of the loaded program, derived row links included), both through the timed
@@ -34,6 +38,15 @@ Per plan:
   member's, and no plan written today needs padding (the bound's soundness
   against the loader's real allocations: the reader's Rust tests,
   ``tests/loop_v2_plan_derive_bound.rs``);
+* the Python records convert exactly as ``json.dumps`` writes them (a bool
+  for a number, a float, a wrong-length entry, an unknown key are refused
+  with the record's path);
+* a read decodes on one thread under an address-space limit (the wide member
+  with the default pool loads or is refused, never aborts), and a thread pool
+  that cannot start leaves every read on one thread;
+* the leaf weights (``conventions.LeafWeights``, D1) give the full rule's
+  sign on every reading of the main slice and of its companion, with its
+  refusals;
 * the bindings run in a process without a Symbolica key (``loop_nightly``).
 
 Plans cover schedule B with derived and written row links, schedule F
@@ -57,6 +70,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -131,11 +145,16 @@ def host_paths(member: bytes, decoded: bytes) -> list[bytes]:
 def check(exported, native) -> bytes:
     """The native JSON and the binary member of one exported plan."""
 
-    text = exported.json().encode()
+    text = exported.python_json().encode()
+    assert native_lowering.NATIVE_JSON
+    assert exported.json().encode() == text
     model = native_lowering.plan_model(exported, native)
     assert bytes(model.json()) == text
+    records = native_lowering.plan_model_from_json(exported, native)
+    assert bytes(records.json()) == text
     member = bytes(model.binary())
     assert member.startswith(b"LOOPPLAN")
+    assert exported.binary() == member
     again = native.V2PlanModel.from_binary(member)
     decoded = bytes(again.json())
     assert decoded == text
@@ -257,6 +276,119 @@ def test_strings_follow_ensure_ascii(slices, loop_native):
 
 
 @pytest.mark.loop_fast
+def test_program_records_convert_as_json_writes_them(slices, loop_native):
+    """``V2PlanModel.from_program`` reads what ``json.dumps`` writes as the
+    loader's types: tuples as lists; a bool for a number, a number for a
+    flag, a float, a too long or short entry, an unknown or non-str key and
+    a missing field are refused, the error naming the record."""
+
+    exported = export_plan(slices("gg_ttx"), forward=False)
+    program = json.loads(exported.python_json())
+    expected = exported.python_json().encode()
+    tupled = json.loads(exported.python_json())
+    tupled["factors"] = [tuple(factor) for factor in tupled["factors"]]
+    model = loop_native.V2PlanModel.from_program(tupled)
+    assert bytes(model.json()) == expected
+
+    def refused(edit, match: str) -> None:
+        crafted = json.loads(json.dumps(program))
+        edit(crafted)
+        with pytest.raises(ValueError, match=match):
+            loop_native.V2PlanModel.from_program(crafted)
+
+    def at(path: str, message: str) -> str:
+        return re.escape(f"{path}: {message}")
+
+    refused(lambda p: p.update(legs=True), at(".legs", "expected an integer"))
+    refused(lambda p: p.update(average=2.0), at(".average", "expected an integer"))
+    refused(
+        lambda p: p["families"][0]["steps"][0].update(seeded=1),
+        at(".families[0].steps[0].seeded", "expected a bool"),
+    )
+    refused(
+        lambda p: p["contents"][0]["fused"][0].append(0),
+        at(".contents[0].fused[0]", "1 more items"),
+    )
+    refused(lambda p: p["factors"][0].pop(), re.escape(".factors[0]: "))
+    refused(lambda p: p["families"][0].update(extra=1), "unknown field")
+    refused(lambda p: p["families"][0].pop("rank"), "missing field")
+    refused(lambda p: p.update({1: 2}), "expected a str key")
+    refused(
+        lambda p: p["families"][0]["leaves"][0].update(weight=1),
+        at(".families[0].leaves[0].weight", "expected a str"),
+    )
+    refused(lambda p: p.update(rows=2**64), "beyond 64 bits")
+
+
+def _reading_outcome(sign, skeleton) -> object:
+    try:
+        return sign(skeleton)
+    except (ValueError, KeyError, NotImplementedError) as error:
+        return (type(error).__name__, str(error))
+
+
+def check_leaf_weights(slice_, weights=None) -> int:
+    """The leaf weights' sign on every reading of the slice and of its
+    companion equals the full rule's (``LeafWeights._fermion_sign``),
+    refusals included (asked twice: a refusal is not cached); ``weights``
+    replaces the slice's (fresh, so the cache is the one under test).
+    Returns how many readings took the fast path."""
+
+    from pyamplicol.loops.v2.conventions import _FERMIONIC, LeafWeights
+    from pyamplicol.loops.v2.reference_executor import reading_skeletons
+
+    if weights is None:
+        own = slice_.weights
+        weights = LeafWeights.__new__(LeafWeights)
+        weights.__dict__.update(own.__dict__)
+        weights._signs, weights._kinds = {}, {}
+    plans = [slice_.plan]
+    if slice_.scaleless is not None:
+        plans.append(slice_.scaleless.plan)
+    fast = 0
+    for plan in plans:
+        for skeleton in reading_skeletons(plan):
+            expected = _reading_outcome(weights._fermion_sign, skeleton)
+            assert _reading_outcome(weights.fermion_sign, skeleton) == expected
+            assert _reading_outcome(weights.fermion_sign, skeleton) == expected
+            kinds = [weights._kinds.get(c) for c in skeleton.contents]
+            fast += _FERMIONIC not in kinds
+    return fast
+
+
+@pytest.mark.loop_fast
+def test_leaf_weights_equal_the_full_rule(slices):
+    """D1: one sign per distinct contents tuple, and the fast path for
+    contents without a fermion line, equal the full rule on every reading
+    (g g > t t~: the top line through the loop, top loops, gluon and ghost
+    loops; g g > g g: quark loops beside gluon and ghost loops), the fast
+    path taken; the leaf weight of an exported leaf is unchanged. With the
+    coloured fermion ends hidden, the g g > t t~ readings with the top line
+    through the loop are refused, by both alike, at every call."""
+
+    from pyamplicol.loops.v2.conventions import LeafWeights
+    from pyamplicol.loops.v2.reference_executor import reading_skeletons
+
+    tops = slices("gg_ttx")
+    check_leaf_weights(tops)  # every reading has the top line or a top loop
+    gluons = slices("gg_gg")
+    assert check_leaf_weights(gluons) > 0
+    skeleton, _ring = next(iter(gluons.plan.schedules.values())).trie.leaves[0]
+    sign = gluons.weights._fermion_sign(skeleton)
+    weight = gluons.weights(skeleton, skeleton.contents)
+    assert weight == skeleton.weight * skeleton.multiplicity * sign
+    blind = LeafWeights.__new__(LeafWeights)
+    blind.__dict__.update(tops.weights.__dict__)
+    blind._ends, blind._end_mask, blind._signs, blind._kinds = {}, 0, {}, {}
+    check_leaf_weights(tops, blind)
+    refusals = sum(
+        isinstance(_reading_outcome(blind.fermion_sign, s), tuple)
+        for s in reading_skeletons(tops.plan)
+    )
+    assert refusals > 0
+
+
+@pytest.mark.loop_fast
 def test_foreign_and_damaged_members_are_refused(slices, loop_native, tmp_path):
     """Foreign formats and schemas, extended members and unknown JSON fields
     are refused; truncations, single-byte corruptions and crafted
@@ -287,6 +419,7 @@ def test_quark_line_massive_and_electroweak_plans(slices, loop_native, name):
     from pyamplicol.loops.v2.observables import ColumnPlan, ObservableSlice
 
     slice_ = slices(name)
+    check_leaf_weights(slice_)
     check(export_plan(slice_), loop_native)
     check(export_plan(slice_, forward=False, links=True), loop_native)
     # The stored main plan: its tree program and Born metric (the native
@@ -398,9 +531,11 @@ def _empty_plan() -> dict[str, object]:
 
 def _wide_member(native) -> bytes:
     """A member whose seed classes and seed keys are long enough for the
-    reader's parallel decode (``binary.rs``, "Parallel decoding")."""
+    reader's parallel decode (``binary.rs``, "Parallel decoding"), and which
+    loads (one leg, one row, one column, three Born components)."""
 
-    plan = _empty_plan()
+    plan = _empty_plan() | {"legs": 1, "rows": 1, "columns": 1, "helicities": [[1]]}
+    plan["born_components"] = 3
     plan["seed_classes"] = [
         {"columns": [[[k % 3, f"{k}/7", "0"]] * (k % 4)]} for k in range(400)
     ]
@@ -635,25 +770,24 @@ if rows[-1] == 'LOADED':
 print(json.dumps(rows))
 """
 
-# A thread pool that cannot start (64 threads' stacks beyond 64 MiB of
-# headroom): a ValueError at every read, also once the limit is lifted (rayon
-# never starts a global pool after a failed start), never rayon's panic.
+# A thread pool that cannot start (no thread may be spawned: RLIMIT_NPROC's
+# soft limit at one process): every read decodes on one thread, also once the
+# limit is lifted (rayon never starts a global pool after a failed start);
+# never a refusal or rayon's panic.
 _POOL_LIMIT = """
 import json, resource, sys
 from pathlib import Path
 from pyamplicol.loops.native import load_loop_native
 native = load_loop_native()
 member = Path(sys.argv[1]).read_bytes()
-status = Path('/proc/self/status').read_text().splitlines()
-size = next(int(l.split()[1]) for l in status if l.startswith('VmSize:'))
-resource.setrlimit(resource.RLIMIT_AS, (size * 1024 + 2**26, resource.RLIM_INFINITY))
+hard = resource.getrlimit(resource.RLIMIT_NPROC)[1]
+resource.setrlimit(resource.RLIMIT_NPROC, (1, hard))
 rows = []
 for limited in (True, True, False):
     if not limited:
-        resource.setrlimit(resource.RLIMIT_AS, (resource.RLIM_INFINITY,) * 2)
+        resource.setrlimit(resource.RLIMIT_NPROC, (hard, hard))
     try:
-        native.v2_plan_load(member, digest=False)
-        rows.append('LOADED')
+        rows.append(native.v2_plan_read(member))
     except ValueError as error:
         rows.append(str(error))
 print(json.dumps(rows))
@@ -704,7 +838,12 @@ def _under_limits(native, tmp_path: Path) -> dict[str, tuple[subprocess.Popen, b
     address-space limits above its size, ascending (``HEADROOMS``; the weight
     by 1 MiB): refused by a probe ("which the allocator refuses") until it
     loads, to the parent's digest, never aborting; refused at the smallest.
-    Started here, collected by ``_fail_closed``."""
+    The wide member (parallel sections) is read likewise with the default
+    pool (8 threads, default malloc arenas): under the limit the read decodes
+    on one thread (``read_threads``), so it is refused with an error until it
+    loads, never aborting (the evidence audit's abort of fix round 7). A
+    thread pool that cannot start (``_POOL_LIMIT``). Started here, collected
+    by ``_fail_closed``."""
 
     def member(contents: int, entries: int, width: int) -> bytes:
         fused = [[i // width, i % width, 0, 0, 0, 0] for i in range(entries)]
@@ -739,9 +878,19 @@ def _under_limits(native, tmp_path: Path) -> dict[str, tuple[subprocess.Popen, b
             MALLOC_ARENA_MAX="1",
         )
         children[name] = (child, data)
+    wide = _wide_member(native)
+    path = tmp_path / "limits-wide.bin"
+    path.write_bytes(wide)
+    pooled = _children(
+        _UNDER_LIMITS, str(path), json.dumps(HEADROOMS), RAYON_NUM_THREADS="8"
+    )
+    children["wide, default pool"] = (pooled, wide)
     path = tmp_path / "pool.bin"
     path.write_bytes(members["shared 64 x 4096"][0])
-    children["pool"] = (_children(_POOL_LIMIT, str(path), RAYON_NUM_THREADS="64"), b"")
+    children["pool"] = (
+        _children(_POOL_LIMIT, str(path), RAYON_NUM_THREADS="8"),
+        members["shared 64 x 4096"][0],
+    )
     return children
 
 
@@ -800,8 +949,12 @@ def _fail_closed(native, member: bytes, program: dict, tmp_path: Path) -> None:
     for name, (child, data) in limits.items():
         rows = _collect(name, child, 120)
         assert isinstance(rows, list)
+        digest = native_lowering.read(data, native)
         if name == "pool":
-            assert all("thread pool cannot start" in r for r in rows), rows
+            assert rows == [digest] * 3, rows
+            continue
+        if name == "wide, default pool":
+            assert rows[-1] == digest, rows
             continue
         assert len(rows) > 1 and all("allocator refuses" in r for r in rows[:-1]), rows
-        assert rows[-1] == native_lowering.read(data, native), (name, rows)
+        assert rows[-1] == digest, (name, rows)

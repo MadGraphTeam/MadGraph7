@@ -5,11 +5,10 @@ The native plan model (``rusticol_core::loop_v2::plan::binary::PlanModel``)
 holds a plan v4 in the native loader's own file form and writes it in two
 encodings:
 
-* the plan JSON, byte-identical to ``ExportedPlan.json()``
-  (``json.dumps(program, separators=(",", ":"))``, keys in the exporter's
-  order);
+* the plan JSON, byte-identical to ``json.dumps(program, separators=(",",
+  ":"))`` (keys in the exporter's order);
 * the binary columnar member (one column per record field, at its narrowest
-  width), which ``loop_v2::plan::binary::read_binary`` reads through the same
+  width), which ``loop_v2::plan::read_binary`` reads through the same
   validation and derivations as the JSON (the schedule-B row links stay
   derived at load). It holds plan data only, no path or host information, and
   declares its decoded size, bounded by its length: the reader refuses a
@@ -21,12 +20,15 @@ encodings:
   model and the derivations' peak fallibly before making them, so a member
   the allocator cannot hold is refused with an error, never an abort.
 
-Phase 0 (this module): the model is fed with the records of a Python
-``ExportedPlan``. They travel as JSON with sorted keys and Python's default
-separators, so the native writer reproduces the exporter's key order and
-compact form on its own rather than echoing its input. The switch inside
-``export_plan`` (``ExportedPlan.json()`` from the native writer) and the
-native lowering itself come in phase 1.
+The model is fed with the records of a Python ``ExportedPlan``
+(``plan_export``), read from the Python objects themselves
+(``V2PlanModel.from_program``: exactly the values ``json.dumps`` writes as
+the loader's types, else an error naming the record). ``ExportedPlan.json()``
+and ``ExportedPlan.binary()`` take this route (the D2' switch inside
+``export_plan``'s result, so the main plan, the companion's and the
+observables' column plans all do); ``NATIVE_JSON`` switches the JSON back to
+``json.dumps`` (``ExportedPlan.python_json()``, the oracle). The native
+lowering itself (D3) comes later.
 """
 
 from __future__ import annotations
@@ -34,6 +36,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any
+
+# ``ExportedPlan.json()`` writes the plan through the native model (byte for
+# byte ``ExportedPlan.python_json()``, RUST-MIGRATION.md rule 1; equal on every
+# control, tests/unit/test_loop_v2_native_lowering.py).
+NATIVE_JSON = True
 
 
 def _native(native: Any | None) -> Any:
@@ -44,10 +51,24 @@ def _native(native: Any | None) -> Any:
     return load_loop_native()
 
 
-def plan_model(exported: Any, native: Any | None = None) -> Any:
-    """The native model (``V2PlanModel``) of an exported plan's records."""
+def _program(exported: Any) -> Any:
+    return getattr(exported, "program", exported)
 
-    records = json.dumps(exported.program, sort_keys=True).encode()
+
+def plan_model(exported: Any, native: Any | None = None) -> Any:
+    """The native model (``V2PlanModel``) of an exported plan's records (an
+    ``ExportedPlan`` or its ``program``), read from the Python objects."""
+
+    return _native(native).V2PlanModel.from_program(_program(exported))
+
+
+def plan_model_from_json(exported: Any, native: Any | None = None) -> Any:
+    """The native model of an exported plan's records read from a JSON with
+    sorted keys and Python's default separators (the JSON reader's route, a
+    test of the writer, which must restore the exporter's key order and
+    compact form on its own)."""
+
+    records = json.dumps(_program(exported), sort_keys=True).encode()
     return _native(native).V2PlanModel.from_json(records)
 
 
@@ -61,6 +82,14 @@ def plan_binary(exported: Any, native: Any | None = None) -> bytes:
     """The binary columnar plan member of an exported plan."""
 
     return bytes(plan_model(exported, native).binary())
+
+
+def plan_encodings(exported: Any, native: Any | None = None) -> tuple[bytes, bytes]:
+    """The plan JSON and the binary member of an exported plan, from one
+    native model."""
+
+    model = plan_model(exported, native)
+    return bytes(model.json()), bytes(model.binary())
 
 
 @dataclass(frozen=True)
@@ -85,9 +114,25 @@ def load(data: bytes, native: Any | None = None, *, digest: bool = False) -> Pla
 def read(data: bytes, native: Any | None = None) -> str:
     """The digest of the program the production readers load from a plan: a
     binary member through ``read_binary`` (its one reader), a JSON through
-    ``LoopProgramV4::load``."""
+    ``LoopProgramV4::load``.
+
+    A diagnostic, outside the readers' fail-closed bound: the digest formats
+    the loaded program (``program_digest``: a multi-precision weight as its
+    decimal digits, through GMP and C ``malloc``), so under an address-space
+    limit the load fits in it can abort the process. Probes of the readers'
+    contract call ``load(data, digest=False)`` instead."""
 
     return str(_native(native).v2_plan_read(data))
 
 
-__all__ = ["PlanLoad", "load", "plan_binary", "plan_json", "plan_model", "read"]
+__all__ = [
+    "NATIVE_JSON",
+    "PlanLoad",
+    "load",
+    "plan_binary",
+    "plan_encodings",
+    "plan_json",
+    "plan_model",
+    "plan_model_from_json",
+    "read",
+]
