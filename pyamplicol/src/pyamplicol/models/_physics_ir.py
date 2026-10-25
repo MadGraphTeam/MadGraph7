@@ -903,6 +903,18 @@ class PropagatorIR:
             raise ValueError(
                 "an absorbed Goldstone mode requires a unitary-gauge vector"
             )
+        # A massive 't Hooft-Feynman-gauge vector propagates without its
+        # longitudinal mode, which its explicit Goldstone carries.
+        feynman_massive = (
+            self.kind == "vector"
+            and self.gauge == "feynman"
+            and self.mass_class == "massive"
+        )
+        if (self.goldstone_policy == "explicit") != feynman_massive:
+            raise ValueError(
+                "an explicit Goldstone mode belongs to exactly the massive "
+                "Feynman-gauge vectors"
+            )
 
     def to_json_dict(self) -> dict[str, object]:
         return {
