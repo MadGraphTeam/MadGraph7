@@ -132,8 +132,8 @@ pub fn load_loop_artifact(
             .iter()
             .any(|capability| capability == LOOP_V2_RUNTIME_CAPABILITY),
         "plan v4 processes (rusticol.loop-runtime.v4) are not evaluated by this \
-         runtime yet: their trees, Born amplitudes and counterterm scalars are \
-         computed by the Python runtime (pyamplicol Runtime.load)",
+         runtime yet: the standalone SDK has no plan v4 runtime; evaluate them \
+         with the Python runtime (pyamplicol Runtime.load)",
     )?;
     require(
         artifact.manifest().runtime.required_runtime_capabilities == [LOOP_RUNTIME_CAPABILITY]
