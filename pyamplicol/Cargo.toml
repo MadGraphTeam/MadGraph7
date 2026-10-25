@@ -2,6 +2,7 @@
 
 [workspace]
 members = [
+  "rust/crates/pyamplicol",
   "rust/crates/rusticol-core",
   "rust/crates/rusticol-python",
   "rust/crates/rusticol-capi",

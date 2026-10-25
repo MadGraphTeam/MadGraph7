@@ -737,7 +737,7 @@ impl V2Executor {
         // tree kernels decode Symbolica states: pyAmpliCol's library key
         // (binary64 with the fast engine and plane kernels touches neither).
         let _unlock = (self.engine == "generic" || !matches!(carrier, Carriers::Double))
-            .then(rusticol_core::licence::unlock)
+            .then(pyamplicol::unlock)
             .flatten();
         let backend = backend_of(&mut self.backend, carrier, &self.engine)?;
         backend.masters = masters;
@@ -838,7 +838,7 @@ fn compile_v2_plane<'py>(
 /// this process (`rusticol_core::licence`).
 #[pyfunction]
 fn native_library_key_active() -> bool {
-    rusticol_core::licence::is_active()
+    pyamplicol::is_active()
 }
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {

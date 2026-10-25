@@ -20,7 +20,7 @@ mod eager_tables;
 mod engine;
 mod error;
 #[cfg(feature = "symbolica-runtime")]
-pub mod licence;
+mod licence;
 #[cfg(feature = "symbolica-runtime")]
 pub mod loop_execution;
 #[cfg(feature = "symbolica-runtime")]
