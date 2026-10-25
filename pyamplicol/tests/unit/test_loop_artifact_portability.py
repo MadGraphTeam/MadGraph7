@@ -30,7 +30,7 @@ cross-host acceptance (its docstring), on:
   generation-scale-2); the legacy loop SDK, whose evaluation decodes exact
   states, runs without a licence in concurrent processes while another
   process holds the user's restricted permit (pyAmpliCol's Symbolica library
-  key in the native code, ``rusticol_core::licence``);
+  key in the native code, crate ``rust/crates/pyamplicol``);
 * unlicensed concurrent processes (Symbolica's restricted mode admits one
   thread per user, so any state access of the Rust copy of Symbolica aborts
   while another process holds the permit): two pyAmpliCol processes without
@@ -71,7 +71,7 @@ SDK_WITHOUT_V4 = (
 )
 RESTRICTED = "restricted Symbolica"
 # Disables pyAmpliCol's Symbolica library key in the native code
-# (``rusticol_core::licence::DISABLE_VARIABLE``).
+# (``pyamplicol::DISABLE_VARIABLE``, crate ``rust/crates/pyamplicol``).
 NO_NATIVE_KEY = {"PYAMPLICOL_NATIVE_LIBRARY_KEY": "off"}
 
 SCHEME = """
@@ -165,6 +165,54 @@ def test_sentinel_counts_generation_calls_not_import_set_up():
         assert not sentinel.calls
         schedules.cheapest(int)
     assert sentinel.calls == {"loops/v2/schedules.py:cheapest": 1}
+
+
+def test_sentinel_entries_name_existing_generation_code():
+    """Every watched (file, qualified name) and file exists, so a renamed
+    entry point cannot silently drop out of the sentinel."""
+
+    import importlib
+
+    for suffix, qualname in sorted(portability.GENERATION_CODE):
+        module = importlib.import_module(suffix.removesuffix(".py").replace("/", "."))
+        target = module
+        for part in qualname.split("."):
+            target = getattr(target, part)
+        assert target.__code__.co_filename.replace(os.sep, "/").endswith(suffix)
+    for suffix in portability.GENERATION_FILES:
+        assert (ROOT / "src" / suffix).is_file(), suffix
+
+
+def test_permit_lock_directory_follows_symbolica_and_is_explicit(tmp_path):
+    lock = portability.symbolica_lock_dir
+    home = {"HOME": "/h"}
+    assert lock({**home, "SYMBOLICA_LOCK_DIR": "/l"}) == "/l"
+    assert lock({**home, "XDG_RUNTIME_DIR": "/r"}) == "/r/symbolica/locks"
+    assert lock({**home, "XDG_CACHE_HOME": "/c"}) == "/c/symbolica/locks"
+    assert lock(home) == "/h/.cache/symbolica/locks"
+    assert lock({**home, "XDG_RUNTIME_DIR": "relative"}) == "/h/.cache/symbolica/locks"
+    # The holder, its control and every covered instance share one lock
+    # directory whatever their HOME and XDG_CACHE_HOME (``_fresh``).
+    permit = portability.RestrictedPermit()
+    env, _cwd = portability._fresh(tmp_path, "x", False, permit)
+    assert env["SYMBOLICA_LOCK_DIR"] == permit.lock_dir
+    assert env["HOME"] != os.environ.get("HOME")
+
+
+def test_native_library_key_uses_symbolicas_documented_registration():
+    """The key is registered with ``set_library_key!`` in the crate named after
+    the package it is issued for, and its ``LibraryUnlock`` stays private to
+    that crate (Symbolica's documented use)."""
+
+    crate = ROOT / "rust" / "crates" / "pyamplicol"
+    assert 'name = "pyamplicol"' in (crate / "Cargo.toml").read_text()
+    source = (crate / "src" / "lib.rs").read_text()
+    assert "symbolica::set_library_key!(" in source
+    assert "pub(crate) static UNLOCK" in source
+    for path in (ROOT / "rust").rglob("*.rs"):
+        text = path.read_text(errors="replace")
+        assert "for_crate(" not in text, path
+        assert "pub mod licence" not in text, path
 
 
 def test_cpu_class_follows_symjit_code_generator_selection():
