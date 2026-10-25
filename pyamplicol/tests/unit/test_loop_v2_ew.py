@@ -347,6 +347,35 @@ def test_counterterm_branch_sides_do_not_matter_at_real_masses(gmu, gmu_ufo):
     assert worst[0] <= DOUBLE_TOLERANCE, worst
 
 
+def test_both_reglog_conventions_agree_at_real_masses(gmu, gmu_ufo):
+    """[U3]: the UFO-standard principal reglog (MadGraph's exporter, the
+    ``loops.model_cms`` "ufo-standard" convention) and the G_mu source's CMS
+    override (log - 2 pi i for Re z < 0 < Im z, the "source" convention the
+    model binds) give equal CT values at real masses, although reglog meets
+    the override's quadrant at the card (discriminating)."""
+
+    hits = []
+
+    def wrap(name, function):
+        if name != "reglog":
+            return function
+
+        def principal(z):
+            z = complex(z)
+            if z.real < 0.0 and z.imag > 0.0:
+                hits.append(z)
+            return 0.0 if z == 0 else cmath.log(z)
+
+        return principal
+
+    card = _oracle_card(gmu)
+    source, _environment = _ufo_values(gmu_ufo, card)
+    standard, _environment = _ufo_values(gmu_ufo, card, wrap=wrap)
+    assert hits
+    worst = max((_relative(standard[key], source[key]), key) for key in source)
+    assert worst[0] <= DOUBLE_TOLERANCE, worst
+
+
 def test_referenced_couplings_equal_the_ufo_couplings(gmu, gmu_ufo, gmu_plan):
     """Each G_mu CT coupling that reads a CT parameter needing the scalar
     library is lowered on the reference parameters (``CoefficientLowering``),
