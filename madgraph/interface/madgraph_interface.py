@@ -592,6 +592,11 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --hepmc2       (pythia8) Build Pythia8 against HepMC2 instead of HepMC3.")
         logger.info("                    Either way, main164 is also compiled for the other HepMC version.")
         logger.info(" ")
+        logger.info("   \"install cuttools_iregi\"",'$MG:BOLD')
+        logger.info("   recompile the CutTools and IREGI libraries shipped with MadGraph7")
+        logger.info("   (in vendor/) with the current fortran compiler (option fortran_compiler).")
+        logger.info("   Needed after a change (or an update) of the fortran compiler.")
+        logger.info(" ")
         logger.info("   \"install update\"",'$MG:BOLD')
         logger.info("   check if your MG5 installation is the latest one.")
         logger.info("   If not it load the difference between your current version and the latest one,")
@@ -3796,7 +3801,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _import_formats = ['model_v4', 'model', 'proc_v4', 'command', 'banner']
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
-                     'looptools', 'MadSTR', 'RunningCoupling', 'madspace']
+                     'looptools', 'cuttools_iregi', 'MadSTR', 'RunningCoupling',
+                     'madspace']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
@@ -8103,6 +8109,52 @@ This implies that with decay chains:
 
         return self._fockstates
 
+    def install_cuttools_iregi(self):
+        """Recompile from scratch the CutTools and IREGI libraries of vendor/
+        with the current fortran compiler, for instance after an update of
+        gfortran (the loop runs refuse a CutTools compiled by another one)."""
+
+        compiler = self.options['fortran_compiler'] or 'gfortran'
+        try:
+            version = misc.get_gfortran_version(compiler)
+        except Exception:
+            raise self.InvalidCmd('Fortran compiler "%s" not found: check the '
+                                  'option fortran_compiler.' % compiler)
+
+        ct_dir = pjoin(MG5DIR, 'vendor', 'CutTools')
+        current = misc.detect_current_compiler(pjoin(ct_dir, 'makefile'))
+        if current != compiler:
+            misc.mod_compilator(ct_dir, compiler, current)
+        logger.info('Compiling CutTools with %s (version %s). This can take a '
+                    'couple of minutes...' % (compiler, version), '$MG:BOLD')
+        misc.compile(['clean'], cwd=ct_dir, job_specs=False)
+        misc.compile(cwd=ct_dir, job_specs=False)
+        for name in ['libcts.a', 'mpmodule.mod']:
+            if not os.path.exists(pjoin(ct_dir, 'includects', name)):
+                raise MadGraph5Error('CutTools could not be compiled in %s.'
+                                     % ct_dir)
+
+        iregi_dir = pjoin(MG5DIR, 'vendor', 'IREGI', 'src')
+        current = misc.detect_current_compiler(pjoin(iregi_dir,
+                                                     'makefile_ML5_lib'))
+        if current != compiler:
+            misc.mod_compilator(iregi_dir, compiler, current)
+        logger.info('Compiling IREGI with %s (version %s). This can take a '
+                    'couple of minutes...' % (compiler, version), '$MG:BOLD')
+        # the IREGI makefiles locate their sources through $(PWD)
+        env = dict(os.environ, PWD=iregi_dir)
+        misc.compile(['-f', 'makefile_ML5_lib', 'clean'], cwd=iregi_dir,
+                     job_specs=False, env=env)
+        misc.compile(['-f', 'makefile_ML5_lib'], cwd=iregi_dir,
+                     job_specs=False, env=env)
+        if not os.path.exists(pjoin(iregi_dir, 'libiregi.a')):
+            raise MadGraph5Error('IREGI could not be compiled in %s.'
+                                 % iregi_dir)
+        # the same record as CutTools, checked before the loop runs
+        with open(pjoin(iregi_dir, 'compiler_version.log'), 'w') as fsock:
+            fsock.write('%s\n' % version)
+        logger.info('CutTools and IREGI recompiled.')
+
     def install_pythia8_main164(self, prefix, config_file, add_options):
         """Compile main164, the Pythia8 program MadEvent showers with, for both
         HepMC2 and HepMC3 (installing the HepMC version Pythia8 was not
@@ -8530,6 +8582,9 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             return
         elif args[0] == 'looptools':
             self.install_reduction_library(force=True)
+            return
+        elif args[0] == 'cuttools_iregi':
+            self.install_cuttools_iregi()
             return
         elif args[0] == 'madspace':
             install_script = pjoin(MG5DIR, 'madspace', 'install.py')
