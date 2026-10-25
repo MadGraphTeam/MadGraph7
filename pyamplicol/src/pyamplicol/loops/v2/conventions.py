@@ -430,7 +430,13 @@ class LeafWeights:
 
     def _require_mass_free_couplings(self, contents: Sequence[Content]) -> None:
         """Refuse a loop fermion vertex coupling through the mass of the loop
-        line it emits (module docstring: the tree reading flips that mass)."""
+        line it emits (module docstring: the tree reading flips that mass).
+
+        An input of eps_s: a content whose fermion loop line this reads makes
+        ``_content_kind`` return ``_FERMIONIC`` (``fermion_sign``'s fast path
+        skips this check). Any new input read here (WP3.2 EWI-5) must make
+        ``_content_kind`` fermionic too; ``check_leaf_weights`` in
+        ``tests/unit/test_loop_v2_native_lowering.py`` is the guard."""
 
         for content in contents:
             if not self._fermion(content.loop_out):
@@ -468,7 +474,17 @@ class LeafWeights:
         return found
 
     def _line_parity(self, contents: Sequence[Content]) -> int:
-        """Pairing parity of the coloured lines and closed-loop sewing signs."""
+        """Pairing parity of the coloured lines and closed-loop sewing signs.
+
+        An input of eps_s: every content whose loop line, block field or
+        coloured fermion end (``_ends``) this reads makes ``_content_kind``
+        return ``_FERMIONIC``, and ``fermion_sign``'s fast path returns +1 or
+        the ghost sign without calling it. Any new input read here (WP3.2
+        EWI-5: Koszul signs of colour-singlet lines through the loop, e.g.
+        colourless fermion ends outside ``_ends``) must make ``_content_kind``
+        fermionic too; ``check_leaf_weights`` in
+        ``tests/unit/test_loop_v2_native_lowering.py`` is the guard (on the
+        controls with such content)."""
 
         sign = 1
         pairs: list[tuple[int, int]] = []
