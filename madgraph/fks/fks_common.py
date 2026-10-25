@@ -340,6 +340,63 @@ def find_mothers(leg1, leg2, model, dict={}, pert='', mom_mass=''):
     return mothers
 
 
+def carry_polarization(mother, split): #test written
+    """Carries the polarization of the born leg ij onto the daughter j of one
+    splitting (split is ordered [j, i]).
+
+    In the singular limit the real's leg j *is* the born's leg ij: the two
+    matrix elements are subtracted against each other, so they have to fix the
+    same helicity state or the subtraction is comparing a fixed-helicity Born
+    with a helicity-summed real. This is only meaningful when j carries the
+    same identity as the mother, which for a massive QCD emitter in the FINAL
+    state is always the case (the only splitting is t -> t g).
+
+    Two families of mother do not satisfy it, and both are refused at
+    generation time by the polarization guard in
+    madgraph_interface.CheckValidForCmd.check_process_format. This function
+    raises rather than silently dropping the polarization, so that it stays a
+    backstop if that guard is ever relaxed:
+      - a MASSLESS coloured final-state mother. g -> q q~ turns the polarized
+        gluon into a quark pair, so there is no leg with the mother's identity
+        to transport the projection to.
+      - ANY coloured INITIAL-state mother, whatever its mass. The initial-state
+        splitting is read backwards, g -> q(-> born) q~: the polarized quark
+        that enters the born is an *internal* line of the real emission, so
+        there is no external leg to carry the projection at all. The raise is
+        all-or-nothing per leg: the same initial-state quark also has the
+        well-defined q -> q g splitting, but split_leg is called for every
+        splitting of the leg and the backward one raises, aborting the whole
+        call, so the initial state is refused wholesale rather than channel
+        by channel.
+    """
+    pol = mother.get('polarization')
+    if not pol:
+        return
+    j_leg = split[0]
+    if j_leg['id'] != mother['id'] or j_leg['state'] != mother['state']:
+        raise FKSProcessError(
+            'Cannot carry the polarization %s of the born leg with id %d '
+            'through the splitting into ids %s: the FKS emitter j is a '
+            'different particle, so the born and the real would not fix the '
+            'same helicity state.' % \
+            (pol, mother['id'], [l['id'] for l in split]))
+    # ... and it has to be j and not i: for g -> g g in the final state both
+    # daughters have the mother's identity and there is nothing to pick
+    # between them away from the soft limit. (Only split[1] is inspected;
+    # find_splittings can hand split_leg a 3-particle parts list -- the
+    # 4-gluon vertex -- whose split[2] would go unchecked. That is gluon-only,
+    # so a polarized mother reaching it is already refused by the guard.)
+    if len(split) > 1 and split[1]['id'] == mother['id'] and \
+       split[1]['state'] == mother['state']:
+        raise FKSProcessError(
+            'Cannot carry the polarization %s of the born leg with id %d '
+            'through the splitting into ids %s: both daughters have the '
+            'identity of the mother, so which one inherits the polarization '
+            'is not defined.' % \
+            (pol, mother['id'], [l['id'] for l in split]))
+    j_leg['polarization'] = copy.copy(pol)
+
+
 def split_leg(leg, parts, model): #test written
     """Splits the leg into parts, and returns the two new legs.
     """
@@ -374,6 +431,10 @@ def split_leg(leg, parts, model): #test written
                             to_fks_leg({'state': True, 
                                   'id': parts[1].get_anti_pdg_code(),
                                   'fks': 'i'}, model)])
+    # the born leg ij is replaced by the daughter j (see insert_legs), so any
+    # polarization it carries has to follow it there
+    for s in split:
+        carry_polarization(leg, s)
     return split
 
 
@@ -624,6 +685,68 @@ def insert_color_links(col_basis, col_obj, links): #test written
 
 
 
+def born_basis_link_matrices(col_basis, links, Nc=3):
+    """Colour-link matrices expressed in the Born colour basis itself.
+
+    For each link (as returned by find_color_links) return the square matrix
+        S_ij = sum_k M_ik L_kj
+    such that the colour-linked Born is  sum_ij conj(JAMP_i) S_ij JAMP_j,
+    with the very same JAMPs as the Born. M is the rectangular matrix between
+    the Born basis and the link basis (insert_color_links' link_matrix) and L
+    expresses each link-basis element in terms of the Born basis elements:
+    inserting the link into the Born basis elements (used as "diagrams" with
+    unit coefficient) gives JAMP_link_k = sum_j L_kj JAMP_j by linearity,
+    which is exactly what the diagram-based link basis computes.
+
+    Rows/columns follow sorted(col_basis), the ordering of the Born JAMPs and
+    colour matrix. Entries are exact complex rationals, returned as
+    (real, imag) pairs of Fractions in a dict {(i, j): (re, im)}."""
+
+    born_keys = sorted(col_basis.keys())
+    # the Born basis elements, each one a "diagram" with coefficient 1
+    col_obj = []
+    for key in born_keys:
+        string = color_algebra.ColorString()
+        string.from_immutable(key)
+        col_obj.append({(0,): string})
+
+    def cmul(a, b):
+        return (a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0])
+
+    result = []
+    for link in insert_color_links(col_basis, col_obj, links):
+        link_keys = sorted(link['link_basis'].keys())
+        # L[k][j]: coefficient of Born element j in link-basis element k
+        L = []
+        for key in link_keys:
+            row = {}
+            for entry in link['link_basis'][key]:
+                j, coeff, is_imag, nc_power = entry[0], entry[2], entry[3], \
+                                              entry[4]
+                val = fractions.Fraction(coeff) * \
+                      fractions.Fraction(Nc) ** nc_power
+                val = (fractions.Fraction(0), val) if is_imag else \
+                      (val, fractions.Fraction(0))
+                old = row.get(j, (0, 0))
+                row[j] = (old[0] + val[0], old[1] + val[1])
+            L.append(row)
+        S = {}
+        for i in range(len(born_keys)):
+            for k in range(len(link_keys)):
+                m_val, m_imag = link['link_matrix'].col_matrix_fixed_Nc[(i, k)]
+                m = (fractions.Fraction(0), m_val) if m_imag else \
+                    (fractions.Fraction(m_val), fractions.Fraction(0))
+                if m == (0, 0):
+                    continue
+                for j, l in L[k].items():
+                    prod = cmul(m, l)
+                    old = S.get((i, j), (0, 0))
+                    S[(i, j)] = (old[0] + prod[0], old[1] + prod[1])
+        result.append({'link': link['link'], 'matrix': S,
+                       'ncolor': len(born_keys)})
+    return result
+
+
 def find_color_links(leglist, symm = False,pert = 'QCD'): #test written
     """Finds all the possible color(charge) links between any 
     two legs of the born.
@@ -724,6 +847,26 @@ def legs_to_color_link_string(leg1, leg2, pert = 'QCD'): #test written, all case
     dict['replacements'] = replacements
     dict['string'] = string  
     return dict
+
+
+def get_user_leg_order(process, pert = 'QCD'):
+    """Return, for each position of the FKS-sorted leg list, the number the
+    leg carried in the process as the user wrote it.
+
+    sort_proc() both permutes and renumbers the legs, so after it has run the
+    user's numbering is gone for good. me_frame in the run_card is expressed
+    in the user's numbering, so this mapping is what lets the fortran get back
+    to it; it is written out as frame_map_born in frame_info.inc.
+
+    The returned list is 0-indexed by FKS position: entry i is the user number
+    of the leg sitting at FKS position i+1.
+
+    Call this *before* sort_proc. to_fks_legs() copies the legs, so this does
+    not disturb the process it is given.
+    """
+    leglist = to_fks_legs(process.get('legs'), process.get('model'))
+    leglist.sort(pert = pert)
+    return [leg['number'] for leg in leglist]
 
 
 def sort_proc(process,pert = 'QCD'):

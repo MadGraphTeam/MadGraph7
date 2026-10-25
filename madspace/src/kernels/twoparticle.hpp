@@ -67,7 +67,95 @@ two_body_decay_inverse(FourMom<T> p0, FourMom<T> p1_com, FourMom<T> p2) {
     return {r_phi, r_cos_theta, m0, m1, m2, det};
 }
 
+// The range of cos(theta) in a two-body decay generated in the partonic
+// centre-of-mass frame that the cuts on the two products leave open. That frame
+// differs from the lab by a boost along the beam with rapidity
+// y = log(x1 / x2) / 2, so
+//   * both products have the transverse momentum p sin(theta), and
+//     p sin(theta) >= pt_min bounds |cos(theta)|,
+//   * a product's lab rapidity is y + atanh(beta cos(theta)) (beta = p / E,
+//     cos(theta) of the second product is minus that of the first), and
+//     |rapidity| <= y_max bounds cos(theta) from both sides.
+// A negative y_max stands for no bound. For the cuts these come from, y_max is
+// a pseudorapidity cut, which bounds the rapidity because |y| <= |eta|. The
+// returned interval can be empty (lower end above the upper one).
+template <typename T>
+KERNELSPEC Pair<FVal<T>, FVal<T>> com_cos_theta_window(
+    FVal<T> m0,
+    FVal<T> m1,
+    FVal<T> m2,
+    FVal<T> x1,
+    FVal<T> x2,
+    FVal<T> pt_min,
+    FVal<T> y_max1,
+    FVal<T> y_max2
+) {
+    // the momentum and energies of two_body_decay
+    auto m0_clip = max(m0, EPS);
+    auto ed = (m1 - m2) * (m1 + m2) / m0_clip;
+    auto pp2 = ed * ed - 2. * (m1 * m1 + m2 * m2) + m0 * m0;
+    auto pp = 0.5 * where(m1 * m2 == 0., m0 - fabs(ed), sqrt(max(pp2, EPS)));
+    pp = max(pp, EPS);
+    auto e1 = max(0.5 * (m0 + ed), pp);
+    auto e2 = max(0.5 * (m0 - ed), pp);
+
+    auto pt_ratio = pt_min / pp;
+    auto cos_pt = sqrt(max(1. - pt_ratio * pt_ratio, 0.));
+    FVal<T> cos_lo = -cos_pt, cos_hi = cos_pt;
+
+    auto y = 0.5 * log(x1 / x2);
+    auto beta1 = pp / e1, beta2 = pp / e2;
+    cos_lo = where(y_max1 >= 0., max(cos_lo, tanh(-y_max1 - y) / beta1), cos_lo);
+    cos_hi = where(y_max1 >= 0., min(cos_hi, tanh(y_max1 - y) / beta1), cos_hi);
+    cos_lo = where(y_max2 >= 0., max(cos_lo, tanh(y - y_max2) / beta2), cos_lo);
+    cos_hi = where(y_max2 >= 0., min(cos_hi, tanh(y + y_max2) / beta2), cos_hi);
+    return {cos_lo, cos_hi};
+}
+
 // Kernels
+
+// Squeezes the cos(theta) random number of a two_body_decay_com into the range
+// com_cos_theta_window leaves open. The Jacobian is the fraction of the
+// cos(theta) range kept; it is zero when the cuts leave nothing.
+template <typename T>
+KERNELSPEC void kernel_com_cos_theta_window(
+    FIn<T, 0> r_cos_theta,
+    FIn<T, 0> m0,
+    FIn<T, 0> m1,
+    FIn<T, 0> m2,
+    FIn<T, 0> x1,
+    FIn<T, 0> x2,
+    FIn<T, 0> pt_min,
+    FIn<T, 0> y_max1,
+    FIn<T, 0> y_max2,
+    FOut<T, 0> r_out,
+    FOut<T, 0> det
+) {
+    auto window = com_cos_theta_window<T>(m0, m1, m2, x1, x2, pt_min, y_max1, y_max2);
+    auto width = max(window.second - window.first, 0.);
+    r_out = 0.5 * (window.first + 1.) + 0.5 * width * r_cos_theta;
+    det = 0.5 * width;
+}
+
+template <typename T>
+KERNELSPEC void kernel_com_cos_theta_window_inverse(
+    FIn<T, 0> r_out,
+    FIn<T, 0> m0,
+    FIn<T, 0> m1,
+    FIn<T, 0> m2,
+    FIn<T, 0> x1,
+    FIn<T, 0> x2,
+    FIn<T, 0> pt_min,
+    FIn<T, 0> y_max1,
+    FIn<T, 0> y_max2,
+    FOut<T, 0> r_cos_theta,
+    FOut<T, 0> det
+) {
+    auto window = com_cos_theta_window<T>(m0, m1, m2, x1, x2, pt_min, y_max1, y_max2);
+    auto width = max(window.second - window.first, EPS);
+    r_cos_theta = (r_out - 0.5 * (window.first + 1.)) / (0.5 * width);
+    det = 2. / width;
+}
 
 template <typename T>
 KERNELSPEC void kernel_two_body_decay_com(
@@ -251,11 +339,14 @@ KERNELSPEC void kernel_two_to_two_particle_scattering(
     auto p1_com = scatter_out.first;
     auto det_tmp = scatter_out.second;
     auto p1_rot = rotate<T>(p1_com, pa_com);
-    auto p1_lab = boost<T>(p1_rot, p_tot, 1.);
-    store_mom<T>(p1, p1_lab);
-    for (int i = 0; i < 4; ++i) {
-        p2[i] = p_tot[i] - p1_lab[i];
-    }
+    // p1 and p2 back to back in the rest frame, the softer one boosted on its
+    // mass shell and the other p_tot minus it; see boost_two_body.
+    auto m_tot = sqrt(max(s_tot, EPS2));
+    auto e2_com = 0.5 * (m_tot - (m1 - m2) * (m1 + m2) / m_tot);
+    FourMom<T> p2_rot{max(e2_com, 0.), -p1_rot[1], -p1_rot[2], -p1_rot[3]};
+    auto p_out = boost_two_body<T>(p1_rot, m1 * m1, p2_rot, m2 * m2, p_tot, s_tot);
+    store_mom<T>(p1, p_out.first);
+    store_mom<T>(p2, p_out.second);
     det = det_tmp;
 }
 

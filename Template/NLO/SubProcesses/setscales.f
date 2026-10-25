@@ -181,9 +181,18 @@ c the value of variable scale in common block /to_scale/
 c this is to avoid too low dynamic scales      
       double precision minscaleR
       parameter (minscaleR=2d0)
+c scale passed to the model: the extra running scale (muprime of the
+c running Wilson coefficients) follows muR through it
+      double precision model_scale
+      common /model_scale/model_scale
 c After recomputing alphaS, be sure to set 'calculatedBorn' to false
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
+c the flag asking the Born to check its cached amplitudes (couplings
+c and momenta) before reusing them, and whether the Born does such a
+c check (set by the Born; false for a Born that does not)
+      logical check_born_amps, born_checks_amps
+      common/c_born_amps_check/check_born_amps,born_checks_amps
 c
       temp_scale_id='  '
       if(fixed_ren_scale)then
@@ -199,12 +208,22 @@ c
 c The following is for backward compatibility. DO NOT REMOVE
       scale=muR
       g=sqrt(4d0*pi*alphas(scale))
+      model_scale=muR
       call update_as_param()
 c Reset calculatedBorn, because the couplings might have been changed.
 c This is needed in particular for the MC events, because there the
 c coupling should be set according to the real-emission kinematics,
 c even when computing the Born matrix elements.
-      calculatedBorn=.false.
+c A Born that checks its cached amplitudes (born_checks_amps) does not
+c need this: the next time it is called it compares the couplings it
+c uses and the momenta with the ones of its cached amplitudes. If only
+c alpha_S changed it rescales them by the power of g of each amplitude
+c (gscale), otherwise it recomputes them if any differ.
+      if (born_checks_amps) then
+        check_born_amps=.true.
+      else
+        calculatedBorn=.false.
+      endif
 c
       return
       end

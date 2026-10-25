@@ -9,6 +9,10 @@
 
 namespace madspace {
 
+/// A `MixMaxRandom` seed derived from a run seed plus the identity of the
+/// call site (seed type, job, channel, and stream index), so that every RNG
+/// stream in a run is independently and reproducibly seeded from a single
+/// top-level seed.
 struct DerivedSeed {
     static constexpr std::size_t max_channel_count = 1ULL << 12;
     static constexpr std::size_t max_job_count = 1ULL << 32;
@@ -41,10 +45,12 @@ struct DerivedSeed {
     );
 };
 
-// MIXMAX vielbein with the 64 global-run-seed bits applied (seed_parts[0..1], i.e.
-// effective seed bits [64,128)). These do not change within a run, so each RNG caches
-// this and only recomputes it if the run seed actually differs (e.g. when madspace is
-// driven as a library). The per-call bits [0,64) are applied on top.
+/// Cached MIXMAX state after applying the 64 global-run-seed bits
+/// (`seed_parts[0..1]`, i.e. effective seed bits `[64, 128)`). These bits do
+/// not change within a run, so every @ref MixMaxRandom shares this cache and
+/// only recomputes it when the run seed actually differs, for example when
+/// madspace is driven as a library across several runs. The per-call bits
+/// `[0, 64)` are applied on top by @ref MixMaxRandom.
 struct RunSeedSkip {
     std::array<std::uint64_t, mixmax_engine::state_size> state;
     std::uint64_t run_seed = 0;
@@ -62,13 +68,32 @@ struct RunSeedSkip {
     }
 };
 
+/**
+ * Reproducible random number stream backed by the MIXMAX generator [1].
+ *
+ * Used wherever madspace needs a CPU-side RNG stream outside the compute
+ * graph, for example while completing LHE events; see @ref
+ * LHECompleter::complete_event_data. A @ref DerivedSeed keys the stream to a
+ * specific call site so independent streams stay reproducible under a single
+ * top-level run seed.
+ *
+ * **References**
+ * - [1] K. Savvidy, "The MIXMAX random number generator", Comput. Phys.
+ *   Commun. 196 (2015) 161, https://doi.org/10.1016/j.cpc.2015.06.003
+ */
 class MixMaxRandom {
 public:
+    /// Non-deterministically seeded stream.
     MixMaxRandom() : MixMaxRandom(DerivedSeed()) {}
+    /// @param seed  The derived seed to start the stream from.
     MixMaxRandom(DerivedSeed seed) { apply_seed(seed); }
+    /// Stream seeded directly from a raw 64-bit value.
     explicit MixMaxRandom(std::uint64_t seed) : MixMaxRandom(DerivedSeed(seed)) {}
+    /// Re-seed the stream; see the @ref DerivedSeed constructor.
     void set_seed(DerivedSeed seed) { apply_seed(seed); }
+    /// Draw a uniform value in `[0, 1)`.
     double generate_double() { return _mixmax.flat(); }
+    /// Draw a uniform integer in `[0, max_int)`.
     std::size_t generate_int(std::size_t max_int) {
         return std::min<std::size_t>(_mixmax.flat() * max_int, max_int - 1);
     }

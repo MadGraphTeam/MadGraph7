@@ -119,6 +119,11 @@ c
       double precision jac,sjac,pswgt,pwgt(maxconfigs),flux
       double precision tprb, mtot
       double precision xtau, dum
+      double precision shat_unit
+      double precision get_shat_unit
+      external get_shat_unit
+      logical shat_from_gencms
+      external shat_from_gencms
       double precision pi1(0:3),pi2(0:3),p0,p3
       save m
 
@@ -250,7 +255,28 @@ c
       xbk(2)   = 1d0
       sjac = 1d0
       if (abs(lpp(1)) .ge. 1 .and. abs(lpp(2)) .ge. 1) then
-         if (abs(lpp(1)).eq.9.or.abs(lpp(2)).eq.9)then
+         if (shat_from_gencms()) then
+c-----
+c tjs 5/24/2010 for 2->1 process
+c-------
+            shat_unit = get_shat_unit(stot)
+           call sample_get_x(sjac,x(ndim-1),ndim-1,mincfig,0d0,1d0)               
+           xtau = x(ndim-1)
+            if(nexternal .eq. 3) then
+c              GENCMS takes x(ndim-1) in units of shat_unit
+               x(ndim-1) = pmass(3)*pmass(3)/shat_unit
+               sjac=1 / shat_unit    !for delta function in d_tau
+            endif
+
+            call sample_get_x(sjac,x(ndim),ndim,mincfig,0d0,1d0)
+            CALL GENCMS(STOT,Xbk(1),Xbk(2),X(ndim-1), SMIN,SJAC)
+            x(ndim-1) = xtau    !Fix for 2->1 process
+c           Set CM rapidity for use in the rap() function
+            cm_rap=.5d0*dlog(xbk(1)*ebeam(1)/(xbk(2)*ebeam(2)))
+            set_cm_rap=.true.
+c           Set shat
+            s(-nbranch) = xbk(1)*xbk(2)*stot
+         else if (abs(lpp(1)).eq.9.or.abs(lpp(2)).eq.9)then
             call sample_get_x(sjac,x(ndim),ndim,mincfig,0d0,1d0)
             call sample_get_x(sjac,x(ndim-1),ndim-1,mincfig,0d0,1d0)
             call get_dummy_x1_x2(sjac, Xbk(1), x(ndim-1),pi1, pi2, stot, s(-nbranch))
@@ -328,24 +354,9 @@ c               endif
 
 
          else
-c-----
-c tjs 5/24/2010 for 2->1 process
-c-------
-           call sample_get_x(sjac,x(ndim-1),ndim-1,mincfig,0d0,1d0)               
-           xtau = x(ndim-1)
-            if(nexternal .eq. 3) then
-               x(ndim-1) = pmass(3)*pmass(3)/stot
-               sjac=1 / stot    !for delta function in d_tau
-            endif
-
-            call sample_get_x(sjac,x(ndim),ndim,mincfig,0d0,1d0)
-            CALL GENCMS(STOT,Xbk(1),Xbk(2),X(ndim-1), SMIN,SJAC)
-            x(ndim-1) = xtau    !Fix for 2->1 process
-c           Set CM rapidity for use in the rap() function
-            cm_rap=.5d0*dlog(xbk(1)*ebeam(1)/(xbk(2)*ebeam(2)))
-            set_cm_rap=.true.
-c           Set shat
-            s(-nbranch) = xbk(1)*xbk(2)*stot
+            write(*,*) 'ERROR: no s-hat sampling for lpp=',lpp,
+     &           ' pdlabel=',pdlabel
+            stop 1
          endif
       elseif (lpp(1).eq.9.or.lpp(2).eq.9) then
          call sample_get_x(sjac,x(ndim),ndim,mincfig,0d0,1d0)
@@ -718,6 +729,8 @@ c     part to it, and that the t-channel propagators must always appear
 c     as the first element, that is itree(1,i)
 c************************************************************************
       implicit none
+      logical msoft
+      common/to_msoft/msoft
 c
 c     Constants
 c      
@@ -901,9 +914,11 @@ c
             jac=-3d0
             return
          endif
+         msoft = .true.
          call sample_get_x(wgt,x(nbranch-1+(-ibranch)*2),
      &        nbranch-1+(-ibranch)*2,iconfig,
      &        smin/stot,smax/stot)
+         msoft = .false.
 
          m(ibranch-1)=dsqrt(max(stot*x(nbranch-1+(-ibranch)*2), 0d0))
 c         write(*,*) 'Using s',nbranch-1+(-ibranch)*2
@@ -1637,6 +1652,8 @@ C     LOCAL
 
       DOUBLE PRECISION TAU,TAUMIN,TAUMAX
       DOUBLE PRECISION ETA,ETAMIN,ETAMAX
+      DOUBLE PRECISION GET_SHAT_MAX
+      EXTERNAL GET_SHAT_MAX
       logical warned
       data warned/.false./
       include 'maxparticles.inc'
@@ -1659,11 +1676,7 @@ C     &     X(1),TAU,SJACOBI)
 C     IF THERE IS NO S CHANNEL POLE USE BELOW:
 
       TAUMIN = 0d0 !SMIN/S !keep scale fix
-      if (dsqrt_shatmax.ne.-1d0)then
-          TAUMAX=dsqrt_shatmax**2/S
-      else
-        TAUMAX = 1D0
-      endif
+      TAUMAX = GET_SHAT_MAX(S)/S
       TAU    = (TAUMAX-TAUMIN)*X(1)+TAUMIN
       SJACOBI=  sjacobi*(TAUMAX-TAUMIN)
 
@@ -1682,6 +1695,54 @@ c      eta = 0d0
       X1 = SQRT(TAU)*EXP(ETA)
       X2 = SQRT(TAU)*EXP(-ETA)
 
+      END
+
+      DOUBLE PRECISION FUNCTION GET_SHAT_MAX(S)
+C***********************************************************************
+C     LARGEST ALLOWED SHAT: MIN(S, DSQRT_SHATMAX**2)
+C     ALSO THE UNIT OF THE TAU VARIABLE SAMPLED BY GENCMS
+C***********************************************************************
+      IMPLICIT NONE
+      DOUBLE PRECISION S
+      include 'maxparticles.inc'
+      include '../../Source/vector.inc'
+      include 'run.inc'
+      include 'cuts.inc'
+
+      GET_SHAT_MAX = S
+      if (dsqrt_shatmax.ne.-1d0) GET_SHAT_MAX = min(S, dsqrt_shatmax**2)
+      END
+
+      LOGICAL FUNCTION SHAT_FROM_GENCMS()
+C***********************************************************************
+C     TRUE IF GEN_MOM SAMPLES SHAT WITH GENCMS (TWO PDF BEAMS, NOT
+C     LPP=9 AND NOT DRESSED). GEN_MOM DISPATCHES ON THIS FUNCTION, SO
+C     A NEW BEAM SETUP WITH ITS OWN SAMPLING MUST BE EXCLUDED HERE.
+C***********************************************************************
+      IMPLICIT NONE
+      include 'maxparticles.inc'
+      include '../../Source/vector.inc'
+      include 'run.inc'
+      include '../../Source/PDF/pdf.inc'
+
+      SHAT_FROM_GENCMS = abs(lpp(1)).ge.1 .and. abs(lpp(2)).ge.1
+     &     .and. abs(lpp(1)).ne.9 .and. abs(lpp(2)).ne.9
+     &     .and. pdlabel.ne.'dressed'
+      END
+
+      DOUBLE PRECISION FUNCTION GET_SHAT_UNIT(S)
+C***********************************************************************
+C     UNIT OF THE S-HAT VARIABLE SAMPLED BY GEN_MOM: GENCMS SAMPLES IT
+C     UP TO GET_SHAT_MAX(S), EVERY OTHER BEAM SETUP UP TO S
+C***********************************************************************
+      IMPLICIT NONE
+      DOUBLE PRECISION S
+      DOUBLE PRECISION GET_SHAT_MAX
+      LOGICAL SHAT_FROM_GENCMS
+      EXTERNAL GET_SHAT_MAX, SHAT_FROM_GENCMS
+
+      GET_SHAT_UNIT = S
+      IF (SHAT_FROM_GENCMS()) GET_SHAT_UNIT = GET_SHAT_MAX(S)
       END
 
       SUBROUTINE GENCMS_EE(S,X1,X2,X,SMIN,SJACOBI)
@@ -1771,7 +1832,6 @@ C     -----------------------------------------
 
       integer ids(nexternal)
       integer i,j
-      integer nsel, isel
       logical trivial_boost
 
 c     uncompress
@@ -1808,42 +1868,17 @@ c     find the boost momenta --sum of particles--
             enddo
          endif
       enddo
-      do j=1,3	
+      do j=1,3
           Pboost(j) = -1 * Pboost(j)
-      enddo	    
+      enddo
       do i=1, nexternal
          call boostx(p1(0,i), pboost, p2(0,i))
       enddo
 
-c     If a single particle defines the frame, that particle must be
-c     exactly at rest after the boost. boostx only gets there up to the
-c     rounding of the boost factor, leaving a residual 3-momentum of a
-c     few 1d-14 whose direction is pure noise. That is not harmless:
-c     vxxxxx (aloha_functions.f) branches on pp.eq.rZero, and for a
-c     massive vector at exactly zero 3-momentum it takes the frame z
-c     axis as quantisation axis (longitudinal polarisation vector
-c     (0,0,0,1)); otherwise it builds the polarisation vectors from the
-c     momentum direction, i.e. from the rounding noise, giving an O(1)
-c     wrong polarisation state on the events that fail to round to zero.
-c     So impose the defining property of the frame explicitly.
-c     Only nsel==1 needs this: with two or more selected particles it is
-c     their sum that is at rest, and no individual leg sits on the
-c     pp.eq.rZero branch point. The energy is left untouched -- zeroing
-c     the 3-momentum shifts the invariant mass by O(1d-28) relative, and
-c     HELAS takes the mass as a separate argument anyway.
-      nsel = 0
-      isel = 0
-      do i=1, nexternal
-         if (ids(i).eq.1) then
-            nsel = nsel + 1
-            isel = i
-         endif
-      enddo
-      if (nsel.eq.1) then
-         p2(1,isel) = 0d0
-         p2(2,isel) = 0d0
-         p2(3,isel) = 0d0
-      endif
+c     A single selected particle must come out *exactly* at rest, not at
+c     rest to rounding: HELAS switches quantisation axis at exactly zero
+c     three-momentum. See Template/Common/Source/impose_frame_rest.f.
+      call impose_frame_rest(ids, nexternal, p2)
 
       return
       end

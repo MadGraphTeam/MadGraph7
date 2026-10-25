@@ -46,7 +46,7 @@ import madgraph.iolibs.export_v4 as export_v4
 import madgraph.various.misc as misc
 import madgraph.interface.reweight_interface as rwgt_interface
 import madgraph.various.banner as banner
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 import madgraph.interface.extended_cmd as extended_cmd
 import madgraph.interface.common_run_interface as common_run_interface
 
@@ -187,6 +187,8 @@ class TREX_OneProcessExporter(model_handling.OneProcessExporterMadMatrix):
     def generate_process_files(self):
         """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         super().generate_process_files()
+        # for TREX for now no /backend
+        self.edit_mgonGPU()
         self.edit_rwgt_header()
         self.edit_rwgt_runner()
         
@@ -202,9 +204,13 @@ class TREX_ProcessExporter(output.ProcessExporterMadMatrix):
     r = PLUGINDIR + '/MadtRex/template_files/'
     m = PLUGINDIR + '/MadtRex/makefiles/'
     from_template = dict(output.ProcessExporterMadMatrix.from_template)
-    from_template['src'] = from_template['src'] + [t+'librex.so', t+'libtearex.so',
-                                                   t+'Rex.h', t+'teaRex.h',
-                                                    r+'rwgt_instance.h', r+'rwgt_instance.cc']
+    # for TREX for now no /backend
+    from_template['src'] = from_template['src'] + output.relative_path_list(
+        output.ProcessExporterMadMatrix.madmatrix_templates,
+        ['mgOnGpuFptypes.h', 'mgOnGpuCxtypes.h', 'mgOnGpuVectors.h', 'constexpr_math.h']
+    ) + [t+'librex.so', t+'libtearex.so',
+        t+'Rex.h', t+'teaRex.h',
+        r+'rwgt_instance.h', r+'rwgt_instance.cc']
     from_template['SubProcesses'] = from_template['SubProcesses'] + [m+'cudacpp_driver.mk',
                                                                      r+'rwgt_instance.h', t+'Rex.h', t+'teaRex.h']
 
@@ -269,7 +275,7 @@ class TREX_ProcessExporter(output.ProcessExporterMadMatrix):
             # Create the process .h and .cc files
             process_exporter_cpp.generate_process_files()
             for file in self.to_link_in_P:
-                files.ln('../%s' % file) 
+                files.ln('../%s' % file)
         return
     
     def export_driver(self):

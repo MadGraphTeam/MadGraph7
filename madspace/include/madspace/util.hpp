@@ -141,10 +141,21 @@ println(std::FILE* stream, std::format_string<Args...> fmt, Args&&... args) {
     detail::print_impl(stream, true, fmt.get(), std::make_format_args(args...));
 }
 
+/**
+ * Ordered, name-indexed vector: a `std::vector<T>` where every entry also has
+ * a unique string key.
+ *
+ * The container behind every compute-graph `Function`'s named inputs and
+ * outputs (`NamedVector<Value>`) and type lists (`NamedVector<Type>`),
+ * preserving insertion order while supporting both integer indexing and
+ * lookup by name.
+ */
 template <typename T>
 class NamedVector {
 public:
+    /// Empty vector.
     NamedVector() = default;
+    /// One entry per pair of `keys` and `values`, in order.
     NamedVector(const std::vector<std::string>& keys, const std::vector<T>& values) {
         if (keys.size() != values.size()) {
             throw std::invalid_argument("keys and values must have the same size");
@@ -154,12 +165,14 @@ public:
             push_back(key, value);
         }
     }
+    /// One entry per `(key, value)` pair of `items`, in order.
     NamedVector(const std::initializer_list<std::pair<std::string, T>>& items) {
         reserve(items.size());
         for (auto& [key, value] : items) {
             push_back(key, value);
         }
     }
+    /// One entry per `(key, value)` pair of `items`, in order.
     NamedVector(const std::vector<std::pair<std::string, T>>& items) {
         reserve(items.size());
         for (auto& [key, value] : items) {
@@ -167,10 +180,13 @@ public:
         }
     }
 
+    /// The values, in insertion order.
     const std::vector<T>& values() const { return _values; }
+    /// Map from key to its position in @ref values.
     const std::unordered_map<std::string, std::size_t>& index_map() const {
         return _index_map;
     }
+    /// The keys, in insertion order.
     std::vector<std::string> keys() const {
         std::vector<std::string> ret(size());
         for (auto& [key, index] : index_map()) {
@@ -179,6 +195,7 @@ public:
         return ret;
     }
 
+    /// Iterator over the values, in insertion order.
     decltype(auto) begin() { return _values.begin(); }
     decltype(auto) begin() const { return _values.begin(); }
     decltype(auto) rbegin() { return _values.rbegin(); }
@@ -188,24 +205,40 @@ public:
     decltype(auto) rend() { return _values.rend(); }
     decltype(auto) rend() const { return _values.rend(); }
 
+    /// The first value.
     decltype(auto) front() { return _values.at(0); }
+    /// The first value.
     decltype(auto) front() const { return _values.at(0); }
+    /// The last value.
     decltype(auto) back() { return _values.at(size() - 1); }
+    /// The last value.
     decltype(auto) back() const { return _values.at(size() - 1); }
 
+    /// The value at position `index`.
     T& at(std::size_t index) { return _values.at(index); }
+    /// The value at position `index`.
     const T& at(std::size_t index) const { return _values.at(index); }
+    /// The value keyed by `key`.
     T& at(const std::string& key) { return _values.at(_index_map.at(key)); }
+    /// The value keyed by `key`.
     const T& at(const std::string& key) const { return _values.at(_index_map.at(key)); }
+    /// The value at position `index`.
     T& operator[](std::size_t index) { return at(index); }
+    /// The value at position `index`.
     const T& operator[](std::size_t index) const { return at(index); }
+    /// The value keyed by `key`.
     T& operator[](const std::string& key) { return at(key); }
+    /// The value keyed by `key`.
     const T& operator[](const std::string& key) const { return at(key); }
 
+    /// Whether the vector holds no entries.
     bool empty() const { return _values.empty(); }
+    /// Number of entries.
     std::size_t size() const { return _values.size(); }
+    /// Reserve storage for `capacity` entries.
     void reserve(std::size_t capacity) { _values.reserve(capacity); }
 
+    /// Append `value` under a new `key`; `key` must not already be present.
     void push_back(const std::string& key, const T& value) {
         if (_index_map.contains(key)) {
             throw std::invalid_argument("Key already present in NamedVector");
@@ -213,6 +246,7 @@ public:
         _index_map[key] = _values.size();
         _values.push_back(value);
     }
+    /// Append every entry of `other`; its keys must not already be present.
     void insert_back(const NamedVector<T>& other) {
         std::size_t old_size = size();
         _values.insert(_values.end(), other.values().begin(), other.values().end());
@@ -223,6 +257,8 @@ public:
             _index_map[key] = index + old_size;
         }
     }
+    /// A copy reordered to match `index_map` (same keys, same key-to-position
+    /// mapping as this instance's, just reassigned).
     NamedVector<T>
     sort_like(const std::unordered_map<std::string, std::size_t>& index_map) const {
         if (index_map.size() != size()) {

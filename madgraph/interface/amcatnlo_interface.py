@@ -52,12 +52,14 @@ import madgraph.iolibs.export_fks as export_fks
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.helas_call_writers as helas_call_writers
 import madgraph.loop.loop_base_objects as loop_base_objects
+import madgraph.core.base_objects as base_objects
 import madgraph.core.diagram_generation as diagram_generation
 import madgraph.core.helas_objects as helas_objects
 
 import madgraph.various.cluster as cluster
 import madgraph.various.misc as misc
 import madgraph.various.banner as banner_mod
+import madgraph.models.model_reader as model_reader
 #usefull shortcut
 pjoin = os.path.join
 
@@ -153,10 +155,35 @@ class CheckFKS(mg_interface.CheckValidForCmd):
 
     def check_output(self, args):
         """ check the validity of the line"""
-                  
+
+        # '--fks' requests the FKS counter-term standalone output: a lightweight
+        # directory exposing the Born building blocks (Born, color-/charge-linked
+        # Born, spin-correlated Born) for a single phase-space point.
+        self._fks_standalone = '--fks' in args
+        if self._fks_standalone:
+            args.remove('--fks')
+        # '--limits' additionally keeps the real-emission code so that 'launch'
+        # can also run the soft/collinear limit test (test_soft_col_limits)
+        self._fks_limits = '--limits' in args
+        if self._fks_limits:
+            args.remove('--limits')
+            if not self._fks_standalone:
+                raise self.InvalidCmd('"--limits" is only available for the FKS '
+                    'standalone output: "output standalone_fortran --fks --limits".')
+
         if args and args[0] == 'ewsudakovsa':
             self._export_format = 'ewsudsa'
             args.pop(0)
+        elif self._fks_standalone:
+            # accept the optional 'standalone_fortran' keyword
+            # (output standalone_fortran --fks). 'standalone' names the
+            # MadMatrix export, so it is refused rather than taken as a path.
+            if args and args[0] == 'standalone':
+                raise self.InvalidCmd('The FKS Born building-block output is a '
+                    'Fortran output: use "output standalone_fortran --fks".')
+            if args and args[0] == 'standalone_fortran':
+                args.pop(0)
+            self._export_format = 'NLO_SA'
         else:
             self._export_format = 'NLO'
 
@@ -182,6 +209,8 @@ class CheckFKS(mg_interface.CheckValidForCmd):
             if args[0] in forbidden_formats:
                 text = 'You generated a NLO process, which cannot be exported in %s mode.\n' % args[0]
                 text+= 'Please use the command "output DIR_NAME".\n'
+                if args[0] == 'standalone_fortran':
+                    text+= 'For the FKS Born building blocks, use "output standalone_fortran --fks".\n'
                 raise self.InvalidCmd(text)
 
             # This is a path
@@ -471,6 +500,122 @@ class aMCatNLOInterface(CheckFKS, CompleteFKS, HelpFKS, Loop_interface.CommonLoo
         else:
             mg_interface.MadGraphCmd.do_display(self,line,output)
 
+    @staticmethod
+    def get_parameter_values(model):
+        """Return the numerical values of the parameters of model (for the
+        default param_card of the model), or None if they cannot be
+        evaluated"""
+
+        if isinstance(model, model_reader.ModelReader) and \
+                                                  model.get('parameter_dict'):
+            return model.get('parameter_dict')
+        try:
+            reader = model_reader.ModelReader(model)
+            reader.set_parameters_and_couplings()
+        except Exception as error:
+            logger.debug('Cannot evaluate the model parameters: %s' % error)
+            return None
+        return reader.get('parameter_dict')
+
+    @staticmethod
+    def find_unstable_s_channels(fksproc, coloured_only=False):
+        """Return the names of the particles with a non-zero width that
+        appear as s-channel propagators in the Born diagrams of fksproc
+        and can go on shell, i.e. that are heavier than the final-state
+        particles they are built from. This excludes e.g. the Z in
+        u u~ > t t~, or the top propagator in t* > t g for u u~ > t t~ g.
+        If coloured_only, only the colour-charged ones are returned."""
+
+        resonances = set()
+        values = {}
+        for amp in fksproc.get_born_amplitudes():
+            model = amp['process']['model']
+            if id(model) not in values:
+                values[id(model)] = \
+                      aMCatNLOInterface.get_parameter_values(model)
+            parameters = values[id(model)]
+
+            def get_value(name):
+                """abs of the value of a mass/width, None if unknown"""
+                if name.upper() == 'ZERO':
+                    return 0.
+                if parameters is None or name not in parameters:
+                    return None
+                return abs(parameters[name].real)
+
+            external = amp['process']['legs']
+            final_masses = dict((l['number'],
+                                 get_value(model.get_particle(l['id'])['mass']))
+                                for l in external if l['state'])
+
+            for diagram in amp['diagrams']:
+                # for each leg, the final-state legs it is built from and the
+                # number of initial-state legs in it
+                content = dict((l['number'],
+                                (set([l['number']]) if l['state'] else set(),
+                                 0 if l['state'] else 1)) for l in external)
+                # the last vertex has no propagator; the other vertices
+                # produce one leg, which is an s-channel propagator if it
+                # does not contain exactly one initial-state leg (state=True)
+                for vertex in diagram['vertices'][:-1]:
+                    finals, ninitial = set(), 0
+                    for leg in vertex['legs'][:-1]:
+                        finals |= content[leg['number']][0]
+                        ninitial += content[leg['number']][1]
+                    leg = vertex['legs'][-1]
+                    content[leg['number']] = (finals, ninitial)
+                    if not leg['state']:
+                        continue
+                    part = model.get_particle(leg['id'])
+                    # fake propagators of multi-leg vertices, stable particles
+                    if not part or get_value(part.get('width')) == 0.:
+                        continue
+                    if coloured_only and part.get('color') == 1:
+                        continue
+                    # the propagator momentum is the sum of the momenta of
+                    # these final-state particles: it can only be resonant if
+                    # it is heavier than their masses
+                    if ninitial:
+                        finals = set(final_masses.keys()) - finals
+                    mass = get_value(part.get('mass'))
+                    threshold = [final_masses[n] for n in finals]
+                    if mass is not None and None not in threshold and \
+                              mass <= sum(threshold) * (1. + 1e-10):
+                        continue
+                    resonances.add(part.get('name'))
+        return sorted(resonances)
+
+    def warn_resonances_without_cms(self, fksproc, orders):
+        """NLO virtual corrections to a process with a resonant propagator
+        are not gauge invariant and are dominated by the resonant
+        self-energy near the pole unless the complex-mass scheme is used.
+        The result can then be wrong by O(100%) (e.g. -90% for
+        p p > e+ e- [QED] with m_ll > 30 GeV), without any other sign than
+        IR-pole miscancellations during the run.
+        With EW corrections (QED in orders) every unstable s-channel
+        propagator is concerned; with QCD corrections only the
+        colour-charged ones (e.g. an intermediate top quark) receive a
+        self-energy correction."""
+
+        if 'QED' in orders:
+            resonances = self.find_unstable_s_channels(fksproc)
+            corr = 'EW'
+        elif 'QCD' in orders:
+            resonances = self.find_unstable_s_channels(fksproc,
+                                                       coloured_only=True)
+            corr = 'QCD'
+        else:
+            return
+        if not resonances:
+            return
+        logger.warning(
+"""NLO %s corrections are requested for a process with s-channel
+propagator(s) of unstable particle(s): %s, while the complex-mass scheme is
+not used. Close to the resonance the virtual corrections are then not gauge
+invariant and are dominated by the resonant self-energy: the NLO cross
+section can be wrong by O(100%%). Use 'set complex_mass_scheme True' before
+generating the process (see arXiv:1804.10017).""" % (corr, ', '.join(resonances)))
+
     def do_add(self, line, *args,**opt):
         
         args = self.split_arg(line)
@@ -490,6 +635,16 @@ class aMCatNLOInterface(CheckFKS, CompleteFKS, HelpFKS, Loop_interface.CommonLoo
                         self._fks_multi_proc['loop_filter'] = a.split('=',1)[1]
                         args.remove(a)
                         break
+
+            if any(a.startswith('--diagram_filter') for a in args):
+                raise self.InvalidCmd("--diagram_filter is not supported for "
+                    "NLO (FKS) generation: use --tree_diagram_filter (Born "
+                    "and real emission diagrams) and/or --loop_diagram_filter "
+                    "(loop diagrams).")
+            tree_diagram_filter = self.extract_diagram_filter(args,
+                                                       '--tree_diagram_filter')
+            loop_diagram_filter = self.extract_diagram_filter(args,
+                                                       '--loop_diagram_filter')
 
             line = ' '.join(args[1:])
 
@@ -567,7 +722,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         if not myprocdef['squared_orders'] and not myprocdef['orders']:
             # find the minimum weighted order, then extract the values for the varius
             # couplings in the model
-            weighted = diagram_generation.MultiProcess.find_optimal_process_orders(myprocdef)
+            weighted = diagram_generation.MultiProcess.find_optimal_process_orders(myprocdef,
+                                                           tree_diagram_filter)
             if not weighted:
                 raise MadGraph5Error('\nProcess orders cannot be determined automatically. \n' + \
                                       'Please specify them from the command line.')
@@ -635,7 +791,10 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         # check that all the couplings of the model have been constrained
         # in the squared orders, otherwise set the others to zero
-        for o in myprocdef['model'].get('coupling_orders'):
+        # (not the hidden order an interference process adds to the model)
+        model_orders = base_objects.visible_orders(
+                                     myprocdef['model'].get('coupling_orders'))
+        for o in model_orders:
             if o not in myprocdef['squared_orders'].keys():
                 logger.warning('No squared order constraint for order %s. Setting to 0' % o)
                 myprocdef['squared_orders'][o] = 0 
@@ -644,7 +803,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         # split all orders in the model, for the moment it's the simplest solution
         # mz02/2014
         #if proc_type[1] != 'only':
-        myprocdef['split_orders'] += [o for o in myprocdef['model'].get('coupling_orders') \
+        myprocdef['split_orders'] += [o for o in model_orders \
                 if o not in myprocdef['split_orders']]
 
         # now set the squared orders
@@ -692,7 +851,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         # squared-orders constraints. In that case, all kind of splittings/loop-particles
         # must be included
         if not myprocdef['orders'] and self.options['nlo_mixed_expansion']:
-            myprocdef['perturbation_couplings'] = list(myprocdef['model']['coupling_orders'])
+            myprocdef['perturbation_couplings'] = list(model_orders)
 
         self._curr_proc_defs.append(myprocdef)
 
@@ -727,7 +886,9 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                        'ncores_for_proc_gen': self.ncores_for_proc_gen,
                        'ewsudakov': self.ewsudakov,
                        'nlo_mixed_expansion': self.options['nlo_mixed_expansion'],
-                       'loop_filter':self._fks_multi_proc['loop_filter'] if hasattr(self, '_fks_multi_proc') else None}
+                       'loop_filter':self._fks_multi_proc['loop_filter'] if hasattr(self, '_fks_multi_proc') else None,
+                       'diagram_filter': tree_diagram_filter,
+                       'loop_diagram_filter': loop_diagram_filter}
 
         fksproc =fks_base.FKSMultiProcess(myprocdef,fks_options)
         try:
@@ -735,6 +896,10 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         except AttributeError: 
             self._fks_multi_proc = fksproc
             self._fks_multi_proc['loop_filter'] = fks_options['loop_filter']
+
+        if proc_type[1] in ['all', 'virt'] and \
+                                  not self.options['complex_mass_scheme']:
+            self.warn_resonances_without_cms(fksproc, proc_type[2])
 
         if not aMCatNLOInterface.display_expansion and  self.options['nlo_mixed_expansion']:
             base = {}
@@ -778,17 +943,18 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
         # For NLO, the group_subprocesses is automatically set to false
         group_processes = False
         # initialize the writer
-        if self._export_format in ['NLO','ewsudsa']:
-            output_type_dict = {'NLO': 'amcatnlo', 'ewsudsa': 'ewsudsa'}
-            self._curr_exporter = export_v4.ExportV4Factory(self, noclean, 
+        if self._export_format in ['NLO','ewsudsa','NLO_SA']:
+            output_type_dict = {'NLO': 'amcatnlo', 'ewsudsa': 'ewsudsa',
+                                'NLO_SA': 'amcatnlo_sa'}
+            self._curr_exporter = export_v4.ExportV4Factory(self, noclean,
                       output_type=output_type_dict[self._export_format],
                       group_subprocesses=group_processes)
-            
+
             self._curr_exporter.pass_information_from_cmd(self)
 
         # check if a dir with the same name already exists
         if not force and not noclean and os.path.isdir(self._export_dir)\
-               and self._export_format in ['NLO', 'ewsudsa']:
+               and self._export_format in ['NLO', 'ewsudsa', 'NLO_SA']:
             # Don't ask if user already specified force or noclean
             logger.info('INFO: directory %s already exists.' % self._export_dir)
             logger.info('If you continue this directory will be deleted and replaced.')
@@ -803,7 +969,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
             shutil.rmtree(self._export_dir)
 
         # Make a Template Copy
-        if self._export_format in ['NLO', 'ewsudsa']:
+        if self._export_format in ['NLO', 'ewsudsa', 'NLO_SA']:
             self._curr_exporter.copy_fkstemplate(self._curr_model)
 
         # Reset _done_export, since we have new directory
@@ -910,7 +1076,7 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
 
         path = self._export_dir
 
-        if self._export_format in ['NLO', 'ewsudsa']:
+        if self._export_format in ['NLO', 'ewsudsa', 'NLO_SA']:
             path = os.path.join(path, 'SubProcesses')
 
             #_curr_matrix_element is a FKSHelasMultiProcess Object 
@@ -1058,7 +1224,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                 ME = run_interface.aMCatNLOCmd(me_dir=argss[0],options=self.options)
                 ME.pass_in_web_mode()
             # transfer interactive configuration
-            config_line = [l for l in self.history if l.strip().startswith('set')]
+            config_line = [l for l in self.history if l.strip().startswith('set')
+                           and not extended_cmd.is_question_answer(l)]
             for line in config_line:
                 ME.exec_cmd(line)
             stop = self.define_child_cmd_interface(ME)                
@@ -1068,9 +1235,8 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                                                   shell = isinstance(self, extended_cmd.CmdShell),
                                                   **options)
         ext_program.run()
-        
-                    
-   
+
+
 class aMCatNLOInterfaceWeb(mg_interface.CheckValidForCmdWeb, aMCatNLOInterface):
     pass
 

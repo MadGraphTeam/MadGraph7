@@ -89,7 +89,7 @@ else:
     import madgraph.madevent.combine_runs as combine_runs
     import madgraph.various.lhe_parser as lhe_parser
 #    import madgraph.various.histograms as histograms  # imported later to not slow down the loading of the code
-    import models.check_param_card as check_param_card
+    import madgraph.models.check_param_card as check_param_card
     from madgraph.iolibs.files import ln    
     from madgraph import InvalidCmd, MadGraph5Error, MG5DIR, ReadWrite
 
@@ -537,8 +537,6 @@ class AskRun(cmd.ControlSwitch):
             self.available_module.add('PGS')
         if options['pythia8_path']:
             self.available_module.add('PY8')
-        if options['madanalysis_path']:
-            self.available_module.add('MA4')
         if options['madanalysis5_path']:
             self.available_module.add('MA5')
         if options['exrootanalysis_path']:
@@ -764,8 +762,6 @@ class AskRun(cmd.ControlSwitch):
         self.allowed_analysis = []
         if 'ExRoot' in self.available_module:
             self.allowed_analysis.append('ExRoot')
-        if 'MA4' in self.available_module:
-            self.allowed_analysis.append('MadAnalysis4')
         if 'MA5' in self.available_module:
             self.allowed_analysis.append('MadAnalysis5') 
         if 'Rivet' in self.available_module:
@@ -781,15 +777,11 @@ class AskRun(cmd.ControlSwitch):
         
         if value in self.get_allowed_analysis():
             return True
-        if value.lower() in ['ma4', 'madanalysis4', 'madanalysis_4','4']:
-            return 'MadAnalysis4'
         if value.lower() in ['ma5', 'madanalysis5', 'madanalysis_5','5']:
             return 'MadAnalysis5'
         if value.lower() in ['ma', 'madanalysis']:
             if 'MA5' in self.available_module:
                 return 'MadAnalysis5'
-            elif 'MA4' in self.available_module:
-                return 'MadAnalysis4'
             else:
                 return False
         else:
@@ -823,16 +815,14 @@ class AskRun(cmd.ControlSwitch):
     def set_default_analysis(self):
         """initialise the switch for analysis"""
         
-        if 'MA4' in self.available_module and \
-                     os.path.exists(pjoin(self.me_dir,'Cards','plot_card.dat')):
-            self.switch['analysis'] = 'MadAnalysis4'
-        elif 'MA5' in self.available_module and\
+        if 'MA5' in self.available_module and\
              (os.path.exists(pjoin(self.me_dir,'Cards','madanalysis5_parton_card.dat'))\
              or os.path.exists(pjoin(self.me_dir,'Cards', 'madanalysis5_hadron_card.dat'))):
             self.switch['analysis'] = 'MadAnalysis5'
-        elif 'ExRoot' in self.available_module:
-            self.switch['analysis'] = 'ExRoot'   
-        elif self.get_allowed_analysis(): 
+        elif self.get_allowed_analysis():
+            # ExRoot used to default to ON just because exrootanalysis_path is
+            # configured (its default value even when not installed); analysis
+            # now always needs to be explicitly activated, like the other switches.
             self.switch['analysis'] = 'OFF'
         else:
             self.switch['analysis'] = 'Not Avail.'
@@ -916,13 +906,14 @@ class AskRun(cmd.ControlSwitch):
         
         if 'reweight' not in self.available_module:
             self.allowed_reweight = []
-            return
+            return self.allowed_reweight
         self.allowed_reweight = ['OFF', 'ON', 'density']
         
         # check for plugin mode
         plugin_path = self.mother_interface.plugin_path
         opts = misc.from_plugin_import(plugin_path, 'new_reweight', warning=False)
         self.allowed_reweight += opts
+        return self.allowed_reweight
         
     def set_default_reweight(self):
         """initialise the switch for reweight"""
@@ -1010,8 +1001,6 @@ class AskRunEditCard(common_run.AskforEditCardWithSwitch, AskRun,
         {'card': 'madanalysis5_hadron_card.dat', 'key': 'analysis',
          'on': lambda s: s['analysis'] == 'MadAnalysis5' and s['shower'] != 'OFF',
          'set': 'MadAnalysis5'},
-        {'card': 'plot_card.dat', 'key': 'analysis',
-         'on': lambda s: s['analysis'] == 'MadAnalysis4', 'set': 'MadAnalysis4'},
         {'card': 'rivet_card.dat', 'key': 'analysis',
          'on': lambda s: s['analysis'] == 'Rivet', 'set': 'Rivet'},
     ]
@@ -1143,6 +1132,10 @@ class CheckValidForCmd(object):
             self.help_set()
             raise self.InvalidCmd('set needs an option and an argument')
 
+        if cmd.is_removed_option(args[0]):
+            # handled (and reported) by do_set: never an error
+            return
+
         if args[0] not in self._set_options + list(self.options.keys()):
             self.help_set()
             raise self.InvalidCmd('Possible options for set are %s' % \
@@ -1224,6 +1217,7 @@ class CheckValidForCmd(object):
         opt = {'output_dir':pjoin(self.me_dir,'Source'),
                'param_card':pjoin(self.me_dir,'Cards','param_card.dat'),
                'run_card':pjoin(self.me_dir,'Cards','run_card.dat'),
+               'onia_card':pjoin(self.me_dir,'Cards','onia_card.dat'),
                'forbid_MadLoopInit': False}
         mode = 'all'
         for arg in args:
@@ -1586,53 +1580,6 @@ class CheckValidForCmd(object):
                                               % arg)
             return tmp_args[0], tag, tmp_args[1:]
 
-    def check_plot(self, args):
-        """Check the argument for the plot command
-        plot run_name modes"""
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']
-        
-        if not madir or not td:
-            logger.info('Retry to read configuration file to find madanalysis/td')
-            self.set_configuration()
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']        
-        
-        if not madir:
-            error_msg = 'No valid MadAnalysis path set.\n'
-            error_msg += 'Please use the set command to define the path and retry.\n'
-            error_msg += 'You can also define it in the configuration file.\n'
-            raise self.InvalidCmd(error_msg)  
-        if not  td:
-            error_msg = 'No valid td path set.\n'
-            error_msg += 'Please use the set command to define the path and retry.\n'
-            error_msg += 'You can also define it in the configuration file.\n'
-            raise self.InvalidCmd(error_msg)  
-                     
-        if len(args) == 0:
-            if not hasattr(self, 'run_name') or not self.run_name:
-                self.help_plot()
-                raise self.InvalidCmd('No run name currently define. Please add this information.')             
-            args.append('all')
-            return
-
-        
-        if args[0] not in self._plot_mode:
-            self.set_run_name(args[0], level='plot')
-            del args[0]
-            if len(args) == 0:
-                args.append('all')
-        elif not self.run_name:
-            self.help_plot()
-            raise self.InvalidCmd('No run name currently define. Please add this information.')                             
-        
-        for arg in args:
-            if arg not in self._plot_mode and arg != self.run_name:
-                 self.help_plot()
-                 raise self.InvalidCmd('unknown options %s' % arg)        
-    
     def check_syscalc(self, args):
         """Check the argument for the syscalc command
         syscalc run_name modes"""
@@ -2263,17 +2210,9 @@ class MadEventCmd(CompleteForCmd, CmdExtended, HelpToCmd, common_run.CommonRunCm
                                      os.path.exists(pjoin(path, 'DelphesSTDHEP')):
                         logger.info("No valid Delphes path found")
                         continue
-                elif key == "madanalysis_path":
-                    if not os.path.exists(pjoin(path, 'plot_events')):
-                        logger.info("No valid MadAnalysis path found")
-                        continue
                 elif key == "rivet_path":
                     if not os.path.exists(pjoin(path, 'bin', 'rivet')):
                         logger.info("No valid rivet path found")
-                        continue
-                elif key == "td_path":
-                    if not os.path.exists(pjoin(path, 'td')):
-                        logger.info("No valid td path found")
                         continue
                 elif key == "syscalc_path":
                     if not os.path.exists(pjoin(path, 'sys_calc')):
@@ -2791,7 +2730,6 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
                         self.run_syscalc('parton')
                 
                     
-                self.create_plot('parton')            
                 self.exec_cmd('store_events', postcmd=False) 
                 if self.run_card['boost_event'].strip()  and self.run_card['boost_event'] != 'False':
                     self.boost_events()
@@ -2872,7 +2810,7 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
         options = self.check_initMadLoop(args)
         
         if not options['force']:
-            self.ask_edit_cards(['MadLoopParams.dat'], mode='fixed', plot=False)
+            self.ask_edit_cards(['MadLoopParams.dat'], mode='fixed')
             self.exec_cmd('treatcards loop --no_MadLoopInit')
 
         if options['refresh']:
@@ -3176,6 +3114,9 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
 
         decay_lines = []
         comment = collections.defaultdict(str)
+        # the widths still on auto ('DECAY 6 auto --nlo'), which another call of
+        # compute_widths is to compute: they must come out as they went in
+        pending_auto = {}
         line_number = 0
         # Read and remove all decays from the param_card                     
         while line_number < len(param_card):
@@ -3192,6 +3133,12 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
                         particle = int(line[1])
                         width = float(line[2])
                     except Exception:
+                        try:
+                            auto_value = ' '.join(line[2:line.index('#')] if '#' in line else line[2:])
+                            if auto_value.lower().startswith('auto'):
+                                pending_auto[int(line[1])] = auto_value
+                        except ValueError:
+                            pass
                         particle = 0
                 # Read BRs for this decay
                 line = param_card[line_number]
@@ -3228,6 +3175,9 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
         param_card.append("#\n#*************************")
         param_card.append("#      Decay widths      *")
         param_card.append("#*************************")
+        for key in sorted(pending_auto):
+            param_card.append("#\n#      PDG        Width")
+            param_card.append("DECAY  %i  %s # %s" % (key, pending_auto[key], comment[key]))
         for key in sorted(decay_info.keys()):
             width = sum([r for p,r in decay_info[key]])
             param_card.append("#\n#      PDG        Width")
@@ -3271,10 +3221,11 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
         crossoversig = 0
         inv_sq_err = 0
         nb_event = 0
-        madspin = False
+        run_names = [] # final run of each generation (the decayed one if MadSpin ran)
         for i in range(nb_run):
             self.nb_refine = 0
             self.exec_cmd('generate_events %s_%s -f' % (main_name, i), postcmd=False)
+            run_names.append(self.run_name)
             # Update collected value
             nb_event += int(self.results[self.run_name][-1]['nb_event'])  
             self.results.add_detail('nb_event', nb_event , run=main_name)            
@@ -3284,8 +3235,6 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
             inv_sq_err+=1.0/error**2
             self.results[main_name][-1]['cross'] = crossoversig/inv_sq_err
             self.results[main_name][-1]['error'] = math.sqrt(1.0/inv_sq_err)
-            if 'decayed' in self.run_name:
-                madspin = True
         self.results.def_current(main_name)
         self.run_name = main_name
         self.update_status("Merging LHE files", level='parton')
@@ -3294,11 +3243,29 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
         except Exception:
             pass
 
-        os.system('%(bin)s/merge.pl %(event)s/%(name)s_*%(madspin)s/unweighted_events.lhe.gz %(event)s/%(name)s/unweighted_events.lhe.gz %(event)s/%(name)s_banner.txt' 
-                  % {'bin': self.dirbin, 'event': pjoin(self.me_dir,'Events'),
-                     'name': self.run_name,
-                     'madspin': '_decayed_*' if madspin else ''
-                     })
+        event_dir = pjoin(self.me_dir, 'Events')
+        paths, missing = [], []
+        for name in run_names:
+            # unweighted_events.lhe if zip_unweighted_events=False: the newest
+            # one if both exist
+            candidates = [pjoin(event_dir, name, 'unweighted_events.lhe%s' % ext)
+                          for ext in ['.gz', '']]
+            candidates = [p for p in candidates if os.path.exists(p)]
+            if candidates:
+                paths.append(max(candidates, key=os.path.getmtime))
+            else:
+                missing.append(name)
+        if missing:
+            raise MadEventError('No event file for the run(s) %s: the runs of %s are not merged'
+                                % (', '.join(missing), self.run_name))
+        output = pjoin(event_dir, self.run_name, 'unweighted_events.lhe.gz')
+        nb_event, _ = lhe_parser.MultiEventFile.merge_runs(paths, output,
+                    banner_path=pjoin(event_dir, '%s_banner.txt' % self.run_name),
+                    event_norm=self.run_card['event_norm'])
+        self.results.add_detail('nb_event', nb_event)
+        # a stale unzipped file would hide the merged one below
+        if os.path.exists(output[:-3]):
+            os.remove(output[:-3])
 
         eradir = self.options['exrootanalysis_path']
         if eradir and misc.is_executable(pjoin(eradir,'ExRootLHEFConverter')):
@@ -3311,12 +3278,7 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
             self.create_root_file('%s/unweighted_events.lhe' % self.run_name,
                                   '%s/unweighted_events.root' % self.run_name)
             
-        path = pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe")        
-        self.create_plot('parton', path,
-                         pjoin(self.me_dir, 'HTML',self.run_name, 'plots_parton.html')
-                         )
-        
-
+        path = pjoin(self.me_dir, "Events", self.run_name, "unweighted_events.lhe")
         if not os.path.exists('%s.gz' % path):        
             misc.gzip(path)
 
@@ -4123,7 +4085,8 @@ Beware that this can be dangerous for local multicore runs.""")
                           log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
                           proc_charac=self.proc_characteristic,
                           keep_overshoot=self.run_card['allow_overshoot_events'],
-                          nb_output=self.run_card['nb_unweight_output'])
+                          nb_output=self.run_card['nb_unweight_output'],
+                          keep_overweight_weight=True)
             self.zip_unweighted_output(pjoin(self.me_dir, "Events", self.run_name,
                                              "unweighted_events.lhe"), start)
 
@@ -4166,7 +4129,8 @@ Beware that this can be dangerous for local multicore runs.""")
                                 log_level=logging.DEBUG, normalization=self.run_card['event_norm'],
                                 proc_charac=self.proc_characteristic,
                                 keep_overshoot=self.run_card['allow_overshoot_events'],
-                                nb_output=self.run_card['nb_unweight_output'])
+                                nb_output=self.run_card['nb_unweight_output'],
+                                keep_overweight_weight=True)
                 self.zip_unweighted_output(pjoin(self.me_dir, "Events", self.run_name,
                                                  "unweighted_events.lhe"), start)
 
@@ -4241,7 +4205,8 @@ Beware that this can be dangerous for local multicore runs.""")
         nb_event = max(min(abs(1.01*self.run_card['nevents']*sum_axsec/cross),self.run_card['nevents']), 10)
         get_wgt = lambda event: event.wgt   
         AllEvent.unweight(output,
-                          get_wgt, log_level=5,  trunc_error=1e-2, event_target=nb_event)  
+                          get_wgt, log_level=5,  trunc_error=1e-2, event_target=nb_event,
+                          keep_overweight_weight=True)  
         return output, sum_xsec, math.sqrt(sum(x**2 for x in sum_xerru)), sum_axsec
 
     ############################################################################ 
@@ -4487,84 +4452,44 @@ Beware that this can be dangerous for local multicore runs.""")
         """launch MadAnalysis5 at the parton level."""
         return self.run_madanalysis5(line,mode='parton')
 
-    #===============================================================================
-    # Return a warning (if applicable) on the consistency of the current Pythia8
-    # and MadGraph7 version specified. It is placed here because it should be accessible
-    # from both madgraph5_interface and madevent_interface
-    #===============================================================================
-    @staticmethod
-    def mg5amc_py8_interface_consistency_warning(options):
-        """ Check the consistency of the mg5amc_py8_interface installed with
-        the current MG5 and Pythia8 versions. """
-    
-        # All this is only relevant is Pythia8 is interfaced to MG5
-        if not options['pythia8_path']:
-            return None
-        
-        if not options['mg5amc_py8_interface_path']:
-            return \
-    """
-    A Pythia8 path is specified via the option 'pythia8_path' but no path for option
-    'mg5amc_py8_interface_path' is specified. This means that Pythia8 cannot be used
-    leading order simulations with MadEvent.
-    Consider installing the MadGraph7-PY8 interface with the following command:
-     MadGraph7>install mg5amc_py8_interface
-    """
-       
-        mg5amc_py8_interface_path = options['mg5amc_py8_interface_path']
-        py8_path                  = options['pythia8_path']
-        # If the specified interface path is relative, make it absolut w.r.t MGDIR if
-        # avaialble.
-        if not MADEVENT:
-            mg5amc_py8_interface_path = pjoin(MG5DIR,mg5amc_py8_interface_path)
-            py8_path                  = pjoin(MG5DIR,py8_path)
+    def get_pythia8_main164(self, PY8_Card):
+        """Return Pythia8's main164, which runs the shower, compiled (if needed)
+        against the HepMC version asked by 'HEPMCoutput:format' in the card."""
 
-        # Retrieve all the on-install and current versions  
-        fsock =  open(pjoin(mg5amc_py8_interface_path, 'MG5AMC_VERSION_ON_INSTALL'))
-        MG5_version_on_install = fsock.read().replace('\n','')
-        fsock.close()
-        if MG5_version_on_install == 'UNSPECIFIED':
-            MG5_version_on_install = None
-        fsock = open(pjoin(mg5amc_py8_interface_path, 'PYTHIA8_VERSION_ON_INSTALL'))
-        PY8_version_on_install = fsock.read().replace('\n','')
-        fsock.close()
-        MG5_curr_version =misc.get_pkg_info()['version']
+        hepmc_format = str(PY8_Card['HEPMCoutput:format']).strip().lower()
+        if hepmc_format not in ['auto', 'hepmc2', 'hepmc3']:
+            raise self.InvalidCmd("The pythia8_card parameter 'HEPMCoutput:format' "+
+                     "must be auto, hepmc2 or hepmc3, not '%s'." % hepmc_format)
+        # This is not a Pythia8 setting: it selects the main164 build.
+        PY8_Card.vetoParamWriteOut('HEPMCoutput:format')
+
+        if hepmc_format != 'auto':
+            hepmc_version = int(hepmc_format[-1])
+        else:
+            hepmc_version = self.get_auto_hepmc_version()
+
         try:
-            p = subprocess.Popen(['./get_pythia8_version.py',py8_path],
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-                             cwd=mg5amc_py8_interface_path)
-            (out, err) = p.communicate()
-            out = out.decode(errors='ignore').replace('\n','')
-            PY8_curr_version = out
-            # In order to test that the version is correctly formed, we try to cast
-            # it to a float
-            float(out)
-        except:
-            PY8_curr_version = None
-    
-        if not MG5_version_on_install is None and not MG5_curr_version is None:
-            if MG5_version_on_install != MG5_curr_version:
-                return \
-    """
-    The current version of MadGraph7 (v%s) is different than the one active when
-    installing the 'mg5amc_py8_interface_path' (which was MadGraph7 v%s). 
-    Please consider refreshing the installation of this interface with the command:
-     MadGraph7>install mg5amc_py8_interface
-    """%(MG5_curr_version, MG5_version_on_install)
-    
-        if not PY8_version_on_install is None and not PY8_curr_version is None:
-            if PY8_version_on_install != PY8_curr_version:
-                return \
-    """
-    The current version of Pythia8 (v%s) is different than the one active when
-    installing the 'mg5amc_py8_interface' tool (which was Pythia8 v%s). 
-    Please consider refreshing the installation of this interface with the command:
-     MadGraph7>install mg5amc_py8_interface
-    """%(PY8_curr_version,PY8_version_on_install)
-    
-        return None
+            return self.get_pythia8_main164_for(hepmc_version)
+        except (MadGraph5Error, OSError) as error:
+            if hepmc_format != 'auto':
+                raise self.InvalidCmd(str(error))
+            logger.warning('%s\nPythia8 writes the HepMC version it was '% error +
+                           'configured with instead.')
+        try:
+            return self.get_pythia8_main164_for(None)
+        except (MadGraph5Error, OSError) as error:
+            raise self.InvalidCmd(str(error))
 
-    def setup_Pythia8RunAndCard(self, PY8_Card, run_type, use_mg5amc_py8_interface):
+    def get_pythia8_main164_for(self, hepmc_version):
+        """main164 writing HepMC<hepmc_version> events (None: the version
+        Pythia8 was configured with), see misc.get_pythia8_main164."""
+
+        return misc.get_pythia8_main164(self.options['pythia8_path'],
+                          fallback_dir=pjoin(self.me_dir, 'lib', 'PY8_main164'),
+                          hepmc_version=hepmc_version,
+                          hepmc_paths=self.get_hepmc_paths(hepmc_version or 3))
+
+    def setup_Pythia8RunAndCard(self, PY8_Card, run_type):
         """ Setup the Pythia8 Run environment and card. In particular all the process and run specific parameters
         of the card are automatically set here. This function returns the path where HEPMC events will be output,
         if any."""
@@ -4678,23 +4603,6 @@ already exists and is not a fifo file."""%fifo_path)
             # unless the user specified it
             PY8_Card.systemSet('Beams:setProductionScalesFromLHEF',True)
 
-            # Automatically set qWeed to xqcut if not defined by the user.
-            if use_mg5amc_py8_interface and PY8_Card['SysCalc:qWeed']==-1.0:
-                PY8_Card.MadGraphSet('SysCalc:qWeed',self.run_card['xqcut'], force=True)
-
-            if use_mg5amc_py8_interface and PY8_Card['SysCalc:qCutList']=='auto':
-                if self.run_card['use_syst']:
-                    if self.run_card['sys_matchscale']=='auto':
-                        qcut = PY8_Card['JetMatching:qCut']
-                        value = [factor*qcut for factor in [0.5,0.75,1.0,1.5,2.0] if\
-                                 factor*qcut> 1.5*self.run_card['xqcut'] ]
-                        PY8_Card.MadGraphSet('SysCalc:qCutList', value, force=True)
-                    else:
-                        qCutList = [float(qc) for qc in self.run_card['sys_matchscale'].split()]
-                        if PY8_Card['JetMatching:qCut'] not in qCutList:
-                            qCutList.append(PY8_Card['JetMatching:qCut'])
-                        PY8_Card.MadGraphSet('SysCalc:qCutList', qCutList, force=True)
-            
 
             if PY8_Card['SysCalc:qCutList']!='auto':
                 for scale in PY8_Card['SysCalc:qCutList']:
@@ -4707,12 +4615,6 @@ already exists and is not a fifo file."""%fifo_path)
             'It would be better/safer to use a larger qCut or a smaller xqcut.')
                 
             # Specific MLM settings
-            # PY8 should not implement the MLM veto since the driver should do it
-            # if merging scale variation is turned on
-            if use_mg5amc_py8_interface and self.run_card['use_syst']:
-                # We do no force it here, but it is clear that the user should know what
-                # he's doing if he were to force it to True.
-                PY8_Card.MadGraphSet('JetMatching:doVeto',False)
             PY8_Card.MadGraphSet('JetMatching:merge',True)
             PY8_Card.MadGraphSet('JetMatching:scheme',1)
             # Use the parameter maxjetflavor for JetMatching:nQmatch which specifies
@@ -4789,12 +4691,6 @@ already exists and is not a fifo file."""%fifo_path)
             PY8_Card.MadGraphSet('TimeShower:pTmaxMatch',1)
             PY8_Card.MadGraphSet('SpaceShower:pTmaxMatch',1)
             PY8_Card.MadGraphSet('SpaceShower:rapidityOrder',False)
-            # PY8 should not implement the CKKW veto since the driver should do it.
-            if use_mg5amc_py8_interface and self.run_card['use_syst']:
-                # We do no force it here, but it is clear that the user should know what
-                # he's doing if he were to force it to True.
-                PY8_Card.MadGraphSet('Merging:applyVeto',False)
-                PY8_Card.MadGraphSet('Merging:includeWeightInXsection',False)
             # Use the parameter maxjetflavor for Merging:nQuarksMerge which specifies
             # up to which parton must be matched.
             PY8_Card.MadGraphSet('Merging:nQuarksMerge',self.run_card['maxjetflavor'])
@@ -4867,11 +4763,9 @@ already exists and is not a fifo file."""%fifo_path)
             no_default = False
 
         if '--old_interface' in args:
-            use_mg5amc_py8_interface = True
-            args.remove('--old_interface')
-        else:
-            use_mg5amc_py8_interface = False
-              
+            raise self.InvalidCmd("The MG5aMC_PY8_interface is not supported by "+
+                "MadGraph7: the Pythia8 shower always runs Pythia8's main164.")
+
         if not self.run_name:
             self.check_pythia8(args)
             self.configure_directory(html_opening =False)
@@ -4901,28 +4795,6 @@ already exists and is not a fifo file."""%fifo_path)
              #"Please use 'event_norm = average' in the run_card to avoid this problem.")
 
 
-        if use_mg5amc_py8_interface:
-            if not self.options['mg5amc_py8_interface_path'] or not \
-                os.path.exists(pjoin(self.options['mg5amc_py8_interface_path'],
-                                                        'MG5aMC_PY8_interface')):
-                raise self.InvalidCmd(
-    """The MG5aMC_PY8_interface tool cannot be found, so that MadEvent cannot steer Pythia8 shower.
-    Please install this tool with the following MadGraph7 command:
-    MadGraph7> install mg5amc_py8_interface_path""")
-            else:
-                pythia_main = pjoin(self.options['mg5amc_py8_interface_path'],
-                                                            'MG5aMC_PY8_interface')
-                warnings = MadEventCmd.mg5amc_py8_interface_consistency_warning(self.options)
-                if warnings:
-                    logger.warning(warnings)
-        else:
-            pythia_main = pjoin(self.options['pythia8_path'], 'share', 'Pythia8', 'examples', 'main164')
-            if not os.path.exists(pythia_main):
-               pythia_main = pjoin(self.options['pythia8_path'], 'examples', 'main164') 
-            if not os.path.exists(pythia_main):
-                logger.warning('main164 not found (or not compiled). Will try the old interface instead.')
-                return self.do_pythia8(line + ' --old_interface')
-
         self.results.add_detail('run_mode', 'madevent')
 
         # Again here 'pythia' is just a keyword for the simulation level.
@@ -4936,6 +4808,7 @@ already exists and is not a fifo file."""%fifo_path)
                                                     'pythia8_card_default.dat'))
         PY8_Card.read(pjoin(self.me_dir, 'Cards', 'pythia8_card.dat'),
                                                                   setter='user')
+        pythia_main = self.get_pythia8_main164(PY8_Card)
         
         run_type = 'default'
         merged_run_types = ['MLM','CKKW']
@@ -4946,10 +4819,10 @@ already exists and is not a fifo file."""%fifo_path)
             run_type = 'CKKW'
 
         # Edit the card and run environment according to the run specification
-        HepMC_event_output = self.setup_Pythia8RunAndCard(PY8_Card, run_type, use_mg5amc_py8_interface=use_mg5amc_py8_interface)
+        HepMC_event_output = self.setup_Pythia8RunAndCard(PY8_Card, run_type)
 
 
-        if not use_mg5amc_py8_interface and self.options['run_mode']==0 or (self.options['run_mode']==2 and self.options['nb_core']==1):
+        if self.options['run_mode']==0 or (self.options['run_mode']==2 and self.options['nb_core']==1):
             PY8_Card['Main:numberOfEvents']= self.run_card['nevents']
                
         # Now write the card.
@@ -4957,8 +4830,7 @@ already exists and is not a fifo file."""%fifo_path)
                                                          '%s_pythia8.cmd' % tag)
         cmd_card = io.StringIO()
         PY8_Card.write(cmd_card,pjoin(self.me_dir,'Cards','pythia8_card_default.dat'),
-                                                       direct_pythia_input=True,
-                                                       use_mg5amc_py8_interface=use_mg5amc_py8_interface)
+                                                       direct_pythia_input=True)
         
         # Now setup the preamble to make sure that everything will use the locally
         # installed tools (if present) even if the user did not add it to its
@@ -4969,7 +4841,7 @@ already exists and is not a fifo file."""%fifo_path)
         else:
             if MADEVENT:
                 preamble = misc.get_HEPTools_location_setter(
-                pjoin(self.options['mg5amc_py8_interface_path'],os.pardir),'lib')
+                        pjoin(self.options['pythia8_path'],os.pardir),'lib')
             else:
                 preamble = misc.get_HEPTools_location_setter(
                                                  pjoin(MG5DIR,'HEPTools'),'lib')
@@ -5000,7 +4872,7 @@ already exists and is not a fifo file."""%fifo_path)
                   " command '/usr/bin/env %s' exists and returns a valid path."%shell)
                 
         exe_cmd = "#!%s\n%s"%(shell_exe,' '.join(
-                     [preamble+pythia_main, '' if use_mg5amc_py8_interface else '-c',
+                     [preamble+pythia_main, '-c',
                       os.path.basename(pythia_cmd_card)]))
 
         wrapper.write(exe_cmd)
@@ -5123,22 +4995,21 @@ You can follow PY8 run with the following command (in a separate terminal):
                 ParallelPY8Card.subruns[0].systemSet('Beams:LHEF','events.lhe.gz')
                 ParallelPY8Card.write(pjoin(parallelization_dir,'PY8Card.dat'),
                                       pjoin(self.me_dir,'Cards','pythia8_card_default.dat'),
-                                                                    direct_pythia_input=True,
-                              use_mg5amc_py8_interface=use_mg5amc_py8_interface)
+                                                                    direct_pythia_input=True)
                 # Write the wrapper
                 wrapper_path = pjoin(parallelization_dir,'run_PY8.sh')
                 wrapper = open(wrapper_path,'w')
                 if self.options['cluster_temp_path'] is None:
                     exe_cmd = \
-"""#!%%s 
-./%%s %s  PY8Card.dat >& PY8_log.txt
-"""  % ('' if use_mg5amc_py8_interface else '-c')
+"""#!%s 
+./%s -c PY8Card.dat >& PY8_log.txt
+"""
 
                 else: 
                     exe_cmd = \
-"""#!%%s
+"""#!%s
 ln -s ./events_$1.lhe.gz ./events.lhe.gz
-./%%s %s PY8Card_$1.dat >& PY8_log.txt
+./%s -c PY8Card_$1.dat >& PY8_log.txt
 mkdir split_$1
 if [ -f ./events.hepmc ];
 then
@@ -5157,7 +5028,7 @@ then
    mv ./PY8_log.txt ./split_$1/
 fi
 tar -czf split_$1.tar.gz split_$1
-""" % ('' if use_mg5amc_py8_interface else '-c')
+"""
                 exe_cmd = exe_cmd%(shell_exe,os.path.basename(pythia_main))
                 wrapper.write(exe_cmd)
                 wrapper.close()
@@ -5225,8 +5096,7 @@ tar -czf split_$1.tar.gz split_$1
                         # the ones in the original PY8 param_card copied.
                         split_PY8_Card.write(pjoin(parallelization_dir,'PY8Card_%d.dat'%i),
                                              pjoin(parallelization_dir,'PY8Card.dat'), add_missing=False,
-                                             direct_pythia_input=True,
-                                             use_mg5amc_py8_interface=use_mg5amc_py8_interface)
+                                             direct_pythia_input=True)
                         in_files = [pjoin(parallelization_dir,os.path.basename(pythia_main)),
                                     pjoin(parallelization_dir,'PY8Card_%d.dat'%i),
                                     pjoin(parallelization_dir,split_file)]
@@ -5270,7 +5140,7 @@ tar -czf split_$1.tar.gz split_$1
                 for split_dir in split_dirs:
                     log_file = pjoin(split_dir,'PY8_log.txt')
                     pythia_log_file.write('='*35+'\n')
-                    pythia_log_file.write(' -> Pythia8 log file for run %d <-'%i+'\n')
+                    pythia_log_file.write(' -> Pythia8 log file for %s <-'%os.path.basename(split_dir)+'\n')
                     pythia_log_file.write('='*35+'\n')
                     pythia_log_file.write(open(log_file,'r').read()+'\n')
                     if run_type in merged_run_types:
@@ -5502,10 +5372,6 @@ tar -czf split_$1.tar.gz split_$1
                 # works both for fixed number of generated events and fixed accepted events
                 self.results.add_detail('error_pythia', error_m)
 
-            if self.run_card['use_syst'] and use_mg5amc_py8_interface:
-                    self.results.add_detail('cross_pythia', -1)
-                    self.results.add_detail('error_pythia', 0)
-
             # From the djr file generated
             djr_output = pjoin(self.me_dir,'Events',self.run_name,'%s_djrs.dat'%tag)
             if os.path.isfile(djr_output) and len(PY8_extracted_information['cross_sections'])==0:
@@ -5577,7 +5443,7 @@ tar -czf split_$1.tar.gz split_$1
         self.print_results_in_shell(self.results.current)
 
     def run_delphes_on_splits(self, split_dirs, parallelization_dir, tag):
-        """Run Delphes (HepMC2) in parallel on the individual Pythia8 split
+        """Run Delphes (HepMC2 or HepMC3) in parallel on the individual Pythia8 split
         files and combine the resulting ROOT files with 'hadd'. This is the
         fused parallel-Delphes path (see is_delphes_fusion_active).
 
@@ -5596,10 +5462,18 @@ tar -czf split_$1.tar.gz split_$1
             logger.warning('Delphes 2 cannot read HepMC input; running the '
                            'standard Delphes step instead.')
             return False
-        delphes_exe = pjoin(delphes_dir, 'DelphesHepMC2')
+        # Collect the split HepMC files still present.
+        split_hepmc = [(d, pjoin(d, 'events.hepmc')) for d in split_dirs
+                       if os.path.isfile(pjoin(d, 'events.hepmc'))]
+        if not split_hepmc:
+            return False
+
+        # HepMC3 files (HEPMCoutput:format in the pythia8_card) need DelphesHepMC3
+        reader = 'DelphesHepMC%d' % (misc.hepmc_file_version(split_hepmc[0][1]) or 2)
+        delphes_exe = pjoin(delphes_dir, reader)
         if not os.path.exists(delphes_exe):
-            logger.warning('No DelphesHepMC2 executable found in %s; running '
-                           'the standard Delphes step instead.' % delphes_dir)
+            logger.warning('No %s executable found in %s; running '
+                           'the standard Delphes step instead.' % (reader, delphes_dir))
             return False
 
         # Locate hadd (shipped with ROOT, which Delphes requires).
@@ -5613,12 +5487,6 @@ tar -czf split_$1.tar.gz split_$1
         if not hadd_exe:
             logger.warning('Could not find the ROOT hadd utility; running the '
                            'standard Delphes step instead.')
-            return False
-
-        # Collect the split HepMC files still present.
-        split_hepmc = [(d, pjoin(d, 'events.hepmc')) for d in split_dirs
-                       if os.path.isfile(pjoin(d, 'events.hepmc'))]
-        if not split_hepmc:
             return False
 
         # Before (re-)running Delphes on the splits, remove any leftover
@@ -5702,12 +5570,27 @@ tar -czf split_$1.tar.gz split_$1
                          '%s_delphes.log' % tag)
         nb = self.resolve_nb_core('delphes')
         with open(hadd_log, 'w') as fsock:
+            for i, (split_dir, _hepmc) in enumerate(split_hepmc):
+                log_file = pjoin(split_dir, 'delphes.log')
+                fsock.write('=' * 35 + '\n')
+                fsock.write(' -> Delphes log file for run %d <-\n' % i)
+                fsock.write('=' * 35 + '\n')
+                if os.path.isfile(log_file):
+                    with open(log_file, 'r') as split_log:
+                        fsock.write(split_log.read())
+                fsock.write('\n')
+        with open(hadd_log, 'a') as fsock:
+            fsock.write('=' * 35 + '\n')
+            fsock.write(' -> hadd log file ' + '\n')
+            fsock.write('=' * 35 + '\n')
+            fsock.flush()
             ret = misc.call([hadd_exe, '-f', '-j', str(nb), final_root] + produced,
                             stdout=fsock, stderr=subprocess.STDOUT)
             if ret != 0:
                 # The -j (parallel) option may be unsupported by older ROOT;
                 # retry the merge serially before giving up.
                 fsock.write('\nhadd -j failed, retrying without -j\n')
+                fsock.flush()
                 ret = misc.call([hadd_exe, '-f', final_root] + produced,
                                 stdout=fsock, stderr=subprocess.STDOUT)
         if ret != 0 or not os.path.isfile(final_root):
@@ -6017,8 +5900,6 @@ tar -czf split_$1.tar.gz split_$1
         
         pydir = pjoin(self.options['pythia-pgs_path'], 'src')
         eradir = self.options['exrootanalysis_path']
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']
 
         #Update the banner
         self.banner.add(pjoin(self.me_dir, 'Cards','pythia_card.dat'))
@@ -6057,9 +5938,6 @@ tar -czf split_$1.tar.gz split_$1
                                                   '%s_syscalc.dat' % self.run_tag)
                         misc.gzip(pjoin(self.me_dir, 'Events','syscalc.dat'),
                                   stdout = "%s.gz" % filename)
-
-        # Plot for pythia
-        self.create_plot('Pythia')
 
         if os.path.exists(pjoin(self.me_dir,'Events','pythia_events.lhe')):
             misc.gzip(pjoin(self.me_dir,'Events','pythia_events.lhe'),
@@ -6226,73 +6104,6 @@ tar -czf split_$1.tar.gz split_$1
 
 
     ############################################################################
-    def do_plot(self, line):
-        """Create the plot for a given run"""
-
-        # Since in principle, all plot are already done automaticaly
-        self.store_result()
-        args = self.split_arg(line)
-        # Check argument's validity
-        self.check_plot(args)
-        logger.info('plot for run %s' % self.run_name)
-        if not self.force:
-            self.ask_edit_cards(['plot_card.dat'], args, plot=True)
-                
-        if any([arg in ['all','parton'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 'unweighted_events.lhe')
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip('%s.gz' % filename, keep=True)
-            if  os.path.exists(filename):
-                files.ln(filename, pjoin(self.me_dir, 'Events'))
-                self.create_plot('parton')
-                if not os.path.exists(filename+'.gz'):
-                    misc.gzip(pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'),
-                          stdout= "%s.gz" % filename)
-                else:
-                    try:
-                        os.remove(pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'))
-                        os.remove(filename)
-                    except Exception:
-                        pass
-            else:
-                logger.info('No valid files for partonic plot') 
-                
-        if any([arg in ['all','pythia'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events' ,self.run_name,
-                                          '%s_pythia_events.lhe' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip("%s.gz" % filename)
-            if  os.path.exists(filename):
-                shutil.move(filename, pjoin(self.me_dir, 'Events','pythia_events.lhe'))
-                self.create_plot('Pythia')
-                misc.gzip(pjoin(self.me_dir, 'Events','pythia_events.lhe'),
-                          stdout= "%s.gz" % filename)
-            else:
-                logger.info('No valid files for pythia plot')
-                
-                    
-        if any([arg in ['all','pgs'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                            '%s_pgs_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip("%s.gz" % filename)
-            if  os.path.exists(filename):
-                self.create_plot('PGS')
-                misc.gzip(filename)
-            else:
-                logger.info('No valid files for pgs plot')
-                
-        if any([arg in ['all','delphes'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                        '%s_delphes_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip("%s.gz" % filename)
-            if  os.path.exists(filename):
-                self.create_plot('Delphes')
-                misc.gzip(filename)              
-            else:
-                logger.info('No valid files for delphes plot')
-
     def do_compile(self, line):
         """compile the current directory    """
 
@@ -6321,7 +6132,7 @@ tar -czf split_$1.tar.gz split_$1
     
         logger.info('Calculating systematics for run %s' % self.run_name)
         
-        self.ask_edit_cards(['run_card.dat'], args, plot=False)
+        self.ask_edit_cards(['run_card.dat'], args)
         self.run_card = banner_mod.RunCard(pjoin(self.me_dir, 'Cards', 'run_card.dat'))
         if any([arg in ['all','parton'] for arg in args]):
             filename = pjoin(self.me_dir, 'Events', self.run_name, 'unweighted_events.lhe')
@@ -6998,7 +6809,6 @@ tar -czf split_$1.tar.gz split_$1
                        'delphes':['delphes'],
                        'madanalysis5_hadron':['madanalysis5_hadron'],
                        'madanalysis5_parton':['madanalysis5_parton'],
-                       'plot':[],
                        'syscalc':[],
                        'rivet':['rivet']}
 
@@ -7396,6 +7206,11 @@ tar -czf split_$1.tar.gz split_$1
         # Determine the final set of cards from the chosen switches so that the
         # cards of the tools that were *not* selected are cleaned away.
         cards = ['param_card.dat', 'run_card.dat']
+        if os.path.isfile(self.me_dir+'/Cards/onia_card.dat'):
+            with open(self.me_dir+'/Cards/onia_card.dat') as f:
+                if 'Block' in f.read():
+                    cards.append('onia_card.dat')
+
         if switch['shower'] == 'Pythia6':
             cards.append('pythia_card.dat')
         if switch['shower'] == 'Pythia8':
@@ -7416,8 +7231,6 @@ tar -czf split_$1.tar.gz split_$1
             cards.append('madanalysis5_parton_card.dat')
         if switch['analysis'].upper() in ['MADANALYSIS5'] and not switch['shower']=='OFF':
             cards.append('madanalysis5_hadron_card.dat')
-        elif switch['analysis'].upper() in ['MADANALYSIS4']:
-            cards.append('plot_card.dat')
         elif switch['analysis'].upper() in ['RIVET']:
             cards.append('rivet_card.dat')
 
@@ -7484,8 +7297,8 @@ tar -czf split_$1.tar.gz split_$1
             if os.path.exists(pjoin(self.options['delphes_path'], 'data')):
                 delphes3 = False
                 cards.append('delphes_trigger.dat')
-        self.keep_cards(cards, ignore=['madanalysis5_parton_card.dat','madanalysis5_hadron_card.dat',
-                      'plot_card.dat'])
+        self.keep_cards(cards, ignore=['madanalysis5_parton_card.dat',
+                      'madanalysis5_hadron_card.dat'])
         
         if self.force:
             return mode
@@ -7495,11 +7308,11 @@ tar -czf split_$1.tar.gz split_$1
             
         if auto:
             self.ask_edit_cards(cards, from_banner=['param', 'run'], 
-                                mode='auto', plot=(pythia_version==6), banner=banner
+                                mode='auto', banner=banner
                                 )
         else:
             self.ask_edit_cards(cards, from_banner=['param', 'run'],
-                                 plot=(pythia_version==6), banner=banner)
+                                 banner=banner)
 
         return mode
                 
@@ -8444,9 +8257,18 @@ if '__main__' == __name__:
                     print('and %s  can not be interpreted as a valid command.' % args[0])
                 else:
                     print('ERROR: %s  not a valid command. Please retry' % args[0])
+                sys.exit(1)
             else:
                 cmd_line.use_rawinput = False
-                cmd_line.run_cmd(' '.join(args))
+                # Whoever started this process (e.g. a reweighting split over
+                # several cores) only sees its exit status: a failed command
+                # must not end with 0.
+                line = ' '.join(args)
+                try:
+                    cmd_line.exec_cmd(line, precmd=True)
+                except (Exception, KeyboardInterrupt) as error:
+                    cmd_line.error_handling(error, line)
+                    sys.exit(1)
                 cmd_line.run_cmd('quit')
 
     except KeyboardInterrupt:

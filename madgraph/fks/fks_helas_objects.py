@@ -104,6 +104,7 @@ def async_generate_born(args):
     loop_optimized = args[5]
     OLP = args[6]
     realmapout = args[7]
+    loop_filter = args[8]
 
     logger.info('Generating born %s' % \
             born.born_amp['process'].nice_string(print_weighted=False).replace('Process', 'process'))
@@ -114,7 +115,7 @@ def async_generate_born(args):
         # if the pdg_list is not there, it has been removed
         # because there are no diagrams
         try:
-            idx = pdg_list.index(amp.pdgs)
+            idx = pdg_list.index(amp.pdgs_pols)
             infilename = realmapout[idx]
             infile = open(infilename,'rb')
             realdata = cPickle.load(infile)
@@ -144,7 +145,10 @@ def async_generate_born(args):
         myproc['legs'] = fks_common.to_legs(copy.copy(myproc['legs']))
 
         try:
-            myamp = loop_diagram_generation.LoopAmplitude(myproc)
+            myamp = loop_diagram_generation.LoopAmplitude(myproc,
+                                    loop_filter=loop_filter,
+                                    diagram_filter=getattr(born, 'diagram_filter', False),
+                                    loop_diagram_filter=getattr(born, 'loop_diagram_filter', False))
             has_loops = True
             born.virt_amp = myamp
         except InvalidCmd:
@@ -304,8 +308,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             real_amp_list = []
             for born in born_procs:
                 for amp in born.real_amps:
-                    if not pdg_list.count(amp.pdgs):
-                        pdg_list.append(amp.pdgs)
+                    if not pdg_list.count(amp.pdgs_pols):
+                        pdg_list.append(amp.pdgs_pols)
                         real_amp_list.append(amp)
                         
             #generating and store in tmp files all output corresponding to each real_amplitude
@@ -354,7 +358,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             bornmapin = []
             OLP=fksmulti['OLP']
             for i,born in enumerate(born_procs):
-                bornmapin.append([i,born,born_pdg_list,loop_orders,pdg_list,loop_optimized,OLP,realmapfiles])
+                bornmapin.append([i,born,born_pdg_list,loop_orders,pdg_list,loop_optimized,OLP,realmapfiles,
+                                  fksmulti['loop_filter']])
 
             try:
                 bornmapout = pool.map_async(async_generate_born,bornmapin).get(9999999)
@@ -693,7 +698,9 @@ class FKSHelasProcess(object):
             self.real_processes = []
             self.extra_cnt_me_list = []
             self.perturbation = fksproc.perturbation
-            self.charges_born = fksproc.get_charges() 
+            self.charges_born = fksproc.get_charges()
+            # user numbering of the born legs, for me_frame (frame_info.inc)
+            self.user_leg_order = fksproc.user_leg_order
             real_amps_new = []
 
             for extra_cnt in fksproc.extra_cnt_amp_list:
@@ -848,15 +855,15 @@ class FKSHelasProcess(object):
         return (nexternal, ninitial)
     
     def __eq__(self, other):
-        """the equality between two FKSHelasProcesses is defined up to the 
+        """the equality between two FKSHelasProcesses is defined up to the
         color links"""
         #first compare the born
-        selftag = helas_objects.IdentifyMETag.\
-                        create_tag(self.born_me.get('base_amplitude'))
-        othertag = helas_objects.IdentifyMETag.\
-                        create_tag(other.born_me.get('base_amplitude'))
+        selfamp = self.born_me.get('base_amplitude')
+        otheramp = other.born_me.get('base_amplitude')
+        selftag = helas_objects.IdentifyMETag.create_tag(selfamp)
+        othertag = helas_objects.IdentifyMETag.create_tag(otheramp)
 
-        # MZ: if EW sudakov are included, do not combine. 
+        # MZ: if EW sudakov are included, do not combine.
         # This is not 100% ideal, as it is quite inefficient, but it is the safest option
         if self.ewsudakov:
             logger.warning('With --ewsudakov, matrix elements will not be combined')

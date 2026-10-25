@@ -1,10 +1,12 @@
 #! /usr/bin/env python3
 
+import atexit
 import gzip
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # search order for madspace package:
@@ -28,6 +30,7 @@ elif (_LOCAL_MADSPACE_DIR / "install.py").is_file():
     sys.path.insert(0, str(_LOCAL_INSTALL_DIR))
 
 import madspace as ms
+from custom_function_loader import load_custom_function
 import glob
 import json
 import tomllib
@@ -50,30 +53,83 @@ def resolve_seed(seed: int) -> int:
     return seed
 
 
+def compress_lhe(path: str, use_pigz="auto", cpu_threads: int = -1) -> None:
+    """Compress the completed LHE with the same size/tool policy as misc.gzip.
+
+    A gridpack must be runnable without a MadGraph installation. Its run card
+    carries the compression preference, and positive CPU pool sizes also bound
+    pigz's worker count.
+    """
+    if os.path.getsize(path) > 256e6:
+        pigz = shutil.which("pigz") if use_pigz is not False else None
+        tool = pigz or shutil.which("gzip")
+        if tool:
+            command = [tool]
+            if pigz and cpu_threads > 0:
+                command += ["-p", str(cpu_threads)]
+            subprocess.run(command + ["-f", path], check=True)
+            return
+
+    with open(path, "rb") as fin, \
+            gzip.open(path + ".gz", "wb", compresslevel=6) as fout:
+        shutil.copyfileobj(fin, fout, 4 * 1024 * 1024)
+    os.remove(path)
+
+
+def build_lhe_meta(event_generator, seed: int, systematics=None):
+    """The LHE header/<init> metadata of this gridpack run: the cards, beams
+    and PDF the gridpack was made with (data/lhe_meta.json), with the cross
+    section and seed of this run. ``systematics`` adds the <initrwgt> block,
+    for the writers that do not inject it themselves (header.lhe); leave it
+    unset for combine_to_lhe, which does."""
+    headers = []
+    data = {}
+    meta_path = os.path.join("data", "lhe_meta.json")
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            data = json.load(f)
+        headers = [ms.LHEHeader(name=h["name"], content=h["content"],
+                                escape_content=h["escape_content"])
+                   for h in data.pop("headers")]
+    headers.append(ms.LHEHeader(name="MG7Seed", content=str(seed)))
+    if systematics is not None and systematics.weight_ids:
+        headers.append(ms.LHEHeader(
+            name="initrwgt", content=systematics.initrwgt(), escape_content=False
+        ))
+    status = event_generator.status()
+    # IDWTUP and XMAXUP of this run, as launch.lhe_weight_info: negative when
+    # the sample can hold negative weights, and the unit weight sigma_abs
+    negative = status.mean < 0 or status.mean_abs > abs(status.mean) * (1 + 1e-12)
+    data["weight_mode"] = -4 if negative else 3
+    return ms.LHEMeta(
+        # positional: the pybind arg name for max_weight is non-kwarg-safe
+        processes=[ms.LHEProcess(status.mean, status.error, status.mean_abs, 1)],
+        headers=headers,
+        **data,
+    )
+
+
+def write_lhe_header(run_path: str, meta) -> None:
+    """Write header.lhe next to events.npy: the <header>/<init> blocks the
+    npy formats otherwise drop, with no events."""
+    writer = ms.LHEFileWriter(os.path.join(run_path, "header.lhe"), meta)
+    del writer  # closes the file (writes the closing tag)
+
+
+# directory the gridpack was called from; relative command line paths refer to it
+_INVOCATION_DIR = os.getcwd()
+
+
 def main() -> None:
-    # load run card and metadata. Use the RunCardMG7 representation when the
-    # madgraph package is importable; gridpacks are meant to be portable, so
-    # fall back to a plain tomllib parse otherwise (the card is the same TOML).
-    run_card_path = os.path.join("Cards", "grid_run_card.toml")
-    try:
-        from madgraph.various.banner import RunCardMG7
-        run_card = RunCardMG7(run_card_path)
-    except ImportError:
-        with open(run_card_path, "rb") as f:
-            run_card = tomllib.load(f)
+    # load run card and metadata
+    with open(os.path.join("Cards", "grid_run_card.toml"), "rb") as f:
+        run_card = tomllib.load(f)
     run_args = run_card["run"]
     gen_args = run_card["generation"]
+    grid_args = run_card.get("gridpack", {})
     param_card_path = os.path.join("Cards", "param_card.dat")
     with open(os.path.join("data", "data.json")) as f:
         madspace_data = json.load(f)
-    if madspace_data["source_hash"] != ms.SOURCE_HASH:
-        print()
-        print(
-            "\033[1m\033[31mWARNING\033[39m: The madspace version is not identical "
-            "to the one used to generate the gridpack. This can lead to errors or "
-            "incorrect results\033[0m"
-        )
-        print()
 
     # parse command line arguments
     parser = argparse.ArgumentParser()
@@ -83,6 +139,22 @@ def main() -> None:
         help="every run is reproducible from its seed; -1 draws a fresh random "
              "seed each run instead of fixing one here (still recorded in the "
              "run's info.json)"
+    )
+    parser.add_argument(
+        "--output_dir", type=str, default=None,
+        help="directory for the final output files instead of a new Events/<run> "
+             "folder (default: the run card value; relative paths refer to the "
+             "current directory)"
+    )
+    parser.add_argument(
+        "--temp_output_dir", type=str, default=None,
+        help="directory for the temporary npy files, 'auto' for a new temporary "
+             "directory (default: the run card value, else the output directory)"
+    )
+    parser.add_argument(
+        "--ignore_source_hash", action="store_true",
+        help="run even if the madspace version differs from the one used to "
+             "generate the gridpack (can lead to errors or incorrect results)"
     )
     parser.add_argument("--device", type=str, nargs="*")
     parser.add_argument(
@@ -95,7 +167,7 @@ def main() -> None:
         "--verbosity",
         type=str,
         default=run_args["verbosity"],
-        choices=["none", "pretty", "log", "auto"]
+        choices=["silent", "pretty", "log", "auto"]
     )
     parser.add_argument(
         "--output_format",
@@ -109,25 +181,61 @@ def main() -> None:
     parser.add_argument("--cpu_batch_size", type=int, default=gen_args["cpu_batch_size"])
     parser.add_argument("--gpu_batch_size", type=int, default=gen_args["gpu_batch_size"])
     args = parser.parse_args()
+
+    if madspace_data["source_hash"] != ms.SOURCE_HASH:
+        message = (
+            "The madspace version is not identical to the one used to generate "
+            "the gridpack. This can lead to errors or incorrect results"
+        )
+        if not args.ignore_source_hash:
+            sys.exit(
+                f"\033[1m\033[31mERROR\033[39m: {message}.\n"
+                "Use --ignore_source_hash to run anyway.\033[0m"
+            )
+        print()
+        print(f"\033[1m\033[31mWARNING\033[39m: {message}\033[0m")
+        print()
     seed = resolve_seed(args.seed)
 
-    # initialize event directory
-    run_name = args.run_name
-    os.makedirs("Events", exist_ok=True)
-    run_dir_prefix = os.path.join("Events", f"{run_name}_")
-    existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
-    run_index = 1
-    for run_dir in existing_run_dirs:
-        run_index_str = run_dir[len(run_dir_prefix):]
-        if run_index_str.isnumeric():
-            run_index = max(run_index, int(run_index_str) + 1)
-    while True:
-        try:
-            run_path = f"{run_dir_prefix}{run_index:02d}"
-            os.mkdir(run_path)
-            break
-        except FileExistsError:
-            run_index += 1
+    # initialize output directories; command line paths are relative to the
+    # invocation directory, run card paths to the gridpack
+    def resolve_dir(cli_value, card_value):
+        if (cli_value or card_value) == "auto":
+            return "auto"
+        if cli_value:
+            return os.path.abspath(
+                os.path.join(_INVOCATION_DIR, os.path.expanduser(cli_value)))
+        return os.path.abspath(os.path.expanduser(card_value)) if card_value else None
+
+    output_dir = resolve_dir(args.output_dir, grid_args.get("output_dir"))
+    temp_dir = resolve_dir(args.temp_output_dir, grid_args.get("temp_output_dir"))
+    if output_dir is not None:
+        run_path = output_dir
+        os.makedirs(run_path, exist_ok=True)
+    else:
+        run_name = args.run_name
+        os.makedirs("Events", exist_ok=True)
+        run_dir_prefix = os.path.join("Events", f"{run_name}_")
+        existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
+        run_index = 1
+        for run_dir in existing_run_dirs:
+            run_index_str = run_dir[len(run_dir_prefix):]
+            if run_index_str.isnumeric():
+                run_index = max(run_index, int(run_index_str) + 1)
+        while True:
+            try:
+                run_path = f"{run_dir_prefix}{run_index:02d}"
+                os.mkdir(run_path)
+                break
+            except FileExistsError:
+                run_index += 1
+    if temp_dir == "auto":
+        temp_dir = tempfile.mkdtemp(prefix="mg7_events_")
+        atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
+    elif temp_dir is None:
+        temp_dir = run_path
+    else:
+        os.makedirs(temp_dir, exist_ok=True)
 
     # initialize context
     device_names = args.device if args.device else run_args["device"]
@@ -168,24 +276,37 @@ def main() -> None:
     config.max_cut_repetitions = gen_args["max_cut_repetitions"]
 
     # set up contexts
-    global_dir = os.path.join("data", "globals")
+    # run-time matrix-element parameters (bwcutoff) of the run that made the
+    # gridpack; gridpacks written before they were recorded used the default
+    me_parameters = madspace_data.get("me_parameters", {})
+    globals_path = os.path.join("data", "globals.tar")
+    for context in contexts:
+        context.load_globals(globals_path)
+    # custom functions come first, as in the run that made the gridpack
+    device_types = [b if b in ("cuda", "hip") else "cpu" for b in backends]
+    for entry in madspace_data.get("custom_functions", []):
+        # [kind, path, parameters]; older gridpacks store fewer entries
+        entry = entry if isinstance(entry, list) else ["", entry]
+        kind, path, parameters = (entry + [{}])[:3]
+        load_custom_function(ms, contexts, device_types, kind, path, parameters)
     for context, backend in zip(contexts, backends):
-        context.load_globals(global_dir)
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
-                me_path.format(device=backend), param_card_path
+                me_path.format(device=backend), param_card_path, me_parameters
             )
 
     # set up generators
+    with open(os.path.join("data", "channels.json")) as f:
+        channels = json.load(f)
     channel_generators = [
-        ms.ChannelEventGenerator.load(
-            os.path.join("data", "channels", file),
+        ms.ChannelEventGenerator.load_json(
+            json.dumps(channel),
             contexts,
-            event_file=os.path.join(run_path, f"events.{name}.npy"),
-            weight_file=os.path.join(run_path, f"weights.{name}.npy"),
+            event_file=os.path.join(temp_dir, f"events.{name}.npy"),
+            weight_file=os.path.join(temp_dir, f"weights.{name}.npy"),
             config=config,
         )
-        for name, file in madspace_data["channels"].items()
+        for name, channel in channels.items()
     ]
     event_generator = ms.EventGenerator(
         contexts=contexts,
@@ -196,7 +317,8 @@ def main() -> None:
     )
 
     # scale/PDF systematics (as configured when the gridpack was made)
-    systematics = load_systematics(run_card, backends, param_card_path)
+    systematics = load_systematics(run_card, backends, param_card_path,
+                                   me_parameters)
 
     # run generation
     event_generator.generate()
@@ -205,27 +327,29 @@ def main() -> None:
         event_generator.combine_to_compact_npy(
             os.path.join(run_path, "events.npy"), systematics
         )
+        write_lhe_header(run_path,
+                         build_lhe_meta(event_generator, seed, systematics))
+        # what npy_to_lhe needs to complete these events into LHE later
+        shutil.copy(os.path.join("data", "lhe.json"),
+                    os.path.join(run_path, "lhe_completer.json"))
     elif output_format == "lhe_npy":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
         event_generator.combine_to_lhe_npy(
             os.path.join(run_path, "events.npy"), lhe_completer, systematics
         )
+        write_lhe_header(run_path,
+                         build_lhe_meta(event_generator, seed, systematics))
     elif output_format == "lhe":
         lhe_completer = ms.LHECompleter.load(os.path.join("data", "lhe.json"))
         lhe_path = os.path.join(run_path, "events.lhe")
+        # the cross section is known once generate() has converged, which is
+        # before combine_to_lhe writes the <init> block
         event_generator.combine_to_lhe(
-            lhe_path, lhe_completer, ms.LHEMeta(), systematics
+            lhe_path, lhe_completer, build_lhe_meta(event_generator, seed),
+            systematics
         )
-        # Ship the LHE compressed, as the launcher that produced this gridpack
-        # does: the file is large and very compressible, and the consumers of
-        # an mg7 event file accept either form. The stdlib is used rather than
-        # madgraph.various.misc.gzip because a gridpack is meant to run without
-        # a madgraph installation, and copyfileobj streams the file instead of
-        # holding it in memory.
-        with open(lhe_path, "rb") as fin, \
-                gzip.open(lhe_path + ".gz", "wb") as fout:
-            shutil.copyfileobj(fin, fout)
-        os.remove(lhe_path)
+        compress_lhe(lhe_path, run_args.get("use_pigz", "auto"),
+                     args.cpu_thread_pool_size)
     else:
         raise ValueError("Unknown output format")
     if systematics is not None:
@@ -270,7 +394,8 @@ def _locate_pdf_file(stored_file):
         % stored_file)
 
 
-def load_systematics(run_card, backends=(), param_card_path=None):
+def load_systematics(run_card, backends=(), param_card_path=None,
+                     me_parameters=None):
     """Rebuild the ms.SystematicsCalculator saved with the gridpack
     (data/systematics.json) when [systematics] enable is set; None otherwise.
     The matrix elements of the mixed-order subprocesses are reloaded into a CPU
@@ -291,9 +416,12 @@ def load_systematics(run_card, backends=(), param_card_path=None):
     subproc_args = [
         ms.SubprocessSystArgs.from_json(json.dumps(a)) for a in data["subproc_args"]
     ]
-    nominal_pdf = None
+    nominal_pdf = nominal_pdf2 = None
     if config.has_pdf:
         nominal_pdf = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file"]))
+        # the second beam's set, recorded only when it differs from the first
+        if data.get("nominal_grid_file2"):
+            nominal_pdf2 = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file2"]))
     # The mu_R variations always need an alpha_s grid, so a gridpack that does
     # not name one cannot reweight anything -- drop the systematics rather than
     # die here (gridpacks written before the launcher recorded the file for a
@@ -326,17 +454,23 @@ def load_systematics(run_card, backends=(), param_card_path=None):
                       "mixed-order subprocesses are dropped" % lib)
                 matrix_elements, flavor_remap = [], []
                 break
-            api = context.load_matrix_element(lib, param_card_path)
+            api = context.load_matrix_element(lib, param_card_path,
+                                              me_parameters or {})
             matrix_elements.append(ms.MatrixElement(
                 api,
                 [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
                  ms.MatrixElement.flavor_in],
                 [ms.MatrixElement.matrix_element_out],
                 False,
+                # the frame the events were generated with, not whatever the
+                # gridpack's run card says now: it has to match the matrix
+                # element inside the saved channel generators
+                data.get("me_frame", []),
+                data.get("incoming_count", 2),
             ))
     systematics = ms.SystematicsCalculator(
         config, subproc_args, nominal_pdf, nominal_alpha_s,
-        context, matrix_elements, flavor_remap)
+        context, matrix_elements, flavor_remap, nominal_pdf2=nominal_pdf2)
     for warning in systematics.warnings:
         print("WARNING systematics: %s" % warning)
     return systematics

@@ -2,6 +2,7 @@
 
 #include "madspace/util.hpp"
 
+#include <format>
 #include <set>
 
 using namespace madspace;
@@ -41,7 +42,7 @@ Integrand::Integrand(
     const AdaptiveDiscrete& discrete_sym,
     const AdaptiveDiscrete& discrete_flavor,
     const nested_vector2<me_int_t>& pid_options,
-    const std::optional<PdfGrid>& pdf_grid,
+    const PdfSource& pdf_grid,
     const std::optional<RunningCoupling>& running_coupling,
     const std::optional<EnergyScale>& energy_scale,
     const std::optional<PropagatorChannelWeights>& prop_chan_weights,
@@ -62,7 +63,9 @@ Integrand::Integrand(
     const std::vector<std::size_t>& flavor_diff_xs_indices,
     const std::vector<std::size_t>& flavor_subproc_indices,
     const std::vector<std::size_t>& flavor_per_subproc_remap,
-    std::size_t compressed_channel_weight_count
+    std::size_t compressed_channel_weight_count,
+    const std::optional<CustomFunction>& custom_bias,
+    const std::optional<PdfGrid>& pdf_grid2
 ) :
     FunctionGenerator(
         "Integrand",
@@ -117,7 +120,8 @@ Integrand::Integrand(
                 if (flav_count > 1 &&
                     !std::holds_alternative<std::monostate>(discrete_flavor)) {
                     ret_types.push_back("discrete_flavor_index", batch_int);
-                    if (pdf_grid && energy_scale) {
+                    if (!std::holds_alternative<std::monostate>(pdf_grid) &&
+                        energy_scale) {
                         ret_types.push_back("pdf_prior", batch_float_array(flav_count));
                     }
                 }
@@ -157,6 +161,10 @@ Integrand::Integrand(
                         "cluster_scales",
                         batch_float_array(mapping.particle_count() - 2)
                     );
+                }
+                // before "random": the outputs after it feed the discrete histograms
+                if (custom_bias) {
+                    ret_types.push_back("bias", batch_float);
                 }
                 ret_types.push_back("random", batch_float_array(mapping.random_dim()));
                 if (mapping.channel_count() > 1 &&
@@ -208,7 +216,8 @@ Integrand::Integrand(
     ),
     _flavor_per_subproc_remap(
         flavor_per_subproc_remap.begin(), flavor_per_subproc_remap.end()
-    ) {
+    ),
+    _custom_bias(custom_bias) {
     if (energy_scale && energy_scale->mlm_flavor_dependent() &&
         pid_options.size() > 1) {
         for (auto& option : pid_options) {
@@ -222,7 +231,7 @@ Integrand::Integrand(
             }
         }
     }
-    if (pdf_grid) {
+    if (!std::holds_alternative<std::monostate>(pdf_grid)) {
         for (std::size_t i = 0; i < 2; ++i) {
             std::set<int> pids;
             for (auto& option : pid_options) {
@@ -233,45 +242,93 @@ Integrand::Integrand(
                     std::distance(pids.begin(), pids.find(option.at(i)))
                 );
             }
-            _pdfs.at(i) = PartonDensity(pdf_grid.value(), {pids.begin(), pids.end()});
-        }
-        if (energy_scale && energy_scale->mlm_pdf_reweighting()) {
-            // Everything the reweighting can ask for: the gluon, whatever the
-            // beams can be, and the flavours the clustering pinned down along
-            // the way. The kernel names these by class, not by pdg, because
-            // one clustering serves every flavour channel; the table turns
-            // (class, sampled option) into an index into this one density.
-            auto& absolute = energy_scale->mlm_pdf_absolute_pdgs();
-            std::vector<int> rw_pids{21};
-            auto index_of = [&](int pid) {
-                auto found = std::find(rw_pids.begin(), rw_pids.end(), pid);
-                if (found == rw_pids.end()) {
-                    rw_pids.push_back(pid);
-                    return static_cast<me_int_t>(rw_pids.size() - 1);
-                }
-                return static_cast<me_int_t>(found - rw_pids.begin());
-            };
-            std::size_t class_count = 3 + absolute.size();
-            std::size_t option_count = std::max<std::size_t>(pid_options.size(), 1);
-            _pdf_rw_table.resize(class_count * option_count);
-            for (std::size_t f = 0; f < option_count; ++f) {
-                _pdf_rw_table.at(0 * option_count + f) = index_of(21);
-                for (std::size_t beam = 0; beam < 2; ++beam) {
-                    _pdf_rw_table.at((1 + beam) * option_count + f) = index_of(
-                        pid_options.size() > 0 ? pid_options.at(f).at(beam) : 21
+            std::vector<int> pid_vec(pids.begin(), pids.end());
+            if (auto grid = std::get_if<PdfGrid>(&pdf_grid)) {
+                bool own_grid = i == 1 && pdf_grid2;
+                _pdfs.at(i) = PartonDensity(
+                    own_grid ? pdf_grid2.value() : *grid,
+                    pid_vec,
+                    false,
+                    own_grid ? pdf2_prefix : ""
+                );
+                if (pdf_grid2) {
+                    _pdfs_swapped.at(i) = PartonDensity(
+                        own_grid ? *grid : pdf_grid2.value(),
+                        pid_vec,
+                        false,
+                        own_grid ? "" : pdf2_prefix
                     );
                 }
-                for (std::size_t c = 0; c < absolute.size(); ++c) {
-                    _pdf_rw_table.at((3 + c) * option_count + f) =
-                        index_of(absolute.at(c));
+            } else {
+                if (pdf_grid2) {
+                    throw std::invalid_argument(
+                        "pdf_grid2 cannot be combined with a custom PDF"
+                    );
                 }
+                auto& custom_pdf = std::get<CustomPdf>(pdf_grid);
+                int beam = static_cast<int>(i);
+                _pdfs.at(i) = PartonDensity(custom_pdf, pid_vec, beam);
+                // the custom PDF may differ per beam, so mirrored events need
+                // the other beam's density
+                _pdfs_swapped.at(i) = PartonDensity(custom_pdf, pid_vec, 1 - beam);
             }
-            for (std::size_t c = 0; c < class_count; ++c) {
-                _pdf_rw_class_offsets.push_back(
-                    static_cast<me_int_t>(c * option_count)
+        }
+    }
+    if (energy_scale && energy_scale->mlm_pdf_reweighting() &&
+        !std::holds_alternative<std::monostate>(pdf_grid)) {
+        // One density serves both beams: the ladder's ratios are taken with
+        // the same grid whichever beam the leg comes from.
+        auto grid = std::get_if<PdfGrid>(&pdf_grid);
+        if (!grid || pdf_grid2) {
+            throw std::invalid_argument(
+                "MLM pdf reweighting needs the same PDF grid for both beams"
+            );
+        }
+        // Everything the reweighting can ask for: the gluon, whatever the
+        // beams can be, and the flavours the clustering pinned down along
+        // the way. The kernel names these by class, not by pdg, because
+        // one clustering serves every flavour channel; the table turns
+        // (class, sampled option) into an index into this one density.
+        auto& absolute = energy_scale->mlm_pdf_absolute_pdgs();
+        std::vector<int> rw_pids{21};
+        auto index_of = [&](int pid) {
+            auto found = std::find(rw_pids.begin(), rw_pids.end(), pid);
+            if (found == rw_pids.end()) {
+                rw_pids.push_back(pid);
+                return static_cast<me_int_t>(rw_pids.size() - 1);
+            }
+            return static_cast<me_int_t>(found - rw_pids.begin());
+        };
+        std::size_t class_count = 3 + absolute.size();
+        std::size_t option_count = std::max<std::size_t>(pid_options.size(), 1);
+        _pdf_rw_table.resize(class_count * option_count);
+        for (std::size_t f = 0; f < option_count; ++f) {
+            _pdf_rw_table.at(0 * option_count + f) = index_of(21);
+            for (std::size_t beam = 0; beam < 2; ++beam) {
+                _pdf_rw_table.at((1 + beam) * option_count + f) = index_of(
+                    pid_options.size() > 0 ? pid_options.at(f).at(beam) : 21
                 );
             }
-            _pdf_rw = PartonDensity(pdf_grid.value(), rw_pids, true);
+            for (std::size_t c = 0; c < absolute.size(); ++c) {
+                _pdf_rw_table.at((3 + c) * option_count + f) =
+                    index_of(absolute.at(c));
+            }
+        }
+        for (std::size_t c = 0; c < class_count; ++c) {
+            _pdf_rw_class_offsets.push_back(
+                static_cast<me_int_t>(c * option_count)
+            );
+        }
+        _pdf_rw = PartonDensity(*grid, rw_pids, true);
+    }
+    if (custom_bias) {
+        if (custom_bias->type() != CustomFunction::bias) {
+            throw std::invalid_argument("custom bias must be of type bias");
+        }
+        if (custom_bias->dynamic_pdg_ids() != (pid_options.size() > 1)) {
+            throw std::invalid_argument(
+                "the PDG-id options of the custom bias must match pid_options"
+            );
         }
     }
 
@@ -316,11 +373,26 @@ Integrand::Integrand(
         }
     }
 
-    _flavor_mirror.reserve(flavor_mirror.size());
     _has_mirror = false;
     for (bool mirror : flavor_mirror) {
-        _flavor_mirror.push_back(mirror ? 2 : 1);
+        _flavor_mirror_factors.push_back(mirror ? 2. : 1.);
         _has_mirror |= mirror;
+    }
+    // The orientation is drawn before the mapping, so that the boost, the cuts
+    // and the PDFs all see the orientation the event is written with.
+    if (_has_mirror && !mapping.mirror_beams()) {
+        throw std::invalid_argument(
+            "mirrored flavors need a PhaseSpaceMapping built with mirror_beams = true"
+        );
+    }
+    // evaluate_pdfs, which takes the densities again once the history is
+    // picked per diagram, knows nothing of the event's orientation, so it
+    // cannot pick a mirrored event's density from the other beam.
+    if (_has_mirror && (_pdfs_swapped.at(0) || _pdfs_swapped.at(1)) && energy_scale &&
+        energy_scale->mlm_history_per_diagram()) {
+        throw std::invalid_argument(
+            "an MLM clustering history per diagram needs the same PDF for both beams"
+        );
     }
     _channel_part_ret_types = compute_channel_part_ret_types();
 }
@@ -382,12 +454,6 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     // outputs after cuts
     ret.push_back("indices_acc", Type(DataType::dt_int, acc_batch_size, {}));
     ret.push_back("momenta_acc", acc_four_vec_array(particle_count));
-    if (_has_mirror) {
-        if (!_madnis_training) {
-            ret.push_back("momenta_mirror_acc", acc_four_vec_array(particle_count));
-        }
-        ret.push_back("mirror_id_acc", acc_int);
-    }
     ret.push_back("x1_acc", acc_float);
     ret.push_back("x2_acc", acc_float);
     ret.push_back("flavor_id", acc_int);
@@ -447,7 +513,8 @@ NamedVector<Value> Integrand::build_channel_part(
 
     // Apply adaptive map (VEGAS or MadNIS flow)
     Value latent = r;
-    ValueVec mapping_conditions, flow_conditions;
+    NamedVector<Value> mapping_conditions;
+    ValueVec flow_conditions;
     std::visit(
         Overloaded{
             [&](std::monostate) {},
@@ -505,15 +572,32 @@ NamedVector<Value> Integrand::build_channel_part(
             _discrete_sym
         );
         chan_index = fb.gather_int(chan_index_in_group, _channel_indices);
-        mapping_conditions.push_back(chan_index_in_group);
+        mapping_conditions.push_back("permutation_index", chan_index_in_group);
     } else {
         chan_index =
             fb.full({static_cast<me_int_t>(_channel_indices.at(0)), batch_size_val});
         chan_index_in_group = fb.full({static_cast<me_int_t>(0), batch_size_val});
     }
 
+    // Orientation of the event, for a mapping with a mirror_index condition.
+    // Drawn uniformly; the flavor-dependent factor follows the flavor sampling.
+    Value mirror_index;
+    if (_mapping.mirror_beams()) {
+        if (_has_mirror) {
+            // the det is 2; the flavor-dependent weight is applied after the cuts
+            auto [index, mirror_det] =
+                fb.sample_discrete(mirror_random, static_cast<me_int_t>(2));
+            mirror_index = index;
+        } else {
+            mirror_index = fb.full({static_cast<me_int_t>(0), batch_size_val});
+        }
+        mapping_conditions.push_back("mirror_index", mirror_index);
+    }
+
     // Apply phase space mapping
-    auto mapping_result = _mapping.build_forward(fb, {latent}, mapping_conditions);
+    auto mapping_result = _mapping.build_forward(
+        fb, {_mapping.input_types().keys(), {latent}}, mapping_conditions
+    );
     weights_before_cuts.push_back(mapping_result["det"]);
     Value momenta = mapping_result["momenta"];
     Value x0 = mapping_result["x1"];
@@ -539,6 +623,31 @@ NamedVector<Value> Integrand::build_channel_part(
     auto scales = _energy_scale.value().build_function(fb, {momenta_acc});
     std::array<Value, 2> pdf_results;
     bool has_pdf_prior = false;
+    // The densities of beam i, for every flavour option, at the scale the
+    // event is generated with. Under MLM pdf reweighting the density is asked
+    // for low on the clustering ladder rather than at the factorisation scale,
+    // and walked back up by the ratios mlm_weights applies. This is madevent
+    // setting q2fact below q2bck before calling DSIG, and it is what the
+    // flavour prior should see too, since that is the density the event is
+    // actually generated with.
+    auto beam_pdf = [&](std::size_t i) {
+        auto& pdf_scale = _energy_scale->mlm_pdf_reweighting()
+            ? scales.at(std::format("pdf_scale{}", i + 1))
+            : scales.at(i + 1);
+        auto pdf =
+            _pdfs.at(i).value().build_function(fb, {x_acc.at(i), pdf_scale}).at(0);
+        if (_has_mirror && _pdfs_swapped.at(i)) {
+            // leg i of a mirrored event comes from the other beam
+            auto pdf_swapped = _pdfs_swapped.at(i)
+                                   .value()
+                                   .build_function(fb, {x_acc.at(i), pdf_scale})
+                                   .at(0);
+            pdf = fb.gather_vector(
+                fb.batch_gather(indices_acc, mirror_index), fb.stack({pdf, pdf_swapped})
+            );
+        }
+        return pdf;
+    };
     if ((_pdfs.at(0) || _pdfs.at(1)) && _energy_scale) {
         ValueVec pdf_priors;
         for (std::size_t i = 0; i < 2; ++i) {
@@ -549,13 +658,7 @@ NamedVector<Value> Integrand::build_channel_part(
                 // is madevent setting q2fact below q2bck before calling DSIG,
                 // and it is what the flavour prior should see too, since that
                 // is the density the event is actually generated with.
-                auto& pdf_scale = _energy_scale->mlm_pdf_reweighting()
-                    ? scales.at(std::format("pdf_scale{}", i + 1))
-                    : scales.at(i + 1);
-                auto pdf = _pdfs.at(i)
-                               .value()
-                               .build_function(fb, {x_acc.at(i), pdf_scale})
-                               .at(0);
+                auto pdf = beam_pdf(i);
                 pdf_results.at(i) = pdf;
                 pdf_priors.push_back(fb.select(pdf, _pdf_indices.at(i)));
             }
@@ -637,23 +740,12 @@ NamedVector<Value> Integrand::build_channel_part(
         }
     }
 
-    Value momenta_mirror_acc, mirror_id_acc;
     if (_has_mirror) {
-        Value option_count;
-        if (std::all_of(
-                _flavor_mirror.begin(), _flavor_mirror.end(), [](me_int_t mirror) {
-                    return mirror == 2;
-                }
-            )) {
-            option_count = static_cast<me_int_t>(2);
-        } else {
-            option_count = fb.gather_int(flavor_id, _flavor_mirror);
-        }
-        Value mirror_random_acc = fb.batch_gather(indices_acc, mirror_random);
-        auto [index, mirror_det] = fb.sample_discrete(mirror_random_acc, option_count);
-        mirror_id_acc = index;
-        momenta_mirror_acc = fb.mirror_momenta(momenta_acc, mirror_id_acc);
-        weights_after_cuts.push_back(mirror_det);
+        // Both orientations were sampled with probability 1/2. A flavor that
+        // stands for itself and its mirror image collects both (factor 2);
+        // for any other flavor the two orientations cover the same phase
+        // space (factor 1).
+        weights_after_cuts.push_back(fb.gather(flavor_id, _flavor_mirror_factors));
     }
 
     // With a clustering history per diagram these scales only serve the pdf
@@ -678,13 +770,7 @@ NamedVector<Value> Integrand::build_channel_part(
             if (!pdf_results.at(i)) {
                 continue;
             }
-            auto& pdf_scale = _energy_scale->mlm_pdf_reweighting()
-                ? scales.at(std::format("pdf_scale{}", i + 1))
-                : scales.at(i + 1);
-            auto pdf = _pdfs.at(i)
-                           .value()
-                           .build_function(fb, {x_acc.at(i), pdf_scale})
-                           .at(0);
+            auto pdf = beam_pdf(i);
             // _mlm_leg_flavors is only filled with more than one flavour
             pdf_results.at(i) =
                 fb.gather(fb.gather_int(flavor_id, _pdf_indices.at(i)), pdf);
@@ -732,12 +818,6 @@ NamedVector<Value> Integrand::build_channel_part(
     // outputs after cuts
     out.push_back("indices_acc", indices_acc);
     out.push_back("momenta_acc", momenta_acc);
-    if (_has_mirror) {
-        if (!_madnis_training) {
-            out.push_back("momenta_mirror_acc", momenta_mirror_acc);
-        }
-        out.push_back("mirror_id_acc", mirror_id_acc);
-    }
     out.push_back("x1_acc", x_acc.at(0));
     out.push_back("x2_acc", x_acc.at(1));
     out.push_back("flavor_id", flavor_id);
@@ -932,6 +1012,11 @@ NamedVector<Value> Integrand::build_common_part(
     auto flavor_id = args.at("flavor_id");
     auto batch_size_val = fb.batch_size({args.at("weight_before_cuts")});
 
+    // The matrix element sees the momenta the event is written with: the mirror
+    // is applied inside the mapping. This matters for polarised matrix elements,
+    // which are not invariant under the mirror (HELAS quantises along the frame
+    // z axis).
+
     auto scatter_or_drop = [&](Value default_value, Value value) -> Value {
         if (_drop_cuts_and_rescale) {
             return value;
@@ -1123,6 +1208,17 @@ NamedVector<Value> Integrand::build_common_part(
     for (auto& weight : mlm_history_weights) {
         weights_after_cuts.push_back(weight);
     }
+    // the bias enters the weight seen by the adaptation and the unweighting,
+    // the event generator divides it out again
+    Value bias_acc;
+    if (_custom_bias) {
+        ValueVec bias_args{momenta_acc};
+        if (_custom_bias->dynamic_pdg_ids()) {
+            bias_args.push_back(flavor_id);
+        }
+        bias_acc = _custom_bias->build_function(fb, bias_args).at(0);
+        weights_after_cuts.push_back(bias_acc);
+    }
     ValueVec extra_weights_after_cuts;
     if (args.index_map().contains("extra_weight_after_cuts")) {
         extra_weights_after_cuts.push_back(args.at("extra_weight_after_cuts"));
@@ -1262,14 +1358,7 @@ NamedVector<Value> Integrand::build_common_part(
         }
     } else {
         outputs.push_back("weight", optional_cut(weight));
-        if (_has_mirror) {
-            outputs.push_back(
-                "momenta",
-                scatter_or_drop(args.at("momenta"), args.at("momenta_mirror_acc"))
-            );
-        } else {
-            outputs.push_back("momenta", args.at("momenta"));
-        }
+        outputs.push_back("momenta", args.at("momenta"));
         auto zeros_int = fb.full({static_cast<me_int_t>(0), batch_size_val});
         auto zeros_float = fb.full({0., batch_size_val});
         outputs.push_back("color_index", scatter_or_drop(zeros_int, dxs_vec.at(2)));
@@ -1316,6 +1405,11 @@ NamedVector<Value> Integrand::build_common_part(
                     fb.full({0., batch_size_val, outgoing_count}),
                     cluster_scales_acc
                 )
+            );
+        }
+        if (bias_acc) {
+            outputs.push_back(
+                "bias", scatter_or_drop(fb.full({1., batch_size_val}), bias_acc)
             );
         }
         outputs.push_back("random", optional_cut(args.at("r")));

@@ -596,62 +596,78 @@ class MECmdShell(IOTests.IOTestManager):
         self.assertTrue(os.path.exists('%s/Events/run_02/alllogs_2.html' % self.path))
 
 
-    def notest_eft_running_nlo(self):
-        """check that  gives the correct result"""
-        
+    def test_eft_running_nlo(self):
+        """aMC@NLO output of a model with running Wilson coefficients (running.py):
+        run-card keys, generated code, and the effect of the extra scale on the
+        Born interference (fixed extra scale, then dynamical extra scale)"""
+
         mg_cmd = MGCmd.MasterCmd()
         mg_cmd.no_notification()
-        mg_cmd.run_cmd('set automatic_html_opening False --save')
+        mg_cmd.run_cmd('set automatic_html_opening False --no_save')
         mg_cmd.run_cmd('import model %s/tests/input_files/SMEFTatNLO_running-NLO' % madgraph.MG5DIR)
-        mg_cmd.run_cmd('generate p p > t t~ NP=2 NP^2==2 QCD=2 QED=0 [QCD]')
-        mg_cmd.run_cmd('output %s/'% self.path)
-        #self.cmd_line = MECmd.MadEventCmdShell(me_dir=  self.path)
-        #self.cmd_line.no_notification()
-        #self.cmd_line.exec_cmd('set automatic_html_opening False')
-        
-        #check validity of the default run_card
-        run_card = banner.RunCardNLO(pjoin(self.path, 'Cards','run_card.dat'))
+        mg_cmd.run_cmd('generate p p > t t~ QED=0 NP^2<=2 [QCD]')
+        mg_cmd.run_cmd('output %s/' % self.path)
 
-        #f = open(pjoin(self.path, 'Cards','run_card.dat'),'r')
-        #print(f.read())
-        self.assertTrue('fixed_extra_scale' not in run_card.user_set)
-        self.assertTrue('mue_ref_fixed' in run_card.user_set)
-        self.assertTrue('mue_over_ref' not in  run_card.user_set)
+        # the three keys of the extra scale are in the run_card and editable
+        run_card = banner.RunCardNLO(pjoin(self.path, 'Cards', 'run_card.dat'))
+        for key in ['fixed_extra_scale', 'mue_ref_fixed', 'mue_over_ref']:
+            self.assertIn(key, run_card.user_set)
+            self.assertNotIn(key, run_card.system_only)
         self.assertTrue(run_card['fixed_extra_scale'])
-        
-        
+        self.assertEqual(run_card['mue_over_ref'], 1.)
 
-        cwd = os.getcwd()
-        import subprocess
-        if logging.getLogger('madgraph').level <= 20:
-            stdout=None
-            stderr=None
-        else:
-            devnull =open(os.devnull,'w')
-            stdout=devnull
-            stderr=devnull
+        # generated code: the running routines must not include the vector.inc
+        # of the madevent output, the multiple precision routine follows the
+        # extra scale of the double precision one, and muR is passed to the model
+        couplings = open(pjoin(self.path, 'Source', 'MODEL', 'couplings.f')).read()
+        self.assertNotIn('vector.inc', couplings)
+        self.assertIn('C_RUNNING_1', couplings)
+        self.assertIn('GOTHER_MP', couplings)
+        self.assertIn('CALL MP_C_RUNNING_1(GOTHER_EFF)', couplings)
+        setscales = open(pjoin(self.path, 'SubProcesses', 'setscales.f')).read()
+        self.assertIn('model_scale=muR', setscales)
 
-        if logging.getLogger('madgraph').level > 20:
-            stdout = devnull
-        else:
-            stdout= None
+        # Born interference of the four-fermion operators only: select the
+        # squared orders (NP, QCD, QED) = (2, 2, 0) in FKS_params.dat
+        fks = open(pjoin(self.path, 'Cards', 'FKS_params.dat')).read()
+        fks = re.sub(r'(?m)^#SelectedCouplingOrders\n0\n-1 -1\n',
+                     '#SelectedCouplingOrders\n1\n2 2 0\n', fks)
+        self.assertIn('#SelectedCouplingOrders\n1\n2 2 0\n', fks)
+        open(pjoin(self.path, 'Cards', 'FKS_params.dat'), 'w').write(fks)
 
+        def set_run_card(**options):
+            card = open(pjoin(self.path, 'Cards', 'run_card.dat')).read()
+            for key, value in options.items():
+                card, nb = re.subn(r'(?mi)^(\s*)\S+(\s*=\s*%s\b)' % key,
+                                   lambda m: '%s%s%s' % (m.group(1), value, m.group(2)), card)
+                self.assertEqual(nb, 1, key)
+            open(pjoin(self.path, 'Cards', 'run_card.dat'), 'w').write(card)
 
-        subprocess.call([pjoin(self.path, 'bin','generate_events'),'aMC@LO', '-p', '-f'],            
-                         cwd=pjoin(self.path),
-                         stdout=stdout,stderr=stdout)
+        def run_lo(name):
+            out = subprocess.run([pjoin(self.path, 'bin', 'generate_events'), 'LO', '-f',
+                                  '--name=%s' % name], cwd=self.path,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 text=True).stdout
+            found = re.findall(r'Total cross section:\s+(\S+)\s+\+-\s+(\S+)\s+pb', out)
+            self.assertTrue(found, out[-2000:])
+            return float(found[-1][0]), float(found[-1][1])
 
+        # the Wilson coefficients of the param_card are given at Q = 172.5 GeV:
+        # no running for mue = 172.5, running up to 2 TeV otherwise
+        set_run_card(dynamical_scale_choice=3, fixed_extra_scale='True',
+                     mue_ref_fixed=172.5, req_acc_FO=0.005)
+        norun, norun_err = run_lo('norun')
+        set_run_card(mue_ref_fixed=2000.)
+        fixed, fixed_err = run_lo('fixed')
+        set_run_card(fixed_extra_scale='False', mue_over_ref=1.0)
+        dyn, dyn_err = run_lo('dyn')
 
-
-        results = self.load_result('run_01_LO')[0]
-
-
-        val1 = results['cross']
-        err1 = results['error']
-
-        target = 617.7542699925228 # THIS IS NOT PURE INTERFERENCE...
-        self.assertTrue(abs(val1 - target) / err1 < 1., 'large diference between %s and %s +- %s'%
-                        (target, val1, err1))
+        for val, err in [(norun, norun_err), (fixed, fixed_err), (dyn, dyn_err)]:
+            self.assertTrue(val != 0. and err < 0.02 * abs(val), (val, err))
+        # the extra scale matters: running from 172.5 GeV up to 2 TeV changes the interference
+        # (the dynamical scale, H_T/2 ~ 0.3 TeV here, runs little and is only required to work)
+        self.assertTrue(abs(norun - fixed) > 5 * (norun_err ** 2 + fixed_err ** 2) ** 0.5,
+                        (norun, fixed))
 
 
     def test_generate_events_lo_hw6_stdhep(self):
@@ -777,6 +793,135 @@ class MECmdShell(IOTests.IOTestManager):
         self.assertTrue(os.path.exists('%s/Events/run_01_LO/alllogs_1.html' % self.path))
 
     
+    @set_global()
+    def test_polarised_nlo_me_frame(self):
+        """Polarised fixed-order NLO in a chosen rest frame.
+
+        p p > z{0} z{0} j [QCD] with me_frame = [3,4], i.e. the matrix
+        elements evaluated in the ZZ rest frame. The Born, the real, every FKS
+        counterterm and the virtual all have to be boosted to the *same*
+        frame, rebuilt from each configuration's own momenta.
+
+        What is actually being tested is check_poles and test_soft_col_limits,
+        which the launch runs on its own and which fail the run if they do not
+        pass. They are the only checks sensitive to this:
+
+          - the infrared poles are proportional to the Born, so any frame
+            mismatch between the Born and the virtual shows up as a per-point
+            constant ratio between the MadFKS and the OLP poles;
+          - the collinear Q term is the same order as the AP term, so a wrong
+            azimuthal phase does not cancel and the soft/collinear ratios
+            plateau off 1.
+
+        A cross-section comparison would not catch either: both were wrong at
+        some point during development while the total stayed plausible.
+        """
+        self.generate('p p > z{0} z{0} j [QCD]', 'loop_sm')
+
+        # Ask for the ZZ rest frame. nn23lo1 rather than lhapdf, since the
+        # python lhapdf bindings are broken under some interpreters and would
+        # fail this test for an unrelated reason; scales fixed so the run is
+        # reproducible; req_acc_fo loose because the assertion is on the
+        # checks, not on the precision of the cross-section.
+        card_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(card_path)
+        run_card.set('me_frame', [3, 4], user=True)
+        run_card.set('pdlabel', 'nn23lo1', user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('mur_ref_fixed', 91.188, user=True)
+        run_card.set('muf_ref_fixed', 91.188, user=True)
+        run_card.set('ptj', 30.0, user=True)
+        run_card.set('etaj', 4.0, user=True)
+        run_card.set('req_acc_fo', 0.05, user=True)
+        run_card.write(card_path)
+
+        self.do('calculate_xsect NLO -f')
+
+        self.assertTrue(os.path.exists('%s/Events/run_01/summary.txt' % self.path))
+
+        # check_poles writes one log per P directory; none may report a
+        # miscancellation. This is the assertion that the frame handling is
+        # consistent between the Born and the virtual.
+        pole_logs = misc.glob(pjoin(self.path, 'SubProcesses', 'P*',
+                                    'check_poles.log'))
+        self.assertTrue(pole_logs, 'check_poles did not run')
+        for log in pole_logs:
+            self.assertNotIn('MISCANCELLATION', open(log).read(),
+                             'poles do not cancel in %s' % log)
+
+    @set_global()
+    def test_polarised_nlo_ps_me_frame(self):
+        """Polarised NLO+PS (MC@NLO matching) in a chosen rest frame.
+
+        p p > z{0} j [QCD] with me_frame = [3], generating events rather than
+        only a cross-section. On top of what the fixed-order test covers this
+        exercises the MC counterterms and the LHE writing, both of which
+        evaluate the Born and must do so in the same frame as everything else.
+
+        Two assertions carry the physics:
+
+          - the total cross-section must stay the fixed-order one, because the
+            MC counterterm cancels between the S and the H event;
+          - the ratio of the *absolute* cross-section to it must not, because
+            that ratio measures how well the MC subtraction cancels locally,
+            which is exactly what the azimuthal phase of the counterterm
+            controls. With the phase left in the partonic c.m. the ratio was
+            2.23; with it in the me_frame it is 2.00.
+
+        p p > z j is the discriminating channel: the azimuthal term is
+        non-zero only for a gluon-mother ISR configuration, so a process whose
+        ISR mothers are all quarks passes with a completely wrong azimuth.
+        """
+        self.generate('p p > z{0} j [QCD]', 'loop_sm')
+
+        # Ask for the Z rest frame. nn23lo1 rather than lhapdf, scales fixed
+        # and the seed pinned so the run is reproducible.
+        card_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(card_path)
+        run_card.set('me_frame', [3], user=True)
+        run_card.set('pdlabel', 'nn23lo1', user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('mur_ref_fixed', 91.188, user=True)
+        run_card.set('muf_ref_fixed', 91.188, user=True)
+        run_card.set('ptj', 30.0, user=True)
+        run_card.set('etaj', 4.0, user=True)
+        run_card.set('nevents', 1000, user=True)
+        run_card.set('req_acc', 0.05, user=True)
+        run_card.set('iseed', 33, user=True)
+        run_card.set('parton_shower', 'PYTHIA8', user=True)
+        run_card.write(card_path)
+
+        # --parton stops before the shower: the shower knows nothing about the
+        # frame, everything under test happens before it.
+        self.do('generate_events aMC@NLO --parton -f')
+
+        # The frame reached the matrix elements: bit 3 set, nothing else.
+        run_inc = open(pjoin(self.path, 'Source', 'run_card.inc')).read()
+        self.assertIn('FRAME_ID = 8', run_inc)
+
+        self.assertTrue(os.path.exists('%s/Events/run_01/events.lhe.gz' % self.path))
+
+        # check_poles and test_ME/test_MC run as part of the launch and would
+        # abort it; assert on the logs anyway so a silent pass is visible.
+        pole_logs = misc.glob(pjoin(self.path, 'SubProcesses', 'P*',
+                                    'check_poles.log'))
+        self.assertTrue(pole_logs, 'check_poles did not run')
+        for log in pole_logs:
+            self.assertNotIn('MISCANCELLATION', open(log).read(),
+                             'poles do not cancel in %s' % log)
+
+        # res_1.txt ends with the absolute cross-section and the cross-section.
+        res = open(pjoin(self.path, 'Events', 'run_01', 'res_1.txt')).read()
+        totals = re.findall(r'([-\d.eE+]+)\s+\+-', res.split('Total ABS')[-1])
+        self.assertEqual(len(totals), 2, 'cannot read the totals from res_1.txt')
+        xsec_abs, xsec = float(totals[0]), float(totals[1])
+        self.assertAlmostEqual(xsec, 2.19e3, delta=1.0e2)
+        self.assertLess(xsec_abs / xsec, 2.15,
+                        'the MC counterterm does not cancel locally enough; '
+                        'its azimuthal phase is probably not in the me_frame')
+
     def test_amcatnlo_from_file(self):
         """ """
         

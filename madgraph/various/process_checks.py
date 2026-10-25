@@ -47,7 +47,7 @@ import aloha.create_aloha as create_aloha
 
 import madgraph.iolibs.export_python as export_python
 import madgraph.iolibs.helas_call_writers as helas_call_writers
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import madgraph.iolibs.save_load_object as save_load_object
 import madgraph.iolibs.file_writers as writers
 
@@ -67,7 +67,7 @@ import madgraph.various.progressbar as pbar
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.loop.loop_helas_objects as loop_helas_objects
 import madgraph.loop.loop_base_objects as loop_base_objects
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 
 from madgraph.interface.madevent_interface import MadLoopInitializer
 from madgraph.interface.common_run_interface import AskforEditCard
@@ -75,7 +75,7 @@ from madgraph import MG5DIR, InvalidCmd, MadGraph5Error
 
 from madgraph.iolibs.files import cp
 
-import models.model_reader as model_reader
+import madgraph.models.model_reader as model_reader
 import aloha.template_files.wavefunctions as wavefunctions
 from aloha.template_files.wavefunctions import \
      ixxxxx, oxxxxx, vxxxxx, sxxxxx, txxxxx, irxxxx, orxxxx, sfdxxx, vfdxxxx
@@ -348,7 +348,7 @@ class MatrixElementEvaluator(object):
             fsock = open('output%s.py' % process.shell_string(), 'w')
             text = """
 import madgraph
-import models.model_reader as model_reader
+import madgraph.models.model_reader as model_reader
 import aloha.template_files.wavefunctions as wavefunctions
 from aloha.template_files.wavefunctions import \
      ixxxxx, oxxxxx, vxxxxx, sxxxxx
@@ -2030,11 +2030,8 @@ def run_multiprocs_no_crossings(function, multiprocess, stored_quantities,
                                      multiprocess, model, id_anti_id_dict):
                 continue
             # Generate process based on the selected ids
-            process = multiprocess.get_process_with_legs(base_objects.LegList(\
-                            [base_objects.Leg({'id': id, 'state':False}) for \
-                             id in is_prod] + \
-                            [base_objects.Leg({'id': id, 'state':True}) for \
-                             id in fs_prod]))
+            # (get_process carries over the polarization of the multi-legs)
+            process = multiprocess.get_process(is_prod, fs_prod)
 
             if opt is not None:
                 if isinstance(opt, dict):
@@ -4594,6 +4591,10 @@ PRECISION_MODES = {
     'v': 'denom64: single precision amplitudes, double precision momenta and denominators',
 }
 
+# madmatrix.mk BACKEND values; 'auto' is the widest SIMD flavour of the host.
+PRECISION_BACKENDS = ['auto', 'scalar', 'simd_128', 'simd_256', 'avx512y',
+                      'simd_512', 'cuda', 'hip']
+
 # An event whose relative error exceeds this counts in the reported rate.
 PRECISION_THRESHOLD = 0.01
 
@@ -4696,13 +4697,15 @@ def check_precision(process_definition, modes, param_card=None, options=None,
     integrator. The double precision reference is computed only once, however
     many modes are compared to it.
 
-    Recognised *options*: 'nb_event' (default 10^6) and 'energy' (GeV, default
-    1000). The difference plot, one per subprocess with every mode on it, is
-    written in *output_path* (default: the current directory).
+    Recognised *options*: 'nb_event' (default 10^6), 'energy' (GeV, default
+    1000) and 'backend' (madmatrix.mk BACKEND, default 'auto'). The difference
+    plot, one per subprocess with every mode on it, is written in *output_path*
+    (default: the current directory).
 
     Returns a list with one dict per subprocess, mode and flavour combination,
-    with the keys 'process_label', 'subprocess', 'flavor', 'mode', the ones of
-    :func:`precision_statistics`, 'time_double', 'time_mode' and 'plot'.
+    with the keys 'process_label', 'subprocess', 'flavor', 'mode', 'backend',
+    the ones of :func:`precision_statistics`, 'time_double', 'time_mode' and
+    'plot'.
     """
     import tempfile
     import multiprocessing
@@ -4725,6 +4728,10 @@ def check_precision(process_definition, modes, param_card=None, options=None,
     if nb_event < 1:
         raise InvalidCmd('--nb_event must be a positive number of events')
     energy = float(options.get('energy', 1000.0))
+    backend = options.get('backend', 'auto')
+    if backend not in PRECISION_BACKENDS:
+        raise InvalidCmd('--backend must be one of %s, not %s'
+                         % ('|'.join(PRECISION_BACKENDS), backend))
     if output_path is None:
         output_path = os.getcwd()
     if process_definition.get('perturbation_couplings'):
@@ -4784,11 +4791,12 @@ def check_precision(process_definition, modes, param_card=None, options=None,
         with open(log, 'w') as out:
             subprocess.call(['make', 'cleanall'], cwd=p_dir, stdout=out,
                             stderr=subprocess.STDOUT)
-            status = subprocess.call(['make', '-j%s' % nb_core, 'FPTYPE=%s' % fptype],
+            status = subprocess.call(['make', '-j%s' % nb_core, 'FPTYPE=%s' % fptype,
+                                      'BACKEND=%s' % backend],
                                      cwd=p_dir, stdout=out, stderr=subprocess.STDOUT)
         if status:
-            raise MadGraph5Error('check precision: FPTYPE=%s build failed, see %s'
-                                 % (fptype, log))
+            raise MadGraph5Error('check precision: FPTYPE=%s BACKEND=%s build failed, see %s'
+                                 % (fptype, backend, log))
 
     def run(p_dir, args, tag):
         log = pjoin(work_dir, 'run_%s_%s.log' % (os.path.basename(p_dir), tag))
@@ -4828,8 +4836,8 @@ def check_precision(process_definition, modes, param_card=None, options=None,
     try:
         for p_name in p_dirs:
             p_dir = pjoin(proc_root, p_name)
-            logger.info('check precision: %s, %d events, FPTYPE=d vs FPTYPE=%s'
-                        % (p_name, nb_event, ','.join(modes)))
+            logger.info('check precision: %s, %d events, FPTYPE=d vs FPTYPE=%s, BACKEND=%s'
+                        % (p_name, nb_event, ','.join(modes), backend))
             # Double precision: the points, the flavours and the reference values
             with progress.step('%s: build FPTYPE=d' % p_name):
                 build(p_dir, 'd')
@@ -4871,7 +4879,7 @@ def check_precision(process_definition, modes, param_card=None, options=None,
                 for iflav, label in enumerate(labels):
                     entry = precision_statistics(me_double[iflav], me_mode[iflav])
                     entry.update({'process_label': label, 'subprocess': p_name,
-                                  'flavor': iflav, 'mode': mode,
+                                  'flavor': iflav, 'mode': mode, 'backend': backend,
                                   'time_double': time_double[iflav],
                                   'time_mode': time_mode[iflav]})
                     entries.append(entry)
@@ -4973,8 +4981,8 @@ def output_precision(results, output='text'):
     modes = misc.make_unique([r['mode'] for r in results])
     proc_col = max([len('Process')] + [len(r['process_label']) for r in results]) + 2
     col = 16
-    text = 'FPTYPE=%s vs FPTYPE=d, %d events per flavour\n' % (
-        ','.join(modes), results[0]['nb_event'])
+    text = 'FPTYPE=%s vs FPTYPE=d, BACKEND=%s, %d events per flavour\n' % (
+        ','.join(modes), results[0].get('backend', 'auto'), results[0]['nb_event'])
     for mode in modes:
         text += '  %s = %s\n' % (mode, PRECISION_MODES.get(mode, 'unknown mode'))
 
@@ -6005,9 +6013,11 @@ def check_complex_mass_scheme_process(process, evaluator, opt = [],
                 # 2-body decay is the maximum that should be considered for NLO check.
                 # The default 1% accuracy is not enough when pushing to small
                 # lambdaCMS values, we need 1 per mil at least.
+                # MadEvent integrates it: the check works on the model of its
+                # evaluator, which madspace has not been validated on.
                 command = '%s --output=%s'%(particle_name,pjoin(path,'tmp.dat'))+\
                     ' --path=%s --body_decay=2'%pjoin(path,'tmp.dat')+\
-                    ' --precision_channel=0.001'
+                    ' --precision_channel=0.001 --engine=madevent'
 #                misc.sprint(command)
                 param_card.write(pjoin(options['output_path'],'tmp.dat'))
                 # The MG5 command get_width will change the cmd._curr_model

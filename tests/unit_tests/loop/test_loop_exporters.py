@@ -46,7 +46,7 @@ import madgraph.loop.loop_exporters as loop_exporters
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.save_load_object as save_load_object
 import madgraph.iolibs.helas_call_writers as helas_call_writers
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import madgraph.various.misc as misc
 import madgraph.iolibs.file_writers as writers
 import tests.IOTests as IOTests
@@ -210,12 +210,13 @@ class IOExportMadLoopUnitTest(IOTests.IOTestManager):
     # instead of the ghost CASE(-82). That is how it passed alone and failed
     # in the full suite, after tests/unit_tests/iolibs/test_ufo_parsers.
     #
-    # It does NOT cover every way an earlier test can move this output:
+    # A second, non-gauge leak used to move this output as well:
     # tests/unit_tests/fks/test_ewsudakov imports loop_qcd_qed_sm_Gmu_forSudakov
-    # and a later import_ufo.import_model('loop_sm') then groups mdl_MW under
-    # ('aEWM1', 'Gf') instead of ('aEWM1',), which reorders
-    # mp_intparam_definition.inc. That is a leak between UFO model imports, not
-    # a gauge one, and it is still open.
+    # and a later import_ufo.import_model('loop_sm') then grouped mdl_MW under
+    # ('aEWM1', 'Gf') instead of ('aEWM1',), reordering
+    # mp_intparam_definition.inc. That one is fixed: OrganizeModelExpression
+    # now copies its class-level track_dependant per instance instead of
+    # extending it in place.
     @IOTests.set_global()
     def testIO_UnitProcOutputIOTests(self, load_only=False):
       """ Run the iotests """

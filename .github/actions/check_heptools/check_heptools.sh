@@ -70,7 +70,8 @@ check_pythia8() {
     need_exec "$HEP/pythia8/bin/pythia8-config"
     need_glob "libpythia8" "$HEP/pythia8/lib/libpythia8.*" "$HEP/pythia8/lib64/libpythia8.*"
     need_dir  "$HEP/hepmc"
-    need_file "$HEP/MG5aMC_PY8_interface/MG5aMC_PY8_interface"
+    # the LO shower driver, compiled by installPYTHIA8.sh ('make mainMG')
+    need_exec "$HEP/pythia8/share/Pythia8/examples/main164"
 }
 
 check_emela() {

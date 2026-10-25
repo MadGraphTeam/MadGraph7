@@ -16,7 +16,7 @@ each tool.
 """
 
 import contextlib
-import gzip
+import json
 import logging
 import os
 import shutil
@@ -25,6 +25,7 @@ import madgraph.interface.madevent_interface as madevent_interface
 import madgraph.madevent.gen_crossxhtml as gen_crossxhtml
 import madgraph.various.banner as banner_mod
 import madgraph.various.lhe_parser as lhe_parser
+from madgraph.various import misc
 
 pjoin = os.path.join
 logger = logging.getLogger('madevent')
@@ -56,6 +57,28 @@ def _quiet_setup():
             logging.getLogger(name).setLevel(level)
 
 
+class MG7Results(gen_crossxhtml.AllResults):
+    """The madevent results database, kept in memory only.
+
+    The tool drivers book their runs here (``add_run``, ``add_detail``,
+    ``current``), so :class:`MG7RunCmd` needs one. But madevent also writes it
+    to disk: ``save`` pickles it to ``HTML/results.pkl`` and ``output`` renders
+    ``crossx.html``, the status page of a madevent directory. The mg7 output
+    has no ``HTML/`` directory, so ``save`` -- called by ``store_result`` at
+    the end of every post-processing run -- failed with "I/O error (2): No such
+    file or directory", and ``crossx.html`` was left behind at the process root
+    still reading "Currently Running" and linking to pages that do not exist.
+    Nothing reads either back (:meth:`MG7RunCmd.load_results_db` starts a fresh
+    database every time), so neither is written.
+    """
+
+    def save(self):
+        return
+
+    def output(self):
+        return
+
+
 class MG7RunCmd(madevent_interface.MadEventCmd):
     """A :class:`MadEventCmd` pointed at an mg7 output directory.
 
@@ -67,6 +90,8 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
       (:class:`RunCardMG7`) and takes the banner straight from the mg7 LHE,
       instead of reading ``run_card.dat`` / juggling banner files.
     * ``do_treatcards`` -- writes Fortran ``.inc`` files; not applicable.
+    * ``load_results_db`` -- an in-memory :class:`MG7Results`: there is no
+      ``HTML/`` directory to keep it in.
     """
 
     def __init__(self, me_dir, options, run_name, lhe_path):
@@ -81,8 +106,11 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         merged.update(self.options_madgraph)
         merged.update(self.options_madevent)
         merged.update(options or {})
+        compression = banner_mod.RunCardMG7(
+            pjoin(me_dir, 'Cards', 'run_card.toml')).gzip_configuration()
         # Make the run directory look enough like a madevent run for the
         # results-db scan (and the tools' event-file lookup) to be happy.
+        misc.configure_gzip(compression)
         self._prepare_run_dir()
         # MadEventCmd.__init__ announces itself with the MADEVENT welcome
         # banner and a run of "load configuration from ..." lines. That is
@@ -92,6 +120,8 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         # quiet -- warnings and errors still come through.
         with _quiet_setup():
             super(MG7RunCmd, self).__init__(me_dir, merged, force_run=True)
+        # MadEventCmd reloads its own compression configuration during setup.
+        misc.configure_gzip(compression)
 
     # ------------------------------------------------------------------
     # directory / run-state adaptation
@@ -112,9 +142,7 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
             if self._mg7_lhe_path.endswith('.gz'):
                 shutil.copyfile(self._mg7_lhe_path, gz)
             else:
-                with open(self._mg7_lhe_path, 'rb') as fin, \
-                        gzip.open(gz, 'wb') as fout:
-                    shutil.copyfileobj(fin, fout)
+                misc.gzip(self._mg7_lhe_path, stdout=gz, keep=True)
 
     def load_results_db(self):
         """Fresh results database without recreating old runs from banners: the
@@ -122,8 +150,8 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         recreate() expects. The run we post-process is registered explicitly in
         :meth:`set_run_name`."""
         model = self.find_model_name()
-        self.results = gen_crossxhtml.AllResults(model, self.process,
-                                                 self.me_dir, recreateold=False)
+        self.results = MG7Results(model, self.process, self.me_dir,
+                                  recreateold=False)
         self.last_mode = ''
         return self.results
 
@@ -163,11 +191,46 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
 
         if name not in self.results:
             self.results.add_run(name, self.run_card)
+            self._register_generation_results(name)
         else:
             self.results.def_current(name, self.run_tag)
 
         self.banner = self._banner_for_run(name)
-        return None
+        # As MadEventCmd.set_run_name, return the tag of the run holding the
+        # input of `level`: check_delphes looks for <tag>_pythia8_events.hepmc.gz,
+        # and silently skips Delphes (--no_default) when it is None_pythia8_...
+        # An mg7 run has one tag, so the shower output carries run_tag.
+        if level == 'parton':
+            return None
+        return self.run_tag
+
+    def _register_generation_results(self, name):
+        """Book the cross section, its error and the number of events of the
+        generated sample on the run just added to the results database.
+
+        madevent fills them during survey/refine, which an mg7 run does not go
+        through: the tools' "Results Summary" (printed after the Pythia8 shower,
+        for instance) then read "Cross-section : 0 +- 0 pb, Nb of events : 0".
+        They come from the info.json of the run (the numbers the mg7 run
+        itself printed), else from the <init> block of its LHE. A run booked
+        by a tool (MadSpin's <run>_decayed_i) is added with its own numbers
+        and does not come here.
+        """
+        cross = error = nb_event = None
+        try:
+            with open(pjoin(self.me_dir, 'Events', name, 'info.json')) as fsock:
+                status = json.load(fsock)['process']
+            cross, error = float(status['mean']), float(status['error'])
+            nb_event = int(status['count_unweighted'])
+        except Exception:
+            try:
+                cross, error = self._banner_for_run(name).get_cross(witherror=True)
+            except Exception:
+                return
+        self.results.add_detail('cross', cross)
+        self.results.add_detail('error', error)
+        if nb_event is not None:
+            self.results.add_detail('nb_event', nb_event)
 
     def configure_directory(self, html_opening=True):
         """Lightweight replacement: the mg7 output has no Fortran ``Source`` to

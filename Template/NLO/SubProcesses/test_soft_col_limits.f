@@ -275,7 +275,7 @@ c Note that tests are always performed at fixed energy with Bjorken x=1.
      $           /' Cannot perform ME tests properly for config',iconfig
             cycle
          endif
-         call sborn(p_born,wgt1)
+         call sborn_frame(p_born,wgt1)
       
          write (*,*) ''
          write (*,*) ''

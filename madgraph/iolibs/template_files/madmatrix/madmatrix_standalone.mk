@@ -19,10 +19,21 @@ include madmatrix.mk
 #=== Standalone driver (check_sa.exe) configuration
 
 # Standalone-only object files (compiled via the generic %%.o pattern rule from
-# madmatrix.mk).
+# madmatrix.mk; RamboSamplingKernels.cc/CommonRandomNumberKernel.cc are found
+# in ../../src/rambo/ via the vpath in madmatrix.mk
 override standalone_objects = $(BUILDDIR)/RamboSamplingKernels.o \
                               $(BUILDDIR)/CommonRandomNumberKernel.o \
                               $(BUILDDIR)/check_sa.o
+
+# force relink when changing to before compiled backend
+CHECK_SA_BACKEND_MARKER = .check_sa_backend
+check_sa.exe: $(CHECK_SA_BACKEND_MARKER)
+$(CHECK_SA_BACKEND_MARKER): FORCE
+	@if [ ! -f $(CHECK_SA_BACKEND_MARKER) ] || [ "$$(cat $(CHECK_SA_BACKEND_MARKER) 2>/dev/null)" != "$(BACKEND)" ]; then \
+		echo $(BACKEND) > $(CHECK_SA_BACKEND_MARKER); \
+	fi
+.PHONY: FORCE
+FORCE:
 
 # Top-level standalone goal: process lib + standalone driver.
 .PHONY: standalone_all
@@ -49,7 +60,7 @@ clean: clean_standalone
 .PHONY: clean_standalone
 clean_standalone:
 	rm -f $(BUILDDIR)/RamboSamplingKernels.o $(BUILDDIR)/CommonRandomNumberKernel.o $(BUILDDIR)/check_sa.o
-	rm -f check_sa.exe
+	rm -f check_sa.exe $(CHECK_SA_BACKEND_MARKER)
 
 # 'cleanall' from madmatrix.mk also wipes build.* directories, which already
 # covers our standalone objects when USEBUILDDIR=1. We only need to take care

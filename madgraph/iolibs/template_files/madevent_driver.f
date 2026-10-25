@@ -54,6 +54,7 @@ c
 c     c
       include 'vector.inc'
       include 'run.inc'
+      include 'ldme.inc'
       
       integer           mincfig, maxcfig
       common/to_configs/mincfig, maxcfig
@@ -124,6 +125,7 @@ c      open (unit=lun+1,file='results.dat',status='unknown',err=13)
       call setrun                !Sets up run parameters
       call setpara(param_card_name %(secondparam)s)   !Sets up couplings and masses
       include 'pmass.inc'        !Sets up particle masses
+      %(load_onia_card)s         !Sets up ldmes and masses for bound states
       call setcuts               !Sets up cuts 
       call printout              !Prints out a summary of paramaters
       call run_printout          !Prints out a summary of the run settings
@@ -201,6 +203,17 @@ c         itmin = itmin + 1
 
       write(*,*) "about to integrate ", ndim,ncall,itmax,itmin,ninvar,nconfigs
       call sample_full(ndim,ncall,itmax,itmin,dsig,ninvar,nconfigs,VECSIZE_USED)
+
+c
+c     madevent_forhel runs with init_mode: report which amplitudes stayed
+c     zero, per helicity, so that gen_ximprove can feed them to the helicity
+c     recycler.  Without this the hel_zeroamp optimisation never sees any
+c     data (none_pass is the only other caller, and that is an error path).
+c     print_zero_amp is an empty stub for non-grouped output.
+c
+      if (init_mode) then
+         call print_zero_amp()
+      endif
 
 c
 c     Now write out events to permanent file

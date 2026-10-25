@@ -5,7 +5,6 @@
 #include "discrete.hpp"
 #include "invariants.hpp"
 #include "kinematics.hpp"
-#include "lup_det.hpp"
 #include "math.hpp"
 #include "mlm.hpp"
 #include "multichannel.hpp"

@@ -7,22 +7,34 @@
 
 namespace madspace {
 
-// Accumulates JSON status content from possibly multiple sources and
-// periodically rewrites it to a file.
+/**
+ * Rate-limited JSON status file, merged from possibly multiple sources.
+ *
+ * Lets several parts of a run (or several processes) report progress into
+ * the same file without flooding the disk: @ref write merges its argument
+ * into the accumulated content and only actually rewrites the file at most
+ * every @p min_interval_sec, unless forced.
+ */
 class StatusFile {
 public:
-    // file_name is where the status is written; writes happen at most every
-    // min_interval_sec, unless forced (see write()).
+    /**
+     * @param file_name        Path the status is written to.
+     * @param min_interval_sec Minimum time between two file rewrites.
+     */
     explicit StatusFile(const std::string& file_name, double min_interval_sec = 10.0);
 
-    // Merges content into the accumulated status (top-level keys are
-    // overwritten, "run_times" is merged one level deeper) and rewrites the
-    // file if force_write is set, if this is the first write, or if
-    // min_interval_sec has passed since the last write.
+    /**
+     * Merge @p content into the accumulated status.
+     *
+     * Top-level keys of @p content overwrite the corresponding accumulated
+     * ones; the `"run_times"` key is merged one level deeper instead. The
+     * file is rewritten if @p force_write is set, if this is the first call,
+     * or if @p min_interval_sec has passed since the last rewrite.
+     */
     void write(const nlohmann::json& content, bool force_write = false);
 
-    // If a status was ever written and its "status" field is not "done",
-    // marks it "done" and writes it out one last time.
+    /// If a status was written and its `"status"` field is not `"done"`,
+    /// sets it to `"done"` and writes the file out one last time.
     ~StatusFile();
 
 private:

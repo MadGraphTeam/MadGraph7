@@ -51,6 +51,67 @@ def write_autogen(f):
     )
 
 
+def format_shape(entry):
+    """Human-readable shape for one instruction input/output, from its `type`.
+
+    `[float]` -> "float, shape (batch,)"; `[float, 4]` -> "(batch, 4)";
+    `[int, single]` -> "int, scalar"; `[size, name]` -> "batch-size list".
+    An entry without a `type` key yields None.
+    """
+    type = entry.get("type")
+    if not type:
+        return None
+    if type[0] == "size":
+        return "batch-size list"
+    dtype = type[0]
+    single = len(type) > 1 and type[1] == "single"
+    dims = [str(d) for d in type[1 + single :]]
+    if single:
+        shape = "scalar" if not dims else f"shape ({', '.join(dims)})"
+    else:
+        inner = ", ".join(["batch", *dims])
+        shape = f"shape ({inner},)" if not dims else f"shape ({inner})"
+    return f"{dtype}, {shape}"
+
+
+def instruction_brief(name, cmd):
+    """The `desc` from the YAML, or a templated fallback for an empty one."""
+    desc = (cmd.get("desc") or "").strip()
+    if desc:
+        desc = " ".join(desc.split())
+        return desc if desc.endswith(".") else desc + "."
+    return f"The `{name}` instruction."
+
+
+def _entry_text(entry, fallback):
+    """`(shape) description` for one input/output, never empty."""
+    shape = format_shape(entry)
+    desc = " ".join((entry.get("desc") or "").split())
+    parts = ([f"({shape})"] if shape else []) + ([desc] if desc else [])
+    return " ".join(parts) if parts else fallback
+
+
+def doc_comment(name, cmd):
+    """A Doxygen `/** */` block for one generated FunctionBuilder method."""
+    lines = [f" * {instruction_brief(name, cmd)}"]
+    inputs = cmd["inputs"]
+    if inputs == "any":
+        lines.append(" * @param args variadic input values.")
+    else:
+        for arg in inputs:
+            lines.append(f" * @param {arg['name']} {_entry_text(arg, 'input value.')}")
+    outputs = cmd["outputs"]
+    if outputs == "any":
+        lines.append(" * @return the list of output values.")
+    elif len(outputs) == 1:
+        lines.append(f" * @return {_entry_text(outputs[0], 'the output value.')}")
+    elif len(outputs) > 1:
+        lines.append(" * Returns, in order:")
+        for out in outputs:
+            lines.append(f" * - `{out['name']}` - {_entry_text(out, 'output value.')}")
+    return "/**\n" + "\n".join(lines) + "\n */\n"
+
+
 def function_builder_mixin(commands, out_dir):
     with open(out_dir / "compgraphs" / "function_builder_mixin.inc", "w") as f:
         write_autogen(f)
@@ -60,6 +121,7 @@ def function_builder_mixin(commands, out_dir):
                 first = False
             else:
                 f.write("\n")
+            f.write(doc_comment(name, cmd))
             if cmd["inputs"] == "any":
                 parameters = "ValueVec args"
                 instruction_call = f'instruction("{name}", args)'

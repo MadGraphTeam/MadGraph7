@@ -83,6 +83,12 @@ C
       common/to_heavyion_mass/mass_ion
 
 C
+C     block for onia reshuffling
+C
+      integer mom_resh_type
+      common/to_mom_resh_type/mom_resh_type
+
+C
 C Controls what are the PDGs included in the CKKWl merging procedure, i.e. what
 C are the PDGs subject to the ktdurham cut
 C
@@ -105,6 +111,11 @@ c
 
        double precision small_width_treatment
        common/narrow_width/small_width_treatment
+
+c      fraction of the cross-section the overweight events of the refine may
+c      carry (negative: maximum weight from the 99% quantile, see store_events)
+       double precision max_overweight_truncation
+       common/to_overweight/max_overweight_truncation
 
        double precision tmin_for_channel
        integer sde_strat ! 1 means standard single diagram enhancement strategy,

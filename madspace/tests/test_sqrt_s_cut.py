@@ -23,10 +23,11 @@ Pinned down here:
     inverted sampling range.
 """
 
+import functools
 import math
 
-import numpy as np
-import pytest
+import phasespace_helpers
+import torch
 
 import madspace as ms
 
@@ -57,23 +58,17 @@ def mapping(cuts=None, leptonic=False):
     return ms.PhaseSpaceMapping(MASSES, CM_ENERGY, cuts=cuts, leptonic=leptonic)
 
 
-def sample(mapping, seed=SEED, n=BATCH_SIZE):
-    rng = np.random.default_rng(seed)
-    p_ext, _x1, _x2, det = mapping.map_forward([rng.random((n, mapping.random_dim()))])
-    return np.asarray(p_ext), np.asarray(det)
+sample = functools.partial(phasespace_helpers.sample, seed=SEED, n=BATCH_SIZE)
 
 
 def s_hat(p):
     """sqrt of the partonic Mandelstam s, from the two incoming momenta."""
-    total = p[:, 0, :] + p[:, 1, :]
-    m2 = total[:, 0] ** 2 - np.sum(total[:, 1:] ** 2, axis=1)
-    return np.sqrt(np.maximum(m2, 0.0))
+    return phasespace_helpers.invariant_mass(p, 0, 1)
 
 
 def volume(det, p):
     """The integral the mapping estimates, with non-finite points dropped."""
-    finite = np.isfinite(det) & np.all(np.isfinite(p), axis=(1, 2))
-    return np.where(finite, det, 0.0)
+    return phasespace_helpers.finite_weight(p, det)
 
 
 # --------------------------------------------------------------------------
@@ -84,15 +79,15 @@ def volume(det, p):
 def test_obs_sqrt_s_is_the_partonic_invariant_mass():
     p_ext, _ = sample(mapping())
     O = ms.Observable
-    computed = np.asarray(O(PIDS, O.obs_sqrt_s, [])(p_ext)).reshape(-1)
-    assert computed == pytest.approx(s_hat(p_ext), rel=1e-9)
+    computed = O(PIDS, O.obs_sqrt_s, [])(p_ext).reshape(-1)
+    torch.testing.assert_close(computed, s_hat(p_ext), rtol=1e-9, atol=1e-12)
     # and it is the invariant mass of the final state too, i.e. it really is
     # the quantity the whole event has to clear
     out = p_ext[:, 2, :] + p_ext[:, 3, :]
-    m_out = np.sqrt(
-        np.maximum(out[:, 0] ** 2 - np.sum(out[:, 1:] ** 2, axis=1), 0.0)
+    m_out = torch.sqrt(
+        torch.clamp(out[:, 0] ** 2 - torch.sum(out[:, 1:] ** 2, dim=1), min=0.0)
     )
-    assert computed == pytest.approx(m_out, rel=1e-6)
+    torch.testing.assert_close(computed, m_out, rtol=1e-6, atol=1e-12)
 
 
 def test_the_process_has_a_threshold_of_its_own():
@@ -116,16 +111,16 @@ def test_a_cut_below_the_threshold_changes_nothing():
     the integral unchanged in the sharpest possible sense."""
     p_free, det_free = sample(mapping())
     p_cut, det_cut = sample(mapping(cuts=sqrt_s_cuts(NO_OP_CUT)))
-    assert np.array_equal(det_free, det_cut)
-    assert np.array_equal(p_free, p_cut)
+    assert torch.equal(det_free, det_cut)
+    assert torch.equal(p_free, p_cut)
 
 
 def test_a_cut_at_zero_changes_nothing():
     """The same statement for the value the run card ships with."""
     p_free, det_free = sample(mapping())
     p_cut, det_cut = sample(mapping(cuts=sqrt_s_cuts(0.0)))
-    assert np.array_equal(det_free, det_cut)
-    assert np.array_equal(p_free, p_cut)
+    assert torch.equal(det_free, det_cut)
+    assert torch.equal(p_free, p_cut)
 
 
 # --------------------------------------------------------------------------
@@ -142,7 +137,7 @@ def test_cut_bounds_the_sampled_s_hat():
     # the region has not collapsed onto its own boundary
     assert s.max() > 2 * BITING_CUT
     # and the cut is no longer filtering anything out
-    assert np.all(det != 0.0)
+    assert torch.all(det != 0.0)
 
 
 def test_without_the_bound_the_same_region_is_wasted():
@@ -151,7 +146,7 @@ def test_without_the_bound_the_same_region_is_wasted():
     what the boundary removes, so if it ever stops being true the test above
     has stopped proving anything."""
     p_ext, _ = sample(mapping())
-    assert np.mean(s_hat(p_ext) < BITING_CUT) > 0.25
+    assert (s_hat(p_ext) < BITING_CUT).double().mean() > 0.25
 
 
 def test_cut_volume_is_unchanged_by_the_boundary():
@@ -160,13 +155,14 @@ def test_cut_volume_is_unchanged_by_the_boundary():
     cut or only the filtering does."""
     p_free, det_free = sample(mapping(), seed=SEED)
     passes = s_hat(p_free) >= BITING_CUT
-    external = np.where(passes, volume(det_free, p_free), 0.0)
+    external = torch.where(passes, volume(det_free, p_free), 0.0)
 
     p_cut, det_cut = sample(mapping(cuts=sqrt_s_cuts(BITING_CUT)), seed=SEED + 1)
     piped = volume(det_cut, p_cut)
 
     error = math.sqrt(
-        external.std() ** 2 / len(external) + piped.std() ** 2 / len(piped)
+        external.std(correction=0).item() ** 2 / len(external)
+        + piped.std(correction=0).item() ** 2 / len(piped)
     )
     assert error > 0.0
     assert abs(external.mean() - piped.mean()) < 5.0 * error
@@ -179,8 +175,8 @@ def test_the_cut_removes_more_than_the_comparison_could_hide():
     there, not merely nonzero."""
     p_free, det_free = sample(mapping())
     total = volume(det_free, p_free)
-    removed = np.where(s_hat(p_free) < BITING_CUT, total, 0.0)
-    error = total.std() / math.sqrt(len(total))
+    removed = torch.where(s_hat(p_free) < BITING_CUT, total, 0.0)
+    error = total.std(correction=0).item() / math.sqrt(len(total))
     assert error > 0.0
     assert removed.mean() > 10.0 * error
 
@@ -194,9 +190,9 @@ def test_a_cut_above_the_beam_energy_is_empty_and_finite():
     """Such a cut leaves nothing to sample at all. It must come out as an empty
     result, not as an inverted sampling range with nan weights."""
     p_ext, det = sample(mapping(cuts=sqrt_s_cuts(2 * CM_ENERGY)))
-    assert np.all(det == 0.0)
-    assert np.all(np.isfinite(det))
-    assert np.all(np.isfinite(p_ext))
+    assert torch.all(det == 0.0)
+    assert torch.all(torch.isfinite(det))
+    assert torch.all(torch.isfinite(p_ext))
 
 
 def test_leptonic_s_hat_is_fixed_so_the_cut_only_filters():
@@ -204,8 +200,9 @@ def test_leptonic_s_hat_is_fixed_so_the_cut_only_filters():
     luminosity to sample and hence no range to narrow, so the cut stays a plain
     filter and must still be applied as one."""
     p_ext, det = sample(mapping(leptonic=True))
-    assert s_hat(p_ext) == pytest.approx(CM_ENERGY, rel=1e-9)
+    s = s_hat(p_ext)
+    torch.testing.assert_close(s, torch.full_like(s, CM_ENERGY), rtol=1e-9, atol=1e-12)
     _, det_kept = sample(mapping(cuts=sqrt_s_cuts(BITING_CUT), leptonic=True))
-    assert np.array_equal(det_kept, det)
+    assert torch.equal(det_kept, det)
     _, det_gone = sample(mapping(cuts=sqrt_s_cuts(2 * CM_ENERGY), leptonic=True))
-    assert np.all(det_gone == 0.0)
+    assert torch.all(det_gone == 0.0)

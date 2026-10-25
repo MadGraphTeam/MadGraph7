@@ -29,6 +29,7 @@ madspace is not installed.
 from __future__ import absolute_import
 
 import logging
+import multiprocessing
 import os
 import shutil
 import subprocess
@@ -87,6 +88,11 @@ class MG7LaunchWiringTest(unittest.TestCase):
 
         self.cmd = mgcmd.MasterCmd()
         self.cmd.use_rawinput = False
+        # MasterCmd reads the checkout's input/mg7_configuration.txt, and
+        # crash_on_error decides whether an error inside the run stops MG5:
+        # pin the shipped default so a developer's own setting cannot change
+        # what these tests see. The tests that need it set it themselves.
+        self.cmd.options['crash_on_error'] = False
 
         # MG5's error handling writes a 'debug' file into the working
         # directory; keep that (and anything else a test provokes) inside the
@@ -117,9 +123,14 @@ class MG7LaunchWiringTest(unittest.TestCase):
 
         # Never run the real madspace bootstrap from a unit test.
         self.bootstrap_calls = []
+        self.bootstrap_jobs = []
         self._saved_ensure = mg7_bootstrap.ensure_madspace
-        mg7_bootstrap.ensure_madspace = \
-            lambda interactive=None: self.bootstrap_calls.append(interactive)
+
+        def fake_ensure(interactive=None, jobs=None):
+            self.bootstrap_calls.append(interactive)
+            self.bootstrap_jobs.append(jobs)
+
+        mg7_bootstrap.ensure_madspace = fake_ensure
 
     def tearDown(self):
         mg7_bootstrap.ensure_madspace = self._saved_ensure
@@ -205,14 +216,9 @@ class MG7LaunchWiringTest(unittest.TestCase):
         self.assertEqual(child.commands, [])
 
     # -- interrupts ---------------------------------------------------------
-    def test_keyboard_interrupt_reaches_the_error_handling(self):
-        """Ctrl-C used to be swallowed by `except KeyboardInterrupt: pass`.
-
-        Going through the child's run_cmd means it now reaches the standard
-        cmd error handling: stop_on_keyboard_stop runs and the interrupt then
-        stops MG5, like every other interface, rather than being dropped so the
-        rest of the script runs on as if nothing happened.
-        """
+    def interrupted_launch(self):
+        """Stub a child whose run is interrupted by Ctrl-C; return the list
+        that records its stop_on_keyboard_stop calls."""
         stopped = []
 
         def MG7Cmd(me_dir='.', options=None):
@@ -224,6 +230,29 @@ class MG7LaunchWiringTest(unittest.TestCase):
 
         self.stub.MG7Cmd = MG7Cmd
         self.cmd.inputfile = iter([])
+        return stopped
+
+    def test_keyboard_interrupt_reaches_the_error_handling(self):
+        """Ctrl-C used to be swallowed by `except KeyboardInterrupt: pass`.
+
+        Going through the child's run_cmd means it now reaches the standard
+        cmd error handling, exactly as a madevent run does: the child's
+        stop_on_keyboard_stop runs (that is where a run cleans up its jobs)
+        and the child is still closed. With the default crash_on_error the
+        interrupt stops the run, not MG5 -- the same as for madevent.
+        """
+        stopped = self.interrupted_launch()
+        self.cmd.do_launch(self.me_dir)
+        self.assertEqual(stopped, [True])
+        self.assertEqual(self.built[-1].commands, ['', 'quit'])
+
+    @unittest.skipUnless(__debug__, 'error_handling only consults '
+                         'crash_on_error for Ctrl-C in debug mode')
+    def test_keyboard_interrupt_with_crash_on_error_stops_mg5(self):
+        """With crash_on_error = True the interrupt ends MG5, after the run
+        has had its stop_on_keyboard_stop."""
+        self.cmd.options['crash_on_error'] = True
+        stopped = self.interrupted_launch()
         self.assertRaises(SystemExit, self.cmd.do_launch, self.me_dir)
         self.assertEqual(stopped, [True])
 
@@ -260,6 +289,20 @@ class MG7LaunchWiringTest(unittest.TestCase):
         self.cmd.inputfile = iter([])
         self.cmd.do_launch(self.me_dir)
         self.assertEqual(self.bootstrap_calls, [True])
+
+    def test_bootstrap_gets_nb_core_for_the_madspace_build(self):
+        """A source build of madspace is only parallel when it is told how many
+        jobs it may use, so the launch path must pass MG5's nb_core on."""
+        self.cmd.do_set('nb_core 3 --no_save')
+        self.launch('')
+        self.assertEqual(self.bootstrap_jobs, [3])
+
+        # `set nb_core None` resolves to the machine's core count
+        self.bootstrap_jobs[:] = []
+        self.cmd.do_set('nb_core None --no_save')
+        self.launch('')
+        self.assertEqual(self.bootstrap_jobs,
+                         [multiprocessing.cpu_count()])
 
 
 class MG7BootstrapTest(unittest.TestCase):
@@ -323,6 +366,25 @@ class MG7BootstrapTest(unittest.TestCase):
         # must not eat the caller's stdin, which carries the run's script
         self.assertEqual(opts['stdin'], subprocess.DEVNULL)
 
+    def test_jobs_is_forwarded_to_the_installer(self):
+        """Without a job count the installer's cmake build falls back to a
+        serial make whenever ninja is missing."""
+        self.point_at_empty_install()
+        calls = self.record_runs()
+        with self.quiet():
+            mg7_bootstrap.ensure_madspace(interactive=False, jobs=4)
+        cmd, _ = calls[0]
+        self.assertIn('-j', cmd)
+        self.assertEqual(cmd[cmd.index('-j') + 1], '4')
+
+    def test_no_jobs_leaves_the_installer_default(self):
+        self.point_at_empty_install()
+        calls = self.record_runs()
+        with self.quiet():
+            mg7_bootstrap.ensure_madspace(interactive=False)
+        cmd, _ = calls[0]
+        self.assertNotIn('-j', cmd)
+
     def test_interactive_install_keeps_the_terminal(self):
         self.point_at_empty_install()
         calls = self.record_runs()
@@ -372,6 +434,40 @@ class MG7BootstrapTest(unittest.TestCase):
                               mg7_bootstrap.ensure_madspace, interactive=False)
 
 
+class MadspaceInstallCommandTest(unittest.TestCase):
+    """`install madspace` at the MG5 prompt: it runs madspace/install.py."""
+
+    def setUp(self):
+        self.cmd = mgcmd.MasterCmd()
+
+    def installer_args(self, line):
+        with mock.patch('subprocess.run') as run:
+            self.cmd.do_install(line)
+        return [str(a) for a in run.call_args[0][0]]
+
+    def test_nb_core_is_forwarded_as_the_job_count(self):
+        """Without it the installer's cmake build is serial whenever ninja is
+        missing, whatever nb_core says."""
+        self.cmd.do_set('nb_core 5 --no_save')
+        args = self.installer_args('madspace --source -y')
+        self.assertIn('install.py', args[1])
+        self.assertEqual(args[-2:], ['-j', '5'])
+
+    def test_unset_nb_core_uses_every_core(self):
+        self.cmd.do_set('nb_core None --no_save')
+        args = self.installer_args('madspace --source -y')
+        self.assertEqual(args[-2:], ['-j', str(multiprocessing.cpu_count())])
+
+    def test_an_explicit_job_count_is_left_alone(self):
+        self.cmd.do_set('nb_core 5 --no_save')
+        for line in ('madspace --source -j 2', 'madspace --source -j2',
+                     'madspace --source --jobs=2'):
+            args = self.installer_args(line)
+            self.assertEqual(len([a for a in args if a.startswith('-j')
+                                  or a.startswith('--jobs')]), 1, args)
+            self.assertNotIn('5', args)
+
+
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
                      'madspace is not installed')
 class MG7CmdTest(unittest.TestCase):
@@ -407,6 +503,18 @@ class MG7CmdTest(unittest.TestCase):
         # a bare word is the run name
         self.assertEqual(cmd._parse_run_options('myrun')['name'], 'myrun')
 
+    def test_crash_on_error_is_inherited_from_mg5(self):
+        """The options are filtered down to the launcher's tool paths, which
+        used to drop crash_on_error: a crash inside an mg7 launch then went
+        back to the prompt and MG5 exited 0, even with crash_on_error True."""
+        cmd = self.launch.MG7Cmd(me_dir=self.me_dir,
+                                 options={'crash_on_error': True})
+        self.assertIs(cmd.options['crash_on_error'], True)
+        cmd = self.launch.MG7Cmd(me_dir=self.me_dir,
+                                 options={'crash_on_error': 'never'})
+        self.assertEqual(cmd.options['crash_on_error'], 'never')
+        self.assertNotIn('crash_on_error', self.make_cmd().options)
+
     def test_laststep_parton_switches_every_tool_off(self):
         cmd = self.make_cmd()
         switch = {'shower': 'Pythia8', 'madspin': 'ON', 'reweight': 'OFF'}
@@ -418,6 +526,300 @@ class MG7CmdTest(unittest.TestCase):
         cmd = self.make_cmd()
         switch = {'shower': 'Pythia8'}
         self.assertEqual(cmd._apply_laststep(switch, {'laststep': ''}), switch)
+
+    def output_format(self, switch, initial='compact_npy'):
+        """Run force_lhe_output_if_needed on a run_card asking for `initial`
+        and return the format the run ends up with."""
+        path = os.path.join(self.me_dir, 'Cards', 'run_card.toml')
+        with open(path, 'w') as stream:
+            stream.write('[run]\nrun_name = "run"\n'
+                         'output_format = "%s"\n' % initial)
+        cwd = os.getcwd()
+        os.chdir(self.me_dir)
+        try:
+            self.launch.force_lhe_output_if_needed(switch)
+        finally:
+            os.chdir(cwd)
+        from madgraph.various.banner import RunCardMG7
+        return RunCardMG7(path, consistency=False)['run']['output_format']
+
+    def test_post_processing_forces_the_lhe_output(self):
+        """the npy formats carry no event record a shower could read"""
+        self.assertEqual(self.output_format({'shower': 'Pythia8'}), 'lhe')
+        self.assertEqual(self.output_format({'madspin': 'ON'},
+                                            initial='lhe_npy'), 'lhe')
+
+    # -- the MADatLO.HwU switch ---------------------------------------------
+    class FakeHistograms:
+        """Stands in for the madspace EventHistograms of a finished run."""
+
+        JSON = ('[{"name": "jet-pt", "min": 0.0, "max": 100.0, '
+                '"bin_count": 2, "bin_values": [0.0, 1.0, 2.0, 0.0], '
+                '"bin_errors": [0.0, 0.1, 0.2, 0.0], "weights": []}]')
+
+        def to_json(self, systematics=None):
+            return self.JSON
+
+    def hwu_writer(self, write_hwu):
+        """A MadgraphProcess reduced to what write_hwu() looks at."""
+        from madgraph.various.banner import RunCardMG7
+        process = self.launch.MadgraphProcess.__new__(self.launch.MadgraphProcess)
+        process.run_card = RunCardMG7()
+        process.run_card['run']['write_hwu'] = write_hwu
+        process.run_path = self.me_dir
+        process.systematics = None
+        return process
+
+    def hwu_path(self):
+        return os.path.join(self.me_dir, self.launch.MadgraphProcess.hwu_file_name)
+
+    def test_hwu_is_off_by_default(self):
+        """the same numbers are in info.json: the second file is opt-in"""
+        self.assertIs(self.launch.MadgraphProcess.__new__(
+            self.launch.MadgraphProcess).__class__, self.launch.MadgraphProcess)
+        from madgraph.various.banner import RunCardMG7
+        self.assertIs(RunCardMG7()['run']['write_hwu'], False)
+        process = self.hwu_writer(False)
+        process.write_hwu(self.FakeHistograms())
+        self.assertFalse(os.path.exists(self.hwu_path()))
+
+    def test_hwu_is_written_when_asked(self):
+        process = self.hwu_writer(True)
+        process.write_hwu(self.FakeHistograms())
+        with open(self.hwu_path()) as stream:
+            text = stream.read()
+        self.assertIn('<histogram> 2 "jet-pt', text)
+        self.assertTrue(text.startswith('##& xmin & xmax'))
+
+    def test_no_histograms_no_file(self):
+        """nothing to write when [histograms] is empty, switch or no switch"""
+        process = self.hwu_writer(True)
+        process.write_hwu(None)
+        self.assertFalse(os.path.exists(self.hwu_path()))
+
+    # -- the Events/<run>/plots switch --------------------------------------
+    def plot_maker(self, make_plots):
+        from madgraph.various.banner import RunCardMG7
+        process = self.launch.MadgraphProcess.__new__(self.launch.MadgraphProcess)
+        process.run_card = RunCardMG7()
+        process.run_card['run']['make_plots'] = make_plots
+        process.run_path = self.me_dir
+        process.systematics = None
+        return process
+
+    def plot_dir(self):
+        return os.path.join(self.me_dir,
+                            self.launch.MadgraphProcess.plot_dir_name)
+
+    def test_plots_are_on_by_default(self):
+        from madgraph.various.banner import RunCardMG7
+        self.assertIs(RunCardMG7()['run']['make_plots'], True)
+
+    def test_plots_can_be_switched_off(self):
+        process = self.plot_maker(False)
+        process.make_plots(self.FakeHistograms())
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
+    def test_no_histograms_no_plot_directory(self):
+        process = self.plot_maker(True)
+        process.make_plots(None)
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
+    def test_missing_matplotlib_does_not_fail_the_run(self):
+        """the numbers are in info.json: a run without the backend carries on"""
+        from madgraph.iolibs.template_files.mg7 import plots
+        saved = plots._pyplot
+
+        def no_matplotlib():
+            raise plots.BackendMissing("No module named 'matplotlib'")
+
+        plots._pyplot = no_matplotlib
+        try:
+            process = self.plot_maker(True)
+            process.make_plots(self.FakeHistograms())   # must not raise
+        finally:
+            plots._pyplot = saved
+        self.assertFalse(os.path.exists(self.plot_dir()))
+
+    # -- "set histograms ..." in the launch question ------------------------
+    def histogram_selector(self, card_text=None):
+        """An MG7Selector reduced to what do_set needs, on this output's card."""
+        from madgraph.various.banner import RunCardMG7
+        path = os.path.join(self.me_dir, 'Cards', 'run_card.toml')
+        default_path = os.path.join(self.me_dir, 'Cards',
+                                    'run_card_default.toml')
+        card = RunCardMG7()
+        card.dynamic_sections['histograms'].update({
+            'jet_1-pt': {'min': 0., 'max': 500., 'bin_count': 50},
+            'sqrt_s': {'min': 0., 'max': 2000., 'bin_count': 50},
+        })
+        card.write(path)
+        card.write(default_path)
+        cwd = os.getcwd()
+        os.chdir(self.me_dir)
+        try:
+            selector_class, _ = self.launch.build_selector_cmd()
+        finally:
+            os.chdir(cwd)
+        obj = selector_class.__new__(selector_class)
+        obj.run_card = RunCardMG7(path, consistency=False)
+        obj.paths = {'run_default': default_path}
+        obj.modified_card = set()
+        return obj
+
+    def test_set_histograms_off_removes_them_all(self):
+        obj = self.histogram_selector()
+        self.assertTrue(obj.run_card['histograms'])
+        obj.do_set('histograms OFF')
+        self.assertEqual(dict(obj.run_card['histograms']), {})
+        self.assertIn('run', obj.modified_card)
+
+    def test_set_histograms_default_puts_them_back(self):
+        obj = self.histogram_selector()
+        obj.do_set('histograms off')
+        obj.do_set('histograms default')
+        self.assertIn('jet_1-pt', obj.run_card['histograms'])
+
+    def test_set_histograms_rejects_anything_else(self):
+        """a value that is not OFF/default leaves the section alone"""
+        obj = self.histogram_selector()
+        before = dict(obj.run_card['histograms'])
+        obj.do_set('histograms 42')
+        self.assertEqual(dict(obj.run_card['histograms']), before)
+        self.assertNotIn('run', obj.modified_card)
+
+    # -- "set <madevent cut name> ..." in the launch question ---------------
+    def cut_selector(self):
+        """histogram_selector() whose generic editor must not be reached: it
+        is what answered "WARNING: invalid set command mmll 200"."""
+        obj = self.histogram_selector()
+        generic = mock.patch.object(type(obj).__mro__[1], 'do_set')
+        self.generic_do_set = generic.start()
+        self.addCleanup(generic.stop)
+        return obj
+
+    def test_set_madevent_cut_names(self):
+        """set mmll/mmllmax/... edit the [cuts] entry from_LO maps them to"""
+        obj = self.cut_selector()
+        obj.do_set('mmll 200')
+        self.assertEqual(dict(obj.run_card['cuts']['lepton-sfos_pair_mass']),
+                         {'min': 200.0})
+        self.assertIn('run', obj.modified_card)
+        obj.do_set('run_card mmllmax 2*100+100')
+        self.assertEqual(dict(obj.run_card['cuts']['lepton-sfos_pair_mass']),
+                         {'min': 200.0, 'max': 300.0})
+        obj.do_set('mmll 0')
+        obj.do_set('mmllmax -1')
+        self.assertNotIn('lepton-sfos_pair_mass', obj.run_card['cuts'])
+        # sqrt_s is also a histogram name: only the cut moves
+        obj.do_set('dsqrt_shat 500')
+        self.assertEqual(dict(obj.run_card['cuts']['sqrt_s']), {'min': 500.0})
+        self.assertEqual(dict(obj.run_card['histograms']['sqrt_s']),
+                         {'min': 0., 'max': 2000., 'bin_count': 50})
+        self.generic_do_set.assert_not_called()
+
+    def test_set_madevent_cut_name_rejects_non_numbers(self):
+        obj = self.cut_selector()
+        before = dict(obj.run_card['cuts'])
+        obj.do_set('ptj abc')
+        self.assertEqual(dict(obj.run_card['cuts']), before)
+        self.assertNotIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_madevent_scale_and_pdg_names(self):
+        """the integer scale/strategy codes, maxjetflavor and the per-pdg
+        cuts are translated. The generic editor aborted a launch script on
+        the integer codes."""
+        obj = self.cut_selector()
+        obj.do_set('dynamical_scale_choice 1')
+        self.assertEqual(obj.run_card['beam']['dynamical_scale_choice'],
+                         'transverse_energy')
+        obj.do_set('dynamical_scale_choice 0')     # no equivalent: kept
+        self.assertEqual(obj.run_card['beam']['dynamical_scale_choice'],
+                         'transverse_energy')
+        obj.do_set('sde_strategy 2')
+        self.assertEqual(obj.run_card['phasespace']['sde_strategy'], 'denominators')
+        obj.do_set('maxjetflavor 5')
+        self.assertIn(5, obj.run_card['multiparticles']['jet'])
+        obj.do_set('pt_min_pdg {6: 100}')
+        self.assertEqual(dict(obj.run_card['cuts']['pdg6-pt']), {'min': 100.0})
+        self.assertIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_mg7_values_still_reach_the_editor(self):
+        obj = self.cut_selector()
+        obj.do_set('dynamical_scale_choice transverse_mass')
+        obj.do_set('sde_strategy denominators')
+        obj.do_set('dynamical_scale_choice HT/4')
+        self.assertEqual(self.generic_do_set.call_count, 3)
+
+    def test_per_beam_fixed_fac_scale_is_reported_when_the_question_closes(self):
+        obj = self.cut_selector()
+        parent = type(obj).__mro__[1]
+        with mock.patch.object(parent, 'check_card_consistency'):
+            obj.do_set('fixed_fac_scale1 T')
+            obj.do_set('fixed_fac_scale2 F')
+            with self.assertLogs('madgraph7', level='WARNING') as logs:
+                obj.check_card_consistency()
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn('fixed_fac_scale1 = True and fixed_fac_scale2 = False',
+                      logs.output[0])
+
+    def test_set_madevent_cut_name_scan_is_refused_by_name(self):
+        obj = self.cut_selector()
+        before = dict(obj.run_card['cuts'])
+        with self.assertLogs('madgraph7', level='WARNING') as logs:
+            obj.do_set('ptj scan:[20, 30]')
+        self.assertIn('cannot be scanned', logs.output[0])
+        self.assertEqual(dict(obj.run_card['cuts']), before)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_lo_param_bugs_are_not_hidden(self):
+        """only a bad value is reported as "ignoring set ..."; an error of
+        the translation itself is not swallowed"""
+        obj = self.cut_selector()
+        with mock.patch.object(type(obj.run_card), 'set_lo_param',
+                               side_effect=TypeError('bug')):
+            self.assertRaises(TypeError, obj.do_set, 'maxjetflavor 4')
+
+    def test_per_beam_state_is_cleared_when_the_check_fails(self):
+        obj = self.cut_selector()
+        parent = type(obj).__mro__[1]
+        obj.do_set('fixed_fac_scale1 T')
+        obj.do_set('fixed_fac_scale2 F')
+        with mock.patch.object(parent, 'check_card_consistency',
+                               side_effect=RuntimeError('card check')):
+            with self.assertLogs('madgraph7', level='WARNING') as logs:
+                self.assertRaises(RuntimeError, obj.check_card_consistency)
+        self.assertIn('fixed_fac_scale1 = True', logs.output[0])
+        self.assertEqual(obj.run_card.lo_set_warnings(), [])
+
+    def test_set_madevent_beam_names(self):
+        """set ebeam1/ebeam/pdlabel2/lpp, as a madevent launch script writes
+        them, edit the per-beam [beam] entries"""
+        obj = self.histogram_selector()
+        obj.do_set('ebeam 6.8 TeV')
+        obj.do_set('ebeam1 7 TeV')
+        obj.do_set('pdlabel2 cteq6l1')
+        obj.do_set('lpp 1')
+        beam = obj.run_card['beam']
+        self.assertEqual((beam['ebeam1'], beam['ebeam2']), (7000.0, 6800.0))
+        self.assertEqual(beam['pdf2'], 'cteq6l1')
+        self.assertNotEqual(beam['pdf1'], 'cteq6l1')
+        self.assertFalse(beam['leptonic'])
+        self.assertIn('run', obj.modified_card)
+        # a value mg7 cannot represent leaves the card alone
+        obj.modified_card.clear()
+        obj.do_set('pdlabel1 none')
+        self.assertNotEqual(obj.run_card['beam']['pdf1'], 'none')
+        self.assertNotIn('run', obj.modified_card)
+
+    def test_no_post_processing_keeps_the_npy_output(self):
+        self.assertEqual(self.output_format({}), 'compact_npy')
+        self.assertEqual(self.output_format(None), 'compact_npy')
+        self.assertEqual(
+            self.output_format({'shower': 'OFF', 'analysis': 'Not Avail.'}),
+            'compact_npy')
 
     def test_run_name_is_written_to_the_run_card(self):
         cmd = self.make_cmd()
@@ -463,7 +865,10 @@ class MG7CmdTest(unittest.TestCase):
         try:
             process = self.launch.MadgraphProcess.__new__(
                 self.launch.MadgraphProcess)
-            process.run_card = {"run": {"run_name": "run"}}
+            process.run_card = {
+                "run": {"run_name": "run"},
+                "gridpack": {"output_dir": "", "temp_output_dir": ""},
+            }
             process.init_event_dir()
         finally:
             os.chdir(cwd)
@@ -524,7 +929,7 @@ class MG7CmdTest(unittest.TestCase):
         """End to end: the dependent parameters of the param_card are the ones
         the model computes from the free ones (here M_W from G_F/M_Z/alpha)."""
         from madgraph.interface.common_run_interface import AskforEditCard
-        from models.check_param_card import ParamCard
+        from madgraph.models.check_param_card import ParamCard
 
         self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
         path = os.path.join(self.me_dir, 'Cards', 'param_card.dat')
@@ -550,7 +955,7 @@ class MG7CmdTest(unittest.TestCase):
 
         self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
         self.launch._model_cache.clear()
-        with mock.patch('models.import_ufo.import_model',
+        with mock.patch('madgraph.models.import_ufo.import_model',
                         side_effect=TimeOutError):
             self.assertRaises(TimeOutError, self.launch.load_process_model,
                               self.me_dir)
@@ -667,19 +1072,7 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
         """The tool list run_selected_tools builds, without running it."""
 
         from madgraph.iolibs.template_files.mg7 import launch
-
-        off = launch._off
-        ma5 = switch.get('analysis') == 'MadAnalysis5'
-        showered = not off(switch.get('shower'))
-        return [t for t, on in (
-            ("reweighting", not off(switch.get("reweight"))),
-            ("MadSpin", not off(switch.get("madspin"))),
-            ("MadAnalysis5 (parton level)", ma5),
-            ("Pythia8 shower", switch.get("shower") == "Pythia8"),
-            ("Delphes", switch.get("detector") == "Delphes"),
-            ("MadAnalysis5 (hadron level)", ma5 and showered),
-            ("Rivet", switch.get("analysis") == "Rivet"),
-        ) if on]
+        return launch.selected_tools(switch)
 
     def test_a_not_available_switch_selects_no_tool(self):
         """The case from a real run: Delphes is not installed, so the detector
@@ -691,6 +1084,15 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
 
     def test_everything_off_selects_no_tool(self):
         switch = {'shower': 'OFF', 'detector': 'OFF', 'analysis': 'OFF',
+                  'madspin': 'OFF', 'reweight': 'OFF'}
+        self.assertEqual(self.tools_for(switch), [])
+
+    def test_exroot_selects_no_tool(self):
+        """analysis = ExRoot is the default when ExRootAnalysis is installed,
+        but mg7 has no driver for it: it must neither run anything nor force
+        the LHE output."""
+
+        switch = {'shower': 'OFF', 'detector': 'OFF', 'analysis': 'ExRoot',
                   'madspin': 'OFF', 'reweight': 'OFF'}
         self.assertEqual(self.tools_for(switch), [])
 
@@ -713,6 +1115,459 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
         # _find_event_file would fail on the fake path, and MG7RunCmd would
         # fail harder: returning early means neither is reached
         launch.run_selected_tools(switch, _Process())
+
+
+class TestPostProcessingResultsStayInMemory(unittest.TestCase):
+    """The tool drivers book their runs in a madevent results database, which
+    madevent writes to HTML/results.pkl and renders as crossx.html. The mg7
+    output has no HTML/ directory: store_result, at the end of every
+    post-processing run, logged "ERROR: I/O error (2): No such file or
+    directory", and a stale crossx.html was left at the process root.
+    """
+
+    def setUp(self):
+        import io
+
+        self.path = tempfile.mkdtemp(prefix='mg7_results_')
+        os.mkdir(os.path.join(self.path, 'Events'))
+        self.captured = io.StringIO()
+        self.handler = logging.StreamHandler(self.captured)
+        self.logger = logging.getLogger('madgraph.files')
+        self.logger.addHandler(self.handler)
+
+    def tearDown(self):
+        self.logger.removeHandler(self.handler)
+        shutil.rmtree(self.path)
+
+    def test_store_result_bookkeeping_writes_nothing(self):
+        import madgraph.various.banner as banner_mod
+        from madgraph.iolibs.template_files.mg7.run_interface import MG7RunCmd
+
+        # load_results_db only needs me_dir, process and the model name
+        # (__del__ reads the other two); building a real MG7RunCmd needs a
+        # whole mg7 output
+        cmd = object.__new__(MG7RunCmd)
+        cmd.stop_for_runweb = False
+        cmd.force_run = True
+        cmd.me_dir = self.path
+        cmd.process = ['p p > t t~']
+        cmd.find_model_name = lambda: 'sm'
+        cmd.load_results_db()
+
+        run_card = banner_mod.RunCardMG7()
+        run_card['run_tag'] = 'tag_1'
+        # what set_run_name, do_decay_events and store_result do with it
+        cmd.results.add_run('run_01', run_card)
+        cmd.results.add_run('run_01_decayed_1', run_card)
+        cmd.results.add_detail('nb_event', 200)
+        cmd.results.update('MadSpin Done', 'parton', makehtml=True)
+        cmd.results.update('Done', 'pythia', makehtml=False, error=True)
+        cmd.results.save()
+
+        self.assertEqual(self.captured.getvalue(), '')
+        self.assertEqual(os.listdir(self.path), ['Events'])
+        self.assertEqual(cmd.results.current['run_name'], 'run_01_decayed_1')
+        self.assertEqual(cmd.results.current['nb_event'], 200)
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7MeFrameTest(unittest.TestCase):
+    """run_card me_frame -> the particle list the matrix element is boosted
+    into, and the number of incoming particles the boost starts from."""
+
+    # a collision of two gluons into a Z plus gluons, so that particle 3 is
+    # massive (a frame can be asked for it) and the others are not
+    MASSES = {21: 0.0, 23: 91.188}
+
+    def resolve(self, me_frame, is_decay, particle_count=4, outgoing=None):
+        """``outgoing``, if given, lists the final states of several
+        subprocesses of one output (g g > each of them)"""
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        process = object.__new__(mg7_launch.MadgraphProcess)
+        process.run_card = {'run': {'me_frame': me_frame}}
+        process.is_decay = is_decay
+        incoming = [23] if is_decay else [21, 21]
+        if outgoing is None:
+            outgoing = [[23] + [21] * (particle_count - len(incoming) - 1)]
+        process.subprocess_data = [{'incoming': incoming, 'outgoing': final}
+                                   for final in outgoing]
+        process.get_mass = lambda pid: self.MASSES[pid]
+        process.init_me_frame()
+        return process.me_frame, process.incoming_count
+
+    def test_the_default_applies_no_boost(self):
+        """[] is the default: the matrix element sees the momenta in the frame
+        they are generated in, which is what mg7 did before me_frame existed."""
+        self.assertEqual(self.resolve([], False), ([], 2))
+        self.assertEqual(self.resolve([], True), ([], 1))
+
+    def test_an_explicit_frame_is_passed_through(self):
+        self.assertEqual(self.resolve([1, 2], False), ([1, 2], 2))
+        self.assertEqual(self.resolve([3], False), ([3], 2))   # the Z, massive
+        self.assertEqual(self.resolve([3, 4], False), ([3, 4], 2))
+
+    def test_a_decay_keeps_what_the_card_asks_for(self):
+        """[1] is a decay's equivalent of the partonic centre of mass, but the
+        card is never second-guessed: [1, 2] on a decay is the rest frame of
+        the decaying particle plus the first decay product, and is left alone."""
+        self.assertEqual(self.resolve([1], True), ([1], 1))
+        self.assertEqual(self.resolve([1, 2], True), ([1, 2], 1))
+
+    def test_a_massless_particle_has_no_rest_frame(self):
+        """Boosting to it divides by its vanishing mass and turns every
+        momentum into a NaN, with nothing to say what went wrong."""
+        with self.assertRaises(ValueError) as caught:
+            self.resolve([4], False)          # leg 4 is a gluon
+        self.assertIn('massless', str(caught.exception))
+        # two particles whose sum is massive are fine, even if each is massless
+        self.assertEqual(self.resolve([2, 4], False), ([2, 4], 2))
+
+    def test_out_of_range_particle_is_rejected_before_the_compile(self):
+        """madspace would catch this too, but only once the integrands are
+        built -- after every matrix-element library has been compiled."""
+        with self.assertRaises(ValueError) as caught:
+            self.resolve([5], False, particle_count=4)
+        self.assertIn('4 external particles', str(caught.exception))
+        with self.assertRaises(ValueError):
+            self.resolve([0], False)
+
+    def test_mixed_multiplicities_check_every_subprocess(self):
+        """An output can mix multiplicities (MLM merging). Every subprocess is
+        checked against its own particles, whichever comes first: the bigger
+        one first used to pass the range check, and the massless check then
+        indexed past the end of the smaller one (a bare IndexError)."""
+        mixed = [[23, 21, 21], [23, 21]]      # g g > z g g and g g > z g
+        for outgoing in (mixed, mixed[::-1]):
+            for me_frame in ([5], [3, 5]):
+                with self.assertRaises(ValueError) as caught:
+                    self.resolve(me_frame, False, outgoing=outgoing)
+                message = str(caught.exception)
+                self.assertIn('me_frame particle 5 out of range', message)
+                self.assertIn('21 21 > 23 21 has 4 external particles',
+                              message)
+                self.assertIn('mixes subprocesses with 4, 5', message)
+            # a particle every subprocess has is fine
+            self.assertEqual(self.resolve([3], False, outgoing=outgoing),
+                             ([3], 2))
+            self.assertEqual(self.resolve([3, 4], False, outgoing=outgoing),
+                             ([3, 4], 2))
+
+    def test_the_massless_check_covers_every_subprocess(self):
+        """Particle 4 is a Z in g g > z z g but a gluon in g g > z g."""
+        with self.assertRaises(ValueError) as caught:
+            self.resolve([4], False, outgoing=[[23, 23, 21], [23, 21]])
+        self.assertIn('massless (pdg [21])', str(caught.exception))
+        self.assertEqual(
+            self.resolve([4], False, outgoing=[[23, 23, 21], [23, 23]]),
+            ([4], 2))
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class TestForceLHEOutput(unittest.TestCase):
+    """The events are written as npy by default; the run_card is switched to
+    the LHE format only when something that reads LHE will run."""
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch
+        from madgraph.various.banner import RunCardMG7
+        self.launch = launch
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.cwd = os.getcwd()
+        os.chdir(self.tmpdir.name)
+        os.mkdir('Cards')
+        template = os.path.join(os.path.dirname(launch.__file__),
+                                'run_card.toml')
+        RunCardMG7().write(self.card, template=template)
+
+    def tearDown(self):
+        os.chdir(self.cwd)
+        self.tmpdir.cleanup()
+
+    card = os.path.join('Cards', 'run_card.toml')
+
+    def output_format(self):
+        import tomllib
+        with open(self.card, 'rb') as f:
+            return tomllib.load(f)['run']['output_format']
+
+    def edit(self, old, new):
+        with open(self.card) as f:
+            text = f.read()
+        self.assertIn(old, text)
+        with open(self.card, 'w') as f:
+            f.write(text.replace(old, new, 1))
+
+    def test_default_is_npy(self):
+        self.assertEqual(self.output_format(), 'lhe_npy')
+
+    def test_nothing_to_do_keeps_npy(self):
+        self.launch.force_lhe_output_if_needed({})
+        self.launch.force_lhe_output_if_needed(
+            {'shower': 'OFF', 'detector': 'Not Avail.', 'analysis': 'ExRoot',
+             'madspin': 'OFF', 'reweight': 'OFF'})
+        self.assertEqual(self.output_format(), 'lhe_npy')
+
+    def test_tool_forces_lhe(self):
+        self.launch.force_lhe_output_if_needed({'shower': 'Pythia8'})
+        self.assertEqual(self.output_format(), 'lhe')
+
+    def test_time_of_flight_forces_lhe(self):
+        self.edit('time_of_flight = -1.0', 'time_of_flight = 0.5')
+        self.launch.force_lhe_output_if_needed({})
+        self.assertEqual(self.output_format(), 'lhe')
+
+    def test_legacy_systematics_forces_lhe_only_without_native(self):
+        self.edit('\nsystematics = false', '\nsystematics = true')
+        self.launch.force_lhe_output_if_needed({})
+        # madspace computes the weights itself: systematics.py never runs
+        self.assertEqual(self.output_format(), 'lhe_npy')
+        with open(self.card) as f:
+            text = f.read()
+        start = text.index('[systematics]')
+        end = text.index('enable = true', start)
+        with open(self.card, 'w') as f:
+            f.write(text[:end] + 'enable = false' + text[end + 13:])
+        self.launch.force_lhe_output_if_needed({})
+        self.assertEqual(self.output_format(), 'lhe')
+
+    def test_scan_card_survives(self):
+        """A scan value is not a valid RunCardMG7 entry: the card is edited
+        as text, and only on its output_format line."""
+        self.edit('ebeam1 = 6500.0', 'ebeam1 = "scan:[6500, 7000]"')
+        self.launch.force_lhe_output_if_needed({})
+        self.launch.force_lhe_output_if_needed({'madspin': 'ON'})
+        self.assertEqual(self.output_format(), 'lhe')
+        with open(self.card) as f:
+            self.assertIn('ebeam1 = "scan:[6500, 7000]"', f.read())
+
+    def test_missing_output_format_line(self):
+        with open(self.card, 'w') as f:
+            f.write('[run]\nseed = 3\n')
+        self.launch.force_lhe_output_if_needed({'reweight': 'ON'})
+        self.assertEqual(self.output_format(), 'lhe')
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class TestNpyToLHE(unittest.TestCase):
+    """npy_to_lhe rebuilds the LHE file of an npy run from the header.lhe
+    written next to the events (the compact_npy completion is covered by comparing a
+    real run against its output_format = "lhe" twin, which needs a process)."""
+
+    def setUp(self):
+        import numpy as np
+        from madgraph.iolibs.template_files.mg7 import npy_to_lhe
+        self.np = np
+        self.npy_to_lhe = npy_to_lhe
+        self.ms = npy_to_lhe._madspace()
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.run = os.path.join(self.tmpdir.name, 'Events', 'run_01')
+        os.makedirs(self.run)
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    def write_lhe_npy(self):
+        """Two e+ e- > mu+ mu- events in the lhe_npy layout, the second one
+        padded with an empty particle slot."""
+        fields = [('process_id', '<i4'), ('weight', '<f8'), ('scale', '<f8'),
+                  ('alpha_qed', '<f8'), ('alpha_qcd', '<f8'),
+                  ('rwgt_1', '<f8'), ('rwgt_2', '<f8')]
+        names = ('pdg_id', 'status_code', 'mother1', 'mother2', 'color',
+                 'anti_color', 'px', 'py', 'pz', 'energy', 'mass', 'lifetime',
+                 'spin')
+        for i in range(5):
+            fields += [('part%d_%s' % (i + 1, n), '<i4' if j < 6 else '<f8')
+                       for j, n in enumerate(names)]
+        events = self.np.zeros(2, dtype=fields)
+        rows = [(-11, -1, 0, 0, 0, 0, 0., 0., 500., 500.),
+                (11, -1, 0, 0, 0, 0, 0., 0., -500., 500.),
+                (-13, 1, 1, 2, 0, 0, 100., 0., 489.9, 500.),
+                (13, 1, 1, 2, 0, 0, -100., 0., -489.9, 500.)]
+        for n in range(2):
+            events['weight'][n] = 0.5
+            events['scale'][n] = 1000.
+            events['rwgt_1'][n] = 0.4 + n
+            events['rwgt_2'][n] = 0.6
+            for i, row in enumerate(rows):
+                for name, value in zip(names, row):
+                    events['part%d_%s' % (i + 1, name)][n] = value
+        self.np.save(os.path.join(self.run, 'events.npy'), events)
+
+    def save_meta(self):
+        """The header.lhe an npy run writes next to its events."""
+        ms = self.ms
+        meta = ms.LHEMeta(
+            beam1_pdg_id=-11, beam2_pdg_id=11, beam1_energy=500.,
+            beam2_energy=500., beam1_pdf_id=-1, beam2_pdf_id=-1,
+            weight_mode=3, processes=[ms.LHEProcess(0.5, 0.01, 0.5, 1)],
+            headers=[ms.LHEHeader(name="MG7Seed", content="7"),
+                     ms.LHEHeader(name="initrwgt",
+                                  content='<weight id="1">a</weight>')])
+        writer = ms.LHEFileWriter(os.path.join(self.run, 'header.lhe'), meta)
+        del writer
+
+    def test_lhe_npy_round_trip(self):
+        from madgraph.various import lhe_parser
+        self.write_lhe_npy()
+        self.save_meta()
+        output = self.npy_to_lhe.convert('run_01', me_dir=self.tmpdir.name)
+        self.assertEqual(output, os.path.join(self.run, 'events.lhe.gz'))
+        lhe = lhe_parser.EventFile(output)
+        self.assertIn('<MG7Seed>', lhe.banner)
+        self.assertIn('<initrwgt>', lhe.banner)
+        events = list(lhe)
+        self.assertEqual(len(events), 2)
+        self.assertEqual([p.pid for p in events[0]], [-11, 11, -13, 13])
+        self.assertEqual([p.status for p in events[1]], [-1, -1, 1, 1])
+        self.assertAlmostEqual(events[0][2].px, 100.)
+        self.assertAlmostEqual(events[1].wgt, 0.5)
+        self.assertEqual(events[1].parse_reweight(), {'1': 1.4, '2': 0.6})
+
+    def test_default_picks_unconverted_run(self):
+        self.write_lhe_npy()
+        self.save_meta()
+        self.npy_to_lhe.main(['--no-gzip'], me_dir=self.tmpdir.name)
+        self.assertTrue(os.path.exists(os.path.join(self.run, 'events.lhe')))
+        with self.assertRaises(SystemExit):
+            # nothing left to convert
+            self.npy_to_lhe.main([], me_dir=self.tmpdir.name)
+
+    def test_run_without_saved_header(self):
+        self.write_lhe_npy()
+        self.assertFalse(self.npy_to_lhe.can_convert(self.run))
+        with self.assertRaises(FileNotFoundError):
+            self.npy_to_lhe.convert(self.run)
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class TestHistogramSwitches(unittest.TestCase):
+    """[run] weighted_histograms / postprocessing_histograms."""
+
+    def test_defaults(self):
+        from madgraph.various.banner import RunCardMG7
+        card = RunCardMG7()
+        self.assertIs(card['run']['weighted_histograms'], False)
+        self.assertIs(card['run']['postprocessing_histograms'], True)
+
+    def test_mean_ignores_under_and_overflow(self):
+        """Both histogram kinds carry the under/overflow bins first and last;
+        they have no position and must not shift the in-range bins."""
+        from madgraph.iolibs.template_files.mg7 import launch
+        mean = launch.MadgraphProcess._histogram_mean
+        # bins [0,10) and [10,20) with weights 1 and 3, plus 100 in overflow
+        self.assertAlmostEqual(mean(0., 20., [5., 1., 3., 100.]), 12.5)
+        self.assertIsNone(mean(0., 20., [5., 0., 0., 100.]))
+
+    def test_postprocessing_off_builds_no_event_histograms(self):
+        from madgraph.iolibs.template_files.mg7 import launch
+        from madgraph.various.banner import RunCardMG7
+        process = launch.MadgraphProcess.__new__(launch.MadgraphProcess)
+        process.run_card = RunCardMG7()
+        process.run_card['run']['postprocessing_histograms'] = False
+        process.hist_data = [launch.HistItem(None, 0., 1., 10, 'weight', True)]
+        self.assertIsNone(process.build_event_histograms())
+        self.assertIsNone(process.event_histograms)
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7ObservablePidsTest(unittest.TestCase):
+    """Which pdg ids a cut or histogram observable is built with.
+
+    Group selections work on clean_pids' unsigned representatives, but a
+    same-flavour opposite-sign pair needs the signed pdg ids of the actual
+    flavours, consistent over every flavour a subprocess groups together."""
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        self.launch = mg7_launch
+
+    @staticmethod
+    def meta(outgoing, options):
+        return {
+            'incoming': [81, -81],
+            'outgoing': outgoing,
+            'flavors': [{'index': i, 'options': [option], 'mirror': False}
+                        for i, option in enumerate(options)],
+        }
+
+    @staticmethod
+    def kwargs(observable, groups=([11, -11, 13, -13],)):
+        return {'observable': observable, 'select_pids': list(groups),
+                'name': 'lepton-%s' % observable}
+
+    def test_unsigned_observables_keep_the_representatives(self):
+        meta = self.meta([-82, 82, 21, 21], [[2, -2, -11, 11, 21, 21]])
+        self.assertEqual(
+            self.launch.observable_pids(meta, self.kwargs('pair_mass')),
+            [1, 1, 11, 11, 21, 21])
+
+    def test_sfos_gets_the_signed_flavours(self):
+        meta = self.meta([-82, 82, 21, 21], [[2, -2, -11, 11, 21, 21],
+                                             [4, -4, -13, 13, 21, 21]])
+        self.assertEqual(
+            self.launch.observable_pids(meta, self.kwargs('sfos_pair_mass')),
+            [2, -2, -11, 11, 21, 21])
+
+    def test_sfos_refuses_flavours_that_pair_differently(self):
+        # e+ e- mu+ mu- and e+ mu- mu+ e-: the same momenta, different pairs
+        meta = self.meta([-82, 82, -82, 82], [[2, -2, -11, 11, -13, 13],
+                                              [2, -2, -11, 13, -13, 11]])
+        with self.assertRaises(ValueError) as error:
+            self.launch.observable_pids(meta, self.kwargs('sfos_pair_mass'))
+        self.assertIn('apply_flavor_grouping', str(error.exception))
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7DecayProductsTest(unittest.TestCase):
+    """Which particles phasespace.cut_decays = false leaves uncut: those an
+    on-shell (decay-chain) propagator decays into, as MadEvent's check_decay."""
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+        self.launch = mg7_launch
+
+    @staticmethod
+    def meta(vertices, on_shell, permutation=(0, 1, 2, 3, 4)):
+        # p p > z j, z > e+ e-: outgoing e+ e- j
+        return {
+            'incoming': [21, 81],
+            'outgoing': [-82, 82, 81],
+            'channels': [{
+                'propagators': [81, 23],
+                'vertices': vertices,
+                'on_shell_propagators': on_shell,
+                'diagrams': [{'diagram': 1, 'permutation': list(permutation)}],
+            }],
+        }
+
+    def test_the_decay_chain_products(self):
+        meta = self.meta([['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
+                          ['p0', 'o2', 'p1']], [1])
+        self.assertEqual(self.launch.decay_products(meta), {0, 1})
+
+    def test_no_decay_chain(self):
+        meta = self.meta([['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
+                          ['p0', 'o2', 'p1']], [])
+        self.assertEqual(self.launch.decay_products(meta), set())
+
+    def test_a_propagator_built_from_the_beams(self):
+        # p1 = i0 + i1 - o2: it decays to everything but o2
+        meta = self.meta([['i0', 'i1', 'p0'], ['p0', 'o2', 'p1'],
+                          ['o0', 'o1', 'p1']], [1])
+        self.assertEqual(self.launch.decay_products(meta), {0, 1})
+
+    def test_read_through_the_permutation(self):
+        # event[i] = topology[permutation[i]]: the topology's o0, o1 sit at
+        # event outgoing positions 1 and 2
+        meta = self.meta([['i1', 'i0', 'p0'], ['o0', 'o1', 'p1'],
+                          ['p0', 'o2', 'p1']], [1], permutation=(0, 1, 4, 2, 3))
+        self.assertEqual(self.launch.decay_products(meta), {1, 2})
 
 
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),

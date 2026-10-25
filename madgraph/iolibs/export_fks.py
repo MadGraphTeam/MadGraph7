@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import string
 import copy
+import errno
 import platform
 
 import madgraph
@@ -34,6 +35,8 @@ import madgraph.core.base_objects as base_objects
 import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.fks.fks_base as fks
 import madgraph.fks.fks_common as fks_common
+import fractions
+import math
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.gen_infohtml as gen_infohtml
 import madgraph.iolibs.files as files
@@ -49,8 +52,8 @@ import madgraph.various.shower_card as shower_mod
 
 import aloha.create_aloha as create_aloha
 
-import models.write_param_card as write_param_card
-import models.check_param_card as check_param_card
+import madgraph.models.write_param_card as write_param_card
+import madgraph.models.check_param_card as check_param_card
 from madgraph import MadGraph5Error, MG5DIR, InvalidCmd
 from madgraph.iolibs.files import cp, ln, mv
 pjoin = os.path.join
@@ -92,6 +95,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
 
+    # When True (default), born.f carries the colour-linked Borns itself:
+    # the Born JAMPs are contracted with one colour matrix per link, all
+    # expressed in the Born colour basis (see
+    # fks_common.born_basis_link_matrices). False restores the former layout:
+    # one b_sf_NNN.f per link, each with its own colour basis.
+    born_color_links_in_born = True
+
 #===============================================================================
 # copy the Template in a new directory.
 #===============================================================================
@@ -114,14 +124,6 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             misc.copytree(os.path.join(mgme_dir, 'Template', 'NLO'), dir_path, True)
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),dir_path)
-            # Copy plot_card
-            for card in ['plot_card']:
-                if os.path.isfile(pjoin(self.dir_path, 'Cards',card + '.dat')):
-                    try:
-                        shutil.copy(pjoin(self.dir_path, 'Cards', card + '.dat'),
-                                   pjoin(self.dir_path, 'Cards', card + '_default.dat'))
-                    except IOError:
-                        logger.warning("Failed to move " + card + ".dat to default")
             
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:
@@ -323,7 +325,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
           pjoin('iolibs','files.py'),
           pjoin('iolibs','save_load_object.py'),
           pjoin('iolibs','file_writers.py'),
-          pjoin('..','models','check_param_card.py'),
+          pjoin('models','check_param_card.py'),
           pjoin('__init__.py')
         ]
         cp(_file_path+'/interface/.mg5_logging.conf', 
@@ -334,8 +336,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 pjoin(self.dir_path,'bin','internal',os.path.basename(cp_file)))
 
     def convert_model(self, model, wanted_lorentz = [], 
-                                                         wanted_couplings = []):
+                                            wanted_couplings = [], **opts):
 
+        # npwave (if any) is deliberately not forwarded: the FKS output has no
+        # dual-number HELAS library.
         super(ProcessExporterFortranFKS,self).convert_model(model, 
                                                wanted_lorentz, wanted_couplings)
         
@@ -467,6 +471,45 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         
         
     #===============================================================================
+    # mkdir_born_dir
+    #===============================================================================
+    def mkdir_born_dir(self, borndir, process):
+        """Create the P<shell_string> directory of one born matrix element.
+
+        shell_string() concatenates particle names and polarization labels
+        with no separator, and every FKS born process carries id 0, so two
+        distinct matrix elements can ask for the same name: 'p p > w+ L{-}'
+        and 'p p > w+{-} L' both give 0_uu_wpLL.  Defence in depth -- replace
+        the opaque FileExistsError with one naming both processes.
+        """
+        # lazy rather than in __init__: this class defines none of its own.
+        if not hasattr(self, 'born_dirs'):
+            # directory name -> the process which claimed it
+            self.born_dirs = {}
+        try:
+            os.mkdir(borndir)
+        except OSError as error:
+            if error.errno != errno.EEXIST:
+                raise
+            # low_mem_multicore_nlo_generation forks: each worker has its own
+            # born_dirs copy, so the previous owner may be unknown here.
+            previous = self.born_dirs.get(borndir)
+            msg = ["Cannot create the subprocess directory '%s' in %s: it already exists." \
+                       % (borndir, os.getcwd()),
+                   "Two different matrix elements are asking for the same directory name.",
+                   "  wants it now : %s" % process.nice_string(prefix=False).strip()]
+            if previous is not None:
+                msg.append("  already there: %s" % previous)
+            else:
+                msg.append("  already there: another matrix element of this output "
+                           "(written by a parallel worker; rerun with "
+                           "'set low_mem_multicore_nlo_generation False' to see which one)")
+            msg.append("This is a name clash, not a duplicated process: "
+                       "Process.shell_string() gave both of them the name '%s'." % borndir)
+            raise MadGraph5Error('\n'.join(msg))
+        self.born_dirs[borndir] = process.nice_string(prefix=False).strip()
+
+    #===============================================================================
     # generate_directories_fks
     #===============================================================================
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
@@ -494,7 +537,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         #first make and cd the direcrory corresponding to the born process:
         borndir = "P%s" % \
         (matrix_element.born_me.get('processes')[0].shell_string())
-        os.mkdir(borndir)
+        self.mkdir_born_dir(borndir, matrix_element.born_me.get('processes')[0])
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
 
@@ -608,6 +651,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                               matrix_element,
                               fortran_model)
 
+        filename = 'frame_info.inc'
+        self.write_frame_info_file(writers.FortranWriter(filename),
+                              matrix_element)
+
         filename = 'maxconfigs.inc'
         self.write_maxconfigs_file(writers.FortranWriter(filename),
                 max(nconfigs,matrix_element.born_me.get_number_of_amplitudes()))
@@ -711,6 +758,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'weight_lines.f',
                      'genps_fks.f',
                      'boostwdir2.f',
+                     'boost_to_frame.f',
                      'madfks_mcatnlo.inc',
                      'open_output_files.f',
                      'open_output_files_dummy.f',
@@ -1748,6 +1796,36 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         writer.writelines(lines)
 
 
+    def write_frame_info_file(self, writer, matrix_element):
+        """Write frame_info.inc, the bridge between the me_frame entries of the
+        run_card and the leg positions the fortran actually uses.
+
+        me_frame is given in the numbering of the process as the user wrote it,
+        but sort_proc() reorders and renumbers the born legs, so the two do not
+        coincide. frame_map_born(i) is the user number of the born leg sitting
+        at position i.
+
+        No table is needed for the real emissions: the FKS convention fixes the
+        real->born correspondence in terms of i_fks alone (see set_pdg in
+        chooser_functions.f), so get_frame_mask_real derives it at runtime.
+        """
+        born_legs = matrix_element.born_me.get('processes')[0].get('legs')
+        nexternal_born = len(born_legs)
+
+        user_order = getattr(matrix_element, 'user_leg_order', [])
+        if len(user_order) != nexternal_born:
+            # No recorded ordering (e.g. a matrix element built by hand in the
+            # tests). Fall back to the identity: correct whenever the FKS sort
+            # left the user's ordering alone, which is the common case.
+            user_order = list(range(1, nexternal_born + 1))
+
+        lines = []
+        lines.append("integer frame_map_born(nexternal-1)")
+        lines.append("data frame_map_born /%s/" % \
+                     ','.join('%d' % n for n in user_order))
+        writer.writelines(lines)
+
+
     def write_maxconfigs_file(self, writer, maxconfigs):
         """Write the maxconfigs.inc file for MadEvent"""
         lines = "integer lmaxconfigs\n"
@@ -2096,6 +2174,9 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         if proc_type=='born':
             file = open(pjoin(_file_path, \
             'iolibs/template_files/bornmatrix_splitorders_fks.inc')).read()
+        elif proc_type=='born_links':
+            file = open(pjoin(_file_path, \
+            'iolibs/template_files/bornmatrix_colorlinks_fks.inc')).read()
         elif proc_type=='bhel':
             file = open(pjoin(_file_path, \
             'iolibs/template_files/born_hel_splitorders_fks.inc')).read()
@@ -2183,9 +2264,15 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         else:
             born_dict['skip_amp_cnt'] = ''
 
+        if self.born_color_links_in_born:
+            born_dict.update(self.get_born_color_link_dict(matrix_element))
+            born_type = 'born_links'
+        else:
+            born_type = 'born'
+
         calls_born, ncolor_born, norders, nsqorders = \
             self.write_split_me_fks(writers.FortranWriter(filename),
-                                    born_me, fortran_model, 'born', '',
+                                    born_me, fortran_model, born_type, '',
                                     start_dict = born_dict)
 
         filename = 'born_maxamps.inc'
@@ -2210,6 +2297,9 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
     
         self.color_link_files = [] 
         for j in range(len(matrix_element.color_links)):
+            if self.born_color_links_in_born:
+                # the colour-linked Borns live in born.f (SB_SF_LINK)
+                break
             filename = 'b_sf_%3.3d.f' % (j + 1)
             self.color_link_files.append(filename)
             self.write_b_sf_fks(writers.FortranWriter(filename),
@@ -2420,8 +2510,22 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                       'The OLP could not process the following line: \n%s'%line)
         
         return proc_def_to_label
-            
-                                
+
+
+    def write_bornmatrix(self, writer, matrix_element, fortran_model):
+        """Write born_matrix.f in the MadLoop V* directory. check_sudakov.f in
+        the P* directory above it includes the nsqso_born.inc written next to
+        born_matrix.f, so copy that file one level up."""
+
+        calls = super(ProcessExporterFortranFKS, self).write_bornmatrix(
+                                         writer, matrix_element, fortran_model)
+        nsqso_born = pjoin(os.path.dirname(os.path.abspath(writer.name)),
+                           'nsqso_born.inc')
+        if os.path.exists(nsqso_born):
+            files.cp(nsqso_born, pjoin(os.path.dirname(nsqso_born),
+                                       os.path.pardir))
+        return calls
+
     def generate_virt_directory(self, loop_matrix_element, fortran_model, dir_name):
         """writes the V**** directory inside the P**** directories specified in
         dir_name"""
@@ -2830,6 +2934,10 @@ Parameters              %(params)s\n\
 
         replace_dict['nsqorders'] = nsqorders
         replace_dict['iflines_col'] = ''
+        if self.born_color_links_in_born:
+            call = 'call sb_sf_link(p_born,%(ilink)d,wgt_col)'
+        else:
+            call = 'call sb_sf_%(ilink)3.3d(p_born,wgt_col)'
          
         for i, c_link in enumerate(color_links):
             ilink = i+1
@@ -2839,14 +2947,14 @@ Parameters              %(params)s\n\
                 replace_dict['iflines_col'] += \
                 "c link partons %(m)d and %(n)d \n\
                     %(iff)s ((m.eq.%(m)d .and. n.eq.%(n)d).or.(m.eq.%(n)d .and. n.eq.%(m)d)) then \n\
-                    call sb_sf_%(ilink)3.3d(p_born,wgt_col)\n" \
-                    % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
+                    " % {'m':m, 'n': n, 'iff': iff} + \
+                    call % {'ilink': ilink} + "\n"
             else:
                 replace_dict['iflines_col'] += \
                 "c link partons %(m)d and %(n)d \n\
                     %(iff)s (m.eq.%(m)d .and. n.eq.%(n)d) then \n\
-                    call sb_sf_%(ilink)3.3d(p_born,wgt_col)\n" \
-                    % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
+                    " % {'m':m, 'n': n, 'iff': iff} + \
+                    call % {'ilink': ilink} + "\n"
 
         
         if replace_dict['iflines_col']:
@@ -2861,6 +2969,207 @@ Parameters              %(params)s\n\
         writer.writelines(file)
 
     
+    def get_born_color_link_dict(self, matrix_element):
+        """The replace_dict entries of the born.f template carrying the
+        colour-linked Borns (born_color_links_in_born): the number of links
+        and the DATA lines of all the colour matrices, the Born one (index 0)
+        and one per colour link (index 1..nlinks, the order of
+        matrix_element.color_links, i.e. of sborn_sf and born_links.dat),
+        all in the Born colour basis."""
+        born_me = matrix_element.born_me
+        col_basis = born_me.get('color_basis')
+        ncolor = max(1, len(col_basis))
+
+        # the Born colour matrix
+        if born_me.get('color_matrix'):
+            cm = born_me.get('color_matrix').col_matrix_fixed_Nc
+            born = {}
+            for i in range(ncolor):
+                for j in range(ncolor):
+                    val, imag = cm[(i, j)]
+                    born[(i, j)] = (fractions.Fraction(0), fractions.Fraction(val)) \
+                                   if imag else (fractions.Fraction(val), fractions.Fraction(0))
+        else:
+            born = {(0, 0): (fractions.Fraction(1), fractions.Fraction(0))}
+        matrices = [born]
+
+        # the colour links, found exactly as FKSHelasProcess.set_color_links
+        if len(col_basis):
+            legs = born_me.get('base_amplitude').get('process').get('legs')
+            model = born_me.get('base_amplitude').get('process').get('model')
+            links_info = fks_common.find_color_links(
+                fks_common.to_fks_legs(legs, model), symm=True,
+                pert=matrix_element.perturbation)
+            link_mats = fks_common.born_basis_link_matrices(col_basis,
+                                                            links_info)
+            if [l['link'] for l in link_mats] != \
+               [l['link'] for l in matrix_element.color_links]:
+                raise MadGraph5Error('colour links in the Born basis do not '
+                                     'match the ones of the matrix element')
+            matrices += [l['matrix'] for l in link_mats]
+        else:
+            # colourless Born: only charge links, which sborn_sf builds from
+            # the charges and the Born, never from a colour matrix
+            matrices += [{} for l in matrix_element.color_links]
+
+        lines = self.get_color_link_data_lines(matrices, ncolor)
+        out = {'nlinks': len(matrices) - 1,
+               'color_link_data_lines': '\n'.join(lines)}
+        out.update(self.get_born_coupling_check_dict(born_me))
+        return out
+
+    @staticmethod
+    def get_born_coupling_check_dict(born_me):
+        """The replace_dict entries with which the Born of born.f records
+        the couplings its amplitudes are computed with, and compares them
+        before reusing cached amplitudes (see set_ren_scale). If a coupling
+        is not a plain Fortran name the check is switched off
+        (born_checks_amps false) and the cached amplitudes are discarded
+        as before.
+
+        When only the strong coupling changed (set_alphaS, e.g. the Born
+        of the MC counterterm at the coupling of the real emission), the
+        Born rescales its cached amplitudes instead of recomputing them
+        ('gscale', BORN_GSCALE): each amplitude by (G'/G)**n, n its QCD
+        order, so that every split order gets its own power. It does so
+        only if every coupling it uses changed by (G'/G)**n, n the QCD
+        order of its interaction, which SBORN checks at run time with
+        the coup_gscale_lines."""
+        out = ProcessExporterFortranFKS.get_born_gscale_data(born_me)
+        names = []
+        for c in born_me.get_used_couplings(output="set"):
+            names.extend(c if isinstance(c, (list, tuple)) else [c])
+        names = sorted(set(names), key=lambda c: str(c))
+        if not names or not all(isinstance(c, str) and
+                re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', c) for c in names):
+            out.update({'ncoup_check': 1, 'coup_check_lines': '',
+                        'coup_record_lines': '', 'coup_gscale_lines': '',
+                        'born_checks_amps': '.FALSE.',
+                        'born_gscale': '.FALSE.'})
+            return out
+        check = ['         if (saved_coup(%d).ne.%s) coup_changed=.true.'
+                 % (i + 1, c) for i, c in enumerate(names)]
+        record = ['         saved_coup(%d)=%s' % (i + 1, c)
+                  for i, c in enumerate(names)]
+
+        # the QCD order of each coupling, from the interactions using it
+        coup_qcd = {}
+        gscale = True
+        for wa in born_me.get_all_wavefunctions() + \
+                  born_me.get_all_amplitudes():
+            if wa.get('interaction_id') in [0, -1]:
+                continue
+            nqcd = wa.get('orders').get('QCD', 0)
+            for c in wa.get('coupling'):
+                if not isinstance(c, str):
+                    gscale = False
+                    continue
+                c = c[1:] if c.startswith('-') else c
+                if coup_qcd.setdefault(c, nqcd) != nqcd:
+                    gscale = False
+        if any(c not in coup_qcd for c in names):
+            gscale = False
+        gscale_lines = ['            if (abs(%s-saved_coup(%d)*rpow(%d)).gt.'
+                        'gscale_tol*abs(%s)) gscaled=.false.'
+                        % (c, i + 1, coup_qcd.get(c, 0), c)
+                        for i, c in enumerate(names)]
+        out['maxqcdpow'] = max([out['maxqcdpow']] + list(coup_qcd.values()))
+        out.update({'ncoup_check': len(names),
+                    'coup_check_lines': '\n'.join(check),
+                    'coup_record_lines': '\n'.join(record),
+                    'coup_gscale_lines': '\n'.join(gscale_lines),
+                    'born_checks_amps': '.TRUE.',
+                    'born_gscale': '.TRUE.' if gscale and out['amp_qcd_ok']
+                                   else '.FALSE.'})
+        return out
+
+    @staticmethod
+    def get_born_gscale_data(born_me):
+        """The powers of the strong coupling with which BORN_GSCALE
+        rescales what the Born keeps from its last evaluation: AMPQCD for
+        each amplitude (its QCD order), AMPSOQCD for each amplitude split
+        order (the JAMPs and JAMP2) and SQSOQCD for each squared split
+        order (the result and the colour density RHO). With several split
+        orders these powers differ (e.g. QCD^2=4, QCD^2=2 QED^2=2 and
+        QED^2=4 for u u~ > t t~). The result, RHO and JAMP2 are rescaled
+        directly only if each split order has a single QCD power
+        (gscale_fast); otherwise only the amplitudes are, and SBORN redoes
+        the colour sums from them."""
+        ngraphs = born_me.get_number_of_amplitudes()
+        amp_qcd = {}
+        for diag in born_me.get('diagrams'):
+            nqcd = diag.calculate_orders().get('QCD', 0)
+            for amp in diag.get('amplitudes'):
+                amp_qcd[amp.get('number')] = nqcd
+        amp_qcd_ok = sorted(amp_qcd) == list(range(1, ngraphs + 1))
+
+        squared_orders, amp_orders = born_me.get_split_orders_mapping()
+        ampso_qcd = []
+        for orders, numbers in amp_orders:
+            powers = set(amp_qcd.get(n) for n in numbers)
+            ampso_qcd.append(powers.pop() if len(powers) == 1 else None)
+        sqso_qcd = [set() for _ in squared_orders]
+        for (orders1, _), q1 in zip(amp_orders, ampso_qcd):
+            for (orders2, _), q2 in zip(amp_orders, ampso_qcd):
+                k = squared_orders.index(
+                    tuple(o1 + o2 for o1, o2 in zip(orders1, orders2)))
+                sqso_qcd[k].add(None if None in (q1, q2) else q1 + q2)
+        fast = amp_qcd_ok and None not in ampso_qcd and \
+               all(len(s) == 1 and None not in s for s in sqso_qcd)
+        ampso_qcd = [q if q is not None else 0 for q in ampso_qcd]
+        sqso_qcd = [max(s) if fast else 0 for s in sqso_qcd]
+        amps = [amp_qcd.get(n, 0) for n in range(1, ngraphs + 1)]
+
+        def data_lines(name, values, n=64):
+            lines = []
+            for start in range(0, len(values), n):
+                chunk = values[start:start + n]
+                lines.append('      DATA (%s(I),I=%d,%d) /%s/' % (
+                    name, start + 1, start + len(chunk),
+                    ','.join('%d' % v for v in chunk)))
+            return lines
+
+        lines = data_lines('AMPQCD', amps) + \
+                data_lines('AMPSOQCD', ampso_qcd) + \
+                data_lines('SQSOQCD', sqso_qcd) + \
+                ['      DATA GSCALE_FAST /%s/' % ('.TRUE.' if fast
+                                                 else '.FALSE.')]
+        return {'gscale_data_lines': '\n'.join(lines),
+                'maxqcdpow': max([1, max(sqso_qcd or [0])] +
+                                 [2 * q for q in amps + ampso_qcd]),
+                'amp_qcd_ok': amp_qcd_ok}
+
+    @staticmethod
+    def get_color_link_data_lines(matrices, ncolor, n=64):
+        """DATA lines for CF(NCOLOR*(NCOLOR+1)/2, 0:NLINKS) and
+        DENOM(0:NLINKS): for each (real, symmetric) matrix the upper
+        triangle, row by row, off-diagonal entries doubled, as integers over
+        the common denominator of the matrix."""
+        lines = []
+        for ilink, mat in enumerate(matrices):
+            den = 1
+            for (i, j), (re, im) in mat.items():
+                if im != 0:
+                    raise MadGraph5Error('complex colour matrix %d' % ilink)
+                if mat.get((j, i), (0, 0)) != (re, im):
+                    raise MadGraph5Error('non-symmetric colour matrix %d'
+                                         % ilink)
+                den = den * fractions.Fraction(re).denominator // \
+                      math.gcd(den, fractions.Fraction(re).denominator)
+            vals = []
+            for i in range(ncolor):
+                for j in range(i, ncolor):
+                    num = fractions.Fraction(mat.get((i, j), (0, 0))[0]) * den
+                    assert num.denominator == 1
+                    vals.append(int(num) * (1 if i == j else 2))
+            lines.append('DATA DENOM(%d)/%d/' % (ilink, den))
+            for start in range(0, len(vals), n):
+                chunk = vals[start:start + n]
+                lines.append('DATA (CF(I,%d),I=%d,%d) /%s/' % (
+                    ilink, start + 1, start + len(chunk),
+                    ','.join('%d' % v for v in chunk)))
+        return lines
+
     def get_sudakov_imag_power(self, base_me, sudakov_me):
         """return the exponent of I to account for the Z -> Chi replacement.
         Since the result is base * conj(sudakov), the exponent is the difference
@@ -4719,14 +5028,6 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
             # misc.copytree since dir_path already exists
             misc.copytree(pjoin(self.mgme_dir, 'Template', 'Common'),
                                dir_path)
-            # Copy plot_card
-            for card in ['plot_card']:
-                if os.path.isfile(pjoin(self.dir_path, 'Cards',card + '.dat')):
-                    try:
-                        shutil.copy(pjoin(self.dir_path, 'Cards', card + '.dat'),
-                                   pjoin(self.dir_path, 'Cards', card + '_default.dat'))
-                    except IOError:
-                        logger.warning("Failed to copy " + card + ".dat to default")
 
         elif not os.path.isfile(os.path.join(dir_path, 'TemplateVersion.txt')):
             if not mgme_dir:
@@ -5122,7 +5423,7 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         #first make and cd the direcrory corresponding to the born process:
         borndir = "P%s" % \
         (matrix_element.born_me.get('processes')[0].shell_string())
-        os.mkdir(borndir)
+        self.mkdir_born_dir(borndir, matrix_element.born_me.get('processes')[0])
         os.chdir(borndir)
         logger.info('Writing files in %s (%d / %d)' % (borndir, me_number + 1, me_ntot))
 
@@ -5251,3 +5552,243 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         self.dirstopdg.extend([(borndir, [l.get('id') for l in pp['legs']], [l.get('state') for l in pp['legs']].count(False)) for pp in matrix_element.born_me['processes']])
 
         return calls, amp_split_orders
+
+
+class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
+    """FKS Born building-block standalone output ('output standalone_fortran --fks').
+
+    The full optimized FKS directory is generated as usual (so the Born,
+    color/charge-linked Born and spin-correlated Born code is byte-for-byte
+    the production one). On top of that, each born subprocess directory gets
+    a self-contained driver (check_sa_fks.f) and the link-topology file
+    (born_links.dat) so that 'launch' can build and run a lightweight
+    Born-only 'check_fks' executable printing, for one phase-space point,
+    the Born B, the spin-correlated Born BORNTILDE and the linked Borns B_ij.
+    """
+
+    def generate_directories_fks(self, matrix_element, fortran_model, me_number,
+                                 me_ntot, path=os.getcwd(), OLP='MadLoop'):
+        """Run the regular FKS generation, then drop in the standalone
+        Born driver and its data files."""
+        result = super(ProcessExporterFortranFKS_SA, self).\
+            generate_directories_fks(matrix_element, fortran_model, me_number,
+                                     me_ntot, path, OLP)
+
+        borndir = "P%s" % \
+            matrix_element.born_me.get('processes')[0].shell_string()
+        born_path = os.path.join(path, borndir)
+
+        # masses of the born external legs (used by the driver to build the
+        # phase-space point with RAMBO)
+        self.write_pmass_file(
+            writers.FortranWriter(os.path.join(born_path, 'born_pmass.inc')),
+            matrix_element.born_me)
+
+        # the color/charge link topology
+        self.write_born_links_file(
+            os.path.join(born_path, 'born_links.dat'), matrix_element)
+
+        # the electric charges of the born legs (used by sborn_sf's charge
+        # branch for a [QED] correction)
+        self.write_born_charges_file(
+            os.path.join(born_path, 'born_charges.inc'), matrix_element)
+
+        # the (process-independent) standalone driver
+        shutil.copy(
+            os.path.join(_file_path, 'iolibs/template_files/check_sa_fks.f'),
+            os.path.join(born_path, 'check_sa_fks.f'))
+
+        if self.opt.get('fks_limits'):
+            # keep the real-emission / counterterm chain that
+            # test_soft_col_limits links; only the virtuals are never used
+            self.drop_virtuals(born_path)
+        else:
+            # strip the Born directory down to just what 'check_fks' needs
+            self.trim_born_dir(born_path)
+
+        return result
+
+    @staticmethod
+    def drop_virtuals(born_path):
+        """Remove the one-loop (MadLoop) directory and its resources: neither
+        check_fks nor test_soft_col_limits (which links BinothLHADummy) uses
+        them, and they are by far the heaviest part to compile."""
+        for heavy in glob.glob(os.path.join(born_path, 'V[0-9]*')) + \
+                [os.path.join(born_path, 'MadLoop5_resources')]:
+            if os.path.isdir(heavy) and not os.path.islink(heavy):
+                shutil.rmtree(heavy, ignore_errors=True)
+            elif os.path.lexists(heavy):
+                os.remove(heavy)
+
+    # the source files linked into the 'check_fks' executable, i.e. the FKSSA
+    # target of the P* makefile. Kept in sync with the makefile template;
+    # b_sf_*.f is globbed because the count is process dependent (a pure [QED]
+    # Born has none) and check_sa_fks.f is the driver we just copied in.
+    check_fks_sources = ('check_sa_fks.f', 'born.f', 'sborn_sf.f',
+                         'splitorders_stuff.f', 'orderstags_glob.f')
+    # the build file plus the run-time inputs the driver reads (the
+    # param_card.dat symlink and the link-topology data file), and the files
+    # the 'launch' flow itself touches in each P* directory. born_leshouche.inc
+    # is one such file: building libmodel runs 'aMCatNLO treatcards param',
+    # whose get_pid_final_initial_states() reads born_leshouche.inc from every
+    # P* directory to force the final-state widths to zero.
+    check_fks_runtime = ('makefile', 'param_card.dat', 'born_links.dat',
+                         'born_leshouche.inc')
+
+    def trim_born_dir(self, born_path):
+        """Delete every file in born_path that 'check_fks' does not need.
+
+        The Born-only check links only the FKSSA objects (born, sborn_sf, the
+        b_sf_* color/charge links, ...) and nothing else, so the rest of the
+        full FKS directory -- the one-loop virtuals (V*/MadLoop), the
+        real-emission matrix elements (matrix_*.f), and the whole
+        integration/shower/analysis driver chain -- is dead weight here and,
+        the virtuals especially, very heavy to compile. Keep only the compiled
+        sources, the transitive closure of the includes they pull in, the
+        makefile and the run-time data files; remove all the rest.
+        """
+        keep = set(self.check_fks_sources) | set(self.check_fks_runtime)
+        keep |= set(os.path.basename(f)
+                    for f in glob.glob(os.path.join(born_path, 'b_sf_*.f')))
+        # follow the 'include' statements of the compiled sources so that no
+        # needed .inc is dropped (a missed one would only surface as a build
+        # failure, which the acceptance suite would catch, but be safe here)
+        inc_re = re.compile(r"^\s*include\s+['\"]([^'\"]+)['\"]", re.IGNORECASE)
+        queue = [f for f in keep if f.endswith('.f')]
+        while queue:
+            src = os.path.join(born_path, queue.pop())
+            if not os.path.isfile(src):
+                continue
+            for line in open(src, errors='replace'):
+                m = inc_re.match(line)
+                if m and m.group(1) not in keep:
+                    keep.add(m.group(1))
+                    queue.append(m.group(1))
+        for name in os.listdir(born_path):
+            if name in keep:
+                continue
+            full = os.path.join(born_path, name)
+            if os.path.isdir(full) and not os.path.islink(full):
+                shutil.rmtree(full, ignore_errors=True)
+            else:
+                os.remove(full)
+
+    def write_born_links_file(self, filename, matrix_element):
+        """Write born_links.dat: the soft-link topology of the Born.
+
+        Format (flat, so a flavour-merging test can diff topology on its own):
+            line 1 : number of links
+            then    : 'm n pdg_m pdg_n col_m col_n itype' per link
+        where (m,n) are the born leg positions exactly as used by sborn_sf.f,
+        pdg/col come from the born legs, and itype is 0 (color) or 1 (charge).
+
+        For a [QCD] correction the links are the colour links between the
+        coloured Born legs (itype=0, the ones the b_sf_*.f files encode); for
+        a [QED] correction they are the charge links between every pair of
+        charged Born legs (itype=1). sborn_sf dispatches on the run-time
+        need_color_links/need_charge_links flags. The two cases use different
+        sources on purpose: the colour case must match the colour-basis
+        ordering of the b_sf files, whereas the charge case is a plain
+        enumeration of charged pairs (the colour-basis insertion drops the
+        colourless legs, e.g. the W bosons, which still carry charge links).
+
+        Whether this Born is colour- or charge-linked is taken from the first
+        FKS configuration's fks_info, the very one the driver selects with
+        NFKSPROCESS=1 (need_*_links_d(1)). This is the authoritative source:
+        the FKSProcess.perturbation attribute is unreliable here because it
+        keeps its 'QCD' default when the process is built from an amplitude.
+        """
+        model = matrix_element.born_me.get('base_amplitude').\
+            get('process').get('model')
+        born_legs = matrix_element.born_me.get('processes')[0].get('legs')
+        fks_legs = fks_common.to_fks_legs(born_legs, model)
+        pdg, col = {}, {}
+        for i, leg in enumerate(fks_legs):
+            pdg[i + 1] = leg.get('id')
+            col[i + 1] = leg.get('color')
+
+        # config 1 (NFKSPROCESS=1) decides the link type, matching the driver
+        fks_info = matrix_element.get_fks_info_list()[0]['fks_info']
+        lines = []
+        if fks_info['need_charge_links']:
+            for c_link in fks_common.find_color_links(fks_legs, symm=True,
+                                                      pert='QED'):
+                m = c_link['legs'][0].get('number')
+                n = c_link['legs'][1].get('number')
+                lines.append("%d %d %d %d %d %d %d" %
+                             (m, n, pdg[m], pdg[n], col[m], col[n], 1))
+        else:
+            for c_link in matrix_element.color_links:
+                m, n = c_link['link']
+                lines.append("%d %d %d %d %d %d %d" %
+                             (m, n, pdg[m], pdg[n], col[m], col[n], 0))
+
+        out = open(filename, 'w')
+        out.write("%d\n" % len(lines))
+        out.write("\n".join(lines))
+        out.write("\n")
+        out.close()
+
+    def write_born_charges_file(self, filename, matrix_element):
+        """Write born_charges.inc: fixed-form assignments filling the
+        /c_charges_born/ common with the electric charge of each Born leg.
+
+        sborn_sf's charge ([QED]) branch builds the charge-linked Born as
+        born * charges_born(m) * charges_born(n) * gal**2, so the driver needs
+        these charges; the colour ([QCD]) branch ignores them."""
+        model = matrix_element.born_me.get('base_amplitude').\
+            get('process').get('model')
+        born_legs = matrix_element.born_me.get('processes')[0].get('legs')
+        fks_legs = fks_common.to_fks_legs(born_legs, model)
+        lines = []
+        for i, leg in enumerate(fks_legs):
+            lines.append("      particle_charge_born(%d) = %19.15fd0" %
+                         (i + 1, leg.get('charge')))
+        out = open(filename, 'w')
+        out.write("\n".join(lines))
+        out.write("\n")
+        out.close()
+
+    def finalize(self, matrix_elements, history, mg5options, flaglist):
+        """Regular FKS finalize, plus a marker file so that 'launch' routes
+        to the lightweight Born 'check_fks' build/run instead of the full
+        aMC@NLO integration."""
+        result = super(ProcessExporterFortranFKS_SA, self).\
+            finalize(matrix_elements, history, mg5options, flaglist)
+        subproc = os.path.join(self.dir_path, 'SubProcesses')
+        open(os.path.join(subproc, 'check_sa_fks_mode'), 'w').write('1\n')
+        # the P*/makefile 'include's these run-time option files; the Born
+        # 'check_fks' target does not use their content, so empty stubs are
+        # enough to let make resolve the includes without a full run setup
+        for stub in ('analyse_opts', 'pythia8_opts'):
+            stub_path = os.path.join(subproc, stub)
+            if not os.path.isfile(stub_path):
+                open(stub_path, 'w').write('')
+        if self.opt.get('fks_limits'):
+            # marker for 'launch' to also run test_soft_col_limits, which
+            # links the analysis objects: use the dummy analysis (as the
+            # aMC@NLO launch does for its own tests)
+            open(os.path.join(subproc, 'check_sa_fks_limits'), 'w').write('1\n')
+            open(os.path.join(subproc, 'analyse_opts'), 'w').write(
+                'FO_ANALYSE=analysis_dummy.o dbook.o '
+                'open_output_files_dummy.o HwU_dummy.o\n')
+        return result
+
+    def create_run_card(self, processes, history):
+        """Regular NLO run_card, but with --limits use a built-in PDF set.
+
+        test_soft_col_limits only compares the real emission with its
+        counterterms, so PDF values never enter; hadronic beams are still
+        needed when an FKS parton is in the initial state (the momentum
+        fraction must vary), and setrun then initialises the PDF for
+        alpha_s(MZ). The built-in set keeps LHAPDF out of the check."""
+        super(ProcessExporterFortranFKS_SA, self).create_run_card(processes,
+                                                                  history)
+        if not self.opt.get('fks_limits'):
+            return
+        for name in ('run_card_default.dat', 'run_card.dat'):
+            path = pjoin(self.dir_path, 'Cards', name)
+            run_card = banner_mod.RunCardNLO(path)
+            run_card['pdlabel'] = 'nn23nlo'
+            run_card['reweight_pdf'] = [False]
+            run_card.write(path)

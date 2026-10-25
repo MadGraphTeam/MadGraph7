@@ -42,6 +42,91 @@ if madgraph.ordering:
 class NoDiagramException(InvalidCmd): pass
 
 #===============================================================================
+# Interference of two amplitude sets: 'left [LIxtree=QCD] right' (loop-induced
+# times tree, see loop_diagram_generation) and 'left [treextree] right'
+#===============================================================================
+INTERFERENCE_ORDER = base_objects.INTERFERENCE_ORDER
+# Output formats able to select squared split orders, hence to return the
+# interference alone (the others would give |A_left + A_right|^2): the Fortran
+# ones (GET_MATRIX) and the madmatrix ones (mg7, and standalone for the C++
+# matrix element), whose color sum pairs the amplitude split orders on every
+# backend, CPU and GPU (PR #244)
+TREE_INTERFERENCE_FORMATS = ['madevent', 'standalone_fortran', 'mg7',
+                             'standalone']
+
+def register_interference_order(model):
+    """Add the hidden coupling order tagging the right-hand amplitudes of an
+    interference process to the model, in memory and idempotently. Its
+    hierarchy is 0, so that the WEIGHTED order of every diagram is unchanged,
+    and no interaction carries it."""
+
+    if INTERFERENCE_ORDER not in model.get('order_hierarchy'):
+        model.get('order_hierarchy')[INTERFERENCE_ORDER] = 0
+    coupling_orders = model.get('coupling_orders')
+    if INTERFERENCE_ORDER not in coupling_orders:
+        coupling_orders.add(INTERFERENCE_ORDER)
+
+def prepare_interference_process(procdef):
+    """Complete the ProcessDefinition of an interference process
+    ('left [LIxtree=QCD] right' or 'left [treextree] right', see
+    MadGraphCmd.extract_interference_process) before its generation:
+
+    - the hidden order INTERFERENCE_ORDER is registered in the model;
+    - the left-hand process gets the squared-order constraint INTERF^2==1
+      and INTERF as split order, so that only the products of a left-hand
+      amplitude with a right-hand one are kept, also in the generated code;
+    - the right-hand process gets, when none is given, the minimal WEIGHTED
+      order exactly as 'generate <right-hand process>' would.
+
+    The right-hand diagrams themselves are generated per subprocess, with the
+    legs of that subprocess: Amplitude.add_interference_diagrams (treextree)
+    and LoopAmplitude.set_interference_trees (LIxtree)."""
+
+    mode = procdef.get_interference_mode()
+    if not mode:
+        return
+    if any(value < 0 for value in procdef.get('squared_orders').values()):
+        raise InvalidCmd("Negative squared-order constraints are not "
+                         "supported for %s interference processes." % mode)
+    model = procdef.get('model')
+    register_interference_order(model)
+
+    squared_orders = dict(procdef.get('squared_orders'))
+    squared_orders[INTERFERENCE_ORDER] = 1
+    procdef.set('squared_orders', squared_orders)
+    sqorders_types = dict(procdef.get('sqorders_types'))
+    sqorders_types[INTERFERENCE_ORDER] = '=='
+    procdef.set('sqorders_types', sqorders_types)
+    if INTERFERENCE_ORDER not in procdef.get('split_orders'):
+        procdef.set('split_orders',
+                    list(procdef.get('split_orders')) + [INTERFERENCE_ORDER])
+
+    right = procdef.get('interference_process')
+    if not right.get('orders') and not right.get('born_sq_orders'):
+        right.set('orders', MultiProcess.find_optimal_process_orders(right))
+    right.check_expansion_orders()
+
+def specialise_interference_process(process):
+    """The right-hand process of an interference subprocess, with the
+    external legs of that subprocess. It is also stored back in the
+    subprocess, which then shows the tree process it interferes with."""
+
+    right = process.get('interference_process')
+    legs = base_objects.LegList([copy.copy(leg) for leg in process.get('legs')])
+    if isinstance(right, base_objects.ProcessDefinition):
+        right_process = right.get_process_with_legs(legs)
+    else:
+        # already specialised to these legs (regeneration)
+        right_process = copy.copy(right)
+        right_process.set('legs', legs)
+    right_process.set('interference_mode', '')
+    right_process.set('interference_process', None)
+    # the process number is the one of the whole (left-hand) definition
+    right_process.set('id', 0)
+    process.set('interference_process', right_process)
+    return right_process
+
+#===============================================================================
 # DiagramTag mother class
 #===============================================================================
 
@@ -243,6 +328,7 @@ class DiagramTag(object):
             return base_objects.Leg({'number':link.links[0][1],
                                      'id':link.links[0][0][0],
                                      'state':(link.links[0][0][1] == 0),
+                                     'onium': {},
                                      'onshell':False})
 
         # This shouldn't happen
@@ -274,7 +360,7 @@ class DiagramTag(object):
 
     @staticmethod
     def link_from_leg(leg, model):
-        """Returns the default end link for a leg: ((id, state), number).
+        """Returns the default end link for a leg: ((id, state, onium), number).
         Note that the number is not taken into account if tag comparison,
         but is used only to extract leg permutations."""
         if leg.get('state'):
@@ -282,7 +368,7 @@ class DiagramTag(object):
             return [((leg.get('id'), 0), leg.get('number'))]
         else:
             # Distinguish identical initial state particles
-            return [((leg.get('id'), leg.get('number')), leg.get('number'))]
+            return [((leg.get('id'), leg.get('number'), leg.get('onium')), leg.get('number'))]
 
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
@@ -883,12 +969,13 @@ class Amplitude(base_objects.PhysicsObject):
         # two incoming particles interchanged has been generated
         self['has_mirror_process'] = False
 
-    def __init__(self, argument=None):
-        """Allow initialization with Process"""
+    def __init__(self, argument=None, diagram_filter=False):
+        """Allow initialization with Process; the diagrams are then generated,
+        selected by diagram_filter (see apply_user_filter) if it is set"""
         if isinstance(argument, base_objects.Process):
             super(Amplitude, self).__init__()
             self.set('process', argument)
-            self.generate_diagrams()
+            self.generate_diagrams(diagram_filter=diagram_filter)
         elif argument != None:
             # call the mother routine
             super(Amplitude, self).__init__(argument)
@@ -1266,11 +1353,21 @@ class Amplitude(base_objects.PhysicsObject):
         # in this way. We shall do this only if the diagrams are not asked to
         # be returned, as it is the case for NLO because it this case the
         # interference are not necessarily among the diagrams generated here only.
-        if not returndiag and len(res)>0:
+        # 'left [treextree] right': the squared-order constraints are about
+        # the products with the right-hand diagrams, added at the end (see
+        # add_interference_diagrams); only the amplitude-level constraints of
+        # this (left-hand) process apply here
+        treextree = not returndiag and \
+                         process.get_interference_mode() == 'treextree'
+        if treextree:
+            for name, (value, operator) in \
+                                  process.get('constrained_orders').items():
+                res.filter_constrained_orders(name, value, operator)
+        elif not returndiag and len(res)>0:
             res = self.apply_squared_order_constraints(res)
 
         if diagram_filter:
-            res = self.apply_user_filter(res)
+            res = self.apply_user_filter(res, diagram_filter)
 
         # 4 gluon specials demo (dedicated aloha not implemented yet)
         #if True:
@@ -1299,12 +1396,65 @@ class Amplitude(base_objects.PhysicsObject):
             pertur = sorted(self.get('process')['perturbation_couplings'])[0]
         self.get('process').get('legs').sort(pert=pertur)
 
+        if treextree:
+            res = self.add_interference_diagrams(res, diagram_filter)
+
         # Set diagrams to res if not asked to be returned
         if not returndiag:
            self['diagrams'] = res
            return not failed_crossing
         else:
            return not failed_crossing, res
+
+    def add_interference_diagrams(self, left_diagrams, diagram_filter=False):
+        """For an interference process 'left [treextree] right', add to the
+        diagrams of this (left-hand) process those of the right-hand process
+        with the same external legs, each tagged with one unit of the hidden
+        order INTERFERENCE_ORDER, and apply the squared-order constraints of
+        the process to the whole list: with INTERF^2==1 (see
+        prepare_interference_process) only the products of a left-hand and a
+        right-hand diagram, 2 Re(A_left A_right^*), contribute. All diagrams of
+        both sides are kept as integration channels. A user diagram filter
+        ('--diagram_filter') applies to both sides. Returns the new diagram
+        list, empty if either side has no diagram."""
+
+        process = self.get('process')
+        register_interference_order(process.get('model'))
+        right_process = specialise_interference_process(process)
+
+        right_diagrams = base_objects.DiagramList()
+        if left_diagrams:
+            right_amplitude = Amplitude()
+            right_amplitude.set('process', right_process)
+            try:
+                right_amplitude.generate_diagrams(diagram_filter=diagram_filter)
+                right_diagrams = right_amplitude.get('diagrams')
+            except InvalidCmd:
+                pass
+        if not left_diagrams or not right_diagrams:
+            logger.info("No diagram for %s: no interference with %s." % (
+                (right_process if left_diagrams else process).nice_string(
+                                                               prefix=False),
+                (process if left_diagrams else right_process).nice_string(
+                                                               prefix=False)))
+            return base_objects.DiagramList()
+
+        for diagram in right_diagrams:
+            orders = dict(diagram.get('orders'))
+            orders[INTERFERENCE_ORDER] = 1
+            diagram.set('orders', orders)
+
+        res = base_objects.DiagramList(list(left_diagrams) + list(right_diagrams))
+        while True:
+            new_res = res.apply_positive_sq_orders(res,
+                                          process.get('squared_orders'),
+                                          process.get('sqorders_types'))
+            if len(new_res) == len(res):
+                break
+            res = new_res
+        logger.info("Interference of %d with %d diagrams (%d contributing)" %
+                    (len(left_diagrams), len(right_diagrams), len(res)))
+        return res
 
     def apply_squared_order_constraints(self, diag_list):
         """Applies the user specified squared order constraints on the diagram
@@ -1354,28 +1504,25 @@ class Amplitude(base_objects.PhysicsObject):
 
         return res
 
-    def apply_user_filter(self, diag_list):
-        """Applies the user specified squared order constraints on the diagram
-        list in argument."""
+    def apply_user_filter(self, diag_list, diagram_filter=True):
+        """Applies the user diagram filter on the diagram list in argument.
+        diagram_filter is either a function remove_diag(diag, model) provided
+        by a plugin (--diagram_filter=PLUGINNAME) or True to use the one of
+        PLUGIN/user_filter.py."""
 
-        if True:
+        if callable(diagram_filter):
+            # function provided by a plugin (--diagram_filter=PLUGINNAME)
+            remove_diag = diagram_filter
+        elif diagram_filter is True:
             remove_diag = misc.plugin_import('user_filter', 
                                              'user filter required to be defined in PLUGIN/user_filter.py with the function remove_diag(ONEDIAG) which returns True if the diagram has to be removed',
                                              fcts=['remove_diag'])
         else:
-            #example and simple tests
-            def remove_diag(diag, model=None):
-                for vertex in diag['vertices']: #last 
-                    if vertex['id'] == 0: #special final vertex
-                        continue 
-                    if vertex['legs'][-1]['number'] < 3: #this means T-channel
-                        if abs(vertex['legs'][-1]['id']) <6:
-                            return True
-                return False                
+            raise MadGraph5Error('Invalid diagram filter %r: expected True or '
+                                 'a function remove_diag(diag, model).' % (diagram_filter,))
 
         res = diag_list.__class__()                
         nb_removed = 0
-        misc.sprint('Diagram filter is ON', type(diag_list))
         model = self['process']['model'] 
         for diag in diag_list:
             if remove_diag(diag, model):
@@ -2371,7 +2518,7 @@ class MultiProcess(base_objects.PhysicsObject):
         self['ignore_six_quark_processes'] = ignore_six_quark_processes
         self['use_numerical'] = optimize
         self['loop_filter'] = loop_filter
-        self['diagram_filter'] = diagram_filter # only True/False so far
+        self['diagram_filter'] = diagram_filter # True (PLUGIN/user_filter.py) or a plugin function
         self['merge_crossing'] = merge_crossing
         
         if isinstance(argument, base_objects.ProcessDefinition) or \
@@ -2516,6 +2663,7 @@ class MultiProcess(base_objects.PhysicsObject):
                 islegs = [\
                         fks_tag.TagLeg({'id':id, 'state': False, 
                                         'polarization': isleg['polarization'],
+                                        'onium': isleg['onium'],
                                         'offshell': isleg['offshell'], 
                                         'is_tagged': tag}) \
                         for id, isleg, tag in zip(prod, islegs_orig, istags)]
@@ -2525,7 +2673,11 @@ class MultiProcess(base_objects.PhysicsObject):
                     if abs(id) in model.get('merged_particles'):
                         for f in islegs_orig[beamid]['flavor']:
                             # multi-particle store the flavor for many id -> need to filter the one we are looking at
-                            if abs(f) in model.get('merged_particles')[abs(id)]:
+                            # (same merged group AND same particle/antiparticle
+                            # sign: in `define qa = u d~` the u belongs to the
+                            # Q leg and the d~ to the Qx one)
+                            if abs(f) in model.get('merged_particles')[abs(id)] \
+                                    and f * id > 0:
                                 flavor.append(-1*f)
                     return flavor
 
@@ -2533,6 +2685,7 @@ class MultiProcess(base_objects.PhysicsObject):
                         base_objects.Leg({'id':id, 'state': False,
                                           'polarization': islegs_orig[i]['polarization'],
                                           'flavor': get_flavor(i,id),
+                                          'onium': islegs_orig[i]['onium'],
                                           'offshell': islegs_orig[i]['offshell']}) \
                     for i,id in enumerate(prod)]
 
@@ -2552,8 +2705,25 @@ class MultiProcess(base_objects.PhysicsObject):
 
             red_fsidlist = set()
 
+            def get_fs_flavor(id, fsleg):
+                flavor = []
+                if abs(id) in model.get('merged_particles'):
+                    for f in fsleg['flavor']:
+                        # multi-particle store the flavor for many id -> need to filter the one we are looking at
+                        # (same merged group AND same particle/antiparticle sign)
+                        if abs(f) in model.get('merged_particles')[abs(id)] \
+                                and f * id > 0:
+                            flavor.append(f)
+                return flavor
+
             for prod in itertools.product(*fsids):
-                tag = zip(prod, polids)
+                # The per-leg flavor restriction is part of the tag: with
+                # `define l+ = u d~` / `define l- = u~ d`, (Q, Qx) restricted to
+                # (u, u~) and (Qx, Q) restricted to (d~, d) are NOT permutations
+                # of each other even though their merged ids are.
+                fsflavors = [tuple(sorted(get_fs_flavor(id, fsleg)))
+                             for id, fsleg in zip(prod, fslegs)]
+                tag = zip(prod, polids, fsflavors)
                 tag = sorted(tag)
                 # Remove double counting between final states
                 if tuple(tag) in red_fsidlist:
@@ -2564,23 +2734,16 @@ class MultiProcess(base_objects.PhysicsObject):
                 leg_list = [copy.copy(leg) for leg in islegs]
                 
                 if not fstags: 
-                    def get_flavor(id, fsleg):
-                        flavor = []
-                        if abs(id) in model.get('merged_particles'):
-                            for f in fsleg['flavor']:
-                                # multi-particle store the flavor for many id -> need to filter the one we are looking at
-                                if abs(f) in model.get('merged_particles')[abs(id)]:
-                                    flavor.append(f)
-                        return flavor
                     leg_list.extend([\
                             base_objects.Leg({'id':id, 'state': True,
                                               'polarization': fsleg['polarization'],
-                                              'flavor': get_flavor(id, fsleg),
+                                              'flavor': get_fs_flavor(id, fsleg),
+                                              'onium': fsleg['onium'],
                                               'offshell': fsleg['offshell']}) \
                             for id, fsleg in zip(prod, fslegs)])
                 else:
                     leg_list.extend([\
-                            fks_tag.TagLeg({'id':id, 'state': True, 'polarization': fsleg['polarization'], 'is_tagged': tag}) \
+                            fks_tag.TagLeg({'id':id, 'state': True, 'polarization': fsleg['polarization'], 'onium': fsleg['onium'], 'is_tagged': tag}) \
                             for id, fsleg, tag in zip(prod, fslegs, fstags)])
 
 
@@ -2640,13 +2803,23 @@ class MultiProcess(base_objects.PhysicsObject):
                     mirror_proc = \
                               array.array('i', [fast_proc[1], fast_proc[0]] + \
                                           list(fast_proc[2:]))
-                    try:
-                        mirror_amp = \
-                               amplitudes[non_permuted_procs.index(mirror_proc)]
-                    except Exception:
-                        # Didn't find any mirror process
-                        pass
-                    else:
+                    # The mirror flag means "the same matrix element with
+                    # the beams swapped", so the per-leg flavor restrictions
+                    # of the two beams must swap as well: with `define qa =
+                    # u d~` and `define qb = u~ d`, the mirror of Q Qx > z
+                    # [u u~] is u~ u, not the requested Qx Q > z [d~ d].
+                    mirror_amp = None
+                    for iproc, other_proc in enumerate(non_permuted_procs):
+                        if other_proc != mirror_proc:
+                            continue
+                        other_legs = amplitudes[iproc].get('process').get('legs')
+                        swapped = [other_legs[1], other_legs[0]] + \
+                                  list(other_legs[2:])
+                        if all(sorted(l1.get('flavor')) == sorted(l2.get('flavor'))
+                               for l1, l2 in zip(legs, swapped)):
+                            mirror_amp = amplitudes[iproc]
+                            break
+                    if mirror_amp is not None:
                         # Mirror process found
                         mirror_amp.set('has_mirror_process', True)
                         logger.info("Process %s added to mirror process %s" % \
@@ -2656,10 +2829,13 @@ class MultiProcess(base_objects.PhysicsObject):
                         
                 # Check for successful crossings, unless we have specified
                 # properties that break crossing symmetry
+                # (an interference process carries a right-hand process with
+                # its own s-channel constraints: no reuse by crossing either)
                 if not process.get('required_s_channels') and \
                    not process.get('forbidden_onsh_s_channels') and \
                    not process.get('forbidden_s_channels') and \
-                   not process.get('is_decay_chain') and not diagram_filter:
+                   not process.get('is_decay_chain') and not diagram_filter \
+                   and not process.get_interference_mode():
                     try:
                         crossed_index = success_procs.index(sorted_legs)
                         # The relabeling of legs for loop amplitudes is cumbersome
@@ -2672,7 +2848,13 @@ class MultiProcess(base_objects.PhysicsObject):
                         # No crossing found, just continue
                         pass
                     else:
-                        if not merge_crossing:
+                        # merge_crossing relies on the merged matrix element
+                        # covering every crossing; with a per-leg flavor
+                        # restriction it does not (z > Qx Q [d~ d] from
+                        # `define l+ = u d~` is no crossing of z > Q Qx
+                        # [u u~] flavor-wise), so keep such a process.
+                        if not merge_crossing or \
+                                any(l.get('flavor') for l in legs):
                             # Found crossing - reuse amplitude
                             amplitude = MultiProcess.cross_amplitude(\
                                 amplitudes[crossed_index],
@@ -2809,7 +2991,11 @@ class MultiProcess(base_objects.PhysicsObject):
         hierarchy = list(hierarchydef.items())
         hierarchy.sort()
         for key, value in hierarchydef.items():
-            if value>1:
+            # an order of hierarchy 0 (like the hidden INTERFERENCE_ORDER)
+            # does not enter WEIGHTED
+            if value == 0:
+                continue
+            elif value>1:
                 tmp.append('%s*%s' % (value,key))
             else:
                 tmp.append('%s' % key)
@@ -2817,7 +3003,7 @@ class MultiProcess(base_objects.PhysicsObject):
         # Run diagram generation with increasing max_order_now until
         # we manage to get diagrams
         while max_order_now < max_WEIGHTED_order:
-            logger.info("Trying coupling order WEIGHTED<=%d: WEIGTHED IS %s" % (max_order_now, wgtdef))
+            logger.info("Trying coupling order WEIGHTED<=%d: WEIGHTED IS %s" % (max_order_now, wgtdef))
 
             oldloglevel = logger.level
             logger.setLevel(logging.WARNING)

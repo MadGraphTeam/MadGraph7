@@ -1,6 +1,36 @@
 #include "madspace/phasespace/matrix_element.hpp"
 
+#include <format>
+#include <utility>
+
 using namespace madspace;
+
+namespace {
+
+/// A per-particle 0/1 selector, 1 for every one-based particle number in
+/// `indices`. `what` names the setting the numbers came from, for the error.
+std::vector<me_int_t> particle_mask(
+    std::size_t particle_count, const std::vector<me_int_t>& indices, const char* what
+) {
+    std::vector<me_int_t> mask(particle_count, 0);
+    for (me_int_t index : indices) {
+        if (index < 1 || std::cmp_greater(index, particle_count)) {
+            throw std::invalid_argument(
+                std::format(
+                    "{} particle {} out of range, this process has {} external "
+                    "particles",
+                    what,
+                    index,
+                    particle_count
+                )
+            );
+        }
+        mask.at(index - 1) = 1;
+    }
+    return mask;
+}
+
+} // namespace
 
 MatrixElement::MatrixElement(
     std::size_t matrix_element_index,
@@ -8,20 +38,20 @@ MatrixElement::MatrixElement(
     const std::vector<MatrixElementInput>& inputs,
     const std::vector<MatrixElementOutput>& outputs,
     std::size_t diagram_count,
-    bool sample_random_inputs
+    bool sample_random_inputs,
+    const std::vector<me_int_t>& me_frame,
+    std::size_t incoming_count
 ) :
     FunctionGenerator(
         "MatrixElement",
         [&] {
             NamedVector<Type> arg_types;
-            bool found_momenta = false;
             for (auto input : inputs) {
                 switch (input) {
                 case momenta_in:
                     arg_types.push_back(
                         "momenta", batch_four_vec_array(particle_count)
                     );
-                    found_momenta = true;
                     break;
                 case alpha_s_in:
                     arg_types.push_back("alpha_s", batch_float);
@@ -53,12 +83,30 @@ MatrixElement::MatrixElement(
                 case channel_in:
                     arg_types.push_back("channel", batch_int);
                     break;
+                case particle_count_in:
+                    arg_types.push_back("particle_count", batch_int);
+                    break;
+                case pdg_ids_in:
+                    arg_types.push_back("pdg_ids", batch_int_array(particle_count));
+                    break;
+                case momentum_fraction_in:
+                    arg_types.push_back("momentum_fraction", batch_float);
+                    break;
+                case scale_in:
+                    arg_types.push_back("scale", batch_float);
+                    break;
+                case pdg_id_in:
+                    arg_types.push_back("pdg_id", batch_int);
+                    break;
+                case beam_index_in:
+                    arg_types.push_back("beam_index", batch_int);
+                    break;
                 default:
                     throw std::invalid_argument("unknown input type");
                 }
             }
-            if (!found_momenta) {
-                throw std::invalid_argument("missing momentum input");
+            if (arg_types.size() == 0) {
+                throw std::invalid_argument("matrix element needs at least one input");
             }
             return arg_types;
         }(),
@@ -83,6 +131,24 @@ MatrixElement::MatrixElement(
                 case diagram_index_out:
                     ret_types.push_back("diagram_index", batch_int);
                     break;
+                case cut_out:
+                    ret_types.push_back("cut", batch_float);
+                    break;
+                case ren_scale_out:
+                    ret_types.push_back("ren_scale", batch_float);
+                    break;
+                case fact_scale1_out:
+                    ret_types.push_back("fact_scale1", batch_float);
+                    break;
+                case fact_scale2_out:
+                    ret_types.push_back("fact_scale2", batch_float);
+                    break;
+                case pdf_out:
+                    ret_types.push_back("pdf", batch_float);
+                    break;
+                case bias_out:
+                    ret_types.push_back("bias", batch_float);
+                    break;
                 default:
                     throw std::invalid_argument("unknown output type");
                 }
@@ -95,7 +161,35 @@ MatrixElement::MatrixElement(
     _outputs(outputs),
     _particle_count(particle_count),
     _diagram_count(diagram_count),
-    _sample_random_inputs(sample_random_inputs) {}
+    _sample_random_inputs(sample_random_inputs),
+    _frame_mask(
+        me_frame.empty() ? std::vector<me_int_t>()
+                         : particle_mask(particle_count, me_frame, "me_frame")
+    ),
+    _reference_mask([&] {
+        if (_frame_mask.empty()) {
+            return std::vector<me_int_t>();
+        }
+        if (incoming_count == 0) {
+            // an empty list would build an all-zero mask, which the kernel
+            // reads as "no frame" and passes through
+            throw std::invalid_argument(
+                "a process needs at least one incoming particle to define the "
+                "frame me_frame is reached from"
+            );
+        }
+        std::vector<me_int_t> incoming;
+        for (std::size_t i = 1; i <= incoming_count; ++i) {
+            incoming.push_back(static_cast<me_int_t>(i));
+        }
+        auto mask = particle_mask(particle_count, incoming, "incoming_count");
+        // asking for the rest frame of the incoming system is the reference
+        // frame itself: one boost gets there
+        if (mask == _frame_mask) {
+            mask.clear();
+        }
+        return mask;
+    }()) {}
 
 NamedVector<Value> MatrixElement::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
@@ -148,6 +242,24 @@ NamedVector<Value> MatrixElement::build_function_impl(
         case channel_in:
             input_key = UMAMI_IN_CHANNEL_INDEX;
             break;
+        case particle_count_in:
+            input_key = UMAMI_IN_PARTICLE_COUNT;
+            break;
+        case pdg_ids_in:
+            input_key = UMAMI_IN_PDG_IDS;
+            break;
+        case momentum_fraction_in:
+            input_key = UMAMI_IN_MOMENTUM_FRACTION;
+            break;
+        case scale_in:
+            input_key = UMAMI_IN_SCALE;
+            break;
+        case pdg_id_in:
+            input_key = UMAMI_IN_PDG_ID;
+            break;
+        case beam_index_in:
+            input_key = UMAMI_IN_BEAM_INDEX;
+            break;
         }
         matrix_args.push_back(static_cast<me_int_t>(input_key));
         if (_sample_random_inputs &&
@@ -155,6 +267,27 @@ NamedVector<Value> MatrixElement::build_function_impl(
              input == random_diagram_in)) {
             matrix_args.push_back(random.at(random_index));
             ++random_index;
+        } else if (input == momenta_in && !_frame_mask.empty()) {
+            // Evaluate the matrix element in the frame the run card asked for
+            // (me_frame). Only the matrix element sees the boosted momenta:
+            // everything else -- cuts, scales, momentum fractions, the event
+            // that gets written out -- keeps using the momenta as generated.
+            //
+            // madevent defines that frame as a single boost away from the rest
+            // frame of the incoming system, because that is the frame its
+            // matrix element is handed the momenta in. madspace generates them
+            // in the lab frame instead, so it has to go through that rest frame
+            // rather than boost straight there: two boosts along different
+            // directions do not compose into the boost between the end frames,
+            // and the Wigner rotation left over would rotate the polarisation
+            // axes (it drops out only for a Lorentz invariant matrix element,
+            // which is exactly the case where none of this matters).
+            Value momenta = args.at(arg_index);
+            if (!_reference_mask.empty()) {
+                momenta = fb.boost_to_frame(momenta, _reference_mask);
+            }
+            matrix_args.push_back(fb.boost_to_frame(momenta, _frame_mask));
+            ++arg_index;
         } else {
             matrix_args.push_back(args.at(arg_index));
             ++arg_index;
@@ -180,6 +313,24 @@ NamedVector<Value> MatrixElement::build_function_impl(
             break;
         case diagram_index_out:
             output_key = UMAMI_OUT_DIAGRAM_INDEX;
+            break;
+        case cut_out:
+            output_key = UMAMI_OUT_CUT;
+            break;
+        case ren_scale_out:
+            output_key = UMAMI_OUT_REN_SCALE;
+            break;
+        case fact_scale1_out:
+            output_key = UMAMI_OUT_FACT_SCALE_1;
+            break;
+        case fact_scale2_out:
+            output_key = UMAMI_OUT_FACT_SCALE_2;
+            break;
+        case pdf_out:
+            output_key = UMAMI_OUT_PDF;
+            break;
+        case bias_out:
+            output_key = UMAMI_OUT_BIAS;
             break;
         }
         matrix_args.push_back(static_cast<me_int_t>(output_key));

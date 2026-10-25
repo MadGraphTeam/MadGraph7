@@ -457,54 +457,6 @@ class CheckValidForCmd(object):
         self.set_run_name(args[0], level= 'shower')
         args[0] = pjoin(self.me_dir, 'Events', args[0])
     
-    def check_plot(self, args):
-        """Check the argument for the plot command
-        plot run_name modes"""
-
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']
-        
-        if not madir or not td:
-            logger.info('Retry to read configuration file to find madanalysis/td')
-            self.set_configuration()
-
-        madir = self.options['madanalysis_path']
-        td = self.options['td_path']        
-        
-        if not madir:
-            error_msg = 'No valid Madanalysis path set.'
-            error_msg += 'Please use the set command to define the path and retry.'
-            error_msg += 'You can also define it in the configuration file.'
-            raise self.InvalidCmd(error_msg)  
-        if not  td:
-            error_msg = 'No valid path to your topdrawer directory set.'
-            error_msg += 'Please use the set command to define the path and retry.'
-            error_msg += 'You can also define it in the configuration file.'
-            raise self.InvalidCmd(error_msg)  
-                     
-        if len(args) == 0:
-            if not hasattr(self, 'run_name') or not self.run_name:
-                self.help_plot()
-                raise self.InvalidCmd('No run name defined. Please add this information.')             
-            args.append('all')
-            return
-
-        
-        if args[0] not in self._plot_mode:
-            self.set_run_name(args[0], level='plot')
-            del args[0]
-            if len(args) == 0:
-                args.append('all')
-        elif not self.run_name:
-            self.help_plot()
-            raise self.InvalidCmd('No run name defined. Please add this information.')                             
-        
-        for arg in args:
-            if arg not in self._plot_mode and arg != self.run_name:
-                 self.help_plot()
-                 raise self.InvalidCmd('unknown options %s' % arg)        
-    
     def check_pgs(self, arg):
         """Check the argument for pythia command
         syntax: pgs [NAME] 
@@ -1531,7 +1483,9 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         self.load_results_db()
         self.results.def_web_mode(self.web)
         # check that compiler is gfortran 4.6 or later if virtuals have been exported
-        proc_card = open(pjoin(self.me_dir, 'Cards', 'proc_card_mg5.dat')).read()
+        # joined by ProcCard: cards from older versions are wrapped at 70
+        # characters, which can fall inside '[real=QCD]'
+        proc_card = '\n'.join(banner_mod.ProcCard(pjoin(self.me_dir, 'Cards', 'proc_card_mg5.dat')))
 
         if not '[real=QCD]' in proc_card:
             check_compiler(self.options, block=True)
@@ -1551,114 +1505,6 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         self.run_mcatnlo(evt_file, options)
 
         self.update_status('', level='all', update_results=True)
-
-    ################################################################################
-    def do_plot(self, line):
-        """Create the plot for a given run"""
-
-        # Since in principle, all plot are already done automaticaly
-        args = self.split_arg(line)
-        # Check argument's validity
-        self.check_plot(args)
-        logger.info('plot for run %s' % self.run_name)
-        
-        if not self.force:
-            self.ask_edit_cards([], args, plot=True)
-                
-        if any([arg in ['parton'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 'events.lhe')
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                logger.info('Found events.lhe file for run %s' % self.run_name) 
-                shutil.move(filename, pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'))
-                self.create_plot('parton')
-                shutil.move(pjoin(self.me_dir, 'Events', 'unweighted_events.lhe'), filename)
-                misc.gzip(filename)
-                
-        if any([arg in ['all','parton'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 'MADatNLO.top')
-            if  os.path.exists(filename):
-                logger.info('Found MADatNLO.top file for run %s' % \
-                             self.run_name) 
-                output = pjoin(self.me_dir, 'HTML',self.run_name, 'plots_parton.html')
-                plot_dir = pjoin(self.me_dir, 'HTML', self.run_name, 'plots_parton')
-                
-                if not os.path.isdir(plot_dir):
-                    os.makedirs(plot_dir) 
-                top_file = pjoin(plot_dir, 'plots.top')
-                files.cp(filename, top_file)
-                madir = self.options['madanalysis_path']
-                tag = self.run_card['run_tag']  
-                td = self.options['td_path']
-                misc.call(['%s/plot' % self.dirbin, madir, td],
-                                stdout = open(pjoin(plot_dir, 'plot.log'),'a'),
-                                stderr = subprocess.STDOUT,
-                                cwd=plot_dir)
-
-                misc.call(['%s/plot_page-pl' % self.dirbin, 
-                                    os.path.basename(plot_dir),
-                                    'parton'],
-                                stdout = open(pjoin(plot_dir, 'plot.log'),'a'),
-                                stderr = subprocess.STDOUT,
-                                cwd=pjoin(self.me_dir, 'HTML', self.run_name))
-                shutil.move(pjoin(self.me_dir, 'HTML',self.run_name ,'plots.html'),
-                                                                             output)
-
-                os.remove(pjoin(self.me_dir, 'Events', 'plots.top'))
-                
-        if any([arg in ['all','shower'] for arg in args]):
-            filenames = misc.glob('events_*.lhe.gz', pjoin(self.me_dir, 'Events', self.run_name))
-            if len(filenames) != 1:
-                filenames = misc.glob('events_*.hep.gz', pjoin(self.me_dir, 'Events', self.run_name)) 
-                if len(filenames) != 1:
-                    logger.info('No shower-level event file found for run %s' % \
-                                self.run_name)
-                    return
-                filename = filenames[0]
-                misc.gunzip(filename, keep=True, stdout=pjoin(self.me_dir, 'Events','pythia_events.hep'))
-                
-                if not os.path.exists(pjoin(self.me_dir, 'Cards', 'pythia_card.dat')):
-                    if aMCatNLO and not self.options['mg5_path']:
-                        raise Exception("plotting NLO HEP files requires MG5 utilities.")
-                    
-                    files.cp(pjoin(self.options['mg5_path'], 'Template','LO', 'Cards', 'pythia_card_default.dat'),
-                             pjoin(self.me_dir, 'Cards', 'pythia_card.dat'))
-                self.run_hep2lhe()
-            else:
-                filename = filenames[0]
-                misc.gunzip(filename, keep=True, stdout=pjoin(self.me_dir, 'Events','pythia_events.hep'))
-
-            self.create_plot('shower')
-            lhe_file_name = filename.replace('.hep.gz', '.lhe')
-            shutil.move(pjoin(self.me_dir, 'Events','pythia_events.lhe'), 
-                        lhe_file_name)
-            misc.gzip(lhe_file_name)
-                    
-        if any([arg in ['all','pgs'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                            '%s_pgs_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                self.create_plot('PGS')
-                misc.gzip(filename)                
-            else:
-                logger.info('No valid files to make PGS plots')
-                
-        if any([arg in ['all','delphes'] for arg in args]):
-            filename = pjoin(self.me_dir, 'Events', self.run_name, 
-                                        '%s_delphes_events.lhco' % self.run_tag)
-            if os.path.exists(filename+'.gz'):
-                misc.gunzip(filename)
-            if  os.path.exists(filename):
-                #shutil.move(filename, pjoin(self.me_dir, 'Events','delphes_events.lhco'))
-                self.create_plot('Delphes')
-                #shutil.move(pjoin(self.me_dir, 'Events','delphes_events.lhco'), filename)
-                misc.gzip(filename)                
-            else:
-                logger.info('No valid files to make Delphes plots')
-
 
     ############################################################################      
     def do_calculate_xsect(self, line):
@@ -3333,7 +3179,8 @@ RESTART = %(mint_mode)s
         step corresponds to the mintMC step, if =2 (i.e. after event generation)
         some additional infos are printed"""
         # find process name
-        proc_card_lines = open(pjoin(self.me_dir, 'Cards', 'proc_card_mg5.dat')).read().split('\n')
+        # ProcCard joins the lines older versions wrapped at 70 characters
+        proc_card_lines = banner_mod.ProcCard(pjoin(self.me_dir, 'Cards', 'proc_card_mg5.dat'))
         process = ''
         for line in proc_card_lines:
             if line.startswith('generate') or line.startswith('add process'):
@@ -3970,6 +3817,42 @@ RESTART = %(mint_mode)s
         return evt_file[:-3]
 
 
+    def get_pythia8_hepmc_setup(self):
+        """The HepMC version (2 or 3) the Pythia8 shower driver uses, following
+        'hepmc_format' in the shower_card, and the flags linking it to HepMC.
+        With an analysis (ANALYSE) no HepMC file is written: the HepMC3 driver
+        then fills HEPEVT directly from the Pythia8 event record and needs no
+        HepMC library. 'auto' keeps HepMC2 there, whose HEPEVT has another
+        particle ordering (seen by analyses taking the last particle of a kind)."""
+
+        hepmc_format = str(self.shower_card['hepmc_format']).lower()
+        analysis = bool(self.shower_card['analyse'])
+        pythia8_path = self.options['pythia8_path']
+        version = misc.get_pythia8_version(pythia8_path)
+        pythia83 = version is not None and float(version) >= 8.3
+
+        if hepmc_format != 'auto':
+            versions = [int(hepmc_format[-1])]
+        elif not pythia83:
+            versions = [2]
+        elif analysis:
+            versions = [2, 3]
+        else:
+            versions = [self.get_auto_hepmc_version()]
+            versions.append(5 - versions[0])
+        for i, hepmc_version in enumerate(versions):
+            if hepmc_version == 3 and analysis:
+                return 3, ''
+            try:
+                return hepmc_version, misc.get_pythia8_hepmc_flags(pythia8_path,
+                                  hepmc_version, self.get_hepmc_paths(hepmc_version))
+            except MadGraph5Error as error:
+                if i + 1 == len(versions):
+                    raise aMCatNLOError('The Pythia8 shower cannot use HepMC%d: %s'
+                                        % (hepmc_version, error))
+                logger.warning('%s The Pythia8 shower uses HepMC%d instead.'
+                               % (error, versions[i + 1]))
+
     def run_mcatnlo(self, evt_file, options):
         """runs mcatnlo on the generated event file, to produce showered-events
         """
@@ -4065,10 +3948,12 @@ RESTART = %(mint_mode)s
             extrapaths.append(pjoin(self.options['hepmc_path'], 'lib'))
             self.shower_card['extrapaths'] += ' %s' % pjoin(self.options['hepmc_path'], 'lib')
 
-        # add the HEPMC path of the pythia8 installation
+        # the HepMC version and library the Pythia8 driver is compiled with,
+        # passed to the shower script through banner.dat
         if shower == 'PYTHIA8':
-            hepmc = subprocess.Popen([pjoin(self.options['pythia8_path'], 'bin', 'pythia8-config'), '--hepmc2'],
-                         stdout = subprocess.PIPE).stdout.read().decode(errors='ignore').strip()
+            hepmc_version, hepmc = self.get_pythia8_hepmc_setup()
+            with open(pjoin(self.me_dir, 'MCatNLO', 'banner.dat'), 'a') as fsock:
+                fsock.write('HEPMCVERSION=%d\nHEPMCINCLIB="%s"\n' % (hepmc_version, hepmc))
             #this gives all the flags, i.e.
             #-I/Path/to/HepMC/include -L/Path/to/HepMC/lib -lHepMC
             # we just need the path to the HepMC libraries
@@ -4279,14 +4164,6 @@ RESTART = %(mint_mode)s
             except OSError as IOError:
                 raise aMCatNLOError('No file has been generated, an error occurred.'+\
              ' More information in %s' % pjoin(os.getcwd(), 'amcatnlo_run.log'))
-
-            # run the plot creation in a secure way
-            if hep_format == 'StdHEP':
-                try:
-                    self.do_plot('%s -f' % self.run_name)
-                except Exception as error:
-                    logger.info("Fail to make the plot. Continue...")
-                    pass
 
         elif out_id == 'TOP' or out_id == 'HWU':
             #copy the topdrawer or HwU file(s) back in events
@@ -4511,8 +4388,7 @@ RESTART = %(mint_mode)s
         upgrade_tag = {'parton': ['parton','delphes','shower','madanalysis5_hadron'],
                        'shower': ['shower','delphes','madanalysis5_hadron'],
                        'delphes':['delphes'],
-                       'madanalysis5_hadron':['madanalysis5_hadron'],
-                       'plot':[]}
+                       'madanalysis5_hadron':['madanalysis5_hadron']}
         
         if name == self.run_name:        
             if reload_card:
@@ -4723,7 +4599,7 @@ RESTART = %(mint_mode)s
         except KeyError:
             mod = self.get_model()
             if not hasattr(mod, 'parameter_dict'):
-                from models import model_reader
+                from madgraph.models import model_reader
                 mod = model_reader.ModelReader(mod)
                 if "set EWscheme MZ_MW_alpha" in self.banner.get_detail('proc_card'):
                     mod.change_electroweak_mode("MZ_MW_alpha")
@@ -5090,7 +4966,7 @@ RESTART = %(mint_mode)s
             execpath = exe
         else:
             raise aMCatNLOError('Cannot find executable %s in %s' \
-                % (exe, os.getcwd()))
+                % (exe, cwd or os.getcwd()))
         # check that the executable has exec permissions
         if self.cluster_mode == 1 and not os.access(execpath, os.X_OK):
             subprocess.call(['chmod', '+x', exe], cwd=cwd)
@@ -5115,15 +4991,18 @@ RESTART = %(mint_mode)s
             input_files.append(pjoin(cwd, os.path.pardir, 'leshouche_info.dat'))
             input_files.append(pjoin(cwd, os.path.pardir, 'orderstags_glob.dat'))
             input_files.append(args[0])
-            open('%s.rwgt' % os.path.basename(args[0]), "a").close()
-            open('reweight_xsec_events.output', "a").close()
-            open('scale_pdf_dependence.dat', "a").close()
-            input_files.append('%s.rwgt' % os.path.basename(args[0]))
-            input_files.append('reweight_xsec_events.output')
-            input_files.append('scale_pdf_dependence.dat')
-            output_files.append('%s.rwgt' % os.path.basename(args[0]))
-            output_files.append('reweight_xsec_events.output')
-            output_files.append('scale_pdf_dependence.dat')
+            # The file names are relative to the job directory (cwd), as the
+            # cluster copies them from and back to there: create them in
+            # cwd, not in the directory MG was started from. They are
+            # emptied, so that the outputs of a previous reweighting of the
+            # same directory cannot pass for those of a job that failed.
+            rwgt_files = ['%s.rwgt' % os.path.basename(args[0]),
+                          'reweight_xsec_events.output',
+                          'scale_pdf_dependence.dat']
+            for name in rwgt_files:
+                open(pjoin(cwd, name), "w").close()
+            input_files.extend(rwgt_files)
+            output_files.extend(rwgt_files)
 
             return self.cluster.submit2(exe, args, cwd=cwd, 
                              input_files=input_files, output_files=output_files,
@@ -5967,7 +5846,7 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
         first_cmd = cmd_switch.get_cardcmd()
                 
         if not options['force'] and not self.force:
-            self.ask_edit_cards(cards, plot=False, first_cmd=first_cmd, switch=switch)
+            self.ask_edit_cards(cards, first_cmd=first_cmd, switch=switch)
 
         self.banner = banner_mod.Banner()
 
@@ -6222,9 +6101,18 @@ if '__main__' == __name__:
                     print('and %s  can not be interpreted as a valid command.' % args[0])
                 else:
                     print('ERROR: %s  not a valid command. Please retry' % args[0])
+                sys.exit(1)
             else:
                 cmd_line.use_rawinput = False
-                cmd_line.run_cmd(' '.join(args))
+                # Whoever started this process (e.g. a reweighting split over
+                # several cores) only sees its exit status: a failed command
+                # must not end with 0.
+                line = ' '.join(args)
+                try:
+                    cmd_line.exec_cmd(line, precmd=True)
+                except (Exception, KeyboardInterrupt) as error:
+                    cmd_line.error_handling(error, line)
+                    sys.exit(1)
                 cmd_line.run_cmd('quit')
 
     except KeyboardInterrupt:

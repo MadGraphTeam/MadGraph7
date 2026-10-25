@@ -24,13 +24,37 @@
 
 namespace madspace {
 
+/**
+ * Drives event generation across every channel of a subprocess.
+ *
+ * Coordinates a group of @ref ChannelEventGenerator instances that share the
+ * same list of @ref Context devices: runs their survey, dispatches and
+ * collects generation batches so multiple channels and devices stay busy
+ * concurrently, and combines the resulting per-channel weighted events into
+ * unweighted output (@ref combine_to_compact_npy, @ref combine_to_lhe_npy,
+ * @ref combine_to_lhe).
+ */
 class EventGenerator {
 public:
+    /// Default-constructed @ref GeneratorConfig.
     static const GeneratorConfig default_config;
+    /// Install `func`, called periodically during @ref generate to check for
+    /// a requested abort.
     static void set_abort_check_function(std::function<void(void)> func) {
         _abort_check_function = func;
     }
 
+    /**
+     * @param contexts    One context per device to run on, shared by every
+     *                    channel.
+     * @param channels    The channels to generate, e.g. one per @ref
+     *                    Topology channel of the subprocess.
+     * @param seed        Top-level run seed every channel's RNG streams are
+     *                    derived from.
+     * @param status_file Optional status file progress is periodically
+     *                    written to.
+     * @param config      Generator configuration.
+     */
     EventGenerator(
         const std::vector<ContextPtr>& contexts,
         const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels,
@@ -42,25 +66,49 @@ public:
     EventGenerator& operator=(EventGenerator&&) = default;
     EventGenerator(const EventGenerator&) = delete;
     EventGenerator& operator=(const EventGenerator&) = delete;
-    // `survey_pass` salts job seeds so repeated survey() calls on the same
-    // channel (e.g. re-survey after simplification) don't share a seed stream.
+    /// Run the survey/optimization phase of every channel. @p survey_pass
+    /// salts job seeds so repeated calls on the same channels (e.g.
+    /// re-surveying after simplification) don't share a seed stream.
     void survey(std::size_t survey_pass = 0);
+    /// Generate unweighted events until every channel reaches its target
+    /// count.
     void generate();
-    // The optional SystematicsCalculator adds the scale/PDF variation weights to
-    // the written events (npy columns rwgt_<id>, LHE <rwgt> blocks); the
-    // optional EventHistograms are filled with the written events and all their
-    // weights (info.json "event_histograms").
+    /// Run only the VEGAS and channel-weight optimization of every channel
+    /// that still needs it, until all are optimized. No events are kept.
+    void optimize();
+    /// Like @ref generate, but every channel with a nonzero cross section runs
+    /// until it has `freeze_max_weight_after` unweighted events, regardless of
+    /// its share of the cross section, so that its maximum weight is final
+    /// (see @ref ChannelEventGenerator::max_weight). The events are not meant
+    /// to be combined.
+    void fix_max_weights();
+    /**
+     * Combine every channel's generated events into a single unweighted
+     * `.npy` file.
+     *
+     * @param file_name    Output file base name.
+     * @param systematics  Optional; adds the scale/PDF variation weights to
+     *                     the written events (`.npy` columns `rwgt_<id>`).
+     * @param histograms   Optional; filled with the written events and all
+     *                     their weights (recorded in `info.json`'s
+     *                     `"event_histograms"`).
+     */
     void combine_to_compact_npy(
         const std::string& file_name,
         SystematicsCalculator* systematics = nullptr,
         EventHistograms* histograms = nullptr
     );
+    /// Like @ref combine_to_compact_npy, additionally completing every event
+    /// with `lhe_completer` and writing its LHE-ready particle records to the
+    /// `.npy` file.
     void combine_to_lhe_npy(
         const std::string& file_name,
         LHECompleter& lhe_completer,
         SystematicsCalculator* systematics = nullptr,
         EventHistograms* histograms = nullptr
     );
+    /// Like @ref combine_to_lhe_npy, writing a complete LHE file with @p meta
+    /// as its `<init>` header instead of a `.npy` file.
     void combine_to_lhe(
         const std::string& file_name,
         LHECompleter& lhe_completer,
@@ -68,10 +116,15 @@ public:
         SystematicsCalculator* systematics = nullptr,
         EventHistograms* histograms = nullptr
     );
+    /// Combined progress snapshot over every channel.
     GeneratorStatus status() const { return _status; }
+    /// Per-channel progress snapshots.
     std::vector<GeneratorStatus> channel_status() const;
+    /// Combined observable histograms over every channel.
     std::vector<Histogram> histograms() const;
+    /// Names of the compute-graph globals used by any channel's integrand.
     std::unordered_set<std::string> used_globals() const;
+    /// The channels passed to the constructor.
     const std::vector<std::shared_ptr<ChannelEventGenerator>>& channels() const {
         return _channels;
     };
@@ -140,6 +193,13 @@ private:
     // Salted by this counter so repeated calls don't replay the same stream.
     std::size_t _unweight_call_index = 0;
 
+    // What a run of the generate loop does; see run_generate().
+    enum class GenerateMode { events, optimize_only, fix_max_weights };
+    void run_generate(GenerateMode mode);
+    // Channels with an optimizer, and how many of them are optimized.
+    std::pair<std::size_t, std::size_t> optimized_channel_count() const;
+    GenerateMode _generate_mode = GenerateMode::events;
+
     // Scheduling context for the running survey()/generate() call, read by
     // start_jobs() to derive job seeds.
     bool _survey_job = false;
@@ -165,6 +225,8 @@ private:
     void finish_channel_job(const GeneratorBatchJob& job);
     std::size_t next_batch_event_count(std::size_t channel_index) const;
     std::size_t start_jobs();
+    std::size_t wait_for_result(std::size_t& in_flight);
+    void reset_jobs();
     void update_integral();
     void update_integral_status();
     void update_integral_fractions();

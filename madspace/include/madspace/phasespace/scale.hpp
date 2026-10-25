@@ -1,21 +1,71 @@
 #pragma once
 
 #include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/custom_function.hpp"
 #include "madspace/phasespace/mlm_clustering.hpp"
 
 namespace madspace {
 
+/**
+ * Renormalization and factorization scales for an event.
+ *
+ * Computes the renormalization scale and the two factorization scales from the
+ * event momenta. Each can be fixed to a constant or set to a dynamical choice
+ * (Sec. 3.2.6 of [1], matching the choices in [2]):
+ *
+ * @f[
+ *   \mu = \sum_i m_i, \qquad
+ *   \mu = E_\mathrm{T} = \sum_i \frac{E_i\,p_{\mathrm{T},i}}{|\vec p_i|},
+ * @f]
+ * @f[
+ *   \mu = H_\mathrm{T} = \sum_i \sqrt{m_i^2 + p_{\mathrm{T},i}^2},
+ * @f]
+ *
+ * with @ref DynamicalScaleType selecting @f$E_\mathrm{T}@f$
+ * (`transverse_energy`), @f$H_\mathrm{T}@f$ (`transverse_mass`),
+ * @f$H_\mathrm{T}/2@f$ (`half_transverse_mass`) or @f$\sqrt{\hat s}@f$
+ * (`partonic_energy`). The dynamical scale is multiplied by `scale_factor`,
+ * e.g. @f$H_\mathrm{T}/4@f$ is `half_transverse_mass` with `scale_factor = 0.5`.
+ * A @ref CustomFunction of type CustomFunction::scale replaces the dynamical
+ * choice, like `user_dynamical_scale` in MadGraph5.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - `momenta` – `float`, shape `(batch, particle_count, 4)` – the event momenta.
+ *
+ * **Returns**
+ * - `ren_scale` – `float`, shape `(batch,)` – renormalization scale.
+ * - `fact_scale1` – `float`, shape `(batch,)` – factorization scale for the
+ *   first beam.
+ * - `fact_scale2` – `float`, shape `(batch,)` – factorization scale for the
+ *   second beam.
+ *
+ * **References**
+ * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
+ *   https://arxiv.org/abs/2602.06895 (Sec. 3.2.6)
+ * - [2] V. Hirschi, O. Mattelaer, "Automated event generation for loop-induced
+ *   processes", https://arxiv.org/abs/1507.00020
+ */
 class EnergyScale : public FunctionGenerator {
 public:
+    /// Dynamical scale choice; see the class description for the formulas.
     enum DynamicalScaleType {
-        transverse_energy,
-        transverse_mass,
-        half_transverse_mass,
-        partonic_energy
+        transverse_energy,    ///< Total transverse energy @f$E_\mathrm{T}@f$.
+        transverse_mass,      ///< Sum of transverse masses @f$H_\mathrm{T}@f$.
+        half_transverse_mass, ///< @f$H_\mathrm{T}/2@f$.
+        partonic_energy       ///< Partonic energy @f$\sqrt{\hat s}@f$.
     };
 
+    /// Dynamical @ref half_transverse_mass for all three scales.
+    /// @param particle_count  Number of external particles.
     EnergyScale(std::size_t particle_count) :
         EnergyScale(particle_count, half_transverse_mass, false, false, 0., 0., 0.) {}
+    /// Dynamical scale of type @p type for all three scales.
+    /// @param particle_count  Number of external particles.
+    /// @param type            The dynamical scale choice.
+    /// @param min_scale       Floor on the scales, see the full constructor.
+    /// @param max_scale       Ceiling on the scales, see the full constructor.
     EnergyScale(
         std::size_t particle_count,
         DynamicalScaleType type,
@@ -23,8 +73,23 @@ public:
         double max_scale = 0.
     ) :
         EnergyScale(
-            particle_count, type, false, false, 0., 0., 0., min_scale, max_scale
+            particle_count,
+            type,
+            false,
+            false,
+            0.,
+            0.,
+            0.,
+            1.,
+            std::nullopt,
+            min_scale,
+            max_scale
         ) {}
+    /// A single fixed value for all three scales.
+    /// @param particle_count  Number of external particles.
+    /// @param fixed_scale     The constant scale value.
+    /// @param min_scale       Floor on the scales, see the full constructor.
+    /// @param max_scale       Ceiling on the scales, see the full constructor.
     EnergyScale(
         std::size_t particle_count,
         double fixed_scale,
@@ -39,9 +104,30 @@ public:
             fixed_scale,
             fixed_scale,
             fixed_scale,
+            1.,
+            std::nullopt,
             min_scale,
             max_scale
         ) {}
+    /**
+     * @param particle_count       Number of external particles.
+     * @param dynamical_scale_type Scale choice used where a scale is not fixed.
+     * @param ren_scale_fixed      Whether the renormalization scale is fixed.
+     * @param fact_scale_fixed     Whether the factorization scales are fixed.
+     * @param ren_scale            Fixed renormalization-scale value.
+     * @param fact_scale1          Fixed factorization scale for the first beam.
+     * @param fact_scale2          Fixed factorization scale for the second beam.
+     * @param scale_factor         Factor on the dynamical scale; fixed scales are
+     *                             left alone.
+     * @param custom_scale         Optional user-supplied function that replaces
+     *                             the dynamical scale choice.
+     * @param min_scale            Floor on mu_R and mu_F. The scales are clamped
+     *                             to it, so that a pdf is never asked for a
+     *                             density below the bottom of its grid. Zero
+     *                             disables it.
+     * @param max_scale            Upper end of the same range, normally the top
+     *                             of the PDF grid. Zero disables it.
+     */
     EnergyScale(
         std::size_t particle_count,
         DynamicalScaleType dynamical_scale_type,
@@ -50,20 +136,27 @@ public:
         double ren_scale,
         double fact_scale1,
         double fact_scale2,
-        // Floor on mu_R and mu_F. The scales are clamped to it, so that a pdf
-        // is never asked for a density below the bottom of its grid. Only an
-        // MLM clustering also vetoes an event below it, through the
-        // scale_weight output, as setclscales does. Zero disables it.
+        double scale_factor = 1.,
+        const std::optional<CustomFunction>& custom_scale = std::nullopt,
         double min_scale = 0.,
-        // Upper end of the same range, normally the top of the PDF grid.
         double max_scale = 0.
     );
+    /**
+     * Scales from an MLM clustering of the event (dynamical_scale_choice mlm).
+     *
+     * @param clustering  The compiled clustering histories of the subprocess.
+     * @param min_scale   As in the full constructor; here an event whose scales
+     *                    fall outside the range is also vetoed, through an
+     *                    extra `scale_weight` output, as setclscales does.
+     * @param max_scale   As in the full constructor.
+     */
     EnergyScale(
         const MLMClustering& clustering,
         double min_scale = 0.,
         double max_scale = 0.
     );
 
+    /// Whether the scales come from an MLM clustering of the event.
     bool is_mlm() const { return _clustering.has_value(); }
     bool mlm_alphas_reweighting() const {
         return _clustering &&
@@ -137,6 +230,8 @@ private:
     double _ren_scale = 0.;
     double _fact_scale1 = 0.;
     double _fact_scale2 = 0.;
+    double _scale_factor = 1.;
+    std::optional<CustomFunction> _custom_scale;
     double _min_scale = 0.;
     double _max_scale = 0.;
     std::optional<MLMClustering> _clustering;

@@ -22,11 +22,20 @@ from __future__ import absolute_import
 
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
-                                                  output_name)
+                                                  counts_line, output_name)
 
 P = 'MG7>'
 RUN = 'MY_SA_RUN'
 CPP = 'MY_SA_CPP'
+
+
+LAUNCH_QUESTION_HINT = """
+The first box is the build: `backend=scalar`, `nb_core=4`, or the number of a
+line to step through its values. The second is the param_card, edited with
+`set`, as for any other output.
+
+**For this tutorial the defaults are fine -- just press Enter.**
+"""
 
 
 tutorial = Tutorial(
@@ -43,7 +52,7 @@ choose, from your own code -- to reweight someone else's events, to feed a
 fitter or a neural network, to compare two calculations point by point, or to
 check MG7 against a number you computed by hand.
 
-That is what the standalone outputs are for: no integrator, no cards to answer,
+That is what the standalone outputs are for: no integrator, no run card,
 just the matrix element as a function you call.
 
 We will use a merged process, because it shows the one thing about the
@@ -54,7 +63,10 @@ standalone API that is not obvious:
      title='welcome',
      solution='generate p p > j j QCD=2 QED=0'),
 
-Step('generate', """
+Step('generate', lambda interface: """
+%(counts)sNo events anywhere in sight, and none coming: this path stops at the
+matrix element.
+
 Now the output. The formats, and what each is for:
 
   standalone_fortran   the Fortran standalone -- this tutorial's main path
@@ -66,15 +78,15 @@ Now the output. The formats, and what each is for:
 
 (`output standalone_cpp` was removed; `standalone` is the C++ one now.)
 
-%(p)s output standalone_fortran %(run)s --prefix=int
-
 `--prefix` is the flag that matters if you ever load two processes into one
 Python session. It prefixes the routine names -- `--prefix=int` gives `M1_`,
 `M2_`, ... per subprocess group, `--prefix=proc` uses the process name -- so
 the symbols and COMMON blocks of two modules cannot collide. With no prefix
 you get bare `SMATRIX`, which is fine for exactly one module and a trap for
 two.
-""" % {'p': P, 'run': RUN},
+
+%(p)s output standalone_fortran %(run)s --prefix=int
+""" % {'p': P, 'run': RUN, 'counts': counts_line(interface)},
      title='generate a process',
      hint="`output standalone_fortran DIR --prefix=int`",
      solution='output standalone_fortran %s --prefix=int' % RUN),
@@ -120,12 +132,40 @@ For contrast, produce the C++ one too:
      hint="`output standalone DIR` gives the C++/CUDA standalone.",
      solution='output standalone %s' % CPP),
 
-Step('output', """
+Step('output', lambda interface: """
 That is a different animal: `SubProcesses/` now holds `check_sa.cc`,
 `color_sum.cc`, `GpuAbstraction.h` and friends. Same matrix element, C++ and
 CUDA, with the vectorised and GPU paths the Fortran one does not have.
 
-Which to reach for:
+It also has a `launch`, which asks one question before it builds anything --
+how to build, and which parameters to use -- then compiles it and evaluates
+one point:
+%(p)s launch %(cpp)s
+""" % {'p': P, 'cpp': output_name(interface, CPP)},
+     title='the C++ standalone',
+     hint="`launch DIR` builds the C++ standalone and runs `check_sa.exe`.",
+     question_hint=LAUNCH_QUESTION_HINT,
+     solution=lambda interface: 'launch %s' % output_name(interface, CPP)),
+
+Step('launch', """
+That compiled `check_sa.exe` in each `P*` directory and ran it once: a fixed
+phase-space point, and |M|^2 there for every flavour combination the group
+serves -- the NFLAV of the Fortran output again. The executable stays behind,
+so the next launch with the same backend does not recompile.
+
+The switches you saw are the build:
+
+  backend      the SIMD width on CPU (`auto` picks the widest your machine
+               has), or `cuda` / `hip` when their compiler is installed
+  subprocess   one `P*` directory, or all of them
+  nb_core      parallel make jobs
+
+and the card box is the same param_card editing as everywhere else --
+`set mt 172.5`, `set decay 23 auto`, or a path to a card you already have.
+The C++ reads `Cards/param_card.dat` at run time, so a new card needs no
+recompilation.
+
+Which output to reach for:
   * **standalone_fortran** to link into Fortran or to call from Python via
     f2py. Simplest, and the reference the others are checked against.
   * **standalone** (C++/CUDA) when you need throughput -- many points, a GPU,
@@ -134,10 +174,13 @@ Which to reach for:
 
 %(p)s history my_standalone_session.dat
 """ % {'p': P},
-     title='the C++ standalone',
+     title='build and run it',
      solution='history my_standalone_session.dat'),
 
 Step('history', lambda interface: (lambda FORTRAN_RUN: """
+That file replays the session -- `import command my_standalone_session.dat`,
+or `./bin/madgraph my_standalone_session.dat` from a shell.
+
 The rest happens outside MG7, in the Fortran output directory.
 
 **Evaluate one point with no Python at all.** `check_sa` is built for you;

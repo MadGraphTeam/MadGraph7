@@ -61,10 +61,10 @@ import madgraph.core.diagram_generation as diagram_generation
 
 import madgraph.various.misc as misc
 
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 from madgraph import MadGraph5Error, MG5DIR
 
-import models.model_reader as model_reader
+import madgraph.models.model_reader as model_reader
 ZERO = 0
 #===============================================================================
 # Logger for decay_module
@@ -4587,7 +4587,7 @@ class IdentifyHelasTag(diagram_generation.DiagramTag):
 
 
         return [((part.get('spin'), part.get('color')),
-                 (leg.get('id'), leg.get('number'), leg.get('state')))]
+                 (leg.get('id'), leg.get('number'), leg.get('state'), leg.get('onium')))]
         
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
@@ -4611,6 +4611,7 @@ class IdentifyHelasTag(diagram_generation.DiagramTag):
             return base_objects.Leg({'number':link.links[0][1][1],
                                      'id':link.links[0][1][0],
                                      'state':link.links[0][1][2],
+                                     'onium':link.links[0][1][3],
                                      'onshell':False})
 
         # This shouldn't happen

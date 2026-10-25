@@ -26,6 +26,11 @@ If you need a stable release, use the
 
    installation
    first_steps
+   run_card
+   custom_functions
+   diagram_filters
+   gridpacks
+   madevent_to_mg7
 
 .. toctree::
    :maxdepth: 1
@@ -33,6 +38,7 @@ If you need a stable release, use the
    :hidden:
 
    madspace/installation
+   madspace/examples
    madspace/umami-api
    madspace/python-api
    madspace/cpp-api

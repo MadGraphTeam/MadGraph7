@@ -1958,6 +1958,12 @@ c              write (999,*) (Pboost(j), j=0,3)
       do i=1, nexternal
          call boostx(p1(0,i), pboost, p2(0,i))
       enddo
+
+c     A single selected particle has to end up *exactly* at rest, not at
+c     rest to rounding: HELAS switches quantisation axis at exactly zero
+c     three-momentum. Same routine, and same reason, as the LO and NLO
+c     templates use -- see Template/Common/Source/impose_frame_rest.f.
+      call impose_frame_rest(ids, nexternal, p2)
       return
       end
 
@@ -2031,6 +2037,12 @@ c              write (999,*) (Pboost(j), j=0,3)
       do i=1, nexternal_prod
          call boostx(p1(0,i), pboost, p2(0,i))
       enddo
+
+c     A single selected particle has to end up *exactly* at rest, not at
+c     rest to rounding: HELAS switches quantisation axis at exactly zero
+c     three-momentum. Same routine, and same reason, as the LO and NLO
+c     templates use -- see Template/Common/Source/impose_frame_rest.f.
+      call impose_frame_rest(ids, nexternal_prod, p2)
       return
       end
 
