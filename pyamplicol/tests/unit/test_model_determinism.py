@@ -10,8 +10,8 @@ mechanism on the uncanonicalised compiler (another model compiled first,
 65,300 unrelated symbols, the index symbols created in reverse order: the
 colour and Lorentz records with their index bindings and colour proofs, the
 kernels' Horner forms and the loader's binary64 coupling values all
-differed); the cache files must be byte-identical but for the compile's own
-wall-clock durations.
+differed); the cache files must be byte-identical (they hold no wall-clock
+durations).
 """
 
 from __future__ import annotations
@@ -25,8 +25,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 _ASSETS = ROOT / "src" / "pyamplicol" / "assets" / "models" / "ufo"
-# The compile's own durations, which no two compiles share.
-_WALL_CLOCK = ("conversion_seconds", "phase_timings")
 
 # argv: model, cache directory, history ("cold" or "perturbed"), and the
 # scratch directory of the perturbing compile. Prints the plain normal form
@@ -56,14 +54,6 @@ probe = E(
 compile_model_source(Path(model), cache_dir=Path(cache))
 print(probe.format_plain())
 """
-
-
-def _content(path: Path) -> bytes:
-    payload = json.loads(path.read_bytes())
-    for field in _WALL_CLOCK:
-        assert field in payload, field
-        payload.pop(field)
-    return json.dumps(payload, separators=(",", ":")).encode()
 
 
 def test_compiled_model_does_not_depend_on_the_process_history(tmp_path):
@@ -99,7 +89,12 @@ def test_compiled_model_does_not_depend_on_the_process_history(tmp_path):
     )
     assert [path.name for path in cold] == [path.name for path in perturbed]
     assert len(cold) == 1
-    assert _content(cold[0]) == _content(perturbed[0])
+    assert cold[0].read_bytes() == perturbed[0].read_bytes()
+    # No wall-clock durations, which no two compiles share.
+    assert (
+        not {"conversion_seconds", "phase_timings"}
+        & json.loads(cold[0].read_bytes()).keys()
+    )
 
 
 def test_canonical_forms_round_trip_and_ignore_symbol_order():

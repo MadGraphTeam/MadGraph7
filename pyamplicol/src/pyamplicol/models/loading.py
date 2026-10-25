@@ -218,6 +218,14 @@ class ModelCompatibilityIssue:
 
 @dataclass(frozen=True)
 class CompiledModel:
+    """A compiled model.
+
+    ``phase_timings`` and ``conversion_seconds`` are the wall-clock durations
+    of the compile that produced this object in this process; they are not
+    part of the payload (``to_dict``), so equal compiles serialise, digest
+    and cache to equal bytes, and a model loaded from a file has none
+    (``{}`` and ``0.0``)."""
+
     source: Mapping[str, object]
     producer: Mapping[str, object]
     model: Mapping[str, object]
@@ -274,8 +282,6 @@ class CompiledModel:
             },
             "capabilities": dict(self.capabilities),
             "issues": [issue.to_dict() for issue in self.issues],
-            "phase_timings": dict(self.phase_timings),
-            "conversion_seconds": self.conversion_seconds,
         }
         if self.raw_loop_model is not None:
             payload["raw_loop_model"] = self.raw_loop_model.to_dict()
@@ -346,14 +352,8 @@ class CompiledModel:
                 ModelCompatibilityIssue.from_dict(_mapping(issue, "issue"))
                 for issue in raw_issues
             ),
-            phase_timings={
-                str(name): float(value)
-                for name, value in _mapping(
-                    payload.get("phase_timings"),
-                    "phase_timings",
-                ).items()
-            },
-            conversion_seconds=float(payload.get("conversion_seconds", 0.0)),
+            phase_timings={},
+            conversion_seconds=0.0,
             raw_loop_model=raw_loop_model,
             _serialized_path=(
                 None if serialized_path is None else Path(serialized_path).resolve()
