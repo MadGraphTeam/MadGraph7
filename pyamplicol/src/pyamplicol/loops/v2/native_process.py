@@ -166,6 +166,9 @@ class NativeProcess:
     trees: NativeTrees
     record: Mapping[str, Any]
     scaleless: NativeCompanion | None = None
+    # The stored observable columns (``native_observables.StoredObservables``)
+    # of a process generated with declared colour histories or spin classes.
+    observables: Any = None
 
     @classmethod
     def of(cls, executor: Any) -> NativeProcess:
@@ -271,6 +274,8 @@ class NativeProcess:
         if self.scaleless is not None:
             out[f"{SCALELESS}plan.json"] = self.scaleless.plan_json.encode()
             out.update(_trees_members(self.scaleless.trees, SCALELESS))
+        if self.observables is not None:
+            out.update(self.observables.members())
         return out
 
     @classmethod
@@ -304,7 +309,12 @@ class NativeProcess:
             )
         elif scaleless_json is not None:
             raise ValueError("a companion plan without its native tree program")
-        return cls(plan_json, trees, record, companion)
+        observables = None
+        if "observables.json" in members:
+            from .native_observables import StoredObservables
+
+            observables = StoredObservables.from_members(members)
+        return cls(plan_json, trees, record, companion, observables)
 
     # -- evaluation ----------------------------------------------------------
 

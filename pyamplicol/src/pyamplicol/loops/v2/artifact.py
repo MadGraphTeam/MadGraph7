@@ -135,6 +135,9 @@ NATIVE_KERNEL_PLANE_MEMBER = "point-inputs/kernel-{}.symjit"
 # The certified-scaleless companion's tree program (``native_process.
 # NativeCompanion``): the same members under this prefix.
 NATIVE_SCALELESS_PREFIX = "point-inputs/scaleless/"
+# The stored observable columns (``native_observables.StoredObservables``):
+# zlib JSON members ``point-inputs/observables*.json.zlib``.
+NATIVE_OBSERVABLES_PREFIX = "point-inputs/"
 # The companion plan of the certified-scaleless families (rusticol-core
 # ``loop_runtime::LOOP_PROGRAM_V4_SCALELESS_MEMBER``).
 SCALELESS_PLAN_MEMBER = "schedule/loop-plan-v4-scaleless.json.zlib"
@@ -438,6 +441,15 @@ def write_plan(
                     )
                 )
                 k += 1
+        for name in sorted(stored):
+            if name.startswith("observables"):
+                members.append(
+                    (
+                        f"{NATIVE_OBSERVABLES_PREFIX}{name}.zlib",
+                        plan,
+                        zlib.compress(stored[name], 6),
+                    )
+                )
     write_pacbin(
         destination,
         tuple(
@@ -515,6 +527,12 @@ def read_native_process(
                     reader, f"{base}kernel-{k}.symjit", symjit
                 )
                 k += 1
+        start = f"{NATIVE_OBSERVABLES_PREFIX}observables"
+        for name in sorted(names):
+            if name.startswith(start) and name.endswith(".json.zlib"):
+                members[name[len(NATIVE_OBSERVABLES_PREFIX) : -len(".zlib")]] = (
+                    zlib.decompress(read(reader, name, json_kind))
+                )
     try:
         return NativeProcess.from_members(plan_json, members, scaleless_json)
     except ValueError as error:
@@ -682,8 +700,10 @@ def generate_process(
     with them, ``ObservableSlice.generate`` (full tree kernels for spin
     sources; LC/NLC pruning keeps every skeleton live in the declared
     histories' complete-family tables). The stored plan is the inclusive plan
-    of that slice; correlated and resolved column plans are exported from the
-    same slice at run time.
+    of that slice; with native point inputs the correlated and resolved
+    column sets are exported here too and stored with the native process
+    (``native_observables.StoredObservables``), so no call of a loaded
+    process regenerates.
     """
 
     from pyamplicol.correlators import CorrelatorConfig
@@ -724,9 +744,24 @@ def generate_process(
     # needs no regeneration. A process whose tree program cannot be exported
     # natively keeps the plan alone (its loads regenerate the slice).
     native = None
+    # The observable column sets (``native_observables``): their seed records
+    # are formed on the plan's own export (``column_sets``) and stored with
+    # the native process, so no correlated, resolved or catalogue call of a
+    # loaded process regenerates.
+    from .native_observables import column_plans
+
+    plans = column_plans(observables)
     try:
+        # With declared observables every counterterm ket component stays in
+        # the tree program (``native_observables``: a colour history can read
+        # a component the inclusive metric does not).
         exported = export_plan(
-            observables.slice, forward=False, trees=True, born_squared=True
+            observables.slice,
+            forward=False,
+            trees=True,
+            born_squared=True,
+            keep_kets=declared,
+            column_sets={kind: plan.seed_columns for kind, plan in plans.items()},
         )
     except NotImplementedError:
         exported = export_plan(observables.slice, forward=False)
@@ -735,16 +770,24 @@ def generate_process(
     # and "ir" pole selections run (design §12.4). With native point inputs
     # it is exported with its own tree program (no Born or counterterm
     # outputs: it adds only lanes), stored with the process, so no pole
-    # selection of a loaded process regenerates.
+    # selection of a loaded process regenerates; with the seed records of the
+    # column plans' twins on it.
     companion = observables.slice.scaleless
     scaleless = None
     if companion is not None:
+        twins = {}
+        if exported.trees is not None:
+            for kind, plan in plans.items():
+                twin = plan.scaleless()
+                if twin is not None and twin.slice is companion:
+                    twins[kind] = twin.seed_columns
         scaleless = export_plan(
             companion,
             forward=False,
             trees=exported.trees is not None,
             born_squared=False,
             counterterms=False,
+            column_sets=twins or None,
         )
     scaleless_json = None if scaleless is None else scaleless.json()
     if exported.trees is not None:
@@ -756,6 +799,21 @@ def generate_process(
             plan_json,
             None if scaleless is None else (scaleless, cast(str, scaleless_json)),
         )
+        # A column set the native trees cannot form (no native counterterm
+        # components) keeps the process without stored columns: its
+        # correlated and resolved calls then regenerate the slice on first
+        # use.
+        from dataclasses import replace
+
+        from .native_observables import StoredObservables
+
+        try:
+            stored_columns = StoredObservables.export(
+                observables, exported, native, plans, scaleless
+            )
+        except NotImplementedError:
+            stored_columns = None
+        native = replace(native, observables=stored_columns)
     resolved = CorrelatorConfig(
         tuple(observables.histories), tuple(observables.spin_classes)
     )
@@ -986,7 +1044,9 @@ class V2VirtualRuntime:
             # families): no slice is regenerated (WP3.1 I6). A flavour member
             # is an identity-port member of its representative, proved at
             # generation (``process-groups.json``); correlated and resolved
-            # calls regenerate the slice on first use (``_observable_runtime``).
+            # calls run the stored observable columns (``native_observables``;
+            # a process stored without them regenerates the slice on first
+            # use, ``_observable_runtime``).
             runtime = root / "processes" / process_id / str(execution["runtime_path"])
             self._native_process = read_native_process(
                 runtime,
@@ -1041,7 +1101,8 @@ class V2VirtualRuntime:
         regenerated from the artifact's compiled model and request (the
         regenerated plan must have the stored digest), with a flavour member
         admitted on them. Loads with native point inputs need them only for
-        correlated and resolved calls."""
+        the correlated and resolved calls of a process stored without its
+        observable columns (``native_observables``)."""
 
         from pyamplicol.models.loading import CompiledModel
 
@@ -1110,16 +1171,34 @@ class V2VirtualRuntime:
 
     def _observable_runtime(self) -> Any:
         """The correlated and resolved outputs' runtime (``runtime.virtual.
-        V2ObservablesRuntime``), built on the generation objects on first
-        use."""
+        V2ObservablesRuntime``), built on first use on the stored observable
+        columns of a native process (nothing regenerates), else on the
+        generation objects."""
 
         from pyamplicol.runtime.virtual import V2ObservablesRuntime
 
         with self._lock:
             if self._observables is None:
-                generated = self._regenerated()
+                stored = (
+                    None
+                    if self._native_process is None
+                    else self._native_process.observables
+                )
+                if stored is not None:
+                    # The stored observable columns: nothing regenerates.
+                    from .native_observables import StoredObservableSlice
+
+                    correlators = correlators_from_record(self._execution["request"])
+                    observables: Any = StoredObservableSlice(
+                        self._native_process,
+                        stored,
+                        () if correlators is None else correlators.color_correlations,
+                        self._native,
+                    )
+                else:
+                    observables = self._regenerated().observables
                 runtime = V2ObservablesRuntime(
-                    generated.observables,
+                    observables,
                     member=self._member,
                     arithmetic=self.default_arithmetic,
                     precision=self.default_precision,

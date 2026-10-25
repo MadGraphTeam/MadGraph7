@@ -1,0 +1,1090 @@
+# SPDX-License-Identifier: 0BSD
+"""Observable columns of a stored process, evaluated natively (WP3.1 I6).
+
+A process generated with declared colour histories and spin classes serves
+correlated, spin-correlated and helicity-resolved outputs
+(``observables.NativeObservables``). Those column plans and their Born,
+counterterm and field interferences were formed from the generated slice at
+call time, so a loaded process regenerated its slice on first use. Here they
+are exported at generation (``StoredObservables.export``) and stored with the
+native process (PACBIN members ``point-inputs/observables*``), so no
+observable call of a loaded process regenerates anything:
+
+* **column sets**: ``correlated`` (the inclusive Born metric ``born`` and
+  every declared history, ``ColumnPlan`` over ``Column(history)``) and
+  ``resolved`` (one column per Born helicity row, and at leading colour per
+  Born basis element; ``ObservableSlice.resolved_columns``). Per set: the
+  seed records of its plan v4 (the slice's families and tries with the
+  columns' seed weights; ``_seed_overlay`` over the stored process plan,
+  which the set's first call completes, ``with_overlay``), the plan's Born
+  components in the tree program's numbering, the lanes of each column per
+  sector (direct, swapped), and the same for the companion of the
+  certified-scaleless families ("uv" and "ir");
+* **interferences** per column (``loop_v2::trees::TreeProgram::
+  set_columns``): the exact overlaps of the Born basis with the ket tensors
+  of the counterterm closure under the column's colour operator (the Born
+  metric, or a directed history's operator and its swap), with the column's
+  LC/NLC degrees, its kept Born rows and bra basis elements; metrics and
+  entry lists are stored once per set and shared by the columns that read
+  them (``_Programs``); the native trees form them per point next to the
+  block rows and Born components;
+* **spin sources**: per vector leg the source slots of the trees' and the
+  counterterm program's states with their crossing phases, so a source
+  vector replaces the leg's wavefunction natively (the Python path's
+  ``correlated_exact._fill_correlated_sources``) and the leg keeps its fixed
+  (lowest-helicity) row.
+
+The assembly of each column (``observables._Assembly.result``: the bare
+loop from the column's lanes, the local components from the native
+interferences, the pole split) and the stability estimates
+(``ColumnPlan.checked``) are the observables package's, on a structural view
+of the stored process. Binary64 calls run the stored plane applications and
+exact rationals only (no Symbolica state). The asymmetric Ward mode is a
+validation tool of the generated slice and is not stored.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Hashable, Mapping, Sequence
+from dataclasses import dataclass
+from decimal import Decimal
+from fractions import Fraction
+from typing import Any
+
+from .families import Orders
+
+SCHEMA = 1
+KINDS = ("correlated", "resolved")
+
+
+def _orders(orders: Orders) -> list[list[Any]]:
+    return [[name, power] for name, power in orders]
+
+
+def _orders_of(record: Any) -> Orders:
+    return tuple((str(name), int(power)) for name, power in record)
+
+
+def _row(row: Sequence[Sequence[int]]) -> tuple[tuple[int, int], ...]:
+    return tuple((int(leg), int(h)) for leg, h in row)
+
+
+def _text(value: Fraction) -> str:
+    value = Fraction(value)
+    return str(value.numerator if value.denominator == 1 else value)
+
+
+def _key_record(key: Hashable) -> Any:
+    """A column key as JSON: a history id, or (row, basis element)."""
+
+    if isinstance(key, tuple):
+        row, b = key
+        return [None if row is None else [list(x) for x in row], b]
+    return key
+
+
+def _key_of(record: Any) -> Hashable:
+    if isinstance(record, list):
+        row, b = record
+        return (None if row is None else _row(row), b)
+    return record
+
+
+# --------------------------------------------------------------------- export
+
+
+def _cells(basis_literals, ket_literals, overlap) -> list[list[Any]]:
+    """Exact overlap cells (b, t, N_c power, re, im) of the Born basis with
+    every ket tensor under ``overlap(left, right)`` (a dict power -> exact
+    coefficient)."""
+
+    out = []
+    for b, left in enumerate(basis_literals):
+        for t, right in enumerate(ket_literals):
+            for power, cell in sorted(overlap(left, right).items()):
+                if cell:
+                    out.append([b, t, power, _text(cell.real), _text(cell.imag)])
+    return out
+
+
+class _Metrics:
+    """The exact overlap cells (Born basis element, ket tensor, N_c power,
+    re, im) of every colour metric the stored columns read, formed once per
+    process: the Born metric is the counterterm record's own (``record
+    ["cells"]``, ``native_trees._counterterm_program``), a directed history's
+    (and its swap) the history's operator overlaps."""
+
+    def __init__(self, observables: Any, record: Mapping[str, Any], ket_literals):
+        self.observables = observables
+        self.record = record
+        self.ket_literals = ket_literals
+        slice_ = observables.slice
+        self.basis = [tensor.terms[0].tensor for tensor in slice_.basis.tensors]
+        self._found: dict[tuple[Any, bool], list[list[Any]]] = {}
+
+    def cells(self, column: Any, swapped: bool) -> tuple[tuple[Any, bool], list]:
+        key = (column.history.id if column.directed else None, swapped)
+        found = self._found.get(key)
+        if found is None:
+            if not column.directed:
+                found = [list(cell) for cell in self.record["cells"]]
+            else:
+                directed = self.observables.directed(column.history)
+
+                def overlap(left, right):
+                    return directed.overlap(left, right, swapped=swapped)
+
+                found = _cells(self.basis, self.ket_literals, overlap)
+            self._found[key] = found
+        return key, found
+
+
+class _Programs:
+    """The interference programs of a column set's columns, shared
+    (``TreeProgram::set_columns``): distinct metrics (``cells``, from
+    ``_Metrics``) and distinct entry lists (``programs``), each stored once,
+    so the helicity-resolved columns of one metric store it once."""
+
+    def __init__(
+        self,
+        observables: Any,
+        metrics: _Metrics,
+        outputs: Sequence[tuple[str, Orders, int]],
+        born_orders: Sequence[Orders],
+        squared_orders: Sequence[Orders],
+    ):
+        self.observables = observables
+        self.metrics = metrics
+        self.record = metrics.record
+        self.outputs = outputs
+        self.born_orders = born_orders
+        self.squared_orders = squared_orders
+        self.cells: list[list[list[Any]]] = []
+        self.programs: list[dict[str, Any]] = []
+        self._cells: dict[tuple[Any, bool], int] = {}
+        self._programs: dict[str, int] = {}
+
+    def _metric(self, column: Any, swapped: bool) -> int:
+        """The index of a column's direct (or swapped) metric cells."""
+
+        key, cells = self.metrics.cells(column, swapped)
+        found = self._cells.get(key)
+        if found is None:
+            found = self._cells[key] = len(self.cells)
+            self.cells.append(cells)
+        return found
+
+    def _program(self, column: Any) -> int:
+        """The index of a column's entries: Born outputs per squared Born
+        order (``observables._Assembly._local``'s ``born``), then the
+        counterterm and field outputs of the inclusive record
+        (``native_trees._counterterm_program``: its ``entries`` and
+        ``outputs``) with the column's degrees."""
+
+        observables = self.observables
+        accuracy = observables.slice.request.accuracy
+        degrees = observables.degrees(column.history) if accuracy != "full" else None
+        born_index = {order: o for o, order in enumerate(self.born_orders)}
+        entries: list[list[Any]] = []
+        for s, squared in enumerate(self.squared_orders):
+            degree = None if degrees is None else degrees["born"][squared]
+            for left in self.born_orders:
+                for right in self.born_orders:
+                    if _add(left, right) == squared:
+                        entries.append(
+                            [
+                                "born",
+                                born_index[left],
+                                born_index[right],
+                                None,
+                                0,
+                                s,
+                                degree,
+                            ]
+                        )
+        shift = len(self.squared_orders)
+        for kind, bra, ket, coupling, grade, output, _degree in self.record["entries"]:
+            sector = self.outputs[output][1]
+            degree = None if degrees is None else degrees["virtual"][sector]
+            entries.append([kind, bra, ket, coupling, grade, output + shift, degree])
+        program = {
+            "entries": entries,
+            "outputs": [0] * shift + [power for _c, _s, power in self.outputs],
+            "born_outputs": shift,
+        }
+        key = json.dumps(program, separators=(",", ":"))
+        found = self._programs.get(key)
+        if found is None:
+            found = self._programs[key] = len(self.programs)
+            self.programs.append(program)
+        return found
+
+    def column(self, column: Any) -> dict[str, Any]:
+        """One column's record: its program, metrics, rows and basis."""
+
+        rows = None
+        if column.rows is not None:
+            index = {row: k for k, row in enumerate(self.observables.rows)}
+            rows = sorted(index[row] for row in column.rows)
+        return {
+            "program": self._program(column),
+            "cells": self._metric(column, False),
+            "swapped": self._metric(column, True) if column.directed else None,
+            "rows": rows,
+            "basis": None if column.basis is None else sorted(column.basis),
+        }
+
+
+def _add(left: Orders, right: Orders) -> Orders:
+    from .families import add_orders
+
+    return add_orders(left, right)
+
+
+def _source_slots(source_fill: Mapping[str, Any]) -> list[list[Any]]:
+    """(leg label, component start, phase re, phase im) of every vector
+    source slot of a runtime schema's source fill (the spin sources'
+    targets, ``correlated_exact._fill_correlated_sources``)."""
+
+    from pyamplicol.runtime.symbolica_exact import (
+        _crossing_phase,
+        _validated_source_ir,
+    )
+
+    out = []
+    for source in source_fill.get("sources", ()):
+        slot = source["value_slot"]
+        start, stop = int(slot["component_start"]), int(slot["component_stop"])
+        source_ir, _identity, crossing = _validated_source_ir(source)
+        if source_ir["wavefunction_family"] != "vector" or stop - start != 4:
+            continue
+        re, im = _crossing_phase(crossing)
+        out.append([int(source["leg_label"]), start, str(re), str(im)])
+    return out
+
+
+# The plan fields an observable column set changes (``plan_export.
+# export_plan(columns=...)``: its seed records and Born components).
+SEED_FIELDS = ("seed_classes", "seeds", "columns", "column_rows", "born_components")
+
+
+def _seed_overlay(base: Mapping[str, Any], columns: Mapping[str, Any]) -> dict:
+    """The seed records of a column set's plan (``columns``, exported without
+    trees from the same slice) that replace those of the process plan
+    ``base`` (exported with its tree program, whose parameter program reads
+    its kernel constants): ``SEED_FIELDS``. The two must read the same seed
+    keys in every family leaf, with the same loop orders and Born rows; their
+    kernels and contents may be numbered differently (an export's kernel
+    numbering follows the slice's earlier exports), which the seed records
+    do not read. Only the overlay is stored (``with_overlay`` forms the
+    set's plan at its first use), not a second copy of the families."""
+
+    def seeds(program):
+        return [
+            ([leaf["seed"] for leaf in family["leaves"]], family["orders"])
+            for family in program["families"]
+        ]
+
+    for key in ("legs", "rows", "helicities", "average"):
+        if base[key] != columns[key]:
+            raise ValueError(f"a column plan's {key!r} differs from the process's")
+    if seeds(base) != seeds(columns) or len(base["seeds"]) != len(columns["seeds"]):
+        raise ValueError("a column plan reads other seed keys than the process plan")
+    return {key: columns.get(key) for key in SEED_FIELDS}
+
+
+def with_overlay(base_json: str, overlay: Mapping[str, Any]) -> str:
+    """The plan JSON of a column set: the process (or companion) plan with
+    the set's seed records (``_seed_overlay``; a None field is absent)."""
+
+    merged = json.loads(base_json)
+    for key in SEED_FIELDS:
+        value = overlay.get(key)
+        if value is None:
+            merged.pop(key, None)
+        else:
+            merged[key] = value
+    return json.dumps(merged, separators=(",", ":"))
+
+
+def _plan_of(base_json: str, overlay_json: str) -> str:
+    """A column set's plan: ``with_overlay``, or the plan itself when the
+    set stores no seed records of its own (``null``)."""
+
+    overlay = json.loads(overlay_json)
+    return base_json if overlay is None else with_overlay(base_json, overlay)
+
+
+def resolution_of(observables: Any) -> str:
+    """The resolution of the stored resolved columns (the public
+    ``evaluate_resolved``'s): per helicity row, and per Born basis element at
+    leading colour."""
+
+    return (
+        "helicity-colour" if observables.slice.request.accuracy == "lc" else "helicity"
+    )
+
+
+def column_plans(observables: Any) -> dict[str, Any]:
+    """The stored column sets of a process (``observables.ColumnPlan``):
+    ``correlated`` (the Born metric and every declared history) and
+    ``resolved`` (``resolution_of``)."""
+
+    from .observables import INCLUSIVE, Column, ColumnPlan
+
+    return {
+        "correlated": ColumnPlan(
+            observables,
+            [
+                Column(name, observables.history(name))
+                for name in (INCLUSIVE, *(h.id for h in observables.histories))
+            ],
+        ),
+        "resolved": ColumnPlan(
+            observables, observables.resolved_columns(resolution_of(observables))
+        ),
+    }
+
+
+def _overlay_of(seeds: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The plan fields (``SEED_FIELDS``) of one set's seed records from
+    ``export_plan(column_sets=...)``; None when the plan's own columns serve
+    the set (``"same"``)."""
+
+    if seeds.get("same"):
+        return None
+    return {
+        "seed_classes": seeds["seed_classes"],
+        "seeds": seeds["seeds"],
+        "columns": seeds["columns"],
+        "column_rows": seeds["column_rows"],
+        "born_components": len(seeds["born_components"]),
+    }
+
+
+@dataclass(frozen=True)
+class ObservableSet:
+    """One stored column set: the seed records of its plan over the process
+    plan (``_seed_overlay``, JSON), the plan's Born components in the tree
+    program's numbering, its interference programs (JSON) and the
+    companion's seed records and Born components (or None)."""
+
+    overlay_json: str
+    plan_components: tuple[int | None, ...]
+    columns_json: str
+    companion_overlay_json: str | None
+    companion_components: tuple[int | None, ...] | None
+
+
+@dataclass(frozen=True)
+class StoredObservables:
+    """The stored observable columns of a process (module docstring):
+    ``record`` holds the column catalogue (keys, histories, rows, basis
+    elements), the lanes of every column per sector, the Born rows, the
+    spin classes; ``sets`` the column sets."""
+
+    record: Mapping[str, Any]
+    sets: Mapping[str, ObservableSet]
+
+    @classmethod
+    def export(
+        cls,
+        observables: Any,
+        exported: Any,
+        native: Any,
+        plans: Mapping[str, Any],
+        companion: Any = None,
+    ) -> StoredObservables:
+        """The observable columns of a generated process: ``observables``
+        its ``ObservableSlice``, ``plans`` its column plans (``column_plans``),
+        ``exported`` its plan with the tree program and the plans' seed
+        records (``export_plan(column_sets=...)``), ``native`` its
+        ``native_process.NativeProcess`` and ``companion`` the stored
+        companion's exported plan with the seed records of the plans' twins
+        (None: they are exported here, as when a twin runs on a rebuilt
+        companion)."""
+
+        from .plan_export import export_plan
+
+        trees = exported.trees
+        counterterms = trees.program.get("counterterms")
+        if counterterms is None or not trees.ket_tensors:
+            raise NotImplementedError(
+                "stored observable columns need the native counterterm components"
+            )
+        slice_ = observables.slice
+        tree_index = {key: j for j, key in enumerate(trees.components)}
+        companion_trees = None if native.scaleless is None else native.scaleless.trees
+        companion_index = (
+            None
+            if companion_trees is None
+            else {key: j for j, key in enumerate(companion_trees.components)}
+        )
+        rows = tuple(exported.rows)
+        record: dict[str, Any] = {
+            "schema": SCHEMA,
+            "rows": [[list(x) for x in row] for row in rows],
+            "basis": len(slice_.basis.tensors),
+            "spin_classes": [list(legs) for legs in observables.spin_classes],
+            "resolution": resolution_of(observables),
+            "sets": {},
+            "sources": {
+                "trees": _source_slots(trees.program["source_fill"]),
+                "counterterms": _source_slots(
+                    trees.program["counterterm_trees"]["source_fill"]
+                )
+                if trees.program.get("counterterm_trees")
+                else [],
+            },
+        }
+        metrics = _Metrics(observables, counterterms, trees.ket_tensors)
+        sets = {}
+        twin_base = None
+        for kind, plan in plans.items():
+            seeds = exported.column_seeds[kind]
+            overlay = _overlay_of(seeds)
+            components = tuple(tree_index.get(key) for key in seeds["born_components"])
+            companion_overlay = companion_components = None
+            twin = plan.scaleless()
+            if twin is not None:
+                if companion_index is None:
+                    raise ValueError("a column companion without the stored companion")
+                stored = (
+                    None
+                    if companion is None or companion.column_seeds is None
+                    else companion.column_seeds.get(kind)
+                )
+                if stored is not None and twin.slice is slice_.scaleless:
+                    companion_overlay = _overlay_of(stored)
+                    keys = stored["born_components"]
+                else:
+                    # The twin runs on a rebuilt companion (LC/NLC with
+                    # directed histories): its seed records over the stored
+                    # companion plan, checked to read the same seed keys.
+                    if twin_base is None:
+                        twin_base = json.loads(native.scaleless.plan_json)
+                    twin_plan = export_plan(
+                        twin.slice, forward=False, columns=twin.seed_columns
+                    )
+                    companion_overlay = _seed_overlay(twin_base, twin_plan.program)
+                    keys = twin_plan.born_components
+                record["sources"].setdefault(
+                    "companion",
+                    _source_slots(companion_trees.program["source_fill"]),
+                )
+                companion_components = tuple(companion_index.get(key) for key in keys)
+            programs = _Programs(
+                observables,
+                metrics,
+                trees.counterterm_outputs,
+                trees.born_orders,
+                trees.squared_orders,
+            )
+            column_records = [programs.column(column) for column in plan.columns]
+            columns_json = json.dumps(
+                {
+                    "cells": programs.cells,
+                    "programs": programs.programs,
+                    "columns": column_records,
+                    "trees": record["sources"]["trees"],
+                    "counterterms": record["sources"]["counterterms"],
+                },
+                separators=(",", ":"),
+            )
+            record["sets"][kind] = {
+                "columns": [
+                    {
+                        "key": _key_record(column.key),
+                        "history": None
+                        if column.history is None
+                        else column.history.id,
+                        "rows": None
+                        if column.rows is None
+                        else [[list(x) for x in row] for row in sorted(column.rows)],
+                        "basis": None if column.basis is None else sorted(column.basis),
+                    }
+                    for column in plan.columns
+                ],
+                "lanes": [
+                    [_key_record(key), _orders(sector), direct, swapped]
+                    for (key, sector), (direct, swapped) in plan.lanes.items()
+                ],
+                # Lane labels: the process plan's (and the stored
+                # companion's) loop orders, whose families the sets run.
+                "families": len(exported.families),
+                "orders": [_orders(o) for o in exported.orders],
+                "companion_families": None
+                if twin is None
+                else int(native.scaleless.record["families"]),
+                "companion_orders": None
+                if twin is None
+                else native.scaleless.record["orders"],
+                "plan_components": list(components),
+                "companion_components": None
+                if companion_components is None
+                else list(companion_components),
+            }
+            sets[kind] = ObservableSet(
+                json.dumps(overlay, separators=(",", ":")),
+                components,
+                columns_json,
+                # "null" when the companion's own seed records serve the set.
+                None
+                if twin is None
+                else json.dumps(companion_overlay, separators=(",", ":")),
+                companion_components,
+            )
+        return cls(record, sets)
+
+    # -- storage ---------------------------------------------------------------
+
+    def members(self) -> dict[str, bytes]:
+        out = {
+            "observables.json": json.dumps(
+                self.record, separators=(",", ":"), sort_keys=True
+            ).encode()
+        }
+        for kind, value in self.sets.items():
+            out[f"observables-{kind}-seeds.json"] = value.overlay_json.encode()
+            out[f"observables-{kind}-columns.json"] = value.columns_json.encode()
+            if value.companion_overlay_json is not None:
+                out[f"observables-{kind}-companion-seeds.json"] = (
+                    value.companion_overlay_json.encode()
+                )
+        return out
+
+    @classmethod
+    def from_members(cls, members: Mapping[str, bytes]) -> StoredObservables:
+        record = json.loads(members["observables.json"])
+        if record.get("schema") != SCHEMA:
+            raise ValueError(
+                "unsupported stored observables schema; regenerate the artifact"
+            )
+        sets = {}
+        for kind, meta in record["sets"].items():
+            companion = members.get(f"observables-{kind}-companion-seeds.json")
+            sets[kind] = ObservableSet(
+                bytes(members[f"observables-{kind}-seeds.json"]).decode(),
+                tuple(meta["plan_components"]),
+                bytes(members[f"observables-{kind}-columns.json"]).decode(),
+                None if companion is None else bytes(companion).decode(),
+                None
+                if meta["companion_components"] is None
+                else tuple(meta["companion_components"]),
+            )
+        return cls(record, sets)
+
+
+# --------------------------------------------------------------------- runtime
+
+
+class StoredObservableSlice:
+    """The observables of a loaded process (the subset of
+    ``observables.ObservableSlice`` that ``runtime.virtual.
+    V2ObservablesRuntime`` reads), on the stored native process and its
+    stored columns: no slice."""
+
+    def __init__(
+        self,
+        process: Any,
+        stored: StoredObservables,
+        histories: Sequence[Any],
+        native: Any,
+    ):
+        from .native_process import _ProcessView
+
+        self.process = process
+        self.stored = stored
+        self.native = native
+        record = process.record
+        self.slice = _ProcessView(record, native)
+        born = record["trees"]["born_orders"]
+        self.slice.blocks.born_orders = tuple(_orders_of(o) for o in born)
+        self.histories = tuple(histories)
+        self.spin_classes = tuple(
+            tuple(int(leg) for leg in legs) for legs in stored.record["spin_classes"]
+        )
+        self.rows = tuple(_row(row) for row in stored.record["rows"])
+        self.components = tuple(range(int(stored.record["basis"])))
+        # One runner per stored column set, member and executor options: its
+        # native executors are built once and serve every call that selects
+        # some of its columns.
+        self._sets: dict[tuple[Any, ...], StoredColumns] = {}
+
+    def history(self, identifier: str) -> Any:
+        from pyamplicol.color.correlator_matrices import ColorCorrelator
+
+        from .observables import INCLUSIVE
+
+        if identifier == INCLUSIVE:
+            return ColorCorrelator(INCLUSIVE)
+        for history in self.histories:
+            if history.id == identifier:
+                return history
+        raise KeyError(f"undeclared colour correlation {identifier!r}")
+
+    def native_columns(self, kind: str, value: Any, *, member=None, **options):
+        """The native column runner of one call kind (``correlated``: the
+        requested histories, served by the stored correlated set;
+        ``resolved``: its resolution, which must be the stored one)."""
+
+        if kind not in KINDS:
+            raise ValueError(f"unknown column set {kind!r}")
+        key = (kind, id(member), tuple(sorted(options.items())))
+        found = self._sets.get(key)
+        if found is None:
+            found = self._sets[key] = StoredColumns(
+                self, kind, member=member, **options
+            )
+        if kind == "resolved":
+            found.check_resolution(value)
+            return _Selection(found, None)
+        known = set(found.plan.index)
+        wanted = tuple(dict.fromkeys(value))
+        missing = [name for name in wanted if name not in known]
+        if missing:
+            raise KeyError(f"undeclared colour correlations {missing!r}")
+        return _Selection(found, wanted)
+
+
+class _Selection:
+    """Some columns of a stored column set (``StoredColumns``): the requested
+    histories of a correlated call, or every resolved column."""
+
+    def __init__(self, columns: StoredColumns, wanted: tuple[Any, ...] | None):
+        self.columns = columns
+        self.wanted = wanted
+
+    def evaluate(self, points, scales, **options):
+        return self.columns.evaluate(points, scales, wanted=self.wanted, **options)
+
+
+class _ColumnPlanView:
+    """``observables.ColumnPlan``'s assembly and estimates on stored lanes
+    (``_Assembly`` with the native interferences as its local part)."""
+
+    def __init__(self, observables: StoredObservableSlice, kind: str):
+        from .observables import Column
+
+        meta = observables.stored.record["sets"][kind]
+        self.observables = observables
+        self.slice = observables.slice
+        self.columns = [
+            Column(
+                _key_of(item["key"]),
+                None
+                if item["history"] is None
+                else observables.history(item["history"]),
+                None
+                if item["rows"] is None
+                else frozenset(_row(row) for row in item["rows"]),
+                None if item["basis"] is None else frozenset(item["basis"]),
+            )
+            for item in meta["columns"]
+        ]
+        self.lanes = {
+            (_key_of(key), _orders_of(sector)): (int(direct), int(swapped))
+            for key, sector, direct, swapped in meta["lanes"]
+        }
+        self.index = {column.key: k for k, column in enumerate(self.columns)}
+
+
+def _plan_class():
+    from .observables import ColumnPlan, _Assembly
+
+    class _StoredAssembly(_Assembly):
+        def _local(self, column):
+            return self.evaluation.column_locals[self.plan.index[column.key]]
+
+    class _StoredPlan(ColumnPlan):
+        def __init__(self, view: _ColumnPlanView):
+            self.observables = view.observables
+            self.slice = view.slice
+            self.columns = view.columns
+            self.seed_columns = []
+            self.lanes = view.lanes
+            self.index = view.index
+            self._scaleless = [None]
+
+        def results(self, evaluation, wanted=None):
+            columns = (
+                self.columns
+                if wanted is None
+                else [self.columns[self.index[key]] for key in wanted]
+            )
+            with evaluation.numbers.scope():
+                assembly = _StoredAssembly(self, evaluation)
+                return {column.key: assembly.result(column) for column in columns}
+
+    return _StoredPlan
+
+
+class StoredColumns:
+    """``observables.NativeObservables`` for a loaded process: one stored
+    column set (every column dressed and reduced per batch: the set's plan
+    holds them all), its outputs assembled for the selected columns."""
+
+    def __init__(
+        self,
+        observables: StoredObservableSlice,
+        kind: str,
+        *,
+        member: Any = None,
+        lanes: int | None = None,
+        threads: int | None = None,
+        schedule: str = "B",
+    ):
+        from .plan_export import DEFAULT_LANES
+
+        if kind not in KINDS:
+            raise ValueError(f"unknown column set {kind!r}")
+        if schedule != "B":
+            raise ValueError("stored observable columns run schedule B")
+        stored = observables.stored
+        self.observables = observables
+        self.kind = kind
+        self.member = member
+        self.lanes = lanes or DEFAULT_LANES
+        self.threads = threads
+        self.set = stored.sets[kind]
+        self.meta = stored.record["sets"][kind]
+        self.plan = _plan_class()(_ColumnPlanView(observables, kind))
+        self._native: dict[tuple[str, int | None, int, bool], Any] = {}
+        self._plans: dict[bool, str] = {}
+
+    def check_resolution(self, resolution: Any) -> None:
+        stored = self.observables.stored.record["resolution"]
+        if resolution != stored:
+            raise ValueError(
+                f"the stored resolved columns have resolution {stored!r}, "
+                f"not {resolution!r}"
+            )
+
+    # -- native executors -------------------------------------------------------
+
+    def _plan(self, twin: bool) -> str:
+        """The set's plan JSON (or its companion's): the stored process (or
+        companion) plan with the set's seed records, formed once."""
+
+        found = self._plans.get(twin)
+        if found is None:
+            process = self.observables.process
+            if twin:
+                base = process.scaleless.plan_json
+                overlay = self.set.companion_overlay_json
+            else:
+                base, overlay = process.plan_json, self.set.overlay_json
+            if overlay is None:
+                raise ValueError("the column set stores no companion seeds")
+            found = self._plans[twin] = _plan_of(base, overlay)
+        return found
+
+    def _executor(self, arithmetic: str, digits: int | None, points: int, twin: bool):
+        lanes = self.lanes
+        if arithmetic != "double":
+            lanes = 1
+            while lanes < min(points, self.lanes):
+                lanes *= 2
+        key = (arithmetic, digits, lanes, twin)
+        found = self._native.get(key)
+        if found is None:
+            process = self.observables.process
+            native = self.observables.native
+            if twin:
+                trees = process.scaleless.trees
+                sources = self.observables.stored.record["sources"]
+                found = native.V2Executor(
+                    self._plan(True),
+                    arithmetic,
+                    digits,
+                    lanes=lanes,
+                    threads=self.threads,
+                    trees=trees.executor_argument(),
+                    # The spin sources only (the companion adds lanes).
+                    columns=json.dumps(
+                        {
+                            "cells": [],
+                            "programs": [],
+                            "columns": [],
+                            "trees": sources.get("companion", []),
+                            "counterterms": [],
+                        }
+                    ),
+                    plan_components=list(self.set.companion_components),
+                )
+            else:
+                found = native.V2Executor(
+                    self._plan(False),
+                    arithmetic,
+                    digits,
+                    lanes=lanes,
+                    threads=self.threads,
+                    trees=process.trees.executor_argument(),
+                    columns=self.set.columns_json,
+                    plan_components=list(self.set.plan_components),
+                )
+            self._native[key] = found
+        return found
+
+    # -- evaluation ---------------------------------------------------------------
+
+    def evaluate(
+        self,
+        points,
+        scales,
+        *,
+        wanted=None,
+        spin=None,
+        ward=None,
+        parameters=None,
+        precision=None,
+        poles="all",
+        stability=None,
+    ):
+        """``observables.NativeObservables.evaluate`` on the stored columns:
+        the outputs of the columns ``wanted`` (keys; None: every column)."""
+
+        from .assemble import Precision
+        from .observables import (
+            _member_key,
+            _rotated_point,
+            _rotated_spin,
+        )
+        from .plan_export import FailedPoints
+        from .stability import ROTATION, StabilityChecks
+
+        if ward is not None:
+            raise NotImplementedError(
+                "the asymmetric Ward mode is a validation tool of the generated "
+                "slice; stored processes do not serve it"
+            )
+        stability = stability or StabilityChecks()
+        spins = (
+            list(spin)
+            if spin is not None and not isinstance(spin, Mapping)
+            else [spin] * len(points)
+        )
+        if len(spins) != len(points):
+            raise ValueError("one spin source assignment per point")
+        member = self.member
+        if member is not None:
+            points = [member.point(point) for point in points]
+            spins = [member.spin(value) for value in spins]
+        precision = precision or Precision.double()
+        references, failures = self._evaluations(
+            points, scales, spins, parameters, precision, poles, stability.frame
+        )
+        runs = []
+        for k, rotation in enumerate(stability.rotations):
+            evaluations, failed = self._evaluations(
+                [_rotated_point(rotation, point) for point in points],
+                scales,
+                [_rotated_spin(rotation, value) for value in spins],
+                parameters,
+                precision,
+                poles,
+                None,
+            )
+            runs.append(evaluations)
+            for index, reasons in failed.items():
+                failures.setdefault(index, []).extend(
+                    f"{ROTATION.format(k)}: {reason}" for reason in reasons
+                )
+        out = []
+        for index, reference in enumerate(references):
+            if index in failures:
+                out.append(None)
+                continue
+            result = self.plan.results(reference, wanted)
+            if stability.enabled:
+                result = self.plan.checked(
+                    result,
+                    reference,
+                    [
+                        (run[index], self.plan.results(run[index], wanted))
+                        for run in runs
+                    ],
+                    precision.unit_roundoff,
+                    stability.reduction,
+                )
+            if member is not None:
+                result = {_member_key(member, key): v for key, v in result.items()}
+            out.append(result)
+        if failures:
+            raise FailedPoints(out, failures)
+        return out
+
+    def _evaluations(self, points, scales, spins, parameters, precision, poles, retest):
+        """Point evaluations with every column's lanes reduced natively (and
+        re-reduced in the frame ``retest``) and the native interferences;
+        also the failures per point."""
+
+        from .assemble import _fraction, _NativePoint, _Numbers
+        from .native_trees import batch_parameters
+        from .plan_export import NativeExecutor, _fraction_text
+        from .poles import has_poles, pole_mode, reducer_poles, splits
+
+        view = self.observables.slice
+        process = self.observables.process
+        mode = pole_mode(poles)
+        evaluations = []
+        for point, scale in zip(points, scales, strict=True):
+            scale = _fraction(scale)
+            values = view._point_parameters(dict(parameters or {}), scale, precision)
+            evaluation = _NativePoint(
+                view,
+                tuple(tuple(_fraction(x) for x in p) for p in point),
+                scale,
+                values,
+                _Numbers(precision),
+            )
+            evaluation.mode = mode
+            evaluation.poles = has_poles(mode)
+            evaluations.append(evaluation)
+        arithmetic, digits = NativeExecutor._arithmetic(precision, False)
+        inputs = {
+            "momenta": [
+                [_fraction_text(x) for p in e.incoming for x in p] for e in evaluations
+            ],
+            "scales": [_fraction_text(e.scale) for e in evaluations],
+            "parameters": batch_parameters(process.trees, evaluations),
+        }
+        sources = [self._sources(spin) for spin in spins]
+        if any(source is not None for source in sources):
+            inputs["sources"] = [
+                ([], None) if source is None else source for source in sources
+            ]
+        options = {
+            "poles": reducer_poles(mode),
+            "check": retest is not None,
+            "rescale": retest == "rescaled",
+        }
+        native = self._executor(arithmetic, digits, len(evaluations), False)
+        output = native.evaluate(inputs, schedule="B", **options)
+        extra = None
+        if splits(mode) and self.set.companion_overlay_json is not None:
+            twin = self._executor(arithmetic, digits, len(evaluations), True)
+            twin_inputs = {
+                **inputs,
+                "parameters": batch_parameters(process.scaleless.trees, evaluations),
+            }
+            extra = twin.evaluate(twin_inputs, schedule="B", **options)
+        families = int(self.meta["families"])
+        orders = [_orders_of(o) for o in self.meta["orders"]]
+        twin_orders = (
+            None
+            if self.meta["companion_orders"] is None
+            else [_orders_of(o) for o in self.meta["companion_orders"]]
+        )
+        failed: dict[int, list[str]] = {}
+        for index, (evaluation, lanes, checks, failures) in enumerate(
+            zip(
+                evaluations,
+                output["families"],
+                output["check"] or [None] * len(evaluations),
+                output["failures"],
+                strict=True,
+            )
+        ):
+            if extra is not None and extra["failures"][index]:
+                failures = [*failures, *extra["failures"][index]]
+            if failures:
+                failed[index] = [str(failure) for failure in failures]
+                continue
+            numbers = evaluation.numbers
+
+            def carrier(values, numbers=numbers):
+                if numbers.double:
+                    return [complex(float(re), float(im)) for re, im in values]
+                return [numbers.pair(Decimal(re), Decimal(im)) for re, im in values]
+
+            def read(runs, order_list, offset):
+                if runs is None:
+                    return None
+                return {
+                    (offset + family, order_list[order], column): carrier(values)
+                    for (family, order, column), values in runs
+                }
+
+            scaleless = scaleless_check = None
+            if extra is not None:
+                scaleless = read(extra["families"][index], twin_orders, families)
+                if extra["check"] is not None:
+                    scaleless_check = read(extra["check"][index], twin_orders, families)
+            with _Numbers(precision).scope():
+                evaluation.column_locals = self._locals(
+                    output["columns"][index], numbers, evaluation.poles
+                )
+                evaluation.set_lanes(
+                    read(lanes, orders, 0),
+                    read(checks, orders, 0),
+                    scaleless,
+                    scaleless_check,
+                )
+        return evaluations, failed
+
+    def _sources(self, spin: Mapping[int, Any] | None):
+        """A point's native spin sources: per leg its literal vector (exact
+        texts) and the Born rows it keeps (the source legs' fixed rows)."""
+
+        if not spin:
+            return None
+        legs = tuple(sorted(spin))
+        if legs not in self.observables.spin_classes:
+            raise ValueError(f"spin legs {legs} are not a declared spin class")
+        rows = self.observables.rows
+        fixed = {}
+        for leg in legs:
+            values = {h for row in rows for i, h in row if i == leg - 1}
+            if not values:
+                raise ValueError(f"leg {leg} has no helicity rows")
+            fixed[leg] = min(values)
+        keep = [
+            all(dict(row)[leg - 1] == h for leg, h in fixed.items()) for row in rows
+        ]
+        from .observables import _components
+
+        vectors = [
+            (int(leg), [[_text(re), _text(im)] for re, im in _components(spin[leg])])
+            for leg in legs
+        ]
+        return (vectors, keep)
+
+    def _locals(self, columns, numbers, poles: bool):
+        """Per column the ``_Assembly._local`` pair: the Born per squared
+        Born order (not divided by the average) and the counterterm and field
+        values per (component, sector, epsilon power) (divided by it), from
+        the native interferences."""
+
+        from .ct_sites import LAURENT_POWERS
+
+        trees = self.observables.process.trees
+        squared = trees.squared_orders
+        outputs = trees.counterterm_outputs
+        out = []
+        for values in columns:
+            values = [_value(value, numbers) for value in values]
+            born = {order: values[k] for k, order in enumerate(squared)}
+            local = {}
+            for k, (component, sector, power) in enumerate(outputs):
+                if not poles and power != LAURENT_POWERS[0]:
+                    continue
+                local[component, sector, power] = values[len(squared) + k]
+            out.append((born, local))
+        return out
+
+
+def _value(value, numbers):
+    re, im = value
+    if numbers.double:
+        return complex(float(re), float(im))
+    return numbers.pair(Decimal(re), Decimal(im))
+
+
+__all__ = [
+    "ObservableSet",
+    "StoredColumns",
+    "StoredObservableSlice",
+    "StoredObservables",
+]

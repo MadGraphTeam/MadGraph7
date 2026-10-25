@@ -119,6 +119,12 @@ GENERATION_CODE = frozenset(
         ("pyamplicol/loops/v2/native_trees.py", "_interaction_program"),
         ("pyamplicol/loops/v2/native_trees.py", "_counterterm_program"),
         ("pyamplicol/loops/v2/native_trees.py", "_parameter_program"),
+        # The observables' slice and column plans, and the export of the
+        # stored observable columns.
+        ("pyamplicol/loops/v2/observables.py", "ObservableSlice.generate"),
+        ("pyamplicol/loops/v2/observables.py", "ColumnPlan.__init__"),
+        ("pyamplicol/loops/v2/observables.py", "NativeObservables.__init__"),
+        ("pyamplicol/loops/v2/native_observables.py", "StoredObservables.export"),
     }
 )
 GENERATION_FILES = (

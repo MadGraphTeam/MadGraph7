@@ -205,15 +205,20 @@ impl Trees {
             .map_err(error)?;
         batch.constants = bound.constants;
         batch.masses = bound.masses;
+        let sources = match inputs.get_item("sources")? {
+            Some(value) if !value.is_none() => Some(point_sources(&value, zero)?),
+            _ => None,
+        };
         let out = self
             .program
-            .inputs(
+            .inputs_with(
                 runtime,
                 plan,
                 &bound.trees,
                 &batch.momenta,
                 &batch.constants,
                 poles,
+                sources.as_deref(),
                 zero,
             )
             .map_err(error)?;
@@ -221,6 +226,44 @@ impl Trees {
         batch.born = out.born.clone();
         Ok(out)
     }
+}
+
+/// Per point spin sources (`inputs["sources"]`): per point `(vectors,
+/// rows)`, `vectors` (1-based leg label, four `[re, im]` exact texts) and
+/// `rows` a kept flag per Born row, or None (every row).
+#[allow(clippy::type_complexity)]
+fn point_sources<T: V2Carrier>(
+    value: &Bound<'_, PyAny>,
+    zero: &T,
+) -> PyResult<Vec<rusticol_core::loop_v2::trees::PointSources<T>>> {
+    let parsed: Vec<(Vec<(usize, Vec<[String; 2]>)>, Option<Vec<bool>>)> = value.extract()?;
+    parsed
+        .into_iter()
+        .map(|(vectors, rows)| {
+            let vectors = vectors
+                .into_iter()
+                .map(|(leg, components)| {
+                    if components.len() != 4 {
+                        return Err(error("a spin source is a complex four-vector"));
+                    }
+                    let parsed = components
+                        .iter()
+                        .map(|[re, im]| {
+                            Ok(Complex::new(
+                                zero.from_rational(&parse_rational(re).map_err(error)?),
+                                zero.from_rational(&parse_rational(im).map_err(error)?),
+                            ))
+                        })
+                        .collect::<PyResult<Vec<_>>>()?;
+                    let array: [Complex<T>; 4] = parsed
+                        .try_into()
+                        .map_err(|_| error("a spin source is a complex four-vector"))?;
+                    Ok((leg, array))
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            Ok(rusticol_core::loop_v2::trees::PointSources { vectors, rows })
+        })
+        .collect()
 }
 
 type ExportedNumerators = Vec<Vec<(usize, usize, usize, Vec<Values>)>>;
@@ -258,6 +301,9 @@ struct Evaluation {
     /// The counterterm and external-field outputs per point (native trees
     /// with counterterms), else None.
     counterterms: Option<Vec<Values>>,
+    /// Per point and observable column its complex outputs (native trees
+    /// with observable columns), else None.
+    columns: Option<Vec<Vec<Values>>>,
     families: Vec<Lanes>,
     check: Option<Vec<Lanes>>,
     bare: Vec<Vec<Values>>,
@@ -292,6 +338,7 @@ fn export_evaluation<T: Exchanged + Real>(
     bits: u32,
     born: Option<Vec<Values>>,
     counterterms: Option<Vec<Values>>,
+    columns: Option<Vec<Vec<Values>>>,
 ) -> Evaluation {
     let lanes = |values: &[(rusticol_core::loop_execution::v2::LaneKey, Vec<Complex<T>>)]| {
         values
@@ -303,6 +350,7 @@ fn export_evaluation<T: Exchanged + Real>(
     Evaluation {
         born,
         counterterms,
+        columns,
         families: results.iter().map(|r| lanes(&r.families)).collect(),
         check: checked.then(|| {
             results
@@ -437,6 +485,7 @@ where
     let mut batch = batch(inputs, &zero)?;
     let mut born = None;
     let mut counterterms = None;
+    let mut columns = None;
     let mut tree_seconds = None;
     if inputs.contains("parameters")? {
         let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
@@ -459,6 +508,12 @@ where
         };
         born = native.born_squared.map(export);
         counterterms = native.counterterms.map(export);
+        columns = native.columns.map(|points| {
+            points
+                .iter()
+                .map(|columns| columns.iter().map(|values| T::export(values, bits)).collect())
+                .collect()
+        });
     }
     let (results, mut report) = py
         .detach(|| executor.evaluate(&batch, &zero, backend, options))
@@ -467,7 +522,14 @@ where
         report.seconds.insert("trees", total);
         report.seconds.extend(parts);
     }
-    Ok(export_evaluation(results, report, bits, born, counterterms))
+    Ok(export_evaluation(
+        results,
+        report,
+        bits,
+        born,
+        counterterms,
+        columns,
+    ))
 }
 
 /// Native tree inputs of a batch: (block rows, plan Born components, every
@@ -535,8 +597,11 @@ impl V2Executor {
     /// the saved exact evaluator of each kernel and of the parameter program
     /// (last), and their binary64 SymJIT plane applications in the same order
     /// (or None: binary64 then runs the exact states).
+    /// `columns` (JSON, `loops/v2/native_observables`) adds observable
+    /// columns to the tree program and `plan_components` replaces its plan
+    /// Born components (an observable column set's plan).
     #[new]
-    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None))]
+    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         plan: &str,
@@ -547,6 +612,8 @@ impl V2Executor {
         forms: &str,
         engine: &str,
         trees: Option<(String, Vec<Vec<u8>>, Option<Vec<Vec<u8>>>)>,
+        columns: Option<String>,
+        plan_components: Option<Vec<Option<usize>>>,
     ) -> PyResult<Self> {
         if !matches!(engine, "fast" | "generic") {
             return Err(error("engine must be fast or generic"));
@@ -571,15 +638,26 @@ impl V2Executor {
         let plan = Arc::new(LoopProgramV4::load_with(plan.as_bytes(), policy).map_err(error)?);
         let trees = trees
             .map(|(json, kernels, planes)| {
-                TreeProgram::load(json.as_bytes(), &kernels, planes.as_deref(), &plan).map(
-                    |program| Trees {
-                        program,
-                        runtime: Mutex::new(None),
-                    },
-                )
+                let mut program = TreeProgram::load_with_components(
+                    json.as_bytes(),
+                    &kernels,
+                    planes.as_deref(),
+                    &plan,
+                    plan_components.clone(),
+                )?;
+                if let Some(columns) = &columns {
+                    program.set_columns(columns.as_bytes())?;
+                }
+                Ok::<_, rusticol_core::RusticolError>(Trees {
+                    program,
+                    runtime: Mutex::new(None),
+                })
             })
             .transpose()
             .map_err(error)?;
+        if trees.is_none() && (columns.is_some() || plan_components.is_some()) {
+            return Err(error("observable columns need a tree program"));
+        }
         Ok(Self {
             executor: Executor::new(plan, lanes, threads).map_err(error)?,
             carrier,

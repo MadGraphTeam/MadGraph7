@@ -107,6 +107,10 @@ class NativeTrees:
     # The binary64 SymJIT plane application of each saved evaluator: the
     # kernels, then the parameter program (``_plane_applications``).
     planes: tuple[bytes, ...] = ()
+    # The literal colour tensors of the counterterm closure's ket tensors
+    # (generation only, not stored: ``native_observables`` forms the stored
+    # columns' overlaps from them).
+    ket_tensors: tuple[Any, ...] = ()
 
     def json(self) -> str:
         return json.dumps(self.program, separators=(",", ":"))
@@ -173,6 +177,7 @@ def export_trees(
     *,
     born_squared: bool,
     with_counterterms: bool = True,
+    keep_kets: bool = False,
 ) -> NativeTrees:
     """The tree program of ``slice_`` for the plan ``exporter`` is lowering.
 
@@ -476,7 +481,9 @@ def export_trees(
     }
     ct_saved = () if ct is None else ct.saved
     if PRUNE:
-        program, saved, ct_saved = prune_program(program, saved, ct_saved)
+        program, saved, ct_saved = prune_program(
+            program, saved, ct_saved, keep_kets=keep_kets
+        )
     # The kernels the pruned program still uses; their plane applications
     # are compiled after the pruning, so a dropped kernel compiles none.
     kernels = (*saved, *ct_saved)
@@ -491,6 +498,7 @@ def export_trees(
         parameter_evaluator,
         () if counterterms is None else counterterms.outputs,
         _plane_applications((*kernels, parameter_evaluator)),
+        () if counterterms is None else counterterms.tensors,
     )
 
 
@@ -585,6 +593,9 @@ class _Counterterms:
     couplings: tuple[tuple[Any, ...], ...]
     # (component, sector, epsilon power) per output.
     outputs: tuple[tuple[str, Orders, int], ...]
+    # The literal colour tensor of every ket tensor (the Born basis first):
+    # stored observable columns form their overlaps (``native_observables``).
+    tensors: tuple[Any, ...] = ()
 
 
 def _counterterm_program(
@@ -877,6 +888,7 @@ def _counterterm_program(
         tuple(
             (component, slice_.sectors[s][0], power) for component, s, power in outputs
         ),
+        tuple(literal),
     )
 
 
@@ -1620,6 +1632,8 @@ def prune_program(
     program: dict[str, Any],
     saved: Sequence[bytes],
     ct_saved: Sequence[bytes],
+    *,
+    keep_kets: bool = False,
 ) -> tuple[dict[str, Any], tuple[bytes, ...], tuple[bytes, ...]]:
     """``program`` without the work no output of it reads; with the saved
     kernel evaluators ``saved`` (the trees') and ``ct_saved`` (the
@@ -1651,7 +1665,10 @@ def prune_program(
     (design §7.5, Table 7.5c)."""
 
     counterterms = program.get("counterterms")
-    if counterterms is not None:
+    if counterterms is not None and not keep_kets:
+        # With stored observable columns (``keep_kets``) every ket component
+        # stays: a component the inclusive metric does not read can enter a
+        # colour history's interference.
         _prune_counterterm_terms(counterterms)
     state_size = int(program["state_size"])
     ct = program.get("counterterm_trees")

@@ -10,15 +10,20 @@ generation code is counted from before the first pyAmpliCol import to the
 end of the call), and must count zero:
 
 * the inclusive virtual in every pole selection (``all``, ``none``, ``uv``,
-  ``ir``: the stored companion of the certified-scaleless families), with
-  rotation and reduction-direction stability checks, in double-double, after
+  ``ir``: the stored companion of the certified-scaleless families, with the
+  split ``pole_parts``), with rotation and reduction-direction stability
+  checks, in double-double and arbitrary precision, after
   ``set_model_parameters``, and its per-coupling-order partials;
 * an exact flavour member served by its representative;
-* colour-correlated, spin-correlated and helicity-resolved outputs and the
-  correlation catalogue.
+* colour-correlated (also with the companion's columns in ``uv``, with
+  stability checks and in double-double), spin-correlated and
+  helicity-resolved outputs and the correlation catalogue (the stored
+  observable columns, ``native_observables``).
 
-Every call's binary64 values in the fresh interpreter equal those of the
-generating test process's own load (bitwise).
+Every call's values in the fresh interpreter equal those of the generating
+test process's own load (bitwise; extended precision as decimal text).
+Binary64 observable calls also run without a licence while another process
+holds the restricted Symbolica permit (they touch no Symbolica state).
 """
 
 from __future__ import annotations
@@ -54,16 +59,18 @@ finite_restoration = "source-UFO-local-rules"
 model_convention = "loop_sm lhv=1 supplied QCD rules"
 """
 
-# Correlated and resolved calls still regenerate the slice on first use: their
-# columns are not stored natively yet.
-OBSERVABLE_COLUMNS = (
-    "native observable columns are not stored yet (generation-scale-2 "
-    "continuation): correlated and resolved calls regenerate the slice"
-)
-
 
 def _record(name: str) -> dict:
+    if name == "gg_plain":
+        # The g g > g g record's points, without declared observables.
+        return {**_record("gg_gg"), "histories": [], "spin_classes": []}
     return json.loads((OBSERVABLES / f"{name}.json").read_text())
+
+
+def _record_path(name: str) -> Path:
+    """The record whose points and parameters a call of ``name`` reads."""
+
+    return OBSERVABLES / ("gg_gg.json" if name == "gg_plain" else f"{name}.json")
 
 
 def _card(model: Path, output: Path, entries, process: str = "") -> str:
@@ -101,15 +108,21 @@ samples = 1
 @pytest.fixture(scope="module")
 def stored(loop_sm_compiled_model, loop_native, tmp_path_factory):
     """The artifacts of the g g > g g observables record (colour histories
-    and spin classes declared) and of d d~ > g g with its exact flavour
-    member s s~ > g g, generated through the public API."""
+    and spin classes declared), of d d~ > g g with its exact flavour member
+    s s~ > g g, and of g g > g g without declared observables (``gg_plain``:
+    the Born colour metric and the resolved columns only), generated through
+    the public API."""
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
     from pyamplicol.correlators import CorrelatorConfig
 
     out = {}
-    for name, process in (("gg_gg", ""), ("ddgg_ssgg", "flavor_blind = true")):
+    for name, process in (
+        ("gg_gg", ""),
+        ("ddgg_ssgg", "flavor_blind = true"),
+        ("gg_plain", ""),
+    ):
         record = _record(name)
         entries = tuple((key, expression) for key, expression in record["processes"])
         root = tmp_path_factory.mktemp(name)
@@ -145,16 +158,25 @@ CALLS = {
     "ir": ("gg_gg", "gg", "evaluate-ir"),
     "stability": ("gg_gg", "gg", "evaluate-stability"),
     "double-double": ("gg_gg", "gg", "evaluate-double-double"),
+    "arbitrary": ("gg_gg", "gg", "evaluate-arbitrary"),
     "parameters": ("gg_gg", "gg", "evaluate-parameters"),
     "orders": ("gg_gg", "gg", "evaluate-orders"),
     "member": ("ddgg_ssgg", "ssgg", "evaluate"),
     "colour": ("gg_gg", "gg", "correlated-colour"),
+    "colour-uv": ("gg_gg", "gg", "correlated-uv"),
+    "colour-stability": ("gg_gg", "gg", "correlated-stability"),
+    "colour-double-double": ("gg_gg", "gg", "correlated-double-double"),
+    "member-colour": ("ddgg_ssgg", "ssgg", "correlated-last"),
     "spin": ("gg_gg", "gg", "correlated-spin"),
     "many": ("gg_gg", "gg", "correlated-many"),
     "resolved": ("gg_gg", "gg", "resolved"),
     "catalogue": ("gg_gg", "gg", "catalogue"),
+    # Without declared observables: the catalogue, the Born colour metric's
+    # correlated output and the resolved outputs.
+    "plain-catalogue": ("gg_plain", "gg", "catalogue"),
+    "plain-born": ("gg_plain", "gg", "correlated-born"),
+    "plain-resolved": ("gg_plain", "gg", "resolved"),
 }
-OBSERVABLE_CALLS = ("colour", "spin", "many", "resolved", "catalogue")
 
 # Runs one call kind (argv: artifact, process or "", call, record) under the
 # generation sentinel and prints its generation calls and values (binary64
@@ -222,6 +244,11 @@ def run(Runtime, artifact, process, call, record):
     elif call == "evaluate-double-double":
         result = runtime.evaluate(points, mu_r2=scales, arithmetic="double-double")
         return [str(v) for point in result.values for laurent in point for v in laurent]
+    elif call == "evaluate-arbitrary":
+        result = runtime.evaluate(
+            points, mu_r2=scales, arithmetic="arbitrary", precision=32
+        )
+        return [str(v) for point in result.values for laurent in point for v in laurent]
     elif call == "evaluate-parameters":
         runtime.set_model_parameters({"aS": "0.13"})
         result = runtime.evaluate(points, mu_r2=scales)
@@ -233,6 +260,32 @@ def run(Runtime, artifact, process, call, record):
         result = runtime.evaluate_correlated(
             points, color_correlation="T12", mu_r2=scales
         )
+    elif call == "correlated-born":
+        result = runtime.evaluate_correlated(
+            points, color_correlation="born", mu_r2=scales, poles="uv"
+        )
+        return [bits(result.values), bits(result.pole_part("uv", "bare"))]
+    elif call == "correlated-last":
+        # The record's last declared history (a directed one).
+        result = runtime.evaluate_correlated(
+            points, color_correlation=record["histories"][-1]["id"], mu_r2=scales
+        )
+    elif call == "correlated-uv":
+        result = runtime.evaluate_correlated(
+            points, color_correlation="T12", mu_r2=scales, poles="uv"
+        )
+        return [bits(result.values), bits(result.pole_part("uv", "bare"))]
+    elif call == "correlated-stability":
+        checks = VirtualStabilityChecks(1, reduction_direction=True)
+        result = runtime.evaluate_correlated(
+            points, color_correlation="T12", mu_r2=scales, stability_checks=checks
+        )
+        return [bits(result.values), [e.relative.hex() for e in result.stability]]
+    elif call == "correlated-double-double":
+        result = runtime.evaluate_correlated(
+            points, color_correlation="T12", mu_r2=scales, arithmetic="double-double"
+        )
+        return [str(v) for point in result.values for laurent in point for v in laurent]
     elif call == "correlated-spin":
         result = runtime.evaluate_correlated_many(
             points, {"spin": CorrelatedRequest("born", spin)}, mu_r2=scales
@@ -257,7 +310,13 @@ def run(Runtime, artifact, process, call, record):
 """
 
 
-def _call(artifact: Path, process: str | None, call: str, record: Path) -> dict:
+def _call(
+    artifact: Path,
+    process: str | None,
+    call: str,
+    record: Path,
+    env: dict[str, str] | None = None,
+) -> dict:
     script = _RUN + _PROBE
     run = subprocess.run(
         [
@@ -274,22 +333,21 @@ def _call(artifact: Path, process: str | None, call: str, record: Path) -> dict:
         text=True,
         timeout=1800,
         check=False,
+        env=env,
     )
-    assert run.returncode == 0, run.stderr[-4000:]
+    assert run.returncode == 0, run.stdout[-2000:] + run.stderr[-4000:]
+    assert "restricted Symbolica" not in run.stdout + run.stderr
     return json.loads(run.stdout.strip().splitlines()[-1])
 
 
 def _case(name: str):
-    marks = ()
-    if name in OBSERVABLE_CALLS:
-        marks = (pytest.mark.xfail(reason=OBSERVABLE_COLUMNS, strict=True),)
-    return pytest.param(name, marks=(pytest.mark.loop_physics, *marks), id=name)
+    return pytest.param(name, marks=(pytest.mark.loop_physics,), id=name)
 
 
 @pytest.mark.parametrize("name", [_case(name) for name in CALLS])
 def test_stored_process_call_regenerates_nothing(stored, name):
     artifact, process, call = CALLS[name]
-    fresh = _call(stored[artifact], process, call, OBSERVABLES / f"{artifact}.json")
+    fresh = _call(stored[artifact], process, call, _record_path(artifact))
     assert fresh["calls"] == {}, fresh["calls"]
     # The same call in this process (which generated the artifact) gives
     # the same bits.
@@ -340,3 +398,47 @@ def test_rust_runtime_equals_the_python_api(stored, loop_native, artifact, proce
                 assert virtual == [
                     list(laurent)[:width] for laurent in python.values[index]
                 ], (index, poles)
+
+
+# Disables pyAmpliCol's Symbolica library key in the native code
+# (``pyamplicol::DISABLE_VARIABLE``, crate ``rust/crates/pyamplicol``).
+NO_NATIVE_KEY = {"PYAMPLICOL_NATIVE_LIBRARY_KEY": "off"}
+
+
+@pytest.mark.loop_physics
+def test_binary64_observable_calls_touch_no_symbolica_state(stored, tmp_path):
+    """The stored observable columns evaluate binary64 correlated,
+    spin-correlated and resolved calls on the stored plane applications and
+    exact rationals only: each runs in a fresh interpreter without a licence,
+    with pyAmpliCol's native library key disabled, while another process
+    holds the restricted Symbolica permit of a private lock directory (any
+    Symbolica state access would abort), and gives the licensed call's bits."""
+
+    import os
+
+    lock = tmp_path / "symbolica-locks"
+    lock.mkdir()
+    lock.chmod(0o700)
+    with portability.RestrictedPermit(lock_dir=str(lock)) as permit:
+        assert permit.record["verified"], permit.record
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key != "SYMBOLICA_LICENSE"
+        }
+        env = permit.environment({**env, **NO_NATIVE_KEY})
+        unlicensed = {
+            name: _call(
+                stored[CALLS[name][0]],
+                CALLS[name][1],
+                CALLS[name][2],
+                _record_path(CALLS[name][0]),
+                env,
+            )
+            for name in ("many", "spin", "resolved")
+        }
+    for name, fresh in unlicensed.items():
+        artifact, process, call = CALLS[name]
+        assert fresh["calls"] == {}, (name, fresh["calls"])
+        licensed = _call(stored[artifact], process, call, _record_path(artifact))
+        assert fresh["values"] == licensed["values"], name

@@ -543,6 +543,103 @@ struct Counterterms {
     components: usize,
     terms: Vec<Term>,
     interference: Interference,
+    /// The interference layout observable columns share
+    /// (`TreeProgram::set_columns`): Born components, ket components, ket
+    /// vectors and tensors, Born orders, the projection depth.
+    layout: InterferenceLayout,
+}
+
+struct InterferenceLayout {
+    born: Vec<(usize, usize, i32)>,
+    ket: Vec<(usize, usize, i32)>,
+    vectors: usize,
+    tensors: usize,
+    basis: usize,
+    orders: usize,
+    depth: Option<i32>,
+}
+
+/// One observable column of a process (`loops/v2/native_observables.py`):
+/// its Born and counterterm/field interferences over the Born basis and the
+/// ket tensors with its own metric (a colour history's operator) and
+/// degrees, the swapped metric of a directed history, and the Born rows and
+/// bra basis elements it keeps (helicity-resolved columns). Columns with the
+/// same entries and metric share one interference (`Columns::programs`).
+struct Column {
+    direct: usize,
+    swapped: Option<usize>,
+    /// Outputs `0 .. born_outputs` are Born interferences (per squared Born
+    /// order, the direct metric only); the others counterterm and field
+    /// outputs (direct plus the conjugate swapped value, or twice the real
+    /// part of the direct one without a swapped metric).
+    born_outputs: usize,
+    rows: Option<Vec<bool>>,
+    basis: Option<Vec<bool>>,
+}
+
+/// The spin-source slots of one interaction program's state: per
+/// (1-based) leg label its vector source slots with the source's crossing
+/// phase (`correlated_exact._fill_correlated_sources`).
+type SourceSlots = BTreeMap<usize, Vec<(usize, [Rational; 2])>>;
+
+/// The observable columns of a process (`TreeProgram::set_columns`).
+pub struct Columns {
+    /// The distinct interferences (entries and metric) of the columns.
+    programs: Vec<Interference>,
+    columns: Vec<Column>,
+    /// Spin-source slots of the trees' state and the counterterm program's.
+    trees: SourceSlots,
+    counterterms: SourceSlots,
+}
+
+/// The overlap cells (Born basis element, ket tensor, N_c power, re, im) of
+/// one colour metric.
+type CellsFile = Vec<(usize, usize, i32, String, String)>;
+
+/// One interference program of the columns: its entries (kind, bra Born
+/// order, vector or Born order, coupling slot, N_c grade, output, degree),
+/// the epsilon power of each output and the number of Born outputs.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ColumnProgramFile {
+    #[allow(clippy::type_complexity)]
+    entries: Vec<(String, usize, usize, Option<usize>, i32, usize, Option<i32>)>,
+    outputs: Vec<i32>,
+    born_outputs: usize,
+}
+
+/// One column: its program, its direct and (directed histories) swapped
+/// metric (indices into `ColumnsFile::cells`), the Born rows and bra basis
+/// elements it keeps (None: all).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ColumnFile {
+    program: usize,
+    cells: usize,
+    swapped: Option<usize>,
+    rows: Option<Vec<usize>>,
+    basis: Option<Vec<usize>>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ColumnsFile {
+    cells: Vec<CellsFile>,
+    programs: Vec<ColumnProgramFile>,
+    columns: Vec<ColumnFile>,
+    /// (leg label, state component start, phase re, phase im) per vector
+    /// source slot of the trees' state and of the counterterm program's.
+    trees: Vec<(usize, usize, String, String)>,
+    counterterms: Vec<(usize, usize, String, String)>,
+}
+
+/// The spin sources of one point: per (1-based) leg label a literal complex
+/// four-vector replacing the leg's wavefunction in the trees and the
+/// counterterm program, and the Born rows the point keeps (a source leg's
+/// fixed helicity row; `None`: every row).
+pub struct PointSources<T> {
+    pub vectors: Vec<(usize, [Complex<T>; 4])>,
+    pub rows: Option<Vec<bool>>,
 }
 
 /// A loaded tree program (one process, any carrier).
@@ -568,6 +665,8 @@ pub struct TreeProgram {
     parameters: Parameters,
     counterterms: Option<Counterterms>,
     counterterm_trees: Option<CountertermTrees>,
+    /// Observable columns (`set_columns`), formed per point when set.
+    columns: Option<Columns>,
     /// The leg masks of the closure terms' slots.
     masks: Vec<u64>,
     /// The closure terms' kernel input layouts.
@@ -615,6 +714,10 @@ pub struct TreeInputs<T> {
     /// The counterterm and external-field outputs (component, sector,
     /// epsilon power), divided by the average (with counterterms).
     pub counterterms: Option<Vec<Vec<T>>>,
+    /// Per point and observable column its outputs (`set_columns`: the Born
+    /// interferences, then the counterterm and field ones, these divided by
+    /// the average); none without columns.
+    pub columns: Option<Vec<Vec<Vec<Complex<T>>>>>,
     /// Wall seconds per stage: the interaction programs (`"trees:
     /// programs"`, with the states), the Born and counterterm root closures
     /// (`"trees: closures"`) and the rest (`"trees: interferences"`: block
@@ -638,6 +741,9 @@ pub struct TreeRuntime<T> {
     metric: Option<Vec<Complex<T>>>,
     average: T,
     interference: Option<InterferenceRuntime<T>>,
+    /// The metric runtime of each distinct column interference
+    /// (`Columns::programs`).
+    columns: Vec<InterferenceRuntime<T>>,
 }
 
 /// One kernel (or the parameter program) in carrier `T`: its exact
@@ -1308,7 +1414,51 @@ fn load_counterterms(
         components,
         terms,
         interference,
+        layout: InterferenceLayout {
+            born: file.born,
+            ket: file.ket,
+            vectors: file.vectors,
+            tensors: file.tensors,
+            basis,
+            orders,
+            depth: file.depth,
+        },
     })
+}
+
+/// Interference entries as stored: (kind, bra Born order, vector or Born
+/// order, coupling slot, N_c grade, output, degree).
+#[allow(clippy::type_complexity)]
+fn load_entries(
+    entries: &[(String, usize, usize, Option<usize>, i32, usize, Option<i32>)],
+) -> RusticolResult<Vec<Entry>> {
+    entries
+        .iter()
+        .map(|(kind, bra, ket, coupling, grade, output, degree)| {
+            let ket = match kind.as_str() {
+                "vector" => Ket::Vector(*ket),
+                "born" => Ket::Born(*ket),
+                _ => return Err(invalid(format!("interference entry {kind:?}"))),
+            };
+            Ok(Entry {
+                bra: *bra,
+                ket,
+                coupling: *coupling,
+                grade: *grade,
+                output: *output,
+                degree: *degree,
+            })
+        })
+        .collect()
+}
+
+fn load_cells(
+    cells: &[(usize, usize, i32, String, String)],
+) -> RusticolResult<Vec<(usize, usize, i32, [Rational; 2])>> {
+    cells
+        .iter()
+        .map(|(b, t, power, re, im)| Ok((*b, *t, *power, [exact(re)?, exact(im)?])))
+        .collect()
 }
 
 impl TreeProgram {
@@ -1322,7 +1472,25 @@ impl TreeProgram {
         planes: Option<&[Vec<u8>]>,
         plan: &LoopProgramV4,
     ) -> RusticolResult<Self> {
-        let file: TreeFile = serde_json::from_slice(json).map_err(|e| invalid(e.to_string()))?;
+        Self::load_with_components(json, kernels, planes, plan, None)
+    }
+
+    /// `load` for another plan of the same process (an observable column
+    /// set's plan, `loops/v2/native_observables`): `plan_components` (per
+    /// plan Born component its tree component, or none) replaces the
+    /// program's own.
+    pub fn load_with_components(
+        json: &[u8],
+        kernels: &[Vec<u8>],
+        planes: Option<&[Vec<u8>]>,
+        plan: &LoopProgramV4,
+        plan_components: Option<Vec<Option<usize>>>,
+    ) -> RusticolResult<Self> {
+        let mut file: TreeFile =
+            serde_json::from_slice(json).map_err(|e| invalid(e.to_string()))?;
+        if let Some(components) = plan_components {
+            file.born.plan_components = components;
+        }
         require(
             file.schema == TREE_SCHEMA,
             "unsupported tree-program schema",
@@ -1571,6 +1739,7 @@ impl TreeProgram {
             parameters,
             counterterms,
             counterterm_trees,
+            columns: None,
             layouts: layouts.into_iter().map(|(inputs, _)| inputs).collect(),
             weights,
             masks: {
@@ -1828,6 +1997,17 @@ impl TreeProgram {
                 .map(|(_s, _l, _r, [re, im])| complex(re, im))
                 .collect()
         });
+        let columns = self
+            .columns
+            .as_ref()
+            .map(|columns| {
+                columns
+                    .programs
+                    .iter()
+                    .map(|program| program.runtime(zero))
+                    .collect()
+            })
+            .unwrap_or_default();
         Ok(TreeRuntime {
             parameters,
             kernels,
@@ -1838,8 +2018,121 @@ impl TreeProgram {
             metric,
             average: cast(zero, &self.average),
             interference,
+            columns,
         })
     }
+
+    /// Set the observable columns (`loops/v2/native_observables.py`; JSON
+    /// `ColumnsFile`): each point then also forms every column's Born and
+    /// counterterm/field interferences (`TreeInputs::columns`). Needs the
+    /// counterterm components, whose interference layout the columns share.
+    /// Build the runtime after setting them.
+    pub fn set_columns(&mut self, json: &[u8]) -> RusticolResult<()> {
+        let file: ColumnsFile =
+            serde_json::from_slice(json).map_err(|e| invalid(format!("columns: {e}")))?;
+        // Columns need the counterterm interference layout; a program
+        // without counterterms (the certified-scaleless companion's) takes
+        // the spin sources only.
+        let ct = self.counterterms.as_ref();
+        require(
+            ct.is_some() || file.columns.is_empty(),
+            "observable columns need the counterterm components",
+        )?;
+        let basis = ct.map_or(0, |ct| ct.layout.basis);
+        let flags = |kept: &Option<Vec<usize>>, count: usize, what: &str| {
+            kept.as_ref()
+                .map(|kept| {
+                    let mut flags = vec![false; count];
+                    for &k in kept {
+                        if k >= count {
+                            return Err(invalid(format!("a column's {what} index")));
+                        }
+                        flags[k] = true;
+                    }
+                    Ok(flags)
+                })
+                .transpose()
+        };
+        // One interference per distinct (program, metric) pair.
+        let mut index: BTreeMap<(usize, usize), usize> = BTreeMap::new();
+        let mut programs = Vec::new();
+        let mut interference = |program: usize, cells: usize| -> RusticolResult<usize> {
+            if let Some(&found) = index.get(&(program, cells)) {
+                return Ok(found);
+            }
+            let ct = ct.expect("columns need counterterms");
+            let layout = &ct.layout;
+            let record = file
+                .programs
+                .get(program)
+                .ok_or_else(|| invalid("a column's program index"))?;
+            let metric = file
+                .cells
+                .get(cells)
+                .ok_or_else(|| invalid("a column's metric index"))?;
+            programs.push(Interference::new(
+                layout.basis,
+                layout.orders,
+                layout.tensors,
+                load_cells(metric)?,
+                &layout.born,
+                &layout.ket,
+                layout.vectors,
+                load_entries(&record.entries)?,
+                record.outputs.clone(),
+                ct.couplings,
+                layout.depth,
+            )?);
+            index.insert((program, cells), programs.len() - 1);
+            Ok(programs.len() - 1)
+        };
+        let mut columns = Vec::with_capacity(file.columns.len());
+        for column in &file.columns {
+            let record = file
+                .programs
+                .get(column.program)
+                .ok_or_else(|| invalid("a column's program index"))?;
+            require(
+                record.born_outputs <= record.outputs.len(),
+                "a column's Born outputs",
+            )?;
+            columns.push(Column {
+                direct: interference(column.program, column.cells)?,
+                swapped: column
+                    .swapped
+                    .map(|cells| interference(column.program, cells))
+                    .transpose()?,
+                born_outputs: record.born_outputs,
+                rows: flags(&column.rows, self.rows, "row")?,
+                basis: flags(&column.basis, basis, "basis element")?,
+            });
+        }
+        let slots = |records: &[(usize, usize, String, String)], size: usize| {
+            let mut out: SourceSlots = BTreeMap::new();
+            for (leg, start, re, im) in records {
+                require(
+                    *leg >= 1 && *leg <= self.legs && start + 4 <= size,
+                    "a spin-source slot",
+                )?;
+                out.entry(*leg)
+                    .or_default()
+                    .push((*start, [exact(re)?, exact(im)?]));
+            }
+            Ok::<_, RusticolError>(out)
+        };
+        let counterterm_size = self
+            .counterterm_trees
+            .as_ref()
+            .map_or(0, |ct| ct.layout.size);
+        self.columns = Some(Columns {
+            programs,
+            columns,
+            trees: slots(&file.trees, self.state_size)?,
+            counterterms: slots(&file.counterterms, counterterm_size)?,
+        });
+        Ok(())
+    }
+
 
     /// Whether the program forms the counterterm and external-field
     /// components.
@@ -1866,6 +2159,44 @@ impl TreeProgram {
     where
         Complex<T>: Real + EvaluationDomain,
     {
+        self.inputs_with(runtime, plan, batch, momenta, constants, poles, None, zero)
+    }
+
+    /// `inputs` with per point spin sources (`sources`; the observable
+    /// columns' spin-source slots, `set_columns`): each listed leg's
+    /// wavefunction is the given vector times its source's crossing phase in
+    /// the trees and the counterterm program, and the point's Born
+    /// components vanish outside its kept rows.
+    #[allow(clippy::too_many_arguments)]
+    pub fn inputs_with<T: TreeCarrier>(
+        &self,
+        runtime: &mut TreeRuntime<T>,
+        plan: &LoopProgramV4,
+        batch: &TreeBatch<T>,
+        momenta: &[Vec<Rational>],
+        constants: &[Complex<T>],
+        poles: bool,
+        sources: Option<&[PointSources<T>]>,
+        zero: &T,
+    ) -> RusticolResult<TreeInputs<T>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+    {
+        if let Some(sources) = sources {
+            require(
+                sources.len() == momenta.len() && self.columns.is_some(),
+                "spin sources per point need the observable columns",
+            )?;
+            for point in sources {
+                require(
+                    point
+                        .rows
+                        .as_ref()
+                        .is_none_or(|rows| rows.len() == self.rows),
+                    "a point's kept rows",
+                )?;
+            }
+        }
         // Exact states under the key; plane applications touch no Symbolica
         // state.
         let _unlock = runtime
@@ -1939,6 +2270,9 @@ impl TreeProgram {
             &batch.model,
             zero,
         )?;
+        if let (Some(sources), Some(columns)) = (sources, &self.columns) {
+            Self::override_sources(&mut states, layout.size, &columns.trees, sources, zero)?;
+        }
         run_interactions(
             &self.interactions,
             layout,
@@ -1962,6 +2296,15 @@ impl TreeProgram {
                     &batch.counterterm_model,
                     zero,
                 )?;
+                if let (Some(sources), Some(columns)) = (sources, &self.columns) {
+                    Self::override_sources(
+                        &mut ct_states,
+                        ct.layout.size,
+                        &columns.counterterms,
+                        sources,
+                        zero,
+                    )?;
+                }
                 run_interactions(
                     &ct.interactions,
                     ct.layout,
@@ -1989,6 +2332,7 @@ impl TreeProgram {
                 .counterterms
                 .as_ref()
                 .map(|_| Vec::with_capacity(points)),
+            columns: self.columns.as_ref().map(|_| Vec::with_capacity(points)),
             seconds: Vec::with_capacity(3),
         };
         out.seconds
@@ -2038,7 +2382,73 @@ impl TreeProgram {
             .push(("trees: closures", started.elapsed().as_secs_f64()));
         let started = std::time::Instant::now();
         for (index, state) in states.0.chunks_exact(self.state_size).enumerate() {
-            let amplitudes = std::mem::take(&mut amplitudes[index]);
+            let mut amplitudes = std::mem::take(&mut amplitudes[index]);
+            let kept_rows = sources.and_then(|sources| sources[index].rows.as_deref());
+            if let Some(kept) = kept_rows {
+                // A source leg keeps its fixed row only: the other rows'
+                // Born components vanish (no seeds, no interference).
+                for (row, keep) in kept.iter().enumerate() {
+                    if !keep {
+                        for value in &mut amplitudes[row * self.components..][..self.components] {
+                            *value = czero.clone();
+                        }
+                    }
+                }
+            }
+            if let (Some(columns), Some(out)) = (
+                self.columns.as_ref().filter(|c| !c.columns.is_empty()),
+                &mut out.columns,
+            ) {
+                let ct = self.counterterms.as_ref().expect("columns need counterterms");
+                let couplings = &batch.counterterm_couplings[index];
+                let every = vec![true; self.rows];
+                let mut values = Vec::with_capacity(columns.columns.len());
+                for column in &columns.columns {
+                    let keep: Vec<bool> = (0..self.rows)
+                        .map(|row| {
+                            column.rows.as_ref().is_none_or(|rows| rows[row])
+                                && kept_rows.is_none_or(|kept| kept[row])
+                        })
+                        .collect();
+                    let keep = if keep.iter().all(|k| *k) { &every } else { &keep };
+                    let evaluate = |program: usize| {
+                        columns.programs[program].evaluate_complex(
+                            &runtime.columns[program],
+                            &amplitudes,
+                            self.components,
+                            &kets[index],
+                            ct.components,
+                            keep,
+                            column.basis.as_deref(),
+                            couplings,
+                            poles,
+                            zero,
+                        )
+                    };
+                    let mut column_values = evaluate(column.direct);
+                    let other = column.swapped.map(evaluate);
+                    for (k, value) in column_values.iter_mut().enumerate() {
+                        if k < column.born_outputs {
+                            // The Born: `observables._Assembly.result`
+                            // divides it by the average.
+                            continue;
+                        }
+                        // Python's `value + other.conjugate()`, divided by
+                        // the average as `_Assembly._local` does.
+                        let conjugate = match &other {
+                            Some(other) => other[k].conj(),
+                            None => value.conj(),
+                        };
+                        *value += conjugate;
+                        *value = Complex::new(
+                            value.re.clone() / runtime.average.clone(),
+                            value.im.clone() / runtime.average.clone(),
+                        );
+                    }
+                    values.push(column_values);
+                }
+                out.push(values);
+            }
             let mut rows = Vec::new();
             for &(start, dimension, sign) in &self.block_rows {
                 for value in &state[start..start + dimension] {
@@ -2142,6 +2552,31 @@ impl TreeProgram {
             }
         }
         Ok(states)
+    }
+
+    /// Write each point's spin-source vectors (times each slot's crossing
+    /// phase) into the source slots of its legs.
+    fn override_sources<T: TreeCarrier>(
+        states: &mut [Complex<T>],
+        size: usize,
+        slots: &SourceSlots,
+        sources: &[PointSources<T>],
+        zero: &T,
+    ) -> RusticolResult<()> {
+        for (state, point) in states.chunks_exact_mut(size.max(1)).zip(sources) {
+            for (leg, vector) in &point.vectors {
+                let found = slots
+                    .get(leg)
+                    .ok_or_else(|| invalid(format!("leg {leg} has no vector source slot")))?;
+                for (start, [re, im]) in found {
+                    let phase = Complex::new(cast(zero, re), cast(zero, im));
+                    for (mu, component) in vector.iter().enumerate() {
+                        state[start + mu] = component.clone() * phase.clone();
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// The incoming momentum sum of each closure slot's leg mask.

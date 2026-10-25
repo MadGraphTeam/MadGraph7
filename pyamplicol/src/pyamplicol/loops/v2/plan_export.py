@@ -129,6 +129,11 @@ class ExportedPlan:
     columns: tuple[Hashable, ...]
     # The tree program of native per-point inputs (``native_trees``).
     trees: Any = None
+    # Per named observable column set (``export_plan(column_sets=...)``) the
+    # seed records that replace the plan's for that set: ``seed_classes``,
+    # ``seeds``, ``columns`` (count), ``column_rows`` (or None) and the
+    # Born components they read (``born_components``, keys).
+    column_seeds: Mapping[str, Mapping[str, Any]] | None = None
 
     def json(self) -> str:
         return json.dumps(self.program, separators=(",", ":"))
@@ -751,6 +756,8 @@ def export_plan(
     born_squared: bool = False,
     links: bool = False,
     counterterms: bool = True,
+    keep_kets: bool = False,
+    column_sets: Mapping[str, Sequence[Any]] | None = None,
 ) -> ExportedPlan:
     """The plan v4 program of a generated slice (structure only, no numerics).
 
@@ -765,7 +772,13 @@ def export_plan(
     with the Born colour metric when ``born_squared`` and the counterterm
     and external-field components when ``counterterms``. ``links`` writes the
     schedule-B helicity rows and row links, which the native loader otherwise
-    derives (and with them checks).
+    derives (and with them checks). ``keep_kets`` keeps every counterterm
+    ket component in the tree program (stored observable columns,
+    ``native_observables``). ``column_sets`` (name -> ``SeedColumn``s) also
+    forms the seed records of other column sets on the same families
+    (``ExportedPlan.column_seeds``; the plan itself is unchanged): a set's
+    plan is this plan with its seed records (``native_observables``), at the
+    cost of its seed records only.
     """
 
     from .assemble import _BlockRows
@@ -815,6 +828,7 @@ def export_plan(
             rows,
             born_squared=born_squared,
             with_counterterms=counterterms,
+            keep_kets=keep_kets,
         )
     legs = len(slice_.blocks.process.legs)
     row_index = {row: i for i, row in enumerate(rows)}
@@ -845,10 +859,50 @@ def export_plan(
             else sorted(row_index[row] for row in column.rows)
             for column in columns
         ]
+    born_components = tuple(exporter.born_components)
+    column_seeds = None
+    if column_sets is not None:
+        # After the plan and its tree program: a set's seed records may
+        # register further Born components, which the plan does not read.
+        column_seeds = {}
+
+        def same(a: SeedColumn, b: SeedColumn) -> bool:
+            return (
+                a.table is b.table
+                and a.pairs == b.pairs
+                and a.degree == b.degree
+                and a.rows == b.rows
+                and a.basis == b.basis
+            )
+
+        for name, set_columns in column_sets.items():
+            set_columns = tuple(set_columns)
+            if len(set_columns) == len(columns) and all(
+                same(a, b) for a, b in zip(set_columns, columns, strict=True)
+            ):
+                # The plan's own columns (the Born metric of a process
+                # without declared histories): the plan serves the set.
+                column_seeds[name] = {"same": True, "born_components": born_components}
+                continue
+            set_classes, set_seeds = exporter.seed_records(set_columns)
+            column_seeds[name] = {
+                "seed_classes": set_classes,
+                "seeds": set_seeds,
+                "columns": len(set_columns),
+                "column_rows": [
+                    None
+                    if column.rows is None
+                    else sorted(row_index[row] for row in column.rows)
+                    for column in set_columns
+                ]
+                if any(column.rows is not None for column in set_columns)
+                else None,
+                "born_components": tuple(exporter.born_components),
+            }
     return ExportedPlan(
         program=program,
         rows=rows,
-        born_components=tuple(exporter.born_components),
+        born_components=born_components,
         block_rows=tuple(exporter.block_rows),
         constants=tuple(exporter.constants),
         masses=tuple(exporter.masses),
@@ -858,6 +912,7 @@ def export_plan(
         if columns_given is None
         else tuple(range(len(columns))),
         trees=native_trees,
+        column_seeds=column_seeds,
     )
 
 

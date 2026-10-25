@@ -250,6 +250,95 @@ impl Interference {
         InterferenceRuntime { metrics }
     }
 
+    /// The complex sums `sum_rows c <A0(bra)|M|ket>` of one point per output
+    /// (an observable column's interferences, `loops/v2/native_observables`):
+    /// `born` holds `rows x born components`, `ket` `rows x ket components`,
+    /// `couplings` the point's coupling slots. `keep_rows` restricts the
+    /// rows (helicity-resolved columns, a spin source's fixed row) and
+    /// `keep_bra` the bra's basis elements (leading-colour resolved
+    /// columns; the ket is never masked). Without `poles`, outputs of a
+    /// nonzero epsilon power stay zero. Not divided by the average.
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_complex<T: Carrier>(
+        &self,
+        runtime: &InterferenceRuntime<T>,
+        born: &[Complex<T>],
+        born_width: usize,
+        ket: &[Complex<T>],
+        ket_width: usize,
+        keep_rows: &[bool],
+        keep_bra: Option<&[bool]>,
+        couplings: &[Complex<T>],
+        poles: bool,
+        zero: &T,
+    ) -> Vec<Complex<T>>
+    where
+        Complex<T>: Real,
+    {
+        let czero = Complex::new(zero.clone(), zero.clone());
+        let per_row: Vec<Vec<Complex<T>>> = keep_rows
+            .par_iter()
+            .enumerate()
+            .filter(|(_, keep)| **keep)
+            .map(|(row, _)| {
+                let a = &born[row * born_width..][..born_width];
+                let k = &ket[row * ket_width..][..ket_width];
+                let mut out = vec![czero.clone(); self.outputs.len()];
+                let mut cache: BTreeMap<(usize, usize, usize), Vec<Complex<T>>> = BTreeMap::new();
+                for (entry, classes) in self.entries.iter().zip(&self.classes) {
+                    if !poles && self.outputs[entry.output] != 0 {
+                        continue;
+                    }
+                    let (kets, values) = match entry.ket {
+                        Ket::Vector(v) => (&self.vectors[v], k),
+                        Ket::Born(o) => (&self.bra[o], a),
+                    };
+                    let mut value = czero.clone();
+                    for (g, ((_p, bras), classes)) in
+                        self.bra[entry.bra].iter().zip(classes).enumerate()
+                    {
+                        for ((_q, components), &class) in kets.iter().zip(classes) {
+                            let z = cache.entry((entry.bra, g, class)).or_insert_with(|| {
+                                let mut z = vec![czero.clone(); self.tensors];
+                                let metric = &runtime.metrics[class];
+                                for &(b, j) in bras {
+                                    if keep_bra.is_some_and(|keep| !keep[b]) {
+                                        continue;
+                                    }
+                                    let x = a[j].conj();
+                                    for (t, m) in &metric[b] {
+                                        z[*t] += x.clone() * m.clone();
+                                    }
+                                }
+                                z
+                            });
+                            for &(t, c) in components {
+                                value += z[t].clone() * values[c].clone();
+                            }
+                        }
+                    }
+                    if let Some(c) = entry.coupling {
+                        value = couplings[c].clone() * value;
+                    }
+                    out[entry.output] += value;
+                }
+                out
+            })
+            .collect();
+        let mut out = vec![czero; self.outputs.len()];
+        for row in per_row {
+            for (total, value) in out.iter_mut().zip(row) {
+                *total += value;
+            }
+        }
+        out
+    }
+
+    /// Number of basis elements of the bra.
+    pub fn basis(&self) -> usize {
+        self.basis
+    }
+
     /// The outputs of one point: `born` holds `rows x born components`,
     /// `ket` `rows x ket components`, `couplings` the point's coupling
     /// slots. Without `poles`, outputs of a nonzero epsilon power stay zero.
