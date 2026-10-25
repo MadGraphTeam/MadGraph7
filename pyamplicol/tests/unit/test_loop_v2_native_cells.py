@@ -388,8 +388,10 @@ def _switched_equal(native: Generated, oracle: Generated) -> None:
 
 def _decodes(native: Generated) -> None:
     """Rule 9: each table built during generation decoded its own cells
-    once (an extension decodes only its new classes); the degrees decode
-    none."""
+    once (an extension decodes only its new classes); the degrees and the
+    plan export decode none."""
+
+    from pyamplicol.loops.v2.plan_export import export_plan
 
     tables = [native.slice]
     if native.slice.scaleless is not None:
@@ -397,6 +399,7 @@ def _decodes(native: Generated) -> None:
     assert native.decoded == sum(len(x.table.classes) * len(x.basis) for x in tables)
     before = native_cells.decoded_cells()
     native_cells.degrees(native.slice)
+    export_plan(native.slice, forward=False)
     assert native_cells.decoded_cells() == before
 
 

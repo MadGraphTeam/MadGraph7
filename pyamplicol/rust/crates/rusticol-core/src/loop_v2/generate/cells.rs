@@ -739,6 +739,9 @@ pub fn emit(
 /// T^emitted on the emitter's colour index.
 pub type Emission = (Label, Label);
 
+/// A colour history of gluon emissions: (Born side, loop side).
+pub type History = (Vec<Emission>, Vec<Emission>);
+
 /// `observables.connect` for gluon emissions (`apply_color_connection` per
 /// term): each emission applied in order to every term, coefficients and
 /// N_c powers kept, on the output legs (the emitted adjoint labels added)
@@ -1032,7 +1035,7 @@ pub fn directed_overlap_degrees(
     legs: &[Leg],
     bras: &[Vec<(Structure, i32)>],
     kets: &[Vec<(Structure, i32)>],
-    histories: &[(Vec<Emission>, Vec<Emission>)],
+    histories: &[History],
     queries: &[(usize, usize, usize, i32)],
 ) -> RusticolResult<Vec<Option<i32>>> {
     let mut legs = legs.to_vec();
@@ -2197,7 +2200,9 @@ pub fn tensor_overlap_degrees(
         }
         entries.push(out);
     }
-    let per_ket: Vec<RusticolResult<Vec<(usize, Option<i32>)>>> = (0..ket_tensors.len())
+    // Per ket tensor: (bra set, leading degree) of the bra sets it meets.
+    type Leading = RusticolResult<Vec<(usize, Option<i32>)>>;
+    let per_ket: Vec<Leading> = (0..ket_tensors.len())
         .into_par_iter()
         .map(|k| {
             let ket = ket_tensors[k];

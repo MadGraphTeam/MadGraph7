@@ -9,7 +9,7 @@ use super::*;
 use rusticol_core::loop_v2::dipole_orbits::DipoleOrbits;
 use rusticol_core::loop_v2::generate::FastMap;
 use rusticol_core::loop_v2::generate::cells::{
-    self, Accuracy, AdjointOrbits, CellEngine, ClassInput, Exact, Laurent, OpenString,
+    self, Accuracy, AdjointOrbits, CellEngine, ClassInput, Exact, History, Laurent, OpenString,
     OrderedTable, RecordColumn, Structure, Tensor, Term,
 };
 use std::sync::Arc;
@@ -539,7 +539,7 @@ fn directed_overlap_degrees(
     legs: Vec<(i64, i32)>,
     bras: Vec<Vec<(RawStructure, i32)>>,
     kets: Vec<Vec<(RawStructure, i32)>>,
-    histories: Vec<(Vec<(i64, i64)>, Vec<(i64, i64)>)>,
+    histories: Vec<History>,
     queries: Vec<(usize, usize, usize, i32)>,
     threads: Option<usize>,
 ) -> PyResult<Vec<Option<i32>>> {
