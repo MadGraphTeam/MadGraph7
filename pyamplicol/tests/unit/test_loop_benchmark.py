@@ -33,7 +33,10 @@ instrumentation.
 * a stored process (``--store``) loads as the public runtime loads an
   artifact, regenerates nothing and times bitwise the generating run's
   values; a load of another configuration or native build is refused, and
-  a generate-only record is no gate input.
+  a generate-only record is no gate input;
+* the report builder labels the gate tool's 5 ms floor with the registry's
+  threshold rule and stops on a disagreement, and gives a row without a
+  gate its rotation and Ward checks (addendum H).
 """
 
 from __future__ import annotations
@@ -705,3 +708,82 @@ def test_a_stored_process_loads_and_evaluates_bitwise_equal(tmp_path, loop_nativ
     path.write_text(json.dumps(only))
     with pytest.raises(ValueError, match="generate-only"):
         gate.build([path], None)
+
+
+def _report_builder():
+    import importlib.util
+
+    path = (
+        ROOT / "docs" / "performance_reports" / "loop" / "scripts" / "build_summary.py"
+    )
+    spec = importlib.util.spec_from_file_location("loop_report_build_summary", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_report_builder_labels_the_floor_and_reports_addendum_h_checks():
+    builder = _report_builder()
+    rule = {
+        "below_seconds_per_point": gate.GATE_FLOOR_SECONDS,
+        "verdict": "not gated",
+        "label": gate.GATE_FLOOR_STATUS,
+        "short": "<5 ms: not gated",
+        "source": "test",
+    }
+    decisions = {"decisions": [], "threshold_rule": rule, "source": "test"}
+    times = {"madloop": 0.0040, "openloops": 0.0010}
+
+    def cell(seconds: float, verdict: dict) -> dict:
+        summary = _pyamplicol_record("uux_ddxg", [seconds] * 3)["batches"]["128"]
+        summary["uncertainty"] = 0.01
+        summary["gate"] = verdict
+        config = {"revision": "0" * 40, "inputs": "native", "batches": {"128": summary}}
+        return builder._timing_of(
+            {"key": "uux_ddxg"}, "native/full", config, "src", None, decisions
+        )
+
+    fast = gate.gate_verdict(0.003, times, uncertainty=0.01)
+    out = cell(0.003, fast)["gate"]
+    assert out["status"] == "not gated" and out["rule"] == gate.GATE_FLOOR_STATUS
+    assert out["measured_status"] == "fail" and out["floor_seconds"] == 0.005
+    gated = cell(0.006, gate.gate_verdict(0.006, times, uncertainty=0.01))["gate"]
+    assert gated["status"] == "fail" and "rule" not in gated
+    # The tool's floor and the registry's rule must agree on the cell.
+    with pytest.raises(ValueError, match="disagrees"):
+        cell(0.006, fast)
+    # A row without a gate: its rotation rows per configuration and, without
+    # Ward rows of its own, the registry's reason with the lower ones.
+    rotation = {"rotation-0": 2e-8, "reduction-direction": 8e-9}
+    g1 = {
+        "processes": [
+            {
+                "key": "gg_gggg",
+                "outgoing": 4,
+                "ward": [{"passed": True, "ratios": {"virtual": [3e-10, 4e-11]}}],
+            },
+            {
+                "key": "gg_ggggg",
+                "outgoing": 5,
+                "stability": [
+                    {
+                        "index": i,
+                        "arithmetic": "double",
+                        "configuration": "native/full",
+                        "estimate": 6e-8,
+                        "checks": rotation,
+                        "revision": "1" * 40,
+                    }
+                    for i in range(3)
+                ],
+            },
+        ]
+    }
+    checks = builder._sanity_checks(g1, "gg_ggggg", {"ward": "not run: reason"})
+    full = checks["rotation"]["configurations"]["native/full"]
+    assert full["points"] == [0, 1, 2] and full["max_rotation"] == 2e-8
+    ward = checks["ward"]
+    assert ward["status"] == "not run" and ward["reason"] == "not run: reason"
+    (lower,) = ward["lower_multiplicity"]
+    assert lower["key"] == "gg_gggg" and lower["passed"] is True
+    assert lower["max_virtual_ratio"] == 3e-10
