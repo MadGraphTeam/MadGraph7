@@ -497,15 +497,40 @@ impl DipoleOrbits {
             .collect())
     }
 
+    /// The coloured-leg label pairs (i, j != i) in the order of
+    /// `LoopSlice.dipoles`: i, then j, over the coloured legs in leg order.
+    pub fn pairs(&self) -> Vec<(Label, Label)> {
+        let mut out = Vec::new();
+        for (i, a) in self.coloured.iter().enumerate() {
+            for (j, b) in self.coloured.iter().enumerate() {
+                if i != j {
+                    out.push((a.0, b.0));
+                }
+            }
+        }
+        out
+    }
+
+    /// Dense operators in any carrier: `[i][j][b][b']` over coloured-leg
+    /// indices (`zero` on i = j), each entry `cast` of its exact value (the
+    /// native Catani operator's form, at load: index arithmetic only).
+    pub fn expand_dense<T: Clone>(
+        &self,
+        zero: T,
+        cast: impl Fn(&Rational) -> T,
+    ) -> RusticolResult<Vec<T>> {
+        let mut out = vec![zero; self.tuple_count()];
+        let (c, n) = (self.coloured.len(), self.basis);
+        self.expand(|i, j, b, b2, value| {
+            out[((i * c + j) * n + b) * n + b2] = cast(value);
+        })?;
+        Ok(out)
+    }
+
     /// Dense binary64 operators, `[i][j][b][b']` over coloured-leg indices
     /// (zero on i = j), each entry one correct rounding of its exact value.
     pub fn expand_f64(&self) -> RusticolResult<Vec<f64>> {
-        let mut out = vec![0.0; self.tuple_count()];
-        let (c, n) = (self.coloured.len(), self.basis);
-        self.expand(|i, j, b, b2, value| {
-            out[((i * c + j) * n + b) * n + b2] = super::dress::cast(&0.0f64, value);
-        })?;
-        Ok(out)
+        self.expand_dense(0.0, |value| super::dress::cast(&0.0f64, value))
     }
 
     /// Colour conservation, exactly: sum_{j != i} C_ij[b, b'] = -C_i <b|b'>
@@ -710,5 +735,20 @@ mod tests {
         assert_eq!(grouped, direct);
         let stored = DipoleOrbits::from_json(&built.to_json().unwrap()).unwrap();
         assert_eq!(stored, built);
+        // The dense forms: one block per ordered pair, in `pairs` order.
+        assert_eq!(built.pairs().len(), 12);
+        assert_eq!(built.pairs()[0], (1, 2));
+        let exact = built
+            .expand_dense(Rational::zero(), Rational::clone)
+            .unwrap();
+        let floats = built.expand_f64().unwrap();
+        assert_eq!(exact.len(), floats.len());
+        for (k, value) in exact.iter().enumerate() {
+            let index = (k / 36, k % 36 / 6, k % 6);
+            let (i, j) = (index.0 / 4, index.0 % 4);
+            if i != j {
+                assert_eq!(grouped[&(i, j, index.1, index.2)], *value);
+            }
+        }
     }
 }

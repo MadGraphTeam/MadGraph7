@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: 0BSD
 """Native exact colour cells (WP3.1 package C; ``RUST-MIGRATION.md`` §3.C).
 
-Twins of the colour-cell stages of the Python generator, which stay their
-oracles (nothing here is switched on yet):
+Twins of the colour-cell stages of the Python generator, switched on inside
+those stages (``NATIVE_STAGES``, DESIGN §7.9); the Python stages stay their
+oracles (``native_stages(())`` runs them):
 
 * **C1 cells.** ``seed_cells`` has the signature and output of
   ``colour.seed_cells``; ``NativeCells`` is the twin of
   ``colour._PrimitiveCells`` (relabelling caches, shared both ways with
-  its ``rebased`` engines);
+  its ``rebased`` and ``directed`` engines; ``_PrimitiveCells.native`` is
+  its twin in the switched path, ``switched_seed_cells``);
   ``contract_colour``/``contract_many`` and ``gram`` are the twins of
   ``colour.contract_colour`` and ``BornBasis.gram``. Cells stay native in a
   ``NativeCellTable`` handle (``cell_table``) that counts its decodes.
@@ -15,15 +17,18 @@ oracles (nothing here is switched on yet):
   (``colour._reduced_primitive``, cached by the oracle).
 * **C2 projection.** ``project_records`` forms the plan's two-level seed
   records of ``plan_export._Exporter.seed_records`` natively, as the exact
-  JSON bytes the plan holds.
+  JSON bytes the plan holds (D's call site).
 * **C3 degrees.** ``table_degree`` (``SeedTable.degree``), ``degrees``
-  (``LoopSlice.degrees``, inclusive; its key collection is a phase-0
-  harness), ``adjoint_orbits`` (``assemble._AdjointOrbits``) and
-  ``live_classes`` (the liveness of ``LoopSlice._prune_colour``).
+  (``LoopSlice.degrees``, inclusive; ``slice_degrees`` is its switch),
+  ``adjoint_orbits`` (``assemble._AdjointOrbits``; ``orbits_class`` is its
+  switch) and ``live_classes`` (the liveness of ``LoopSlice._prune_colour``).
 * **C4 dipoles.** ``dipole_orbits`` builds the IR dipole operators per
-  relabelling orbit in rusticol-core (no Python, no licence call; stored
-  form ``NativeDipoleOrbits.to_json``); ``dipoles`` expands them to the
-  output of ``LoopSlice.dipoles``.
+  relabelling orbit in rusticol-core (no Python, no licence call; the
+  stored form and its binding are ``loops/v2/dipoles``); ``dipoles``
+  expands them to the output of ``LoopSlice.dipoles``.
+* **C5 directed colour.** ``directed_table`` (``DirectedColour._table``,
+  operator images formed natively by ``operator_images``' Rust twin) and
+  ``family_degrees`` (``ObservableSlice._family_degrees``).
 
 Determinism (rule 5 of the plan): every native output is independent of the
 thread count (``threads`` selects a private pool; None the global one).

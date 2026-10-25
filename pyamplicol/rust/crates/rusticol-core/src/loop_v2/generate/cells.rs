@@ -2464,4 +2464,83 @@ mod tests {
         };
         assert_eq!(one[1], generic[0]);
     }
+
+    /// `c * cell` with each N_c power shifted by `shift`.
+    fn shifted(cell: &Laurent, shift: i32, factor: &Rational) -> Laurent {
+        let mut out = Laurent::new();
+        for (&power, value) in cell {
+            add_laurent(&mut out, power + shift, value.scale(factor));
+        }
+        out
+    }
+
+    #[test]
+    fn operator_images_obey_casimirs_and_colour_conservation() {
+        // q(1) qbar(2) g(3) g(4): T_i.T_i = C_i and sum_{j != i} T_i.T_j = -C_i
+        // on every basis vector, through the native images (connect, then
+        // absorb by the completeness relation), contracted with the basis.
+        let legs: Vec<Leg> = vec![(1, 3), (2, -3), (3, ADJOINT), (4, ADJOINT)];
+        let string = |word: Vec<Label>, traces: Vec<Vec<Label>>| {
+            Tensor::connected(
+                legs.clone(),
+                vec![Term {
+                    coefficient: Exact::one(),
+                    structure: Structure::new(
+                        vec![OpenString {
+                            q: 1,
+                            word,
+                            qbar: 2,
+                        }],
+                        traces,
+                    ),
+                    nc_power: 0,
+                }],
+                0,
+            )
+        };
+        let basis = [
+            string(vec![3, 4], vec![]),
+            string(vec![4, 3], vec![]),
+            string(vec![], vec![vec![3, 4]]),
+        ];
+        let half = Rational::new(1, 2);
+        let one = Rational::one();
+        // C_F = N/2 - 1/(2N), C_A = N.
+        let casimir = |label: Label, cell: &Laurent| -> Laurent {
+            if label <= 2 {
+                let mut out = shifted(cell, 1, &half);
+                for (&power, value) in &shifted(cell, -1, &half) {
+                    add_laurent(&mut out, power, value.scale(&Rational::from(-1)));
+                }
+                out
+            } else {
+                shifted(cell, 1, &one)
+            }
+        };
+        for b in &basis {
+            for label in [1, 2, 3, 4] {
+                let square = operator_image(b, &[(label, -1)], &[(label, -1)]).unwrap();
+                for b2 in &basis {
+                    let cell = contract(b, b2).unwrap();
+                    assert_eq!(contract(&square, b2).unwrap(), casimir(label, &cell));
+                    let mut total = Laurent::new();
+                    for other in [1, 2, 3, 4] {
+                        if other == label {
+                            continue;
+                        }
+                        let image = operator_image(b, &[(label, -1)], &[(other, -1)]).unwrap();
+                        for (&power, value) in &contract(&image, b2).unwrap() {
+                            add_laurent(&mut total, power, value.clone());
+                        }
+                    }
+                    let expected = casimir(label, &cell);
+                    let mut negated = Laurent::new();
+                    for (&power, value) in &expected {
+                        add_laurent(&mut negated, power, value.scale(&Rational::from(-1)));
+                    }
+                    assert_eq!(total, negated, "leg {label}");
+                }
+            }
+        }
+    }
 }
