@@ -623,8 +623,11 @@ pub enum Kernel<T> {
     Plane(Box<dyn PlaneRows<T> + Send>),
 }
 
-/// Row-major batch evaluation of a plane application (binary64 only).
+/// A plane application (binary64 only): row-major batch evaluation, and its
+/// split-complex planes for callers that fill them directly (the
+/// interaction program, `run_interactions`).
 pub trait PlaneRows<T> {
+    /// `rows` evaluations: inputs and outputs row-major.
     fn evaluate(
         &mut self,
         inputs: &[Complex<T>],
@@ -633,6 +636,15 @@ pub trait PlaneRows<T> {
     ) -> RusticolResult<()>;
     fn input_len(&self) -> usize;
     fn output_len(&self) -> usize;
+    /// The planes of a call of `rows` rows, `stride` values apart: input
+    /// `k`'s real parts start at `2k * stride`, its imaginary parts at
+    /// `(2k + 1) * stride`, the outputs' planes follow the inputs' in the
+    /// same form. The caller fills the first `rows` values of every input
+    /// plane, then calls [`Self::run`]; other contents are unspecified.
+    fn planes(&mut self, rows: usize) -> (&mut [T], usize);
+    /// Run the kernel on the `rows` rows filled after [`Self::planes`]:
+    /// the planes, the outputs' first `rows` values written.
+    fn run(&mut self, rows: usize) -> RusticolResult<&[T]>;
 }
 
 impl<T> Kernel<T>
@@ -686,8 +698,9 @@ where
     ))
 }
 
-/// A binary64 plane application, evaluated on row-major complex rows
-/// (transposed into its split-complex planes: inputs re, im, then outputs).
+/// A binary64 plane application on split-complex planes (inputs re, im,
+/// then outputs), filled by the caller ([`PlaneRows::planes`]) or
+/// transposed from row-major rows ([`PlaneRows::evaluate`]).
 ///
 /// SymJIT's SIMD and scalar kernels of one application round differently in
 /// the last bits, and a call runs its aligned blocks of `simd_lanes` rows in
@@ -697,12 +710,22 @@ where
 /// whose lanes take different branches of a branching program is replayed
 /// in scalar code by SymJIT; the programs branch on parameters only, which
 /// the points of a batch share.)
+///
+/// The planes lie `stride` values apart, one cache line more than the padded
+/// rows: with a power-of-two plane length (4096 rows) every plane's row maps
+/// to the same cache set, and the kernel and the fill touch all planes at
+/// one row together. The buffer only grows; nothing is zeroed per call.
 struct BinaryPlane {
     kernel: SymjitPlaneKernel,
     inputs: usize,
     outputs: usize,
     planes: Vec<f64>,
+    /// The plane stride of the current call ([`PlaneRows::planes`]).
+    stride: usize,
 }
+
+/// `f64` values per cache line.
+const PLANE_LINE: usize = 8;
 
 impl BinaryPlane {
     fn load(bytes: &[u8], (inputs, outputs): (usize, usize)) -> RusticolResult<Self> {
@@ -712,7 +735,18 @@ impl BinaryPlane {
             inputs,
             outputs,
             planes: Vec::new(),
+            stride: 0,
         })
+    }
+
+    /// `rows` padded to whole SIMD blocks.
+    fn padded(&self, rows: usize) -> usize {
+        let lanes = self.kernel.simd_lanes();
+        rows.div_ceil(lanes) * lanes
+    }
+
+    fn plane_count(&self) -> usize {
+        2 * (self.inputs + self.outputs)
     }
 }
 
@@ -730,34 +764,23 @@ impl PlaneRows<f64> for BinaryPlane {
         if rows == 0 {
             return Ok(());
         }
-        // Whole SIMD blocks: padding rows repeat the last row.
-        let padded = rows.div_ceil(self.kernel.simd_lanes()) * self.kernel.simd_lanes();
-        let planes = 2 * (self.inputs + self.outputs);
-        self.planes.clear();
-        self.planes.resize(planes * padded, 0.0);
-        for row in 0..padded {
-            let values = &inputs[row.min(rows - 1) * self.inputs..][..self.inputs];
-            for (input, value) in values.iter().enumerate() {
-                self.planes[2 * input * padded + row] = value.re;
-                self.planes[(2 * input + 1) * padded + row] = value.im;
+        let (width_in, width_out) = (self.inputs, self.outputs);
+        let (planes, stride) = self.planes(rows);
+        // One plane at a time: contiguous stores.
+        for input in 0..width_in {
+            let (re, im) = planes[2 * input * stride..][..2 * stride].split_at_mut(stride);
+            for (row, values) in inputs.chunks_exact(width_in).enumerate() {
+                re[row] = values[input].re;
+                im[row] = values[input].im;
             }
         }
-        {
-            let descriptors = self
-                .planes
-                .chunks_exact_mut(padded)
-                .map(PlaneDescriptor::from_slice)
-                .collect();
-            let mut table = self.kernel.build_raw_table(descriptors)?;
-            self.kernel.execute_table(&mut table, 0, padded)?;
-        }
-        let base = 2 * self.inputs;
-        for (row, values) in outputs.chunks_exact_mut(self.outputs.max(1)).enumerate() {
-            for (output, value) in values.iter_mut().enumerate() {
-                *value = Complex::new(
-                    self.planes[(base + 2 * output) * padded + row],
-                    self.planes[(base + 2 * output + 1) * padded + row],
-                );
+        let planes = self.run(rows)?;
+        let base = 2 * width_in * stride;
+        for output in 0..width_out {
+            let re = &planes[base + 2 * output * stride..][..rows];
+            let im = &planes[base + (2 * output + 1) * stride..][..rows];
+            for (row, values) in outputs.chunks_exact_mut(width_out).enumerate() {
+                values[output] = Complex::new(re[row], im[row]);
             }
         }
         Ok(())
@@ -769,6 +792,39 @@ impl PlaneRows<f64> for BinaryPlane {
 
     fn output_len(&self) -> usize {
         self.outputs
+    }
+
+    fn planes(&mut self, rows: usize) -> (&mut [f64], usize) {
+        let stride = self.padded(rows).div_ceil(PLANE_LINE) * PLANE_LINE + PLANE_LINE;
+        let total = self.plane_count() * stride;
+        if self.planes.len() < total {
+            self.planes.resize(total, 0.0);
+        }
+        self.stride = stride;
+        (&mut self.planes[..total], stride)
+    }
+
+    fn run(&mut self, rows: usize) -> RusticolResult<&[f64]> {
+        let (stride, padded) = (self.stride, self.padded(rows));
+        let total = self.plane_count() * stride;
+        require(
+            rows > 0 && padded < stride && self.planes.len() >= total,
+            "plane kernel rows",
+        )?;
+        let planes = &mut self.planes[..total];
+        // Whole SIMD blocks: padding rows repeat the last row.
+        for plane in planes[..2 * self.inputs * stride].chunks_exact_mut(stride) {
+            let last = plane[rows - 1];
+            plane[rows..padded].fill(last);
+        }
+        let descriptors = planes
+            .chunks_exact_mut(stride)
+            .map(|plane| PlaneDescriptor::from_slice(&mut plane[..padded]))
+            .collect();
+        let mut table = self.kernel.build_raw_table(descriptors)?;
+        self.kernel.execute_table(&mut table, 0, padded)?;
+        drop(table);
+        Ok(&self.planes[..total])
     }
 }
 
@@ -2138,6 +2194,10 @@ where
                 continue;
             }
             let evaluator = &mut kernels[*kernel];
+            if let Kernel::Plane(plane) = evaluator {
+                plane_interactions(plane.as_mut(), layout, &active, states, step, &mut sums)?;
+                continue;
+            }
             let width = evaluator.output_len();
             let per_call = (ROWS / points.max(1)).max(1);
             for chunk in active.chunks(per_call) {
@@ -2187,6 +2247,11 @@ where
                 continue;
             };
             let evaluator = &mut kernels[kernel];
+            if let Kernel::Plane(plane) = evaluator {
+                let sums = (sums.as_slice(), step.width, accumulator);
+                plane_propagator(plane.as_mut(), layout, sums, momentum, start, dimension, states)?;
+                continue;
+            }
             let width = evaluator.output_len();
             let inputs = evaluator.input_len();
             let value = inputs - 4 - layout.model_count;
@@ -2207,6 +2272,163 @@ where
             {
                 state[start..start + dimension].clone_from_slice(&row[..dimension]);
             }
+        }
+    }
+    Ok(())
+}
+
+/// Rows (interaction x point) per plane-kernel call: a call's planes stay in
+/// the core's L2 cache.
+const PLANE_ROWS: usize = 1024;
+
+/// Fill input planes `first..first + count` of a plane call: row (edge,
+/// point) of input `first + k` is the point's state value at
+/// `start(edge) + k`. One plane at a time: contiguous stores.
+#[allow(clippy::too_many_arguments)]
+fn fill_planes<T: Clone>(
+    planes: &mut [T],
+    stride: usize,
+    first: usize,
+    count: usize,
+    edges: &[(&Edge, &Complex<T>)],
+    states: &[Complex<T>],
+    size: usize,
+    start: impl Fn(&Edge) -> usize,
+) {
+    for k in 0..count {
+        let (re, im) = planes[2 * (first + k) * stride..][..2 * stride].split_at_mut(stride);
+        let mut row = 0;
+        for (edge, _) in edges {
+            let at = start(edge) + k;
+            for state in states.chunks_exact(size) {
+                re[row] = state[at].re.clone();
+                im[row] = state[at].im.clone();
+                row += 1;
+            }
+        }
+    }
+}
+
+/// One kernel group of a step on a plane kernel (`run_interactions`): the
+/// input planes filled from the states, without row-major rows; the
+/// outputs accumulated in the row-major path's order, so the sums are
+/// bitwise the same.
+fn plane_interactions<T: Carrier>(
+    plane: &mut dyn PlaneRows<T>,
+    layout: StateLayout,
+    active: &[(&Edge, &Complex<T>)],
+    states: &[Complex<T>],
+    step: &Step,
+    sums: &mut [Complex<T>],
+) -> RusticolResult<()>
+where
+    Complex<T>: Real + EvaluationDomain,
+{
+    let points = states.len() / layout.size.max(1);
+    let Some(&(first, _)) = active.first() else {
+        return Ok(());
+    };
+    if points == 0 {
+        return Ok(());
+    }
+    let (left, right, model) = (first.left_dimension, first.right_dimension, layout.model_count);
+    let inputs = left + right + 8 + model;
+    require(
+        plane.input_len() == inputs
+            && active
+                .iter()
+                .all(|(edge, _)| edge.left_dimension == left && edge.right_dimension == right),
+        "interaction kernel inputs",
+    )?;
+    let width = plane.output_len();
+    let size = layout.size;
+    for chunk in active.chunks((PLANE_ROWS / points).max(1)) {
+        let rows = chunk.len() * points;
+        let (planes, stride) = plane.planes(rows);
+        fill_planes(planes, stride, 0, left, chunk, states, size, |edge| edge.left);
+        fill_planes(planes, stride, left, right, chunk, states, size, |edge| edge.right);
+        let momenta = left + right;
+        fill_planes(planes, stride, momenta, 4, chunk, states, size, |edge| {
+            edge.left_momentum
+        });
+        fill_planes(planes, stride, momenta + 4, 4, chunk, states, size, |edge| {
+            edge.right_momentum
+        });
+        fill_planes(planes, stride, momenta + 8, model, chunk, states, size, |_| {
+            layout.model_offset
+        });
+        let planes = plane
+            .run(rows)
+            .map_err(|e| invalid(format!("interaction kernel: {}", e.message())))?;
+        let base = 2 * inputs * stride;
+        let mut row = 0;
+        for &(edge, weight) in chunk {
+            for point in 0..points {
+                let target = &mut sums[point * step.width + edge.accumulator..];
+                for (output, sum) in (0..width).zip(target.iter_mut()) {
+                    let at = base + 2 * output * stride + row;
+                    let value = Complex::new(planes[at].clone(), planes[at + stride].clone());
+                    *sum += weight.clone() * value;
+                }
+                row += 1;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A propagator output on a plane kernel (`run_interactions`): its input
+/// planes filled from the step's sums (`(sums, width, accumulator)`) and
+/// the states, its first `dimension` outputs written to the states at
+/// `start`.
+fn plane_propagator<T: Clone>(
+    plane: &mut dyn PlaneRows<T>,
+    layout: StateLayout,
+    (sums, sum_width, accumulator): (&[Complex<T>], usize, usize),
+    momentum: usize,
+    start: usize,
+    dimension: usize,
+    states: &mut [Complex<T>],
+) -> RusticolResult<()> {
+    let points = states.len() / layout.size.max(1);
+    if points == 0 {
+        return Ok(());
+    }
+    let inputs = plane.input_len();
+    let value = inputs
+        .checked_sub(4 + layout.model_count)
+        .ok_or_else(|| invalid("propagator kernel inputs"))?;
+    require(dimension <= plane.output_len(), "propagator kernel outputs")?;
+    let (planes, stride) = plane.planes(points);
+    for k in 0..value {
+        let (re, im) = planes[2 * k * stride..][..2 * stride].split_at_mut(stride);
+        for point in 0..points {
+            let sum = &sums[point * sum_width + accumulator + k];
+            re[point] = sum.re.clone();
+            im[point] = sum.im.clone();
+        }
+    }
+    let state_inputs = [
+        (value, momentum, 4),
+        (value + 4, layout.model_offset, layout.model_count),
+    ];
+    for (first, at, count) in state_inputs {
+        for k in 0..count {
+            let (re, im) = planes[2 * (first + k) * stride..][..2 * stride].split_at_mut(stride);
+            for (point, state) in states.chunks_exact(layout.size).enumerate() {
+                re[point] = state[at + k].re.clone();
+                im[point] = state[at + k].im.clone();
+            }
+        }
+    }
+    let planes = plane
+        .run(points)
+        .map_err(|e| invalid(format!("propagator kernel: {}", e.message())))?;
+    let base = 2 * inputs * stride;
+    for (point, state) in states.chunks_exact_mut(layout.size).enumerate() {
+        for (output, slot) in state[start..start + dimension].iter_mut().enumerate() {
+            let at = base + 2 * output * stride + point;
+            *slot = Complex::new(planes[at].clone(), planes[at + stride].clone());
         }
     }
     Ok(())
