@@ -61,9 +61,6 @@ _TENSOR_TAG = "{spenso::tensor}"
 _SYMBOL_TOKEN = re.compile(
     r"(?<![\w:])(?:(?:[^\W\d]\w*::)+\{[^{}]*\}::)?[^\W\d]\w*(?!\w)"
 )
-# The canonical strings of the pools' symbols.
-_TOKENS: list[str] = []
-_TENSOR_TOKENS: list[str] = []
 
 
 def canonical_symbols(count: int) -> list[Any]:
@@ -100,32 +97,47 @@ def canonical_tensor_names(count: int) -> list[Any]:
 
 def _new_blocks() -> None:
     """The next block of canonical symbols; the first time, the block of
-    canonical tensor heads right after it (one padding for both; about 0.3 s
-    once per process)."""
+    canonical tensor heads right after it (one padding for both; about 0.4 s
+    once per process). Built through the central registry's lock, outside
+    its cache."""
 
-    from symbolica import Expression, S
+    from symbolica import Expression
 
-    def block(namespace: str, start: int, *, tensor: bool) -> list[Any]:
+    from .symbols import symbols
+
+    def block(namespace: str, start: int, tags: list[str]) -> list[Any]:
         padding = -len(Expression.get_all_symbol_names()) % _BLOCK
         if padding:
-            S(*(f"{namespace}::pad{start}_{k}" for k in range(padding)))
-        names = [f"{namespace}::c{start + k}" for k in range(_BLOCK)]
-        if tensor:
-            from symbolica.community.tensor import TensorName
-
-            for name in names:
-                TensorName(name)
-        created = list(S(*names))
+            symbols.qualified(
+                *(f"{namespace}::pad{start}_{k}" for k in range(padding)), tags=[]
+            )
+        created = list(
+            symbols.qualified(
+                *(f"{namespace}::c{start + k}" for k in range(_BLOCK)), tags=tags
+            )
+        )
         _check_block(created)
+        for k in (0, _BLOCK - 1):
+            token = _token(start + k, tensor=bool(tags))
+            if created[k].to_canonical_string() != token:
+                raise RuntimeError(
+                    f"canonical symbol {created[k].to_canonical_string()} is not "
+                    f"written {token}"
+                )
         return created
 
-    plain = block(CANONICAL_NAMESPACE, len(_POOL), tensor=False)
-    _POOL.extend(plain)
-    _TOKENS.extend(symbol.to_canonical_string() for symbol in plain)
+    _POOL.extend(block(CANONICAL_NAMESPACE, len(_POOL), []))
     if not _TENSOR_POOL:
-        tensors = block(CANONICAL_TENSOR_NAMESPACE, 0, tensor=True)
-        _TENSOR_POOL.extend(tensors)
-        _TENSOR_TOKENS.extend(symbol.to_canonical_string() for symbol in tensors)
+        _TENSOR_POOL.extend(block(CANONICAL_TENSOR_NAMESPACE, 0, ["spenso::tensor"]))
+
+
+def _token(k: int, *, tensor: bool) -> str:
+    """The canonical string of canonical symbol ``k`` (checked on every
+    block)."""
+
+    if tensor:
+        return f"{CANONICAL_TENSOR_NAMESPACE}::{_TENSOR_TAG}::c{k}"
+    return f"{CANONICAL_NAMESPACE}::{{}}::c{k}"
 
 
 def _check_block(block: list[Any]) -> None:
@@ -190,7 +202,7 @@ class CanonicalRenaming:
         ]
         self._tensor = [token in heads for token in self.renamed]
         self._targets = {
-            token: (_TENSOR_TOKENS if tensor else _TOKENS)[k]
+            token: _token(k, tensor=tensor)
             for k, (token, tensor) in enumerate(
                 zip(self.renamed, self._tensor, strict=True)
             )

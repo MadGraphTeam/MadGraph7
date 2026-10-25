@@ -579,7 +579,7 @@ def _execute_dense_network(
     }
     heads = []
     for name, _representations, components in tensors.tensors:
-        head = _sym.S(name)
+        head = symbols.qualified(name)
         heads.append(head)
         every[head.to_canonical_string()] = head
         for component in components:
