@@ -1561,41 +1561,49 @@ impl CellEngine {
                 .collect()
         };
         drop(results);
-        // Assemble the rows in parallel, in input order.
+        // Assemble the rows in parallel, in input order. A generic cell is
+        // determined by its class's coefficient pattern and its parts'
+        // (power, value): equal keys share one cell per worker.
+        type CellKey = (usize, Vec<(i32, usize)>);
         Ok(recipes
             .into_par_iter()
-            .map(|recipe| match recipe {
-                Recipe::Tasks(row) => row
-                    .into_iter()
-                    .map(|t| distinct[value_of[t]].clone())
-                    .collect(),
-                Recipe::Generic(pattern, parts) => {
-                    let coefficients = &patterns[pattern];
-                    let mut memo: FastMap<Vec<usize>, Arc<Laurent>> = FastMap::default();
-                    (0..basis_len)
-                        .map(|b| {
-                            let key: Vec<usize> = parts
-                                .iter()
-                                .map(|&(_, row)| value_of[structure_rows[row][b]])
-                                .collect();
-                            if let Some(found) = memo.get(&key) {
-                                return found.clone();
-                            }
-                            let mut cell = Laurent::new();
-                            for (coefficient, (&(power, _), &v)) in
-                                coefficients.iter().zip(parts.iter().zip(&key))
-                            {
-                                for (&p, value) in distinct[v].iter() {
-                                    add_laurent(&mut cell, p + power, coefficient.mul(value));
+            .map_init(
+                FastMap::<CellKey, Arc<Laurent>>::default,
+                |memo, recipe| match recipe {
+                    Recipe::Tasks(row) => row
+                        .into_iter()
+                        .map(|t| distinct[value_of[t]].clone())
+                        .collect(),
+                    Recipe::Generic(pattern, parts) => {
+                        let coefficients = &patterns[pattern];
+                        (0..basis_len)
+                            .map(|b| {
+                                let key: CellKey = (
+                                    pattern,
+                                    parts
+                                        .iter()
+                                        .map(|&(power, row)| {
+                                            (power, value_of[structure_rows[row][b]])
+                                        })
+                                        .collect(),
+                                );
+                                if let Some(found) = memo.get(&key) {
+                                    return found.clone();
                                 }
-                            }
-                            let cell = Arc::new(cell);
-                            memo.insert(key, cell.clone());
-                            cell
-                        })
-                        .collect()
-                }
-            })
+                                let mut cell = Laurent::new();
+                                for (coefficient, &(power, v)) in coefficients.iter().zip(&key.1) {
+                                    for (&p, value) in distinct[v].iter() {
+                                        add_laurent(&mut cell, p + power, coefficient.mul(value));
+                                    }
+                                }
+                                let cell = Arc::new(cell);
+                                memo.insert(key, cell.clone());
+                                cell
+                            })
+                            .collect()
+                    }
+                },
+            )
             .collect())
     }
 
