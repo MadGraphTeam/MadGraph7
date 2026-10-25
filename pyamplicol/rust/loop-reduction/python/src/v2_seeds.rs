@@ -7,8 +7,10 @@
 //! and decodes the output. No Symbolica licence call is made.
 use super::*;
 use crate::v2_generate::V2Generation;
+use rusticol_core::loop_v2::generate::FastMap;
+use rusticol_core::loop_v2::generate::networks::Network;
 use rusticol_core::loop_v2::generate::seeds::{
-    self, Kind, LivenessSpec, Seed, SeedOutput, SeedSpec, TensorSpec, Word,
+    self, Kind, LivenessSpec, NetworkSpec, Seed, SeedOutput, SeedSpec, Tensor, TensorSpec, Word,
 };
 
 /// A primitive: `(kind, letters, input descriptor indices)`.
@@ -18,6 +20,47 @@ type RawRing = (Vec<u32>, Vec<(i64, i64)>);
 /// A new class: `("P", primitive)` or `("G", generic need)`.
 type RawClass = (&'static str, Option<RawPrimitive>, u32);
 type RawOutput = (Vec<RawClass>, Vec<Vec<u32>>, Vec<Vec<(u32, u32)>>, Vec<u32>);
+/// A term of a reduced tensor: `(re, im, N_c power, open strings, traces)`.
+type RawTerm = (
+    String,
+    String,
+    i64,
+    Vec<(i64, Vec<i64>, i64)>,
+    Vec<Vec<i64>>,
+);
+
+fn raw_tensor(tensor: &Tensor) -> (i64, Vec<RawTerm>) {
+    (
+        tensor.normalization,
+        tensor
+            .terms
+            .iter()
+            .map(|(value, structure, power)| {
+                let (re, im) = value.text();
+                (
+                    re,
+                    im,
+                    *power,
+                    structure
+                        .strings
+                        .iter()
+                        .map(|s| (s.fundamental, s.adjoint.clone(), s.antifundamental))
+                        .collect(),
+                    structure.traces.clone(),
+                )
+            })
+            .collect(),
+    )
+}
+
+/// `[[key, network]]` JSON to networks by key.
+fn networks(text: &str) -> PyResult<FastMap<u32, Network>> {
+    let specs: Vec<(u32, NetworkSpec)> = serde_json::from_str(text).map_err(error)?;
+    specs
+        .iter()
+        .map(|(key, spec)| Ok((*key, seeds::parse_network(spec).map_err(error)?)))
+        .collect()
+}
 
 fn words<const N: usize>(bytes: &[u8]) -> PyResult<Vec<[u8; N]>> {
     if !bytes.len().is_multiple_of(N) {
@@ -39,6 +82,29 @@ struct SeedBuilder {
 }
 
 impl SeedBuilder {
+    /// The raw output of a completed stage (kept for `liveness`).
+    fn finish(&mut self, output: SeedOutput) -> PyResult<RawOutput> {
+        let classes = output
+            .classes
+            .iter()
+            .map(|seed| {
+                Ok(match *seed {
+                    Seed::Primitive(p) => ("P", Some(self.raw_primitive(p)?), 0),
+                    Seed::Generic(g) => ("G", None, g),
+                    Seed::Tensor(_) => unreachable!("new classes are never existing tensors"),
+                })
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        let raw = (
+            classes,
+            output.orders.clone(),
+            output.rows.clone(),
+            output.skeleton_rows.clone(),
+        );
+        self.output = Some(output);
+        Ok(raw)
+    }
+
     fn raw_primitive(&self, id: u32) -> PyResult<RawPrimitive> {
         let (kind, word) = self.core.primitive(id);
         Ok(match word {
@@ -174,25 +240,66 @@ impl SeedBuilder {
         let output = py
             .detach(|| core.complete(rings, generics))
             .map_err(error)?;
-        let classes = output
-            .classes
-            .iter()
-            .map(|seed| {
-                Ok(match *seed {
-                    Seed::Primitive(p) => ("P", Some(self.raw_primitive(p)?), 0),
-                    Seed::Generic(g) => ("G", None, g),
-                    Seed::Tensor(_) => unreachable!("new classes are never existing tensors"),
-                })
-            })
-            .collect::<PyResult<Vec<_>>>()?;
-        let raw = (
-            classes,
-            output.orders.clone(),
-            output.rows.clone(),
-            output.skeleton_rows.clone(),
-        );
-        self.output = Some(output);
-        Ok(raw)
+        self.finish(output)
+    }
+
+    /// The stage's content ids the generic needs read (after `needs`).
+    fn generic_contents(&self) -> Vec<u32> {
+        self.core.generic_contents()
+    }
+
+    /// Input indices of the exact descriptors of the ring needs.
+    fn ring_exact_descriptors(&self) -> PyResult<Vec<u32>> {
+        self.core.ring_exact_descriptors().map_err(error)
+    }
+
+    /// Reduce the needs natively (after `needs`): `exact` and `contents`
+    /// are JSON lists of `[input descriptor index or content id, network]`
+    /// (`loops/v2/native_seeds.py`); legs are the tensors' leg labels.
+    fn reduce(
+        &mut self,
+        py: Python<'_>,
+        ring_legs: Vec<i64>,
+        seed_legs: Vec<i64>,
+        exact: &str,
+        contents: &str,
+    ) -> PyResult<()> {
+        let (exact, contents) = (networks(exact)?, networks(contents)?);
+        let core = &mut self.core;
+        py.detach(|| core.reduce(&ring_legs, &seed_legs, &exact, &contents))
+            .map_err(error)
+    }
+
+    /// The reduced tensor of ring need `k` (after `reduce`):
+    /// `(normalisation, terms)` (`_reduced_primitive`).
+    fn ring_tensor(&self, k: usize) -> PyResult<(i64, Vec<RawTerm>)> {
+        let (rings, _) = self
+            .core
+            .reduced()
+            .ok_or_else(|| error("no reduced needs"))?;
+        rings
+            .get(k)
+            .map(raw_tensor)
+            .ok_or_else(|| error("no such ring need"))
+    }
+
+    /// The generic seed of generic need `g` (after `reduce`).
+    fn generic_tensor(&self, g: usize) -> PyResult<(i64, Vec<RawTerm>)> {
+        let (_, generics) = self
+            .core
+            .reduced()
+            .ok_or_else(|| error("no reduced needs"))?;
+        generics
+            .get(g)
+            .map(raw_tensor)
+            .ok_or_else(|| error("no such generic need"))
+    }
+
+    /// `complete` with the natively reduced needs.
+    fn complete_reduced(&mut self, py: Python<'_>) -> PyResult<RawOutput> {
+        let core = &mut self.core;
+        let output = py.detach(|| core.complete_reduced()).map_err(error)?;
+        self.finish(output)
     }
 
     /// Every interned coefficient as `(re, im)` fraction texts, by id.

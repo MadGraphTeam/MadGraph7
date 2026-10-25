@@ -206,6 +206,51 @@ def test_native_seed_tables_equal_python(controls, loop_native, name, compress):
 
 
 @pytest.mark.loop_fast
+@pytest.mark.parametrize(
+    ("name", "compress"), [("uux_ggg", True), ("uux_ddxg", False), ("gg_gg", False)]
+)
+def test_native_reductions_equal_python(
+    controls, loop_native, monkeypatch, name, compress
+):
+    """The in-crate reductions (``networks.rs``): every quark-ring need's
+    tensor equals ``reduce_network`` of the canonical ring's network and
+    every generic need's seed equals ``SeedColour.seed``; the stage with
+    the Python reductions (``NATIVE_REDUCTIONS`` off) gives the same table;
+    the native ring tensors fill ``_reduced_primitive``'s cache."""
+
+    from pyamplicol.loops.v2 import colour as colour_module
+    from pyamplicol.loops.v2.colour import reduce_network
+
+    colour, skeletons = controls(name)
+    with native_seeds.python_oracle():
+        pass  # empty the reduction caches
+    stage = native_seeds.NativeSeedStage(colour, loop_native)
+    native = stage.build(skeletons, compress=compress)
+    rings, generics = stage.needs
+    assert stage.encoder is not None
+    assert generics and bool(rings) == compress
+    legs = native[0].basis.legs
+    external = {leg.label: leg.label for leg in legs}
+    for k, need in enumerate(rings):
+        ring = stage.encoder.ring(need)
+        expected = reduce_network(ring.network(), legs, external)
+        decoded = native_seeds._decoded(stage._builder.ring_tensor(k), legs)
+        assert decoded == expected
+        assert colour_module._reduced_primitive(ring, legs) == expected  # cached
+    for g, s in enumerate(generics):
+        assert native_seeds._decoded(
+            stage._builder.generic_tensor(g), colour.legs
+        ) == colour.seed(skeletons[s])
+    monkeypatch.setattr(native_seeds, "NATIVE_REDUCTIONS", False)
+    assert_same_tables(
+        native_seeds.NativeSeedStage(colour, loop_native).build(
+            skeletons, compress=compress
+        ),
+        native,
+    )
+
+
+@pytest.mark.loop_fast
 def test_native_extension_of_an_uncompressed_table(controls, loop_native):
     """Extending a compressed table without compression (existing quark
     rings keyed by themselves, generic classes by their tensors) and an

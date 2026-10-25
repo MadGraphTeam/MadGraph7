@@ -73,10 +73,17 @@ from dataclasses import replace
 from fractions import Fraction
 from typing import Any, cast
 
-from pyamplicol.color.connections import ConnectedColorTensor, ExactColorCoefficient
+from pyamplicol.color.connections import (
+    ColorTensor,
+    ConnectedColorTensor,
+    ExactColorCoefficient,
+    OpenColorString,
+    TensorTerm,
+)
 
 from . import generator_input
 from .colour import (
+    _NATIVE_REDUCED,
     COMPRESSION_THEOREMS,
     BornBasis,
     CompressedColour,
@@ -119,16 +126,100 @@ _POSITIONS = {"adjoint": 0, "fundamental": 1, "exact": 2}
 NATIVE = True
 
 
+#: Quark-ring reductions and generic seeds in-crate (``networks.rs``, the
+#: twin of ``colour.reduce_network``); off, the stage calls the Python
+#: ``_reduced_primitive`` and ``SeedColour.seed`` for them.
+NATIVE_REDUCTIONS = True
+
+
 @contextmanager
 def python_oracle() -> Iterator[None]:
-    """Run the Python seed stages (the oracle) inside the block."""
+    """Run the Python seed stages (the oracle) inside the block, with the
+    exact reductions of ``_reduced_primitive`` recomputed in Python (its
+    cache may hold natively reduced rings)."""
 
     global NATIVE
     saved, NATIVE = NATIVE, False
+    _reduced_primitive.cache_clear()
+    _NATIVE_REDUCED.clear()
     try:
         yield
     finally:
         NATIVE = saved
+
+
+class _Networks:
+    """Colour networks as the native reducer reads them (``NetworkSpec``):
+    external legs keep their labels, "in"/"out" are the loop lines (-1,
+    -2), every other label a local one (-3 - k) of its network."""
+
+    def encode(self, items: Iterable[tuple[int, Any]]) -> str:
+        return json.dumps(
+            [[key, self.network(network)] for key, network in items],
+            separators=(",", ":"),
+        )
+
+    @staticmethod
+    def network(network: Any) -> list[Any]:
+        local: dict[Any, int] = {}
+
+        def label(value: Any) -> int:
+            if isinstance(value, int):
+                if value < 0:
+                    raise ValueError(f"a negative external colour label {value}")
+                return value
+            if value == "in":
+                return -1
+            if value == "out":
+                return -2
+            return -3 - local.setdefault(value, len(local))
+
+        return [
+            [
+                _text(term.coefficient.real),
+                _text(term.coefficient.imag),
+                term.nc_power,
+                term.root2_power,
+                [
+                    [label(s.row), [label(a) for a in s.word], label(s.col)]
+                    for s in term.strings
+                ],
+                [[label(a) for a in trace] for trace in term.traces],
+            ]
+            for term in network
+        ]
+
+
+def _decoded(raw: Sequence[Any], legs: Sequence[Any]) -> ConnectedColorTensor:
+    """A natively reduced tensor (``(normalisation, terms)``)."""
+
+    normalization, terms = raw
+    return ConnectedColorTensor(
+        tuple(legs),
+        tuple(
+            TensorTerm(
+                ExactColorCoefficient(Fraction(re), Fraction(im)),
+                ColorTensor(
+                    tuple(OpenColorString(f, tuple(a), af) for f, a, af in strings),
+                    tuple(tuple(trace) for trace in traces),
+                ),
+                power,
+            )
+            for re, im, power, strings, traces in terms
+        ),
+        normalization,
+    )
+
+
+def _prime_reduction(ring: Primitive, legs: Sequence[Any], raw: Sequence[Any]) -> None:
+    """``_reduced_primitive(ring, legs)`` cached with the native reduction."""
+
+    key = (ring, tuple(legs))
+    _NATIVE_REDUCED[key] = _decoded(raw, legs)
+    try:
+        _reduced_primitive(*key)
+    finally:
+        _NATIVE_REDUCED.pop(key, None)
 
 
 def _native(native: Any) -> Any:
@@ -277,6 +368,9 @@ class NativeSeedStage:
         self.spec_text = ""
         self.reductions_text = ("[]", "[]")
         self.kind = ""
+        # The stage's needs (ring needs, generic skeletons) and its encoder.
+        self.needs: tuple[list[Any], list[int]] = ([], [])
+        self.encoder: _Encoder | None = None
         self.table: SeedTable | None = None
         self._clock = 0.0
 
@@ -390,24 +484,61 @@ class NativeSeedStage:
             certified = list(table.certificates)
         self._step("certificates")
         rings, generics = builder.needs(certified)
+        self.needs = (rings, generics)
+        self.encoder = encoder
         self._step("native_needs")
         legs = table.basis.legs
-        ring_tensors = [
-            _tensor(canonical_seed(_reduced_primitive(encoder.ring(need), legs)))
-            for need in rings
-        ]
-        generic_seeds = [colour.seed(skeletons[s]) for s in generics]
-        self._step("reductions")
-        self.reductions_text = (
-            json.dumps(ring_tensors, separators=(",", ":")),
-            json.dumps(
-                [encoder.key_tensor(seed) for seed in generic_seeds],
-                separators=(",", ":"),
-            ),
-        )
-        new_classes, class_orders, raw_rows, skeleton_rows = builder.complete(
-            *self.reductions_text
-        )
+        generic_seeds: Callable[[int], ConnectedColorTensor]
+        if NATIVE_REDUCTIONS:
+            # The quark rings and generic seeds reduced in-crate; the ring
+            # tensors also fill ``_reduced_primitive``'s cache (the cells).
+            networks = _Networks()
+            builder.reduce(
+                [leg.label for leg in legs],
+                [leg.label for leg in colour.legs],
+                networks.encode(
+                    (d, encoder._objects[d][1])
+                    for d in builder.ring_exact_descriptors()
+                ),
+                networks.encode(
+                    (
+                        c,
+                        (compressed or CompressedColour(colour))._exact_network(
+                            contents[c]
+                        ),
+                    )
+                    for c in builder.generic_contents()
+                ),
+            )
+            self._step("reductions")
+            for k, need in enumerate(rings):
+                _prime_reduction(encoder.ring(need), legs, builder.ring_tensor(k))
+
+            def generic_seeds(g: int) -> ConnectedColorTensor:
+                return _decoded(builder.generic_tensor(g), colour.legs)
+
+            self.reductions_text = ("", "")
+            new_classes, class_orders, raw_rows, skeleton_rows = (
+                builder.complete_reduced()
+            )
+        else:
+            ring_tensors = [
+                _tensor(canonical_seed(_reduced_primitive(encoder.ring(need), legs)))
+                for need in rings
+            ]
+            python_seeds = [colour.seed(skeletons[s]) for s in generics]
+            generic_seeds = python_seeds.__getitem__
+            self._step("reductions")
+            self.reductions_text = (
+                json.dumps(ring_tensors, separators=(",", ":")),
+                json.dumps(
+                    [encoder.key_tensor(seed) for seed in python_seeds],
+                    separators=(",", ":"),
+                ),
+            )
+            new_classes, class_orders, raw_rows, skeleton_rows = builder.complete(
+                *self.reductions_text
+            )
         self._step("native_classes")
         coefficients = [
             ExactColorCoefficient(Fraction(re), Fraction(im))
@@ -420,7 +551,7 @@ class NativeSeedStage:
         classes = list(table.classes)
         for tag, primitive, generic in new_classes:
             if tag == "G":
-                classes.append(generic_seeds[generic])
+                classes.append(generic_seeds(generic))
             else:
                 classes.append(encoder.primitive(primitive))
         rows = [tuple((c, coefficients[x]) for c, x in row) for row in raw_rows]

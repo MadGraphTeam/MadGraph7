@@ -44,9 +44,11 @@
 //! output does not depend on the thread count.
 
 use super::FastMap;
+use super::networks::{self, NetString, Network, Product};
 use super::orders::OrderSpace;
 use crate::loop_v2::dress::parse_rational;
 use crate::{RusticolError, RusticolResult};
+use rayon::prelude::*;
 use serde::Deserialize;
 use std::cmp::Ordering;
 use symbolica::domains::rational::Rational;
@@ -790,6 +792,9 @@ pub struct SeedBuilder {
     /// Per quark-ring primitive: (ring need, back map).
     ring_of: FastMap<u32, (u32, Vec<(i64, i64)>)>,
     has_needs: bool,
+    /// The needs reduced natively ([`SeedBuilder::reduce`]): ring tensors
+    /// (canonical seeds of `_reduced_primitive`) and generic seeds.
+    reduced: Option<(Vec<Tensor>, Vec<Tensor>)>,
 }
 
 impl SeedBuilder {
@@ -934,6 +939,7 @@ impl SeedBuilder {
             ring_index: FastMap::default(),
             ring_of: FastMap::default(),
             has_needs: false,
+            reduced: None,
         };
         for (tag, items, class_orders) in &spec.existing {
             let seed = match tag {
@@ -1535,6 +1541,245 @@ impl SeedBuilder {
             rows,
             skeleton_rows,
         })
+    }
+}
+
+// ---------------------------------------------- native reductions (phase 1)
+
+/// A colour network as `loops/v2/native_seeds.py` encodes it: per product
+/// `(re, im, N_c power, 1/sqrt(2) power, strings (row, word, col), traces)`
+/// with template labels (`networks.rs`: external legs non-negative, `-1` the
+/// loop index in, `-2` out, `-(3 + k)` local label `k`).
+pub type NetworkSpec = Vec<(
+    String,
+    String,
+    i64,
+    i64,
+    Vec<(i64, Vec<i64>, i64)>,
+    Vec<Vec<i64>>,
+)>;
+
+pub fn parse_network(spec: &NetworkSpec) -> RusticolResult<Network> {
+    spec.iter()
+        .map(|(re, im, nc_power, root2_power, strings, traces)| {
+            Ok(Product {
+                coefficient: Exact::parse(re, im)?,
+                strings: strings
+                    .iter()
+                    .map(|(row, word, col)| NetString {
+                        row: *row,
+                        word: word.clone(),
+                        col: *col,
+                    })
+                    .collect(),
+                traces: traces.clone(),
+                nc_power: *nc_power,
+                root2_power: *root2_power,
+            })
+        })
+        .collect()
+}
+
+/// `_adjoint_chain(letters, in, out, p)`: `(F^l_1 ... F^l_k)_{in out}` with
+/// local chain labels.
+fn adjoint_chain(letters: &[i64]) -> Network {
+    let trace = |coefficient: Exact, labels: Vec<i64>| Product {
+        coefficient,
+        traces: vec![labels],
+        ..Product::one()
+    };
+    if letters.is_empty() {
+        return vec![trace(Exact::one(), vec![networks::IN, networks::OUT])];
+    }
+    let k = letters.len();
+    let label = |i: usize| -> i64 {
+        if i == 0 {
+            networks::IN
+        } else if i == k {
+            networks::OUT
+        } else {
+            networks::local(i - 1)
+        }
+    };
+    let factors: Vec<Network> = letters
+        .iter()
+        .enumerate()
+        .map(|(i, &letter)| {
+            let (x, y) = (label(i), label(i + 1));
+            vec![
+                trace(Exact::one(), vec![x, letter, y]),
+                trace(Exact::one().neg(), vec![x, y, letter]),
+            ]
+        })
+        .collect();
+    networks::multiply(factors.iter())
+}
+
+impl SeedBuilder {
+    /// The stage's content ids read by the generic needs (sorted): the
+    /// contents whose exact networks [`Self::reduce`] needs.
+    pub fn generic_contents(&self) -> Vec<u32> {
+        let mut out: Vec<u32> = self
+            .generic_skeletons
+            .iter()
+            .flat_map(|&s| self.skeleton(s).iter().copied())
+            .collect();
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
+    /// The input indices of the exact descriptors of the ring needs
+    /// (sorted): the descriptors whose networks [`Self::reduce`] needs.
+    pub fn ring_exact_descriptors(&self) -> RusticolResult<Vec<u32>> {
+        let mut out = Vec::new();
+        for need in &self.rings {
+            for &d in &need.descriptors {
+                if let Descriptor::Exact(..) = self.descriptors.get(d) {
+                    out.push(self.input_descriptor(d)?);
+                }
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+        Ok(out)
+    }
+
+    /// The position template of ring-need descriptor `d` with the ring's
+    /// relabelling `forward` (`_ring_relabelling`) applied to its labels.
+    fn ring_template(
+        &self,
+        d: u32,
+        forward: &FastMap<i64, i64>,
+        exact: &FastMap<u32, Network>,
+    ) -> RusticolResult<Network> {
+        let rename = |a: i64| -> i64 {
+            if a >= 0 {
+                *forward.get(&a).unwrap_or(&a)
+            } else {
+                a
+            }
+        };
+        let template = match self.descriptors.get(d) {
+            Descriptor::Adjoint(letters) => adjoint_chain(letters),
+            Descriptor::Fundamental(letters, forward_flow) => {
+                let (row, col) = if *forward_flow {
+                    (networks::OUT, networks::IN)
+                } else {
+                    (networks::IN, networks::OUT)
+                };
+                vec![Product {
+                    strings: vec![NetString {
+                        row,
+                        word: letters.clone(),
+                        col,
+                    }],
+                    ..Product::one()
+                }]
+            }
+            Descriptor::Exact(..) => exact
+                .get(&self.input_descriptor(d)?)
+                .cloned()
+                .ok_or_else(|| invalid("an exact descriptor of a ring without its network"))?,
+        };
+        Ok(template
+            .into_iter()
+            .map(|product| Product {
+                strings: product
+                    .strings
+                    .iter()
+                    .map(|s| NetString {
+                        row: rename(s.row),
+                        word: s.word.iter().map(|&a| rename(a)).collect(),
+                        col: rename(s.col),
+                    })
+                    .collect(),
+                traces: product
+                    .traces
+                    .iter()
+                    .map(|t| t.iter().map(|&a| rename(a)).collect())
+                    .collect(),
+                ..product
+            })
+            .collect())
+    }
+
+    /// Reduce every need natively (after [`Self::needs`]): each ring need is
+    /// the ring of its descriptors (`_reduced_primitive` of the canonical
+    /// relabelled ring, on legs `ring_legs`), each generic need the ring of
+    /// its contents' exact networks (`SeedColour.seed`, on legs
+    /// `seed_legs`); `exact` holds the networks of
+    /// [`Self::ring_exact_descriptors`] by input index, `contents` those of
+    /// [`Self::generic_contents`]. The needs reduce in parallel; each result
+    /// depends on its need only.
+    pub fn reduce(
+        &mut self,
+        ring_legs: &[i64],
+        seed_legs: &[i64],
+        exact: &FastMap<u32, Network>,
+        contents: &FastMap<u32, Network>,
+    ) -> RusticolResult<()> {
+        if !self.has_needs || self.reduced.is_some() {
+            return Err(invalid("reduce runs once, after needs"));
+        }
+        let rings: Vec<Network> = self
+            .rings
+            .iter()
+            .map(|need| {
+                let forward: FastMap<i64, i64> = need.forward.iter().copied().collect();
+                let templates = need
+                    .descriptors
+                    .iter()
+                    .map(|&d| self.ring_template(d, &forward, exact))
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                Ok(networks::ring(&templates.iter().collect::<Vec<_>>()))
+            })
+            .collect::<RusticolResult<_>>()?;
+        let generics: Vec<Network> = self
+            .generic_skeletons
+            .iter()
+            .map(|&s| {
+                let templates = self
+                    .skeleton(s)
+                    .iter()
+                    .map(|c| {
+                        contents
+                            .get(c)
+                            .ok_or_else(|| invalid("a generic content without its network"))
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                Ok(networks::ring(&templates))
+            })
+            .collect::<RusticolResult<_>>()?;
+        let reduce_all = |networks_: &[Network], legs: &[i64]| -> RusticolResult<Vec<Tensor>> {
+            networks_
+                .par_iter()
+                .map_init(
+                    || networks::Reducer::new(legs),
+                    |reducer, network| reducer.reduce(network).map_err(invalid),
+                )
+                .collect()
+        };
+        let rings = reduce_all(&rings, ring_legs)?;
+        let generics = reduce_all(&generics, seed_legs)?;
+        self.reduced = Some((rings, generics));
+        Ok(())
+    }
+
+    /// The natively reduced needs (after [`Self::reduce`]).
+    pub fn reduced(&self) -> Option<(&[Tensor], &[Tensor])> {
+        self.reduced
+            .as_ref()
+            .map(|(rings, generics)| (rings.as_slice(), generics.as_slice()))
+    }
+
+    /// [`Self::complete`] with the natively reduced needs.
+    pub fn complete_reduced(&mut self) -> RusticolResult<SeedOutput> {
+        let (rings, generics) = self
+            .reduced
+            .clone()
+            .ok_or_else(|| invalid("complete_reduced runs after reduce"))?;
+        self.complete(rings, generics)
     }
 }
 

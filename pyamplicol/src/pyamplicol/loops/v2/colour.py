@@ -944,10 +944,19 @@ class Primitive:
         return _reduced_primitive(self, legs)
 
 
+#: Quark-ring reductions made natively by the seed stage
+#: (``native_seeds._prime_reduction``), taken by ``_reduced_primitive`` in
+#: place of ``reduce_network`` so its cache holds them.
+_NATIVE_REDUCED: dict[tuple[Primitive, tuple[ColorLeg, ...]], ConnectedColorTensor] = {}
+
+
 @lru_cache(maxsize=1 << 14)
 def _reduced_primitive(
     primitive: Primitive, legs: tuple[ColorLeg, ...]
 ) -> ConnectedColorTensor:
+    native = _NATIVE_REDUCED.pop((primitive, legs), None)
+    if native is not None:
+        return native
     external = {leg.label: leg.label for leg in legs}
     return reduce_network(primitive.network(), legs, external)
 
