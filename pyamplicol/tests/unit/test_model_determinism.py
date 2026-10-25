@@ -121,7 +121,7 @@ def test_canonical_forms_round_trip_and_ignore_symbol_order():
         "-spenso::f(spenso::coad(8,pyamplicol_test_canonical::b),"
         "spenso::coad(8,pyamplicol_test_canonical::a),spenso::coad(8,pyamplicol_test_canonical::c))"
         "*(pyamplicol_test_canonical::a+2*pyamplicol_test_canonical::k10)"
-        "+pyamplicol_test_canonical::k2^2/3-𝑖*conj(pyamplicol_test_canonical::c)"
+        "+pyamplicol_test_canonical::k2^2/3-𝑖*conj(pyamplicol_test_canonical::c)"  # noqa: RUF001
     )
     expression = E(source)
     plain = canonical_plain(expression)

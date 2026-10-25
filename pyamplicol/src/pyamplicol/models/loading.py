@@ -1065,7 +1065,9 @@ def _canonical_loader_values(model: Any) -> None:
     while pending:
         remaining = []
         for parameter, head in pending:
-            dependencies = heads.intersection(parameter.expression.get_all_symbols(False))
+            dependencies = heads.intersection(
+                parameter.expression.get_all_symbols(False)
+            )
             if dependencies <= values.keys():
                 parameter.value = evaluate(parameter.expression)
                 values[head] = parameter.value
