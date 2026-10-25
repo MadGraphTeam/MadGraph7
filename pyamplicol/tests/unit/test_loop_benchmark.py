@@ -597,6 +597,8 @@ def test_a_repeat_at_another_batch_keeps_the_earlier_checks(tmp_path):
     assert config["physical"] == [{"index": 0}]
     assert config["checks_from_earlier_run"] == {"physical": "0" * 40}
     assert "partial" not in config
+    # No provider timing: reported without a gate (addenda F and H).
+    assert row["gated"] is False and row["gate_note"] == gate.NO_PROVIDER_NOTE
     # A checkpoint of a run that did not finish is marked.
     second["partial"] = True
     paths[1].write_text(json.dumps(second))
