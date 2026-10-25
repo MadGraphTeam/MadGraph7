@@ -75,6 +75,78 @@ def test_helper_bodies_inline_and_evaluate_as_symbolica_does() -> None:
     assert values.tobytes() == expected.tobytes()
 
 
+def _nested_helpers_evaluator() -> tuple[Any, Any]:
+    """Three helpers, each calling the previous one, none inlined by
+    Symbolica: the exporters inline bodies nested three deep."""
+    from symbolica import Expression, FunctionDefinition, S
+
+    equal = _primitive("equal")
+    choose = symbols.qualified("symbolica::if")
+    x, y, a, b = (S(f"symjit_nested_{name}") for name in "xyab")
+    inner, middle, outer = (
+        symbols.qualified(f"pyamplicol_symjit_helper_test::nested_{name}")
+        for name in ("inner", "middle", "outer")
+    )
+    functions = [
+        FunctionDefinition(
+            inner, [a, b], choose(equal(a, b), a, 3 * b), inlining="never"
+        ),
+        FunctionDefinition(
+            middle, [a, b], inner(a, b) * a + inner(b, a), inlining="never"
+        ),
+        FunctionDefinition(
+            outer, [a, b], middle(a, b) - 2 * middle(b, b), inlining="never"
+        ),
+    ]
+    evaluator = Expression.evaluator_multiple(
+        [outer(x, y) + y, middle(x, x) * outer(y, x)],
+        [x, y],
+        functions=functions,
+        jit_compile=False,
+        n_cores=1,
+    )
+    rows = np.array(
+        [[1.5, 1.5], [1.5, 2.5], [2.5, -1.5], [1 + 2j, 1 + 2j], [0.25, 8.0]],
+        dtype=np.complex128,
+    )
+    return evaluator, rows
+
+
+def _depth(exported: Any) -> int:
+    return 1 + max(
+        (_depth(sub.evaluator) for sub in exported.sub_evaluators), default=0
+    )
+
+
+def test_nested_helper_bodies_inline_in_both_exporters() -> None:
+    """Dyadic inputs keep every value exact, so the comparisons are bitwise:
+    the Python exporter (tree adapter) and the Rust one (loop plane
+    applications, from the saved state) inline the nested bodies."""
+    from pyamplicol.loops.native import load_loop_native
+
+    evaluator, rows = _nested_helpers_evaluator()
+    exported = evaluator.get_instructions()
+    assert _depth(exported) >= 3
+    expected = np.asarray(evaluator.evaluate_complex(rows), dtype=np.complex128)
+    assert np.isfinite(expected).all()
+    flat_rows = rows.view(np.float64).ravel().tolist()
+
+    program = _symbolica_instruction_program_repr(exported)
+    python_application = _rusticol._compile_symjit_plane_application_v2(
+        program, 2, 2, 2, False
+    )
+    rust_application, inputs, outputs = load_loop_native().compile_v2_plane(
+        bytes(evaluator.save()), 2, False
+    )
+    assert (inputs, outputs) == (2, 2)
+    for application in (python_application, bytes(rust_application)):
+        flat = _rusticol._evaluate_symjit_plane_application_v2(
+            application, 2, 2, flat_rows, len(rows)
+        )
+        values = np.asarray(flat, dtype=np.float64).view(np.complex128)
+        assert values.reshape(-1, 2).tobytes() == expected.tobytes()
+
+
 def test_unbound_functions_are_refused_by_the_plane_compiler() -> None:
     from symbolica import Expression, FunctionDefinition, S
 
@@ -147,7 +219,9 @@ SYMJIT_RANDOM_CALL_TAG = (
     "(compiler.rs translate_external_fun, against CSE), so the stored IR of a "
     "program calling the scalar primitives differs between compilations; the "
     "values do not, and a stored application recompiles to the same code at "
-    "every load (still in SymJIT 2.28.1; not filed upstream yet)"
+    "every load (still in SymJIT 2.28.1 and v228 d37160b8; deterministic-tag "
+    "patch prepared in workspace/reports/engine-v2/upstream/"
+    "symjit-reproducible-external-calls, not filed yet)"
 )
 
 
