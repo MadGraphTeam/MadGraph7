@@ -57,8 +57,8 @@ runs:
 
     # The run_card default PDF sets: NNPDF40_lo_as_01180 (mg7 [beam] pdf and the
     # legacy LO lhaid 331900), the NLO 5F/4F sets (331700 / 334700) and the
-    # QED sets used with a photon in the initial state or NLO EW corrections
-    # (NNPDF40MC_lo_as_01180_qed = LO 338510 / mg7, NNPDF40_nlo_as_01180_qed = 335900).
+    # QED set used with a photon in the initial state or NLO EW corrections
+    # (NNPDF40_nlo_as_01180_qed = 335900, LO, NLO and mg7).
     # warm_cache.yml bakes them into the lhapdf cache, but that cache is only
     # rebuilt when warm_cache runs with a reset, so a branch that changes the
     # default would otherwise face a cache that predates it: the mg7 tests guard
@@ -69,7 +69,7 @@ runs:
       run: |
         DATADIR=/home/runner/.cache/HEPtools/lhapdf6_py3/share/LHAPDF
         for SET in NNPDF40_lo_as_01180 NNPDF40_nlo_as_01180 NNPDF40_nlo_as_01180_nf_4 \
-                   NNPDF40MC_lo_as_01180_qed NNPDF40_nlo_as_01180_qed; do
+                   NNPDF40_nlo_as_01180_qed; do
           if [ -d "$DATADIR" ] && [ ! -d "$DATADIR/$SET" ]; then
             ( cd "$DATADIR" \
               && wget -q https://lhapdfsets.web.cern.ch/current/$SET.tar.gz \

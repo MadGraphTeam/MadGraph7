@@ -4472,8 +4472,8 @@ class RunCardLO(RunCard):
         default_run_card = None
     
     # default lhaid when a photon is an initial-state parton of the proton:
-    # NNPDF40MC_lo_as_01180_qed, the only LO NNPDF4.0 set with a photon
-    photon_lhaid = 338510
+    # NNPDF40_nlo_as_01180_qed (no LO NNPDF4.0 set with a photon but the MC one)
+    photon_lhaid = 335900
 
     def default_setup(self):
         """default value for the run_card.dat"""
@@ -5231,8 +5231,8 @@ class RunCardLO(RunCard):
                         logger.warning('Issue with default beam setup of neutrino in the run_card. Please check it up [polbeam2].')
 
             # a photon taken from the proton needs a PDF set with a photon
-            # density: NNPDF40_lo_as_01180 has none, so use the QED LO set of
-            # the same family (issue #311)
+            # density: NNPDF40_lo_as_01180 has none, so use the QED set of the
+            # same family (issue #311)
             if 'lhaid' not in self.user_set and self['pdlabel'] == 'lhapdf' and \
                     any(22 in beam_id_split[i] and abs(self['lpp%d' % (i+1)]) == 1
                         for i in range(2)):
@@ -6736,9 +6736,9 @@ class RunCardMG7(RunCard):
             'nb_core': threads if threads > 0 else None,
         }
 
-    # default PDF set when a photon is an initial-state parton of the proton:
-    # the only LO NNPDF4.0 set with a photon
-    photon_pdf = "NNPDF40MC_lo_as_01180_qed"
+    # default PDF set when a photon is an initial-state parton of the proton
+    # (same as the LO run_card, lhaid 335900)
+    photon_pdf = "NNPDF40_nlo_as_01180_qed"
 
     def default_setup(self):
         """Define every parameter of the default ``run_card.toml``."""
@@ -8557,7 +8557,7 @@ class RunCardMG7(RunCard):
     _LO_LHAID_MAP = {
         230000: 'NNPDF23_lo_as_0130_qed', 247000: 'NNPDF23_lo_as_0130_qed',
         331900: 'NNPDF40_lo_as_01180', 338500: 'NNPDF40MC_lo_as_01180',
-        338510: 'NNPDF40MC_lo_as_01180_qed',
+        335900: 'NNPDF40_nlo_as_01180_qed',
         10042: 'cteq6l1',
     }
     # LO parameters that have no MG7 equivalent (reported when non-default).

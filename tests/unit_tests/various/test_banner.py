@@ -2330,8 +2330,8 @@ class TestPhotonPDFDefault(unittest.TestCase):
 
     def test_lo(self):
         self.assertEqual(self.lo_card([2, -2])['lhaid'], 331900)
-        self.assertEqual(self.lo_card([22, 22])['lhaid'], 338510)
-        self.assertEqual(self.lo_card([2, 22])['lhaid'], 338510)
+        self.assertEqual(self.lo_card([22, 22])['lhaid'], 335900)
+        self.assertEqual(self.lo_card([2, 22])['lhaid'], 335900)
         # the user choice wins
         self.assertEqual(self.lo_card([22, 22], lhaid=331900)['lhaid'], 331900)
 
@@ -2358,8 +2358,8 @@ class TestPhotonPDFDefault(unittest.TestCase):
             return rc
         self.assertEqual(card([2, -2])['beam']['pdf1'], 'NNPDF40_lo_as_01180')
         rc = card([22, 22])
-        self.assertEqual(rc['beam']['pdf1'], 'NNPDF40MC_lo_as_01180_qed')
-        self.assertEqual(rc['beam']['pdf2'], 'NNPDF40MC_lo_as_01180_qed')
+        self.assertEqual(rc['beam']['pdf1'], 'NNPDF40_nlo_as_01180_qed')
+        self.assertEqual(rc['beam']['pdf2'], 'NNPDF40_nlo_as_01180_qed')
         self.assertIs(rc['beam']['leptonic'], False)
 
 
