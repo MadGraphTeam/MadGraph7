@@ -48,6 +48,10 @@ LOOP_V2_PHYSICS_SCHEMA = 2
 # of every saved evaluator (licence-free binary64, DESIGN §3.7).
 LOOP_V2_POINT_INPUTS = "regenerated-at-load"
 LOOP_V2_NATIVE_POINT_INPUTS = "native-v2"
+# Former declarations, refused with a request to regenerate (internal artifact
+# formats are not kept backward compatible, AGENTS.md): "native-v1" stored no
+# plane applications.
+LOOP_V2_RETIRED_POINT_INPUTS = ("native-v1",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,6 +332,12 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
             raise ValueError("a companion plan digest is a SHA-256")
         if len(self.state_legs) != len(self.external_pdgs) or not self.helicities:
             raise ValueError("v2 loop processes declare their legs and helicities")
+        if self.point_inputs in LOOP_V2_RETIRED_POINT_INPUTS:
+            raise ValueError(
+                f"point inputs {self.point_inputs!r} are no longer supported "
+                f"(this build stores {LOOP_V2_NATIVE_POINT_INPUTS!r}); regenerate "
+                "the artifact"
+            )
         if self.point_inputs not in (LOOP_V2_POINT_INPUTS, LOOP_V2_NATIVE_POINT_INPUTS):
             raise ValueError(f"unknown point inputs {self.point_inputs!r}")
 

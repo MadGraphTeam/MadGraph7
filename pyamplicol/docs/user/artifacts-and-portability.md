@@ -150,7 +150,7 @@ certification performed during generation.
 | C++ or ASM process artifact | concrete target; CPU features when native specialization is enabled | No; requires exact compatible target/features. |
 | C++ or ASM prepared bundle | target-native | No. |
 | Compiled model IR (`.json`) | architecture-independent | Yes; it contains no executable prepared backend. |
-| Plan v4 virtual (one-loop, `loop.engine = "v2"`) process artifact | `portable-64le`, empty CPU-feature set | **Yes**: it holds no native code. The plan's kernels are exact term lists evaluated natively; the tree, Born, counterterm and parameter programs (`point_inputs = "native-v2"`) are stored as SymJIT storage-v4 IR, rebuilt for the receiving CPU at load and run in f64, and as saved Symbolica states, run in double-double and arbitrary precision. Loading regenerates nothing. |
+| Plan v4 virtual (one-loop, `loop.engine = "v2"`) process artifact | `portable-64le`, empty CPU-feature set | **Yes**: it holds no native code. The plan's kernels are exact term lists evaluated natively; the tree, Born, counterterm and parameter programs (`point_inputs = "native-v2"`) are stored as SymJIT storage-v4 IR, rebuilt for the receiving CPU at load and run in f64, and as saved Symbolica states, run in double-double and arbitrary precision. A plain load regenerates nothing; correlated, resolved and flavour-member calls and the `"uv"`/`"ir"` selections of a process with certified-scaleless families still regenerate on first use. |
 
 For a portable compiled all-JIT artifact, Rusticol verifies that every
 executable leaf and nested selector path is O1 or O2 SymJIT. Eager and
