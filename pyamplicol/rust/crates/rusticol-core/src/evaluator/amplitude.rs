@@ -3779,18 +3779,47 @@ impl AmplitudeRuntime {
     {
         let (evaluated, input_pack_s, evaluator_call_s) =
             self.evaluate_outputs_generic(batch_size, state, binary_precision)?;
+        let raw_sums = Self::contract_groups_generic(
+            &evaluated,
+            batch_size,
+            self.output_length,
+            &self.raw_sum_groups,
+            self.has_coherent_groups,
+            &self.raw_sum_all_sector_weights,
+            self.color_contraction.as_ref(),
+        )?;
+        Ok((raw_sums, input_pack_s, evaluator_call_s))
+    }
+
+    /// Squared amplitude per point from row-major amplitude samples (`output_length` per row):
+    /// the colour contraction of the summed groups, the coherent group sum, or the
+    /// incoherent per-output sum.
+    #[cfg(feature = "symbolica-runtime")]
+    fn contract_groups_generic<T>(
+        evaluated: &[Complex<T>],
+        batch_size: usize,
+        output_length: usize,
+        groups: &[RawSumGroup],
+        has_coherent_groups: bool,
+        all_sector_weights: &[f64],
+        color_contraction: Option<&ColorContractionRuntime>,
+    ) -> RusticolResult<Vec<T>>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
         let mut raw_sums = vec![T::new_zero(); batch_size];
-        if let Some(contraction) = self.color_contraction.as_ref() {
-            if self.raw_sum_groups.len() != contraction.group_count {
+        if let Some(contraction) = color_contraction {
+            if groups.len() != contraction.group_count {
                 return Err(RusticolError::invalid_argument(
                     "colour contraction group count does not match coherent groups",
                 ));
             }
             let mut group_values = vec![complex_zero::<T>(); batch_size * contraction.group_count];
             for (row, raw_sum) in raw_sums.iter_mut().enumerate() {
-                let row_offset = row * self.output_length;
+                let row_offset = row * output_length;
                 let group_row = row * contraction.group_count;
-                for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
+                for (group_index, group) in groups.iter().enumerate() {
                     let mut sum = complex_zero::<T>();
                     for index in &group.indices {
                         sum.re += evaluated[row_offset + *index].re.clone();
@@ -3810,12 +3839,12 @@ impl AmplitudeRuntime {
                             - T::from(entry.weight_im) * product_im);
                 }
             }
-            return Ok((raw_sums, input_pack_s, evaluator_call_s));
+            return Ok(raw_sums);
         }
         for (row, raw_sum) in raw_sums.iter_mut().enumerate() {
-            let row_offset = row * self.output_length;
-            if self.has_coherent_groups {
-                for group in &self.raw_sum_groups {
+            let row_offset = row * output_length;
+            if has_coherent_groups {
+                for group in groups {
                     let mut sum_re = T::new_zero();
                     let mut sum_im = T::new_zero();
                     for index in &group.indices {
@@ -3828,13 +3857,119 @@ impl AmplitudeRuntime {
                 }
                 continue;
             }
-            for index in 0..self.output_length {
+            for index in 0..output_length {
                 let value = &evaluated[row_offset + index];
-                *raw_sum += T::from(self.raw_sum_all_sector_weights[index])
+                *raw_sum += T::from(all_sector_weights[index])
                     * (value.re.clone() * value.re.clone() + value.im.clone() * value.im.clone());
             }
         }
-        Ok((raw_sums, input_pack_s, evaluator_call_s))
+        Ok(raw_sums)
+    }
+
+    /// Number of physical amplitude groups of the contracted-color topology replay.
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn color_topology_replay_group_count(&self) -> RusticolResult<usize> {
+        self.color_topology_replay
+            .as_ref()
+            .map(|replay| replay.physical_groups.len())
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "color topology replay was requested without its amplitude gather",
+                )
+            })
+    }
+
+    /// Generic-precision counterpart of `gather_color_topology_replay_samples`: routes the
+    /// summed source groups of one relabelled evaluation (row-major `evaluated`, as returned by
+    /// `evaluate_outputs_generic`) to their physical groups, times the route factor.
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn gather_color_topology_replay_generic<T>(
+        &self,
+        evaluated: &[Complex<T>],
+        batch_size: usize,
+        mapping_index: usize,
+        physical_values: &mut [Complex<T>],
+        covered_groups: &mut [bool],
+    ) -> RusticolResult<()>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let replay = self.color_topology_replay.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay was requested without its amplitude gather",
+            )
+        })?;
+        let mapping = replay.mappings.get(mapping_index).ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay requested an unknown external-label mapping",
+            )
+        })?;
+        let group_count = replay.physical_groups.len();
+        if evaluated.len() != batch_size * self.output_length
+            || physical_values.len() != batch_size * group_count
+            || covered_groups.len() != group_count
+        {
+            return Err(RusticolError::integrity(
+                "color topology replay generic gather shape is inconsistent",
+            ));
+        }
+        for route in &mapping.group_routes {
+            if std::mem::replace(&mut covered_groups[route.target_group_index], true) {
+                return Err(RusticolError::integrity(
+                    "color topology replay attempted to materialize a physical group twice",
+                ));
+            }
+            let source_group = &self.raw_sum_groups[route.source_group_index];
+            let factor_re = T::from(route.factor.re);
+            let factor_im = T::from(route.factor.im);
+            for row in 0..batch_size {
+                let mut sum = complex_zero::<T>();
+                for output_index in &source_group.indices {
+                    let value = &evaluated[row * self.output_length + *output_index];
+                    sum.re += value.re.clone();
+                    sum.im += value.im.clone();
+                }
+                let target = &mut physical_values[row * group_count + route.target_group_index];
+                target.re = sum.re.clone() * factor_re.clone() - sum.im.clone() * factor_im.clone();
+                target.im = sum.re * factor_im.clone() + sum.im * factor_re.clone();
+            }
+        }
+        Ok(())
+    }
+
+    /// Generic-precision counterpart of `reduce_color_topology_replay_f64_into` (before the
+    /// normalization factor).
+    #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn reduce_color_topology_replay_generic<T>(
+        &self,
+        physical_values: &[Complex<T>],
+        covered_groups: &[bool],
+        batch_size: usize,
+    ) -> RusticolResult<Vec<T>>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let replay = self.color_topology_replay.as_ref().ok_or_else(|| {
+            RusticolError::integrity(
+                "color topology replay was requested without its amplitude gather",
+            )
+        })?;
+        if covered_groups.iter().any(|covered| !covered) {
+            return Err(RusticolError::integrity(
+                "color topology replay did not materialize every physical amplitude group",
+            ));
+        }
+        Self::contract_groups_generic(
+            physical_values,
+            batch_size,
+            replay.physical_groups.len(),
+            &replay.physical_groups,
+            true,
+            &replay.unit_weights,
+            replay.color_contraction.as_ref(),
+        )
     }
 
     #[cfg(feature = "symbolica-runtime")]

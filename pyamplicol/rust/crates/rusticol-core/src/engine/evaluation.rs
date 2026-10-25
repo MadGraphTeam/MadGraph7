@@ -2023,9 +2023,7 @@ impl ExecutionRuntime {
             return sum_runtime.run_double(batch);
         }
         if self.color_topology_replay_enabled {
-            return Err(RusticolError::invalid_argument(
-                "compiled/eager contracted-color topology replay currently exposes f64; use the exact recurrence lane for precision certification",
-            ));
+            return self.run_generic_with_color_topology_replay(batch, None);
         }
         if self.lc_topology_replay_enabled {
             return self.run_generic_with_lc_topology_replay(batch, None);
@@ -2051,9 +2049,7 @@ impl ExecutionRuntime {
             return sum_runtime.run_float(batch, binary_precision);
         }
         if self.color_topology_replay_enabled {
-            return Err(RusticolError::invalid_argument(
-                "compiled/eager contracted-color topology replay currently exposes f64; use the exact recurrence lane for precision certification",
-            ));
+            return self.run_generic_with_color_topology_replay(batch, Some(binary_precision));
         }
         if self.lc_topology_replay_enabled {
             return self.run_generic_with_lc_topology_replay(batch, Some(binary_precision));
@@ -2442,11 +2438,13 @@ impl ExecutionRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    pub(super) fn run_generic_materialized<T>(
+    /// Fills sources, momenta and model parameters for `batch` and runs the generic stages; returns
+    /// the state rows (input of the amplitude stage) and the setup and stage timings.
+    fn evaluate_generic_stages<T>(
         &mut self,
         batch: &[Vec<[T; 4]>],
         binary_precision: Option<u32>,
-    ) -> RusticolResult<(Vec<T>, RuntimeProfile)>
+    ) -> RusticolResult<(Vec<Complex<T>>, RuntimeProfile)>
     where
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
@@ -2454,7 +2452,6 @@ impl ExecutionRuntime {
         if self.stages.is_none() || self.amplitude_stage.is_none() {
             return Err(self.execution_unavailable_error());
         }
-        let total_start = Instant::now();
         let n_points = batch.len();
         let mut state = vec![complex_zero::<T>(); n_points * self.parameter_count];
         let sources = &self.sources;
@@ -2530,22 +2527,8 @@ impl ExecutionRuntime {
             stage_output_assign_by_stage_s.push(assign_s);
         }
 
-        let (raw_sums, amplitude_input_pack_s, amplitude_evaluator_call_s) = self
-            .amplitude_stage
-            .as_mut()
-            .expect("generic amplitude stage checked")
-            .evaluate_raw_sums_generic(n_points, state.as_slice(), binary_precision)?;
-        let amplitude_evaluator_s = amplitude_input_pack_s + amplitude_evaluator_call_s;
-
-        let reduction_start = Instant::now();
-        let factor = T::from(self.normalization_factor);
-        let values = raw_sums
-            .into_iter()
-            .map(|value| value * factor.clone())
-            .collect::<Vec<_>>();
-        let reduction_s = reduction_start.elapsed().as_secs_f64();
         Ok((
-            values,
+            state,
             RuntimeProfile {
                 source_fill_s: profile_duration_seconds(source_fill_elapsed),
                 momentum_input_setup_s: profile_duration_seconds(momentum_setup_elapsed),
@@ -2557,17 +2540,127 @@ impl ExecutionRuntime {
                 stage_evaluator_call_s,
                 stage_evaluator_s,
                 output_assign_s,
-                amplitude_input_pack_s,
-                amplitude_evaluator_call_s,
-                amplitude_evaluator_s,
-                reduction_s,
-                total_s: total_start.elapsed().as_secs_f64(),
                 stage_input_pack_by_stage_s,
                 stage_evaluator_call_by_stage_s,
                 stage_output_assign_by_stage_s,
                 ..RuntimeProfile::default()
             },
         ))
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(super) fn run_generic_materialized<T>(
+        &mut self,
+        batch: &[Vec<[T; 4]>],
+        binary_precision: Option<u32>,
+    ) -> RusticolResult<(Vec<T>, RuntimeProfile)>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        if self.stages.is_none() || self.amplitude_stage.is_none() {
+            return Err(self.execution_unavailable_error());
+        }
+        let total_start = Instant::now();
+        let n_points = batch.len();
+        let (state, mut profile) = self.evaluate_generic_stages(batch, binary_precision)?;
+
+        let (raw_sums, amplitude_input_pack_s, amplitude_evaluator_call_s) = self
+            .amplitude_stage
+            .as_mut()
+            .expect("generic amplitude stage checked")
+            .evaluate_raw_sums_generic(n_points, state.as_slice(), binary_precision)?;
+
+        let reduction_start = Instant::now();
+        let factor = T::from(self.normalization_factor);
+        let values = raw_sums
+            .into_iter()
+            .map(|value| value * factor.clone())
+            .collect::<Vec<_>>();
+        profile.amplitude_input_pack_s = amplitude_input_pack_s;
+        profile.amplitude_evaluator_call_s = amplitude_evaluator_call_s;
+        profile.amplitude_evaluator_s = amplitude_input_pack_s + amplitude_evaluator_call_s;
+        profile.reduction_s = reduction_start.elapsed().as_secs_f64();
+        profile.total_s = total_start.elapsed().as_secs_f64();
+        Ok((values, profile))
+    }
+
+    /// Generic-precision evaluation of a contracted-color topology replay artifact: the
+    /// materialized sectors are evaluated at every replay relabelling of the external momenta,
+    /// their summed groups are routed to the physical groups, and the colour contraction runs in T
+    /// (the f64 counterpart is `run_f64_with_color_topology_replay_into_unprofiled`).
+    #[cfg(feature = "symbolica-runtime")]
+    fn run_generic_with_color_topology_replay<T>(
+        &mut self,
+        batch: &[Vec<[T; 4]>],
+        binary_precision: Option<u32>,
+    ) -> RusticolResult<(Vec<T>, RuntimeProfile)>
+    where
+        T: RusticolHighPrecisionNumber,
+        Complex<T>: Real + EvaluationDomain,
+    {
+        if self.stages.is_none() || self.amplitude_stage.is_none() {
+            return Err(self.execution_unavailable_error());
+        }
+        let total_start = Instant::now();
+        let n_points = batch.len();
+        let group_count = self
+            .amplitude_stage
+            .as_ref()
+            .expect("generic amplitude stage checked")
+            .color_topology_replay_group_count()?;
+        let mut physical_values = vec![complex_zero::<T>(); n_points * group_count];
+        let mut covered_groups = vec![false; group_count];
+        let mut profile = RuntimeProfile::default();
+        let mappings = Arc::clone(&self.color_topology_replay_mappings);
+        for (mapping_index, mapping) in mappings.iter().enumerate() {
+            let relabelled = if mapping.is_empty() {
+                None
+            } else {
+                Some(apply_lc_topology_label_permutation_generic(
+                    batch,
+                    self.external_count,
+                    mapping,
+                )?)
+            };
+            let evaluation_batch = relabelled.as_deref().unwrap_or(batch);
+            let (state, mut mapping_profile) =
+                self.evaluate_generic_stages(evaluation_batch, binary_precision)?;
+            let amplitude = self
+                .amplitude_stage
+                .as_mut()
+                .expect("generic amplitude stage checked");
+            let (evaluated, amplitude_input_pack_s, amplitude_evaluator_call_s) =
+                amplitude.evaluate_outputs_generic(n_points, state.as_slice(), binary_precision)?;
+            let gather_start = Instant::now();
+            amplitude.gather_color_topology_replay_generic(
+                &evaluated,
+                n_points,
+                mapping_index,
+                &mut physical_values,
+                &mut covered_groups,
+            )?;
+            mapping_profile.amplitude_input_pack_s = amplitude_input_pack_s;
+            mapping_profile.amplitude_evaluator_call_s = amplitude_evaluator_call_s;
+            mapping_profile.amplitude_evaluator_s =
+                amplitude_input_pack_s + amplitude_evaluator_call_s;
+            mapping_profile.reduction_s = gather_start.elapsed().as_secs_f64();
+            profile.add_sector(&mapping_profile);
+        }
+        let reduction_start = Instant::now();
+        let raw_sums = self
+            .amplitude_stage
+            .as_ref()
+            .expect("generic amplitude stage checked")
+            .reduce_color_topology_replay_generic(&physical_values, &covered_groups, n_points)?;
+        let factor = T::from(self.normalization_factor);
+        let values = raw_sums
+            .into_iter()
+            .map(|value| value * factor.clone())
+            .collect::<Vec<_>>();
+        profile.reduction_s += reduction_start.elapsed().as_secs_f64();
+        profile.total_s = total_start.elapsed().as_secs_f64();
+        Ok((values, profile))
     }
 
     #[cfg(feature = "symbolica-runtime")]
