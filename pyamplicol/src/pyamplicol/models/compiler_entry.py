@@ -34,7 +34,7 @@ from .compiler_contacts import (
     projected_contact_partial_components,
 )
 from .compiler_contractions import compile_contraction_records
-from .compiler_gauge import compile_goldstone_partner_records
+from .compiler_gauge import close_goldstone_flags, compile_goldstone_partner_records
 from .compiler_kernels import (
     _canonicalize_oriented_kernel_component,
     _fuse_oriented_kernels,
@@ -128,7 +128,9 @@ def compile_ufo_model_ir(
     _sym._ensure_symbolica()
     model_name = str(model.get("name", "unnamed-model"))
     model_symbols = symbols.model(model_name)
-    particles = tuple(_particle(item) for item in _mappings(model.get("particles")))
+    particles = close_goldstone_flags(
+        tuple(_particle(item) for item in _mappings(model.get("particles")))
+    )
     particle_by_name = {particle.name: particle for particle in particles}
     lorentz_by_name = {
         str(item["name"]): item for item in _mappings(model.get("lorentz_structures"))

@@ -18,11 +18,19 @@ compiled model's gauge (``contracts.ModelGauge``):
 A vector with a model-supplied propagator keeps it in both gauges, and its
 Goldstone stays a field of the tree model (``model-supplied``). A Goldstone
 without a massive partner is ``explicit`` with no vector.
+
+A charge-conjugate pair is one field: the antiparticle of a declared
+Goldstone is a Goldstone (``close_goldstone_flags``). Some UFO object
+libraries lose the flag on the antiparticle (loop_qcd_qed_sm and its G_mu
+variants: ``Particle.anti()`` passes ``goldstoneboson`` positionally into
+``line``), which left G- an ordinary scalar of the unitary-gauge tree model
+beside the W- that absorbs it.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 
 from .contracts import (
     MODEL_GAUGES,
@@ -34,6 +42,21 @@ from .contracts import (
     _goldstone_vector_quantum_contract_matches,
     _resolved_mass_expression,
 )
+
+
+def close_goldstone_flags(
+    particles: Sequence[CompiledParticleRecord],
+) -> tuple[CompiledParticleRecord, ...]:
+    """``particles`` with the Goldstone flag closed under charge conjugation:
+    a particle whose antiparticle is a declared Goldstone is one too."""
+
+    flagged = {particle.name for particle in particles if particle.goldstoneboson}
+    return tuple(
+        replace(particle, goldstoneboson=True)
+        if not particle.goldstoneboson and particle.antiname in flagged
+        else particle
+        for particle in particles
+    )
 
 
 def compile_goldstone_partner_records(
@@ -129,11 +152,8 @@ def _require_feynman_partners(
     propagators: Mapping[str, CompiledPropagatorRecord],
 ) -> None:
     """Every massive vector with a standard propagator has exactly one
-    explicit Goldstone partner. A charge-conjugate pair is one field: a vector
-    without a record of its own is paired through its antiparticle (a UFO
-    whose antiparticle records drop the Goldstone flag, as the G- of the
-    loop_qcd_qed_sm models; that G- is then an ordinary propagating scalar,
-    which is what an explicit Goldstone is)."""
+    explicit Goldstone partner (the flags are closed under conjugation,
+    ``close_goldstone_flags``)."""
 
     partners: dict[str, list[str]] = {}
     for record in records:
@@ -145,7 +165,7 @@ def _require_feynman_partners(
             continue
         if _resolved_mass_expression(vector, parameters) == "0":
             continue
-        found = partners.get(vector.name) or partners.get(vector.antiname, [])
+        found = partners.get(vector.name, [])
         if len(found) != 1:
             raise ValueError(
                 f"'t Hooft-Feynman gauge needs exactly one Goldstone partner of "
@@ -153,4 +173,4 @@ def _require_feynman_partners(
             )
 
 
-__all__ = ["compile_goldstone_partner_records"]
+__all__ = ["close_goldstone_flags", "compile_goldstone_partner_records"]
