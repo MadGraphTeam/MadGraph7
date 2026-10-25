@@ -189,6 +189,7 @@ def test_imported_campaign_timings_are_the_stream_points(tmp_path):
                 "process_name": "uux_ggggg",
                 "cpu": 7,
                 "settings": {"compute_ir_poles": 1, "collier_cache": "off"},
+                "version": "Recola2 (2.3.0 tree) / SM model 2.2.3 / Collier 1.2.8",
                 "generation_seconds": 10.0,
                 "rows": rows,
             }
@@ -205,23 +206,89 @@ def test_imported_campaign_timings_are_the_stream_points(tmp_path):
     assert result["median_seconds_per_point"] == 2.0
     assert result["cpu"] == 7
     assert result["setup"] == {"generation_seconds": 10.0}
-    # IR poles on top of the production work with the protocol's Collier
-    # cache (off at seven legs): the time bounds the production time from
-    # above. With another cache setting, or in the protocol, no bound.
+    # IR poles on top of the production work, without the Collier cache that
+    # production keeps on (COLLIER 1.2.8 has no seven-leg defect): the time
+    # bounds the production time from above.
     assert "compute_ir_poles 1" in result["production_upper_bound"]
+    assert "without the Collier cache" in result["production_upper_bound"]
+    assert "the protocol's: on" in result["mode"]
     record = json.loads((run / "recola-result.json").read_text())
-    for settings in (
-        {"compute_ir_poles": 1, "collier_cache": "on"},
-        {"compute_ir_poles": 0, "collier_cache": "off"},
-    ):
-        record["settings"] = settings
+    # (poles, cache, COLLIER release) -> protocol mode, upper bound
+    cases = {
+        (1, "on", "1.2.8"): (False, True),  # the protocol's cache, poles on top
+        (1, "on", "1.2.9"): (False, False),  # a cache the defect forbids
+        (1, "off", "1.2.9"): (False, True),  # the protocol's cache (off)
+        (1, "off", None): (False, True),  # no cache: at least production work
+        (0, "on", "1.2.8"): (True, False),  # the protocol itself
+        (0, "off", "1.2.9"): (True, False),
+        (0, "off", "1.2.8"): (False, False),  # no poles margin: no bound
+    }
+    for (poles, cache, collier), (protocol, bound) in cases.items():
+        record["settings"] = {"compute_ir_poles": poles, "collier_cache": cache}
+        record["version"] = f"Recola2 / Collier {collier}" if collier else "Recola2"
         (run / "recola-result.json").write_text(json.dumps(record))
         other = providers.imported(streams.spec("uux_ggggg"), "recola", trees)
-        assert "production_upper_bound" not in other
+        assert other["protocol_mode"] is protocol, (poles, cache, collier)
+        assert ("production_upper_bound" in other) is bound, (poles, cache, collier)
     points["points"] = points["points"][::-1]
     (run / "points.json").write_text(json.dumps(points))
     with pytest.raises(RuntimeError):
         providers.imported(streams.spec("uux_ggggg"), "recola", trees)
+
+
+def test_collier_cache_is_production_unless_the_release_has_the_defect():
+    """ADDENDUM D: caches as in production; the global cache is off only at
+    seven legs or more with a COLLIER release of the documented N = 7
+    defect (1.2.9, 1.2.10), and a timing run refuses an unknown release
+    there."""
+
+    from tools.loop_benchmark import providers
+
+    assert providers.collier_cache(6, None)["on"] is True
+    assert providers.collier_cache(6, "1.2.9")["on"] is True
+    assert providers.collier_cache(7, "1.2.8")["on"] is True
+    assert providers.collier_cache(8, "1.2.8")["on"] is True
+    for release in ("1.2.9", "1.2.10"):
+        decision = providers.collier_cache(7, release)
+        assert decision["on"] is False and release in decision["reason"]
+    assert providers.collier_cache(7, None)["on"] is None
+    assert providers._collier_version("Recola2 / libcollier.so 1.2.8 / x 2") == "1.2.8"
+    assert providers._collier_version("SM model 2.2.3 / Collier 1.2.10") == "1.2.10"
+    assert providers._collier_version("MadLoop/MG5_aMC 3.7.0") is None
+
+
+def test_files_of_a_moved_root_are_taken_under_the_current_root(tmp_path):
+    """A provider tree built before its root moved names files of the old
+    root; the harness takes them from the same place under the current root
+    and never looks at the original (no stat outside the root)."""
+
+    from tools.loop_benchmark import providers
+
+    root = tmp_path / "reference"
+    collier = root / "sources" / "COLLIER-1.2.8"
+    collier.mkdir(parents=True)
+    (collier / "libcollier.a").write_text("")
+    old = "/no/such/old-root/workspace/reference/sources/COLLIER-1.2.8"
+    assert providers.relocated(old, root) == collier
+    assert providers.relocated(old + "/libcollier.a", root) == collier / "libcollier.a"
+    assert providers.relocated(str(collier), root) == collier
+    store = "/nix/store/abc-glibc/lib"
+    assert providers.relocated(store, root) == Path(store)
+    with pytest.raises(RuntimeError, match="outside the reference root"):
+        providers.relocated("/no/such/old-root/sources/NinjaRS/lib", root)
+    # A MadLoop export's static reducers (LOOP_LIBS) with an old-root path.
+    export = root / "runs" / "required" / "p" / "export"
+    (export / "SubProcesses").mkdir(parents=True)
+    (export / "lib").mkdir()
+    (export / "lib" / "libcts.a").write_text("")
+    (export / "SubProcesses" / "MadLoop_makefile_definitions").write_text(
+        f"LINK_LOOP_LIBS = -L$(LIBDIR) -lcts\n"
+        f"LOOP_LIBS = $(LIBDIR)libcts.$(libext) {old}/libcollier.$(libext)\n"
+    )
+    assert providers._madloop_libraries(export, root) == [
+        export / "lib" / "libcts.a",
+        collier / "libcollier.a",
+    ]
 
 
 def test_ward_rows_against_the_physical_scale():
@@ -910,12 +977,16 @@ def test_a_worst_deviation_the_double_double_value_repeats_is_the_references():
             "deviation_vs_providers": devs,
         }
 
-    def worst(dd_recola, b64_estimate=1.9e-11):
+    def worst(dd_recola, b64_estimate=1.9e-11, dd_madloop=1.4e-12):
         proc = {
             "key": "uux_ggggg",
             "stability": [
                 row("double", b64_estimate, {"madloop": 1.2e-12, "recola": 2.9e-10}),
-                row("double-double", 1e-27, {"madloop": 1.4e-12, "recola": dd_recola}),
+                row(
+                    "double-double",
+                    1e-27,
+                    {"madloop": dd_madloop, "recola": dd_recola},
+                ),
             ],
         }
         out = builder._validation_g1(proc, cfg, "native/full", "src", "native/full")
@@ -928,7 +999,11 @@ def test_a_worst_deviation_the_double_double_value_repeats_is_the_references():
         "short": "Rc",
         "dd_deviation": 2.9e-10,
         "dd_estimate": 1e-27,
+        "independent": {"key": "madloop", "dd_deviation": 1.4e-12},
     }
+    # No independent reference within a hundredth of the deviation: a
+    # systematic error of ours would repeat in DD too, so no attribution.
+    assert "reference_own" not in worst(2.9e-10, dd_madloop=1e-11)
     # The DD value agrees with the reference: the binary64 loss is ours.
     assert "reference_own" not in worst(1e-15)
     # Within E: nothing to attribute.
@@ -964,7 +1039,12 @@ def test_a_stored_process_loads_and_evaluates_bitwise_equal(tmp_path, loop_nativ
     assert loaded["generation"] == generated["generation"]
     assert loaded["structure"] == generated["structure"]
     stored = loaded["stored"]
-    assert stored["point_inputs"] == "native-v1"
+    from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
+
+    assert stored["point_inputs"] == LOOP_V2_NATIVE_POINT_INPUTS == "native-v2"
+    assert "store_label" not in stored
+    stored_meta = json.loads((store / "generation.json").read_text())
+    assert stored_meta["point_inputs"] == LOOP_V2_NATIVE_POINT_INPUTS
     assert stored["generated_revision"] == generated["revision"]
     assert str(tmp_path) not in json.dumps(stored)
     # Another configuration or another native build is refused; a stored
