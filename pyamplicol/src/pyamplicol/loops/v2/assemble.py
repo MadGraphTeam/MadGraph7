@@ -135,6 +135,7 @@ from .ct_sites import (
 )
 from .families import (
     ZERO,
+    BlockCurrent,
     FamilyKey,
     FamilySet,
     LoopOrderSelection,
@@ -145,6 +146,7 @@ from .families import (
     add_orders,
     generate_families,
     mass_name,
+    orders_within,
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
@@ -820,25 +822,76 @@ def _exact_u1_subtraction_weights():
 LOOP_BLOCK_REACHABILITY = True
 
 
-def _field_level_families(
-    data, process, catalogue, selection, request, native: Any
-) -> FamilySet:
-    """The families of the field-level block table (design §3.2 item 1);
-    ``native`` is the loop core, or None for the Python recursion."""
+def _field_level_table(data, process, selection, request) -> ModelBlockTable:
+    """The field-level block table of a loop request (design §3.2 item 1)."""
 
     names = {int(entry["pdg_code"]): entry["name"] for entry in data["particles"]}
     incoming = [names[leg.pdg] for leg in process.legs if leg.is_initial]
     outgoing = [names[leg.pdg] for leg in process.legs if leg.is_final]
-    table = ModelBlockTable(
+    return ModelBlockTable(
         data,
         incoming,
         outgoing,
         cap=selection.cap,
         ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
     )
+
+
+def _field_level_families(
+    data, process, catalogue, selection, request, native: Any, table=None
+) -> FamilySet:
+    """The families of the field-level block table (design §3.2 item 1);
+    ``native`` is the loop core, or None for the Python recursion."""
+
+    if table is None:
+        table = _field_level_table(data, process, selection, request)
     if native is not None:
         return NativeGeneration(table, catalogue, selection, native).families()
     return generate_families(table, catalogue, selection)
+
+
+def _born_block_requests(
+    table: ModelBlockTable, data, born_orders: Mapping[str, int]
+) -> frozenset[BlockCurrent]:
+    """Block currents the Born closure at leg 1 attaches (``_born_terms``), at
+    field level: loop-aware reachability builds only the currents loop
+    positions consume, and the Born root of a process whose leg 1 is a lepton
+    (e+ e- > u u~: the quark pair's photon current) or of a mixed-order Born
+    (the W exchange of u u~ > d d~) attaches currents no loop position does.
+    """
+
+    full = (1 << len(table.legs)) - 1
+    cap = add_orders(tuple(born_orders.items()))
+    spins = {entry["name"]: int(entry["spin"]) for entry in data["particles"]}
+    coupling_orders = {
+        entry["name"]: tuple(sorted((name, power) for name, power in entry["orders"]))
+        for entry in data["couplings"]
+    }
+    out: set[BlockCurrent] = set()
+    for rule in data["vertex_rules"]:
+        fields = sorted(rule["particles"])
+        if any(spins[name] == -1 for name in fields):
+            continue
+        orders = {
+            add_orders(coupling_orders[name])
+            for row in rule["couplings"]
+            for name in row
+            if name is not None
+        }
+        for parts in _set_partitions(full, len(fields), len(fields)):
+            if 1 not in parts:
+                continue
+            for choice in product(*(table.currents(part) for part in parts)):
+                if sorted(block.field for block in choice) != fields:
+                    continue
+                if any(
+                    orders_within(
+                        add_orders(order, *(block.orders for block in choice)), cap
+                    )
+                    for order in orders
+                ):
+                    out.update(choice)
+    return frozenset(out)
 
 
 # Schedule-B frame policy of the slice: the cheapest frame by undressed rows
@@ -1453,7 +1506,9 @@ class LoopSlice:
                 reachability=(
                     None
                     if reachable is None
-                    else requested_loop_blocks(reachable.block_requests(), data)
+                    else requested_loop_blocks(
+                        reachable.block_requests() | born_requests, data
+                    )
                 ),
             )
             # Trees that propagate a coloured particle with a width (or a
@@ -1474,6 +1529,7 @@ class LoopSlice:
             )
 
         reachable = None
+        born_requests: frozenset[BlockCurrent] = frozenset()
         if LOOP_BLOCK_REACHABILITY and request.counterterms == "recursion":
             # Loop-aware reachability (design §3.2 item 1): the tree program
             # builds only the block currents the admitted positions of the
@@ -1481,6 +1537,7 @@ class LoopSlice:
             # vertices to the tree currents of every leg partition, which
             # loop positions need not consume (a two-point counterterm on an
             # electroweak line), so the site route builds every current.
+            field_table = _field_level_table(data, process, selection, request)
             reachable = _field_level_families(
                 data,
                 process,
@@ -1488,7 +1545,9 @@ class LoopSlice:
                 selection,
                 request,
                 native if native_families else None,
+                table=field_table,
             )
+            born_requests = _born_block_requests(field_table, data, request.born_orders)
         blocks, compiled, table, generation, families = tree_program(reachable)
         if reachable is not None and (
             families.families != reachable.families
@@ -1565,8 +1624,15 @@ class LoopSlice:
         if program is not None:
             entries += [e for site in program.root_sites for e in site.rule.entries]
         entries += [e for rows in ordinary for e in rows]
+        loop_species = _family_loop_species(loop_catalogue, selection, data)
+        _check_declared_loop_species(
+            (*sites.sites, *(() if program is None else program.root_sites)),
+            loop_species,
+        )
         catalogue = build_loop_kernel_catalogue(
-            compiled, counterterm_entries=list({id(e): e for e in entries}.values())
+            compiled,
+            loop_species=loop_species,
+            counterterm_entries=list({id(e): e for e in entries}.values()),
         )
         closure = SiteClosure(blocks, data, catalogue)
         # Oracle sites: cells without a site kernel that cancel between the
@@ -3455,6 +3521,45 @@ class _BlockRows:
         variant = "source" if tree.is_source else "propagated"
         sign = tree.wick_sign
         return tuple(sign * value for value in self._rows[(entry.current_id, variant)])
+
+
+def _family_loop_species(
+    loop_catalogue: ModelLoopCatalogue, selection: LoopOrderSelection, data
+) -> tuple[int, ...]:
+    """PDG codes of the loop species the families may route (WP3.2 EWI-1).
+
+    The species of ``loop_catalogue`` perturbative in a requested correction
+    (the family recursion's eligibility, ``families._Recursion``), vetoed
+    particles excluded, ghosts included: the request's loop content, not the
+    loop particles its counterterm rules declare (an electroweak UV rule
+    declares none, and a lepton at leg 1 has no counterterm rule at the root).
+    """
+
+    pdg = {entry["name"]: int(entry["pdg_code"]) for entry in data["particles"]}
+    return tuple(
+        sorted(
+            pdg[name]
+            for name in loop_catalogue.loop_species()
+            if loop_catalogue.species(name).perturbative_orders & selection.corrections
+        )
+    )
+
+
+def _check_declared_loop_species(sites, loop_species: Sequence[int]) -> None:
+    """The loop particles of every admitted counterterm alternative are loop
+    species of the families: a rule admitted for loops the families never
+    route would renormalise a loop the virtual does not contain."""
+
+    known = {abs(pdg) for pdg in loop_species}
+    for site in sites:
+        for index in site.alternatives:
+            missing = set(site.rule.alternatives[index]) - known
+            if missing:
+                raise ValueError(
+                    f"counterterm rule {site.rule_name} is admitted for loop "
+                    f"particles {sorted(missing)} that are no loop species of the "
+                    f"request's families {sorted(known)}"
+                )
 
 
 def _ordinary_entries(prepared, data) -> tuple[tuple[Any, ...], ...]:

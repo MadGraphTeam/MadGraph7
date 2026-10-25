@@ -131,10 +131,18 @@ def tree_reading_legs(
     engine reads them (module docstring).
 
     ``legs`` are 1-based UFO legs in the incoming reading (loop in, loop out,
-    blocks); each fermion leg is exchanged with the leg of its conjugate.
+    blocks); each fermion leg is exchanged with the other leg of its fermion
+    line. A vertex with two fermion legs has one line, whatever their
+    flavours (a W vertex joins t and b): its two legs are exchanged, as the
+    tree engine reads the vertex through its conjugate rule. With more
+    fermion legs each pairs with the leg of its conjugate particle.
     """
 
     fermions = [leg for leg in legs if spins[particles[leg - 1]] == FERMION_SPIN]
+    if len(fermions) == 2:
+        first, second = fermions
+        swap = {first: second, second: first}
+        return tuple(swap.get(leg, leg) for leg in legs)
     swap = {}
     for leg in fermions:
         partners = [
