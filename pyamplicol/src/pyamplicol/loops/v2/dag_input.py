@@ -1,10 +1,31 @@
 # SPDX-License-Identifier: 0BSD
-"""Native loop-request DAG builder: input tables, handle and stage digests.
+"""Native loop-request DAG builder: input tables, handle, production switch,
+counterterm interaction program and stage digests.
 
-WP3.1 package A (``RUST-MIGRATION.md`` §3.A, increments A1-A2). The Python
+WP3.1 package A (``RUST-MIGRATION.md`` §3.A, increments A1-A5). The Python
 oracle is the tree engine's loop-request mode,
 ``GenericDAGCompiler(loop_blocks=True).compile`` followed by
-``loops.v2.blocks._blocks``; ``rusticol_core::loop_v2::dag`` reproduces both.
+``loops.v2.blocks._blocks``; ``rusticol_core::loop_v2::dag`` reproduces both,
+the value-equivalence derivation of the CT program included (A3).
+
+**Production switch** (A4, ``NATIVE_DAG``, on). ``blocks.build_tree_blocks``
+(``native_blocks``) and ``ct_closure.CountertermBlocks.build``
+(``native_counterterm_blocks``) take the native builder; their Ward-kernel,
+coloured-width and U(1)-leakage queries ask the handle
+(``NativeDag.propagated_species``, ``NativeDag.u1_leaking``), so generation
+decodes nothing. The handle releases its columns after generation's queries
+(``NativeDag.release``) and rebuilds them from its input tables when a later
+query needs them (``rebuild_count``). A request with a listed feature the
+builder does not cover (``NATIVE_FALLBACKS``: key, owner, follow-up) takes
+the tree engine and ``TreeBlocks.dag_fallback`` names it
+(``fallback_record``); any other refusal is raised (rule 2).
+
+**Counterterm interaction program** (A5, ``NATIVE_PROGRAM``, on). The native
+lane's export (``native_trees._CountertermTrees.of``) takes the CT program's
+interaction program from the native DAG (``V2Dag.program``,
+``native_tree_rows``, ``native_interaction_program``) without decoding it or
+building its runtime schema; the Python ``TreeRows`` and
+``native_trees._interaction_program`` stay the oracle.
 
 **Input tables** (``dag_input``). The Rust builder never sees the model. It
 reads Θ(model) tables that this module fills from the oracle's own
@@ -93,27 +114,118 @@ from .blocks import (
 # of ``ct_closure.CountertermBlocks.build`` are the native builder's (their
 # Ward-kernel, coloured-width and U(1)-leakage queries native too); off, the
 # tree engine's loop-request mode, which stays the oracle. Under the flag a
-# request the native builder does not cover (``NativeDagUnsupported``)
-# takes the tree engine, and ``TreeBlocks.dag_fallback`` names the feature
-# (rule 2's listed fallbacks: ``NATIVE_FALLBACKS``).
+# request with a listed feature the native builder does not cover
+# (``NATIVE_FALLBACKS``) takes the tree engine, and
+# ``TreeBlocks.dag_fallback`` names the feature (``fallback_record``); any
+# other refusal is raised (rule 2: fail closed).
 NATIVE_DAG = True
 
-# The features the native builder refuses (``NativeDagUnsupported``), for
-# which ``build_tree_blocks`` and ``CountertermBlocks.build`` fall back to the
-# tree engine under ``NATIVE_DAG`` (RUST-MIGRATION §2 rule 2): no control of
-# the Python stage needs one; each is tested in
-# ``tests/unit/test_loop_v2_native_dag.py``.
+
+@dataclass(frozen=True)
+class NativeFallback:
+    """A feature the native builder refuses (``NativeDagUnsupported.feature``)
+    for which ``build_tree_blocks`` and ``CountertermBlocks.build`` fall back
+    to the tree engine under ``NATIVE_DAG`` (RUST-MIGRATION §2 rule 2): no
+    control of the Python stage needs one. ``key`` names it in
+    ``TreeBlocks.dag_fallback``; ``owner`` ports it with ``follow_up``. Each
+    is triggered for real (the model's answers, the process or the native
+    tables) in ``tests/unit/test_loop_v2_native_dag.py``."""
+
+    key: str
+    feature: str
+    owner: str
+    follow_up: str
+
+
+_OWNER = "WP3.1 package A (native-dag)"
+
 NATIVE_FALLBACKS = (
-    "a model other than a compiled UFO model",
-    "a leg without an outgoing particle id",
-    "a tuple (multi-component) spin state of a vertex or a source",
-    "a flavour flow outside the recurrence operations (constant, append "
-    "left, append right), or one changing with the input chiralities",
-    "a vertex setting quantum numbers other than its result particle's",
-    "a NaN coupling or colour weight",
-    "source colour states with basis keys",
-    "more than 64 source states (helicity ancestry bits)",
-    "a loop-block reachability other than the three of the slice",
+    NativeFallback(
+        "model-type",
+        "a model other than a compiled UFO model",
+        _OWNER,
+        "tables from the built-in models' predicates when a v2 request takes "
+        "one (v2 generation loads compiled UFO models)",
+    ),
+    NativeFallback(
+        "leg-pdg",
+        "a leg without an outgoing particle id",
+        _OWNER,
+        "none while the canonical process of a v2 request names every leg's "
+        "particle (multi-particle legs are expanded first)",
+    ),
+    NativeFallback(
+        "tuple-spin",
+        "a tuple (multi-component) spin state of a vertex or a source",
+        _OWNER,
+        "multi-component spin states in the tables and columns with the "
+        "first loop request whose model has them (spin-2 sources)",
+    ),
+    NativeFallback(
+        "flavour-rule",
+        "a flavour flow outside the recurrence operations (constant, append "
+        "left, append right), or one changing with the input chiralities",
+        _OWNER,
+        "a per-vertex flavour-rule table with the first model whose vertices need one",
+    ),
+    NativeFallback(
+        "quantum-numbers",
+        "a vertex setting quantum numbers other than its result particle's",
+        _OWNER,
+        "per-flow quantum numbers in the vertex tables with the first model "
+        "whose vertices set them",
+    ),
+    NativeFallback(
+        "nan-coupling",
+        "a NaN coupling or colour weight",
+        _OWNER,
+        "a runtime coupling identity by expression with the first model "
+        "whose couplings are NaN placeholders",
+    ),
+    NativeFallback(
+        "colour-basis-key",
+        "source colour states with basis keys",
+        _OWNER,
+        "basis-keyed source states with the first loop-request colour mode "
+        "that gives them (the loop-request engine gives none)",
+    ),
+    NativeFallback(
+        "source-states",
+        "more than 64 source states (helicity ancestry bits)",
+        _OWNER,
+        "a wider ancestry column with the first request above 64 source "
+        "states (g g > g g g g g has 14)",
+    ),
+    NativeFallback(
+        "reachability",
+        "a loop-block reachability other than the three of the slice",
+        _OWNER,
+        "the native rule lands with the package that adds a reachability (rule 3)",
+    ),
+    NativeFallback(
+        "vertex-kind",
+        "two reachable vertex rows sharing a kind (the oracle keys "
+        "interactions by kind)",
+        _OWNER,
+        "vertex rows keyed by (kind, particles) with the first model whose "
+        "vertex kinds repeat",
+    ),
+    NativeFallback(
+        "leg-label",
+        "a leg label above 64 (64-bit leg masks)",
+        _OWNER,
+        "wider masks together with the tree engine's",
+    ),
+)
+_FALLBACK_KEYS = frozenset(item.key for item in NATIVE_FALLBACKS)
+
+# The native builder's refusals (``rusticol_core::loop_v2::dag``) by their
+# message, as the listed features they are.
+_NATIVE_REFUSALS = (
+    ("more than 64 source states", "source-states"),
+    ("two vertex rows share kind", "vertex-kind"),
+    ("leg label", "leg-label"),
+    ("a NaN colour weight", "nan-coupling"),
 )
 
 INPUT_SCHEMA = "pyamplicol.loop-v2.dag-input/1"
@@ -137,7 +249,40 @@ _MODEL_ERRORS = (KeyError, NotImplementedError, TypeError, ValueError)
 
 
 class NativeDagUnsupported(ValueError):
-    """A feature the native DAG builder does not cover (rule 2: fail closed)."""
+    """A feature the native DAG builder does not cover (rule 2: fail closed);
+    ``feature`` is its ``NativeFallback.key`` (``None``: not a listed
+    feature, which the switch sites raise)."""
+
+    def __init__(self, message: str, feature: str | None = None) -> None:
+        super().__init__(message)
+        if feature is not None and feature not in _FALLBACK_KEYS:
+            raise ValueError(f"unknown native fallback {feature!r}")
+        self.feature = feature
+
+
+def listed_fallback(error: NativeDagUnsupported) -> str:
+    """``TreeBlocks.dag_fallback`` for ``error`` (``"<key>: <message>"``) if
+    its feature is listed in ``NATIVE_FALLBACKS``; otherwise ``error`` is
+    raised (rule 2: only the listed features fall back)."""
+
+    if error.feature is None:
+        raise error
+    return f"{error.feature}: {error}"
+
+
+def fallback_record(slice_: Any) -> dict[str, str]:
+    """The native-stage fallbacks of a ``LoopSlice``'s generation (rule 2):
+    ``{"loop_blocks": ..., "counterterm_program": ...}`` with the
+    ``TreeBlocks.dag_fallback`` of each stage that fell back; empty when
+    every stage was native (or ``NATIVE_DAG`` was off)."""
+
+    record = {}
+    if slice_.blocks.dag_fallback is not None:
+        record["loop_blocks"] = slice_.blocks.dag_fallback
+    program = slice_.counterterm_program
+    if program is not None and program.blocks.blocks.dag_fallback is not None:
+        record["counterterm_program"] = program.blocks.blocks.dag_fallback
+    return record
 
 
 _DECODES = 0
@@ -176,13 +321,18 @@ def _call(operation: Any, *args: Any) -> Any:
     except ValueError as error:
         message = str(error)
         if message.startswith("unsupported: "):
-            raise NativeDagUnsupported(message.removeprefix("unsupported: ")) from None
+            message = message.removeprefix("unsupported: ")
+            feature = next(
+                (key for prefix, key in _NATIVE_REFUSALS if message.startswith(prefix)),
+                None,
+            )
+            raise NativeDagUnsupported(message, feature) from None
         raise
 
 
 def _pdg(leg: Any) -> int:
     if leg.outgoing_pdg is None:
-        raise NativeDagUnsupported("legs without an outgoing particle id")
+        raise NativeDagUnsupported("legs without an outgoing particle id", "leg-pdg")
     return int(leg.outgoing_pdg)
 
 
@@ -203,7 +353,8 @@ def _require_compiled_ufo(model: Any) -> None:
     if not isinstance(model, CompiledUFOModel):
         raise NativeDagUnsupported(
             f"model type {type(model).__qualname__} (the native DAG tables cover "
-            "compiled UFO models)"
+            "compiled UFO models)",
+            "model-type",
         )
 
 
@@ -346,7 +497,8 @@ def _flavour_operation(model: Any, vertex: Any, left: int, right: int) -> str | 
             return name
     raise NativeDagUnsupported(
         f"the flavour flow of vertex {vertex.kind} is not one of the recurrence "
-        "operations (constant, append left, append right)"
+        "operations (constant, append left, append right)",
+        "flavour-rule",
     )
 
 
@@ -525,17 +677,20 @@ def _compute_model_vertex_row(model: Any, vertex: Any) -> _ModelVertexRow:
             for flow in model.allowed_quantum_flows(vertex, stub, other):
                 if not isinstance(flow.spin_state, int):
                     raise NativeDagUnsupported(
-                        f"tuple spin state {flow.spin_state!r} of vertex {vertex.kind}"
+                        f"tuple spin state {flow.spin_state!r} of vertex {vertex.kind}",
+                        "tuple-spin",
                     )
                 if flow.quantum_number_flow != quantum_numbers:
                     raise NativeDagUnsupported(
                         f"vertex {vertex.kind} sets quantum numbers other than its "
-                        "result particle's"
+                        "result particle's",
+                        "quantum-numbers",
                     )
                 if any(math.isnan(part) for part in flow.coupling):
                     raise NativeDagUnsupported(
                         f"a NaN coupling of vertex {vertex.kind} (its runtime "
-                        "coupling identity has no order)"
+                        "coupling identity has no order)",
+                        "nan-coupling",
                     )
                 identity = _runtime_coupling_identity(
                     model,
@@ -559,7 +714,8 @@ def _compute_model_vertex_row(model: Any, vertex: Any) -> _ModelVertexRow:
                 operations.add(operation)
     if len(operations) > 1:
         raise NativeDagUnsupported(
-            f"vertex {vertex.kind} changes its flavour rule with the input chiralities"
+            f"vertex {vertex.kind} changes its flavour rule with the input chiralities",
+            "flavour-rule",
         )
     fields["flavour"] = operations.pop() if operations else "constant"
     return _ModelVertexRow(fields, tuple(flows))
@@ -707,7 +863,8 @@ def _reachability_tables(
         rule = {"kind": "mask"}
     else:
         raise NativeDagUnsupported(
-            f"loop-block reachability {type(reachability).__qualname__}"
+            f"loop-block reachability {type(reachability).__qualname__}",
+            "reachability",
         )
     return masks, rule
 
@@ -737,7 +894,7 @@ def dag_input(
             "full-colour process"
         )
     if any(leg.outgoing_pdg is None for leg in process.legs):
-        raise NativeDagUnsupported("legs without an outgoing particle id")
+        raise NativeDagUnsupported("legs without an outgoing particle id", "leg-pdg")
     ignored_particles = frozenset(int(pdg) for pdg in ignored_particle_ids)
     ignored_kinds = frozenset(int(kind) for kind in ignored_vertex_kinds)
     engine = _loop_engine(process, model)
@@ -786,7 +943,8 @@ def dag_input(
             state = source.crossing.apply(declared) if leg.is_initial else declared
             if not isinstance(state.spin_state, int):
                 raise NativeDagUnsupported(
-                    f"tuple source spin state {state.spin_state!r} of particle {pdg}"
+                    f"tuple source spin state {state.spin_state!r} of particle {pdg}",
+                    "tuple-spin",
                 )
             states.append(
                 [int(state.chirality), int(state.helicity), int(state.spin_state)]
@@ -794,7 +952,9 @@ def dag_input(
         ids = []
         for colour in engine.source_states_for_leg(leg):
             if colour.basis_key or colour.traces or colour.lines:
-                raise NativeDagUnsupported("source colour states with basis keys")
+                raise NativeDagUnsupported(
+                    "source colour states with basis keys", "colour-basis-key"
+                )
             ids.append(len(colours))
             colours.append([int(colour.sector_id), list(colour.line_groups)])
         sources.append([int(leg.label), states, ids])
@@ -948,7 +1108,9 @@ def encode_dag(dag: GenericDAG) -> bytes:
         if current.id != position:
             raise ValueError("DAG current ids are not their positions")
         if not isinstance(index.spin_state, int):
-            raise NativeDagUnsupported(f"tuple spin state {index.spin_state!r}")
+            raise NativeDagUnsupported(
+                f"tuple spin state {index.spin_state!r}", "tuple-spin"
+            )
         columns["c_species"].append(
             intern(
                 species,
@@ -1053,7 +1215,8 @@ def encode_dag(dag: GenericDAG) -> bytes:
             # E.g. the helicity ancestry of a full-colour tree DAG wider than
             # 64 bits: the container (and the native DAG) holds u64 masks.
             raise NativeDagUnsupported(
-                f"{name} values outside the native {dtype} column"
+                f"{name} values outside the native {dtype} column",
+                "source-states" if name == "c_ancestry" else None,
             ) from error
         header_columns.append([name, dtype, len(column)])
         payload += column.tobytes()
@@ -1267,8 +1430,14 @@ def _decode(
 # ------------------------------------------------------------------ handle
 
 
-# The ``GenericDAG`` fields a materialized ``NativeDag`` holds itself.
+# The ``GenericDAG`` fields a materialized ``NativeDag`` holds itself, and
+# the public ``GenericDAG`` attributes (fields, methods, properties) the
+# handle forwards to its decoded DAG: any other name raises without a
+# decode (``hasattr(dag, "x")`` must not decode seven gluons' DAG).
 _DAG_FIELDS = tuple(field.name for field in fields(GenericDAG))
+_DAG_ATTRIBUTES = frozenset(_DAG_FIELDS) | frozenset(
+    name for name in dir(GenericDAG) if not name.startswith("_")
+)
 
 
 class NativeDag:
@@ -1335,10 +1504,17 @@ class NativeDag:
             found = self._answers[key] = work()
         return found
 
+    # ``dataclasses.fields`` and ``dataclasses.replace`` see the
+    # ``GenericDAG``'s fields (``replace`` reads them, so it decodes, counted,
+    # and returns a ``GenericDAG``).
+    __dataclass_fields__ = GenericDAG.__dataclass_fields__  # type: ignore[attr-defined]
+
     def __getattr__(self, name: str) -> Any:
-        # Only attributes the handle does not have: the GenericDAG's.
-        if name.startswith("_"):
-            raise AttributeError(name)
+        # Only attributes the handle does not have, and only the GenericDAG's.
+        if name not in _DAG_ATTRIBUTES:
+            raise AttributeError(
+                f"'NativeDag' (a GenericDAG stand-in) has no attribute {name!r}"
+            )
         return getattr(self.materialize(), name)
 
     @property  # type: ignore[misc]
@@ -2108,15 +2284,15 @@ def native_interaction_program(
     return record, (*saved["kernels"], *saved["propagators"])
 
 
-def native_counterterm_trees(program: Any, offset: int) -> Any:
-    """``native_trees._CountertermTrees.of(program, offset)`` from the CT
-    program's native DAG (``NATIVE_PROGRAM``); ``None`` where the program's
-    DAG is the tree engine's (or the flag is off): the caller takes the
+def native_counterterm_trees(program: Any) -> tuple[Any, ...] | None:
+    """The parts of ``native_trees._CountertermTrees.of(program, offset)``
+    (rows, value slots, momentum slots, source fill, interaction program,
+    saved kernels; ``of`` builds the record and the dataclass from them) from
+    the CT program's native DAG (``NATIVE_PROGRAM``); ``None`` where the
+    program's DAG is the tree engine's (or the flag is off): ``of`` takes the
     Python ``TreeRows``."""
 
     from pyamplicol.models.loading import counterterm_slot_order
-
-    from .native_trees import _CountertermTrees
 
     dag = program.blocks.blocks.blocks_dag
     if not NATIVE_PROGRAM or type(dag) is not NativeDag:
@@ -2135,23 +2311,13 @@ def native_counterterm_trees(program: Any, offset: int) -> Any:
     if released:
         # As after generation: the columns are not held to the end.
         dag.release()
-    model_count = len(rows._records)
-    record = {
-        "offset": offset,
-        "state_size": max(rows._size, rows._offset + model_count),
-        "model_offset": rows._offset,
-        "model_count": model_count,
-        "momentum_slots": rows.momentum_slots,
-        "source_fill": rows.source_fill,
-        "interactions": interactions,
-    }
-    return _CountertermTrees(
+    return (
         rows,
-        record,
-        tuple(saved),
         rows.slots,
-        frozenset(id(block) for block in program.blocks.blocks.blocks),
-        dict(program.recursion.parameter_values(poles=True)),
+        rows.momentum_slots,
+        rows.source_fill,
+        interactions,
+        saved,
     )
 
 
@@ -2194,7 +2360,7 @@ def reuse_tables(dag: GenericDAG, model: Any) -> str:
         found = known.get(key)
         if found is None:
             if any(math.isnan(part) for part in item.coupling):
-                raise NativeDagUnsupported("a NaN coupling")
+                raise NativeDagUnsupported("a NaN coupling", "nan-coupling")
             identity = _runtime_coupling_identity(
                 model,
                 vertex_kind=item.vertex_kind,
@@ -2289,7 +2455,9 @@ def blocks_digest(
             for labels in parts:
                 _put_labels(out, labels)
         if not isinstance(key.spin_state, int):
-            raise NativeDagUnsupported(f"tuple spin state {key.spin_state!r}")
+            raise NativeDagUnsupported(
+                f"tuple spin state {key.spin_state!r}", "tuple-spin"
+            )
         out += struct.pack("<bi", key.chirality, key.spin_state)
         out += struct.pack("<I", len(key.flavour_flow))
         out += b"".join(struct.pack("<q", value) for value in key.flavour_flow)

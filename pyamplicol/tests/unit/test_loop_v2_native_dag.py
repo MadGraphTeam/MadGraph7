@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Native loop-request DAG builder against the tree engine (WP3.1 A1-A3).
+"""Native loop-request DAG builder against the tree engine (WP3.1 A1-A5).
 
 The oracle is ``GenericDAGCompiler(loop_blocks=True)`` with
 ``loops.v2.blocks._blocks``: the native DAG must decode to an equal
@@ -14,6 +14,14 @@ shared-contract value-equivalence derivation of
 ``assign_recursive_current_evaluation_reuse`` value by value against
 ``_derive_current_value_equivalences`` (A0's electroweak fixture with merged
 classes, and copies scaled by inexact and complex factors).
+
+A4 switches the production call sites (``dag_input.NATIVE_DAG``):
+``build_tree_blocks`` and ``CountertermBlocks.build`` equal their oracle
+stages without a decode (rule 9: none in generation, one in the export),
+each listed fallback is refused for real and recorded (rule 2), 1 and N
+threads give the same stages (rule 5). A5 checks the counterterm program's
+native interaction program (``dag_input.NATIVE_PROGRAM``) against
+``_CountertermTrees.of`` on the Python rows, byte for byte.
 """
 
 from __future__ import annotations
@@ -1064,6 +1072,8 @@ def _assert_counterterm_trees_equal(python_blocks, native_blocks):
     nothing is decoded and released columns are released again."""
 
     import json
+    from collections.abc import Mapping
+    from dataclasses import fields
 
     from pyamplicol.loops.v2.ct_closure import CountertermProgram
     from pyamplicol.loops.v2.native_trees import _CountertermTrees
@@ -1081,10 +1091,18 @@ def _assert_counterterm_trees_equal(python_blocks, native_blocks):
     assert dag.released and not dag.decoded
     oracle = _CountertermTrees.of(python, 1234)
     assert json.dumps(native.record) == json.dumps(oracle.record)
-    assert native.saved == oracle.saved
-    assert dict(native.slots) == dict(oracle.slots)
-    assert native.fixed == oracle.fixed
-    assert len(native.blocks) == len(oracle.blocks)
+    # Every field ``of`` fills (a field added there is compared too): the
+    # blocks are the programs' own objects, the rows compared below.
+    for field in fields(_CountertermTrees):
+        mine, theirs = getattr(native, field.name), getattr(oracle, field.name)
+        if field.name == "blocks":
+            assert len(mine) == len(theirs)
+        elif field.name == "record":
+            continue
+        elif field.name != "rows":
+            if isinstance(mine, Mapping):
+                mine, theirs = dict(mine), dict(theirs)
+            assert mine == theirs, field.name
     for name in ("_records", "_definitions", "_value_count", "_offset", "_size"):
         assert getattr(native.rows, name) == getattr(oracle.rows, name), name
     assert native.rows.compiled.name == oracle.rows.compiled.name
@@ -1109,9 +1127,9 @@ def test_native_counterterm_trees_equal_the_oracle(loop_sm_compiled_model):
     # Off, or on a DAG the tree engine built, the oracle runs.
     with _program_flag(False):
         program = ct_closure.CountertermProgram(blocks, ())
-        assert dag_input.native_counterterm_trees(program, 0) is None
+        assert dag_input.native_counterterm_trees(program) is None
     program = ct_closure.CountertermProgram(python, ())
-    assert dag_input.native_counterterm_trees(program, 0) is None
+    assert dag_input.native_counterterm_trees(program) is None
 
 
 @contextlib.contextmanager
@@ -1141,30 +1159,36 @@ class _Delegating:
 def test_native_stage_falls_back_with_a_record(
     models, loop_sm_compiled_model, monkeypatch
 ):
-    """Rule 2: a feature the native builder does not cover takes the oracle
-    stage, which the blocks record (``dag_fallback``): a model other than a
-    compiled UFO model, and each listed refusal of the native tables, in
-    ``build_tree_blocks`` and ``CountertermBlocks.build``."""
+    """Rule 2: a listed feature the native builder does not cover takes the
+    oracle stage, which the blocks record (``dag_fallback``: the feature's key
+    and the refusal) and ``fallback_record`` collects, in
+    ``build_tree_blocks`` and ``CountertermBlocks.build``; a refusal of no
+    listed feature is raised (fail closed)."""
+
+    from types import SimpleNamespace
 
     compiled, model = models
     process = _process(compiled, "u u~ > d d~ g")
     python = _tree_blocks(model, process, {"QCD": 5}, False)
     wrapped = _tree_blocks(_Delegating(model), process, {"QCD": 5}, True)
-    assert "model type" in wrapped.dag_fallback
+    assert wrapped.dag_fallback.startswith("model-type: model type _Delegating")
     assert not isinstance(wrapped.blocks_dag, dag_input.NativeDag)
     assert wrapped.blocks == python.blocks
     program = _python_program(
         loop_sm_compiled_model, "g g > g g g", {"QCD": 3}, {"QCD": 5}
     )
-    for feature in dag_input.NATIVE_FALLBACKS:
+    keys = [item.key for item in dag_input.NATIVE_FALLBACKS]
+    assert len(set(keys)) == len(keys)
+    assert all(item.owner and item.follow_up for item in dag_input.NATIVE_FALLBACKS)
+    for item in dag_input.NATIVE_FALLBACKS:
 
-        def refuse(*args, feature=feature, **kwargs):
-            raise dag_input.NativeDagUnsupported(feature)
+        def refuse(*args, feature=item, **kwargs):
+            raise dag_input.NativeDagUnsupported(feature.feature, feature.key)
 
         monkeypatch.setattr(dag_input, "native_blocks", refuse)
         monkeypatch.setattr(dag_input, "native_counterterm_blocks", refuse)
         fallen = _tree_blocks(model, process, {"QCD": 5}, True)
-        assert fallen.dag_fallback == feature
+        assert fallen.dag_fallback == f"{item.key}: {item.feature}"
         assert fallen.blocks == python.blocks
     # The counterterm program takes the same path (one feature: the oracle
     # stage costs seconds).
@@ -1172,8 +1196,200 @@ def test_native_stage_falls_back_with_a_record(
         again = ct_closure.CountertermBlocks.build(
             program.recursion, program.blocks.blocks_dag.process
         )
-    assert again.blocks.dag_fallback == dag_input.NATIVE_FALLBACKS[-1]
+    last = dag_input.NATIVE_FALLBACKS[-1]
+    assert again.blocks.dag_fallback == f"{last.key}: {last.feature}"
     assert again.blocks.blocks == program.blocks.blocks
+    record = dag_input.fallback_record(
+        SimpleNamespace(
+            blocks=fallen, counterterm_program=SimpleNamespace(blocks=again)
+        )
+    )
+    assert record == {
+        "loop_blocks": fallen.dag_fallback,
+        "counterterm_program": again.blocks.dag_fallback,
+    }
+    assert (
+        dag_input.fallback_record(
+            SimpleNamespace(blocks=python, counterterm_program=None)
+        )
+        == {}
+    )
+
+    # A refusal of no listed feature is raised at both switch sites.
+    def unlisted(*args, **kwargs):
+        raise dag_input.NativeDagUnsupported("an unlisted feature")
+
+    monkeypatch.setattr(dag_input, "native_blocks", unlisted)
+    monkeypatch.setattr(dag_input, "native_counterterm_blocks", unlisted)
+    with pytest.raises(dag_input.NativeDagUnsupported, match="an unlisted feature"):
+        _tree_blocks(model, process, {"QCD": 5}, True)
+    with (
+        _flag(True),
+        pytest.raises(dag_input.NativeDagUnsupported, match="an unlisted feature"),
+    ):
+        ct_closure.CountertermBlocks.build(
+            program.recursion, program.blocks.blocks_dag.process
+        )
+    with pytest.raises(ValueError, match="unknown native fallback"):
+        dag_input.NativeDagUnsupported("x", "not-a-key")
+
+
+def _perturbed_flows(model, monkeypatch, change):
+    """``model.allowed_quantum_flows`` with ``change`` applied to every flow,
+    on an empty per-model row cache (the rows are the model's answers)."""
+
+    from dataclasses import replace
+
+    original = model.allowed_quantum_flows
+
+    def perturbed(*args, **kwargs):
+        return tuple(
+            replace(flow, **change(flow)) for flow in original(*args, **kwargs)
+        )
+
+    monkeypatch.setattr(model, "allowed_quantum_flows", perturbed)
+    monkeypatch.setattr(dag_input, "_MODEL_ROWS", {})
+
+
+def _mutated_tables(model, process, change):
+    """The native builder on the input tables of ``process`` with ``change``
+    applied (the refusals the Rust builder makes itself)."""
+
+    import json
+
+    tables = json.loads(
+        dag_input.dag_input(process, model, max_coupling_orders={"QCD": 5})
+    )
+    change(tables)
+    dag_input._call(dag_input._native().V2Dag.build, json.dumps(tables))
+
+
+def _nan_bits():
+    import struct
+
+    return int(struct.unpack("<Q", struct.pack("<d", float("nan")))[0])
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize(
+    "key",
+    (
+        "model-type",
+        "leg-pdg",
+        "tuple-spin",
+        "tuple-spin-source",
+        "flavour-rule",
+        "quantum-numbers",
+        "nan-coupling",
+        "nan-colour-weight",
+        "colour-basis-key",
+        "source-states",
+        "reachability",
+        "vertex-kind",
+        "leg-label",
+    ),
+)
+def test_native_tables_refuse_each_listed_feature(models, key, monkeypatch):
+    """Rule 2: every listed feature is refused for real (``feature`` its
+    key), by the input tables on the model's answers or the process, or by
+    the Rust builder on the tables: u u~ > d d~ g with one answer changed."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.generation.dag_color import ColorEngine
+
+    compiled, model = models
+    process = _process(compiled, "u u~ > d d~ g")
+    orders = {"QCD": 5}
+    build = lambda: dag_input.native_blocks(  # noqa: E731
+        process, model, max_coupling_orders=orders
+    )
+    if key == "model-type":
+        build = lambda: dag_input.native_blocks(  # noqa: E731
+            process, _Delegating(model), max_coupling_orders=orders
+        )
+    elif key == "leg-pdg":
+        legs = (replace(process.legs[0], outgoing_pdg=None), *process.legs[1:])
+        process = replace(process, legs=legs)
+    elif key == "tuple-spin":
+        _perturbed_flows(model, monkeypatch, lambda flow: {"spin_state": (0, 1)})
+    elif key == "tuple-spin-source":
+        original = model._source_ir
+
+        def source(pdg):
+            # The final-state gluon's states (no crossing applied).
+            found = original(pdg)
+            if int(pdg) != 21:
+                return found
+            states = tuple(replace(state, spin_state=(0, 1)) for state in found.states)
+            return replace(found, states=states)
+
+        monkeypatch.setattr(model, "_source_ir", source)
+    elif key == "flavour-rule":
+        _perturbed_flows(model, monkeypatch, lambda flow: {"flavour_flow": (999,)})
+    elif key == "quantum-numbers":
+        _perturbed_flows(
+            model,
+            monkeypatch,
+            lambda flow: {"quantum_number_flow": (("pyamplicol-test", "1"),)},
+        )
+    elif key == "nan-coupling":
+        _perturbed_flows(
+            model, monkeypatch, lambda flow: {"coupling": (float("nan"), 0.0)}
+        )
+    elif key == "nan-colour-weight":
+
+        def nan_weight(tables):
+            for vertex in tables["vertices"]:
+                vertex["colour_weight"] = [_nan_bits(), 0]
+
+        build = lambda: _mutated_tables(model, process, nan_weight)  # noqa: E731
+    elif key == "colour-basis-key":
+        original_states = ColorEngine.source_states_for_leg
+
+        def keyed(self, leg):
+            return tuple(
+                replace(state, basis_key=("pyamplicol-test",))
+                for state in original_states(self, leg)
+            )
+
+        monkeypatch.setattr(ColorEngine, "source_states_for_leg", keyed)
+    elif key == "source-states":
+
+        def many(tables):
+            label, states, ids = tables["sources"][0]
+            tables["sources"][0] = [label, states * 33, ids]
+
+        build = lambda: _mutated_tables(model, process, many)  # noqa: E731
+    elif key == "reachability":
+        # A reachability rule of its own (every mask, every block current).
+        other = SimpleNamespace(
+            admits_mask=lambda mask: True, admits_block=lambda *args: True
+        )
+        build = lambda: dag_input.native_blocks(  # noqa: E731
+            process, model, max_coupling_orders=orders, reachability=other
+        )
+    elif key == "vertex-kind":
+
+        def repeated(tables):
+            tables["vertices"].append(dict(tables["vertices"][0]))
+
+        build = lambda: _mutated_tables(model, process, repeated)  # noqa: E731
+    elif key == "leg-label":
+
+        def labelled(tables):
+            tables["legs"][0]["label"] = 65
+
+        build = lambda: _mutated_tables(model, process, labelled)  # noqa: E731
+    expected = {
+        "tuple-spin-source": "tuple-spin",
+        "nan-colour-weight": "nan-coupling",
+    }.get(key, key)
+    with pytest.raises(dag_input.NativeDagUnsupported) as refused:
+        build()
+    assert refused.value.feature == expected, str(refused.value)
+    assert dag_input.listed_fallback(refused.value).startswith(f"{expected}: ")
 
 
 @pytest.mark.loop_physics

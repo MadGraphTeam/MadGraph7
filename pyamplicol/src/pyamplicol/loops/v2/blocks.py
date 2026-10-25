@@ -78,9 +78,10 @@ Conventions a consumer relies on:
   (the per-point Python rows, ``assemble.TreeRows``) decodes it once,
   counted (``dag_input.decode_count``). The tree engine's loop-request
   mode (``GenericDAGCompiler(loop_blocks=True)`` with ``_blocks``) is the
-  oracle, and the stage for a request the native builder does not cover
-  (``dag_input.NativeDagUnsupported``; ``TreeBlocks.dag_fallback`` names
-  it).
+  oracle, and the stage for a request with a feature the native builder
+  lists as not covered (``dag_input.NATIVE_FALLBACKS``;
+  ``TreeBlocks.dag_fallback`` names it, ``dag_input.fallback_record``
+  collects a slice's); any other refusal is raised.
 * **Families.** ``TreeBlocks.block_table`` is the WP1.3 ``BlockTable`` view of
   the blocks in a native model's incoming field names, and
   ``requested_loop_blocks`` turns ``FamilySet.block_requests()`` back into the
@@ -422,8 +423,9 @@ class TreeBlocks:
 
     ``blocks_dag`` is the loop-request DAG of the blocks: a ``GenericDAG``,
     or the native builder's ``dag_input.NativeDag`` handle (module
-    docstring, "Native DAG"); ``dag_fallback`` names the feature for which
-    the tree engine built it under ``dag_input.NATIVE_DAG``.
+    docstring, "Native DAG"); ``dag_fallback`` names the listed feature
+    (``"<NativeFallback.key>: <detail>"``) for which the tree engine built it
+    under ``dag_input.NATIVE_DAG``.
     """
 
     process: CanonicalProcessIR
@@ -653,7 +655,9 @@ def loop_request_blocks(
             native.release()
             return native, blocks, None
         except dag_input.NativeDagUnsupported as error:
-            fallback = str(error)
+            # Only a listed feature falls back (rule 2); any other refusal
+            # is raised.
+            fallback = dag_input.listed_fallback(error)
             _LOG.warning(
                 "%s: the tree engine builds the loop-request blocks "
                 "(the native builder does not cover %s)",

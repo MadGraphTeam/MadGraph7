@@ -324,7 +324,8 @@ class CountertermBlocks:
                     recursion, process, ignored_particle_ids=ignored_particle_ids
                 )
             except dag_input.NativeDagUnsupported as error:
-                fallback = str(error)
+                # Only a listed feature falls back (rule 2).
+                fallback = dag_input.listed_fallback(error)
                 _LOG.warning(
                     "%s: the tree engine builds the counterterm program "
                     "(the native builder does not cover %s)",
