@@ -120,8 +120,10 @@ class NativeTrees:
         return tuple(self.program["parameters"]["names"])
 
 
-# The SymJIT optimisation level of the plane applications: the default
-# ``jit_optimization_level`` (``evaluators.symbolica_settings``).
+# The SymJIT optimisation level of the plane applications: always -O2, the
+# default ``jit_optimization_level`` (``evaluators.symbolica_settings``) and a
+# portable level (O0 and O3 SymJIT is target-specific), whatever the run's
+# ``evaluator.jit.optimization_level`` says (docs/user/configuration.md).
 _PLANE_OPTIMIZATION_LEVEL = 2
 # Plane applications by saved state (SHA-256): the generation and staged
 # validation of a run export the same kernels repeatedly.

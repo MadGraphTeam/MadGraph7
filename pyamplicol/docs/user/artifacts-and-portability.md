@@ -150,7 +150,7 @@ certification performed during generation.
 | C++ or ASM process artifact | concrete target; CPU features when native specialization is enabled | No; requires exact compatible target/features. |
 | C++ or ASM prepared bundle | target-native | No. |
 | Compiled model IR (`.json`) | architecture-independent | Yes; it contains no executable prepared backend. |
-| Plan v4 virtual (one-loop, `loop.engine = "v2"`) process artifact | `portable-64le`, empty CPU-feature set | **Yes**: it holds no native code. The plan's kernels are exact term lists evaluated natively; the tree, Born, counterterm and parameter programs (`point_inputs = "native-v2"`) are stored as SymJIT storage-v4 IR, rebuilt for the receiving CPU at load and run in f64, and as saved Symbolica states, run in double-double and arbitrary precision. A plain load regenerates nothing; correlated, resolved and flavour-member calls and the `"uv"`/`"ir"` selections of a process with certified-scaleless families still regenerate on first use. |
+| Plan v4 virtual (one-loop, `loop.engine = "v2"`) process artifact | `portable-64le`, empty CPU-feature set | **Yes**: it holds no native code. The plan's kernels are exact term lists evaluated natively; the tree, Born, counterterm and parameter programs (`point_inputs = "native-v2"`) are stored as SymJIT storage-v4 IR, rebuilt for the receiving CPU at load and run in f64, and as saved Symbolica states, run in double-double and arbitrary precision. The SymJIT applications are always compiled at -O2, whatever `evaluator.jit.optimization_level` says. A plain load regenerates nothing; exact flavour members served by a representative still regenerate at load, and correlated and resolved calls and the `"uv"`/`"ir"` pole selections on first use (their companion's tree inputs are not stored yet). |
 
 For a portable compiled all-JIT artifact, Rusticol verifies that every
 executable leaf and nested selector path is O1 or O2 SymJIT. Eager and
@@ -166,8 +166,10 @@ remain host/profile-specific.
 ### CPU requirements of SymJIT kernels
 
 The SymJIT code generator (2.27) that rebuilds JIT kernels at load needs, on
-x86-64, a CPU with **AVX and FMA3** (Intel Haswell, AMD Piledriver or newer);
-AArch64 is supported as well. Its x86-64 kernels use AVX and FMA3 instructions
+x86-64, a CPU with **AVX and FMA3** (Intel Haswell, AMD Piledriver or newer).
+SymJIT also generates AArch64 code, but pyAmpliCol has not tested the
+relocation checks below on AArch64 (expected to hold, untested). Its x86-64
+kernels use AVX and FMA3 instructions
 even on its SSE fallback, so on an older CPU (or a virtual machine whose CPU
 model masks AVX or FMA3) they would end the process with an illegal
 instruction. pyAmpliCol refuses such a CPU when it would compile a kernel,
@@ -181,7 +183,7 @@ SymJIT issues [22](https://github.com/siravan/symjit/issues/22) and
 [23](https://github.com/siravan/symjit/issues/23) with pull requests
 [24](https://github.com/siravan/symjit/pull/24) and
 [25](https://github.com/siravan/symjit/pull/25); pyAmpliCol keeps its own CPU
-check as a fallback after a fixed SymJIT release is pinned.
+check until a SymJIT release with these fixes is pinned.
 
 A `symjit.toml` in the working directory, or `SYMJIT_TOML`, is read by
 SymJIT 2.27 whenever it loads a complex kernel; if that file is malformed or
@@ -192,7 +194,9 @@ evaluate pyAmpliCol artifacts.
 
 With the same pyAmpliCol build, a relocated artifact gives bitwise-identical
 binary64 results on hosts of the same SymJIT code-path class: x86-64 with AVX
-and FMA3, or AArch64. Across classes, kernels may round differently in the
+and FMA3 (tested, on this class's hosts and under emulation). AArch64 hosts
+are expected to form one class too, but that is untested. Across classes,
+kernels may round differently in the
 last bits (fused multiply-add), so compare with a tolerance there. This holds
 for plan v4 virtual artifacts too: their f64 tree, Born and counterterm
 programs are SymJIT applications.

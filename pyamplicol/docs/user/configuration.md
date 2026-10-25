@@ -693,16 +693,18 @@ Born, counterterm and parameter programs (`point_inputs = "native-v2"`), the
 latter as SymJIT IR recompiled for the loading CPU and as saved Symbolica states
 for double-double and arbitrary precision. A plain load (`evaluate` with
 `poles = "all"` or `"none"`) regenerates nothing and takes a small fraction of
-the generation time. Still regenerated from the artifact on first use, until
-their inputs are stored too: correlated and resolved calls, exact flavour
-members served by their representative, and the `"uv"` and `"ir"` pole
-selections of a process with certified-scaleless families (their companion's
-tree inputs). The artifact holds no absolute path, user or host name of the
-generating host; a copy moved to another directory, user or machine loads
-without regeneration and, with the same pyAmpliCol build (Python package and
-native extension), gives bitwise-identical binary64 results on CPUs of the same
-SymJIT class (x86-64 with AVX and FMA3, or AArch64); other CPU levels (checked
-under emulation) run the saved states and agree to rounding
+the generation time. Still regenerated from the artifact, until their inputs are
+stored too: exact flavour members served by their representative (at load), and
+correlated and resolved calls and the `"uv"` and `"ir"` pole selections (on
+first use; the latter also evaluate the companion of the certified-scaleless
+families, whose tree inputs are not stored). The SymJIT IR is always compiled at
+-O2 (the portable level), whatever `evaluator.jit.optimization_level` says. The
+artifact holds no absolute path, user or host name of the generating host; a
+copy moved to another directory, user or machine loads without regeneration and,
+with the same pyAmpliCol build (Python package and native extension), gives
+bitwise-identical binary64 results on CPUs of the same SymJIT class (x86-64 with
+AVX and FMA3; AArch64 is expected to behave the same but is untested); other CPU
+levels (checked under emulation) run the saved states and agree to rounding
 ([portability](artifacts-and-portability.md#cpu-requirements-of-symjit-kernels)).
 Binary64 evaluation needs no Symbolica licence; double-double and arbitrary
 precision use pyAmpliCol's own Symbolica key. The standalone SDK bundle needs
