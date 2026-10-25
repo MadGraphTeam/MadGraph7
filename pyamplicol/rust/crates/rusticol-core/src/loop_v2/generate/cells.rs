@@ -1206,11 +1206,15 @@ enum Task {
     Structure(usize, usize),
 }
 
-/// How a cell is formed from evaluated tasks.
+/// How the cells of one class are formed from evaluated tasks.
 enum Recipe {
-    Task(usize),
-    /// sum_t coefficient_t N_c^power_t <b|structure_t>.
-    Generic(Vec<(Exact, i32, usize)>),
+    /// One task per basis element.
+    Tasks(Vec<usize>),
+    /// A generic class: per basis element b, sum_t coefficient_t
+    /// N_c^power_t <b|structure_t>; the parts are (coefficient pattern id,
+    /// [(power, structure row)]) and a structure row holds the task of
+    /// every basis element.
+    Generic(usize, Vec<(i32, usize)>),
 }
 
 /// The basis-independent caches of `_PrimitiveCells`: relabelled bras by
@@ -1428,6 +1432,12 @@ impl CellEngine {
     /// (`colour.seed_cells`), in input order. Missing overlaps are
     /// evaluated in parallel; caches persist across calls (and are shared
     /// with the rebased engines, which wait for each other's calls).
+    ///
+    /// A generic class is term-factored: each distinct term structure is
+    /// contracted once per basis element (its structure row of tasks) and
+    /// the class's cells are combined from those rows in parallel; equal
+    /// cells of a class's combination share one value (the cells are
+    /// values: sharing never shows in the output).
     pub fn cells(&mut self, classes: &[ClassInput]) -> RusticolResult<Vec<Vec<Arc<Laurent>>>> {
         let shared = Arc::clone(&self.shared);
         let mut guard = locked(&shared)?;
@@ -1440,9 +1450,15 @@ impl CellEngine {
                 tasks.len() - 1
             })
         };
-        let mut recipes: Vec<Vec<Recipe>> = Vec::with_capacity(classes.len());
+        let basis_len = self.basis.len();
+        // Generic classes: structure rows (structure id -> row index) and
+        // the distinct coefficient patterns [(coefficient, power)].
+        let mut structure_rows: Vec<Vec<usize>> = Vec::new();
+        let mut structure_row_of: FastMap<usize, usize> = FastMap::default();
+        let mut patterns: Vec<Vec<Exact>> = Vec::new();
+        let mut pattern_ids: FastMap<Vec<Exact>, usize> = FastMap::default();
+        let mut recipes: Vec<Recipe> = Vec::with_capacity(classes.len());
         for class in classes {
-            let mut row = Vec::with_capacity(self.basis.len());
             match class {
                 ClassInput::AdjointRing(word) | ClassInput::FundamentalTrace(word) => {
                     let kind = match class {
@@ -1454,21 +1470,26 @@ impl CellEngine {
                         .enumerate()
                         .map(|(i, &label)| (label, i as Label + 1))
                         .collect();
-                    for b in 0..self.basis.len() {
+                    let mut row = Vec::with_capacity(basis_len);
+                    for b in 0..basis_len {
                         let task = match self.primitive_bra(&self.basis[b], &rename) {
                             Some(bra) => Task::Primitive(kind, word.len(), caches.bra_id(bra)),
                             None => Task::Direct(kind, word.clone(), b),
                         };
-                        row.push(Recipe::Task(add_task(task, &mut tasks)));
+                        row.push(add_task(task, &mut tasks));
                     }
+                    recipes.push(Recipe::Tasks(row));
                 }
                 ClassInput::QuarkRing { ring, forward } => {
                     if *ring >= caches.rings.len() {
                         return Err(invalid(format!("unregistered quark ring {ring}")));
                     }
-                    for bra in self.relabelled_bras(caches, forward) {
-                        row.push(Recipe::Task(add_task(Task::Ring(*ring, bra), &mut tasks)));
-                    }
+                    let row = self
+                        .relabelled_bras(caches, forward)
+                        .into_iter()
+                        .map(|bra| add_task(Task::Ring(*ring, bra), &mut tasks))
+                        .collect();
+                    recipes.push(Recipe::Tasks(row));
                 }
                 ClassInput::Generic(tensor) => {
                     if tensor.normalization != 0 {
@@ -1477,29 +1498,32 @@ impl CellEngine {
                     if tensor.legs != self.legs {
                         return Err(invalid("a seed class is not on the basis legs"));
                     }
-                    let parts: Vec<(Exact, i32, usize)> = tensor
-                        .terms
-                        .iter()
-                        .map(|t| {
-                            (
-                                t.coefficient.clone(),
-                                t.nc_power,
-                                self.structure_id(&t.structure),
-                            )
-                        })
-                        .collect();
-                    for b in 0..self.basis.len() {
-                        let parts = parts
-                            .iter()
-                            .map(|(c, p, s)| {
-                                (c.clone(), *p, add_task(Task::Structure(*s, b), &mut tasks))
-                            })
-                            .collect();
-                        row.push(Recipe::Generic(parts));
+                    let mut pattern = Vec::with_capacity(tensor.terms.len());
+                    let mut parts = Vec::with_capacity(tensor.terms.len());
+                    for term in &tensor.terms {
+                        let s = self.structure_id(&term.structure);
+                        let row = *structure_row_of.entry(s).or_insert_with(|| {
+                            structure_rows.push(
+                                (0..basis_len)
+                                    .map(|b| add_task(Task::Structure(s, b), &mut tasks))
+                                    .collect(),
+                            );
+                            structure_rows.len() - 1
+                        });
+                        pattern.push(term.coefficient.clone());
+                        parts.push((term.nc_power, row));
                     }
+                    let pattern = match pattern_ids.get(&pattern) {
+                        Some(&id) => id,
+                        None => {
+                            patterns.push(pattern.clone());
+                            pattern_ids.insert(pattern, patterns.len() - 1);
+                            patterns.len() - 1
+                        }
+                    };
+                    recipes.push(Recipe::Generic(pattern, parts));
                 }
             }
-            recipes.push(row);
         }
         // Evaluate the tasks missing from the caches, in parallel.
         let mut results: Vec<Option<Arc<Laurent>>> =
@@ -1522,23 +1546,55 @@ impl CellEngine {
             .into_iter()
             .map(|value| value.expect("every task is evaluated"))
             .collect();
+        // Equal task values share one value (`distinct[value_of[t]]`).
+        let mut distinct: Vec<Arc<Laurent>> = Vec::new();
+        let value_of: Vec<usize> = {
+            let mut index: FastMap<&Laurent, usize> = FastMap::default();
+            results
+                .iter()
+                .map(|value| {
+                    *index.entry(value.as_ref()).or_insert_with(|| {
+                        distinct.push(value.clone());
+                        distinct.len() - 1
+                    })
+                })
+                .collect()
+        };
+        drop(results);
+        // Assemble the rows in parallel, in input order.
         Ok(recipes
-            .into_iter()
-            .map(|row| {
-                row.into_iter()
-                    .map(|recipe| match recipe {
-                        Recipe::Task(t) => results[t].clone(),
-                        Recipe::Generic(parts) => {
+            .into_par_iter()
+            .map(|recipe| match recipe {
+                Recipe::Tasks(row) => row
+                    .into_iter()
+                    .map(|t| distinct[value_of[t]].clone())
+                    .collect(),
+                Recipe::Generic(pattern, parts) => {
+                    let coefficients = &patterns[pattern];
+                    let mut memo: FastMap<Vec<usize>, Arc<Laurent>> = FastMap::default();
+                    (0..basis_len)
+                        .map(|b| {
+                            let key: Vec<usize> = parts
+                                .iter()
+                                .map(|&(_, row)| value_of[structure_rows[row][b]])
+                                .collect();
+                            if let Some(found) = memo.get(&key) {
+                                return found.clone();
+                            }
                             let mut cell = Laurent::new();
-                            for (coefficient, power, t) in parts {
-                                for (&p, value) in results[t].iter() {
+                            for (coefficient, (&(power, _), &v)) in
+                                coefficients.iter().zip(parts.iter().zip(&key))
+                            {
+                                for (&p, value) in distinct[v].iter() {
                                     add_laurent(&mut cell, p + power, coefficient.mul(value));
                                 }
                             }
-                            Arc::new(cell)
-                        }
-                    })
-                    .collect()
+                            let cell = Arc::new(cell);
+                            memo.insert(key, cell.clone());
+                            cell
+                        })
+                        .collect()
+                }
             })
             .collect())
     }

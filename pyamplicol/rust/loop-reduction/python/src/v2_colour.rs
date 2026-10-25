@@ -183,6 +183,9 @@ impl NativeCellTable {
     ) -> PyResult<(Vec<RawLaurent>, Vec<Vec<usize>>)> {
         let stop = stop.unwrap_or(self.rows.len()).min(self.rows.len());
         let start = start.min(stop);
+        // Shared cells are looked up by address first, then by value: the
+        // ids are the first-seen order of the distinct values either way.
+        let mut shared: FastMap<*const Laurent, usize> = FastMap::default();
         let mut index: FastMap<&Laurent, usize> = FastMap::default();
         let mut values = Vec::new();
         let ids = self.rows[start..stop]
@@ -190,9 +193,11 @@ impl NativeCellTable {
             .map(|row| {
                 row.iter()
                     .map(|cell| {
-                        *index.entry(cell.as_ref()).or_insert_with(|| {
-                            values.push(raw_laurent(cell));
-                            values.len() - 1
+                        *shared.entry(Arc::as_ptr(cell)).or_insert_with(|| {
+                            *index.entry(cell.as_ref()).or_insert_with(|| {
+                                values.push(raw_laurent(cell));
+                                values.len() - 1
+                            })
                         })
                     })
                     .collect()
