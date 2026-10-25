@@ -29,7 +29,11 @@ instrumentation.
   absolute paths stored in the records (an old root) are never touched;
 * the universal double pole of the physical rows at full and leading colour,
   and the top-free g g > g g g g g row's NJet reference at the stream's
-  first points.
+  first points;
+* a stored process (``--store``) loads as the public runtime loads an
+  artifact, regenerates nothing and times bitwise the generating run's
+  values; a load of another configuration or native build is refused, and
+  a generate-only record is no gate input.
 """
 
 from __future__ import annotations
@@ -650,3 +654,54 @@ def test_top_free_seven_gluon_row_is_checked_against_njet():
     assert "finite" not in row["catani"] and set(errors["catani"]) == {"born"}
     assert set(errors[fixture["primary_provider"]]) == {"born", "finite"}
     assert max(errors[fixture["primary_provider"]].values()) == 0.0
+
+
+@pytest.mark.loop_physics
+def test_a_stored_process_loads_and_evaluates_bitwise_equal(tmp_path, loop_native):
+    import json
+
+    from tools.loop_benchmark.__main__ import main
+
+    build = tmp_path / "build"
+    build.mkdir()
+    info = {
+        "native_build_inputs_sha256": "a" * 64,
+        "source_revision": "0" * 40,
+        "profile": {"name": "release"},
+    }
+    (build / "build-info.json").write_text(json.dumps(info))
+    common = ["gg_gg", "--inputs", "native", "--native-build", str(build)]
+    common += ["--batches", "2", "--reps", "1", "--min-points", "1"]
+    store = tmp_path / "store"
+    generated_json, loaded_json = tmp_path / "generated.json", tmp_path / "loaded.json"
+    generate = ["--scratch", str(tmp_path), "--store", str(store)]
+    assert main(["pyamplicol", *common, *generate, "--json", str(generated_json)]) == 0
+    load = ["--load", str(store), "--json", str(loaded_json)]
+    assert main(["pyamplicol", *common, *load]) == 0
+    generated = json.loads(generated_json.read_text())
+    loaded = json.loads(loaded_json.read_text())
+    assert loaded["batches"]["2"]["values"] == generated["batches"]["2"]["values"]
+    assert loaded["accuracy_check"] == generated["accuracy_check"]
+    assert loaded["generation"] == generated["generation"]
+    assert loaded["structure"] == generated["structure"]
+    stored = loaded["stored"]
+    assert stored["point_inputs"] == "native-v1"
+    assert stored["generated_revision"] == generated["revision"]
+    assert str(tmp_path) not in json.dumps(stored)
+    # Another configuration or another native build is refused; a stored
+    # process is never overwritten.
+    with pytest.raises(SystemExit, match="is not this run"):
+        main(["pyamplicol", *common, "--accuracy", "lc", "--load", str(store)])
+    meta = json.loads((store / "generation.json").read_text())
+    meta["native"]["digest"] = "b" * 64
+    (store / "generation.json").write_text(json.dumps(meta))
+    with pytest.raises(SystemExit, match="another native build"):
+        main(["pyamplicol", *common, "--load", str(store)])
+    with pytest.raises(SystemExit, match="never overwritten"):
+        main(["pyamplicol", *common, "--store", str(store), "--generate-only"])
+    # A storing run's record times nothing: no gate input.
+    only = {**generated, "batches": {}, "generate_only": True}
+    path = tmp_path / "only.json"
+    path.write_text(json.dumps(only))
+    with pytest.raises(ValueError, match="generate-only"):
+        gate.build([path], None)
