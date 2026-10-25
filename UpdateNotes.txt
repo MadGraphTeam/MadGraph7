@@ -5,6 +5,13 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: The default PDF follows the process when a photon is needed (issue #311):
+       a photon in the initial state of a proton beam selects
+       NNPDF40MC_lo_as_01180_qed (lhaid 338510, also the mg7 [beam] pdf) at LO,
+       and NLO EW corrections ([QED]) or a photon in the initial state select
+       NNPDF40_nlo_as_01180_qed (lhaid 335900) at NLO, the 5-flavour set also
+       for a model with a massive b (NNPDF4.0 has no 4-flavour QED set). The
+       NNPDF4.0 defaults have no photon. A PDF set by the user is kept.
    OM: compute_widths (and the 'auto' widths of a param_card) integrates the
        N-body decays (N>2) with madspace instead of MadEvent: 6 s instead of
        26 s for the Higgs of heft up to 3 bodies, with a more precise result.

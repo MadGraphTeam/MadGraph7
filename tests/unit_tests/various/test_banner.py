@@ -2288,6 +2288,81 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertFalse([k for k in rc['cuts'] if k.startswith('jet')])
 
 
+class TestPhotonPDFDefault(unittest.TestCase):
+    """issue #311: the NNPDF4.0 default sets have no photon, so a process with
+    a photon taken from the proton, or with EW corrections at NLO, defaults to
+    the QED set of the same family."""
+
+    model = None
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        cls.model = import_ufo.import_model('sm')
+
+    def process(self, initial, final=(11, -11), nlo=False):
+        import madgraph.core.base_objects as base_objects
+        import madgraph.fks.fks_common as fks_common
+        Leg = fks_common.FKSLeg if nlo else base_objects.Leg
+        legs = [Leg({'id': i, 'state': False}) for i in initial]
+        legs += [Leg({'id': i, 'state': True}) for i in final]
+        return base_objects.Process({'legs': base_objects.LegList(legs),
+                                     'model': self.model})
+
+    def lo_card(self, initial, **user):
+        rc = bannermod.RunCardLO()
+        for key, value in user.items():
+            rc.set(key, value, user=True)
+        pc = bannermod.ProcCharacteristic()
+        pc['ninitial'] = 2
+        rc.create_default_for_process(pc, '', [[self.process(initial)]])
+        return rc
+
+    def nlo_card(self, initial, splitting_types=('QCD',), **user):
+        rc = bannermod.RunCardNLO()
+        for key, value in user.items():
+            rc.set(key, value, user=True)
+        pc = bannermod.ProcCharacteristic()
+        pc['ninitial'] = 2
+        pc['splitting_types'] = list(splitting_types)
+        rc.create_default_for_process(pc, '', [self.process(initial, nlo=True)])
+        return rc
+
+    def test_lo(self):
+        self.assertEqual(self.lo_card([2, -2])['lhaid'], 331900)
+        self.assertEqual(self.lo_card([22, 22])['lhaid'], 338510)
+        self.assertEqual(self.lo_card([2, 22])['lhaid'], 338510)
+        # the user choice wins
+        self.assertEqual(self.lo_card([22, 22], lhaid=331900)['lhaid'], 331900)
+
+    def test_nlo(self):
+        # plain sm has a massive b: 4-flavour set
+        self.assertEqual(self.nlo_card([2, -2])['lhaid'], [334700])
+        # EW corrections or a photon in the initial state: QED set
+        self.assertEqual(self.nlo_card([2, -2], ('QCD', 'QED'))['lhaid'], [335900])
+        self.assertEqual(self.nlo_card([22, 2])['lhaid'], [335900])
+        # lepton collider: no proton PDF, nothing changes
+        rc = self.nlo_card([11, -11], ('QED',))
+        self.assertEqual(rc['lpp1'], 0)
+        self.assertEqual(rc['lhaid'], [334700])
+        # the user choice wins
+        self.assertEqual(self.nlo_card([2, -2], ('QED',), lhaid=[331700])['lhaid'],
+                         [331700])
+
+    def test_mg7(self):
+        def card(initial):
+            rc = bannermod.RunCardMG7()
+            pc = bannermod.ProcCharacteristic()
+            pc['ninitial'] = 2
+            rc.create_default_for_process(pc, '', [[self.process(initial)]])
+            return rc
+        self.assertEqual(card([2, -2])['beam']['pdf1'], 'NNPDF40_lo_as_01180')
+        rc = card([22, 22])
+        self.assertEqual(rc['beam']['pdf1'], 'NNPDF40MC_lo_as_01180_qed')
+        self.assertEqual(rc['beam']['pdf2'], 'NNPDF40MC_lo_as_01180_qed')
+        self.assertIs(rc['beam']['leptonic'], False)
+
+
 class FakeParticle(dict):
     def get(self, key, default=None):
         return dict.get(self, key, default)
