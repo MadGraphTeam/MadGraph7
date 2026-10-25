@@ -466,6 +466,11 @@ pub struct TreeInputs<T> {
     /// The counterterm and external-field outputs (component, sector,
     /// epsilon power), divided by the average (with counterterms).
     pub counterterms: Option<Vec<Vec<T>>>,
+    /// Wall seconds per stage: the interaction programs (`"trees:
+    /// programs"`, with the states), the Born and counterterm root closures
+    /// (`"trees: closures"`) and the rest (`"trees: interferences"`: block
+    /// rows, interferences, Born components and |A0|²).
+    pub seconds: Vec<(&'static str, f64)>,
 }
 
 /// The carrier form of a program: its kernel evaluators and exact weights.
@@ -1436,6 +1441,7 @@ impl TreeProgram {
             model_offset: self.model_offset,
             model_count: self.model_count,
         };
+        let started = std::time::Instant::now();
         let mut states = Self::states(
             layout,
             &self.sources,
@@ -1496,14 +1502,56 @@ impl TreeProgram {
                 .counterterms
                 .as_ref()
                 .map(|_| Vec::with_capacity(points)),
+            seconds: Vec::with_capacity(3),
         };
-        for (index, (point, state)) in incoming
+        out.seconds
+            .push(("trees: programs", started.elapsed().as_secs_f64()));
+        let started = std::time::Instant::now();
+        // The root closures of every point, lanes of points at a time.
+        let momenta: Vec<Vec<[T; 4]>> = incoming
             .iter()
-            .zip(states.chunks_exact(self.state_size))
-            .enumerate()
-        {
-            let ct_state =
-                &counterterm_states[index * counterterm_size..(index + 1) * counterterm_size];
+            .map(|point| self.mask_momenta(point, zero))
+            .collect();
+        let states = (states.as_slice(), self.state_size);
+        let counterterm_states = (counterterm_states.as_slice(), counterterm_size);
+        let mut amplitudes = self.close(
+            &self.terms,
+            &runtime.weights,
+            &vec![batch.couplings.as_slice(); points],
+            None,
+            self.components,
+            plan,
+            &momenta,
+            states,
+            counterterm_states,
+            constants,
+            zero,
+        );
+        let kets = match (&self.counterterms, &runtime.interference) {
+            (Some(ct), Some(_)) => self.close(
+                &ct.terms,
+                &runtime.weights,
+                &batch
+                    .counterterm_couplings
+                    .iter()
+                    .map(Vec::as_slice)
+                    .collect::<Vec<_>>(),
+                (!poles).then_some(ct.finite_slot.as_slice()),
+                ct.components,
+                plan,
+                &momenta,
+                states,
+                counterterm_states,
+                constants,
+                zero,
+            ),
+            _ => Vec::new(),
+        };
+        out.seconds
+            .push(("trees: closures", started.elapsed().as_secs_f64()));
+        let started = std::time::Instant::now();
+        for (index, state) in states.0.chunks_exact(self.state_size).enumerate() {
+            let amplitudes = std::mem::take(&mut amplitudes[index]);
             let mut rows = Vec::new();
             for &(start, dimension, sign) in &self.block_rows {
                 for value in &state[start..start + dimension] {
@@ -1515,42 +1563,17 @@ impl TreeProgram {
                 }
             }
             out.block_rows.push(rows);
-            let momenta = self.mask_momenta(point, zero);
-            let amplitudes = self.close(
-                &self.terms,
-                &runtime.weights,
-                &batch.couplings,
-                None,
-                self.components,
-                plan,
-                &momenta,
-                (state, ct_state),
-                constants,
-                zero,
-            );
             if let (Some(ct), Some(interference), Some(out)) = (
                 &self.counterterms,
                 &runtime.interference,
                 &mut out.counterterms,
             ) {
                 let couplings = &batch.counterterm_couplings[index];
-                let ket = self.close(
-                    &ct.terms,
-                    &runtime.weights,
-                    couplings,
-                    (!poles).then_some(ct.finite_slot.as_slice()),
-                    ct.components,
-                    plan,
-                    &momenta,
-                    (state, ct_state),
-                    constants,
-                    zero,
-                );
                 let values = ct.interference.evaluate(
                     interference,
                     &amplitudes,
                     self.components,
-                    &ket,
+                    &kets[index],
                     ct.components,
                     self.rows,
                     couplings,
@@ -1577,6 +1600,8 @@ impl TreeProgram {
             }
             out.amplitudes.push(amplitudes);
         }
+        out.seconds
+            .push(("trees: interferences", started.elapsed().as_secs_f64()));
         Ok(out)
     }
 
@@ -1650,95 +1675,52 @@ impl TreeProgram {
             .collect()
     }
 
-    /// The root closure of one point: per Born row, every closure term's
-    /// kernel on its blocks' rows (in the trees' or the counterterm
-    /// program's state) and momenta (`momenta`: per leg mask),
-    /// times its sign and per contribution its coupling and colour weight,
-    /// accumulated into `width` components. `active`: the coupling slots
-    /// to evaluate (none: all). Rows run in parallel.
+    /// The root closures of a batch's points: per point and Born row, every
+    /// closure term's kernel on its blocks' rows (in the trees' or the
+    /// counterterm program's state, each `(states, size)` with one state per
+    /// point) and momenta (`momenta`: per point and leg mask), times its sign
+    /// and per contribution its coupling (`couplings`: per point) and colour
+    /// weight, accumulated into `width` components per row. `active`: the
+    /// coupling slots to evaluate (none: all).
+    ///
+    /// Points run in lanes (`Closure::lanes`): every lane performs one point's
+    /// operations in the scalar order, so a point's values do not depend on
+    /// its batch; lanes and Born rows run in parallel.
     #[allow(clippy::too_many_arguments)]
     fn close<T: Carrier>(
         &self,
         terms: &[Term],
         weights: &[Complex<T>],
-        couplings: &[Complex<T>],
+        couplings: &[&[Complex<T>]],
         active: Option<&[bool]>,
         width: usize,
         plan: &LoopProgramV4,
-        momenta: &[[T; 4]],
-        (state, ct_state): (&[Complex<T>], &[Complex<T>]),
+        momenta: &[Vec<[T; 4]>],
+        states: (&[Complex<T>], usize),
+        counterterm_states: (&[Complex<T>], usize),
         constants: &[Complex<T>],
         zero: &T,
-    ) -> Vec<Complex<T>> {
-        let czero = Complex::new(zero.clone(), zero.clone());
-        let mut out = vec![czero.clone(); self.rows * width];
-        // Closure block starts index the trees' state, then the counterterm
-        // program's.
-        let read = |index: usize| {
-            if index < state.len() {
-                state[index].clone()
-            } else {
-                ct_state[index - state.len()].clone()
-            }
+    ) -> Vec<Vec<Complex<T>>> {
+        let closure = Closure {
+            program: self,
+            terms,
+            weights,
+            couplings,
+            active,
+            width,
+            plan,
+            momenta,
+            states,
+            counterterm_states,
+            constants,
         };
-        if width == 0 {
-            return out;
+        match momenta.len() {
+            0 => Vec::new(),
+            1 => closure.lanes::<1>(zero),
+            2 | 3 => closure.lanes::<2>(zero),
+            4..=7 => closure.lanes::<4>(zero),
+            _ => closure.lanes::<8>(zero),
         }
-        out.par_chunks_mut(width)
-            .enumerate()
-            .for_each(|(row, target)| {
-                let mut x = Vec::new();
-                let mut starts = Vec::new();
-                for term in terms {
-                    if active
-                        .is_some_and(|active| term.contributions.iter().all(|(c, ..)| !active[*c]))
-                    {
-                        continue;
-                    }
-                    starts.clear();
-                    for &block in &term.blocks {
-                        match self.blocks[block][row] {
-                            Some(start) => starts.push(start),
-                            None => break,
-                        }
-                    }
-                    if starts.len() != term.blocks.len() {
-                        continue;
-                    }
-                    x.clear();
-                    for input in &self.layouts[term.layout] {
-                        x.push(match *input {
-                            TermInput::Current { slot, component } => {
-                                read(starts[slot] + component)
-                            }
-                            TermInput::Momentum { slot, mu } => {
-                                Complex::new(momenta[term.masks[slot]][mu].clone(), zero.clone())
-                            }
-                        });
-                    }
-                    let mut value = czero.clone();
-                    for entry in &plan.kernels[term.kernel].outputs[0] {
-                        let mut product = constants[entry.constant].clone();
-                        for &(input, exponent) in &entry.monomial {
-                            for _ in 0..exponent {
-                                product *= x[input].clone();
-                            }
-                        }
-                        value += product;
-                    }
-                    if term.sign < 0 {
-                        value = -value;
-                    }
-                    for &(coupling, component, weight) in &term.contributions {
-                        if active.is_some_and(|active| !active[coupling]) {
-                            continue;
-                        }
-                        target[component] +=
-                            couplings[coupling].clone() * weights[weight].clone() * value.clone();
-                    }
-                }
-            });
-        out
     }
 
     /// `|A0|²` per squared Born order of one point (divided by the average):
@@ -1760,6 +1742,175 @@ impl TreeProgram {
         out.into_iter()
             .map(|value| value / runtime.average.clone())
             .collect()
+    }
+}
+
+/// The root closure of a batch (`TreeProgram::close`).
+struct Closure<'a, T> {
+    program: &'a TreeProgram,
+    terms: &'a [Term],
+    weights: &'a [Complex<T>],
+    couplings: &'a [&'a [Complex<T>]],
+    active: Option<&'a [bool]>,
+    width: usize,
+    plan: &'a LoopProgramV4,
+    momenta: &'a [Vec<[T; 4]>],
+    states: (&'a [Complex<T>], usize),
+    counterterm_states: (&'a [Complex<T>], usize),
+    constants: &'a [Complex<T>],
+}
+
+/// `x *= y` on complex lane vectors (`L` real parts, then `L` imaginary
+/// parts), per lane as `Complex<T>`'s product.
+#[inline(always)]
+fn lane_mul<T: Carrier, const L: usize>(x: &mut [T], y: &[T]) {
+    let (x_re, x_im) = x[..2 * L].split_at_mut(L);
+    let (y_re, y_im) = y[..2 * L].split_at(L);
+    for l in 0..L {
+        let re = x_re[l].clone() * &y_re[l] - x_im[l].clone() * &y_im[l];
+        let im = x_re[l].clone() * &y_im[l] + x_im[l].clone() * &y_re[l];
+        x_re[l] = re;
+        x_im[l] = im;
+    }
+}
+
+impl<T: Carrier> Closure<'_, T> {
+    /// Every point's closure in lanes of `L` points (the last lanes of a
+    /// batch that `L` does not divide repeat its last point and are
+    /// dropped): per lane chunk and Born row, the terms in order, each
+    /// lane in the scalar operations of `Complex<T>` (the kernel's terms
+    /// `constant × Π input^power` summed from zero, the sign, then per
+    /// contribution `(coupling × weight) × value` added to its component).
+    fn lanes<const L: usize>(&self, zero: &T) -> Vec<Vec<Complex<T>>> {
+        let program = self.program;
+        let points = self.momenta.len();
+        let rows = program.rows;
+        let width = self.width;
+        let czero = Complex::new(zero.clone(), zero.clone());
+        let mut out = vec![vec![czero; rows * width]; points];
+        if width == 0 || rows == 0 {
+            return out;
+        }
+        let v = 2 * L;
+        let chunks = points.div_ceil(L);
+        let inputs = program.layouts.iter().map(Vec::len).max().unwrap_or(0);
+        let (state, size) = self.states;
+        let (ct_state, ct_size) = self.counterterm_states;
+        // Per (lane chunk, row): `width` complex lane vectors.
+        let mut sums = vec![zero.clone(); chunks * rows * width * v];
+        sums.par_chunks_mut(width * v).enumerate().for_each_init(
+            || {
+                (
+                    vec![zero.clone(); inputs * v],
+                    vec![zero.clone(); v],
+                    vec![zero.clone(); v],
+                    Vec::new(),
+                )
+            },
+            |(x, value, product, starts), (task, target)| {
+                let (chunk, row) = (task / rows, task % rows);
+                let lanes: [usize; L] = std::array::from_fn(|l| (chunk * L + l).min(points - 1));
+                for term in self.terms {
+                    if self
+                        .active
+                        .is_some_and(|active| term.contributions.iter().all(|(c, ..)| !active[*c]))
+                    {
+                        continue;
+                    }
+                    starts.clear();
+                    for &block in &term.blocks {
+                        match program.blocks[block][row] {
+                            Some(start) => starts.push(start),
+                            None => break,
+                        }
+                    }
+                    if starts.len() != term.blocks.len() {
+                        continue;
+                    }
+                    for (input, lane) in program.layouts[term.layout]
+                        .iter()
+                        .zip(x.chunks_exact_mut(v))
+                    {
+                        let (re, im) = lane.split_at_mut(L);
+                        match *input {
+                            TermInput::Current { slot, component } => {
+                                let index = starts[slot] + component;
+                                let (values, stride, index) = if index < size {
+                                    (state, size, index)
+                                } else {
+                                    (ct_state, ct_size, index - size)
+                                };
+                                for (l, &point) in lanes.iter().enumerate() {
+                                    let value = &values[point * stride + index];
+                                    re[l] = value.re.clone();
+                                    im[l] = value.im.clone();
+                                }
+                            }
+                            TermInput::Momentum { slot, mu } => {
+                                let mask = term.masks[slot];
+                                for (l, &point) in lanes.iter().enumerate() {
+                                    re[l] = self.momenta[point][mask][mu].clone();
+                                    im[l] = zero.clone();
+                                }
+                            }
+                        }
+                    }
+                    for item in value.iter_mut() {
+                        *item = zero.clone();
+                    }
+                    for entry in &self.plan.kernels[term.kernel].outputs[0] {
+                        let constant = &self.constants[entry.constant];
+                        let (re, im) = product.split_at_mut(L);
+                        for l in 0..L {
+                            re[l] = constant.re.clone();
+                            im[l] = constant.im.clone();
+                        }
+                        for &(input, exponent) in &entry.monomial {
+                            let factor = &x[input * v..(input + 1) * v];
+                            for _ in 0..exponent {
+                                lane_mul::<T, L>(product, factor);
+                            }
+                        }
+                        for (sum, item) in value.iter_mut().zip(product.iter()) {
+                            *sum += item;
+                        }
+                    }
+                    if term.sign < 0 {
+                        for item in value.iter_mut() {
+                            *item = -item.clone();
+                        }
+                    }
+                    let (value_re, value_im) = value.split_at(L);
+                    for &(coupling, component, weight) in &term.contributions {
+                        if self.active.is_some_and(|active| !active[coupling]) {
+                            continue;
+                        }
+                        let weight = &self.weights[weight];
+                        let (re, im) = target[component * v..(component + 1) * v].split_at_mut(L);
+                        for (l, &point) in lanes.iter().enumerate() {
+                            let factor = self.couplings[point][coupling].clone() * weight;
+                            re[l] +=
+                                factor.re.clone() * &value_re[l] - factor.im.clone() * &value_im[l];
+                            im[l] +=
+                                factor.re.clone() * &value_im[l] + factor.im.clone() * &value_re[l];
+                        }
+                    }
+                }
+            },
+        );
+        for (task, target) in sums.chunks_exact(width * v).enumerate() {
+            let (chunk, row) = (task / rows, task % rows);
+            for l in 0..L.min(points - chunk * L) {
+                let values = &mut out[chunk * L + l][row * width..(row + 1) * width];
+                for (component, item) in values.iter_mut().enumerate() {
+                    *item = Complex::new(
+                        target[component * v + l].clone(),
+                        target[component * v + L + l].clone(),
+                    );
+                }
+            }
+        }
+        out
     }
 }
 
