@@ -1696,15 +1696,14 @@ class _RealArguments:
         return found
 
     def _wrapped(self, atom: Any) -> bool:
-        """Whether ``atom`` is a compound manifestly real argument."""
+        """Whether ``atom`` is a compound manifestly real argument (a sum,
+        product or power: numbers and inputs are exact already, and a real
+        part is the projection itself)."""
 
         from symbolica import AtomType
 
-        return atom.get_type() not in (AtomType.Num, AtomType.Var) and (
-            self.is_real(atom) and atom.get_name() not in self.projections
-            if atom.get_type() == AtomType.Fn
-            else self.is_real(atom)
-        )
+        compound = (AtomType.Add, AtomType.Mul, AtomType.Pow)
+        return atom.get_type() in compound and self.is_real(atom)
 
 
 def _nonfinite_at_defaults(plan: Any) -> set[tuple[str, int]]:
