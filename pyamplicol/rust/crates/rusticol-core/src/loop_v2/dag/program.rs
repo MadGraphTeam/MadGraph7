@@ -7,9 +7,11 @@
 //! `assemble.TreeRows` builds the runtime schema of the DAG
 //! (`generation/runtime_schema.build_runtime_schema_layout`) and
 //! `loops/v2/native_trees._interaction_program` walks its stages. For a
-//! loop-request DAG (no amplitude roots) whose every current is propagated
-//! (the slice's tree rows, `TreeRows(dag)`, and a CT program's,
-//! `ct_closure.program_propagated_currents`) the layout is:
+//! loop-request DAG (no amplitude roots) whose every non-source current is
+//! propagated (a CT program's tree rows, `CountertermProgram.rows`:
+//! `propagated_currents = ct_closure.program_propagated_currents(dag)`) the
+//! layout is as below. The slice's `TreeRows(dag)` is not covered: there a
+//! current that feeds no interaction gets an `unpropagated` slot.
 //!
 //! * one value slot per current, in current order, each `dimension`
 //!   components wide: `source` for a source, otherwise `propagated` where

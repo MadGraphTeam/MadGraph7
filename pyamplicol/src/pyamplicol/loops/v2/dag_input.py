@@ -1795,10 +1795,12 @@ def native_tree_rows(
     dag: NativeDag, compiled: Any, *, pole_orders: Iterable[str] = ()
 ) -> tuple[NativeTreeRows, Any]:
     """The export's view of ``TreeRows(dag, compiled)`` and the DAG's native
-    interaction program (``V2Program``), for a loop-request DAG
-    whose every current is propagated (the slice's tree rows; a CT
-    program's, ``ct_closure.program_propagated_currents``), with the
-    program's pole currents those of a non-zero power of ``pole_orders``.
+    interaction program (``V2Program``), for a loop-request DAG whose
+    every non-source current is propagated (a CT program's,
+    ``ct_closure.program_propagated_currents``; not the slice's
+    ``TreeRows(dag)``, where a current that feeds no interaction is
+    unpropagated), with the program's pole currents those of a non-zero
+    power of ``pole_orders``.
 
     The Θ(DAG) layout is native (``V2Dag.program``, its module docs); the
     model's parts run the runtime schema's own functions on the few currents
