@@ -14,7 +14,7 @@ fn case(terms: usize, inputs: usize) -> (Vec<KernelTerm>, Vec<Complex<f64>>, Vec
         state ^= state << 17;
         state
     };
-    let mut value = |next: &mut dyn FnMut() -> u64| {
+    let value = |next: &mut dyn FnMut() -> u64| {
         let r = next();
         let mantissa = (r >> 11) as f64 / (1u64 << 53) as f64 - 0.5;
         mantissa * f64::powi(2.0, (r % 7) as i32 - 3)
@@ -67,4 +67,38 @@ fn wide_closure_kernels_are_bitwise_the_baseline() {
         assert_eq!(baseline.0[lane].to_bits(), value.re.to_bits());
         assert_eq!(baseline.1[lane].to_bits(), value.im.to_bits());
     }
+}
+
+#[test]
+fn lane_runs_cover_the_batch_without_padding() {
+    for points in 0..40 {
+        let runs = lane_runs(points);
+        let mut next = 0;
+        for &(first, count, lanes) in &runs {
+            assert_eq!(first, next);
+            assert!(count > 0 && count % lanes == 0, "{points}: {runs:?}");
+            next += count;
+        }
+        assert_eq!(next, points);
+        // Lanes of 8 first, then at most one run of 4, 2 and 1 each.
+        let widths: Vec<usize> = runs.iter().map(|run| run.2).collect();
+        assert!(
+            widths.windows(2).all(|pair| pair[0] > pair[1]),
+            "{widths:?}"
+        );
+    }
+    assert_eq!(lane_runs(9), vec![(0, 8, 8), (8, 1, 1)]);
+    assert_eq!(lane_runs(7), vec![(0, 4, 4), (4, 2, 2), (6, 1, 1)]);
+}
+
+#[cfg(target_arch = "x86_64")]
+#[test]
+fn the_closure_simd_cap_only_lowers_the_width() {
+    assert_eq!(Wide::cap(Some("baseline")), Wide::Baseline);
+    assert_eq!(Wide::cap(Some("avx2")), Wide::Avx2);
+    assert_eq!(Wide::cap(Some("avx512")), Wide::Avx512);
+    assert_eq!(Wide::cap(Some("AVX2")), Wide::Avx512);
+    assert_eq!(Wide::cap(None), Wide::Avx512);
+    // Other carriers take the baseline whatever the cap.
+    assert_eq!(Wide::detect::<f32>(), Wide::Baseline);
 }

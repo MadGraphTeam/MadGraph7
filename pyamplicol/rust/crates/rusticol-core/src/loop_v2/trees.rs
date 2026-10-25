@@ -326,8 +326,10 @@ struct Step {
 struct Interactions {
     /// Saved exact evaluators: vertex kernels, then propagator kernels.
     saved: Vec<Vec<u8>>,
-    /// Per kernel (vertex kernels, then propagator kernels) the state
-    /// indices of the model parameters it reads.
+    /// Per kernel (vertex kernels, then propagator kernels) the model
+    /// parameters it reads: indices into the state's model block, so
+    /// state components `model_offset + index` (tree schema 3). No kernel
+    /// reads the whole block.
     models: Vec<Vec<usize>>,
     steps: Vec<Step>,
 }
@@ -336,8 +338,12 @@ struct Interactions {
 #[derive(Clone, Copy)]
 struct StateLayout {
     size: usize,
+    /// The model block: state components `model_offset ..
+    /// model_offset + model_block`, filled per point. Kernels read the
+    /// subsets `Interactions::models` of it (schema 3; the field was
+    /// `model_count` while every kernel read the whole block).
     model_offset: usize,
-    model_count: usize,
+    model_block: usize,
 }
 
 /// The counterterm program (`CountertermTreesFile`).
@@ -949,7 +955,7 @@ impl TreeProgram {
                     layout: StateLayout {
                         size: ct.state_size,
                         model_offset: ct.model_offset,
-                        model_count: ct.model_count,
+                        model_block: ct.model_count,
                     },
                     momentum_slots: ct.momentum_slots,
                     sources: SchemaSources::from_value(&ct.source_fill)?,
@@ -979,7 +985,7 @@ impl TreeProgram {
             file.model_count,
             counterterm_trees
                 .as_ref()
-                .map_or(0, |ct| ct.layout.model_count),
+                .map_or(0, |ct| ct.layout.model_block),
             file.born.couplings,
             file.counterterms.as_ref().map_or(0, |ct| ct.couplings),
             plan,
@@ -1426,7 +1432,7 @@ impl TreeProgram {
                     && batch
                         .counterterm_model
                         .iter()
-                        .all(|model| model.len() == ct.layout.model_count),
+                        .all(|model| model.len() == ct.layout.model_block),
                 "counterterm program model parameter count",
             )?;
         }
@@ -1454,7 +1460,7 @@ impl TreeProgram {
         let layout = StateLayout {
             size: self.state_size,
             model_offset: self.model_offset,
-            model_count: self.model_count,
+            model_block: self.model_count,
         };
         let started = std::time::Instant::now();
         let mut states = Self::states(
@@ -1700,7 +1706,9 @@ impl TreeProgram {
     ///
     /// Points run in lanes (`Closure::lanes`): every lane performs one point's
     /// operations in the scalar order, so a point's values do not depend on
-    /// its batch; lanes and Born rows run in parallel.
+    /// its batch; lanes and Born rows run in parallel. The batch runs in
+    /// lanes of 8 points, its last `points % 8` in lanes of 4, 2 and 1
+    /// (`lane_runs`), so no lane repeats a point.
     #[allow(clippy::too_many_arguments)]
     fn close<T: Carrier>(
         &self,
@@ -1729,13 +1737,16 @@ impl TreeProgram {
             counterterm_states,
             constants,
         };
-        match momenta.len() {
-            0 => Vec::new(),
-            1 => closure.lanes::<1>(zero),
-            2 | 3 => closure.lanes::<2>(zero),
-            4..=7 => closure.lanes::<4>(zero),
-            _ => closure.lanes::<8>(zero),
+        let mut out = Vec::with_capacity(momenta.len());
+        for (first, count, lanes) in lane_runs(momenta.len()) {
+            out.extend(match lanes {
+                8 => closure.lanes::<8>(first, count, zero),
+                4 => closure.lanes::<4>(first, count, zero),
+                2 => closure.lanes::<2>(first, count, zero),
+                _ => closure.lanes::<1>(first, count, zero),
+            });
         }
+        out
     }
 
     /// `|A0|²` per squared Born order of one point (divided by the average):
@@ -1758,6 +1769,22 @@ impl TreeProgram {
             .map(|value| value / runtime.average.clone())
             .collect()
     }
+}
+
+/// The runs (first point, points, lane width) a batch of `points` points
+/// closes in: lanes of 8 points, then the remainder in lanes of 4, 2 and 1
+/// (at most one each), every run a whole number of lanes.
+fn lane_runs(points: usize) -> Vec<(usize, usize, usize)> {
+    let mut runs = Vec::new();
+    let mut first = 0;
+    for lanes in [8, 4, 2, 1] {
+        let count = (points - first) / lanes * lanes;
+        if count > 0 {
+            runs.push((first, count, lanes));
+            first += count;
+        }
+    }
+    runs
 }
 
 /// The root closure of a batch (`TreeProgram::close`).
@@ -1849,7 +1876,7 @@ fn kernel_lanes_avx2<T: Carrier, const L: usize>(
 /// The vector width the closure kernels run in: binary64 lanes take the
 /// widest the running CPU reports (never a build-host feature), the other
 /// carriers the baseline.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Wide {
     Baseline,
     #[cfg(target_arch = "x86_64")]
@@ -1858,31 +1885,51 @@ enum Wide {
     Avx512,
 }
 
+/// Caps the closure kernels' vector width (`Wide::detect`) at `baseline`
+/// or `avx2`, so that one AVX-512 host runs the code paths of an AVX2-only
+/// or a baseline x86-64 host (the bitwise check of
+/// `tests/unit/test_loop_v2_native_trees.py`); any other value, or none,
+/// caps nothing. It never enables a feature the CPU lacks.
+const CLOSURE_SIMD_ENV: &str = "RUSTICOL_TEST_CLOSURE_SIMD";
+
 impl Wide {
     fn detect<T: 'static>() -> Self {
         #[cfg(target_arch = "x86_64")]
         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f64>() {
-            if std::arch::is_x86_feature_detected!("avx512f") {
+            static CAP: std::sync::OnceLock<Wide> = std::sync::OnceLock::new();
+            let cap =
+                *CAP.get_or_init(|| Self::cap(std::env::var(CLOSURE_SIMD_ENV).ok().as_deref()));
+            if cap == Self::Avx512 && std::arch::is_x86_feature_detected!("avx512f") {
                 return Self::Avx512;
             }
-            if std::arch::is_x86_feature_detected!("avx2") {
+            if cap != Self::Baseline && std::arch::is_x86_feature_detected!("avx2") {
                 return Self::Avx2;
             }
         }
         Self::Baseline
     }
+
+    /// The widest width `CLOSURE_SIMD_ENV`'s value allows.
+    #[cfg(target_arch = "x86_64")]
+    fn cap(value: Option<&str>) -> Self {
+        match value {
+            Some("baseline") => Self::Baseline,
+            Some("avx2") => Self::Avx2,
+            _ => Self::Avx512,
+        }
+    }
 }
 
 impl<T: Carrier> Closure<'_, T> {
-    /// Every point's closure in lanes of `L` points (the last lanes of a
-    /// batch that `L` does not divide repeat its last point and are
-    /// dropped): per lane chunk and Born row, the terms in order, each
-    /// lane in the scalar operations of `Complex<T>` (the kernel's terms
-    /// `constant × Π input^power` summed from zero, the sign, then per
-    /// contribution `(coupling × weight) × value` added to its component).
-    fn lanes<const L: usize>(&self, zero: &T) -> Vec<Vec<Complex<T>>> {
+    /// The closures of points `first .. first + points` in lanes of `L`
+    /// points (`lane_runs` makes `L` divide `points`; otherwise the last
+    /// lanes would repeat the run's last point and be dropped): per lane
+    /// chunk and Born row, the terms in order, each lane in the scalar
+    /// operations of `Complex<T>` (the kernel's terms `constant × Π
+    /// input^power` summed from zero, the sign, then per contribution
+    /// `(coupling × weight) × value` added to its component).
+    fn lanes<const L: usize>(&self, first: usize, points: usize, zero: &T) -> Vec<Vec<Complex<T>>> {
         let program = self.program;
-        let points = self.momenta.len();
         let rows = program.rows;
         let width = self.width;
         let czero = Complex::new(zero.clone(), zero.clone());
@@ -1902,7 +1949,8 @@ impl<T: Carrier> Closure<'_, T> {
             || (vec![zero.clone(); inputs * v], Vec::new()),
             |(x, starts), (task, target)| {
                 let (chunk, row) = (task / rows, task % rows);
-                let lanes: [usize; L] = std::array::from_fn(|l| (chunk * L + l).min(points - 1));
+                let lanes: [usize; L] =
+                    std::array::from_fn(|l| first + (chunk * L + l).min(points - 1));
                 for term in self.terms {
                     if self
                         .active
