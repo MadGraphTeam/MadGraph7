@@ -148,6 +148,7 @@ from .families import (
     add_orders,
     generate_families,
     mass_name,
+    onshell_leg,
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
@@ -3179,6 +3180,17 @@ class _PointEvaluation:
             self.parameters,
             {mass for key in numerators for _mask, mass in key[0]},
         )
+        onshell = _leg_masses(slice_, self.parameters)
+        full = (1 << len(onshell)) - 1
+
+        def invariant(arc: int, a, b):
+            # A single-leg arc is the leg's squared mass (on-shell external
+            # invariants, design §11.1), exactly the value its propagators
+            # take; any other arc is p(arc)^2 of the given momenta.
+            leg = onshell_leg(arc, full)
+            if leg is not None and onshell[leg] is not None:
+                return onshell[leg]
+            return _minkowski([x - y for x, y in zip(a, b, strict=True)])
 
         def batch(values, lane: int):
             return native.NativeBatch.from_decimal(
@@ -3192,9 +3204,10 @@ class _PointEvaluation:
         for (family, loop_order), numerator in sorted(numerators.items()):
             sequence = numerator.sequence
             n = len(sequence)
-            vectors = [leg_momentum(mask, self.incoming) for mask in shifts(sequence)]
+            arcs = shifts(sequence)
+            vectors = [leg_momentum(mask, self.incoming) for mask in arcs]
             matrix = [
-                _minkowski([a - b for a, b in zip(vectors[i], vectors[j], strict=True)])
+                invariant(arcs[i] ^ arcs[j], vectors[i], vectors[j])
                 for i in range(n)
                 for j in range(n)
             ]
@@ -4035,6 +4048,23 @@ def _mass_values(
         mass: Fraction(0) if mass.massless else values[mass.mass] ** 2
         for mass in masses
     }
+
+
+def _leg_masses(slice_, parameters: Mapping[str, str]) -> tuple[Fraction | None, ...]:
+    """Each external leg's squared mass in leg order, the value of the
+    invariants its mass shell fixes (``families.onshell_leg``; DESIGN §11.1):
+    the same exact value ``_mass_values`` gives its mass id, 0 for a massless
+    leg (a mass parameter bound to 0 included), None for a mass that is no
+    external parameter (a derived mass such as loop_sm's MW, which no loop
+    propagator of the slice can carry: those invariants stay p^2)."""
+
+    values = _kernel_parameters(slice_.compiled, parameters)
+    return tuple(
+        Fraction(0)
+        if leg.mass.mass == ZERO
+        else (values[leg.mass.mass] ** 2 if leg.mass.mass in values else None)
+        for leg in slice_.families.legs
+    )
 
 
 def _charged_fields(compiled) -> frozenset[str]:

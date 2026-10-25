@@ -700,6 +700,9 @@ pub struct BoundParameters<T> {
     pub constants: Vec<Complex<T>>,
     /// The plan's squared masses per mass id.
     pub masses: Vec<Rational>,
+    /// The squared mass of each leg's external state (`V2Batch::leg_masses`),
+    /// from the same exact mass parameters as the plan's and the sources'.
+    pub leg_masses: Vec<Option<Rational>>,
 }
 
 /// Native inputs of a batch, per point.
@@ -1889,14 +1892,21 @@ impl TreeProgram {
         };
         let model = values_of(&program.model);
         let counterterm_model = values_of(&program.counterterm_model);
+        let masses: BTreeMap<i32, Rational> = program
+            .masses
+            .iter()
+            .map(|&(pdg, index)| (pdg, values[index].clone()))
+            .collect();
         Ok(BoundParameters {
+            leg_masses: self
+                .sources
+                .leg_masses(self.legs, &masses)?
+                .into_iter()
+                .map(Some)
+                .collect(),
             trees: TreeBatch {
                 model,
-                masses: program
-                    .masses
-                    .iter()
-                    .map(|&(pdg, index)| (pdg, values[index].clone()))
-                    .collect(),
+                masses,
                 couplings,
                 counterterm_couplings,
                 counterterm_model,

@@ -319,6 +319,8 @@ impl V2Runtime {
             momenta: incoming,
             scales: scales.to_vec(),
             masses: bound.masses,
+            // The on-shell external invariants (as the Python binding's).
+            leg_masses: bound.leg_masses,
             constants: bound.constants,
             block_rows: inputs.block_rows,
             born: inputs.born,
