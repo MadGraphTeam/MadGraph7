@@ -81,10 +81,11 @@ import math
 import struct
 import sys
 from array import array
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from pyamplicol.color.plan_types import GenericColorPlan
 from pyamplicol.generation.dag_compiler import (
@@ -98,7 +99,7 @@ from pyamplicol.generation.dag_types import (
     GenericDAG,
     InteractionNode,
 )
-from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
+from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND, TreeKernelVariant
 from pyamplicol.processes.ir import CanonicalProcessIR
 
 from .blocks import (
@@ -246,6 +247,7 @@ _TYPECODES = {
     "f64": "d",
 }
 _MODEL_ERRORS = (KeyError, NotImplementedError, TypeError, ValueError)
+_T = TypeVar("_T")
 
 
 class NativeDagUnsupported(ValueError):
@@ -299,6 +301,26 @@ def rebuild_count() -> int:
     """How many released native DAGs were rebuilt from their tables."""
 
     return _REBUILDS
+
+
+@contextmanager
+def native_flags(
+    *, dag: bool | None = None, program: bool | None = None
+) -> Iterator[None]:
+    """``NATIVE_DAG`` (``dag``) and ``NATIVE_PROGRAM`` (``program``) set
+    for the block (``None``: unchanged) and restored after it: the oracle
+    and native lanes of the tests and ``tools/loop_v2_dag.py``."""
+
+    global NATIVE_DAG, NATIVE_PROGRAM
+    before = NATIVE_DAG, NATIVE_PROGRAM
+    if dag is not None:
+        NATIVE_DAG = dag
+    if program is not None:
+        NATIVE_PROGRAM = program
+    try:
+        yield
+    finally:
+        NATIVE_DAG, NATIVE_PROGRAM = before
 
 
 _NATIVE: list[Any] = []
@@ -1498,11 +1520,11 @@ class NativeDag:
     def released(self) -> bool:
         return self._handle is None
 
-    def _answer(self, key: Any, work: Any) -> Any:
+    def _answer(self, key: Any, work: Callable[[], _T]) -> _T:
         found = self._answers.get(key)
         if found is None:
             found = self._answers[key] = work()
-        return found
+        return cast(_T, found)
 
     # ``dataclasses.fields`` and ``dataclasses.replace`` see the
     # ``GenericDAG``'s fields (``replace`` reads them, so it decodes, counted,
@@ -1522,9 +1544,31 @@ class NativeDag:
         # The stand-in passes the consumers' ``isinstance(dag, GenericDAG)``
         # (e.g. ``StageCompilationInput`` of the per-point rows), which reads
         # no attribute; ``type(dag)`` stays ``NativeDag``, which the native
-        # dispatches test first. Equality with a ``GenericDAG`` compares the
-        # decoded fields.
+        # dispatches test first. Equality and hashing are a ``GenericDAG``'s
+        # (``__eq__``, ``__hash__``).
         return GenericDAG
+
+    def __eq__(self, other: object) -> bool:
+        # The stand-in equals what it stands for. Two native DAGs: equal
+        # columns of one process decode to the same DAG (no decode); other
+        # columns (another encoder's) compare decoded. A ``GenericDAG``:
+        # compared decoded (counted), as its own ``__eq__`` does.
+        if type(other) is NativeDag:
+            if self is other:
+                return True
+            if self.process != other.process:
+                return False
+            if self.columns() == other.columns():
+                return True
+            return self.materialize() == other.materialize()
+        if type(other) is GenericDAG:
+            return self.materialize() == other
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        # Consistent with ``__eq__`` and with an equal ``GenericDAG``'s hash
+        # (decodes, counted; generation hashes no DAG).
+        return hash(self.materialize())
 
     def __reduce_ex__(self, protocol: Any) -> Any:
         # ``pickle`` and ``copy`` take the decoded ``GenericDAG`` (counted):
@@ -1567,9 +1611,11 @@ class NativeDag:
     def counts(self) -> tuple[int, int, int]:
         """``(currents, interactions, sources)``."""
 
-        return self._answer(  # type: ignore[no-any-return]
-            "counts", lambda: tuple(self._native_handle().counts())
-        )
+        def counts() -> tuple[int, int, int]:
+            currents, interactions, sources = self._native_handle().counts()
+            return int(currents), int(interactions), int(sources)
+
+        return self._answer("counts", counts)
 
     def columns(self) -> bytes:
         return bytes(self._native_handle().columns())
@@ -1577,9 +1623,7 @@ class NativeDag:
     def digest(self) -> str:
         """Flat-record SHA-256 of the DAG (the DAG part of S1'/S1'')."""
 
-        return self._answer(  # type: ignore[no-any-return]
-            "digest", lambda: str(self._native_handle().digest())
-        )
+        return self._answer("digest", lambda: str(self._native_handle().digest()))
 
     def _tables(self) -> str:
         if self._block_input is None:
@@ -1588,7 +1632,7 @@ class NativeDag:
             )
         return self._block_input
 
-    def blocks(self, kernel_variant: str) -> tuple[Block, ...]:
+    def blocks(self, kernel_variant: TreeKernelVariant) -> tuple[Block, ...]:
         """``loops.v2.blocks._blocks(dag, model, kernel_variant)``; the blocks
         of a CT program's clone particles are keyed by the fields their lines
         are read as (``ct_closure.CountertermBlocks.build``)."""
@@ -1596,7 +1640,7 @@ class NativeDag:
         return self._blocks_and_clones(kernel_variant)[0]
 
     def _blocks_and_clones(
-        self, kernel_variant: str
+        self, kernel_variant: TreeKernelVariant
     ) -> tuple[tuple[Block, ...], dict[int, int]]:
         """The blocks and, for the clone blocks, block id -> clone particle."""
 
@@ -1604,7 +1648,7 @@ class NativeDag:
 
         from .blocks import _checked_kernel_variant
 
-        variant = _checked_kernel_variant("plain", kernel_variant)  # type: ignore[arg-type]
+        variant = _checked_kernel_variant("plain", kernel_variant)
         if self._blocks is not None:
             # The variant only labels the blocks (the DAG does not depend on
             # it, ``TreeBlocks.with_kernels``).
@@ -1695,7 +1739,7 @@ class NativeDag:
             int(fundamental_mask),
             int(rest_mask),
         )
-        return self._answer(  # type: ignore[no-any-return]
+        return self._answer(
             ("u1", arguments),
             lambda: frozenset(
                 self._native_handle().u1_leaking(
@@ -1713,7 +1757,7 @@ class NativeDag:
         amputated), which test colours, widths and propagators themselves."""
 
         full = (1 << len(self.process.legs)) - 1
-        return self._answer(  # type: ignore[no-any-return]
+        return self._answer(
             "species",
             lambda: tuple(
                 (int(pdg), bool(amputated))
@@ -1777,7 +1821,7 @@ class NativeCountertermBlocks:
     dag: NativeDag
     blocks: tuple[Block, ...]
     clones: Mapping[int, Any]
-    kernel_variant: str
+    kernel_variant: TreeKernelVariant
 
 
 def native_counterterm_blocks(

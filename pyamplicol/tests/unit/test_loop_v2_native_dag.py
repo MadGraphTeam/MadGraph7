@@ -26,7 +26,6 @@ native interaction program (``dag_input.NATIVE_PROGRAM``) against
 
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import itertools
 import os
@@ -57,16 +56,10 @@ from .test_loop_v2_ct_two_point import two_point_model  # noqa: F401 (fixture)
 VARIANTS = ("transverse", "full")
 
 
-@contextlib.contextmanager
 def _flag(on):
     """``dag_input.NATIVE_DAG`` set to ``on`` (off: the oracle stages)."""
 
-    before = dag_input.NATIVE_DAG
-    dag_input.NATIVE_DAG = on
-    try:
-        yield
-    finally:
-        dag_input.NATIVE_DAG = before
+    return dag_input.native_flags(dag=on)
 
 
 @pytest.fixture(scope="module")
@@ -1132,16 +1125,10 @@ def test_native_counterterm_trees_equal_the_oracle(loop_sm_compiled_model):
     assert dag_input.native_counterterm_trees(program) is None
 
 
-@contextlib.contextmanager
 def _program_flag(on):
     """``dag_input.NATIVE_PROGRAM`` set to ``on``."""
 
-    before = dag_input.NATIVE_PROGRAM
-    dag_input.NATIVE_PROGRAM = on
-    try:
-        yield
-    finally:
-        dag_input.NATIVE_PROGRAM = before
+    return dag_input.native_flags(program=on)
 
 
 class _Delegating:

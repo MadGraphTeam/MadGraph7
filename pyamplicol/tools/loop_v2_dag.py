@@ -50,7 +50,7 @@ import resource
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -117,18 +117,12 @@ def _load_model(args: argparse.Namespace) -> Any:
     return load_compiled_model(model.write(cache / "loop-sm.json"))
 
 
-@contextlib.contextmanager
-def _native_dag(on: bool) -> Iterator[None]:
+def _native_dag(on: bool) -> contextlib.AbstractContextManager[None]:
     """``dag_input.NATIVE_DAG`` set to ``on`` (the lane) for the block."""
 
     from pyamplicol.loops.v2 import dag_input
 
-    before = dag_input.NATIVE_DAG
-    dag_input.NATIVE_DAG = on
-    try:
-        yield
-    finally:
-        dag_input.NATIVE_DAG = before
+    return dag_input.native_flags(dag=on)
 
 
 def _s1p(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> None:
@@ -265,15 +259,11 @@ def _pct(args: argparse.Namespace, clock: _Clock, record: dict[str, Any]) -> Non
     finally:
         args.lane = lane
     blocks = record.pop("_program")
-    before = dag_input.NATIVE_PROGRAM
-    dag_input.NATIVE_PROGRAM = lane == "native"
-    try:
+    with dag_input.native_flags(program=lane == "native"):
         trees = clock(
             "CT interaction program",
             lambda: _CountertermTrees.of(CountertermProgram(blocks, ()), 0),
         )
-    finally:
-        dag_input.NATIVE_PROGRAM = before
     hasher = hashlib.sha256()
     hasher.update(
         clock(

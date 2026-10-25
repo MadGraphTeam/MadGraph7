@@ -341,7 +341,7 @@ class CountertermBlocks:
                         born_dag=native.dag,
                         blocks=native.blocks,
                         born_roots=(),
-                        kernel_variant=native.kernel_variant,  # type: ignore[arg-type]
+                        kernel_variant=native.kernel_variant,
                     ),
                     native.clones,
                 )
