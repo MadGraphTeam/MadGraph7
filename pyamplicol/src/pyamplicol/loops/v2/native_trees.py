@@ -76,7 +76,7 @@ from pyamplicol.color.contraction_types import NC
 
 from .families import Orders, add_orders
 
-TREE_SCHEMA = 3
+TREE_SCHEMA = 4
 
 # Prune the exported tree program to what its outputs read
 # (``prune_program``); False exports the unpruned program (the oracle of
@@ -536,6 +536,8 @@ class _CountertermTrees:
             "model_count": model_count,
             "momentum_slots": momentum_slots,
             "source_fill": source_fill,
+            # The slot table (``counterterm_slots``) of the program's masks.
+            "slots": counterterm_slots(program.recursion),
             "interactions": interactions,
         }
         return cls(
@@ -566,24 +568,11 @@ class _CountertermTrees:
             for label in record["external_labels"]:
                 mask |= 1 << (int(label) - 1)
             momentum_slots.append([value_count + int(record["component_start"]), mask])
-        # Currents of a pole slot (an epsilon power other than 0): only pole
-        # terms read them, so finite-only evaluations skip them.
-        from pyamplicol.models.loading import counterterm_slot_order
-
-        pole_orders = {
-            counterterm_slot_order(*slot)
-            for slot in program.recursion.slots
-            if slot[1] != 0
-        }
-        pole_currents = frozenset(
-            current.id
-            for current in rows.dag.currents
-            if any(
-                power and name in pole_orders
-                for name, power in current.index.coupling_orders
-            )
+        # Per-slot reachability (``_interaction_program``): finite-only
+        # evaluations skip the currents only pole slots read.
+        interactions, saved = _interaction_program(
+            rows, counterterm_slots(program.recursion)
         )
-        interactions, saved = _interaction_program(rows, pole_currents)
         return rows, slots, momentum_slots, schema["source_fill"], interactions, saved
 
 
@@ -1365,7 +1354,7 @@ def _saved_kernel(
 
 
 def _interaction_program(
-    trees: Any, pole_currents: frozenset[int] = frozenset()
+    trees: Any, slots: Sequence[Sequence[Any]] = ()
 ) -> tuple[dict[str, Any], tuple[bytes, ...]]:
     """The blocks DAG of ``trees`` (a ``TreeRows``) as an interaction program.
 
@@ -1383,12 +1372,18 @@ def _interaction_program(
     size is that of the DAG; the saved evaluators come first for the
     kernels, then for the propagators.
 
-    ``pole_currents`` are currents only epsilon-pole terms read (a
-    counterterm program's pole slots): per step the indices of the
-    interactions and outputs of such currents (``pole_interactions``,
-    ``pole_outputs``), which finite-only evaluations skip. The kernels
-    follow the shared recipe (``_vertex_kernel``, ``_propagator_kernel``,
-    ``_saved_kernel``)."""
+    ``slots`` is a counterterm program's slot table (``counterterm_slots``:
+    per CT slot its pseudo-order, component, epsilon power and N_c grade;
+    empty for the trees). The program then records per-slot reachability
+    (``slot_masks``): ``masks`` lists slot sets (``masks[0]`` every slot,
+    ``masks[1 + s]`` slot ``s`` alone) and each step's
+    ``accumulator_masks`` the set of slots its result current reaches: a
+    current with one insertion carries its slot's order and reaches that
+    slot only, one without an insertion (CT = 0) feeds every slot. An
+    evaluation skips every interaction and output whose current reaches no
+    slot it computes (finite-only: no slot of epsilon power 0, the native
+    runtime's skip). The kernels follow the shared recipe
+    (``_vertex_kernel``, ``_propagator_kernel``, ``_saved_kernel``)."""
 
     from pyamplicol.generation.stage_parameters import (
         _model_symbolica_functions,
@@ -1453,6 +1448,19 @@ def _interaction_program(
         if found is None:
             mask = dag.currents[current_id].index.momentum_mask
             found = momenta[current_id] = momentum_start[mask]
+        return found
+
+    slot_of = {str(slot[0]): s for s, slot in enumerate(slots)}
+    current_masks: dict[int, int] = {}
+
+    def mask_of(current_id: int) -> int:
+        """The current's ``masks`` index (``slot_masks``)."""
+
+        found = current_masks.get(current_id)
+        if found is None:
+            found = current_masks[current_id] = slot_masks(
+                dag.currents[current_id].index.coupling_orders, slot_of
+            )
         return found
 
     def weight_text(color_weight: tuple[float, float]) -> tuple[str, str]:
@@ -1521,13 +1529,10 @@ def _interaction_program(
             accumulators[current] = len(dimensions)
             dimensions.append(int(current_slots[current]["dimension"]))
         rows = []
-        pole_rows = []
         for item in stage["interaction_ids"]:
             interaction = dag.interactions[int(item)]
             if complex(*interaction.evaluation_factor) == 0j:
                 continue  # a certified zero attachment (as the stage program)
-            if int(interaction.result_id) in pole_currents:
-                pole_rows.append(len(rows))
             left, right = inputs[interaction.left_id], inputs[interaction.right_id]
             real, imag = weight_text(tuple(interaction.color_weight))
             rows.append(
@@ -1545,12 +1550,9 @@ def _interaction_program(
                 ]
             )
         outputs = []
-        pole_outputs = []
         for slot_id in stage["output_value_slot_ids"]:
             slot = value_slots[int(slot_id)]
             current = int(slot["current_id"])
-            if current in pole_currents:
-                pole_outputs.append(len(outputs))
             variant = str(slot["variant"])
             if variant not in ("propagated", "unpropagated"):
                 raise ValueError(f"a stage output of variant {variant!r}")
@@ -1564,16 +1566,51 @@ def _interaction_program(
                 ]
             )
         step = {"interactions": rows, "accumulators": dimensions, "outputs": outputs}
-        if pole_rows or pole_outputs:
-            step["pole_interactions"] = pole_rows
-            step["pole_outputs"] = pole_outputs
+        if slots:
+            step["accumulator_masks"] = [mask_of(current) for current in accumulators]
         steps.append(step)
     program = {
         "kernels": shapes["kernels"],
         "propagators": shapes["propagators"],
         "steps": steps,
     }
+    if slots:
+        program["masks"] = slot_mask_table(len(slots))
     return program, (*saved["kernels"], *saved["propagators"])
+
+
+def counterterm_slots(recursion: Any) -> list[list[Any]]:
+    """The slot table of a counterterm program (``ct_recursion.
+    CountertermRecursion.slots``, sorted): per CT slot its pseudo-order
+    (``counterterm_slot_order``), component, epsilon power and N_c grade.
+    Slot ``s`` of the program's ``masks`` is entry ``s``."""
+
+    from pyamplicol.models.loading import counterterm_slot_order
+
+    return [
+        [counterterm_slot_order(*slot), str(slot[0]), int(slot[1]), int(slot[2])]
+        for slot in recursion.slots
+    ]
+
+
+def slot_mask_table(count: int) -> list[list[int]]:
+    """The slot sets of a counterterm program with ``count`` slots: every
+    slot (index 0, the currents without an insertion), then each slot alone
+    (index ``1 + s``)."""
+
+    return [list(range(count)), *([s] for s in range(count))]
+
+
+def slot_masks(orders: Any, slot_of: Mapping[str, int]) -> int:
+    """The ``slot_mask_table`` index of a current with coupling ``orders``:
+    its one insertion's slot, or every slot without an insertion. A current
+    with insertions of two slots is refused (the program inserts exactly
+    one counterterm)."""
+
+    found = {slot_of[name] for name, power in orders if power and name in slot_of}
+    if len(found) > 1:
+        raise ValueError("a counterterm program current carries two slot orders")
+    return 0 if not found else 1 + found.pop()
 
 
 # ---------------------------------------------------------------- pruning
@@ -1839,8 +1876,6 @@ def _prune_interactions(
         accumulator_of = [-1] * len(step["accumulators"])
         for new, old in enumerate(accumulators):
             accumulator_of[old] = new
-        pole_rows = set(step.get("pole_interactions", ()))
-        pole_outputs = set(step.get("pole_outputs", ()))
         new_rows = []
         for k in rows:
             row = step["interactions"][k]
@@ -1854,17 +1889,12 @@ def _prune_interactions(
             if output[1] >= 0:
                 output[1] = propagator_of[output[1]]
             new_outputs.append(output)
-        new_pole_rows = [i for i, k in enumerate(rows) if k in pole_rows]
-        new_pole_outputs = [i for i, k in enumerate(outputs) if k in pole_outputs]
         step["interactions"] = new_rows
         step["accumulators"] = [step["accumulators"][a] for a in accumulators]
+        if "accumulator_masks" in step:
+            masks = step["accumulator_masks"]
+            step["accumulator_masks"] = [masks[a] for a in accumulators]
         step["outputs"] = new_outputs
-        if new_pole_rows or new_pole_outputs:
-            step["pole_interactions"] = new_pole_rows
-            step["pole_outputs"] = new_pole_outputs
-        else:
-            step.pop("pole_interactions", None)
-            step.pop("pole_outputs", None)
     interactions["kernels"] = [interactions["kernels"][k] for k in used]
     interactions["propagators"] = [interactions["propagators"][p] for p in propagators]
     return (

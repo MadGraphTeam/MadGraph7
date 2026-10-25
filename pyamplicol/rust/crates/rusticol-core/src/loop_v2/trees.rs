@@ -65,8 +65,9 @@ use symbolica::domains::float::{Complex, DoubleFloat, Float, Real};
 use symbolica::domains::rational::Rational;
 use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
 
-/// The tree-program schema this executor runs.
-pub const TREE_SCHEMA: u32 = 3;
+/// The tree-program schema this executor runs (4: the counterterm program's
+/// slot table and per-slot reachability masks, WP3.1 I5).
+pub const TREE_SCHEMA: u32 = 4;
 
 /// Generation: the binary64 SymJIT plane application of a saved exact
 /// evaluator of a tree program (a kernel or the parameter program), with its
@@ -284,6 +285,9 @@ struct CountertermTreesFile {
     model_count: usize,
     momentum_slots: Vec<(usize, u64)>,
     source_fill: serde_json::Value,
+    /// The slot table: (pseudo-order, component, epsilon power, N_c grade)
+    /// per counterterm slot (`native_trees.counterterm_slots`).
+    slots: Vec<(String, String, i32, i32)>,
     interactions: InteractionFile,
 }
 
@@ -298,6 +302,11 @@ struct InteractionFile {
     /// `[value, p, model]`.
     propagators: Vec<(usize, usize, Vec<usize>)>,
     steps: Vec<StepFile>,
+    /// A counterterm program's slot sets (indices into its slot table,
+    /// `CountertermTreesFile::slots`); each step's `accumulator_masks` index
+    /// them. Absent for the trees.
+    #[serde(default)]
+    masks: Vec<Vec<usize>>,
 }
 
 #[derive(Deserialize)]
@@ -324,13 +333,12 @@ struct StepFile {
     /// (accumulator, propagator or -1 to copy, momentum start, state start,
     /// dimension).
     outputs: Vec<(usize, i64, usize, usize, usize)>,
-    /// Interactions and outputs of currents only epsilon-pole terms read
-    /// (indices; a counterterm program's pole slots): finite-only
-    /// evaluations skip them.
+    /// Per accumulator the slot set (`InteractionFile::masks`) its result
+    /// current reaches (a counterterm program; empty for the trees): an
+    /// evaluation skips the interactions and outputs of the currents that
+    /// reach no slot it computes (finite-only: no slot of epsilon power 0).
     #[serde(default)]
-    pole_interactions: Vec<usize>,
-    #[serde(default)]
-    pole_outputs: Vec<usize>,
+    accumulator_masks: Vec<usize>,
 }
 
 #[derive(Deserialize)]
@@ -859,13 +867,41 @@ impl PlaneRows<f64> for BinaryPlane {
 
 /// Validate and group an interaction program (`InteractionFile`); `saved`
 /// holds its kernels' evaluators, vertex kernels first.
+/// `slots` is a counterterm program's slot table (none for the trees): the
+/// epsilon power of each slot. A step's interaction or output is a pole one
+/// (finite-only evaluations skip it) when its accumulator's slot set holds
+/// no slot of epsilon power 0.
 fn load_interactions(
     program: InteractionFile,
     saved: &[Vec<u8>],
     planes: Option<&[Vec<u8>]>,
     state_size: usize,
     model_count: usize,
+    slots: Option<&[i32]>,
 ) -> RusticolResult<Interactions> {
+    // Per slot set whether it reaches no finite slot (the finite-only skip).
+    let pole_masks: Vec<bool> = match slots {
+        Some(powers) => {
+            require(
+                !program.masks.is_empty()
+                    && program.masks.iter().all(|mask| {
+                        !mask.is_empty()
+                            && mask.windows(2).all(|pair| pair[0] < pair[1])
+                            && mask.iter().all(|&slot| slot < powers.len())
+                    }),
+                "counterterm slot masks",
+            )?;
+            program
+                .masks
+                .iter()
+                .map(|mask| mask.iter().all(|&slot| powers[slot] != 0))
+                .collect()
+        }
+        None => {
+            require(program.masks.is_empty(), "slot masks outside a counterterm program")?;
+            Vec::new()
+        }
+    };
     let kernels = program.kernels.len();
     require(
         saved.len() == kernels + program.propagators.len()
@@ -900,21 +936,29 @@ fn load_interactions(
             offsets.push(width);
             width += dimension;
         }
-        require(
-            step.pole_interactions
+        // Per accumulator whether only pole slots read its current.
+        let pole: Vec<bool> = if slots.is_some() {
+            require(
+                step.accumulator_masks.len() == step.accumulators.len()
+                    && step
+                        .accumulator_masks
+                        .iter()
+                        .all(|&mask| mask < pole_masks.len()),
+                "accumulator slot masks",
+            )?;
+            step.accumulator_masks
                 .iter()
-                .all(|&i| i < step.interactions.len())
-                && step.pole_outputs.iter().all(|&i| i < step.outputs.len()),
-            "pole interaction or output index",
-        )?;
-        let pole_interactions: std::collections::BTreeSet<usize> =
-            step.pole_interactions.iter().copied().collect();
-        let pole_outputs: std::collections::BTreeSet<usize> =
-            step.pole_outputs.iter().copied().collect();
+                .map(|&mask| pole_masks[mask])
+                .collect()
+        } else {
+            require(
+                step.accumulator_masks.is_empty(),
+                "slot masks outside a counterterm program",
+            )?;
+            vec![false; step.accumulators.len()]
+        };
         let mut groups: BTreeMap<usize, Vec<Edge>> = BTreeMap::new();
-        for (index, (kernel, left, ld, right, rd, pl, pr, accumulator, re, im)) in
-            step.interactions.into_iter().enumerate()
-        {
+        for (kernel, left, ld, right, rd, pl, pr, accumulator, re, im) in step.interactions {
             let (inputs, outputs, model) = program
                 .kernels
                 .get(kernel)
@@ -938,13 +982,11 @@ fn load_interactions(
                 right_momentum: pr,
                 accumulator: offsets[accumulator],
                 weight: [exact(&re)?, exact(&im)?],
-                pole: pole_interactions.contains(&index),
+                pole: pole[accumulator],
             });
         }
         let mut outputs = Vec::with_capacity(step.outputs.len());
-        for (index, (accumulator, propagator, momentum, start, dimension)) in
-            step.outputs.into_iter().enumerate()
-        {
+        for (accumulator, propagator, momentum, start, dimension) in step.outputs {
             require(
                 accumulator < step.accumulators.len() && within(start, dimension),
                 "interaction output",
@@ -975,7 +1017,7 @@ fn load_interactions(
                 momentum,
                 start,
                 dimension,
-                pole_outputs.contains(&index),
+                pole[accumulator],
             ));
         }
         steps.push(Step {
@@ -1327,6 +1369,7 @@ impl TreeProgram {
             planes,
             file.state_size,
             file.model_count,
+            None,
         )?;
         let counterterm_trees = match file.counterterm_trees {
             Some(ct) => {
@@ -1341,6 +1384,18 @@ impl TreeProgram {
                         "counterterm program momentum slot outside its state",
                     )?;
                 }
+                require(
+                    !ct.slots.is_empty()
+                        && ct
+                            .slots
+                            .iter()
+                            .map(|slot| &slot.0)
+                            .collect::<std::collections::BTreeSet<_>>()
+                            .len()
+                            == ct.slots.len(),
+                    "counterterm slot table",
+                )?;
+                let powers: Vec<i32> = ct.slots.iter().map(|slot| slot.2).collect();
                 Some(CountertermTrees {
                     layout: StateLayout {
                         size: ct.state_size,
@@ -1355,6 +1410,7 @@ impl TreeProgram {
                         counterterm_planes,
                         ct.state_size,
                         ct.model_count,
+                        Some(&powers),
                     )?,
                 })
             }
