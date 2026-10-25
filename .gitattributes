@@ -4,3 +4,17 @@
 .gitattributes export-ignore
 .pre-commit-config.yaml export-ignore
 .bzrignore export-ignore
+
+# pyamplicol tests and development tooling stay in the repository for its own
+# PyPI releases. The MadGraph7 installer builds the wheel without them, except
+# for the legacy-oracle modules that the wheel bundles.
+pyamplicol/tests/ export-ignore
+pyamplicol/tools/developer/** export-ignore
+pyamplicol/tools/developer/legacy_amplicol.py -export-ignore
+pyamplicol/tools/developer/legacy_oracle -export-ignore
+pyamplicol/tools/developer/legacy_oracle/** -export-ignore
+pyamplicol/tools/fft_profiling/ export-ignore
+pyamplicol/umami_example/ export-ignore
+pyamplicol/flake.nix export-ignore
+pyamplicol/flake.lock export-ignore
+pyamplicol/run_fft_profiling_render.sh export-ignore
