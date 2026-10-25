@@ -178,7 +178,8 @@ impl V2Program {
     }
 
     /// The steps of `native_trees._interaction_program`, with `texts[w]` the
-    /// exact `(re, im)` texts of weight `w`.
+    /// exact `(re, im)` texts of weight `w`. Equal values are one Python
+    /// object (the oracle's rows share the schema's ints and the texts).
     fn steps<'py>(
         &self,
         py: Python<'py>,
@@ -187,10 +188,22 @@ impl V2Program {
         if texts.len() != self.program.weights.len() {
             return Err(PyValueError::new_err("one text pair per colour weight"));
         }
-        let int =
-            |value: i64| -> PyResult<Bound<'py, PyAny>> { Ok(value.into_pyobject(py)?.into_any()) };
-        let ints = |values: &[i64]| -> PyResult<Bound<'py, PyList>> {
-            PyList::new(py, values.iter().copied())
+        // Every non-negative value of a row or output is below the momentum
+        // components' end (starts, momentum starts, accumulators, kernels).
+        let end = self.program.value_count as usize + 4 * self.program.momentum_masks.len() + 1;
+        let mut shared: Vec<Option<Bound<'py, PyAny>>> = vec![None; end];
+        let mut int = |value: i64| -> PyResult<Bound<'py, PyAny>> {
+            match usize::try_from(value).ok().filter(|index| *index < end) {
+                Some(index) => match &shared[index] {
+                    Some(found) => Ok(found.clone()),
+                    None => {
+                        let made = value.into_pyobject(py)?.into_any();
+                        shared[index] = Some(made.clone());
+                        Ok(made)
+                    }
+                },
+                None => Ok(value.into_pyobject(py)?.into_any()),
+            }
         };
         let steps = PyList::empty(py);
         for step in &self.program.steps {
@@ -207,11 +220,20 @@ impl V2Program {
             }
             let outputs = PyList::empty(py);
             for output in &step.outputs {
-                outputs.append(ints(output)?)?;
+                let items = output
+                    .iter()
+                    .map(|value| int(*value))
+                    .collect::<PyResult<Vec<_>>>()?;
+                outputs.append(PyList::new(py, items)?)?;
             }
+            let accumulators = step
+                .accumulators
+                .iter()
+                .map(|value| int(*value))
+                .collect::<PyResult<Vec<_>>>()?;
             let record = PyDict::new(py);
             record.set_item("interactions", rows)?;
-            record.set_item("accumulators", ints(&step.accumulators)?)?;
+            record.set_item("accumulators", PyList::new(py, accumulators)?)?;
             record.set_item("outputs", outputs)?;
             if !step.pole_rows.is_empty() || !step.pole_outputs.is_empty() {
                 record.set_item("pole_interactions", PyList::new(py, step.pole_rows.iter())?)?;

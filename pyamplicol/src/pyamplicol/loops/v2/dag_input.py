@@ -1957,16 +1957,56 @@ def native_tree_rows(
     return rows, program
 
 
+def _retained_functions(
+    rewritten: Sequence[Any], definitions: Sequence[tuple[Any, Any, Any]]
+) -> tuple[tuple[Any, Any, Any], ...]:
+    """The model functions ``_specialize_stage_symbolica_functions`` retains
+    for its ``rewritten`` outputs: those they call, closed under the calls
+    of the functions' bodies, in definition order (the oracle's tail)."""
+
+    from pyamplicol.generation.stage_parameters import _expression_symbols
+
+    names = {function for function, _arguments, _body in definitions}
+    required = {
+        symbol
+        for expression in rewritten
+        for symbol in _expression_symbols(expression, enter_functions=True)
+        if symbol in names
+    }
+    while True:
+        dependencies = {
+            symbol
+            for function, _arguments, body in definitions
+            if function in required
+            for symbol in _expression_symbols(body, enter_functions=True)
+            if symbol in names
+        }
+        expanded = required | dependencies
+        if expanded == required:
+            break
+        required = expanded
+    return tuple(item for item in definitions if item[0] in required)
+
+
 def native_interaction_program(
     rows: NativeTreeRows, program: Any
 ) -> tuple[dict[str, Any], tuple[bytes, ...]]:
     """``native_trees._interaction_program`` of ``rows`` and its native
     ``program`` (``native_tree_rows``; its pole steps those of the pole
-    orders given there): the native steps and the
-    kernels, compiled once per shape in their first use from the
-    representative the oracle builds them from, by the oracle's recipe
-    (model component expressions on canonical symbols, saved exact
-    Symbolica evaluators; vertex kernels first, then propagators)."""
+    orders given there): the native steps, and the kernels in their first
+    use, each built from the representative the oracle builds it from by the
+    oracle's recipe (the model's component expressions with its kernel
+    functions inlined, on canonical symbols, saved as exact Symbolica
+    evaluators; vertex kernels first, then propagators).
+
+    The model functions are inlined into every kernel in one
+    ``_specialize_stage_symbolica_functions`` call (the oracle calls it per
+    kernel and rebuilds the inlining rules of every function so far each
+    time): the kernels are built first, in the oracle's order, so the
+    functions materialise in the same order, and each kernel's expressions
+    only reach its own functions, whose rules (and wildcards, numbered by
+    definition) do not depend on the functions defined after them; each
+    kernel then keeps the functions it calls (``_retained_functions``)."""
 
     from symbolica import Expression, FunctionDefinition
 
@@ -1994,24 +2034,74 @@ def native_interaction_program(
             },
         )
     )
-    saved: dict[str, list[bytes]] = {"kernels": [], "propagators": []}
-    shapes: dict[str, list[list[int]]] = {"kernels": [], "propagators": []}
 
     def symbols(name: str, count: int) -> list[Any]:
         return [
             registry.qualified(f"pyamplicol_v2_trees::{name}{i}") for i in range(count)
         ]
 
-    def compile_kernel(kind: str, build: Any) -> None:
-        inputs, components = build()
-        outputs, retained = _specialize_stage_symbolica_functions(
-            list(components), _model_symbolica_functions(model)
+    uses = program.kernels()
+    vertex_rows = dict(
+        zip(
+            (item for kind, _key, item in uses if kind == "kernels"),
+            rows.dag._native_handle().interaction_rows(
+                [item for kind, _key, item in uses if kind == "kernels"]
+            ),
+            strict=True,
         )
+    )
+    built: list[tuple[str, list[Any], tuple[Any, ...]]] = []
+    for kind, key, item in uses:
+        if kind == "kernels":
+            # key: (vertex kind, result pdg, result chirality, left
+            # chirality, right chirality, left dimension, right dimension).
+            lhs, rhs = symbols("l", key[5]), symbols("r", key[6])
+            pl, pr = symbols("pl", 4), symbols("pr", 4)
+            inputs = [*lhs, *rhs, *pl, *pr]
+            components = model.vertex_component_expression(
+                key[0],
+                lhs,
+                rhs,
+                result_particle_id=key[1],
+                result_chirality=key[2],
+                left_chirality=key[3],
+                right_chirality=key[4],
+                coupling=tuple(vertex_rows[item][2]),
+                left_momentum=pl,
+                right_momentum=pr,
+            )
+        else:
+            # key: (particle id, chirality, dimension).
+            value, momentum = symbols("v", key[2]), symbols("p", 4)
+            inputs = [*value, *momentum]
+            components = model.propagator_component_expression(
+                key[0],
+                value,
+                momentum,
+                chirality=key[1],
+                propagator=PropagatorIR.from_json_dict(
+                    dict(rows.propagators[(key[0], key[1])])
+                ),
+            )
+        built.append((kind, inputs, tuple(components)))
+    definitions = _model_symbolica_functions(model)
+    rewritten, _retained = _specialize_stage_symbolica_functions(
+        [component for _kind, _inputs, components in built for component in components],
+        definitions,
+    )
+    saved: dict[str, list[bytes]] = {"kernels": [], "propagators": []}
+    shapes: dict[str, list[list[int]]] = {"kernels": [], "propagators": []}
+    position = 0
+    for kind, inputs, components in built:
+        outputs = rewritten[position : position + len(components)]
+        position += len(components)
         outputs, parameters, functions = _canonical_stage(
             SimpleNamespace(
                 output_expressions=list(outputs),
                 parameter_symbols=[*inputs, *model_symbols],
-                symbolica_functions=list(retained),
+                symbolica_functions=list(
+                    _retained_functions(outputs, definitions) if outputs else ()
+                ),
             )
         )
         evaluator = Expression.evaluator_multiple(
@@ -2025,58 +2115,6 @@ def native_interaction_program(
         )
         saved[kind].append(bytes(evaluator.save()))
         shapes[kind].append([len(inputs) + len(model_symbols), len(outputs)])
-
-    uses = program.kernels()
-    vertex_rows = dict(
-        zip(
-            (item for kind, _key, item in uses if kind == "kernels"),
-            rows.dag._native_handle().interaction_rows(
-                [item for kind, _key, item in uses if kind == "kernels"]
-            ),
-            strict=True,
-        )
-    )
-    for kind, key, item in uses:
-        if kind == "kernels":
-            # key: (vertex kind, result pdg, result chirality, left
-            # chirality, right chirality, left dimension, right dimension).
-            coupling = tuple(vertex_rows[item][2])
-
-            def build(
-                key: Sequence[int] = key,
-                coupling: tuple[float, ...] = coupling,
-            ) -> tuple[list[Any], Any]:
-                lhs, rhs = symbols("l", key[5]), symbols("r", key[6])
-                pl, pr = symbols("pl", 4), symbols("pr", 4)
-                return [*lhs, *rhs, *pl, *pr], model.vertex_component_expression(
-                    key[0],
-                    lhs,
-                    rhs,
-                    result_particle_id=key[1],
-                    result_chirality=key[2],
-                    left_chirality=key[3],
-                    right_chirality=key[4],
-                    coupling=coupling,
-                    left_momentum=pl,
-                    right_momentum=pr,
-                )
-
-        else:
-            payload = rows.propagators[(key[0], key[1])]
-
-            def build(
-                key: Sequence[int] = key, payload: Any = payload
-            ) -> tuple[list[Any], Any]:
-                value, momentum = symbols("v", key[2]), symbols("p", 4)
-                return [*value, *momentum], model.propagator_component_expression(
-                    key[0],
-                    value,
-                    momentum,
-                    chirality=key[1],
-                    propagator=PropagatorIR.from_json_dict(dict(payload)),
-                )
-
-        compile_kernel(kind, build)
     texts = []
     for real, imag in program.weights():
         weight = _exact_weight(complex(real, imag))

@@ -875,9 +875,17 @@ def test_native_counterterm_program_block_sets(
 ):
     """The remaining §6.1 block sets (quark loops and lines, the U(1)
     projection taking a quark line's gluon, photons, massive tops with
-    W_T != 0) and a top veto."""
+    W_T != 0) and a top veto; and A5's interaction program of each (massive
+    and chiral propagators, quark and photon kernels)."""
 
-    _assert_ct_equal(loop_sm_compiled_model, text, born, loop, veto)
+    program, _native = _assert_ct_equal(loop_sm_compiled_model, text, born, loop, veto)
+    with _flag(True):
+        blocks = ct_closure.CountertermBlocks.build(
+            program.recursion,
+            program.blocks.blocks_dag.process,
+            ignored_particle_ids=vetoed_particle_ids(veto),
+        )
+    _assert_counterterm_trees_equal(program, blocks)
 
 
 @pytest.mark.loop_physics
