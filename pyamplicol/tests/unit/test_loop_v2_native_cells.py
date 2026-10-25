@@ -411,15 +411,21 @@ def _degrees_equal(slice_, kept) -> None:
         assert native_cells.table_degree(table, pairs) == table.degree(pairs)
     if slice_.request.accuracy == "full":
         return
-    # The liveness of _prune_colour: its keep closure on every skeleton.
-    (keep,) = kept
-    live = native_cells.live_classes(slice_)
-    checked = 0
-    for skeleton, combination in slice_.class_of.items():
-        native = any(live[c, skeleton.orders] for c, _x in combination)
-        assert native == keep(skeleton), skeleton
-        checked += 1
-    assert checked
+    # The liveness of _prune_colour: its keep closure on every skeleton, for
+    # the slice and then its certified-scaleless companion (pruned after it
+    # at LC/NLC, with the slice's degrees).
+    pruned = [slice_]
+    if slice_.scaleless is not None and slice_.scaleless.colour_pruned:
+        pruned.append(slice_.scaleless)
+    assert len(kept) == len(pruned)
+    for target, keep in zip(pruned, kept, strict=True):
+        live = native_cells.live_classes(target)
+        checked = 0
+        for skeleton, combination in target.class_of.items():
+            native = any(live[c, skeleton.orders] for c, _x in combination)
+            assert native == keep(skeleton), skeleton
+            checked += 1
+        assert checked
 
 
 @pytest.mark.loop_fast
