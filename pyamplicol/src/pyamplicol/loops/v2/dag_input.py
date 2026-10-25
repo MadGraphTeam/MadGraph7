@@ -1577,7 +1577,9 @@ class NativeDag:
         # (e.g. ``StageCompilationInput`` of the per-point rows), which reads
         # no attribute; ``type(dag)`` stays ``NativeDag``, which the native
         # dispatches test first. Equality and hashing are a ``GenericDAG``'s
-        # (``__eq__``, ``__hash__``).
+        # (``__eq__``, ``__hash__``). Transitional (slice-status DECISIONS
+        # 2026-10-25 ~12:50 item 5): removed once A5's tree program and R3
+        # leave no Python consumer of the decoded DAG.
         return GenericDAG
 
     def __eq__(self, other: object) -> bool:
