@@ -2473,7 +2473,9 @@ def test_coloured_width_fixed_to_zero_equals_legacy_at_sixty_digits(
     )
 
 
-def _qed_model_generator(model: Path, tmp_path: Path, name: str, entries, *, engine):
+def _qed_model_generator(
+    model: Path, tmp_path: Path, name: str, entries, *, engine, fixed='MB = "0"'
+):
     from pyamplicol.api import Generator
     from pyamplicol.config import resolve_config
 
@@ -2482,9 +2484,10 @@ def _qed_model_generator(model: Path, tmp_path: Path, name: str, entries, *, eng
     )
     card = tmp_path / f"{name}.toml"
     card.write_text(
-        text.replace('fixed_parameters = {MB = "0"}', COMPATIBILITY).replace(
-            'engine = "v2"', f'engine = "{engine}"'
-        )
+        text.replace(
+            'fixed_parameters = {MB = "0"}',
+            COMPATIBILITY.replace('{MB = "0"}', f"{{{fixed}}}"),
+        ).replace('engine = "v2"', f'engine = "{engine}"')
         if engine
         else text
     )
@@ -2498,18 +2501,23 @@ def test_qed_declaring_model_names_its_blockers(
     """MG5_aMC's loop_qcd_qed_sm with QCD and QED corrections through the
     public v2 path (its MU_R, at LHA code LOOP 666, is resolved at the public
     boundary). Without the compatibility profile both engines refuse its G-
-    Goldstone flag, which the dry run reports from the model preparation;
-    with it, the electroweak counterterms of u u~ > d d~ are lowered (their
-    CT scalars with the complex-mass scheme's helper recms and the CMS
-    reglog are parameter-program references, WP3.2 EWI-3) and the request
-    stops at the next blocker, the unitary-gauge W and Z on loop lines
-    (WP3.2 EWI-4b). The unlowerable G0-photon mixing between spins stays
-    inert (REQUIREMENTS_ADDENDUM J): the model's tree model absorbs the
-    Goldstones into the massive vectors (``CompiledUFOModel.
-    inactive_goldstone_names``), so it holds no G0 vertex and no tree of any
-    request on this model holds the mixing."""
+    Goldstone flag, which the dry run reports from the model preparation.
+    With it, u u~ > d d~ at the card's W and Z widths is refused by the
+    electroweak width policy (WP3.2 EWI-0b, the user's decision [U8]: the
+    widths fixed to zero, or the complex-mass scheme), before its tree
+    kernels and the counterterm lowering. With those widths fixed to zero
+    its electroweak counterterms are lowered (their CT scalars with the
+    complex-mass scheme's helper recms and the CMS reglog are
+    parameter-program references, WP3.2 EWI-3), and the request stops at the
+    next blocker, the unitary-gauge W and Z on loop lines (WP3.2 EWI-4b).
+    The unlowerable G0-photon mixing between spins stays inert
+    (REQUIREMENTS_ADDENDUM J): the model's tree model absorbs the Goldstones
+    into the massive vectors (``CompiledUFOModel.inactive_goldstone_names``),
+    so it holds no G0 vertex and no tree of any request on this model holds
+    the mixing."""
 
     from pyamplicol.api import ProcessRequest, ProcessSet
+    from pyamplicol.loops.v2.ew_policy import ElectroweakWidthError
     from pyamplicol.models.loading import compile_model_source
 
     entries = (("uudd", "u u~ > d d~"),)
@@ -2527,11 +2535,27 @@ def test_qed_declaring_model_names_its_blockers(
         loop_qcd_qed_sm_ufo, tmp_path, "b", entries, engine="v2"
     )
     with pytest.raises(
+        ElectroweakWidthError,
+        match=r"'u u~ > d d~': an electroweak request .* with a width that is not "
+        r"fixed to zero: W\+ \(WW\), W- \(WW\), Z \(WZ\)\..* fixed_parameters "
+        r'\(WW = "0", WZ = "0"\); .*complex-mass scheme',
+    ):
+        profiled.generate(processes, tmp_path / "b")
+    assert not (tmp_path / "b").exists()
+    zero_widths = _qed_model_generator(
+        loop_qcd_qed_sm_ufo,
+        tmp_path,
+        "c",
+        entries,
+        engine="v2",
+        fixed='MB = "0", WW = "0", WZ = "0"',
+    )
+    with pytest.raises(
         GenerationError, match=r"loop line -?\d+ has a unitary-gauge propagator"
     ) as refused:
-        profiled.generate(processes, tmp_path / "b")
+        zero_widths.generate(processes, tmp_path / "c")
     assert "G0" not in str(refused.value)
-    assert not (tmp_path / "b").exists()
+    assert not (tmp_path / "c").exists()
 
 
 @pytest.mark.loop_nightly

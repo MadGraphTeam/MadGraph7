@@ -570,16 +570,10 @@ B3 = ("LoopKernelCatalogueError", r"loop line -?\d+ has a unitary-gauge propagat
 B5 = ("FermionSignError", r"has more than one fermion line")
 B6 = ("NotImplementedError", r"is not closed under conjugation")
 _PHOTON_ONLY = (23, 24, 25, 250, 251)  # Z, W, H and the Goldstones vetoed
-_G_MU_FIXED = {
-    "MB": "0",
-    "ymb": "0",
-    "MTA": "0",
-    "ymtau": "0",
-    "WT": "0",
-    "WW": "0",
-    "WZ": "0",
-    "WH": "0",
-}
+# Electroweak requests need every propagating width fixed to zero outside
+# the complex-mass scheme (``ew_policy``, the user's decision [U8]).
+_ZERO_WIDTHS = {"WT": "0", "WW": "0", "WZ": "0", "WH": "0"}
+_G_MU_FIXED = {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", **_ZERO_WIDTHS}
 _MASSLESS_POINT = [
     ["500", "0", "0", "500"],
     ["500", "0", "0", "-500"],
@@ -642,6 +636,7 @@ LADDER = [
         B2,
         corrections=("QED",),
         particle_veto=_PHOTON_ONLY,
+        fixed_parameters=_ZERO_WIDTHS,
     ),
     _rung(
         "sm_epem_uux",
@@ -665,6 +660,7 @@ LADDER = [
         particle_veto=_PHOTON_ONLY,
         point=_MASSLESS_POINT,
         poles="uv",
+        fixed_parameters=_ZERO_WIDTHS,
     ),
     _rung(
         "uudd_qed",
@@ -674,6 +670,7 @@ LADDER = [
         {"QCD": 2, "QED": 2},
         B3,
         corrections=("QED",),
+        fixed_parameters=_ZERO_WIDTHS,
     ),
     _rung(
         "uudd_qcd_qed",
@@ -683,6 +680,7 @@ LADDER = [
         ({"QCD": 4, "QED": 0}, {"QCD": 2, "QED": 2}),
         B3,
         corrections=("QCD", "QED"),
+        fixed_parameters=_ZERO_WIDTHS,
     ),
     _rung(
         "gb_twm",
