@@ -2874,6 +2874,8 @@ class MadgraphSubprocess:
             max_scale = self.process.max_scale
         if self.process.mlm_clustering:
             mc_data = self.build_multi_channel_data()
+            all_pids = (clean_pids(self.meta["incoming"])
+                        + clean_pids(self.meta["outgoing"]))
             self.scale = ms.EnergyScale(
                 ms.MLMClustering(
                     topologies=[topo[0] for topo in mc_data.topologies],
