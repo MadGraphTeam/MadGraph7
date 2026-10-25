@@ -294,17 +294,17 @@ def test_stored_process_call_regenerates_nothing(stored, name):
     # The same call in this process (which generated the artifact) gives
     # the same bits.
     namespace: dict = {}
-    exec(_RUN, namespace)  # noqa: S102 - the probe's own call helpers
+    exec(_RUN, namespace)
     from pyamplicol import Runtime
 
-    here = namespace["run"](
-        Runtime, stored[artifact], process, call, _record(artifact)
-    )
+    here = namespace["run"](Runtime, stored[artifact], process, call, _record(artifact))
     assert json.loads(json.dumps(here)) == fresh["values"]
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize(("artifact", "process"), [("gg_gg", "gg"), ("ddgg_ssgg", "ddgg")])
+@pytest.mark.parametrize(
+    ("artifact", "process"), [("gg_gg", "gg"), ("ddgg_ssgg", "ddgg")]
+)
 def test_rust_runtime_equals_the_python_api(stored, loop_native, artifact, process):
     """The SDK's plan v4 runtime (``rusticol_loop_reduction::v2_runtime::
     V2Runtime``, through ``evaluate_v2_artifact``: no Python generation or

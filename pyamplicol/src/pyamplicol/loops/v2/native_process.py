@@ -97,9 +97,7 @@ def _trees_from_members(
     kernels = []
     while f"{prefix}kernel-{len(kernels)}.bin" in members:
         kernels.append(bytes(members[f"{prefix}kernel-{len(kernels)}.bin"]))
-    planes = [
-        bytes(members[f"{prefix}kernel-{k}.symjit"]) for k in range(len(kernels))
-    ]
+    planes = [bytes(members[f"{prefix}kernel-{k}.symjit"]) for k in range(len(kernels))]
     planes.append(bytes(members[f"{prefix}parameters.symjit"]))
     return NativeTrees(
         program,
@@ -181,9 +179,7 @@ class NativeProcess:
             executor.slice,
             executor.exported,
             executor._plan_json,
-            None
-            if companion is None
-            else (companion.exported, companion._plan_json),
+            None if companion is None else (companion.exported, companion._plan_json),
         )
 
     @classmethod

@@ -424,7 +424,11 @@ def write_plan(
             k = 0
             while f"{prefix}kernel-{k}.bin" in stored:
                 members.append(
-                    (f"{path}kernel-{k}.state", state, stored[f"{prefix}kernel-{k}.bin"])
+                    (
+                        f"{path}kernel-{k}.state",
+                        state,
+                        stored[f"{prefix}kernel-{k}.bin"],
+                    )
                 )
                 members.append(
                     (
