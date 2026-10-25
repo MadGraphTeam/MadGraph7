@@ -3,8 +3,9 @@
 
 The standard UFO Dirac source slots and physical HELAS current slots have
 opposite endpoint order. Scalar Dirac currents additionally exchange the native
-chiral projectors, as in the existing tree compiler. Both operations act on
-localized dependency tensors; propagators and momenta retain their own frame.
+chiral projectors (the tree compiler no longer does; see EWI-5). Both
+operations act on localized dependency tensors; propagators and momenta retain
+their own frame.
 Physical callers must establish the source tensor's conformance domain. This
 four-dimensional boundary is not a dimensional gamma5 prescription.
 """
@@ -57,9 +58,11 @@ def native_physical_vertex(graph, vertex_id, lorentz):
     if spins == [1, 2, 2]:
         # Whole-vertex endpoint exchange suffices for the admitted FFV bases.
         # A diagonal FFS source matrix cannot detect the additional physical
-        # current convention: UFO ProjM/ProjP become native projp/projm. This is
-        # the same mapping as models.tensors._LorentzContext, independently
-        # checked on directed FFS -> propagator -> chiral FFV ALOHA currents.
+        # current convention: UFO ProjM/ProjP become native projp/projm. This
+        # legacy path keeps the old exchange; models.tensors no longer does it
+        # (WP3.2 EWI-4a keeps UFO's own projectors in vertex chains), so re-check
+        # it with a Goldstone-sign-sensitive test before it serves as an EW
+        # oracle (EWI-5).
         # Simultaneous native replacements retain all scalar coefficients and
         # leave the propagator (including its mass term) untouched.
         from symbolica import Replacement
