@@ -511,7 +511,12 @@ where
         columns = native.columns.map(|points| {
             points
                 .iter()
-                .map(|columns| columns.iter().map(|values| T::export(values, bits)).collect())
+                .map(|columns| {
+                    columns
+                        .iter()
+                        .map(|values| T::export(values, bits))
+                        .collect()
+                })
                 .collect()
         });
     }

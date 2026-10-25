@@ -1004,7 +1004,10 @@ fn load_interactions(
                 .collect()
         }
         None => {
-            require(program.masks.is_empty(), "slot masks outside a counterterm program")?;
+            require(
+                program.masks.is_empty(),
+                "slot masks outside a counterterm program",
+            )?;
             Vec::new()
         }
     };
@@ -2133,7 +2136,6 @@ impl TreeProgram {
         Ok(())
     }
 
-
     /// Whether the program forms the counterterm and external-field
     /// components.
     pub fn has_counterterms(&self) -> bool {
@@ -2399,7 +2401,10 @@ impl TreeProgram {
                 self.columns.as_ref().filter(|c| !c.columns.is_empty()),
                 &mut out.columns,
             ) {
-                let ct = self.counterterms.as_ref().expect("columns need counterterms");
+                let ct = self
+                    .counterterms
+                    .as_ref()
+                    .expect("columns need counterterms");
                 let couplings = &batch.counterterm_couplings[index];
                 let every = vec![true; self.rows];
                 let mut values = Vec::with_capacity(columns.columns.len());
@@ -2410,7 +2415,11 @@ impl TreeProgram {
                                 && kept_rows.is_none_or(|kept| kept[row])
                         })
                         .collect();
-                    let keep = if keep.iter().all(|k| *k) { &every } else { &keep };
+                    let keep = if keep.iter().all(|k| *k) {
+                        &every
+                    } else {
+                        &keep
+                    };
                     let evaluate = |program: usize| {
                         columns.programs[program].evaluate_complex(
                             &runtime.columns[program],
