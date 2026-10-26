@@ -943,7 +943,9 @@ GT_TTTX_POINT = [
 
 
 @pytest.mark.loop_nightly
-def test_goldstone_vector_mixings_equal_the_site_oracle(gmu, loop_native, monkeypatch):
+def test_goldstone_vector_mixings_equal_the_site_oracle(
+    gmu_massive_b, loop_native, monkeypatch
+):
     """O6 for the Goldstone-vector mixings (WP3.2 EWI-4b): g t > t t t~ with
     QED corrections, whose trees reach the G0-Z, G0-A and G+-W- mixings
     (admitted and lowered as vertex insertions), equals the request with
@@ -953,7 +955,18 @@ def test_goldstone_vector_mixings_equal_the_site_oracle(gmu, loop_native, monkey
     with electroweak loop species, whose divergences the field and mass
     counterterms cover: certified for the comparison only. The mixings make
     0.3 % of the counterterms' finite part here; the opposite momentum sign
-    differs from the oracle by twice that."""
+    differs from the oracle by twice that.
+
+    The b is massive: the oracle admits a rule's loop species only where a
+    divergent witness has exactly those species, while the UFO names the
+    W for its W and G+ loops (``R2_Htt_b`` of [t~ t H], loop [W+, b], is
+    proportional to MT (1 + MB^2/MW^2), non-zero at MB = 0). With a
+    massless b the only divergent b-W loops of [t~ t H] and [t~ t G0] also
+    carry a G+ (witness species (b, W, G+)), so the oracle drops those two
+    R2 rules (about half the R2 here); with a massive b the H and G0
+    couple to the b and a (b, W) witness exists. Production admits by
+    coupling orders and particle_veto only (REQUIREMENTS_ADDENDUM J) and
+    reads no witness."""
 
     from pyamplicol.loops.v2 import ct_sites
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
@@ -971,7 +984,7 @@ def test_goldstone_vector_mixings_equal_the_site_oracle(gmu, loop_native, monkey
         )
 
     monkeypatch.setattr(ct_sites, "_coverage", certified)
-    fixed = {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", **ZERO_WIDTHS}
+    fixed = {"MTA": "0", "ymtau": "0", **ZERO_WIDTHS}
     results = {}
     for counterterms in ("recursion", "sites"):
         request = SliceRequest(
@@ -984,7 +997,7 @@ def test_goldstone_vector_mixings_equal_the_site_oracle(gmu, loop_native, monkey
             scale_parameter="MU_R",
             counterterms=counterterms,
         )
-        slice_ = LoopSlice.generate(gmu, request, loop_native)
+        slice_ = LoopSlice.generate(gmu_massive_b, request, loop_native)
         if counterterms == "recursion":
             lowered = slice_.counterterm_program.recursion.model.lowered
             spins = {p.name: int(p.spin) for p in lowered.compiled.ir.particles}
