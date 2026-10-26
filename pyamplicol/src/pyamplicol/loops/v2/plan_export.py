@@ -131,7 +131,29 @@ class ExportedPlan:
     trees: Any = None
 
     def json(self) -> str:
+        """The plan JSON, ``json.dumps(program, separators=(",", ":"))``,
+        written by the native plan model (``native_lowering``; WP3.1 D2'),
+        or by ``python_json`` when ``native_lowering.NATIVE_JSON`` is off."""
+
+        from . import native_lowering
+
+        if native_lowering.NATIVE_JSON:
+            return native_lowering.plan_json(self).decode("ascii")
+        return self.python_json()
+
+    def python_json(self) -> str:
+        """The plan JSON written by ``json`` (the native writer's oracle)."""
+
         return json.dumps(self.program, separators=(",", ":"))
+
+    def binary(self) -> bytes:
+        """The binary columnar plan member (``native_lowering``), read by
+        ``loop_v2::plan::read_binary``: the plan's records for an artifact's
+        PACBIN member (DESIGN §12.1)."""
+
+        from . import native_lowering
+
+        return native_lowering.plan_binary(self)
 
 
 @dataclass
