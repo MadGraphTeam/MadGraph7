@@ -1029,29 +1029,56 @@ class CountertermModel:
         Parameters absent from ``values`` take the compiled defaults. Every
         assumption must be decided with the parameters substituted
         (``decide_constant``): one that vanishes, is singular (e.g. a mass
-        in a denominator set to 0) or cannot be decided is refused.
+        in a denominator set to 0) or cannot be decided is refused. A
+        derived (internal) parameter an assumption reads (a derived mass)
+        takes its resolved definition at these values.
         """
 
         from symbolica import E, Expression, Replacement
 
+        from pyamplicol._internal.physics.symbols import symbols
+
+        from .ct_sites import resolved_internal_parameters
+
         if not self.assumptions:
             return
+        compiled = self.lowered.compiled
         defaults = {
-            name: complex(*pair)
-            for name, pair in self.lowered.compiled.parameter_defaults.items()
+            name: complex(*pair) for name, pair in compiled.parameter_defaults.items()
         }
         defaults.update(values)
-        replacements = [
-            Replacement(
-                E(f"UFO::{{}}::{name}"),
-                E(repr(complex(value).real))
-                + E(repr(complex(value).imag)) * Expression.I,
-            )
+        numbers = {
+            name: E(repr(complex(value).real))
+            + E(repr(complex(value).imag)) * Expression.I
             for name, value in defaults.items()
+        }
+        replacements = [
+            Replacement(E(f"UFO::{{}}::{name}"), number)
+            for name, number in numbers.items()
         ]
-        for assumption in self.assumptions:
+        assumptions = [E(assumption) for assumption in self.assumptions]
+        model_symbols = symbols.model(compiled.name)
+
+        def symbol(name: str) -> Any:
+            return E(model_symbols.symbol(name).to_canonical_string())
+
+        for record in compiled.ir.parameters:
+            payload = E(f"UFO::{{}}::{record.name}")
+            if record.nature == "internal" and any(
+                assumption.contains(payload) for assumption in assumptions
+            ):
+                value = resolved_internal_parameters(
+                    compiled, symbol(record.name)
+                ).replace_multiple(
+                    [
+                        Replacement(symbol(name), number)
+                        for name, number in numbers.items()
+                    ]
+                )
+                replacements.append(Replacement(payload, value))
+        for assumption, parsed in zip(self.assumptions, assumptions, strict=True):
             expression = _decided_conditionals(
-                E(assumption).replace_multiple(replacements)
+                parsed.replace_multiple(replacements)
             ).expand()
             decision = (
                 "undecided"  # a symbol no parameter value replaces

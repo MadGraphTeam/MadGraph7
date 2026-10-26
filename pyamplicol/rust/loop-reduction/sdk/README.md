@@ -57,6 +57,18 @@ additive grouped complex interface below; mapped-process calls remain
 unavailable. A prepared, explicitly continued source-colour plan can be loaded
 with LC/NLC metadata; generation requires its declared model continuation.
 
+Plan v4 artifacts (the v2 loop engine, `point_inputs = "native-v2"`) open
+through the same `rusticol_virtual_open`: the stored native programs (tree,
+counterterm and parameter programs with their binary64 SymJIT plane
+applications) evaluate every point without Python, generation or a Symbolica
+licence, bitwise equal to the Python API in binary64. They serve ordinary
+(unresolved) binary64 virtuals with model R2: `rusticol_virtual_set_poles`
+selects every pole (`"all"`, the default) or the finite part alone (`"none"`:
+the pole-only work is skipped natively and the single and double pole entries
+are quiet NaNs). Correlated, resolved, verified, split-pole (`"uv"`, `"ir"`)
+and extended-precision evaluations of a plan v4 process go through the Python
+API; plan v1-v3 handles accept `"all"` only.
+
 `Runtime::evaluate` accepts binary64 inputs and returns binary64 numerical rows.
 It preserves every finite input's exact value for optional higher-precision
 verification. Standard fixed decimal formatting uses 1074 fractional places,

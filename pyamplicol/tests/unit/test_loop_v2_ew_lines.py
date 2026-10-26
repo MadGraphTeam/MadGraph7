@@ -835,7 +835,10 @@ def test_derived_w_masses_are_bound_on_shell(loop_sm_compiled_model, loop_native
     parameters = {**LEGACY["fixed_parameters"], **PARAMETERS}
     rows = slice_.tree_rows
     (index,) = [
-        k for k, record in enumerate(rows._records) if record["runtime_name"] == "MW"
+        k
+        for k, record in enumerate(rows._records)
+        if record.get("runtime_name") == "MW"
+        and record["complex_component"] != "imag"
     ]
     carriers = [
         (Precision.double(), 5e-16),

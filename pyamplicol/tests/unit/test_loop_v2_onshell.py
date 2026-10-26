@@ -46,11 +46,8 @@ reproducer point.
 from __future__ import annotations
 
 import math
-import re
-import shutil
 from decimal import Decimal, localcontext
 from fractions import Fraction
-from pathlib import Path
 
 import pytest
 
@@ -58,6 +55,8 @@ from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
 from pyamplicol.loops.v2.families import onshell_leg
 from pyamplicol.loops.v2.plan_export import NativeExecutor
 from pyamplicol.loops.v2.stability import Budget, StabilityChecks, deviation
+
+from .loop_v2_ufo_variants import internal_mass_ufo
 
 SCALE = "250000"
 PARAMETERS = {"aS": "0.118"}
@@ -210,41 +209,9 @@ def executors(loop_sm_compiled_model, loop_native):
     return _builder(load_compiled_model(loop_sm_compiled_model), loop_native)
 
 
-def _internal_mass_ufo(source: Path, destination: Path, name: str) -> Path:
-    """A copy of a UFO whose external mass parameter ``name`` is internal:
-    ``name = {name}x``, a new external parameter in its place (same block,
-    code and value), so every value is unchanged."""
-
-    shutil.copytree(
-        source, destination, ignore=shutil.ignore_patterns("*.pkl", "__pycache__")
-    )
-    path = destination / "parameters.py"
-    text = path.read_text()
-    match = re.search(
-        rf"^{name} = Parameter\(name = '{name}',\n"
-        r"(?:.*\n)*?.*lhacode = \[ *\d+ *\]\)\n",
-        text,
-        re.MULTILINE,
-    )
-    assert match is not None
-    block = match.group(0)
-    external = block.replace(
-        f"{name} = Parameter(name = '{name}'", f"{name}x = Parameter(name = '{name}x'"
-    )
-    internal = (
-        f"{name} = Parameter(name = '{name}',\n"
-        "               nature = 'internal',\n"
-        "               type = 'real',\n"
-        f"               value = '{name}x',\n"
-        f"               texname = '{name}')\n"
-    )
-    path.write_text(text.replace(block, external + "\n" + internal))
-    return destination
-
-
 @pytest.fixture(scope="module")
 def internal_mt_executors(loop_sm_ufo, loop_native, tmp_path_factory):
-    """loop_sm with MT internal (``_internal_mass_ufo``), compiled as
+    """loop_sm with MT internal (``internal_mass_ufo``), compiled as
     ``loop_sm_compiled_model`` is."""
 
     from dataclasses import replace
@@ -255,7 +222,7 @@ def internal_mt_executors(loop_sm_ufo, loop_native, tmp_path_factory):
     from pyamplicol.models.loading import compile_model_source
 
     root = tmp_path_factory.mktemp("loop-sm-internal-mt")
-    ufo = _internal_mass_ufo(loop_sm_ufo, root / "loop_sm_internal_mt", "MT")
+    ufo = internal_mass_ufo(loop_sm_ufo, root / "loop_sm_internal_mt", "MT")
     model = compile_model_source(ufo, cache_dir=root / "model-cache")
     model = replace(
         model,

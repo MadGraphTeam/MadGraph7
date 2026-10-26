@@ -2725,7 +2725,10 @@ class _PointEvaluation:
 
         slice_, numbers = self.slice, self.numbers
         self.constants = rx.KernelConstants(
-            _kernel_parameters(slice_.compiled, self.parameters), numbers.carrier
+            _constant_parameters(
+                slice_.compiled, self.parameters, numbers.precision.working_digits
+            ),
+            numbers.carrier,
         )
         carrier = self._site_carrier()
         closure = slice_.closure
@@ -3026,7 +3029,10 @@ class _PointEvaluation:
         )
         constants = (
             rx.KernelConstants(
-                _kernel_parameters(slice_.compiled, self.parameters), carrier
+                _constant_parameters(
+                    slice_.compiled, self.parameters, numbers.precision.working_digits
+                ),
+                carrier,
             )
             if exact
             else self.constants
@@ -4108,6 +4114,31 @@ def _model_masses(
         return found[name]
 
     return mass
+
+
+def _constant_parameters(
+    compiled, parameters: Mapping[str, str], digits: int
+) -> dict[str, Fraction]:
+    """The model parameter values of the kernel constants
+    (``rx.KernelConstants``): every external parameter exactly, and every
+    particle's derived mass the slice's one mass evaluator gives
+    (``_model_masses``; a loop propagator's kernel reads its mass). A derived
+    mass that is not real and positive here is left out (a constant reading
+    it is refused by ``KernelConstants``)."""
+
+    values = _kernel_parameters(compiled, parameters)
+    internal = {
+        record.name for record in compiled.ir.parameters if record.nature == "internal"
+    }
+    derived = sorted({str(record.mass) for record in compiled.ir.particles} & internal)
+    if derived:
+        mass_of = _model_masses(compiled, parameters, digits)
+        for name in derived:
+            try:
+                values[name] = mass_of(name)
+            except ValueError:
+                continue
+    return values
 
 
 def _mass_values(

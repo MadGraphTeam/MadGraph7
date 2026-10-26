@@ -79,7 +79,6 @@ from .families import Orders, add_orders
 TREE_SCHEMA = 4
 
 
-
 @dataclass(frozen=True)
 class NativeExportRefusal:
     """A feature the native export of a process does not cover
@@ -136,8 +135,7 @@ NATIVE_EXPORT_REFUSALS = (
     ),
     NativeExportRefusal(
         "observable-columns",
-        "stored observable columns of a process without native counterterm "
-        "components",
+        "stored observable columns of a process without native counterterm components",
         "WP3.1 generation-scale (native_observables)",
         "none while every native tree program forms its counterterm components",
     ),
@@ -1017,7 +1015,7 @@ class _CountertermReferences:
                 raise NativeExportUnsupported(
                     "parameter-read",
                     f"the counterterm coefficient plan reads {name!r}, which the "
-                    "tree program has not"
+                    "tree program has not",
                 )
             inputs.append(Replacement(symbol, symbol_of[name]))
         columns = {
@@ -1172,7 +1170,7 @@ def _parameter_program(
             else:
                 raise NativeExportUnsupported(
                     "parameter-read",
-                    f"the counterterm program reads {name!r}, which the trees have not"
+                    f"the counterterm program reads {name!r}, which the trees have not",
                 )
         for record in ct_rows._records:
             kind = record["kind"]
@@ -1228,7 +1226,7 @@ def _parameter_program(
             if name not in index:
                 raise NativeExportUnsupported(
                     "parameter-read",
-                    f"the scalar plan reads {name!r}, which the tree program has not"
+                    f"the scalar plan reads {name!r}, which the tree program has not",
                 )
             replacements.append(Replacement(symbol, symbol_of[name]))
         plan_inputs.append(replacements)
@@ -1321,16 +1319,34 @@ def _parameter_program(
             if helpers.setdefault(head, body) != body:
                 raise ValueError(f"the scalar plans define {head!r} differently")
 
-    # Plan kernel constants.
+    # Derived model parameters (internal), on the program's inputs.
+    derived = {
+        record.name
+        for record in slice_.compiled.ir.parameters
+        if record.nature == "internal"
+    }
+    derived_values: dict[str, Any] = {}
+
+    def derived_value(name: str) -> Any:
+        if name not in derived_values:
+            derived_values[name] = _derived_parameter(
+                slice_.compiled, name, index, externals
+            )
+        return derived_values[name]
+
+    # Plan kernel constants (a loop propagator's kernel reads its mass, a
+    # derived one on the inputs as the plan masses below).
     def base(factor: Any, flips: Mapping[str, int]) -> Any:
         kind, value = factor
         if kind == "param":
-            if value not in index:
-                raise NativeExportUnsupported(
-                    "parameter-read",
-                    f"a kernel constant reads {value!r}, which the tree program has not"
-                )
-            return symbol_of[value] * flips.get(value, 1)
+            if value in index:
+                return symbol_of[value] * flips.get(value, 1)
+            if value in derived:
+                return derived_value(value) * flips.get(value, 1)
+            raise NativeExportUnsupported(
+                "parameter-read",
+                f"a kernel constant reads {value!r}, which is no model parameter",
+            )
         if kind == "prime":
             return Expression.num(int(value))
         if kind == "pi":
@@ -1384,17 +1400,9 @@ def _parameter_program(
     # invariants and its propagators take its square, the value its sources
     # take (DESIGN §11.1), as ``assemble._model_masses`` binds them.
     exact_masses, derived_masses = [], []
-    derived = {
-        record.name
-        for record in slice_.compiled.ir.parameters
-        if record.nature == "internal"
-    }
 
     def derived_mass(name: str) -> int:
-        o = output(
-            ("derived-mass", name),
-            lambda name=name: _derived_mass(slice_.compiled, name, index, externals),
-        )
+        o = output(("derived-mass", name), lambda name=name: derived_value(name))
         positive.append(o)
         return o
 
@@ -1504,17 +1512,18 @@ def _line_factor(compiled: Any, scale: str, externals: Sequence[Any]) -> Any:
         raise NativeExportUnsupported(
             "parameter-read",
             f"a Weyl line's factor reads {missing}, which the counterterm "
-            "program has not"
+            "program has not",
         )
     return value
 
 
-def _derived_mass(
+def _derived_parameter(
     compiled: Any, name: str, index: Mapping[str, int], externals: Sequence[Any]
 ) -> Any:
-    """The derived mass parameter ``name`` on the parameter program's
-    inputs: its resolved definition (``ct_sites.resolved_internal_parameters``:
-    in the model's external parameters alone), each external parameter
+    """The derived (internal) model parameter ``name`` (a mass) on the
+    parameter program's inputs: its resolved definition
+    (``ct_sites.resolved_internal_parameters``: in the model's external
+    parameters alone), each external parameter
     replaced by its input (``externals``); one the tree program has not is
     refused."""
 
@@ -1540,8 +1549,7 @@ def _derived_mass(
     if missing:
         raise NativeExportUnsupported(
             "parameter-read",
-            f"the mass {name!r} reads {missing}, which the tree "
-            "program has not"
+            f"the mass {name!r} reads {missing}, which the tree program has not",
         )
     return value.replace_multiple(list(externals))
 
