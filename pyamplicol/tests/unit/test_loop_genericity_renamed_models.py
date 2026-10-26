@@ -51,18 +51,15 @@ DY_POINT = [
     [500, -300, 0, -400],
 ]
 OWNED = "slice-status DECISIONS 2026-10-26 ~00:20"
-M1_M2_OWNER = (
-    f"M1/M2 (native point inputs of derived masses): generation-scale-2, {OWNED} item 1"
-)
-M2_ALPHA_OWNER = f"m2 (one alpha_s rule): generation-scale-2, {OWNED} item 1"
 M1_EW_OWNER = (
     f"m1 (corrections named 'QCD'/'QED'; Catani): WP3.2 ew-poles batch 2, {OWNED} "
     "item 3"
 )
-# The EW classification test needs both: m1 for the classification and the
-# Catani prediction, m2 for alpha_s (assemble resolves it only for a
-# correction set spelt {'QCD'}).
-M1_M2_EW_OWNER = f"{M1_EW_OWNER}; and {M2_ALPHA_OWNER}"
+# The EW classification test needs m1 for the classification, the Catani
+# prediction and alpha_s: since generation-scale-2's m2 (one alpha_s rule for
+# every correction set, fix round 1) assemble resolves alpha_s whenever the
+# strong correction is among the corrections, but it still knows it by the
+# name 'QCD', which m1 makes structural.
 
 
 def _uux_ddxg_point():
@@ -625,7 +622,7 @@ def test_renamed_orders_refuse_alike(models, loop_native, process, born, loop):
     assert outcomes[1] == outcomes[0]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=M1_M2_EW_OWNER)
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=M1_EW_OWNER)
 def test_renamed_orders_keep_the_ew_classification_and_catani_poles(
     models, loop_native
 ):
@@ -653,7 +650,6 @@ def test_renamed_orders_keep_the_ew_classification_and_catani_poles(
     assert decisions[1] == decisions[0] == (False, "aS", True)
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError, reason=M2_ALPHA_OWNER)
 def test_alpha_s_off_sminputs_does_not_refuse_a_qcd_request(models, loop_native):
     from pyamplicol.loops.v2.assemble import prepare_request_model
 
@@ -808,20 +804,13 @@ PLANE_CHECK_OWNER = (
         pytest.param(
             "loop_sm",
             marks=pytest.mark.xfail(
-                strict=True,
-                raises=(AssertionError, ValueError),
-                reason=f"{PLANE_CHECK_OWNER}; and {M1_M2_OWNER}",
+                strict=True, raises=ValueError, reason=PLANE_CHECK_OWNER
             ),
         ),
-        pytest.param(
-            "gmu",
-            marks=[
-                pytest.mark.loop_nightly,
-                pytest.mark.xfail(
-                    strict=True, raises=AssertionError, reason=M1_M2_OWNER
-                ),
-            ],
-        ),
+        # Derived masses are parameter-program outputs since
+        # generation-scale-2's M1/M2 (fix round 1): G_mu's MW takes the native
+        # route whether a card input or derived.
+        pytest.param("gmu", marks=pytest.mark.loop_nightly),
     ],
 )
 def test_mw_nature_takes_the_same_native_route(w_slices, name):
