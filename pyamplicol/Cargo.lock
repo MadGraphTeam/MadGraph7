@@ -2029,6 +2029,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyamplicol"
+version = "1.0.1"
+dependencies = [
+ "symbolica",
+]
+
+[[package]]
 name = "pyo3"
 version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2325,6 +2332,7 @@ dependencies = [
  "libloading",
  "ninjars",
  "num-complex",
+ "pyamplicol",
  "rayon",
  "serde",
  "serde_json",
@@ -2339,9 +2347,11 @@ dependencies = [
 name = "rusticol-loop-python"
 version = "0.1.0"
 dependencies = [
+ "pyamplicol",
  "pyo3",
  "rusticol-core",
  "rusticol-loop-reduction",
+ "serde",
  "serde_json",
  "symbolica",
 ]
@@ -2355,6 +2365,7 @@ dependencies = [
  "ninjars-graph",
  "ninjars-symbolica",
  "oneloop",
+ "pyamplicol",
  "rusticol-core",
  "serde",
  "serde_json",

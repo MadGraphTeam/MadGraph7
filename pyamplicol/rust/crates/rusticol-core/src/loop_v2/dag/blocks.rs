@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: 0BSD
 
 //! Block grouping of a loop-request DAG (`loops/v2/blocks._blocks`) and the
-//! Ward-kernel query (`ward_breaking_fields`' current scan).
+//! current scans of generation's queries (`propagated_species`: the
+//! Ward-kernel and coloured-width scans; `u1_leaking`).
 //!
 //! A block is the set of currents with one `BlockKey` (the full current
 //! index without its helicity ancestry); its rows are their helicity
@@ -321,10 +322,13 @@ impl ColumnarDag {
         set
     }
 
-    /// Particle ids that a non-source, non-auxiliary current propagates and
-    /// whose colour representation is not a singlet (`ward_breaking_fields`
-    /// filters them by width and custom propagators).
-    pub fn coloured_propagated(&self, tables: &BlockInput) -> Vec<i64> {
+    /// Distinct `(particle id, amputated)` of the non-source, non-auxiliary
+    /// currents, sorted: the current scans of `blocks.ward_breaking_fields`
+    /// (every pair) and `artifact.coloured_widths` (pairs not `amputated`),
+    /// which test each particle's colour, width and propagator themselves.
+    /// `amputated`: the current's momentum leaves exactly one leg of
+    /// `full_mask` out (a Born root or an external self-energy reads it).
+    pub fn propagated_species(&self, full_mask: u64) -> Vec<(i64, bool)> {
         let sources = self.sources_set();
         let mut out = BTreeSet::new();
         for (id, source) in sources.iter().enumerate() {
@@ -332,11 +336,8 @@ impl ColumnarDag {
             if *source || species.auxiliary.is_some() {
                 continue;
             }
-            if let Some((Some(rep), _)) = tables.particles.get(&species.pdg)
-                && rep.abs() != 1
-            {
-                out.insert(species.pdg);
-            }
+            let amputated = (full_mask & !self.c_momentum[id]).count_ones() == 1;
+            out.insert((species.pdg, amputated));
         }
         out.into_iter().collect()
     }

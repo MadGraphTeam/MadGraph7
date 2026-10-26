@@ -318,9 +318,13 @@ def build_loop_kernel_catalogue(
     """Build every loop kernel of ``compiled`` for the given loop species.
 
     ``counterterm_entries`` default to the UV and R2 basis entries of the
-    model's raw NLO sidecar. ``loop_species`` (PDG codes) default to the
-    particles the model declares as loop particles of those entries, closed
-    under conjugation, plus the ghosts coupled to them.
+    model's raw NLO sidecar. ``loop_species`` (PDG codes, closed under
+    conjugation here; ghosts are not added) default to the particles the
+    model declares as loop particles of those entries, closed under
+    conjugation, plus the ghosts coupled to them. Loop requests pass the
+    species their families route (``assemble._family_loop_species``):
+    electroweak UV rules declare no loop particles, and a request whose leg 1
+    is a lepton has no counterterm rule at its root.
     """
 
     _sym._ensure_symbolica()
@@ -371,7 +375,9 @@ def compile_tree_kernel_variant(
         )
     return replace(
         compiled,
-        ir=compile_ufo_model_ir(compiled.model, tree_kernel_variant=variant),
+        ir=compile_ufo_model_ir(
+            compiled.model, tree_kernel_variant=variant, gauge=compiled.ir.gauge
+        ),
         _serialized_path=None,
         _prepared_bundle=None,
     )

@@ -131,7 +131,29 @@ class ExportedPlan:
     trees: Any = None
 
     def json(self) -> str:
+        """The plan JSON, ``json.dumps(program, separators=(",", ":"))``,
+        written by the native plan model (``native_lowering``; WP3.1 D2'),
+        or by ``python_json`` when ``native_lowering.NATIVE_JSON`` is off."""
+
+        from . import native_lowering
+
+        if native_lowering.NATIVE_JSON:
+            return native_lowering.plan_json(self).decode("ascii")
+        return self.python_json()
+
+    def python_json(self) -> str:
+        """The plan JSON written by ``json`` (the native writer's oracle)."""
+
         return json.dumps(self.program, separators=(",", ":"))
+
+    def binary(self) -> bytes:
+        """The binary columnar plan member (``native_lowering``), read by
+        ``loop_v2::plan::read_binary``: the plan's records for an artifact's
+        PACBIN member (DESIGN §12.1)."""
+
+        from . import native_lowering
+
+        return native_lowering.plan_binary(self)
 
 
 @dataclass
@@ -1111,7 +1133,8 @@ class NativeExecutor:
         return precision, evaluations
 
     def _inputs(self, evaluations, arithmetic: Arithmetic) -> dict[str, Any]:
-        """Batch inputs: exact momenta, scales and masses; carrier values of
+        """Batch inputs: exact momenta, scales, masses and the legs' squared
+        masses (the on-shell invariants, DESIGN §11.1); carrier values of
         block rows, Born components and kernel constants.
 
         Every carrier value is formed in its point's Decimal context: block
@@ -1119,7 +1142,7 @@ class NativeExecutor:
         their irrational factors, both in the carrier's arithmetic.
         """
 
-        from .assemble import _BlockRows, _mass_values
+        from .assemble import _BlockRows, _leg_masses, _mass_values
 
         exported = self.exported
         slice_ = self.slice
@@ -1133,8 +1156,8 @@ class NativeExecutor:
             return [str(x.real), str(x.imag)]
 
         def shared(evaluation):
-            """Kernel constants (with their contents' mass flips) and squared
-            masses of a point's parameters."""
+            """Kernel constants (with their contents' mass flips), squared
+            masses and the legs' squared masses of a point's parameters."""
 
             constants = evaluation.constants
             if arithmetic == "exact":
@@ -1156,6 +1179,11 @@ class NativeExecutor:
             return (
                 [value(constant(key, flips)) for key, flips in exported.constants],
                 [_fraction_text(masses[m]) for m in exported.masses],
+                # "" leaves a leg whose mass is no parameter unbound.
+                [
+                    "" if m is None else _fraction_text(m)
+                    for m in _leg_masses(slice_, evaluation.parameters)
+                ],
             )
 
         batch: dict[str, Any] = {
@@ -1197,7 +1225,7 @@ class NativeExecutor:
                     for b, order, grade in exported.born_components
                 ]
             )
-        batch["constants"], batch["masses"] = batch.pop("shared")
+        batch["constants"], batch["masses"], batch["leg_masses"] = batch.pop("shared")
         return batch
 
     @staticmethod

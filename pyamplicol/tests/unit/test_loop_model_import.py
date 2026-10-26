@@ -230,9 +230,17 @@ def test_capture_precedes_tree_loader_loss(tmp_path: Path, monkeypatch) -> None:
 
     class TreeModel:
         raw_ufo_error = None
+        parameters = ()
+        couplings = ()
 
         def wrap_indices_in_lorentz_structures(self):
             pass
+
+        def get_model_functions(self):
+            return {}
+
+        def get_model_variables(self):
+            return {}
 
         def to_json(self, _look):
             return '{"name":"tree-only","propagators":[]}'

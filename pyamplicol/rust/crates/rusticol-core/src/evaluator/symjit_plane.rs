@@ -99,7 +99,7 @@ pub(crate) struct SymjitRawPlane<'a> {
 pub(crate) type PlaneDescriptor<'a> = SymjitRawPlane<'a>;
 
 impl<'a> SymjitRawPlane<'a> {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "python-generation-bridge", feature = "loop-v2"))]
     pub(crate) fn from_slice(values: &'a mut [f64]) -> Self {
         Self {
             // SAFETY: The returned wrapper retains the exclusive slice
@@ -227,9 +227,10 @@ impl SymjitPlaneKernel {
     ) -> RusticolResult<Self> {
         let display_path = display_path.into();
         authenticate_storage_v4(bytes, &display_path)?;
+        require_symjit_host_cpu(&display_path)?;
 
         let mut loader_config = explicit_loader_config()?;
-        loader_config.set_defuns(Defuns::new());
+        loader_config.set_defuns(scalar_primitive_defuns()?);
         let mut input = bytes;
         let mut application = guard_symjit_panic(
             || Application::load(&mut input, &loader_config),
@@ -312,7 +313,8 @@ impl SymjitPlaneKernel {
             .expect("validated SymJIT output plane count")
     }
 
-    #[cfg(test)]
+    /// Points per SIMD call (1 without a SIMD kernel).
+    #[cfg(any(test, feature = "loop-v2"))]
     pub(crate) const fn simd_lanes(&self) -> usize {
         self.simd_lanes
     }
@@ -755,7 +757,7 @@ pub(crate) fn compile_symbolica_program_to_plane_application_bytes(
     let layout = SymjitPlaneLayout::complex(input_complex_count, output_complex_count);
     let config = explicit_plane_config(true, opt_level, compress)?;
     let mut compiler = Compiler::with_config(config);
-    let mut application = guard_symjit_panic(
+    let application = guard_symjit_panic(
         || compiler.translate(program_repr.to_owned(), input_complex_count),
         || "translate Symbolica instructions to a SymJIT plane application".to_string(),
     )?
@@ -764,6 +766,16 @@ pub(crate) fn compile_symbolica_program_to_plane_application_bytes(
             "could not translate Symbolica instructions to a SymJIT plane application: {error}"
         ))
     })?;
+    seal_generated_plane_application(application, layout)
+}
+
+/// Validates, prepares and serializes a generated plane application as
+/// storage-v4 IR.
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn seal_generated_plane_application(
+    mut application: Application,
+    layout: SymjitPlaneLayout,
+) -> RusticolResult<Vec<u8>> {
     let display_path = Path::new("<generated Symbolica plane application>");
     validate_application(&application, display_path, layout)?;
     guard_symjit_panic(
@@ -784,6 +796,393 @@ pub(crate) fn compile_symbolica_program_to_plane_application_bytes(
     })?;
     authenticate_storage_v4(&bytes, display_path)?;
     Ok(bytes)
+}
+
+/// Compiles a binary64 Symbolica evaluator into a complex, SIMD-enabled,
+/// direct-arena SymJIT storage-v4 plane application; returns it with its
+/// input and output counts.
+///
+/// The program is Symbolica's own instruction export of the evaluator
+/// (`ExpressionEvaluator::export_instructions`), so registered constants and
+/// fixed-argument functions (pi, ...) carry the binary64 values the
+/// evaluator itself uses (Symbolica's Python export writes them as 0). Bodies
+/// of non-inlined functions (a model's helper functions) are inlined
+/// ([`InlinedProgram`]); every other call keeps its name, which SymJIT
+/// resolves as a built-in or one of pyAmpliCol's scalar primitives
+/// (`scalar_primitive_defuns`) and refuses otherwise. The instructions reach
+/// SymJIT through the same `Composer` calls as its text front end.
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+pub(crate) fn compile_symbolica_evaluator_to_plane_application_bytes(
+    evaluator: &symbolica::evaluate::ExpressionEvaluator<symbolica::domains::float::Complex<f64>>,
+    opt_level: u8,
+    compress: bool,
+) -> RusticolResult<(Vec<u8>, usize, usize)> {
+    use symjit::{Composer, Translator};
+    let exported = evaluator.export_instructions();
+    let (inputs, outputs) = (exported.input_count, exported.output_count);
+    let program = InlinedProgram::of(&exported)?;
+    let layout = SymjitPlaneLayout::complex(inputs, outputs);
+    let config = explicit_plane_config(true, opt_level, compress)?;
+    let application = guard_symjit_panic(
+        || -> Result<Application, String> {
+            let mut translator = Translator::new(config);
+            for value in &program.constants {
+                translator
+                    .append_constant(num_complex::Complex::new(value.re, value.im))
+                    .map_err(|error| error.to_string())?;
+            }
+            for row in &program.rows {
+                compose(&mut translator, row)?;
+            }
+            translator.set_num_params(inputs);
+            translator.compile().map_err(|error| error.to_string())
+        },
+        || "translate a Symbolica evaluator to a SymJIT plane application".to_string(),
+    )?
+    .map_err(|error| {
+        RusticolError::serialization(format!(
+            "could not translate a Symbolica evaluator to a SymJIT plane application: {error}"
+        ))
+    })?;
+    Ok((
+        seal_generated_plane_application(application, layout)?,
+        inputs,
+        outputs,
+    ))
+}
+
+/// Symbolica's instruction export with every sub-evaluator call inlined.
+///
+/// A call `dst = f(args)` of a sub-evaluator `f` becomes `f`'s body with its
+/// parameters read from the call's argument slots, its temporaries and
+/// output in fresh temporaries, its constants appended to the program's and
+/// its labels renumbered past every label in use; the call's destination
+/// receives the body's output last, so a destination that is also an
+/// argument is read before it is written. Nested sub-evaluators inline in
+/// turn, on an explicit stack of bodies (no depth limit: the export is a
+/// finite tree of owned bodies). The evaluated arithmetic is unchanged (the
+/// Python twin is `evaluators/symbolica_helpers._InlinedProgram`).
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+struct InlinedProgram {
+    rows: Vec<symbolica::evaluate::Instruction>,
+    constants: Vec<symbolica::domains::float::Complex<f64>>,
+    temporaries: usize,
+    next_label: usize,
+}
+
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+type Exported = symbolica::evaluate::ExportedInstructions<symbolica::domains::float::Complex<f64>>;
+
+/// A body being inlined: its next instruction, its slots in the program's
+/// slots, its label offset and, for a call, the call's destination and the
+/// body's output temporary.
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+struct InlineFrame<'a> {
+    program: &'a Exported,
+    next: usize,
+    /// `None` for the top level (its slots are the program's).
+    call: Option<InlineCall>,
+    offset: usize,
+}
+
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+struct InlineCall {
+    destination: symbolica::evaluate::Slot,
+    arguments: Vec<symbolica::evaluate::Slot>,
+    temporaries: usize,
+    output: usize,
+    constants: usize,
+}
+
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+impl InlineFrame<'_> {
+    fn slot(&self, slot: symbolica::evaluate::Slot) -> symbolica::evaluate::Slot {
+        use symbolica::evaluate::Slot;
+        let Some(call) = &self.call else {
+            return slot;
+        };
+        match slot {
+            Slot::Param(index) => call.arguments[index],
+            Slot::Temp(index) => Slot::Temp(call.temporaries + index),
+            Slot::Out(index) => Slot::Temp(call.output + index),
+            Slot::Const(index) => Slot::Const(call.constants + index),
+        }
+    }
+}
+
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+impl InlinedProgram {
+    fn of(exported: &Exported) -> RusticolResult<Self> {
+        use symbolica::evaluate::{Instruction as I, Slot};
+        let mut inlined = Self {
+            rows: Vec::new(),
+            constants: exported.constants.clone(),
+            temporaries: exported.temporary_count,
+            next_label: 1 + max_label(&exported.instructions).unwrap_or(0),
+        };
+        let mut stack = vec![InlineFrame {
+            program: exported,
+            next: 0,
+            call: None,
+            offset: 0,
+        }];
+        while let Some(frame) = stack.last_mut() {
+            let program = frame.program;
+            let Some(row) = program.instructions.get(frame.next) else {
+                if let Some(call) = &frame.call {
+                    inlined
+                        .rows
+                        .push(I::Assign(call.destination, Slot::Temp(call.output)));
+                }
+                stack.pop();
+                continue;
+            };
+            frame.next += 1;
+            let frame = &*frame;
+            let destination = match row {
+                I::Add(o, ..)
+                | I::Mul(o, ..)
+                | I::Pow(o, ..)
+                | I::Powf(o, ..)
+                | I::Fun(o, ..)
+                | I::Assign(o, _)
+                | I::Join(o, ..) => Some(*o),
+                I::IfElse(..) | I::Goto(_) | I::Label(_) => None,
+            };
+            if frame.call.is_some() && matches!(destination, Some(Slot::Param(_))) {
+                return Err(RusticolError::serialization(
+                    "a Symbolica function body writes one of its parameters",
+                ));
+            }
+            let list = |slots: &[Slot]| slots.iter().map(|&slot| frame.slot(slot)).collect();
+            let offset = frame.offset;
+            let mapped = match row {
+                I::Add(o, args, reals) => I::Add(frame.slot(*o), list(args), *reals),
+                I::Mul(o, args, reals) => I::Mul(frame.slot(*o), list(args), *reals),
+                I::Pow(o, base, exponent, real) => {
+                    I::Pow(frame.slot(*o), frame.slot(*base), *exponent, *real)
+                }
+                I::Powf(o, base, exponent, real) => I::Powf(
+                    frame.slot(*o),
+                    frame.slot(*base),
+                    frame.slot(*exponent),
+                    *real,
+                ),
+                I::Fun(o, call, real) => {
+                    let (symbol, tags, args) = &**call;
+                    let body = program
+                        .sub_evaluators
+                        .iter()
+                        .find(|sub| sub.symbol == *symbol && sub.tags == *tags);
+                    if let Some(body) = body {
+                        let entered =
+                            inlined.enter(frame.slot(*o), list(args), &body.instructions)?;
+                        stack.push(entered);
+                        continue;
+                    }
+                    I::Fun(
+                        frame.slot(*o),
+                        Box::new((*symbol, tags.clone(), list(args))),
+                        *real,
+                    )
+                }
+                I::Assign(o, value) => I::Assign(frame.slot(*o), frame.slot(*value)),
+                I::IfElse(condition, label) => I::IfElse(frame.slot(*condition), label + offset),
+                I::Goto(label) => I::Goto(label + offset),
+                I::Label(label) => I::Label(label + offset),
+                I::Join(o, condition, yes, no) => I::Join(
+                    frame.slot(*o),
+                    frame.slot(*condition),
+                    frame.slot(*yes),
+                    frame.slot(*no),
+                ),
+            };
+            inlined.rows.push(mapped);
+        }
+        Ok(inlined)
+    }
+
+    /// The frame of a call's body: its temporaries, output and constants
+    /// appended to the program's, its labels past every label in use.
+    fn enter<'a>(
+        &mut self,
+        destination: symbolica::evaluate::Slot,
+        arguments: Vec<symbolica::evaluate::Slot>,
+        body: &'a Exported,
+    ) -> RusticolResult<InlineFrame<'a>> {
+        if body.output_count != 1 || arguments.len() != body.input_count {
+            return Err(RusticolError::serialization(
+                "a Symbolica function body must have one output and the call's arity",
+            ));
+        }
+        let temporaries = self.temporaries;
+        let output = temporaries + body.temporary_count;
+        self.temporaries = output + 1;
+        let constants = self.constants.len();
+        self.constants.extend(body.constants.iter().cloned());
+        let offset = self.next_label;
+        self.next_label += 1 + max_label(&body.instructions).unwrap_or(0);
+        Ok(InlineFrame {
+            program: body,
+            next: 0,
+            call: Some(InlineCall {
+                destination,
+                arguments,
+                temporaries,
+                output,
+                constants,
+            }),
+            offset,
+        })
+    }
+}
+
+/// One instruction through SymJIT's `Composer` (the calls of its text front
+/// end, `Translator::parse_model`).
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+fn compose(
+    translator: &mut symjit::Translator,
+    row: &symbolica::evaluate::Instruction,
+) -> Result<(), String> {
+    {
+        use symbolica::evaluate::Instruction as I;
+        use symjit::Composer;
+        let slot = |slot: &symbolica::evaluate::Slot| match *slot {
+            symbolica::evaluate::Slot::Param(i) => symjit::Slot::Param(i),
+            symbolica::evaluate::Slot::Const(i) => symjit::Slot::Const(i),
+            symbolica::evaluate::Slot::Temp(i) => symjit::Slot::Temp(i),
+            symbolica::evaluate::Slot::Out(i) => symjit::Slot::Out(i),
+        };
+        let list = |slots: &[symbolica::evaluate::Slot]| slots.iter().map(slot).collect::<Vec<_>>();
+        match row {
+            I::Add(o, args, reals) => translator.append_add(&slot(o), &list(args), *reals),
+            I::Mul(o, args, reals) => translator.append_mul(&slot(o), &list(args), *reals),
+            I::Pow(o, base, exponent, real) => {
+                translator.append_pow(&slot(o), &slot(base), *exponent, *real)
+            }
+            I::Powf(o, base, exponent, real) => {
+                translator.append_powf(&slot(o), &slot(base), &slot(exponent), *real)
+            }
+            I::Fun(o, call, real) => {
+                let (symbol, tags, args) = &**call;
+                if !tags.is_empty() {
+                    return Err(format!(
+                        "SymJIT has no tagged function {}",
+                        symbol.get_name()
+                    ));
+                }
+                // The name of SymJIT's Symbolica front end: `symbolica_`
+                // and the symbol as Symbolica prints it (built-ins without
+                // their namespace).
+                let name = if symbol.get_namespace() == "symbolica" {
+                    symbol.get_stripped_name()
+                } else {
+                    symbol.get_name()
+                };
+                translator.append_fun(&slot(o), &format!("symbolica_{name}"), &list(args), *real)
+            }
+            I::Assign(o, value) => translator.append_assign(&slot(o), &slot(value)),
+            I::IfElse(condition, label) => translator.append_if_else(&slot(condition), *label),
+            I::Goto(label) => translator.append_goto(*label),
+            I::Label(label) => translator.append_label(*label),
+            I::Join(o, condition, yes, no) => {
+                translator.append_join(&slot(o), &slot(condition), &slot(yes), &slot(no))
+            }
+        }
+        .map_err(|error| error.to_string())
+    }
+}
+
+#[cfg(all(
+    feature = "symbolica-runtime",
+    any(test, feature = "python-generation-bridge")
+))]
+fn max_label(rows: &[symbolica::evaluate::Instruction]) -> Option<usize> {
+    use symbolica::evaluate::Instruction as I;
+    rows.iter()
+        .filter_map(|row| match row {
+            I::IfElse(_, label) | I::Goto(label) | I::Label(label) => Some(*label),
+            _ => None,
+        })
+        .max()
+}
+
+/// Loads a stored complex plane application through the production loader
+/// and evaluates it at `point_count` points.
+///
+/// `inputs` holds (real, imaginary) per input, row-major by point; the result
+/// holds (real, imaginary) per output, row-major by point. A cold-path bridge
+/// for validating exports against Symbolica.
+#[cfg(any(test, feature = "python-generation-bridge"))]
+pub(crate) fn evaluate_plane_application_bytes(
+    bytes: &[u8],
+    input_complex_count: usize,
+    output_complex_count: usize,
+    inputs: &[f64],
+    point_count: usize,
+) -> RusticolResult<Vec<f64>> {
+    let expected = input_complex_count
+        .checked_mul(2)
+        .and_then(|width| width.checked_mul(point_count))
+        .ok_or_else(|| RusticolError::invalid_argument("plane input size overflows usize"))?;
+    if inputs.len() != expected {
+        return Err(RusticolError::invalid_argument(format!(
+            "expected {expected} input values ({point_count} points of \
+             {input_complex_count} complex inputs), got {}",
+            inputs.len()
+        )));
+    }
+    let layout = SymjitPlaneLayout::complex(input_complex_count, output_complex_count);
+    let kernel = SymjitPlaneKernel::load_bytes(bytes, "<plane application>", layout)?;
+    let input_planes = 2 * input_complex_count;
+    let mut planes: Vec<Vec<f64>> = (0..input_planes + 2 * output_complex_count)
+        .map(|plane| {
+            if plane < input_planes {
+                (0..point_count)
+                    .map(|point| inputs[point * input_planes + plane])
+                    .collect()
+            } else {
+                vec![f64::NAN; point_count]
+            }
+        })
+        .collect();
+    {
+        let mut table = kernel.build_raw_table(
+            planes
+                .iter_mut()
+                .map(|plane| PlaneDescriptor::from_slice(plane))
+                .collect(),
+        )?;
+        kernel.execute_table(&mut table, 0, point_count)?;
+    }
+    let output_planes = &planes[input_planes..];
+    Ok((0..point_count)
+        .flat_map(|point| output_planes.iter().map(move |plane| plane[point]))
+        .collect())
 }
 
 fn explicit_plane_config(complex: bool, opt_level: u8, compress: bool) -> RusticolResult<Config> {
@@ -822,10 +1221,128 @@ fn explicit_plane_config(complex: bool, opt_level: u8, compress: bool) -> Rustic
     // persisted application semantics.
     config.set_direct_arena_operation(0);
     config.set_direct_arena_identity_output(true);
+    config.set_defuns(scalar_primitive_defuns()?);
     Ok(config)
 }
 
-fn explicit_loader_config() -> RusticolResult<Config> {
+/// pyAmpliCol's version-one scalar primitives (`source_scalar`) as SymJIT
+/// external functions.
+///
+/// SymJIT's Symbolica front end names a `fun` call `symbolica_<symbol>`; a
+/// stored application keeps that name and SymJIT binds it again when it
+/// recompiles the IR at load. The compiler and every plane loader register the
+/// same Rust functions, so an application calling them (a model's helper
+/// functions, inlined by the exporter) is relocatable and evaluates without
+/// Symbolica state. A call of any other non-built-in function is refused by the
+/// compiler.
+fn scalar_primitive_defuns() -> RusticolResult<Defuns> {
+    use num_complex::Complex;
+    let mut defuns = Defuns::new();
+    for (name, mode) in crate::scalar_primitives::SCALAR_PRIMITIVES {
+        defuns
+            .add_sliced_func::<Complex<f64>>(
+                &format!("symbolica_{name}"),
+                Box::new(move |args: &[Complex<f64>]| {
+                    let mut pairs = [(0.0, 0.0); 3];
+                    for (pair, value) in pairs.iter_mut().zip(args) {
+                        *pair = (value.re, value.im);
+                    }
+                    let (re, im) = crate::scalar_primitives::scalar_primitive_f64(
+                        &pairs[..args.len().min(pairs.len())],
+                        mode,
+                    );
+                    Complex::new(re, im)
+                }),
+            )
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "could not register the SymJIT scalar primitive {name}: {error}"
+                ))
+            })?;
+    }
+    Ok(defuns)
+}
+
+/// The x86-64 features that decide SymJIT's code path, as this CPU reports
+/// them (CPUID with the OS's XSAVE state, as `is_x86_feature_detected!` reads
+/// them; under user-mode emulation the emulated CPU's): `sse2`, `sse4_2`,
+/// `avx`, `fma`, `avx2`, `avx512f`. Empty on other architectures.
+pub(crate) fn symjit_cpu_features() -> Vec<&'static str> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        [
+            ("sse2", std::is_x86_feature_detected!("sse2")),
+            ("sse4_2", std::is_x86_feature_detected!("sse4.2")),
+            ("avx", std::is_x86_feature_detected!("avx")),
+            ("fma", std::is_x86_feature_detected!("fma")),
+            ("avx2", std::is_x86_feature_detected!("avx2")),
+            ("avx512f", std::is_x86_feature_detected!("avx512f")),
+        ]
+        .into_iter()
+        .filter_map(|(name, present)| present.then_some(name))
+        .collect()
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        Vec::new()
+    }
+}
+
+/// Whether SymJIT's load-time code generation runs on this CPU
+/// ([`require_symjit_host_cpu`]): x86-64 with AVX and FMA3, or another
+/// architecture. Until a SymJIT release with the upstream fixes is pinned
+/// (siravan/symjit issues 22 and 23, pull requests 24 and 25) this gate is
+/// the fallback; afterwards it stays as a fallback.
+pub(crate) fn symjit_host_cpu_supported() -> bool {
+    #[cfg(target_arch = "x86_64")]
+    {
+        std::is_x86_feature_detected!("avx") && std::is_x86_feature_detected!("fma")
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        true
+    }
+}
+
+/// Refuses a CPU on which SymJIT's load-time code generation would crash.
+///
+/// Stored applications are IR that SymJIT 2.27 recompiles for the loading CPU
+/// (`CompilerType::Native`). Its x86-64 kernels need AVX and FMA3: the shared
+/// epilogue emits `vzeroupper` (AVX) for every generator, the SSE one
+/// included, and the AVX generator, chosen from the AVX CPUID bit alone, also
+/// emits FMA3 instructions (complex products, fused multiply-add). On a CPU
+/// without AVX (x86-64-v1/v2) or with AVX and without FMA3 (Intel Sandy and
+/// Ivy Bridge, AMD Bulldozer, a virtual-machine CPU model masking them) a
+/// kernel dies with SIGILL, which no caller can recover. Such a CPU is refused
+/// here with the reason.
+pub(crate) fn require_symjit_host_cpu(display_path: &Path) -> RusticolResult<()> {
+    if symjit_host_cpu_supported() {
+        return Ok(());
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        let missing: Vec<&str> = [
+            ("AVX", std::is_x86_feature_detected!("avx")),
+            ("FMA3", std::is_x86_feature_detected!("fma")),
+        ]
+        .into_iter()
+        .filter_map(|(name, present)| (!present).then_some(name))
+        .collect();
+        if !missing.is_empty() {
+            return Err(RusticolError::compatibility(format!(
+                "cannot compile SymJIT application {} on this CPU: it lacks {}, which \
+                 the SymJIT code generator's x86-64 kernels use; use an x86-64 CPU with \
+                 AVX and FMA3 (Intel Haswell, AMD Piledriver or newer) or AArch64",
+                display_path.display(),
+                missing.join(" and ")
+            )));
+        }
+    }
+    let _ = display_path;
+    Ok(())
+}
+
+pub(crate) fn explicit_loader_config() -> RusticolResult<Config> {
     let mut config = Config::new(CompilerType::Native, 0).map_err(|error| {
         RusticolError::internal(format!(
             "could not construct explicit SymJIT loader configuration: {error}"
@@ -2186,5 +2703,98 @@ mod tests {
         let error = compile_symbolica_program_to_plane_application_bytes(MODEL, 2, 1, 4, false)
             .unwrap_err();
         assert_eq!(error.kind(), RusticolErrorKind::InvalidArgument);
+    }
+
+    /// One output per scalar primitive, and the `equal`-guarded branch shape
+    /// of a model helper function (Symbolica's `if`), all inlined calls.
+    const PRIMITIVE_MODEL: &str = "
+([('fun', ('temp', 0), 'pyamplicol_scalar_v1::equal', [], [('param', 0), ('param', 1)], False),
+  ('if_else', ('temp', 0), 1),
+  ('assign', ('temp', 1), ('param', 0)),
+  ('goto', 2),
+  ('label', 1),
+  ('mul', ('temp', 2), [('param', 1), ('const', 0)], 0),
+  ('label', 2),
+  ('join', ('out', 0), ('temp', 0), ('temp', 1), ('temp', 2)),
+  ('assign', ('out', 1), ('temp', 0)),
+  ('fun', ('out', 2), 'pyamplicol_scalar_v1::truth', [], [('param', 0)], False),
+  ('fun', ('out', 3), 'pyamplicol_scalar_v1::less', [], [('param', 0), ('param', 1)], False),
+  ('fun', ('out', 4), 'pyamplicol_scalar_v1::less_equal', [], [('param', 0), ('param', 1)], False),
+  ('fun', ('out', 5), 'pyamplicol_scalar_v1::real_part', [], [('param', 0)], False),
+  ('fun', ('out', 6), 'pyamplicol_scalar_v1::imaginary_part', [], [('param', 0)], False)],
+ 3,
+ [3])
+";
+
+    fn same_value(left: f64, right: f64) -> bool {
+        left.to_bits() == right.to_bits() || (left.is_nan() && right.is_nan())
+    }
+
+    #[test]
+    fn scalar_primitives_compile_relocate_and_match_the_native_semantics() {
+        let bytes =
+            compile_symbolica_program_to_plane_application_bytes(PRIMITIVE_MODEL, 2, 7, 2, false)
+                .unwrap();
+        // The stored IR names the primitives; loading binds them again.
+        let name = b"symbolica_pyamplicol_scalar_v1::equal";
+        assert!(bytes.windows(name.len()).any(|window| window == name));
+        let pairs: [((f64, f64), (f64, f64)); 11] = [
+            ((1.5, 0.0), (1.5, 0.0)),
+            ((1.5, 0.0), (2.5, 0.0)),
+            ((2.5, 0.0), (1.5, 0.0)),
+            ((0.0, 0.0), (-0.0, 0.0)),
+            ((1.0, 2.0), (1.0, 2.0)),
+            ((1.0, 2.0), (1.0, -2.0)),
+            ((0.0, 1.0), (3.0, 0.0)),
+            ((f64::NAN, 0.0), (1.0, 0.0)),
+            ((f64::INFINITY, 0.0), (1.0, 0.0)),
+            ((-4.0, 0.0), (-4.0, 0.0)),
+            ((0.0, 0.0), (0.0, 0.0)),
+        ];
+        // Long enough for SIMD blocks with divergent lanes, scalar replay
+        // and a scalar tail.
+        let points: Vec<_> = pairs.iter().cycle().take(3 * pairs.len()).collect();
+        let inputs: Vec<f64> = points
+            .iter()
+            .flat_map(|(x, y)| [x.0, x.1, y.0, y.1])
+            .collect();
+        let outputs =
+            evaluate_plane_application_bytes(&bytes, 2, 7, &inputs, points.len()).unwrap();
+        for (point, (x, y)) in points.iter().enumerate() {
+            let primitive = |args: &[(f64, f64)], mode| {
+                crate::scalar_primitives::scalar_primitive_f64(args, mode)
+            };
+            let equal = primitive(&[*x, *y], 1);
+            let branch = if equal.0 != 0.0 || equal.1 != 0.0 {
+                *x
+            } else {
+                (3.0 * y.0, 3.0 * y.1)
+            };
+            let expected = [
+                branch,
+                equal,
+                primitive(&[*x], 0),
+                primitive(&[*x, *y], 2),
+                primitive(&[*x, *y], 3),
+                primitive(&[*x], 4),
+                primitive(&[*x], 5),
+            ];
+            for (output, value) in expected.iter().enumerate() {
+                let at = 14 * point + 2 * output;
+                assert!(
+                    same_value(outputs[at], value.0) && same_value(outputs[at + 1], value.1),
+                    "point {point} {x:?} {y:?} output {output}: {:?} != {value:?}",
+                    (outputs[at], outputs[at + 1])
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn plane_compiler_refuses_unregistered_functions() {
+        let program = PRIMITIVE_MODEL.replace("scalar_v1::truth", "scalar_v1::unknown");
+        let error = compile_symbolica_program_to_plane_application_bytes(&program, 2, 7, 2, false)
+            .unwrap_err();
+        assert!(error.message().contains("unknown"), "{}", error.message());
     }
 }

@@ -66,6 +66,19 @@ def lowest_leg(mask: int) -> int:
     return (mask & -mask).bit_length() - 1
 
 
+def onshell_leg(arc: int, full: int) -> int | None:
+    """The external leg whose mass shell fixes the invariant p(arc)^2: the
+    leg of a single-leg arc or of a single-leg complement (momentum
+    conservation), else None. Such an invariant is the leg's squared mass by
+    definition of the external state, never the p^2 of the given (possibly
+    rounded) momenta (design §11.1, on-shell external invariants)."""
+
+    for legs in (arc, full ^ arc):
+        if legs and legs & (legs - 1) == 0:
+            return lowest_leg(legs)
+    return None
+
+
 # --------------------------------------------------------------------------- records
 
 
@@ -395,14 +408,15 @@ class Family:
         return tuple(found[key] for key in sorted(found))
 
     def onshell_bindings(self, legs: Sequence[ExternalLeg]) -> dict[int, MassId]:
-        """Invariants fixed by external masses: arcs of a single leg."""
+        """Invariants fixed by external masses, by the one on-shell rule
+        every carrier evaluates (``onshell_leg``): a single-leg arc or a
+        single-leg complement is that leg's mass shell."""
         full = shifts(self.key)[-1]
-        out = {}
-        for mask in self.invariant_masks():
-            for arc in (mask, full ^ mask):
-                if arc & (arc - 1) == 0:
-                    out[mask] = legs[lowest_leg(arc)].mass
-        return out
+        return {
+            mask: legs[leg].mass
+            for mask in self.invariant_masks()
+            if (leg := onshell_leg(mask, full)) is not None
+        }
 
 
 @dataclass(frozen=True, slots=True)

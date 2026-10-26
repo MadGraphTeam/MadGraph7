@@ -5,16 +5,17 @@
 //! A `V2Executor` loads one plan v4 for one carrier: `double` (binary64,
 //! NinjaRS fast engine), `double-double` and `arbitrary` (decimal digits;
 //! the generic engine), or `exact` (rational numerators only). Batch inputs
-//! are a dict of exact momenta, scales and squared masses (decimal or
-//! fraction strings) and carrier values of kernel constants, block rows and
-//! Born components (float pairs in binary64, string pairs otherwise).
+//! are a dict of exact momenta, scales, squared masses and the legs'
+//! squared masses (`leg_masses`; decimal or fraction strings) and carrier
+//! values of kernel constants, block rows and Born components (float pairs in
+//! binary64, string pairs otherwise).
 //! With a tree program (`trees=`, WP3.1) the block rows and Born components
 //! are formed natively instead: the batch then carries `parameters`, the
 //! exact external parameter values of the program
 //! (`TreeProgram::parameter_names`), from which the kernel constants, masses,
 //! couplings and model parameters are bound natively (the scale parameter
-//! from each point's mu_R²); it has no `constants`, `masses`, `block_rows`
-//! or `born`.
+//! from each point's mu_R²); it has no `constants`, `masses`, `leg_masses`,
+//! `block_rows` or `born`.
 use super::*;
 use pyo3::IntoPyObject;
 use pyo3::types::PyDict;
@@ -151,6 +152,23 @@ fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch
         } else {
             rationals(item(inputs, "masses")?.extract()?)?
         },
+        // The legs' squared masses, the on-shell invariants (DESIGN §11.1);
+        // bound natively from the external parameters like `masses`. A
+        // synthetic batch without external states (timing tools) may omit
+        // them: its invariants then all come from the momenta.
+        // "" leaves a leg unbound (its mass is no model parameter).
+        leg_masses: match inputs.get_item("leg_masses")? {
+            Some(values) if !native => values
+                .extract::<Vec<String>>()?
+                .into_iter()
+                .map(|text| {
+                    (!text.is_empty())
+                        .then(|| parse_rational(&text).map_err(error))
+                        .transpose()
+                })
+                .collect::<PyResult<_>>()?,
+            _ => Vec::new(),
+        },
         constants: if native {
             Vec::new()
         } else {
@@ -205,6 +223,7 @@ impl Trees {
             .map_err(error)?;
         batch.constants = bound.constants;
         batch.masses = bound.masses;
+        batch.leg_masses = bound.leg_masses;
         let out = self
             .program
             .inputs(
@@ -437,6 +456,7 @@ where
     let mut batch = batch(inputs, &zero)?;
     let mut born = None;
     let mut counterterms = None;
+    let mut tree_seconds = None;
     if inputs.contains("parameters")? {
         let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
         // The counterterm pole outputs are formed unless finite-only (the
@@ -445,7 +465,11 @@ where
             options.poles,
             rusticol_core::loop_execution::v2::Poles::None
         );
+        let started = std::time::Instant::now();
         let native = trees.fill(executor.plan(), inputs, &mut batch, poles, &zero)?;
+        // The report's "trees" stage: the whole native input fill, then its
+        // parts (`TreeInputs::seconds`).
+        tree_seconds = Some((started.elapsed().as_secs_f64(), native.seconds.clone()));
         let export = |points: Vec<Vec<T>>| -> Vec<Values> {
             points
                 .iter()
@@ -455,9 +479,13 @@ where
         born = native.born_squared.map(export);
         counterterms = native.counterterms.map(export);
     }
-    let (results, report) = py
+    let (results, mut report) = py
         .detach(|| executor.evaluate(&batch, &zero, backend, options))
         .map_err(error)?;
+    if let Some((total, parts)) = tree_seconds {
+        report.seconds.insert("trees", total);
+        report.seconds.extend(parts);
+    }
     Ok(export_evaluation(results, report, bits, born, counterterms))
 }
 
@@ -522,8 +550,10 @@ fn numerators_with<T: Exchanged>(
 
 #[pymethods]
 impl V2Executor {
-    /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON
-    /// and the saved exact evaluator of each stage.
+    /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON,
+    /// the saved exact evaluator of each kernel and of the parameter program
+    /// (last), and their binary64 SymJIT plane applications in the same order
+    /// (or None: binary64 then runs the exact states).
     #[new]
     #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None))]
     #[allow(clippy::too_many_arguments)]
@@ -535,7 +565,7 @@ impl V2Executor {
         threads: Option<usize>,
         forms: &str,
         engine: &str,
-        trees: Option<(String, Vec<Vec<u8>>)>,
+        trees: Option<(String, Vec<Vec<u8>>, Option<Vec<Vec<u8>>>)>,
     ) -> PyResult<Self> {
         if !matches!(engine, "fast" | "generic") {
             return Err(error("engine must be fast or generic"));
@@ -559,11 +589,13 @@ impl V2Executor {
         };
         let plan = Arc::new(LoopProgramV4::load_with(plan.as_bytes(), policy).map_err(error)?);
         let trees = trees
-            .map(|(json, kernels)| {
-                TreeProgram::load(json.as_bytes(), &kernels, &plan).map(|program| Trees {
-                    program,
-                    runtime: Mutex::new(None),
-                })
+            .map(|(json, kernels, planes)| {
+                TreeProgram::load(json.as_bytes(), &kernels, planes.as_deref(), &plan).map(
+                    |program| Trees {
+                        program,
+                        runtime: Mutex::new(None),
+                    },
+                )
             })
             .transpose()
             .map_err(error)?;
@@ -729,6 +761,12 @@ impl V2Executor {
         }
         let bits = self.bits()?;
         let carrier = self.carrier;
+        // The generic reduction builds Symbolica expressions and the exact
+        // tree kernels decode Symbolica states: pyAmpliCol's library key
+        // (binary64 with the fast engine and plane kernels touches neither).
+        let _unlock = (self.engine == "generic" || !matches!(carrier, Carriers::Double))
+            .then(pyamplicol::unlock)
+            .flatten();
         let backend = backend_of(&mut self.backend, carrier, &self.engine)?;
         backend.masters = masters;
         let executor = &self.executor;
@@ -800,7 +838,40 @@ fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyRes
     .map_err(error)
 }
 
+/// Generation: the binary64 SymJIT plane application of a saved exact
+/// evaluator of a tree program (a kernel or the parameter program), checked
+/// against the evaluator (`rusticol_core::loop_v2::trees::compile_plane_
+/// application`): `(application, inputs, outputs)`.
+#[pyfunction]
+#[pyo3(signature = (state, optimization_level=2, compress=false))]
+fn compile_v2_plane<'py>(
+    py: Python<'py>,
+    state: &[u8],
+    optimization_level: u8,
+    compress: bool,
+) -> PyResult<(Bound<'py, pyo3::types::PyBytes>, usize, usize)> {
+    let (plane, inputs, outputs) = py
+        .detach(|| {
+            rusticol_core::loop_v2::trees::compile_plane_application(
+                state,
+                optimization_level,
+                compress,
+            )
+        })
+        .map_err(error)?;
+    Ok((pyo3::types::PyBytes::new(py, &plane), inputs, outputs))
+}
+
+/// Whether pyAmpliCol's Symbolica library key unlocks the native code of
+/// this process (crate `pyamplicol`).
+#[pyfunction]
+fn native_library_key_active() -> bool {
+    pyamplicol::is_active()
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Executor>()?;
+    module.add_function(wrap_pyfunction!(compile_v2_plane, module)?)?;
+    module.add_function(wrap_pyfunction!(native_library_key_active, module)?)?;
     module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)
 }

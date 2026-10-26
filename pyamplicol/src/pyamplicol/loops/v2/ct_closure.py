@@ -35,6 +35,7 @@ id, and the insertion order of their orders marks them.
 
 from __future__ import annotations
 
+import logging
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -67,6 +68,8 @@ from .families import (
     add_orders,
     model_data,
 )
+
+_LOG = logging.getLogger(__name__)
 
 RootKind = Literal["vertex", "line", "counterterm"]
 ROOT_VERTEX: RootKind = "vertex"
@@ -246,13 +249,17 @@ class CloneLine:
     ``half`` are the physical orders of the vertex copy at either end of the
     line (half of those of ``Pi``), ``slot`` its (component, power, grade)
     and ``factor`` the Weyl factor ``kappa`` that the copies of this clone's
-    leg carry, or ``None``.
+    leg carry, or ``None``. ``promoted``: the scalar side of a scalar-vector
+    mixing line (``models.ct_line_insertions``), a vector current that only
+    the vertex copies carrying the line momentum consume, never an ordinary
+    vertex of the field it is read as.
     """
 
     field_id: int
     half: Orders
     slot: tuple[str, int, int]
     factor: str | None = None
+    promoted: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,7 +310,59 @@ class CountertermBlocks:
         progress_callback: Any = None,
     ) -> CountertermBlocks:
         """Compile the CT program's blocks for ``process`` (a model process IR
-        of the lowered model at full colour)."""
+        of the lowered model at full colour).
+
+        Under ``dag_input.NATIVE_DAG`` the native builder makes the program
+        (``dag_input.native_counterterm_blocks``, WP3.1 A4): its DAG is a
+        ``dag_input.NativeDag`` handle, decoded only by the per-point Python
+        rows (``CountertermProgram.rows``); ``progress_callback`` gets the
+        native stage's start and finish. The tree engine's loop-request
+        mode below is the oracle, and the stage for a request the native
+        builder does not cover (``TreeBlocks.dag_fallback`` names it)."""
+
+        from . import dag_input
+
+        fallback = None
+        if dag_input.NATIVE_DAG:
+            stage = "counterterm-program"
+            dag_input.native_progress(progress_callback, stage)
+            try:
+                native = dag_input.native_counterterm_blocks(
+                    recursion, process, ignored_particle_ids=ignored_particle_ids
+                )
+            except dag_input.NativeDagUnsupported as error:
+                # Only a listed feature falls back (rule 2).
+                fallback = dag_input.listed_fallback(error)
+                dag_input.native_progress(progress_callback, stage, fallback=fallback)
+                _LOG.warning(
+                    "%s: the tree engine builds the counterterm program "
+                    "(the native builder does not cover %s)",
+                    process.process,
+                    fallback,
+                )
+            else:
+                program = cls(
+                    recursion,
+                    TreeBlocks(
+                        process=process,
+                        blocks_dag=native.dag,
+                        born_dag=native.dag,
+                        blocks=native.blocks,
+                        born_roots=(),
+                        kernel_variant=native.kernel_variant,
+                    ),
+                    native.clones,
+                )
+                # The U(1) leakage scan is answered now (the handle keeps
+                # it), so the native columns are not held to the end of
+                # generation; the per-point rows and the export rebuild and
+                # decode them.
+                u1_leaking_structures(program)
+                dag_input.native_progress(
+                    progress_callback, stage, (native.dag, len(native.blocks))
+                )
+                native.dag.release()
+                return program
 
         from pyamplicol.generation.dag_compiler import GenericDAGCompiler
         from pyamplicol.models.prepared_catalog_builder import (
@@ -340,6 +399,7 @@ class CountertermBlocks:
             blocks=tuple(blocks),
             born_roots=(),
             kernel_variant=variant,
+            dag_fallback=fallback,
         )
         return cls(recursion, tree, clones)
 
@@ -356,11 +416,13 @@ def _clone_lines(recursion: CountertermRecursion) -> dict[int, CloneLine]:
         half = tuple((name, power // 2) for name, power in structure.orders)
         slot = (structure.component, structure.power, structure.grade)
         for clone_name in {clone, str(particles[clone]["antiname"])}:
+            read = particles[lowered.line_fields[clone_name]]
             out[int(particles[clone_name]["pdg_code"])] = CloneLine(
-                int(particles[lowered.line_fields[clone_name]]["pdg_code"]),
+                int(read["pdg_code"]),
                 add_orders(half),
                 slot,
                 lowered.line_factors.get(clone_name),
+                int(particles[clone_name]["spin"]) != int(read["spin"]),
             )
     return out
 
@@ -486,6 +548,20 @@ class CountertermClosure:
                         # e.g. a W vertex not closed under conjugation at
                         # u u~ > e- e+ d d~ g, may sit at such orders).
                         continue
+                    if lines and any(
+                        program.clones[b.id].promoted
+                        and add_orders(physical, program.clones[b.id].half) in loop
+                        for b in lines
+                    ):
+                        # The root would read a Goldstone-vector mixing line's
+                        # vector current as the Goldstone (WP3.2 EWI-4b).
+                        raise UnloweredCountertermError(
+                            f"the counterterm root vertex {entries[0].vertex_name} "
+                            "consumes a Goldstone-vector mixing line on its "
+                            "Goldstone side, which only vertex copies carrying "
+                            "the line momentum consume (leg 1 couples to the "
+                            "Goldstone); not lowered yet"
+                        )
                     attachments = _assigned(fields, choice)
                     index = attachments.index(current)
                     for term in closure.vertex_terms(entries, attachments):
@@ -597,15 +673,23 @@ def u1_leaking_structures(program: CountertermBlocks) -> frozenset[Any]:
     that does either.
     """
 
-    dag = program.blocks.blocks_dag
-    lowered = program.recursion.model.lowered
+    return _u1_leaking(program.recursion, program.blocks.blocks_dag)
+
+
+def _u1_leaking(recursion: CountertermRecursion, dag: Any) -> frozenset[Any]:
+    """``u1_leaking_structures`` of the program DAG ``dag`` of ``recursion``:
+    the scan is native for a ``dag_input.NativeDag`` (``NativeDag.u1_leaking``,
+    no decode) and over the currents of a ``GenericDAG`` (the oracle)."""
+
+    from .dag_input import NativeDag
+
+    lowered = recursion.model.lowered
     compiled = lowered.compiled
     if u1_projected(compiled):
         return frozenset()
     kinds = _u1_coupling_kinds(compiled)
     if not kinds:
         return frozenset()
-    currents = dag.currents
     colours = {int(p.pdg_code): int(p.color) for p in compiled.ir.particles}
     fundamental = {
         leg.label
@@ -620,29 +704,39 @@ def u1_leaking_structures(program: CountertermBlocks) -> frozenset[Any]:
     # A root attaches at least two blocks to leg 1, so the currents of all
     # legs but leg 1 are never read (nor what only they derive from).
     rest = frozenset(leg.label for leg in dag.process.legs) - {1}
-    interactions = [
-        interaction
-        for interaction in dag.interactions
-        if frozenset(currents[interaction.result_id].index.external_labels) != rest
-    ]
     leaking: set[int] = set()
-    producers: dict[int, set[int]] = defaultdict(set)
-    for interaction in interactions:
-        kind = int(interaction.vertex_kind)
-        if kind not in kinds:
-            continue
-        for input_id in (interaction.left_id, interaction.right_id):
-            index = currents[input_id].index
-            if colours.get(int(index.particle_id)) == 8 and (
-                fundamental & set(index.external_labels)
-            ):
-                leaking.add(kind)
-        if colours.get(int(currents[interaction.result_id].index.particle_id)) == 8:
-            producers[interaction.result_id].add(kind)
-    for interaction in interactions:
-        if int(interaction.vertex_kind) in generator_kinds:
+    if isinstance(dag, NativeDag):
+        leaking |= dag.u1_leaking(
+            kinds,
+            generator_kinds,
+            (pdg for pdg, colour in colours.items() if colour == 8),
+            sum(1 << (label - 1) for label in fundamental),
+            sum(1 << (label - 1) for label in rest),
+        )
+    else:
+        currents = dag.currents
+        interactions = [
+            interaction
+            for interaction in dag.interactions
+            if frozenset(currents[interaction.result_id].index.external_labels) != rest
+        ]
+        producers: dict[int, set[int]] = defaultdict(set)
+        for interaction in interactions:
+            kind = int(interaction.vertex_kind)
+            if kind not in kinds:
+                continue
             for input_id in (interaction.left_id, interaction.right_id):
-                leaking |= producers.get(input_id, set())
+                index = currents[input_id].index
+                if colours.get(int(index.particle_id)) == 8 and (
+                    fundamental & set(index.external_labels)
+                ):
+                    leaking.add(kind)
+            if colours.get(int(currents[interaction.result_id].index.particle_id)) == 8:
+                producers[interaction.result_id].add(kind)
+        for interaction in interactions:
+            if int(interaction.vertex_kind) in generator_kinds:
+                for input_id in (interaction.left_id, interaction.right_id):
+                    leaking |= producers.get(input_id, set())
     if not leaking:
         return frozenset()
     by_coupling: dict[str, set[Any]] = defaultdict(set)
@@ -869,6 +963,7 @@ def lowered_counterterm_model(
             multi_trace=True,
             continuation=continuation,
             order_limits=order_limits,
+            species_orders=prepared.structure.perturbative_species_orders,
         )
         found = _LOWERED[key] = (compiled, lowered)
         while len(_LOWERED) > _LOWERED_KEPT:
@@ -1103,7 +1198,9 @@ class CountertermProgram:
         values.update(
             {
                 name: str(v)
-                for name, v in recursion.parameter_values(poles=poles).items()
+                for name, v in recursion.parameter_values(
+                    poles=poles, card=parameters, numbers=numbers
+                ).items()
             }
         )
         key = tuple(sorted(values.items()))

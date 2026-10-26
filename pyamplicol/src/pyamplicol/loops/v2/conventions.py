@@ -17,12 +17,17 @@ sites and loop skeletons share one phase: the tree engine's i-factors (vertex
 and propagator factors of the UFO rules) are in the rows and kernels, and the
 loop integral needs no further phase.
 
-Fermion legs of loop segments are read as the tree engine reads a vertex: the
-current of tree particle p fills the UFO leg named p (``tree_reading_legs``).
+Legs of loop segments are read as the tree engine reads a vertex: the
+current of tree particle p fills the UFO leg named p (``TreeReading.vertex``).
 The families and the colour seeds read the conjugate ("incoming") legs; for
 spinor legs the two readings transpose the Dirac chain, and only the tree
-reading matches the tree runtime's fermion rows (bosons are self-conjugate
-and unaffected).
+reading matches the tree runtime's fermion rows (self-conjugate bosons are
+unaffected). A vertex whose particles are not closed under conjugation (a W
+on a loop quark line) has no leg for the tree particles of its currents: the
+tree engine reads them through the model's conjugate rule, whose couplings
+and Lorentz structures are the rule's own complex-conjugated with the chiral
+projectors exchanged, so the segment takes the conjugate rule's kernels
+(WP3.2 EWI-2; the root closure does the same, ``ct_sites.SiteClosure``).
 
 Leaf weight of a skeleton (``LeafWeights``), design §3.3:
 
@@ -81,12 +86,13 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
+from types import MappingProxyType
 from typing import Any
 
 from pyamplicol.generation.fermion_ordering import _fermion_rep_requires_exterior_sign
 
 from .blocks import _open_last, _parity, identity_pairing_sign
-from .families import ZERO, mass_name, model_data
+from .families import ZERO, add_orders, mass_name, model_data
 from .skeletons import Content, Skeleton
 
 GHOST_SPIN = -1
@@ -127,11 +133,16 @@ def tree_reading_legs(
     spins: Mapping[str, int],
     antinames: Mapping[str, str],
 ) -> tuple[int, ...]:
-    """The UFO legs of one vertex reading with fermion legs read as the tree
-    engine reads them (module docstring).
+    """The UFO legs of one reading of a vertex closed under conjugation, with
+    fermion legs read as the tree engine reads them (module docstring).
 
     ``legs`` are 1-based UFO legs in the incoming reading (loop in, loop out,
-    blocks); each fermion leg is exchanged with the leg of its conjugate.
+    blocks); each fermion leg is exchanged with the leg of its conjugate (the
+    other leg of its fermion line). Bosons and ghosts keep the incoming
+    reading: only spinor legs transpose, and ghost loop lines meet no tree
+    row (the readings are checked against legacy, O2). Vertices not closed
+    under conjugation are read through their conjugate rule
+    (``TreeReading.vertex``).
     """
 
     fermions = [leg for leg in legs if spins[particles[leg - 1]] == FERMION_SPIN]
@@ -150,6 +161,86 @@ def tree_reading_legs(
     return tuple(swap.get(leg, leg) for leg in legs)
 
 
+def _antiparticle_legs(
+    items: Sequence[str], particles: Sequence[str], antinames: Mapping[str, str]
+) -> tuple[int, ...]:
+    """1-based legs of ``particles`` holding the antiparticle of each item,
+    each leg used once (identical legs in order: a UFO vertex is symmetric
+    under the exchange of identical legs)."""
+
+    free = list(range(1, len(particles) + 1))
+    out = []
+    for item in items:
+        wanted = antinames[item]
+        leg = next((leg for leg in free if particles[leg - 1] == wanted), None)
+        if leg is None:
+            raise FermionSignError(
+                f"vertex {tuple(particles)} has no leg for the antiparticle of {item}"
+            )
+        free.remove(leg)
+        out.append(leg)
+    return tuple(out)
+
+
+def closed_under_conjugation(
+    particles: Sequence[str], antinames: Mapping[str, str]
+) -> bool:
+    """Whether a vertex's particle multiset is its own conjugate: the tree
+    engine then reads the vertex on its own legs, else through its conjugate
+    rule (``conjugate_vertex_rules``, ``ct_sites.ConjugateVertices``)."""
+
+    return sorted(particles) == sorted(antinames[name] for name in particles)
+
+
+def conjugate_vertex_rules(data: Mapping[str, Any]) -> dict[str, str | None]:
+    """The conjugate rule of every vertex rule of a native model (``data``).
+
+    A rule whose particles are closed under conjugation is its own conjugate;
+    otherwise the conjugate is the rule of the antiparticles at the same
+    coupling orders (a Hermitian Lagrangian holds it: the W couplings of
+    [d~ u W-] and [u~ d W+]). None marks a rule without a unique conjugate,
+    with several colour structures (their pairing with the conjugate's is
+    not established) or with a ghost leg (an electroweak ghost loop line,
+    whose reading through the conjugate is not established), which the
+    readings refuse.
+    """
+
+    antinames = {p["name"]: p["antiname"] for p in data["particles"]}
+    ghosts = {p["name"] for p in data["particles"] if int(p["spin"]) == GHOST_SPIN}
+    orders_of = {
+        entry["name"]: add_orders(
+            tuple((name, power) for name, power in entry["orders"])
+        )
+        for entry in data["couplings"]
+    }
+
+    def orders(rule) -> frozenset:
+        return frozenset(
+            orders_of[name] for row in rule["couplings"] for name in row if name
+        )
+
+    by_fields: dict[tuple, list[Mapping[str, Any]]] = {}
+    for rule in data["vertex_rules"]:
+        key = (tuple(sorted(rule["particles"])), orders(rule))
+        by_fields.setdefault(key, []).append(rule)
+    out: dict[str, str | None] = {}
+    for rule in data["vertex_rules"]:
+        if closed_under_conjugation(rule["particles"], antinames):
+            out[rule["name"]] = rule["name"]
+            continue
+        conjugate = tuple(sorted(antinames[name] for name in rule["particles"]))
+        found = by_fields.get((conjugate, orders(rule)), [])
+        out[rule["name"]] = (
+            found[0]["name"]
+            if len(found) == 1
+            and len(rule["color_structures"]) == 1
+            and len(found[0]["color_structures"]) == 1
+            and not ghosts.intersection(rule["particles"])
+            else None
+        )
+    return out
+
+
 class TreeReading:
     """``reference_executor.CatalogueKinematics`` leg hook for tree rows."""
 
@@ -161,10 +252,60 @@ class TreeReading:
         self._spins = {p["name"]: int(p["spin"]) for p in data["particles"]}
         self._antinames = {p["name"]: p["antiname"] for p in data["particles"]}
         self._masses = {p["name"]: mass_name(p["mass"]) for p in data["particles"]}
+        self._conjugates = conjugate_vertex_rules(data)
 
     def __call__(self, rule: str, legs: tuple[int, ...]) -> tuple[int, ...]:
         return tree_reading_legs(
             self._particles[rule], legs, self._spins, self._antinames
+        )
+
+    def conjugate(self, rule: str) -> str:
+        """The rule the tree engine reads for the families' ``rule``: itself
+        when closed under conjugation, else its conjugate rule."""
+
+        found = self._conjugates.get(rule)
+        if found is None:
+            raise FermionSignError(
+                f"vertex {rule} {tuple(self._particles[rule])} is not closed under "
+                "conjugation and has no unique conjugate rule with one colour "
+                "structure; its tree reading is not established"
+            )
+        return found
+
+    def vertex(
+        self, rule: str, legs: tuple[int, ...]
+    ) -> tuple[str, tuple[int, ...], Mapping[int, int] | None]:
+        """(rule read, its legs, colour index of the read rule per colour index
+        of ``rule``, None for the identity) for a reading of the families'
+        ``rule``.
+
+        ``legs`` are the 1-based UFO legs of ``rule`` in the incoming reading
+        (loop in, loop out, blocks). The tree engine reads the current of tree
+        particle p on the UFO leg of p (``models.compiler_entry.
+        _compile_oriented_kernels``); the incoming reading puts the current of
+        field f, the tree particle anti(f), on the leg of f. A rule closed
+        under conjugation is read on its own legs (``tree_reading_legs``:
+        spinor legs transposed). A rule that is not (a W coupling of a loop
+        quark line) has no leg for the tree particle anti(f) of its fermion
+        currents: the tree engine reads them through the conjugate rule, with
+        its couplings and Lorentz structures, which differ from the rule's own
+        by complex conjugation and the exchange of chiral projectors (the CKM
+        phase of [u~ b W+]; the Yukawas of [t~ b G+]); each current takes the
+        conjugate's leg of its tree particle, a boson the slot of its own
+        Lorentz type. The colour stays the incoming reading of ``rule`` (the
+        colour seeds).
+        """
+
+        read = self.conjugate(rule)
+        if read == rule:
+            return rule, self(rule, legs), None
+        own = self._particles[rule]
+        return (
+            read,
+            _antiparticle_legs(
+                [own[leg - 1] for leg in legs], self._particles[read], self._antinames
+            ),
+            _FIRST,
         )
 
     def mass_signs(self, loop_out: str) -> Mapping[str, int]:
@@ -177,11 +318,33 @@ class TreeReading:
         return {mass: -1}
 
 
+# Open rules have one colour structure (``conjugate_vertex_rules``).
+_FIRST: Mapping[int, int] = MappingProxyType({0: 0})
+
+
+# The kind of a content for ``LeafWeights.fermion_sign``: no fermion line
+# (its loop line a ghost, or another boson), or a fermion line or anything
+# else the full sign must read.
+_BOSONIC, _GHOST, _FERMIONIC = 0, 1, 2
+
+
 class LeafWeights:
     """Leaf weights w_s of skeletons (module docstring), a ``LeafWeight``.
 
     ``ends`` maps the label of every coloured external fermion to its
     all-outgoing representation (+3 or -3), as ``SiteClosure`` records them.
+
+    eps_s depends on the skeleton's ``contents`` alone, and every caller asks
+    for it per reading: generation checks every reading of every skeleton
+    (F and B, ``fermion_sign``, which refuses fermion lines it does not
+    cover), the plan export every F leaf (``__call__``). ``fermion_sign``
+    therefore computes it once per distinct ``contents`` tuple
+    (``_fermion_sign``, the full rule; a refusal is raised again at every
+    call, nothing being kept for it), and a tuple whose contents carry no
+    fermion line takes a fast path: per content, once, its kind
+    (``_content_kind``), and the tuple's sign is -1 for a closed ghost loop,
+    else +1 (WP3.1 D1, RUST-MIGRATION.md §3.D; equal to ``_fermion_sign``
+    on every reading of the controls).
     """
 
     def __init__(self, native_model: Any, ends: Mapping[int, int]):
@@ -193,17 +356,60 @@ class LeafWeights:
             for entry in (*data["parameters"], *data["couplings"])
         }
         self._ends = dict(ends)
+        # The coloured fermion ends as a leg mask (``_content_kind``).
+        self._end_mask = sum(1 << (label - 1) for label in self._ends)
         self._signs: dict[tuple[Content, ...], int] = {}
+        self._kinds: dict[Content, int] = {}
         self._depends: dict[str, frozenset[str]] = {}
 
     def __call__(self, skeleton: Skeleton, contents: Sequence[Content]) -> Fraction:
-        sign = self._signs.get(skeleton.contents)
-        if sign is None:
-            sign = self._signs[skeleton.contents] = self.fermion_sign(skeleton)
-        return skeleton.weight * skeleton.multiplicity * sign
+        return skeleton.weight * skeleton.multiplicity * self.fermion_sign(skeleton)
 
     def fermion_sign(self, skeleton: Skeleton) -> int:
-        """eps_s of a skeleton (reading-independent)."""
+        """eps_s of a skeleton (reading-independent), once per distinct
+        ``contents`` tuple (class docstring)."""
+
+        contents = skeleton.contents
+        kinds = self._kinds
+        ghost = True
+        for content in contents:
+            kind = kinds.get(content)
+            if kind is None:
+                kind = kinds[content] = self._content_kind(content)
+            if kind == _FERMIONIC:
+                break
+            ghost = ghost and kind == _GHOST
+        else:
+            # No fermion line: no propagator, closed-loop or line-parity sign
+            # and no mass-free coupling to require (``_fermion_sign``).
+            return -1 if ghost else 1
+        sign = self._signs.get(contents)
+        if sign is None:
+            sign = self._signs[contents] = self._fermion_sign(skeleton)
+        return sign
+
+    def _content_kind(self, content: Content) -> int:
+        """Whether ``_fermion_sign`` reads anything of ``content`` but its
+        loop line's ghost spin: a fermion loop line, a fermion block, a
+        block holding a coloured fermion end (the inputs of
+        ``_line_parity`` and ``_require_mass_free_couplings``), or another
+        than one routing term (refused there) make it fermionic."""
+
+        if (
+            self._fermion(content.loop_in)
+            or self._fermion(content.loop_out)
+            or len(content.terms) != 1
+        ):
+            return _FERMIONIC
+        for block in content.terms[0].blocks:
+            if block.mask & self._end_mask or self._fermion(block.field):
+                return _FERMIONIC
+        spin = int(self._particles[content.loop_out]["spin"])
+        return _GHOST if spin == GHOST_SPIN else _BOSONIC
+
+    def _fermion_sign(self, skeleton: Skeleton) -> int:
+        """eps_s of a skeleton by the full rule (the oracle of
+        ``fermion_sign``'s cache and fast path)."""
 
         self._require_mass_free_couplings(skeleton.contents)
         spins = [int(self._particles[name]["spin"]) for name in skeleton.species]
@@ -224,7 +430,13 @@ class LeafWeights:
 
     def _require_mass_free_couplings(self, contents: Sequence[Content]) -> None:
         """Refuse a loop fermion vertex coupling through the mass of the loop
-        line it emits (module docstring: the tree reading flips that mass)."""
+        line it emits (module docstring: the tree reading flips that mass).
+
+        An input of eps_s: a content whose fermion loop line this reads makes
+        ``_content_kind`` return ``_FERMIONIC`` (``fermion_sign``'s fast path
+        skips this check). Any new input read here (WP3.2 EWI-5) must make
+        ``_content_kind`` fermionic too; ``check_leaf_weights`` in
+        ``tests/unit/test_loop_v2_native_lowering.py`` is the guard."""
 
         for content in contents:
             if not self._fermion(content.loop_out):
@@ -262,7 +474,17 @@ class LeafWeights:
         return found
 
     def _line_parity(self, contents: Sequence[Content]) -> int:
-        """Pairing parity of the coloured lines and closed-loop sewing signs."""
+        """Pairing parity of the coloured lines and closed-loop sewing signs.
+
+        An input of eps_s: every content whose loop line, block field or
+        coloured fermion end (``_ends``) this reads makes ``_content_kind``
+        return ``_FERMIONIC``, and ``fermion_sign``'s fast path returns +1 or
+        the ghost sign without calling it. Any new input read here (WP3.2
+        EWI-5: Koszul signs of colour-singlet lines through the loop, e.g.
+        colourless fermion ends outside ``_ends``) must make ``_content_kind``
+        fermionic too; ``check_leaf_weights`` in
+        ``tests/unit/test_loop_v2_native_lowering.py`` is the guard (on the
+        controls with such content)."""
 
         sign = 1
         pairs: list[tuple[int, int]] = []
@@ -347,5 +569,7 @@ __all__ = [
     "LeafWeights",
     "Normalisation",
     "TreeReading",
+    "closed_under_conjugation",
+    "conjugate_vertex_rules",
     "tree_reading_legs",
 ]

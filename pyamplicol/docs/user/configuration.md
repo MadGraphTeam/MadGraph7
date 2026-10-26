@@ -396,6 +396,29 @@ difference of about 3e-10). Validate such legacy artifacts with
 `relative_tolerance = 3e-9` and `absolute_tolerance = 2e-12`; the v2 engine
 is not affected.
 
+The v2 engine's post-build validation compares the reopened artifact with
+its reference executor in binary64 at `relative_tolerance` (Borns per
+coupling order, virtual Laurent coefficients relative to their sector's
+largest one). A validation point where the two binary64 values miss that
+tolerance is checked again, alone, against the reference at 32 digits, in
+both carriers: the artifact in double-double must agree to the same
+`relative_tolerance`, its binary64 Borns to `relative_tolerance` and its
+binary64 virtuals to the larger of `relative_tolerance` and their own
+stability estimate (one exact rotation and the reduction-direction check),
+an estimate that must exist and not exceed 1e-9. A binary64 virtual off by
+more than the tolerance is thus accepted only where binary64 itself
+estimates that it cannot resolve the tolerance (an ill-conditioned point),
+and a defect of either carrier beyond that is refused. An accepted point is
+reported as a warning of the `pyamplicol.generation` logger with its
+deviations and estimates. This costs one double-double and one checked
+binary64 evaluation of the artifact and one 32-digit reference evaluation
+per re-checked point; the 32-digit reference dominates, about 9 to 11 times
+the binary64 one (7.8 s against 0.7 s for d d~ > g g at NLC with five
+colour outputs, 60 s against 6.9 s for u u~ > g g g at NLC with four). The
+estimate cap is the larger of `relative_tolerance` and 1e-9: at high
+multiplicity, where binary64 estimates can exceed 1e-9, validate with a
+`relative_tolerance` that binary64 resolves.
+
 ## Numerical current reuse
 
 Certified current-relation reuse is an opt-in optimization. It is off by
@@ -561,6 +584,22 @@ under every selection, and `"none"` saves the pole work. The CLI spells these
 `--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT` and
 `--stability-reduction-direction`.
 
+**Momenta and arithmetic.** Every arithmetic (`double`, `double-double`,
+`arbitrary`) takes each external leg's invariant p² in the loop integrals to be
+the leg's squared mass at the evaluation's model parameters (zero, or a mass
+parameter such as `MT`), exactly, rather than the p² of the supplied momenta;
+everything else (trees, wavefunctions, loop-momentum shifts, invariants of
+several legs) uses the momenta as given, without projection or tolerance. This
+is always on and changes no input: it is what an external state means, and the
+legacy engine binds the same invariants. Momenta rounded to binary64 sit off
+their mass shells by about 1e-16 relative, so a point copied from a binary64
+evaluation gives the same finite part and poles in `double-double` and
+`arbitrary` arithmetic, to the accuracy of the binary64 value (its stability
+estimate); `double-double` and `arbitrary` agree with each other to
+double-double accuracy. To go beyond binary64 accuracy, supply momenta that are
+on shell and conserve momentum to the digits wanted (exact decimals or
+rationals): a point off its shells by a relative δ moves the result at order δ.
+
 #### Ultraviolet and infrared poles
 
 With `poles = "uv"` or `"ir"` every pole of the Born-virtual interference is
@@ -636,14 +675,23 @@ generated together, each squared coupling order a separate partial result. A
 correction the model does not expand perturbatively is refused. What the engine
 does not admit yet fails at generation with the reason, for example:
 
-- Z or W couplings on a quark line inside a QCD loop (`u u~ > d d~` with mixed
-  Born orders in the SM: "not a pure vector coupling; its sign needs the
-  electroweak oracles"), and electroweak bosons in the final state with QCD
-  corrections (`u u~ > e- e+ g g`);
-- QED corrections to quark processes with MG5_aMC's `loop_qcd_qed_sm`
-  (`u u~ > d d~` with QCD and QED corrections): its electroweak counterterms use
-  the complex-mass scheme's UFO helpers (`recms`, `regsqrt`) and a Goldstone-photon
-  mixing between spins ("counterterm rules the tree recursion cannot lower").
+- QED corrections with W or Z bosons in the loops with MG5_aMC's
+  `loop_qcd_qed_sm` (`u u~ > d d~` with QCD and QED corrections): "loop line …
+  has a unitary-gauge propagator" (loop lines need Feynman gauge). With the Z,
+  W, Higgs and Goldstones in `particle_veto`, the photon-only QED corrections
+  generate; the model's electroweak counterterms, written with the
+  complex-mass scheme's UFO helpers (`recms`, `regsqrt`, ...), are lowered.
+  Their finite part is not yet the photon-only one: the veto drops every
+  counterterm whose declared loop particles include a vetoed particle, and
+  `loop_qcd_qed_sm` declares some R2 couplings for the photon and Z loops
+  together (e.g. the `u u~ g` R2, `R2_GUU2Cp`, with loop particles `u` and
+  `Z`), so the photon's part of such a coupling is dropped too. R2
+  counterterms carry no poles, and the UV poles of such a request cancel
+  (checked on `u u~ > d d~`); its finite part is incomplete until the engine
+  handles such shared couplings;
+- more than one colour-singlet fermion line (`e- e+ > m- m+`,
+  `u u~ > e- e+ m- m+`): "the Koszul signs between the blocks that carry them
+  ... are not implemented yet".
 
 The model's UV and R2 counterterms are taken as declared (`uv_complete`,
 `model_r2_complete`): the engine does not check them against the loops.
@@ -688,15 +736,27 @@ use them (for example a width only loop propagators would carry), as with the
 legacy engine. The renormalisation-scale parameter is the external
 parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
 
-Loading a v2 process rebuilds its per-point tree inputs from the artifact, which
-takes about the process's generation time, until those inputs run natively; the
-standalone SDK bundle needs `engine = "legacy"` until then. A v2 artifact holds
-no absolute path, user or host name of the generating host, and a copy moved to
-another directory loads with bitwise-identical results. Loading regenerates the
-stored plan and requires it to be identical, so the copy needs the same
-pyAmpliCol build (Python package and native extension) as the one that
-generated it; relocation is tested on the generating host only, not yet on
-another machine.
+A v2 artifact stores its whole program: the loop plan and its per-point tree,
+Born, counterterm and parameter programs (`point_inputs = "native-v2"`), the
+latter as SymJIT IR recompiled for the loading CPU and as saved Symbolica states
+for double-double and arbitrary precision. A plain load (`evaluate` with
+`poles = "all"` or `"none"`) regenerates nothing and takes a small fraction of
+the generation time. Still regenerated from the artifact, until their inputs are
+stored too: exact flavour members served by their representative (at load), and
+correlated and resolved calls and the `"uv"` and `"ir"` pole selections (on
+first use; the latter also evaluate the companion of the certified-scaleless
+families, whose tree inputs are not stored). The SymJIT IR is always compiled at
+-O2 (the portable level), whatever `evaluator.jit.optimization_level` says. The
+artifact holds no absolute path, user or host name of the generating host; a
+copy moved to another directory, user or machine loads without regeneration and,
+with the same pyAmpliCol build (Python package and native extension), gives
+bitwise-identical binary64 results on CPUs of the same SymJIT class (x86-64 with
+AVX and FMA3; AArch64 is expected to behave the same but is untested); other CPU
+levels (checked under emulation) run the saved states and agree to rounding
+([portability](artifacts-and-portability.md#cpu-requirements-of-symjit-kernels)).
+Binary64 evaluation needs no Symbolica licence; double-double and arbitrary
+precision use pyAmpliCol's own Symbolica key. The standalone SDK bundle needs
+`engine = "legacy"` until the v4 SDK runtime exists.
 
 To evaluate numerical colour/spin requests, set
 `evaluation.correlated_requests = "data/requests.json"`. The file maps output

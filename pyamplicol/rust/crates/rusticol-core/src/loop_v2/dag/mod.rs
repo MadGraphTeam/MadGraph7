@@ -21,7 +21,10 @@
 //! * [`signs`] folds the colour-flow convention's external-fermion ordering
 //!   signs (`apply_fermion_ordering_signs(coloured_lines=False)`);
 //! * [`blocks`] groups the currents into blocks (`loops/v2/blocks._blocks`)
-//!   and answers the Ward-kernel query (`coloured_propagated`).
+//!   and answers generation's current scans (`propagated_species`,
+//!   `u1_leaking`);
+//! * [`program`] is the DAG's interaction program for the native lane
+//!   (`native_trees._interaction_program` on the runtime schema's layout).
 //!
 //! The result is a [`ColumnarDag`]: struct-of-arrays currents and
 //! interactions with interned tables. It round-trips through a byte container
@@ -36,6 +39,7 @@ pub mod blocks;
 pub mod colour;
 pub mod exact;
 pub mod input;
+pub mod program;
 pub mod recursion;
 pub mod reuse;
 pub mod signs;
