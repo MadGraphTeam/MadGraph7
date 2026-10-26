@@ -7,24 +7,28 @@ loop_qcd_qed_sm_Gmu with
 
 * ``orders``: coupling orders renamed (QCD -> QS, QED -> Qe) and an unused
   mixed-case order NPprop (M3);
+* ``lower``: coupling orders spelt in lower case (qcd, qed; M3);
 * ``particles``: particles renamed (gluon -> gl, G+/G-/G0 -> Gp/Gm/Gz,
   ghosts), MW/WW -> MWB/WWB and the Z, G0, G+ PDG codes renumbered to
   9000023, 9000250, 9000251 (m5, m6);
 * ``scale``: MU_R -> muR (same LOOP code), aS moved off SMINPUTS 3;
 * ``mass``: MW internal (G_mu) or external (loop_sm) with the same value.
 
-Each test generates the same request on the original and on the variant,
-renamed through the variant's map, and compares the decisions (dry-run
-route, orders, corrections, scale binding, EW classification, refusals,
-certificates, repairs) and the values (binary64, within 1e-12 of the
-largest coefficient). A decision another package owns is a strict xfail
-naming the owner and slice-status DECISIONS 2026-10-26 ~00:20: it passes
-once the owner's fix lands, and then fails here until the marker goes.
+The orders variant is also written of loop_qcd_qed_sm, for a renamed
+electroweak correction ('Qe'). Each test generates the same request on the
+original and on the variant, renamed through the variant's map, and compares
+the decisions (dry-run route, orders, corrections, scale binding, EW
+classification, refusals, certificates, repairs) and the values (binary64,
+every component within 1e-12 of the largest coefficient). A decision another
+package owns is a strict xfail naming the owner and slice-status DECISIONS
+2026-10-26 ~00:20: it passes once the owner's fix lands, and then fails here
+until the marker goes.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -62,8 +66,17 @@ def _uux_ddxg_point():
     return json.loads(fixture.read_text())["points"][0]
 
 
+# The UFO fixture of each model name (``qcd_qed``: MG5_aMC's loop_qcd_qed_sm,
+# resolved only by the tests that use it).
+SOURCES = {
+    "loop_sm": "loop_sm_ufo",
+    "gmu": "loop_gmu_ufo",
+    "qcd_qed": "loop_qcd_qed_sm_ufo",
+}
+
+
 @pytest.fixture(scope="module")
-def models(loop_sm_ufo, loop_gmu_ufo, tmp_path_factory):
+def models(request, tmp_path_factory):
     """``models(name, variant)``: (compiled model, rename map); ``variant``
     None is the original. loop_sm takes the structural scalar-arity view."""
 
@@ -72,18 +85,18 @@ def models(loop_sm_ufo, loop_gmu_ufo, tmp_path_factory):
         prepare_loop_sm_scalar_declarations,
     )
 
-    sources = {"loop_sm": Path(loop_sm_ufo), "gmu": Path(loop_gmu_ufo)}
     root = tmp_path_factory.mktemp("renamed-models")
     built: dict = {}
 
     def build(name: str, variant: str | None = None):
         key = (name, variant)
         if key not in built:
+            source = Path(request.getfixturevalue(SOURCES[name]))
             if variant is None:
-                source, rename = sources[name], ORIGINAL
+                rename = ORIGINAL
             else:
+                rename = write_variant(source, root / f"{name}-{variant}", variant)
                 source = root / f"{name}-{variant}"
-                rename = write_variant(sources[name], source, variant)
             compiled = compile_model_source(
                 source, cache_dir=root / "cache", require_supported=False
             )
@@ -122,9 +135,10 @@ def _slice(models, loop_native, name, variant, *request, **options):
     from pyamplicol.loops.v2.assemble import LoopSlice
 
     compiled, rename = models(name, variant)
-    if name == "gmu":
-        # G_mu keeps its scale parameter at LOOP 666 (the public route binds
-        # the only LOOP entry, ``test_renamed_scale_parameter_is_bound``).
+    if name != "loop_sm":
+        # G_mu and loop_qcd_qed_sm keep their scale parameter at LOOP 666 (the
+        # public route binds the only LOOP entry,
+        # ``test_renamed_scale_parameter_is_bound``).
         options.setdefault("compatibility", GMU)
         options.setdefault("scale_parameter", rename.parameter("MU_R"))
     return LoopSlice.generate(
@@ -138,7 +152,8 @@ def _evaluate(slice_, point, rename):
 
 
 def _values(result, rename):
-    """Born and virtual of ``result`` keyed by the original order names."""
+    """Born and every component (virtual, bare, uv, r2, ...) of ``result``,
+    keyed by the original order names."""
 
     back = {new: old for old, new in rename.orders.items()}
 
@@ -146,25 +161,27 @@ def _values(result, rename):
         return tuple(sorted((back.get(name, name), power) for name, power in orders))
 
     born = {key(k): float(v) for k, v in result.born.items()}
-    virtual = {
-        key(k): tuple(float(c) for c in laurent.coefficients)
-        for k, laurent in result.components["virtual"].items()
+    components = {
+        (name, key(k)): tuple(float(c) for c in laurent.coefficients)
+        for name, sectors in result.components.items()
+        for k, laurent in sectors.items()
     }
-    return born, virtual
+    return born, components
 
 
 def _assert_same_values(original, variant, rename=ORIGINAL):
-    born, virtual = _values(original, ORIGINAL)
-    born_v, virtual_v = _values(variant, rename)
-    assert set(born_v) == set(born) and set(virtual_v) == set(virtual)
+    born, components = _values(original, ORIGINAL)
+    born_v, components_v = _values(variant, rename)
+    assert set(born_v) == set(born) and set(components_v) == set(components)
+    assert any(name == "virtual" for name, _ in components)
     scale = max(abs(x) for x in born.values())
     assert all(abs(born_v[k] - v) <= TOLERANCE * scale for k, v in born.items())
-    scale = max(abs(x) for row in virtual.values() for x in row)
-    for key, row in virtual.items():
+    scale = max(abs(x) for row in components.values() for x in row)
+    for key, row in components.items():
         assert all(
             abs(a - b) <= TOLERANCE * scale
-            for a, b in zip(row, virtual_v[key], strict=True)
-        )
+            for a, b in zip(row, components_v[key], strict=True)
+        ), key
 
 
 def _route(slice_) -> str:
@@ -368,6 +385,52 @@ def test_renamed_orders_give_the_same_legacy_virtual(models, tmp_path):
     assert all(abs(a - b) <= TOLERANCE * scale for a, b in zip(*values, strict=True))
 
 
+def test_lower_case_orders_give_the_same_public_v2_virtual(models, tmp_path):
+    """u u~ > d d~ [qcd] on the v2 engine through the public route
+    (``Generator.generate`` with its staged validation, ``Runtime.load``) on
+    loop_sm with every order spelt in lower case and the limits given in
+    upper case: the original's values, the Born orders in the model's
+    spelling."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    results = []
+    for variant in (None, "lower"):
+        compiled, rename = models("loop_sm", variant)
+        directory = tmp_path / str(variant)
+        directory.mkdir()
+        model = compiled.write(directory / "model.json")
+        card = directory / "card.toml"
+        card.write_text(
+            _card(
+                model,
+                directory / "out",
+                "u u~ > d d~",
+                rename,
+                process_extra="[process.max_coupling_orders]\nQCD = 2\nQED = 0",
+            )
+        )
+        Generator(resolve_config(card)).generate(
+            ProcessSet((ProcessRequest.parse("u u~ > d d~", name="p"),)),
+            directory / "out",
+        )
+        runtime = Runtime.load(directory / "out", process="p")
+        results.append(runtime.evaluate([DY_POINT], mu_r2="1000000"))
+    original, lower = results
+    assert lower.born_orders == tuple(
+        tuple((rename.order(name), power) for name, power in orders)
+        for orders in original.born_orders
+    )
+    (((laurent,),), ((laurent_v,),)) = original.values, lower.values
+    values = [
+        (row.finite, row.single_pole, row.double_pole) for row in (laurent, laurent_v)
+    ]
+    scale = max(abs(x) for x in values[0])
+    assert all(abs(a - b) <= TOLERANCE * scale for a, b in zip(*values, strict=True))
+
+
 def test_explicit_limits_resolve_in_any_case(models, tmp_path):
     extra = "[process.max_coupling_orders]\nqs = 2\nQE = 0\nnpprop = 0"
     entry, _ = _plan_entry(
@@ -439,17 +502,28 @@ def test_orders_one_key_apart_are_refused_at_load(loop_sm_ufo, tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("process", "born", "loop"),
+    ("name", "process", "born", "loop"),
     [
-        ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, {"QCD": 5, "QED": 0}),
-        ("u u~ > e+ e-", {"QCD": 0, "QED": 2}, {"QCD": 2, "QED": 2}),
+        ("loop_sm", "u u~ > d d~ g", {"QCD": 3, "QED": 0}, {"QCD": 5, "QED": 0}),
+        ("loop_sm", "u u~ > e+ e-", {"QCD": 0, "QED": 2}, {"QCD": 2, "QED": 2}),
+        pytest.param(
+            "gmu",
+            "u u~ > e+ e-",
+            {"QCD": 0, "QED": 2},
+            {"QCD": 2, "QED": 2},
+            marks=pytest.mark.loop_nightly,
+        ),
     ],
-    ids=["qcd-born", "ew-born"],
+    ids=["qcd-born", "ew-born", "gmu-ew-born"],
 )
-def test_renamed_orders_give_the_same_virtual(models, loop_native, process, born, loop):
+def test_renamed_orders_give_the_same_virtual(
+    models, loop_native, name, process, born, loop
+):
     """QCD corrections to a QCD Born and to an electroweak Born (the
-    mixed-case Qe at a nonzero power through the tree blocks and roots):
-    the same route, frames and scale binding, and the same values."""
+    mixed-case Qe at a nonzero power through the tree blocks and roots), on
+    loop_sm and on G_mu: the same route, frames and scale binding, and the
+    same values. (G_mu's Catani poles on the variant are m1's,
+    ``test_renamed_orders_keep_the_ew_classification_and_catani_poles``.)"""
 
     point = _uux_ddxg_point() if process.endswith("g") else DY_POINT
     request = (process, born, loop, ("QCD",))
@@ -457,7 +531,7 @@ def test_renamed_orders_give_the_same_virtual(models, loop_native, process, born
     slices, results = [], []
     for variant in (None, "orders"):
         slice_, rename = _slice(
-            models, loop_native, "loop_sm", variant, *request, fixed_parameters=fixed
+            models, loop_native, name, variant, *request, fixed_parameters=fixed
         )
         slices.append(slice_)
         results.append(_evaluate(slice_, point, rename))
@@ -500,6 +574,95 @@ def test_renamed_scale_and_moved_alpha_s_give_the_same_virtual(models, loop_nati
         results.append(_evaluate(slice_, _uux_ddxg_point(), rename))
     _assert_same_decisions(*slices, rename)
     _assert_same_values(*results)
+
+
+# Photon-only QED corrections (Z, W, H and the Goldstones vetoed), widths
+# zero outside the complex-mass scheme (``test_loop_v2_ew`` LADDER rung
+# uudd_qed_photon_uv).
+PHOTON_ONLY = (23, 24, 25, 250, 251)
+ZERO_WIDTHS = {"WT": "0", "WW": "0", "WZ": "0", "WH": "0"}
+MASSLESS_POINT = [
+    ["500", "0", "0", "500"],
+    ["500", "0", "0", "-500"],
+    ["500", "240", "320", "300"],
+    ["500", "-240", "-320", "-300"],
+]
+
+
+@pytest.mark.loop_nightly
+def test_renamed_correction_order_gives_the_same_virtual(models, loop_native):
+    """u u~ > d d~ with photon-only QED corrections named 'Qe' on
+    loop_qcd_qed_sm (UV pole selection, every component): the same EW
+    classification, route, frames and scale binding, and the same values."""
+
+    request = ("u u~ > d d~", {"QCD": 2, "QED": 0}, {"QCD": 2, "QED": 2}, ("QED",))
+    slices, results = [], []
+    for variant in (None, "orders"):
+        slice_, rename = _slice(
+            models,
+            loop_native,
+            "qcd_qed",
+            variant,
+            *request,
+            particle_veto=PHOTON_ONLY,
+            fixed_parameters=ZERO_WIDTHS,
+        )
+        assert slice_.request.corrections == (rename.order("QED"),)
+        slices.append(slice_)
+        results.append(
+            slice_.evaluate(
+                MASSLESS_POINT,
+                "1000000",
+                parameters={"aS": "0.118", "MT": "173"},
+                poles="uv",
+            )
+        )
+    assert _electroweak(slices[0]) is True
+    _assert_same_decisions(*slices, rename)
+    _assert_same_values(*results, rename)
+
+
+@pytest.mark.parametrize(
+    ("process", "born", "loop"),
+    [
+        # A unitary-gauge loop line (WP3.2 blocker B3).
+        ("u u~ > e+ e-", {"QCD": 0, "QED": 2}, {"QCD": 0, "QED": 4}),
+        # Two colour-singlet fermion lines (WP3.2 blocker B4, EWI-5).
+        ("e- e+ > m- m+", {"QCD": 0, "QED": 2}, {"QCD": 0, "QED": 4}),
+    ],
+    ids=["unitary-gauge-line", "two-singlet-lines"],
+)
+def test_renamed_orders_refuse_alike(models, loop_native, process, born, loop):
+    """QED corrections ('Qe') on loop_sm: the outcome is the original's, a
+    refusal of the same type and message (or, once its blocker is lifted, a
+    generation on both)."""
+
+    outcomes = []
+    for variant in (None, "orders"):
+        try:
+            _slice(
+                models,
+                loop_native,
+                "loop_sm",
+                variant,
+                process,
+                born,
+                loop,
+                ("QED",),
+                fixed_parameters={**FIXED, **ZERO_WIDTHS},
+            )
+        except Exception as error:  # the outcome is compared
+            outcomes.append((type(error).__name__, str(error)))
+        else:
+            outcomes.append(None)
+    _, rename = models("loop_sm", "orders")
+    if outcomes[1] is not None:
+        # A message naming an order names it in the variant's spelling.
+        name, message = outcomes[1]
+        for old, new in rename.orders.items():
+            message = re.sub(rf"\b{re.escape(new)}\b", old, message)
+        outcomes[1] = name, message
+    assert outcomes[1] == outcomes[0]
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=M1_EW_OWNER)
@@ -654,22 +817,24 @@ def test_mw_nature_gives_the_same_virtual(w_slices, models, name):
 
 
 # loop_sm with MW a card input reaches the native export, whose SymJIT plane
-# check (rusticol-core loop_v2/trees.rs ``verify_plane``) probes the parameter
-# program at artificial inputs in (0.5, 1.5): with MW > MZ there the W
-# coupling's (1 - MW^2/MZ^2)^(-1/2) sits on its branch cut, where the plane
-# and the exact evaluator take opposite branches (a sign), so the export is
-# refused; which input gets which probe value depends on the parameter names.
-# No DECISIONS entry routes it yet (genericity-fixes reported it, with the
-# reproducer workspace/tmp/genericity-fixes/probe/symjit/repro.py): the
-# proposed owner is generation-scale-2, whose M2 acceptance (u d~ > w+ g on
-# loop_sm with native-v2 inputs) it blocks; replace the reason by the routed
-# owner and its DECISIONS entry.
+# check (rusticol-core loop_v2/trees.rs ``verify_plane``, from
+# artifact-portability) probes the parameter program at real inputs
+# 0.5 + frac(0.618 (k + 1)) assigned by input index: where MW > MZ there, the
+# W coupling's (1 - MW^2/MZ^2)^(-1/2) sits on its branch cut, the plane and
+# the exact evaluator take opposite sides of it (a sign) and the export is
+# refused (ValueError); which input gets which probe value depends on the
+# parameter order, so on the names (G_mu's card-input MW passes). It is a
+# native defect outside genericity-fixes (no Rust edit allowed); the
+# reproducer is workspace/tmp/genericity-fixes/probe/symjit/repro.py. The
+# routing is the coordinator's: when slice-status DECISIONS names the owner,
+# replace "NOT ROUTED YET" below by that owner and the entry's timestamp.
 PLANE_CHECK_OWNER = (
-    "SymJIT plane check at non-physical probe inputs (branch cut of "
+    "SymJIT plane check at index-ordered real probe inputs (branch cut of "
     "(1 - MW^2/MZ^2)^(-1/2); rusticol-core loop_v2/trees.rs verify_plane): "
-    "routing pending in slice-status DECISIONS (reported by genericity-fixes; "
-    "proposed owner generation-scale-2, whose M2 acceptance it blocks); and "
-    f"{M1_M2_OWNER}"
+    "NOT ROUTED YET in slice-status DECISIONS (genericity-fixes asked the "
+    "coordinator; proposed owner generation-scale-2, which holds "
+    "artifact-portability's open native-tree items, HANDOFF §6.4, and whose M2 "
+    f"acceptance meets the same check); and {M1_M2_OWNER}"
 )
 
 

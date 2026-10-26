@@ -10,6 +10,8 @@ request on both and compare decisions under the map and values to rounding:
 
 * ``orders``: coupling orders renamed (``QCD`` -> ``QS``, ``QED`` -> ``Qe``)
   plus an unused mixed-case order ``NPprop``;
+* ``lower``: coupling orders spelt in lower case (``QCD`` -> ``qcd``, ``QED``
+  -> ``qed``), no other change;
 * ``particles``: particles renamed (gluon -> ``gl``, Goldstones -> ``Gp``,
   ``Gm``, ``Gz``, ghosts), the W mass and width parameters renamed (``MW`` ->
   ``MWB``, ``WW`` -> ``WWB``) and BSM-range PDG codes renumbered (Z 23 ->
@@ -36,7 +38,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VARIANTS = ("orders", "particles", "scale", "mass")
+VARIANTS = ("orders", "lower", "particles", "scale", "mass")
 
 
 @dataclass(frozen=True)
@@ -266,8 +268,12 @@ def write_variant(source: Path, target: Path, variant: str) -> RenameMap:
         for m in re.finditer(r"\b(?:anti)?name\s*=\s*'([^']*)'", files["particles.py"])
     }
     rename = RenameMap(variant)
-    if variant == "orders":
-        orders = {"QCD": "QS", "QED": "Qe"}
+    if variant in ("orders", "lower"):
+        orders = (
+            {"QCD": "QS", "QED": "Qe"}
+            if variant == "orders"
+            else {"QCD": "qcd", "QED": "qed"}
+        )
         for path in [p for p in files if p != "coupling_orders.py"]:
             for old, new in orders.items():
                 files[path] = re.sub(
@@ -276,21 +282,25 @@ def write_variant(source: Path, target: Path, variant: str) -> RenameMap:
         text = files["coupling_orders.py"]
         for old, new in orders.items():
             text = _sub(rf"name\s*=\s*'{old}'", f"name = '{new}'", text, what=old)
-        text += (
-            "\nNPprop = CouplingOrder(name = 'NPprop',\n"
-            "                       expansion_order = 99,\n"
-            "                       hierarchy = 3)\n"
-        )
+        extra: tuple[str, ...] = ()
+        if variant == "orders":
+            extra = ("NPprop",)
+            text += (
+                "\nNPprop = CouplingOrder(name = 'NPprop',\n"
+                "                       expansion_order = 99,\n"
+                "                       hierarchy = 3)\n"
+            )
+            # UFO counterterm keys are (power of each declared order...,
+            # loop group): the appended order takes a zero before the group
+            # index.
+            files["particles.py"] = _sub(
+                r"\((\d+(?:\s*,\s*\d+)*)\s*,\s*(\d+)\)(\s*:)",
+                r"(\g<1>,0,\g<2>)\g<3>",
+                files["particles.py"],
+                what="counterterm keys",
+            )
         files["coupling_orders.py"] = text
-        # UFO counterterm keys are (power of each declared order..., loop
-        # group): the appended order takes a zero before the group index.
-        files["particles.py"] = _sub(
-            r"\((\d+(?:\s*,\s*\d+)*)\s*,\s*(\d+)\)(\s*:)",
-            r"(\g<1>,0,\g<2>)\g<3>",
-            files["particles.py"],
-            what="counterterm keys",
-        )
-        rename = RenameMap(variant, orders=orders, extra_orders=("NPprop",))
+        rename = RenameMap(variant, orders=orders, extra_orders=extra)
     elif variant == "particles":
         candidates = {
             "G": "gl",
