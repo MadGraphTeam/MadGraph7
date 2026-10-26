@@ -171,7 +171,15 @@ def _assert_same_values(original, variant, rename=ORIGINAL):
 
 
 def _card(
-    model, output, process, rename, *, engine="v2", process_extra="", compatibility=None
+    model,
+    output,
+    process,
+    rename,
+    *,
+    engine="v2",
+    process_extra="",
+    compatibility=None,
+    extra="",
 ):
     qcd = rename.order("QCD")
     preparation = 'fixed_parameters = {MB = "0"}'
@@ -209,7 +217,7 @@ model_convention = "the source UFO's supplied QCD rules"
 [generation]
 output = {json.dumps(str(output))}
 emit_api_bundle = false
-"""
+{extra}"""
 
 
 def _plan_entry(models, name, variant, process, tmp_path, **options):
@@ -266,6 +274,43 @@ def test_renamed_orders_take_the_same_dry_run(models, engine, tmp_path):
         original["engine"],
         original["scale_parameter"],
     )
+
+
+def test_renamed_orders_give_the_same_legacy_virtual(models, tmp_path):
+    """u u~ > d d~ [QS] on the legacy engine: public generation (with its
+    post-build validation) and runtime values equal the original's."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    values = []
+    for variant in (None, "orders"):
+        compiled, rename = models("loop_sm", variant)
+        directory = tmp_path / str(variant)
+        directory.mkdir()
+        model = compiled.write(directory / "model.json")
+        card = directory / "card.toml"
+        card.write_text(
+            _card(
+                model,
+                directory / "out",
+                "u u~ > d d~",
+                rename,
+                engine="legacy",
+                extra="[generation.validation]\npost_build_validation = true\n"
+                "samples = 1\n",
+            )
+        )
+        Generator(resolve_config(card)).generate(
+            ProcessSet((ProcessRequest.parse("u u~ > d d~", name="p"),)),
+            directory / "out",
+        )
+        runtime = Runtime.load(directory / "out", process="p")
+        ((laurent,),) = runtime.evaluate([DY_POINT], mu_r2="1000000").values
+        values.append((laurent.finite, laurent.single_pole, laurent.double_pole))
+    scale = max(abs(x) for x in values[0])
+    assert all(abs(a - b) <= TOLERANCE * scale for a, b in zip(*values, strict=True))
 
 
 def test_explicit_limits_resolve_in_any_case(models, tmp_path):
