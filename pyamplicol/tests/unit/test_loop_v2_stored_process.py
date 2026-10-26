@@ -527,6 +527,66 @@ def test_rust_runtime_equals_the_python_api(stored, loop_native, artifact, proce
             finite = here
 
 
+@pytest.mark.loop_physics
+def test_stored_metrics_equal_the_oracle(
+    loop_sm_compiled_model, loop_native, monkeypatch
+):
+    """The directed metrics of the stored columns (C's native colour cells;
+    a swapped metric equal to its direct one stored once) equal the
+    oracle's per-pair overlaps (``DirectedColour.overlap``) in the stored
+    table form, on every dipole of u u~ > g g g."""
+
+    from pyamplicol.correlators import CorrelatorConfig
+    from pyamplicol.loops.v2 import native_observables as no
+    from pyamplicol.loops.v2.artifact import generate_process
+    from pyamplicol.loops.v2.assemble import SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+
+    checked = []
+    cells = no._Metrics.cells
+
+    def compare(self, column, swapped):
+        key, found = cells(self, column, swapped)
+        if found is not None:
+            directed = self.observables.directed(column.history)
+            oracle = no._cells(
+                self.basis,
+                self.ket_literals,
+                lambda left, right: directed.overlap(left, right, swapped=swapped),
+            )
+            assert found == oracle, (column.history.id, swapped)
+            checked.append(key != (column.history.id, swapped))
+        return key, found
+
+    monkeypatch.setattr(no._Metrics, "cells", compare)
+    legs = range(1, 6)
+    dipoles = [
+        {
+            "id": f"T{i}{j}",
+            "bra": [{"kind": "emit-gluon", "emitter": i, "emitted": -1}],
+            "ket": [{"kind": "emit-gluon", "emitter": j, "emitted": -1}],
+        }
+        for i in legs
+        for j in legs
+        if i < j
+    ]
+    generate_process(
+        load_compiled_model(loop_sm_compiled_model),
+        SliceRequest(
+            "u u~ > g g g",
+            {"QCD": 3, "QED": 0},
+            {"QCD": 5, "QED": 0},
+            fixed_parameters={"MB": "0"},
+        ),
+        loop_native,
+        CorrelatorConfig.from_json_dict(
+            {"color_correlations": dipoles, "spin_correlations": []}
+        ),
+    )
+    # Both directions of all ten dipoles; each swap is its direct metric.
+    assert len(checked) == 20 and sum(checked) == 10
+
+
 # Disables pyAmpliCol's Symbolica library key in the native code
 # (``pyamplicol::DISABLE_VARIABLE``, crate ``rust/crates/pyamplicol``).
 NO_NATIVE_KEY = {"PYAMPLICOL_NATIVE_LIBRARY_KEY": "off"}
