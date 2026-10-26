@@ -660,18 +660,30 @@ def test_seven_gluon_seed_tables_within_five_minutes(
     skeleton, certified compressions, exact cells against the Born basis)
     and its certified S_6 FFT orbits build in under five minutes, and the
     FFT seeds equal the direct ones. Blocks, families and skeletons are
-    generated beforehand and not timed."""
+    generated beforehand and not timed, as ``LoopSlice.generate`` makes them
+    (loop-aware reachability of the tree blocks, the native families and
+    schedules; RUST-MIGRATION §3.B cleanup): the skeletons are every skeleton
+    of every family, as ``family_skeletons`` lists them."""
 
     import time
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.blocks import requested_loop_blocks
     from pyamplicol.loops.v2.colour import Primitive
+    from pyamplicol.loops.v2.generator_input import NativeGeneration
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.models.loading import load_compiled_model
     from pyamplicol.processes.model import build_model_process_ir
 
     compiled = load_compiled_model(loop_sm_compiled_model)
     born, loop = {"QCD": 5, "QED": 0}, {"QCD": 7, "QED": 0}
+    request = assemble.SliceRequest(
+        "g g > g g g g g",
+        born,
+        loop,
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+    )
     structure = prepare_loop_request_model(
         compiled,
         born_order_bounds=born,
@@ -685,25 +697,35 @@ def test_seven_gluon_seed_tables_within_five_minutes(
     process = build_model_process_ir(
         "g g > g g g g g", compiled.ir, color_accuracy="full"
     )
+    selection = LoopOrderSelection(
+        frozenset({"QCD"}), frozenset({add_orders(tuple(loop.items()))})
+    )
+    field_table = assemble._field_level_table(data, process, selection, request)
+    reachable = assemble._field_level_families(
+        data, process, catalogue, selection, request, loop_native, table=field_table
+    )
+    born_requests = assemble._born_block_requests(
+        assemble._born_table(data, process, selection, request, field_table),
+        data,
+        request.born_orders,
+    )
     blocks = build_tree_blocks(
         process,
         CompiledUFOModel(compiled),
         born_coupling_orders=born,
         block_coupling_orders=loop,
-    )
-    families = generate_families(
-        blocks.block_table(data),
-        catalogue,
-        LoopOrderSelection(
-            frozenset({"QCD"}), frozenset({add_orders(tuple(loop.items()))})
+        reachability=requested_loop_blocks(
+            reachable.block_requests() | born_requests, data
         ),
     )
+    generation = NativeGeneration(
+        blocks.block_table(data), catalogue, selection, loop_native
+    )
+    assert generation.families().families == reachable.families
     colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
-    skeletons = [
-        s
-        for family in families.families.values()
-        for s in family_skeletons(families, family, colour, catalogue)
-    ]
+    generation.schedules(colour)
+    assert generation.base is not None
+    skeletons = [s for family in generation.base.skeletons for s in family]
     start = time.perf_counter()
     table, class_of = build_seed_table(colour, skeletons, compress=True)
     fourier = seed_fourier(table)
