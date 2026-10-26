@@ -652,7 +652,7 @@
 </ul>
 <p>Overloaded function.</p>
 <ol class="arabic simple">
-<li><p>__init__(self: madspace._madspace_py.PhaseSpaceMapping, topology: madspace._madspace_py.Topology, cm_energy: typing.SupportsFloat, leptonic: bool = False, invariant_power: typing.SupportsFloat = 0.8, t_channel_mode: madspace._madspace_py.PhaseSpaceMapping.TChannelMode = &lt;TChannelMode.propagator: 0&gt;, cuts: madspace._madspace_py.Cuts | None = None, permutations: collections.abc.Sequence[collections.abc.Sequence[typing.SupportsInt]] = [], color_order: collections.abc.Sequence[typing.SupportsInt] | None = None, beam_rapidity: typing.SupportsFloat = 0.0, mirror_beams: bool = False) -&gt; None</p></li>
+<li><p>__init__(self: madspace._madspace_py.PhaseSpaceMapping, topology: madspace._madspace_py.Topology, cm_energy: typing.SupportsFloat, leptonic: bool = False, invariant_power: typing.SupportsFloat = 0.8, t_channel_mode: madspace._madspace_py.PhaseSpaceMapping.TChannelMode = &lt;TChannelMode.propagator: 0&gt;, cuts: madspace._madspace_py.Cuts | None = None, permutations: collections.abc.Sequence[collections.abc.Sequence[typing.SupportsInt]] = [], color_ordered: madspace._madspace_py.ColorOrderedMapping.Options | None = None, beam_rapidity: typing.SupportsFloat = 0.0, mirror_beams: bool = False, s_hat_power: typing.SupportsFloat | None = None) -&gt; None</p></li>
 </ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -660,18 +660,19 @@
 <li><p><strong>topology</strong> – The diagram topology to follow. See Topology.</p></li>
 <li><p><strong>cm_energy</strong> – Total collision energy.</p></li>
 <li><p><strong>leptonic</strong> – If true, skip the PDF convolution (no <code class="docutils literal notranslate"><span class="pre">x1</span></code>/<code class="docutils literal notranslate"><span class="pre">x2</span></code> sampling).</p></li>
-<li><p><strong>invariant_power</strong> – Exponent of the <code class="docutils literal notranslate"><span class="pre">1/s^p</span></code> sampling of every time-like invariant. See Invariant.</p></li>
+<li><p><strong>invariant_power</strong> – Exponent of the <code class="docutils literal notranslate"><span class="pre">1/s^p</span></code> sampling of every time-like invariant. See Invariant. The chain of TChannelMode::color_ordered takes its powers from <code class="docutils literal notranslate"><span class="pre">color_ordered</span></code>.</p></li>
 <li><p><strong>t_channel_mode</strong> – The TChannelMode strategy.</p></li>
 <li><p><strong>cuts</strong> – Fiducial cuts to fold into the sampling. See Cuts.</p></li>
 <li><p><strong>permutations</strong> – One outgoing-particle permutation per channel. More than one enables the <code class="docutils literal notranslate"><span class="pre">permutation_index</span></code> condition.</p></li>
-<li><p><strong>color_order</strong> – Color ordering for TChannelMode::color_ordered.</p></li>
+<li><p><strong>color_ordered</strong> – Chain order and settings of TChannelMode::color_ordered, required there and not allowed for the other modes. An unset <code class="docutils literal notranslate"><span class="pre">chain_invariant_power</span></code> is 1 with cuts and <code class="docutils literal notranslate"><span class="pre">invariant_power</span></code> without. See ColorOrderedMapping::Options.</p></li>
 <li><p><strong>beam_rapidity</strong> – Rapidity of the beams’ centre-of-mass frame in the lab frame the momenta are returned in: 0.5 ln(E1 / E2) for beam energies E1 (along +z) and E2, with <code class="docutils literal notranslate"><span class="pre">cm_energy</span></code> = 2 sqrt(E1 E2). The phase space is generated in the beams’ frame and boosted into the lab before the cuts, so rapidity cuts act in the lab.</p></li>
 <li><p><strong>mirror_beams</strong> – Add the <code class="docutils literal notranslate"><span class="pre">mirror_index</span></code> condition: for index 1 the event is rotated by pi about the x axis in the beams’ frame (leg 1 from beam 2, leg 2 from beam 1) before the lab boost and the cuts. With identical beams that is a rotation of the lab event too.</p></li>
+<li><p><strong>s_hat_power</strong> – Exponent of the <code class="docutils literal notranslate"><span class="pre">1/s_hat^p</span></code> sampling of the partonic invariant s_hat in the PDF convolution (see Luminosity), in every mode. Unset, it is 1.2 for TChannelMode::color_ordered when masses or cuts bound s_hat from below (as AmpliCol), and <code class="docutils literal notranslate"><span class="pre">invariant_power</span></code> otherwise. A resonant s_hat is sampled with its Breit-Wigner either way.</p></li>
 </ul>
 </dd>
 </dl>
 <ol class="arabic simple" start="2">
-<li><p>__init__(self: madspace._madspace_py.PhaseSpaceMapping, external_masses: collections.abc.Sequence[typing.SupportsFloat], cm_energy: typing.SupportsFloat, leptonic: bool = False, invariant_power: typing.SupportsFloat = 0.8, mode: madspace._madspace_py.PhaseSpaceMapping.TChannelMode = &lt;TChannelMode.rambo: 1&gt;, cuts: madspace._madspace_py.Cuts | None = None, color_order: collections.abc.Sequence[typing.SupportsInt] | None = None, beam_rapidity: typing.SupportsFloat = 0.0, mirror_beams: bool = False) -&gt; None</p></li>
+<li><p>__init__(self: madspace._madspace_py.PhaseSpaceMapping, external_masses: collections.abc.Sequence[typing.SupportsFloat], cm_energy: typing.SupportsFloat, leptonic: bool = False, invariant_power: typing.SupportsFloat = 0.8, mode: madspace._madspace_py.PhaseSpaceMapping.TChannelMode = &lt;TChannelMode.rambo: 1&gt;, cuts: madspace._madspace_py.Cuts | None = None, color_ordered: madspace._madspace_py.ColorOrderedMapping.Options | None = None, beam_rapidity: typing.SupportsFloat = 0.0, mirror_beams: bool = False, s_hat_power: typing.SupportsFloat | None = None) -&gt; None</p></li>
 </ol>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -679,12 +680,13 @@
 <li><p><strong>external_masses</strong> – Masses of all external particles, the two beams first. A trivial topology is built from them.</p></li>
 <li><p><strong>cm_energy</strong> – Total collision energy.</p></li>
 <li><p><strong>leptonic</strong> – If true, skip the PDF convolution.</p></li>
-<li><p><strong>invariant_power</strong> – Exponent of the <code class="docutils literal notranslate"><span class="pre">1/s^p</span></code> invariant sampling. See Invariant.</p></li>
+<li><p><strong>invariant_power</strong> – Exponent of the <code class="docutils literal notranslate"><span class="pre">1/s^p</span></code> invariant sampling. See Invariant. The chain of TChannelMode::color_ordered takes its powers from <code class="docutils literal notranslate"><span class="pre">color_ordered</span></code>.</p></li>
 <li><p><strong>mode</strong> – The TChannelMode strategy (default TChannelMode::rambo).</p></li>
 <li><p><strong>cuts</strong> – Fiducial cuts. See Cuts.</p></li>
-<li><p><strong>color_order</strong> – Color ordering for TChannelMode::color_ordered.</p></li>
+<li><p><strong>color_ordered</strong> – Chain order and settings of TChannelMode::color_ordered, required there and not allowed for the other modes. An unset <code class="docutils literal notranslate"><span class="pre">chain_invariant_power</span></code> is 1 with cuts and <code class="docutils literal notranslate"><span class="pre">invariant_power</span></code> without. See ColorOrderedMapping::Options.</p></li>
 <li><p><strong>beam_rapidity</strong> – Rapidity of the beams’ centre-of-mass frame in the lab frame the momenta are returned in: 0.5 ln(E1 / E2) for beam energies E1 (along +z) and E2, with <code class="docutils literal notranslate"><span class="pre">cm_energy</span></code> = 2 sqrt(E1 E2). The phase space is generated in the beams’ frame and boosted into the lab before the cuts, so rapidity cuts act in the lab.</p></li>
 <li><p><strong>mirror_beams</strong> – Add the <code class="docutils literal notranslate"><span class="pre">mirror_index</span></code> condition: for index 1 the event is rotated by pi about the x axis in the beams’ frame (leg 1 from beam 2, leg 2 from beam 1) before the lab boost and the cuts. With identical beams that is a rotation of the lab event too.</p></li>
+<li><p><strong>s_hat_power</strong> – Exponent of the <code class="docutils literal notranslate"><span class="pre">1/s_hat^p</span></code> sampling of the partonic invariant s_hat in the PDF convolution (see Luminosity), in every mode. Unset, it is 1.2 for TChannelMode::color_ordered when masses or cuts bound s_hat from below (as AmpliCol), and <code class="docutils literal notranslate"><span class="pre">invariant_power</span></code> otherwise. A resonant s_hat is sampled with its Breit-Wigner either way.</p></li>
 </ul>
 </dd>
 </dl>
