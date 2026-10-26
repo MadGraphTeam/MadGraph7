@@ -62,14 +62,16 @@ LEGACY_PROCESS_SYMBOL_ALLOWLIST = {
     "generation/service.py": frozenset({"PDGS"}),
 }
 SM_PDG_VALUES = frozenset({*range(1, 7), *range(11, 17), 21, 22, 23, 24, 25, 26, 99})
-# Bounded legacy one-loop source certificates: the u/d QCD control basis and
-# the e/mu neutral-current electroweak certificates. They admit only these
-# tested species and are replaced by generic certification with the EW work
-# (WP3.2) and the legacy-loop deletion; no other loop module may classify PDGs.
-# The quarantine test fails on any entry no longer used, so the allowlist
-# shrinks with the code and disappears with it.
+# Bounded legacy one-loop source certificates: the u/d QCD control basis. It
+# admits only these tested species and is replaced by generic certification
+# with the legacy-loop deletion; no other loop module may classify PDGs. The
+# colour-singlet electroweak and neutral-QCD certificates
+# (loops/model_electroweak.py, loops/model_neutral_qcd.py) are structural
+# (spins, representations, conjugation, exact colour/Lorentz tensors) since
+# genericity-fixes m5 and need no entry. The quarantine test fails on any
+# entry no longer used, so the allowlist shrinks with the code and disappears
+# with it.
 LEGACY_LOOP_CONTROL_PDG_ALLOWLIST = {
-    "loops/model_electroweak.py": frozenset({22, 23}),
     "loops/model_qcd.py": frozenset({1, 2, 21}),
 }
 BUILTIN_IMPLEMENTATION_DEFINITIONS = frozenset(

@@ -57,6 +57,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:  # the ``tools`` package, run as a script
+    sys.path.insert(0, str(ROOT))
 UFO = Path(
     os.environ.get(
         "PYAMPLICOL_NLO_UFO_REFERENCE",
@@ -212,10 +214,10 @@ def compile_loop_sm(ufo: Path, cache: Path) -> Any:
     """loop_sm compiled once into ``cache`` with the checked scalar-arity
     view (as the tests); later calls load it."""
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source, load_compiled_model
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source, load_compiled_model
 
     path = cache / "loop-sm.json.pyAmplicol-model.json"
     if not path.exists():

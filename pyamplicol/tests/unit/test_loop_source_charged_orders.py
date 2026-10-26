@@ -17,9 +17,11 @@ def charged_plan(loop_sm_ufo, loop_native, tmp_path_factory):
     if not symbolica.is_licensed():
         pytest.skip("licensed source generation and loop_sm reference required")
     from pyamplicol.loops.compiler import prepare_loop_request_model
-    from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
     from pyamplicol.loops.portable import write_loop_pacbin
     from pyamplicol.models.loop_import import load_raw_loop_model
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
 
     fixture = (
         Path(__file__).resolve().parents[2]

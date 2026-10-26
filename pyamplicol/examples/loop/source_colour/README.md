@@ -49,6 +49,10 @@ The parallel `gluon_scattering_nlc.toml` card requests NLC.
 Adjust the card paths to your working directory. `prepare_model.py` applies the
 existing checked four-G0 scalar-arity compatibility view, attaches the explicit
 loop and colour declarations, and writes one ordinary compiled-model bundle.
+The view is test support in the checkout's `tools/loop_reference` (neither the
+wheel nor the sdist ships it), so the script runs from a source checkout only:
+the example itself also ships in the wheel (`pyamplicol examples copy`), and a
+copy outside a checkout stops with that message before it reads the model.
 There is no runtime sidecar to keep in sync.
 
 A dry-run prepares model data and graph/order catalogues; it explicitly leaves

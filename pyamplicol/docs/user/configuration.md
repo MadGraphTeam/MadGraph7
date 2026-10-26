@@ -679,8 +679,23 @@ one loop amplitude per Born amplitude order (within the process's coupling-order
 limits) and correction in `process.loop_coupling_orders`, so mixed Born orders
 (e.g. `u u~ > d d~` with QCD and QED Born amplitudes) and several corrections are
 generated together, each squared coupling order a separate partial result. A
-correction the model does not expand perturbatively is refused. What the engine
-does not admit yet fails at generation with the reason, for example:
+correction the model does not expand perturbatively is refused. Coupling-order
+names are case-insensitive: `process.loop_coupling_orders`,
+`loop.model.loop_coupling_orders` and `process.max_coupling_orders` resolve
+against the model's declared names (`qcd` names a declared `QCD`, `qe` a
+declared `Qe`), and loop results carry the declared spelling; a name the model
+does not declare is refused, and so is a model declaring two names that differ
+only in case. Tree-level per-coupling-order partials still key orders by the
+tree engine's upper-case spelling (`QE` for a declared `Qe`); every shipped
+model declares upper-case names, where both spellings agree. The v2 engine
+still recognises the strong and electroweak corrections by the names `QCD` and
+`QED` (WP3.2): a model spelling its strong order otherwise gets the same
+values, but its QCD request is classified as electroweak (so a propagating
+width must be fixed to zero outside the complex-mass scheme) and carries no
+Catani pole prediction
+(`ir_poles` absent; `poles = "ir"` still selects the computed virtual's poles).
+What the engine does not admit yet fails at generation with the reason, for
+example:
 
 - QED corrections with W or Z bosons in the loops with MG5_aMC's
   `loop_qcd_qed_sm` (`u u~ > d d~` with QCD and QED corrections): "loop line …

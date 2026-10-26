@@ -453,10 +453,10 @@ def test_production_modules_never_generate_diagrams():
 @pytest.fixture(scope="module")
 def loop_sm_models(loop_sm_ufo):
     from pyamplicol.loops.compiler import prepare_loop_request_model
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loop_import import load_raw_loop_model
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loop_import import load_raw_loop_model
 
     models = {}
 

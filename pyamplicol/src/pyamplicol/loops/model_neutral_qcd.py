@@ -18,24 +18,31 @@ def certified_neutral_qcd_basis(entry, raw):
     particles = tuple(
         raw.collections["particles"][i]["fields"] for i in entry.particle_ids
     )
-    pdgs = tuple(p["pdg_code"] for p in particles)
     colors = tuple(p["color"] for p in particles)
     if tuple(p["spin"] for p in particles) != (3,) * len(particles):
         return False
+    # One self-conjugate adjoint vector species and one neutral colour-singlet
+    # vector (genericity audit m5: no particle identity): the exact tensors
+    # below decide, whichever vector couples through them.
+    adjoint = particles[:-1]
+    if not (
+        len({p["name"] for p in adjoint}) == 1
+        and all(p["name"] == p["antiname"] for p in particles)
+    ):
+        return False
     candidates = ()
-    if pdgs == (21, 21, 23) and colors == (8, 8, 1):
+    if colors == (8, 8, 1):
         candidates = (
             ("Tr(1,2)", "Epsilon(3,1,2,-1)*P(-1,2)-Epsilon(3,1,2,-1)*P(-1,1)"),
         )
-    elif pdgs in ((21, 21, 21, 22), (21, 21, 21, 23)) and colors == (8, 8, 8, 1):
+    elif colors == (8, 8, 8, 1):
         candidates = (
             (
                 "d(1,2,3)",
                 "Metric(1,2)*Metric(3,4)+Metric(1,3)*Metric(2,4)+Metric(1,4)*Metric(2,3)",
             ),
+            ("f(1,2,3)", "Epsilon(4,1,2,3)"),
         )
-        if pdgs[-1] == 23:
-            candidates += (("f(1,2,3)", "Epsilon(4,1,2,3)"),)
     return any(
         (parse_exact_ufo(entry.color) - parse_exact_ufo(color)).expand() == 0
         and (parse_exact_ufo(entry.lorentz) - parse_exact_ufo(lorentz)).expand() == 0

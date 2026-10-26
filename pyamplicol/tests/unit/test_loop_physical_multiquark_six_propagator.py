@@ -21,8 +21,10 @@ def control(loop_sm_ufo, loop_native):
         pytest.skip("licensed native generation required")
     path = str(loop_sm_ufo)
     from pyamplicol.loops.compiler import prepare_loop_request_model
-    from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
     from pyamplicol.models.loop_import import load_raw_loop_model
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
 
     fixture = json.loads(
         (

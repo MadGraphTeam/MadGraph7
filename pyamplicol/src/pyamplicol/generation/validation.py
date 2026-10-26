@@ -166,41 +166,117 @@ def validation_point_map(
     return {record.process_id: record.to_mapping() for record in records}
 
 
+# Massive beams: sqrt(s) over the larger threshold (unit-free, well above
+# both thresholds, beams far from the ultra-relativistic limit).
+_MASSIVE_BEAM_SCALE = 2.0
+
+
 def _build_particles(
     process: CanonicalProcessIR,
     model: Model,
     *,
     seed: int,
 ) -> tuple[tuple[int, FourMomentum], ...]:
+    """One on-shell point of ``process`` from the model's masses.
+
+    A decay (1 -> n) is taken in the rest frame of the decaying particle; a
+    scattering (2 -> n, n >= 2) in its centre-of-mass frame, beams along +-z.
+    Massive beams take ``sqrt(s)`` twice the larger of the initial and the
+    final threshold (a scale of the process, in no particular units); massless
+    beams keep the historical ``sqrt(s) = max(1000, final threshold + 100)``
+    exactly (their points are byte-identical). A 2 -> 1 scattering takes
+    ``sqrt(s)`` = the final mass. pyAmpliCol processes have two initial
+    particles today (``processes.model``), so the decay branch serves only
+    direct callers until decays are supported.
+    """
+
     initial_pdgs = tuple(int(pdg) for pdg in process.initial_pdgs)
     final_pdgs = tuple(int(pdg) for pdg in process.final_pdgs)
-    if len(initial_pdgs) != 2:
-        raise ValueError("validation momenta require a two-particle initial state")
+    if len(initial_pdgs) not in (1, 2):
+        raise ValueError(
+            "validation momenta require a one- or two-particle initial state"
+        )
     if not final_pdgs:
         raise ValueError("validation momenta require at least one final-state particle")
+    initial_masses = tuple(_mass(model, pdg) for pdg in initial_pdgs)
     final_masses = tuple(_mass(model, pdg) for pdg in final_pdgs)
     threshold = sum(final_masses)
+    if len(initial_pdgs) == 1:
+        (mass,) = initial_masses
+        if len(final_pdgs) < 2 or not mass > threshold:
+            raise ValueError(
+                f"no validation point: a decay of mass {mass!r} into "
+                f"{len(final_pdgs)} particle(s) of total mass {threshold!r}"
+            )
+        final_momenta = massive_rambo_final_state(
+            len(final_pdgs), sqrt_s=mass, masses=final_masses, seed=seed
+        )
+        particles = (
+            (initial_pdgs[0], (mass, 0.0, 0.0, 0.0)),
+            *tuple(zip(final_pdgs, final_momenta, strict=True)),
+        )
+        return _finite(particles)
+    beams = sum(initial_masses)
     if len(final_pdgs) == 1:
         if threshold <= 0.0:
             raise ValueError(
                 "no finite center-of-mass point exists for one massless final state"
             )
+        if beams > 0.0 and not threshold > beams:
+            raise ValueError(
+                f"no validation point: beams of total mass {beams!r} above the "
+                f"final-state mass {threshold!r}"
+            )
         sqrt_s = threshold
         final_momenta: tuple[FourMomentum, ...] = ((float(sqrt_s), 0.0, 0.0, 0.0),)
     else:
-        sqrt_s = max(1000.0, threshold + 100.0)
+        sqrt_s = (
+            max(1000.0, threshold + 100.0)
+            if beams == 0.0
+            else _MASSIVE_BEAM_SCALE * max(threshold, beams)
+        )
         final_momenta = massive_rambo_final_state(
             len(final_pdgs),
             sqrt_s=sqrt_s,
             masses=final_masses,
             seed=seed,
         )
-    beam_energy = 0.5 * sqrt_s
+    if beams == 0.0:
+        beam_energy = 0.5 * sqrt_s
+        incoming = (
+            (beam_energy, 0.0, 0.0, beam_energy),
+            (beam_energy, 0.0, 0.0, -beam_energy),
+        )
+    else:
+        incoming = _massive_beams(sqrt_s, *initial_masses)
     particles = (
-        (initial_pdgs[0], (beam_energy, 0.0, 0.0, beam_energy)),
-        (initial_pdgs[1], (beam_energy, 0.0, 0.0, -beam_energy)),
+        *tuple(zip(initial_pdgs, incoming, strict=True)),
         *tuple(zip(final_pdgs, final_momenta, strict=True)),
     )
+    return _finite(particles)
+
+
+def _massive_beams(
+    sqrt_s: float, first: float, second: float
+) -> tuple[FourMomentum, FourMomentum]:
+    """Beams of masses ``first`` and ``second`` along +-z in their
+    centre-of-mass frame: E_i = (s + m_i^2 - m_j^2) / (2 sqrt(s)), |p_z| =
+    lambda(s, m_1^2, m_2^2)^(1/2) / (2 sqrt(s))."""
+
+    s = sqrt_s * sqrt_s
+    a, b = first * first, second * second
+    # lambda = (s - (m1 + m2)^2) (s - (m1 - m2)^2), cancellation-free.
+    lam = (s - (first + second) ** 2) * (s - (first - second) ** 2)
+    momentum = math.sqrt(lam) / (2.0 * sqrt_s)
+    return (
+        ((s + a - b) / (2.0 * sqrt_s), 0.0, 0.0, momentum),
+        ((s + b - a) / (2.0 * sqrt_s), 0.0, 0.0, -momentum),
+    )
+
+
+def _finite(
+    particles: tuple[tuple[int, FourMomentum], ...],
+) -> tuple[tuple[int, FourMomentum], ...]:
     if not all(math.isfinite(value) for _, momentum in particles for value in momentum):
         raise ArithmeticError("validation momenta contain non-finite components")
     return particles

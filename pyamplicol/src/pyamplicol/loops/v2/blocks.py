@@ -107,6 +107,7 @@ from pyamplicol.generation.dag_types import (
     CurrentIndex,
     GenericDAG,
 )
+from pyamplicol.loops.order_names import CouplingOrderNames, order_key
 from pyamplicol.loops.v2.families import (
     BlockCurrent,
     ExternalLeg,
@@ -149,7 +150,9 @@ class RequestedLoopBlocks:
     block current an admitted position consumes. Particle ids follow the tree
     engine: the field produced by the tree and entering the loop vertex, in
     the all-outgoing convention (the conjugate of the incoming field name);
-    ``requested_loop_blocks`` converts family requests.
+    ``requested_loop_blocks`` converts family requests. Coupling orders take
+    the tree engine's keys (``models.order_names.order_key``), as the tree
+    engine and the native DAG compare them.
     """
 
     requests: frozenset[tuple[int, int, CouplingOrders]]
@@ -157,7 +160,11 @@ class RequestedLoopBlocks:
 
     def __post_init__(self) -> None:
         requests = frozenset(
-            (int(mask), int(particle_id), add_orders(orders))
+            (
+                int(mask),
+                int(particle_id),
+                add_orders(tuple((order_key(n), p) for n, p in orders)),
+            )
             for mask, particle_id, orders in self.requests
         )
         object.__setattr__(self, "requests", requests)
@@ -352,12 +359,21 @@ class BlockKey:
     auxiliary_kind: str | None
 
     @classmethod
-    def from_index(cls, index: CurrentIndex) -> BlockKey:
+    def from_index(
+        cls, index: CurrentIndex, names: CouplingOrderNames | None = None
+    ) -> BlockKey:
+        """The key of a tree-engine current; ``names`` (the model's) spell
+        its coupling orders as the model declares them."""
+
         return cls(
             external_mask=index.external_mask,
             particle_id=index.particle_id,
             word=index.ordered_external_labels,
-            coupling_orders=index.coupling_orders,
+            coupling_orders=(
+                index.coupling_orders
+                if names is None
+                else names.orders(index.coupling_orders)
+            ),
             color_state=index.color_state,
             chirality=index.chirality,
             spin_state=index.spin_state,
@@ -782,9 +798,10 @@ def _blocks(
     }
     connections = _connection_parities(dag, model, endpoints)
     grades = u1_grades(dag)
+    names = CouplingOrderNames.of_model(model)
     rows_by_key: dict[BlockKey, list[BlockRow]] = {}
     for current in dag.currents:
-        rows_by_key.setdefault(BlockKey.from_index(current.index), []).append(
+        rows_by_key.setdefault(BlockKey.from_index(current.index, names), []).append(
             BlockRow(decode(current.index.helicity_ancestry), current.id)
         )
     blocks = []
@@ -954,10 +971,11 @@ def _born_roots(dag: GenericDAG, model: Model) -> tuple[BornRoot, ...]:
     vertices: dict[tuple[int, tuple[int, int, int]], Any] = {}
     for vertex in model.vertices:
         vertices.setdefault((vertex.kind, vertex.particles), vertex)
+    names = CouplingOrderNames.of_model(model)
     return tuple(
         BornRoot(
             root_id=root.id,
-            coupling_orders=_born_root_orders(dag, model, root, vertices),
+            coupling_orders=names.orders(_born_root_orders(dag, model, root, vertices)),
             color_sector_id=root.color_sector_id,
             helicities=decode(
                 dag.currents[root.left_id].index.helicity_ancestry
