@@ -124,7 +124,8 @@ class AmplicolExportTest(unittest.TestCase):
         self.assertEqual(expression, 'mp0 mp0 > mp0 mp0')
         self.assertEqual(sorted(multiparticles['mp0']),
                          sorted(['g', 'u', 'd', 's', 'c', 'u~', 'd~', 's~', 'c~']))
-        self.assertEqual(len(processes), 81)
+        # every initial state, and every other particle of each final-state leg
+        self.assertEqual(len(processes), 81 + 2 * 8)
 
     def test_coupling_orders(self):
         """The orders MG selects by default, as the largest non-QCD orders."""
@@ -136,6 +137,23 @@ class AmplicolExportTest(unittest.TestCase):
                               precmd=True)
             self.assertEqual(export_amplicol.coupling_orders(
                 self.cmd._curr_amplicol_defs[0], self.cmd._curr_model), orders)
+
+    def test_default_histograms_see_every_final_state_particle(self):
+        """The representative processes cover every particle of a final-state
+        leg: the default histograms of p p > e+ e- j j are of jets, which
+        every subprocess has, not of gluons, which most of them lack."""
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        import madgraph.various.banner as banner_mod
+        self.cmd.exec_cmd('generate p p > e+ e- j j [amplicol]', printcmd=False,
+                          precmd=True)
+        processes = export_amplicol.representative_processes(
+            self.cmd._curr_amplicol_defs, self.cmd._curr_model)
+        run_card = banner_mod.RunCardMG7()
+        run_card.create_default_for_process(
+            {'ninitial': 2, 'nexternal': 6}, '', [processes])
+        histograms = list(run_card.dynamic_sections['histograms'])
+        self.assertIn('jet_2-pt', histograms)
+        self.assertFalse([name for name in histograms if name.startswith('g_')])
 
     def test_mirrored_beams(self):
         """pyamplicol keeps one process per unordered initial state; the other
@@ -164,11 +182,13 @@ class AmplicolExportTest(unittest.TestCase):
                          'supports_alpha_s': True},
             'channels': [{
                 'phasespace_order': [0, 2, 3, 4, 1],
+                'phasespace_channels': [
+                    {'phasespace_order': [0, 2, 3, 4, 1], 'resonances': []}],
                 'processes': [
-                    {'multichannels': [0], 'matrix_elements': [
+                    {'multichannels': [0], 'color_flows': 0, 'matrix_elements': [
                         {'pdg_ids': 0, 'factor': 1}, {'pdg_ids': 2, 'factor': 2},
                         {'pdg_ids': 1, 'factor': 1}]},
-                    {'multichannels': [0], 'matrix_elements': [
+                    {'multichannels': [0], 'color_flows': 1, 'matrix_elements': [
                         {'pdg_ids': 3, 'factor': 1}]},
                 ],
             }],
@@ -181,11 +201,50 @@ class AmplicolExportTest(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         flavors = entries[0]['flavors']
         # d d~ > s s~ g has its mirror exported, the other rows are mirrored
+        common = {'channels': [0], 'resonance_pdgs': [[]]}
         self.assertEqual(flavors, [
             {'index': 0, 'options': [[1, -1, 2, -2, 21], [1, -1, 4, -4, 21]],
-             'weights': [1, 2], 'factor': 3, 'mirror': True},
+             'weights': [1, 2], 'factor': 3, 'mirror': True, 'color_index': 0,
+             **common},
             {'index': 0, 'options': [[1, -1, 3, -3, 21]], 'weights': [1],
-             'factor': 1, 'mirror': False},
+             'factor': 1, 'mirror': False, 'color_index': 0, **common},
             {'index': 1, 'options': [[-1, 1, 3, -3, 21]], 'weights': [1],
-             'factor': 1, 'mirror': False},
+             'factor': 1, 'mirror': False, 'color_index': 1, **common},
         ])
+
+    def test_resonance_charges_split_the_selector_rows(self):
+        """A selector integrated over phase-space channels with resonances
+        writes them with the charge of the decay products of each row: the
+        charge-conjugated rows of a W selector become flavours of their own."""
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        metadata = {
+            'pdg_ids': [[2, -1, -11, 12, 21], [4, -3, -11, 12, 21],
+                        [1, -2, 11, -12, 21]],
+            'provider': {'incoming_count': 2, 'masses': [0.] * 5,
+                         'supports_alpha_s': True},
+            'channels': [{
+                'phasespace_order': [0, 4, 1, 2, 3],
+                'phasespace_channels': [
+                    {'phasespace_order': [0, 4, 1, 2, 3], 'resonances': []},
+                    {'phasespace_order': [0, 4, 1, 2, 3],
+                     'resonances': [{'pdg': 24, 'legs': [2, 3]}]}],
+                'processes': [
+                    {'multichannels': [0, 1], 'color_flows': 0,
+                     'matrix_elements': [{'pdg_ids': index, 'factor': 1}
+                                         for index in range(3)]},
+                ],
+            }],
+            'color_flows': [], 'helicities': [], 'runtime_processes': [],
+        }
+        partons = {21, 1, 2, 3, 4, -1, -2, -3, -4}
+        entries = export_amplicol.subprocess_entries(
+            metadata, self.cmd._curr_model, 'SubProcesses/A1', 'me.so', 'ratio.so',
+            3, [partons, partons])
+        flavors = entries[0]['flavors']
+        self.assertEqual([f['options'] for f in flavors], [
+            [[2, -1, -11, 12, 21], [4, -3, -11, 12, 21]], [[1, -2, 11, -12, 21]]])
+        self.assertEqual([f['resonance_pdgs'] for f in flavors],
+                         [[[], [24]], [[], [-24]]])
+        self.assertEqual(entries[0]['phasespace_channels'][1],
+                         {'order': [0, 4, 1, 2, 3],
+                          'resonances': [{'pdg': 24, 'legs': [2, 3]}]})

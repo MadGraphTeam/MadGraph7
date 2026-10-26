@@ -38,6 +38,7 @@ class PhaseSpace:
     prop_chan_weights: ms.PropagatorChannelWeights | None = None
     subchan_weights: ms.SubchannelWeights | None = None
     cwnet: ms.ChannelWeightNetwork | None = None
+    mapping_chan_weights: ms.MappingChannelWeights | None = None
 
 
 class MultiChannelData(NamedTuple):
@@ -942,6 +943,7 @@ class MadgraphSubprocess:
             cwnet=self.build_cwnet(len(phasespace.symfact)),
             prop_chan_weights=phasespace.prop_chan_weights,
             subchan_weights=phasespace.subchan_weights,
+            mapping_chan_weights=phasespace.mapping_chan_weights,
         )
 
     def build_vegas(self, mapping: ms.PhaseSpaceMapping, prefix: str) -> ms.VegasMapping:
@@ -1172,6 +1174,7 @@ class MadgraphSubprocess:
                 madnis_args["compressed_channel_weight_count"],
                 custom_bias,
                 None if self.process.leptonic else self.process.pdf_grid2,
+                phasespace.mapping_chan_weights,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())

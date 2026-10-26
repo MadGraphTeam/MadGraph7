@@ -1,10 +1,12 @@
 """Subprocesses with AmpliCol matrix elements ('[amplicol]' processes).
 
-Each subprocess is one colour ordering (UMAMI channel) of an AmpliCol provider,
-integrated on its own at leading colour with a colour-ordered phase-space
-mapping. A second pass re- or unweights its events to full colour with the
-ratio of the full-colour to the leading-colour matrix element summed over all
-colour orderings, at the helicity of the event.
+Each subprocess is one UMAMI channel of an AmpliCol provider: colour orderings
+integrated at leading colour over a common set of colour-ordered phase-space
+channels. They differ in where the colour singlets attach to the colour lines
+and in the s-channel resonances they map out, and are weighted by the densities
+of their mappings. A second pass re- or unweights the events to full colour with
+the ratio of the full-colour to the leading-colour matrix element summed over
+all colour orderings, at the helicity of the event.
 """
 
 from __future__ import annotations
@@ -53,16 +55,146 @@ def chain_topology(incoming_masses: list[float], outgoing_masses: list[float]):
     )
 
 
+def channel_topology(
+    incoming_masses: list[float],
+    outgoing_masses: list[float],
+    order: list[int],
+    resonances: list[tuple[int, list[int]]],
+    process: MadgraphProcess,
+) -> tuple[ms.Topology, list[int]]:
+    """The topology of a colour-ordered phase-space channel, a t-channel chain
+    through the final-state legs and the resonances (pdg, legs) that decay to
+    them, and its colour order over the children of that chain."""
+    n_in = len(incoming_masses)
+    legs = [frozenset(r_legs) for _, r_legs in resonances]
+    top = [i for i, r in enumerate(legs) if not any(r < other for other in legs)]
+    children = []
+    for slot in order:
+        if slot < n_in:
+            continue
+        child = next((("r", i) for i in top if slot in legs[i]), ("o", slot))
+        if child not in children:
+            children.append(child)
+        elif children[-1] != child:
+            raise RuntimeError(f"the resonance legs of {order} are not contiguous")
+    chain_count = len(children) - 1
+
+    def ref(child):
+        kind, index = child
+        return f"o{index - n_in}" if kind == "o" else f"p{chain_count + index}"
+
+    refs = [ref(child) for child in children]
+    if len(children) == 1:
+        vertices = [["i0", "i1", refs[0]]]
+    else:
+        vertices = [["i0", "p0", refs[0]]]
+        vertices += [[f"p{i - 1}", f"p{i}", refs[i]] for i in range(1, chain_count)]
+        vertices.append(["i1", f"p{chain_count - 1}", refs[-1]])
+    position = {slot: i for i, slot in enumerate(order)}
+    for index, r_legs in enumerate(legs):
+        inner = [
+            i for i, other in enumerate(legs)
+            if other < r_legs and not any(other < mid < r_legs for mid in legs)
+        ]
+        covered = set().union(*(legs[i] for i in inner))
+        decay = [(min(position[s] for s in legs[i]), ref(("r", i))) for i in inner]
+        decay += [(position[s], ref(("o", s))) for s in r_legs - covered]
+        vertices.append([f"p{chain_count + index}", *(r for _, r in sorted(decay))])
+    propagators = [ms.Propagator() for _ in range(chain_count)]
+    for pdg, _ in resonances:
+        propagators.append(ms.Propagator(
+            mass=process.get_mass(abs(pdg)),
+            width=process.get_width(abs(pdg)),
+            pdg_id=pdg,
+        ))
+    topology = ms.Topology(
+        ms.Diagram(incoming_masses, outgoing_masses, propagators, vertices)
+    )
+    color_order = []
+    for slot in order:
+        node = slot if slot < n_in else n_in + children.index(
+            next((("r", i) for i in top if slot in legs[i]), ("o", slot))
+        )
+        if node not in color_order:
+            color_order.append(node)
+    return topology, color_order
+
+
+def channel_topologies(meta: dict, process: MadgraphProcess) -> list[tuple]:
+    """channel_topology of every phase-space channel of a subprocess."""
+    incoming_masses = [process.get_mass(pid) for pid in clean_pids(meta["incoming"])]
+    outgoing_masses = [process.get_mass(pid) for pid in clean_pids(meta["outgoing"])]
+    return [
+        channel_topology(
+            incoming_masses,
+            outgoing_masses,
+            channel["order"],
+            [(r["pdg"], r["legs"]) for r in channel["resonances"]],
+            process,
+        )
+        for channel in meta["phasespace_channels"]
+    ]
+
+
+def lhe_diagrams(meta: dict) -> tuple[list[tuple[int, tuple]], list[list[float]]]:
+    """The diagrams that the LHE writer takes the resonances of an event from,
+    one per phase-space channel and resonance charges, and per flavour a mask
+    of those it can be written with. None if there are no resonances."""
+    if not any(channel["resonances"] for channel in meta["phasespace_channels"]):
+        return [], []
+    diagrams = []
+    for flavor in meta["flavors"]:
+        for channel, pdgs in zip(flavor["channels"], flavor["resonance_pdgs"]):
+            if (channel, tuple(pdgs)) not in diagrams:
+                diagrams.append((channel, tuple(pdgs)))
+    masks = [
+        [
+            float(diagram in zip(flavor["channels"], map(tuple, flavor["resonance_pdgs"])))
+            for diagram in diagrams
+        ]
+        for flavor in meta["flavors"]
+    ]
+    return diagrams, masks
+
+
 def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArgs:
-    """LHE completion of an AmpliCol subprocess: its events have no diagram."""
+    """LHE completion of an AmpliCol subprocess: its diagrams are the
+    phase-space channels, with the resonances they map out."""
+    diagrams, _ = lhe_diagrams(meta)
+    if diagrams:
+        topologies = channel_topologies(meta, process)
+        particle_count = len(meta["incoming"]) + len(meta["outgoing"])
+        colors = sorted({flavor["color_index"] for flavor in meta["flavors"]})
+        by_channel = [
+            [(d, pdgs) for d, (c, pdgs) in enumerate(diagrams) if c == channel]
+            for channel in range(len(topologies))
+        ]
+        # the chain propagators come first: one less than the root's children
+        chain_counts = [len(order) - len(meta["incoming"]) - 1 for _, order in topologies]
+        layout = dict(
+            topologies=[topology for topology, _ in topologies],
+            permutations=[
+                [list(range(particle_count))] * len(channel) for channel in by_channel
+            ],
+            diagram_indices=[[d for d, _ in channel] for channel in by_channel],
+            diagram_color_indices=[[colors] * len(channel) for channel in by_channel],
+            diagram_propagator_pdgs=[
+                [[0] * count + list(pdgs) for _, pdgs in channel]
+                for channel, count in zip(by_channel, chain_counts)
+            ],
+        )
+    else:
+        layout = dict(
+            topologies=[chain_topology(
+                [process.get_mass(pid) for pid in clean_pids(meta["incoming"])],
+                [process.get_mass(pid) for pid in clean_pids(meta["outgoing"])],
+            )],
+            permutations=[[]],
+            diagram_indices=[[]],
+            diagram_color_indices=[[]],
+        )
     return ms.SubprocArgs(
-        topologies=[chain_topology(
-            [process.get_mass(pid) for pid in clean_pids(meta["incoming"])],
-            [process.get_mass(pid) for pid in clean_pids(meta["outgoing"])],
-        )],
-        permutations=[[]],
-        diagram_indices=[[]],
-        diagram_color_indices=[[]],
+        **layout,
         color_flows=meta["color_flows"],
         pdg_color_types={
             int(key): value for key, value in meta["pdg_color_types"].items()
@@ -136,31 +268,59 @@ class AmplicolSubprocess(MadgraphSubprocess):
         return None
 
     def build_multichannel_phasespace(self) -> PhaseSpace:
-        mapping = ms.PhaseSpaceMapping(
-            self.incoming_masses + self.outgoing_masses,
-            self.process.e_cm,
-            leptonic=self.process.leptonic,
-            invariant_power=self.process.run_card["phasespace"]["invariant_power"],
-            mode=ms.PhaseSpaceMapping.color_ordered,
-            cuts=self.cuts,
-            color_ordered=ms.ColorOrderedMapping.Options(self.meta["phasespace_order"]),
-            beam_rapidity=self.process.beam_rapidity,
-            mirror_beams=self.mirror_beams,
+        """One channel per phase-space channel of the UMAMI channel, weighted
+        by the densities of their mappings."""
+        flavors = self.meta["flavors"]
+        particle_count = len(self.incoming_masses) + len(self.outgoing_masses)
+        channels = []
+        for index, (topology, color_order) in enumerate(
+            channel_topologies(self.meta, self.process)
+        ):
+            mapping = ms.PhaseSpaceMapping(
+                topology,
+                self.process.e_cm,
+                leptonic=self.process.leptonic,
+                invariant_power=self.process.run_card["phasespace"]["invariant_power"],
+                t_channel_mode=ms.PhaseSpaceMapping.color_ordered,
+                cuts=self.cuts,
+                permutations=[list(range(particle_count))],
+                color_ordered=ms.ColorOrderedMapping.Options(color_order),
+                beam_rapidity=self.process.beam_rapidity,
+                mirror_beams=self.mirror_beams,
+            )
+            prefix = f"subproc{self.subproc_id}.amplicol{index}"
+            discrete_sym, discrete_flavor = self.build_discrete(
+                1, len(flavors), prefix
+            )
+            channels.append(Channel(
+                phasespace_mapping=mapping,
+                adaptive_mapping=self.build_vegas(mapping, prefix),
+                discrete_sym=discrete_sym,
+                discrete_flavor=discrete_flavor,
+                channel_weight_indices=[index],
+                name=f"C{index}",
+                active_flavors=[[
+                    f for f, flavor in enumerate(flavors) if index in flavor["channels"]
+                ]],
+            ))
+        diagrams, diagram_masks = lhe_diagrams(self.meta)
+        weights = None
+        if len(channels) > 1 or diagrams:
+            weights = ms.MappingChannelWeights(
+                [channel.phasespace_mapping for channel in channels],
+                [
+                    [float(index in flavor["channels"]) for index in range(len(channels))]
+                    for flavor in flavors
+                ],
+                [channel for channel, _ in diagrams],
+                diagram_masks,
+            )
+        return PhaseSpace(
+            mode="multichannel",
+            channels=channels,
+            symfact=[None] * len(channels),
+            mapping_chan_weights=weights,
         )
-        prefix = f"subproc{self.subproc_id}.amplicol"
-        discrete_sym, discrete_flavor = self.build_discrete(
-            1, len(self.meta["flavors"]), prefix
-        )
-        channel = Channel(
-            phasespace_mapping=mapping,
-            adaptive_mapping=self.build_vegas(mapping, prefix),
-            discrete_sym=discrete_sym,
-            discrete_flavor=discrete_flavor,
-            channel_weight_indices=[0],
-            name="C",
-            active_flavors=[],
-        )
-        return PhaseSpace(mode="multichannel", channels=[channel], symfact=[None])
 
     def build_flat_phasespace(self) -> PhaseSpace:
         return self.build_multichannel_phasespace()

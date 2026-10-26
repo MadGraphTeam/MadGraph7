@@ -17,11 +17,13 @@
 pyamplicol generates the colour-ordered matrix elements of a process definition
 in SubProcesses/A<n>_<name>: a leading-colour artifact (lc), a full-colour one
 (full), and the sources of the UMAMI library returning their ratio (reweight).
-Its makefile builds the libraries into lib/. Every colour ordering (UMAMI
-channel) of every provider becomes one entry of subprocesses.json, integrated
-on its own with a colour-ordered phase-space mapping. Subprocesses related by a
-flavour relabelling that is a symmetry of the allowed vertices are generated
-once (pyamplicol's strict flavour-blind grouping) and evaluated through their
+Its makefile builds the libraries into lib/. Every UMAMI channel of every
+provider becomes one entry of subprocesses.json: colour orderings integrated
+over a common set of colour-ordered phase-space channels, which differ in where
+the colour singlets attach and in the s-channel resonances they follow, and are
+weighted by their mapping densities. Subprocesses related by a flavour
+relabelling that is a symmetry of the allowed vertices are generated once
+(pyamplicol's strict flavour-blind grouping) and evaluated through their
 representative.
 """
 
@@ -223,17 +225,23 @@ def model_job(model, cache_path):
 
 def representative_processes(proc_defs, model):
     """Processes standing for the [amplicol] definitions where the output needs
-    MG processes (run card defaults, proc_characteristics): every initial state,
-    with the first particle of each final-state leg."""
+    MG processes (run card defaults, proc_characteristics): every initial state
+    with the first particle of each final-state leg, and every particle of each
+    final-state leg once, so that the default histograms see the whole group
+    (a jet, not a gluon)."""
     import itertools
     import madgraph.core.base_objects as base_objects
     processes = []
     for procdef in proc_defs:
         legs = procdef.get('legs')
         initial = [leg_pdgs(leg, model) for leg in legs if not leg.get('state')]
-        final = [leg_pdgs(leg, model)[0] for leg in legs if leg.get('state')]
-        for ids in itertools.product(*initial):
-            pdgs = list(ids) + final
+        finals = [leg_pdgs(leg, model) for leg in legs if leg.get('state')]
+        first = [pdgs[0] for pdgs in finals]
+        states = [list(ids) + first for ids in itertools.product(*initial)]
+        states += [[pdgs[0] for pdgs in initial] + first[:i] + [pdg] + first[i + 1:]
+                   for i, options in enumerate(finals) for pdg in options[1:]]
+        for pdgs in states:
+            ids = pdgs[:len(initial)]
             processes.append(base_objects.Process({
                 'legs': base_objects.LegList([
                     base_objects.Leg({'id': pdg, 'number': number + 1,
@@ -264,6 +272,16 @@ def mirrored(pdgs, incoming, initial_legs, exported):
             and swapped not in exported)
 
 
+def resonance_pdg(model, pdg, decay_pdgs):
+    """The resonance of the given species carrying the charge of its outgoing
+    decay products: W+ or W-, say, for the rows of one selector."""
+    particle = model.get_particle(abs(pdg))
+    if particle.get('self_antipart'):
+        return abs(pdg)
+    charge = sum(model.get_particle(p).get_charge() for p in decay_pdgs)
+    return abs(pdg) if abs(particle.get_charge() - charge) < 1e-6 else -abs(pdg)
+
+
 def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
                        initial_legs):
     """One subprocesses.json entry per channel of a UMAMI provider; initial_legs
@@ -275,25 +293,30 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
                 for pdgs in pdg_ids}
     entries = []
     for channel_index, channel in enumerate(metadata['channels']):
+        phasespace = channel['phasespace_channels']
         flavors = []
         for flavor_index, process in enumerate(channel['processes']):
-            if process['multichannels'] != [channel_index]:
-                raise madgraph.MadGraph5Error(
-                    'AmpliCol contributions shared by several channels are not '
-                    'supported yet')
             # the rows of a selector share its evaluation and incoming legs: one
-            # flavour per mirror flag, its options written in proportion to factor
-            by_mirror = {}
+            # flavour per mirror flag and resonance charges, its options written
+            # in proportion to factor
+            by_kind = {}
             for term in process['matrix_elements']:
                 pdgs = pdg_ids[term['pdg_ids']]
                 mirror = mirrored(pdgs, incoming, initial_legs, exported)
-                flavor = by_mirror.setdefault(mirror, {
+                resonances = [
+                    [resonance_pdg(model, r['pdg'], [pdgs[leg] for leg in r['legs']])
+                     for r in phasespace[index]['resonances']]
+                    for index in process['multichannels']]
+                flavor = by_kind.setdefault((mirror, str(resonances)), {
                     'index': flavor_index, 'options': [], 'weights': [],
-                    'factor': 0, 'mirror': mirror})
+                    'factor': 0, 'mirror': mirror,
+                    'color_index': process['color_flows'] or 0,
+                    'channels': process['multichannels'],
+                    'resonance_pdgs': resonances})
                 flavor['options'].append(pdgs)
                 flavor['weights'].append(term['factor'])
                 flavor['factor'] += term['factor']
-            flavors.extend(by_mirror.values())
+            flavors.extend(by_kind.values())
         first = flavors[0]['options'][0]
         entries.append({
             'backend': 'amplicol',
@@ -306,7 +329,9 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
             'artifact': pjoin(rel_dir, 'lc'),
             'ratio_artifact': pjoin(rel_dir, 'reweight'),
             'umami_channel': channel_index,
-            'phasespace_order': channel['phasespace_order'],
+            'phasespace_channels': [
+                {'order': ps['phasespace_order'], 'resonances': ps['resonances']}
+                for ps in phasespace],
             'masses': provider['masses'],
             'supports_alpha_s': provider['supports_alpha_s'],
             'flavors': flavors,
