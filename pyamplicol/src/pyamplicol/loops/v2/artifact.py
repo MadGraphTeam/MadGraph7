@@ -125,14 +125,17 @@ PLAN_MEMBER = "schedule/loop-plan-v4.json.zlib"
 # The native point inputs (``native_process.NativeProcess``): its assembly
 # record and tree program (zlib JSON) and saved exact evaluators.
 NATIVE_RECORD_MEMBER = "point-inputs/native-process.json.zlib"
-NATIVE_TREES_MEMBER = "point-inputs/tree-program.json.zlib"
-NATIVE_PARAMETERS_MEMBER = "point-inputs/parameters.state"
-NATIVE_KERNEL_MEMBER = "point-inputs/kernel-{}.state"
-# Their binary64 SymJIT plane applications (storage-v4 IR).
-NATIVE_PARAMETERS_PLANE_MEMBER = "point-inputs/parameters.symjit"
-NATIVE_KERNEL_PLANE_MEMBER = "point-inputs/kernel-{}.symjit"
-# The certified-scaleless companion's tree program (``native_process.
-# NativeCompanion``): the same members under this prefix.
+NATIVE_INPUTS_PREFIX = "point-inputs/"
+# Under ``NATIVE_INPUTS_PREFIX`` (and ``NATIVE_SCALELESS_PREFIX``, the
+# certified-scaleless companion's tree program, ``native_process.
+# NativeCompanion``): the tree program, the parameter program's saved exact
+# evaluator and the kernels', and their binary64 SymJIT plane applications
+# (storage-v4 IR).
+NATIVE_TREES_MEMBER = "tree-program.json.zlib"
+NATIVE_PARAMETERS_MEMBER = "parameters.state"
+NATIVE_PARAMETERS_PLANE_MEMBER = "parameters.symjit"
+NATIVE_KERNEL_MEMBER = "kernel-{}.state"
+NATIVE_KERNEL_PLANE_MEMBER = "kernel-{}.symjit"
 NATIVE_SCALELESS_PREFIX = "point-inputs/scaleless/"
 # The stored observable columns (``native_observables.StoredObservables``):
 # zlib JSON members ``point-inputs/observables*.json.zlib``.
@@ -404,7 +407,7 @@ def write_plan(
                 zlib.compress(stored["native-process.json"], 6),
             )
         )
-        prefixes = [("", "point-inputs/")]
+        prefixes = [("", NATIVE_INPUTS_PREFIX)]
         if companion is not None:
             from .native_process import SCALELESS
 
@@ -412,13 +415,17 @@ def write_plan(
         for prefix, path in prefixes:
             members += [
                 (
-                    f"{path}tree-program.json.zlib",
+                    f"{path}{NATIVE_TREES_MEMBER}",
                     plan,
                     zlib.compress(stored[f"{prefix}tree-program.json"], 6),
                 ),
-                (f"{path}parameters.state", state, stored[f"{prefix}parameters.bin"]),
                 (
-                    f"{path}parameters.symjit",
+                    f"{path}{NATIVE_PARAMETERS_MEMBER}",
+                    state,
+                    stored[f"{prefix}parameters.bin"],
+                ),
+                (
+                    f"{path}{NATIVE_PARAMETERS_PLANE_MEMBER}",
                     symjit,
                     stored[f"{prefix}parameters.symjit"],
                 ),
@@ -427,14 +434,14 @@ def write_plan(
             while f"{prefix}kernel-{k}.bin" in stored:
                 members.append(
                     (
-                        f"{path}kernel-{k}.state",
+                        path + NATIVE_KERNEL_MEMBER.format(k),
                         state,
                         stored[f"{prefix}kernel-{k}.bin"],
                     )
                 )
                 members.append(
                     (
-                        f"{path}kernel-{k}.symjit",
+                        path + NATIVE_KERNEL_PLANE_MEMBER.format(k),
                         symjit,
                         stored[f"{prefix}kernel-{k}.symjit"],
                     )
@@ -504,26 +511,26 @@ def read_native_process(
         members["native-process.json"] = zlib.decompress(
             read(reader, NATIVE_RECORD_MEMBER, json_kind)
         )
-        prefixes = [("", "point-inputs/")]
+        prefixes = [("", NATIVE_INPUTS_PREFIX)]
         if scaleless_json is not None:
             prefixes.append((SCALELESS, NATIVE_SCALELESS_PREFIX))
         for prefix, base in prefixes:
             members[f"{prefix}tree-program.json"] = zlib.decompress(
-                read(reader, f"{base}tree-program.json.zlib", json_kind)
+                read(reader, base + NATIVE_TREES_MEMBER, json_kind)
             )
             members[f"{prefix}parameters.bin"] = read(
-                reader, f"{base}parameters.state", state
+                reader, base + NATIVE_PARAMETERS_MEMBER, state
             )
             members[f"{prefix}parameters.symjit"] = read(
-                reader, f"{base}parameters.symjit", symjit
+                reader, base + NATIVE_PARAMETERS_PLANE_MEMBER, symjit
             )
             k = 0
-            while f"{base}kernel-{k}.state" in names:
+            while base + NATIVE_KERNEL_MEMBER.format(k) in names:
                 members[f"{prefix}kernel-{k}.bin"] = read(
-                    reader, f"{base}kernel-{k}.state", state
+                    reader, base + NATIVE_KERNEL_MEMBER.format(k), state
                 )
                 members[f"{prefix}kernel-{k}.symjit"] = read(
-                    reader, f"{base}kernel-{k}.symjit", symjit
+                    reader, base + NATIVE_KERNEL_PLANE_MEMBER.format(k), symjit
                 )
                 k += 1
         start = f"{NATIVE_OBSERVABLES_PREFIX}observables"
@@ -749,6 +756,8 @@ def generate_process(
     # loaded process regenerates.
     from .native_observables import column_plans
 
+    from .native_trees import NativeExportUnsupported
+
     plans = column_plans(observables)
     try:
         # With declared observables every counterterm ket component stays in
@@ -762,7 +771,7 @@ def generate_process(
             keep_kets=declared,
             column_sets={kind: plan.seed_columns for kind, plan in plans.items()},
         )
-    except NotImplementedError as error:
+    except NativeExportUnsupported as error:
         raise _not_storable(request, "native point inputs", error) from error
     plan_json = exported.json()
     # The companion plan of the certified-scaleless families, which the "uv"
@@ -809,7 +818,7 @@ def generate_process(
             stored_columns = StoredObservables.export(
                 observables, exported, native, plans, scaleless
             )
-        except NotImplementedError as error:
+        except NativeExportUnsupported as error:
             raise _not_storable(request, "observable columns", error) from error
         native = replace(native, observables=stored_columns)
     resolved = CorrelatorConfig(
@@ -831,8 +840,10 @@ def generate_process(
 
 def _not_storable(request: Any, what: str, error: Exception) -> Exception:
     """The generation refusal of a process whose ``what`` cannot be exported
-    natively (the export's ``NotImplementedError``): a plan v4 process is
-    stored with them, so no call of a loaded process regenerates it."""
+    natively (a listed feature, ``native_trees.NATIVE_EXPORT_REFUSALS``, its
+    key first): a plan v4 process is stored with them, so no call of a
+    loaded process regenerates it. There is no plan-only downgrade; any other
+    exception of the export propagates (fail closed)."""
 
     from pyamplicol.api.errors import GenerationError
 

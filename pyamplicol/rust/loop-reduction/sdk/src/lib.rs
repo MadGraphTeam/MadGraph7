@@ -79,9 +79,40 @@ const V4_ONLY_ORDINARY: &str = "plan v4 SDK runtimes serve ordinary (unresolved)
     binary64 virtuals with model R2; resolved, correlated, verified and \
     rescued evaluations go through the Python API";
 
+/// The poles an ordinary virtual returns (REQUIREMENTS_ADDENDUM I, the
+/// API's `poles` option): every Laurent coefficient, or the finite part
+/// alone, whose pole-only work a plan v4 runtime skips natively (the pole
+/// entries are then quiet NaNs, absent). The split selections ("uv", "ir")
+/// need the companion of the certified-scaleless families and Catani's
+/// operator, which run through the Python API.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Poles {
+    #[default]
+    All,
+    None,
+}
+
+impl Poles {
+    pub fn parse(text: &str) -> RusticolResult<Self> {
+        match text {
+            "all" => Ok(Self::All),
+            "none" => Ok(Self::None),
+            "uv" | "ir" => Err(invalid(format!(
+                "the SDK serves poles \"all\" or \"none\"; {text:?} (the split \
+                 selections need the scaleless companion and Catani's operator) goes \
+                 through the Python API"
+            ))),
+            _ => Err(invalid(format!(
+                "poles must be \"all\" or \"none\", not {text:?}"
+            ))),
+        }
+    }
+}
+
 pub struct Runtime {
     engine: Engine,
     shape: Shape,
+    poles: Poles,
     color_components: Vec<String>,
     born_anchored_color: bool,
     history_ids: Vec<String>,
@@ -143,6 +174,7 @@ impl Runtime {
         Ok(Self {
             engine: Engine::V3(native),
             shape,
+            poles: Poles::All,
             color_components,
             born_anchored_color: plan.born_color_components.is_some(),
             history_ids,
@@ -179,6 +211,7 @@ impl Runtime {
             color_components: vec![native.metadata().color_accuracy.clone()],
             engine: Engine::V4(Box::new(native)),
             shape,
+            poles: Poles::All,
             born_anchored_color: false,
             history_ids: vec![],
             spin_classes: vec![],
@@ -199,6 +232,20 @@ impl Runtime {
     }
     pub fn shape(&self) -> Shape {
         self.shape
+    }
+    /// The pole selection of later evaluations (default all). A plan v4
+    /// runtime serves all and none; plan v1-v3 runtimes evaluate every pole.
+    pub fn set_poles(&mut self, poles: Poles) -> RusticolResult<()> {
+        if poles != Poles::All && matches!(self.engine, Engine::V3(_)) {
+            return Err(invalid(
+                "plan v1-v3 SDK runtimes evaluate every pole (poles \"all\")",
+            ));
+        }
+        self.poles = poles;
+        Ok(())
+    }
+    pub fn poles(&self) -> Poles {
+        self.poles
     }
     pub fn verification_policy(&self) -> Option<&VerificationPolicy> {
         match &self.engine {
@@ -221,6 +268,8 @@ impl Runtime {
                 "engine":"v2", "plan_sha256":native.plan_sha256(),
                 "point_inputs":"native-v2",
                 "arithmetic":["double"], "epsilon_powers":[0,-1,-2],
+                "pole_selections":["all","none"],
+                "poles":if self.poles == Poles::All { "all" } else { "none" },
                 "resolved":false, "correlations":false,
                 "correlation_histories":Vec::<String>::new(),
                 "spin_correlation_classes":Vec::<Vec<usize>>::new(),
@@ -321,7 +370,7 @@ impl Runtime {
             if resolved || policy.is_some() || strategy.is_some_and(|s| s != "model") {
                 return Err(invalid(V4_ONLY_ORDINARY));
             }
-            return Evaluation::from_v4(native, inputs, self.shape);
+            return Evaluation::from_v4(native, inputs, self.shape, self.poles);
         }
         let effective = policy.or_else(|| self.verification_policy()).cloned();
         let native = self.v3_mut()?;
@@ -437,9 +486,14 @@ fn pack(
 
 impl Evaluation {
     /// One ordinary binary64 batch of a plan v4 process: Born per order and
-    /// the complete virtual per sector and epsilon power, failed points
-    /// without rows.
-    fn from_v4(native: &mut V2Runtime, inputs: LoopInputs, shape: Shape) -> RusticolResult<Self> {
+    /// the complete virtual per sector and epsilon power (with `Poles::None`
+    /// the finite part, the poles quiet NaNs), failed points without rows.
+    fn from_v4(
+        native: &mut V2Runtime,
+        inputs: LoopInputs,
+        shape: Shape,
+        poles: Poles,
+    ) -> RusticolResult<Self> {
         use rusticol_core::loop_v2::dress::parse_rational;
         let width = 4 * shape.external_count;
         let momenta = inputs
@@ -452,7 +506,7 @@ impl Evaluation {
             .iter()
             .map(|x| parse_rational(x))
             .collect::<RusticolResult<Vec<_>>>()?;
-        let points = native.evaluate(&momenta, &scales, true)?;
+        let points = native.evaluate(&momenta, &scales, poles == Poles::All)?;
         let mut successful_point_ids = Vec::new();
         let mut statuses = Vec::with_capacity(points.len());
         let mut failures = BTreeMap::new();
@@ -465,7 +519,10 @@ impl Evaluation {
                     statuses.push(PointStatus::AccuracyNotEstablished);
                     born.extend(born_values);
                     for laurent in sectors {
+                        let finite = laurent.len();
                         virtual_values.extend(laurent);
+                        // Absent poles (finite-only).
+                        virtual_values.extend((finite..shape.epsilon_count).map(|_| f64::NAN));
                     }
                 }
                 Err(reasons) => {

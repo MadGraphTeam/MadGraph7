@@ -269,12 +269,15 @@ struct ParameterFile {
     /// (PDG code, output index) of every massive external particle whose
     /// mass is a derived model parameter (e.g. loop_sm's MW): a carrier
     /// value of the program, real and positive (also in `positive`). Its
-    /// legs' invariants stay p^2 of the momenta (no exact mass to bind).
+    /// legs are bound like an exact mass's, to the square of the carrier
+    /// value's exact rational (the value its sources take; DESIGN §11.1).
     #[serde(default)]
     derived_masses: Vec<(i32, usize)>,
-    /// Per plan mass: the external index of its mass parameter (squared),
-    /// or none (massless).
-    plan_masses: Vec<Option<usize>>,
+    /// Per plan mass (squared): the external index of its mass parameter,
+    /// `["output", o]` for a derived mass parameter (output `o`, real and
+    /// positive, also in `positive`; bound as `derived_masses` are), or none
+    /// (massless).
+    plan_masses: Vec<Option<MassFile>>,
     /// The renormalisation scale's parameter, if the program reads it:
     /// sqrt(mu_R^2) of each point.
     scale: Option<usize>,
@@ -521,6 +524,22 @@ enum ModelSource {
     Output { index: usize, imaginary: bool },
 }
 
+/// A plan mass's source in the record (`ParameterFile::plan_masses`).
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum MassFile {
+    Input(usize),
+    Output(String, usize),
+}
+
+/// A plan mass's source: an external parameter (exact) or a parameter
+/// program output (a derived mass, the exact value of its carrier).
+#[derive(Clone, Copy)]
+enum MassSource {
+    Input(usize),
+    Output(usize),
+}
+
 struct Parameters {
     names: Vec<String>,
     defaults: Vec<Rational>,
@@ -538,7 +557,7 @@ struct Parameters {
     positive: Vec<usize>,
     masses: Vec<(i32, usize)>,
     derived_masses: Vec<(i32, usize)>,
-    plan_masses: Vec<Option<usize>>,
+    plan_masses: Vec<Option<MassSource>>,
     scale: Option<usize>,
 }
 
@@ -1195,6 +1214,22 @@ fn load_parameters(
         "parameter program plan masses",
     )?;
     let output = |index: usize| index < file.outputs;
+    let plan_masses = file
+        .plan_masses
+        .iter()
+        .map(|mass| match mass {
+            None => Ok(None),
+            Some(MassFile::Input(i)) if *i < inputs && Some(*i) != file.scale => {
+                Ok(Some(MassSource::Input(*i)))
+            }
+            Some(MassFile::Output(kind, o))
+                if kind == "output" && output(*o) && file.positive.contains(o) =>
+            {
+                Ok(Some(MassSource::Output(*o)))
+            }
+            Some(_) => Err(invalid("parameter program plan mass source")),
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
     require(
         file.couplings
             .iter()
@@ -1213,14 +1248,8 @@ fn load_parameters(
                 .iter()
                 .all(|(pdg, _)| !file.masses.iter().any(|(exact, _)| exact == pdg))
             && file.masses.iter().all(|&(_, i)| i < inputs)
-            && file.plan_masses.iter().flatten().all(|&i| i < inputs)
             && file.scale.is_none_or(|i| i < inputs)
-            && file
-                .plan_masses
-                .iter()
-                .flatten()
-                .chain(file.masses.iter().map(|(_, i)| i))
-                .all(|&i| Some(i) != file.scale),
+            && file.masses.iter().all(|&(_, i)| Some(i) != file.scale),
         "parameter program index",
     )?;
     let sources = |records: &[(String, usize, bool)]| {
@@ -1261,7 +1290,7 @@ fn load_parameters(
         positive: file.positive,
         masses: file.masses,
         derived_masses: file.derived_masses,
-        plan_masses: file.plan_masses,
+        plan_masses,
         scale: file.scale,
     })
 }
@@ -1927,9 +1956,45 @@ impl TreeProgram {
             )?)
             .map(|(&(pdg, _), value)| (pdg, value.re))
             .collect();
-        let unbound: Vec<i32> = derived_masses.keys().copied().collect();
+        // A derived mass is bound like an exact one: its carrier value's
+        // exact rational, so its legs' invariants and its propagators take
+        // the square of the value its sources take (DESIGN §11.1).
+        let mut exact_masses = masses.clone();
+        for (&pdg, value) in &derived_masses {
+            exact_masses.insert(pdg, value.exact()?);
+        }
+        let outputs: Vec<usize> = program
+            .plan_masses
+            .iter()
+            .filter_map(|mass| match mass {
+                Some(MassSource::Output(o)) => Some(*o),
+                _ => None,
+            })
+            .collect();
+        let mut derived_plan =
+            shared(&outputs, "the points of one batch need equal loop masses")?.into_iter();
+        let mut plan_masses = Vec::with_capacity(program.plan_masses.len());
+        for mass in &program.plan_masses {
+            plan_masses.push(match mass {
+                Some(MassSource::Input(index)) => &values[*index] * &values[*index],
+                Some(MassSource::Output(_)) => {
+                    let value = derived_plan
+                        .next()
+                        .expect("one value per output plan mass")
+                        .re
+                        .exact()?;
+                    &value * &value
+                }
+                None => Rational::from(0),
+            });
+        }
         Ok(BoundParameters {
-            leg_masses: self.sources.leg_masses(self.legs, &masses, &unbound)?,
+            leg_masses: self
+                .sources
+                .leg_masses(self.legs, &exact_masses)?
+                .into_iter()
+                .map(Some)
+                .collect(),
             trees: TreeBatch {
                 model,
                 masses,
@@ -1939,14 +2004,7 @@ impl TreeProgram {
                 counterterm_model,
             },
             constants,
-            masses: program
-                .plan_masses
-                .iter()
-                .map(|mass| match mass {
-                    Some(index) => &values[*index] * &values[*index],
-                    None => Rational::from(0),
-                })
-                .collect(),
+            masses: plan_masses,
         })
     }
 
@@ -3335,6 +3393,9 @@ fn plane_propagator<T: Clone>(
 /// masses are carrier values (binary64 ones in binary64, as the tree
 /// runtime's own source records).
 pub trait TreeCarrier: Carrier + PartialOrd {
+    /// The carrier value's exact rational (a finite value).
+    fn exact(&self) -> RusticolResult<Rational>;
+
     fn fill_sources(
         sources: &SchemaSources,
         masses: &BTreeMap<i32, Self>,
@@ -3354,6 +3415,10 @@ pub trait TreeCarrier: Carrier + PartialOrd {
 }
 
 impl TreeCarrier for f64 {
+    fn exact(&self) -> RusticolResult<Rational> {
+        Rational::try_from(*self).map_err(|_| invalid("a carrier value is not finite"))
+    }
+
     fn fill_sources(
         sources: &SchemaSources,
         masses: &BTreeMap<i32, Self>,
@@ -3383,6 +3448,12 @@ impl TreeCarrier for f64 {
 }
 
 impl TreeCarrier for DoubleFloat {
+    fn exact(&self) -> RusticolResult<Rational> {
+        // The unevaluated sum of its two binary64 parts.
+        let parts = self.into_inner();
+        Ok(&parts.hi().exact()? + &parts.lo().exact()?)
+    }
+
     fn fill_sources(
         sources: &SchemaSources,
         masses: &BTreeMap<i32, Self>,
@@ -3403,6 +3474,13 @@ impl TreeCarrier for DoubleFloat {
 }
 
 impl TreeCarrier for Float {
+    fn exact(&self) -> RusticolResult<Rational> {
+        if !self.is_finite() {
+            return Err(invalid("a carrier value is not finite"));
+        }
+        Ok(self.to_rational())
+    }
+
     fn fill_sources(
         sources: &SchemaSources,
         masses: &BTreeMap<i32, Self>,

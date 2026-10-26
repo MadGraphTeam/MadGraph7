@@ -78,6 +78,84 @@ from .families import Orders, add_orders
 
 TREE_SCHEMA = 4
 
+
+
+@dataclass(frozen=True)
+class NativeExportRefusal:
+    """A feature the native export of a process does not cover
+    (``NativeExportUnsupported.feature``): the generation refuses the
+    process naming it (``artifact._not_storable``), since a stored plan v4
+    process evaluates from its native programs and never regenerates at load
+    (REQUIREMENTS_ADDENDUM G; there is no plan-only downgrade). ``owner``
+    covers it with ``follow_up``. Any other exception of the export
+    propagates (fail closed)."""
+
+    key: str
+    feature: str
+    owner: str
+    follow_up: str
+
+
+_EXPORT_OWNER = "WP3.1 generation-scale (native_trees)"
+
+NATIVE_EXPORT_REFUSALS = (
+    NativeExportRefusal(
+        "mass-parameter",
+        "a mass that is neither an external nor a derived model parameter",
+        _EXPORT_OWNER,
+        "none: a UFO mass is a model parameter (derived masses are parameter "
+        "program outputs, bound exactly)",
+    ),
+    NativeExportRefusal(
+        "parameter-read",
+        "a scalar plan, kernel constant, counterterm program, Weyl-line factor "
+        "or derived mass reading a parameter the tree program has not",
+        _EXPORT_OWNER,
+        "the parameter in the tree program's inputs with the first request "
+        "that reads one",
+    ),
+    NativeExportRefusal(
+        "parameter-kind",
+        "a tree or counterterm-program model parameter of another kind than an "
+        "external or derived parameter or a coupling",
+        _EXPORT_OWNER,
+        "the kind's parameter-program output with the first model that has one",
+    ),
+    NativeExportRefusal(
+        "whole-rule-block",
+        "a whole-rule counterterm term on a non-vector block",
+        _EXPORT_OWNER,
+        "its polynomial in the block rows with the first model whose whole "
+        "rules close on spinor or scalar blocks",
+    ),
+    NativeExportRefusal(
+        "whole-rule-root",
+        "a scaled or pole whole-rule counterterm root term",
+        _EXPORT_OWNER,
+        "a scaled or pole whole-rule slot with the first model that has one",
+    ),
+    NativeExportRefusal(
+        "observable-columns",
+        "stored observable columns of a process without native counterterm "
+        "components",
+        "WP3.1 generation-scale (native_observables)",
+        "none while every native tree program forms its counterterm components",
+    ),
+)
+_EXPORT_REFUSAL_KEYS = frozenset(refusal.key for refusal in NATIVE_EXPORT_REFUSALS)
+
+
+class NativeExportUnsupported(NotImplementedError):
+    """A listed feature the native export does not cover
+    (``NATIVE_EXPORT_REFUSALS``); ``feature`` is its key."""
+
+    def __init__(self, feature: str, message: str) -> None:
+        if feature not in _EXPORT_REFUSAL_KEYS:
+            raise ValueError(f"unknown native export refusal {feature!r}")
+        super().__init__(f"{feature}: {message}")
+        self.feature = feature
+
+
 # Prune the exported tree program to what its outputs read
 # (``prune_program``); False exports the unpruned program (the oracle of
 # the pruning's bitwise equality, ``tests/unit/test_loop_v2_native_trees.py``).
@@ -343,7 +421,9 @@ def export_trees(
 
         ids = [block_id(block) for block in term.blocks]
         if any(block_dimensions[i] != 4 for i in ids):
-            raise NotImplementedError("a whole-rule term on a non-vector block")
+            raise NativeExportUnsupported(
+                "whole-rule-block", "a whole-rule term on a non-vector block"
+            )
         polynomial: dict[tuple[int, ...], Fraction] = defaultdict(Fraction)
         for coefficient, pairs in term.pairings:
             partial = {(): Fraction(coefficient)}
@@ -775,7 +855,9 @@ def _counterterm_program(
         )
         if isinstance(term, WholeRuleTerm):
             if item.scale is not None or item.power != 0:
-                raise NotImplementedError("a scaled or pole whole-rule CT root term")
+                raise NativeExportUnsupported(
+                    "whole-rule-root", "a scaled or pole whole-rule CT root term"
+                )
             for degree, expression in term.grades:
                 slot = whole_slot(term, degree, expression)
                 contribute(
@@ -932,7 +1014,8 @@ class _CountertermReferences:
         inputs = []
         for name, symbol in zip(plan.external_names, plan.input_symbols, strict=True):
             if name not in index:
-                raise NotImplementedError(
+                raise NativeExportUnsupported(
+                    "parameter-read",
                     f"the counterterm coefficient plan reads {name!r}, which the "
                     "tree program has not"
                 )
@@ -1059,7 +1142,9 @@ def _parameter_program(
             )
             model.append(["output", o, record["complex_component"] == "imag"])
         else:
-            raise NotImplementedError(f"a tree model parameter of kind {kind!r}")
+            raise NativeExportUnsupported(
+                "parameter-kind", f"a tree model parameter of kind {kind!r}"
+            )
     # The counterterm program's model parameters: the model's, plus the CT
     # multiplicities and slot switches of the request (integers fixed per
     # process; every slot on, finite-only evaluations skip the pole terms)
@@ -1085,7 +1170,8 @@ def _parameter_program(
             elif name in references.parameters:
                 ct_externals.append(Replacement(symbol, references.part(name)))
             else:
-                raise NotImplementedError(
+                raise NativeExportUnsupported(
+                    "parameter-read",
                     f"the counterterm program reads {name!r}, which the trees have not"
                 )
         for record in ct_rows._records:
@@ -1122,8 +1208,9 @@ def _parameter_program(
                     ["output", o, record["complex_component"] == "imag"]
                 )
             else:
-                raise NotImplementedError(
-                    f"a counterterm program model parameter of kind {kind!r}"
+                raise NativeExportUnsupported(
+                    "parameter-kind",
+                    f"a counterterm program model parameter of kind {kind!r}",
                 )
 
     # Born couplings per N_c grade, from the slice's scalar plans (the Born's
@@ -1139,7 +1226,8 @@ def _parameter_program(
         replacements = []
         for name, symbol in zip(plan.external_names, plan.input_symbols, strict=True):
             if name not in index:
-                raise NotImplementedError(
+                raise NativeExportUnsupported(
+                    "parameter-read",
                     f"the scalar plan reads {name!r}, which the tree program has not"
                 )
             replacements.append(Replacement(symbol, symbol_of[name]))
@@ -1238,7 +1326,8 @@ def _parameter_program(
         kind, value = factor
         if kind == "param":
             if value not in index:
-                raise NotImplementedError(
+                raise NativeExportUnsupported(
+                    "parameter-read",
                     f"a kernel constant reads {value!r}, which the tree program has not"
                 )
             return symbol_of[value] * flips.get(value, 1)
@@ -1287,37 +1376,49 @@ def _parameter_program(
                     lambda factor=factor, signs=signs: base(factor, signs),
                 )
             )
-    # Masses: external spinors and loop propagators. An external mass that
-    # is an external parameter is exact (an input); one that is a derived
-    # model parameter (loop_sm's MW: irrational) is a carrier output of the
-    # program on the inputs, checked real and positive per point, and its
-    # legs' invariants stay p^2 of the momenta (``assemble._leg_masses``).
+    # Masses: external spinors and loop propagators. A mass that is an
+    # external parameter is exact (an input); one that is a derived model
+    # parameter (loop_sm's MW: irrational) is a carrier output of the
+    # program on the inputs, checked real and positive per point, which the
+    # native binder reads exactly (its carrier value's rational): its legs'
+    # invariants and its propagators take its square, the value its sources
+    # take (DESIGN §11.1), as ``assemble._model_masses`` binds them.
     exact_masses, derived_masses = [], []
     derived = {
         record.name
         for record in slice_.compiled.ir.parameters
         if record.nature == "internal"
     }
-    for pdg, name in masses:
-        if name in index:
-            exact_masses.append([int(pdg), index[name]])
-            continue
-        if name not in derived:
-            raise NotImplementedError(f"the external mass {name!r} is no input")
+
+    def derived_mass(name: str) -> int:
         o = output(
             ("derived-mass", name),
             lambda name=name: _derived_mass(slice_.compiled, name, index, externals),
         )
         positive.append(o)
-        derived_masses.append([int(pdg), o])
-    plan_masses = []
+        return o
+
+    for pdg, name in masses:
+        if name in index:
+            exact_masses.append([int(pdg), index[name]])
+        elif name in derived:
+            derived_masses.append([int(pdg), derived_mass(name)])
+        else:
+            raise NativeExportUnsupported(
+                "mass-parameter", f"the external mass {name!r} is no model parameter"
+            )
+    plan_masses: list[Any] = []
     for mass in exporter.masses:
         if mass.massless:
             plan_masses.append(None)
-        elif mass.mass not in index:
-            raise NotImplementedError(f"the loop mass {mass.mass!r} is no input")
-        else:
+        elif mass.mass in index:
             plan_masses.append(index[mass.mass])
+        elif mass.mass in derived:
+            plan_masses.append(["output", derived_mass(mass.mass)])
+        else:
+            raise NativeExportUnsupported(
+                "mass-parameter", f"the loop mass {mass.mass!r} is no model parameter"
+            )
     # The helpers in the order of their names, not the library's (which
     # follows the model's function bindings: a model compiled from its UFO
     # source and the same model read from the cache list them in different
@@ -1400,7 +1501,8 @@ def _line_factor(compiled: Any, scale: str, externals: Sequence[Any]) -> Any:
         if value.contains(E(model_symbols.symbol(record.name).to_canonical_string()))
     )
     if missing:
-        raise NotImplementedError(
+        raise NativeExportUnsupported(
+            "parameter-read",
             f"a Weyl line's factor reads {missing}, which the counterterm "
             "program has not"
         )
@@ -1436,8 +1538,9 @@ def _derived_mass(
         and value.contains(symbol(record.name))
     )
     if missing:
-        raise NotImplementedError(
-            f"the external mass {name!r} reads {missing}, which the tree "
+        raise NativeExportUnsupported(
+            "parameter-read",
+            f"the mass {name!r} reads {missing}, which the tree "
             "program has not"
         )
     return value.replace_multiple(list(externals))

@@ -866,16 +866,15 @@ impl SchemaSources {
     /// The squared mass of each of `legs` legs' external states, in leg
     /// order, by the wavefunctions' own lookup ([`SourceMasses`]): the mass of
     /// the particle's PDG code, else its antiparticle's, absent = massless.
-    /// Every leg needs a source, and all sources of a leg one mass. A leg
-    /// whose particle (or antiparticle) is `unbound` (a mass without an exact
-    /// value, a derived model parameter) has none.
+    /// Every leg needs a source, and all sources of a leg one mass. `masses`
+    /// holds every massive particle's exact mass: an exact external
+    /// parameter, or the exact value of a derived mass's carrier (its legs'
+    /// invariants are then its square, the value its sources take).
     pub(crate) fn leg_masses(
         &self,
         legs: usize,
         masses: &BTreeMap<i32, Rational>,
-        unbound: &[i32],
-    ) -> RusticolResult<Vec<Option<Rational>>> {
-        let mut free = vec![false; legs];
+    ) -> RusticolResult<Vec<Rational>> {
         let mut out: Vec<Option<Rational>> = vec![None; legs];
         for source in &self.sources {
             let index = source
@@ -889,10 +888,6 @@ impl SchemaSources {
                     ))
                 })?;
             let identity = &source.source_ir.identity;
-            if unbound.contains(&identity.pdg_label) || unbound.contains(&identity.anti_pdg_label) {
-                free[index] = true;
-                continue;
-            }
             let mass = masses
                 .get(&identity.pdg_label)
                 .or_else(|| masses.get(&identity.anti_pdg_label))
@@ -911,19 +906,14 @@ impl SchemaSources {
             }
         }
         out.into_iter()
-            .zip(free)
             .enumerate()
-            .map(|(index, (square, free))| match (square, free) {
-                (None, true) => Ok(None),
-                (Some(square), false) => Ok(Some(square)),
-                (Some(_), true) => Err(RusticolError::invalid_argument(format!(
-                    "the sources of external label {} disagree on its mass",
-                    index + 1
-                ))),
-                (None, false) => Err(RusticolError::invalid_argument(format!(
-                    "external label {} has no source",
-                    index + 1
-                ))),
+            .map(|(index, square)| {
+                square.ok_or_else(|| {
+                    RusticolError::invalid_argument(format!(
+                        "external label {} has no source",
+                        index + 1
+                    ))
+                })
             })
             .collect()
     }

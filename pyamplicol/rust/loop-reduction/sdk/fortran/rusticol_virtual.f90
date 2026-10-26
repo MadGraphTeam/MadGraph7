@@ -82,6 +82,7 @@ module rusticol_virtual
     procedure :: metadata_json
     procedure :: capabilities_json
     procedure :: update_parameters
+    procedure :: set_poles
     procedure :: evaluate
     procedure :: evaluate_correlated
     procedure :: correlation_histories_json
@@ -155,6 +156,11 @@ module rusticol_virtual
       import
       type(c_ptr), value :: handle, changes
       integer(c_int64_t) :: revision
+      integer(c_int) :: value
+    end function
+    function c_set_poles(handle, poles) bind(C, name="rusticol_virtual_set_poles") result(value)
+      import
+      type(c_ptr), value :: handle, poles
       integer(c_int) :: value
     end function
     function c_evaluate(handle, request, output) bind(C, name="rusticol_virtual_evaluate") result(value)
@@ -553,6 +559,17 @@ contains
     character(c_char), allocatable, target :: buffer(:)
     buffer=cstring(exact_json)
     call finish(c_update_parameters(handle_of(self),c_loc(buffer),revision),ierr)
+  end subroutine
+
+  ! Pole selection of later evaluations: "all" (default) or "none" (plan v4:
+  ! the finite part, the pole entries quiet NaNs).
+  subroutine set_poles(self,poles,ierr)
+    class(virtual_runtime), intent(inout) :: self
+    character(*), intent(in) :: poles
+    integer(c_int), optional, intent(out) :: ierr
+    character(c_char), allocatable, target :: buffer(:)
+    buffer=cstring(poles)
+    call finish(c_set_poles(handle_of(self),c_loc(buffer)),ierr)
   end subroutine
 
   subroutine evaluate(self,momenta,mu_r2,output,point_ids,resolved,r2_strategy,verification_json,ierr,error_message)

@@ -424,8 +424,11 @@ class StoredObservables:
         trees = exported.trees
         counterterms = trees.program.get("counterterms")
         if counterterms is None or not trees.ket_tensors:
-            raise NotImplementedError(
-                "stored observable columns need the native counterterm components"
+            from .native_trees import NativeExportUnsupported
+
+            raise NativeExportUnsupported(
+                "observable-columns",
+                "stored observable columns need the native counterterm components",
             )
         slice_ = observables.slice
         tree_index = {key: j for j, key in enumerate(trees.components)}

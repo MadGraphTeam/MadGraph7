@@ -142,7 +142,7 @@ def generate(compiled: Any, native: Any, key: str, accuracy: str) -> Any:
 
 def export(options: argparse.Namespace) -> int:
     from pyamplicol.loops.native import load_loop_native
-    from pyamplicol.loops.v2.assemble import _mass_values
+    from pyamplicol.loops.v2.assemble import Precision, _mass_values
     from pyamplicol.loops.v2.merged import merged_graph
     from pyamplicol.loops.v2.plan_export import export_plan
 
@@ -163,7 +163,12 @@ def export(options: argparse.Namespace) -> int:
                 exported = export_plan(slice_, forward=False, merged=graph)
                 written = time.perf_counter() - start
                 (options.output / f"{name}.json").write_text(exported.json())
-                squared = _mass_values(slice_.compiled, PARAMETERS, exported.masses)
+                squared = _mass_values(
+                    slice_.compiled,
+                    PARAMETERS,
+                    exported.masses,
+                    Precision.double().working_digits,
+                )
                 summary = {
                     "process": PROCESSES[key][0],
                     "accuracy": ACCURACIES[label],

@@ -1274,16 +1274,16 @@ class NativeExecutor:
                     found = signed[flips] = rx.signed_constants(constants, flips)
                 return found.constant(key)
 
+            working = evaluation.numbers.precision.working_digits
             masses = _mass_values(
-                slice_.compiled, evaluation.parameters, exported.masses
+                slice_.compiled, evaluation.parameters, exported.masses, working
             )
             return (
                 [value(constant(key, flips)) for key, flips in exported.constants],
                 [_fraction_text(masses[m]) for m in exported.masses],
-                # "" leaves a leg whose mass is no parameter unbound.
                 [
-                    "" if m is None else _fraction_text(m)
-                    for m in _leg_masses(slice_, evaluation.parameters)
+                    _fraction_text(m)
+                    for m in _leg_masses(slice_, evaluation.parameters, working)
                 ],
             )
 

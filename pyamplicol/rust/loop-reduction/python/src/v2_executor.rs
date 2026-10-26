@@ -25,7 +25,9 @@ use rusticol_core::loop_execution::v2::{
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use rusticol_core::loop_v2::retest::ReductionCheck;
-use rusticol_core::loop_v2::trees::{TreeCarrier, TreeInputs, TreeProgram, TreeRuntime};
+use rusticol_core::loop_v2::trees::{
+    BoundParameters, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
+};
 use rusticol_loop_reduction::runtime::{TypedBatch, V2ReductionBackend};
 use std::any::Any;
 use std::collections::BTreeMap;
@@ -156,16 +158,11 @@ fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch
         // bound natively from the external parameters like `masses`. A
         // synthetic batch without external states (timing tools) may omit
         // them: its invariants then all come from the momenta.
-        // "" leaves a leg unbound (its mass is no model parameter).
         leg_masses: match inputs.get_item("leg_masses")? {
             Some(values) if !native => values
                 .extract::<Vec<String>>()?
                 .into_iter()
-                .map(|text| {
-                    (!text.is_empty())
-                        .then(|| parse_rational(&text).map_err(error))
-                        .transpose()
-                })
+                .map(|text| parse_rational(&text).map(Some).map_err(error))
                 .collect::<PyResult<_>>()?,
             _ => Vec::new(),
         },
@@ -188,6 +185,37 @@ struct Trees {
 }
 
 impl Trees {
+    /// The batch's bound parameters (`TreeProgram::bind`) and the carrier's
+    /// tree runtime, built on first use.
+    fn bind<'a, T: Exchanged + Real + TreeCarrier>(
+        &self,
+        guard: &'a mut Option<Box<dyn Any + Send>>,
+        inputs: &Bound<'_, PyDict>,
+        scales: &[Rational],
+        zero: &T,
+    ) -> PyResult<(&'a mut TreeRuntime<T>, BoundParameters<T>)>
+    where
+        Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let values = rationals(item(inputs, "parameters")?.extract::<Vec<String>>()?)?;
+        let fresh = !guard
+            .as_ref()
+            .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>());
+        if fresh {
+            *guard = Some(Box::new(self.program.runtime(zero).map_err(error)?));
+        }
+        let runtime = guard
+            .as_mut()
+            .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
+            .expect("a runtime of this carrier");
+        let bound = self
+            .program
+            .bind(runtime, &values, scales, zero)
+            .map_err(error)?;
+        Ok((runtime, bound))
+    }
+
     /// Native block rows and Born components of a batch (filled into
     /// `batch`); returns every input for inspection.
     fn fill<T: Exchanged + Real + TreeCarrier>(
@@ -202,25 +230,11 @@ impl Trees {
         Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
         TreeRuntime<T>: Send,
     {
-        let values = rationals(item(inputs, "parameters")?.extract::<Vec<String>>()?)?;
         let mut guard = self
             .runtime
             .lock()
             .map_err(|_| error("a poisoned tree runtime"))?;
-        let fresh = !guard
-            .as_ref()
-            .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>());
-        if fresh {
-            *guard = Some(Box::new(self.program.runtime(zero).map_err(error)?));
-        }
-        let runtime = guard
-            .as_mut()
-            .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
-            .expect("a runtime of this carrier");
-        let bound = self
-            .program
-            .bind(runtime, &values, &batch.scales, zero)
-            .map_err(error)?;
+        let (runtime, bound) = self.bind(&mut guard, inputs, &batch.scales, zero)?;
         batch.constants = bound.constants;
         batch.masses = bound.masses;
         batch.leg_masses = bound.leg_masses;
@@ -600,6 +614,34 @@ where
     ))
 }
 
+/// Per plan mass and per leg, the bound squared masses (exact fractions).
+type BoundMasses = (Vec<String>, Vec<Option<String>>);
+
+fn bound_masses_with<T: Exchanged + Real + TreeCarrier>(
+    trees: &Trees,
+    inputs: &Bound<'_, PyDict>,
+    scales: &[Rational],
+    zero: &T,
+) -> PyResult<BoundMasses>
+where
+    Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+    TreeRuntime<T>: Send,
+{
+    let mut guard = trees
+        .runtime
+        .lock()
+        .map_err(|_| error("a poisoned tree runtime"))?;
+    let (_runtime, bound) = trees.bind(&mut guard, inputs, scales, zero)?;
+    Ok((
+        bound.masses.iter().map(ToString::to_string).collect(),
+        bound
+            .leg_masses
+            .iter()
+            .map(|mass| mass.as_ref().map(ToString::to_string))
+            .collect(),
+    ))
+}
+
 fn numerators_with<T: Exchanged>(
     py: Python<'_>,
     executor: &Executor,
@@ -708,6 +750,27 @@ impl V2Executor {
             }
             Carriers::Arbitrary(_) => {
                 tree_inputs_with(executor, trees, inputs, Float::with_val(bits, 0), bits)
+            }
+            Carriers::Exact => Err(error("the exact carrier has no native trees")),
+        }
+    }
+
+    /// The squared masses a batch's external parameters bind natively
+    /// (needs a tree program; `inputs` as for `tree_inputs`): per plan mass
+    /// and per leg (the on-shell invariants, DESIGN §11.1), exact fractions.
+    fn bound_masses(&self, inputs: &Bound<'_, PyDict>) -> PyResult<BoundMasses> {
+        let trees = self
+            .trees
+            .as_ref()
+            .ok_or_else(|| error("the executor has no tree program"))?;
+        let scales = rationals(item(inputs, "scales")?.extract()?)?;
+        match self.carrier {
+            Carriers::Double => bound_masses_with(trees, inputs, &scales, &0.0),
+            Carriers::DoubleDouble => {
+                bound_masses_with(trees, inputs, &scales, &DoubleFloat::from(0.0))
+            }
+            Carriers::Arbitrary(_) => {
+                bound_masses_with(trees, inputs, &scales, &Float::with_val(self.bits()?, 0))
             }
             Carriers::Exact => Err(error("the exact carrier has no native trees")),
         }

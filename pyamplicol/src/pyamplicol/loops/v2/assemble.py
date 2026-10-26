@@ -496,11 +496,6 @@ class TreeRows:
         return self._built().amplitude_stage
 
     def _model_values(self, parameters: Mapping[str, str], digits: int) -> list:
-        from symbolica import E
-
-        from pyamplicol._internal.physics.symbols import symbols
-        from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
-
         external = {
             record["name"]: Decimal(
                 parameters.get(record["name"], repr(record["default"]))
@@ -508,19 +503,7 @@ class TreeRows:
             for record in self._records
             if record["kind"] == "external_parameter"
         }
-        model_symbols = symbols.model(self.compiled.name)
-        substitutions = dict(
-            zip(
-                (
-                    E(model_symbols.symbol(name).to_canonical_string())
-                    for name in external
-                ),
-                _upcast_complex_inputs(
-                    [(value, Decimal(0)) for value in external.values()], digits
-                ),
-                strict=True,
-            )
-        )
+        substitutions = _substitutions(self.compiled, external, digits)
         derived, values = {}, []
         for record in self._records:
             if record["kind"] == "external_parameter":
@@ -528,10 +511,9 @@ class TreeRows:
                 continue
             name = record["runtime_name"]
             if name not in derived:
-                value = E(self._definitions[name]).evaluate(
-                    substitutions, decimal_digit_precision=digits
+                derived[name] = _definition_value(
+                    self._definitions[name], substitutions, digits
                 )
-                derived[name] = tuple(Decimal(x) for x in value.to_decimal_tuple())
             values.append(derived[name][record["complex_component"] == "imag"])
         return values
 
@@ -3175,12 +3157,14 @@ class _PointEvaluation:
         arithmetic = "double" if numbers.double else "arbitrary"
         digits = None if numbers.double else numbers.precision.digits
         lanes, groups = [], []
+        working = numbers.precision.working_digits
         masses = _mass_values(
             slice_.compiled,
             self.parameters,
             {mass for key in numerators for _mask, mass in key[0]},
+            working,
         )
-        onshell = _leg_masses(slice_, self.parameters)
+        onshell = _leg_masses(slice_, self.parameters, working)
         full = (1 << len(onshell)) - 1
 
         def invariant(arc: int, a, b):
@@ -3188,7 +3172,7 @@ class _PointEvaluation:
             # invariants, design §11.1), exactly the value its propagators
             # take; any other arc is p(arc)^2 of the given momenta.
             leg = onshell_leg(arc, full)
-            if leg is not None and onshell[leg] is not None:
+            if leg is not None:
                 return onshell[leg]
             return _minkowski([x - y for x, y in zip(a, b, strict=True)])
 
@@ -3506,15 +3490,12 @@ class _PointEvaluation:
             label for label, leg in legs.items() if leg.representation != 1
         )
         values = _kernel_parameters(slice_.compiled, self.parameters)
-        masses = {}
-        for leg in slice_.families.legs:
-            name = leg.mass.mass
-            if name == ZERO:
-                masses[leg.index + 1] = Fraction(0)
-            elif name in values:
-                masses[leg.index + 1] = values[name] ** 2
-            elif leg.index + 1 in coloured:
-                return None
+        mass_of = _model_masses(
+            slice_.compiled, self.parameters, numbers.precision.working_digits
+        )
+        masses = {
+            leg.index + 1: mass_of(leg.mass.mass) ** 2 for leg in slice_.families.legs
+        }
         dipoles = slice_.dipoles()
         three = Fraction(NC)
         physical = []
@@ -3572,9 +3553,10 @@ class _PointEvaluation:
         prefactor alpha / 2 pi takes alpha of the model's photon couplings at
         this point (``_qed_alpha``: alpha_Gmu in a G_mu model), the coupling
         of the loops. A leg is massless where the model's runtime mass is
-        zero (``ZERO``, a compile-time zero or a value bound to 0). No
-        prediction for a charged leg of unknown mass, a massless charged
-        vector or an on-shell external photon: the engine does not yet couple
+        zero (``ZERO``, a compile-time zero or a value bound to 0); a derived
+        mass is the slice's one mass evaluator's (``_model_masses``). No
+        prediction for a massless charged vector or an on-shell external
+        photon: the engine does not yet couple
         such a photon with alpha(0), the user's convention [U9] (WP3.2
         EWI-6b), and ``ew_policy`` refuses electroweak requests with one.
         """
@@ -3584,7 +3566,9 @@ class _PointEvaluation:
         parameters = {record.name: record for record in compiled.ir.parameters}
         records = {record.name: record for record in compiled.ir.particles}
         fixed = slice_.request.fixed_parameters
-        values = _kernel_parameters(compiled, self.parameters)
+        mass_of = _model_masses(
+            compiled, self.parameters, numbers.precision.working_digits
+        )
         charges: dict[int, Fraction] = {}
         masses: dict[int, Fraction] = {}
         spins: dict[int, int] = {}
@@ -3598,10 +3582,8 @@ class _PointEvaluation:
             label, name = leg.index + 1, leg.mass.mass
             if name == ZERO or ew_policy.is_zero(name, parameters, {}):
                 masses[label] = Fraction(0)
-            elif name in values:
-                masses[label] = values[name] ** 2
             else:
-                return None
+                masses[label] = mass_of(name) ** 2
             charges[label] = charge
             spins[label] = int(record.spin)
         alpha = self._qed_alpha()
@@ -4037,34 +4019,119 @@ def _kernel_parameters(compiled, parameters: Mapping[str, str]) -> dict[str, Fra
     return values
 
 
-def _mass_values(
-    compiled, parameters: Mapping[str, str], masses: Iterable[Any]
-) -> dict[Any, Fraction]:
-    """Squared real loop masses per mass id (widths are not part of the slice)."""
+def _substitutions(compiled, external: Mapping[str, Decimal], digits: int) -> dict:
+    """The model's external parameter symbols bound to ``external`` (real) at
+    ``digits`` decimal digits, for ``_definition_value``."""
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
+
+    model_symbols = symbols.model(compiled.name)
+    return dict(
+        zip(
+            (E(model_symbols.symbol(name).to_canonical_string()) for name in external),
+            _upcast_complex_inputs(
+                [(value, Decimal(0)) for value in external.values()], digits
+            ),
+            strict=True,
+        )
+    )
+
+
+def _definition_value(
+    definition: str, substitutions: Mapping[Any, Any], digits: int
+) -> tuple[Decimal, Decimal]:
+    """A derived parameter's resolved definition (in the external parameters)
+    at ``digits`` decimal digits: (real, imaginary)."""
+
+    from symbolica import E
+
+    value = E(definition).evaluate(substitutions, decimal_digit_precision=digits)
+    return tuple(Decimal(x) for x in value.to_decimal_tuple())
+
+
+def _model_masses(
+    compiled, parameters: Mapping[str, str], digits: int
+) -> Callable[[str], Fraction]:
+    """The model's mass parameters at ``parameters``, by name, as exact
+    values: an external parameter its exact value; a derived one (loop_sm's
+    MW, an internal mass of any model) its resolved definition at ``digits``
+    decimal digits (the value ``TreeRows._model_values`` gives the
+    wavefunctions at the working digits), read exactly. The one mass
+    evaluator of the slice: loop propagator masses (``_mass_values``), the
+    legs' on-shell invariants (``_leg_masses``) and Catani's massive emitters
+    (``_PointEvaluation._qcd_poles``, ``_qed_poles``) take the same values,
+    so a derived mass's legs are on the shell its propagators and sources
+    take (DESIGN §11.1). A derived mass must be real and positive."""
 
     values = _kernel_parameters(compiled, parameters)
+    definitions = {
+        record.name: record.resolved_expression
+        for record in compiled.ir.parameters
+        if record.nature == "internal"
+    }
+    found: dict[str, Fraction] = {}
+    substitutions: list[dict] = []
 
+    def mass(name: str) -> Fraction:
+        if name == ZERO:
+            return Fraction(0)
+        if name in values:
+            return values[name]
+        if name not in found:
+            if name not in definitions:
+                raise KeyError(f"the mass {name!r} is no model parameter")
+            if not substitutions:
+                external = {
+                    record.name: Decimal(
+                        parameters.get(
+                            record.name,
+                            str(compiled.parameter_defaults[record.name][0]),
+                        )
+                    )
+                    for record in compiled.ir.parameters
+                    if record.nature == "external"
+                    and record.name in compiled.parameter_defaults
+                }
+                substitutions.append(_substitutions(compiled, external, digits))
+            real, imaginary = _definition_value(
+                definitions[name], substitutions[0], digits
+            )
+            if imaginary != 0 or real <= 0:
+                raise ValueError(
+                    f"the derived mass {name!r} is not real and positive ({real}, "
+                    f"{imaginary})"
+                )
+            found[name] = Fraction(real)
+        return found[name]
+
+    return mass
+
+
+def _mass_values(
+    compiled, parameters: Mapping[str, str], masses: Iterable[Any], digits: int
+) -> dict[Any, Fraction]:
+    """Squared real loop masses per mass id (widths are not part of the
+    slice), a derived mass at ``digits`` decimal digits (``_model_masses``)."""
+
+    mass_of = _model_masses(compiled, parameters, digits)
     return {
-        mass: Fraction(0) if mass.massless else values[mass.mass] ** 2
+        mass: Fraction(0) if mass.massless else mass_of(mass.mass) ** 2
         for mass in masses
     }
 
 
-def _leg_masses(slice_, parameters: Mapping[str, str]) -> tuple[Fraction | None, ...]:
+def _leg_masses(slice_, parameters: Mapping[str, str], digits: int) -> tuple[Fraction, ...]:
     """Each external leg's squared mass in leg order, the value of the
     invariants its mass shell fixes (``families.onshell_leg``; DESIGN §11.1):
-    the same exact value ``_mass_values`` gives its mass id, 0 for a massless
-    leg (a mass parameter bound to 0 included), None for a mass that is no
-    external parameter (a derived mass such as loop_sm's MW, which no loop
-    propagator of the slice can carry: those invariants stay p^2)."""
+    the value ``_mass_values`` gives its mass id (``_model_masses``: a
+    derived mass at ``digits`` decimal digits), 0 for a massless leg (a mass
+    parameter bound to 0 included)."""
 
-    values = _kernel_parameters(slice_.compiled, parameters)
-    return tuple(
-        Fraction(0)
-        if leg.mass.mass == ZERO
-        else (values[leg.mass.mass] ** 2 if leg.mass.mass in values else None)
-        for leg in slice_.families.legs
-    )
+    mass_of = _model_masses(slice_.compiled, parameters, digits)
+    return tuple(mass_of(leg.mass.mass) ** 2 for leg in slice_.families.legs)
 
 
 def _charged_fields(compiled) -> frozenset[str]:
