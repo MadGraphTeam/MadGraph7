@@ -107,37 +107,7 @@ def _fuse_oriented_kernels(
     for members in groups.values():
         kind = len(fused)
         first = members[0]
-        remapped_components = [
-            tuple(
-                _sym.E(
-                    _renamed_kernel_text(
-                        component,
-                        old_kind=member.kind,
-                        new_kind=kind,
-                        model_symbols=model_symbols,
-                    )
-                )
-                for component in member.component_expressions
-            )
-            for member in members
-        ]
-        components = tuple(
-            _canonicalize_oriented_kernel_component(
-                sum(
-                    (
-                        remapped[index]
-                        * symbols.derived_coupling(model_name, member.term_id)
-                        for member, remapped in zip(
-                            members,
-                            remapped_components,
-                            strict=True,
-                        )
-                    ),
-                    _sym.E("0"),
-                )
-            )
-            for index in range(len(remapped_components[0]))
-        )
+        components = _fused_components(members, kind, model_symbols)
         coupling_expression = "1"
         fused.append(
             CompiledOrientedKernel(
@@ -146,9 +116,7 @@ def _fuse_oriented_kernels(
                 vertex=first.vertex,
                 particles=first.particles,
                 source_particle_legs=first.source_particle_legs,
-                component_expressions=tuple(
-                    component.to_canonical_string() for component in components
-                ),
+                component_expressions=components,
                 coupling_expression=coupling_expression,
                 coupling_orders=first.coupling_orders,
                 runtime_parameters=tuple(
@@ -167,6 +135,178 @@ def _fuse_oriented_kernels(
             )
         )
     return tuple(fused)
+
+
+def _fused_components(
+    members: Sequence[CompiledOrientedKernel],
+    kind: int,
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[str, ...]:
+    """The canonical strings of the fused kernel ``kind``'s components:
+    ``sum_m component_m * derived_coupling(term_m)`` over the ``members``,
+    their kernel symbols renamed to ``kind``, canonicalised
+    (``_canonicalize_oriented_kernel_component``).
+
+    Fusions equal up to the members' kinds and term ids (the vertex copies of
+    counterterm clone lines, repeated structures) are formed once
+    (``_FUSED``) and renamed on the text (``_renamed_fused_texts``): with the
+    term ids in the same numeric order, both sums are equal on the canonical
+    symbols of ``canonical_apply``, so the canonicalisation is the same up
+    to the renaming."""
+
+    model_name = model_symbols.model_name
+    term_ids = tuple(member.term_id for member in members)
+    key = None
+    if len(set(term_ids)) == len(term_ids):
+        key = (
+            model_symbols.namespace,
+            tuple(
+                tuple(
+                    _renamed_kernel_text(
+                        component,
+                        old_kind=member.kind,
+                        new_kind=0,
+                        model_symbols=model_symbols,
+                    )
+                    for component in member.component_expressions
+                )
+                for member in members
+            ),
+            tuple(sorted(range(len(term_ids)), key=term_ids.__getitem__)),
+        )
+        found = _FUSED.get(key)
+        if found is not None:
+            formed_kind, formed_ids, texts = found
+            renamed = _renamed_fused_texts(
+                texts,
+                old_kind=formed_kind,
+                new_kind=kind,
+                old_ids=formed_ids,
+                new_ids=term_ids,
+                model_symbols=model_symbols,
+            )
+            if renamed is not None:
+                return renamed
+    remapped_components = [
+        tuple(
+            _sym.E(
+                _renamed_kernel_text(
+                    component,
+                    old_kind=member.kind,
+                    new_kind=kind,
+                    model_symbols=model_symbols,
+                )
+            )
+            for component in member.component_expressions
+        )
+        for member in members
+    ]
+    texts = tuple(
+        _canonicalize_oriented_kernel_component(
+            sum(
+                (
+                    remapped[index]
+                    * symbols.derived_coupling(model_name, member.term_id)
+                    for member, remapped in zip(
+                        members, remapped_components, strict=True
+                    )
+                ),
+                _sym.E("0"),
+            )
+        ).to_canonical_string()
+        for index in range(len(remapped_components[0]))
+    )
+    if key is not None:
+        if len(_FUSED) >= _FUSED_BOUND:
+            _FUSED.clear()
+        _FUSED[key] = (kind, term_ids, texts)
+    return texts
+
+
+# ``_fused_components``' results by (model namespace, the members' components
+# on kind 0, the numeric order of their term ids), with the kind and term ids
+# they were formed for. Cleared beyond the bound.
+_FUSED: dict[tuple[object, ...], tuple[int, tuple[int, ...], tuple[str, ...]]] = {}
+_FUSED_BOUND = 1 << 15
+
+# A derived coupling symbol in a canonical string, with its term id.
+_DERIVED_TOKEN = re.compile(r"::derived_coupling_([0-9]+)(?![0-9A-Za-z_])")
+
+
+def _renamed_fused_texts(
+    texts: Sequence[str],
+    *,
+    old_kind: int,
+    new_kind: int,
+    old_ids: Sequence[int],
+    new_ids: Sequence[int],
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[str, ...] | None:
+    """``texts`` (canonical strings of a fusion formed for kernel
+    ``old_kind`` and the term ids ``old_ids``) with the kind and the term ids
+    renamed to ``new_kind`` and ``new_ids``, or None when the renaming might
+    change an order of the canonical strings.
+
+    A derived coupling's id is renamed in place when the texts hold no other
+    derived coupling than the model's of ``old_ids``, no id is a prefix of
+    another (old or new), and the ids are in the same lexicographic order:
+    two canonical strings then first differ either outside the ids or
+    inside two different ids at a digit that compares as the ids do. The
+    kind is renamed by ``_renamed_kernel_text``."""
+
+    old_names = [str(term_id) for term_id in old_ids]
+    new_names = [str(term_id) for term_id in new_ids]
+    for names in (old_names, new_names):
+        if any(a != b and b.startswith(a) for a in names for b in names):
+            return None
+    if any(
+        (old_names[i] < old_names[j]) != (new_names[i] < new_names[j])
+        for i in range(len(old_names))
+        for j in range(len(old_names))
+    ):
+        return None
+    prefix = _derived_token_prefix(model_symbols)
+    mapping = dict(zip(old_names, new_names, strict=True))
+    renamed: list[str] = []
+    for text in texts:
+        ids = _DERIVED_TOKEN.findall(text)
+        occurrences = text.count("derived_coupling_")
+        if (
+            len(ids) != occurrences
+            or text.count(prefix) != occurrences
+            or any(term_id not in mapping for term_id in ids)
+        ):
+            return None
+        text = _DERIVED_TOKEN.sub(
+            lambda match: f"::derived_coupling_{mapping[match.group(1)]}", text
+        )
+        renamed.append(
+            _renamed_kernel_text(
+                text,
+                old_kind=old_kind,
+                new_kind=new_kind,
+                model_symbols=model_symbols,
+            )
+        )
+    return tuple(renamed)
+
+
+def _derived_token_prefix(model_symbols: ModelSymbolRegistry) -> str:
+    """The canonical-string text of the model's derived couplings up to their
+    term id."""
+
+    found = _DERIVED_TOKEN_PREFIXES.get(model_symbols.namespace)
+    if found is None:
+        text = symbols.derived_coupling(
+            model_symbols.model_name, 0
+        ).to_canonical_string()
+        if not text.endswith("::derived_coupling_0"):
+            raise ValueError(f"unexpected canonical derived coupling {text}")
+        found = _DERIVED_TOKEN_PREFIXES[model_symbols.namespace] = text[:-1]
+    return found
+
+
+_DERIVED_TOKEN_PREFIXES: dict[str, str] = {}
 
 
 def _canonicalize_oriented_kernel_component(
