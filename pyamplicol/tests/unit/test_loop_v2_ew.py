@@ -1507,8 +1507,11 @@ LADDER = [
     # The Goldstone-vector mixings (G0-Z, G0-A, G+-W-) as vertex insertions
     # (EWI-4b): its trees join the top line and the top pair through a Z or
     # photon on one side and a G0 on the other, with the gluon at leg 1; the
-    # UV poles of the QED corrections cancel only with the mixings (they do
-    # not with the mixings' momentum sign flipped, ew-gauge M-mix probe).
+    # request generates with the mixings admitted and lowered, and the UV
+    # poles of its QED corrections cancel. The mixings contribute finite
+    # parts only here (their momentum sign flipped moves the uv_local finite
+    # part by 0.65 % and no pole), so this rung does not validate their
+    # values: that comes with g g > t t~ e- e+ against MadLoop (EWI-5).
     _rung(
         "gmu_gt_tttx_mixing",
         "loop_gmu",
