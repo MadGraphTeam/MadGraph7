@@ -103,6 +103,7 @@ def test_scalar_arity_view_is_structural(raw):
     (diagnostic,) = view.diagnostics
     assert diagnostic["vertex"] == [vertex["id"], "V_renamed"]
     assert diagnostic["derived_lorentz"][1] == "SSSS1"
-    assert diagnostic["reason"].startswith(
-        "4 scalar species require the existing 4-slot"
+    # Byte-identical to the diagnostic saved artifacts record.
+    assert diagnostic["reason"] == (
+        "four scalar species require the existing four-slot constant tensor"
     )
