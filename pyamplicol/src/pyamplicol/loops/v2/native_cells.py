@@ -202,6 +202,25 @@ def decode(table: Any, start: int = 0, stop: int | None = None) -> Cells:
 # ---------------------------------------------------------------- C1: cells
 
 
+Relabelling = tuple[Primitive, dict[int, int]]
+
+# ``colour._ring_relabelling`` of each quark-ring seed per basis (it depends
+# only on the seed and the basis legs' adjoint labels), kept while the basis
+# lives: a table rebuilt on the same basis and classes (the degrees' slice
+# table, the LC prune's) canonicalises each ring once. Keyed by ``id`` and
+# dropped by a finaliser when the basis dies.
+_RELABELLINGS: dict[int, dict[Primitive, Relabelling]] = {}
+
+
+def _relabellings(basis: BornBasis) -> dict[Primitive, Relabelling]:
+    key = id(basis)
+    found = _RELABELLINGS.get(key)
+    if found is None:
+        found = _RELABELLINGS[key] = {}
+        weakref.finalize(basis, _RELABELLINGS.pop, key, None)
+    return found
+
+
 class NativeCells:
     """The twin of ``colour._PrimitiveCells`` (and of ``seed_cells``'s
     generic overlaps) against one basis: a native engine with the
@@ -219,6 +238,7 @@ class NativeCells:
         _engine: Any = None,
         _rings: dict[Primitive, int] | None = None,
         _on_legs: Sequence[Any] | None = None,
+        _relabelled: dict[Primitive, Relabelling] | None = None,
     ):
         self.basis = basis
         self.legs = tuple(basis.legs if basis is not None else _on_legs or ())
@@ -235,6 +255,11 @@ class NativeCells:
         # Canonical quark ring -> native ring id, shared with the rebased
         # engines (the native ring registry is shared too).
         self._rings: dict[Primitive, int] = {} if _rings is None else _rings
+        # Quark-ring seed -> its canonical ring and relabelling (the legs
+        # fix the adjoint labels, so rebased and directed engines share it).
+        if _relabelled is None:
+            _relabelled = {} if basis is None else _relabellings(basis)
+        self._relabelled = _relabelled
 
     def rebased(self, basis: BornBasis) -> NativeCells:
         """The cells against ``basis`` (same legs), sharing the caches."""
@@ -242,7 +267,9 @@ class NativeCells:
         if tuple(basis.legs) != self.legs:
             raise ValueError("rebased primitive cells need the same colour legs")
         engine = self._engine.rebased([_tensor(b) for b in basis.tensors])
-        return NativeCells(basis, _engine=engine, _rings=self._rings)
+        return NativeCells(
+            basis, _engine=engine, _rings=self._rings, _relabelled=self._relabelled
+        )
 
     def directed(
         self,
@@ -256,7 +283,13 @@ class NativeCells:
         ``loop_side``, formed natively; the caches are shared."""
 
         engine = self._engine.directed(list(born), list(loop_side), threads)
-        return NativeCells(None, _engine=engine, _rings=self._rings, _on_legs=self.legs)
+        return NativeCells(
+            None,
+            _engine=engine,
+            _rings=self._rings,
+            _on_legs=self.legs,
+            _relabelled=self._relabelled,
+        )
 
     def _class(self, seed: ConnectedColorTensor | Primitive) -> RawClass:
         if not isinstance(seed, Primitive):
@@ -264,7 +297,10 @@ class NativeCells:
         if seed.kind != "quark-ring":
             return (_KINDS[seed.kind], list(seed.word), 0, [], None)
         # <b|back(P')> = <forward(b)|P'> on the canonical ring P'.
-        canonical, back = _ring_relabelling(seed, self._adjoint)
+        found = self._relabelled.get(seed)
+        if found is None:
+            found = self._relabelled[seed] = _ring_relabelling(seed, self._adjoint)
+        canonical, back = found
         ring = self._rings.get(canonical)
         if ring is None:
             reduced = _reduced_primitive(canonical, self.legs)

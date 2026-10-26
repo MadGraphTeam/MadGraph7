@@ -21,13 +21,16 @@ stage native) and the oracle lane (``native_cells.native_stages(())``):
   degrees (``ObservableSlice._family_degrees``), with the pruned slices;
 * rule 9: generation decodes each table's cells once, the degrees none.
 
-Default tier (``loop_fast``, about 25 s): every stage against its Python
-oracle on the production lane's slices of g g > g g (FC; adjoint rings and
-fundamental traces) and u u~ > g g g (LC; quark rings and generic classes),
-the directed tables and the dipole family of g g > g g, native operator
-images on random tensors. ``loop_physics`` generates every control in both
-lanes (the default ones, g g > g g g and u u~ > g g g for the dipoles as
-WP3.1 I5c asks, LC and NLC controls; end to end and stage by stage), the
+Default tier (``loop_fast``, about 27 s at host load 80, of which the two
+generations and the session's compiled model take about 21 s): every stage
+against its Python oracle on the production lane's slices of g g > g g (FC,
+recursion counterterms; adjoint rings and fundamental traces) and
+u u~ > g g (LC, site closure; quark rings, generic classes and the prune of
+the slice and its companion), the directed tables and the dipole family of
+g g > g g, native operator images on random tensors. ``loop_physics``
+generates every control in both lanes (the default ones, u u~ > g g g at LC,
+g g > g g g and u u~ > g g g for the dipoles as WP3.1 I5c asks, LC and NLC
+controls; end to end and stage by stage), the
 directed tables and families of WP2.5's controls and contractions beyond the
 subset-sum label limit; six legs are ``loop_nightly``.
 """
@@ -72,12 +75,15 @@ _RUST = (
 
 # (process, Born QCD order, accuracy[, counterterm form]). The default tier
 # covers both forms of the counterterm keys of the degrees: the recursion's
-# closure terms (g g > g g) and site closure (u u~ > g g g, the cheaper form).
+# closure terms (g g > g g) and site closure (u u~ > g g, the cheaper form),
+# every class kind (adjoint rings and fundamental traces; quark rings and
+# generic classes) and the LC prune of a slice and its companion.
 DEFAULT = {
     "gg_gg": ("g g > g g", 2, "full"),
-    "uux_ggg_lc": ("u u~ > g g g", 3, "lc", "sites"),
+    "uux_gg_lc": ("u u~ > g g", 2, "lc", "sites"),
 }
 PHYSICS = {
+    "uux_ggg_lc": ("u u~ > g g g", 3, "lc", "sites"),
     "gg_ggg": ("g g > g g g", 3, "full"),
     "uux_ggg": ("u u~ > g g g", 3, "full"),
     "gg_gg_lc": ("g g > g g", 2, "lc"),
@@ -366,9 +372,7 @@ def test_stored_dipole_orbits_are_validated(slices):
     # the stored data cannot cover, an index space past the address space,
     # coloured legs with a repeated label or out of leg order.
     for basis, message in ((2**20, "do not cover"), (2**32, "overflow")):
-        crafted = dict(
-            stored, basis=basis, generators=[], representatives=[], gram=[]
-        )
+        crafted = dict(stored, basis=basis, generators=[], representatives=[], gram=[])
         with pytest.raises(ValueError, match=message):
             dipoles.load(json.dumps(crafted)).check_conservation()
     coloured = stored["coloured"]
@@ -377,7 +381,7 @@ def test_stored_dipole_orbits_are_validated(slices):
         [*coloured[1:], coloured[0]],
         [[coloured[0][0], 6], *coloured[1:]],
     ):
-        with pytest.raises(ValueError, match="leg order|representation 6"):
+        with pytest.raises(ValueError, match=r"leg order|representation 6"):
             dipoles.operators(dipoles.load(json.dumps(dict(stored, coloured=legs))))
 
 
@@ -472,7 +476,7 @@ def test_rebased_cells_share_caches_and_equal_python(slices):
     both ways, as ``_PrimitiveCells.rebased``; so does the native twin of a
     rebased ``_PrimitiveCells`` (the switched path of the directed tables)."""
 
-    table = slices("uux_ggg_lc").slice.table
+    table = slices("uux_gg_lc").slice.table
     basis = table.basis
     other = colour.BornBasis(
         basis.legs,
@@ -614,7 +618,7 @@ def test_liveness_reads_observable_tables(slices, monkeypatch):
 
     from pyamplicol.loops.v2 import assemble, generator_input
 
-    slice_ = slices("uux_ggg_lc").slice
+    slice_ = slices("uux_gg_lc").slice
     degrees = slice_.degrees()["virtual"]
     grades = slice_._born_grades()
     live = native_cells.live_classes(slice_)
