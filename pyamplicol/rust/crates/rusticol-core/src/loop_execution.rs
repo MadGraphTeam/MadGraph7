@@ -2578,8 +2578,11 @@ pub mod v2 {
 
     /// The reduction lanes of one family numerator on a chunk of lanes,
     /// skipping points that failed already (a non-finite numerator fails its
-    /// point here). Shifts `p(mask)` and invariants `s[mask] = p(mask)²` are
-    /// the chunk's exact invariants cast once per mask ([`LaneData`]).
+    /// point here). Shifts `p(mask)` and invariants `s[mask]` (`p(mask)²`, or
+    /// the squared mass of the leg whose mass shell fixes it) are the chunk's
+    /// exact invariants cast once per mask ([`LaneData`]); an on-shell
+    /// invariant thus equals the cast squared mass of its propagators bit for
+    /// bit, as the masters' exact on-shell tests require.
     fn lanes_of<T: Carrier, const L: usize>(
         plan: &LoopProgramV4,
         masses: &[Complex<T>],
@@ -2981,6 +2984,7 @@ pub mod v2 {
                 momenta: vec![momentum(1), momentum(2)],
                 scales: vec![Rational::from(1); 2],
                 masses: vec![Rational::from(0)],
+                leg_masses: Vec::new(),
                 constants: vec![Complex::new(2.0, 0.0)],
                 block_rows: vec![Vec::new(); 2],
                 born: vec![vec![Complex::new(1.0, 1.0)], vec![Complex::new(3.0, 0.0)]],
@@ -3016,6 +3020,7 @@ pub mod v2 {
                 momenta: vec![[1, 0, 0, 1, 1, 0, 0, -1].map(Rational::from).to_vec()],
                 scales: vec![Rational::from(1)],
                 masses: vec![Rational::from(0)],
+                leg_masses: Vec::new(),
                 constants: vec![Complex::new(2.0, 0.0)],
                 block_rows: vec![Vec::new()],
                 born: vec![vec![Complex::new(1.0, 1.0)]],

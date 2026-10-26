@@ -212,6 +212,40 @@ def saved_loop_fixture(saved_loop_fixtures):
     return resolve
 
 
+def pytest_configure(config):
+    """A persistent model cache per test tier, never the user's ~/.cache.
+
+    Unless ``PYAMPLICOL_CACHE_DIR`` is set, it points to a directory of
+    pytest's cache in this checkout, one per marker expression (the tier):
+    compiled models and CT-lowered model IR (``models.loading``) are reused
+    across the runs of one tier. The cache keys hold the compiler's code
+    identity, so a code change pays a cold preparation once per tier.
+    Without pytest's cache provider (``-p no:cacheprovider``) the directory
+    is a fresh temporary one, removed when the session ends.
+    """
+
+    if os.environ.get("PYAMPLICOL_CACHE_DIR"):
+        return
+    import re
+    import shutil
+    import tempfile
+
+    expression = config.getoption("markexpr", "") or ""
+    tier = re.sub(r"[^A-Za-z0-9_]+", "-", expression).strip("-")[:80] or "all"
+    cache = getattr(config, "cache", None)
+    if cache is not None:
+        root = Path(cache.mkdir(f"pyamplicol-{tier}"))
+    else:
+        root = Path(tempfile.mkdtemp(prefix="pyamplicol-cache-"))
+
+        def remove(root: Path = root) -> None:
+            os.environ.pop("PYAMPLICOL_CACHE_DIR", None)
+            shutil.rmtree(root, ignore_errors=True)
+
+        config.add_cleanup(remove)
+    os.environ["PYAMPLICOL_CACHE_DIR"] = str(root)
+
+
 def pytest_collection_modifyitems(config, items):
     expression = config.getoption("markexpr", "") or ""
     if DEFERRED_MARKER not in expression:
