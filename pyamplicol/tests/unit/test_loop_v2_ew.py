@@ -1383,8 +1383,10 @@ def _rung(name, model, process, born, loop, blocker, **options):
 LADDER = [
     # Photon-only QED corrections of a lepton process: two colour-singlet
     # fermion lines, one through every loop (B4, lifted by EWI-5; B2 by
-    # EWI-1); its UV poles cancel. Its IR poles against the QED Catani
-    # operator: ``test_loop_v2_ew_leptons``.
+    # EWI-1); it generates and evaluates (the "uv" identity holds by
+    # construction, ``loops.v2.poles``). Its poles against the QED Catani
+    # operator: ``test_loop_v2_ew_leptons`` (a strict xfail: the veto splits
+    # loop_qcd_qed_sm's counterterm couplings).
     _rung(
         "qq_eemm_photon",
         "loop_qcd_qed_sm",

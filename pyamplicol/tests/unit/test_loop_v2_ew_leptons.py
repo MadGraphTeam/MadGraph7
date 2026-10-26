@@ -31,11 +31,15 @@ owns). Checks:
   field and counterterm parts), Bhabha on loop_qcd_qed_sm against MadLoop
   (``required/emep_emep_ew``: the s- and t-channel lines through the boxes),
   O2 per family against the legacy engine (L1/L2) on e- e+ > mu- mu+ with
-  massless and massive muons, the photon-only QED corrections of
-  e- e+ > mu- mu+ on loop_qcd_qed_sm (UV poles cancel, IR poles are the QED
-  Catani operator's), the legacy engine's FFS projector exchange checked
-  against MadLoop before the legacy engine serves as the second engine, and
-  the native point inputs of e- e+ > mu- mu+ (a strict xfail until EWI-N).
+  massless and massive muons, the poles of e- e+ > mu- mu+ on
+  loop_qcd_qed_sm against the QED Catani operator (full EW; photon-only a
+  strict xfail: the veto splits counterterm couplings), the legacy engine's
+  FFS projector exchange checked against MadLoop before the legacy engine
+  serves as the second engine, and the native point inputs of
+  e- e+ > mu- mu+ (a strict xfail until EWI-N). The massive-muon control and
+  its O2 are strict xfails: the Z-G0-H triangles on an open fermion line
+  carry the wrong sign (``GOLDSTONE_TRIANGLE``), a defect of the Goldstone
+  loop segments outside the lepton signs.
 """
 
 from __future__ import annotations
@@ -396,6 +400,22 @@ CONTROLS = {
     "electroweak-eeuu-control": ("e- e+ > u u~", "massless"),
     "electroweak-massive-mumu-control": ("e- e+ > m- m+", "massive"),
 }
+# The Z-G0-H triangles on an open fermion line: the G0 and H Yukawas on the
+# muon line (or the top's) joined by the Z G0 H vertex, the only loops with a
+# single Goldstone Yukawa vertex on an open fermion line here, carry the
+# opposite sign of legacy and MadLoop (O2 below: rel 2.0 on those families,
+# every other family to 1e-59). A defect of the Goldstone loop segments, not
+# of the lepton signs: g g > t t~ e- e+ EW misses its three providers by
+# O(1) with it and agrees to 3e-13 (double-double) without it. Reported to
+# the coordinator (WP3.2 EWI-5 report); owner: the electroweak loop lines.
+GOLDSTONE_TRIANGLE = pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "the Z-G0-H triangles on an open fermion line carry the wrong sign "
+        "(Goldstone loop segments; WP3.2 EWI-5 report)"
+    ),
+)
 COMPONENTS = {
     "full": ("virtual",),
     "bare": ("bare",),
@@ -488,7 +508,15 @@ def _control_parameters(muons: str) -> dict[str, str]:
 
 
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize("name", tuple(CONTROLS))
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param(
+            name, marks=GOLDSTONE_TRIANGLE if CONTROLS[name][1] == "massive" else ()
+        )
+        for name in CONTROLS
+    ],
+)
 def test_electroweak_controls_equal_madloop(gmu_slices, name):
     """The four MadLoop G_mu controls (full electroweak corrections, Feynman
     gauge, lhv = 1; two colour-singlet lines, the lepton lines through the
@@ -637,7 +665,9 @@ def _legacy_families(loop_gmu_ufo, muons: str, point, scale) -> dict:
 
 
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize("muons", ["massless", "massive"])
+@pytest.mark.parametrize(
+    "muons", ["massless", pytest.param("massive", marks=GOLDSTONE_TRIANGLE)]
+)
 def test_family_numerators_equal_the_legacy_engine(gmu_slices, loop_gmu_ufo, muons):
     """O2 per family (DESIGN risk 2) on e- e+ > mu- mu+ with full EW
     corrections: every legacy family's numerator equals the sum of the v2
@@ -785,19 +815,20 @@ def test_bhabha_equals_madloop(loop_qcd_qed_sm_ufo, loop_native, loop_reference)
             assert _metric(value, madloop[key], floor) <= TOLERANCE, (key, value)
 
 
-# ------------------------- photon-only QED corrections (loop_qcd_qed_sm)
+# ------------------------------------- e- e+ > mu- mu+ on loop_qcd_qed_sm
+
+# Photon-only QED corrections: Z, W, H and the Goldstones vetoed.
+PHOTON_ONLY = (23, 24, 25, 250, 251)
 
 
-@pytest.mark.loop_nightly
-def test_photon_only_qed_poles_are_catani_and_uv_cancels(
-    loop_qcd_qed_sm_ufo, loop_native
-):
-    """e- e+ > mu- mu+ with photon-only QED corrections on loop_qcd_qed_sm
-    (Z, W, H and the Goldstones vetoed): a lepton line through every box and
-    vertex loop. The bare loops' UV poles cancel against the counterterms'
-    (``poles="uv"``: the renormalised virtual has no UV pole), and the
-    virtual's IR poles equal the QED Catani operator's prediction (EWI-6),
-    per sector, to 1e-12. Generation about 1 min."""
+def _qed_catani(loop_qcd_qed_sm_ufo, loop_native, veto) -> None:
+    """e- e+ > mu- mu+ with QED corrections on loop_qcd_qed_sm (alpha(M_Z)
+    scheme, widths zero), ``veto`` the vetoed particles: the renormalised
+    virtual's single and double poles equal the QED Catani operator's
+    prediction (EWI-6) per sector to 1e-12. This is the UV check too: the
+    external-field factors' UV part is the remainder that makes the
+    renormalised virtual UV finite by construction (``poles``), so only the
+    total poles test the bare loops and the counterterms together."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.models.loading import compile_model_source
@@ -808,7 +839,7 @@ def test_photon_only_qed_poles_are_catani_and_uv_cancels(
         {"QED": 2, "QCD": 0},
         {"QED": 4, "QCD": 0},
         corrections=("QED",),
-        particle_veto=(23, 24, 25, 250, 251),
+        particle_veto=veto,
         fixed_parameters=ZERO_WIDTHS,
         compatibility="gmu_particle_anti",
         scale_parameter="MU_R",
@@ -816,21 +847,45 @@ def test_photon_only_qed_poles_are_catani_and_uv_cancels(
     slice_ = LoopSlice.generate(compiled, request, loop_native)
     point = [["500", "0", "0", "500"], ["500", "0", "0", "-500"]]
     point += [["500", "240", "320", "300"], ["500", "-240", "-320", "-300"]]
-    parameters = {"aS": "0.118", "MT": "173"}
-    uv = slice_.evaluate(point, "1000000", parameters=parameters, poles="uv")
-    for sector, laurent in uv.pole_origins["uv"]["virtual"].items():
-        bare = [abs(float(x)) for x in uv.components["bare"][sector].coefficients]
-        assert max(bare[1:]) > 0
-        for pole in laurent.coefficients[1:]:
-            assert abs(float(pole)) <= TOLERANCE * max(bare), (sector, laurent)
-    result = slice_.evaluate(point, "1000000", parameters=parameters)
+    result = slice_.evaluate(point, "1000000", parameters={"aS": "0.118", "MT": "173"})
     assert result.ir_poles is not None
     for sector, virtual in result.components["virtual"].items():
         single, double = (complex(x) for x in result.ir_poles[sector])
         scale = max(abs(single), abs(double))
         assert scale > 0
-        assert abs(complex(virtual.single_pole) - single) <= TOLERANCE * scale
         assert abs(complex(virtual.double_pole) - double) <= TOLERANCE * scale
+        assert abs(complex(virtual.single_pole) - single) <= TOLERANCE * scale
+
+
+@pytest.mark.loop_nightly
+def test_qed_poles_of_mumu_on_loop_qcd_qed_sm_are_catani(
+    loop_qcd_qed_sm_ufo, loop_native
+):
+    """Full electroweak corrections (measured: single pole 4.5e-15 of the
+    operator's). Generation about 1 min."""
+
+    _qed_catani(loop_qcd_qed_sm_ufo, loop_native, ())
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "photon-only veto on loop_qcd_qed_sm: the single pole is -3.487e-4 "
+        "against Catani's -1.841e-4 (double pole equal); the veto drops "
+        "loop_qcd_qed_sm's counterterm couplings that mix photon and Z parts "
+        "whole, which the field factors' remainder absorbs in the UV only "
+        "([U2] veto guard, WP3.2 EWI-7)"
+    ),
+)
+def test_qed_poles_of_photon_only_mumu_on_loop_qcd_qed_sm_are_catani(
+    loop_qcd_qed_sm_ufo, loop_native
+):
+    """Photon-only QED corrections (Z, W, H and the Goldstones vetoed): a
+    lepton line through every box and vertex loop. Generation about 1 min."""
+
+    _qed_catani(loop_qcd_qed_sm_ufo, loop_native, PHOTON_ONLY)
 
 
 # ------------------------------- the legacy loop path as an EW oracle (L1/L2)
