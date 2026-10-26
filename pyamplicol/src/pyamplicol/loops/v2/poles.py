@@ -288,10 +288,141 @@ def _minkowski_dot(a: Sequence[Fraction], b: Sequence[Fraction]) -> Fraction:
     return a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3]
 
 
+# ------------------------------------------------- strong gamma_j and beta_0
+
+# UFO spins (2s + 1).
+_FERMION_SPIN, _SCALAR_SPIN = 2, 1
+# SU(N_c), N_c = 3: Casimir C(R) and Dynkin index T(R) of the representations
+# the strong operator covers (UFO colour 3, -3 and 8).
+_N_C = Fraction(3)
+_CASIMIRS = {3: (_N_C * _N_C - 1) / (2 * _N_C), 8: _N_C}
+_DYNKIN = {3: Fraction(1, 2), 8: _N_C}
+# The weight of one species in beta_0 (per unit T(R)): a Dirac fermion
+# (particle and antiparticle) 2/3, a Majorana fermion 1/3, a complex scalar
+# 1/6 and a real scalar 1/12 (the gluon and its ghosts give 11/6 C_A).
+_BETA_WEIGHTS = {
+    (_FERMION_SPIN, False): Fraction(2, 3),
+    (_FERMION_SPIN, True): Fraction(1, 3),
+    (_SCALAR_SPIN, False): Fraction(1, 6),
+    (_SCALAR_SPIN, True): Fraction(1, 12),
+}
+
+
+def colour_casimir(colour: int) -> Fraction | None:
+    """C(R) of a UFO colour representation; None outside 3, -3 and 8."""
+
+    return _CASIMIRS.get(abs(int(colour)))
+
+
+def strong_beta0(species: Iterable[tuple[int, int, bool]]) -> Fraction | None:
+    """beta_0 = 11/6 C_A - sum_s w_s T(R_s) of a strong correction, the
+    gluon's gamma_g (Catani: 11/6 C_A - 2/3 T_R n_f in QCD), over the
+    massless coloured species ``(spin, colour, self-conjugate)`` other than
+    the gluon and its ghosts that run in its loops (one entry per particle-
+    antiparticle pair); None for a species the weights do not cover (a
+    coloured vector, a representation without T(R))."""
+
+    beta = Fraction(11, 6) * _N_C
+    for spin, colour, real in species:
+        weight = _BETA_WEIGHTS.get((int(spin), bool(real)))
+        index = _DYNKIN.get(abs(int(colour)))
+        if weight is None or index is None:
+            return None
+        beta -= weight * index
+    return beta
+
+
+def strong_gamma(
+    spin: int, colour: int, beta0: Fraction | None, *, gauge: bool
+) -> Fraction | None:
+    """gamma_j of a massless coloured leg by its spin and representation: the
+    gluon (``gauge``: the massless adjoint gauge vector) beta_0, a fermion
+    3/2 C(R), a scalar 2 C(R); None for anything else (another coloured
+    vector, a representation without C(R)) or a missing beta_0."""
+
+    if gauge:
+        return beta0
+    casimir = colour_casimir(colour)
+    if casimir is None:
+        return None
+    if int(spin) == _FERMION_SPIN:
+        return Fraction(3, 2) * casimir
+    if int(spin) == _SCALAR_SPIN:
+        return 2 * casimir
+    return None
+
+
+# ----------------------------------------------- sectors the operators cover
+
+
+def predicted_sectors(
+    sectors: Sequence[tuple[Orders, Iterable[tuple[Orders, Orders]]]],
+    born_orders: Iterable[Orders],
+    corrections: Iterable[str],
+    tree_exists: Callable[[Orders], bool | None],
+) -> frozenset[Orders]:
+    """The sectors whose IR poles the requested corrections' operators
+    predict (``sectors``: (sector, its (Born order, loop order) pairs) of the
+    slice; ``born_orders`` the Born amplitude orders of its tree program).
+
+    The poles of a complete one-loop amplitude of order L are
+    sum_c I_c A0_{L - 2c} over every coupling order c with L_c >= 2 (Catani:
+    a soft or collinear exchange of a c-boson leaves a tree of order L - 2c).
+    A request computes the loops of its corrections only (MadLoop's loop
+    selection: a QCD correction drops the gluon-photon boxes), so a sector
+    is predicted only if, for each of its loop orders L and each such c,
+
+    * c is a requested correction and the tree of order L - 2c is one of the
+      Born amplitudes of the slice or provably absent (its operator then
+      holds every Born interference the loop's c-poles multiply), or
+    * c is not requested and the tree of order L - 2c provably does not
+      exist (the loop misses no IR-divergent c-exchange);
+
+    and if every Born interference a requested correction dresses in the
+    sector (A0_a A0_b with a + b + 2c = sector) pairs with a requested loop
+    order a + 2c (the operator sums over all of them). ``tree_exists(a)``
+    answers for an order a that is not a Born amplitude order: False when
+    the process provably has no tree of order a, True when it has one, None
+    when unknown (no prediction). A mixed QCD x EW sector of a QCD-only
+    request (u u~ > d d~ with gluon and photon Borns) is therefore not
+    predicted: its order-g^2 e^2 loops miss the photon exchanges that the
+    QCD Born's QED poles need."""
+
+    born = frozenset(born_orders)
+    corrections = frozenset(corrections)
+    loops = frozenset(loop for _sector, pairs in sectors for _born, loop in pairs)
+    out = set()
+    for sector, pairs in sectors:
+        complete = True
+        for _born, loop in pairs:
+            for name, power in loop:
+                if power < 2:
+                    continue
+                lower = add_orders(loop, ((name, -2),))
+                exists = True if lower in born else tree_exists(lower)
+                if name in corrections:
+                    complete = exists is False or lower in born
+                else:
+                    complete = exists is False
+                if not complete:
+                    break
+            if not complete:
+                break
+        if complete:
+            complete = all(
+                add_orders(a, ((name, 2),)) in loops
+                for name in corrections
+                for a in born
+                for b in born
+                if add_orders(a, b, ((name, 2),)) == sector
+            )
+        if complete:
+            out.add(sector)
+    return frozenset(out)
+
+
 # ------------------------------------------------------------------ QED Catani
 
-# UFO spins (2s + 1) of the charged massless emitters with a QED gamma.
-_FERMION_SPIN, _SCALAR_SPIN = 2, 1
 # The coupling of an on-shell external photon: "alpha0" (alpha(0) with its
 # charge-renormalisation term, MadLoop's and OpenLoops' convention) or
 # "loop-coupling" (the loops' alpha, e.g. alpha_Gmu throughout).
@@ -550,12 +681,14 @@ __all__ = [
     "LOCAL_UV",
     "ORIGINS",
     "catani_poles",
+    "colour_casimir",
     "coupling_value",
     "dressed_born",
     "exact_charge",
     "has_poles",
     "photon_gamma",
     "pole_mode",
+    "predicted_sectors",
     "qed_catani_poles",
     "qed_coupling",
     "qed_gamma",
@@ -565,4 +698,6 @@ __all__ = [
     "select_sector",
     "split_sector",
     "splits",
+    "strong_beta0",
+    "strong_gamma",
 ]

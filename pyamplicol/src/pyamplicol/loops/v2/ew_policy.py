@@ -5,19 +5,24 @@
 public generator, the tools, the tests and the artifacts all see them:
 
 * ``electroweak`` decides whether a request is electroweak: a correction
-  other than ``QCD``, or a colour-singlet species (photon, Z, W, H,
-  Goldstones, leptons, electroweak ghosts) that is perturbative in a
+  other than the model's strong one, or a colour-singlet species (photon, Z,
+  W, H, Goldstones, leptons, electroweak ghosts) that is perturbative in a
   requested correction and not vetoed. QCD-only requests are not
   electroweak and pass every guard unchanged (their coloured widths keep
-  ``artifact.require_zero_coloured_widths``).
-* ``require_no_external_photons`` refuses an electroweak request with an
-  on-shell external photon (``ExternalPhotonError``). The user's decision
-  [U9] (2026-10-25): every on-shell external photon couples with alpha(0),
-  not with the loops' coupling (alpha_Gmu in a G_mu model), together with
-  the charge-renormalisation term of that change (MadLoop's and OpenLoops'
-  default; MASTER_PLAN §4.9 "external-photon conventions"). v2 implements
-  it in WP3.2 EWI-6b; until then a virtual with such a photon would be wrong
-  at O(alpha) by the photon's light-fermion logarithms, so it is refused.
+  ``artifact.require_zero_coloured_widths``). The strong and the
+  electromagnetic orders are identified by the vertices of the gluon and of
+  the photon (``correction_orders``), never by their names (genericity audit
+  m1): a model whose orders are spelt otherwise takes the same decisions.
+* ``external_photon_scheme`` is the external-photon convention of an
+  electroweak request with on-shell external photons (WP3.2 EWI-6b). The
+  user's decision [U9] (2026-10-25): every on-shell external photon couples
+  with alpha(0), not with the loops' coupling (alpha_Gmu in a G_mu model),
+  together with the charge-renormalisation term of that change (MadLoop's
+  and OpenLoops' default; MASTER_PLAN §4.9 "external-photon conventions").
+  A model that cannot take the convention (no conversion counterterm, no
+  adjustable 1/alpha(0), loops that couple with alpha(0)) is refused
+  (``ExternalPhotonError``): without it the virtual would be wrong at
+  O(alpha) by the photon's light-fermion logarithms.
 * ``require_zero_widths`` refuses an electroweak request whose tree currents
   propagate a particle with a width that is not zero, coloured or not
   (``ElectroweakWidthError``). v2 virtuals are real on-shell: loop
@@ -58,8 +63,9 @@ natively (A4's ``dag_input.NativeDag``) is asked directly. The two share
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any
+from typing import Any, NamedTuple
 
 from pyamplicol.api.errors import GenerationError
 
@@ -73,8 +79,8 @@ class ElectroweakWidthError(GenerationError):
 
 
 class ExternalPhotonError(GenerationError):
-    """An electroweak request with an on-shell external photon, whose
-    alpha(0) convention v2 does not implement yet."""
+    """An electroweak request with an on-shell external photon on a model
+    that cannot take the alpha(0) convention (``external_photon_scheme``)."""
 
 
 class ElectroweakGaugeError(GenerationError):
@@ -83,17 +89,117 @@ class ElectroweakGaugeError(GenerationError):
     bundle carries another gauge)."""
 
 
+class CorrectionOrders(NamedTuple):
+    """The coupling orders of a model's strong and electromagnetic
+    corrections, identified structurally (``correction_orders``); None where
+    the model has no such order."""
+
+    strong: str | None
+    abelian: str | None
+    # The names of the massless adjoint gauge vectors (the gluon) and of
+    # the photons whose vertices identify them.
+    gluons: frozenset[str] = frozenset()
+    photons: frozenset[str] = frozenset()
+
+
+# UFO colour of the adjoint representation.
+ADJOINT = 8
+
+
+def _gauge_order(terms: Iterable[Any]) -> str | None:
+    """The one coupling order every term of ``terms`` carries (a positive
+    power), or None if there is none, several, or no term."""
+
+    common: set[str] | None = None
+    for term in terms:
+        carried = {name for name, power in term.coupling_orders if int(power) > 0}
+        common = carried if common is None else common & carried
+    if not common or len(common) != 1:
+        return None
+    (name,) = common
+    return name
+
+
+def correction_orders(compiled: Any, fixed: Mapping[str, Any]) -> CorrectionOrders:
+    """The strong and electromagnetic coupling orders of ``compiled``, from
+    the vertices of its gauge bosons, never from the orders' names
+    (genericity audit m1):
+
+    * strong: the order carried by every minimal gauge vertex of the
+      massless physical adjoint vector (the gluon): its three-point vertices
+      with a coloured particle-antiparticle pair or with two more of itself;
+    * abelian: the order carried by every three-point vertex of the photon
+      (``is_photon``; ``fixed`` may bind its mass to zero) with an
+      electrically charged particle-antiparticle pair.
+
+    Either is None when the model has no such boson or its vertices carry no
+    single common order; a correction that is neither then has no Catani
+    operator, and an electroweak classification treats it as electroweak."""
+
+    particles = {str(record.name): record for record in compiled.ir.particles}
+    parameters = {record.name: record for record in compiled.ir.parameters}
+
+    def conjugates(a: Any, b: Any) -> bool:
+        return str(a.antiname) == str(b.name)
+
+    def massless(record: Any) -> bool:
+        return is_zero(str(record.mass), parameters, fixed)
+
+    gluons = {
+        name
+        for name, record in particles.items()
+        if record.auxiliary_kind is None
+        and int(record.spin) == VECTOR_SPIN
+        and abs(int(record.color)) == ADJOINT
+        and int(record.ghost_number) == 0
+        and not record.goldstoneboson
+        and massless(record)
+    }
+    photons = {
+        name
+        for name, record in particles.items()
+        if record.auxiliary_kind is None and is_photon(record, parameters, fixed)
+    }
+    strong_terms, abelian_terms = [], []
+    for term in compiled.ir.vertex_terms:
+        if len(term.particles) != 3:
+            continue
+        records = [particles.get(name) for name in term.particles]
+        if any(record is None for record in records):
+            continue
+        for index, name in enumerate(term.particles):
+            others = [records[k] for k in range(3) if k != index]
+            pair = conjugates(*others)
+            if name in gluons and (
+                all(str(r.name) in gluons for r in others)
+                or (pair and abs(int(others[0].color)) != 1)
+            ):
+                strong_terms.append(term)
+                break
+            if name in photons and pair and float(others[0].charge) != 0:
+                abelian_terms.append(term)
+                break
+    return CorrectionOrders(
+        _gauge_order(strong_terms),
+        _gauge_order(abelian_terms),
+        frozenset(gluons),
+        frozenset(photons),
+    )
+
+
 def electroweak(
     compiled: Any, request: Any, species_orders: Mapping[int, Iterable[str]]
 ) -> bool:
     """Whether ``request`` is an electroweak loop request: a correction
-    other than QCD, or a non-vetoed colour-singlet species that is
-    perturbative in a requested correction (``species_orders``: |PDG| ->
-    coupling orders, the prepared structure's
+    other than the model's strong one (``correction_orders``: identified by
+    the gluon's vertices, not by its name), or a non-vetoed colour-singlet
+    species that is perturbative in a requested correction
+    (``species_orders``: |PDG| -> coupling orders, the prepared structure's
     ``perturbative_species_orders``)."""
 
     corrections = set(request.corrections)
-    if corrections - {"QCD"}:
+    strong = correction_orders(compiled, request.fixed_parameters).strong
+    if corrections - {strong}:
         return True
     veto = set(request.particle_veto)
     colour = {abs(int(p.pdg_code)): abs(int(p.color)) for p in compiled.ir.particles}
@@ -190,26 +296,138 @@ def external_photons(
     )
 
 
-def require_no_external_photons(
-    compiled: Any, request: Any, process: Any, fixed: Mapping[str, Any]
-) -> None:
-    """Refuse an electroweak request with an on-shell external photon
-    (``ExternalPhotonError``; module docstring)."""
+# MG5_aMC's loop models declare the external-photon conversion
+# delta Z_e^{G_mu} - delta Z_e^{alpha(0)} as this counterterm parameter, and
+# MG5_aMC applies it by this name outside the UFO (1804.10017 §2;
+# ``export_fks.write_rescale_a0gmu_file``): there is no structural marker of
+# it in a UFO.
+ALPHA0_CONVERSION = "eCoup_DGmua0_UV_EW"
+# The UFO/SLHA code of 1/alpha(0) in MG5_aMC's G_mu loop models (aEW0M1), an
+# external parameter that enters no coupling of the model.
+ALPHA0_INVERSE_CODE = ("SMINPUTS", (1,))
+
+
+@dataclass(frozen=True)
+class ExternalPhotons:
+    """The external-photon convention of an electroweak request (WP3.2
+    EWI-6b; the user's decision [U9] of 2026-10-25): every on-shell external
+    photon couples with alpha(0) instead of the loops' alpha_Gmu.
+
+    The Born and every virtual component are multiplied by
+    (alpha(0) / alpha_Gmu)^n for n photons (``scale``; the coupling e of each
+    external photon), and each photon adds the field-like term
+    -2 (delta Z_e^{G_mu} - delta Z_e^{alpha(0)}) Born to the virtual of the
+    electromagnetic correction (the model's ``conversion`` parameter as an
+    external-field factor of the photon leg, ``assemble``), as MadLoop's
+    aMC@NLO interface does for tagged photons."""
+
+    # 1-based labels of the on-shell external photons.
+    legs: tuple[int, ...]
+    # The external parameter holding 1/alpha(0).
+    alpha0_inverse: str
+    # The model's counterterm parameter delta Z_e^{G_mu} - delta Z_e^{alpha(0)}.
+    conversion: str
+    # The electromagnetic correction (coupling order) the term belongs to.
+    correction: str
+    convention: str = "alpha0"
+
+
+def external_photon_scheme(
+    compiled: Any,
+    request: Any,
+    process: Any,
+    fixed: Mapping[str, Any],
+    species_orders: Mapping[int, Iterable[str]],
+) -> ExternalPhotons | None:
+    """The external-photon convention of an electroweak ``request``
+    (``ExternalPhotons``), None without an on-shell external photon.
+
+    Refused (``ExternalPhotonError``) where the convention cannot be applied:
+    the electromagnetic correction is not requested (or the model has none),
+    the model declares no conversion parameter (``ALPHA0_CONVERSION``) or no
+    unique adjustable 1/alpha(0) at ``ALPHA0_INVERSE_CODE`` that the loops'
+    coupling (``poles.qed_coupling``) does not depend on (a model whose
+    loops couple with alpha(0) or alpha(M_Z) needs another conversion), its
+    value is fixed to zero, or ``particle_veto`` removes a species
+    perturbative in the electromagnetic correction (the conversion is one
+    counterterm parameter over the whole electroweak content)."""
+
+    from .poles import qed_coupling
 
     photons = external_photons(compiled, process, fixed)
     if not photons:
-        return
-    raise ExternalPhotonError(
-        f"{request.process!r}: on-shell external photons (legs "
-        f"{list(photons)}) in a request with corrections "
-        f"{list(request.corrections)}. Electroweak corrections take the "
-        "external-photon convention alpha(0): every on-shell external photon "
-        "couples with alpha(0) instead of the loops' coupling, with the "
-        "matching charge-renormalisation term (MadLoop's and OpenLoops' "
-        "default; the user's decision of 2026-10-25), which the v2 engine does "
-        "not implement yet (WP3.2 EWI-6b); without it the virtual is wrong at "
-        "O(alpha). QCD corrections to such processes are available"
+        return None
+
+    def refuse(reason: str) -> ExternalPhotonError:
+        return ExternalPhotonError(
+            f"{request.process!r}: on-shell external photons (legs "
+            f"{list(photons)}) in a request with corrections "
+            f"{list(request.corrections)}. Electroweak corrections take the "
+            "external-photon convention alpha(0): every on-shell external "
+            "photon couples with alpha(0) instead of the loops' coupling, with "
+            "the matching charge-renormalisation term (MadLoop's and "
+            "OpenLoops' default; the user's decision of 2026-10-25), which "
+            f"cannot be applied here: {reason}. QCD corrections to such "
+            "processes are available"
+        )
+
+    abelian = correction_orders(compiled, fixed).abelian
+    if abelian is None or abelian not in request.corrections:
+        raise refuse(
+            "the request does not take the electromagnetic correction"
+            if abelian is not None
+            else "the model has no electromagnetic coupling order"
+        )
+    raw = compiled.raw_loop_model
+    names = {record["name"] for record in raw.collections["counterterm_parameters"]}
+    if ALPHA0_CONVERSION not in names:
+        raise refuse(
+            f"the model declares no conversion counterterm {ALPHA0_CONVERSION} "
+            "(delta Z_e^Gmu - delta Z_e^alpha(0), as MG5_aMC's G_mu loop models)"
+        )
+    block, code = ALPHA0_INVERSE_CODE
+    coded = [
+        record
+        for record in compiled.ir.parameters
+        if (record.lhablock or "").upper() == block and tuple(record.lhacode) == code
+    ]
+    found = [record for record in coded if record.nature == "external"]
+    if len(found) != 1:
+        raise refuse(
+            f"the model has no adjustable 1/alpha(0) at {block} {list(code)} "
+            + (
+                f"({', '.join(r.name for r in coded)} fixed by its restriction, "
+                "zero in MG5_aMC's default card of a G_mu loop model: compile the "
+                "model with a restriction that sets it, as MG5_aMC requires, "
+                "e.g. its restrict_a0)"
+                if coded
+                else "(MG5_aMC's G_mu loop models: aEW0M1)"
+            )
+        )
+    (inverse,) = found
+    parameters = {record.name: record for record in compiled.ir.parameters}
+    coupling = qed_coupling(compiled, lambda r: is_photon(r, parameters, fixed))
+    if coupling is None or inverse.name in {name for _symbol, name in coupling[1]}:
+        raise refuse(
+            "the loops' electromagnetic coupling is not a G_mu-scheme one that "
+            f"leaves {inverse.name} free"
+        )
+    value = fixed.get(inverse.name)
+    if value is not None and Decimal(str(value)) == 0:
+        raise refuse(f"{inverse.name} (1/alpha(0)) is fixed to zero")
+    veto = set(request.particle_veto)
+    vetoed = sorted(
+        abs(int(pdg))
+        for pdg, orders in species_orders.items()
+        if abs(int(pdg)) in veto and abelian in set(orders)
     )
+    if vetoed:
+        raise refuse(
+            f"particle_veto removes the species {vetoed}, perturbative in the "
+            f"{abelian} correction, from the conversion's one counterterm "
+            "parameter"
+        )
+    return ExternalPhotons(photons, inverse.name, ALPHA0_CONVERSION, abelian)
 
 
 def propagated_species(dag: Any) -> tuple[tuple[int, bool], ...]:
@@ -288,10 +506,17 @@ def require_zero_widths(
 
 
 __all__ = [
+    "ADJOINT",
+    "ALPHA0_CONVERSION",
+    "ALPHA0_INVERSE_CODE",
+    "CorrectionOrders",
     "ElectroweakGaugeError",
     "ElectroweakWidthError",
     "ExternalPhotonError",
+    "ExternalPhotons",
+    "correction_orders",
     "electroweak",
+    "external_photon_scheme",
     "external_photons",
     "feynman_gauge_model",
     "is_photon",
@@ -299,6 +524,5 @@ __all__ = [
     "propagated_species",
     "propagating_widths",
     "require_feynman_gauge",
-    "require_no_external_photons",
     "require_zero_widths",
 ]
