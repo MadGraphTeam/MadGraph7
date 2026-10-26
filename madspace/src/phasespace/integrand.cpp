@@ -971,7 +971,11 @@ ValueVec Integrand::mlm_weights(
             // floor under the division keeps the term finite so that a
             // vetoed slot multiplies to zero and not to a NaN.
             auto floor = fb.full({1e-10, batch_size_acc});
-            auto usable = fb.cut_one(denominator, 1e-10, 1e300);
+            // max(den, 0) is 0 for a NaN density (the comparison max is built
+            // on picks the second argument), which cut_one alone would pass
+            auto usable = fb.cut_one(
+                fb.max(denominator, fb.full({0., batch_size_acc})), 1e-10, 1e300
+            );
             auto ratio = fb.div(numerator, fb.max(denominator, floor));
             // An inert slot contributes exactly one, whatever its density
             // came out as.
