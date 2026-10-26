@@ -249,13 +249,17 @@ class CloneLine:
     ``half`` are the physical orders of the vertex copy at either end of the
     line (half of those of ``Pi``), ``slot`` its (component, power, grade)
     and ``factor`` the Weyl factor ``kappa`` that the copies of this clone's
-    leg carry, or ``None``.
+    leg carry, or ``None``. ``promoted``: the scalar side of a scalar-vector
+    mixing line (``models.ct_line_insertions``), a vector current that only
+    the vertex copies carrying the line momentum consume, never an ordinary
+    vertex of the field it is read as.
     """
 
     field_id: int
     half: Orders
     slot: tuple[str, int, int]
     factor: str | None = None
+    promoted: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -412,11 +416,13 @@ def _clone_lines(recursion: CountertermRecursion) -> dict[int, CloneLine]:
         half = tuple((name, power // 2) for name, power in structure.orders)
         slot = (structure.component, structure.power, structure.grade)
         for clone_name in {clone, str(particles[clone]["antiname"])}:
+            read = particles[lowered.line_fields[clone_name]]
             out[int(particles[clone_name]["pdg_code"])] = CloneLine(
-                int(particles[lowered.line_fields[clone_name]]["pdg_code"]),
+                int(read["pdg_code"]),
                 add_orders(half),
                 slot,
                 lowered.line_factors.get(clone_name),
+                int(particles[clone_name]["spin"]) != int(read["spin"]),
             )
     return out
 
@@ -533,6 +539,16 @@ class CountertermClosure:
                         continue
                     component, power, grade = slot
                     lines = closure._blocks.get(current) if clone else None
+                    if lines and any(program.clones[b.id].promoted for b in lines):
+                        # The root would read a Goldstone-vector mixing line's
+                        # vector current as the Goldstone (WP3.2 EWI-4b).
+                        raise UnloweredCountertermError(
+                            f"the counterterm root vertex {entries[0].vertex_name} "
+                            "consumes a Goldstone-vector mixing line on its "
+                            "Goldstone side, which only vertex copies carrying "
+                            "the line momentum consume (leg 1 couples to the "
+                            "Goldstone); not lowered yet"
+                        )
                     if lines and all(
                         add_orders(physical, program.clones[block.id].half) not in loop
                         for block in lines

@@ -1526,7 +1526,11 @@ def lower_counterterm_vertices(
     oriented kernels and contact decompositions are those of tree vertices,
     in the model's kernel variant. Two-point terms become clone lines
     (``models.ct_line_insertions``): a clone of the field with the
-    propagator ``P Pi P`` and copies of the field's vertices. Colours
+    propagator ``P Pi P`` and copies of the field's vertices (a Goldstone
+    and its vector mix through copies of the Goldstone's vertices that carry
+    the line momentum; the propagators are those the engine applies in the
+    model's gauge, and terms on Goldstones the unitary-gauge tree model
+    absorbs are refused). Colours
     outside the tree colour flow need the multi-trace colour state and are
     refused here. Terms the tree compiler cannot lower (contact vertices
     without a colour-flow decomposition, e.g. two gluons and two
@@ -1646,6 +1650,12 @@ def lower_counterterm_vertices(
         slot_order=lambda structure: structure.slot_order,
         weyl_fields=_weyl_fields(compiled),
         dirac_fields=dirac_fields,
+        gauge=compiled.ir.gauge,
+        absorbed=frozenset(
+            record.goldstone
+            for record in compiled.ir.goldstone_partners
+            if record.policy == "absorbed"
+        ),
     )
     if lines.refused:
         raise CountertermLoweringError(lines.refused)
@@ -1706,6 +1716,7 @@ def lower_counterterm_vertices(
             }
         )
     payload["parameters"].extend(lines.parameters)
+    payload["lorentz_structures"].extend(lines.lorentz_structures)
     payload["particles"].extend(lines.particles)
     payload["propagators"].extend(lines.propagators)
     payload["couplings"].extend(lines.couplings)
