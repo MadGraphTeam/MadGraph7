@@ -1559,11 +1559,13 @@ class GenericDAGCompiler:
         # A current derived with both colour-connection parities (several
         # pairings of identical-flavour lines) takes the other parity's -1
         # in those derivations' colour weights (``loops/v2/blocks.py``).
-        return apply_colour_connection_signs(
-            self._apply_fermion_ordering(
-                assign_recursive_current_evaluation_reuse(dag, self.model)
-            ),
-            self.model,
+        # The parity depends on the colour state, which the evaluation
+        # contracts of the reuse leave out, so the fold precedes the reuse's
+        # value equivalences.
+        return self._apply_fermion_ordering(
+            assign_recursive_current_evaluation_reuse(
+                apply_colour_connection_signs(dag, self.model), self.model
+            )
         )
 
     def _compile_backward_live_plan(

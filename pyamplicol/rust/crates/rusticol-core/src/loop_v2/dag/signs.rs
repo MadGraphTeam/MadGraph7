@@ -18,11 +18,9 @@
 //! `-1` goes into those derivations' colour weights, so every block has one
 //! connection sign ([`connection_parities`], shared with the block grouping).
 
-use super::input::{DagInput, Particle, SignContract};
-use super::recursion::{CurrentKey, Dag};
+use super::input::{DagInput, SignContract};
+use super::recursion::{CurrentKey, Dag, FxMap};
 use super::{DagError, DagResult, invalid};
-use std::collections::HashMap;
-use std::hash::Hash;
 
 /// `_fermion_input_orientation_sign`.
 fn orientation_sign(left: &SignContract, right: &SignContract) -> DagResult<f64> {
@@ -98,41 +96,58 @@ pub fn apply_colour_flow_signs(input: &DagInput, dag: &mut Dag) -> DagResult<()>
     Ok(())
 }
 
+/// The merges in increasing result size, in DAG order within a size (the
+/// oracle's stable sort); `None` when the DAG order already is that order
+/// (the recursion appends merges by result size).
+pub(super) fn size_order(count: usize, size: impl Fn(usize) -> u32) -> Option<Vec<usize>> {
+    if (1..count).all(|k| size(k - 1) <= size(k)) {
+        return None;
+    }
+    let mut order: Vec<usize> = (0..count).collect();
+    order.sort_by_key(|k| size(*k));
+    Some(order)
+}
+
 /// The colour-connection parity rule
-/// (`generation/fermion_ordering.colour_connection_parities`): `merges` are
-/// the interactions `(left, right, result, connects)` in DAG order, `size`
-/// the leg count of a current, `block` its block key (the current without
-/// its helicity ancestry). Sources have parity 0; every current of a block
-/// takes the parity of the block's first derivation (merges by result
-/// size, in DAG order). Returns the parities and the indices of the merges
-/// whose derivation has the other parity, in increasing order.
-pub fn connection_parities<K: Eq + Hash>(
-    current_count: usize,
+/// (`generation/fermion_ordering.colour_connection_parities`). `block_of`
+/// is the dense block id of every current (the current without its
+/// helicity ancestry), below `block_count`; `merge(k)` is interaction `k`
+/// as `(left, right, result, connects)`, visited in `order` (`size_order`;
+/// `None`: DAG order). Sources have parity 0; every current of a block
+/// takes the parity of the block's first derivation. Returns the parities
+/// of the currents and the merges whose derivation has the other parity,
+/// in increasing order.
+pub fn connection_parities(
     is_source: impl Fn(usize) -> bool,
-    merges: &[(usize, usize, usize, bool)],
-    size: impl Fn(usize) -> u32,
-    block: impl Fn(usize) -> K,
+    block_of: &[u32],
+    block_count: usize,
+    merge_count: usize,
+    merge: impl Fn(usize) -> (usize, usize, usize, bool),
+    order: Option<&[usize]>,
 ) -> DagResult<(Vec<Option<bool>>, Vec<usize>)> {
-    let mut parity: Vec<Option<bool>> = (0..current_count)
+    let mut parity: Vec<Option<bool>> = (0..block_of.len())
         .map(|id| is_source(id).then_some(false))
         .collect();
-    let mut order: Vec<usize> = (0..merges.len()).collect();
-    order.sort_by_key(|k| size(merges[*k].2));
-    let mut blocks: HashMap<K, bool> = HashMap::new();
+    let mut blocks: Vec<Option<bool>> = vec![None; block_count];
     let mut deviating = Vec::new();
-    for k in order {
-        let (left, right, result, connects) = merges[k];
+    let mut visit = |k: usize| -> DagResult<()> {
+        let (left, right, result, connects) = merge(k);
         let (Some(left_parity), Some(right_parity)) = (parity[left], parity[right]) else {
             return invalid(format!(
                 "interaction {k} reads a current without a derivation"
             ));
         };
         let value = left_parity ^ right_parity ^ connects;
-        let known = *blocks.entry(block(result)).or_insert(value);
+        let known = *blocks[block_of[result] as usize].get_or_insert(value);
         parity[result] = Some(known);
         if known != value {
             deviating.push(k);
         }
+        Ok(())
+    };
+    match order {
+        None => (0..merge_count).try_for_each(&mut visit)?,
+        Some(order) => order.iter().try_for_each(|k| visit(*k))?,
     }
     deviating.sort_unstable();
     Ok((parity, deviating))
@@ -140,11 +155,10 @@ pub fn connection_parities<K: Eq + Hash>(
 
 /// `apply_colour_connection_signs` on the builder's DAG: the leg sets and
 /// representations of `input` decide which merges connect two coloured
-/// fermion lines (`loops/v2/blocks.py`, `_connection_parities`).
+/// fermion lines (`loops/v2/blocks.py`, `_connection_parities`). Without a
+/// connecting merge every parity is 0 and nothing is folded: the blocks are
+/// grouped (one map entry per current) only when a merge connects.
 pub fn apply_connection_signs(input: &DagInput, dag: &mut Dag) -> DagResult<()> {
-    if dag.interactions.is_empty() {
-        return Ok(());
-    }
     let mut endpoints = 0u64;
     for leg in &input.legs {
         let particle = &input.particles[leg.particle as usize];
@@ -152,61 +166,100 @@ pub fn apply_connection_signs(input: &DagInput, dag: &mut Dag) -> DagResult<()> 
             endpoints |= 1u64 << (leg.label - 1);
         }
     }
+    if dag.interactions.is_empty() || endpoints == 0 {
+        return Ok(());
+    }
+    // Whether each interned word holds an endpoint, and whether each
+    // particle is the U(1)-subtraction auxiliary.
+    let ends: Vec<bool> = dag
+        .words
+        .values
+        .iter()
+        .map(|word| word.iter().any(|label| endpoints >> (label - 1) & 1 == 1))
+        .collect();
     let u1 = input.u1_subtraction_kind.as_str();
-    let particle = |current: usize| -> &Particle {
-        &input.particles[dag.currents[current].key.particle as usize]
-    };
-    let rep = |current: usize| -> DagResult<i32> {
-        let particle = particle(current);
+    let u1_auxiliary: Vec<bool> = input
+        .particles
+        .iter()
+        .map(|particle| particle.auxiliary.as_deref() == Some(u1))
+        .collect();
+    let rep = |particle: u32| -> DagResult<i32> {
+        let particle = &input.particles[particle as usize];
         particle
             .block_rep
             .ok_or_else(|| DagError::Invalid(format!("particle not in model: {}", particle.pdg)))
     };
-    let u1_auxiliary = |current: usize| particle(current).auxiliary.as_deref() == Some(u1);
-    let octet =
-        |current: usize| -> DagResult<bool> { Ok(rep(current)? == 8 || u1_auxiliary(current)) };
-    let singlet =
-        |current: usize| -> DagResult<bool> { Ok(rep(current)? == 1 || u1_auxiliary(current)) };
-    let coloured_fermion = |current: usize| -> DagResult<bool> {
-        let particle = particle(current);
-        let fermion = particle
+    let octet = |particle: u32| -> DagResult<bool> {
+        Ok(rep(particle)? == 8 || u1_auxiliary[particle as usize])
+    };
+    let singlet = |particle: u32| -> DagResult<bool> {
+        Ok(rep(particle)? == 1 || u1_auxiliary[particle as usize])
+    };
+    let coloured_fermion = |particle: u32| -> DagResult<bool> {
+        let fermion = input.particles[particle as usize]
             .block_fermion
-            .ok_or_else(|| DagError::Invalid(format!("particle not in model: {}", particle.pdg)))?;
-        Ok(fermion && rep(current)?.abs() == 3)
+            .ok_or_else(|| {
+                DagError::Invalid(format!(
+                    "particle not in model: {}",
+                    input.particles[particle as usize].pdg
+                ))
+            })?;
+        Ok(fermion && rep(particle)?.abs() == 3)
     };
-    let ends = |current: usize| {
-        dag.words
-            .get(dag.currents[current].key.word)
-            .iter()
-            .any(|label| endpoints >> (label - 1) & 1 == 1)
-    };
-    let mut merges = Vec::with_capacity(dag.interactions.len());
+    let mut connects = Vec::with_capacity(dag.interactions.len());
+    let mut any = false;
     for interaction in &dag.interactions {
-        let (left, right, result) = (
-            interaction.left as usize,
-            interaction.right as usize,
-            interaction.result as usize,
-        );
+        let left = &dag.currents[interaction.left as usize].key;
+        let right = &dag.currents[interaction.right as usize].key;
+        let result = &dag.currents[interaction.result as usize].key;
         // The oracle's short-circuit order (a representation is read only
         // where the rule needs it).
-        let connects = ends(left)
-            && ends(right)
-            && (octet(left)? || octet(right)?)
-            && (coloured_fermion(result)? || !(singlet(left)? || singlet(right)?));
-        merges.push((left, right, result, connects));
+        let value = ends[left.word as usize]
+            && ends[right.word as usize]
+            && (octet(left.particle)? || octet(right.particle)?)
+            && (coloured_fermion(result.particle)?
+                || !(singlet(left.particle)? || singlet(right.particle)?));
+        any |= value;
+        connects.push(value);
     }
-    let block = |current: usize| -> CurrentKey {
-        CurrentKey {
-            ancestry: 0,
-            ..dag.currents[current].key
-        }
-    };
+    if !any {
+        return Ok(());
+    }
+    let mut blocks: FxMap<CurrentKey, u32> = FxMap::default();
+    let block_of: Vec<u32> = dag
+        .currents
+        .iter()
+        .map(|current| {
+            let next = blocks.len() as u32;
+            *blocks
+                .entry(CurrentKey {
+                    ancestry: 0,
+                    ..current.key
+                })
+                .or_insert(next)
+        })
+        .collect();
+    let order = size_order(dag.interactions.len(), |k| {
+        dag.currents[dag.interactions[k].result as usize]
+            .key
+            .mask
+            .count_ones()
+    });
     let (_, deviating) = connection_parities(
-        dag.currents.len(),
         |id| dag.currents[id].is_source,
-        &merges,
-        |id| dag.currents[id].key.mask.count_ones(),
-        block,
+        &block_of,
+        blocks.len(),
+        dag.interactions.len(),
+        |k| {
+            let interaction = &dag.interactions[k];
+            (
+                interaction.left as usize,
+                interaction.right as usize,
+                interaction.result as usize,
+                connects[k],
+            )
+        },
+        order.as_deref(),
     )?;
     for k in deviating {
         let weight = &mut dag.interactions[k].colour_weight;
@@ -217,7 +270,48 @@ pub fn apply_connection_signs(input: &DagInput, dag: &mut Dag) -> DagResult<()> 
 
 #[cfg(test)]
 mod tests {
-    use super::connection_parities;
+    use super::{connection_parities, size_order};
+
+    type Merge = (usize, usize, usize, bool);
+
+    fn parities(
+        current_count: usize,
+        merges: &[Merge],
+        size: impl Fn(usize) -> u32,
+        block: impl Fn(usize) -> u32,
+    ) -> super::DagResult<(Vec<Option<bool>>, Vec<usize>)> {
+        // Dense block ids in first-seen order, as the callers number them.
+        let mut ids: Vec<u32> = Vec::new();
+        let block_of: Vec<u32> = (0..current_count)
+            .map(|id| {
+                let key = block(id);
+                match ids.iter().position(|seen| *seen == key) {
+                    Some(dense) => dense as u32,
+                    None => {
+                        ids.push(key);
+                        (ids.len() - 1) as u32
+                    }
+                }
+            })
+            .collect();
+        let order = size_order(merges.len(), |k| size(merges[k].2));
+        connection_parities(
+            |id| id < 4,
+            &block_of,
+            ids.len(),
+            merges.len(),
+            |k| merges[k],
+            order.as_deref(),
+        )
+    }
+
+    fn size(id: usize) -> u32 {
+        match id {
+            0..=3 => 1,
+            4 | 5 => 2,
+            _ => 3,
+        }
+    }
 
     /// Currents 0-3 are sources; 4 and 5 are two helicity rows of one block
     /// (key 10), each derived twice: through a connection (parity 1) and
@@ -234,14 +328,8 @@ mod tests {
             (0, 1, 5, true),
             (5, 0, 6, false),
         ];
-        let size = |id: usize| match id {
-            0..=3 => 1,
-            4 | 5 => 2,
-            _ => 3,
-        };
-        let block = |id: usize| if id == 4 || id == 5 { 10 } else { id };
-        let (parity, deviating) =
-            connection_parities(7, |id| id < 4, &merges, size, block).expect("parities");
+        let block = |id: usize| if id == 4 || id == 5 { 10 } else { id as u32 };
+        let (parity, deviating) = parities(7, &merges, size, block).expect("parities");
         assert_eq!(
             parity,
             [false, false, false, false, true, true, true]
@@ -251,9 +339,33 @@ mod tests {
         assert_eq!(deviating, vec![1, 2]);
     }
 
+    /// The same merges with the size-3 merge first in DAG order: the merges
+    /// are visited by result size (stable), so the parities and the
+    /// deviating merges (now indices 2 and 3) are those of the sorted DAG.
+    #[test]
+    fn merges_are_visited_by_result_size() {
+        let merges = [
+            (5, 0, 6, false),
+            (0, 1, 4, true),
+            (2, 3, 4, false),
+            (2, 3, 5, false),
+            (0, 1, 5, true),
+        ];
+        assert!(size_order(merges.len(), |k| size(merges[k].2)).is_some());
+        let block = |id: usize| if id == 4 || id == 5 { 10 } else { id as u32 };
+        let (parity, deviating) = parities(7, &merges, size, block).expect("parities");
+        assert_eq!(
+            parity,
+            [false, false, false, false, true, true, true]
+                .map(Some)
+                .to_vec()
+        );
+        assert_eq!(deviating, vec![2, 3]);
+    }
+
     #[test]
     fn a_merge_of_a_current_without_derivation_is_refused() {
         let merges = [(4, 0, 5, false)];
-        assert!(connection_parities(6, |id| id < 4, &merges, |_| 1, |id| id).is_err());
+        assert!(parities(6, &merges, |_| 1, |id| id as u32).is_err());
     }
 }

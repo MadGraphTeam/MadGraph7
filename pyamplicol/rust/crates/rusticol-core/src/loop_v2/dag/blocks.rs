@@ -21,6 +21,7 @@
 //! representations and fermion roles of the legs and particles), so blocks
 //! can be grouped for a DAG the native builder made or one Python encoded.
 
+use super::recursion::FxMap;
 use super::{ColumnarDag, DagError, DagResult, invalid};
 use serde::Deserialize;
 use std::collections::{BTreeSet, HashMap};
@@ -403,89 +404,115 @@ impl ColumnarDag {
     }
 
     /// `_connection_parities`: the colour-connection parity of every
-    /// current ([`super::signs::connection_parities`]; a block derived with
-    /// both parities had the other parity's `-1` folded into its colour
-    /// weights when it was built, `signs::apply_connection_signs`).
-    fn connection_parities<'a>(
-        &'a self,
+    /// current ([`super::signs::connection_parities`] over the dense block
+    /// ids `block_of`; a block derived with both parities had the other
+    /// parity's `-1` folded into its colour weights when it was built,
+    /// `signs::apply_connection_signs`). `order`: the merges by result size
+    /// (`signs::size_order`).
+    fn connection_parities(
+        &self,
         tables: &BlockInput,
-        block: impl Fn(usize) -> BlockKey<'a>,
+        block_of: &[u32],
+        block_count: usize,
+        order: Option<&[usize]>,
     ) -> DagResult<Vec<Option<bool>>> {
         let n = self.current_count();
         let u1 = tables.u1_subtraction_kind.as_str();
+        let mut endpoints = 0u64;
+        for label in tables.endpoints.keys() {
+            endpoints |= 1u64 << (label - 1);
+        }
+        // `(octet, singlet)` of every species, raised per current below so a
+        // species of no current raises nothing.
+        let roles: Vec<DagResult<(bool, bool)>> = self
+            .tables
+            .species
+            .iter()
+            .map(|species| {
+                let u1_auxiliary = species.auxiliary.as_deref() == Some(u1);
+                tables
+                    .rep(species.pdg)
+                    .map(|rep| (rep == 8 || u1_auxiliary, rep == 1 || u1_auxiliary))
+            })
+            .collect();
         let mut info = Vec::with_capacity(n);
         for id in 0..n {
-            let species = &self.tables.species[self.c_species[id] as usize];
-            let rep = tables.rep(species.pdg)?;
-            let u1_auxiliary = species.auxiliary.as_deref() == Some(u1);
+            let (octet, singlet) = match &roles[self.c_species[id] as usize] {
+                Ok(roles) => *roles,
+                Err(error) => return invalid(error.to_string()),
+            };
             let has_endpoints = self
                 .word(id)
                 .iter()
-                .any(|label| tables.endpoints.contains_key(label));
-            info.push((
-                rep == 8 || u1_auxiliary,
-                rep == 1 || u1_auxiliary,
-                has_endpoints,
-                species.pdg,
-            ));
+                .any(|label| endpoints >> (label - 1) & 1 == 1);
+            info.push((octet, singlet, has_endpoints));
         }
-        let mut merges = Vec::with_capacity(self.interaction_count());
+        let mut connects = Vec::with_capacity(self.interaction_count());
         for id in 0..self.interaction_count() {
-            let (left, right, result) = (
-                self.i_left[id] as usize,
-                self.i_right[id] as usize,
-                self.i_result[id] as usize,
-            );
-            let (left_octet, left_singlet, left_ends, _) = info[left];
-            let (right_octet, right_singlet, right_ends, _) = info[right];
-            let result_pdg = info[result].3;
-            let connects = if left_ends && right_ends && (left_octet || right_octet) {
+            let (left_octet, left_singlet, left_ends) = info[self.i_left[id] as usize];
+            let (right_octet, right_singlet, right_ends) = info[self.i_right[id] as usize];
+            let result_pdg =
+                self.tables.species[self.c_species[self.i_result[id] as usize] as usize].pdg;
+            connects.push(if left_ends && right_ends && (left_octet || right_octet) {
                 (tables.fermion(result_pdg)? && tables.rep(result_pdg)?.abs() == 3)
                     || !(left_singlet || right_singlet)
             } else {
                 false
-            };
-            merges.push((left, right, result, connects));
+            });
         }
         let (parity, _) = super::signs::connection_parities(
-            n,
             |id| self.c_source[id] == 1,
-            &merges,
-            |id| self.c_mask[id].count_ones(),
-            block,
+            block_of,
+            block_count,
+            self.interaction_count(),
+            |id| {
+                (
+                    self.i_left[id] as usize,
+                    self.i_right[id] as usize,
+                    self.i_result[id] as usize,
+                    connects[id],
+                )
+            },
+            order,
         )?;
         Ok(parity)
     }
 
-    /// `u1_grades`.
-    fn u1_grades(&self, tables: &BlockInput) -> Vec<Option<i64>> {
+    /// `u1_grades`; `order`: the merges by result size
+    /// (`signs::size_order`).
+    fn u1_grades(&self, tables: &BlockInput, order: Option<&[usize]>) -> Vec<Option<i64>> {
         let n = self.current_count();
         let u1 = tables.u1_subtraction_kind.as_str();
+        let u1_auxiliary: Vec<bool> = self
+            .tables
+            .species
+            .iter()
+            .map(|species| species.auxiliary.as_deref() == Some(u1))
+            .collect();
         let mut grade: Vec<Option<i64>> = (0..n)
             .map(|id| (self.c_source[id] == 1).then_some(0))
             .collect();
         let mut mixed = vec![false; n];
-        let mut order: Vec<usize> = (0..self.interaction_count()).collect();
-        order.sort_by_key(|id| self.c_mask[self.i_result[*id] as usize].count_ones());
-        for id in order {
+        let mut visit = |id: usize| {
             let result = self.i_result[id] as usize;
             let (Some(left), Some(right)) = (
                 grade[self.i_left[id] as usize],
                 grade[self.i_right[id] as usize],
             ) else {
                 mixed[result] = true;
-                continue;
+                return;
             };
-            let auxiliary = self.tables.species[self.c_species[result] as usize]
-                .auxiliary
-                .as_deref();
-            let value = left + right - (auxiliary == Some(u1)) as i64;
+            let value = left + right - u1_auxiliary[self.c_species[result] as usize] as i64;
             if grade[result].is_none() && !mixed[result] {
                 grade[result] = Some(value);
             } else if grade[result] != Some(value) {
                 grade[result] = None;
                 mixed[result] = true;
             }
+        };
+        match order {
+            None => (0..self.interaction_count()).for_each(&mut visit),
+            Some(order) => order.iter().for_each(|id| visit(*id)),
         }
         grade
     }
@@ -530,20 +557,29 @@ impl ColumnarDag {
                 flavours[self.c_flavour[id] as usize],
             )
         };
-        let connections = self.connection_parities(tables, key)?;
-        let grades = self.u1_grades(tables);
-        let mut index: HashMap<BlockKey, usize> = HashMap::new();
+        let mut index: FxMap<BlockKey, usize> = FxMap::default();
         let mut members: Vec<(u32, Vec<u32>)> = Vec::new();
+        let mut block_of: Vec<u32> = Vec::with_capacity(self.current_count());
         for id in 0..self.current_count() {
             let key = key(id);
             match index.get(&key) {
-                Some(block) => members[*block].1.push(id as u32),
+                Some(block) => {
+                    members[*block].1.push(id as u32);
+                    block_of.push(*block as u32);
+                }
                 None => {
+                    block_of.push(members.len() as u32);
                     index.insert(key, members.len());
                     members.push((id as u32, vec![id as u32]));
                 }
             }
         }
+        let order = super::signs::size_order(self.interaction_count(), |id| {
+            self.c_mask[self.i_result[id] as usize].count_ones()
+        });
+        let connections =
+            self.connection_parities(tables, &block_of, members.len(), order.as_deref())?;
+        let grades = self.u1_grades(tables, order.as_deref());
         let mut out = Vec::with_capacity(members.len());
         for (first, ids) in members {
             let first_id = first as usize;

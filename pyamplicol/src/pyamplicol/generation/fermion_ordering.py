@@ -420,6 +420,18 @@ def apply_fermion_ordering_signs(
     )
 
 
+def _coloured_fermion_endpoints(dag: GenericDAG, model: Model) -> frozenset[int]:
+    """Labels of the coloured fermion legs (``|colour rep| == 3``)."""
+
+    return frozenset(
+        leg.label
+        for leg in dag.process.legs
+        if leg.outgoing_pdg is not None
+        and abs(model.color_rep(int(leg.outgoing_pdg))) == 3
+        and model.is_fermion(int(leg.outgoing_pdg))
+    )
+
+
 def colour_connection_parities(
     dag: GenericDAG, model: Model
 ) -> tuple[list[int | None], frozenset[int]]:
@@ -448,14 +460,7 @@ def colour_connection_parities(
     """
 
     currents = dag.currents
-    process_legs = dag.process.legs
-    endpoints = frozenset(
-        leg.label
-        for leg in process_legs
-        if leg.outgoing_pdg is not None
-        and abs(model.color_rep(int(leg.outgoing_pdg))) == 3
-        and model.is_fermion(int(leg.outgoing_pdg))
-    )
+    endpoints = _coloured_fermion_endpoints(dag, model)
 
     def octet(index: CurrentIndex) -> bool:
         return (
@@ -529,9 +534,10 @@ def apply_colour_connection_signs(dag: GenericDAG, model: Model) -> GenericDAG:
     """Fold ``-1`` into the colour weight of every derivation whose
     colour-connection parity differs from its current's
     (``colour_connection_parities``), so each current of a loop-request DAG
-    has one parity and its blocks one connection sign."""
+    has one parity and its blocks one connection sign. Without coloured
+    fermion legs no merge connects and nothing is folded."""
 
-    if not dag.interactions:
+    if not dag.interactions or not _coloured_fermion_endpoints(dag, model):
         return dag
     _, deviating = colour_connection_parities(dag, model)
     if not deviating:
