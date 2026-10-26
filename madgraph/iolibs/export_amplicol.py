@@ -22,12 +22,11 @@ channel) of every provider becomes one entry of subprocesses.json, integrated
 on its own with a colour-ordered phase-space mapping.
 """
 
-import importlib.util
 import json
 import logging
 import os
 import re
-import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -42,7 +41,7 @@ MODEL_FILE = 'amplicol_model.pyamplicol-model'
 
 MAKEFILE = """\
 # Builds the AmpliCol matrix elements of this process into ../../lib.
-RUSTICOL_CONFIG ?= %(rusticol_config)s
+RUSTICOL_CONFIG ?= $(CURDIR)/../rusticol-config
 BUILD := $(CURDIR)/build
 
 all:
@@ -59,12 +58,33 @@ WORKER = pjoin(os.path.dirname(os.path.abspath(__file__)), 'amplicol_worker.py')
 SYMBOLICA_BUSY = 'Cannot start another restricted Symbolica thread'
 
 
-def check_pyamplicol():
-    """pyamplicol is only imported by the worker, see amplicol_worker."""
-    if importlib.util.find_spec('pyamplicol') is None:
-        raise madgraph.InvalidCmd(
-            'The [amplicol] processes need pyamplicol. Install it in the Python '
-            'environment of MadGraph.')
+# rusticol-config of the pyamplicol in pyamplicol/install, for the makefiles
+RUSTICOL_CONFIG = """\
+#!/bin/sh
+PYTHONPATH=%(install)s${PYTHONPATH:+:$PYTHONPATH} exec %(python)s -m rusticol_config "$@"
+"""
+
+
+def check_pyamplicol(interactive=None, jobs=None):
+    """Install pyamplicol in pyamplicol/install if needed and put it first on
+    sys.path, which the worker inherits. Never imported here, see amplicol_worker."""
+    from madgraph.iolibs.template_files.mg7 import bootstrap
+    try:
+        bootstrap.ensure_pyamplicol(interactive=interactive, jobs=jobs)
+    except RuntimeError as error:
+        raise madgraph.InvalidCmd('The [amplicol] processes need pyamplicol: %s' % error)
+    bootstrap.check_pyamplicol_source_hash()
+
+
+def write_rusticol_config(subproc_dir):
+    """SubProcesses/rusticol-config, the RUSTICOL_CONFIG of the makefiles."""
+    from madgraph.iolibs.template_files.mg7 import bootstrap
+    path = pjoin(subproc_dir, 'rusticol-config')
+    with open(path, 'w') as stream:
+        stream.write(RUSTICOL_CONFIG % {
+            'install': shlex.quote(str(bootstrap.PYAMPLICOL_INSTALL_DIR)),
+            'python': shlex.quote(sys.executable)})
+    os.chmod(path, 0o755)
 
 
 def run_worker(job):
@@ -305,12 +325,14 @@ def parameter_references(metadata):
     return references
 
 
-def export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None):
+def export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None,
+                              interactive=None, jobs=None):
     """Write SubProcesses/A<n>_<name> for every '[amplicol]' process definition
-    and return the subprocesses.json entries."""
-    check_pyamplicol()
+    and return the subprocesses.json entries. ``interactive`` and ``jobs`` are
+    those of the pyamplicol installation, see bootstrap.ensure_pyamplicol."""
+    check_pyamplicol(interactive, jobs)
     subproc_dir = pjoin(dir_path, 'SubProcesses')
-    rusticol_config = shutil.which('rusticol-config') or 'rusticol-config'
+    write_rusticol_config(subproc_dir)
     processes = []
     for number, procdef in enumerate(proc_defs, start=1):
         name = 'A%d_%s' % (number, process_name(procdef, model, multiparticles or {}))
@@ -352,8 +374,7 @@ def export_amplicol_processes(dir_path, proc_defs, model, multiparticles=None):
             entries.extend(subprocess_entries(metadata, model, rel_dir, me_path,
                                               ratio_path, qcd_power, initial_legs))
         with open(pjoin(path, 'makefile'), 'w') as stream:
-            stream.write(MAKEFILE % {'rusticol_config': rusticol_config,
-                                     'copies': '\n'.join(copies)})
+            stream.write(MAKEFILE % {'copies': '\n'.join(copies)})
         with open(pjoin(path, 'process.json'), 'w') as stream:
             json.dump({'process': procdef.nice_string(prefix=False),
                        'expression': process['expression'],

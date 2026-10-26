@@ -63,6 +63,10 @@ def main(job_path):
         job = json.load(stream)
     import pyamplicol
     from pyamplicol.artifacts import umami_reweight
+    from pyamplicol.licensing import detect_symbolica_license
+    if not detect_symbolica_license(suggest=False).licensed:
+        logging.warning('Symbolica does not accept the license key of pyamplicol '
+                        '(%s): generating in its restricted mode', pyamplicol.__file__)
     model = model_source(pyamplicol, job['model'])
     providers = []
     for process in job['processes']:

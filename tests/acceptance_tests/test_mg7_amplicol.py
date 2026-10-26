@@ -17,16 +17,15 @@
 The AmpliCol subprocesses are integrated at leading colour and re- or
 unweighted to full colour, so their cross sections must agree with the
 madmatrix ones within the Monte Carlo errors, alone and mixed with madmatrix
-processes in one output. Needs madspace, pyamplicol and LHAPDF; the tests skip
-otherwise. Knobs: MG7_AMPLICOL_EVENTS (default 10000) and MG7_AMPLICOL_NSIGMA
-(default 4).
+processes in one output. Needs madspace, pyamplicol (in pyamplicol/install) and
+LHAPDF; the tests skip otherwise. Knobs: MG7_AMPLICOL_EVENTS (default 10000)
+and MG7_AMPLICOL_NSIGMA (default 4).
 
     ./tests/test_manager.py test_mg7_amplicol -pA -t0
 """
 
 import glob
 import gzip
-import importlib.util
 import json
 import os
 import re
@@ -88,11 +87,13 @@ def _color_balanced(lhe_path):
 class MG7AmplicolTest(unittest.TestCase):
 
     def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import bootstrap
         # not imported: Symbolica would hold its lock against the pyamplicol worker
-        missing = [name for name in ('madspace', 'pyamplicol')
-                   if importlib.util.find_spec(name) is None]
+        missing = [name for name, installed in (
+            ('madspace', bootstrap.madspace_is_installed()),
+            ('pyamplicol', bootstrap.pyamplicol_is_installed())) if not installed]
         if missing:
-            self.skipTest('%s unavailable' % ' and '.join(missing))
+            self.skipTest('%s not installed' % ' and '.join(missing))
         if not misc.resolve_lhapdf().find_set(_PDF):
             self.skipTest('%s LHAPDF data not found' % _PDF)
         self.path = tempfile.mkdtemp(prefix='mg7_amplicol_')
@@ -121,6 +122,8 @@ class MG7AmplicolTest(unittest.TestCase):
         info = sorted(glob.glob(pjoin(run_dir, 'Events', '*', 'info.json')))[-1]
         with open(info) as stream:
             result = json.load(stream)['process']
+        # a failed generation can still exit with 0, after the survey
+        self.assertTrue(result['done'], open(log).read()[-3000:])
         return float(result['mean']), float(result['error']), run_dir
 
     def assert_compatible(self, first, second, factor=1.):

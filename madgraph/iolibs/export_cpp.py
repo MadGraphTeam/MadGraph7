@@ -3513,6 +3513,11 @@ class ProcessExporterMG7(ProcessExporterCPP):
         self.has_madmatrix = bool(cmd._curr_amps) or not self.amplicol_defs
         self.amplicol_model = cmd._curr_model
         self.amplicol_multiparticles = dict(getattr(cmd, '_multiparticles', {}))
+        # how pyamplicol is installed if it is missing
+        self.amplicol_install = {
+            'interactive': bool(getattr(cmd, 'use_rawinput', False)),
+            'jobs': getattr(cmd, 'options', {}).get('nb_core'),
+        }
 
     def amplicol_processes(self):
         """MG processes standing for the [amplicol] processes."""
@@ -3529,7 +3534,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
         import madgraph.iolibs.export_amplicol as export_amplicol
         for entry in export_amplicol.export_amplicol_processes(
                 self.dir_path, self.amplicol_defs, self.amplicol_model,
-                self.amplicol_multiparticles):
+                self.amplicol_multiparticles,
+                **getattr(self, 'amplicol_install', {})):
             # never merged with another subprocess
             self.merged_subprocesses[('amplicol', len(self.process_info))].append(
                 (len(self.process_info), []))

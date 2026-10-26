@@ -19,9 +19,10 @@ bootstrap *before* importing :mod:`launch`, which is what makes the heavy import
 safe to do lazily.
 """
 
-import importlib
+import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -118,10 +119,15 @@ def check_pyamplicol_source_hash() -> bool:
 
     Returns whether the hashes match. Must run after :func:`ensure_pyamplicol`.
     """
-    try:
-        installed = importlib.import_module("pyamplicol._source_hash").SOURCE_HASH
-    except ImportError:
-        installed = None
+    # read, not imported: importing pyamplicol would take Symbolica's per-user
+    # lock in this process and block the generation worker
+    installed = None
+    spec = importlib.util.find_spec("pyamplicol")
+    if spec is not None and spec.origin:
+        hash_file = Path(spec.origin).parent / "_source_hash.py"
+        if hash_file.is_file():
+            match = re.search(r'SOURCE_HASH\s*=\s*"([0-9a-f]*)"', hash_file.read_text())
+            installed = match.group(1) if match else None
     source = subprocess.run(
         [sys.executable, str(PYAMPLICOL_DIR / "source_hash.py")],
         capture_output=True, text=True, check=True,
