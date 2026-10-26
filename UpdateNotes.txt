@@ -5,6 +5,12 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: The default PDF follows the process when a photon is needed (issue #311):
+       a photon in the initial state of a proton beam (LO, NLO and the mg7
+       [beam] pdf) or NLO EW corrections ([QED]) select
+       NNPDF40_nlo_as_01180_qed (lhaid 335900), at NLO also for a model with a
+       massive b (NNPDF4.0 has no 4-flavour QED set). The NNPDF4.0 defaults
+       have no photon. A PDF set by the user is kept.
    OM: new command 'install cuttools_iregi' recompiling CutTools and IREGI (vendor/)
        with the current fortran compiler. The error raised when CutTools/IREGI were
        compiled with another compiler (e.g. after a gfortran update) now points to it.
