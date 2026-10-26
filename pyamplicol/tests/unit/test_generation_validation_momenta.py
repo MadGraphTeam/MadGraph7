@@ -75,7 +75,11 @@ def test_massless_beams_keep_the_historical_point():
 
 @pytest.mark.parametrize(
     ("initial", "final", "threshold"),
-    [((6, -6), (21, 21), 346.0), ((6, 21), (6, 21), 173.0), ((2, 6), (6, 6, -6), 519.0)],
+    [
+        ((6, -6), (21, 21), 346.0),
+        ((6, 21), (6, 21), 173.0),
+        ((2, 6), (6, 6, -6), 519.0),
+    ],
 )
 def test_massive_beams_are_on_shell(initial, final, threshold):
     """On-shell beams at sqrt(s) twice the larger threshold of the process."""
