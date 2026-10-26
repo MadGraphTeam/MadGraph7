@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from fractions import Fraction
 from pathlib import Path
 
@@ -49,6 +50,8 @@ CASES = {
     "uux_uuxepem": (0, 1, 2),
 }
 PHYSICS = frozenset({"uux_uuxg"})
+# The references this package added (``tools/loop_reference``, 2026-10-26).
+ADDED = ("uux_ddxssx", "uux_uuxddx", "uux_uuxuux", "uux_uuxepem")
 
 
 def _reference(name: str) -> dict:
@@ -74,6 +77,27 @@ def _relative(a: float, b: float) -> float:
 
     scale = max(abs(a), abs(b))
     return 0.0 if scale == 0 else abs(a - b) / scale
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize("name", ADDED)
+def test_reference_scope_states_the_recorded_provider_arithmetic(name):
+    """The scope of a reference states each provider's arithmetic as its run
+    recorded it (``references.provider_arithmetic``): MadLoop evaluated every
+    point of these references in quadruple precision (return code 3xx)."""
+
+    from tools.loop_reference import references
+
+    reference = _reference(name)
+    results = {
+        provider: {"rows": [row["providers"][provider] for row in reference["rows"]]}
+        for provider in reference["providers"]
+    }
+    statuses = {row["providers"]["madloop"]["status"] for row in reference["rows"]}
+    assert all(status // 100 == 3 for status in statuses), statuses
+    arithmetic = references.provider_arithmetic(results)
+    assert "MadLoop in quadruple precision at every point" in arithmetic
+    assert arithmetic in reference["scope"]
 
 
 @pytest.mark.parametrize(
@@ -133,21 +157,27 @@ def test_virtual_equals_madloop_and_catani(loop_sm_compiled_model, loop_native, 
 # current derived as quark a + gluon (b~, b) and as the U(1)-subtraction
 # auxiliary (a, b~) + quark b, the Fermi-exchanged pairing; from u u~ > u u~ g
 # up), so their tree currents are not N_c-exact and LC/NLC are refused
-# (``SeedTable.seeds``, design §3.3 "Coloured fermion lines"): open.
+# (``SeedTable.seeds``, design §3.3 "Coloured fermion lines"): open. The test
+# re-raises only that refusal (message pinned), so any other error fails it.
 _MIXED_GRADES = pytest.mark.xfail(
     strict=True,
     raises=ValueError,
     reason="identical-flavour blocks mix U(1)-subtraction grades (not N_c-exact)",
 )
+_MIXED_GRADE_REFUSAL = "{} seeds need N_c-exact tree currents; "
 
 
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize(
-    "name", ["uux_ddxssx", pytest.param("uux_uuxuux", marks=_MIXED_GRADES)]
+    ("name", "mixed_grades"),
+    [
+        ("uux_ddxssx", False),
+        pytest.param("uux_uuxuux", True, marks=_MIXED_GRADES),
+    ],
 )
 @pytest.mark.parametrize("accuracy", ["lc", "nlc"])
 def test_colour_projections_are_formal_nc_projections(
-    loop_sm_compiled_model, loop_native, monkeypatch, name, accuracy
+    loop_sm_compiled_model, loop_native, monkeypatch, name, mixed_grades, accuracy
 ):
     """LC + NLC + ... = FC with three quark lines: the LC (NLC) slice equals
     the N_c^P (N_c^P, N_c^(P-1), N_c^(P-2)) part of the exact colour cells of
@@ -178,6 +208,11 @@ def test_colour_projections_are_formal_nc_projections(
         )
         return LoopSlice.generate(compiled, request, loop_native, prune=prune)
 
+    if mixed_grades:
+        refusal = "^" + re.escape(_MIXED_GRADE_REFUSAL.format(accuracy.upper()))
+        with pytest.raises(ValueError, match=refusal) as refused:
+            build(accuracy)
+        raise refused.value
     projected, unpruned, full = build(accuracy), build("lc", prune=False), build("full")
     parameters = reference["parameters"]
     point, scale = reference["points"][0], str(Fraction(reference["mu_r"][0]) ** 2)
