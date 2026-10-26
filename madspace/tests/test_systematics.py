@@ -512,3 +512,67 @@ def test_mlm_vertices_follow_the_emission_scale(grids, ref):
         assert row[0] == approx(w0 * (ref.alphas(0.5 * mu) / ref.alphas(mu)) ** n,
                                 rel=1e-12)
         assert row[2] == approx(w0, rel=1e-15)
+
+
+def test_mlm_pdf_ladder_follows_alpsfact_and_muf(grids, ref):
+    """The pdf reweighting ladder of an MLM event, varied as madevent's
+    systematics.py does: the event carries f(x_b, Q_lead) per beam times
+    f(x_s, Q_num) / f(x_s, Q_den) per step, every Q a clustering scale q capped
+    at mu_F or mu_F itself. A variation takes q to min(alpsfact q, k mu_F) and
+    mu_F to k mu_F; the ladder scales stay clamped to the generation range. An
+    event without a ladder (the 2 -> 1 sample) keeps the plain beam ratio."""
+    grid, alpha_s = grids
+    low = 2.0
+    config = make_config(
+        mur=[1.0], muf=[0.5, 1.0, 2.0], alps=[0.5, 1.0, 2.0],
+        pdf_ladder=True, ladder_min_scale=low,
+    )
+    # no alpha_s: the weights move through the PDFs alone
+    args = [ms.SubprocessSystArgs(qcd_power=0, beam_pdgs=[[2, 2]])]
+    calc = ms.SystematicsCalculator(config, args, grid, alpha_s)
+    variations = calc.variations
+    assert [(v.muf, v.alps) for v in variations] == [
+        (0.5, 1.0), (2.0, 1.0), (1.0, 0.5), (1.0, 2.0)
+    ]
+
+    events = make_events(ref, n=20)
+    rng = np.random.default_rng(11)
+    ladder, lead = [], []
+    for i, (x1, mu) in enumerate(zip(events["x1"], events["ren_scale"])):
+        if i == 0:
+            ladder.append([])
+            lead.append([0.0, 0.0, 0.0, 0.0])  # no ladder at all
+            continue
+        q1 = max(mu * rng.uniform(0.02, 0.8), low)
+        z = rng.uniform(0.3, 0.9)
+        # beam 1 lowered to q1, beam 2 at mu_F; one step on beam 1, from q1
+        # up to mu_F (info: active + 2 * beam 0 + 4 * numerator is mu_F)
+        lead.append([q1, mu, 0.0, 1.0])
+        ladder.append([[0.0] * 5, [x1 * z, 21, mu, q1, 5.0]])
+    weights = calc.weights(**events, ladder=ladder, ladder_lead=lead)
+
+    def ladder_weight(i, k, a):
+        x1, x2, mu = events["x1"][i], events["x2"][i], events["ren_scale"][i]
+        top = k * mu
+        clamp = lambda q: max(q, low)
+        lowered = lambda q: clamp(min(a * q, top))
+        q1 = lead[i][0]
+        x_step = ladder[i][1][0]
+        return (
+            ref.pdf(2, x1, lowered(q1)) * ref.pdf(2, x2, clamp(top))
+            * ref.pdf(21, x_step, clamp(top)) / ref.pdf(21, x_step, lowered(q1))
+        )
+
+    for i, row in enumerate(weights):
+        w0 = events["event_weight"][i]
+        x1, x2, mu = events["x1"][i], events["x2"][i], events["ren_scale"][i]
+        for var, w in zip(variations, row):
+            if i == 0:
+                if var.alps != 1.0:
+                    assert w == approx(w0, rel=1e-15)
+                    continue
+                expected = (ref.pdf(2, x1, var.muf * mu) * ref.pdf(2, x2, var.muf * mu)
+                            / events["partial_weight_product"][i])
+            else:
+                expected = ladder_weight(i, var.muf, var.alps) / ladder_weight(i, 1.0, 1.0)
+            assert w == approx(w0 * expected, rel=1e-12)

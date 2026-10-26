@@ -309,6 +309,7 @@ KERNELSPEC int mlm_clustering_walk(
     FOut<T, 1> pdf_rw_q_den,
     FOut<T, 1> pdf_rw_active,
     FOut<T, 1> pdf_rw_beam,
+    FOut<T, 1> pdf_rw_mu_f,
     int start_state,
     bool hadronic
 ) {
@@ -788,6 +789,13 @@ KERNELSPEC int mlm_clustering_walk(
     // for the rest it depends on which clustering won, so it has to travel
     // with the slot.
     FVal<T> rw_beam[N_EXT_MAX - 1];
+    // Which scales are mu_F itself rather than a clustering scale capped at
+    // it: the numerator of the step that lands on mu_F, and a beam density
+    // that was never lowered. The systematics vary the two differently, as
+    // madevent's do: mu_F with the factorisation scale, a clustering scale
+    // with alpsfact.
+    FVal<T> rw_mu_f[N_EXT_MAX - 1];
+    FVal<T> lead_mu_f[2] = {1.0, 1.0};
     for (int i = 0; i < pdf_slot_count; ++i) {
         rw_flavor[i] = 0;
         rw_x[i] = 1.0;
@@ -795,6 +803,7 @@ KERNELSPEC int mlm_clustering_walk(
         rw_q_den[i] = 1.0;
         rw_active[i] = 0.0;
         rw_beam[i] = 0.0;
+        rw_mu_f[i] = 0.0;
     }
     FVal<T> pdf_scale_val[2] = {-1.0, -1.0};
 
@@ -1303,6 +1312,7 @@ KERNELSPEC int mlm_clustering_walk(
             for (int j = 0; j < 2; ++j) {
                 if (jlast[j] >= 0 && jfirst[j] >= 0 && jfirst[j] <= jlast[j]) {
                     pdf_scale_val[j] = min(pt_step[jfirst[j]], q_central[j]);
+                    lead_mu_f[j] = 0.0;
                 }
             }
             // Where each beam's line has got to: its flavour class, the
@@ -1351,6 +1361,7 @@ KERNELSPEC int mlm_clustering_walk(
                         rw_q_den[slot] = pt_pdf[j];
                         rw_active[slot] = 1.0;
                         rw_beam[slot] = j;
+                        rw_mu_f[slot] = i == jlast[j] ? 1.0 : 0.0;
                         pt_pdf[j] = q_now;
                     }
                     // and the line becomes the mother; at the root that is the
@@ -1482,7 +1493,10 @@ KERNELSPEC int mlm_clustering_walk(
         pdf_rw_q_den[i] = rw_q_den[i];
         pdf_rw_active[i] = rw_active[i];
         pdf_rw_beam[i] = rw_beam[i];
+        pdf_rw_mu_f[i] = rw_mu_f[i];
     }
+    pdf_rw_mu_f[pdf_slot_count] = lead_mu_f[0];
+    pdf_rw_mu_f[pdf_slot_count + 1] = lead_mu_f[1];
 
     int diag_count = state_machine[state];
     int rand_index = static_cast<int>(FVal<T>(random) * diag_count);
@@ -1571,6 +1585,7 @@ KERNELSPEC void mlm_clustering(
     FOut<T, 1> pdf_rw_q_den,
     FOut<T, 1> pdf_rw_active,
     FOut<T, 1> pdf_rw_beam,
+    FOut<T, 1> pdf_rw_mu_f,
     bool hadronic
 ) {
     auto walk = [&](int start) {
@@ -1611,6 +1626,7 @@ KERNELSPEC void mlm_clustering(
             pdf_rw_q_den,
             pdf_rw_active,
             pdf_rw_beam,
+            pdf_rw_mu_f,
             start,
             hadronic
         );
@@ -1634,7 +1650,7 @@ KERNELSPEC void mlm_clustering(
         IVal<T> kept_rw_flavor[N_EXT_MAX];
         FVal<T> kept_rw_x[N_EXT_MAX], kept_rw_q_num[N_EXT_MAX],
             kept_rw_q_den[N_EXT_MAX], kept_rw_active[N_EXT_MAX],
-            kept_rw_beam[N_EXT_MAX];
+            kept_rw_beam[N_EXT_MAX], kept_rw_mu_f[N_EXT_MAX + 1];
         for (int i = 0; i < n_part - 2; ++i) {
             kept_outgoing[i] = outgoing_scales[i];
         }
@@ -1648,6 +1664,9 @@ KERNELSPEC void mlm_clustering(
             kept_rw_q_den[i] = pdf_rw_q_den[i];
             kept_rw_active[i] = pdf_rw_active[i];
             kept_rw_beam[i] = pdf_rw_beam[i];
+        }
+        for (int i = 0; i < n_part + 1; ++i) {
+            kept_rw_mu_f[i] = pdf_rw_mu_f[i];
         }
         if (walk(0) != diagram_jets) {
             ren_scale = kept_ren;
@@ -1671,6 +1690,9 @@ KERNELSPEC void mlm_clustering(
                 pdf_rw_q_den[i] = kept_rw_q_den[i];
                 pdf_rw_active[i] = kept_rw_active[i];
                 pdf_rw_beam[i] = kept_rw_beam[i];
+            }
+            for (int i = 0; i < n_part + 1; ++i) {
+                pdf_rw_mu_f[i] = kept_rw_mu_f[i];
             }
         }
     } else {
@@ -1717,7 +1739,8 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
     FOut<T, 1> pdf_rw_q_num,
     FOut<T, 1> pdf_rw_q_den,
     FOut<T, 1> pdf_rw_active,
-    FOut<T, 1> pdf_rw_beam
+    FOut<T, 1> pdf_rw_beam,
+    FOut<T, 1> pdf_rw_mu_f
 ) {
     mlm_clustering<T>(
         momenta,
@@ -1758,6 +1781,7 @@ KERNELSPEC void kernel_mlm_clustering_hadronic(
         pdf_rw_q_den,
         pdf_rw_active,
         pdf_rw_beam,
+        pdf_rw_mu_f,
         true
     );
 }
@@ -1801,7 +1825,8 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
     FOut<T, 1> pdf_rw_q_num,
     FOut<T, 1> pdf_rw_q_den,
     FOut<T, 1> pdf_rw_active,
-    FOut<T, 1> pdf_rw_beam
+    FOut<T, 1> pdf_rw_beam,
+    FOut<T, 1> pdf_rw_mu_f
 ) {
     mlm_clustering<T>(
         momenta,
@@ -1842,6 +1867,7 @@ KERNELSPEC void kernel_mlm_clustering_leptonic(
         pdf_rw_q_den,
         pdf_rw_active,
         pdf_rw_beam,
+        pdf_rw_mu_f,
         false
     );
 }

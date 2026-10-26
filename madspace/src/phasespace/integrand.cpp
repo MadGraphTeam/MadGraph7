@@ -52,6 +52,24 @@ bool emits_alphas_scales(
         running_coupling && particle_count > 3;
 }
 
+// Whether the event carries the MLM pdf reweighting ladder, for the
+// systematics to vary it as madevent's do: every clustering scale with
+// alpsfact, mu_F with the factorisation scale, and the whole ladder with each
+// PDF member.
+bool emits_pdf_ladder(
+    const std::optional<EnergyScale>& energy_scale, bool has_pdf, bool has_pid_options
+) {
+    return energy_scale && energy_scale->mlm_pdf_reweighting() && has_pdf &&
+        has_pid_options;
+}
+
+// the per-slot ladder outputs (one entry per slot that can carry a ratio,
+// slot 0 never does) and the two per-beam ones
+const std::array<const char*, 5> ladder_slot_names{
+    "ladder_x", "ladder_pdg", "ladder_q_num", "ladder_q_den", "ladder_info"
+};
+const std::array<const char*, 2> ladder_beam_names{"ladder_lead_q", "ladder_lead_mu_f"};
+
 bool emits_partial_weights(
     bool partial_weights, const std::optional<EnergyScale>& energy_scale
 ) {
@@ -196,6 +214,20 @@ Integrand::Integrand(
                         "alphas_scales",
                         batch_float_array(mapping.particle_count() - 3)
                     );
+                }
+                if (emits_pdf_ladder(
+                        energy_scale,
+                        !std::holds_alternative<std::monostate>(pdf_grid),
+                        flav_count > 0
+                    )) {
+                    for (auto name : ladder_slot_names) {
+                        ret_types.push_back(
+                            name, batch_float_array(mapping.particle_count() - 2)
+                        );
+                    }
+                    for (auto name : ladder_beam_names) {
+                        ret_types.push_back(name, batch_float_array(2));
+                    }
                 }
                 // before "random": the outputs after it feed the discrete histograms
                 if (custom_bias) {
@@ -355,6 +387,7 @@ Integrand::Integrand(
             );
         }
         _pdf_rw = PartonDensity(*grid, rw_pids, true);
+        _pdf_rw_pdgs.assign(rw_pids.begin(), rw_pids.end());
     }
     if (custom_bias) {
         if (custom_bias->type() != CustomFunction::bias) {
@@ -515,6 +548,14 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     }
     if (emits_alphas_scales(_energy_scale, _running_coupling, particle_count)) {
         ret.push_back("alphas_scales_acc", acc_float_array(particle_count - 3));
+    }
+    if (_pdf_rw && _pid_options.size() > 0) {
+        for (auto name : ladder_slot_names) {
+            ret.push_back(std::format("{}_acc", name), acc_float_array(particle_count - 2));
+        }
+        for (auto name : ladder_beam_names) {
+            ret.push_back(std::format("{}_acc", name), acc_float_array(2));
+        }
     }
 
     return ret;
@@ -815,8 +856,9 @@ NamedVector<Value> Integrand::build_channel_part(
         }
     }
 
+    NamedVector<Value> mlm_ladder;
     if (_energy_scale && _energy_scale->is_mlm() && !mlm_history_per_diagram) {
-        for (auto& weight : mlm_weights(fb, scales, x_acc, flavor_id)) {
+        for (auto& weight : mlm_weights(fb, scales, x_acc, flavor_id, &mlm_ladder)) {
             weights_after_cuts.push_back(weight);
         }
     }
@@ -884,6 +926,27 @@ NamedVector<Value> Integrand::build_channel_part(
         )) {
         out.push_back("alphas_scales_acc", scales.at("alphas_scales"));
     }
+    if (_pdf_rw && _pid_options.size() > 0) {
+        // with the history picked per diagram the ladder is only known in
+        // the common part: zeros here, never read
+        auto batch_size = fb.batch_size({momenta_acc});
+        auto slot_count = static_cast<me_int_t>(_mapping.particle_count() - 2);
+        for (auto name : ladder_slot_names) {
+            out.push_back(
+                std::format("{}_acc", name),
+                mlm_ladder.size() > 0 ? mlm_ladder.at(name)
+                                      : fb.full({0., batch_size, slot_count})
+            );
+        }
+        for (auto name : ladder_beam_names) {
+            out.push_back(
+                std::format("{}_acc", name),
+                mlm_ladder.size() > 0
+                    ? mlm_ladder.at(name)
+                    : fb.full({0., batch_size, static_cast<me_int_t>(2)})
+            );
+        }
+    }
 
     return out;
 }
@@ -892,7 +955,8 @@ ValueVec Integrand::mlm_weights(
     FunctionBuilder& fb,
     const NamedVector<Value>& scales,
     const std::array<Value, 2>& x,
-    Value flavor_id
+    Value flavor_id,
+    NamedVector<Value>* ladder
 ) const {
     ValueVec weights;
     auto batch_size_acc = fb.batch_size({flavor_id});
@@ -953,6 +1017,8 @@ ValueVec Integrand::mlm_weights(
             : 1e30;
         auto ones = fb.full({1., batch_size_acc});
         Value factor, veto;
+        ValueVec ladder_x, ladder_pdg, ladder_q_num, ladder_q_den, ladder_info;
+        auto mu_f_flags = scales.at("pdf_rw_mu_f");
         // Slot 0 is the first clustering of the history, which can only ever
         // record where a beam line's density already sits, so it never
         // carries a ratio.
@@ -994,6 +1060,18 @@ ValueVec Integrand::mlm_weights(
             };
             auto numerator = density("pdf_rw_q_num");
             auto denominator = density("pdf_rw_q_den");
+            if (ladder) {
+                // active + 2 beam + 4 (numerator is mu_F itself)
+                auto mu_f = fb.squeeze(fb.select(mu_f_flags, column));
+                ladder_x.push_back(x);
+                ladder_pdg.push_back(fb.gather(index, _pdf_rw_pdgs));
+                ladder_q_num.push_back(scale_of("pdf_rw_q_num"));
+                ladder_q_den.push_back(scale_of("pdf_rw_q_den"));
+                ladder_info.push_back(fb.add(
+                    active,
+                    fb.add(fb.mul(beam, 2.), fb.mul(mu_f, 4.))
+                ));
+            }
             // madevent drops the event outright when the density it is
             // dividing by falls under 1e-10, where the grid is no longer
             // saying anything (reweight.f, rewgt=0 for pdfj2 < 1e-10). Same
@@ -1018,6 +1096,22 @@ ValueVec Integrand::mlm_weights(
         if (factor) {
             weights.push_back(factor);
             weights.push_back(veto);
+        }
+        if (ladder && !ladder_x.empty()) {
+            ladder->push_back("ladder_x", fb.stack(ladder_x));
+            ladder->push_back("ladder_pdg", fb.stack(ladder_pdg));
+            ladder->push_back("ladder_q_num", fb.stack(ladder_q_num));
+            ladder->push_back("ladder_q_den", fb.stack(ladder_q_den));
+            ladder->push_back("ladder_info", fb.stack(ladder_info));
+            // each beam's leading density: its scale (as evaluated, clamped
+            // by apply_scale_range), and whether that is mu_F itself
+            std::vector<me_int_t> leads{
+                static_cast<me_int_t>(slot_count), static_cast<me_int_t>(slot_count + 1)
+            };
+            ladder->push_back(
+                "ladder_lead_q", fb.stack({scales.at("pdf_scale1"), scales.at("pdf_scale2")})
+            );
+            ladder->push_back("ladder_lead_mu_f", fb.select(mu_f_flags, leads));
         }
     }
     return weights;
@@ -1125,6 +1219,16 @@ NamedVector<Value> Integrand::build_common_part(
     Value alphas_scales_acc;
     if (has_alphas_scales) {
         alphas_scales_acc = args.at("alphas_scales_acc");
+    }
+    bool has_ladder = _pdf_rw && _pid_options.size() > 0;
+    NamedVector<Value> ladder_acc;
+    if (has_ladder) {
+        for (auto name : ladder_slot_names) {
+            ladder_acc.push_back(name, args.at(std::format("{}_acc", name)));
+        }
+        for (auto name : ladder_beam_names) {
+            ladder_acc.push_back(name, args.at(std::format("{}_acc", name)));
+        }
     }
 
     // Evaluate differential cross section
@@ -1235,7 +1339,12 @@ NamedVector<Value> Integrand::build_common_part(
             _mlm_leg_flavors
         );
         std::array<Value, 2> x_acc{x1_acc, x2_acc};
-        mlm_history_weights = mlm_weights(fb, scales, x_acc, flavor_id);
+        NamedVector<Value> history_ladder;
+        mlm_history_weights =
+            mlm_weights(fb, scales, x_acc, flavor_id, &history_ladder);
+        for (auto& name : history_ladder.keys()) {
+            ladder_acc.at(name) = history_ladder.at(name);
+        }
         if (_energy_scale->has_scale_veto()) {
             mlm_history_weights.push_back(scales.at("scale_weight"));
         }
@@ -1463,6 +1572,16 @@ NamedVector<Value> Integrand::build_common_part(
                     cluster_scales_acc
                 )
             );
+        }
+        if (has_ladder) {
+            for (auto& name : ladder_acc.keys()) {
+                auto& value = ladder_acc.at(name);
+                auto width = static_cast<me_int_t>(value.type.shape.at(0));
+                outputs.push_back(
+                    name,
+                    scatter_or_drop(fb.full({0., batch_size_val, width}), value)
+                );
+            }
         }
         if (has_alphas_scales) {
             auto vertex_count = static_cast<me_int_t>(_mapping.particle_count() - 3);

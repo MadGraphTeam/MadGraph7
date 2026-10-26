@@ -258,12 +258,15 @@ private:
         Value flavor_id
     ) const;
     // The factors an MLM clustering puts on the event weight: the merging cut,
-    // the alpha_s and the pdf reweighting, each with its veto.
+    // the alpha_s and the pdf reweighting, each with its veto. With `ladder`,
+    // also the pdf reweighting ladder itself, as the systematics need it to
+    // vary it (see emits_pdf_ladder in integrand.cpp).
     ValueVec mlm_weights(
         FunctionBuilder& fb,
         const NamedVector<Value>& scales,
         const std::array<Value, 2>& x,
-        Value flavor_id
+        Value flavor_id,
+        NamedVector<Value>* ladder = nullptr
     ) const;
 
     PhaseSpaceMapping _mapping;
@@ -286,6 +289,8 @@ private:
     // with the class offsets alongside so that the two can be added as ints.
     std::vector<me_int_t> _pdf_rw_table;
     std::vector<me_int_t> _pdf_rw_class_offsets;
+    // pdg id of each parton of _pdf_rw, as a float for gather
+    std::vector<double> _pdf_rw_pdgs;
     std::optional<RunningCoupling> _running_coupling;
     std::optional<EnergyScale> _energy_scale;
     // One row with a 1 for every matrix-element diagram the MLM clustering has

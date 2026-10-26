@@ -50,6 +50,15 @@ struct SystematicsConfig {
     /// written in an "Emission scale variation" group. Only for events whose
     /// record carries the vertex scales (ParticleRecord::f_alphas_scales).
     std::vector<double> alps{1.};
+    /// If true, the events may carry an MLM pdf reweighting ladder
+    /// (ParticleRecord::f_pdf_ladder): every parton of the PDF set is then
+    /// made available, since a ladder step can be any of them.
+    bool pdf_ladder = false;
+    /// Range the scales of the pdf ladder are clamped to, as the integrand
+    /// does (EnergyScale's min_scale / max_scale); `0` disables a bound.
+    double ladder_min_scale = 0.;
+    /// See @ref ladder_min_scale.
+    double ladder_max_scale = 0.;
     /// If true, vary every `(mur, muf)` combination; if false, vary one
     /// factor at a time.
     bool together = true;

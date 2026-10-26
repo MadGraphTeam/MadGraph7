@@ -918,17 +918,28 @@ void EventGenerator::combine_to_lhe(
 
 namespace {
 
-// The MLM alpha_s vertex scales of any channel: a merged run mixes a 2 -> 1
-// sample, which has no vertex, with the jet samples, which do, and channel 0
-// may be either.
+// The MLM alpha_s vertex scales and pdf ladder of any channel: a merged run
+// mixes a 2 -> 1 sample, which has no vertex, with the jet samples, which do,
+// and channel 0 may be either.
 template <typename Channels>
 int any_alphas_scales(const Channels& channels) {
+    int flags = 0;
     for (auto& channel : channels) {
-        if (channel->particle_layout_extra_flags() & ParticleRecord::f_alphas_scales) {
-            return ParticleRecord::f_alphas_scales;
-        }
+        flags |= channel->particle_layout_extra_flags() &
+            (ParticleRecord::f_alphas_scales | ParticleRecord::f_pdf_ladder);
     }
-    return 0;
+    return flags;
+}
+
+// the pdf ladder fields of one particle, or zeros (an inactive slot)
+void copy_ladder(ParticleRecord in, ParticleRecord out, bool from_in) {
+    out.ladder_x() = from_in ? in.ladder_x().value() : 0.;
+    out.ladder_pdg() = from_in ? in.ladder_pdg().value() : 0.;
+    out.ladder_q_num() = from_in ? in.ladder_q_num().value() : 0.;
+    out.ladder_q_den() = from_in ? in.ladder_q_den().value() : 0.;
+    out.ladder_info() = from_in ? in.ladder_info().value() : 0.;
+    out.ladder_lead_q() = from_in ? in.ladder_lead_q().value() : 0.;
+    out.ladder_lead_mu_f() = from_in ? in.ladder_lead_mu_f().value() : 0.;
 }
 
 } // namespace
@@ -963,13 +974,14 @@ EventGenerator::output_layout(int event_flags, std::size_t particle_flags) const
             extra_flags |= EventRecord::f_syst_weights;
         }
     }
-    // the alpha_s vertex scales only serve the systematics, which run on the
-    // combined buffer: no event file carries them
+    // the alpha_s vertex scales and the pdf ladder only serve the systematics,
+    // which run on the combined buffer: no event file carries them
     return DataLayout(
         EventRecord::layout(event_flags | extra_flags, syst_ids),
         ParticleRecord::layout(
-            particle_flags | (_channels.at(0)->particle_layout_extra_flags() &
-                              ~ParticleRecord::f_alphas_scales)
+            particle_flags |
+            (_channels.at(0)->particle_layout_extra_flags() &
+             ~(ParticleRecord::f_alphas_scales | ParticleRecord::f_pdf_ladder))
         )
     );
 }
@@ -1206,7 +1218,9 @@ void EventGenerator::read_and_combine(
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_partial_weights;
     bool has_clustering =
         _channels.at(0)->particle_layout_extra_flags() & ParticleRecord::f_clustering;
-    bool has_alphas_scales = any_alphas_scales(_channels) != 0;
+    int mlm_flags = any_alphas_scales(_channels);
+    bool has_alphas_scales = mlm_flags & ParticleRecord::f_alphas_scales;
+    bool has_ladder = mlm_flags & ParticleRecord::f_pdf_ladder;
     bool has_subproc_index =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_subproc_index;
     bool has_bias = _channels.at(0)->event_layout_extra_flags() & EventRecord::f_bias;
@@ -1225,6 +1239,8 @@ void EventGenerator::read_and_combine(
         auto& channel = _channels.at(sampled_chan - channel_data.begin());
         bool channel_has_alphas_scales =
             channel->particle_layout_extra_flags() & ParticleRecord::f_alphas_scales;
+        bool channel_has_ladder =
+            channel->particle_layout_extra_flags() & ParticleRecord::f_pdf_ladder;
 
         double weight = 0.;
         while (true) {
@@ -1293,6 +1309,9 @@ void EventGenerator::read_and_combine(
                     ? particle_in.alphas_scale().value()
                     : 0.;
             }
+            if (has_ladder) {
+                copy_ladder(particle_in, particle_out, channel_has_ladder);
+            }
         }
         for (; i < buffer.particle_count(); ++i) {
             auto particle_out = buffer.particle(event_index, i);
@@ -1307,6 +1326,9 @@ void EventGenerator::read_and_combine(
             }
             if (has_alphas_scales) {
                 particle_out.alphas_scale() = 0.;
+            }
+            if (has_ladder) {
+                copy_ladder(particle_out, particle_out, false);
             }
         }
         ++sampled_chan->buffer_index;

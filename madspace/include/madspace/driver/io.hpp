@@ -62,6 +62,10 @@ public:
     // outgoing particle 2 + i is vertex i's. Only kept in the combined buffer
     // the systematics read, never written to an event file.
     static constexpr int f_alphas_scales = 8;
+    // MLM pdf reweighting ladder: step s (each one that can carry a pdf
+    // ratio) on particle s, each beam's leading density on particle 0 and 1.
+    // Like f_alphas_scales only in the combined buffer, for the systematics.
+    static constexpr int f_pdf_ladder = 16;
 
     static std::vector<FieldLayout> layout(int fields) {
         std::vector<FieldLayout> ret;
@@ -101,6 +105,20 @@ public:
         if (fields & f_alphas_scales) {
             ret.push_back({"alphas_scale", FieldLayout::f64, 2});
         }
+        if (fields & f_pdf_ladder) {
+            ret.insert(
+                ret.end(),
+                {
+                    {"ladder_x", FieldLayout::f64, 3},
+                    {"ladder_pdg", FieldLayout::f64, 3},
+                    {"ladder_q_num", FieldLayout::f64, 3},
+                    {"ladder_q_den", FieldLayout::f64, 3},
+                    {"ladder_info", FieldLayout::f64, 3},
+                    {"ladder_lead_q", FieldLayout::f64, 3},
+                    {"ladder_lead_mu_f", FieldLayout::f64, 3},
+                }
+            );
+        }
         return ret;
     }
 
@@ -133,6 +151,15 @@ public:
     // scale alpha_s was evaluated at for one MLM clustering vertex, see
     // f_alphas_scales
     UnalignedRef<double> alphas_scale() { return &_data[_offsets[1] + 0]; }
+    // pdf reweighting ladder, see f_pdf_ladder. ladder_info is
+    // active + 2 beam + 4 (the numerator scale is mu_F itself).
+    UnalignedRef<double> ladder_x() { return &_data[_offsets[2] + 0]; }
+    UnalignedRef<double> ladder_pdg() { return &_data[_offsets[2] + 8]; }
+    UnalignedRef<double> ladder_q_num() { return &_data[_offsets[2] + 16]; }
+    UnalignedRef<double> ladder_q_den() { return &_data[_offsets[2] + 24]; }
+    UnalignedRef<double> ladder_info() { return &_data[_offsets[2] + 32]; }
+    UnalignedRef<double> ladder_lead_q() { return &_data[_offsets[2] + 40]; }
+    UnalignedRef<double> ladder_lead_mu_f() { return &_data[_offsets[2] + 48]; }
 
     void from_lhe_particle(const LHEParticle& particle, bool has_clustering = false) {
         lhe_pdg_id() = particle.pdg_id;

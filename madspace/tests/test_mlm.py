@@ -145,6 +145,7 @@ PDF_OUTPUTS = [
     "pdf_rw_q_den",
     "pdf_rw_active",
     "pdf_rw_beam",
+    "pdf_rw_mu_f",
 ]
 
 

@@ -3550,6 +3550,21 @@ PYBIND11_MODULE(_madspace_py, m) {
             "alps", &SystematicsConfig::alps, pydoc::doc("SystematicsConfig::alps")
         )
         .def_readwrite(
+            "pdf_ladder",
+            &SystematicsConfig::pdf_ladder,
+            pydoc::doc("SystematicsConfig::pdf_ladder")
+        )
+        .def_readwrite(
+            "ladder_min_scale",
+            &SystematicsConfig::ladder_min_scale,
+            pydoc::doc("SystematicsConfig::ladder_min_scale")
+        )
+        .def_readwrite(
+            "ladder_max_scale",
+            &SystematicsConfig::ladder_max_scale,
+            pydoc::doc("SystematicsConfig::ladder_max_scale")
+        )
+        .def_readwrite(
             "together",
             &SystematicsConfig::together,
             pydoc::doc("SystematicsConfig::together")
@@ -3779,7 +3794,9 @@ PYBIND11_MODULE(_madspace_py, m) {
                const std::vector<double>& partial_weight_product,
                const nested_vector3<double>& momenta,
                const std::vector<double>& alpha_qcd,
-               const nested_vector2<double>& alphas_scales) {
+               const nested_vector2<double>& alphas_scales,
+               const nested_vector3<double>& ladder,
+               const nested_vector2<double>& ladder_lead) {
                 // build a combined-layout buffer from columns (testing / scripting)
                 std::size_t count = event_weight.size();
                 std::size_t particle_count = momenta.empty() ? 0 : momenta.at(0).size();
@@ -3787,11 +3804,21 @@ PYBIND11_MODULE(_madspace_py, m) {
                 for (auto& row : alphas_scales) {
                     particle_count = std::max(particle_count, row.size() + 3);
                 }
+                // the pdf ladder: step s ([x, pdg, q_num, q_den, info]) on
+                // particle s, and [q_lead1, q_lead2, mu_f1, mu_f2] per event
+                for (auto& steps : ladder) {
+                    particle_count = std::max(particle_count, steps.size());
+                }
+                if (!ladder_lead.empty()) {
+                    particle_count = std::max<std::size_t>(particle_count, 2);
+                }
                 int particle_flags =
                     (momenta.empty() ? ParticleRecord::f_none
                                      : ParticleRecord::f_particle_data) |
                     (alphas_scales.empty() ? ParticleRecord::f_none
-                                           : ParticleRecord::f_alphas_scales);
+                                           : ParticleRecord::f_alphas_scales) |
+                    (ladder_lead.empty() ? ParticleRecord::f_none
+                                         : ParticleRecord::f_pdf_ladder);
                 DataLayout layout(
                     EventRecord::layout(
                         EventRecord::f_weight | EventRecord::f_subproc_index |
@@ -3832,6 +3859,21 @@ PYBIND11_MODULE(_madspace_py, m) {
                         buffer.particle(i, j).alphas_scale() =
                             j >= 2 && j - 2 < row.size() ? row.at(j - 2) : 0.;
                     }
+                    for (std::size_t j = 0; !ladder_lead.empty() && j < particle_count;
+                         ++j) {
+                        auto particle = buffer.particle(i, j);
+                        auto& lead = ladder_lead.at(i);
+                        particle.ladder_lead_q() = j < 2 ? lead.at(j) : 0.;
+                        particle.ladder_lead_mu_f() = j < 2 ? lead.at(j + 2) : 0.;
+                        bool has_step = !ladder.empty() && j < ladder.at(i).size();
+                        auto step = has_step ? ladder.at(i).at(j)
+                                             : std::vector<double>(5, 0.);
+                        particle.ladder_x() = step.at(0);
+                        particle.ladder_pdg() = step.at(1);
+                        particle.ladder_q_num() = step.at(2);
+                        particle.ladder_q_den() = step.at(3);
+                        particle.ladder_info() = step.at(4);
+                    }
                 }
                 std::vector<double> weights;
                 calc.compute(buffer, weights);
@@ -3856,7 +3898,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("partial_weight_product"),
             py::arg("momenta") = nested_vector3<double>{},
             py::arg("alpha_qcd") = std::vector<double>{},
-            py::arg("alphas_scales") = nested_vector2<double>{}
+            py::arg("alphas_scales") = nested_vector2<double>{},
+            py::arg("ladder") = nested_vector3<double>{},
+            py::arg("ladder_lead") = nested_vector2<double>{}
         );
     py::classh<EventHistogramSpec>(
         m, "EventHistogramSpec", pydoc::doc("EventHistogramSpec")

@@ -655,7 +655,11 @@ MLMClustering::MLMClustering(
          {"pdf_rw_active",
           batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
          {"pdf_rw_beam",
-          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)}}
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
+         // whether a scale is mu_F itself rather than a clustering scale:
+         // each step's numerator, then each beam's leading density
+         {"pdf_rw_mu_f",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 3)}}
     ),
     _cm_energy(cm_energy),
     _jet_scale_scheme(jet_scale_scheme),
@@ -1065,7 +1069,7 @@ NamedVector<Value> MLMClustering::build_kernel(
     Value flavor_index,
     const std::vector<me_int_t>& leg_flavors
 ) const {
-    std::array<Value, 16> mlm_out;
+    std::array<Value, 17> mlm_out;
     Value random = fb.squeeze(fb.random(fb.batch_size({momenta}), 1));
     // Without the flavours of the event a single row of zeros, which leaves
     // every clustering allowed: the history over the union of all diagrams.

@@ -230,6 +230,15 @@ SystematicsCalculator::SystematicsCalculator(
             }
         }
     }
+    if (_config.pdf_ladder && nominal_pdf) {
+        // a ladder step carries whichever parton the beam line had there
+        for (int pdg : nominal_pdf->pids) {
+            bool parton = pdg == 21 || (pdg != 0 && std::abs(pdg) <= 5);
+            if (parton && std::find(pids.begin(), pids.end(), pdg) == pids.end()) {
+                pids.push_back(pdg);
+            }
+        }
+    }
     std::sort(pids.begin(), pids.end());
     if (_config.has_pdf) {
         _nominal_pdf = make_pdf_evaluator(nominal_pdf.value(), pids, "nominal", 0);
@@ -697,12 +706,25 @@ void SystematicsCalculator::compute(
     bool use_pdf = _config.has_pdf && _nominal_pdf && (has_beam1 || has_beam2);
     bool has_dyn = !_config.dyn_scales.empty();
     bool has_vertices = particle_layout_has(layout, "alphas_scale");
+    bool has_ladder = particle_layout_has(layout, "ladder_x");
 
     // per-event inputs
     struct EventInput {
         // the scales of the MLM clustering vertices whose alpha_s is evaluated
         // at their own scale rather than at mu_R (empty if none)
         std::vector<double> vertex_scales;
+        // the MLM pdf reweighting ladder: each beam's leading density (its
+        // scale, and whether that is mu_F itself), then every active step
+        struct LadderStep {
+            double x, q_num, q_den;
+            me_int_t slot;
+            int beam;
+            bool num_mu_f;
+        };
+        std::vector<LadderStep> ladder;
+        std::array<double, 2> lead_q{0., 0.};
+        std::array<bool, 2> lead_mu_f{true, true};
+        bool has_ladder = false;
         double w0, ren_scale, x1, x2, muf1, muf2, alpha_s, nominal_product;
         int subproc, qcd_power;
         me_int_t slot1, slot2;
@@ -750,6 +772,30 @@ void SystematicsCalculator::compute(
                 if (scale > 0.) {
                     in.vertex_scales.push_back(scale);
                 }
+            }
+        }
+        if (has_ladder && use_pdf) {
+            for (int b = 0; b < 2; ++b) {
+                auto particle = buffer.particle(i, b);
+                in.lead_q[b] = particle.ladder_lead_q();
+                in.lead_mu_f[b] = particle.ladder_lead_mu_f() != 0.;
+            }
+            // a 2 -> 1 event of a merged run has no ladder: all zero
+            in.has_ladder = in.lead_q[0] > 0. || in.lead_q[1] > 0.;
+            for (std::size_t j = 0; in.has_ladder && j < buffer.particle_count(); ++j) {
+                auto particle = buffer.particle(i, j);
+                int info = static_cast<int>(particle.ladder_info());
+                if (!(info & 1)) {
+                    continue;
+                }
+                in.ladder.push_back({
+                    .x = particle.ladder_x(),
+                    .q_num = particle.ladder_q_num(),
+                    .q_den = particle.ladder_q_den(),
+                    .slot = pid_slot(static_cast<int>(particle.ladder_pdg())),
+                    .beam = (info >> 1) & 1,
+                    .num_mu_f = static_cast<bool>((info >> 2) & 1),
+                });
             }
         }
         in.dyn_scale.fill(0.);
@@ -892,6 +938,98 @@ void SystematicsCalculator::compute(
         for (std::size_t m = 0; m < _member_pdfs.size(); ++m) {
             if (!member_vars[m].empty()) {
                 evaluate_variations(_member_pdfs[m], _member_pdfs[m], member_vars[m]);
+            }
+        }
+    }
+
+    // MLM pdf reweighting ladder, as madevent's systematics.py: the event
+    // carries f(x_b, Q_lead) for each beam times f(x_s, Q_num) / f(x_s, Q_den)
+    // for each step of the ladder, every Q a clustering scale capped at mu_F
+    // or mu_F itself. A variation takes a clustering scale q to
+    // min(alpsfact q, k S) and mu_F to k S, S being mu_F or the alternative
+    // dynamical scale, and a PDF member evaluates the whole product. The
+    // nominal product is recomputed the same way, so that the central point
+    // is exactly one.
+    std::vector<std::size_t> ladder_events;
+    for (std::size_t i = 0; use_pdf && i < count; ++i) {
+        if (inputs[i].has_ladder) {
+            ladder_events.push_back(i);
+        }
+    }
+    if (!ladder_events.empty()) {
+        double low = _config.ladder_min_scale;
+        double high = _config.ladder_max_scale > 0. ? _config.ladder_max_scale : 1e30;
+        // W for every ladder event at one variation; 0 where madevent vetoes
+        // (a density divided by under 1e-10)
+        auto ladder_weights = [&](const PdfEvaluator& evaluator, const Variation& var) {
+            std::vector<double> x, q;
+            std::vector<me_int_t> slots;
+            for (std::size_t i : ladder_events) {
+                auto& in = inputs[i];
+                std::array<double, 2> top{
+                    var.muf * scale_of(in, var.dyn, in.muf1),
+                    var.muf * scale_of(in, var.dyn, in.muf2)
+                };
+                auto vary = [&](double scale, bool is_mu_f, int beam) {
+                    double varied =
+                        is_mu_f ? top[beam] : std::min(var.alps * scale, top[beam]);
+                    return std::min(std::max(varied, low), high);
+                };
+                std::array<double, 2> beam_x{in.x1, in.x2};
+                std::array<me_int_t, 2> beam_slot{in.slot1, in.slot2};
+                std::array<bool, 2> has_beam{has_beam1, has_beam2};
+                for (int b = 0; b < 2; ++b) {
+                    if (has_beam[b]) {
+                        x.push_back(beam_x[b]);
+                        q.push_back(vary(in.lead_q[b], in.lead_mu_f[b], b));
+                        slots.push_back(beam_slot[b]);
+                    }
+                }
+                for (auto& step : in.ladder) {
+                    x.push_back(step.x);
+                    q.push_back(vary(step.q_num, step.num_mu_f, step.beam));
+                    slots.push_back(step.slot);
+                    x.push_back(step.x);
+                    q.push_back(vary(step.q_den, false, step.beam));
+                    slots.push_back(step.slot);
+                }
+            }
+            auto values = evaluate_pdf(evaluator, x, q, slots);
+            std::vector<double> result;
+            std::size_t n = 0;
+            for (std::size_t i : ladder_events) {
+                auto& in = inputs[i];
+                double w = 1.;
+                if (has_beam1) {
+                    w *= values[n++];
+                }
+                if (has_beam2) {
+                    w *= values[n++];
+                }
+                for (std::size_t s = 0; s < in.ladder.size(); ++s) {
+                    double numerator = values[n++];
+                    double denominator = values[n++];
+                    w = denominator >= 1e-10 ? w * numerator / denominator : 0.;
+                }
+                result.push_back(w);
+            }
+            return result;
+        };
+        Variation central{0, 1., 1., -1, -1, 1.};
+        auto nominal = ladder_weights(_nominal_pdf.value(), central);
+        for (std::size_t k = 0; k < var_count; ++k) {
+            auto& var = _variations.at(k);
+            bool varies_pdf = var.pdf_index >= 0 || var.muf != 1. || var.dyn != -1 ||
+                var.alps != 1.;
+            if (!varies_pdf) {
+                continue;
+            }
+            auto& evaluator = var.pdf_index >= 0 ? _member_pdfs.at(var.pdf_index)
+                                                 : _nominal_pdf.value();
+            auto varied = ladder_weights(evaluator, var);
+            for (std::size_t n = 0; n < ladder_events.size(); ++n) {
+                r_pdf[ladder_events[n]][k] =
+                    nominal[n] == 0. ? 0. : varied[n] / nominal[n];
             }
         }
     }
@@ -1294,6 +1432,9 @@ void madspace::to_json(json& j, const SystematicsConfig& config) {
         {"mur", config.mur},
         {"muf", config.muf},
         {"alps", config.alps},
+        {"pdf_ladder", config.pdf_ladder},
+        {"ladder_min_scale", config.ladder_min_scale},
+        {"ladder_max_scale", config.ladder_max_scale},
         {"together", config.together},
         {"dyn_scales", config.dyn_scales},
         {"scale_factor", config.scale_factor},
@@ -1312,6 +1453,9 @@ void madspace::from_json(const json& j, SystematicsConfig& config) {
     config.mur = j.at("mur").get<std::vector<double>>();
     config.muf = j.at("muf").get<std::vector<double>>();
     config.alps = j.value("alps", std::vector<double>{1.});
+    config.pdf_ladder = j.value("pdf_ladder", false);
+    config.ladder_min_scale = j.value("ladder_min_scale", 0.);
+    config.ladder_max_scale = j.value("ladder_max_scale", 0.);
     config.together = j.value("together", true);
     config.dyn_scales = j.value("dyn_scales", std::vector<int>{});
     config.scale_factor = j.value("scale_factor", 1.);
