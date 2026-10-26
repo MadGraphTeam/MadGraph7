@@ -52,6 +52,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:  # the ``tools`` package, run as a script
+    sys.path.insert(0, str(ROOT))
 OUTPUT = ROOT / "tests" / "fixtures" / "loop" / "v2" / "operation_counts.json"
 # As the tests' loop_sm_ufo input: the environment variable, else the
 # checkout's MadGraph copy.

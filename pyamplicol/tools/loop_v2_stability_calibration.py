@@ -57,6 +57,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:  # the ``tools`` package, run as a script
+    sys.path.insert(0, str(ROOT))
 UFO = Path(
     os.environ.get(
         "PYAMPLICOL_NLO_UFO_REFERENCE",

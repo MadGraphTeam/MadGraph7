@@ -54,6 +54,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:  # the ``tools`` package, run as a script
+    sys.path.insert(0, str(ROOT))
+
 
 def _orders(text: str) -> dict[str, int]:
     return {

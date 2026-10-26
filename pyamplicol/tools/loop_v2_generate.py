@@ -73,6 +73,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:  # the ``tools`` package, run as a script
+    sys.path.insert(0, str(ROOT))
 STAGES = (
     ("assemble", "build_tree_blocks"),
     ("assemble", "_field_level_families"),
