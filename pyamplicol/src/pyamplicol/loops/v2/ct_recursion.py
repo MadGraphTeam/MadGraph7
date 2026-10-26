@@ -1322,7 +1322,21 @@ def lower_model_counterterms(
         coefficients, values, unlowered, residual, fixed_parameters or {}
     )
 
+    internal = frozenset(
+        record.name for record in compiled.ir.parameters if record.nature == "internal"
+    )
+
     def vanishes(expression: Any) -> bool:
+        # Without an internal parameter of the payload's, the resolution of
+        # ``vanishes_identically`` leaves a non-zero expansion as it is.
+        value = expression.expand()
+        if value == E("0"):
+            return True
+        if not any(
+            symbol.get_name().rsplit("::", 1)[-1] in internal
+            for symbol in value.get_all_symbols(False)
+        ):
+            return False
         return vanishes_identically(compiled, expression)
 
     # Unlowered cells must cancel with the rules' multiplicities; otherwise

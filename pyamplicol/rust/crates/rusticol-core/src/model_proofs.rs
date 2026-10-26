@@ -109,7 +109,11 @@ fn json_token(text: &str) -> String {
 
 struct Proof<'a> {
     input: &'a KernelProofInput,
-    oriented: [Vec<Atom>; 2],
+    coupling: Atom,
+    // (component * coupling).expand() per input order, formed lazily: the
+    // oracle forms them all, but only the candidates' compared components
+    // and, for inputs of equal dimensions, the exchange test read them.
+    oriented: [Vec<Option<Atom>>; 2],
     // (order, sign index, component) -> canonical string, formed lazily.
     strings: HashMap<(usize, usize, usize), String>,
 }
@@ -117,19 +121,32 @@ struct Proof<'a> {
 const SIGNS: [i64; 2] = [1, -1];
 
 impl Proof<'_> {
-    fn component_string(&mut self, order: usize, sign: usize, index: usize) -> &str {
-        let oriented = &self.oriented;
-        self.strings
-            .entry((order, sign, index))
-            .or_insert_with(|| {
-                (Atom::num(SIGNS[sign]) * &oriented[order][index])
-                    .expand()
-                    .to_canonical_string()
-            })
-            .as_str()
+    fn oriented(&mut self, order: usize, index: usize) -> RusticolResult<&Atom> {
+        if self.oriented[order][index].is_none() {
+            let component = parse(&self.input.components[order][index])?;
+            self.oriented[order][index] = Some((component * &self.coupling).expand());
+        }
+        Ok(self.oriented[order][index]
+            .as_ref()
+            .expect("formed above"))
     }
 
-    fn signature(&mut self, order: usize, sign: usize) -> String {
+    fn component_string(
+        &mut self,
+        order: usize,
+        sign: usize,
+        index: usize,
+    ) -> RusticolResult<&str> {
+        if !self.strings.contains_key(&(order, sign, index)) {
+            let text = (Atom::num(SIGNS[sign]) * self.oriented(order, index)?)
+                .expand()
+                .to_canonical_string();
+            self.strings.insert((order, sign, index), text);
+        }
+        Ok(self.strings[&(order, sign, index)].as_str())
+    }
+
+    fn signature(&mut self, order: usize, sign: usize) -> RusticolResult<String> {
         let dimensions = self.input.dimensions;
         let input = ORDERS[order];
         let count = self.oriented[order].len();
@@ -138,7 +155,7 @@ impl Proof<'_> {
             if index > 0 {
                 out.push(',');
             }
-            let text = self.component_string(order, sign, index).to_owned();
+            let text = self.component_string(order, sign, index)?.to_owned();
             json_string(&text, &mut out);
         }
         let _ = write!(
@@ -146,22 +163,33 @@ impl Proof<'_> {
             "],\"input_dimensions\":[{},{}],\"output_dimension\":{}}}",
             dimensions[input[0] as usize], dimensions[input[1] as usize], dimensions[2]
         );
-        out
+        Ok(out)
+    }
+
+    /// Whether every swapped component equals `sign` times the direct one
+    /// (`(swapped - sign * direct).expand() == 0`, component by component,
+    /// stopping at the first that is not; equal atoms are zero at once).
+    fn exchanges(&mut self, sign: i64) -> RusticolResult<bool> {
+        for index in 0..self.oriented[0].len() {
+            let direct = Atom::num(sign) * self.oriented(0, index)?;
+            let swapped = self.oriented(1, index)?;
+            if *swapped != direct && !(swapped - &direct).expand().is_zero() {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 }
 
 fn prove(input: &KernelProofInput) -> RusticolResult<KernelProof> {
-    let coupling = parse(&input.coupling)?;
-    let mut oriented: [Vec<Atom>; 2] = [Vec::new(), Vec::new()];
-    for (order, components) in input.components.iter().enumerate() {
-        for component in components {
-            oriented[order].push((parse(component)? * &coupling).expand());
-        }
-    }
     let mut proof = Proof {
         input,
-        oriented,
-        strings: Default::default(),
+        coupling: parse(&input.coupling)?,
+        oriented: [
+            vec![None; input.components[0].len()],
+            vec![None; input.components[1].len()],
+        ],
+        strings: HashMap::new(),
     };
     // Candidates in the oracle's order: per input order, the signs 1, -1.
     let candidates: Vec<(usize, usize)> = (0..2)
@@ -174,10 +202,10 @@ fn prove(input: &KernelProofInput) -> RusticolResult<KernelProof> {
             if tied.len() == 1 {
                 break;
             }
-            let tokens: Vec<String> = tied
-                .iter()
-                .map(|&(order, sign)| json_token(proof.component_string(order, sign, index)))
-                .collect();
+            let mut tokens = Vec::with_capacity(tied.len());
+            for &(order, sign) in &tied {
+                tokens.push(json_token(proof.component_string(order, sign, index)?));
+            }
             let least = tokens.iter().min().cloned().unwrap_or_default();
             tied = tied
                 .iter()
@@ -190,7 +218,7 @@ fn prove(input: &KernelProofInput) -> RusticolResult<KernelProof> {
     // `min(tied, key=signature)`: the first least signature.
     let mut winner: Option<((usize, usize), String)> = None;
     for &(order, sign) in &tied {
-        let signature = proof.signature(order, sign);
+        let signature = proof.signature(order, sign)?;
         if winner.as_ref().is_none_or(|(_, best)| signature < *best) {
             winner = Some(((order, sign), signature));
         }
@@ -203,16 +231,9 @@ fn prove(input: &KernelProofInput) -> RusticolResult<KernelProof> {
         let _ = write!(class_digest, "{byte:02x}");
     }
     let mut exchange = None;
-    if input.dimensions[0] == input.dimensions[1] {
-        let [direct, swapped] = &proof.oriented;
+    if input.dimensions[0] == input.dimensions[1] && proof.oriented[1].len() == first {
         for exchange_sign in SIGNS {
-            if direct.len() == swapped.len()
-                && direct.iter().zip(swapped).all(|(direct, swapped)| {
-                    (swapped - &(Atom::num(exchange_sign) * direct))
-                        .expand()
-                        .is_zero()
-                })
-            {
+            if proof.exchanges(exchange_sign)? {
                 exchange = Some(exchange_sign as i32);
                 break;
             }
