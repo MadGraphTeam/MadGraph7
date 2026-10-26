@@ -1599,8 +1599,16 @@ def _validate_v2_artifact(backend, output, context, generated, members):
     """Load every staged process (and flavour member) through the public
     runtime and compare its native evaluation, inclusive and for every
     declared colour history, with the Python reference executor of the
-    generated slice on the validation points."""
-    from pyamplicol.api import Runtime
+    generated slice on the validation points.
+
+    The two are different binary64 routes (the stored native programs and
+    columns against the Python per-point inputs), so a virtual is held to
+    the validation tolerance or, where the runtime's own reduction-direction
+    estimate E exceeds it, to E (the user's binary64 rule, 2026-10-23; E
+    above ``V2_VALIDATION_ESTIMATE_CAP`` fails): at an ill-conditioned
+    validation point binary64 does not reach the tolerance on either
+    route."""
+    from pyamplicol.api import Runtime, VirtualStabilityChecks
     from pyamplicol.artifacts import load_manifest
     from pyamplicol.correlators import CorrelatedRequest
     from pyamplicol.loops.v2.observables import MemberObservables
@@ -1630,12 +1638,14 @@ def _validate_v2_artifact(backend, output, context, generated, members):
         points, scales = _v2_validation_points(context, entry, validation, index)
         observables = generated[representative].observables
         histories = tuple(history.id for history in observables.histories)
-        result = runtime.evaluate(points, mu_r2=scales)
+        checks = VirtualStabilityChecks(0, reduction_direction=True)
+        result = runtime.evaluate(points, mu_r2=scales, stability_checks=checks)
         correlated = (
             runtime.evaluate_correlated_many(
                 points,
                 {history: CorrelatedRequest(history, {}) for history in histories},
                 mu_r2=scales,
+                stability_checks=checks,
             )
             if histories
             else {}
@@ -1659,6 +1669,11 @@ def _validate_v2_artifact(backend, output, context, generated, members):
                 )
 
 
+# The largest binary64 stability estimate a validated virtual may have (the
+# user's binary64 rule, 2026-10-23).
+V2_VALIDATION_ESTIMATE_CAP = 1e-9
+
+
 def _compare_v2(name, label, result, point_index, reference, tolerance):
     born = {canonical_order(k): v for k, v in reference.born.items()}
     for order, value in zip(
@@ -1675,11 +1690,21 @@ def _compare_v2(name, label, result, point_index, reference, tolerance):
     virtual = {
         canonical_order(k): v for k, v in reference.components["virtual"].items()
     }
+    bound = tolerance
+    if result.stability is not None:
+        estimate = result.stability[point_index].relative
+        if not estimate <= V2_VALIDATION_ESTIMATE_CAP:
+            raise GenerationError(
+                f"saved v2 virtual of {name!r} ({label}): its binary64 stability "
+                f"estimate {estimate!r} at the validation point exceeds "
+                f"{V2_VALIDATION_ESTIMATE_CAP!r}"
+            )
+        bound = max(tolerance, estimate)
     for sector, laurent in zip(result.sectors, result.values[point_index], strict=True):
         target = virtual[sector.order].coefficients
         size = max(abs(complex(x)) for x in target)
         for k, (value, expected) in enumerate(zip(laurent, target, strict=True)):
-            if abs(complex(value) - complex(expected)) > tolerance * size:
+            if abs(complex(value) - complex(expected)) > bound * size:
                 raise GenerationError(
                     f"saved v2 virtual of {name!r} ({label}) differs from the "
                     f"reference executor (sector {sector.order}, coefficient {k}: "
