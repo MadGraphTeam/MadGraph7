@@ -2856,9 +2856,9 @@ mlm_clustering_hadronic:
     - name: pdf_rw_beam
       type: [float, n-1]
       desc: which beam each step sits on, as 0 or 1
-    - name: pdf_rw_mu_f
-      type: [float, n+1]
-      desc: one where a scale is mu_F itself rather than a clustering scale, for each step's numerator, then each beam's leading density
+    - name: pdf_rw_x_prev
+      type: [float, n-1]
+      desc: momentum fraction of the beam line before each step's z, relative to the beam
 
   vectorized: False
 
@@ -2979,9 +2979,9 @@ mlm_clustering_leptonic:
     - name: pdf_rw_beam
       type: [float, n-1]
       desc: which beam each step sits on, as 0 or 1
-    - name: pdf_rw_mu_f
-      type: [float, n+1]
-      desc: one where a scale is mu_F itself rather than a clustering scale, for each step's numerator, then each beam's leading density
+    - name: pdf_rw_x_prev
+      type: [float, n-1]
+      desc: momentum fraction of the beam line before each step's z, relative to the beam
 
   vectorized: False
 

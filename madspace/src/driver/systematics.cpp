@@ -680,11 +680,49 @@ SystematicsCalculator::reweight_info(EventBuffer& buffer, std::size_t event_inde
         .fact_scale1 = has_beam1 ? event.fact_scale1().value() : 0.,
         .fact_scale2 = has_beam2 ? event.fact_scale2().value() : 0.,
     };
+    // the MLM alpha_s vertices and pdf ladder, as madevent books them
+    if (particle_layout_has(layout, "alphas_scale")) {
+        for (std::size_t j = 2; j < buffer.particle_count(); ++j) {
+            double scale = buffer.particle(event_index, j).alphas_scale();
+            if (scale > 0.) {
+                info.asrwt.push_back(scale);
+            }
+        }
+    }
+    if (particle_layout_has(layout, "ladder_x") && has_beam1 && has_beam2) {
+        std::array<double, 2> lead_q{
+            buffer.particle(event_index, 0).ladder_lead_q(),
+            buffer.particle(event_index, 1).ladder_lead_q()
+        };
+        if (lead_q[0] > 0. || lead_q[1] > 0.) {
+            std::array<int, 2> pdg{info.pdg1, info.pdg2};
+            std::array<double, 2> x{info.x1, info.x2};
+            for (std::size_t b = 0; b < 2; ++b) {
+                info.ladder_pdgs[b].push_back(pdg[b]);
+                info.ladder_x[b].push_back(x[b]);
+                info.ladder_q[b].push_back(lead_q[b]);
+            }
+            for (std::size_t j = 0; j < buffer.particle_count(); ++j) {
+                auto particle = buffer.particle(event_index, j);
+                int step_info = static_cast<int>(particle.ladder_info());
+                if (!(step_info & 1)) {
+                    continue;
+                }
+                int b = (step_info >> 1) & 1;
+                info.ladder_pdgs[b].push_back(static_cast<int>(particle.ladder_pdg()));
+                info.ladder_x[b].push_back(particle.ladder_x());
+                info.ladder_q[b].push_back(particle.ladder_q());
+            }
+        }
+    }
     // beam 1 moves along +z: leg 1 of a mirrored event belongs to beam 2
     if (has_beam1 && has_beam2 && buffer.particle(event_index, 0).pz() < 0.) {
         std::swap(info.pdg1, info.pdg2);
         std::swap(info.x1, info.x2);
         std::swap(info.fact_scale1, info.fact_scale2);
+        std::swap(info.ladder_pdgs[0], info.ladder_pdgs[1]);
+        std::swap(info.ladder_x[0], info.ladder_x[1]);
+        std::swap(info.ladder_q[0], info.ladder_q[1]);
     }
     return info;
 }
@@ -713,17 +751,15 @@ void SystematicsCalculator::compute(
         // the scales of the MLM clustering vertices whose alpha_s is evaluated
         // at their own scale rather than at mu_R (empty if none)
         std::vector<double> vertex_scales;
-        // the MLM pdf reweighting ladder: each beam's leading density (its
-        // scale, and whether that is mu_F itself), then every active step
-        struct LadderStep {
-            double x, q_num, q_den;
+        // the MLM pdf reweighting ladder of each beam, as madevent books it
+        // for its systematics (pdfrwt): the beam parton at x_beam and its
+        // leading scale, then for every step the line's flavour, its momentum
+        // fraction before the step and the scale the step takes it to
+        struct LadderEntry {
+            double x, q;
             me_int_t slot;
-            int beam;
-            bool num_mu_f;
         };
-        std::vector<LadderStep> ladder;
-        std::array<double, 2> lead_q{0., 0.};
-        std::array<bool, 2> lead_mu_f{true, true};
+        std::array<std::vector<LadderEntry>, 2> ladder;
         bool has_ladder = false;
         double w0, ren_scale, x1, x2, muf1, muf2, alpha_s, nominal_product;
         int subproc, qcd_power;
@@ -775,26 +811,26 @@ void SystematicsCalculator::compute(
             }
         }
         if (has_ladder && use_pdf) {
-            for (int b = 0; b < 2; ++b) {
-                auto particle = buffer.particle(i, b);
-                in.lead_q[b] = particle.ladder_lead_q();
-                in.lead_mu_f[b] = particle.ladder_lead_mu_f() != 0.;
+            std::array<double, 2> lead_q{
+                buffer.particle(i, 0).ladder_lead_q(), buffer.particle(i, 1).ladder_lead_q()
+            };
+            // an event of a channel without the ladder carries zeros
+            in.has_ladder = lead_q[0] > 0. || lead_q[1] > 0.;
+            if (in.has_ladder) {
+                in.ladder[0].push_back({in.x1, lead_q[0], in.slot1});
+                in.ladder[1].push_back({in.x2, lead_q[1], in.slot2});
             }
-            // a 2 -> 1 event of a merged run has no ladder: all zero
-            in.has_ladder = in.lead_q[0] > 0. || in.lead_q[1] > 0.;
+            // the steps in clustering order, which is slot order
             for (std::size_t j = 0; in.has_ladder && j < buffer.particle_count(); ++j) {
                 auto particle = buffer.particle(i, j);
                 int info = static_cast<int>(particle.ladder_info());
                 if (!(info & 1)) {
                     continue;
                 }
-                in.ladder.push_back({
-                    .x = particle.ladder_x(),
-                    .q_num = particle.ladder_q_num(),
-                    .q_den = particle.ladder_q_den(),
-                    .slot = pid_slot(static_cast<int>(particle.ladder_pdg())),
-                    .beam = (info >> 1) & 1,
-                    .num_mu_f = static_cast<bool>((info >> 2) & 1),
+                in.ladder[(info >> 1) & 1].push_back({
+                    particle.ladder_x(),
+                    particle.ladder_q(),
+                    pid_slot(static_cast<int>(particle.ladder_pdg())),
                 });
             }
         }
@@ -942,14 +978,13 @@ void SystematicsCalculator::compute(
         }
     }
 
-    // MLM pdf reweighting ladder, as madevent's systematics.py: the event
-    // carries f(x_b, Q_lead) for each beam times f(x_s, Q_num) / f(x_s, Q_den)
-    // for each step of the ladder, every Q a clustering scale capped at mu_F
-    // or mu_F itself. A variation takes a clustering scale q to
-    // min(alpsfact q, k S) and mu_F to k S, S being mu_F or the alternative
-    // dynamical scale, and a PDF member evaluates the whole product. The
-    // nominal product is recomputed the same way, so that the central point
-    // is exactly one.
+    // MLM pdf reweighting ladder, as madevent's systematics.py rebuilds it
+    // from the pdfrwt entries (q_0..q_N-1, x_0..x_N-1) of each beam:
+    //   f(x_N-1, k S) prod_i<N-1 f_i(x_i, Q_i) / f_i(x_i+1, Q_i),
+    //   Q_i = min(alpsfact q_i, k S),
+    // S being the last entry's scale (mu_F where the ladder reaches it) or
+    // the alternative dynamical scale. A PDF member evaluates all of it. The
+    // nominal is rebuilt the same way, so the central point is exactly one.
     std::vector<std::size_t> ladder_events;
     for (std::size_t i = 0; use_pdf && i < count; ++i) {
         if (inputs[i].has_ladder) {
@@ -959,39 +994,32 @@ void SystematicsCalculator::compute(
     if (!ladder_events.empty()) {
         double low = _config.ladder_min_scale;
         double high = _config.ladder_max_scale > 0. ? _config.ladder_max_scale : 1e30;
-        // W for every ladder event at one variation; 0 where madevent vetoes
-        // (a density divided by under 1e-10)
+        auto clamp = [&](double q) { return std::min(std::max(q, low), high); };
+        std::array<bool, 2> has_beam{has_beam1, has_beam2};
         auto ladder_weights = [&](const PdfEvaluator& evaluator, const Variation& var) {
             std::vector<double> x, q;
             std::vector<me_int_t> slots;
             for (std::size_t i : ladder_events) {
                 auto& in = inputs[i];
-                std::array<double, 2> top{
-                    var.muf * scale_of(in, var.dyn, in.muf1),
-                    var.muf * scale_of(in, var.dyn, in.muf2)
-                };
-                auto vary = [&](double scale, bool is_mu_f, int beam) {
-                    double varied =
-                        is_mu_f ? top[beam] : std::min(var.alps * scale, top[beam]);
-                    return std::min(std::max(varied, low), high);
-                };
-                std::array<double, 2> beam_x{in.x1, in.x2};
-                std::array<me_int_t, 2> beam_slot{in.slot1, in.slot2};
-                std::array<bool, 2> has_beam{has_beam1, has_beam2};
                 for (int b = 0; b < 2; ++b) {
-                    if (has_beam[b]) {
-                        x.push_back(beam_x[b]);
-                        q.push_back(vary(in.lead_q[b], in.lead_mu_f[b], b));
-                        slots.push_back(beam_slot[b]);
+                    auto& entries = in.ladder[b];
+                    if (!has_beam[b] || entries.empty()) {
+                        continue;
                     }
-                }
-                for (auto& step : in.ladder) {
-                    x.push_back(step.x);
-                    q.push_back(vary(step.q_num, step.num_mu_f, step.beam));
-                    slots.push_back(step.slot);
-                    x.push_back(step.x);
-                    q.push_back(vary(step.q_den, false, step.beam));
-                    slots.push_back(step.slot);
+                    double top = var.muf *
+                        (var.dyn == -1 ? entries.back().q : in.dyn_scale[var.dyn]);
+                    x.push_back(entries.back().x);
+                    q.push_back(clamp(top));
+                    slots.push_back(entries.back().slot);
+                    for (std::size_t e = 0; e + 1 < entries.size(); ++e) {
+                        double scale = clamp(std::min(var.alps * entries[e].q, top));
+                        x.push_back(entries[e].x);
+                        q.push_back(scale);
+                        slots.push_back(entries[e].slot);
+                        x.push_back(entries[e + 1].x);
+                        q.push_back(scale);
+                        slots.push_back(entries[e].slot);
+                    }
                 }
             }
             auto values = evaluate_pdf(evaluator, x, q, slots);
@@ -1000,16 +1028,17 @@ void SystematicsCalculator::compute(
             for (std::size_t i : ladder_events) {
                 auto& in = inputs[i];
                 double w = 1.;
-                if (has_beam1) {
+                for (int b = 0; b < 2; ++b) {
+                    auto& entries = in.ladder[b];
+                    if (!has_beam[b] || entries.empty()) {
+                        continue;
+                    }
                     w *= values[n++];
-                }
-                if (has_beam2) {
-                    w *= values[n++];
-                }
-                for (std::size_t s = 0; s < in.ladder.size(); ++s) {
-                    double numerator = values[n++];
-                    double denominator = values[n++];
-                    w = denominator >= 1e-10 ? w * numerator / denominator : 0.;
+                    for (std::size_t e = 0; e + 1 < entries.size(); ++e) {
+                        double numerator = values[n++];
+                        double denominator = values[n++];
+                        w = denominator >= 1e-10 ? w * numerator / denominator : 0.;
+                    }
                 }
                 result.push_back(w);
             }

@@ -516,11 +516,15 @@ def test_mlm_vertices_follow_the_emission_scale(grids, ref):
 
 def test_mlm_pdf_ladder_follows_alpsfact_and_muf(grids, ref):
     """The pdf reweighting ladder of an MLM event, varied as madevent's
-    systematics.py does: the event carries f(x_b, Q_lead) per beam times
-    f(x_s, Q_num) / f(x_s, Q_den) per step, every Q a clustering scale q capped
-    at mu_F or mu_F itself. A variation takes q to min(alpsfact q, k mu_F) and
-    mu_F to k mu_F; the ladder scales stay clamped to the generation range. An
-    event without a ladder (the 2 -> 1 sample) keeps the plain beam ratio."""
+    systematics.py rebuilds it from the pdfrwt entries of each beam: the beam
+    parton at x_beam and its leading scale, then per step the line's flavour,
+    its momentum fraction before the step and the step's scale. With S the
+    last entry's scale, a variation is
+        f(x_N-1, k S) prod_i<N-1 f_i(x_i, Q_i) / f_i(x_i+1, Q_i),
+        Q_i = min(alpsfact q_i, k S),
+    relative to the same at k = alpsfact = 1. A beam with no step has only
+    its leading density, at k S. An event without a ladder (the 2 -> 1
+    sample) keeps the plain beam ratio."""
     grid, alpha_s = grids
     low = 2.0
     config = make_config(
@@ -541,27 +545,32 @@ def test_mlm_pdf_ladder_follows_alpsfact_and_muf(grids, ref):
     for i, (x1, mu) in enumerate(zip(events["x1"], events["ren_scale"])):
         if i == 0:
             ladder.append([])
-            lead.append([0.0, 0.0, 0.0, 0.0])  # no ladder at all
+            lead.append([0.0, 0.0])  # no ladder at all
             continue
         q1 = max(mu * rng.uniform(0.02, 0.8), low)
-        z = rng.uniform(0.3, 0.9)
-        # beam 1 lowered to q1, beam 2 at mu_F; one step on beam 1, from q1
-        # up to mu_F (info: active + 2 * beam 0 + 4 * numerator is mu_F)
-        lead.append([q1, mu, 0.0, 1.0])
-        ladder.append([[0.0] * 5, [x1 * z, 21, mu, q1, 5.0]])
+        q2 = max(mu * rng.uniform(0.02, 0.8), q1)
+        z1, z2 = rng.uniform(0.3, 0.9, 2)
+        # beam 1 lowered to q1, with two steps (a gluon line from q1 to q2,
+        # then a quark line up to mu); beam 2 left at mu with no step.
+        # Step rows: [x before the step, pdg, scale, active + 2 beam]
+        lead.append([q1, mu])
+        ladder.append([[0.0] * 4, [x1, 21, q2, 1.0], [x1 * z1, 2, mu, 1.0]])
+        del z2
     weights = calc.weights(**events, ladder=ladder, ladder_lead=lead)
 
     def ladder_weight(i, k, a):
         x1, x2, mu = events["x1"][i], events["x2"][i], events["ren_scale"][i]
-        top = k * mu
         clamp = lambda q: max(q, low)
-        lowered = lambda q: clamp(min(a * q, top))
-        q1 = lead[i][0]
-        x_step = ladder[i][1][0]
-        return (
-            ref.pdf(2, x1, lowered(q1)) * ref.pdf(2, x2, clamp(top))
-            * ref.pdf(21, x_step, clamp(top)) / ref.pdf(21, x_step, lowered(q1))
-        )
+        # beam 1: entries (2, x1, q1), (21, x1, q2), (2, x1 z1, mu)
+        entries = [(2, x1, lead[i][0]), (21, x1, ladder[i][1][2]),
+                   (2, ladder[i][2][0], ladder[i][2][2])]
+        top = k * entries[-1][2]
+        w = ref.pdf(entries[-1][0], entries[-1][1], clamp(top))
+        for (pdg, x, q), (_, x_next, _) in zip(entries, entries[1:]):
+            scale = clamp(min(a * q, top))
+            w *= ref.pdf(pdg, x, scale) / ref.pdf(pdg, x_next, scale)
+        # beam 2: its leading density alone, at k mu
+        return w * ref.pdf(2, x2, clamp(k * lead[i][1]))
 
     for i, row in enumerate(weights):
         w0 = events["event_weight"][i]

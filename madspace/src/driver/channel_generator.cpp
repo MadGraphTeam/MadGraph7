@@ -341,11 +341,9 @@ void ChannelEventGenerator::init_field_indices() {
         const char* names[] = {
             "ladder_x",
             "ladder_pdg",
-            "ladder_q_num",
-            "ladder_q_den",
+            "ladder_q",
             "ladder_info",
             "ladder_lead_q",
-            "ladder_lead_mu_f",
         };
         for (std::size_t k = 0; k < _field_indices.ladder.size(); ++k) {
             _field_indices.ladder[k] = index_map.at(names[k]);
@@ -873,9 +871,8 @@ void ChannelEventGenerator::write_events(
         auto slot_view = [&](std::size_t k) {
             return unweighted_events.at(_field_indices.ladder[k]).view<double, 2>();
         };
-        auto x_view = slot_view(0), pdg_view = slot_view(1), num_view = slot_view(2),
-             den_view = slot_view(3), info_view = slot_view(4),
-             lead_q_view = slot_view(5), lead_mu_f_view = slot_view(6);
+        auto x_view = slot_view(0), pdg_view = slot_view(1), q_view = slot_view(2),
+             info_view = slot_view(3), lead_q_view = slot_view(4);
         for (std::size_t i = 0; i < w_view.size(); ++i) {
             std::size_t slot_count = x_view[i].size();
             for (std::size_t j = 0; j < _particle_count; ++j) {
@@ -883,11 +880,9 @@ void ChannelEventGenerator::write_events(
                 bool has_slot = j < slot_count;
                 particle.ladder_x() = has_slot ? x_view[i][j] : 0.;
                 particle.ladder_pdg() = has_slot ? pdg_view[i][j] : 0.;
-                particle.ladder_q_num() = has_slot ? num_view[i][j] : 0.;
-                particle.ladder_q_den() = has_slot ? den_view[i][j] : 0.;
+                particle.ladder_q() = has_slot ? q_view[i][j] : 0.;
                 particle.ladder_info() = has_slot ? info_view[i][j] : 0.;
                 particle.ladder_lead_q() = j < 2 ? lead_q_view[i][j] : 0.;
-                particle.ladder_lead_mu_f() = j < 2 ? lead_mu_f_view[i][j] : 0.;
             }
         }
     }

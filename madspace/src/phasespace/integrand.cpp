@@ -65,10 +65,10 @@ bool emits_pdf_ladder(
 
 // the per-slot ladder outputs (one entry per slot that can carry a ratio,
 // slot 0 never does) and the two per-beam ones
-const std::array<const char*, 5> ladder_slot_names{
-    "ladder_x", "ladder_pdg", "ladder_q_num", "ladder_q_den", "ladder_info"
+const std::array<const char*, 4> ladder_slot_names{
+    "ladder_x", "ladder_pdg", "ladder_q", "ladder_info"
 };
-const std::array<const char*, 2> ladder_beam_names{"ladder_lead_q", "ladder_lead_mu_f"};
+const std::array<const char*, 1> ladder_beam_names{"ladder_lead_q"};
 
 bool emits_partial_weights(
     bool partial_weights, const std::optional<EnergyScale>& energy_scale
@@ -1017,8 +1017,7 @@ ValueVec Integrand::mlm_weights(
             : 1e30;
         auto ones = fb.full({1., batch_size_acc});
         Value factor, veto;
-        ValueVec ladder_x, ladder_pdg, ladder_q_num, ladder_q_den, ladder_info;
-        auto mu_f_flags = scales.at("pdf_rw_mu_f");
+        ValueVec ladder_x, ladder_pdg, ladder_q, ladder_info;
         // Slot 0 is the first clustering of the history, which can only ever
         // record where a beam line's density already sits, so it never
         // carries a ratio.
@@ -1061,16 +1060,13 @@ ValueVec Integrand::mlm_weights(
             auto numerator = density("pdf_rw_q_num");
             auto denominator = density("pdf_rw_q_den");
             if (ladder) {
-                // active + 2 beam + 4 (numerator is mu_F itself)
-                auto mu_f = fb.squeeze(fb.select(mu_f_flags, column));
-                ladder_x.push_back(x);
+                // what madevent books for its systematics at a step: the line's
+                // flavour, its momentum fraction before the step's z, and the
+                // scale the step takes the density to; info is active + 2 beam
+                ladder_x.push_back(fb.mul(x_beam, pick("pdf_rw_x_prev")));
                 ladder_pdg.push_back(fb.gather(index, _pdf_rw_pdgs));
-                ladder_q_num.push_back(scale_of("pdf_rw_q_num"));
-                ladder_q_den.push_back(scale_of("pdf_rw_q_den"));
-                ladder_info.push_back(fb.add(
-                    active,
-                    fb.add(fb.mul(beam, 2.), fb.mul(mu_f, 4.))
-                ));
+                ladder_q.push_back(scale_of("pdf_rw_q_num"));
+                ladder_info.push_back(fb.add(active, fb.mul(beam, 2.)));
             }
             // madevent drops the event outright when the density it is
             // dividing by falls under 1e-10, where the grid is no longer
@@ -1100,18 +1096,13 @@ ValueVec Integrand::mlm_weights(
         if (ladder && !ladder_x.empty()) {
             ladder->push_back("ladder_x", fb.stack(ladder_x));
             ladder->push_back("ladder_pdg", fb.stack(ladder_pdg));
-            ladder->push_back("ladder_q_num", fb.stack(ladder_q_num));
-            ladder->push_back("ladder_q_den", fb.stack(ladder_q_den));
+            ladder->push_back("ladder_q", fb.stack(ladder_q));
             ladder->push_back("ladder_info", fb.stack(ladder_info));
-            // each beam's leading density: its scale (as evaluated, clamped
-            // by apply_scale_range), and whether that is mu_F itself
-            std::vector<me_int_t> leads{
-                static_cast<me_int_t>(slot_count), static_cast<me_int_t>(slot_count + 1)
-            };
+            // each beam's leading density, at the scale it was evaluated at
+            // (clamped by apply_scale_range)
             ladder->push_back(
                 "ladder_lead_q", fb.stack({scales.at("pdf_scale1"), scales.at("pdf_scale2")})
             );
-            ladder->push_back("ladder_lead_mu_f", fb.select(mu_f_flags, leads));
         }
     }
     return weights;

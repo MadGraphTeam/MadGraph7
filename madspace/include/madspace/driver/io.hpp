@@ -111,11 +111,9 @@ public:
                 {
                     {"ladder_x", FieldLayout::f64, 3},
                     {"ladder_pdg", FieldLayout::f64, 3},
-                    {"ladder_q_num", FieldLayout::f64, 3},
-                    {"ladder_q_den", FieldLayout::f64, 3},
+                    {"ladder_q", FieldLayout::f64, 3},
                     {"ladder_info", FieldLayout::f64, 3},
                     {"ladder_lead_q", FieldLayout::f64, 3},
-                    {"ladder_lead_mu_f", FieldLayout::f64, 3},
                 }
             );
         }
@@ -151,15 +149,15 @@ public:
     // scale alpha_s was evaluated at for one MLM clustering vertex, see
     // f_alphas_scales
     UnalignedRef<double> alphas_scale() { return &_data[_offsets[1] + 0]; }
-    // pdf reweighting ladder, see f_pdf_ladder. ladder_info is
-    // active + 2 beam + 4 (the numerator scale is mu_F itself).
+    // pdf reweighting ladder, see f_pdf_ladder, as madevent books it for its
+    // systematics: per step the line's flavour, its momentum fraction before
+    // the step's z and the scale the step takes it to; ladder_info is
+    // active + 2 beam.
     UnalignedRef<double> ladder_x() { return &_data[_offsets[2] + 0]; }
     UnalignedRef<double> ladder_pdg() { return &_data[_offsets[2] + 8]; }
-    UnalignedRef<double> ladder_q_num() { return &_data[_offsets[2] + 16]; }
-    UnalignedRef<double> ladder_q_den() { return &_data[_offsets[2] + 24]; }
-    UnalignedRef<double> ladder_info() { return &_data[_offsets[2] + 32]; }
-    UnalignedRef<double> ladder_lead_q() { return &_data[_offsets[2] + 40]; }
-    UnalignedRef<double> ladder_lead_mu_f() { return &_data[_offsets[2] + 48]; }
+    UnalignedRef<double> ladder_q() { return &_data[_offsets[2] + 16]; }
+    UnalignedRef<double> ladder_info() { return &_data[_offsets[2] + 24]; }
+    UnalignedRef<double> ladder_lead_q() { return &_data[_offsets[2] + 32]; }
 
     void from_lhe_particle(const LHEParticle& particle, bool has_clustering = false) {
         lhe_pdg_id() = particle.pdg_id;

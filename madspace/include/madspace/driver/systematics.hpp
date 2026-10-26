@@ -54,8 +54,9 @@ struct SystematicsConfig {
     /// (ParticleRecord::f_pdf_ladder): every parton of the PDF set is then
     /// made available, since a ladder step can be any of them.
     bool pdf_ladder = false;
-    /// Range the scales of the pdf ladder are clamped to, as the integrand
-    /// does (EnergyScale's min_scale / max_scale); `0` disables a bound.
+    /// Range the varied scales of the pdf ladder are clamped to, normally
+    /// the Q range of the PDF grid, where LHAPDF freezes the density for
+    /// madevent; `0` disables a bound.
     double ladder_min_scale = 0.;
     /// See @ref ladder_min_scale.
     double ladder_max_scale = 0.;

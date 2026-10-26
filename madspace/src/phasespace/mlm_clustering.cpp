@@ -656,10 +656,10 @@ MLMClustering::MLMClustering(
           batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
          {"pdf_rw_beam",
           batch_float_array(topologies.at(0).outgoing_masses().size() + 1)},
-         // whether a scale is mu_F itself rather than a clustering scale:
-         // each step's numerator, then each beam's leading density
-         {"pdf_rw_mu_f",
-          batch_float_array(topologies.at(0).outgoing_masses().size() + 3)}}
+         // the beam line's momentum fraction before each step's z, which
+         // madevent books for its systematics
+         {"pdf_rw_x_prev",
+          batch_float_array(topologies.at(0).outgoing_masses().size() + 1)}}
     ),
     _cm_energy(cm_energy),
     _jet_scale_scheme(jet_scale_scheme),

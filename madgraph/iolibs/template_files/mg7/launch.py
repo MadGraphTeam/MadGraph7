@@ -971,6 +971,8 @@ class MadgraphProcess:
         grids = [grid for grid in (self.pdf_grid, self.pdf_grid2)
                  if isinstance(grid, ms.PdfGrid)]
         self.max_scale = min(max(grid.q) for grid in grids) if grids else 0.0
+        # the bottom of the same range, where the densities freeze
+        self.min_pdf_scale = max(min(grid.q) for grid in grids) if grids else 0.0
         for context in self.contexts:
             if not isinstance(self.pdf_grid, ms.CustomPdf):
                 self.pdf_grid.initialize_globals(context)
@@ -1149,14 +1151,14 @@ class MadgraphProcess:
         else:
             config.alps = [1.0]
         # the pdf reweighting ladder of an MLM sample under madevent's scale
-        # scheme, varied as madevent's systematics vary it; its scales are
-        # clamped to the range the generation clamped them to
+        # scheme, varied as madevent's systematics vary it; a varied scale is
+        # kept inside the PDF grid, where LHAPDF freezes it for madevent
         beam = self.run_card["beam"]
         config.pdf_ladder = bool(
             self.mlm_clustering and not self.is_decay and not self.leptonic
             and beam["scale_scheme"] == "madevent" and beam["pdf_reweighting"])
         if config.pdf_ladder:
-            config.ladder_min_scale = float(beam["min_scale"])
+            config.ladder_min_scale = float(self.min_pdf_scale)
             config.ladder_max_scale = float(self.max_scale)
         config.together = bool(syst["together"])
         config.dyn_scales = self.resolve_dynamical_scales()

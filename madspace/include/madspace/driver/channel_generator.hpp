@@ -222,8 +222,8 @@ private:
         int x1, fact_scale1, x2, fact_scale2, partial_weight_product;
         int cluster_scales;
         int alphas_scales;
-        // x, pdg, q_num, q_den, info, lead_q, lead_mu_f of the pdf ladder
-        std::array<int, 7> ladder;
+        // x, pdg, q, info, lead_q of the pdf ladder
+        std::array<int, 5> ladder;
         int subprocess_index;
         int bias;
         int random, rest;

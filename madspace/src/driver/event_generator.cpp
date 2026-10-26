@@ -935,11 +935,9 @@ int any_alphas_scales(const Channels& channels) {
 void copy_ladder(ParticleRecord in, ParticleRecord out, bool from_in) {
     out.ladder_x() = from_in ? in.ladder_x().value() : 0.;
     out.ladder_pdg() = from_in ? in.ladder_pdg().value() : 0.;
-    out.ladder_q_num() = from_in ? in.ladder_q_num().value() : 0.;
-    out.ladder_q_den() = from_in ? in.ladder_q_den().value() : 0.;
+    out.ladder_q() = from_in ? in.ladder_q().value() : 0.;
     out.ladder_info() = from_in ? in.ladder_info().value() : 0.;
     out.ladder_lead_q() = from_in ? in.ladder_lead_q().value() : 0.;
-    out.ladder_lead_mu_f() = from_in ? in.ladder_lead_mu_f().value() : 0.;
 }
 
 } // namespace

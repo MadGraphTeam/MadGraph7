@@ -3804,8 +3804,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 for (auto& row : alphas_scales) {
                     particle_count = std::max(particle_count, row.size() + 3);
                 }
-                // the pdf ladder: step s ([x, pdg, q_num, q_den, info]) on
-                // particle s, and [q_lead1, q_lead2, mu_f1, mu_f2] per event
+                // the pdf ladder: step s ([x, pdg, q, info]) on particle s,
+                // and [q_lead1, q_lead2] per event
                 for (auto& steps : ladder) {
                     particle_count = std::max(particle_count, steps.size());
                 }
@@ -3864,15 +3864,13 @@ PYBIND11_MODULE(_madspace_py, m) {
                         auto particle = buffer.particle(i, j);
                         auto& lead = ladder_lead.at(i);
                         particle.ladder_lead_q() = j < 2 ? lead.at(j) : 0.;
-                        particle.ladder_lead_mu_f() = j < 2 ? lead.at(j + 2) : 0.;
                         bool has_step = !ladder.empty() && j < ladder.at(i).size();
                         auto step = has_step ? ladder.at(i).at(j)
-                                             : std::vector<double>(5, 0.);
+                                             : std::vector<double>(4, 0.);
                         particle.ladder_x() = step.at(0);
                         particle.ladder_pdg() = step.at(1);
-                        particle.ladder_q_num() = step.at(2);
-                        particle.ladder_q_den() = step.at(3);
-                        particle.ladder_info() = step.at(4);
+                        particle.ladder_q() = step.at(2);
+                        particle.ladder_info() = step.at(3);
                     }
                 }
                 std::vector<double> weights;
