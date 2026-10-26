@@ -31,6 +31,21 @@ std::size_t final_channel_count(
     }
 }
 
+// Whether the event carries the product of its beam densities for the
+// systematics to divide the PDF variations by. Not under MLM pdf reweighting:
+// there the densities are taken low on the clustering ladder (pdf_scale) and
+// walked back up to the factorisation scale by the ladder ratios, so the
+// variations, which are evaluated at (k times) the factorisation scale, would
+// be divided by densities at another scale, and even the central member would
+// differ from one. Without it the systematics take the nominal densities at
+// the factorisation scale themselves, and a variation becomes the ratio of
+// the leading densities there, the ladder ratios left at their nominal value.
+bool emits_partial_weights(
+    bool partial_weights, const std::optional<EnergyScale>& energy_scale
+) {
+    return partial_weights && !(energy_scale && energy_scale->mlm_pdf_reweighting());
+}
+
 } // namespace
 
 static const BatchSize acc_batch_size("acc_batch_size");
@@ -152,7 +167,7 @@ Integrand::Integrand(
                     ret_types.push_back("x2", batch_float);
                     ret_types.push_back("fact_scale2", batch_float);
                 }
-                if (partial_weights &&
+                if (emits_partial_weights(partial_weights, energy_scale) &&
                     (diff_xs_first.has_pdf(0) || diff_xs_first.has_pdf(1))) {
                     ret_types.push_back("partial_weight_product", batch_float);
                 }
@@ -197,7 +212,7 @@ Integrand::Integrand(
     _compressed_channel_weight_count(compressed_channel_weight_count),
     _madnis_training(madnis_training),
     _drop_cuts_and_rescale(drop_cuts_and_rescale),
-    _partial_weights(partial_weights),
+    _partial_weights(emits_partial_weights(partial_weights, energy_scale)),
     _channel_indices(channel_indices.begin(), channel_indices.end()),
     _random_dim(
         mapping.random_dim() +          // phasespace

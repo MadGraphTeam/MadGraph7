@@ -118,6 +118,9 @@ public:
      *                                          rescale the weight accordingly.
      * @param partial_weights                   If true, emit the per-factor
      *                                          weights for buffered unweighting.
+     *                                          Ignored under MLM pdf
+     *                                          reweighting, whose densities are
+     *                                          not at the factorisation scale.
      * @param channel_indices                   Global indices of this
      *                                          integrand's channels.
      * @param active_flavors                    Flavour indices this integrand

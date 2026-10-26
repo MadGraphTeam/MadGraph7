@@ -1599,9 +1599,11 @@ def write_flat_pdf_grid(path, value):
         f.write("---\n")
 
 
-def t_channel_integrand_weights(tmp_path, pdf_value, batch_size=4000):
-    """Weights and momenta of the t-channel process run through a whole
-    Integrand under MLM pdf reweighting, with the built-in flat test matrix
+def t_channel_integrand_outputs(
+    tmp_path, pdf_value, batch_size=4000, pdf_reweighting=True, partial_weights=False
+):
+    """Every output of the t-channel process run through a whole Integrand
+    under MLM (pdf reweighting by default), with the built-in flat test matrix
     element and a flat PDF of the given value."""
     context = ms.Context(device=ms.cpu_device(), thread_count=1)
     alphas_file = tmp_path / "alphas.info"
@@ -1645,12 +1647,20 @@ def t_channel_integrand_weights(tmp_path, pdf_value, batch_size=4000):
         pid_options=[T_CHANNEL_PDGS],
         pdf_grid=pdf_grid,
         running_coupling=ms.RunningCoupling(alphas_grid),
-        energy_scale=ms.EnergyScale(t_channel_clustering(pdf_reweighting=True)),
+        energy_scale=ms.EnergyScale(
+            t_channel_clustering(pdf_reweighting=pdf_reweighting)
+        ),
         channel_indices=[0],
+        partial_weights=partial_weights,
     )
-    out = ms.FunctionRuntime(integrand.function(), context)(
+    return ms.FunctionRuntime(integrand.function(), context)(
         np.array([batch_size], dtype=np.int64)
     )
+
+
+def t_channel_integrand_weights(tmp_path, pdf_value, batch_size=4000):
+    """Weights and momenta of t_channel_integrand_outputs."""
+    out = t_channel_integrand_outputs(tmp_path, pdf_value, batch_size)
     return np.asarray(out[0]), np.asarray(out[1])
 
 
@@ -1669,6 +1679,24 @@ def test_a_density_too_small_to_divide_by_drops_the_event(tmp_path):
     # The other vetoes (alpha_s and the 2 GeV scale floor) still drop the odd
     # event of the rest, so only most of those survive.
     assert np.mean(weights[~stepped] > 0.0) > 0.9
+
+
+def test_no_pdf_product_for_the_systematics_under_pdf_reweighting(tmp_path):
+    """The systematics divide each PDF variation, taken at (k times) the
+    factorisation scale, by the event's partial_weight_product. Under pdf
+    reweighting that product is of the densities at pdf_scale, low on the
+    clustering ladder, so even the central member came out != 1. The
+    integrand leaves it out there, and the systematics take the nominal
+    densities at the factorisation scale themselves."""
+    def output_count(**kwargs):
+        return len(t_channel_integrand_outputs(tmp_path, 1.0, 16, **kwargs))
+
+    # the product is there without pdf reweighting ...
+    assert (output_count(pdf_reweighting=False, partial_weights=True)
+            == output_count(pdf_reweighting=False) + 1)
+    # ... and left out with it
+    assert (output_count(pdf_reweighting=True, partial_weights=True)
+            == output_count(pdf_reweighting=True))
 
 
 # --------------------------------------------------------------------------
