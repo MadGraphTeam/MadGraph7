@@ -919,6 +919,78 @@ def test_loop_v4_sdk_selects_poles_like_python(
     assert records["ir"]["results"]["virtual"] != records["uv"]["results"]["virtual"]
 
 
+SDK = ROOT / "rust" / "loop-reduction" / "sdk"
+
+
+@pytest.mark.loop_fast
+def test_loop_sdk_cpp_pole_wrapper_compiles(tmp_path):
+    """The C++ wrapper's ``set_poles`` takes every pole selection (syntax
+    check against the C header; no SDK library needed)."""
+
+    compiler = os.environ.get("CXX") or shutil.which("c++") or shutil.which("g++")
+    if compiler is None:
+        pytest.skip("environment: no C++ compiler (CXX, c++ or g++)")
+    source = tmp_path / "poles.cpp"
+    source.write_text(
+        '#include "rusticol_virtual.hpp"\n'
+        "void select(rusticol::VirtualRuntime &runtime) {\n"
+        '  for (const char *poles : {"all", "none", "uv", "ir"})\n'
+        "    runtime.set_poles(poles);\n"
+        "}\n"
+    )
+    run = subprocess.run(
+        [compiler, "-std=c++17", "-fsyntax-only", f"-I{SDK / 'include'}", str(source)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+
+@pytest.mark.loop_fast
+def test_loop_sdk_fortran_pole_wrapper_compiles(tmp_path):
+    """The Fortran module's ``set_poles`` takes every pole selection (the
+    module compiled, a caller syntax-checked against it)."""
+
+    compiler = os.environ.get("FC") or shutil.which("gfortran")
+    if compiler is None:
+        pytest.skip("environment: no Fortran compiler (FC or gfortran)")
+    module = subprocess.run(
+        [
+            compiler,
+            "-std=f2018",
+            "-c",
+            str(SDK / "fortran" / "rusticol_virtual.f90"),
+            "-J",
+            str(tmp_path),
+            "-o",
+            str(tmp_path / "rusticol_virtual.o"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert module.returncode == 0, module.stderr
+    source = tmp_path / "poles.f90"
+    source.write_text(
+        "subroutine select(runtime)\n"
+        "  use rusticol_virtual\n"
+        "  type(virtual_runtime), intent(inout) :: runtime\n"
+        '  call runtime%set_poles("all")\n'
+        '  call runtime%set_poles("none")\n'
+        '  call runtime%set_poles("uv")\n'
+        '  call runtime%set_poles("ir")\n'
+        "end subroutine\n"
+    )
+    run = subprocess.run(
+        [compiler, "-std=f2018", "-fsyntax-only", f"-I{tmp_path}", str(source)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+
 @pytest.mark.loop_physics
 def test_loop_v4_sdk_needs_no_symbolica_licence(
     loop_artifact, loop_sdk_client, tmp_path

@@ -782,10 +782,12 @@ Binary64 evaluation needs no Symbolica licence; double-double and arbitrary
 precision use pyAmpliCol's own Symbolica key. The native SDKs (C, C++,
 Fortran, Rust) open a v2 artifact through `rusticol_virtual_open` and evaluate
 binary64 virtuals, bitwise equal to the Python API, without a licence:
-`rusticol_virtual_set_poles(handle, "none")` selects the finite part alone (its
-pole-only work skipped natively, the pole entries quiet NaNs), `"all"` (the
-default) every pole; correlated, resolved, split-pole (`"uv"`, `"ir"`) and
-extended-precision calls go through the Python API. A v2 artifact carries no API
+`rusticol_virtual_set_poles(handle, poles)` takes the same pole selections as
+the Python API: `"all"` (the default) every pole, `"none"` the finite part alone
+(its pole-only work skipped natively, the pole entries quiet NaNs), `"uv"` and
+`"ir"` the split selections (the finite part is the same in all four);
+correlated, resolved and extended-precision calls go through the Python API. A
+v2 artifact carries no API
 bundle (a requested `emit_api_bundle` is dropped with a recorded configuration
 adjustment).
 

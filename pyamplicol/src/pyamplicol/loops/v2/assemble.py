@@ -814,7 +814,8 @@ def _exact_u1_subtraction_weights():
 LOOP_BLOCK_REACHABILITY = True
 # The certified-scaleless companion compresses its seeds with the slice's
 # certificates (``LoopSlice._companion_seeds``); False builds its own table
-# (its generic seeds: the oracle).
+# (its generic seeds: the oracle). The extended table has no native build
+# stage: a native LC/NLC prune of the companion needs one (next run).
 SHARED_COMPANION_CERTIFICATES = True
 
 
@@ -1997,11 +1998,18 @@ class LoopSlice:
         quartic partner are adjoint rings. On its own (``build_seed_table``)
         the companion has no single-legged instance to certify them from
         five legs on (one of its two blocks spans at least two legs), so
-        every reading kept its generic seed, an exact colour-network
-        reduction each (g g > g g g g: 8,640 readings, 1,080 classes, 60 s;
-        g g > g g g g g: about 30 min of the generation). With
+        every reading keeps its generic seed, an exact colour-network
+        reduction each (g g > g g g g: 8,640 readings, 1,080 classes against
+        60; with native-seeds' in-crate reductions 1.44 s against 0.32 s,
+        companion plan 10.1 MB against 8.2 MB; before them 60 s, and about
+        30 min of the g g > g g g g g generation). With
         ``SHARED_COMPANION_CERTIFICATES`` off it builds its own table (the
         oracle).
+
+        The extended table records no native build stage, so a native LC/NLC
+        prune (native-seeds' ``prune_switch.patch``, next run) must route the
+        companion's prune through the Python callback or record a build
+        source on the extend path (design §12.4, lean companion).
         """
 
         compress = self.request.compress_colour
