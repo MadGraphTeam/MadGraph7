@@ -69,51 +69,18 @@ namespace madmatrix
   typedef fptype_v fptype2_v;
 #endif
 
-  // type to hold 2x the SIMD lane, operators work on both halfs (autovector) + narrow/widen operators defs
+  // FP64 vector with the FP32 lane count (FPTYPE=v): one native type, so the compiler keeps it in registers.
 #ifdef MGONGPU_SIMD_DENOM64
   constexpr int neppVD = neppV / 2;
   static_assert( neppV % 2 == 0, "neppV must be even for SIMD denom64" );
 #ifdef __clang__
-  typedef fptype_momenta fptype_denom_hv __attribute__( ( ext_vector_type( neppVD ) ) ); // one native FP64 register
+  typedef fptype_momenta fptype_denom_sv __attribute__( ( ext_vector_type( neppV ) ) );
 #else
-  typedef fptype_momenta fptype_denom_hv __attribute__( ( vector_size( neppVD * sizeof( fptype_momenta ) ), aligned( neppVD * sizeof( fptype_momenta ) ) ) );
+  typedef fptype_momenta fptype_denom_sv __attribute__( ( vector_size( neppV * sizeof( fptype_momenta ) ), aligned( neppVD * sizeof( fptype_momenta ) ) ) );
 #endif
-
-  struct fptype_denom_sv // 2x FP64 half (v[0], v[1])
-  {
-    fptype_denom_hv v[2];
-    fptype_denom_sv() : v{ fptype_denom_hv{}, fptype_denom_hv{} } {}
-    fptype_denom_sv( const fptype_denom_hv& lo, const fptype_denom_hv& hi ) : v{ lo, hi } {}
-    fptype_denom_sv( fptype_momenta s ) : v{ fptype_denom_hv{} + s, fptype_denom_hv{} + s } {} // broadcast (M, W, Ccoeff, {0})
-  };
-  static_assert( sizeof( fptype_denom_sv ) == 2 * sizeof( fptype_denom_hv ), "fptype_denom_sv must be exactly two FP64 halves" );
-  inline fptype_denom_sv operator+( const fptype_denom_sv& a ) { return a; }
-  inline fptype_denom_sv operator-( const fptype_denom_sv& a ) { return { -a.v[0], -a.v[1] }; }
-  inline fptype_denom_sv operator+( const fptype_denom_sv& a, const fptype_denom_sv& b ) { return { a.v[0] + b.v[0], a.v[1] + b.v[1] }; }
-  inline fptype_denom_sv operator-( const fptype_denom_sv& a, const fptype_denom_sv& b ) { return { a.v[0] - b.v[0], a.v[1] - b.v[1] }; }
-  inline fptype_denom_sv operator*( const fptype_denom_sv& a, const fptype_denom_sv& b ) { return { a.v[0] * b.v[0], a.v[1] * b.v[1] }; }
-  inline fptype_denom_sv operator/( const fptype_denom_sv& a, const fptype_denom_sv& b ) { return { a.v[0] / b.v[0], a.v[1] / b.v[1] }; }
-  inline fptype_denom_sv operator*( const fptype_denom_sv& a, fptype_momenta s ) { return { a.v[0] * s, a.v[1] * s }; }
-  inline fptype_denom_sv operator*( fptype_momenta s, const fptype_denom_sv& a ) { return a * s; }
-  inline fptype_denom_sv operator/( const fptype_denom_sv& a, fptype_momenta s ) { return { a.v[0] / s, a.v[1] / s }; }
-  inline fptype_denom_sv operator/( fptype_momenta s, const fptype_denom_sv& a ) { return { s / a.v[0], s / a.v[1] }; }
-  inline fptype_denom_sv operator+( const fptype_denom_sv& a, fptype_momenta s ) { return { a.v[0] + s, a.v[1] + s }; }
-  inline fptype_denom_sv operator+( fptype_momenta s, const fptype_denom_sv& a ) { return a + s; }
-  inline fptype_denom_sv operator-( const fptype_denom_sv& a, fptype_momenta s ) { return { a.v[0] - s, a.v[1] - s }; }
-  inline fptype_denom_sv operator-( fptype_momenta s, const fptype_denom_sv& a ) { return { s - a.v[0], s - a.v[1] }; }
-
-  inline fptype_v fpdenom_narrow( const fptype_denom_sv& p )
-  {
-    fptype_v out = {};
-    for( int l = 0; l < neppVD; l++ ) { out[l] = (fptype)p.v[0][l]; out[neppVD + l] = (fptype)p.v[1][l]; }
-    return out;
-  }
-  inline fptype_denom_sv fpdenom_widen( const fptype_v& f )
-  {
-    fptype_denom_hv lo = {}, hi = {};
-    for( int l = 0; l < neppVD; l++ ) { lo[l] = (fptype_momenta)f[l]; hi[l] = (fptype_momenta)f[neppVD + l]; }
-    return { lo, hi };
-  }
+  inline fptype_denom_sv fpdenom_bcast( fptype_momenta s ) { return fptype_denom_sv{} + s; }
+  inline fptype_v fpdenom_narrow( const fptype_denom_sv& p ) { return __builtin_convertvector( p, fptype_v ); }
+  inline fptype_denom_sv fpdenom_widen( const fptype_v& f ) { return __builtin_convertvector( f, fptype_denom_sv ); }
 #endif
 
   // --- Type definition (using vector compiler extensions: need -march=...)
@@ -172,10 +139,10 @@ namespace madmatrix
   public:
     cxtype_denom_sv() {}
     cxtype_denom_sv( const fptype_denom_sv& r, const fptype_denom_sv& i ) : m_real( r ), m_imag( i ) {}
-    cxtype_denom_sv( fptype_momenta r, fptype_momenta i ) : m_real( r ), m_imag( i ) {}          // cId( 0., 1. )
-    cxtype_denom_sv( const cxtype_v& c ) : m_real( fpdenom_widen( c.real() ) ), m_imag( fpdenom_widen( c.imag() ) ) {} // COUP (FP32 complex)
+    cxtype_denom_sv( fptype_momenta r, fptype_momenta i ) : m_real( fpdenom_bcast( r ) ), m_imag( fpdenom_bcast( i ) ) {}          // cId( 0., 1. )
+    explicit cxtype_denom_sv( const cxtype_v& c ) : m_real( fpdenom_widen( c.real() ) ), m_imag( fpdenom_widen( c.imag() ) ) {} // COUP (FP32 complex)
     template<typename FP2>
-    cxtype_denom_sv( const mgOnGpu::cxsmpl<FP2>& c ) : m_real( fptype_momenta( c.real() ) ), m_imag( fptype_momenta( c.imag() ) ) {} // scalar complex
+    cxtype_denom_sv( const mgOnGpu::cxsmpl<FP2>& c ) : m_real( fpdenom_bcast( c.real() ) ), m_imag( fpdenom_bcast( c.imag() ) ) {} // scalar complex
     const fptype_denom_sv& real() const { return m_real; }
     const fptype_denom_sv& imag() const { return m_imag; }
     explicit operator cxtype_v() const { return cxtype_v( fpdenom_narrow( m_real ), fpdenom_narrow( m_imag ) ); }
@@ -202,11 +169,20 @@ namespace madmatrix
     return { ( a.real() * b.real() + a.imag() * b.imag() ) / n, ( a.imag() * b.real() - a.real() * b.imag() ) / n };
   }
   inline cxtype_denom_sv operator/( const cxtype_denom_sv& a, const fptype_denom_sv& b ) { return { a.real() / b, a.imag() / b }; }
+  // Scalar operands (M, W, Ccoeff): gcc vector types do not convert implicitly from a scalar.
+  inline cxtype_denom_sv operator+( fptype_momenta a, const cxtype_denom_sv& b ) { return fpdenom_bcast( a ) + b; }
+  inline cxtype_denom_sv operator+( const cxtype_denom_sv& a, fptype_momenta b ) { return a + fpdenom_bcast( b ); }
+  inline cxtype_denom_sv operator-( fptype_momenta a, const cxtype_denom_sv& b ) { return fpdenom_bcast( a ) - b; }
+  inline cxtype_denom_sv operator-( const cxtype_denom_sv& a, fptype_momenta b ) { return a - fpdenom_bcast( b ); }
+  inline cxtype_denom_sv operator*( fptype_momenta a, const cxtype_denom_sv& b ) { return fpdenom_bcast( a ) * b; }
+  inline cxtype_denom_sv operator*( const cxtype_denom_sv& a, fptype_momenta b ) { return a * fpdenom_bcast( b ); }
+  inline cxtype_denom_sv operator/( const cxtype_denom_sv& a, fptype_momenta b ) { return a / fpdenom_bcast( b ); }
   inline cxtype_denom_sv operator/( const fptype_denom_sv& a, const cxtype_denom_sv& b )
   {
     const fptype_denom_sv n = b.real() * b.real() + b.imag() * b.imag();
     return { a * b.real() / n, -a * b.imag() / n };
   }
+  inline cxtype_denom_sv operator/( fptype_momenta a, const cxtype_denom_sv& b ) { return fpdenom_bcast( a ) / b; }
 #endif
 
   // --- Type definition (using vector compiler extensions: need -march=...)
@@ -877,7 +853,7 @@ namespace madmatrix
 #ifdef MGONGPU_SIMD_DENOM64
   // FPTYPE=v: momenta computed 2x to fill for rest
   typedef fptype_denom_sv fptype_momenta_v;     typedef fptype_denom_sv fptype_momenta_sv;
-  typedef fptype_denom_sv fptype_denom_v;       // fptype_denom_sv is the struct defined above
+  typedef fptype_denom_sv fptype_denom_v;
   typedef cxtype_denom_sv cxtype_momenta_v;     typedef cxtype_denom_sv cxtype_momenta_sv;
   typedef cxtype_denom_sv cxtype_denom_v;       // cxtype_denom_sv is the class defined above
 #else
@@ -896,7 +872,7 @@ namespace madmatrix
 #endif
 #ifdef MGONGPU_SIMD_DENOM64
   // Coupling stays FP32, only the FP64 propagator is narrowed: no widening of COUP.
-  inline cxtype_amp_sv coup_over_denom( fptype ccoeff, const cxtype_amp_sv& coup, const cxtype_denom_sv& den ) { return static_cast<fptype_amp>( ccoeff ) * coup * static_cast<cxtype_amp_sv>( fptype_denom_sv( 1. ) / den ); }
+  inline cxtype_amp_sv coup_over_denom( fptype ccoeff, const cxtype_amp_sv& coup, const cxtype_denom_sv& den ) { return static_cast<fptype_amp>( ccoeff ) * coup * static_cast<cxtype_amp_sv>( fpdenom_bcast( 1. ) / den ); }
 #else
   template<typename C>
   inline __host__ __device__ cxtype_amp_sv coup_over_denom( fptype ccoeff, const C& coup, const cxtype_denom_sv& den ) { return static_cast<cxtype_amp_sv>( static_cast<fptype_denom>( ccoeff ) * static_cast<cxtype_denom_sv>( coup ) / den ); }
