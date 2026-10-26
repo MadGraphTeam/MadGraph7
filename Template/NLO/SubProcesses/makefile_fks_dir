@@ -73,7 +73,7 @@ RUN= $(FO_ANALYSE) $(FILES) cuts.o dummy_fct.o pythia_unlops.o recluster.o 		\
 MINTFO= $(RUN) driver_mintFO.o handling_lhe_events.o write_event.o BinothLHA.o pythia8_fortran_dummy.o
 
 # Files for mintMC
-MINTMC= $(RUN) driver_mintMC.o handling_lhe_events.o write_event.o BinothLHA.o
+MINTMC= $(RUN) driver_mintMC.o driver_mintMC_routines.o handling_lhe_events.o write_event.o BinothLHA.o
 
 # Files for check_poles
 POLES= $(RUN) check_poles.o BinothLHA.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o
@@ -194,6 +194,7 @@ BinothLHA.o: FKSParams.o
 reweight_xsec_events.o: weight_lines.o
 fks_singular.o: weight_lines.o mint_module.o
 driver_mintMC.o: weight_lines.o mint_module.o pythia8_control.inc pythia8_control_setup.inc
+driver_mintMC_routines.o: weight_lines.o mint_module.o
 driver_mintFO.o: weight_lines.o mint_module.o FKSParams.o
 pythia8_wrapper.o: pythia8_fortran.o LHAFortran_aMCatNLO.h
 chooser_functions.o: weight_lines.o
