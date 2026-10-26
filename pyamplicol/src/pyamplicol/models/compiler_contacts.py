@@ -150,7 +150,64 @@ def _fuse_contact_finals(
     return tuple(sorted((*passthrough, *fused), key=lambda kernel: kernel.kind))
 
 
+# Contact partial components by (model namespace, Lorentz structure, spins,
+# legs), with the kernel kind they were formed for: the network runs on
+# canonical symbols whose order does not depend on the kind
+# (``compiler_kernels._execute_dense_network``), so another kernel's
+# components are these with its input symbols renamed. Cleared beyond the
+# bound.
+_PARTIALS: dict[tuple[object, ...], tuple[int, tuple[str, ...]]] = {}
+_PARTIALS_BOUND = 1 << 14
+
+
 def _contact_partial_component_expressions(
+    term: CompiledVertexTerm,
+    particle_by_name: Mapping[str, CompiledParticleRecord],
+    *,
+    left_leg: int,
+    right_leg: int,
+    open_legs: tuple[int, ...],
+    kind: int,
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[str, ...]:
+    key = (
+        model_symbols.namespace,
+        term.lorentz_expression,
+        tuple(particle_by_name[name].spin for name in term.particles),
+        left_leg,
+        right_leg,
+        tuple(open_legs),
+    )
+    found = _PARTIALS.get(key)
+    if found is not None:
+        formed, values = found
+        if formed == kind:
+            return values
+        return tuple(
+            _remap_kernel_symbols(
+                _sym.E(value),
+                old_kind=formed,
+                new_kind=kind,
+                model_symbols=model_symbols,
+            ).to_canonical_string()
+            for value in values
+        )
+    values = _formed_contact_partial_component_expressions(
+        term,
+        particle_by_name,
+        left_leg=left_leg,
+        right_leg=right_leg,
+        open_legs=open_legs,
+        kind=kind,
+        model_symbols=model_symbols,
+    )
+    if len(_PARTIALS) >= _PARTIALS_BOUND:
+        _PARTIALS.clear()
+    _PARTIALS[key] = (kind, values)
+    return values
+
+
+def _formed_contact_partial_component_expressions(
     term: CompiledVertexTerm,
     particle_by_name: Mapping[str, CompiledParticleRecord],
     *,

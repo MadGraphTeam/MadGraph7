@@ -176,10 +176,25 @@ def _canonicalize_oriented_kernel_component(
     order, so they run on canonical symbols (``canonical_order``): the same
     kernel in every process history."""
 
+    if len(_CANONICAL_COMPONENTS) >= _CANONICAL_COMPONENTS_BOUND:
+        _CANONICAL_COMPONENTS.clear()
     return canonical_apply(
-        lambda canonical: canonical.expand_num().collect_factors().collect_horner(),
+        _canonical_component,
         expression,
+        memo=_CANONICAL_COMPONENTS,
     )
+
+
+def _canonical_component(canonical: _sym.Expression) -> _sym.Expression:
+    return canonical.expand_num().collect_factors().collect_horner()
+
+
+# ``_canonicalize_oriented_kernel_component``'s results on canonical symbols
+# by the canonical text of their argument (``canonical_apply``): the vertex
+# copies of counterterm clone lines, and every kernel of a repeated
+# structure, share one Horner scheme. Cleared beyond the bound.
+_CANONICAL_COMPONENTS: dict[str, _sym.Expression] = {}
+_CANONICAL_COMPONENTS_BOUND = 1 << 16
 
 
 # A kernel's input component and momentum symbols, by name
