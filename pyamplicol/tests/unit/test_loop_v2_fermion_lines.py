@@ -20,8 +20,10 @@ The virtual of the production route (counterterms from the recursion, native
 DAG, native executor with Python inputs) in double-double equals MadLoop's
 Born and every Laurent coefficient within 1e-12, strictly relative per
 coefficient, and its poles equal Catani's within 1e-12. LC, NLC and full
-colour are consistent: the projected slices are the sums of their kept N_c
-powers of the exact colour cells, and all powers sum to full colour. The
+colour of three distinct lines are consistent: the projected slices are the
+sums of their kept N_c powers of the exact colour cells, and all powers sum
+to full colour; identical-flavour lines are refused at LC and NLC (their
+blocks mix U(1)-subtraction grades; strict xfail). The
 2->4 requests run in the nightly tier; the physics tier keeps a 2->3 control
 (u u~ > u u~ g, two identical-flavour lines).
 """
@@ -127,8 +129,22 @@ def test_virtual_equals_madloop_and_catani(loop_sm_compiled_model, loop_native, 
             assert abs(float(laurent.double_pole - double)) <= TOLERANCE * size
 
 
+# Identical-flavour lines mix U(1)-subtraction grades inside one block (a
+# current derived as quark a + gluon (b~, b) and as the U(1)-subtraction
+# auxiliary (a, b~) + quark b, the Fermi-exchanged pairing; from u u~ > u u~ g
+# up), so their tree currents are not N_c-exact and LC/NLC are refused
+# (``SeedTable.seeds``, design §3.3 "Coloured fermion lines"): open.
+_MIXED_GRADES = pytest.mark.xfail(
+    strict=True,
+    raises=ValueError,
+    reason="identical-flavour blocks mix U(1)-subtraction grades (not N_c-exact)",
+)
+
+
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize("name", ["uux_ddxssx", "uux_uuxuux"])
+@pytest.mark.parametrize(
+    "name", ["uux_ddxssx", pytest.param("uux_uuxuux", marks=_MIXED_GRADES)]
+)
 @pytest.mark.parametrize("accuracy", ["lc", "nlc"])
 def test_colour_projections_are_formal_nc_projections(
     loop_sm_compiled_model, loop_native, monkeypatch, name, accuracy
