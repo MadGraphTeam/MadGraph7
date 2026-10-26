@@ -1006,6 +1006,7 @@ c Born subprocess: the same real process can belong to several Borns.
       double precision total,denom,fraction,softvar,hard,sij,wgt1
       double precision rwgt,real_channel_invariant,fks_Sij,raw_split(amp_split_size)
       double precision vi,vj
+      integer ids(nexternal),ids_me(nexternal)
       logical passcuts
       external real_channel_invariant,fks_Sij,passcuts
       integer i_fks,j_fks
@@ -1046,10 +1047,15 @@ c by a different Born subprocess.
          enddo
       enddo
       call set_alphaS(p)
+c Evaluate the real ME in the me_frame, as sreal does (polarised
+c processes). The frame mask depends on i_fks: the diagram weights use
+c the frame of the representative sector of this ME, which is the same
+c for all its channels, so the partition is unchanged.
       get_real_diagram_weights=.true.
-      call smatrix_real(p,total)
+      call smatrix_real_frame(p,total)
       get_real_diagram_weights=.false.
       raw_split(1:amp_split_size)=amp_split(1:amp_split_size)
+      call get_frame_mask_real(real_channel_fks(id),ids_me)
       denom=0d0
       ndiagrams=0
       do i=1,n_real_channels
@@ -1083,6 +1089,14 @@ c partition also covers nonzero interference with vanishing weights.
          if (hard.eq.0d0) cycle
          sij=fks_Sij(p,i_fks,j_fks,xi_i_fks_ev,y_ij_fks_ev)
          if (sij.le.0d0) cycle
+c A sector whose me_frame differs needs its own evaluation, as in the
+c Born channels. Without me_frame all the masks agree: no extra call.
+         call get_frame_mask_real(sector,ids)
+         if (any(ids.ne.ids_me)) then
+            call smatrix_real_frame(p,total)
+            raw_split(1:amp_split_size)=amp_split(1:amp_split_size)
+            ids_me=ids
+         endif
          do iamp=1,amp_split_size
             if (raw_split(iamp).eq.0d0) cycle
             call amp_split_pos_to_orders(iamp,orders)

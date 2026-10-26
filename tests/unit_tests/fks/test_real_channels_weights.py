@@ -103,6 +103,15 @@ common /c_get_real_diagram_weights/ get_real_diagram_weights''',
         self.assertEqual(summary[0:2], [1, 2])
         self.assertEqual([record[0][1] for record in records], [2, 2])
 
+    def test_sector_with_another_me_frame_reevaluates_the_real(self):
+        # As sreal does through smatrix_real_frame: a sector whose me_frame
+        # mask differs gets the ME in its own frame; the others reuse it.
+        summary, records, _ = self.weights(1, 'frames')
+        self.assertEqual(summary, [2, 4, 0, 1])
+        self.assertEqual([item[0][1] for item in records], [1, 1, 3, 3])
+        for (tags, weights), expected in zip(records, [12.32, 18.48, 277.2, 415.8]):
+            self.assertAlmostEqual(weights[0], expected, places=10)
+
     def test_real_diagram_partition_normalizes_within_one_me(self):
         _, first, _ = self.weights(1)
         _, second, _ = self.weights(3)
@@ -273,13 +282,33 @@ subroutine set_alphaS(p)
 double precision p(0:3,5)
 end subroutine
 
+subroutine get_frame_mask_real(iFKS,ids)
+use test_state
+implicit none
+integer iFKS,ids(5)
+ids=0
+! a polarised process whose me_frame mask differs in sector 3 (other i_fks)
+if(sample=='frames'.and.iFKS==3) ids(3)=1
+end subroutine
+
+subroutine smatrix_real_frame(p,total)
+use test_state
+implicit none
+include 'orders.inc'
+double precision p(0:3,5),total
+call smatrix_real(p,total)
+! the polarised ME depends on the frame it is evaluated in
+if(sample=='frames'.and.sector_now==3) amp_split=10d0*amp_split
+end subroutine
+
 subroutine smatrix_real(p,total)
 use test_state
 implicit none
 include 'orders.inc'
 include 'real_matrix_weights.inc'
 double precision p(0:3,5),total
-if(.not.get_real_diagram_weights) stop 71
+! only the evaluation in another me_frame does not need the diagram weights
+if(.not.get_real_diagram_weights.and..not.(sample=='frames'.and.sector_now==3)) stop 71
 me_calls=me_calls+1
 amp_split=[8d0,48d0]
 total=sum(amp_split)

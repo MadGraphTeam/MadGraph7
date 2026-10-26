@@ -314,15 +314,18 @@ def identical_permutations(sectors, legs):
     return sorted(result)
 
 
-_analysers = {}
+_analyser = None
 
 def get_analyser(model):
-    """One analyser (with the parameter values) per model"""
-    if id(model) not in _analysers:
+    """The analyser (with the parameter values) of model. Only the one of
+    the last model is kept: the analyser holds its model, so the identity
+    check cannot match a new model, and older models are not kept alive"""
+    global _analyser
+    if _analyser is None or _analyser.model is not model:
         from madgraph.interface.amcatnlo_interface import aMCatNLOInterface
-        _analysers[id(model)] = RealChannelAnalyser(
+        _analyser = RealChannelAnalyser(
             model, aMCatNLOInterface.get_parameter_values(model))
-    return _analysers[id(model)]
+    return _analyser
 
 
 def leg_list(process):
