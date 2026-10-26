@@ -13,6 +13,9 @@
 //!   first-seen order (rule 5);
 //! * [`colour`] is the loop-block colour engine (`ColorEngine._loop_block_*`,
 //!   `ordered_combination_labels`, `combine`);
+//! * [`grades`] splits the currents whose derivations mix N_c grades
+//!   (U(1)-subtraction pieces) into one current per grade
+//!   (`generation/dag_grades.split_u1_grades`);
 //! * [`reuse`] is `assign_recursive_current_evaluation_reuse`: the
 //!   value-equivalence derivation of the currents that share an evaluation
 //!   contract (the closed colour components of the CT program's currents)
@@ -38,6 +41,7 @@
 pub mod blocks;
 pub mod colour;
 pub mod exact;
+pub mod grades;
 pub mod input;
 pub mod program;
 pub mod recursion;
@@ -82,7 +86,9 @@ pub struct Species {
     pub quantum_numbers: Vec<(String, String)>,
 }
 
-/// `ColorState` of `generation/dag_types.py`.
+/// `ColorState` of `generation/dag_types.py`. `nc_grade` is the N_c grade
+/// of a current split per grade ([`grades`]); `None` elsewhere (and absent
+/// from the JSON tables then).
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ColourState {
     pub accuracy: String,
@@ -91,6 +97,8 @@ pub struct ColourState {
     pub basis_key: Vec<String>,
     pub traces: Vec<Vec<u8>>,
     pub lines: Vec<Vec<u8>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nc_grade: Option<i64>,
 }
 
 impl ColourState {
@@ -444,6 +452,12 @@ impl ColumnarDag {
             for key in &colour.basis_key {
                 put_str(&mut record, key);
             }
+            if let Some(grade) = colour.nc_grade {
+                // A trace count is never u32::MAX: the marker is unambiguous
+                // and states without a grade keep their records.
+                put_u32(&mut record, u32::MAX);
+                put_i64(&mut record, grade);
+            }
             for parts in [&colour.traces, &colour.lines] {
                 put_u32(&mut record, parts.len() as u32);
                 for part in parts {
@@ -529,14 +543,16 @@ fn put_opt_str(out: &mut Vec<u8>, value: Option<&str>) {
 }
 
 /// Builds the loop-request DAG of `input` (the JSON of
-/// `dag_input.dag_input`): recursion, prune, colour-connection signs,
-/// evaluation reuse, colour-flow signs. The connection signs depend on the
-/// colour state, which the evaluation contracts of the reuse leave out, so
-/// they are folded before the reuse derives its value equivalences.
+/// `dag_input.dag_input`): recursion, prune, N_c grade split,
+/// colour-connection signs, evaluation reuse, colour-flow signs. The
+/// connection signs depend on the colour state, which the evaluation
+/// contracts of the reuse leave out, so they are folded before the reuse
+/// derives its value equivalences.
 pub fn build(input: &input::DagInput) -> DagResult<ColumnarDag> {
     let mut dag = recursion::compile(input)?;
     if dag.finish {
         recursion::prune_to_admitted(input, &mut dag);
+        grades::split_u1_grades(input, &mut dag)?;
         signs::apply_connection_signs(input, &mut dag)?;
         reuse::assign_reuse(input, &mut dag)?;
         signs::apply_colour_flow_signs(input, &mut dag)?;
@@ -565,6 +581,7 @@ mod tests {
                     basis_key: vec![],
                     traces: vec![],
                     lines: vec![],
+                    nc_grade: None,
                 }],
                 orders: vec![vec![], vec![("QCD".into(), 1)]],
                 vertices: vec![VertexKey {

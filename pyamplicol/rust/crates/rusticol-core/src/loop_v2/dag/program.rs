@@ -396,6 +396,7 @@ mod tests {
                     basis_key: vec![],
                     traces: vec![],
                     lines: vec![],
+                    nc_grade: None,
                 }],
                 orders: vec![vec![], vec![("QCD".into(), 1)], vec![("CT1".into(), 1)]],
                 vertices: vec![VertexKey {

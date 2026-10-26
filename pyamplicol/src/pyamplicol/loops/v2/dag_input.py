@@ -1296,6 +1296,7 @@ def encode_dag(dag: GenericDAG) -> bytes:
                     "basis_key": list(state.basis_key),
                     "traces": [list(trace) for trace in state.traces],
                     "lines": [list(line) for line in state.lines],
+                    **({} if state.nc_grade is None else {"nc_grade": state.nc_grade}),
                 }
                 for state in colours
             ],
@@ -1348,6 +1349,7 @@ def _colour_state(row: Mapping[str, Any]) -> ColorState:
         basis_key=tuple(row["basis_key"]),
         traces=tuple(tuple(trace) for trace in row["traces"]),
         lines=tuple(tuple(line) for line in row["lines"]),
+        nc_grade=row.get("nc_grade"),
     )
 
 
@@ -1724,6 +1726,7 @@ class NativeDag:
                         basis_key=tuple(colour[3]),
                         traces=tuple(tuple(trace) for trace in colour[4]),
                         lines=tuple(tuple(line) for line in colour[5]),
+                        nc_grade=colour[6],
                     )
                 ),
                 chirality=block["chirality"],
@@ -2201,6 +2204,7 @@ def native_tree_rows(
                             "basis_key",
                             "traces",
                             "lines",
+                            "nc_grade",
                         ),
                         colour,
                         strict=True,
@@ -2592,6 +2596,11 @@ def blocks_digest(
         out += struct.pack("<I", len(state.basis_key))
         for basis in state.basis_key:
             _put_str(out, basis)
+        if state.nc_grade is not None:
+            # As in ``V2Dag.digest``: a trace count is never 2^32 - 1, so the
+            # marker is unambiguous and states without a grade keep their
+            # records.
+            out += struct.pack("<Iq", 0xFFFFFFFF, state.nc_grade)
         for parts in (state.traces, state.lines):
             out += struct.pack("<I", len(parts))
             for labels in parts:

@@ -3956,7 +3956,8 @@ def _interfere(
 
 
 class _BlockRows:
-    """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents."""
+    """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents,
+    keyed by the contents' graded words (``PositionColour.graded_words``)."""
 
     def __init__(self, slice_: LoopSlice, rows):
         from .blocks import _NativeFields
@@ -3970,7 +3971,14 @@ class _BlockRows:
                 if key.auxiliary_kind is not None:
                     continue
                 name = fields.incoming(key.particle_id)["name"]
-                bucket = index[(key.external_mask, name, key.coupling_orders, key.word)]
+                bucket = index[
+                    (
+                        key.external_mask,
+                        name,
+                        key.coupling_orders,
+                        (key.word, block.colour_flow.nc_grade),
+                    )
+                ]
                 for row in block.rows:
                     helicities = tuple((label - 1, h) for label, h in row.helicities)
                     bucket[key.chirality][helicities] = (block, row)

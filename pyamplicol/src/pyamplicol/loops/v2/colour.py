@@ -551,13 +551,25 @@ class PositionColour:
     ``legs`` are the 1-based UFO legs of the vertex rule taken by the loop
     line entering and leaving the position and by each attached block, in the
     order of ``Position.blocks``; the kinematic segment uses the same legs.
-    ``words`` holds the block word of each attached block current.
+    ``words`` holds the block word of each attached block current and
+    ``grades`` its N_c grade (``BlockColourFlow.nc_grade``): identical-flavour
+    lines reach one word with several grades, as separate blocks
+    (``generation.dag_grades``), so a word and its grade name the block.
     """
 
     rule: str
     colour_index: int
     legs: tuple[int, ...]
     words: tuple[tuple[int, ...], ...]
+    grades: tuple[int | None, ...] = ()
+
+    @property
+    def graded_words(self) -> tuple[tuple[tuple[int, ...], int | None], ...]:
+        """(word, N_c grade) of each attached block: its key among the
+        blocks of its block current (``SeedColour.attached_blocks``, the
+        block rows of ``reference_executor.BlockRows``)."""
+
+        return tuple(zip(self.words, self.grades, strict=True))
 
 
 def block_colour_network(
@@ -598,6 +610,13 @@ def block_colour_network(
 
 
 _UFO_SLOT = re.compile(r"ufo_c_(\d+)$")
+
+
+def _graded_word_order(key: tuple[tuple[int, ...], int | None]) -> tuple:
+    """Words in order, then the grades of one word decreasing (0 first)."""
+
+    word, grade = key
+    return (word, 1 if grade is None else 0, 0 if grade is None else -grade)
 
 
 def _vertex_label(name: str) -> Label:
@@ -654,7 +673,11 @@ class SeedColour:
                 )
                 for p in network
             )
-        self._words: dict[tuple[int, str, Orders], dict[tuple[int, ...], Block]] = {}
+        # (mask, field, orders) -> (word, N_c grade) -> block (the blocks of
+        # one graded word differ only by chirality, which colour ignores).
+        self._words: dict[
+            tuple[int, str, Orders], dict[tuple[tuple[int, ...], int | None], Block]
+        ] = {}
         for block in blocks.blocks:
             key = block.key
             if key.auxiliary_kind is not None:
@@ -667,7 +690,7 @@ class SeedColour:
             field_name = self._fields.incoming(key.particle_id)["name"]
             self._words.setdefault(
                 (key.external_mask, field_name, key.coupling_orders), {}
-            ).setdefault(key.word, block)
+            ).setdefault((key.word, block.colour_flow.nc_grade), block)
 
     # -- ColourModel ---------------------------------------------------------
 
@@ -682,11 +705,20 @@ class SeedColour:
             self._fields.by_name[vertex.loop_out]["antiname"],
             tuple(block.field for block in position.blocks),
         )
-        options = [tuple(sorted(self._block_words(block))) for block in position.blocks]
+        options = [
+            tuple(sorted(self._block_words(block), key=_graded_word_order))
+            for block in position.blocks
+        ]
         return tuple(
-            PositionColour(vertex.rule, index, legs, words)
+            PositionColour(
+                vertex.rule,
+                index,
+                legs,
+                tuple(word for word, _grade in choice),
+                tuple(grade for _word, grade in choice),
+            )
             for index in sorted(indices)
-            for words in product(*options)
+            for choice in product(*options)
         )
 
     def reflected(self, state: PositionColour) -> PositionColour:
@@ -698,7 +730,9 @@ class SeedColour:
             particles[in_leg - 1],
             tuple(particles[leg - 1] for leg in attached),
         )
-        return PositionColour(state.rule, state.colour_index, legs, state.words)
+        return PositionColour(
+            state.rule, state.colour_index, legs, state.words, state.grades
+        )
 
     # -- seeds ---------------------------------------------------------------
 
@@ -716,7 +750,7 @@ class SeedColour:
         for term in content.terms:
             blocks = tuple(
                 self._words[(current.mask, current.field, current.orders)][word]
-                for current, word in zip(term.blocks, state.words, strict=True)
+                for current, word in zip(term.blocks, state.graded_words, strict=True)
             )
             if found is None:
                 found = blocks
@@ -790,7 +824,9 @@ class SeedColour:
 
     # -- helpers -------------------------------------------------------------
 
-    def _block_words(self, block) -> tuple[tuple[int, ...], ...]:
+    def _block_words(self, block) -> tuple[tuple[tuple[int, ...], int | None], ...]:
+        """The (word, N_c grade) keys of a block current's tree blocks."""
+
         words = self._words.get((block.mask, block.field, block.orders))
         if not words:
             raise ValueError(f"no tree block for {block}")

@@ -35,6 +35,7 @@ from .dag_equivalence import (
     _canonical_kernel_evaluation,
     assign_recursive_current_evaluation_reuse,
 )
+from .dag_grades import split_u1_grades
 from .dag_ordering import (
     _closure_candidate_splits,
     _closure_combination_matches_word,
@@ -1556,15 +1557,19 @@ class GenericDAGCompiler:
             current_count=len(dag.currents),
             interaction_count=len(dag.interactions),
         )
-        # A current derived with both colour-connection parities (several
-        # pairings of identical-flavour lines) takes the other parity's -1
-        # in those derivations' colour weights (``loops/v2/blocks.py``).
-        # The parity depends on the colour state, which the evaluation
-        # contracts of the reuse leave out, so the fold precedes the reuse's
-        # value equivalences.
+        # A current derived with several N_c grades (U(1)-subtraction pieces
+        # of identical-flavour lines) becomes one current per grade, so every
+        # block is exact in N_c (``generation.dag_grades``). A current derived
+        # with both colour-connection parities (several pairings of
+        # identical-flavour lines) takes the other parity's -1 in those
+        # derivations' colour weights (``loops/v2/blocks.py``). The parity
+        # depends on the colour state, which the evaluation contracts of the
+        # reuse leave out, so the fold precedes the reuse's value
+        # equivalences.
         return self._apply_fermion_ordering(
             assign_recursive_current_evaluation_reuse(
-                apply_colour_connection_signs(dag, self.model), self.model
+                apply_colour_connection_signs(split_u1_grades(dag), self.model),
+                self.model,
             )
         )
 

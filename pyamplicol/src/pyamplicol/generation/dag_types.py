@@ -92,6 +92,12 @@ class ColorState:
     two adjoint currents into a colour singlet,
     ``ColorEngine._loop_block_flows``); their labels are not part of the
     current's ``ordered_external_labels``.
+
+    ``nc_grade`` is the N_c grade (minus the number of U(1)-subtraction
+    auxiliaries of its trees) of a loop-request current whose derivations
+    mixed grades and was split into one current per grade
+    (``generation.dag_grades.split_u1_grades``); ``None`` for every other
+    current, whose grade its derivations fix.
     """
 
     accuracy: str
@@ -100,6 +106,7 @@ class ColorState:
     basis_key: tuple[str, ...] = ()
     traces: tuple[tuple[int, ...], ...] = ()
     lines: tuple[tuple[int, ...], ...] = ()
+    nc_grade: int | None = None
     _key: tuple[object, ...] = field(init=False, repr=False, compare=False)
     _hash: int = field(init=False, repr=False, compare=False)
 
@@ -112,6 +119,8 @@ class ColorState:
         )
         if self.traces or self.lines:
             key = (*key, self.traces, self.lines)
+        if self.nc_grade is not None:
+            key = (*key, ("nc_grade", self.nc_grade))
         object.__setattr__(self, "_key", key)
         object.__setattr__(self, "_hash", hash(key))
 
@@ -141,6 +150,8 @@ class ColorState:
             out["traces"] = [list(trace) for trace in self.traces]
         if self.lines:
             out["lines"] = [list(line) for line in self.lines]
+        if self.nc_grade is not None:
+            out["nc_grade"] = self.nc_grade
         return out
 
 
