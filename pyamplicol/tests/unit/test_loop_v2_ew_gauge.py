@@ -13,10 +13,12 @@ k k / M^2 term and the Goldstone diagrams are both non-zero, and amplitude
 values, so that a Goldstone vertex sign cannot square away:
 
 * Feynman = unitary per helicity and colour sector, to 1e-13 of the largest
-  amplitude: m+ m- > t t~ (massive-muon G_mu UFO), t t~ > z h,
-  t t~ > t t~ at QED order, t t~ > w+ w-, b b~ > t t~ at QED order (the
-  tree of M5's QCD-corrected premise) and b t~ > w- h (a G- s-channel) with
-  a massive b;
+  amplitude: t b~ > t b~ at QED order (the G+ s-channel and the G0
+  t-channel make about as much as the whole amplitude; it replaced
+  m+ m- > t t~ on the massive-muon UFO, whose Goldstone share is 2e-3:
+  WP3.2 EWI-4b), t t~ > z h, t t~ > t t~ at QED order, t t~ > w+ w-,
+  b b~ > t t~ at QED order (the tree of M5's QCD-corrected premise) and
+  b t~ > w- h (a G- s-channel), with a massive b where it enters;
 * the Slavnov-Taylor identities k.M(V) = eta M_V M(G) of an outgoing Z and
   W-, with a non-zero Goldstone side: g g > t t~ z, both Z of b b~ > z z and
   g b > t w- with a massive b. eta is fixed by the UFO's conventions (-i for
@@ -65,16 +67,6 @@ def gmu_massive_b(loop_gmu_ufo):
     return compile_model_source(
         loop_gmu_ufo, restriction="with_b_mass", require_supported=False
     )
-
-
-@pytest.fixture(scope="module")
-def gmu_massive_muon(loop_gmu_ufo):
-    from pyamplicol.models.loading import compile_model_source
-
-    path = loop_gmu_ufo.parent / "loop_qcd_qed_sm_Gmu_massive_muon_py3"
-    if not path.is_dir():
-        pytest.skip(f"the massive-muon G_mu UFO is unavailable: {path}")
-    return compile_model_source(path, require_supported=False)
 
 
 def _feynman(compiled):
@@ -257,7 +249,7 @@ def _difference(mine, theirs) -> float:
 # s-channel Z vanishes on the on-shell W pair: it checks the g^{mu nu} part
 # of the massive Feynman-gauge propagator, its mass included.
 FEYNMAN_UNITARY = (
-    ("massive_muon", "m+ m- > t t~", {"QCD": 0, "QED": 2}, True),
+    ("massive_b", "t b~ > t b~", {"QCD": 0, "QED": 2}, True),
     ("default", "t t~ > z h", {"QCD": 0, "QED": 2}, True),
     ("default", "t t~ > t t~", {"QCD": 0, "QED": 2}, True),
     ("massive_b", "t t~ > w+ w-", {"QCD": 0, "QED": 2}, False),
@@ -271,7 +263,6 @@ def models(request):
     return {
         "default": request.getfixturevalue("gmu"),
         "massive_b": request.getfixturevalue("gmu_massive_b"),
-        "massive_muon": request.getfixturevalue("gmu_massive_muon"),
     }
 
 
@@ -537,3 +528,508 @@ def test_the_lowered_model_cache_key_holds_the_gauge_off_the_default(
             ).encode("utf-8")
         ).hexdigest()
     )
+
+
+# ===================================================== loops and counterterms
+# WP3.2 EWI-4b: electroweak requests take 't Hooft-Feynman gauge throughout.
+
+
+def _colour_singlet_bosons(compiled) -> tuple[int, ...]:
+    """The colour-singlet propagating scalars and vectors of ``compiled`` and
+    its colour-singlet ghosts (PDG codes): the loop lines the gauge changes,
+    chosen by spin, colour and ghost number."""
+
+    return tuple(
+        sorted(
+            record.pdg_code
+            for record in compiled.ir.particles
+            if abs(int(record.color)) == 1
+            and record.propagating
+            and (int(record.spin) in (1, 3) or record.ghost_number)
+        )
+    )
+
+
+def test_feynman_gauge_loop_lines_keep_rank_at_most_n(gmu):
+    """Every loop segment (vertex times the next line's numerator) and every
+    propagator numerator of the colour-singlet bosons and ghosts of the G_mu
+    model has q-degree <= 1 in 't Hooft-Feynman gauge (massive vectors -i g,
+    Goldstones and ghosts i), so a loop of N propagators has rank <= N
+    (DESIGN §6.8). In unitary gauge the massive vector line (q q / M^2:
+    rank N + 2) is refused."""
+
+    from pyamplicol.loops.v2.catalogue import (
+        LoopKernelCatalogueError,
+        build_loop_kernel_catalogue,
+    )
+
+    species = _colour_singlet_bosons(gmu)
+    catalogue = build_loop_kernel_catalogue(
+        _feynman(gmu), loop_species=species, counterterm_entries=()
+    )
+    kinds = {line.propagator_kind for line in catalogue.propagator_numerators}
+    assert {"vector", "scalar", "ufo-index-free"} <= kinds
+    assert catalogue.segments
+    assert max(segment.degree for segment in catalogue.segments) <= 1
+    assert all(line.degree == 0 for line in catalogue.propagator_numerators)
+    with pytest.raises(LoopKernelCatalogueError, match="unitary-gauge propagator"):
+        build_loop_kernel_catalogue(gmu, loop_species=species, counterterm_entries=())
+
+
+def test_electroweak_requests_need_a_model_declaring_feynman_gauge(gmu):
+    """The gauge scope: an electroweak request takes the model in
+    't Hooft-Feynman gauge (``ew_policy.feynman_gauge_model``) and is refused
+    with a typed error on a model that cannot be taken in it (its source
+    declares no gauge 1); the loop model preparation refuses every loop
+    request on such a model already (``covariant_model``: the UV and R2
+    rules are written for gauge 1), so the dry run reports it."""
+
+    from pyamplicol.loops.v2 import ew_policy
+    from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
+
+    electroweak = SliceRequest(
+        "u u~ > d d~",
+        {"QCD": 2, "QED": 0},
+        {"QCD": 2, "QED": 2},
+        corrections=("QED",),
+        fixed_parameters=ZERO_WIDTHS,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    feynman = ew_policy.feynman_gauge_model(gmu, electroweak)
+    assert feynman.ir.gauge == "feynman" and gmu.ir.gauge == "unitary"
+    assert ew_policy.feynman_gauge_model(feynman, electroweak) is feynman
+    raw = gmu.raw_loop_model
+    unitary_only = replace(
+        gmu, raw_loop_model=replace(raw, metadata={**raw.metadata, "gauge": (0,)})
+    )
+    with pytest.raises(ew_policy.ElectroweakGaugeError, match=r"only the gauges \[0\]"):
+        ew_policy.require_feynman_gauge(unitary_only, electroweak)
+    with pytest.raises(ValueError, match="does not declare Feynman gauge"):
+        prepare_request_model(unitary_only, electroweak)
+
+
+def _mixing_terms(compiled, vector):
+    """The CT structures and couplings of the G_mu UFO's two-point mixing of
+    ``vector`` with its Goldstone (UVmass, QED^2, one epsilon slot)."""
+
+    from pyamplicol.models.loading import CountertermStructure
+
+    goldstone = {"Z": "G0", "W-": "G+", "A": "G0"}[vector]
+    out = {}
+    for index, lorentz in enumerate(("l_GpWmMass4", "l_GpWmMass5")):
+        structure = CountertermStructure(
+            (goldstone, vector), "1", lorentz, (("QED", 2),), "uv_local", 0
+        )
+        out[structure] = f"(2+{index}*𝑖)*UFO::{{}}::MZ"  # noqa: RUF001
+    return out
+
+
+def test_goldstone_vector_mixing_is_a_vertex_insertion(gmu):
+    """A Goldstone-vector two-point term (Pi^mu = kappa p^mu) is lowered as a
+    vertex insertion (``models.ct_line_insertions``): both clones are vector
+    lines with the propagator kappa N_S N_V / (D_S D_V), the copies of the
+    Goldstone's vertices carry the leg's momentum on a promoted vector leg,
+    the vector's copies are plain; P(2,1) (the Goldstone's momentum) is
+    +P(k) and P(2,2) is -P(k), P(k) the tree engine's momentum of the copy's
+    leg (minus the momentum flowing in). In unitary gauge the absorbed Goldstone's
+    terms are refused (inert in every request, REQUIREMENTS_ADDENDUM J)."""
+
+    from symbolica import E
+
+    from pyamplicol.models.ct_line_insertions import (
+        _engine_denominator,
+        _momentum_ratio,
+        lower_line_insertions,
+    )
+
+    feynman = _feynman(gmu)
+    payload = feynman.model
+    particles = {item["name"]: item for item in payload["particles"]}
+    propagators = {item["name"]: item for item in payload["propagators"]}
+    lorentz = {item["name"]: item for item in payload["lorentz_structures"]}
+    terms = _mixing_terms(feynman, "Z")
+    ratios = {s.lorentz: _momentum_ratio(s, lorentz, particles) for s in terms}
+    assert ratios == {"l_GpWmMass4": E("1"), "l_GpWmMass5": E("-1")}
+
+    def lower(gauge, absorbed=frozenset()):
+        return lower_line_insertions(
+            payload,
+            terms,
+            prefix="PYAMPLICOL_CT",
+            insertion_order="PYAMPLICOL_CT_INSERTION",
+            slot_order=lambda structure: structure.slot_order,
+            gauge=gauge,
+            absorbed=absorbed,
+        )
+
+    lines = lower("feynman")
+    assert not lines.refused and len(set(lines.clones.values())) == 1
+    clones = {item["name"]: item for item in lines.particles}
+    assert {int(item["spin"]) for item in clones.values()} == {3}
+    assert not any(item["goldstoneboson"] for item in clones.values())
+    assert sorted(lines.reads_as.values()) == ["G0", "Z"]
+    (scale,) = lines.parameters
+    assert E(scale["expression"]) == E("2*UFO::{}::MZ-(2+𝑖)*UFO::{}::MZ")  # noqa: RUF001
+    for record in lines.propagators:
+        assert record["pyamplicol_source"] == "model-supplied"
+        assert "Metric" in record["numerator"] and scale["name"] in record["numerator"]
+        expected = (
+            _engine_denominator(
+                propagators[particles[name]["propagator"]], particles[name]
+            )
+            for name in ("G0", "Z")
+        )
+        assert record["denominator"] == "*".join(f"({part})" for part in expected)
+    promoted = {item["name"]: item for item in lines.lorentz_structures}
+    assert promoted
+    for rule in lines.vertex_rules:
+        original = rule["name"].split("__", 1)[1]
+        source = next(r for r in payload["vertex_rules"] if r["name"] == original)
+        if lines.reads_as[next(p for p in rule["particles"] if p in clones)] == "G0":
+            assert "G0" in source["particles"]
+            for name in rule["lorentz_structures"]:
+                record = promoted[name]
+                leg = rule["particles"].index(
+                    next(p for p in rule["particles"] if p in clones)
+                )
+                assert record["spins"][leg] == 3
+                assert (
+                    f"P(UFO::{{}}::idx(1,{leg + 1}),UFO::{{}}::idx(1,{leg + 1}))"
+                    in (record["structure"])
+                )
+        else:
+            assert "Z" in source["particles"]
+            assert rule["lorentz_structures"] == source["lorentz_structures"]
+    refused = lower("unitary", frozenset({"G0", "G+", "G-"}))
+    assert set(refused.refused) == set(terms) and not refused.clones
+    assert all("absorbs" in reason for reason in refused.refused.values())
+
+
+def test_native_dag_builds_the_goldstone_model_blocks(gmu):
+    """A4's native loop-request DAG equals the tree engine's on the
+    't Hooft-Feynman-gauge model, whose blocks carry Goldstone currents
+    (WP3.2 EWI-4b; the oracle of ``test_loop_v2_native_dag``)."""
+
+    from pyamplicol.models.external import CompiledUFOModel
+
+    from .test_loop_v2_native_dag import _assert_equal
+
+    feynman = _feynman(gmu)
+    model = CompiledUFOModel(feynman)
+    python, _native = _assert_equal(feynman, model, "g g > t t~", {"QCD": 2, "QED": 2})
+    goldstones = {
+        record.pdg_code for record in feynman.ir.particles if record.goldstoneboson
+    }
+    assert any(current.index.particle_id in goldstones for current in python.currents)
+
+
+# ---------------------------------------- nightly: electroweak loops and M5
+
+# The fixture metric of tools/loop_v2_generate.py validate: |a - b| over
+# max(|a|, |b|, |Born| alpha / 2 pi) for the Laurent coefficients.
+EW_TOLERANCE = 1e-12
+
+
+@pytest.fixture(scope="module")
+def gg_ttx_ew(loop_gmu_ufo, loop_native, loop_reference):
+    """g g > t t~ with QCD and QED corrections on the G_mu UFO (the request
+    of ``required/gg_ttx_ew.json``, ``tools/loop_v2_generate``), generated
+    once: 't Hooft-Feynman gauge throughout."""
+
+    import argparse
+
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.models.loading import compile_model_source
+    from tools import loop_v2_generate
+
+    reference = loop_reference("required/gg_ttx_ew")
+    compiled = compile_model_source(loop_gmu_ufo, require_supported=False)
+    request, _ignored = loop_v2_generate._fixture_request(
+        reference, compiled, argparse.Namespace()
+    )
+    return reference, compiled, LoopSlice.generate(compiled, request, loop_native)
+
+
+@pytest.mark.loop_nightly
+def test_gg_ttx_electroweak_equals_madloop_at_point_0(gg_ttx_ew):
+    """The full NLO EW virtual of g g > t t~ (QCD and QED corrections,
+    G_mu, real masses, widths zero) equals MadLoop on the same UFO at the
+    fixture's point 0 to 1e-12 per Laurent coefficient (the fixture's
+    metric) through the native executor; the request took 't Hooft-Feynman
+    gauge and every family has rank <= N."""
+
+    from fractions import Fraction
+
+    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
+    from tools import loop_v2_generate
+
+    reference, _compiled, slice_ = gg_ttx_ew
+    assert slice_.compiled.ir.gauge == "feynman"
+    assert all(
+        family.rank <= len(key) for key, family in slice_.families.families.items()
+    )
+    executor = NativeExecutor(
+        slice_, forward=False, exported=export_plan(slice_, forward=False)
+    )
+    (result,) = executor.evaluate(
+        [reference["points"][0]],
+        [str(Fraction(reference["mu_r"][0]) ** 2)],
+        parameters=reference["parameters"],
+    )
+    mine = [float(x) for x in result.totals[:4]]
+    madloop = reference["rows"][0]["providers"]["madloop"]
+    alpha = float(reference["derived_parameters"]["alpha"])
+    floor = abs(mine[0]) * alpha / (2 * math.pi)
+    keys = ("born", "finite", "single_pole", "double_pole")
+    for key, value in zip(keys, mine, strict=True):
+        error = loop_v2_generate._relative(
+            value, float(madloop[key]), 0.0 if key == "born" else floor
+        )
+        assert error <= EW_TOLERANCE, (key, value, madloop[key], error)
+
+
+@pytest.mark.loop_nightly
+def test_gg_ttx_electroweak_native_counterterm_program(gg_ttx_ew):
+    """A4's native counterterm program on an electroweak control (the
+    't Hooft-Feynman-gauge model's Goldstone vertices and counterterms, the
+    lowered model's clone lines) equals the tree engine's, block by block
+    (the block-set oracle of ``test_loop_v2_native_dag``)."""
+
+    from pyamplicol.loops.v2 import ct_closure, dag_input
+
+    _reference, _compiled, slice_ = gg_ttx_ew
+    program = slice_.counterterm_program.blocks
+    with dag_input.native_flags(dag=False):
+        python = ct_closure.CountertermBlocks.build(
+            program.recursion, program.blocks.blocks_dag.process
+        )
+    assert program.blocks.blocks_dag.decode() == python.blocks.blocks_dag
+    assert program.blocks.blocks == python.blocks.blocks
+    assert dict(program.clones) == dict(python.clones) and program.clones
+    goldstones = {
+        record.pdg_code
+        for record in slice_.compiled.ir.particles
+        if record.goldstoneboson
+    }
+    assert any(block.key.particle_id in goldstones for block in program.blocks.blocks)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.xfail(
+    strict=True,
+    raises=ValueError,
+    reason=(
+        "WP3.2 EWI-N: the native point inputs of g g > t t~ EW are not exported "
+        "(the SymJIT plane application of its tree program disagrees with the "
+        "exact evaluator)"
+    ),
+)
+def test_gg_ttx_electroweak_validates_with_native_inputs(
+    gg_ttx_ew, tmp_path, monkeypatch
+):
+    """``tools/loop_v2_generate.py validate --inputs native`` on g g > t t~
+    EW: a strict xfail until EWI-N exports its native point inputs, so that a
+    native gap shows here (WP3.2 M8), never as a silent fallback."""
+
+    import json
+
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from tools import loop_v2_generate
+
+    _reference, compiled, slice_ = gg_ttx_ew
+    monkeypatch.setattr(loop_v2_generate, "_fixture_model", lambda *a: compiled)
+    monkeypatch.setattr(LoopSlice, "generate", lambda *a, **k: slice_)
+    out = tmp_path / "record.json"
+    arguments = ["validate", "gg_ttx_ew", "--inputs", "native", "--points", "0"]
+    assert loop_v2_generate.main([*arguments, "--json", str(out)]) == 0
+    record = json.loads(out.read_text())
+    assert record["passed"] and record["points"][0]["max_error"] <= EW_TOLERANCE
+
+
+@pytest.mark.loop_nightly
+def test_qcd_corrections_agree_in_both_gauges(gmu_massive_b, loop_native):
+    """M5, the premise of the gauge scope (WP3.2 EWI-4b): QCD corrections
+    keep their unitary-gauge trees because both gauges are exact for them.
+    b b~ > t t~ QED=2 [virt=QCD] with a massive b has an internal Z between
+    massive currents: the 't Hooft-Feynman request inserts the QCD
+    counterterms of the explicit G0 b b~ and G0 t t~ vertices, which the
+    unitary one cannot hold (its tree model absorbs the Goldstones, DESIGN
+    §6.2); Born and virtual agree (32 digits: binary64 holds the virtual to
+    2e-9 only at this massive-b point, the reduction's conditioning that the
+    precision-ap package recorded; M5 2026-10-26: 1.4e-16 at 32 digits)."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+
+    request = SliceRequest(
+        "b b~ > t t~",
+        {"QCD": 0, "QED": 2},
+        {"QCD": 2, "QED": 2},
+        fixed_parameters=ZERO_WIDTHS,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    masses = [_mass(gmu_massive_b, name) for name in ("MB", "MB", "MT", "MT")]
+    energy, cosine, sine = 500.0, 0.6, 0.8
+    beam = math.sqrt(energy**2 - masses[0] ** 2)
+    top = math.sqrt(energy**2 - masses[2] ** 2)
+    point = [
+        [repr(energy), "0", "0", repr(beam)],
+        [repr(energy), "0", "0", repr(-beam)],
+        [repr(energy), repr(top * sine), "0", repr(top * cosine)],
+        [repr(energy), repr(-top * sine), "0", repr(-top * cosine)],
+    ]
+    goldstones = {
+        record.pdg_code
+        for record in gmu_massive_b.ir.particles
+        if record.goldstoneboson
+    }
+    results = {}
+    for gauge in ("unitary", "feynman"):
+        compiled = gmu_massive_b if gauge == "unitary" else _feynman(gmu_massive_b)
+        slice_ = LoopSlice.generate(compiled, request, loop_native)
+        assert slice_.compiled.ir.gauge == gauge
+        program = slice_.counterterm_program.blocks.blocks
+        species = {block.key.particle_id for block in program.blocks}
+        results[gauge] = (
+            slice_.evaluate(
+                point,
+                "250000",
+                parameters={"aS": "0.118"},
+                precision=Precision.arbitrary(32),
+            ),
+            species & goldstones,
+        )
+    (unitary, absorbed), (feynman, explicit) = results["unitary"], results["feynman"]
+    # The counterterm program carries Goldstone currents in 't Hooft-Feynman
+    # gauge only: there its G0 counterterms are inserted.
+    assert not absorbed and explicit
+    for sector, born in unitary.born.items():
+        assert float(feynman.born[sector]) == pytest.approx(float(born), rel=1e-13)
+    for sector, laurent in unitary.components["virtual"].items():
+        scale = max(abs(float(x)) for x in laurent.coefficients)
+        for mine, theirs in zip(
+            feynman.components["virtual"][sector].coefficients,
+            laurent.coefficients,
+            strict=True,
+        ):
+            assert abs(float(mine) - float(theirs)) <= 1e-14 * scale
+
+
+# g t > t t t~ (binary64, on shell to rounding): a top line joined to a top
+# pair by a Z, a photon or a G0, with the gluon at leg 1.
+GT_TTTX_POINT = [
+    ["740.0236666666667", "0", "0", "740.0236666666667"],
+    ["759.9763333333334", "0", "0", "-740.0236666666667"],
+    [
+        "542.1014268447362",
+        "453.946802621722",
+        "-234.14080644548642",
+        "55.27513124065375",
+    ],
+    [
+        "679.7890319233611",
+        "-642.7918716317638",
+        "125.73449804624319",
+        "-56.51171284339019",
+    ],
+    [
+        "278.1095412319028",
+        "188.84506901004178",
+        "108.40630839924326",
+        "1.2365816027364396",
+    ],
+]
+
+
+@pytest.mark.loop_nightly
+def test_goldstone_vector_mixings_equal_the_site_oracle(
+    gmu_massive_b, loop_native, monkeypatch
+):
+    """O6 for the Goldstone-vector mixings (WP3.2 EWI-4b): g t > t t t~ with
+    QED corrections, whose trees reach the G0-Z, G0-A and G+-W- mixings
+    (admitted and lowered as vertex insertions), equals the request with
+    every rule closed at sites (the site oracle's two-block sites read the
+    mixings with the catalogue's ct-site kernels). The site oracle's
+    coverage rule has no electroweak certificate of the g t t~ witnesses
+    with electroweak loop species, whose divergences the field and mass
+    counterterms cover: certified for the comparison only. The mixings make
+    0.3 % of the counterterms' finite part here; the opposite momentum sign
+    differs from the oracle by twice that.
+
+    The b is massive: the oracle admits a rule's loop species only where a
+    divergent witness has exactly those species, while the UFO names the
+    W for its W and G+ loops (``R2_Htt_b`` of [t~ t H], loop [W+, b], is
+    proportional to MT (1 + MB^2/MW^2), non-zero at MB = 0). With a
+    massless b the only divergent b-W loops of [t~ t H] and [t~ t G0] also
+    carry a G+ (witness species (b, W, G+)), so the oracle drops those two
+    R2 rules (about half the R2 here); with a massive b the H and G0
+    couple to the b and a (b, W) witness exists. Production admits by
+    coupling orders and particle_veto only (REQUIREMENTS_ADDENDUM J) and
+    reads no witness."""
+
+    from pyamplicol.loops.v2 import ct_sites
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+
+    coverage = ct_sites._coverage
+
+    def certified(witnesses, rules, names, corrections, partners, zeros):
+        electroweak = tuple(
+            ct_sites.CertifiedZero(signature, species, "electroweak (test)")
+            for signature, group in witnesses.items()
+            for species in group
+        )
+        return coverage(
+            witnesses, rules, names, corrections, partners, (*zeros, *electroweak)
+        )
+
+    monkeypatch.setattr(ct_sites, "_coverage", certified)
+    fixed = {"MTA": "0", "ymtau": "0", **ZERO_WIDTHS}
+    results = {}
+    for counterterms in ("recursion", "sites"):
+        request = SliceRequest(
+            "g t > t t t~",
+            {"QCD": 1, "QED": 2},
+            {"QCD": 1, "QED": 4},
+            corrections=("QED",),
+            fixed_parameters=fixed,
+            compatibility="gmu_particle_anti",
+            scale_parameter="MU_R",
+            counterterms=counterterms,
+        )
+        slice_ = LoopSlice.generate(gmu_massive_b, request, loop_native)
+        if counterterms == "recursion":
+            lowered = slice_.counterterm_program.recursion.model.lowered
+            spins = {p.name: int(p.spin) for p in lowered.compiled.ir.particles}
+            mixings = {
+                structure.particles
+                for structure in lowered.insertions
+                if {spins[name] for name in structure.particles} == {1, 3}
+            }
+            assert len(mixings) == 4, mixings
+        results[counterterms] = slice_.evaluate(
+            GT_TTTX_POINT, "1000000", parameters={"aS": "0.118"}
+        )
+    mine, oracle = results["recursion"], results["sites"]
+
+    def totals(result, sector):
+        uv = [
+            a + b
+            for a, b in zip(
+                result.components["uv_local"][sector].coefficients,
+                result.components["uv_external_fields"][sector].coefficients,
+                strict=True,
+            )
+        ]
+        return {
+            "r2": result.components["r2"][sector].coefficients,
+            "uv": uv,
+            "virtual": result.components["virtual"][sector].coefficients,
+        }
+
+    for sector in oracle.components["virtual"]:
+        expected, found = totals(oracle, sector), totals(mine, sector)
+        for name, values in expected.items():
+            scale = max(abs(complex(x)) for x in values)
+            for a, b in zip(found[name], values, strict=True):
+                assert abs(complex(a) - complex(b)) <= 1e-12 * scale, (name, a, b)
