@@ -73,6 +73,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:  # the ``tools`` package, run as a script
+    sys.path.insert(0, str(ROOT))
 STAGES = (
     ("assemble", "build_tree_blocks"),
     ("assemble", "_field_level_families"),
@@ -217,10 +219,10 @@ def _compiled_model(path: str | None) -> Any:
     import tempfile
     from dataclasses import replace
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source
 
     ufo = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
     if not ufo:

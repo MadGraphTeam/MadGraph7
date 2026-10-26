@@ -657,7 +657,8 @@ _GENERATE_DIGESTS = """
 import hashlib, json, sys
 from dataclasses import replace
 from pathlib import Path
-from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
+sys.path.insert(0, sys.argv[4])  # the checkout: tools/loop_reference
+from tools.loop_reference.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.v2.artifact import generate_process
 from pyamplicol.loops.v2.assemble import SliceRequest
@@ -706,7 +707,14 @@ def test_native_members_do_not_depend_on_the_model_cache(
     caches = {"cold": tmp_path / "cold-cache", "warm": warm}
     running = {
         name: subprocess.Popen(
-            [sys.executable, str(script), str(loop_sm_ufo), str(cache), f"{name}.json"],
+            [
+                sys.executable,
+                str(script),
+                str(loop_sm_ufo),
+                str(cache),
+                f"{name}.json",
+                str(ROOT),
+            ],
             cwd=tmp_path,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
