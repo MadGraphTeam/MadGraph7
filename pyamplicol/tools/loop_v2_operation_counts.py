@@ -91,10 +91,10 @@ SCHEDULES = ("B", "M", "F")
 def compile_loop_sm(ufo: Path, cache: Path) -> Any:
     """loop_sm compiled with the checked scalar-arity view (as the tests)."""
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source, load_compiled_model
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source, load_compiled_model
 
     model = compile_model_source(ufo, cache_dir=cache / "model-cache")
     model = replace(

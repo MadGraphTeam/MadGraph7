@@ -217,10 +217,10 @@ def _compiled_model(path: str | None) -> Any:
     import tempfile
     from dataclasses import replace
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source
 
     ufo = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
     if not ufo:

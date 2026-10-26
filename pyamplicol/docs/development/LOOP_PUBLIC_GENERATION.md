@@ -197,11 +197,12 @@ planning does not certify numerical execution.
 
 The supplied MadLoop `loop_sm` has a known source reference mismatch: the four-G0
 vertex `V_1001` points at the three-slot constant tensor `SSS1`. A broad prepared
-scope therefore requires the existing explicit
-`loops.model_compatibility.prepare_loop_sm_scalar_declarations` view before
-serialization. It verifies that exact mismatch, replaces only that tensor
-reference with `SSSS1`, and records the derivation while preserving the source
-snapshot. The public service does not repair a model by recognizing its name.
+scope therefore requires the explicit test-support view
+`tools/loop_reference/model_compatibility.prepare_loop_sm_scalar_declarations`
+before serialization. It finds the mismatch structurally (a constant scalar
+tensor with fewer slots than the vertex's scalars), replaces only that tensor
+reference with the unique constant tensor of the full spin signature (`SSSS1`),
+and records the derivation while preserving the source snapshot. The public service does not repair a model by recognizing its name.
 Unprepared mismatches identify the vertex, Lorentz tensor, actual spin slots and
 required particle slots. The current Drell–Yan and four-gluon public controls use
 this explicitly prepared view.

@@ -657,7 +657,7 @@ _GENERATE_DIGESTS = """
 import hashlib, json, sys
 from dataclasses import replace
 from pathlib import Path
-from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
+from tools.loop_reference.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.v2.artifact import generate_process
 from pyamplicol.loops.v2.assemble import SliceRequest

@@ -96,10 +96,10 @@ def _load_model(args: argparse.Namespace) -> Any:
     # The loop_sm recipe of tests/conftest.py (scalar-arity view).
     from dataclasses import replace
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source
 
     cache = Path(args.cache)
     written = sorted(cache.glob("loop-sm.json*.json"))

@@ -55,10 +55,12 @@ def mapped_sources(loop_sm_ufo, tmp_path_factory):
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.generation import loop_service
-    from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.portable import write_loop_pacbin
     from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
 
     assert load_loop_native() is _rusticol._loop
     verify_native_module(_rusticol)

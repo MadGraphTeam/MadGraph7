@@ -17,8 +17,10 @@ def prepared(loop_sm_ufo):
         pytest.skip("source kernels require licensed Symbolica")
     path = str(loop_sm_ufo)
     from pyamplicol.loops.compiler import prepare_loop_request_model
-    from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
     from pyamplicol.models.loop_import import load_raw_loop_model
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
 
     view = prepare_loop_sm_scalar_declarations(load_raw_loop_model(path))
     return prepare_loop_request_model(

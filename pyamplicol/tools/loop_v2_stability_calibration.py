@@ -212,10 +212,10 @@ def compile_loop_sm(ufo: Path, cache: Path) -> Any:
     """loop_sm compiled once into ``cache`` with the checked scalar-arity
     view (as the tests); later calls load it."""
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source, load_compiled_model
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source, load_compiled_model
 
     path = cache / "loop-sm.json.pyAmplicol-model.json"
     if not path.exists():
