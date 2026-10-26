@@ -1507,6 +1507,7 @@ def lazily_fixed(
     expression: Any,
     values: Mapping[Any, Any],
     conds: Mapping[str, str] = MappingProxyType({}),
+    memo: dict[tuple[Any, bool], Any] | None = None,
 ) -> Any:
     """``expression`` with the symbols of ``values`` replaced, top down: a
     conditional (``symbolica::if``, or a call of a UFO-standard ``cond``
@@ -1517,7 +1518,9 @@ def lazily_fixed(
     and a decided ``cond`` diagnostic is 0. Scalar-library predicates of
     exact numbers are decided. With ``values``, subexpressions free of their
     symbols are kept as they are; without, the whole expression is walked
-    (``_decided_conditionals``)."""
+    (``_decided_conditionals``). ``memo`` (one per ``values`` and ``conds``)
+    keeps the walk's result per subexpression, which the expressions of one
+    plan share (their CT scalars' bodies)."""
 
     from symbolica import AtomType, E
 
@@ -1526,6 +1529,14 @@ def lazily_fixed(
     keys = frozenset(values)
 
     def walk(atom: Any, everywhere: bool) -> Any:
+        if memo is None:
+            return walked(atom, everywhere)
+        found = memo.get((atom, everywhere))
+        if found is None:
+            found = memo[atom, everywhere] = walked(atom, everywhere)
+        return found
+
+    def walked(atom: Any, everywhere: bool) -> Any:
         if not everywhere and not keys.intersection(atom.get_all_symbols(False)):
             return atom
         kind = atom.get_type()
@@ -1625,10 +1636,11 @@ def coefficient_plan(
         conds[value.get_name()] = "value"
         conds[diagnostic.get_name()] = "diagnostic"
     kept = [i for i, name in enumerate(free.external_names) if name not in fixed]
+    memo: dict[tuple[Any, bool], Any] = {}
     expressions = [
         ScalarExpression(
-            lazily_fixed(e.value, substitution, conds),
-            lazily_fixed(e.diagnostic, substitution, conds),
+            lazily_fixed(e.value, substitution, conds, memo),
+            lazily_fixed(e.diagnostic, substitution, conds, memo),
         )
         for e in free.expressions
     ]
