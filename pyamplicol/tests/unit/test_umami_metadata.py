@@ -13,6 +13,7 @@ import pytest
 from pyamplicol.artifacts.umami import (
     FLAVOR_BLIND_ASSUMPTION,
     UmamiProcessInput,
+    _identical_orbit,
     build_umami_metadata,
     umami_bundle_payloads,
 )
@@ -387,6 +388,55 @@ def test_identical_open_chains_allow_cyclic_block_rotation():
     # The two outgoing quarks exchange; each directed chain and both beams
     # remain intact, while the complete chain blocks rotate cyclically.
     assert row["members"][1]["runtime"]["permutation"] == [0, 1, 3, 2, 4]
+
+
+@pytest.mark.parametrize("pdgs", [(990,) * 5, (995, 995, 990, 990, 990)])
+def test_identical_orbit_matches_full_key_minimum(pdgs):
+    # Colourless beams make every re-anchoring of the trace tie on legs and
+    # colour edges, so the helicity domain alone picks the canonical order.
+    def full_key_minimum(order, flow, incoming, helicities, word_size):
+        def key(candidate):
+            tags = {}
+            edges = [
+                tags.setdefault(tag, len(tags) + 1) if tag else 0
+                for slot in candidate
+                for tag in flow[slot]
+            ]
+            return (
+                tuple(
+                    ("incoming", slot) if slot < incoming else ("final", pdgs[slot])
+                    for slot in candidate
+                ),
+                tuple(edges),
+                tuple(
+                    sorted(
+                        tuple(h["values"][slot] for slot in candidate)
+                        for h in helicities
+                    )
+                ),
+            )
+
+        candidates = [
+            order[i:word_size] + order[:i] + order[word_size:] for i in range(word_size)
+        ]
+        return min((key(candidate), candidate) for candidate in candidates)
+
+    coloured = [slot for slot, pdg in enumerate(pdgs) if pdg == 990]
+    domains = [
+        [[1] * 5],
+        [[1, 1, -1, 1, -1], [1, -1, 1, 1, -1]],
+        [[-1, 1, 1, -1, 1], [1, 1, -1, -1, 1], [1, -1, 1, 1, 1]],
+    ]
+    for word in permutations(coloured):
+        flow = [[0, 0] for _ in pdgs]
+        for i, slot in enumerate(word):
+            flow[slot] = [501 + i, 501 + (i - 1) % len(word)]
+        order = [*word, *(slot for slot in range(len(pdgs)) if slot not in word)]
+        for domain in domains:
+            helicities = [{"values": values} for values in domain]
+            assert _identical_orbit(
+                order, flow, pdgs, 2, helicities, len(word)
+            ) == full_key_minimum(order, flow, 2, helicities, len(word))
 
 
 def test_equal_mass_distinct_final_species_are_not_identical():
