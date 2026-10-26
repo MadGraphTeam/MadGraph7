@@ -1332,6 +1332,7 @@ def _v2_request(backend, context, index):
         corrections=context.corrections,
         fixed_parameters=fixed,
         particle_veto=veto,
+        allow_anomalous_veto=run.generation.allow_anomalous_veto,
         accuracy=accuracy,
         colour_declaration=context.color_declaration if accuracy != "full" else None,
         scale_parameter=_v2_scale_parameter(compiled, fixed),
@@ -1540,6 +1541,19 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 "loop_orders": _loop_orders_record(request),
                                 "particle_veto": list(
                                     backend._run_config.generation.particle_veto
+                                ),
+                                # [U2]: the override of an anomalous veto and
+                                # the CT rules it lowered (rule -> cells),
+                                # recorded when set.
+                                **(
+                                    {
+                                        "allow_anomalous_veto": True,
+                                        "counterterms_anomalous_veto": (
+                                            process.anomalous_veto_counterterms()
+                                        ),
+                                    }
+                                    if request.allow_anomalous_veto
+                                    else {}
                                 ),
                                 # REQUIREMENTS_ADDENDUM J: rule -> reason.
                                 "counterterms_inert": process.inert_counterterms(),

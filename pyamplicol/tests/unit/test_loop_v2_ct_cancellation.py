@@ -12,8 +12,12 @@ d, s, b), so with every flavour in the loops the cell cancels exactly
 leaves it out: loop_sm's lowered models keep their bytes. The vector
 (d-symbol) part of ``R2_GGGZ`` remains and enters the recursion. Where the
 cell does not cancel (a synthetic anomalous coupling, or a ``particle_veto``
-breaking a quark doublet) the recursion lowers it as tree kernels (WP3.2
-EWI-7b) and the site closure closes it with the catalogue's kernels.
+breaking a quark doublet under the override ``allow_anomalous_veto``) the
+recursion lowers it as tree kernels (WP3.2 EWI-7b) and the site closure
+closes it with the catalogue's kernels. A veto that keeps a cell from
+cancelling which cancels without it is refused by default ([U2],
+``ct_recursion.AnomalousVetoError``), and a cell the tree compiler cannot
+lower that does not cancel refuses the request.
 
 Oracles: the exact cancellation of the coefficients; the slice with its
 counterterms from the recursion equals the slice with every rule closed at
@@ -27,6 +31,8 @@ gluon Ward identity and MadLoop (``test_loop_v2_epsilon_sign``).
 """
 
 from __future__ import annotations
+
+import re
 
 import pytest
 
@@ -302,7 +308,8 @@ def anomalous_model(loop_sm_ufo, tmp_path_factory):
 
 # ``name -> (process, Born QCD, QED, particle_veto, model)``: the g g Z cell of
 # u u~ > e- e+ g does not cancel, by the anomalous coupling or by a veto of
-# the top that leaves two up-type and three down-type flavours.
+# the top that leaves two up-type and three down-type flavours (an anomalous
+# veto: the request takes the override ``allow_anomalous_veto``).
 LOWERED_O6 = {
     "anomalous": ("u u~ > e- e+ g", 1, 2, (), "anomalous"),
     "top-veto": ("u u~ > e- e+ g", 1, 2, (6,), "vector-z"),
@@ -330,6 +337,7 @@ def lowered_routes(anomalous_model, two_point_model, loop_native):  # noqa: F811
                     {"QCD": qcd + 2, "QED": qed},
                     fixed_parameters=legacy_capture.FIXED_PARAMETERS,
                     particle_veto=veto,
+                    allow_anomalous_veto=bool(veto),
                     counterterms=counterterms,
                 ),
                 loop_native,
@@ -369,6 +377,15 @@ def test_uncancelled_levi_civita_cells_from_recursion_equal_sites(
     for key in ggz:
         assert {s.lorentz for s in model.structures[key]} == {"R2_GGZ"}
         assert not model.unlowered.get(key)
+    # The top veto's cells cancel with every flavour admitted: lowered under
+    # the override and recorded (the model's g g Z and g g g Z rules); the
+    # anomalous model has no veto.
+    if LOWERED_O6[name][3]:
+        by_key = {rule_key(rule): rule for rule in rules.values()}
+        assert set(ggz) <= set(model.anomalous_veto)
+        assert all(_vertices(by_key[k]) <= GGZ_VERTICES for k in model.anomalous_veto)
+    else:
+        assert not model.anomalous_veto
     sites = lowered_routes(name, "sites")
     assert {
         term.entry.lorentz_name
@@ -382,6 +399,106 @@ def test_uncancelled_levi_civita_cells_from_recursion_equal_sites(
     assert all(value <= SLICE_TOLERANCE[carrier] for value in worst.values()), worst
     if carrier == "double":
         _assert_vertex_changes_r2(sites, "V_GGZ", (0,) * 5)
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("veto", ((6,), (1, 3, 5)))
+def test_anomalous_vetoes_are_refused_unless_overridden(
+    two_point_model,  # noqa: F811
+    loop_native,
+    veto,
+):
+    """[U2] (the user's decision): a ``particle_veto`` that keeps the g g Z
+    cell of u u~ > e- e+ g from cancelling, while it cancels with every
+    flavour admitted (the top: two up-type flavours against three
+    down-type; d, s, b: the down-type loop group has no loop content left
+    and is inert), is refused by default with ``AnomalousVetoError``, which
+    names the cell and the override. With ``allow_anomalous_veto`` the cell
+    is lowered and the lowered model records the rules (the up-type group's
+    under d, s, b; both under the top veto; the O6 test above checks the
+    values of the latter)."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.ct_recursion import AnomalousVetoError, rule_key
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(two_point_model)
+    request = SliceRequest(
+        "u u~ > e- e+ g",
+        {"QCD": 1, "QED": 2},
+        {"QCD": 3, "QED": 2},
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+        particle_veto=veto,
+    )
+    with pytest.raises(
+        AnomalousVetoError,
+        match=(
+            r"can enter a tree.*\[G G Z\].*Levi-Civita cell .*R2_GGZ.* cancels "
+            r"between the rules of its vertex with every flavour admitted but not "
+            rf"under particle_veto {re.escape(str(list(veto)))} .*allow_anomalous_veto"
+        ),
+    ):
+        LoopSlice.generate(compiled, request, loop_native)
+    if veto != (1, 3, 5):
+        return
+    from dataclasses import replace
+
+    allowed = LoopSlice.generate(
+        compiled, replace(request, allow_anomalous_veto=True), loop_native
+    )
+    program = allowed.counterterm_program.recursion
+    rules = allowed.prepared.counterterms.rules
+    assert not program.residual
+    ggz = {
+        rule_key(rules[name])
+        for name in program.rules
+        if _vertices(rules[name]) == {"V_GGZ"} and program.admission[name]
+    }
+    assert len(ggz) == 1
+    assert ggz <= set(program.model.anomalous_veto)
+    assert program.model.allow_anomalous_veto
+    for key in ggz:
+        assert {s.lorentz for s in program.model.structures[key]} == {"R2_GGZ"}
+
+
+@pytest.mark.loop_physics
+def test_uncancelled_cells_without_tree_kernels_are_refused(
+    anomalous_model, loop_native, monkeypatch
+):
+    """A cell the tree compiler cannot lower that does not cancel makes the
+    rules of its cell residual, and a request whose trees reach one is
+    refused (``UnloweredCountertermError``, no site fallback,
+    REQUIREMENTS_ADDENDUM J): the anomalous model's g g Z cell, with the tree
+    compiler's ``Epsilon`` withheld (as before EWI-7b), at u u~ > e- e+ g.
+    The refusal is not the anomalous-veto one (no veto)."""
+
+    from collections import OrderedDict
+
+    from pyamplicol.loops.v2 import ct_closure, ct_recursion
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+
+    original = ct_recursion.counterterm_lorentz_error
+
+    def withheld(compiled, name):
+        if name == "R2_GGZ":
+            return "a Levi-Civita tensor (Epsilon), withheld by the test"
+        return original(compiled, name)
+
+    monkeypatch.setattr(ct_recursion, "counterterm_lorentz_error", withheld)
+    monkeypatch.setattr(ct_closure, "_LOWERED", OrderedDict())
+    request = SliceRequest(
+        "u u~ > e- e+ g",
+        {"QCD": 1, "QED": 2},
+        {"QCD": 3, "QED": 2},
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+    )
+    with pytest.raises(
+        ct_recursion.UnloweredCountertermError,
+        match=r"can enter a tree.*\[G G Z\].*R2_GGZ.*withheld.*does not cancel",
+    ) as caught:
+        LoopSlice.generate(load_compiled_model(anomalous_model), request, loop_native)
+    assert not isinstance(caught.value, ct_recursion.AnomalousVetoError)
 
 
 @pytest.mark.loop_physics
