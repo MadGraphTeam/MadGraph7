@@ -112,3 +112,36 @@ def test_slash_gate_does_not_infer_other_momenta_chirality_or_mass_terms(value):
             structure=wrap_indices(parse_exact_ufo(value)),
         )
     )
+
+
+def test_neutral_certificates_are_structural_in_the_singlet_vector(prepared):
+    """m5 (genericity audit): the certificate attests the exact ordered colour
+    and Lorentz tensor product, whichever neutral colour-singlet vector carries
+    it (coefficients stay the model's). The Z's epsilon products certify for
+    any self-conjugate singlet vector, here the photon, a scope the former
+    PDG-23 gate excluded; a charged (non-self-conjugate) vector or a scalar in
+    the singlet port does not certify."""
+
+    from pyamplicol.loops.model_neutral_qcd import certified_neutral_qcd_basis
+
+    raw = prepared.model.raw
+    index = {
+        record["fields"]["name"]: position
+        for position, record in enumerate(raw.collections["particles"])
+    }
+    epsilon = [
+        entry
+        for entry in prepared.model.kernels
+        if entry.vertex_name in {"V_GGZ", "V_GGGZ"} and "Epsilon" in entry.lorentz
+    ]
+    assert epsilon
+    for entry in epsilon:
+        assert certified_neutral_qcd_basis(entry, raw)
+        coloured = entry.particle_ids[:-1]
+        assert certified_neutral_qcd_basis(
+            replace(entry, particle_ids=(*coloured, index["A"])), raw
+        )
+        for other in ("W+", "H"):
+            assert not certified_neutral_qcd_basis(
+                replace(entry, particle_ids=(*coloured, index[other])), raw
+            )
