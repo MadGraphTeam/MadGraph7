@@ -1403,27 +1403,50 @@ def resolved_internal_parameters(compiled: Any, expression: Any) -> Any:
     replaced by its resolved definition, which the model compiler writes in
     the external parameters alone; fails if one is left."""
 
-    from symbolica import E, Replacement
+    from symbolica import Replacement
 
-    from pyamplicol._internal.physics.symbols import symbols
-
-    model_symbols = symbols.model(compiled.name)
-    definitions = {
-        model_symbols.symbol(record.name): record.resolved_expression
-        for record in compiled.ir.parameters
-        if record.nature == "internal"
-    }
+    definitions = _internal_definitions(compiled)
+    read = set(expression.get_all_symbols(False))
     present = [
-        Replacement(symbol, E(f"({definition})"))
-        for symbol, definition in definitions.items()
-        if expression.contains(symbol)
+        Replacement(symbol, definition)
+        for symbol, definition in definitions
+        if symbol in read
     ]
     if present:
         expression = expression.replace_multiple(present)
-    left = sorted(str(s) for s in definitions if expression.contains(s))
+        read = set(expression.get_all_symbols(False))
+    left = sorted(str(symbol) for symbol, _ in definitions if symbol in read)
     if left:
         raise ValueError(f"internal parameters {left} are not resolved")
     return expression
+
+
+def _internal_definitions(compiled: Any) -> tuple[tuple[Any, Any], ...]:
+    """(symbol, parsed resolved definition) of every internal parameter of
+    ``compiled``, in record order, formed once per parameter table."""
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    records = compiled.ir.parameters
+    found = _INTERNAL_DEFINITIONS.get(id(records))
+    # The table itself is kept, so its id is not reused while cached.
+    if found is not None and found[0] is records:
+        return found[1]
+    model_symbols = symbols.model(compiled.name)
+    definitions = tuple(
+        (model_symbols.symbol(record.name), E(f"({record.resolved_expression})"))
+        for record in records
+        if record.nature == "internal"
+    )
+    if len(_INTERNAL_DEFINITIONS) >= 64:
+        _INTERNAL_DEFINITIONS.clear()
+    _INTERNAL_DEFINITIONS[id(records)] = (records, definitions)
+    return definitions
+
+
+_INTERNAL_DEFINITIONS: dict[int, tuple[Any, tuple[tuple[Any, Any], ...]]] = {}
 
 
 # ----------------------------------------------------------------- reference values
