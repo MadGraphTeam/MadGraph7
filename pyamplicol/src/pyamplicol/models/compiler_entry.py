@@ -37,7 +37,7 @@ from .compiler_contacts import (
 from .compiler_contractions import compile_contraction_records
 from .compiler_gauge import close_goldstone_flags, compile_goldstone_partner_records
 from .compiler_kernels import (
-    _canonicalize_oriented_kernel_component,
+    _canonical_product_text,
     _fuse_oriented_kernels,
     _is_compile_time_zero_parameter,
     _is_single_structure_constant,
@@ -1268,10 +1268,12 @@ def _compile_four_point_contact_kernels(
                         ),
                         source_particle_legs=(left_leg, right_leg, -1),
                         component_expressions=tuple(
-                            _canonicalize_oriented_kernel_component(
-                                _sym.E(components[index])
-                                * _sym.E(orientation.scalar_prefactor)
-                            ).to_canonical_string()
+                            _canonical_product_text(
+                                components[index],
+                                orientation.scalar_prefactor,
+                                kind=kind,
+                                model_symbols=model_symbols,
+                            )
                             for index in representative_indices
                         ),
                         coupling_expression="1",

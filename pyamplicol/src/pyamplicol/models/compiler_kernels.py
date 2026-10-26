@@ -149,15 +149,20 @@ def _fused_components(
 
     Fusions equal up to the members' kinds and term ids (the vertex copies of
     counterterm clone lines, repeated structures) are formed once
-    (``_FUSED``) and renamed on the text (``_renamed_fused_texts``): with the
-    term ids in the same numeric order, both sums are equal on the canonical
-    symbols of ``canonical_apply``, so the canonicalisation is the same up
-    to the renaming."""
+    (``_FUSED``) and renamed on the text (``_renamed_fused_texts``): when
+    each member's components hold only its own kind's kernel symbols
+    (``_single_kind``) and the term ids are in the same numeric order, both
+    sums are equal on the canonical symbols of ``canonical_apply``, so the
+    canonicalisation is the same up to the renaming."""
 
     model_name = model_symbols.model_name
     term_ids = tuple(member.term_id for member in members)
     key = None
-    if len(set(term_ids)) == len(term_ids):
+    if len(set(term_ids)) == len(term_ids) and all(
+        _single_kind(component, member.kind, model_symbols)
+        for member in members
+        for component in member.component_expressions
+    ):
         key = (
             model_symbols.namespace,
             tuple(
@@ -408,6 +413,69 @@ def _kernel_token_prefix(model_symbols: ModelSymbolRegistry) -> str:
 _KERNEL_TOKEN_PREFIXES: dict[str, str] = {}
 
 
+def _single_kind(text: str, kind: int, model_symbols: ModelSymbolRegistry) -> bool:
+    """Whether every kernel symbol of the canonical string ``text`` is an
+    input component or momentum symbol of kernel ``kind`` in the model's
+    namespace (``_renamed_kernel_text``'s condition)."""
+
+    prefix = _kernel_token_prefix(model_symbols)
+    kinds = _KERNEL_TOKEN.findall(text)
+    occurrences = text.count("::kernel_")
+    return (
+        len(kinds) == occurrences
+        and text.count(f"{prefix}{kind}_") == occurrences
+        and all(found == str(kind) for found in kinds)
+    )
+
+
+def _canonical_product_text(
+    text: str,
+    factor: str,
+    *,
+    kind: int,
+    model_symbols: ModelSymbolRegistry,
+) -> str:
+    """``_canonicalize_oriented_kernel_component(E(text) * E(factor))
+    .to_canonical_string()`` for a canonical string ``text`` of kernel
+    ``kind`` and a ``factor`` without kernel symbols.
+
+    Formed once per (``text`` on kind 0, ``factor``) when every kernel symbol
+    of ``text`` has the one kind (``_single_kind``): the natural order of the
+    canonical names then does not depend on the kind, so the product is the
+    same on the canonical symbols of ``canonical_apply`` and its result is
+    the formed one with the kind renamed (``_renamed_kernel_text``)."""
+
+    key = None
+    if "::kernel_" not in factor and _single_kind(text, kind, model_symbols):
+        key = (
+            model_symbols.namespace,
+            _renamed_kernel_text(
+                text, old_kind=kind, new_kind=0, model_symbols=model_symbols
+            ),
+            factor,
+        )
+        found = _CANONICAL_PRODUCTS.get(key)
+        if found is not None:
+            formed, result = found
+            return _renamed_kernel_text(
+                result, old_kind=formed, new_kind=kind, model_symbols=model_symbols
+            )
+    result = _canonicalize_oriented_kernel_component(
+        _sym.E(text) * _sym.E(factor)
+    ).to_canonical_string()
+    if key is not None:
+        if len(_CANONICAL_PRODUCTS) >= _CANONICAL_PRODUCTS_BOUND:
+            _CANONICAL_PRODUCTS.clear()
+        _CANONICAL_PRODUCTS[key] = (kind, result)
+    return result
+
+
+# ``_canonical_product_text``'s results by (model namespace, text on kind 0,
+# factor), with the kind they were formed for. Cleared beyond the bound.
+_CANONICAL_PRODUCTS: dict[tuple[str, str, str], tuple[int, str]] = {}
+_CANONICAL_PRODUCTS_BOUND = 1 << 16
+
+
 def _renamed_kernel_text(
     text: str,
     *,
@@ -430,16 +498,9 @@ def _renamed_kernel_text(
 
     if old_kind == new_kind:
         return text
-    prefix = _kernel_token_prefix(model_symbols)
-    old = f"{prefix}{old_kind}_"
-    kinds = _KERNEL_TOKEN.findall(text)
-    occurrences = text.count("::kernel_")
-    if (
-        len(kinds) == occurrences
-        and text.count(old) == occurrences
-        and all(kind == str(old_kind) for kind in kinds)
-    ):
-        return text.replace(old, f"{prefix}{new_kind}_")
+    if _single_kind(text, old_kind, model_symbols):
+        prefix = _kernel_token_prefix(model_symbols)
+        return text.replace(f"{prefix}{old_kind}_", f"{prefix}{new_kind}_")
     return _remap_kernel_symbols(
         _sym.E(text),
         old_kind=old_kind,

@@ -16,8 +16,9 @@ stages rely on the kind independence of the kernel networks.
   and so do the contact finals (``_contact_final_component_expressions``);
 * the kind renamed on the canonical text (``_renamed_kernel_text``) equals
   Symbolica's renaming, and loop_sm compiles to the same IR with the
-  compile's text renamings and fused-component memo (``_fused_components``)
-  as with Symbolica's renaming and every fusion formed.
+  compile's text renamings, fused-component memo (``_fused_components``) and
+  contact-partial product memo (``_canonical_product_text``) as with
+  Symbolica's renaming and every fusion and product formed.
 """
 
 from __future__ import annotations
@@ -177,7 +178,7 @@ def test_contact_finals_do_not_depend_on_the_kind(loop_sm_payload):
         ), a.vertex
 
 
-def test_text_renamings_and_fused_memo_equal_the_formed_compile(
+def test_text_renamings_and_memos_equal_the_formed_compile(
     loop_sm_payload, monkeypatch
 ):
     from pyamplicol.models import (
@@ -190,6 +191,7 @@ def test_text_renamings_and_fused_memo_equal_the_formed_compile(
     def memos_cleared():
         compiler_kernels._FUSED.clear()
         compiler_kernels._CANONICAL_COMPONENTS.clear()
+        compiler_kernels._CANONICAL_PRODUCTS.clear()
         compiler_contacts._FINALS.clear()
         compiler_contacts._PARTIALS.clear()
 
@@ -205,7 +207,12 @@ def test_text_renamings_and_fused_memo_equal_the_formed_compile(
     with monkeypatch.context() as patch:
         patch.setattr(compiler_kernels, "_renamed_fused_texts", counted)
         fast = _compiled_ir(loop_sm_payload, native=True)
-    assert sum(renamed) > 10
+    assert sum(renamed) > 10 and compiler_kernels._CANONICAL_PRODUCTS
+
+    def product_formed(text, factor, *, kind, model_symbols):
+        return compiler_kernels._canonicalize_oriented_kernel_component(
+            _sym.E(text) * _sym.E(factor)
+        ).to_canonical_string()
 
     def symbolica_renamed(text, *, old_kind, new_kind, model_symbols):
         if old_kind == new_kind:
@@ -220,8 +227,65 @@ def test_text_renamings_and_fused_memo_equal_the_formed_compile(
     memos_cleared()
     with monkeypatch.context() as patch:
         patch.setattr(compiler_kernels, "_renamed_fused_texts", lambda *a, **k: None)
+        patch.setattr(compiler_entry, "_canonical_product_text", product_formed)
         for module in (compiler_kernels, compiler_contacts, compiler_entry):
             patch.setattr(module, "_renamed_kernel_text", symbolica_renamed)
         formed = _compiled_ir(loop_sm_payload, native=True)
     memos_cleared()
     assert formed == fast
+
+
+def test_contact_partial_products_are_renamed_from_the_formed_kind(loop_sm_payload):
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.models import compiler_kernels
+    from pyamplicol.models import compiler_symbolica as _sym
+    from pyamplicol.models.compiler_contacts import (
+        _formed_contact_partial_component_expressions,
+    )
+
+    _sym._ensure_symbolica()
+    ir = loop_sm_payload.ir
+    model_symbols = symbols.model(ir.name)
+    particle_by_name = {particle.name: particle for particle in ir.particles}
+    options = {"left_leg": 0, "right_leg": 1, "open_legs": (2, 3)}
+    checked = 0
+    for term in ir.vertex_terms:
+        if term.valence != 4 or "ufo_momentum_" in term.lorentz_expression:
+            continue
+        formed = {
+            kind: _formed_contact_partial_component_expressions(
+                term,
+                particle_by_name,
+                kind=kind,
+                model_symbols=model_symbols,
+                **options,
+            )
+            for kind in (9, 41)
+        }
+        for index, text in enumerate(formed[9]):
+            if text == "0":
+                continue
+            compiler_kernels._CANONICAL_PRODUCTS.clear()
+            first = compiler_kernels._canonical_product_text(
+                text, "-1/2", kind=9, model_symbols=model_symbols
+            )
+            assert len(compiler_kernels._CANONICAL_PRODUCTS) == 1
+            renamed = compiler_kernels._canonical_product_text(
+                formed[41][index], "-1/2", kind=41, model_symbols=model_symbols
+            )
+            assert len(compiler_kernels._CANONICAL_PRODUCTS) == 1  # a memo hit
+            assert (
+                first
+                == compiler_kernels._canonicalize_oriented_kernel_component(
+                    _sym.E(text) * _sym.E("-1/2")
+                ).to_canonical_string()
+            )
+            assert (
+                renamed
+                == compiler_kernels._canonicalize_oriented_kernel_component(
+                    _sym.E(formed[41][index]) * _sym.E("-1/2")
+                ).to_canonical_string()
+            )
+            checked += 1
+    compiler_kernels._CANONICAL_PRODUCTS.clear()
+    assert checked > 3
