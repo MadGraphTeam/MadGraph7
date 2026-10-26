@@ -631,7 +631,8 @@ def test_goldstone_vector_mixing_is_a_vertex_insertion(gmu):
     lines with the propagator kappa N_S N_V / (D_S D_V), the copies of the
     Goldstone's vertices carry the leg's momentum on a promoted vector leg,
     the vector's copies are plain; P(2,1) (the Goldstone's momentum) is
-    -P(k) and P(2,2) is +P(k). In unitary gauge the absorbed Goldstone's
+    +P(k) and P(2,2) is -P(k), P(k) the tree engine's momentum of the copy's
+    leg (minus the momentum flowing in). In unitary gauge the absorbed Goldstone's
     terms are refused (inert in every request, REQUIREMENTS_ADDENDUM J)."""
 
     from symbolica import E
@@ -649,7 +650,7 @@ def test_goldstone_vector_mixing_is_a_vertex_insertion(gmu):
     lorentz = {item["name"]: item for item in payload["lorentz_structures"]}
     terms = _mixing_terms(feynman, "Z")
     ratios = {s.lorentz: _momentum_ratio(s, lorentz, particles) for s in terms}
-    assert ratios == {"l_GpWmMass4": E("-1"), "l_GpWmMass5": E("1")}
+    assert ratios == {"l_GpWmMass4": E("1"), "l_GpWmMass5": E("-1")}
 
     def lower(gauge, absorbed=frozenset()):
         return lower_line_insertions(
@@ -669,7 +670,7 @@ def test_goldstone_vector_mixing_is_a_vertex_insertion(gmu):
     assert not any(item["goldstoneboson"] for item in clones.values())
     assert sorted(lines.reads_as.values()) == ["G0", "Z"]
     (scale,) = lines.parameters
-    assert E(scale["expression"]) == E("-2*UFO::{}::MZ+(2+𝑖)*UFO::{}::MZ")  # noqa: RUF001
+    assert E(scale["expression"]) == E("2*UFO::{}::MZ-(2+𝑖)*UFO::{}::MZ")  # noqa: RUF001
     for record in lines.propagators:
         assert record["pyamplicol_source"] == "model-supplied"
         assert "Metric" in record["numerator"] and scale["name"] in record["numerator"]
@@ -913,3 +914,109 @@ def test_qcd_corrections_agree_in_both_gauges(gmu_massive_b, loop_native):
             strict=True,
         ):
             assert abs(float(mine) - float(theirs)) <= 1e-14 * scale
+
+
+# g t > t t t~ (binary64, on shell to rounding): a top line joined to a top
+# pair by a Z, a photon or a G0, with the gluon at leg 1.
+GT_TTTX_POINT = [
+    ["740.0236666666667", "0", "0", "740.0236666666667"],
+    ["759.9763333333334", "0", "0", "-740.0236666666667"],
+    [
+        "542.1014268447362",
+        "453.946802621722",
+        "-234.14080644548642",
+        "55.27513124065375",
+    ],
+    [
+        "679.7890319233611",
+        "-642.7918716317638",
+        "125.73449804624319",
+        "-56.51171284339019",
+    ],
+    [
+        "278.1095412319028",
+        "188.84506901004178",
+        "108.40630839924326",
+        "1.2365816027364396",
+    ],
+]
+
+
+@pytest.mark.loop_nightly
+def test_goldstone_vector_mixings_equal_the_site_oracle(gmu, loop_native, monkeypatch):
+    """O6 for the Goldstone-vector mixings (WP3.2 EWI-4b): g t > t t t~ with
+    QED corrections, whose trees reach the G0-Z, G0-A and G+-W- mixings
+    (admitted and lowered as vertex insertions), equals the request with
+    every rule closed at sites (the site oracle's two-block sites read the
+    mixings with the catalogue's ct-site kernels). The site oracle's
+    coverage rule has no electroweak certificate of the g t t~ witnesses
+    with electroweak loop species, whose divergences the field and mass
+    counterterms cover: certified for the comparison only. The mixings make
+    0.3 % of the counterterms' finite part here; the opposite momentum sign
+    differs from the oracle by twice that."""
+
+    from pyamplicol.loops.v2 import ct_sites
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+
+    coverage = ct_sites._coverage
+
+    def certified(witnesses, rules, names, corrections, partners, zeros):
+        electroweak = tuple(
+            ct_sites.CertifiedZero(signature, species, "electroweak (test)")
+            for signature, group in witnesses.items()
+            for species in group
+        )
+        return coverage(
+            witnesses, rules, names, corrections, partners, (*zeros, *electroweak)
+        )
+
+    monkeypatch.setattr(ct_sites, "_coverage", certified)
+    fixed = {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", **ZERO_WIDTHS}
+    results = {}
+    for counterterms in ("recursion", "sites"):
+        request = SliceRequest(
+            "g t > t t t~",
+            {"QCD": 1, "QED": 2},
+            {"QCD": 1, "QED": 4},
+            corrections=("QED",),
+            fixed_parameters=fixed,
+            compatibility="gmu_particle_anti",
+            scale_parameter="MU_R",
+            counterterms=counterterms,
+        )
+        slice_ = LoopSlice.generate(gmu, request, loop_native)
+        if counterterms == "recursion":
+            lowered = slice_.counterterm_program.recursion.model.lowered
+            spins = {p.name: int(p.spin) for p in lowered.compiled.ir.particles}
+            mixings = {
+                structure.particles
+                for structure in lowered.insertions
+                if {spins[name] for name in structure.particles} == {1, 3}
+            }
+            assert len(mixings) == 4, mixings
+        results[counterterms] = slice_.evaluate(
+            GT_TTTX_POINT, "1000000", parameters={"aS": "0.118"}
+        )
+    mine, oracle = results["recursion"], results["sites"]
+
+    def totals(result, sector):
+        uv = [
+            a + b
+            for a, b in zip(
+                result.components["uv_local"][sector].coefficients,
+                result.components["uv_external_fields"][sector].coefficients,
+                strict=True,
+            )
+        ]
+        return {
+            "r2": result.components["r2"][sector].coefficients,
+            "uv": uv,
+            "virtual": result.components["virtual"][sector].coefficients,
+        }
+
+    for sector in oracle.components["virtual"]:
+        expected, found = totals(oracle, sector), totals(mine, sector)
+        for name, values in expected.items():
+            scale = max(abs(complex(x)) for x in values)
+            for a, b in zip(found[name], values, strict=True):
+                assert abs(complex(a) - complex(b)) <= 1e-12 * scale, (name, a, b)

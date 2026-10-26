@@ -65,9 +65,10 @@ vertex with legs ``r`` (the field the current enters, incoming momentum
   Lorentz covariance ``Pi^mu = kappa p^mu`` with ``p`` the line momentum, so
   the momentum moves into the vertex copies on the scalar side: their clone
   leg becomes a vector leg whose Lorentz structure is the original one times
-  ``P(mu_k, k)``, the incoming momentum of that leg (the scalar leg of ``Pi``
-  takes ``-P(k)``, its vector leg ``+P(k)``, whichever way the current
-  flows). Both clones are then vector lines, the clone of the scalar side a
+  ``P(mu_k, k)``, the tree momentum of that leg (minus the momentum flowing
+  into it: the scalar leg of ``Pi`` takes ``+P(k)``, its vector leg
+  ``-P(k)``, whichever way the current flows; ``_momentum_ratio``). Both
+  clones are then vector lines, the clone of the scalar side a
   copy of the vector's antiparticle, with the propagator ``kappa N_S N_V(1,
   2) / (D_S D_V)`` (``N_S`` and ``D_S`` the scalar's, ``N_V`` and ``D_V``
   the vector's): the current a vector-side vertex consumes is the vector's
@@ -712,9 +713,20 @@ def _momentum_ratio(
     particles: Mapping[str, Mapping[str, Any]],
 ) -> Any:
     """The number ``r`` with ``Pi_t^mu = r P(mu, k)`` for a scalar-vector
-    two-point term, ``P(k)`` the incoming momentum of the scalar-side vertex
-    leg ``k`` the line joins (the scalar leg of ``Pi`` takes ``-P(k)``, its
-    vector leg ``+P(k)``), or ``None`` if the structure is no such multiple."""
+    two-point term, ``P(k)`` the momentum the tree engine gives the leg ``k``
+    of the scalar-side vertex copy that the line joins, or ``None`` if the
+    structure is no such multiple.
+
+    The tree engine evaluates a vertex on the tree momenta of its currents
+    (the leg-mask momentum, initial legs negated: minus the momentum flowing
+    into the vertex; ``ct_sites`` negates it back for its physical reading),
+    so ``P(k)`` is minus the momentum flowing into leg ``k``, which is the
+    momentum flowing into ``Pi``'s scalar leg: the scalar leg of ``Pi`` takes
+    ``+P(k)`` and its vector leg ``-P(k)``, whichever way the current flows.
+    Checked against the site oracle (O6) on g t > t t t~ with QED
+    corrections, whose trees reach the mixings (WP3.2 EWI-4b; the opposite
+    reading differs from it by the mixings' sign).
+    """
 
     from symbolica import E
 
@@ -724,8 +736,8 @@ def _momentum_ratio(
     momentum, index = _placeholder(), E("UFO::{}::dummy(9101)")
     structure = E(str(lorentz[term.lorentz]["structure"]))
     structure = structure.replace(
-        E(f"UFO::{{}}::P(a_,UFO::{{}}::idx(1,{scalar}))"), -momentum(E("a_"))
-    ).replace(E(f"UFO::{{}}::P(a_,UFO::{{}}::idx(1,{vector}))"), momentum(E("a_")))
+        E(f"UFO::{{}}::P(a_,UFO::{{}}::idx(1,{scalar}))"), momentum(E("a_"))
+    ).replace(E(f"UFO::{{}}::P(a_,UFO::{{}}::idx(1,{vector}))"), -momentum(E("a_")))
     structure = structure.replace(E(f"UFO::{{}}::idx(1,{vector})"), index).expand()
     ratio = structure.replace(momentum(index), E("1"))
     remainder = (structure - ratio * momentum(index)).expand()
