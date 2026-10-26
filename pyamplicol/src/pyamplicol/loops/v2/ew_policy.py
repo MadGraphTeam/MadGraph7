@@ -13,14 +13,16 @@ public generator, the tools, the tests and the artifacts all see them:
   electromagnetic orders are identified by the vertices of the gluon and of
   the photon (``correction_orders``), never by their names (genericity audit
   m1): a model whose orders are spelt otherwise takes the same decisions.
-* ``require_no_external_photons`` refuses an electroweak request with an
-  on-shell external photon (``ExternalPhotonError``). The user's decision
-  [U9] (2026-10-25): every on-shell external photon couples with alpha(0),
-  not with the loops' coupling (alpha_Gmu in a G_mu model), together with
-  the charge-renormalisation term of that change (MadLoop's and OpenLoops'
-  default; MASTER_PLAN §4.9 "external-photon conventions"). v2 implements
-  it in WP3.2 EWI-6b; until then a virtual with such a photon would be wrong
-  at O(alpha) by the photon's light-fermion logarithms, so it is refused.
+* ``external_photon_scheme`` is the external-photon convention of an
+  electroweak request with on-shell external photons (WP3.2 EWI-6b). The
+  user's decision [U9] (2026-10-25): every on-shell external photon couples
+  with alpha(0), not with the loops' coupling (alpha_Gmu in a G_mu model),
+  together with the charge-renormalisation term of that change (MadLoop's
+  and OpenLoops' default; MASTER_PLAN §4.9 "external-photon conventions").
+  A model that cannot take the convention (no conversion counterterm, no
+  adjustable 1/alpha(0), loops that couple with alpha(0)) is refused
+  (``ExternalPhotonError``): without it the virtual would be wrong at
+  O(alpha) by the photon's light-fermion logarithms.
 * ``require_zero_widths`` refuses an electroweak request whose tree currents
   propagate a particle with a width that is not zero, coloured or not
   (``ElectroweakWidthError``). v2 virtuals are real on-shell: loop
@@ -77,8 +79,8 @@ class ElectroweakWidthError(GenerationError):
 
 
 class ExternalPhotonError(GenerationError):
-    """An electroweak request with an on-shell external photon, whose
-    alpha(0) convention v2 does not implement yet."""
+    """An electroweak request with an on-shell external photon on a model
+    that cannot take the alpha(0) convention (``external_photon_scheme``)."""
 
 
 class ElectroweakGaugeError(GenerationError):

@@ -1311,9 +1311,11 @@ class PointResult:
     finite-only mode). ``families`` keeps each reduction lane's raw integrals
     ``(family, loop order, sector) -> Laurent``. ``ir_poles`` is Catani's
     prediction of the virtual's (single, double) poles per sector (the QCD
-    and QED operators, massless and massive legs), ``None`` in finite-only
-    and ``"uv"`` mode, at leading colour and where the operators make no
-    prediction (a correction without one); ``stability`` is ``None``
+    and QED operators, massless and massive legs) for the sectors whose
+    loops the requested corrections complete (``poles.predicted_sectors``;
+    the others are absent), ``None`` in finite-only and ``"uv"`` mode, at
+    leading colour and where the operators make no prediction (a correction
+    without one, or no predicted sector); ``stability`` is ``None``
     unless checks were asked. ``colour_contraction`` is the seed contraction
     used ("direct" or "symmetric-group-fft").
 
