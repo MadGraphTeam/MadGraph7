@@ -721,3 +721,195 @@ def test_native_dag_builds_the_goldstone_model_blocks(gmu):
         record.pdg_code for record in feynman.ir.particles if record.goldstoneboson
     }
     assert any(current.index.particle_id in goldstones for current in python.currents)
+
+
+# ---------------------------------------- nightly: electroweak loops and M5
+
+# The fixture metric of tools/loop_v2_generate.py validate: |a - b| over
+# max(|a|, |b|, |Born| alpha / 2 pi) for the Laurent coefficients.
+EW_TOLERANCE = 1e-12
+
+
+@pytest.fixture(scope="module")
+def gg_ttx_ew(loop_gmu_ufo, loop_native, loop_reference):
+    """g g > t t~ with QCD and QED corrections on the G_mu UFO (the request
+    of ``required/gg_ttx_ew.json``, ``tools/loop_v2_generate``), generated
+    once: 't Hooft-Feynman gauge throughout."""
+
+    import argparse
+
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.models.loading import compile_model_source
+    from tools import loop_v2_generate
+
+    reference = loop_reference("required/gg_ttx_ew")
+    compiled = compile_model_source(loop_gmu_ufo, require_supported=False)
+    request, _ignored = loop_v2_generate._fixture_request(
+        reference, compiled, argparse.Namespace()
+    )
+    return reference, compiled, LoopSlice.generate(compiled, request, loop_native)
+
+
+@pytest.mark.loop_nightly
+def test_gg_ttx_electroweak_equals_madloop_at_point_0(gg_ttx_ew):
+    """The full NLO EW virtual of g g > t t~ (QCD and QED corrections,
+    G_mu, real masses, widths zero) equals MadLoop on the same UFO at the
+    fixture's point 0 to 1e-12 per Laurent coefficient (the fixture's
+    metric) through the native executor; the request took 't Hooft-Feynman
+    gauge and every family has rank <= N."""
+
+    from fractions import Fraction
+
+    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
+    from tools import loop_v2_generate
+
+    reference, _compiled, slice_ = gg_ttx_ew
+    assert slice_.compiled.ir.gauge == "feynman"
+    assert all(
+        family.rank <= len(key) for key, family in slice_.families.families.items()
+    )
+    executor = NativeExecutor(
+        slice_, forward=False, exported=export_plan(slice_, forward=False)
+    )
+    (result,) = executor.evaluate(
+        [reference["points"][0]],
+        [str(Fraction(reference["mu_r"][0]) ** 2)],
+        parameters=reference["parameters"],
+    )
+    mine = [float(x) for x in result.totals[:4]]
+    madloop = reference["rows"][0]["providers"]["madloop"]
+    alpha = float(reference["derived_parameters"]["alpha"])
+    floor = abs(mine[0]) * alpha / (2 * math.pi)
+    keys = ("born", "finite", "single_pole", "double_pole")
+    for key, value in zip(keys, mine, strict=True):
+        error = loop_v2_generate._relative(
+            value, float(madloop[key]), 0.0 if key == "born" else floor
+        )
+        assert error <= EW_TOLERANCE, (key, value, madloop[key], error)
+
+
+@pytest.mark.loop_nightly
+def test_gg_ttx_electroweak_native_counterterm_program(gg_ttx_ew):
+    """A4's native counterterm program on an electroweak control (the
+    't Hooft-Feynman-gauge model's Goldstone vertices and counterterms, the
+    lowered model's clone lines) equals the tree engine's, block by block
+    (the block-set oracle of ``test_loop_v2_native_dag``)."""
+
+    from pyamplicol.loops.v2 import ct_closure, dag_input
+
+    _reference, _compiled, slice_ = gg_ttx_ew
+    program = slice_.counterterm_program.blocks
+    with dag_input.native_flags(dag=False):
+        python = ct_closure.CountertermBlocks.build(
+            program.recursion, program.blocks.blocks_dag.process
+        )
+    assert program.blocks.blocks_dag.decode() == python.blocks.blocks_dag
+    assert program.blocks.blocks == python.blocks.blocks
+    assert dict(program.clones) == dict(python.clones) and program.clones
+    goldstones = {
+        record.pdg_code
+        for record in slice_.compiled.ir.particles
+        if record.goldstoneboson
+    }
+    assert any(block.key.particle_id in goldstones for block in program.blocks.blocks)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.xfail(
+    strict=True,
+    raises=ValueError,
+    reason=(
+        "WP3.2 EWI-N: the native point inputs of g g > t t~ EW are not exported "
+        "(the SymJIT plane application of its tree program disagrees with the "
+        "exact evaluator)"
+    ),
+)
+def test_gg_ttx_electroweak_validates_with_native_inputs(
+    gg_ttx_ew, tmp_path, monkeypatch
+):
+    """``tools/loop_v2_generate.py validate --inputs native`` on g g > t t~
+    EW: a strict xfail until EWI-N exports its native point inputs, so that a
+    native gap shows here (WP3.2 M8), never as a silent fallback."""
+
+    import json
+
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from tools import loop_v2_generate
+
+    _reference, compiled, slice_ = gg_ttx_ew
+    monkeypatch.setattr(loop_v2_generate, "_fixture_model", lambda *a: compiled)
+    monkeypatch.setattr(LoopSlice, "generate", lambda *a, **k: slice_)
+    out = tmp_path / "record.json"
+    arguments = ["validate", "gg_ttx_ew", "--inputs", "native", "--points", "0"]
+    assert loop_v2_generate.main([*arguments, "--json", str(out)]) == 0
+    record = json.loads(out.read_text())
+    assert record["passed"] and record["points"][0]["max_error"] <= EW_TOLERANCE
+
+
+@pytest.mark.loop_nightly
+def test_qcd_corrections_agree_in_both_gauges(gmu_massive_b, loop_native):
+    """M5, the premise of the gauge scope (WP3.2 EWI-4b): QCD corrections
+    keep their unitary-gauge trees because both gauges are exact for them.
+    b b~ > t t~ QED=2 [virt=QCD] with a massive b has an internal Z between
+    massive currents: the 't Hooft-Feynman request inserts the QCD
+    counterterms of the explicit G0 b b~ and G0 t t~ vertices, which the
+    unitary one cannot hold (its tree model absorbs the Goldstones, DESIGN
+    §6.2); Born and virtual agree (32 digits: binary64 holds the virtual to
+    2e-9 only at this massive-b point, the reduction's conditioning that the
+    precision-ap package recorded; M5 2026-10-26: 1.4e-16 at 32 digits)."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+
+    request = SliceRequest(
+        "b b~ > t t~",
+        {"QCD": 0, "QED": 2},
+        {"QCD": 2, "QED": 2},
+        fixed_parameters=ZERO_WIDTHS,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    masses = [_mass(gmu_massive_b, name) for name in ("MB", "MB", "MT", "MT")]
+    energy, cosine, sine = 500.0, 0.6, 0.8
+    beam = math.sqrt(energy**2 - masses[0] ** 2)
+    top = math.sqrt(energy**2 - masses[2] ** 2)
+    point = [
+        [repr(energy), "0", "0", repr(beam)],
+        [repr(energy), "0", "0", repr(-beam)],
+        [repr(energy), repr(top * sine), "0", repr(top * cosine)],
+        [repr(energy), repr(-top * sine), "0", repr(-top * cosine)],
+    ]
+    goldstones = {
+        record.pdg_code
+        for record in gmu_massive_b.ir.particles
+        if record.goldstoneboson
+    }
+    results = {}
+    for gauge in ("unitary", "feynman"):
+        compiled = gmu_massive_b if gauge == "unitary" else _feynman(gmu_massive_b)
+        slice_ = LoopSlice.generate(compiled, request, loop_native)
+        assert slice_.compiled.ir.gauge == gauge
+        program = slice_.counterterm_program.blocks.blocks
+        species = {block.key.particle_id for block in program.blocks}
+        results[gauge] = (
+            slice_.evaluate(
+                point,
+                "250000",
+                parameters={"aS": "0.118"},
+                precision=Precision.arbitrary(32),
+            ),
+            species & goldstones,
+        )
+    (unitary, absorbed), (feynman, explicit) = results["unitary"], results["feynman"]
+    # The counterterm program carries Goldstone currents in 't Hooft-Feynman
+    # gauge only: there its G0 counterterms are inserted.
+    assert not absorbed and explicit
+    for sector, born in unitary.born.items():
+        assert float(feynman.born[sector]) == pytest.approx(float(born), rel=1e-13)
+    for sector, laurent in unitary.components["virtual"].items():
+        scale = max(abs(float(x)) for x in laurent.coefficients)
+        for mine, theirs in zip(
+            feynman.components["virtual"][sector].coefficients,
+            laurent.coefficients,
+            strict=True,
+        ):
+            assert abs(float(mine) - float(theirs)) <= 1e-14 * scale

@@ -1295,12 +1295,18 @@ def test_every_referenced_coupling_equals_the_ufo_coupling(gmu, gmu_ufo, gmu_pla
 
 # Blockers (PLAN wp32 §2): the exception and message each request stops at.
 # B1 (the CT helpers) is lifted by EWI-3; B2 (loop species), B5 (a W on a
-# loop quark line) and B6 (a W at the root) by EWI-1 and EWI-2 (ew-lines).
-B3 = ("LoopKernelCatalogueError", r"loop line -?\d+ has a unitary-gauge propagator")
+# loop quark line) and B6 (a W at the root) by EWI-1 and EWI-2 (ew-lines);
+# B3 (unitary-gauge massive vectors in the loops) by EWI-4b (ew-gauge: every
+# electroweak request takes 't Hooft-Feynman gauge throughout, its
+# Goldstone-vector mixings are lowered as vertex insertions).
 # B4: more than one colour-singlet fermion line, refused when the request is
 # prepared, before any tree or counterterm is built
 # (``ct_sites.require_one_singlet_line``, until EWI-5).
 B4 = ("FermionSignError", r"colour-singlet fermion lines .*Koszul signs")
+# B4 in the loop: a colour-singlet fermion line through the loop
+# (``conventions.LeafWeights``, until EWI-5), reached after the families,
+# the counterterm program and the kernel catalogue.
+B4_LOOP = ("FermionSignError", r"colour-singlet fermion line through the loop")
 LIFTED = None  # the rung generates (and runs its check)
 _PHOTON_ONLY = (23, 24, 25, 250, 251)  # Z, W, H and the Goldstones vetoed
 # Electroweak requests need every propagating width fixed to zero outside
@@ -1400,14 +1406,19 @@ LADDER = [
         poles="uv",
         fixed_parameters=_ZERO_WIDTHS,
     ),
+    # Lifted by EWI-4b: the full QED corrections (Z, W, H, Goldstones and
+    # ghosts in the loops, 't Hooft-Feynman gauge) generate and their bare
+    # and counterterm UV poles cancel (the finite part is EWI-7's).
     _rung(
         "uudd_qed",
         "loop_qcd_qed_sm",
         "u u~ > d d~",
         {"QCD": 2, "QED": 0},
         {"QCD": 2, "QED": 2},
-        B3,
+        LIFTED,
         corrections=("QED",),
+        point=_MASSLESS_POINT,
+        poles="uv",
         fixed_parameters=_ZERO_WIDTHS,
     ),
     _rung(
@@ -1416,7 +1427,7 @@ LADDER = [
         "u u~ > d d~",
         {"QCD": 2, "QED": 0},
         ({"QCD": 4, "QED": 0}, {"QCD": 2, "QED": 2}),
-        B3,
+        LIFTED,
         corrections=("QCD", "QED"),
         fixed_parameters=_ZERO_WIDTHS,
     ),
@@ -1455,23 +1466,27 @@ LADDER = [
         corrections=("QED",),
         fixed_parameters=_G_MU_FIXED,
     ),
+    # Lifted by EWI-4b; its values against MadLoop:
+    # ``test_loop_v2_ew_gauge.test_gg_ttx_electroweak_equals_madloop_at_point_0``.
     _rung(
         "gmu_gg_ttx",
         "loop_gmu",
         "g g > t t~",
         {"QCD": 2, "QED": 0},
         {"QCD": 2, "QED": 2},
-        B3,
+        LIFTED,
         corrections=("QCD", "QED"),
         fixed_parameters=_G_MU_FIXED,
     ),
+    # The lepton line of the Z/photon decay runs through the loops (B4, EWI-5);
+    # g g > t t~ e- e+ lowers its G0-Z and G0-A mixings first (EWI-4b).
     _rung(
         "gmu_uux_emepg",
         "loop_gmu",
         "u u~ > e- e+ g",
         {"QCD": 1, "QED": 2},
         {"QCD": 1, "QED": 4},
-        B3,
+        B4_LOOP,
         corrections=("QCD", "QED"),
         fixed_parameters=_G_MU_FIXED,
     ),
@@ -1481,7 +1496,7 @@ LADDER = [
         "g g > t t~ e- e+",
         {"QCD": 2, "QED": 2},
         {"QCD": 2, "QED": 4},
-        B3,
+        B4_LOOP,
         corrections=("QCD", "QED"),
         fixed_parameters=_G_MU_FIXED,
     ),
@@ -1491,7 +1506,7 @@ LADDER = [
         "g g > t t~ e- e+ g",
         {"QCD": 3, "QED": 2},
         {"QCD": 3, "QED": 4},
-        B3,
+        B4_LOOP,
         corrections=("QCD", "QED"),
         fixed_parameters=_G_MU_FIXED,
     ),
