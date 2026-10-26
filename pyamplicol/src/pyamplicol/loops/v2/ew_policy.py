@@ -40,7 +40,9 @@ public generator, the tools, the tests and the artifacts all see them:
   ghosts, the gauge of the model's UV and R2 rules, in which a massive
   vector's loop line has rank <= 1 (the unitary k k / M^2 term would break
   rank <= N). ``require_feynman_gauge`` refuses an electroweak request on a
-  model whose source does not declare gauge 1 (``ElectroweakGaugeError``);
+  model that cannot be taken in that gauge (``ElectroweakGaugeError``: its
+  source declares no gauge 1, which the loop preparation refuses for every
+  loop request already, or a bundle prepared in unitary gauge);
   ``prepare_request_model`` runs it, so the dry run reports it. QCD-only
   requests keep the compiled model's gauge (unitary by default, their
   validated trees); a model compiled in 't Hooft-Feynman gauge keeps it for

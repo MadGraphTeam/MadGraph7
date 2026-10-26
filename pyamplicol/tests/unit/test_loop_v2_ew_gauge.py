@@ -537,3 +537,196 @@ def test_the_lowered_model_cache_key_holds_the_gauge_off_the_default(
             ).encode("utf-8")
         ).hexdigest()
     )
+
+
+# ===================================================== loops and counterterms
+# WP3.2 EWI-4b: electroweak requests take 't Hooft-Feynman gauge throughout.
+
+
+def _colour_singlet_bosons(compiled) -> tuple[int, ...]:
+    """The colour-singlet propagating scalars and vectors of ``compiled`` and
+    its colour-singlet ghosts (PDG codes): the loop lines the gauge changes,
+    chosen by spin, colour and ghost number."""
+
+    return tuple(
+        sorted(
+            record.pdg_code
+            for record in compiled.ir.particles
+            if abs(int(record.color)) == 1
+            and record.propagating
+            and (int(record.spin) in (1, 3) or record.ghost_number)
+        )
+    )
+
+
+def test_feynman_gauge_loop_lines_keep_rank_at_most_n(gmu):
+    """Every loop segment (vertex times the next line's numerator) and every
+    propagator numerator of the colour-singlet bosons and ghosts of the G_mu
+    model has q-degree <= 1 in 't Hooft-Feynman gauge (massive vectors -i g,
+    Goldstones and ghosts i), so a loop of N propagators has rank <= N
+    (DESIGN §6.8). In unitary gauge the massive vector line (q q / M^2:
+    rank N + 2) is refused."""
+
+    from pyamplicol.loops.v2.catalogue import (
+        LoopKernelCatalogueError,
+        build_loop_kernel_catalogue,
+    )
+
+    species = _colour_singlet_bosons(gmu)
+    catalogue = build_loop_kernel_catalogue(
+        _feynman(gmu), loop_species=species, counterterm_entries=()
+    )
+    kinds = {line.propagator_kind for line in catalogue.propagator_numerators}
+    assert {"vector", "scalar", "ufo-index-free"} <= kinds
+    assert catalogue.segments
+    assert max(segment.degree for segment in catalogue.segments) <= 1
+    assert all(line.degree == 0 for line in catalogue.propagator_numerators)
+    with pytest.raises(LoopKernelCatalogueError, match="unitary-gauge propagator"):
+        build_loop_kernel_catalogue(gmu, loop_species=species, counterterm_entries=())
+
+
+def test_electroweak_requests_need_a_model_declaring_feynman_gauge(gmu):
+    """The gauge scope: an electroweak request takes the model in
+    't Hooft-Feynman gauge (``ew_policy.feynman_gauge_model``) and is refused
+    with a typed error on a model that cannot be taken in it (its source
+    declares no gauge 1); the loop model preparation refuses every loop
+    request on such a model already (``covariant_model``: the UV and R2
+    rules are written for gauge 1), so the dry run reports it."""
+
+    from pyamplicol.loops.v2 import ew_policy
+    from pyamplicol.loops.v2.assemble import SliceRequest, prepare_request_model
+
+    electroweak = SliceRequest(
+        "u u~ > d d~",
+        {"QCD": 2, "QED": 0},
+        {"QCD": 2, "QED": 2},
+        corrections=("QED",),
+        fixed_parameters=ZERO_WIDTHS,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    feynman = ew_policy.feynman_gauge_model(gmu, electroweak)
+    assert feynman.ir.gauge == "feynman" and gmu.ir.gauge == "unitary"
+    assert ew_policy.feynman_gauge_model(feynman, electroweak) is feynman
+    raw = gmu.raw_loop_model
+    unitary_only = replace(
+        gmu, raw_loop_model=replace(raw, metadata={**raw.metadata, "gauge": (0,)})
+    )
+    with pytest.raises(ew_policy.ElectroweakGaugeError, match=r"only the gauges \[0\]"):
+        ew_policy.require_feynman_gauge(unitary_only, electroweak)
+    with pytest.raises(ValueError, match="does not declare Feynman gauge"):
+        prepare_request_model(unitary_only, electroweak)
+
+
+def _mixing_terms(compiled, vector):
+    """The CT structures and couplings of the G_mu UFO's two-point mixing of
+    ``vector`` with its Goldstone (UVmass, QED^2, one epsilon slot)."""
+
+    from pyamplicol.models.loading import CountertermStructure
+
+    goldstone = {"Z": "G0", "W-": "G+", "A": "G0"}[vector]
+    out = {}
+    for index, lorentz in enumerate(("l_GpWmMass4", "l_GpWmMass5")):
+        structure = CountertermStructure(
+            (goldstone, vector), "1", lorentz, (("QED", 2),), "uv_local", 0
+        )
+        out[structure] = f"(2+{index}*𝑖)*UFO::{{}}::MZ"  # noqa: RUF001
+    return out
+
+
+def test_goldstone_vector_mixing_is_a_vertex_insertion(gmu):
+    """A Goldstone-vector two-point term (Pi^mu = kappa p^mu) is lowered as a
+    vertex insertion (``models.ct_line_insertions``): both clones are vector
+    lines with the propagator kappa N_S N_V / (D_S D_V), the copies of the
+    Goldstone's vertices carry the leg's momentum on a promoted vector leg,
+    the vector's copies are plain; P(2,1) (the Goldstone's momentum) is
+    -P(k) and P(2,2) is +P(k). In unitary gauge the absorbed Goldstone's
+    terms are refused (inert in every request, REQUIREMENTS_ADDENDUM J)."""
+
+    from symbolica import E
+
+    from pyamplicol.models.ct_line_insertions import (
+        _engine_denominator,
+        _momentum_ratio,
+        lower_line_insertions,
+    )
+
+    feynman = _feynman(gmu)
+    payload = feynman.model
+    particles = {item["name"]: item for item in payload["particles"]}
+    propagators = {item["name"]: item for item in payload["propagators"]}
+    lorentz = {item["name"]: item for item in payload["lorentz_structures"]}
+    terms = _mixing_terms(feynman, "Z")
+    ratios = {s.lorentz: _momentum_ratio(s, lorentz, particles) for s in terms}
+    assert ratios == {"l_GpWmMass4": E("-1"), "l_GpWmMass5": E("1")}
+
+    def lower(gauge, absorbed=frozenset()):
+        return lower_line_insertions(
+            payload,
+            terms,
+            prefix="PYAMPLICOL_CT",
+            insertion_order="PYAMPLICOL_CT_INSERTION",
+            slot_order=lambda structure: structure.slot_order,
+            gauge=gauge,
+            absorbed=absorbed,
+        )
+
+    lines = lower("feynman")
+    assert not lines.refused and len(set(lines.clones.values())) == 1
+    clones = {item["name"]: item for item in lines.particles}
+    assert {int(item["spin"]) for item in clones.values()} == {3}
+    assert not any(item["goldstoneboson"] for item in clones.values())
+    assert sorted(lines.reads_as.values()) == ["G0", "Z"]
+    (scale,) = lines.parameters
+    assert E(scale["expression"]) == E("-2*UFO::{}::MZ+(2+𝑖)*UFO::{}::MZ")  # noqa: RUF001
+    for record in lines.propagators:
+        assert record["pyamplicol_source"] == "model-supplied"
+        assert "Metric" in record["numerator"] and scale["name"] in record["numerator"]
+        expected = (
+            _engine_denominator(
+                propagators[particles[name]["propagator"]], particles[name]
+            )
+            for name in ("G0", "Z")
+        )
+        assert record["denominator"] == "*".join(f"({part})" for part in expected)
+    promoted = {item["name"]: item for item in lines.lorentz_structures}
+    assert promoted
+    for rule in lines.vertex_rules:
+        original = rule["name"].split("__", 1)[1]
+        source = next(r for r in payload["vertex_rules"] if r["name"] == original)
+        if lines.reads_as[next(p for p in rule["particles"] if p in clones)] == "G0":
+            assert "G0" in source["particles"]
+            for name in rule["lorentz_structures"]:
+                record = promoted[name]
+                leg = rule["particles"].index(
+                    next(p for p in rule["particles"] if p in clones)
+                )
+                assert record["spins"][leg] == 3
+                assert (
+                    f"P(UFO::{{}}::idx(1,{leg + 1}),UFO::{{}}::idx(1,{leg + 1}))"
+                    in (record["structure"])
+                )
+        else:
+            assert "Z" in source["particles"]
+            assert rule["lorentz_structures"] == source["lorentz_structures"]
+    refused = lower("unitary", frozenset({"G0", "G+", "G-"}))
+    assert set(refused.refused) == set(terms) and not refused.clones
+    assert all("absorbs" in reason for reason in refused.refused.values())
+
+
+def test_native_dag_builds_the_goldstone_model_blocks(gmu):
+    """A4's native loop-request DAG equals the tree engine's on the
+    't Hooft-Feynman-gauge model, whose blocks carry Goldstone currents
+    (WP3.2 EWI-4b; the oracle of ``test_loop_v2_native_dag``)."""
+
+    from pyamplicol.models.external import CompiledUFOModel
+
+    from .test_loop_v2_native_dag import _assert_equal
+
+    feynman = _feynman(gmu)
+    model = CompiledUFOModel(feynman)
+    python, _native = _assert_equal(feynman, model, "g g > t t~", {"QCD": 2, "QED": 2})
+    goldstones = {
+        record.pdg_code for record in feynman.ir.particles if record.goldstoneboson
+    }
+    assert any(current.index.particle_id in goldstones for current in python.currents)

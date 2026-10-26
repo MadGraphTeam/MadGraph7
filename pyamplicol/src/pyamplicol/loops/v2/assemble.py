@@ -1483,8 +1483,10 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     if ew_policy.electroweak(
         compiled, request, prepared.structure.perturbative_species_orders
     ):
-        # The gauge scope (WP3.2 EWI-4b): refused here so that the dry run
-        # reports it; ``LoopSlice.generate`` switches the gauge.
+        # The gauge scope (WP3.2 EWI-4b), refused here so that the dry run
+        # reports it (a source without gauge 1 is refused by the loop
+        # preparation already, a bundle prepared in unitary gauge here);
+        # ``LoopSlice.generate`` switches the gauge.
         ew_policy.require_feynman_gauge(compiled, request)
     return RequestModel(
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter
