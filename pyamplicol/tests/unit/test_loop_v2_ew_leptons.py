@@ -36,10 +36,18 @@ owns). Checks:
   strict xfail: the veto splits counterterm couplings), the legacy engine's
   FFS projector exchange checked against MadLoop before the legacy engine
   serves as the second engine, and the native point inputs of
-  e- e+ > mu- mu+ (a strict xfail until EWI-N). The massive-muon control and
-  its O2 are strict xfails: the Z-G0-H triangles on an open fermion line
-  carry the wrong sign (``GOLDSTONE_TRIANGLE``), a defect of the Goldstone
-  loop segments outside the lepton signs.
+  e- e+ > mu- mu+ (a strict xfail until EWI-N);
+* the tree engine's reading sign of colour-singlet loop segments
+  (``catalogue._CatalogueBuilder.reading_sign``): the tree engine reads
+  every vertex all-outgoing, so a colour-singlet vertex odd in the momenta of
+  its legs read on their own legs (Z G0 H, W G0 G+-, W G+- H) is the
+  segment's reading times -1, and the ghost-G0 vertices take the Goldstones'
+  field sign. Without it the Z-G0-H triangles on an open fermion line had the
+  opposite sign of legacy and MadLoop (O2 rel 2.0 on those families of the
+  massive-muon control, which missed MadLoop by 1e-7); checked by the
+  massive-muon control, its O2 and, nightly, g g > t t~ e- e+ against
+  MadLoop, Recola and OpenLoops (``required/gg_ttxemep_ew``: off by O(1) in
+  the finite part without the sign).
 """
 
 from __future__ import annotations
@@ -254,6 +262,64 @@ def test_singlet_sign_refuses_lines_it_cannot_pair():
         colour_singlet_sign([(1, 2)], [(0, ANTIPARTICLE, 0, PARTICLE)])
 
 
+# ------------------------- the tree reading of colour-singlet loop segments
+
+# The colour-singlet vertices of the G_mu UFO whose tree reading is minus the
+# segments' (sorted particles): odd in the momenta of legs read on their own
+# legs (Z G0 H) or through the conjugate rule (W G0 G+-, W G+- H), and the
+# ghost vertices of the negated G0.
+READING_FLIPS = {
+    ("G0", "H", "Z"),
+    ("G+", "G0", "W-"),
+    ("G-", "G0", "W+"),
+    ("G+", "H", "W-"),
+    ("G-", "H", "W+"),
+    ("G0", "ghWm", "ghWm~"),
+    ("G0", "ghWp", "ghWp~"),
+}
+
+
+@pytest.mark.loop_fast
+def test_colour_singlet_segments_take_the_tree_engines_reading_sign(loop_gmu_ufo):
+    """The tree engine reads a vertex all-outgoing (outgoing tree particles on
+    their own legs, outgoing momenta); the loop segments read boson legs by
+    their incoming fields with incoming momenta. On every colour-singlet
+    vertex of the G_mu UFO in 't Hooft-Feynman gauge the two readings differ
+    by a sign, -1 exactly on the momentum-odd Goldstone vertices and the
+    ghost-G0 vertices (``READING_FLIPS``); coloured vertices keep their
+    reading (their colour reading compensates). The signs are those of a
+    field basis: G0 and G+- negated, Z, photon, H and W kept, so the Goldstone
+    Yukawas' lone chiral projectors (matched to the tree engine's trees,
+    ``models.tensors``) and the loops share one basis."""
+
+    from pyamplicol.loops.v2.catalogue import _CatalogueBuilder
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import compile_model_source, with_model_gauge
+
+    compiled = with_model_gauge(
+        compile_model_source(loop_gmu_ufo, require_supported=False), "feynman"
+    )
+    builder = _CatalogueBuilder(compiled, CompiledUFOModel(compiled))
+    records = {record.name: record for record in compiled.ir.particles}
+    flips, singlets = set(), 0
+    for term in compiled.ir.vertex_terms:
+        if any(records[name].auxiliary_kind is not None for name in term.particles):
+            continue
+        sign = builder.reading_sign(term)
+        assert sign in (1, -1)
+        if any(abs(records[name].color) != 1 for name in term.particles):
+            assert sign == 1, term.vertex
+            continue
+        singlets += 1
+        if sign < 0:
+            flips.add(tuple(sorted(term.particles)))
+    assert flips == READING_FLIPS
+    assert singlets > 3 * len(READING_FLIPS)
+    signs = builder._signs()
+    fields = (["G0"], ["G+", "G-"], ["H"], ["Z"], ["A"], ["W+", "W-"])
+    assert [signs.product(names) for names in fields] == [-1, 1, 1, 1, 1, 1]
+
+
 # --------------------------- two singlet lines and a quark line (QCD, loop_sm)
 
 # MadLoop's u u~ > e- e+ mu- mu+ [virt=QCD] (loop_sm-no_b_mass), whose fixed
@@ -400,22 +466,6 @@ CONTROLS = {
     "electroweak-eeuu-control": ("e- e+ > u u~", "massless"),
     "electroweak-massive-mumu-control": ("e- e+ > m- m+", "massive"),
 }
-# The Z-G0-H triangles on an open fermion line: the G0 and H Yukawas on the
-# muon line (or the top's) joined by the Z G0 H vertex, the only loops with a
-# single Goldstone Yukawa vertex on an open fermion line here, carry the
-# opposite sign of legacy and MadLoop (O2 below: rel 2.0 on those families,
-# every other family to 1e-59). A defect of the Goldstone loop segments, not
-# of the lepton signs: g g > t t~ e- e+ EW misses its three providers by
-# O(1) with it and agrees to 3e-13 (double-double) without it. Reported to
-# the coordinator (WP3.2 EWI-5 report); owner: the electroweak loop lines.
-GOLDSTONE_TRIANGLE = pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "the Z-G0-H triangles on an open fermion line carry the wrong sign "
-        "(Goldstone loop segments; WP3.2 EWI-5 report)"
-    ),
-)
 COMPONENTS = {
     "full": ("virtual",),
     "bare": ("bare",),
@@ -508,15 +558,7 @@ def _control_parameters(muons: str) -> dict[str, str]:
 
 
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize(
-    "name",
-    [
-        pytest.param(
-            name, marks=GOLDSTONE_TRIANGLE if CONTROLS[name][1] == "massive" else ()
-        )
-        for name in CONTROLS
-    ],
-)
+@pytest.mark.parametrize("name", list(CONTROLS))
 def test_electroweak_controls_equal_madloop(gmu_slices, name):
     """The four MadLoop G_mu controls (full electroweak corrections, Feynman
     gauge, lhv = 1; two colour-singlet lines, the lepton lines through the
@@ -665,9 +707,7 @@ def _legacy_families(loop_gmu_ufo, muons: str, point, scale) -> dict:
 
 
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize(
-    "muons", ["massless", pytest.param("massive", marks=GOLDSTONE_TRIANGLE)]
-)
+@pytest.mark.parametrize("muons", ["massless", "massive"])
 def test_family_numerators_equal_the_legacy_engine(gmu_slices, loop_gmu_ufo, muons):
     """O2 per family (DESIGN risk 2) on e- e+ > mu- mu+ with full EW
     corrections: every legacy family's numerator equals the sum of the v2
@@ -769,6 +809,63 @@ def test_family_numerators_equal_the_legacy_engine(gmu_slices, loop_gmu_ufo, muo
             for a, b, w in zip(mine, theirs, weights, strict=True)
         )
         assert error <= O2_TOLERANCE * largest, (masses, error / largest)
+
+
+# ------------------------------------- g g > t t~ e- e+ (EW, three providers)
+
+TOP_PAIR_LEPTONS = "required/gg_ttxemep_ew"
+
+
+@pytest.mark.loop_nightly
+def test_top_pair_and_leptons_equal_three_providers(
+    loop_gmu_ufo, loop_native, loop_reference
+):
+    """g g > t t~ e- e+ with QCD and QED corrections on the G_mu UFO equals
+    MadLoop, Recola and OpenLoops: Born and every Laurent coefficient of the
+    virtual at the reference's three points, against MadLoop to 1e-11 and the
+    other two to the fixture's cross-provider tolerance, in the fixtures'
+    metric. The Goldstone sector with top Yukawas: Z* -> G0 H triangles and W
+    G+- H loops on the top line, which the colour-singlet segments' reading
+    sign fixes (O(1) in the finite part without it). Generation about 10 min,
+    8 GB."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import compile_model_source
+
+    reference = loop_reference(TOP_PAIR_LEPTONS)
+    compiled = compile_model_source(loop_gmu_ufo, require_supported=False)
+    externals = {record.name for record in compiled.ir.parameters}
+    fixed = {k: v for k, v in reference["fixed_parameters"].items() if k in externals}
+    request = SliceRequest(
+        "g g > t t~ e- e+",
+        dict(reference["born_orders"]),
+        dict(reference["loop_orders"]),
+        corrections=("QCD", "QED"),
+        fixed_parameters=fixed,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    alpha = float(reference["derived_parameters"]["alpha"])
+    tolerances = {"madloop": 1e-11, "recola": reference["tolerance"]}
+    tolerances["openloops"] = reference["tolerance"]
+    worst = dict.fromkeys(tolerances, 0.0)
+    for point, mu, row in zip(
+        reference["points"], reference["mu_r"], reference["rows"], strict=True
+    ):
+        result = slice_.evaluate(
+            point, str(Fraction(mu) ** 2), parameters=dict(reference["parameters"])
+        )
+        born, virtual = _totals(result)
+        for provider, tolerance in tolerances.items():
+            values = row["providers"][provider]
+            floor = abs(values["born"]) * alpha / (2 * math.pi)
+            assert _metric(born, values["born"], 0.0) <= tolerance, provider
+            for value, key in zip(virtual, LAURENT, strict=True):
+                error = _metric(value, values[key], floor)
+                worst[provider] = max(worst[provider], error)
+                assert error <= tolerance, (provider, key, value, values[key])
+    print({provider: f"{error:.1e}" for provider, error in worst.items()})
 
 
 # ------------------------------------------------ Bhabha (loop_qcd_qed_sm)
