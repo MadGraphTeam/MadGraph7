@@ -1051,6 +1051,7 @@ def dag_input(
         ),
         "coupling_identity_ranks": _ranks(coupling_identities),
         "sectors": _sector_rows(process, engine),
+        "u1_subtraction_kind": U1_SUBTRACTION_AUXILIARY_KIND,
     }
     return json.dumps(payload, separators=(",", ":"))
 

@@ -56,10 +56,17 @@ Conventions a consumer relies on:
   end last). Then ``sum_words wick_sign * colour * row`` is the Feynman-rule
   current with each diagram signed by the parity of its fermion lines
   listed that way, FeynKit's convention, for flavour-changing lines as well.
-  The connection parity is the same along every tree of a block; generation
-  fails otherwise. Colour-singlet fermions carry the tree engine's Koszul
-  signs inside the rows (``generation/fermion_ordering.py``). The loop sign
-  rule of design §3.3 composes these signs.
+  A current whose trees pair its coloured fermion endpoints in more than one
+  way can have trees of both connection parities (identical-flavour lines:
+  a counterterm stage closing the gluons of one pairing and one taking the
+  U(1)-subtraction auxiliary of the other give the same closed lines); the
+  loop-request compilation folds the ``-1`` of the derivations with the
+  other parity into their colour weights
+  (``generation.fermion_ordering.apply_colour_connection_signs``), so every
+  current, and every block, has one connection parity. Colour-singlet
+  fermions carry the tree engine's Koszul signs inside the rows
+  (``generation/fermion_ordering.py``). The loop sign rule of design §3.3
+  composes these signs.
 * **Kernel variants.** ``KERNEL_VARIANT_BY_BLOCK_CLASS`` is the tree kernel
   variant a block class requires; a block records the variant of the model's
   compiled kernels (``compile_tree_kernel_variant``), which must satisfy it.
@@ -107,6 +114,7 @@ from pyamplicol.generation.dag_types import (
     CurrentIndex,
     GenericDAG,
 )
+from pyamplicol.generation.fermion_ordering import colour_connection_parities
 from pyamplicol.loops.order_names import CouplingOrderNames, order_key
 from pyamplicol.loops.v2.families import (
     BlockCurrent,
@@ -796,7 +804,7 @@ def _blocks(
         and abs(representations[leg.label]) == 3
         and model.is_fermion(int(leg.outgoing_pdg))
     }
-    connections = _connection_parities(dag, model, endpoints)
+    connections = _connection_parities(dag, model)
     grades = u1_grades(dag)
     names = CouplingOrderNames.of_model(model)
     rows_by_key: dict[BlockKey, list[BlockRow]] = {}
@@ -847,15 +855,13 @@ def _blocks(
     return tuple(blocks)
 
 
-def _connection_parities(
-    dag: GenericDAG, model: Model, endpoints: Mapping[int, int]
-) -> list[int]:
-    """Parity of the colour-octet connections between fermion lines.
+def _connection_parities(dag: GenericDAG, model: Model) -> list[int | None]:
+    """Parity of the colour-octet connections between fermion lines of every
+    current (``generation.fermion_ordering.colour_connection_parities``).
 
     A merge connects two lines when both inputs hold coloured fermion
     endpoints in their open words and one of them is a colour-octet current
-    (a gluon, contact or U(1)-subtraction auxiliary). Every derivation of a
-    current must agree.
+    (a gluon, contact or U(1)-subtraction auxiliary).
 
     The closed lines of counterterm currents (design §6.1) are complete:
     nothing crosses them, so their endpoints do not count, and a colour
@@ -864,54 +870,16 @@ def _connection_parities(
     connects nothing. Its U(1)-subtraction sign is then a colour weight of
     the stage that replaces the leg
     (``models.compiler_color_flow.synthesize_u1_projections``).
+
+    A current derived with both parities (several pairings of
+    identical-flavour lines meeting in one colour state) has the parity of
+    its first derivation; the loop-request compilation folded the ``-1`` of
+    the others into their colour weights
+    (``generation.fermion_ordering.apply_colour_connection_signs``, and the
+    native builder's ``signs::apply_connection_signs``).
     """
 
-    def octet(index: CurrentIndex) -> bool:
-        return (
-            model.color_rep(index.particle_id) == 8
-            or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
-        )
-
-    def singlet(index: CurrentIndex) -> bool:
-        return (
-            model.color_rep(index.particle_id) == 1
-            or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
-        )
-
-    def coloured_fermion(particle_id: int) -> bool:
-        return model.is_fermion(particle_id) and abs(model.color_rep(particle_id)) == 3
-
-    def has_endpoints(index: CurrentIndex) -> bool:
-        return any(label in endpoints for label in index.ordered_external_labels)
-
-    currents = dag.currents
-    parity: list[int | None] = [
-        0 if current.is_source else None for current in currents
-    ]
-    for interaction in sorted(
-        dag.interactions,
-        key=lambda row: currents[row.result_id].index.external_mask.bit_count(),
-    ):
-        left = currents[interaction.left_id].index
-        right = currents[interaction.right_id].index
-        connects = (
-            has_endpoints(left)
-            and has_endpoints(right)
-            and (octet(left) or octet(right))
-            and (
-                coloured_fermion(currents[interaction.result_id].index.particle_id)
-                or not (singlet(left) or singlet(right))
-            )
-        )
-        value = parity[interaction.left_id] ^ parity[interaction.right_id] ^ connects
-        known = parity[interaction.result_id]
-        if known is None:
-            parity[interaction.result_id] = value
-        elif known != value:
-            raise ValueError(
-                f"current {interaction.result_id} has derivations with different "
-                "colour-connection signs"
-            )
+    parity, _ = colour_connection_parities(dag, model)
     return parity
 
 

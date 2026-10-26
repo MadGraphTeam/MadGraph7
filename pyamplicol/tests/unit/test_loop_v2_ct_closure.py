@@ -466,7 +466,12 @@ def test_closure_equals_site_closure_at_200_bits(
 # feed their gluon into the quark line of the block (uu~ -> aggg,
 # uu~ -> aagg): the U(1) projection of their gluon legs (design §6.1).
 # uu~ -> dd~ss~ joins three quark lines by gluon exchanges, each with its
-# U(1)-subtraction auxiliary. uu~ -> gggg closes multi-gluon currents into
+# U(1)-subtraction auxiliary. In gg -> uu~uu~ the four-gluon R2 closing the
+# gluons of one pairing of the identical-flavour lines and the U(1)-subtraction
+# auxiliary of the other pairing give one block derivations of both
+# colour-connection parities, whose -1 the compilation folds
+# (``generation.fermion_ordering.apply_colour_connection_signs``, design §3.3
+# "Mixed connection parities"). uu~ -> gggg closes multi-gluon currents into
 # closed traces of three labels (nightly; its CT-level check runs in the
 # physics tier).
 # ``name -> (process, Born QCD, QED, PDG codes of the rule the request is
@@ -484,6 +489,7 @@ SLICE_O6 = {
     "gg_ttxgg": ("g g > t t~ g g", 4, 0, (21, 21, 21, 21), (0, 0, 173, 173, 0, 0)),
     "uux_ttxgg": ("u u~ > t t~ g g", 4, 0, (2, 2, 21), (0, 0, 173, 173, 0, 0)),
     "uux_ddxssx": ("u u~ > d d~ s s~", 4, 0, (1, 1, 21), (0,) * 6),
+    "gg_uuxuux": ("g g > u u~ u u~", 4, 0, (21, 21, 21, 21), (0,) * 6),
     "uux_gggg": ("u u~ > g g g g", 4, 0, (21, 21, 21, 21), (0,) * 6),
 }
 SLICE_PARAMETERS = {"aS": "0.118", "MT": "173"}
