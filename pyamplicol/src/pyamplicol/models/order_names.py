@@ -81,9 +81,10 @@ class CouplingOrderNames:
         return cls.of(order.name for order in orders)
 
     def resolve(self, name: str, *, what: str = "coupling order") -> str:
-        """The declared spelling of a user-supplied name (any case)."""
+        """The declared spelling of a user-supplied name (any case); a model
+        that declares no coupling order leaves it as given."""
 
-        if name in self.declared:
+        if name in self.declared or not self.declared:
             return name
         found = self.by_key.get(order_key(name))
         if found is None:

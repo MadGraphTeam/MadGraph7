@@ -291,8 +291,16 @@ def _prepare(
 
 
 def _order_names(compiled) -> CouplingOrderNames:
+    """The declared coupling orders of the loop model: its NLO source's (the
+    names the request scope matches), else the compiled IR's."""
+
+    collections = getattr(compiled.raw_loop_model, "collections", None)
     try:
-        return CouplingOrderNames.of_model(compiled)
+        if collections is None:
+            return CouplingOrderNames.of_model(compiled)
+        return CouplingOrderNames.of(
+            record["name"] for record in collections["coupling_orders"]
+        )
     except CouplingOrderNameError as error:
         raise GenerationError(str(error)) from error
 
