@@ -209,6 +209,18 @@ A provider's metadata contains:
   optional αs parameter.
 - `channels[].processes`: the channel/flavour selectors consumed by UMAMI, with
   physical PDGs and integration weights referenced by `matrix_elements`.
+- `channels[].phasespace_channels`: the colour-ordered phase-space channels
+  integrating the selectors of a channel, each a cyclic `phasespace_order` of
+  the legs and the s-channel `resonances` (`pdg`, decay `legs`) it maps out.
+  A selector lists its phase-space channels in `multichannels`; they differ in
+  where its colour singlets attach to the colour lines (after the antiquark
+  ends, in every order and distribution, as in AmpliCol), in the non-cyclic
+  order of three or more lines, and in which resonances of the process they
+  follow, with a non-resonant one always included. A UMAMI channel collects
+  the selectors linked by shared phase-space channels. Weight the channels of a
+  selector by a partition of unity, for example their normalised mapping
+  densities, rather than adding them. A coloured resonance that can go on shell
+  is rejected for now.
 - `pdg_ids`, `color_orders`, `color_flows` and `helicities`: shared physical
   configuration tables. Indices are zero-based and colour-flow references can
   be absent for contracted colour.
@@ -219,8 +231,8 @@ A provider's metadata contains:
 
 Physical incoming PDGs remain oriented for PDF evaluation. Aliases name the
 same computation; they are not automatically extra integrable contributions.
-Each exported contribution uses one phase-space ordering, rather than several
-alternative maps whose naive sum would double count it.
+An exported contribution integrated over several phase-space channels must be
+weighted between them, since their naive sum would double count it.
 
 ## Automatic symmetry grouping
 

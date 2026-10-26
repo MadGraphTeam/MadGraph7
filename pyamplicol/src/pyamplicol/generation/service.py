@@ -228,6 +228,7 @@ from .runtime_schema import (
     build_runtime_expression_schema,
     build_runtime_schema_layout,
 )
+from .s_channel_resonances import s_channel_resonances
 from .stage_compiler import (
     build_and_write_generic_stage_evaluator_artifacts,
     write_model_parameter_evaluator_artifact,
@@ -6147,6 +6148,9 @@ class GenerationBackend:
             ),
             color_plan=prepared.complete_color_plan,
         )
+        physics["extensions"]["s_channel_resonances"] = s_channel_resonances(
+            expanded.process_ir, model, self._coupling_order_limits or None
+        )
         profile["physics-metadata"] = time.perf_counter() - physics_started
         run = self._run_config
         assert run is not None
@@ -6743,6 +6747,9 @@ class GenerationBackend:
             runtime_model_parameters=(
                 runtime_model_parameter_records_from_eager_input(lowering_input)
             ),
+        )
+        physics["extensions"]["s_channel_resonances"] = s_channel_resonances(
+            ir, model, self._coupling_order_limits or None
         )
         return EagerPlanV3ProcessArtifact(
             process_id=process_name,

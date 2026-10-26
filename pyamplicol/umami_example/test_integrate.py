@@ -70,12 +70,12 @@ def load_channels(path, provider=None):
     channels = []
     for ci, ch in enumerate(data["channels"]):
         inits, finals, procs = set(), [], []
+        if len(ch.get("phasespace_channels", [ch])) != 1:
+            raise ValueError(
+                "this example integrates each channel with a single map; weighting "
+                "several phase-space channels is not implemented here"
+            )
         for proc in ch["processes"]:
-            partners = proc.get("multichannels", [ci])
-            if partners != [ci]:
-                raise ValueError(
-                    "this example requires one nonduplicated map per contribution"
-                )
             cfgs = []
             for me in proc["matrix_elements"]:
                 pdg = list(data["pdg_ids"][me["pdg_ids"]])
