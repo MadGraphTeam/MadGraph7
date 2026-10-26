@@ -396,6 +396,29 @@ difference of about 3e-10). Validate such legacy artifacts with
 `relative_tolerance = 3e-9` and `absolute_tolerance = 2e-12`; the v2 engine
 is not affected.
 
+The v2 engine's post-build validation compares the reopened artifact with
+its reference executor in binary64 at `relative_tolerance` (Borns per
+coupling order, virtual Laurent coefficients relative to their sector's
+largest one). A validation point where the two binary64 values miss that
+tolerance is checked again, alone, against the reference at 32 digits, in
+both carriers: the artifact in double-double must agree to the same
+`relative_tolerance`, its binary64 Borns to `relative_tolerance` and its
+binary64 virtuals to the larger of `relative_tolerance` and their own
+stability estimate (one exact rotation and the reduction-direction check),
+an estimate that must exist and not exceed 1e-9. A binary64 virtual off by
+more than the tolerance is thus accepted only where binary64 itself
+estimates that it cannot resolve the tolerance (an ill-conditioned point),
+and a defect of either carrier beyond that is refused. An accepted point is
+reported as a warning of the `pyamplicol.generation` logger with its
+deviations and estimates. This costs one double-double and one checked
+binary64 evaluation of the artifact and one 32-digit reference evaluation
+per re-checked point; the 32-digit reference dominates, about 9 to 11 times
+the binary64 one (7.8 s against 0.7 s for d d~ > g g at NLC with five
+colour outputs, 60 s against 6.9 s for u u~ > g g g at NLC with four). The
+estimate cap is the larger of `relative_tolerance` and 1e-9: at high
+multiplicity, where binary64 estimates can exceed 1e-9, validate with a
+`relative_tolerance` that binary64 resolves.
+
 ## Numerical current reuse
 
 Certified current-relation reuse is an opt-in optimization. It is off by

@@ -9,7 +9,12 @@ from pyamplicol.api import GenerationError, Generator, ProcessRequest, ProcessSe
 from pyamplicol.config import resolve_config
 from pyamplicol.correlators import CorrelatorConfig
 from pyamplicol.generation.correlated import correlated_configuration
-from pyamplicol.generation.loop_service import _graph_plan, _order_bounds
+from pyamplicol.generation.loop_service import (
+    _graph_plan,
+    _order_bounds,
+    _revalidate_v2_point,
+    _validate_v2_points,
+)
 from pyamplicol.generation.service import GenerationBackend
 
 pytestmark = pytest.mark.loop_fast
@@ -708,3 +713,243 @@ def test_missing_formal_coverage_does_not_fallback_for_forced_or_projected(
             entry,
             object(),
         )
+
+
+# ------------------------------------------------- staged v2 re-validation
+
+BORN_ORDER, LOOP_ORDER = (("QCD", 2),), (("QCD", 4),)
+# A reference virtual whose sector size (largest coefficient) is 2.
+REFERENCE = (-0.4776756003084305, 1.5, -2.0)
+TOLERANCE = 1e-12
+
+
+def _shifted(relative):
+    """REFERENCE with its finite part moved by ``relative`` of the sector."""
+
+    return (REFERENCE[0] + 2.0 * relative, *REFERENCE[1:])
+
+
+def _native_values(laurents, estimate=None):
+    """A runtime evaluation of a point batch as ``_compare_v2`` reads it."""
+
+    return SimpleNamespace(
+        born_orders=(BORN_ORDER,),
+        born_values=tuple((2.0,) for _ in laurents),
+        sectors=(SimpleNamespace(order=LOOP_ORDER),),
+        values=tuple((tuple(laurent),) for laurent in laurents),
+        stability=None
+        if estimate is None
+        else tuple(SimpleNamespace(relative=estimate) for _ in laurents),
+    )
+
+
+class _Runtime:
+    """Native runtime double: binary64 virtual by point, the double-double
+    virtual, and the binary64 stability estimate returned under checks."""
+
+    def __init__(self, binary64, double_double=REFERENCE, estimate=1.5e-11):
+        self.binary64, self.double_double = binary64, double_double
+        self.estimate, self.fail, self.calls = estimate, False, []
+
+    def _values(self, points, arithmetic, stability_checks):
+        if self.fail and arithmetic is not None:
+            raise ArithmeticError("no double-double here")
+        if arithmetic == "double-double":
+            return _native_values([self.double_double] * len(points))
+        assert arithmetic is None
+        return _native_values(
+            [self.binary64[point] for point in points],
+            None if stability_checks is None else self.estimate,
+        )
+
+    def evaluate(self, points, *, mu_r2, arithmetic=None, stability_checks=None):
+        self.calls.append(
+            ("evaluate", arithmetic, stability_checks is not None, tuple(points))
+        )
+        return self._values(points, arithmetic, stability_checks)
+
+    def evaluate_correlated_many(
+        self, points, requests, *, mu_r2, arithmetic=None, stability_checks=None
+    ):
+        self.calls.append(
+            ("correlated", arithmetic, stability_checks is not None, tuple(points))
+        )
+        return {
+            history: self._values(points, arithmetic, stability_checks)
+            for history in requests
+        }
+
+
+class _Runner:
+    """Reference executor double: ``binary64`` virtual without a precision,
+    REFERENCE at DOUBLE_DOUBLE_DIGITS."""
+
+    def __init__(self, binary64=REFERENCE, labels=None):
+        self.binary64, self.labels, self.calls = binary64, labels, []
+
+    def evaluate(self, point, scale, *, correlations, precision=None):
+        self.calls.append((point, precision))
+        laurent = REFERENCE if precision is not None else self.binary64
+        return {
+            label: SimpleNamespace(
+                born={BORN_ORDER: 2.0},
+                components={
+                    "virtual": {
+                        LOOP_ORDER: SimpleNamespace(coefficients=tuple(laurent))
+                    }
+                },
+            )
+            for label in (correlations if self.labels is None else self.labels)
+        }
+
+
+def _revalidate(runtime, runner=None, point="p", tolerance=TOLERANCE):
+    """Re-validate ``point`` of ``runtime`` after a binary64 miss."""
+
+    miss = GenerationError("binary64 pair 1.3e-12 apart")
+    binary64 = {
+        label: _native_values([runtime.binary64[point]])
+        for label in ("born", "casimir")
+    }
+    _revalidate_v2_point(
+        "ddgg",
+        runtime,
+        _Runner() if runner is None else runner,
+        ("casimir",),
+        binary64,
+        0,
+        point,
+        "1",
+        tolerance,
+        miss,
+    )
+
+
+def test_a_binary64_miss_within_its_estimate_is_revalidated_in_both_carriers(
+    caplog,
+):
+    """A point whose binary64 pair misses the tolerance passes when native
+    double-double equals the reference at DOUBLE_DOUBLE_DIGITS to the same
+    tolerance and the binary64 virtual is within its own estimate (d d~ > g g
+    NLC casimir: 2.7e-12 of the sector off, estimate 1.5e-11), every output of
+    the point; the accepted miss is logged with its deviations."""
+
+    from pyamplicol.loops.v2.assemble import DOUBLE_DOUBLE_DIGITS, Precision
+
+    runtime, runner = _Runtime({"p": _shifted(2.7e-12)}), _Runner()
+    with caplog.at_level("WARNING", logger="pyamplicol.generation"):
+        _revalidate(runtime, runner)
+    assert runtime.calls == [
+        ("evaluate", "double-double", False, ("p",)),
+        ("correlated", "double-double", False, ("p",)),
+        ("evaluate", None, True, ("p",)),
+        ("correlated", None, True, ("p",)),
+    ]
+    assert runner.calls == [("p", Precision.arbitrary(DOUBLE_DOUBLE_DIGITS))]
+    (message,) = [r.getMessage() for r in caplog.records]
+    assert "binary64 pair 1.3e-12 apart" in message
+    assert "casimir: binary64 2.7e-12 (estimate 1.5e-11), double-double 0" in message
+
+
+@pytest.mark.parametrize(
+    ("binary64", "estimate"),
+    [
+        # A binary64-only defect (the audit's injection), relative and x2.
+        (tuple(c * (1 + 1e-6) for c in REFERENCE), 1.5e-11),
+        (tuple(2 * c for c in REFERENCE), 1.5e-11),
+        # Beyond its own estimate, which exceeds the tolerance.
+        (_shifted(3e-12), 2e-12),
+        # Off by more than the tolerance at a well-conditioned point.
+        (_shifted(3e-12), 5e-13),
+    ],
+)
+def test_a_binary64_only_defect_is_refused(binary64, estimate):
+    """Wrong binary64, right double-double: refused, the binary64 virtual
+    being held to max(tolerance, its estimate) against 32 digits."""
+
+    with pytest.raises(GenerationError, match="in binary64 against 32 digits"):
+        _revalidate(_Runtime({"p": binary64}, estimate=estimate))
+
+
+@pytest.mark.parametrize("estimate", [None, 2e-9, float("nan")])
+def test_a_binary64_miss_without_an_admissible_estimate_is_refused(estimate):
+    """No estimate, or one above the user's 1e-9 cap: refused, even with the
+    binary64 value within it."""
+
+    with pytest.raises(GenerationError, match="no admissible stability estimate"):
+        _revalidate(_Runtime({"p": _shifted(2.7e-12)}, estimate=estimate))
+
+
+def test_a_looser_tolerance_raises_the_estimate_cap_to_itself():
+    """The cap is max(tolerance, 1e-9): an estimate of 2e-9 is admissible
+    under a configured 1e-8, and the virtual is then held to the tolerance."""
+
+    _revalidate(_Runtime({"p": _shifted(5e-9)}, estimate=2e-9), tolerance=1e-8)
+    with pytest.raises(GenerationError, match="in binary64 against 32 digits"):
+        _revalidate(_Runtime({"p": _shifted(2e-8)}, estimate=2e-9), tolerance=1e-8)
+
+
+def test_a_double_double_mismatch_is_still_refused_at_the_tolerance():
+    """The re-validation keeps the tolerance: 4e-12 relative in double-double
+    is refused, the binary64 refusal chained; so is one that cannot run."""
+
+    runtime = _Runtime({"p": _shifted(2.7e-12)}, double_double=_shifted(4e-12))
+    with pytest.raises(GenerationError, match="in double-double, after binary64"):
+        _revalidate(runtime)
+    runtime = _Runtime({"p": _shifted(2.7e-12)})
+    runtime.fail = True
+    with pytest.raises(GenerationError, match="could not run") as refused:
+        _revalidate(runtime)
+    assert "binary64 pair 1.3e-12 apart" in str(refused.value)
+
+
+def _points(runtime, runner):
+    _validate_v2_points(
+        "ddgg", runtime, runner, ("casimir",), ["p0", "p1"], ["1", "1"], TOLERANCE
+    )
+
+
+def test_staged_validation_rechecks_only_the_missing_point():
+    """Binary64 passes: one batch per output, no re-validation. A binary64
+    miss at the second point re-validates that point alone; the first is not
+    re-evaluated."""
+
+    from pyamplicol.loops.v2.assemble import DOUBLE_DOUBLE_DIGITS, Precision
+
+    batch = [
+        ("evaluate", None, False, ("p0", "p1")),
+        ("correlated", None, False, ("p0", "p1")),
+    ]
+    runtime, runner = _Runtime({"p0": REFERENCE, "p1": REFERENCE}), _Runner()
+    _points(runtime, runner)
+    assert runtime.calls == batch
+    assert runner.calls == [("p0", None), ("p1", None)]
+
+    runtime = _Runtime({"p0": REFERENCE, "p1": _shifted(2.7e-12)})
+    runner = _Runner()
+    _points(runtime, runner)
+    assert runtime.calls == [
+        *batch,
+        ("evaluate", "double-double", False, ("p1",)),
+        ("correlated", "double-double", False, ("p1",)),
+        ("evaluate", None, True, ("p1",)),
+        ("correlated", None, True, ("p1",)),
+    ]
+    assert runner.calls == [
+        ("p0", None),
+        ("p1", None),
+        ("p1", Precision.arbitrary(DOUBLE_DOUBLE_DIGITS)),
+    ]
+    runtime = _Runtime({"p0": REFERENCE, "p1": tuple(2 * c for c in REFERENCE)})
+    with pytest.raises(GenerationError, match="in binary64 against 32 digits"):
+        _points(runtime, _Runner())
+
+
+def test_staged_validation_catches_only_comparison_refusals():
+    """Only ``_compare_v2``'s GenerationError starts a re-validation: a
+    reference without a declared output fails as such."""
+
+    runtime = _Runtime({"p0": REFERENCE, "p1": REFERENCE})
+    with pytest.raises(KeyError, match="casimir"):
+        _points(runtime, _Runner(labels=("born",)))
+    assert len(runtime.calls) == 2
