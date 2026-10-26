@@ -149,7 +149,11 @@ class ModelCompileOptions:
     ``gauge`` is the gauge of the massive vectors (``contracts.ModelGauge``):
     ``"unitary"`` (the default) or ``"feynman"``, the 't Hooft-Feynman gauge
     with explicit Goldstones, admissible only for a UFO model whose ``gauge``
-    declaration lists 1 (``declared_model_gauges``).
+    declaration lists 1 (``declared_model_gauges``). The source is loaded and
+    compiled without it (``gauge_independent``: the two gauges share every
+    compiled record but the Goldstone dispositions, so the model cache holds
+    one compile) and the gauge is then applied (``with_model_gauge``), which
+    records it as ``canonical_payload`` does.
     """
 
     restriction: str = DEFAULT_MODEL_RESTRICTION
@@ -172,6 +176,12 @@ class ModelCompileOptions:
                 f"model gauge must be one of {', '.join(MODEL_GAUGES)}, "
                 f"not {self.gauge!r}"
             )
+
+    def gauge_independent(self) -> ModelCompileOptions:
+        """These options without the gauge: the compile the model cache
+        holds, to which ``with_model_gauge`` applies ``gauge``."""
+
+        return replace(self, gauge="unitary")
 
     def canonical_payload(self) -> dict[str, object]:
         restriction_path = Path(self.restriction).expanduser()
@@ -440,27 +450,33 @@ def compile_model_source(
     gauge-independent compile and the gauge is applied to it.
     """
 
+    options = ModelCompileOptions(
+        restriction=restriction, simplify=simplify, gauge=gauge or "unitary"
+    )
     compiled = _compile_model_source(
         source,
-        restriction=restriction,
-        simplify=simplify,
+        options=options.gauge_independent(),
         cache_dir=cache_dir,
         use_cache=use_cache,
         require_supported=require_supported,
     )
-    return compiled if gauge is None else with_model_gauge(compiled, gauge)
+    return compiled if gauge is None else with_model_gauge(compiled, options.gauge)
 
 
 def _compile_model_source(
     source: str | Path = "BUILTIN_SM",
     *,
-    restriction: str = "default",
-    simplify: bool = True,
+    options: ModelCompileOptions,
     cache_dir: Path | None = None,
     use_cache: bool = True,
     require_supported: bool = True,
 ) -> CompiledModel:
-    options = ModelCompileOptions(restriction=restriction, simplify=simplify)
+    """The gauge-independent compile of ``source`` (``options`` without a
+    gauge, ``ModelCompileOptions.gauge_independent``)."""
+
+    if options.gauge != "unitary":
+        raise ValueError("the model source is compiled without a gauge")
+    restriction, simplify = options.restriction, options.simplify
     source_kind, resolved, detected_payload = _detect_model_source_payload(source)
     if source_kind in {"pyamplicol", "prepared"}:
         if restriction != DEFAULT_MODEL_RESTRICTION or not simplify:
@@ -639,29 +655,33 @@ def load_cached_model_source(
     """Load an already compiled source without compiling or writing a cache;
     ``gauge`` as in ``compile_model_source``."""
 
+    options = ModelCompileOptions(
+        restriction=restriction, simplify=simplify, gauge=gauge or "unitary"
+    )
     compiled = _load_cached_model_source(
         source,
-        restriction=restriction,
-        simplify=simplify,
+        options=options.gauge_independent(),
         cache_dir=cache_dir,
         require_supported=require_supported,
     )
     if compiled is None or gauge is None:
         return compiled
-    return with_model_gauge(compiled, gauge)
+    return with_model_gauge(compiled, options.gauge)
 
 
 def _load_cached_model_source(
     source: str | Path,
     *,
-    restriction: str = DEFAULT_MODEL_RESTRICTION,
-    simplify: bool = True,
+    options: ModelCompileOptions,
     cache_dir: Path | None = None,
     require_supported: bool = True,
 ) -> CompiledModel | None:
-    """Load an already compiled source without compiling or writing a cache."""
+    """Load an already compiled source without compiling or writing a cache
+    (``options`` without a gauge, as ``_compile_model_source``)."""
 
-    options = ModelCompileOptions(restriction=restriction, simplify=simplify)
+    if options.gauge != "unitary":
+        raise ValueError("the model source is compiled without a gauge")
+    restriction, simplify = options.restriction, options.simplify
     source_kind, resolved, detected_payload = _detect_model_source_payload(source)
     if source_kind in {"pyamplicol", "prepared"}:
         if restriction != DEFAULT_MODEL_RESTRICTION or not simplify:
