@@ -162,8 +162,13 @@ public:
         return _clustering &&
                _clustering->alphas_scheme() != AlphasScheme::none;
     }
+    // Whether the consumer has pdf ratios to apply. Only ScaleScheme::madevent
+    // has a clustering ladder to walk: under any other scheme the kernel leaves
+    // every reweighting slot inert and pdf_scale equal to fact_scale, so the
+    // ratios would all come out as exactly one.
     bool mlm_pdf_reweighting() const {
-        return _clustering && _clustering->pdf_reweighting();
+        return _clustering && _clustering->pdf_reweighting() &&
+               _clustering->scale_scheme() == ScaleScheme::madevent;
     }
     const std::vector<int>& mlm_pdf_absolute_pdgs() const {
         return _clustering.value().pdf_absolute_pdgs();

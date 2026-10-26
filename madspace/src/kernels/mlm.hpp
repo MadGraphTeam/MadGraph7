@@ -1616,10 +1616,58 @@ KERNELSPEC void mlm_clustering(
         // setclscales clusters over every graph first and keeps that history
         // unless its jet count differs from the one stored for the channel,
         // which was itself clustered along the channel's graph. Every walk
-        // writes all outputs, so the one that ran last is the one that stands.
+        // writes all outputs, so the one that ran last is the one that stands:
+        // the channel's walk is kept aside and put back when it wins, rather
+        // than walked a second time.
         int diagram_jets = walk(start);
+        int n_part = momenta.size();
+        FVal<T> kept_ren = ren_scale, kept_fact1 = fact_scale1,
+                kept_fact2 = fact_scale2, kept_xqcut = xqcut_weight,
+                kept_alphas = alphas_weight, kept_pdf1 = pdf_scale1,
+                kept_pdf2 = pdf_scale2;
+        IVal<T> kept_diagram = diagram_index;
+        FVal<T> kept_outgoing[N_EXT_MAX], kept_alphas_scales[N_EXT_MAX];
+        IVal<T> kept_rw_flavor[N_EXT_MAX];
+        FVal<T> kept_rw_x[N_EXT_MAX], kept_rw_q_num[N_EXT_MAX],
+            kept_rw_q_den[N_EXT_MAX], kept_rw_active[N_EXT_MAX],
+            kept_rw_beam[N_EXT_MAX];
+        for (int i = 0; i < n_part - 2; ++i) {
+            kept_outgoing[i] = outgoing_scales[i];
+        }
+        for (int i = 0; i < n_part - 3; ++i) {
+            kept_alphas_scales[i] = alphas_scales[i];
+        }
+        for (int i = 0; i < n_part - 1; ++i) {
+            kept_rw_flavor[i] = pdf_rw_flavor[i];
+            kept_rw_x[i] = pdf_rw_x[i];
+            kept_rw_q_num[i] = pdf_rw_q_num[i];
+            kept_rw_q_den[i] = pdf_rw_q_den[i];
+            kept_rw_active[i] = pdf_rw_active[i];
+            kept_rw_beam[i] = pdf_rw_beam[i];
+        }
         if (walk(0) != diagram_jets) {
-            walk(start);
+            ren_scale = kept_ren;
+            fact_scale1 = kept_fact1;
+            fact_scale2 = kept_fact2;
+            xqcut_weight = kept_xqcut;
+            alphas_weight = kept_alphas;
+            pdf_scale1 = kept_pdf1;
+            pdf_scale2 = kept_pdf2;
+            diagram_index = kept_diagram;
+            for (int i = 0; i < n_part - 2; ++i) {
+                outgoing_scales[i] = kept_outgoing[i];
+            }
+            for (int i = 0; i < n_part - 3; ++i) {
+                alphas_scales[i] = kept_alphas_scales[i];
+            }
+            for (int i = 0; i < n_part - 1; ++i) {
+                pdf_rw_flavor[i] = kept_rw_flavor[i];
+                pdf_rw_x[i] = kept_rw_x[i];
+                pdf_rw_q_num[i] = kept_rw_q_num[i];
+                pdf_rw_q_den[i] = kept_rw_q_den[i];
+                pdf_rw_active[i] = kept_rw_active[i];
+                pdf_rw_beam[i] = kept_rw_beam[i];
+            }
         }
     } else {
         walk(start);
