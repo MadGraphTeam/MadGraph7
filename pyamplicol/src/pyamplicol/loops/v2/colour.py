@@ -2162,6 +2162,10 @@ def seed_cells(
     The tensors of ``basis`` may be any literal tensors on the Born legs,
     e.g. the operator images of a directed colour history (design §7.7)."""
 
+    from . import native_cells  # WP3.1 C1 switch (rule 1): the "cells" stage
+
+    if "cells" in native_cells.NATIVE_STAGES:
+        return native_cells.switched_seed_cells(basis, classes, primitive_cells)
     if primitive_cells is None:
         primitive_cells = _PrimitiveCells(basis)
     elif primitive_cells.basis is not basis:
@@ -2285,6 +2289,25 @@ class _PrimitiveCells:
         self._relabellings: dict[tuple, tuple[int, ...]] = {}
         self._rings: dict[Primitive, int] = {}
         self._ring_cells: dict[tuple[int, int], Laurent] = {}
+        # The native twin (``native``): the first one built is the root, held
+        # in a list that the rebased copies share, and the others are rebased
+        # from it, so their native caches are shared both ways.
+        self._native_root: list[Any] = []
+        self._native: Any = None
+
+    def native(self) -> Any:
+        """The native twin of these cells (``native_cells.NativeCells``) on
+        this basis, sharing its caches with every rebased copy's twin."""
+
+        if self._native is None:
+            from .native_cells import NativeCells
+
+            if not self._native_root:
+                self._native_root.append(NativeCells(self.basis))
+            root = self._native_root[0]
+            same = root.basis is self.basis
+            self._native = root if same else root.rebased(self.basis)
+        return self._native
 
     def rebased(self, basis: BornBasis) -> _PrimitiveCells:
         """The cells against another basis on the same legs, sharing this
@@ -2297,6 +2320,7 @@ class _PrimitiveCells:
         other = copy(self)
         other.basis = basis
         other._relabellings = {}
+        other._native = None
         return other
 
     def __call__(self, primitive: Primitive) -> tuple[Laurent, ...]:
