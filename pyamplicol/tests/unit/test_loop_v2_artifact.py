@@ -2564,14 +2564,14 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
     equals the legacy engine: Born and the QCD^6 virtual in binary64 (1e-12)
     and at 60 digits (1e-40, legacy at 60 digits). v2 also lists the
     QCD^4 QED^2 sector, a structural zero (no one-loop g g > g g amplitude of
-    order QCD^2 QED^2), which legacy omits. The electroweak CT rules are
-    lowered (their CT scalars with the complex-mass scheme's helpers are
-    parameter-program references, WP3.2 EWI-3): no inert rule is left for a
-    UFO helper; the G0-photon mixing between spins, which the tree recursion
-    cannot lower, enters no tree of g g > g g and the generation record lists
-    it inert (REQUIREMENTS_ADDENDUM J). The referenced CT scalars are native
-    parameter-program outputs, so the v2 artifact stores native point
-    inputs."""
+    order QCD^2 QED^2), which legacy omits. The request takes 't Hooft-Feynman
+    gauge (WP3.2 EWI-4b, recorded in the generation filters). The electroweak
+    CT rules are lowered (their CT scalars with the complex-mass scheme's
+    helpers are parameter-program references, WP3.2 EWI-3; the
+    Goldstone-vector mixings as vertex insertions, EWI-4b), so no rule is
+    inert for a UFO helper or a mixing between spins (REQUIREMENTS_ADDENDUM
+    J). The referenced CT scalars are native parameter-program outputs, so
+    the v2 artifact stores native point inputs."""
 
     from pyamplicol import Runtime
     from pyamplicol.api import ProcessRequest, ProcessSet
@@ -2590,12 +2590,11 @@ def test_qed_declaring_model_joint_corrections_equal_legacy(
     (record,) = load_manifest(tmp_path / "v2").extensions["generation"][
         "concrete_processes"
     ]
+    assert record["filters"]["gauge"] == "feynman"
     inert = record["filters"]["counterterms_inert"]
-    unreachable = {
-        name: reason for name, reason in inert.items() if "enters no tree" in reason
-    }
-    assert "PYAMPLICOL_CT_V306" in unreachable, sorted(inert)
-    assert not any("UFO helper" in reason for reason in inert.values()), inert
+    assert not any(
+        "UFO helper" in reason or "between spins" in reason for reason in inert.values()
+    ), inert
     # The referenced CT scalars are native parameter-program outputs: no
     # load-time regeneration (REQUIREMENTS_ADDENDUM G).
     assert runtimes["v2"].inspect()["point_inputs"] == "native-v2"
