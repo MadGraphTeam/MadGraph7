@@ -22,6 +22,7 @@ from .contracts import (
     CompiledParticleRecord,
     CompiledVertexTerm,
 )
+from .tensors import LEVI_CIVITA, levi_civita_components
 
 
 def _function_arguments(source: str, head_suffix: str) -> tuple[tuple[str, ...], ...]:
@@ -577,8 +578,16 @@ def _execute_dense_network(
         symbol.to_canonical_string(): symbol
         for symbol in expression.get_all_symbols(True)
     }
+    dense = list(tensors.tensors)
+    if any(symbol.get_name() == LEVI_CIVITA for symbol in every.values()) and all(
+        name != LEVI_CIVITA for name, _r, _c in dense
+    ):
+        # UFO ``Epsilon`` (``tensors.LEVI_CIVITA``): a dense tensor like the
+        # inputs, so the network contracts it on canonical symbols too.
+        minkowski = _sym.Representation.mink(4)
+        dense.append((LEVI_CIVITA, (minkowski,) * 4, levi_civita_components()))
     heads = []
-    for name, _representations, components in tensors.tensors:
+    for name, _representations, components in dense:
         head = symbols.qualified(name)
         heads.append(head)
         every[head.to_canonical_string()] = head
@@ -597,9 +606,7 @@ def _execute_dense_network(
             tensor_heads.append(symbol)
     renaming = CanonicalRenaming(renamed, tensor_heads=tensor_heads)
     library = _sym.TensorLibrary.hep_lib_atom()
-    for head, (_name, representations, components) in zip(
-        heads, tensors.tensors, strict=True
-    ):
+    for head, (_name, representations, components) in zip(heads, dense, strict=True):
         library.register(
             _sym.Tensor.dense(
                 _sym.TensorName(renaming.name(head))(*representations),
