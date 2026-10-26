@@ -5155,6 +5155,33 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         self.prefix_info = {}
         ProcessExporterFortran.__init__(self, *args, **opts)
 
+    def zero_tchannel_width(self):
+        """True if the t-channel widths are set to zero (zerowidth_tchannel)
+        as in madevent: by default for the reweighting (standalone_rw) and
+        MadSpin (standalone_msP/msF) outputs, not for standalone. The output
+        option --zerowidth_tchannel=True/False overrides it (used by MadSpin
+        for its standalone outputs). Never for the loop outputs."""
+
+        export_format = self.opt['export_format']
+        if export_format not in ['standalone_fortran', 'standalone_rw',
+                                 'standalone_msP', 'standalone_msF']:
+            return False
+        output_options = self.opt.get('output_options') or {}
+        if 'zerowidth_tchannel' in output_options:
+            return banner_mod.ConfigFile.format_variable(
+                output_options['zerowidth_tchannel'], bool, 'zerowidth_tchannel')
+        return export_format != 'standalone_fortran'
+
+    # helper function for customise helas writter
+    def custom_helas_call(self, call, arg):
+        """Tag the propagator width with fk_ as madevent does, such that the
+        HelasCallWriter sets the t-channel widths to zero like in the generated
+        sample. The remaining tags are removed in write_matrix_element_v4."""
+
+        if arg['mass'] == '%(M)s,%(W)s,' and self.zero_tchannel_width():
+            arg['mass'] = '%(M)s,fk_%(W)s,'
+        return call, arg
+
     def copy_template(self, model):
         """Additional actions needed for setup of Template
         """
@@ -6130,14 +6157,20 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             helas_call_writers.get_axial_gauge_refs(matrix_element) \
             if fortran_model.axial_gauge else {}
         try:
-            # Extract helas calls
-            helas_calls = fortran_model.get_matrix_element_calls(\
+            # Extract helas calls (with the propagators of the --zerowidth_decay
+            # particles of this matrix element, if any, written with a zero width)
+            with misc.TMP_variable(fortran_model, 'zerowidth_pdgs',
+                                   self.get_zerowidth_pdgs(matrix_element)):
+                helas_calls = fortran_model.get_matrix_element_calls(\
                         matrix_element)
         finally:
             fortran_model.use_flavor_mask = False
             fortran_model.me_n_flavors = 0
             fortran_model.axial_gauge_refs = {}
             fortran_model.me_active_flavor_mask = None
+        if self.zero_tchannel_width():
+            # t-channel widths are already zeroed, no fake width in standalone
+            helas_calls = [call.replace(',fk_', ',') for call in helas_calls]
 
         replace_dict['helas_calls'] = "\n".join(helas_calls)
 
@@ -6389,6 +6422,39 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         else:
             replace_dict['return_value'] = len([call for call in helas_calls if call.find('#') != 0])
             return replace_dict # for subclass update
+
+    def get_zerowidth_pdgs(self, matrix_element):
+        """The |pdg| whose propagators are written with a zero width in this
+        matrix element, from the output option --zerowidth_decay=, which is
+        either True/False or a list <pdg>,<pdg>,...
+
+        A particle is zeroed in a process where it is an external leg: in a
+        2 > N process where it is in the final state, and in a 1 > N process
+        (a decay) where it is the decaying particle -- and only then, so that
+        the decay of one particle keeps the width of any other particle it
+        propagates (the W of t > e+ ve b). True takes every such particle (in
+        a decay: the decaying particle), a list only those listed, False or
+        an empty list none. This is what MadSpin's pole approximation needs
+        for its production (list) and decay (True) density matrices; the
+        param_card, and hence every other use of the width, is untouched.
+        """
+        option = self.cmd_options.get('zerowidth_decay')
+        if option is True or str(option).strip().lower() == 'true':
+            asked = None
+        elif not option or str(option).strip().lower() == 'false':
+            return frozenset()
+        else:
+            asked = set(abs(int(pid)) for pid in str(option).split(',')
+                        if pid.strip())
+        active = set()
+        for proc in matrix_element.get('processes'):
+            legs = proc.get('legs')
+            if proc.get_ninitial() == 1:
+                active.add(abs(legs[0].get('id')))
+            else:
+                active.update(abs(leg.get('id')) for leg in legs
+                              if leg.get('state'))
+        return frozenset(active if asked is None else active & asked)
 
     #===========================================================================
     # write_check_sa   
@@ -8688,6 +8754,20 @@ c of an explicit polarisation in the process
         double precision WGT
         integer iwarp
         return 
+        end
+
+        SUBROUTINE STORE_GROUPING_CHOICE(IWARP)
+        integer iwarp
+        return
+        end
+
+        SUBROUTINE SELECT_GROUPING_VEC(IMIRROR_VEC, IPROC, ICONF_VEC, WGT, VECSIZE_USED)
+        integer imirror_vec(*)
+        integer iproc
+        integer iconf_vec(*)
+        double precision WGT(*)
+        integer VECSIZE_USED
+        return
         end
         
         
@@ -11090,7 +11170,9 @@ C
                 double precision MU_R, all_mu_r%(vec)s
                 common/rscale/ MU_R, all_mu_r
 
-                """   % {'vec': ('' if not self.vector_size else '(1)' if self.vector_size<=1 else '(VECSIZE_MEMMAX)')}
+                """   % {'vec': ('' if not self.vector_size else '(VECSIZE_MEMMAX)')}
+                # NB: always VECSIZE_MEMMAX (as for the coupling arrays) since the
+                #     vector_size can be changed at run time (run_card) after the output
                 ###   % {'vec': ("(VECSIZE_MEMMAX)" if self.vector_size else '')}
                 ###   % {'vec': ("(%i)" % max(1,self.vector_size) if self.vector_size else '')}
 

@@ -155,6 +155,35 @@ ANNOUNCEMENT:
        Each instance now works on its own copy.
 
 
+3.8.2 (XX/XX/XX):
+    OM: LO grouped output (default): the renormalisation/factorisation scales and the MLM xqcut
+        veto were computed on the momenta before the symmetry permutation of the channel (#453).
+        Channels with such permutations were biased (e.g. -3.5% for u q > z u q, also with MLM).
+        Fixed both for the scalar and the vector (vector_size>1, cudacpp) mode.
+    OM: LO vector mode (vector_size>1): fix the reweighting of MLM matching (the central factorisation
+        scale of the last event of the batch was used for all events), the config/mirror used per warp,
+        and a crash (memory corruption) when vector_size was changed in the run_card after the output.
+    OM: LO vector mode with nb_warp>1: when a P directory groups several subprocesses, each warp
+        selected its own subprocess but only the last one was evaluated for all warps (wrong weights,
+        'Clustering failed' crashes). The subprocess is now chosen once per vector (from the PDF weights
+        averaged over the warps) and the configuration/beam orientation per warp.
+    OM: MadSpin (spinmode=PA): new option 'auto_zero_width_PA' (default True) setting the width
+        of the particles decayed by MadSpin to zero in the matrix element of the production density
+        matrix, and each one in the matrix element of its own decay density matrix only (Breit-Wigner
+        sampling, reshuffling, propagator factor and branching ratios keep the param_card widths).
+    OM: output standalone: new option --zerowidth_decay=True|False|<pdg>,<pdg>,... writing propagators
+        with a zero width (param_card untouched): in a 2>N process those of the final-state particles,
+        in a 1>N process (decay) those of the decaying particle only; a pdg list restricts to those.
+    VD+OM: Density mode of the reweighting (since 3.8.0): the particles of the density matrix are now
+        ordered as given in particle_in_density_matrix (they followed the order of the process), also
+        when they are ranked with an observable. That ranking could be wrong, or drop a particle, when
+        other particles were in between. A pdg code (or a rank) absent from the process is now an error.
+    OM: Density mode of the reweighting (since 3.8.0): boost_choice used the wrong particles when the
+        event contains intermediate particles, e.g. the t+W frame instead of the b+t~ one for
+        g g > t t~, t > b w+ with boost_choice [5, -6].
+    VD: Quantum Information library: new observable Get_Steering (two-qubit steering for 2 or 3
+        measurements per site, 1510.08030).
+
 3.8.1 (XX/XX/XX):
     OM: LO: the final unweighting no longer truncates the events above the maximum
         weight; they keep the weight w/w_max in units of the common weight
