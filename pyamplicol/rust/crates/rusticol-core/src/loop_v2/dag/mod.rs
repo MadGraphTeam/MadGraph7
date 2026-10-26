@@ -529,13 +529,15 @@ fn put_opt_str(out: &mut Vec<u8>, value: Option<&str>) {
 }
 
 /// Builds the loop-request DAG of `input` (the JSON of
-/// `dag_input.dag_input`): recursion, prune, evaluation reuse, signs.
+/// `dag_input.dag_input`): recursion, prune, evaluation reuse, signs
+/// (colour-flow and colour-connection).
 pub fn build(input: &input::DagInput) -> DagResult<ColumnarDag> {
     let mut dag = recursion::compile(input)?;
     if dag.finish {
         recursion::prune_to_admitted(input, &mut dag);
         reuse::assign_reuse(input, &mut dag)?;
         signs::apply_colour_flow_signs(input, &mut dag)?;
+        signs::apply_connection_signs(input, &mut dag)?;
     }
     Ok(dag.into_columns(input))
 }

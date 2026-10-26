@@ -68,7 +68,10 @@ from .dag_types import (
     GenericDAG,
     InteractionNode,
 )
-from .fermion_ordering import apply_fermion_ordering_signs
+from .fermion_ordering import (
+    apply_colour_connection_signs,
+    apply_fermion_ordering_signs,
+)
 
 DAGProgressCallback = Callable[[Mapping[str, str | int]], None]
 
@@ -1553,8 +1556,14 @@ class GenericDAGCompiler:
             current_count=len(dag.currents),
             interaction_count=len(dag.interactions),
         )
-        return self._apply_fermion_ordering(
-            assign_recursive_current_evaluation_reuse(dag, self.model)
+        # A current derived with both colour-connection parities (several
+        # pairings of identical-flavour lines) takes the other parity's -1
+        # in those derivations' colour weights (``loops/v2/blocks.py``).
+        return apply_colour_connection_signs(
+            self._apply_fermion_ordering(
+                assign_recursive_current_evaluation_reuse(dag, self.model)
+            ),
+            self.model,
         )
 
     def _compile_backward_live_plan(

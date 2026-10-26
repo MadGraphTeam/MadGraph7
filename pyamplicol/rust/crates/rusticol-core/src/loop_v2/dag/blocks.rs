@@ -111,6 +111,10 @@ impl BlockInput {
     }
 }
 
+/// The grouping of currents into blocks (`BlockKey`): canonical species,
+/// mask, word, orders, colour state, chirality, spin and flavour flow.
+type BlockKey<'a> = (u32, u64, &'a [u8], u32, u32, i8, i32, u32);
+
 /// `BlockColourFlow` without its N_c grade.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ColourFlow {
@@ -398,8 +402,15 @@ impl ColumnarDag {
         leaking.into_iter().collect()
     }
 
-    /// `_connection_parities`.
-    fn connection_parities(&self, tables: &BlockInput) -> DagResult<Vec<Option<bool>>> {
+    /// `_connection_parities`: the colour-connection parity of every
+    /// current ([`super::signs::connection_parities`]; a block derived with
+    /// both parities had the other parity's `-1` folded into its colour
+    /// weights when it was built, `signs::apply_connection_signs`).
+    fn connection_parities<'a>(
+        &'a self,
+        tables: &BlockInput,
+        block: impl Fn(usize) -> BlockKey<'a>,
+    ) -> DagResult<Vec<Option<bool>>> {
         let n = self.current_count();
         let u1 = tables.u1_subtraction_kind.as_str();
         let mut info = Vec::with_capacity(n);
@@ -418,12 +429,8 @@ impl ColumnarDag {
                 species.pdg,
             ));
         }
-        let mut parity: Vec<Option<bool>> = (0..n)
-            .map(|id| (self.c_source[id] == 1).then_some(false))
-            .collect();
-        let mut order: Vec<usize> = (0..self.interaction_count()).collect();
-        order.sort_by_key(|id| self.c_mask[self.i_result[*id] as usize].count_ones());
-        for id in order {
+        let mut merges = Vec::with_capacity(self.interaction_count());
+        for id in 0..self.interaction_count() {
             let (left, right, result) = (
                 self.i_left[id] as usize,
                 self.i_right[id] as usize,
@@ -438,20 +445,15 @@ impl ColumnarDag {
             } else {
                 false
             };
-            let (Some(left_parity), Some(right_parity)) = (parity[left], parity[right]) else {
-                return invalid("unsupported operand type(s) for ^: 'NoneType'");
-            };
-            let value = left_parity ^ right_parity ^ connects;
-            match parity[result] {
-                None => parity[result] = Some(value),
-                Some(known) if known != value => {
-                    return invalid(format!(
-                        "current {result} has derivations with different colour-connection signs"
-                    ));
-                }
-                Some(_) => {}
-            }
+            merges.push((left, right, result, connects));
         }
+        let (parity, _) = super::signs::connection_parities(
+            n,
+            |id| self.c_source[id] == 1,
+            &merges,
+            |id| self.c_mask[id].count_ones(),
+            block,
+        )?;
         Ok(parity)
     }
 
@@ -512,17 +514,12 @@ impl ColumnarDag {
             helicities.sort_unstable();
             helicities
         };
-        let connections = self.connection_parities(tables)?;
-        let grades = self.u1_grades(tables);
         let species = canonical_ids(&self.tables.species);
         let flavours = canonical_ids(&self.tables.flavours);
         let colours = canonical_ids(&self.tables.colours);
         let orders = canonical_ids(&self.tables.orders);
-        type Key<'a> = (u32, u64, &'a [u8], u32, u32, i8, i32, u32);
-        let mut index: HashMap<Key, usize> = HashMap::new();
-        let mut members: Vec<(u32, Vec<u32>)> = Vec::new();
-        for id in 0..self.current_count() {
-            let key: Key = (
+        let key = |id: usize| -> BlockKey<'_> {
+            (
                 species[self.c_species[id] as usize],
                 self.c_mask[id],
                 self.word(id),
@@ -531,7 +528,14 @@ impl ColumnarDag {
                 self.c_chirality[id],
                 self.c_spin[id],
                 flavours[self.c_flavour[id] as usize],
-            );
+            )
+        };
+        let connections = self.connection_parities(tables, key)?;
+        let grades = self.u1_grades(tables);
+        let mut index: HashMap<BlockKey, usize> = HashMap::new();
+        let mut members: Vec<(u32, Vec<u32>)> = Vec::new();
+        for id in 0..self.current_count() {
+            let key = key(id);
             match index.get(&key) {
                 Some(block) => members[*block].1.push(id as u32),
                 None => {

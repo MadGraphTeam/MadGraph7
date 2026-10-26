@@ -102,6 +102,9 @@ struct RawInput {
     /// The colour sectors of a process without coloured legs.
     #[serde(default)]
     sectors: Vec<RawSector>,
+    /// `models.contracts.U1_SUBTRACTION_AUXILIARY_KIND` (the colour-connection
+    /// signs, `signs::apply_connection_signs`).
+    u1_subtraction_kind: String,
 }
 
 #[derive(Deserialize)]
@@ -262,6 +265,8 @@ pub struct DagInput {
     pub singlet_labels: u64,
     pub fundamental_labels: u64,
     pub antifundamental_labels: u64,
+    /// The auxiliary kind of the U(1)-subtraction currents.
+    pub u1_subtraction_kind: String,
 }
 
 fn bits(pair: [u64; 2]) -> [f64; 2] {
@@ -547,6 +552,7 @@ impl DagInput {
             singlet_labels,
             fundamental_labels,
             antifundamental_labels,
+            u1_subtraction_kind: raw.u1_subtraction_kind,
         })
     }
 
