@@ -13,10 +13,12 @@ k k / M^2 term and the Goldstone diagrams are both non-zero, and amplitude
 values, so that a Goldstone vertex sign cannot square away:
 
 * Feynman = unitary per helicity and colour sector, to 1e-13 of the largest
-  amplitude: m+ m- > t t~ (massive-muon G_mu UFO), t t~ > z h,
-  t t~ > t t~ at QED order, t t~ > w+ w-, b b~ > t t~ at QED order (the
-  tree of M5's QCD-corrected premise) and b t~ > w- h (a G- s-channel) with
-  a massive b;
+  amplitude: t b~ > t b~ at QED order (the G+ s-channel and the G0
+  t-channel make about as much as the whole amplitude; it replaced
+  m+ m- > t t~ on the massive-muon UFO, whose Goldstone share is 2e-3:
+  WP3.2 EWI-4b), t t~ > z h, t t~ > t t~ at QED order, t t~ > w+ w-,
+  b b~ > t t~ at QED order (the tree of M5's QCD-corrected premise) and
+  b t~ > w- h (a G- s-channel), with a massive b where it enters;
 * the Slavnov-Taylor identities k.M(V) = eta M_V M(G) of an outgoing Z and
   W-, with a non-zero Goldstone side: g g > t t~ z, both Z of b b~ > z z and
   g b > t w- with a massive b. eta is fixed by the UFO's conventions (-i for
@@ -65,16 +67,6 @@ def gmu_massive_b(loop_gmu_ufo):
     return compile_model_source(
         loop_gmu_ufo, restriction="with_b_mass", require_supported=False
     )
-
-
-@pytest.fixture(scope="module")
-def gmu_massive_muon(loop_gmu_ufo):
-    from pyamplicol.models.loading import compile_model_source
-
-    path = loop_gmu_ufo.parent / "loop_qcd_qed_sm_Gmu_massive_muon_py3"
-    if not path.is_dir():
-        pytest.skip(f"the massive-muon G_mu UFO is unavailable: {path}")
-    return compile_model_source(path, require_supported=False)
 
 
 def _feynman(compiled):
@@ -257,7 +249,7 @@ def _difference(mine, theirs) -> float:
 # s-channel Z vanishes on the on-shell W pair: it checks the g^{mu nu} part
 # of the massive Feynman-gauge propagator, its mass included.
 FEYNMAN_UNITARY = (
-    ("massive_muon", "m+ m- > t t~", {"QCD": 0, "QED": 2}, True),
+    ("massive_b", "t b~ > t b~", {"QCD": 0, "QED": 2}, True),
     ("default", "t t~ > z h", {"QCD": 0, "QED": 2}, True),
     ("default", "t t~ > t t~", {"QCD": 0, "QED": 2}, True),
     ("massive_b", "t t~ > w+ w-", {"QCD": 0, "QED": 2}, False),
@@ -271,7 +263,6 @@ def models(request):
     return {
         "default": request.getfixturevalue("gmu"),
         "massive_b": request.getfixturevalue("gmu_massive_b"),
-        "massive_muon": request.getfixturevalue("gmu_massive_muon"),
     }
 
 
