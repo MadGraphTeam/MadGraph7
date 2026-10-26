@@ -193,3 +193,70 @@ def test_alpha0_virtual_equals_madloop_with_mg5_conversion(
                 counterterms.coefficients[index]
             )
             assert abs(total) <= 1e-10 * max(abs(float(bare.coefficients[1])), 1e-300)
+
+
+@pytest.mark.loop_nightly
+def test_external_photon_ward_identity(gmu_a0, loop_native):
+    """photon k.M = 0 (PLAN EWI-6b oracle; O10's asymmetric Ward mode): u u~
+    > a g EW with alpha(0) for the photon, epsilon_3 -> c p_3 on the loop
+    side (blocks, counterterm currents, field insertions) for c = 1 and
+    c = i: every renormalised component of the interference with the
+    physical Born vanishes per Laurent coefficient, in binary64 within
+    1e-11 of the physical scale plus 1e-12 of the run's lanes' absolute sum
+    (measured 2.1e-12 of the physical scale; the alpha(0) field term 6e-17),
+    while a literal complex vector (non-gauge control) gives every part at
+    least 1e-2 of it. Nightly: generation about 7 min."""
+
+    import argparse
+
+    from pyamplicol.loops.v2.assemble import COMPONENTS
+    from pyamplicol.loops.v2.conventions import LOOP_FACTOR_DENOMINATOR
+    from pyamplicol.loops.v2.fields import FIELD_COMPONENT
+    from pyamplicol.loops.v2.observables import ObservableSlice
+    from tools import loop_v2_generate
+
+    reference = _reference("uux_ag_ew")
+    request, _ignored = loop_v2_generate._fixture_request(
+        reference, gmu_a0, argparse.Namespace()
+    )
+    observables = ObservableSlice.generate(gmu_a0, request, loop_native, ward=True)
+    assert observables.slice.external_photons.legs == (3,)
+    parameters = {**reference["parameters"], "aEW0M1": ALPHA0_INVERSE}
+    point, scale = reference["points"][0], str(Fraction(reference["mu_r"][0]) ** 2)
+    physical = observables.slice.evaluate(point, scale, parameters=parameters)
+    size = [
+        max(
+            abs(complex(laurent.coefficients[k]))
+            for name in COMPONENTS
+            for laurent in physical.components[name].values()
+        )
+        for k in range(3)
+    ]
+    average = float(observables.slice.normalisation.average)
+    parts = ("virtual", "bare", "r2", "uv_local", FIELD_COMPONENT)
+    for factor in ((1, 0), (0, 1)):
+        (run,) = observables.evaluate(
+            point, scale, ward=(3, factor), parameters=parameters
+        ).values()
+        lanes = [
+            2
+            / (LOOP_FACTOR_DENOMINATOR * math.pi**2 * average)
+            * sum(abs(complex(lane.coefficients[k])) for lane in run.families.values())
+            for k in range(3)
+        ]
+        for part in parts:
+            for sector, laurent in run.components[part].items():
+                for k, value in enumerate(laurent.coefficients):
+                    bound = 1e-11 * size[k] + 1e-12 * lanes[k]
+                    assert abs(complex(value)) <= bound, (factor, part, sector, k)
+    vector = (("0.1", "0.2"), ("0.8", "-0.3"), ("0.4", "1"), ("-0.6", "0.5"))
+    (control,) = observables.evaluate(
+        point, scale, ward=(3, vector), parameters=parameters
+    ).values()
+    for part in parts:
+        largest = max(
+            abs(complex(value)) / size[k]
+            for laurent in control.components[part].values()
+            for k, value in enumerate(laurent.coefficients)
+        )
+        assert largest > 1e-2, (part, largest)
