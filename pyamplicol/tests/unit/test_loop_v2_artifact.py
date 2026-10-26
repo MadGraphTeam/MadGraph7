@@ -1061,7 +1061,7 @@ FILLER_SYMBOLS = (0, 141)
 
 
 @pytest.mark.loop_physics
-def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
+def test_fresh_interpreter_loads_native_inputs_without_generation(
     full_colour, monkeypatch
 ):
     """A new interpreter loads the artifact's native point inputs and
