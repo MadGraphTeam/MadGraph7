@@ -167,6 +167,61 @@ def _assert_same_values(original, variant, rename=ORIGINAL):
         )
 
 
+def _route(slice_) -> str:
+    """The native-or-plan-only route of the artifact writer (its native
+    export of the plan, trees and Born squared)."""
+
+    from pyamplicol.loops.v2.plan_export import export_plan
+
+    try:
+        export_plan(slice_, forward=False, trees=True, born_squared=True)
+    except NotImplementedError:
+        return "plan-only"
+    return "native-v2"
+
+
+def _frames(slice_, rename):
+    """Every family's schedule-B frame, keyed by the family key in the
+    original's mass and width parameter names."""
+
+    from pyamplicol.loops.v2.families import MassId
+
+    back = {new: old for old, new in rename.parameters.items()}
+
+    def mass(m):
+        return MassId(back.get(m.mass, m.mass), back.get(m.width, m.width))
+
+    return {
+        tuple((mask, mass(m)) for mask, m in key): schedule.trie.frame
+        for key, schedule in slice_.plan.schedules.items()
+    }
+
+
+def _electroweak(slice_) -> bool:
+    from pyamplicol.loops.v2 import ew_policy
+
+    return ew_policy.electroweak(
+        slice_.compiled,
+        slice_.request,
+        slice_.prepared.structure.perturbative_species_orders,
+    )
+
+
+def _assert_same_decisions(original, variant, rename, *, electroweak=True):
+    """The production decisions of REPORT.md §3 on ``variant`` equal the
+    original's under ``rename``: the native-or-plan-only route, the frames,
+    the scale binding and (``electroweak``) the EW classification. The
+    orders variant's classification is m1's (WP3.2 ew-poles), asserted by
+    ``test_renamed_orders_keep_the_ew_classification_and_catani_poles``."""
+
+    assert _route(variant) == _route(original)
+    frames = _frames(original, ORIGINAL)
+    assert frames and _frames(variant, rename) == frames
+    assert variant.scale_parameter == rename.parameter(original.scale_parameter)
+    if electroweak:
+        assert _electroweak(variant) is _electroweak(original)
+
+
 # ------------------------------------------------------- public dry run
 
 
@@ -337,7 +392,7 @@ def test_renamed_scale_parameter_is_bound(models, name):
 
 
 def test_order_names_resolve_once_in_any_case():
-    from pyamplicol.models.order_names import (
+    from pyamplicol.loops.order_names import (
         CouplingOrderNameError,
         CouplingOrderNames,
     )
@@ -389,17 +444,20 @@ def test_orders_one_key_apart_are_refused_at_load(loop_sm_ufo, tmp_path):
 )
 def test_renamed_orders_give_the_same_virtual(models, loop_native, process, born, loop):
     """QCD corrections to a QCD Born and to an electroweak Born (the
-    mixed-case Qe at a nonzero power through the tree blocks and roots)."""
+    mixed-case Qe at a nonzero power through the tree blocks and roots):
+    the same route, frames and scale binding, and the same values."""
 
     point = _uux_ddxg_point() if process.endswith("g") else DY_POINT
     request = (process, born, loop, ("QCD",))
     fixed = {**FIXED, "WZ": "0"}
-    results = []
+    slices, results = [], []
     for variant in (None, "orders"):
         slice_, rename = _slice(
             models, loop_native, "loop_sm", variant, *request, fixed_parameters=fixed
         )
+        slices.append(slice_)
         results.append(_evaluate(slice_, point, rename))
+    _assert_same_decisions(*slices, rename, electroweak=False)
     _assert_same_values(*results, rename)
 
 
@@ -413,17 +471,14 @@ def test_renamed_particles_give_the_same_virtual(models, loop_native, name):
 
     request = ("u u~ > e+ e-", {"QCD": 0, "QED": 2}, {"QCD": 2, "QED": 2}, ("QCD",))
     fixed = {**FIXED, "WZ": "0"}
-    results = [
-        _evaluate(
-            _slice(
-                models, loop_native, name, variant, *request, fixed_parameters=fixed
-            )[0],
-            DY_POINT,
-            ORIGINAL,
-        )
+    slices = [
+        _slice(models, loop_native, name, variant, *request, fixed_parameters=fixed)
         for variant in (None, "particles")
     ]
-    _assert_same_values(*results)
+    _assert_same_decisions(slices[0][0], *slices[1])
+    _assert_same_values(
+        *(_evaluate(slice_, DY_POINT, ORIGINAL) for slice_, _ in slices)
+    )
 
 
 def test_renamed_scale_and_moved_alpha_s_give_the_same_virtual(models, loop_native):
@@ -431,13 +486,15 @@ def test_renamed_scale_and_moved_alpha_s_give_the_same_virtual(models, loop_nati
     the virtual equals the original's."""
 
     request = ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, {"QCD": 5, "QED": 0}, ("QCD",))
-    results = []
+    slices, results = [], []
     for variant in (None, "scale"):
         slice_, rename = _slice(
             models, loop_native, "loop_sm", variant, *request, alpha_s_parameter="aS"
         )
         assert slice_.scale_parameter == rename.parameter("MU_R")
+        slices.append(slice_)
         results.append(_evaluate(slice_, _uux_ddxg_point(), rename))
+    _assert_same_decisions(*slices, rename)
     _assert_same_values(*results)
 
 
@@ -558,16 +615,6 @@ def _w_point(mw: float) -> list[list[float]]:
 W_REQUEST = ("u d~ > w+ g", {"QCD": 1, "QED": 1}, {"QCD": 3, "QED": 1}, ("QCD",))
 
 
-def _route(slice_) -> str:
-    from pyamplicol.loops.v2.plan_export import export_plan
-
-    try:
-        export_plan(slice_, forward=False, trees=True, born_squared=True)
-    except NotImplementedError:
-        return "plan-only"
-    return "native-v2"
-
-
 @pytest.fixture(scope="module")
 def w_slices(models, loop_native):
     built = {}
@@ -608,10 +655,17 @@ def test_mw_nature_gives_the_same_virtual(w_slices, models, name):
 # coupling's (1 - MW^2/MZ^2)^(-1/2) sits on its branch cut, where the plane
 # and the exact evaluator take opposite branches (a sign), so the export is
 # refused; which input gets which probe value depends on the parameter names.
+# No DECISIONS entry routes it yet (genericity-fixes reported it, with the
+# reproducer workspace/tmp/genericity-fixes/probe/symjit/repro.py): the
+# proposed owner is generation-scale-2, whose M2 acceptance (u d~ > w+ g on
+# loop_sm with native-v2 inputs) it blocks; replace the reason by the routed
+# owner and its DECISIONS entry.
 PLANE_CHECK_OWNER = (
     "SymJIT plane check at non-physical probe inputs (branch cut of "
-    "(1 - MW^2/MZ^2)^(-1/2)): native tree export (native_trees.py / trees.rs "
-    f"verify_plane) owner, reported by genericity-fixes; and {M1_M2_OWNER}"
+    "(1 - MW^2/MZ^2)^(-1/2); rusticol-core loop_v2/trees.rs verify_plane): "
+    "routing pending in slice-status DECISIONS (reported by genericity-fixes; "
+    "proposed owner generation-scale-2, whose M2 acceptance it blocks); and "
+    f"{M1_M2_OWNER}"
 )
 
 
