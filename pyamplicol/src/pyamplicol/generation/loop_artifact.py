@@ -41,17 +41,18 @@ LOOP_V2_EXECUTION_SCHEMA = 4
 LOOP_V2_PHYSICS_SCHEMA = 2
 # How a plan v4 process obtains its per-point inputs (trees, Born amplitudes,
 # counterterm and field components): from native programs stored as further
-# PACBIN members (``loops.v2.native_process``, WP3.1), or rebuilt at load from
-# the artifact's compiled model and generation request where a process has no
-# native program (rusticol-core ``loop_artifact::LOOP_V2_*POINT_INPUTS``).
-# "native-v2": the native programs with the binary64 SymJIT plane application
-# of every saved evaluator (licence-free binary64, DESIGN §3.7).
-LOOP_V2_POINT_INPUTS = "regenerated-at-load"
+# PACBIN members (``loops.v2.native_process``, WP3.1; rusticol-core
+# ``loop_artifact::LOOP_V2_NATIVE_POINT_INPUTS``). "native-v2": the native
+# programs with the binary64 SymJIT plane application of every saved
+# evaluator (licence-free binary64, DESIGN §3.7). A process without them is
+# refused at generation: nothing of a stored process regenerates at load
+# (REQUIREMENTS_ADDENDUM G).
 LOOP_V2_NATIVE_POINT_INPUTS = "native-v2"
 # Former declarations, refused with a request to regenerate (internal artifact
 # formats are not kept backward compatible, AGENTS.md): "native-v1" stored no
-# plane applications.
-LOOP_V2_RETIRED_POINT_INPUTS = ("native-v1",)
+# plane applications, "regenerated-at-load" rebuilt the inputs at load from
+# the artifact's compiled model and generation request.
+LOOP_V2_RETIRED_POINT_INPUTS = ("native-v1", "regenerated-at-load")
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,8 +302,8 @@ class LoopProcessArtifact:
 class LoopV2ProcessArtifact(LoopProcessArtifact):
     """One plan v4 process: its PACBIN, generation request and public catalogue.
 
-    ``request`` is the slice request record (``loops.v2.artifact``) from which
-    the runtime rebuilds the Python per-point inputs; ``plan_sha256`` is the
+    ``request`` is the slice request record (``loops.v2.artifact``, the
+    generation record; a load never regenerates from it); ``plan_sha256`` is the
     digest of the stored plan JSON and ``scaleless_plan_sha256`` that of the
     stored companion plan of the certified-scaleless families (None without
     them; ``loops.v2.artifact.SCALELESS_PLAN_MEMBER``).
@@ -313,7 +314,7 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
     scaleless_plan_sha256: str | None = None
     state_legs: tuple[dict[str, object], ...] = ()
     helicities: tuple[tuple[int, ...], ...] = ()
-    point_inputs: str = LOOP_V2_POINT_INPUTS
+    point_inputs: str = LOOP_V2_NATIVE_POINT_INPUTS
 
     def __post_init__(self) -> None:
         if not isinstance(self.metadata, LoopV2ExecutionMetadata):
@@ -338,7 +339,7 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
                 f"(this build stores {LOOP_V2_NATIVE_POINT_INPUTS!r}); regenerate "
                 "the artifact"
             )
-        if self.point_inputs not in (LOOP_V2_POINT_INPUTS, LOOP_V2_NATIVE_POINT_INPUTS):
+        if self.point_inputs != LOOP_V2_NATIVE_POINT_INPUTS:
             raise ValueError(f"unknown point inputs {self.point_inputs!r}")
 
     @property

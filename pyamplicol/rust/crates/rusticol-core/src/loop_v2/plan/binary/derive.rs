@@ -10,7 +10,8 @@
 //! source rows being at most the Born rows, `rows` = the product of the legs'
 //! helicity counts), expanded over the observable `columns`, the candidate
 //! split parts of every content term, the monomial-product tables of each
-//! (rank, degree), the column-row flags (`rows × columns`), the vertex table
+//! (rank, degree), the column-row flags (`rows × columns`), the columns'
+//! seed-weight columns (`columns`, written or the identity), the vertex table
 //! (by vertex id) and the power of ten of a decimal weight (`"1e1000000000"`
 //! is a billion-digit number). A plan of a few hundred bytes can thus ask the
 //! derivations for any amount of memory (40 legs of two helicities: 2^40 Born
@@ -727,6 +728,7 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         forward: _,
         merged: _,
         column_rows: _,
+        column_weights: _,
     } = file;
     require(
         file.legs < 64 && file.helicities.len() == file.legs,
@@ -1053,6 +1055,11 @@ pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
         let kept = column_rows.iter().flatten().map(|kept| kept.len() as u64);
         tally.iterate(kept.sum());
     }
+    // The seed-weight column of each observable column (the file's
+    // `column_weights` copied, or the identity), and the scan for the
+    // largest.
+    tally.keep(columns, size_of::<usize>());
+    tally.iterate(columns);
     Ok(tally.finish())
 }
 

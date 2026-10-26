@@ -235,9 +235,11 @@ impl V2Program {
             record.set_item("interactions", rows)?;
             record.set_item("accumulators", PyList::new(py, accumulators)?)?;
             record.set_item("outputs", outputs)?;
-            if !step.pole_rows.is_empty() || !step.pole_outputs.is_empty() {
-                record.set_item("pole_interactions", PyList::new(py, step.pole_rows.iter())?)?;
-                record.set_item("pole_outputs", PyList::new(py, step.pole_outputs.iter())?)?;
+            if !step.accumulator_masks.is_empty() {
+                record.set_item(
+                    "accumulator_masks",
+                    PyList::new(py, step.accumulator_masks.iter())?,
+                )?;
             }
             steps.append(record)?;
         }

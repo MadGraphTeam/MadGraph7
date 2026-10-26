@@ -25,7 +25,9 @@ use rusticol_core::loop_execution::v2::{
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use rusticol_core::loop_v2::retest::ReductionCheck;
-use rusticol_core::loop_v2::trees::{TreeCarrier, TreeInputs, TreeProgram, TreeRuntime};
+use rusticol_core::loop_v2::trees::{
+    BoundParameters, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime,
+};
 use rusticol_loop_reduction::runtime::{TypedBatch, V2ReductionBackend};
 use std::any::Any;
 use std::collections::BTreeMap;
@@ -156,16 +158,11 @@ fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch
         // bound natively from the external parameters like `masses`. A
         // synthetic batch without external states (timing tools) may omit
         // them: its invariants then all come from the momenta.
-        // "" leaves a leg unbound (its mass is no model parameter).
         leg_masses: match inputs.get_item("leg_masses")? {
             Some(values) if !native => values
                 .extract::<Vec<String>>()?
                 .into_iter()
-                .map(|text| {
-                    (!text.is_empty())
-                        .then(|| parse_rational(&text).map_err(error))
-                        .transpose()
-                })
+                .map(|text| parse_rational(&text).map(Some).map_err(error))
                 .collect::<PyResult<_>>()?,
             _ => Vec::new(),
         },
@@ -188,6 +185,37 @@ struct Trees {
 }
 
 impl Trees {
+    /// The batch's bound parameters (`TreeProgram::bind`) and the carrier's
+    /// tree runtime, built on first use.
+    fn bind<'a, T: Exchanged + Real + TreeCarrier>(
+        &self,
+        guard: &'a mut Option<Box<dyn Any + Send>>,
+        inputs: &Bound<'_, PyDict>,
+        scales: &[Rational],
+        zero: &T,
+    ) -> PyResult<(&'a mut TreeRuntime<T>, BoundParameters<T>)>
+    where
+        Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let values = rationals(item(inputs, "parameters")?.extract::<Vec<String>>()?)?;
+        let fresh = !guard
+            .as_ref()
+            .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>());
+        if fresh {
+            *guard = Some(Box::new(self.program.runtime(zero).map_err(error)?));
+        }
+        let runtime = guard
+            .as_mut()
+            .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
+            .expect("a runtime of this carrier");
+        let bound = self
+            .program
+            .bind(runtime, &values, scales, zero)
+            .map_err(error)?;
+        Ok((runtime, bound))
+    }
+
     /// Native block rows and Born components of a batch (filled into
     /// `batch`); returns every input for inspection.
     fn fill<T: Exchanged + Real + TreeCarrier>(
@@ -202,37 +230,28 @@ impl Trees {
         Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
         TreeRuntime<T>: Send,
     {
-        let values = rationals(item(inputs, "parameters")?.extract::<Vec<String>>()?)?;
         let mut guard = self
             .runtime
             .lock()
             .map_err(|_| error("a poisoned tree runtime"))?;
-        let fresh = !guard
-            .as_ref()
-            .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>());
-        if fresh {
-            *guard = Some(Box::new(self.program.runtime(zero).map_err(error)?));
-        }
-        let runtime = guard
-            .as_mut()
-            .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
-            .expect("a runtime of this carrier");
-        let bound = self
-            .program
-            .bind(runtime, &values, &batch.scales, zero)
-            .map_err(error)?;
+        let (runtime, bound) = self.bind(&mut guard, inputs, &batch.scales, zero)?;
         batch.constants = bound.constants;
         batch.masses = bound.masses;
         batch.leg_masses = bound.leg_masses;
+        let sources = match inputs.get_item("sources")? {
+            Some(value) if !value.is_none() => Some(point_sources(&value, zero)?),
+            _ => None,
+        };
         let out = self
             .program
-            .inputs(
+            .inputs_with(
                 runtime,
                 plan,
                 &bound.trees,
                 &batch.momenta,
                 &batch.constants,
                 poles,
+                sources.as_deref(),
                 zero,
             )
             .map_err(error)?;
@@ -240,6 +259,44 @@ impl Trees {
         batch.born = out.born.clone();
         Ok(out)
     }
+}
+
+/// Per point spin sources (`inputs["sources"]`): per point `(vectors,
+/// rows)`, `vectors` (1-based leg label, four `[re, im]` exact texts) and
+/// `rows` a kept flag per Born row, or None (every row).
+#[allow(clippy::type_complexity)]
+fn point_sources<T: V2Carrier>(
+    value: &Bound<'_, PyAny>,
+    zero: &T,
+) -> PyResult<Vec<rusticol_core::loop_v2::trees::PointSources<T>>> {
+    let parsed: Vec<(Vec<(usize, Vec<[String; 2]>)>, Option<Vec<bool>>)> = value.extract()?;
+    parsed
+        .into_iter()
+        .map(|(vectors, rows)| {
+            let vectors = vectors
+                .into_iter()
+                .map(|(leg, components)| {
+                    if components.len() != 4 {
+                        return Err(error("a spin source is a complex four-vector"));
+                    }
+                    let parsed = components
+                        .iter()
+                        .map(|[re, im]| {
+                            Ok(Complex::new(
+                                zero.from_rational(&parse_rational(re).map_err(error)?),
+                                zero.from_rational(&parse_rational(im).map_err(error)?),
+                            ))
+                        })
+                        .collect::<PyResult<Vec<_>>>()?;
+                    let array: [Complex<T>; 4] = parsed
+                        .try_into()
+                        .map_err(|_| error("a spin source is a complex four-vector"))?;
+                    Ok((leg, array))
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            Ok(rusticol_core::loop_v2::trees::PointSources { vectors, rows })
+        })
+        .collect()
 }
 
 type ExportedNumerators = Vec<Vec<(usize, usize, usize, Vec<Values>)>>;
@@ -277,6 +334,9 @@ struct Evaluation {
     /// The counterterm and external-field outputs per point (native trees
     /// with counterterms), else None.
     counterterms: Option<Vec<Values>>,
+    /// Per point and observable column its complex outputs (native trees
+    /// with observable columns), else None.
+    columns: Option<Vec<Vec<Values>>>,
     families: Vec<Lanes>,
     check: Option<Vec<Lanes>>,
     bare: Vec<Vec<Values>>,
@@ -311,6 +371,7 @@ fn export_evaluation<T: Exchanged + Real>(
     bits: u32,
     born: Option<Vec<Values>>,
     counterterms: Option<Vec<Values>>,
+    columns: Option<Vec<Vec<Values>>>,
 ) -> Evaluation {
     let lanes = |values: &[(rusticol_core::loop_execution::v2::LaneKey, Vec<Complex<T>>)]| {
         values
@@ -322,6 +383,7 @@ fn export_evaluation<T: Exchanged + Real>(
     Evaluation {
         born,
         counterterms,
+        columns,
         families: results.iter().map(|r| lanes(&r.families)).collect(),
         check: checked.then(|| {
             results
@@ -456,6 +518,7 @@ where
     let mut batch = batch(inputs, &zero)?;
     let mut born = None;
     let mut counterterms = None;
+    let mut columns = None;
     let mut tree_seconds = None;
     if inputs.contains("parameters")? {
         let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
@@ -478,6 +541,17 @@ where
         };
         born = native.born_squared.map(export);
         counterterms = native.counterterms.map(export);
+        columns = native.columns.map(|points| {
+            points
+                .iter()
+                .map(|columns| {
+                    columns
+                        .iter()
+                        .map(|values| T::export(values, bits))
+                        .collect()
+                })
+                .collect()
+        });
     }
     let (results, mut report) = py
         .detach(|| executor.evaluate(&batch, &zero, backend, options))
@@ -486,7 +560,14 @@ where
         report.seconds.insert("trees", total);
         report.seconds.extend(parts);
     }
-    Ok(export_evaluation(results, report, bits, born, counterterms))
+    Ok(export_evaluation(
+        results,
+        report,
+        bits,
+        born,
+        counterterms,
+        columns,
+    ))
 }
 
 /// Native tree inputs of a batch: (block rows, plan Born components, every
@@ -533,6 +614,34 @@ where
     ))
 }
 
+/// Per plan mass and per leg, the bound squared masses (exact fractions).
+type BoundMasses = (Vec<String>, Vec<Option<String>>);
+
+fn bound_masses_with<T: Exchanged + Real + TreeCarrier>(
+    trees: &Trees,
+    inputs: &Bound<'_, PyDict>,
+    scales: &[Rational],
+    zero: &T,
+) -> PyResult<BoundMasses>
+where
+    Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+    TreeRuntime<T>: Send,
+{
+    let mut guard = trees
+        .runtime
+        .lock()
+        .map_err(|_| error("a poisoned tree runtime"))?;
+    let (_runtime, bound) = trees.bind(&mut guard, inputs, scales, zero)?;
+    Ok((
+        bound.masses.iter().map(ToString::to_string).collect(),
+        bound
+            .leg_masses
+            .iter()
+            .map(|mass| mass.as_ref().map(ToString::to_string))
+            .collect(),
+    ))
+}
+
 fn numerators_with<T: Exchanged>(
     py: Python<'_>,
     executor: &Executor,
@@ -554,8 +663,11 @@ impl V2Executor {
     /// the saved exact evaluator of each kernel and of the parameter program
     /// (last), and their binary64 SymJIT plane applications in the same order
     /// (or None: binary64 then runs the exact states).
+    /// `columns` (JSON, `loops/v2/native_observables`) adds observable
+    /// columns to the tree program and `plan_components` replaces its plan
+    /// Born components (an observable column set's plan).
     #[new]
-    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None))]
+    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast", trees=None, columns=None, plan_components=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         plan: &str,
@@ -566,6 +678,8 @@ impl V2Executor {
         forms: &str,
         engine: &str,
         trees: Option<(String, Vec<Vec<u8>>, Option<Vec<Vec<u8>>>)>,
+        columns: Option<String>,
+        plan_components: Option<Vec<Option<usize>>>,
     ) -> PyResult<Self> {
         if !matches!(engine, "fast" | "generic") {
             return Err(error("engine must be fast or generic"));
@@ -590,15 +704,26 @@ impl V2Executor {
         let plan = Arc::new(LoopProgramV4::load_with(plan.as_bytes(), policy).map_err(error)?);
         let trees = trees
             .map(|(json, kernels, planes)| {
-                TreeProgram::load(json.as_bytes(), &kernels, planes.as_deref(), &plan).map(
-                    |program| Trees {
-                        program,
-                        runtime: Mutex::new(None),
-                    },
-                )
+                let mut program = TreeProgram::load_with_components(
+                    json.as_bytes(),
+                    &kernels,
+                    planes.as_deref(),
+                    &plan,
+                    plan_components.clone(),
+                )?;
+                if let Some(columns) = &columns {
+                    program.set_columns(columns.as_bytes())?;
+                }
+                Ok::<_, rusticol_core::RusticolError>(Trees {
+                    program,
+                    runtime: Mutex::new(None),
+                })
             })
             .transpose()
             .map_err(error)?;
+        if trees.is_none() && (columns.is_some() || plan_components.is_some()) {
+            return Err(error("observable columns need a tree program"));
+        }
         Ok(Self {
             executor: Executor::new(plan, lanes, threads).map_err(error)?,
             carrier,
@@ -625,6 +750,27 @@ impl V2Executor {
             }
             Carriers::Arbitrary(_) => {
                 tree_inputs_with(executor, trees, inputs, Float::with_val(bits, 0), bits)
+            }
+            Carriers::Exact => Err(error("the exact carrier has no native trees")),
+        }
+    }
+
+    /// The squared masses a batch's external parameters bind natively
+    /// (needs a tree program; `inputs` as for `tree_inputs`): per plan mass
+    /// and per leg (the on-shell invariants, DESIGN §11.1), exact fractions.
+    fn bound_masses(&self, inputs: &Bound<'_, PyDict>) -> PyResult<BoundMasses> {
+        let trees = self
+            .trees
+            .as_ref()
+            .ok_or_else(|| error("the executor has no tree program"))?;
+        let scales = rationals(item(inputs, "scales")?.extract()?)?;
+        match self.carrier {
+            Carriers::Double => bound_masses_with(trees, inputs, &scales, &0.0),
+            Carriers::DoubleDouble => {
+                bound_masses_with(trees, inputs, &scales, &DoubleFloat::from(0.0))
+            }
+            Carriers::Arbitrary(_) => {
+                bound_masses_with(trees, inputs, &scales, &Float::with_val(self.bits()?, 0))
             }
             Carriers::Exact => Err(error("the exact carrier has no native trees")),
         }
@@ -869,9 +1015,77 @@ fn native_library_key_active() -> bool {
     pyamplicol::is_active()
 }
 
+/// One point of [`evaluate_v2_artifact`]: (Born per declared Born order,
+/// complete virtual per declared sector), or None with the failures.
+type V2ArtifactPoint = (Option<(Vec<f64>, Vec<Vec<f64>>)>, Vec<String>);
+
+/// Evaluate a plan v4 process with native point inputs through the Rust
+/// runtime the SDKs use (`rusticol_loop_reduction::v2_runtime::V2Runtime`):
+/// no Python generation or assembly, binary64. `momenta` are per point the
+/// physical momenta of every leg (`4 × legs` exact decimal or fraction
+/// strings), `scales` mu_R² per point, `parameters` the caller's model
+/// parameter values (exact strings), `poles` the pole selection ("all",
+/// "none", "uv" or "ir"; True and False are "all" and "none").
+#[pyfunction]
+#[pyo3(signature = (path, momenta, scales, *, process=None, parameters=None, poles=None, threads=None))]
+#[allow(clippy::too_many_arguments)]
+fn evaluate_v2_artifact(
+    py: Python<'_>,
+    path: &str,
+    momenta: Vec<Vec<String>>,
+    scales: Vec<String>,
+    process: Option<&str>,
+    parameters: Option<BTreeMap<String, String>>,
+    poles: Option<Bound<'_, PyAny>>,
+    threads: Option<usize>,
+) -> PyResult<Vec<V2ArtifactPoint>> {
+    use rusticol_loop_reduction::v2_runtime::{V2Poles, V2Runtime};
+
+    let poles = match poles {
+        None => V2Poles::All,
+        Some(value) => match value.extract::<bool>() {
+            Ok(true) => V2Poles::All,
+            Ok(false) => V2Poles::None,
+            Err(_) => match value.extract::<String>()?.as_str() {
+                "all" => V2Poles::All,
+                "none" => V2Poles::None,
+                "uv" => V2Poles::Uv,
+                "ir" => V2Poles::Ir,
+                other => {
+                    return Err(error(format!(
+                        "poles must be \"all\", \"none\", \"uv\" or \"ir\", not {other:?}"
+                    )));
+                }
+            },
+        },
+    };
+    let momenta = momenta
+        .into_iter()
+        .map(rationals)
+        .collect::<PyResult<Vec<_>>>()?;
+    let scales = rationals(scales)?;
+    let points = py
+        .detach(|| {
+            let mut runtime = V2Runtime::open(path, process, threads)?;
+            if let Some(values) = &parameters {
+                runtime.set_parameters(values.iter().map(|(k, v)| (k.as_str(), v.as_str())))?;
+            }
+            runtime.evaluate(&momenta, &scales, poles)
+        })
+        .map_err(error)?;
+    Ok(points
+        .into_iter()
+        .map(|point| match point {
+            Ok(values) => (Some(values), Vec::new()),
+            Err(failures) => (None, failures),
+        })
+        .collect())
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Executor>()?;
     module.add_function(wrap_pyfunction!(compile_v2_plane, module)?)?;
     module.add_function(wrap_pyfunction!(native_library_key_active, module)?)?;
-    module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)
+    module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(evaluate_v2_artifact, module)?)
 }

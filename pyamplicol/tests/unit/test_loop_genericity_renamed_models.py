@@ -51,10 +51,6 @@ DY_POINT = [
     [500, -300, 0, -400],
 ]
 OWNED = "slice-status DECISIONS 2026-10-26 ~00:20"
-M1_M2_OWNER = (
-    f"M1/M2 (native point inputs of derived masses): generation-scale-2, {OWNED} item 1"
-)
-M2_ALPHA_OWNER = f"m2 (one alpha_s rule): generation-scale-2, {OWNED} item 1"
 
 
 def _uux_ddxg_point():
@@ -663,7 +659,6 @@ def test_renamed_orders_keep_the_ew_classification_and_catani_poles(
         ), sector
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError, reason=M2_ALPHA_OWNER)
 def test_alpha_s_off_sminputs_does_not_refuse_a_qcd_request(models, loop_native):
     from pyamplicol.loops.v2.assemble import prepare_request_model
 
@@ -818,20 +813,13 @@ PLANE_CHECK_OWNER = (
         pytest.param(
             "loop_sm",
             marks=pytest.mark.xfail(
-                strict=True,
-                raises=(AssertionError, ValueError),
-                reason=f"{PLANE_CHECK_OWNER}; and {M1_M2_OWNER}",
+                strict=True, raises=ValueError, reason=PLANE_CHECK_OWNER
             ),
         ),
-        pytest.param(
-            "gmu",
-            marks=[
-                pytest.mark.loop_nightly,
-                pytest.mark.xfail(
-                    strict=True, raises=AssertionError, reason=M1_M2_OWNER
-                ),
-            ],
-        ),
+        # Derived masses are parameter-program outputs since
+        # generation-scale-2's M1/M2 (fix round 1): G_mu's MW takes the native
+        # route whether a card input or derived.
+        pytest.param("gmu", marks=pytest.mark.loop_nightly),
     ],
 )
 def test_mw_nature_takes_the_same_native_route(w_slices, name):

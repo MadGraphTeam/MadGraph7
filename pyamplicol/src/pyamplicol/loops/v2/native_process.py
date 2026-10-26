@@ -20,6 +20,12 @@ record (``_ProcessView``); its results equal those of the slice's own
 native executor bitwise (``tests/unit/test_loop_v2_native_process.py``).
 Lane labels are the family indices of the plan (the slice's family keys are
 labels only: the bare virtual and the stability budgets read the sector).
+
+A process with certified-scaleless families also stores their companion
+(``LoopSlice.scaleless``, design §12.4): its plan (the artifact's companion
+plan member) and its own tree program, exported without Born or counterterm
+outputs (it adds only lanes). The "uv" and "ir" pole selections of a loaded
+process run it, so no pole selection regenerates the slice.
 """
 
 from __future__ import annotations
@@ -34,7 +40,10 @@ from typing import Any
 from .families import Orders
 from .native_trees import NativeTrees
 
-SCHEMA = 1
+SCHEMA = 2
+# Member-name prefix of the certified-scaleless companion's members (its plan
+# and tree program).
+SCALELESS = "scaleless-"
 
 
 def _orders(orders: Orders) -> list[list[Any]]:
@@ -45,14 +54,121 @@ def _orders_of(record: Any) -> Orders:
     return tuple((str(name), int(power)) for name, power in record)
 
 
+def _trees_record(trees: NativeTrees) -> dict[str, Any]:
+    """The tree program's batch layout (``NativeTrees`` fields besides the
+    program, the saved evaluators and their plane applications)."""
+
+    return {
+        "couplings": [list(slot) for slot in trees.couplings],
+        "born_orders": [_orders(orders) for orders in trees.born_orders],
+        "squared_orders": [_orders(o) for o in trees.squared_orders],
+        "masses": [list(mass) for mass in trees.masses],
+        "components": [
+            [b, _orders(orders), grade] for b, orders, grade in trees.components
+        ],
+        "counterterm_outputs": [
+            [component, _orders(sector), power]
+            for component, sector, power in trees.counterterm_outputs
+        ],
+    }
+
+
+def _trees_members(trees: NativeTrees, prefix: str = "") -> dict[str, bytes]:
+    """A tree program as named byte members: its JSON, its saved kernels and
+    parameter evaluator, and their binary64 SymJIT plane applications."""
+
+    if len(trees.planes) != len(trees.kernels) + 1:
+        raise ValueError("a native process stores a plane application per state")
+    out = {
+        f"{prefix}tree-program.json": trees.json().encode(),
+        f"{prefix}parameters.bin": bytes(trees.parameters),
+        f"{prefix}parameters.symjit": bytes(trees.planes[-1]),
+    }
+    for k, saved in enumerate(trees.kernels):
+        out[f"{prefix}kernel-{k}.bin"] = bytes(saved)
+        out[f"{prefix}kernel-{k}.symjit"] = bytes(trees.planes[k])
+    return out
+
+
+def _trees_from_members(
+    members: Mapping[str, bytes], meta: Mapping[str, Any], prefix: str = ""
+) -> NativeTrees:
+    program = json.loads(members[f"{prefix}tree-program.json"])
+    kernels = []
+    while f"{prefix}kernel-{len(kernels)}.bin" in members:
+        kernels.append(bytes(members[f"{prefix}kernel-{len(kernels)}.bin"]))
+    planes = [bytes(members[f"{prefix}kernel-{k}.symjit"]) for k in range(len(kernels))]
+    planes.append(bytes(members[f"{prefix}parameters.symjit"]))
+    return NativeTrees(
+        program,
+        tuple(kernels),
+        tuple((str(name), int(grade)) for name, grade in meta["couplings"]),
+        tuple(_orders_of(o) for o in meta["born_orders"]),
+        tuple(_orders_of(o) for o in meta["squared_orders"]),
+        tuple((int(pdg), str(name)) for pdg, name in meta["masses"]),
+        tuple(
+            (int(b), _orders_of(orders), int(grade))
+            for b, orders, grade in meta["components"]
+        ),
+        bytes(members[f"{prefix}parameters.bin"]),
+        tuple(
+            (str(component), _orders_of(sector), int(power))
+            for component, sector, power in meta["counterterm_outputs"]
+        ),
+        tuple(planes),
+    )
+
+
+def _plan_view(
+    record: Mapping[str, Any], columns: Any, trees: NativeTrees, first: int = 0
+) -> Any:
+    """The ``ExportedPlan`` view a native executor reads: lane labels (plan
+    family indices from ``first``, loop orders, sector columns) and the tree
+    program. The companion's families are numbered after the process's, so
+    the lanes of both stay distinct in one evaluation (``assemble.
+    _PointEvaluation.set_lanes``)."""
+
+    from .plan_export import ExportedPlan
+
+    return ExportedPlan(
+        program={},
+        rows=(),
+        born_components=(),
+        block_rows=(),
+        constants=(),
+        masses=(),
+        orders=tuple(_orders_of(o) for o in record["orders"]),
+        families=tuple(range(first, first + record["families"])),
+        columns=columns,
+        trees=trees,
+    )
+
+
 @dataclass(frozen=True)
-class NativeProcess:
-    """The native evaluation of one v2 process: plan, tree program and the
-    assembly record (module docstring)."""
+class NativeCompanion:
+    """The certified-scaleless companion of a native process: its plan JSON
+    (the artifact's companion plan), its tree program (no Born or
+    counterterm outputs) and its lane labels (``record``: plan family count
+    and loop orders; its columns are the process's sectors)."""
 
     plan_json: str
     trees: NativeTrees
     record: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class NativeProcess:
+    """The native evaluation of one v2 process: plan, tree program and the
+    assembly record (module docstring), with the native companion of its
+    certified-scaleless families when it has them."""
+
+    plan_json: str
+    trees: NativeTrees
+    record: Mapping[str, Any]
+    scaleless: NativeCompanion | None = None
+    # The stored observable columns (``native_observables.StoredObservables``)
+    # of a process generated with declared colour histories or spin classes.
+    observables: Any = None
 
     @classmethod
     def of(cls, executor: Any) -> NativeProcess:
@@ -61,13 +177,28 @@ class NativeProcess:
 
         if executor.inputs != "native":
             raise ValueError("a native process needs an executor with native inputs")
-        return cls.export(executor.slice, executor.exported, executor._plan_json)
+        companion = executor.scaleless
+        return cls.export(
+            executor.slice,
+            executor.exported,
+            executor._plan_json,
+            None if companion is None else (companion.exported, companion._plan_json),
+        )
 
     @classmethod
-    def export(cls, slice_: Any, exported: Any, plan_json: str) -> NativeProcess:
+    def export(
+        cls,
+        slice_: Any,
+        exported: Any,
+        plan_json: str,
+        scaleless: tuple[Any, str] | None = None,
+    ) -> NativeProcess:
         """The process of a plan exported with its tree program
         (``export_plan(slice_, trees=True, born_squared=True)``, sector
-        columns); ``plan_json`` is ``exported.json()``."""
+        columns); ``plan_json`` is ``exported.json()``. ``scaleless`` is the
+        (exported plan, JSON) of the slice's certified-scaleless companion,
+        exported with its tree program (``trees=True, born_squared=False,
+        counterterms=False``); required when the slice has one."""
 
         trees = exported.trees
         born = None if trees is None else trees.program["born"]
@@ -100,21 +231,31 @@ class NativeProcess:
             "alpha_s_parameter": slice_.alpha_s_parameter,
             "families": len(exported.families),
             "orders": [_orders(orders) for orders in exported.orders],
-            "trees": {
-                "couplings": [list(slot) for slot in trees.couplings],
-                "born_orders": [_orders(orders) for orders in trees.born_orders],
-                "squared_orders": [_orders(o) for o in trees.squared_orders],
-                "masses": [list(mass) for mass in trees.masses],
-                "components": [
-                    [b, _orders(orders), grade] for b, orders, grade in trees.components
-                ],
-                "counterterm_outputs": [
-                    [component, _orders(sector), power]
-                    for component, sector, power in trees.counterterm_outputs
-                ],
-            },
+            "trees": _trees_record(trees),
+            "scaleless": None,
         }
-        return cls(plan_json, trees, record)
+        companion = None
+        if (slice_.scaleless is None) != (scaleless is None):
+            raise ValueError(
+                "a native process stores the certified-scaleless companion "
+                "exactly when its slice has one"
+            )
+        if scaleless is not None:
+            twin, twin_json = scaleless
+            if twin.trees is None:
+                raise ValueError(
+                    "the stored companion needs its plan exported with trees"
+                )
+            if tuple(twin.columns) != tuple(sectors):
+                raise ValueError("the companion evaluates the sector columns")
+            twin_record = {
+                "families": len(twin.families),
+                "orders": [_orders(orders) for orders in twin.orders],
+                "trees": _trees_record(twin.trees),
+            }
+            record["scaleless"] = twin_record
+            companion = NativeCompanion(twin_json, twin.trees, twin_record)
+        return cls(plan_json, trees, record, companion)
 
     # -- storage -------------------------------------------------------------
 
@@ -124,57 +265,56 @@ class NativeProcess:
         parameter evaluator, and their binary64 SymJIT plane applications
         (the plan is stored on its own)."""
 
-        trees = self.trees
-        if len(trees.planes) != len(trees.kernels) + 1:
-            raise ValueError("a native process stores a plane application per state")
         out = {
             "native-process.json": json.dumps(
                 self.record, separators=(",", ":"), sort_keys=True
             ).encode(),
-            "tree-program.json": trees.json().encode(),
-            "parameters.bin": bytes(trees.parameters),
-            "parameters.symjit": bytes(trees.planes[-1]),
+            **_trees_members(self.trees),
         }
-        for k, saved in enumerate(trees.kernels):
-            out[f"kernel-{k}.bin"] = bytes(saved)
-            out[f"kernel-{k}.symjit"] = bytes(trees.planes[k])
+        if self.scaleless is not None:
+            out[f"{SCALELESS}plan.json"] = self.scaleless.plan_json.encode()
+            out.update(_trees_members(self.scaleless.trees, SCALELESS))
+        if self.observables is not None:
+            out.update(self.observables.members())
         return out
 
     @classmethod
     def from_members(
-        cls, plan_json: str, members: Mapping[str, bytes]
+        cls,
+        plan_json: str,
+        members: Mapping[str, bytes],
+        scaleless_json: str | None = None,
     ) -> NativeProcess:
+        """The process of ``members`` (``members``) for its plan and, when it
+        has certified-scaleless families, its companion plan (by default the
+        one ``members`` holds)."""
+
         record = json.loads(members["native-process.json"])
         if record.get("schema") != SCHEMA:
             raise ValueError(
                 "unsupported native process schema; regenerate the artifact"
             )
-        program = json.loads(members["tree-program.json"])
-        kernels = []
-        while f"kernel-{len(kernels)}.bin" in members:
-            kernels.append(bytes(members[f"kernel-{len(kernels)}.bin"]))
-        planes = [bytes(members[f"kernel-{k}.symjit"]) for k in range(len(kernels))]
-        planes.append(bytes(members["parameters.symjit"]))
-        meta = record["trees"]
-        trees = NativeTrees(
-            program,
-            tuple(kernels),
-            tuple((str(name), int(grade)) for name, grade in meta["couplings"]),
-            tuple(_orders_of(o) for o in meta["born_orders"]),
-            tuple(_orders_of(o) for o in meta["squared_orders"]),
-            tuple((int(pdg), str(name)) for pdg, name in meta["masses"]),
-            tuple(
-                (int(b), _orders_of(orders), int(grade))
-                for b, orders, grade in meta["components"]
-            ),
-            bytes(members["parameters.bin"]),
-            tuple(
-                (str(component), _orders_of(sector), int(power))
-                for component, sector, power in meta["counterterm_outputs"]
-            ),
-            tuple(planes),
-        )
-        return cls(plan_json, trees, record)
+        trees = _trees_from_members(members, record["trees"])
+        companion = None
+        twin = record["scaleless"]
+        if scaleless_json is None and f"{SCALELESS}plan.json" in members:
+            scaleless_json = bytes(members[f"{SCALELESS}plan.json"]).decode()
+        if twin is not None:
+            if scaleless_json is None:
+                raise ValueError("the native process's companion plan is missing")
+            companion = NativeCompanion(
+                scaleless_json,
+                _trees_from_members(members, twin["trees"], SCALELESS),
+                twin,
+            )
+        elif scaleless_json is not None:
+            raise ValueError("a companion plan without its native tree program")
+        observables = None
+        if "observables.json" in members:
+            from .native_observables import StoredObservables
+
+            observables = StoredObservables.from_members(members)
+        return cls(plan_json, trees, record, companion, observables)
 
     # -- evaluation ----------------------------------------------------------
 
@@ -184,27 +324,26 @@ class NativeProcess:
         loop native module, ``options`` the executor's (lanes, threads,
         forms)."""
 
-        from .plan_export import ExportedPlan, NativeExecutor
+        from .plan_export import NativeExecutor
 
         record = self.record
-        exported = ExportedPlan(
-            program={},
-            rows=(),
-            born_components=(),
-            block_rows=(),
-            constants=(),
-            masses=(),
-            orders=tuple(_orders_of(o) for o in record["orders"]),
-            families=tuple(range(record["families"])),
-            columns=tuple(_orders_of(sector) for sector, _pairs in record["sectors"]),
-            trees=self.trees,
-        )
+        columns = tuple(_orders_of(sector) for sector, _pairs in record["sectors"])
+        view = _ProcessView(record, native)
+        companion = None
+        if self.scaleless is not None:
+            twin = self.scaleless
+            companion = (
+                _plan_view(twin.record, columns, twin.trees, record["families"]),
+                twin.plan_json,
+            )
+            view.scaleless = _ProcessView(record, native)
         return NativeExecutor(
-            _ProcessView(record, native),
+            view,
             forward=False,
-            exported=exported,
+            exported=_plan_view(record, columns, self.trees),
             plan_json=self.plan_json,
             inputs="native",
+            scaleless=companion,
             **options,
         )
 
@@ -228,6 +367,9 @@ class _ProcessView:
             for sector, pairs in record["sectors"]
         )
         self.normalisation = SimpleNamespace(average=int(record["average"]))
+        # The certified-scaleless companion's view (``NativeProcess.
+        # executor``): the same process, sectors and parameters.
+        self.scaleless: _ProcessView | None = None
         self.scale_parameter = record["scale_parameter"]
         self.alpha_s_parameter = record["alpha_s_parameter"]
         self.blocks = SimpleNamespace(

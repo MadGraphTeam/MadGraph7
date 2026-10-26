@@ -1051,6 +1051,7 @@ def dag_input(
         ),
         "coupling_identity_ranks": _ranks(coupling_identities),
         "sectors": _sector_rows(process, engine),
+        "u1_subtraction_kind": U1_SUBTRACTION_AUXILIARY_KIND,
     }
     return json.dumps(payload, separators=(",", ":"))
 
@@ -2024,7 +2025,7 @@ def native_counterterm_blocks(
 
 # ------------------------------------------------------------------ program (A5)
 
-PROGRAM_INPUT_SCHEMA = "pyamplicol.loop-v2.dag-program-input/1"
+PROGRAM_INPUT_SCHEMA = "pyamplicol.loop-v2.dag-program-input/2"
 
 # Rule 1: the flag of the native interaction-program emission (A5, R2). On,
 # the native lane's export (``native_trees._CountertermTrees.of``) builds the
@@ -2112,13 +2113,14 @@ class NativeTreeRows:
 
 
 def _program_input(
-    dag: NativeDag, model: Any, pole_orders: Iterable[str]
+    dag: NativeDag, model: Any, slot_orders: Sequence[str]
 ) -> tuple[str, dict[tuple[int, int], Any]]:
     """``V2Dag.program``'s JSON input (schema ``PROGRAM_INPUT_SCHEMA``): per
     ``(particle id, chirality)`` of the DAG's currents whether the model's
     propagator applies (``Model._propagator_ir``, asked for every current as
-    the runtime schema does), and the pole orders; with the canonical
-    propagator payloads."""
+    the runtime schema does), and a CT program's slot table (the
+    pseudo-order of each slot, in slot order: ``native_trees.
+    counterterm_slots``); with the canonical propagator payloads."""
 
     propagators: dict[tuple[int, int], Any] = {}
     applies = []
@@ -2130,7 +2132,7 @@ def _program_input(
         {
             "schema": PROGRAM_INPUT_SCHEMA,
             "propagators": applies,
-            "pole_orders": sorted(str(name) for name in pole_orders),
+            "slot_orders": [str(name) for name in slot_orders],
         },
         separators=(",", ":"),
     )
@@ -2138,15 +2140,15 @@ def _program_input(
 
 
 def native_tree_rows(
-    dag: NativeDag, compiled: Any, *, pole_orders: Iterable[str] = ()
+    dag: NativeDag, compiled: Any, *, slot_orders: Sequence[str] = ()
 ) -> tuple[NativeTreeRows, Any]:
     """The export's view of ``TreeRows(dag, compiled)`` and the DAG's native
     interaction program (``V2Program``), for a loop-request DAG whose
     every non-source current is propagated (a CT program's,
     ``ct_closure.program_propagated_currents``; not the slice's
     ``TreeRows(dag)``, where a current that feeds no interaction is
-    unpropagated), with the program's pole currents those of a non-zero
-    power of ``pole_orders``.
+    unpropagated), with a CT program's per-slot reachability masks from its
+    slot table ``slot_orders`` (``native_trees.slot_masks``).
 
     The Θ(DAG) layout is native (``V2Dag.program``, its module docs); the
     model's parts run the runtime schema's own functions on the few currents
@@ -2168,7 +2170,7 @@ def native_tree_rows(
     model = CompiledUFOModel(compiled)
     handle = dag._native_handle()
     with _exact_u1_subtraction_weights():  # type: ignore[no-untyped-call]
-        text, propagators = _program_input(dag, model, pole_orders)
+        text, propagators = _program_input(dag, model, slot_orders)
         program = _call(handle.program, text)
         value_count = int(program.value_count())
         starts, variants = program.slots()
@@ -2337,18 +2339,18 @@ def _retained_functions(
 
 
 def native_interaction_program(
-    rows: NativeTreeRows, program: Any
+    rows: NativeTreeRows, program: Any, slots: Sequence[Any] = ()
 ) -> tuple[dict[str, Any], tuple[bytes, ...]]:
     """``native_trees._interaction_program`` of ``rows`` and its native
-    ``program`` (``native_tree_rows``; its pole steps those of the pole
-    orders given there): the native steps, and the kernels in their first
+    ``program`` (``native_tree_rows``; its slot masks those of the slot table
+    given there, ``slots``): the native steps, and the kernels in their first
     use, each built from the representative the oracle builds it from by
     the oracle's own recipe (``native_trees._vertex_kernel``,
     ``_propagator_kernel``, ``_saved_kernel``: the model's component
     expressions with its kernel functions inlined, on canonical symbols,
     reading only the model parameters they hold, saved as exact Symbolica
     evaluators; vertex kernels first, then propagators; shapes ``[inputs,
-    outputs, model_inputs]`` of TREE_SCHEMA 3).
+    outputs, model_inputs]`` of TREE_SCHEMA 3 and later).
 
     The model functions are inlined into every kernel in one
     ``_specialize_stage_symbolica_functions`` call (the oracle calls it per
@@ -2371,6 +2373,7 @@ def native_interaction_program(
         _propagator_kernel,
         _saved_kernel,
         _vertex_kernel,
+        slot_mask_table,
     )
 
     model_symbols, model = _kernel_model(rows.model, rows._records)
@@ -2422,6 +2425,8 @@ def native_interaction_program(
         "propagators": shapes["propagators"],
         "steps": program.steps(texts),
     }
+    if slots:
+        record["masks"] = slot_mask_table(len(slots))
     return record, (*saved["kernels"], *saved["propagators"])
 
 
@@ -2433,21 +2438,19 @@ def native_counterterm_trees(program: Any) -> tuple[Any, ...] | None:
     program's DAG is the tree engine's (or the flag is off): ``of`` takes the
     Python ``TreeRows``."""
 
-    from pyamplicol.models.loading import counterterm_slot_order
+    from .native_trees import counterterm_slots
 
     dag = program.blocks.blocks.blocks_dag
     if not NATIVE_PROGRAM or type(dag) is not NativeDag:
         return None
-    pole_orders = {
-        counterterm_slot_order(*slot)
-        for slot in program.recursion.slots
-        if slot[1] != 0
-    }
+    slots = counterterm_slots(program.recursion)
     released = dag.released
     rows, native = native_tree_rows(
-        dag, program.recursion.model.lowered.compiled, pole_orders=pole_orders
+        dag,
+        program.recursion.model.lowered.compiled,
+        slot_orders=[slot[0] for slot in slots],
     )
-    interactions, saved = native_interaction_program(rows, native)
+    interactions, saved = native_interaction_program(rows, native, slots)
     del native
     if released:
         # As after generation: the columns are not held to the end.
