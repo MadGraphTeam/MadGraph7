@@ -104,3 +104,34 @@ fn the_closure_simd_cap_only_lowers_the_width() {
     // Other carriers take the baseline whatever the cap.
     assert_eq!(Wide::detect::<f32>(), Wide::Baseline);
 }
+
+#[test]
+fn carrier_values_read_exactly() {
+    // A derived mass is bound to its carrier value's exact rational (its
+    // square is the legs' invariant): every carrier reads back exactly.
+    let third = parse_rational("1/3").unwrap();
+    let double = cast(&0.0_f64, &third);
+    assert_eq!(cast(&0.0_f64, &double.exact().unwrap()), double);
+    assert_ne!(double.exact().unwrap(), third);
+    let pair = cast(&DoubleFloat::from(0.0), &third);
+    let parts = pair.into_inner();
+    assert_ne!(parts.lo(), 0.0);
+    assert_ne!(pair.exact().unwrap(), parts.hi().exact().unwrap());
+    assert_eq!(cast(&DoubleFloat::from(0.0), &pair.exact().unwrap()), pair);
+    let zero = Float::with_val(200, 0);
+    let float = cast(&zero, &third);
+    assert_eq!(cast(&zero, &float.exact().unwrap()), float);
+    assert!(f64::NAN.exact().is_err());
+}
+
+#[test]
+fn plan_masses_read_inputs_or_outputs() {
+    // A plan mass is massless, an external parameter's index or
+    // `["output", o]`, a derived mass (`load_parameters` checks the tag, the
+    // output and that it is in `positive`).
+    let masses: Vec<Option<MassFile>> =
+        serde_json::from_str(r#"[null, 2, ["output", 5]]"#).unwrap();
+    assert!(masses[0].is_none());
+    assert!(matches!(masses[1], Some(MassFile::Input(2))));
+    assert!(matches!(&masses[2], Some(MassFile::Output(tag, 5)) if tag == "output"));
+}
