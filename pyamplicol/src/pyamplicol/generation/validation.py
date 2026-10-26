@@ -166,6 +166,11 @@ def validation_point_map(
     return {record.process_id: record.to_mapping() for record in records}
 
 
+# Massive beams: sqrt(s) over the larger threshold (unit-free, well above
+# both thresholds, beams far from the ultra-relativistic limit).
+_MASSIVE_BEAM_SCALE = 2.0
+
+
 def _build_particles(
     process: CanonicalProcessIR,
     model: Model,
@@ -175,11 +180,14 @@ def _build_particles(
     """One on-shell point of ``process`` from the model's masses.
 
     A decay (1 -> n) is taken in the rest frame of the decaying particle; a
-    scattering (2 -> n, n >= 2) in its centre-of-mass frame, beams along +-z,
-    at ``sqrt(s) = max(1000, max(final threshold, beam masses) + 100)``
-    (model units), above both the initial and the final threshold; a 2 -> 1
-    scattering at ``sqrt(s)`` = the final mass. Massless beams keep the
-    historical formula exactly (their points are byte-identical).
+    scattering (2 -> n, n >= 2) in its centre-of-mass frame, beams along +-z.
+    Massive beams take ``sqrt(s)`` twice the larger of the initial and the
+    final threshold (a scale of the process, in no particular units); massless
+    beams keep the historical ``sqrt(s) = max(1000, final threshold + 100)``
+    exactly (their points are byte-identical). A 2 -> 1 scattering takes
+    ``sqrt(s)`` = the final mass. pyAmpliCol processes have two initial
+    particles today (``processes.model``), so the decay branch serves only
+    direct callers until decays are supported.
     """
 
     initial_pdgs = tuple(int(pdg) for pdg in process.initial_pdgs)
@@ -222,7 +230,11 @@ def _build_particles(
         sqrt_s = threshold
         final_momenta: tuple[FourMomentum, ...] = ((float(sqrt_s), 0.0, 0.0, 0.0),)
     else:
-        sqrt_s = max(1000.0, max(threshold, beams) + 100.0)
+        sqrt_s = (
+            max(1000.0, threshold + 100.0)
+            if beams == 0.0
+            else _MASSIVE_BEAM_SCALE * max(threshold, beams)
+        )
         final_momenta = massive_rambo_final_state(
             len(final_pdgs),
             sqrt_s=sqrt_s,

@@ -3,13 +3,16 @@
 
 A scattering takes on-shell beams of the model's masses in its
 centre-of-mass frame, a decay the rest frame of the decaying particle;
-massless beams keep the historical points bit for bit.
+massless beams keep the historical points bit for bit. pyAmpliCol processes
+have two initial particles today, so the decay tests call the builder directly.
 """
 
 from __future__ import annotations
 
 import math
 from types import SimpleNamespace
+
+import pytest
 
 from pyamplicol.generation.phase_space import massive_rambo_final_state
 from pyamplicol.generation.validation import build_process_validation_point
@@ -70,12 +73,19 @@ def test_massless_beams_keep_the_historical_point():
     )
 
 
-def test_massive_beams_are_on_shell():
-    record = _point((6, -6), (21, 21))
+@pytest.mark.parametrize(
+    ("initial", "final", "threshold"),
+    [((6, -6), (21, 21), 346.0), ((6, 21), (6, 21), 173.0), ((2, 6), (6, 6, -6), 519.0)],
+)
+def test_massive_beams_are_on_shell(initial, final, threshold):
+    """On-shell beams at sqrt(s) twice the larger threshold of the process."""
+
+    record = _point(initial, final)
     assert record.available, record.error
     _assert_on_shell_and_conserved(record, 2)
     (_, first), (_, second) = record.particles[:2]
     assert first[3] > 0 > second[3] and first[1:3] == second[1:3] == (0.0, 0.0)
+    assert math.isclose(first[0] + second[0], 2.0 * threshold, rel_tol=1e-15)
 
 
 def test_decays_take_the_rest_frame():
