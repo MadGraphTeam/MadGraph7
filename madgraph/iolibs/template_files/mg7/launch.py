@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import gc
 import math
 import os
@@ -26,6 +27,8 @@ from madgraph.iolibs.template_files.mg7.bootstrap import (
     MG_ROOT as _MG_ROOT,
     MADSPACE_DIR as _MADSPACE_DIR,
     INSTALL_DIR as _INSTALL_DIR,
+    MADTREX_DIR as _MADTREX_DIR,
+    MADTREX_INSTALL_DIR as _MADTREX_INSTALL_DIR,
 )
 
 _ensure_madspace()
@@ -1858,15 +1861,17 @@ class MadgraphProcess:
         histograms = self.build_event_histograms()
         if output_format == "compact_npy":
             self.lhe_completer = None
+            self.events_path = os.path.join(self.run_path, "events.npy")
             self.event_generator.combine_to_compact_npy(
-                os.path.join(self.run_path, "events.npy"), systematics, histograms
+                self.events_path, systematics, histograms
             )
             self.write_lhe_header(systematics)
             self.save_lhe_completer()
         elif output_format == "lhe_npy":
             self.lhe_completer = self.build_lhe_completer()
+            self.events_path = os.path.join(self.run_path, "events.npy")
             self.event_generator.combine_to_lhe_npy(
-                os.path.join(self.run_path, "events.npy"), self.lhe_completer,
+                self.events_path, self.lhe_completer,
                 systematics, histograms
             )
             self.write_lhe_header(systematics)
@@ -1884,6 +1889,7 @@ class MadgraphProcess:
             # events.lhe.gz, and switches to an external multithreaded tool
             # above 256 MB.
             misc.gzip(lhe_path)
+            self.events_path = _find_event_file(self.run_path)
         else:
             raise ValueError("Unknown output format")
         self.write_hwu(histograms)
@@ -2203,6 +2209,47 @@ class MadgraphProcess:
                 ignore=shutil.ignore_patterns("include"),
             )
 
+        # MadtRex (event reweighting) is optional and installed separately on
+        # top of madspace (madtrex/install.py), so a missing install is
+        # skipped rather than an error.
+        if self.run_card["gridpack"]["include_madtrex_source"]:
+            shutil.copytree(
+                _MADTREX_DIR,
+                os.path.join(gridpack_path, "madtrex"),
+                ignore=shutil.ignore_patterns("build", "install", "__pycache__"),
+            )
+
+        include_madtrex = (
+            self.run_card["gridpack"]["include_madtrex"]
+            and (_MADTREX_INSTALL_DIR / "madtrex").is_dir()
+        )
+        if self.run_card["gridpack"]["include_madtrex"]:
+            if include_madtrex:
+                # only the runtime pieces: madtrex itself, the bundled Rex fork
+                # (pyrex, plus librex/libtearex in lib/), not the build tools
+                # install.py also put there
+                for name in ("madtrex", "pyrex", "lib"):
+                    if (_MADTREX_INSTALL_DIR / name).is_dir():
+                        shutil.copytree(
+                            _MADTREX_INSTALL_DIR / name,
+                            os.path.join(gridpack_path, "madtrex", "install", name),
+                            ignore=shutil.ignore_patterns("__pycache__"),
+                        )
+                # the standalone reweighting driver (bin/reweight, below)
+                # finds the matrix elements through subprocesses.json, which
+                # the gridpack otherwise only has with include_source
+                gridpack_subprocesses_json = os.path.join(
+                    gridpack_path, "SubProcesses", "subprocesses.json")
+                if not os.path.exists(gridpack_subprocesses_json):
+                    os.makedirs(os.path.dirname(gridpack_subprocesses_json), exist_ok=True)
+                    shutil.copy(os.path.join("SubProcesses", "subprocesses.json"),
+                                gridpack_subprocesses_json)
+            else:
+                logger.info(
+                    "madtrex is not installed (python madtrex/install.py), so "
+                    "it is not included in the gridpack"
+                )
+
         matrix_elements = []
         for subproc in self.subprocess_data:
             me_path = subproc["me_path"]
@@ -2269,6 +2316,18 @@ class MadgraphProcess:
             os.path.join(bin_path, "custom_function_loader.py"),
         )
         os.chmod(gen_events_file, 0o755)
+        if include_madtrex:
+            # MadtRex reweighting of the gridpack's events, with the modules
+            # parsing its reweight cards
+            reweight_file = os.path.join(bin_path, "reweight")
+            shutil.copy(
+                os.path.join(os.path.dirname(__file__), "madtrex_driver.py"), reweight_file
+            )
+            os.chmod(reweight_file, 0o755)
+            for name in ("param_reweight_card.py", "pdf_reweight_card.py",
+                         "generic_reweight_card.py"):
+                shutil.copy(os.path.join(os.path.dirname(__file__), name),
+                            os.path.join(bin_path, name))
 
         data = {
             "matrix_elements": matrix_elements,
@@ -3712,25 +3771,37 @@ class MG7Cmd(Cmd):
     # running
     # ------------------------------------------------------------------
     def do_generate_events(self, line):
-        """generate_events [-f] [-n NAME] [--laststep=parton]
+        """generate_events [-f] [-n NAME] [--laststep=parton] [--reweight=CARD]
+                           [--reweight-backend=classic|madtrex|auto]
 
-        Run the mg7 generation and the selected post-processing tools."""
+        Run the mg7 generation and the selected post-processing tools.
+        --reweight=CARD is a shortcut for switching reweighting on with CARD
+        as Cards/reweight_card.dat; --reweight-backend chooses who reweights
+        (see madgraph/various/reweight_backend.py)."""
 
         opts = self._parse_run_options(line)
         cwd = os.getcwd()
         target = self.me_dir if self.me_dir != '.' else cwd
+        if opts['reweight_card']:
+            opts['reweight_card'] = os.path.abspath(opts['reweight_card'])
         try:
             os.chdir(target)
             _setup_logging()
             if opts['name']:
                 self._set_run_name(opts['name'])
+            if opts['reweight_card']:
+                install_reweight_card(opts['reweight_card'])
             switch = {}
             if not opts['force']:
                 switch = ask_edit_cards(mother=self)
             switch = self._apply_laststep(switch, opts)
-            force_lhe_output_if_needed(switch)
+            if opts['reweight_card'] and _off(switch.get('reweight')):
+                switch = dict(switch, reweight='ON')
+            reweight = prepare_reweighting(switch, opts['reweight_backend'],
+                                           self.options)
+            force_lhe_output_if_needed(switch, reweight)
             _raise_open_file_limit()
-            run_generation(switch)
+            run_generation(switch, reweight)
         finally:
             os.chdir(cwd)
 
@@ -3762,7 +3833,8 @@ class MG7Cmd(Cmd):
     def _parse_run_options(self, line):
         """Understand the subset of MG5's `launch` options that mean something
         for an mg7 run, and say so out loud for the ones that do not."""
-        out = {'force': False, 'name': '', 'laststep': ''}
+        out = {'force': False, 'name': '', 'laststep': '', 'reweight_card': None,
+               'reweight_backend': None}
         args = self.split_arg(line)
         index = 0
         while index < len(args):
@@ -3780,6 +3852,16 @@ class MG7Cmd(Cmd):
                 index += 1
             elif arg.startswith(('-s=', '--laststep=')):
                 out['laststep'] = arg.split('=', 1)[1]
+            elif arg == '--reweight' and index < len(args):
+                out['reweight_card'] = args[index]
+                index += 1
+            elif arg.startswith('--reweight='):
+                out['reweight_card'] = arg.split('=', 1)[1]
+            elif arg == '--reweight-backend' and index < len(args):
+                out['reweight_backend'] = args[index]
+                index += 1
+            elif arg.startswith('--reweight-backend='):
+                out['reweight_backend'] = arg.split('=', 1)[1]
             elif arg.startswith('-'):
                 logger.warning(
                     "'%s' is not supported by the mg7 output and is ignored; "
@@ -4244,8 +4326,8 @@ def selected_tools(switch) -> list:
     # analysis == 'MadAnalysis5' and shower != 'OFF').
     ma5 = switch.get("analysis") == "MadAnalysis5"
     showered = not _off(switch.get("shower"))
+    # reweighting is not one of them: run_single runs it (run_reweighting)
     return [t for t, on in (
-        ("reweighting", not _off(switch.get("reweight"))),
         ("MadSpin", not _off(switch.get("madspin"))),
         ("MadAnalysis5 (parton level)", ma5),
         ("Pythia8 shower", switch.get("shower") == "Pythia8"),
@@ -4264,9 +4346,10 @@ def run_selected_tools(switch, process) -> None:
     output reuses the *exact* madevent tool drivers -- in particular Pythia8 is
     showered in parallel over the cluster/multicore backend, identically to a
     madevent run -- instead of re-implementing each tool here. The command
-    sequence mirrors ``MadEventCmd.do_launch`` (reweight, MadSpin, MA5 parton,
-    shower, Delphes, MA5 hadron, Rivet); each tool checks its own card, so a
-    tool is invoked only when its switch is on.
+    sequence mirrors ``MadEventCmd.do_launch`` (MadSpin, MA5 parton, shower,
+    Delphes, MA5 hadron, Rivet); each tool checks its own card, so a tool is
+    invoked only when its switch is on. Reweighting, which comes first in
+    that sequence, already ran (run_reweighting, from run_single).
     """
     log = logging.getLogger("madevent")
 
@@ -4318,12 +4401,10 @@ def run_selected_tools(switch, process) -> None:
             log.info("  -> %s done (%.1fs)", tool, time.time() - start)
 
     # Same order as MadEventCmd.do_launch. The commands take no run name and so
-    # act on cmd.run_name: reweight runs on the generated events, then
-    # decay_events (MadSpin) repoints cmd.run_name to the "<run>_decayed_i" run,
-    # so the shower and the analyses that follow act on the decayed events --
-    # exactly as a madevent run does. Each driver still guards on its own card.
-    if not _off(switch.get("reweight")):
-        run("reweight", "reweight -from_cards")
+    # act on cmd.run_name: decay_events (MadSpin) repoints cmd.run_name to the
+    # "<run>_decayed_i" run, so the shower and the analyses that follow act on
+    # the decayed events -- exactly as a madevent run does. Each driver still
+    # guards on its own card.
     if not _off(switch.get("madspin")):
         run("MadSpin", "decay_events -from_cards")
     if ma5:
@@ -4803,8 +4884,187 @@ def _release_channel_generators(process) -> None:
         shutil.rmtree(process.temp_path, ignore_errors=True)
 
 
-def run_single(switch=None) -> "MadgraphProcess":
-    """Run a single generation and return the process (for its result)."""
+REWEIGHT_CARD = os.path.join("Cards", "reweight_card.dat")
+
+
+def install_reweight_card(path) -> None:
+    """``--reweight=CARD``: CARD becomes Cards/reweight_card.dat. A different
+    card already there is kept as reweight_card.dat.bak."""
+    if os.path.exists(REWEIGHT_CARD):
+        if os.path.samefile(path, REWEIGHT_CARD):
+            return
+        with open(path) as new, open(REWEIGHT_CARD) as old:
+            if new.read() == old.read():
+                return
+        shutil.copy(REWEIGHT_CARD, REWEIGHT_CARD + ".bak")
+        logger.info("--reweight: %s saved as %s.bak", REWEIGHT_CARD, REWEIGHT_CARD)
+    shutil.copy(path, REWEIGHT_CARD)
+    logger.info("--reweight: using %s as %s", path, REWEIGHT_CARD)
+
+
+# reweight switch values naming a backend (ON is auto)
+_SWITCH_BACKENDS = {"classic": "classic", "density": "classic", "madtrex": "madtrex"}
+
+
+def prepare_reweighting(switch, cli_backend=None, options=None):
+    """The reweight_backend.Decision for this run, or None when it does not
+    reweight: the reweight switch is off, or Cards/reweight_card.dat is
+    missing or has no "launch". Chosen before the generation, so that a card
+    that cannot run fails before the events are generated, and the event
+    format the backend needs is known (force_lhe_output_if_needed).
+
+    Precedence: cli_backend (--reweight-backend), then a switch value naming
+    a backend (classic/density/madtrex; ON is auto), then the card's
+    "change backend" line; auto otherwise."""
+    from madgraph.various import reweight_backend as rb
+
+    value = (switch or {}).get("reweight")
+    if _off(value) or not os.path.exists(REWEIGHT_CARD):
+        return None
+    with open(REWEIGHT_CARD) as f:
+        traits = rb.classify_card(f.read())
+    if not traits.launches:
+        logger.info("reweighting is on but %s has no 'launch': nothing to reweight",
+                    REWEIGHT_CARD)
+        return None
+    plugin = value if value not in ("ON", "classic", "madtrex", "density") else None
+    # a plugin is a classic reweighting module
+    switch_backend = "classic" if plugin else _SWITCH_BACKENDS.get(value)
+    requested = [("--reweight-backend", cli_backend),
+                 ("the reweight switch (%s)" % value, switch_backend)]
+    if value == "density":
+        traits.density = True
+    if options is None:
+        options = load_mg5_options()
+    env = rb.probe_environment(os.getcwd(), options)
+    decision = rb.select_backend(requested, traits, env, plugin=plugin)
+    for text in decision.warnings:
+        logger.warning(text)
+    return decision
+
+
+@contextlib.contextmanager
+def _stripped_reweight_card(path):
+    """path without its "change backend" line for the duration (the classic
+    module reads the card itself); restored afterwards."""
+    from madgraph.various import reweight_backend as rb
+    with open(path) as f:
+        text = f.read()
+    stripped = rb.strip_backend_line(text)
+    if stripped == text:
+        yield
+        return
+    with open(path, "w") as f:
+        f.write(stripped)
+    try:
+        yield
+    finally:
+        with open(path, "w") as f:
+            f.write(text)
+
+
+# the <weightgroup name=...> each backend writes into the LHE header
+REWEIGHT_WEIGHT_GROUPS = {"classic": "mg_reweighting", "madtrex": "tearex_reweighting"}
+
+
+def write_reweighting_record(run_path, decision, card_path, events=None) -> str:
+    """Record who reweighted the run, and why, in <run>/reweighting.json:
+    backend, how it was chosen (source, reasons, warnings), the card kind,
+    the event file the weights went into (events), the LHE weight group it
+    wrote and the card itself. Returns the path."""
+    with open(card_path) as f:
+        card = f.read()
+    record = {
+        "backend": decision.backend,
+        "source": decision.source,
+        "reasons": [r.replace("{card}", os.path.basename(card_path))
+                    for r in decision.reasons],
+        "warnings": list(decision.warnings),
+        "card_kind": decision.card_kind,
+        "plugin": decision.plugin,
+        "weight_group": REWEIGHT_WEIGHT_GROUPS[decision.backend],
+        "events": events,
+        "card": card,
+    }
+    path = os.path.join(run_path, "reweighting.json")
+    with open(path, "w") as f:
+        json.dump(record, f, indent=1)
+    return path
+
+
+def run_reweighting(process, card_path=REWEIGHT_CARD, requested=None, decision=None):
+    """Reweight the events of process with card_path, once, by the backend
+    of decision (prepare_reweighting()), or of select_backend(requested)
+    when no decision is given. The classic module runs through MG7RunCmd
+    ("reweight -from_cards", on the LHE file); MadtRex through
+    madtrex.run_reweighting(), on the events as written (lhe or npy)."""
+    from madgraph.various import reweight_backend as rb
+
+    log = logging.getLogger("madevent")
+    if decision is None:
+        with open(card_path) as f:
+            traits = rb.classify_card(f.read())
+        env = rb.probe_environment(os.getcwd(), load_mg5_options())
+        decision = rb.select_backend(requested, traits, env)
+    log.info(decision.describe(os.path.basename(card_path)))
+    run_dir = process.run_path
+    # both backends add their weights to the run's own event file (in place,
+    # after the systematics weights): events.npy or events.lhe[.gz]
+
+    if decision.backend == "madtrex":
+        if process.run_card["run"]["output_format"] == "compact_npy":
+            raise ValueError(
+                "MadtRex reweighting requires run_card [run] output_format to be "
+                "'lhe' or 'lhe_npy': 'compact_npy' discards the per-event flavor/"
+                "helicity information MadtRex needs to match events to the "
+                "matrix element library")
+        from madgraph.iolibs.template_files.mg7.madtrex import (
+            run_reweighting as madtrex_reweighting)
+        with tempfile.TemporaryDirectory() as tmp:
+            card = os.path.join(tmp, "reweight_card.dat")
+            with open(card_path) as f, open(card, "w") as out:
+                out.write(rb.strip_backend_line(f.read()))
+            madtrex_reweighting(card, events_path=process.events_path,
+                                card_kind=decision.card_kind,
+                                process_directory=os.getcwd())
+        tool_copy = os.path.join(run_dir, "unweighted_events.lhe.gz")
+        if not process.events_path.endswith(".npy") and os.path.exists(tool_copy):
+            from madgraph.iolibs.template_files.mg7.run_interface import sync_lhe_copy
+            sync_lhe_copy(process.events_path, tool_copy)
+        log.info("reweighting weights written to %s", process.events_path)
+        write_reweighting_record(run_dir, decision, card_path, process.events_path)
+        return decision
+
+    lhe_path = _find_or_convert_event_file(run_dir, log)
+    if lhe_path is None:
+        raise RuntimeError("No LHE event file in %s: the classic reweighting "
+                           "module needs one" % run_dir)
+    run_name = os.path.basename(os.path.dirname(os.path.abspath(lhe_path)))
+    from madgraph.iolibs.template_files.mg7.run_interface import MG7RunCmd
+    cmd = MG7RunCmd(os.getcwd(), load_mg5_options(), run_name, lhe_path)
+    cmd.set_run_name(run_name, None, "parton")
+    command = "reweight --backend=classic --mode=%s -from_cards" % (
+        "density" if decision.card_kind == "density" else "ON")
+    if decision.plugin:
+        command += " --plugin=%s" % decision.plugin
+    with _stripped_reweight_card(card_path):
+        cmd.exec_cmd(command, postcmd=False, printcmd=False)
+    try:
+        cmd.store_result()
+    except Exception as error:
+        _report_failure(log, "store_result", error, run_dir)
+    # the classic module's weights into the run's event file (lhe_path)
+    cmd.sync_reweighted_events()
+    log.info("reweighting weights written to %s", lhe_path)
+    write_reweighting_record(run_dir, decision, card_path, lhe_path)
+    return decision
+
+
+def run_single(switch=None, reweight=None) -> "MadgraphProcess":
+    """Run a single generation and return the process (for its result).
+    reweight is the reweight_backend.Decision of prepare_reweighting(), or
+    None: reweighting runs once, after the run_card post-processing
+    (systematics) and before the post-processing tools."""
     compute_auto_widths()
     process = MadgraphProcess()
     process.survey()
@@ -4814,7 +5074,10 @@ def run_single(switch=None) -> "MadgraphProcess":
         return process
     # run_card-driven LHE post-processing (displaced vertex + systematics)
     run_lhe_postprocessing(process)
-    # run the post-processing tools (Pythia8/Delphes/MadSpin/reweight/analysis)
+    # reweighting, after the systematics, by the backend chosen beforehand
+    if reweight is not None:
+        run_reweighting(process, REWEIGHT_CARD, decision=reweight)
+    # run the post-processing tools (Pythia8/Delphes/MadSpin/analysis)
     # selected in the merged question above on the generated events.
     if switch:
         run_selected_tools(switch, process)
@@ -4847,12 +5110,13 @@ def detect_param_scan(param_card_path):
     return None
 
 
-def run_scan(iterator, card_path, switch=None) -> None:
+def run_scan(iterator, card_path, switch=None, reweight=None) -> None:
     """Iterate over all scan points, running a full generation for each and
     accumulating the results, then write the scan summary. Works for both the
     run_card (RunCardIterator) and the param_card (ParamCardIterator); their
     interface (__iter__/write/store_entry/get_next_name/write_summary) is the
-    same. The scan card is restored afterwards."""
+    same. The scan card is restored afterwards. reweight, if given, is
+    forwarded to run_single() so every scan point is reweighted in turn."""
     import tomllib
     with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
         run_name = tomllib.load(f).get("run", {}).get("run_name", "run")
@@ -4866,7 +5130,7 @@ def run_scan(iterator, card_path, switch=None) -> None:
         for i, point in enumerate(iterator):
             point.write(card_path)
             logger.info("=== scan point %d ===", i + 1)
-            process = run_single(switch)
+            process = run_single(switch, reweight)
             # use the run directory the process actually created, so the
             # per-point params.dat written by write_summary has a home
             name = os.path.basename(process.run_path)
@@ -4886,9 +5150,11 @@ def run_scan(iterator, card_path, switch=None) -> None:
         shutil.move(backup, card_path)
 
 
-def run_generation(switch=None) -> None:
+def run_generation(switch=None, reweight=None) -> None:
     """Run the generation, expanding a scan over the run_card or the param_card
-    when one is present (scanning both simultaneously is not allowed)."""
+    when one is present (scanning both simultaneously is not allowed).
+    reweight (see prepare_reweighting()), if given, is forwarded to
+    run_single()/run_scan() to reweight after each generation."""
     run_card_path = os.path.join("Cards", "run_card.toml")
     param_card_path = os.path.join("Cards", "param_card.dat")
     run_iter = detect_run_scan(run_card_path)
@@ -4898,18 +5164,21 @@ def run_generation(switch=None) -> None:
             "Scanning simultaneously over the run_card and the param_card is "
             "not allowed. Please keep the scan:[...] entries in only one card.")
     if run_iter:
-        run_scan(run_iter, run_card_path, switch)
+        run_scan(run_iter, run_card_path, switch, reweight)
     elif param_iter:
-        run_scan(param_iter, param_card_path, switch)
+        run_scan(param_iter, param_card_path, switch, reweight)
     else:
-        _release_channel_generators(run_single(switch))
+        _release_channel_generators(run_single(switch, reweight))
 
 
-def _lhe_needed_by(switch, card) -> "str | None":
+def _lhe_needed_by(switch, card, reweight=None) -> "str | None":
     """Why the run needs an LHE event file, or None when it does not: every
-    post-processing tool run_selected_tools drives and the run_card
-    [postprocessing] steps read the LHE file. ``card`` is the raw TOML content
-    of the run_card."""
+    post-processing tool run_selected_tools drives, the classic reweighting
+    module and the run_card [postprocessing] steps read the LHE file. MadtRex
+    also reads the npy events. ``card`` is the raw TOML content of the
+    run_card, ``reweight`` the prepare_reweighting() decision."""
+    if reweight is not None and reweight.backend == "classic":
+        return "reweighting (classic)"
     tools = selected_tools(switch) if switch else []
     if tools:
         return tools[0]
@@ -4927,7 +5196,7 @@ def _lhe_needed_by(switch, card) -> "str | None":
     return None
 
 
-def force_lhe_output_if_needed(switch) -> None:
+def force_lhe_output_if_needed(switch, reweight=None) -> None:
     """The events are written as npy by default; switch the run_card to the
     LHE format when a selected post-processing needs an LHE file. The card is
     rewritten rather than refused, so that asking for a shower in the launch
@@ -4947,7 +5216,7 @@ def force_lhe_output_if_needed(switch) -> None:
         "output_format", RunCardMG7()["run"]["output_format"])
     if output_format == "lhe":
         return
-    reason = _lhe_needed_by(switch, card)
+    reason = _lhe_needed_by(switch, card, reweight)
     if reason is None:
         return
     with open(path) as f:
@@ -4998,6 +5267,17 @@ def main() -> None:
     parser.add_argument(
         "--make-arg", action="append", default=[],
         help="extra argument of the matrix element build (--decay-widths)")
+    parser.add_argument(
+        "--reweight", dest="reweight_card", default=None,
+        help="reweight the events after generation with this reweight card "
+             "(it becomes Cards/reweight_card.dat and switches reweighting on)",
+    )
+    parser.add_argument(
+        "--reweight-backend", dest="reweight_backend", default=None,
+        choices=("classic", "madtrex", "auto"),
+        help="who reweights: the classic module, MadtRex, or auto (the default: "
+             "MadtRex when it can run the card)",
+    )
     args = parser.parse_args()
 
     if args.decay_widths:
@@ -5008,4 +5288,9 @@ def main() -> None:
             json.dump(results, f)
         return
 
-    MG7Cmd().run_cmd("generate_events" if args.ask_edit_cards else "generate_events -f")
+    line = "generate_events" if args.ask_edit_cards else "generate_events -f"
+    if args.reweight_card:
+        line += " --reweight=%s" % args.reweight_card
+    if args.reweight_backend:
+        line += " --reweight-backend=%s" % args.reweight_backend
+    MG7Cmd().run_cmd(line)

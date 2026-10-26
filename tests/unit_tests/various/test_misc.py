@@ -253,6 +253,32 @@ class TEST_misc(unittest.TestCase):
             self.assertEqual(proc.wait(), 0)
 
 
+_HEPTOOLS_LHAPDF = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))))), 'HEPTools', 'lhapdf6_py3', 'bin', 'lhapdf-config')
+
+
+@unittest.skipUnless(os.path.exists(_HEPTOOLS_LHAPDF), 'no HEPTools lhapdf6_py3')
+class TEST_import_python_lhapdf(unittest.TestCase):
+    """The HEPTools lhapdf python module has no rpath to libLHAPDF: setting
+    LD_LIBRARY_PATH from inside the process is too late for the loader, so
+    import_python_lhapdf loads the library itself first."""
+
+    def test_import_without_ld_library_path(self):
+        import sys
+        root = os.path.dirname(os.path.dirname(os.path.dirname(_HEPTOOLS_LHAPDF)))
+        env = dict(os.environ)
+        env.pop('LD_LIBRARY_PATH', None)
+        env.pop('PYTHONPATH', None)
+        code = ("import sys; sys.path.insert(0, %r)\n"
+                "import madgraph.various.misc as misc\n"
+                "module = misc.import_python_lhapdf(%r)\n"
+                "print(module.version())\n" % (root, _HEPTOOLS_LHAPDF))
+        result = subprocess.run([sys.executable, '-c', code], env=env,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stdout.strip().splitlines()[-1], r'^\d+\.\d+')
+
+
 class TEST_pythia8_main164(unittest.TestCase):
     """main164, the Pythia8 driver of the LO shower, is found or compiled with
     the Makefile of the Pythia8 examples directory (a stub here)."""

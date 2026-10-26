@@ -5,6 +5,33 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   ZW: MG7 outputs have two reweighting backends: MadtRex ('install madtrex';
+       matrix-element and PDF/scale reweighting on lhe or lhe_npy events) and the
+       classic reweighting module (f2py). Both read Cards/reweight_card.dat with the
+       classic vocabulary ('change' for options, 'set' for parameters). The backend
+       comes from 'generate_events --reweight-backend=classic|madtrex|auto', the
+       reweight switch of the launch question (now OFF/ON/classic/madtrex/density,
+       ON being auto), or the card's new 'change backend' line; auto prefers
+       MadtRex when it can run the card. The choice is logged and recorded in
+       Events/<run>/reweighting.json, and a choice that cannot run stops the launch
+       before the generation. Reweighting runs once, after the systematics;
+       '--reweight=CARD' now just switches it on with CARD as the reweight card.
+       MadtRex cards: 'change helicity', 'change fptype', 'change mode LO|pdf',
+       'change verbose/max_batch/...' replace the former 'set' spellings (still
+       accepted, with a warning), 'set MT 175' (a parameter by its param_card
+       name) works, and directives only the classic module knows are an error
+       instead of being ignored. MG7 outputs get their own default reweight card
+       documenting both backends. madevent and aMC@NLO outputs are unchanged.
+       Both backends add their weights to the run's own event file
+       (Events/<run>/events.lhe.gz, or events.npy for an lhe_npy run reweighted by
+       MadtRex, as rwgt_<name> columns that npy_to_lhe carries over), after the
+       systematics weights; MadtRex no longer writes a separate *_reweighted file
+       (bin/reweight --output still can). MadtRex reads lhe_npy events with
+       systematics weights (they were refused as "Invalid header for event file").
+   ZW: Without f2py_compiler set, the f2py installed with the running Python (e.g.
+       in a virtual environment) is used before f2py3/f2py on the PATH, which may
+       build modules for another Python version (reweighting then failed with "file
+       too short" or a missing all_matrix2py module).
    OM: new command 'install cuttools_iregi' recompiling CutTools and IREGI (vendor/)
        with the current fortran compiler. The error raised when CutTools/IREGI were
        compiled with another compiler (e.g. after a gfortran update) now points to it.

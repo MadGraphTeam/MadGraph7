@@ -30,6 +30,7 @@ from __future__ import absolute_import
 
 import logging
 import multiprocessing
+import json
 import os
 import shutil
 import subprocess
@@ -467,6 +468,15 @@ class MadspaceInstallCommandTest(unittest.TestCase):
                                   or a.startswith('--jobs')]), 1, args)
             self.assertNotIn('5', args)
 
+    def test_madtrex_runs_its_own_installer(self):
+        """`install madtrex` runs madtrex/install.py (not madspace's), with
+        the same job-count forwarding."""
+        self.cmd.do_set('nb_core 5 --no_save')
+        args = self.installer_args('madtrex --yes --clean')
+        self.assertEqual(os.path.basename(os.path.dirname(args[1])), 'madtrex')
+        self.assertTrue(args[1].endswith('install.py'))
+        self.assertEqual(args[2:], ['--yes', '--clean', '-j', '5'])
+
 
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
                      'madspace is not installed')
@@ -487,17 +497,24 @@ class MG7CmdTest(unittest.TestCase):
 
     def test_option_parsing(self):
         cmd = self.make_cmd()
+        none = {'reweight_card': None, 'reweight_backend': None}
         self.assertEqual(cmd._parse_run_options('-f'),
-                         {'force': True, 'name': '', 'laststep': ''})
+                         dict(none, force=True, name='', laststep=''))
         self.assertEqual(cmd._parse_run_options('--name=abc')['name'], 'abc')
         self.assertEqual(cmd._parse_run_options('--laststep=parton')['laststep'],
                          'parton')
         self.assertEqual(
             cmd._parse_run_options('-f --name=abc --laststep=parton'),
-            {'force': True, 'name': 'abc', 'laststep': 'parton'})
+            dict(none, force=True, name='abc', laststep='parton'))
         # space-separated forms, as typed at the MG7> prompt
         self.assertEqual(cmd._parse_run_options('-n abc'),
-                         {'force': False, 'name': 'abc', 'laststep': ''})
+                         dict(none, force=False, name='abc', laststep=''))
+        opts = cmd._parse_run_options('--reweight=rw.dat --reweight-backend madtrex')
+        self.assertEqual((opts['reweight_card'], opts['reweight_backend']),
+                         ('rw.dat', 'madtrex'))
+        opts = cmd._parse_run_options('--reweight rw.dat --reweight-backend=classic')
+        self.assertEqual((opts['reweight_card'], opts['reweight_backend']),
+                         ('rw.dat', 'classic'))
         self.assertEqual(cmd._parse_run_options('-s parton')['laststep'],
                          'parton')
         # a bare word is the run name
@@ -1059,6 +1076,322 @@ class TestPostProcessingIsQuiet(unittest.TestCase):
         self.assertIn('back to normal', self.captured.getvalue())
 
 
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
+class MG7ReweightingTest(unittest.TestCase):
+    """Reweighting runs once per generation, after the systematics, by the
+    backend prepare_reweighting() chose."""
+
+    CARD = "change helicity False\nlaunch --rwgt_name=mt\nset MT 175\n"
+
+    def setUp(self):
+        from madgraph.iolibs.template_files.mg7 import launch
+        self.launch = launch
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.cwd = os.getcwd()
+        self.me_dir = make_mg7_dir(os.path.join(self.tmpdir.name, 'PROC'))
+        os.chdir(self.me_dir)
+
+    def tearDown(self):
+        os.chdir(self.cwd)
+        self.tmpdir.cleanup()
+
+    def write_card(self, text, path=os.path.join('Cards', 'reweight_card.dat')):
+        with open(path, 'w') as f:
+            f.write(text)
+        return path
+
+    def prepare(self, switch, cli=None, f2py=True, madtrex=True):
+        from madgraph.various import reweight_backend as rb
+        probe = rb.probe_environment
+
+        def fake_probe(me_dir, options=None, **kwargs):
+            env = probe(me_dir, options, has_f2py=f2py,
+                        madtrex_install_dir=self.tmpdir.name)
+            env.madtrex_installed = madtrex
+            return env
+        with mock.patch.object(rb, 'probe_environment', fake_probe):
+            return self.launch.prepare_reweighting(switch, cli, {'mg5_path': '/mg5'})
+
+    def test_off_or_without_launch_does_nothing(self):
+        self.assertIsNone(self.prepare({'reweight': 'OFF'}))
+        self.assertIsNone(self.prepare({'reweight': 'ON'}))  # no card
+        self.write_card("# launch\n")
+        self.assertIsNone(self.prepare({'reweight': 'ON'}))
+
+    def test_auto_prefers_madtrex(self):
+        self.write_card(self.CARD)
+        decision = self.prepare({'reweight': 'ON'})
+        self.assertEqual((decision.backend, decision.card_kind), ('madtrex', 'param'))
+        self.assertEqual(self.prepare({'reweight': 'ON'}, madtrex=False).backend, 'classic')
+
+    def test_switch_and_command_line(self):
+        self.write_card("change backend madtrex\n" + self.CARD)
+        self.assertEqual(self.prepare({'reweight': 'classic'}).backend, 'classic')
+        self.assertEqual(self.prepare({'reweight': 'classic'}, cli='madtrex').backend,
+                         'madtrex')
+        self.assertEqual(self.prepare({'reweight': 'density'}).card_kind, 'density')
+        decision = self.prepare({'reweight': 'my_plugin'})
+        self.assertEqual((decision.backend, decision.plugin), ('classic', 'my_plugin'))
+
+    def test_impossible_request_fails_before_generating(self):
+        from madgraph.various import reweight_backend as rb
+        self.write_card(self.CARD)
+        with self.assertRaises(rb.ReweightBackendError):
+            self.prepare({'reweight': 'madtrex'}, madtrex=False)
+
+    def test_install_reweight_card_keeps_the_old_one(self):
+        self.write_card("old\n")
+        new = self.write_card(self.CARD, os.path.join(self.tmpdir.name, 'rw.dat'))
+        self.launch.install_reweight_card(new)
+        with open(os.path.join('Cards', 'reweight_card.dat')) as f:
+            self.assertEqual(f.read(), self.CARD)
+        with open(os.path.join('Cards', 'reweight_card.dat.bak')) as f:
+            self.assertEqual(f.read(), "old\n")
+
+    def test_reweight_option_with_switch_on_reweights_once(self):
+        """--reweight=CARD with the reweight switch already on: one run,
+        after the systematics, and no 'reweight' among the tools."""
+        card = self.write_card(self.CARD, os.path.join(self.tmpdir.name, 'rw.dat'))
+        calls = []
+
+        class Process(object):
+            gridpack_run_mode = 'regular'
+            run_path = 'Events/run_01'
+
+        launch = self.launch
+
+        def fake_run_generation(switch, reweight):
+            launch.run_single(switch, reweight)
+
+        def fake_tools(switch, process):
+            calls.append(('tools', tuple(launch.selected_tools(switch))))
+
+        def fake_prepare(switch, cli, options):
+            calls.append(('prepare', switch.get('reweight'), cli))
+            return 'DECISION'
+        with mock.patch.object(launch, 'ask_edit_cards', return_value={'reweight': 'ON'}), \
+                mock.patch.object(launch, 'prepare_reweighting', fake_prepare), \
+                mock.patch.object(launch, 'force_lhe_output_if_needed'), \
+                mock.patch.object(launch, 'run_generation', fake_run_generation), \
+                mock.patch.object(launch, 'compute_auto_widths'), \
+                mock.patch.object(launch, 'MadgraphProcess', lambda: mock.Mock(**{
+                    'gridpack_run_mode': 'regular'})), \
+                mock.patch.object(launch, 'run_lhe_postprocessing',
+                                  lambda p: calls.append(('systematics',))), \
+                mock.patch.object(launch, 'run_reweighting',
+                                  lambda p, c, decision: calls.append(('reweight', decision))), \
+                mock.patch.object(launch, 'run_selected_tools', fake_tools):
+            launch.MG7Cmd(me_dir=self.me_dir).do_generate_events('--reweight=%s' % card)
+        self.assertEqual(calls, [('prepare', 'ON', None), ('systematics',),
+                                 ('reweight', 'DECISION'), ('tools', ())])
+        with open(os.path.join(self.me_dir, 'Cards', 'reweight_card.dat')) as f:
+            self.assertEqual(f.read(), self.CARD)
+
+    def test_reweight_option_switches_reweighting_on(self):
+        card = self.write_card(self.CARD, os.path.join(self.tmpdir.name, 'rw.dat'))
+        seen = []
+        launch = self.launch
+        with mock.patch.object(launch, 'prepare_reweighting',
+                               lambda switch, cli, options: seen.append((switch, cli))), \
+                mock.patch.object(launch, 'force_lhe_output_if_needed'), \
+                mock.patch.object(launch, 'run_generation'):
+            launch.MG7Cmd(me_dir=self.me_dir).do_generate_events(
+                '-f --reweight=%s --reweight-backend=classic' % card)
+        self.assertEqual(seen, [({'reweight': 'ON'}, 'classic')])
+
+    def test_the_decision_is_logged_and_recorded(self):
+        from madgraph.various import reweight_backend as rb
+        card = self.write_card("change backend auto\n" + self.CARD)
+        run_path = os.path.join('Events', 'run_01')
+        os.makedirs(run_path)
+        decision = rb.Decision('madtrex', 'param',
+                               ['MG7 output', 'madtrex installed',
+                                'no classic-only directives in {card}'])
+
+        class Process(object):
+            events_path = os.path.join(run_path, 'events.npy')
+            run_card = {'run': {'output_format': 'lhe_npy'}}
+        Process.run_path = run_path
+        seen = {}
+
+        def fake_madtrex(card, events_path, card_kind, process_directory):
+            with open(card) as f:
+                seen['card'] = f.read()
+            seen['kind'] = card_kind
+        from madgraph.iolibs.template_files.mg7 import madtrex
+        with mock.patch.object(madtrex, 'run_reweighting', fake_madtrex), \
+                self.assertLogs('madevent', 'INFO') as logs:
+            self.launch.run_reweighting(Process(), card, decision=decision)
+        self.assertIn('Reweighting with madtrex (auto: MG7 output, madtrex installed, '
+                      'no classic-only directives in reweight_card.dat)', logs.output[0])
+        self.assertNotIn('\nchange backend', '\n' + seen['card'])
+        self.assertEqual(seen['kind'], 'param')
+        with open(os.path.join(run_path, 'reweighting.json')) as f:
+            record = json.load(f)
+        self.assertEqual((record['backend'], record['source'], record['weight_group']),
+                         ('madtrex', 'auto', 'tearex_reweighting'))
+        self.assertIn('change backend auto', record['card'])
+        # the weights went into the run's own event file
+        self.assertEqual(record['events'], Process.events_path)
+
+    def test_madtrex_refreshes_the_tools_copy_of_lhe_events(self):
+        import gzip
+        from madgraph.various import reweight_backend as rb
+        card = self.write_card(self.CARD)
+        run_path = os.path.join('Events', 'run_01')
+        os.makedirs(run_path)
+        events = os.path.join(run_path, 'events.lhe.gz')
+        copy = os.path.join(run_path, 'unweighted_events.lhe.gz')
+        for path in (events, copy):
+            with gzip.open(path, 'wt') as f:
+                f.write('before\n')
+
+        class Process(object):
+            events_path = events
+            run_card = {'run': {'output_format': 'lhe'}}
+        Process.run_path = run_path
+
+        def fake_madtrex(card, events_path, card_kind, process_directory):
+            with gzip.open(events_path, 'wt') as f:
+                f.write('reweighted\n')
+        from madgraph.iolibs.template_files.mg7 import madtrex
+        with mock.patch.object(madtrex, 'run_reweighting', fake_madtrex):
+            self.launch.run_reweighting(Process(), card,
+                                        decision=rb.Decision('madtrex', 'param'))
+        with gzip.open(copy, 'rt') as f:
+            self.assertEqual(f.read(), 'reweighted\n')
+
+    def test_sync_lhe_copy(self):
+        import gzip
+        from madgraph.iolibs.template_files.mg7.run_interface import sync_lhe_copy
+        with gzip.open('a.lhe.gz', 'wt') as f:
+            f.write('events\n')
+        sync_lhe_copy('a.lhe.gz', 'b.lhe')
+        with open('b.lhe') as f:
+            self.assertEqual(f.read(), 'events\n')
+        sync_lhe_copy('b.lhe', 'c.lhe.gz')
+        with gzip.open('c.lhe.gz', 'rt') as f:
+            self.assertEqual(f.read(), 'events\n')
+        sync_lhe_copy('c.lhe.gz', 'a.lhe.gz')
+        self.assertFalse(os.path.exists('a.lhe.gz.tmp'))
+
+    def test_compact_npy_is_refused_for_madtrex(self):
+        from madgraph.various import reweight_backend as rb
+        card = self.write_card(self.CARD)
+        os.makedirs(os.path.join('Events', 'run_01'))
+
+        class Process(object):
+            run_path = os.path.join('Events', 'run_01')
+            run_card = {'run': {'output_format': 'compact_npy'}}
+        with self.assertRaisesRegex(ValueError, 'compact_npy'):
+            self.launch.run_reweighting(Process(), card,
+                                        decision=rb.Decision('madtrex', 'param'))
+
+    def test_reweighting_is_not_a_post_processing_tool(self):
+        self.assertEqual(self.launch.selected_tools({'reweight': 'ON'}), [])
+
+
+class ReweightSwitchTest(unittest.TestCase):
+    """The reweight switch of the launch question: an MG7 output offers the
+    backends that can run (ON is auto); a madevent output keeps its list."""
+
+    OPTIONS = {'pythia-pgs_path': None, 'pythia8_path': None,
+               'madanalysis5_path': None, 'exrootanalysis_path': None,
+               'delphes_path': None, 'rivet_path': None, 'mg5_path': '/mg5',
+               'f2py_compiler': None}
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.mg7 = make_mg7_dir(os.path.join(self.tmpdir.name, 'MG7'))
+        self.madevent = os.path.join(self.tmpdir.name, 'ME')
+        os.makedirs(os.path.join(self.madevent, 'Cards'))
+        os.makedirs(os.path.join(self.madevent, 'bin'))
+        open(os.path.join(self.madevent, 'bin', 'madevent'), 'w').close()
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    def question(self, me_dir, f2py, madtrex, card=None):
+        from madgraph.interface import madevent_interface as me
+        from madgraph.various import reweight_backend as rb
+        if card is not None:
+            with open(os.path.join(me_dir, 'Cards', 'reweight_card.dat'), 'w') as f:
+                f.write(card)
+        question = me.AskRun.__new__(me.AskRun)
+        question.me_dir = me_dir
+        question.mother_interface = mock.Mock(plugin_path=[])
+        question.switch = {}
+        with mock.patch.object(me.misc, 'has_f2py', return_value=f2py), \
+                mock.patch.object(rb, 'madtrex_is_installed', return_value=madtrex):
+            question.check_available_module(dict(self.OPTIONS))
+            question.set_default_reweight()
+        return question
+
+    def test_mg7_with_both_backends(self):
+        q = self.question(self.mg7, f2py=True, madtrex=True)
+        self.assertEqual(q.get_allowed_reweight(),
+                         ['OFF', 'ON', 'classic', 'madtrex', 'density'])
+        self.assertEqual(q.switch['reweight'], 'OFF')
+
+    def test_mg7_without_f2py(self):
+        q = self.question(self.mg7, f2py=False, madtrex=True)
+        self.assertEqual(q.get_allowed_reweight(), ['OFF', 'ON', 'madtrex'])
+
+    def test_mg7_without_madtrex(self):
+        q = self.question(self.mg7, f2py=True, madtrex=False)
+        self.assertEqual(q.get_allowed_reweight(), ['OFF', 'ON', 'classic', 'density'])
+
+    def test_mg7_with_neither(self):
+        q = self.question(self.mg7, f2py=False, madtrex=False)
+        self.assertEqual(q.get_allowed_reweight(), [])
+        self.assertEqual(q.switch['reweight'], 'Not Avail.')
+
+    def test_madevent_is_unchanged(self):
+        for madtrex in (True, False):
+            q = self.question(self.madevent, f2py=True, madtrex=madtrex)
+            self.assertEqual(q.get_allowed_reweight(), ['OFF', 'ON', 'density'])
+        q = self.question(self.madevent, f2py=False, madtrex=True)
+        self.assertEqual(q.get_allowed_reweight(), [])
+
+    def test_switch_value_from_the_card(self):
+        q = self.question(self.mg7, True, True, card="change backend madtrex\nlaunch\n")
+        self.assertEqual(q.switch['reweight'], 'madtrex')
+        q = self.question(self.mg7, True, True, card="change backend auto\nlaunch\n")
+        self.assertEqual(q.switch['reweight'], 'ON')
+        q = self.question(self.mg7, True, True,
+                          card="change particle_in_density_matrix 3\nlaunch\n")
+        self.assertEqual(q.switch['reweight'], 'density')
+        # a backend that cannot run here is just ON
+        q = self.question(self.mg7, True, False, card="change backend madtrex\nlaunch\n")
+        self.assertEqual(q.switch['reweight'], 'ON')
+        # a madevent output does not read the backend line
+        q = self.question(self.madevent, True, True, card="change backend classic\nlaunch\n")
+        self.assertEqual(q.switch['reweight'], 'ON')
+
+    def test_a_backend_picked_in_the_question_survives_the_card_sync(self):
+        q = self.question(self.mg7, True, True, card="launch\nset MT 175\n")
+        self.assertEqual(q.switch['reweight'], 'ON')
+        for value in ('classic', 'madtrex'):
+            q.switch['reweight'] = value
+            self.assertEqual(q.switch_value_from_card_reweight(), value)
+        # also over the card's own backend line, which only replaces ON
+        with open(os.path.join(self.mg7, 'Cards', 'reweight_card.dat'), 'w') as f:
+            f.write("change backend classic\nlaunch\n")
+        q.switch['reweight'] = 'madtrex'
+        self.assertEqual(q.switch_value_from_card_reweight(), 'madtrex')
+        q.switch['reweight'] = 'ON'
+        self.assertEqual(q.switch_value_from_card_reweight(), 'classic')
+
+    def test_backend_values_enable_the_card(self):
+        from madgraph.interface.madevent_interface import AskRunEditCard
+        spec = [c for c in AskRunEditCard.switch_cards if c['key'] == 'reweight'][0]
+        for value in ('ON', 'classic', 'madtrex', 'density'):
+            self.assertTrue(spec['on']({'reweight': value}), value)
+        q = self.question(self.mg7, True, True, card="launch\n")
+        self.assertEqual(q.get_cardcmd_for_reweight('madtrex'), [])
+
+
 class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
     """A plain generate/output/launch announced a post-processing step with
     nothing after the colon, and built the run interface to do nothing.
@@ -1345,7 +1678,19 @@ class TestForceLHEOutput(unittest.TestCase):
     def test_missing_output_format_line(self):
         with open(self.card, 'w') as f:
             f.write('[run]\nseed = 3\n')
-        self.launch.force_lhe_output_if_needed({'reweight': 'ON'})
+        self.launch.force_lhe_output_if_needed({'madspin': 'ON'})
+        self.assertEqual(self.output_format(), 'lhe')
+
+    def test_reweighting_forces_lhe_for_the_classic_module_only(self):
+        from madgraph.various import reweight_backend as rb
+        madtrex = rb.Decision('madtrex', 'param')
+        self.launch.force_lhe_output_if_needed({'reweight': 'ON'}, madtrex)
+        self.assertEqual(self.output_format(), 'lhe_npy')
+        # without a decision (no card, no launch) nothing is reweighted
+        self.launch.force_lhe_output_if_needed({'reweight': 'ON'}, None)
+        self.assertEqual(self.output_format(), 'lhe_npy')
+        self.launch.force_lhe_output_if_needed({'reweight': 'ON'},
+                                               rb.Decision('classic', 'classic'))
         self.assertEqual(self.output_format(), 'lhe')
 
 

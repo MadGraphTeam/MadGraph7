@@ -615,6 +615,14 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("                    defaults to the 'nb_core' option).")
         logger.info("     --cuda         Enable CUDA GPU backend (source build).")
         logger.info("     --hip          Enable HIP/ROCm GPU backend (source build).")
+        logger.info(" ")
+        logger.info("   \"install madtrex [options]\"",'$MG:BOLD')
+        logger.info("   Install MadtRex, the event-reweighting library used by MG7, together")
+        logger.info("   with its bundled Rex fork. Requires madspace to be installed first.")
+        logger.info("   Without options an interactive installer is launched. Available options:")
+        logger.info("     -y/--yes       Install non-interactively.")
+        logger.info("     -j N/--jobs=N  Parallel compilation jobs (defaults to the 'nb_core' option).")
+        logger.info("     --clean        Rebuild from scratch.")
         logger.info("     --openblas     Build OpenBLAS from source (default on Linux/Windows, source build).")
         logger.info("     --no-openblas  Use system BLAS library (default on Apple, source build).")
         logger.info("     --simd         Enable SIMD backend (source build, experimental).")
@@ -3747,6 +3755,12 @@ class CompleteForCmd(cmd.CompleteCmd):
                 if any(a.startswith(opt) for a in args[2:]):
                     options.remove(opt)
             return self.list_completion(text, options)
+        elif len(args) >= 2 and args[1] == 'madtrex':
+            options = ['-y', '--yes', '--clean', '--jobs=']
+            for opt in options[:]:
+                if any(a.startswith(opt) for a in args[2:]):
+                    options.remove(opt)
+            return self.list_completion(text, options)
         elif len(args)>=2 and args[1] in self._advanced_install_opts:
             options = ['--keep_source','--logging=']
             if args[1]=='pythia8':
@@ -3802,7 +3816,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
                      'looptools', 'cuttools_iregi', 'MadSTR', 'RunningCoupling',
-                     'madspace']
+                     'madspace', 'madtrex']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
@@ -8586,8 +8600,8 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
         elif args[0] == 'cuttools_iregi':
             self.install_cuttools_iregi()
             return
-        elif args[0] == 'madspace':
-            install_script = pjoin(MG5DIR, 'madspace', 'install.py')
+        elif args[0] in ('madspace', 'madtrex'):
+            install_script = pjoin(MG5DIR, args[0], 'install.py')
             install_args = args[1:]
             # The source build compiles in parallel only if it is told how many
             # jobs it may use (see set_build_parallelism in install.py), so hand

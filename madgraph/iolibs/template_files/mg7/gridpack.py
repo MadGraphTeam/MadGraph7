@@ -29,6 +29,13 @@ elif (_LOCAL_MADSPACE_DIR / "install.py").is_file():
         raise RuntimeError("madspace installation failed — see output above")
     sys.path.insert(0, str(_LOCAL_INSTALL_DIR))
 
+# MadtRex (event reweighting), if the gridpack was made with include_madtrex:
+# put it on the path so it can be imported next to madspace. Nothing in this
+# script imports it.
+_LOCAL_MADTREX_INSTALL_DIR = _GRIDPACK_DIR / "madtrex" / "install"
+if (_LOCAL_MADTREX_INSTALL_DIR / "madtrex").is_dir():
+    sys.path.insert(1, str(_LOCAL_MADTREX_INSTALL_DIR))
+
 import madspace as ms
 from custom_function_loader import load_custom_function
 import glob

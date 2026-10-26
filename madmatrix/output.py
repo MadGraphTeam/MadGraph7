@@ -119,10 +119,13 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                      # Default cards for the optional post-processing tools
                      # (Pythia8/Delphes/MadSpin/reweight/analysis) so that
                      # bin/generate_events can offer to enable and edit them.
+                     # The reweight card is the MG7 one: it documents both
+                     # reweighting backends (classic module, MadtRex).
                      'Cards': relative_path_list(pjoin(MG5DIR, 'Template', 'Common', 'Cards'),
-                                  ['madspin_card_default.dat', 'reweight_card_default.dat',
+                                  ['madspin_card_default.dat',
                                    'density_card_default.dat',
                                    'delphes_card_default.dat']) +
+                              relative_path_list(mg7_templates, ['reweight_card_default.dat']) +
                               relative_path_list(pjoin(MG5DIR, 'Template', 'LO', 'Cards'),
                                   ['pythia8_card_default.dat',
                                    'madanalysis5_parton_card_default.dat',
