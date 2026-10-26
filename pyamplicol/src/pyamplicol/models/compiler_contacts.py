@@ -11,12 +11,13 @@ from dataclasses import replace
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
 from .compiler_kernels import (
+    DenseTensors,
     _as_expression,
     _canonicalize_oriented_kernel_component,
     _component_symbols,
+    _execute_dense_network,
     _function_arguments,
     _input_tensor_expression,
-    _ordered_dense_tensor_components,
     _permutation_sign,
     _remap_kernel_symbols,
     _replace_expression_symbols,
@@ -159,7 +160,7 @@ def _contact_partial_component_expressions(
     kind: int,
     model_symbols: ModelSymbolRegistry,
 ) -> tuple[str, ...]:
-    library = _sym.TensorLibrary.hep_lib_atom()
+    library = DenseTensors()
     expression = _sym.E(term.lorentz_expression)
     particles = tuple(particle_by_name[name] for name in term.particles)
     expression *= _input_tensor_expression(
@@ -301,7 +302,7 @@ def _contact_final_component_expressions(
     component_expansion: tuple[tuple[int, int] | None, ...],
     model_symbols: ModelSymbolRegistry,
 ) -> tuple[str, ...]:
-    library = _sym.TensorLibrary.hep_lib_atom()
+    library = DenseTensors()
     auxiliary_side = "left" if auxiliary_on_left else "right"
     physical_side = "right" if auxiliary_on_left else "left"
     auxiliary_symbols = tuple(
@@ -355,7 +356,7 @@ def _contact_final_component_expressions(
 
 
 def _contact_auxiliary_tensor_expression(
-    library: _sym.TensorLibrary,
+    library: DenseTensors,
     *,
     kind: int,
     side: str,
@@ -376,14 +377,14 @@ def _contact_auxiliary_tensor_expression(
     slots = tuple(
         slot for leg in open_legs for slot in _spin_slots(particles[leg].spin, leg + 1)
     )
-    name = _sym.TensorName(model_symbols.kernel_tensor_name(kind, side))
-    library.register(_sym.Tensor.dense(name(*representations), components))
-    return name(*slots).to_expression()
+    name = model_symbols.kernel_tensor_name(kind, side)
+    library.register_dense(name, representations, components)
+    return _sym.TensorName(name)(*slots).to_expression()
 
 
 def _execute_dense_tensor(
     expression: _sym.Expression,
-    library: _sym.TensorLibrary,
+    library: DenseTensors,
     *,
     axis_labels: Sequence[str],
 ) -> tuple[object, ...]:
@@ -393,12 +394,7 @@ def _execute_dense_tensor(
         # A rank-zero expression with no function indeterminates contains no
         # tensor heads to contract. Spenso need not construct a tensor network.
         return (expression,)
-    network = _sym.TensorNetwork(
-        _sym.as_tensor(expression) if axis_labels else expression, library
-    )
-    network.execute(library=library)
-    result = network.result_tensor(library)
-    return _ordered_dense_tensor_components(result, axis_labels).values
+    return _execute_dense_network(expression, library, axis_labels).values
 
 
 def _contact_auxiliary_color(
