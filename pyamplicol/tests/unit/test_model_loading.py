@@ -39,9 +39,17 @@ class _SerializedModel:
     raw_ufo_error = None
 
     propagators: tuple[object, ...] = ()
+    parameters: tuple[object, ...] = ()
+    couplings: tuple[object, ...] = ()
 
     def wrap_indices_in_lorentz_structures(self) -> None:
         pass
+
+    def get_model_functions(self) -> dict[object, object]:
+        return {}
+
+    def get_model_variables(self) -> dict[object, complex]:
+        return {}
 
     def to_json(self, _look: object) -> str:
         return '{"name":"synthetic","propagators":[]}'

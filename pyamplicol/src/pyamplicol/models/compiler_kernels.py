@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from itertools import product
 
+from .._internal.physics.canonical_order import CanonicalRenaming, canonical_apply
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
 from .compiler_records import _replace_evaluator_constants, _sequence
@@ -169,9 +170,16 @@ def _fuse_oriented_kernels(
 def _canonicalize_oriented_kernel_component(
     expression: _sym.Expression,
 ) -> _sym.Expression:
-    """Cancel numeric sums, factor couplings, and group primitive inputs."""
+    """Cancel numeric sums, factor couplings, and group primitive inputs.
 
-    return expression.expand_num().collect_factors().collect_horner()
+    The factorisation and the Horner scheme depend on Symbolica's symbol
+    order, so they run on canonical symbols (``canonical_order``): the same
+    kernel in every process history."""
+
+    return canonical_apply(
+        lambda canonical: canonical.expand_num().collect_factors().collect_horner(),
+        expression,
+    )
 
 
 def _remap_kernel_symbols(
@@ -231,7 +239,7 @@ def _oriented_component_expressions(
     model_symbols: ModelSymbolRegistry,
     use_transverse_massless_yang_mills: bool = False,
 ) -> OrderedComponents:
-    library = _sym.TensorLibrary.hep_lib_atom()
+    library = DenseTensors()
     expression = _sym.E(term.lorentz_expression)
     particles = tuple(particle_by_name[name] for name in term.particles)
     left_symbols = _component_symbols(
@@ -282,24 +290,13 @@ def _oriented_component_expressions(
     }
     minkowski = _sym.Representation.mink(4)
     for leg, momentum in momentum_by_leg.items():
-        library.register(
-            _sym.Tensor.dense(
-                _sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg + 1))(
-                    minkowski
-                ),
-                momentum,
-            )
+        library.register_dense(
+            model_symbols.ufo_momentum_tensor_name(leg + 1), (minkowski,), momentum
         )
-    axis_labels = _spin_axis_labels(particles[result_leg].spin, result_leg + 1)
-    # Plain expressions already carry the correct empty scalar interface.
-    network = _sym.TensorNetwork(
-        _sym.as_tensor(expression) if axis_labels else expression, library
-    )
-    network.execute(library=library)
-    result = network.result_tensor(library)
-    ordered_result = _ordered_dense_tensor_components(
-        result,
-        axis_labels,
+    ordered_result = _execute_dense_network(
+        expression,
+        library,
+        _spin_axis_labels(particles[result_leg].spin, result_leg + 1),
     )
     result_components = ordered_result.values
     expected_dimension = _spin_dimension(particles[result_leg].spin)
@@ -494,7 +491,7 @@ def _minkowski_dot(
 
 
 def _input_tensor_expression(
-    library: _sym.TensorLibrary,
+    library: DenseTensors | _sym.TensorLibrary,
     *,
     kind: int,
     side: str,
@@ -508,10 +505,127 @@ def _input_tensor_expression(
         if len(components) != 1:
             raise ValueError("scalar current must have exactly one component")
         return components[0]
-    name = _sym.TensorName(model_symbols.kernel_tensor_name(kind, side))
-    library.register(_sym.Tensor.dense(name(*representations), components))
+    name = model_symbols.kernel_tensor_name(kind, side)
+    register_dense(library, name, representations, components)
     slots = _spin_slots(spin, leg)
-    return name(*slots).to_expression()
+    return _sym.TensorName(name)(*slots).to_expression()
+
+
+class DenseTensors:
+    """The dense tensors of one tensor network, by qualified head name.
+
+    ``_execute_dense_network`` registers them in a Spenso library on
+    canonical symbols."""
+
+    def __init__(self) -> None:
+        self.tensors: list[tuple[str, tuple[object, ...], tuple[object, ...]]] = []
+
+    def register_dense(
+        self,
+        name: str,
+        representations: Sequence[object],
+        components: Sequence[object],
+    ) -> None:
+        # The head is a Spenso tensor from here on, as on a library.
+        _sym.TensorName(name)
+        self.tensors.append((name, tuple(representations), tuple(components)))
+
+
+def register_dense(
+    library: DenseTensors | _sym.TensorLibrary,
+    name: str,
+    representations: Sequence[object],
+    components: Sequence[object],
+) -> None:
+    """Register a dense tensor in ``DenseTensors`` or directly in a Spenso
+    library (callers that execute their own network)."""
+
+    if isinstance(library, DenseTensors):
+        library.register_dense(name, representations, components)
+    else:
+        library.register(
+            _sym.Tensor.dense(_sym.TensorName(name)(*representations), components)
+        )
+
+
+# Symbolica's and Spenso's own symbols: registered when they are imported,
+# with the same ids in every process.
+_BUILTIN_NAMESPACES = frozenset({"spenso", "symbolica"})
+
+
+def _execute_dense_network(
+    expression: _sym.Expression,
+    tensors: DenseTensors,
+    axis_labels: Sequence[str],
+) -> OrderedComponents:
+    """Execute the Spenso network of ``expression`` with ``tensors`` on
+    canonical symbols and return its components in ``axis_labels`` order on
+    the original symbols.
+
+    Spenso contracts in an order that follows Symbolica's normal form, i.e.
+    the symbol ids (``_internal.physics.canonical_order``), and the sums it
+    accumulates normalise into differently nested (equal) expressions: the
+    same scalar_gravity three-graviton vertex gave other component
+    structures, and after the Horner scheme other kernels, when the index
+    symbols had been created in another order. Every symbol of the network
+    (index symbols, tensor heads, components, parameters) but Symbolica's and
+    Spenso's own is renamed to canonical symbols first; a symbol with other
+    attributes keeps its name (none in current models)."""
+
+    _sym._ensure_symbolica()
+    every = {
+        symbol.to_canonical_string(): symbol
+        for symbol in expression.get_all_symbols(True)
+    }
+    heads = []
+    for name, _representations, components in tensors.tensors:
+        head = symbols.qualified(name)
+        heads.append(head)
+        every[head.to_canonical_string()] = head
+        for component in components:
+            for symbol in _network_component(component).get_all_symbols(True):
+                every[symbol.to_canonical_string()] = symbol
+    renamed, tensor_heads = [], []
+    for token, symbol in every.items():
+        if token.split("::", 1)[0] in _BUILTIN_NAMESPACES:
+            continue
+        tags, attributes = symbol.get_tags(), symbol.get_attributes()
+        if not tags and not attributes:
+            renamed.append(symbol)
+        elif tags == ["spenso::tensor"] and not attributes:
+            renamed.append(symbol)
+            tensor_heads.append(symbol)
+    renaming = CanonicalRenaming(renamed, tensor_heads=tensor_heads)
+    library = _sym.TensorLibrary.hep_lib_atom()
+    for head, (_name, representations, components) in zip(
+        heads, tensors.tensors, strict=True
+    ):
+        library.register(
+            _sym.Tensor.dense(
+                _sym.TensorName(renaming.name(head))(*representations),
+                [
+                    renaming.canonical(_network_component(component))
+                    for component in components
+                ],
+            )
+        )
+    canonical = renaming.canonical(expression)
+    # Plain expressions already carry the correct empty scalar interface.
+    network = _sym.TensorNetwork(
+        _sym.as_tensor(canonical) if axis_labels else canonical, library
+    )
+    network.execute(library=library)
+    ordered = _ordered_dense_tensor_components(
+        network.result_tensor(library),
+        axis_labels,
+        restore=renaming.from_canonical,
+    )
+    return OrderedComponents(
+        ordering=ordered.ordering,
+        values=tuple(
+            renaming.restore(_as_expression(value)) for value in ordered.values
+        ),
+    )
 
 
 def _spin_representations(spin: int) -> tuple[_sym.Representation, ...]:
@@ -551,11 +665,22 @@ def _spin_axis_labels(spin: int, leg: int) -> tuple[str, ...]:
     return ()
 
 
+def _network_component(value: object) -> _sym.Expression:
+    """A dense tensor component as an expression (an integer as a number)."""
+
+    if isinstance(value, int) and not isinstance(value, bool):
+        return _sym.Expression.num(value)
+    return _as_expression(value)
+
+
 def _ordered_dense_tensor_components(
     tensor: object,
     expected_axis_labels: Sequence[str],
+    *,
+    restore: Callable[[str], str] | None = None,
 ) -> OrderedComponents:
-    """Flatten a dense tensor in explicit physical-index order."""
+    """Flatten a dense tensor in explicit physical-index order (``restore``:
+    the original names of a canonical network's index symbols)."""
 
     tensor = tensor.to_dense()
     expected = tuple(str(label) for label in expected_axis_labels)
@@ -573,6 +698,8 @@ def _ordered_dense_tensor_components(
     actual: list[str] = []
     for argument in arguments:
         source = argument.to_canonical_string()
+        if restore is not None:
+            source = restore(source)
         labels = re.findall(r"ufo_[sl]_[0-9]+_[0-9]+", source)
         if len(labels) != 1:
             raise ValueError(
