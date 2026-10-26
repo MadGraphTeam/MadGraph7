@@ -174,16 +174,20 @@ class _Metrics:
 
     def cells(self, column: Any, swapped: bool) -> tuple[tuple[Any, bool], dict | None]:
         """(key, cells) of a column's direct or swapped metric; a swapped
-        metric equal to its direct one (a history whose operator is its own
-        adjoint, e.g. T_i.T_j: the two emissions commute) has the direct
-        one's key, so it is stored once."""
+        metric equal to its direct one has the direct one's key, so it is
+        stored once: not evaluated for a symmetric or self-adjoint history
+        (its swapped seed table is its direct one,
+        ``observables.DirectedColour._self_adjoint``: a dipole T_i.T_j), else
+        compared with the direct one."""
 
         key = (column.history.id if column.directed else None, swapped)
         if not column.directed:
             return key, None
+        directed = self.observables.directed(column.history)
+        if swapped and directed.swapped is directed.table:
+            key, swapped = (key[0], False), False
         found = self._found.get(key)
         if found is None:
-            directed = self.observables.directed(column.history)
             direct = (key[0], False)
             raw = self._native(directed, swapped)
             if swapped and raw is not None and self._raw.pop(direct, None) == raw:
@@ -191,7 +195,7 @@ class _Metrics:
                 found = self._found[direct]
             elif raw is not None:
                 found = self._format(raw)
-                if not swapped:
+                if not swapped and directed.swapped is not directed.table:
                     self._raw[key] = raw
             else:
 

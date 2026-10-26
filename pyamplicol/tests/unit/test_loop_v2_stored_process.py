@@ -614,10 +614,108 @@ def test_stored_metrics_equal_the_oracle(
     )
     # Both directions of all ten dipoles; each swap is its direct metric.
     assert len(checked) == 20 and sum(checked) == 10
-    # The correlated set (the Born metric and ten directed histories, two
-    # lanes each, per sector) and its companion twin; the resolved columns
+    # The correlated set (the Born metric and ten self-adjoint dipoles, one
+    # column each, per sector) and its companion twin; the resolved columns
     # at full colour read the plan's own seed records.
-    assert projected == [21, 21]
+    assert projected == [11, 11]
+
+
+def _dipoles(legs) -> list[dict]:
+    return [
+        {
+            "id": f"T{i}{j}",
+            "bra": [{"kind": "emit-gluon", "emitter": i, "emitted": -1}],
+            "ket": [{"kind": "emit-gluon", "emitter": j, "emitted": -1}],
+        }
+        for i in legs
+        for j in legs
+        if i < j
+    ]
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    "accuracy", ["full", pytest.param("nlc", marks=pytest.mark.loop_nightly)]
+)
+def test_self_adjoint_dipoles_take_one_column(
+    loop_sm_compiled_model,
+    loop_sm_colour_model,
+    loop_native,
+    monkeypatch,
+    tmp_path,
+    accuracy,
+):
+    """A dipole T_i.T_j is self-adjoint (``observables.SELF_ADJOINT_HISTORIES``:
+    its swapped seed table equals its direct one, so its two directions are
+    equal on every tensor): one seed column (2 Re) instead of two, in the
+    process's and the companion's column sets, and its swapped metric is not
+    evaluated. Every correlated output of u u~ > g g g with all ten dipoles
+    declared, in every pole selection, binary64 and double-double, is
+    bitwise that of the two-column form (the oracle), at full colour and at
+    NLC (whose companion is rebuilt for the histories and takes the slice's
+    decisions)."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+    from pyamplicol.correlators import CorrelatedRequest, CorrelatorConfig
+    from pyamplicol.loops.v2 import observables, plan_export
+
+    set_records = plan_export._set_records
+    projected: list[int] = []
+
+    def records(exporter, columns):
+        projected.append(len(columns))
+        return set_records(exporter, columns)
+
+    monkeypatch.setattr(plan_export, "_set_records", records)
+    record = _record("uux_ggg" if accuracy == "full" else "uux_ggg_nlc")
+    model = loop_sm_compiled_model if accuracy == "full" else loop_sm_colour_model
+    dipoles = _dipoles(range(1, 6))
+    correlators = CorrelatorConfig.from_json_dict(
+        {"color_correlations": dipoles, "spin_correlations": []}
+    )
+    widths = {}
+    values = {}
+    for adjoint in (False, True):
+        monkeypatch.setattr(observables, "SELF_ADJOINT_HISTORIES", adjoint)
+        root = tmp_path / str(adjoint)
+        root.mkdir()
+        card = root / "card.toml"
+        card.write_text(
+            _card(model, root / "artifact", [("p", "u u~ > g g g")], "", accuracy)
+        )
+        Generator(resolve_config(card)).generate(
+            ProcessSet((ProcessRequest.parse("u u~ > g g g", name="p"),)),
+            root / "artifact",
+            correlators=correlators,
+        )
+        # The first projected set is the process's correlated set.
+        widths[adjoint] = projected[0]
+        projected.clear()
+        runtime = Runtime.load(
+            root / "artifact", process="p", model_parameters=record["parameters"]
+        )
+        requests = {h["id"]: CorrelatedRequest(h["id"]) for h in dipoles}
+        out = []
+        for poles in ("all", "uv", "ir", "none"):
+            for arithmetic in ("double", "double-double"):
+                results = runtime.evaluate_correlated_many(
+                    record["points"][:1],
+                    requests,
+                    mu_r2=record["scales_squared"][:1],
+                    poles=poles,
+                    arithmetic=arithmetic,
+                )
+                for key in sorted(results):
+                    result = results[key]
+                    out.append([str(v) for point in result.values for v in point])
+                    if poles in ("uv", "ir"):
+                        out.append(repr(result.pole_parts))
+        values[adjoint] = out
+    # The Born metric and ten dipoles: 21 lanes, 11 with one column each.
+    assert (widths[False], widths[True]) == (21, 11)
+    assert values[True] == values[False]
 
 
 # Disables pyAmpliCol's Symbolica library key in the native code
