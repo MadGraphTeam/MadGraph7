@@ -7206,8 +7206,10 @@ class TestDensityOutputFallback(unittest.TestCase):
     which does not compile (e.g. a model whose parameters the C++ code
     generation cannot write) is replaced by the Fortran output."""
 
-    def _output(self, compile_error=None, generation=None, polarised=False):
+    def _output(self, compile_error=None, generation=None, polarised=False,
+                scale_dependence=()):
         import tempfile
+        import json
         commands, builds = [], []
 
         class Cmd(object):
@@ -7215,6 +7217,14 @@ class TestDensityOutputFallback(unittest.TestCase):
 
             def exec_cmd(self, line, precmd=True):
                 commands.append(line)
+                if line.startswith('output standalone '):
+                    # the process table the madmatrix exporter writes
+                    sub = os.path.join(line.split()[2], 'SubProcesses')
+                    os.makedirs(sub, exist_ok=True)
+                    with open(os.path.join(sub, 'madmatrix_processes.json'), 'w') as f:
+                        json.dump({'subprocesses': [
+                            {'path': 'P1_gg_ttx',
+                             'scale_dependence': list(scale_dependence)}]}, f)
 
         stub = type('Stub', (), {})()
         stub.mgcmd = Cmd()
@@ -7270,6 +7280,16 @@ class TestDensityOutputFallback(unittest.TestCase):
         self.assertEqual(backend, 'fortran')
         self.assertEqual(len(builds), 1)
         self.assertTrue(commands[0].startswith('output standalone '))
+        self.assertTrue(commands[1].startswith('output standalone_fortran '))
+
+    def test_scale_dependence_falls_back_to_fortran(self):
+        """Couplings depending on MU_R: madmatrix would keep the card's MU_R
+        where the Fortran output takes each event's scale, so the Fortran
+        output is written instead, before anything is compiled."""
+        backend, commands, builds, _ = self._output(
+            scale_dependence=['running elements of the model'])
+        self.assertEqual(backend, 'fortran')
+        self.assertEqual(builds, [])
         self.assertTrue(commands[1].startswith('output standalone_fortran '))
 
 
@@ -8923,8 +8943,9 @@ class TestOffshellRecoilFloor(unittest.TestCase):
             return {'mass': 'ZERO' if abs(pdg) == 21 else 'MZ'}
 
     def test_the_default_floor(self):
+        # opt-in: the floor cuts the off-shell tail, so it is off unless asked
         self.assertEqual(
-            interface_madspin.MadSpinOptions()['offshell_min_recoil'], 0.5)
+            interface_madspin.MadSpinOptions()['offshell_min_recoil'], 0.)
 
     def test_the_floor_option(self):
         self.assertEqual(self._Stub(0.5)._offshell_min_recoil(), 0.5)
@@ -9031,6 +9052,8 @@ class TestOffshellRecoilFloor(unittest.TestCase):
 
         def __init__(self, mass):
             self.options = interface_madspin.MadSpinOptions()
+            # the floor is opt-in: these tests are about what it does when on
+            self.options['offshell_min_recoil'] = 0.5
             self.f2py_module = [0, 0]   # skip the fortran setup
             self._mass = mass
             self.densities = 0
@@ -15008,3 +15031,103 @@ class TestF2pyDensityMiss(unittest.TestCase):
         check(np.zeros(3, dtype=complex), [2, -2, -11, 11, 21])
         check(np.array([4.6e-9, 0.0, 1.5e-8], dtype=complex),
               [2, -2, -11, 11, 21])
+
+
+class TestAllMomentaMergedAntiparticles(unittest.TestCase):
+    """_all_momenta's shortcut (no merged pdg repeated in the final state: one
+    assignment) has to see repeats the way get_all_momenta does, antiparticles
+    included: the merged map lists the members by their positive pdg only, so
+    u~ and s~ are both -81 only through the sign-aware lhe_parser.merged_pdg."""
+
+    MERGED = {1: 81, 2: 81, 3: 81, 4: 81}
+
+    # d~ g > w+ u~, w+ > c s~ : u~ (production) and s~ (W decay) are both -81
+    ANTI = """<event>
+ 6  1 +1.0e+00 1.0e+02 7.5e-03 1.2e-01
+ -1 -1 0 0 0 501 0.0 0.0 300.0 300.0 0.0 0. 1.
+ 21 -1 0 0 501 502 0.0 0.0 -200.0 200.0 0.0 0. 1.
+ 24 2 1 2 0 0 30.0 -20.0 60.0 240.0 80.4 0. 1.
+ -2 1 1 2 0 502 -30.0 20.0 40.0 260.0 0.0 0. 1.
+ 4 1 3 3 503 0 50.0 10.0 20.0 120.0 0.0 0. 1.
+ -3 1 3 3 0 503 -20.0 -30.0 40.0 120.0 0.0 0. 1.
+</event>"""
+
+    # the charge conjugate, d g > w- u, w- > c~ s : u and s are both 81
+    CONJ = """<event>
+ 6  1 +1.0e+00 1.0e+02 7.5e-03 1.2e-01
+ 1 -1 0 0 501 0 0.0 0.0 300.0 300.0 0.0 0. 1.
+ 21 -1 0 0 502 501 0.0 0.0 -200.0 200.0 0.0 0. 1.
+ -24 2 1 2 0 0 30.0 -20.0 60.0 240.0 80.4 0. 1.
+ 2 1 1 2 502 0 -30.0 20.0 40.0 260.0 0.0 0. 1.
+ -4 1 3 3 0 503 50.0 10.0 20.0 120.0 0.0 0. 1.
+ 3 1 3 3 503 0 -20.0 -30.0 40.0 120.0 0.0 0. 1.
+</event>"""
+
+    class _Stub(object):
+        _all_momenta = interface_madspin.MadSpinInterface._all_momenta
+
+        def __init__(self, merged):
+            self._revert_merged = merged
+
+    def test_merged_pdg(self):
+        self.assertEqual(lhe_parser.merged_pdg(2, self.MERGED), 81)
+        self.assertEqual(lhe_parser.merged_pdg(-3, self.MERGED), -81)
+        self.assertEqual(lhe_parser.merged_pdg(21, self.MERGED), 21)
+        self.assertEqual(lhe_parser.merged_pdg(-24, self.MERGED), -24)
+
+    def test_antiparticles_take_the_full_path(self):
+        stub = self._Stub(self.MERGED)
+        for text, order in ((self.ANTI, ((-81, 21), (-81, 81, -81))),
+                            (self.CONJ, ((81, 21), (81, -81, 81)))):
+            event = lhe_parser.Event(text)
+            full = event.get_all_momenta(order, merged_map=self.MERGED)
+            # u~ <-> s~ (or u <-> s) between the production and the W decay
+            self.assertEqual(len(full), 2)
+            self.assertEqual(len(stub._all_momenta(event, order)), len(full))
+
+
+class TestDensityLibtag(unittest.TestCase):
+    """_density_libtag: the madmatrix libraries are loaded with the LIBTAG this
+    run builds them with, not one guessed from the library names -- a reused
+    directory may hold the build of another run (another _ms_run_id) too."""
+
+    def setUp(self):
+        import tempfile
+        self.tree = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.tree, 'lib'))
+
+    def tearDown(self):
+        shutil.rmtree(self.tree, ignore_errors=True)
+
+    def touch(self, tag):
+        open(os.path.join(self.tree, 'lib',
+                          'libmadmatrix_common%s_scalar.so' % tag), 'w').close()
+
+    def libtag(self, run_id, side='prod'):
+        stub = type('Stub', (), {'_ms_run_id': run_id})()
+        return interface_madspin.MadSpinInterface._density_libtag(stub, self.tree, side)
+
+    def test_shared_formula(self):
+        self.assertEqual(madspin.density_libtag(2, 'p'), '_ms2p')
+        stub = type('Stub', (), {})()
+        stub.mscmd = type('MSCmd', (), {'_ms_run_id': 2})()
+        self.assertEqual(
+            madspin.decay_all_events_onshell.density_libtag(stub, 'd'), '_ms2d')
+
+    def test_this_run_build_wins_over_another(self):
+        self.touch('_ms1p')
+        self.touch('_ms2p')
+        self.assertEqual(self.libtag(2), '_ms2p')
+        self.assertEqual(self.libtag(1), '_ms1p')
+
+    def test_only_another_run_build(self):
+        self.touch('_ms1d')
+        self.assertEqual(self.libtag(2, 'decay'), '_ms1d')
+
+    def test_no_build(self):
+        try:
+            self.libtag(2)
+        except madmatrix_density.MadDensityError as error:
+            self.assertIn('LIBTAG=_ms2p', str(error))
+        else:
+            self.fail('no library, yet a LIBTAG was found')

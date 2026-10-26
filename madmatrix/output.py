@@ -398,14 +398,15 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
             [[leg.get('id') for leg in process.get_legs_with_decays()]
              for process in matrix_element.get('processes')],
             # the legs marked off-shell ('*'), evaluated at the invariant mass of
-            # their momentum by the scalar backend only (offshell_mass, SigmaKin.cc)
+            # their momentum (offshell_mass, backend/*/SigmaKin.cc)
             sorted(wf.get('number_external')
                    for wf in matrix_element.get_external_wavefunctions()
                    if wf.get('offshell')),
             # the crossed processes folded onto this one (--use_crossing):
             # listed nowhere else, and evaluated through the extended flavor
             # index only
-            crossed, crossed_flavors))
+            crossed, crossed_flavors,
+            self.scale_dependence(matrix_element)))
         return out
 
     def crossed_flavor_ids(self, matrix_element, proc_dir_name):
@@ -438,6 +439,40 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         legs = [list(record.labels) for record in table.records]
         return legs, [[a.index(nflav), list(a.pdgs)] for a in table.assignments()]
 
+    @staticmethod
+    def scale_dependence(matrix_element):
+        """What makes the matrix element depend on the renormalisation scale
+        beyond alpha_s: the couplings and the masses/widths it uses that depend
+        on MU_R, and the running elements of the model. The libraries compute
+        their couplings from G alone and keep MU_R at its param-card value,
+        while the Fortran output sets MU_R from the event scale
+        (UPDATE_AS_PARAM2): a caller passing per-event scales needs the
+        Fortran one when this is not empty."""
+        model = matrix_element.get('processes')[0].get('model')
+        scale_keys = [key for key in model.get('couplings')
+                      if 'MU_R' in key]
+        scale_coups = set(coup.name for key in scale_keys
+                          for coup in model.get('couplings')[key])
+        used = set()
+        for entry in matrix_element.get_used_couplings():
+            for coup in (entry if isinstance(entry, list) else [entry]):
+                if isinstance(coup, str):
+                    used.add(coup.lstrip('-'))
+                else:
+                    used.add(coup.get('name'))
+                    used.update(str(c).lstrip('-')
+                                for c in coup.get('flavors').values())
+        reasons = sorted(used & scale_coups)
+        scale_params = set(param.name for key, params in model.get('parameters').items()
+                           if 'MU_R' in key for param in params)
+        for wf in matrix_element.get_all_wavefunctions():
+            for name in (wf.get('mass'), wf.get('width')):
+                if name in scale_params and name not in reasons:
+                    reasons.append(name)
+        if model.get('running_elements'):
+            reasons.append('running elements of the model')
+        return reasons
+
     def finalize(self, *args, **kwargs):
         # no subprocesses.json (nor anything else the mg7 launcher needs), only
         # the process table of the standalone libraries
@@ -461,10 +496,13 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
         helicity is the crossed process's own code, but its colour-flow and
         diagram indices number the BASE subprocess's flows and diagrams: decode
         them through row K (see the note above umami_matrix_element in
-        umami.cc), as `output mg7` does."""
+        umami.cc), as `output mg7` does.
+
+        It also lists what of a subprocess depends on the renormalisation scale
+        beyond alpha_s (scale_dependence)."""
         import json
         subprocesses = []
-        for info, (processes, offshell, crossed, crossed_flavors) in zip(
+        for info, (processes, offshell, crossed, crossed_flavors, scale) in zip(
                 self.process_info, getattr(self, 'processes_of_subprocess', [])):
             path = os.path.basename(info['path'])
             flavors = []
@@ -480,6 +518,8 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
                 'processes': processes,
                 'offshell': offshell,
                 'crossed': crossed,
+                # what depends on MU_R besides alpha_s (scale_dependence)
+                'scale_dependence': scale,
                 'flavors': flavors,
                 'crossed_flavors': crossed_flavors})
         with open(pjoin(self.dir_path, 'SubProcesses', self.processes_file), 'w') as fsock:

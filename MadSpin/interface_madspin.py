@@ -359,8 +359,8 @@ class MadSpinOptions(banner.ConfigFile):
         self.add_param('decay_event_mult', 1E0, comment='Produce more events than needed so that MadSpin does not have to regenerate decay events')
         self.add_param('nb_core', 0, comment='Number of cores for the MadSpin parallel unweighting (0 = use the global MG5 nb_core). nb_core>1 enables the process-parallel unweighting path.')
         self.add_param('density_keep_jacobian', True, comment='PA spinmode only: fold the offshell-reshuffling phase-space jacobian into the accept/reject weight (default) instead of applying the reshuffle as a post-acceptance kinematic dressing (False). Ignored by the madspin/full spinmodes, which always include that jacobian.')
-        self.add_param('offshell_min_recoil', 0.5,
-                       comment="madspin/full spinmodes only: the smallest fraction of its momentum the production may keep when it is reshuffled onto the sampled virtualities (RAMBO's chi, the factor every production three-momentum is scaled by in the partonic rest frame). Only applied when a massless particle recoils against the resonances: a virtuality drawn up to sqrt(shat) then pushes that particle soft, far below the cuts the production was generated with, and the weight grows like 1/chi -- its mean over the decay phase space diverges logarithmically, so no maximum weight can bound it. A draw below the floor gets weight zero. The floor never reaches the pole: chi >= 1/2 still allows m^2 up to (shat + M^2)/2. 0 disables it.")
+        self.add_param('offshell_min_recoil', 0.,
+                       comment="madspin/full spinmodes only, OFF by default (0): opt-in cut, which biases the result. The smallest fraction of its momentum the production may keep when it is reshuffled onto the sampled virtualities (RAMBO's chi, the factor every production three-momentum is scaled by in the partonic rest frame). Only applied when a massless particle recoils against the resonances: a virtuality drawn up to sqrt(shat) then pushes that particle soft, far below the cuts the production was generated with, and the weight grows like 1/chi -- its mean over the decay phase space diverges logarithmically, so no maximum weight can bound it. A draw below the floor gets weight zero. The floor never reaches the pole: chi >= 1/2 still allows m^2 up to (shat + M^2)/2. It is a cut on the virtuality: the off-shell tail it removes is missing from the output however many events are generated, so it is no exact method -- only a way to make the unweighting of such a process converge. 0 (default) disables it.")
         self.add_param('unweighting', 'auto',
                        allowed=['auto', 'joint', 'sequential',
                                 'sequential_global_retry',
@@ -8111,7 +8111,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # against 1 at 1.06 once evaluated per draw; on u u~ > z g one
                 # first draw near sqrt(shat) put a whole production event at 172x
                 # the mean weight. Evaluated per draw, the bound is the true one,
-                # which a soft recoil leaves unbounded but for offshell_min_recoil.
+                # which a soft recoil leaves unbounded unless offshell_min_recoil (opt-in) cuts it.
                 if density_matrix_prod is None or offshell_density:
                     _, wgt, density_matrix_prod = self.get_onshell_evt_and_wgt(
                         prod_draw, decays, decay_dict, build_event=False)
@@ -10208,6 +10208,10 @@ class MadSpinInterface(extended_cmd.Cmd):
         rescaled (a t t~ threshold, or t t~ with the top already decayed in the
         event: its decay products move rigidly with it) the weight stays
         bounded, and the floor is not applied.
+
+        Off by default: the draws it removes are a part of the off-shell
+        lineshape that no amount of statistics brings back, i.e. a bias, which
+        a user has to ask for.
         """
         floor = self.options['offshell_min_recoil']
         if not floor or floor <= 0:
@@ -11924,6 +11928,23 @@ class MadSpinInterface(extended_cmd.Cmd):
                 return card
         return pjoin(self.path_me, 'param_card.dat')
 
+    def _density_libtag(self, tree, prod_or_decay):
+        """The LIBTAG to load the madmatrix libraries of tree with: the one
+        this run builds them with (madspin.density_libtag), and not one read
+        off the library names, which is ambiguous as soon as a reused
+        directory holds the build of another run as well. A directory holding
+        only another run's build (reused without being rebuilt) is loaded with
+        that build's tag."""
+        tag = madspin.density_libtag(self._ms_run_id,
+                                     'p' if prod_or_decay == 'prod' else 'd')
+        if os.path.exists(pjoin(tree, 'lib', 'libmadmatrix_common%s_scalar.so' % tag)):
+            return tag
+        try:
+            return madmatrix_density.find_libtag(tree)
+        except madmatrix_density.MadDensityError as error:
+            raise madmatrix_density.MadDensityError(
+                '%s (this run builds them as LIBTAG=%s)' % (error, tag))
+
     def initialise_f2py_module(self, mymod, sp_path, prod_or_decay):
         """ Routine to initialise the fortran module with module.initialise(param_card_path).
             If one the process is at loop-induced level, it is also needed to call module.set_madloop_path(path_to_MadLoop5_resources)
@@ -11993,7 +12014,8 @@ class MadSpinInterface(extended_cmd.Cmd):
             # standalone output, with the f2py module's method names (see
             # madmatrix/density.py), built with a LIBTAG of their own by
             # decay_all_events_onshell.compile
-            mymod = madmatrix_density.MadDensityLibrary(tree)
+            mymod = madmatrix_density.MadDensityLibrary(
+                tree, libtag=self._density_libtag(tree, prod_or_decay))
         else:
             # production and decay are built with distinct MENUM (2 vs 1) so
             # their f2py modules / dependent libraries don't clash in-process
@@ -13023,7 +13045,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         merged = self._revert_merged or None
         finals = [p.pid for p in event if p.status == 1]
         if merged:
-            finals = [merged.get(pid, pid) for pid in finals]
+            # sign-aware, as get_all_momenta maps them: u~ and s~ are both -81
+            finals = [lhe_parser.merged_pdg(pid, merged) for pid in finals]
         if len(set(finals)) == len(finals):
             return [event.get_momenta(orig_order, merged_map=merged)]
         return event.get_all_momenta(orig_order, merged_map=merged)
@@ -13141,7 +13164,9 @@ class MadSpinInterface(extended_cmd.Cmd):
                 if event[0].color1 == 599 and event.aqcd==0:
                     new_value = self.all_f2py[pdir](pdg_for_call, p, 0.113, 0)
                 else:
-                    new_value = self.all_f2py[pdir](pdg_for_call, p, event.aqcd, event.scale)
+                    # SCALE2 is the squared scale (MU_R = sqrt(SCALE2) in
+                    # UPDATE_AS_PARAM2), as get_density and the reweighting pass it
+                    new_value = self.all_f2py[pdir](pdg_for_call, p, event.aqcd, event.scale**2)
                 #if the process is Loop-Induced, smatrixhel returns the tuple (value, returncode), we need to keep only the value
                 if isinstance(new_value, tuple):
                     new_value = new_value[0]
@@ -13233,17 +13258,19 @@ class MadSpinInterface(extended_cmd.Cmd):
 
     @staticmethod
     def _matrix_element_call(module):
-        """(pdgs, momenta, alpha_s, scale) -> the helicity-summed |M|^2 of
+        """(pdgs, momenta, alpha_s, scale2) -> the helicity-summed |M|^2 of
         module, the momenta being (E, px, py, pz) per leg in the leg order of the
-        process."""
+        process and scale2 the squared renormalisation scale (0: keep MU_R)."""
         if isinstance(module, madmatrix_density.MadDensityLibrary):
-            return lambda pdg_list, p, alphas, scale: \
+            # alpha_s is all of the scale a madmatrix output loads with (its
+            # scale_dependence check), so scale2 has nothing left to set
+            return lambda pdg_list, p, alphas, scale2: \
                 module.matrix_element(pdg_list, p, alphas)
         # f2py: momenta as the Fortran P(0:3, NEXTERNAL), and the helicity sum is
         # NHEL = -1
         invert = rwgt_interface.ReweightInterface.invert_momenta
-        return lambda pdg_list, p, alphas, scale: \
-            module.smatrixhel(pdg_list, 0, invert(p), alphas, scale, -1)
+        return lambda pdg_list, p, alphas, scale2: \
+            module.smatrixhel(pdg_list, 0, invert(p), alphas, scale2, -1)
         
         
     def generate_all_matrix_element(self):

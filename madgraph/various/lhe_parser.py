@@ -2580,6 +2580,20 @@ def project_massless_partons(momenta, pdgs, model, n_initial=2,
     return out
 
 
+def merged_pdg(pid, merged_map):
+    """The merged-particle code of pid, antiparticles included: merged_map
+    (raw pdg -> merged code) lists the members of each merged particle by their
+    positive pdg only, so an antiparticle maps to minus the code of its
+    particle. pid itself when it belongs to no merged particle."""
+    try:
+        return merged_map[pid]
+    except KeyError:
+        try:
+            return -merged_map[-pid]
+        except KeyError:
+            return pid
+
+
 _newline_runs = re.compile('\n\n+')
 
 def _collapse_newlines(text):
@@ -4938,14 +4952,7 @@ class Event(list):
         # remap before being looked up in get_order[1]; otherwise
         # final.index(raw_pdg) raises ValueError.
         if merged_map:
-            def map_pdg(x):
-                try:
-                    return merged_map[x]
-                except KeyError:
-                    try:
-                        return -merged_map[-x]
-                    except KeyError:
-                        return x
+            map_pdg = lambda x: merged_pdg(x, merged_map)
         else:
             map_pdg = lambda x: x
 
@@ -6054,17 +6061,9 @@ class NLO_PARTIALWEIGHT(object):
             _ = (allow_crossing, decay_chain)
 
             if merged_map:
-                def map_pdg(x):
-                    try:
-                        return merged_map[x]
-                    except KeyError:
-                        try:
-                            return -merged_map[-x]
-                        except KeyError:
-                            return x
+                map_pdg = lambda x: merged_pdg(x, merged_map)
             else:
-                def map_pdg(x):
-                    return x
+                map_pdg = lambda x: x
 
             out1 = {}
             out2 = {}
@@ -6111,17 +6110,9 @@ class NLO_PARTIALWEIGHT(object):
             out = [''] *(len(order[0])+len(order[1]))
             pdgs = self.get_pdg_code()
             if merged_map:
-                def map_pdg(x):
-                    try:
-                        return merged_map[x]
-                    except KeyError:
-                        try:
-                            return -merged_map[-x]
-                        except KeyError:
-                            return x
+                map_pdg = lambda x: merged_pdg(x, merged_map)
             else:
-                def map_pdg(x):
-                    return x
+                map_pdg = lambda x: x
             for pos, part in enumerate(self):
                 pdg = map_pdg(pdgs[pos])
                 if pos < len(get_order[0]): #initial

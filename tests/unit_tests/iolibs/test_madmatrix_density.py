@@ -131,16 +131,53 @@ class TestMadMatrixDensityFiles(unittest.TestCase):
             json.dump({'subprocesses': []}, f)
         self.assertTrue(density.is_output(self.tmp))
 
-    def test_offshell_needs_scalar(self):
-        """Only the scalar backend evaluates a '*' leg at the invariant mass of
-        its momentum: a SIMD build of such a process is refused."""
+    def test_offshell_any_backend(self):
+        """Every backend evaluates a '*' leg at the invariant mass of its
+        momentum (per SIMD lane, per GPU thread): a SIMD build of such a
+        process is not refused, it only has to exist."""
         with open(os.path.join(self.tmp, 'SubProcesses', density.PROCESSES_FILE), 'w') as f:
             json.dump({'subprocesses': [{'path': 'P1_t_bLxN', 'legs': [6, 5, -82, 83],
                                          'ninitial': 1, 'offshell': [1], 'processes': [],
                                          'library': 'libmadmatrix{libtag}_P1_t_bLxN_{backend}.so',
                                          'flavors': [[[6, 5, -11, 12]]]}]}, f)
-        self.assertRaisesRegex(density.MadDensityError, 'scalar',
-                               density.MadDensityLibrary, self.tmp, 'simd_128', '')
+        try:
+            density.MadDensityLibrary(self.tmp, 'simd_128', '_none%d' % os.getpid())
+        except density.MadDensityError as error:
+            # refused for the missing build, not for the backend
+            self.assertIn('missing', str(error))
+        else:
+            self.fail('no library was built, yet it loaded')
+
+    def _write_table(self, scale_dependence):
+        with open(os.path.join(self.tmp, 'SubProcesses', density.PROCESSES_FILE), 'w') as f:
+            json.dump({'subprocesses': [{'path': 'P1_gg_ttx', 'legs': [21, 21, 6, -6],
+                                         'ninitial': 2, 'offshell': [], 'processes': [],
+                                         'scale_dependence': scale_dependence,
+                                         'library': 'libmadmatrix{libtag}_P1_gg_ttx_{backend}.so',
+                                         'flavors': [[[21, 21, 6, -6]]]}]}, f)
+
+    def test_scale_dependence_is_refused(self):
+        """Couplings depending on MU_R: madmatrix keeps the card's MU_R where
+        the Fortran output takes the event scale, so the output is refused
+        rather than evaluated at the wrong scale."""
+        self._write_table(['UVGC_1_1'])
+        self.assertEqual(density.scale_dependence(self.tmp), {'P1_gg_ttx': ['UVGC_1_1']})
+        try:
+            density.MadDensityLibrary(self.tmp, 'scalar', '_none%d' % os.getpid())
+        except density.MadDensityError as error:
+            self.assertIn('renormalisation scale', str(error))
+            self.assertIn('UVGC_1_1', str(error))
+        else:
+            self.fail('a MU_R-dependent output was loaded')
+
+    def test_alpha_s_only_is_not_refused(self):
+        self._write_table([])
+        self.assertEqual(density.scale_dependence(self.tmp), {})
+        try:
+            density.MadDensityLibrary(self.tmp, 'scalar', '_none%d' % os.getpid())
+        except density.MadDensityError as error:
+            # refused for the missing build only
+            self.assertIn('missing', str(error))
 
     def test_crossings_without_their_ids_are_refused(self):
         """An output folding crossings (--use_crossing) lists their extended
@@ -166,3 +203,54 @@ class TestMadMatrixDensityFiles(unittest.TestCase):
         finally:
             density._loaded.pop(name, None)
             shutil.rmtree(other)
+
+
+class TestScaleDependenceExport(unittest.TestCase):
+    """ProcessExporterMadMatrixStandalone.scale_dependence: what of a matrix
+    element depends on MU_R beyond alpha_s, from the dependency keys the model
+    files its couplings and parameters under."""
+
+    class _Var(object):
+        def __init__(self, name):
+            self.name = name
+
+    class _Model(dict):
+        def __init__(self, running=()):
+            V = TestScaleDependenceExport._Var
+            dict.__init__(self, couplings={('aS',): [V('GC_11')],
+                                           ('aS', 'MU_R'): [V('GC_R')]},
+                          parameters={('aS',): [V('mdl_G')],
+                                      ('MU_R',): [V('MT_R')]},
+                          running_elements=list(running))
+
+    class _ME(object):
+        def __init__(self, model, couplings, masses=()):
+            self.model, self.couplings, self.masses = model, couplings, masses
+
+        def get(self, key):
+            assert key == 'processes'
+            return [{'model': self.model}]
+
+        def get_used_couplings(self):
+            return [[c] for c in self.couplings]
+
+        def get_all_wavefunctions(self):
+            return [{'mass': m, 'width': 'ZERO'} for m in self.masses]
+
+    def scale_dependence(self, *args, **opts):
+        import madmatrix.output as output
+        return output.ProcessExporterMadMatrixStandalone.scale_dependence(
+            self._ME(*args, **opts))
+
+    def test_alpha_s_only(self):
+        self.assertEqual(self.scale_dependence(self._Model(), ['GC_11', '-GC_11'], ['MT']), [])
+
+    def test_mu_r_coupling(self):
+        self.assertEqual(self.scale_dependence(self._Model(), ['GC_11', '-GC_R']), ['GC_R'])
+
+    def test_mu_r_mass(self):
+        self.assertEqual(self.scale_dependence(self._Model(), ['GC_11'], ['MT_R']), ['MT_R'])
+
+    def test_running_model(self):
+        self.assertEqual(self.scale_dependence(self._Model(running=['x']), ['GC_11']),
+                         ['running elements of the model'])

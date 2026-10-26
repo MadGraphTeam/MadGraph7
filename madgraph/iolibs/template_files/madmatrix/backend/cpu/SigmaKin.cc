@@ -421,8 +421,6 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-  //--------------------------------------------------------------------------
-
   // The mass an external leg marked off-shell ('*': MadSpin's decaying particles)
   // is evaluated with: the invariant mass of its momentum, as in the Fortran
   // standalone output (SQRT(P(0,i)**2-...)), so that the wavefunction is the one

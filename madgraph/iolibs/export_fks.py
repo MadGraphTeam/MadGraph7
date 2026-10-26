@@ -320,6 +320,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
           pjoin('various','systematics.py'),          
           pjoin('various','lhe_parser.py'),
           pjoin('various','collect_events.py'),
+          # citation tracking (module + bibliography database)
+          pjoin('various','citation.py'),
+          pjoin('various','citations.bib'),
           pjoin('madevent','sum_html.py'),
           pjoin('madevent','gen_crossxhtml.py'),          
           pjoin('iolibs','files.py'),
