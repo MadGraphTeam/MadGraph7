@@ -19,11 +19,21 @@
 //! The proofs are independent: they run on a rayon pool whose workers hold
 //! pyAmpliCol's Symbolica key (`crate::licence`), and the results are
 //! returned in input order, so they do not depend on the thread count.
+//!
+//! `kernel_equivalence` also forms the proofs' keys (the twin of
+//! `compiler_entry._kernel_keys_and_proofs`, the oracle): per kernel its
+//! coupling with the derived couplings resolved and the colour-flow
+//! normalisation, its components in the canonical kernel symbols (kind 0,
+//! the sides exchanged for the input order `(1, 0)`) with the derived
+//! couplings resolved, and the sha256 of their JSON; the proofs of the
+//! distinct keys not already known follow.
 
 use rayon::prelude::*;
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 use symbolica::atom::{Atom, AtomCore};
+use symbolica::id::Replacement;
 use symbolica::parser::ParseSettings;
 
 use crate::{RusticolError, RusticolResult};
@@ -55,9 +65,9 @@ pub struct KernelProof {
 const ORDERS: [[u8; 2]; 2] = [[0, 1], [1, 0]];
 
 fn parse(text: &str) -> RusticolResult<Atom> {
-    // Canonical strings name every symbol with its namespace: the default
-    // namespace is never used.
-    Atom::parse(text, "pyamplicol_model_proofs", ParseSettings::default()).map_err(|error| {
+    // Canonical strings name every symbol with its namespace; the default
+    // namespace is the Python wheel's (`E`).
+    Atom::parse(text, "python", ParseSettings::default()).map_err(|error| {
         RusticolError::invalid_argument(format!(
             "kernel proof: cannot parse a canonical expression: {error}"
         ))
@@ -101,7 +111,7 @@ struct Proof<'a> {
     input: &'a KernelProofInput,
     oriented: [Vec<Atom>; 2],
     // (order, sign index, component) -> canonical string, formed lazily.
-    strings: std::collections::HashMap<(usize, usize, usize), String>,
+    strings: HashMap<(usize, usize, usize), String>,
 }
 
 const SIGNS: [i64; 2] = [1, -1];
@@ -216,29 +226,188 @@ fn prove(input: &KernelProofInput) -> RusticolResult<KernelProof> {
     })
 }
 
-/// The proofs of `inputs`, in input order, on `threads` workers (`None`: the
-/// rayon default, `RAYON_NUM_THREADS` or the machine's parallelism).
-pub fn kernel_equivalence_proofs(
-    inputs: &[KernelProofInput],
-    threads: Option<usize>,
-) -> RusticolResult<Vec<KernelProof>> {
-    for input in inputs {
-        if input.components[0].len() != input.components[1].len() {
-            return Err(RusticolError::invalid_argument(
-                "kernel proof: the input orders have different component counts",
-            ));
+/// One kernel's key input (`_annotate_oriented_kernel_evaluation_equivalence`).
+#[derive(Clone, Debug)]
+pub struct KernelKeyInput {
+    /// The kernel's kind (its input symbols' number).
+    pub kind: i64,
+    /// Canonical string of the kernel's coupling.
+    pub coupling: String,
+    /// Power of the colour-flow normalisation `2^(-power/2)` (0: none).
+    pub normalization_power: i64,
+    /// Canonical strings of the kernel's components.
+    pub components: Vec<String>,
+    /// (derived coupling symbol name, canonical string of its coupling), in
+    /// the order of the kernel's runtime parameters.
+    pub derived: Vec<(String, String)>,
+    /// Component dimensions of the left input, the right input and the output.
+    pub dimensions: [i64; 3],
+}
+
+fn tagged(name: &str) -> Option<(i64, bool, bool, i64)> {
+    // `kernel_<kind>_<left|right>_[momentum_]<index>` (the tail of a name).
+    let tail = name.rsplit("::").next()?;
+    let rest = tail.strip_prefix("kernel_")?;
+    let (kind, rest) = rest.split_once('_')?;
+    let (left, rest) = if let Some(rest) = rest.strip_prefix("left_") {
+        (true, rest)
+    } else {
+        (false, rest.strip_prefix("right_")?)
+    };
+    let (momentum, index) = match rest.strip_prefix("momentum_") {
+        Some(index) => (true, index),
+        None => (false, rest),
+    };
+    let digits = |text: &str| !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit());
+    if !digits(kind) || !digits(index) {
+        return None;
+    }
+    Some((kind.parse().ok()?, left, momentum, index.parse().ok()?))
+}
+
+fn kernel_symbol(prefix: &str, kind: i64, left: bool, momentum: bool, index: i64) -> String {
+    let side = if left { "left" } else { "right" };
+    if momentum {
+        format!("{prefix}kernel_{kind}_{side}_momentum_{index}")
+    } else {
+        format!("{prefix}kernel_{kind}_{side}_{index}")
+    }
+}
+
+/// `compiler_kernels._remap_kernel_symbols`: the input symbols of kernel
+/// `kind` (named `prefix` + tail, the model's registry) renamed to kind 0,
+/// the sides exchanged with `swap`. As in Python, a tail found under another
+/// namespace names the registry symbol, which is then absent (no change).
+fn remap(expression: &Atom, kind: i64, prefix: &str, swap: bool) -> RusticolResult<Atom> {
+    let mut found = BTreeSet::new();
+    for symbol in expression.get_all_symbols(false) {
+        if let Some((symbol_kind, left, momentum, index)) = tagged(symbol.get_name())
+            && symbol_kind == kind
+        {
+            found.insert((left, momentum, index));
         }
     }
+    if found.is_empty() {
+        return Ok(expression.clone());
+    }
+    let mut replacements = Vec::with_capacity(found.len());
+    for (left, momentum, index) in found {
+        let old = parse(&kernel_symbol(prefix, kind, left, momentum, index))?;
+        let new = parse(&kernel_symbol(prefix, 0, left != swap, momentum, index))?;
+        replacements.push(Replacement::new(old.to_pattern(), new.to_pattern()));
+    }
+    Ok(expression.replace_multiple(&replacements))
+}
+
+/// `compiler_kernels._replace_expression_symbols`: one replacement after the
+/// other, in order.
+fn resolve(expression: Atom, derived: &[(Atom, Atom)]) -> Atom {
+    let mut result = expression;
+    for (symbol, value) in derived {
+        result = result.replace(symbol.to_pattern()).with(value.to_pattern());
+    }
+    result
+}
+
+fn key_of(input: &KernelKeyInput, prefix: &str) -> RusticolResult<(String, KernelProofInput)> {
+    let derived = input
+        .derived
+        .iter()
+        .map(|(symbol, value)| Ok((parse(symbol)?, parse(value)?)))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let mut coupling = resolve(parse(&input.coupling)?, &derived);
+    if input.normalization_power != 0 {
+        coupling = coupling * parse(&format!("2^(-{}/2)", input.normalization_power))?;
+    }
+    let mut components: [Vec<String>; 2] = [Vec::new(), Vec::new()];
+    let parsed = input
+        .components
+        .iter()
+        .map(|component| parse(component))
+        .collect::<RusticolResult<Vec<_>>>()?;
+    for (order, swap) in [(0, false), (1, true)] {
+        for component in &parsed {
+            components[order].push(
+                resolve(remap(component, input.kind, prefix, swap)?, &derived)
+                    .to_canonical_string(),
+            );
+        }
+    }
+    let coupling = coupling.to_canonical_string();
+    // json.dumps([dimensions, coupling, *components], separators=(",", ":")).
+    let [left, right, output] = input.dimensions;
+    let mut json = format!("[[{left},{right},{output}],");
+    json_string(&coupling, &mut json);
+    for strings in &components {
+        json.push_str(",[");
+        for (index, text) in strings.iter().enumerate() {
+            if index > 0 {
+                json.push(',');
+            }
+            json_string(text, &mut json);
+        }
+        json.push(']');
+    }
+    json.push(']');
+    let digest = Sha256::digest(json.as_bytes());
+    let mut key = String::with_capacity(64);
+    for byte in digest {
+        let _ = write!(key, "{byte:02x}");
+    }
+    Ok((
+        key,
+        KernelProofInput {
+            dimensions: input.dimensions,
+            coupling,
+            components,
+        },
+    ))
+}
+
+fn pool(threads: Option<usize>) -> RusticolResult<rayon::ThreadPool> {
     // Symbolica state is touched on the workers: they hold the key.
     let mut builder =
         rayon::ThreadPoolBuilder::new().start_handler(|_| crate::licence::unlock_thread());
     if let Some(threads) = threads {
         builder = builder.num_threads(threads.max(1));
     }
-    let pool = builder
+    builder
         .build()
-        .map_err(|error| RusticolError::internal(error.to_string()))?;
-    pool.install(|| inputs.par_iter().map(prove).collect())
+        .map_err(|error| RusticolError::internal(error.to_string()))
+}
+
+/// Per kernel its proof key, and the proofs of the distinct keys of
+/// `inputs` not in `known`, in first-occurrence order (`prefix`: the model's
+/// kernel symbol namespace, e.g. `model_sm::compiler::`).
+pub fn kernel_equivalence(
+    inputs: &[KernelKeyInput],
+    prefix: &str,
+    known: &HashSet<String>,
+    threads: Option<usize>,
+) -> RusticolResult<(Vec<String>, Vec<(String, KernelProof)>)> {
+    let pool = pool(threads)?;
+    let keyed = pool.install(|| {
+        inputs
+            .par_iter()
+            .map(|input| key_of(input, prefix))
+            .collect::<RusticolResult<Vec<_>>>()
+    })?;
+    let mut seen = HashSet::new();
+    let mut missing = Vec::new();
+    let mut keys = Vec::with_capacity(keyed.len());
+    for (key, item) in keyed {
+        if !known.contains(&key) && seen.insert(key.clone()) {
+            missing.push((key.clone(), item));
+        }
+        keys.push(key);
+    }
+    let proofs = pool.install(|| {
+        missing
+            .par_iter()
+            .map(|(key, item)| prove(item).map(|proof| (key.clone(), proof)))
+            .collect::<RusticolResult<Vec<_>>>()
+    })?;
+    Ok((keys, proofs))
 }
 
 #[cfg(test)]
@@ -250,5 +419,20 @@ mod tests {
         assert_eq!(json_token("a\"b\\c"), "\"a\\\"b\\\\c\"");
         assert_eq!(json_token("\n\t\u{1}\u{7f}"), "\"\\n\\t\\u0001\\u007f\"");
         assert_eq!(json_token("é𝑖"), "\"\\u00e9\\ud835\\udc56\"");
+    }
+
+    #[test]
+    fn kernel_symbol_tails() {
+        assert_eq!(
+            tagged("model_m::compiler::kernel_12_left_momentum_3"),
+            Some((12, true, true, 3))
+        );
+        assert_eq!(
+            tagged("model_m::compiler::kernel_0_right_7"),
+            Some((0, false, false, 7))
+        );
+        assert_eq!(tagged("model_m::compiler::kernel_1_up_7"), None);
+        assert_eq!(tagged("model_m::compiler::kernel_x_left_7"), None);
+        assert_eq!(tagged("model_m::compiler::kernel_1_left_"), None);
     }
 }
