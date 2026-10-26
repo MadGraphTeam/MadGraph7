@@ -4146,6 +4146,35 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
 
 
+    @staticmethod
+    def get_pdf_lines_vec_flavor_loop(processes, all_flv, pdf_product):
+        """Fortran lines filling ALL_PD for the vector DSIG: for each warp,
+        only the rows of the flavor IFLAV_VEC(CURR_WARP) are filled (as
+        PD in the scalar code), NB_PSEL_WARP(CURR_WARP) is their number.
+        pdf_product(proc, one_flv) returns the lines setting
+        ALL_PD(IPROC,IVEC); an empty list means 1d0 (decays)."""
+
+        lines = ["ALL_PD(:,:) = 0d0",
+                 "DO CURR_WARP=1, NB_WARP_USED",
+                 "IFLAV = IFLAV_VEC(CURR_WARP)",
+                 "DO IWARP=1, WARP_SIZE",
+                 "IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP",
+                 "IPROC = 0"]
+        for proc in processes:
+            process_line = proc.base_string()
+            for nb_flavor, grp in enumerate(all_flv):
+                lines.append("IF (IFLAV.EQ.%d) THEN" % (nb_flavor + 1))
+                for one_flv in grp:
+                    lines.append("IPROC=IPROC+1 ! " + process_line)
+                    lines += pdf_product(proc, one_flv) or \
+                        ["ALL_PD(IPROC,IVEC)=1d0"]
+                    lines.append("ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))")
+                lines.append("ENDIF")
+        lines += ["ENDDO ! IWARP LOOP",
+                  "NB_PSEL_WARP(CURR_WARP) = IPROC",
+                  "ENDDO ! CURRWARP LOOP"]
+        return "\n".join(lines) + "\n"
+
     def get_pdf_lines(self, matrix_element, ninitial, subproc_group = False, vector=False):
         """Generate the PDF lines for the auto_dsig.f file"""
 
@@ -4189,19 +4218,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 # Close the vector loops opened above (no PDFs to fetch for decays)
                 pdf_lines += "ENDDO ! IWARP LOOP\n"
                 pdf_lines += "ENDDO ! CURRWARP LOOP\n"
-                # Set ALL_PD for ALL flavor combinations across all IVEC.
-                # No iflav conditioning here (matches ninitial==2 vector pattern):
-                # IPSEL will randomly select the flavor, then GET_FLAVOR maps it.
-                pdf_lines += "ALL_PD(0,:) = 0d0\nIPROC = 0\n"
-                for i, proc in enumerate(processes):
-                    process_line = proc.base_string()
-                    for grp in all_flv:
-                        for one_flv in grp:
-                            pdf_lines += "IPROC=IPROC+1 ! " + process_line
-                            pdf_lines += "\nDO IVEC=1, VECSIZE_USED\n"
-                            pdf_lines += "ALL_PD(IPROC,IVEC)=1d0\n"
-                            pdf_lines += "ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))\n"
-                            pdf_lines += "ENDDO\n"
+                # Same rows as the scalar code: only those of the flavor of
+                # the warp, IPSEL then selects one of them
+                pdf_lines += self.get_pdf_lines_vec_flavor_loop(
+                    processes, all_flv, lambda proc, one_flv: [])
             else:
                 pdf_lines = "PD(0) = 0d0\nIPROC = 0\n"
                 for i, proc in enumerate(processes):
@@ -4424,43 +4444,42 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 # Add up PDFs for the different initial state particles
                 pdf_lines += "ENDDO ! IWARP LOOP\n"
                 pdf_lines += "ENDDO ! CURRWARP LOOP\n"
-                pdf_lines = pdf_lines + "ALL_PD(0,:) = 0d0\nIPROC = 0\n"
-                for proc in processes:
-                    # one entry per flavor row of this process
-                    for nb_flavor in range(len(matrix_element.get_external_flavors())):
-                        comp_list = []
-                        process_line = proc.base_string()
-                        pdf_lines = pdf_lines + "IPROC=IPROC+1 ! " + process_line
-                        pdf_lines += '\n   DO IVEC=1, VECSIZE_USED'
-                        pdf_lines = pdf_lines + "\nALL_PD(IPROC,IVEC)="
-                        for ibeam in [1, 2]:
-                            initial_state = proc.get_initial_pdg(ibeam)
-                            if abs(initial_state) in model.get('merged_particles'):
-                                # the flavor row fixes the beam flavor (it
-                                # honours the leg restriction; a union row
-                                # may not be processes[0]'s)
-                                sign = 1 if initial_state > 0 else -1
-                                initial_state = sign * matrix_element.get_external_flavors()[nb_flavor][ibeam-1]
 
-                            if initial_state in list(pdf_codes.keys()):
-                                pdf_lines = pdf_lines + "%s%d(IVEC)*" % \
-                                            (pdf_codes[initial_state], ibeam)
-                                comp_list.append("%s%d" % (pdf_codes[initial_state], ibeam))
-                            else:
-                                pdf_lines = pdf_lines + "1d0*"
-                                comp_list.append("DUMMY")
-                        # Remove last "*" from pdf_lines
-                        pdf_lines = pdf_lines[:-1] + "\n"
-                        # this is for the lepton collisions with electron luminosity 
-                        # put here "%s%d_components(i_ee)*%s%d_components(i_ee)"
-                        if dressed_lep:
-                            pdf_lines += "if (pdlabel.eq.'dressed')" + \
-                                "ALL_PD(IPROC,IVEC)=ee_comp_prod(%s_components(1,IVEC),%s_components(1,IVEC))\n" % \
-                                tuple(comp_list)
-                        pdf_lines = pdf_lines + "ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))\n"
-                        pdf_lines += '\n    ENDDO\n'
-                        if not dressed_lep:
-                            ee_pdf_definition_lines = ""
+                def pdf_product(proc, one_flv):
+                    """lines setting ALL_PD(IPROC,IVEC) for this flavor row"""
+                    comp_list = []
+                    line = "ALL_PD(IPROC,IVEC)="
+                    for ibeam in [1, 2]:
+                        initial_state = proc.get_initial_pdg(ibeam)
+                        if abs(initial_state) in model.get('merged_particles'):
+                            # the flavor row fixes the beam flavor (it
+                            # honours the leg restriction; a union row
+                            # may not be processes[0]'s)
+                            sign = 1 if initial_state > 0 else -1
+                            initial_state = sign * one_flv[ibeam-1]
+
+                        if initial_state in list(pdf_codes.keys()):
+                            line += "%s%d(IVEC)*" % (pdf_codes[initial_state], ibeam)
+                            comp_list.append("%s%d" % (pdf_codes[initial_state], ibeam))
+                        else:
+                            line += "1d0*"
+                            comp_list.append("DUMMY")
+                    # Remove last "*"
+                    lines = [line[:-1]]
+                    # this is for the lepton collisions with electron luminosity
+                    if dressed_lep:
+                        lines.append("if (pdlabel.eq.'dressed')" + \
+                            "ALL_PD(IPROC,IVEC)=ee_comp_prod(%s_components(1,IVEC),%s_components(1,IVEC))" % \
+                            tuple(comp_list))
+                    return lines
+
+                # Same rows as the scalar code: only those of the flavor of
+                # the warp, in leshouche order, IPSEL then selects one of them
+                all_flv = list(matrix_element.get_external_flavors_with_iden())
+                pdf_lines += self.get_pdf_lines_vec_flavor_loop(
+                    processes, all_flv, pdf_product)
+                if not dressed_lep:
+                    ee_pdf_definition_lines = ""
 
         # Remove last line break from the return variables                
         if vector:
