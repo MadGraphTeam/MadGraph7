@@ -212,7 +212,8 @@ public:
         virtual_detail::check(rusticol_virtual_evaluate_correlated(handle_.get(), &request, &p));
         return CorrelatedVirtualEvaluation(p);
     }
-    // "all" (default) or "none" (plan v4: finite part, poles quiet NaNs).
+    // "all" (default), or for plan v4 "none" (finite part, poles quiet NaNs),
+    // "uv" (the bare loop's UV poles) or "ir" (the renormalised IR poles).
     void set_poles(const std::string &poles) {
         virtual_detail::check(rusticol_virtual_set_poles(handle_.get(), poles.c_str()));
     }

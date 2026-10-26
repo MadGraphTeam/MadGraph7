@@ -448,6 +448,11 @@ pub const LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER: &str = "point-inputs/parameter
 /// The interaction kernels' saved evaluators and plane applications,
 /// `kernel-0.state` / `kernel-0.symjit` onwards.
 pub const LOOP_V2_NATIVE_KERNEL_PREFIX: &str = "point-inputs/kernel-";
+/// The certified-scaleless companion's tree program (the "uv" and "ir" pole
+/// selections run it): the same members under this prefix
+/// (`tree-program.json.zlib`, `parameters.state`, `parameters.symjit`,
+/// `kernel-0.state` / `kernel-0.symjit` onwards).
+pub const LOOP_V2_NATIVE_SCALELESS_PREFIX: &str = "point-inputs/scaleless/";
 
 /// The native point inputs of a plan v4 process
 /// ([`LOOP_V2_NATIVE_POINT_INPUTS`]): the assembly record and the tree
@@ -458,6 +463,20 @@ pub const LOOP_V2_NATIVE_KERNEL_PREFIX: &str = "point-inputs/kernel-";
 #[cfg(feature = "loop-v2")]
 pub struct LoopV2NativeInputs {
     pub record_json: Vec<u8>,
+    pub trees_json: Vec<u8>,
+    pub evaluators: Vec<Vec<u8>>,
+    pub planes: Vec<Vec<u8>>,
+    /// The certified-scaleless companion's tree program
+    /// ([`LOOP_V2_NATIVE_SCALELESS_PREFIX`]), stored exactly when the
+    /// process stores its companion plan (`scaleless_plan_json`).
+    pub scaleless: Option<LoopV2NativeTrees>,
+}
+
+/// One stored tree program: its JSON and its kernels' and parameter
+/// program's saved exact evaluators and plane applications (the
+/// `loop_v2::trees::TreeProgram::load` order).
+#[cfg(feature = "loop-v2")]
+pub struct LoopV2NativeTrees {
     pub trees_json: Vec<u8>,
     pub evaluators: Vec<Vec<u8>>,
     pub planes: Vec<Vec<u8>>,
@@ -751,32 +770,50 @@ pub fn read_loop_v2_native_inputs(
             })?;
         Ok(json)
     };
-    let mut evaluators = Vec::new();
-    let mut planes = Vec::new();
-    loop {
-        let state = format!("{LOOP_V2_NATIVE_KERNEL_PREFIX}{}.state", evaluators.len());
-        if reader.member(&state).is_err() {
-            break;
+    // The tree program under `prefix` (`point-inputs/` or the companion's).
+    let trees = |prefix: &str| -> RusticolResult<LoopV2NativeTrees> {
+        let mut evaluators = Vec::new();
+        let mut planes = Vec::new();
+        loop {
+            let state = format!("{prefix}kernel-{}.state", evaluators.len());
+            if reader.member(&state).is_err() {
+                break;
+            }
+            let plane = format!("{prefix}kernel-{}.symjit", evaluators.len());
+            evaluators.push(member(&state, PacbinMemberKind::SymbolicaExactState)?);
+            planes.push(member(&plane, PacbinMemberKind::SymjitApplication)?);
         }
-        let plane = format!("{LOOP_V2_NATIVE_KERNEL_PREFIX}{}.symjit", evaluators.len());
-        evaluators.push(member(&state, PacbinMemberKind::SymbolicaExactState)?);
-        planes.push(member(&plane, PacbinMemberKind::SymjitApplication)?);
-    }
-    evaluators.push(member(
-        LOOP_V2_NATIVE_PARAMETERS_MEMBER,
-        PacbinMemberKind::SymbolicaExactState,
-    )?);
-    planes.push(member(
-        LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER,
-        PacbinMemberKind::SymjitApplication,
-    )?);
+        evaluators.push(member(
+            &format!("{prefix}parameters.state"),
+            PacbinMemberKind::SymbolicaExactState,
+        )?);
+        planes.push(member(
+            &format!("{prefix}parameters.symjit"),
+            PacbinMemberKind::SymjitApplication,
+        )?);
+        Ok(LoopV2NativeTrees {
+            trees_json: inflate(&format!("{prefix}tree-program.json.zlib"))?,
+            evaluators,
+            planes,
+        })
+    };
+    let main = trees(LOOP_V2_NATIVE_INPUTS_PREFIX)?;
+    let scaleless = match loaded.scaleless_plan_json {
+        Some(_) => Some(trees(LOOP_V2_NATIVE_SCALELESS_PREFIX)?),
+        None => None,
+    };
     Ok(Some(LoopV2NativeInputs {
         record_json: inflate(LOOP_V2_NATIVE_RECORD_MEMBER)?,
-        trees_json: inflate(LOOP_V2_NATIVE_TREES_MEMBER)?,
-        evaluators,
-        planes,
+        trees_json: main.trees_json,
+        evaluators: main.evaluators,
+        planes: main.planes,
+        scaleless,
     }))
 }
+
+/// The prefix of the process's own tree program members.
+#[cfg(feature = "loop-v2")]
+const LOOP_V2_NATIVE_INPUTS_PREFIX: &str = "point-inputs/";
 
 #[cfg(feature = "loop-v2")]
 fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()> {

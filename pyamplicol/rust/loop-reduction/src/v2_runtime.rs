@@ -29,19 +29,29 @@
 //!    `virtual = (bare + uv) + r2`. Results are therefore bitwise those of
 //!    `pyamplicol.Runtime.load(...).evaluate` on the same exact inputs.
 //!
-//! Catani's pole prediction is not formed (the native lane has none), and
-//! the stored correlated and resolved columns are not served here (the
-//! Python API evaluates them, without regenerating). The pole selection is
-//! all or none (finite-only); the split selections ("uv", "ir") go through
-//! the Python API.
+//! Every pole selection of REQUIREMENTS_ADDENDUM I is served ([`V2Poles`]):
+//! "all", "none" (finite-only: the pole-only tree and counterterm work and
+//! the reduction's pole columns skipped natively) and the split selections
+//! "uv" and "ir". A split selection reduces every lane with its UV residue
+//! (`[finite, 1/ε, 1/ε², 1/ε_UV]`) and runs the stored companion of the
+//! certified-scaleless families (its plan and tree program, read with the
+//! process; only their UV residues are kept, their combined integrals
+//! vanishing), then splits every component by origin as
+//! `loops/v2/poles.split_sector` / `select_sector` do, in the same binary64
+//! operations and order (`assemble._PointEvaluation.set_lanes` and
+//! `_assemble`): bitwise the Python API's values. Catani's operator is not
+//! needed for the selection (it is the Python API's separate IR-pole
+//! prediction, `PointResult.ir_poles`, not a part of the values), so it is not
+//! formed here. The stored correlated and resolved columns are not served
+//! here (the Python API evaluates them, without regenerating).
 
 use crate::runtime::{PoleSelection, V2Reducer, V2ReductionBackend};
 use rusticol_core::VerifiedArtifact;
 use rusticol_core::loop_artifact::{
-    LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact, LoopV2ExecutionMetadata,
+    LOOP_V2_RUNTIME_CAPABILITY, LoadedLoopV2Artifact, LoopV2ExecutionMetadata, LoopV2NativeTrees,
     load_loop_v2_artifact, read_loop_v2_native_inputs,
 };
-use rusticol_core::loop_execution::v2::{Poles, V2Executor, V2Options};
+use rusticol_core::loop_execution::v2::{LaneKey, Poles, V2Executor, V2Options};
 use rusticol_core::loop_v2::dress::{V2Batch, parse_rational};
 use rusticol_core::loop_v2::trees::{TreeProgram, TreeRuntime};
 use rusticol_core::{RusticolError, RusticolResult};
@@ -103,6 +113,91 @@ struct NativeRecord {
 /// poles), or the executor's failures.
 pub type V2Point = Result<(Vec<f64>, Vec<Vec<f64>>), Vec<String>>;
 
+/// The pole selection of an evaluation (REQUIREMENTS_ADDENDUM I,
+/// `loops/v2/poles.py`): the renormalised virtual's poles (`All`), the
+/// finite part alone (`None`), the bare loop's UV poles (`Uv`: the virtual's
+/// poles are the unrenormalised amplitude's UV poles, its finite part the
+/// renormalised one's) or the renormalised virtual's IR poles (`Ir`). The
+/// finite part is identical in every selection.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum V2Poles {
+    #[default]
+    All,
+    None,
+    Uv,
+    Ir,
+}
+
+impl V2Poles {
+    fn poles(self) -> bool {
+        self != Self::None
+    }
+
+    fn split(self) -> bool {
+        matches!(self, Self::Uv | Self::Ir)
+    }
+
+    /// The executor's lane columns.
+    fn lanes(self) -> Poles {
+        match self {
+            Self::All => Poles::All,
+            Self::None => Poles::None,
+            Self::Uv | Self::Ir => Poles::Split,
+        }
+    }
+}
+
+/// The certified-scaleless companion of a process (its stored plan and tree
+/// program), which only the split selections run; built on first use.
+struct Companion {
+    trees: TreeProgram,
+    runtime: TreeRuntime<f64>,
+    executor: V2Executor,
+}
+
+/// Laurent coefficients `[finite, 1/ε, 1/ε²]` added coefficient-wise
+/// (`assemble.Laurent.__add__`).
+fn add(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+/// The selected virtual of one sector in a split selection, from its
+/// combined bare Laurent `bare`, the bare loop's UV Laurent `bare_uv`
+/// (finite part unused) and the counterterm components: `poles.split_sector`
+/// then `poles.select_sector`, operation for operation.
+fn split_virtual(
+    mode: V2Poles,
+    bare: [f64; 3],
+    bare_uv: [f64; 3],
+    r2: [f64; 3],
+    uv_local: [f64; 3],
+    fields: [f64; 3],
+) -> [f64; 3] {
+    // The UV (single, double) poles per component; the field factors carry
+    // what makes the renormalised virtual UV finite.
+    let field_uv = [
+        -(bare_uv[1] + uv_local[1] + r2[1]),
+        -(bare_uv[2] + uv_local[2] + r2[2]),
+    ];
+    let part = |value: [f64; 3], uv: [f64; 2]| -> [f64; 3] {
+        match mode {
+            V2Poles::Uv => [value[0], uv[0], uv[1]],
+            _ => [value[0], value[1] - uv[0], value[2] - uv[1]],
+        }
+    };
+    let bare_part = part(bare, [bare_uv[1], bare_uv[2]]);
+    let r2_part = part(r2, [r2[1], r2[2]]);
+    let local_part = part(uv_local, [uv_local[1], uv_local[2]]);
+    let field_part = part(fields, field_uv);
+    let uv = add(local_part, field_part);
+    let virtual_part = add(add(bare_part, uv), r2_part);
+    match mode {
+        // The bare loop's UV poles with the renormalised finite part.
+        V2Poles::Uv => [virtual_part[0], bare_part[1], bare_part[2]],
+        _ => virtual_part,
+    }
+}
+
 /// A plan v4 process with native point inputs, evaluated in binary64.
 pub struct V2Runtime {
     artifact: LoadedLoopV2Artifact,
@@ -111,6 +206,12 @@ pub struct V2Runtime {
     runtime: TreeRuntime<f64>,
     executor: V2Executor,
     backend: V2ReductionBackend,
+    /// The stored companion's tree program (none: the process has no
+    /// certified-scaleless families) and, once a split selection ran, the
+    /// companion itself.
+    scaleless_inputs: Option<LoopV2NativeTrees>,
+    scaleless: Option<Companion>,
+    threads: Option<usize>,
     /// The caller's model parameter values (exact).
     parameters: BTreeMap<String, Rational>,
     /// Per declared Born order its squared Born order in the tree program
@@ -159,6 +260,11 @@ impl V2Runtime {
         }
         let runtime = trees.runtime(&0.0)?;
         let executor = V2Executor::new(program, V2_LANES, threads)?;
+        if native.scaleless.is_some() != artifact.scaleless_program.is_some() {
+            return Err(invalid(
+                "the companion's tree program is stored exactly with its plan",
+            ));
+        }
         // The Python API's binary64 backend (`v2_executor.backend_of`).
         let reducer =
             V2Reducer::new("double", None, "fast", true).map_err(|e| invalid(e.to_string()))?;
@@ -203,10 +309,54 @@ impl V2Runtime {
                 reducer,
                 masters: PoleSelection::BOTH,
             },
+            scaleless_inputs: native.scaleless,
+            scaleless: None,
+            threads,
             parameters: BTreeMap::new(),
             born_index,
             sector_index,
         })
+    }
+
+    /// The companion of the certified-scaleless families, built on its
+    /// first use (`plan_export.NativeExecutor.scaleless`): its plan's
+    /// columns are the process's sectors.
+    fn companion(&mut self) -> RusticolResult<Option<&mut Companion>> {
+        if self.scaleless.is_none() {
+            let (Some(stored), Some(program)) =
+                (&self.scaleless_inputs, &self.artifact.scaleless_program)
+            else {
+                return Ok(None);
+            };
+            if program.columns != self.record.sectors.len() {
+                return Err(invalid("the companion's columns are not the sectors"));
+            }
+            let trees = TreeProgram::load(
+                &stored.trees_json,
+                &stored.evaluators,
+                Some(&stored.planes),
+                program,
+            )?;
+            if trees.parameter_names() != self.trees.parameter_names() {
+                return Err(invalid(
+                    "the companion's model parameters differ from the process's",
+                ));
+            }
+            let runtime = trees.runtime(&0.0)?;
+            let executor = V2Executor::new(program.clone(), V2_LANES, self.threads)?;
+            self.scaleless = Some(Companion {
+                trees,
+                runtime,
+                executor,
+            });
+        }
+        Ok(self.scaleless.as_mut())
+    }
+
+    /// Whether the process stores the companion of certified-scaleless
+    /// families (the split selections run it).
+    pub fn has_companion(&self) -> bool {
+        self.scaleless_inputs.is_some()
     }
 
     pub fn metadata(&self) -> &LoopV2ExecutionMetadata {
@@ -280,13 +430,14 @@ impl V2Runtime {
 
     /// Evaluate a batch: `momenta` holds per point the physical momenta of
     /// every leg (`4 × legs` exact decimals, label order), `scales` mu_R² per
-    /// point. Points fail alone.
+    /// point, `mode` the pole selection. Points fail alone.
     pub fn evaluate(
         &mut self,
         momenta: &[Vec<Rational>],
         scales: &[Rational],
-        poles: bool,
+        mode: V2Poles,
     ) -> RusticolResult<Vec<V2Point>> {
+        let poles = mode.poles();
         let legs = self.record.legs.len();
         if momenta.len() != scales.len() {
             return Err(invalid("one mu_R² per point"));
@@ -327,7 +478,7 @@ impl V2Runtime {
             &zero,
         )?;
         let batch = V2Batch {
-            momenta: incoming,
+            momenta: incoming.clone(),
             scales: scales.to_vec(),
             masses: bound.masses,
             // The on-shell external invariants (as the Python binding's).
@@ -337,7 +488,7 @@ impl V2Runtime {
             born: inputs.born,
         };
         let options = V2Options {
-            poles: if poles { Poles::All } else { Poles::None },
+            poles: mode.lanes(),
             ..V2Options::default()
         };
         let (results, _report) =
@@ -349,11 +500,48 @@ impl V2Runtime {
         let counterterms = inputs
             .counterterms
             .ok_or_else(|| invalid("the tree program forms no counterterm components"))?;
+        // The split selections also run the companion of the certified-
+        // scaleless families on its own tree inputs (schedule B), for the UV
+        // residues of its lanes (`plan_export.NativeExecutor.reduce`).
+        let twin_results = if mode.split() && self.companion()?.is_some() {
+            let twin = self.scaleless.as_mut().expect("the companion is built");
+            let bound = twin.trees.bind(&mut twin.runtime, &values, scales, &zero)?;
+            let twin_inputs = twin.trees.inputs(
+                &mut twin.runtime,
+                twin.executor.plan(),
+                &bound.trees,
+                &incoming,
+                &bound.constants,
+                true,
+                &zero,
+            )?;
+            let twin_batch = V2Batch {
+                momenta: incoming,
+                scales: scales.to_vec(),
+                masses: bound.masses,
+                leg_masses: bound.leg_masses,
+                constants: bound.constants,
+                block_rows: twin_inputs.block_rows,
+                born: twin_inputs.born,
+            };
+            let (twin_results, _report) =
+                twin.executor
+                    .evaluate(&twin_batch, &zero, &mut self.backend, options)?;
+            if twin_results.len() != results.len() {
+                return Err(invalid("the companion evaluated another batch"));
+            }
+            Some(twin_results)
+        } else {
+            None
+        };
         let width = if poles { 3 } else { 1 };
+        let lane_width = mode.lanes().width();
         let average = self.record.average as f64;
         // Python: numbers.pair(0, 1) * (1 / (16 * pi * pi * average)).
         let factor =
             1.0 / (LOOP_FACTOR_DENOMINATOR * std::f64::consts::PI * std::f64::consts::PI * average);
+        // 2 * (complex(0, factor) * sum).real
+        let loop_factor = |(re, im): (f64, f64)| 2.0 * (0.0 * re - factor * im);
         let sectors = self.record.sectors.len();
         let outputs: Vec<(String, usize, i32)> = self
             .record
@@ -371,21 +559,61 @@ impl V2Runtime {
                 Ok((component.clone(), s, *power))
             })
             .collect::<RusticolResult<_>>()?;
+        let zero_pair = (0.0, 0.0);
         let mut out = Vec::with_capacity(results.len());
         for (index, result) in results.into_iter().enumerate() {
-            if !result.failures.is_empty() {
-                out.push(Err(result.failures));
+            let twin = twin_results.as_ref().map(|twin| &twin[index]);
+            let mut failures = result.failures;
+            if let Some(twin) = twin {
+                failures.extend(twin.failures.iter().cloned());
+            }
+            if !failures.is_empty() {
+                out.push(Err(failures));
                 continue;
             }
-            // Bare per sector: the lanes summed in the executor's order.
+            // Per sector the lanes' combined Laurent (and in a split
+            // selection their UV Laurent `(finite, 1/ε_UV, 0)`), summed in
+            // the executor's order, the companion's lanes after the
+            // process's (`set_lanes`: their combined integrals vanish, only
+            // their UV residues are kept).
             let mut sums: Vec<Option<Vec<(f64, f64)>>> = vec![None; sectors];
-            for (key, value) in &result.families {
-                if key.column >= sectors || value.len() != width {
+            let mut uv_sums: Vec<Option<[(f64, f64); 3]>> = vec![None; sectors];
+            let mut lanes: Vec<(&LaneKey, &[_], bool)> = result
+                .families
+                .iter()
+                .map(|(key, value)| (key, value.as_slice(), false))
+                .collect();
+            if let Some(twin) = twin {
+                lanes.extend(
+                    twin.families
+                        .iter()
+                        .map(|(key, value)| (key, value.as_slice(), true)),
+                );
+            }
+            for (key, value, vanishing) in lanes {
+                if key.column >= sectors || value.len() != lane_width {
                     return Err(invalid("an executor lane outside the record's sectors"));
                 }
-                let terms = sums[key.column].get_or_insert_with(|| vec![(0.0, 0.0); width]);
-                for (term, z) in terms.iter_mut().zip(value) {
-                    *term = (term.0 + z.re, term.1 + z.im);
+                let terms = sums[key.column].get_or_insert_with(|| vec![zero_pair; width]);
+                for (k, term) in terms.iter_mut().enumerate() {
+                    let (re, im) = if vanishing {
+                        zero_pair
+                    } else {
+                        (value[k].re, value[k].im)
+                    };
+                    *term = (term.0 + re, term.1 + im);
+                }
+                if mode.split() {
+                    let finite = if vanishing {
+                        zero_pair
+                    } else {
+                        (value[0].re, value[0].im)
+                    };
+                    let uv = (value[3].re, value[3].im);
+                    let terms = uv_sums[key.column].get_or_insert([zero_pair; 3]);
+                    for (term, (re, im)) in terms.iter_mut().zip([finite, uv, zero_pair]) {
+                        *term = (term.0 + re, term.1 + im);
+                    }
                 }
             }
             // (counterterm component, sector, power) -> value.
@@ -399,19 +627,35 @@ impl V2Runtime {
                     .copied()
                     .unwrap_or(0.0)
             };
+            let laurent = |name: &str, s: usize| -> [f64; 3] {
+                [
+                    component(name, s, 0),
+                    component(name, s, 1),
+                    component(name, s, 2),
+                ]
+            };
             let mut virtual_values = Vec::with_capacity(self.sector_index.len());
             for &s in &self.sector_index {
-                let mut laurent = Vec::with_capacity(width);
-                for k in 0..width {
-                    // 2 * (complex(0, factor) * sum).real
-                    let bare = sums[s].as_ref().map_or(0.0, |terms| {
-                        let (re, im) = terms[k];
-                        2.0 * (0.0 * re - factor * im)
-                    });
-                    let uv = component("uv_local", s, k) + component(FIELD_COMPONENT, s, k);
-                    laurent.push(bare + uv + component("r2", s, k));
+                let bare = |k: usize| sums[s].as_ref().map_or(0.0, |terms| loop_factor(terms[k]));
+                if mode.split() {
+                    let bare_uv = |k: usize| uv_sums[s].map_or(0.0, |terms| loop_factor(terms[k]));
+                    let selected = split_virtual(
+                        mode,
+                        [bare(0), bare(1), bare(2)],
+                        [bare_uv(0), bare_uv(1), bare_uv(2)],
+                        laurent("r2", s),
+                        laurent("uv_local", s),
+                        laurent(FIELD_COMPONENT, s),
+                    );
+                    virtual_values.push(selected.to_vec());
+                    continue;
                 }
-                virtual_values.push(laurent);
+                let mut values = Vec::with_capacity(width);
+                for k in 0..width {
+                    let uv = component("uv_local", s, k) + component(FIELD_COMPONENT, s, k);
+                    values.push(bare(k) + uv + component("r2", s, k));
+                }
+                virtual_values.push(values);
             }
             let born_values = self
                 .born_index
@@ -492,6 +736,38 @@ mod tests {
         // A field the assembly needs is required.
         let missing = json.replace(r#""average": 256,"#, "");
         assert!(serde_json::from_str::<NativeRecord>(&missing).is_err());
+    }
+
+    #[test]
+    fn split_selections_split_every_component_as_the_python_api() {
+        // Exactly representable values, so the identities below are exact.
+        let bare = [10.0, -6.0, 4.0];
+        let bare_uv = [10.0, 3.0, 0.0];
+        let r2 = [0.5, 0.0, 0.0];
+        let uv_local = [1.0, -2.0, 0.0];
+        let fields = [0.25, 0.75, 0.0];
+        let finite = bare[0] + (uv_local[0] + fields[0]) + r2[0];
+        let uv = split_virtual(V2Poles::Uv, bare, bare_uv, r2, uv_local, fields);
+        let ir = split_virtual(V2Poles::Ir, bare, bare_uv, r2, uv_local, fields);
+        // The finite part is the renormalised virtual's in every selection.
+        assert_eq!(uv[0], finite);
+        assert_eq!(ir[0], finite);
+        // "uv": the bare loop's UV poles (the double pole is infrared).
+        assert_eq!(&uv[1..], &[3.0, 0.0]);
+        // "ir": the renormalised virtual's poles less their UV parts; the
+        // field factors make the renormalised virtual UV finite, so they are
+        // its combined poles: bare + uv_local + fields + r2.
+        let combined = [
+            bare[1] + (uv_local[1] + fields[1]) + r2[1],
+            bare[2] + (uv_local[2] + fields[2]) + r2[2],
+        ];
+        assert_eq!(&ir[1..], &combined);
+        // A finite-only or combined selection is not split here.
+        assert!(!V2Poles::All.split() && !V2Poles::None.split());
+        assert!(V2Poles::Uv.split() && V2Poles::Ir.split());
+        assert_eq!(V2Poles::Ir.lanes(), Poles::Split);
+        assert_eq!(V2Poles::None.lanes(), Poles::None);
+        assert!(!V2Poles::None.poles() && V2Poles::Uv.poles());
     }
 
     #[test]

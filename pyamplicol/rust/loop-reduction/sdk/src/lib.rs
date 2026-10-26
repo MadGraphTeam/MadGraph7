@@ -10,7 +10,7 @@ use rusticol_core::loop_runtime::LoopRuntimePlan;
 pub use rusticol_core::source_bindings::SourceOverrides;
 use rusticol_core::{RusticolError, RusticolResult};
 use rusticol_loop_reduction::runtime::{Batch, Data};
-use rusticol_loop_reduction::v2_runtime::{V2Runtime, is_v2_artifact};
+use rusticol_loop_reduction::v2_runtime::{V2Poles, V2Runtime, is_v2_artifact};
 use rusticol_loop_reduction::verification::VerificationDiagnostic;
 pub use rusticol_loop_reduction::verification::{ArithmeticSpec, VerificationPolicy};
 use rusticol_loop_reduction::virtual_runtime::VirtualRuntime;
@@ -80,16 +80,20 @@ const V4_ONLY_ORDINARY: &str = "plan v4 SDK runtimes serve ordinary (unresolved)
     rescued evaluations go through the Python API";
 
 /// The poles an ordinary virtual returns (REQUIREMENTS_ADDENDUM I, the
-/// API's `poles` option): every Laurent coefficient, or the finite part
-/// alone, whose pole-only work a plan v4 runtime skips natively (the pole
-/// entries are then quiet NaNs, absent). The split selections ("uv", "ir")
-/// need the companion of the certified-scaleless families and Catani's
-/// operator, which run through the Python API.
+/// API's `poles` option): every Laurent coefficient (`All`), the finite part
+/// alone (`None`, whose pole-only work a plan v4 runtime skips natively; the
+/// pole entries are then quiet NaNs, absent), the bare loop's UV poles
+/// (`Uv`) or the renormalised virtual's IR poles (`Ir`), the split
+/// selections, which run the stored companion of the certified-scaleless
+/// families (`v2_runtime::V2Poles`). The finite part is the same in every
+/// selection. Plan v1-v3 runtimes serve `All` only.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Poles {
     #[default]
     All,
     None,
+    Uv,
+    Ir,
 }
 
 impl Poles {
@@ -97,14 +101,27 @@ impl Poles {
         match text {
             "all" => Ok(Self::All),
             "none" => Ok(Self::None),
-            "uv" | "ir" => Err(invalid(format!(
-                "the SDK serves poles \"all\" or \"none\"; {text:?} (the split \
-                 selections need the scaleless companion and Catani's operator) goes \
-                 through the Python API"
-            ))),
+            "uv" => Ok(Self::Uv),
+            "ir" => Ok(Self::Ir),
             _ => Err(invalid(format!(
-                "poles must be \"all\" or \"none\", not {text:?}"
+                "poles must be \"all\", \"none\", \"uv\" or \"ir\", not {text:?}"
             ))),
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::None => "none",
+            Self::Uv => "uv",
+            Self::Ir => "ir",
+        }
+    }
+    fn v2(self) -> V2Poles {
+        match self {
+            Self::All => V2Poles::All,
+            Self::None => V2Poles::None,
+            Self::Uv => V2Poles::Uv,
+            Self::Ir => V2Poles::Ir,
         }
     }
 }
@@ -234,7 +251,7 @@ impl Runtime {
         self.shape
     }
     /// The pole selection of later evaluations (default all). A plan v4
-    /// runtime serves all and none; plan v1-v3 runtimes evaluate every pole.
+    /// runtime serves all four; plan v1-v3 runtimes evaluate every pole.
     pub fn set_poles(&mut self, poles: Poles) -> RusticolResult<()> {
         if poles != Poles::All && matches!(self.engine, Engine::V3(_)) {
             return Err(invalid(
@@ -268,8 +285,8 @@ impl Runtime {
                 "engine":"v2", "plan_sha256":native.plan_sha256(),
                 "point_inputs":"native-v2",
                 "arithmetic":["double"], "epsilon_powers":[0,-1,-2],
-                "pole_selections":["all","none"],
-                "poles":if self.poles == Poles::All { "all" } else { "none" },
+                "pole_selections":["all","none","uv","ir"],
+                "poles":self.poles.name(),
                 "resolved":false, "correlations":false,
                 "correlation_histories":Vec::<String>::new(),
                 "spin_correlation_classes":Vec::<Vec<usize>>::new(),
@@ -506,7 +523,7 @@ impl Evaluation {
             .iter()
             .map(|x| parse_rational(x))
             .collect::<RusticolResult<Vec<_>>>()?;
-        let points = native.evaluate(&momenta, &scales, poles == Poles::All)?;
+        let points = native.evaluate(&momenta, &scales, poles.v2())?;
         let mut successful_point_ids = Vec::new();
         let mut statuses = Vec::with_capacity(points.len());
         let mut failures = BTreeMap::new();
@@ -535,7 +552,7 @@ impl Evaluation {
             "requested_point_ids":inputs.point_ids,
             "successful_point_ids":successful_point_ids,
             "failures":failures, "verification":[],
-            "r2_strategy":"model", "engine":"v2",
+            "r2_strategy":"model", "engine":"v2", "poles":poles.name(),
             "primary_color_contraction":"direct",
         }))
         .map_err(serialization)?;
@@ -643,13 +660,16 @@ mod tests {
     use symbolica::domains::rational::Rational;
 
     #[test]
-    fn pole_selection_serves_all_or_none_and_names_the_split_route() {
+    fn pole_selection_parses_every_selection_of_the_api() {
         assert_eq!(Poles::default(), Poles::All);
-        assert_eq!(Poles::parse("all").unwrap(), Poles::All);
-        assert_eq!(Poles::parse("none").unwrap(), Poles::None);
-        for split in ["uv", "ir"] {
-            let message = Poles::parse(split).unwrap_err().to_string();
-            assert!(message.contains("Python API"), "{message}");
+        for (text, poles) in [
+            ("all", Poles::All),
+            ("none", Poles::None),
+            ("uv", Poles::Uv),
+            ("ir", Poles::Ir),
+        ] {
+            assert_eq!(Poles::parse(text).unwrap(), poles);
+            assert_eq!(poles.name(), text);
         }
         for other in ["", "All", "finite", "split"] {
             assert!(Poles::parse(other).is_err(), "{other:?}");

@@ -1024,9 +1024,10 @@ type V2ArtifactPoint = (Option<(Vec<f64>, Vec<Vec<f64>>)>, Vec<String>);
 /// no Python generation or assembly, binary64. `momenta` are per point the
 /// physical momenta of every leg (`4 × legs` exact decimal or fraction
 /// strings), `scales` mu_R² per point, `parameters` the caller's model
-/// parameter values (exact strings).
+/// parameter values (exact strings), `poles` the pole selection ("all",
+/// "none", "uv" or "ir"; True and False are "all" and "none").
 #[pyfunction]
-#[pyo3(signature = (path, momenta, scales, *, process=None, parameters=None, poles=true, threads=None))]
+#[pyo3(signature = (path, momenta, scales, *, process=None, parameters=None, poles=None, threads=None))]
 #[allow(clippy::too_many_arguments)]
 fn evaluate_v2_artifact(
     py: Python<'_>,
@@ -1035,11 +1036,29 @@ fn evaluate_v2_artifact(
     scales: Vec<String>,
     process: Option<&str>,
     parameters: Option<BTreeMap<String, String>>,
-    poles: bool,
+    poles: Option<Bound<'_, PyAny>>,
     threads: Option<usize>,
 ) -> PyResult<Vec<V2ArtifactPoint>> {
-    use rusticol_loop_reduction::v2_runtime::V2Runtime;
+    use rusticol_loop_reduction::v2_runtime::{V2Poles, V2Runtime};
 
+    let poles = match poles {
+        None => V2Poles::All,
+        Some(value) => match value.extract::<bool>() {
+            Ok(true) => V2Poles::All,
+            Ok(false) => V2Poles::None,
+            Err(_) => match value.extract::<String>()?.as_str() {
+                "all" => V2Poles::All,
+                "none" => V2Poles::None,
+                "uv" => V2Poles::Uv,
+                "ir" => V2Poles::Ir,
+                other => {
+                    return Err(error(format!(
+                        "poles must be \"all\", \"none\", \"uv\" or \"ir\", not {other:?}"
+                    )));
+                }
+            },
+        },
+    };
     let momenta = momenta
         .into_iter()
         .map(rationals)

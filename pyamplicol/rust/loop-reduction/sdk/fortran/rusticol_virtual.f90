@@ -561,8 +561,9 @@ contains
     call finish(c_update_parameters(handle_of(self),c_loc(buffer),revision),ierr)
   end subroutine
 
-  ! Pole selection of later evaluations: "all" (default) or "none" (plan v4:
-  ! the finite part, the pole entries quiet NaNs).
+  ! Pole selection of later evaluations: "all" (default), or for plan v4
+  ! "none" (the finite part, the pole entries quiet NaNs), "uv" (the bare
+  ! loop's UV poles) or "ir" (the renormalised virtual's IR poles).
   subroutine set_poles(self,poles,ierr)
     class(virtual_runtime), intent(inout) :: self
     character(*), intent(in) :: poles

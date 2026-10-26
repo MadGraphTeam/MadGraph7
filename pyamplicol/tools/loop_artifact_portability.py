@@ -36,9 +36,9 @@ Subcommands (``--help`` on each):
     Compiles the C client below (``CLIENT_SOURCE``) against the loop SDK
     (``rusticol_virtual.h``): from a wheel's ``rusticol-config`` or from a
     source checkout and a native build directory.
-``sdk ARTIFACT --process ID --points FILE --client EXE --out FILE [--poles none]``
+``sdk ARTIFACT --process ID --points FILE --client EXE --out FILE [--poles P]``
     The same evaluation through the C SDK (``rusticol_virtual_open``; with
-    ``--poles none`` the finite part alone, ``rusticol_virtual_set_poles``),
+    ``--poles`` the pole selection, ``rusticol_virtual_set_poles``),
     optionally without ``SYMBOLICA_LICENSE`` and with concurrent instances:
     the f64 SDK must need no Symbolica licence (the tree engine's rule,
     ``docs/user/symbolica-and-licensing.md``), so a restricted-Symbolica
@@ -126,6 +126,21 @@ GENERATION_CODE = frozenset(
         ("pyamplicol/loops/v2/observables.py", "ColumnPlan.__init__"),
         ("pyamplicol/loops/v2/observables.py", "NativeObservables.__init__"),
         ("pyamplicol/loops/v2/native_observables.py", "StoredObservables.export"),
+        # The slice's own stages (also reachable outside LoopSlice.generate):
+        # the certified-scaleless companion and its seeds, the LC/NLC colour
+        # prune, the seed tables (Python and native) and the native colour
+        # cells' table and projection stages.
+        ("pyamplicol/loops/v2/assemble.py", "LoopSlice._scaleless_companion"),
+        ("pyamplicol/loops/v2/assemble.py", "LoopSlice._companion_seeds"),
+        ("pyamplicol/loops/v2/assemble.py", "LoopSlice._prune_colour"),
+        ("pyamplicol/loops/v2/colour.py", "build_seed_table"),
+        ("pyamplicol/loops/v2/colour.py", "extend_seed_table"),
+        ("pyamplicol/loops/v2/native_seeds.py", "build_seed_table"),
+        ("pyamplicol/loops/v2/native_seeds.py", "extend_seed_table"),
+        ("pyamplicol/loops/v2/native_seeds.py", "NativeSeedStage.__init__"),
+        ("pyamplicol/loops/v2/native_cells.py", "cell_table"),
+        ("pyamplicol/loops/v2/native_cells.py", "project_records"),
+        ("pyamplicol/loops/v2/native_cells.py", "directed_table"),
     }
 )
 GENERATION_FILES = (
@@ -1605,7 +1620,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-licence", action="store_true")
     p.add_argument("--instances", type=int, default=1)
     p.add_argument("--hold-permit", action="store_true", help=HOLD_HELP)
-    p.add_argument("--poles", choices=("all", "none"))
+    p.add_argument("--poles", choices=("all", "none", "uv", "ir"))
     p.add_argument("--out")
     p = sub.add_parser("compare", help="bitwise comparison of two records")
     p.add_argument("a", type=Path)
