@@ -55,14 +55,6 @@ M1_M2_OWNER = (
     f"M1/M2 (native point inputs of derived masses): generation-scale-2, {OWNED} item 1"
 )
 M2_ALPHA_OWNER = f"m2 (one alpha_s rule): generation-scale-2, {OWNED} item 1"
-M1_EW_OWNER = (
-    f"m1 (corrections named 'QCD'/'QED'; Catani): WP3.2 ew-poles batch 2, {OWNED} "
-    "item 3"
-)
-# The EW classification test needs both: m1 for the classification and the
-# Catani prediction, m2 for alpha_s (assemble resolves it only for a
-# correction set spelt {'QCD'}).
-M1_M2_EW_OWNER = f"{M1_EW_OWNER}; and {M2_ALPHA_OWNER}"
 
 
 def _uux_ddxg_point():
@@ -231,9 +223,7 @@ def _electroweak(slice_) -> bool:
 def _assert_same_decisions(original, variant, rename, *, electroweak=True):
     """The production decisions of REPORT.md §3 on ``variant`` equal the
     original's under ``rename``: the native-or-plan-only route, the frames,
-    the scale binding and (``electroweak``) the EW classification. The
-    orders variant's classification is m1's (WP3.2 ew-poles), asserted by
-    ``test_renamed_orders_keep_the_ew_classification_and_catani_poles``."""
+    the scale binding and (``electroweak``) the EW classification."""
 
     assert _route(variant) == _route(original)
     frames = _frames(original, ORIGINAL)
@@ -481,9 +471,9 @@ def test_renamed_orders_give_the_same_virtual(
 ):
     """QCD corrections to a QCD Born and to an electroweak Born (the
     mixed-case Qe at a nonzero power through the tree blocks and roots), on
-    loop_sm and on G_mu: the same route, frames and scale binding, and the
-    same values. (G_mu's Catani poles on the variant are m1's,
-    ``test_renamed_orders_keep_the_ew_classification_and_catani_poles``.)"""
+    loop_sm and on G_mu: the same route, frames, scale binding and EW
+    classification (the strong order found by the gluon's vertices, m1),
+    and the same values."""
 
     point = _uux_ddxg_point() if process.endswith("g") else DY_POINT
     request = (process, born, loop, ("QCD",))
@@ -495,7 +485,7 @@ def test_renamed_orders_give_the_same_virtual(
         )
         slices.append(slice_)
         results.append(_evaluate(slice_, point, rename))
-    _assert_same_decisions(*slices, rename, electroweak=False)
+    _assert_same_decisions(*slices, rename)
     _assert_same_values(*results, rename)
 
 
@@ -625,20 +615,33 @@ def test_renamed_orders_refuse_alike(models, loop_native, process, born, loop):
     assert outcomes[1] == outcomes[0]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=M1_M2_EW_OWNER)
 def test_renamed_orders_keep_the_ew_classification_and_catani_poles(
     models, loop_native
 ):
+    """m1 (WP3.2 ew-poles): the strong correction is the order the gluon's
+    vertices carry, whatever it is called ('QS'): the request stays QCD-only
+    (not electroweak), alpha_s is resolved and Catani's operator predicts
+    the same poles under the map."""
+
     from pyamplicol.loops.v2 import ew_policy
     from pyamplicol.loops.v2.assemble import prepare_request_model
 
     request = ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, {"QCD": 5, "QED": 0}, ("QCD",))
-    decisions = []
+    decisions, poles = [], []
     for variant in (None, "orders"):
         compiled, rename = models("loop_sm", variant)
         slice_, _ = _slice(models, loop_native, "loop_sm", variant, *request)
         prepared = prepare_request_model(compiled, _request(rename, *request))
         result = _evaluate(slice_, _uux_ddxg_point(), rename)
+        back = {new: old for old, new in rename.orders.items()}
+        poles.append(
+            {
+                tuple(sorted((back.get(n, n), p) for n, p in sector)): tuple(
+                    float(x) for x in values
+                )
+                for sector, values in (result.ir_poles or {}).items()
+            }
+        )
         decisions.append(
             (
                 ew_policy.electroweak(
@@ -651,6 +654,13 @@ def test_renamed_orders_keep_the_ew_classification_and_catani_poles(
             )
         )
     assert decisions[1] == decisions[0] == (False, "aS", True)
+    assert set(poles[1]) == set(poles[0])
+    scale = max(abs(x) for row in poles[0].values() for x in row)
+    for sector, row in poles[0].items():
+        assert all(
+            abs(a - b) <= TOLERANCE * scale
+            for a, b in zip(row, poles[1][sector], strict=True)
+        ), sector
 
 
 @pytest.mark.xfail(strict=True, raises=ValueError, reason=M2_ALPHA_OWNER)
