@@ -151,3 +151,41 @@ class AmplicolExportTest(unittest.TestCase):
         self.assertFalse(mirrored([2, -2, 2, -2, 21], 2, [partons, partons], exported))
         # g u > u g g only
         self.assertFalse(mirrored([21, 2, 21, 21, 2], 2, [{21}, {2}], exported))
+
+    def test_selector_rows_are_folded_into_weighted_options(self):
+        """The rows of a UMAMI selector share its evaluation: they become the
+        options of one flavour per mirror flag, written in proportion to their
+        factors, which add up to the flavour factor."""
+        import madgraph.iolibs.export_amplicol as export_amplicol
+        metadata = {
+            'pdg_ids': [[1, -1, 2, -2, 21], [1, -1, 3, -3, 21],
+                        [1, -1, 4, -4, 21], [-1, 1, 3, -3, 21]],
+            'provider': {'incoming_count': 2, 'masses': [0.] * 5,
+                         'supports_alpha_s': True},
+            'channels': [{
+                'phasespace_order': [0, 2, 3, 4, 1],
+                'processes': [
+                    {'multichannels': [0], 'matrix_elements': [
+                        {'pdg_ids': 0, 'factor': 1}, {'pdg_ids': 2, 'factor': 2},
+                        {'pdg_ids': 1, 'factor': 1}]},
+                    {'multichannels': [0], 'matrix_elements': [
+                        {'pdg_ids': 3, 'factor': 1}]},
+                ],
+            }],
+            'color_flows': [], 'helicities': [], 'runtime_processes': [],
+        }
+        partons = {21, 1, 2, 3, 4, -1, -2, -3, -4}
+        entries = export_amplicol.subprocess_entries(
+            metadata, self.cmd._curr_model, 'SubProcesses/A1', 'me.so', 'ratio.so',
+            3, [partons, partons])
+        self.assertEqual(len(entries), 1)
+        flavors = entries[0]['flavors']
+        # d d~ > s s~ g has its mirror exported, the other rows are mirrored
+        self.assertEqual(flavors, [
+            {'index': 0, 'options': [[1, -1, 2, -2, 21], [1, -1, 4, -4, 21]],
+             'weights': [1, 2], 'factor': 3, 'mirror': True},
+            {'index': 0, 'options': [[1, -1, 3, -3, 21]], 'weights': [1],
+             'factor': 1, 'mirror': False},
+            {'index': 1, 'options': [[-1, 1, 3, -3, 21]], 'weights': [1],
+             'factor': 1, 'mirror': False},
+        ])

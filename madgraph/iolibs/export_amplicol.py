@@ -19,7 +19,10 @@ in SubProcesses/A<n>_<name>: a leading-colour artifact (lc), a full-colour one
 (full), and the sources of the UMAMI library returning their ratio (reweight).
 Its makefile builds the libraries into lib/. Every colour ordering (UMAMI
 channel) of every provider becomes one entry of subprocesses.json, integrated
-on its own with a colour-ordered phase-space mapping.
+on its own with a colour-ordered phase-space mapping. Subprocesses related by a
+flavour relabelling that is a symmetry of the allowed vertices are generated
+once (pyamplicol's strict flavour-blind grouping) and evaluated through their
+representative.
 """
 
 import json
@@ -278,14 +281,19 @@ def subprocess_entries(metadata, model, rel_dir, me_path, ratio_path, qcd_power,
                 raise madgraph.MadGraph5Error(
                     'AmpliCol contributions shared by several channels are not '
                     'supported yet')
+            # the rows of a selector share its evaluation and incoming legs: one
+            # flavour per mirror flag, its options written in proportion to factor
+            by_mirror = {}
             for term in process['matrix_elements']:
                 pdgs = pdg_ids[term['pdg_ids']]
-                flavors.append({
-                    'index': flavor_index,
-                    'options': [pdgs],
-                    'factor': term['factor'],
-                    'mirror': mirrored(pdgs, incoming, initial_legs, exported),
-                })
+                mirror = mirrored(pdgs, incoming, initial_legs, exported)
+                flavor = by_mirror.setdefault(mirror, {
+                    'index': flavor_index, 'options': [], 'weights': [],
+                    'factor': 0, 'mirror': mirror})
+                flavor['options'].append(pdgs)
+                flavor['weights'].append(term['factor'])
+                flavor['factor'] += term['factor']
+            flavors.extend(by_mirror.values())
         first = flavors[0]['options'][0]
         entries.append({
             'backend': 'amplicol',

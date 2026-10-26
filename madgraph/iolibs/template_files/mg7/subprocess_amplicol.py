@@ -69,6 +69,7 @@ def amplicol_subproc_args(meta: dict, process: MadgraphProcess) -> ms.SubprocArg
         },
         helicities=lhe_helicities(meta, process.run_card),
         pdg_ids=[flavor["options"] for flavor in meta["flavors"]],
+        pdg_id_weights=[flavor.get("weights", []) for flavor in meta["flavors"]],
     )
 
 
