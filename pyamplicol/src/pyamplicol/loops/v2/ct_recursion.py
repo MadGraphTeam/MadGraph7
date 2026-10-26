@@ -1056,30 +1056,44 @@ class CountertermModel:
             Replacement(E(f"UFO::{{}}::{name}"), number)
             for name, number in numbers.items()
         ]
-        assumptions = [E(assumption) for assumption in self.assumptions]
-        model_symbols = symbols.model(compiled.name)
+        payload = "UFO::{}::"
 
-        def symbol(name: str) -> Any:
-            return E(model_symbols.symbol(name).to_canonical_string())
-
-        for record in compiled.ir.parameters:
-            payload = E(f"UFO::{{}}::{record.name}")
-            if record.nature == "internal" and any(
-                assumption.contains(payload) for assumption in assumptions
-            ):
-                value = resolved_internal_parameters(
-                    compiled, symbol(record.name)
-                ).replace_multiple(
-                    [
-                        Replacement(symbol(name), number)
-                        for name, number in numbers.items()
-                    ]
+        def resolved(expression: Any) -> Any:
+            # The model parameters left (internal ones, e.g. a derived mass):
+            # their resolved definitions at these values.
+            left = {
+                name[len(payload) :]
+                for name in (
+                    s.to_canonical_string() for s in expression.get_all_symbols(False)
                 )
-                replacements.append(Replacement(payload, value))
-        for assumption, parsed in zip(self.assumptions, assumptions, strict=True):
-            expression = _decided_conditionals(
-                parsed.replace_multiple(replacements)
-            ).expand()
+                if name.startswith(payload)
+            }
+            if not left:
+                return expression
+            model_symbols = symbols.model(compiled.name)
+
+            def symbol(name: str) -> Any:
+                return E(model_symbols.symbol(name).to_canonical_string())
+
+            on_values = [
+                Replacement(symbol(name), number) for name, number in numbers.items()
+            ]
+            return expression.replace_multiple(
+                [
+                    Replacement(
+                        E(f"{payload}{record.name}"),
+                        resolved_internal_parameters(
+                            compiled, symbol(record.name)
+                        ).replace_multiple(on_values),
+                    )
+                    for record in compiled.ir.parameters
+                    if record.nature == "internal" and record.name in left
+                ]
+            )
+
+        for assumption in self.assumptions:
+            expression = resolved(E(assumption).replace_multiple(replacements))
+            expression = _decided_conditionals(expression).expand()
             decision = (
                 "undecided"  # a symbol no parameter value replaces
                 if _has_parameters(expression)
