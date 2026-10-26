@@ -21,6 +21,7 @@
 //!   by the seed stage, the LC/NLC prune rebuild and plan lowering.
 
 pub mod arena;
+pub mod cells;
 pub mod cycles;
 pub mod families;
 pub mod networks;
