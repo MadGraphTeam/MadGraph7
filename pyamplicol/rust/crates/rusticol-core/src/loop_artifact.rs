@@ -423,13 +423,9 @@ where
     Option::<String>::deserialize(deserializer)
 }
 
-/// How a plan v4 process obtains its per-point inputs (trees, Born
-/// amplitudes, counterterm and field components): rebuilt at load from the
-/// artifact's compiled model and generation request (Python), or
-/// [`LOOP_V2_NATIVE_POINT_INPUTS`].
-pub const LOOP_V2_POINT_INPUTS: &str = "regenerated-at-load";
-
-/// Native point inputs (WP3.1): the PACBIN also holds the process's native
+/// Native point inputs (WP3.1), how every plan v4 process obtains its
+/// per-point inputs (trees, Born amplitudes, counterterm and field
+/// components): the PACBIN also holds the process's native
 /// program (`loops/v2/native_process.py`): its assembly record and tree
 /// program (zlib JSON, kind `LoopRuntimePlan`), its parameter evaluator and
 /// kernel evaluators (saved exact Symbolica states, for DoubleFloat and
@@ -439,8 +435,10 @@ pub const LOOP_V2_POINT_INPUTS: &str = "regenerated-at-load";
 pub const LOOP_V2_NATIVE_POINT_INPUTS: &str = "native-v2";
 
 /// Former point-input declarations, refused with a request to regenerate:
-/// `native-v1` stored no plane applications.
-pub const LOOP_V2_RETIRED_POINT_INPUTS: [&str; 1] = ["native-v1"];
+/// `native-v1` stored no plane applications; `regenerated-at-load` rebuilt
+/// the inputs at load from the artifact's compiled model and generation
+/// request (a stored process never regenerates, REQUIREMENTS_ADDENDUM G).
+pub const LOOP_V2_RETIRED_POINT_INPUTS: [&str; 2] = ["native-v1", "regenerated-at-load"];
 
 /// The PACBIN members of native point inputs.
 pub const LOOP_V2_NATIVE_RECORD_MEMBER: &str = "point-inputs/native-process.json.zlib";
@@ -553,7 +551,8 @@ pub fn load_loop_v2_artifact(
     require(
         !LOOP_V2_RETIRED_POINT_INPUTS.contains(&execution.point_inputs.as_str()),
         "the artifact's point inputs are no longer supported (native-v1 stored \
-         no SymJIT plane applications); regenerate the artifact",
+         no SymJIT plane applications; regenerated-at-load regenerated the \
+         process at load); regenerate the artifact",
     )?;
     require(
         execution.schema_version == 4
@@ -562,8 +561,7 @@ pub fn load_loop_v2_artifact(
             && execution.contribution_kind == "virtual"
             && execution.execution_mode == "loop_recurrence"
             && execution.engine == "v2"
-            && (execution.point_inputs == LOOP_V2_POINT_INPUTS
-                || execution.point_inputs == LOOP_V2_NATIVE_POINT_INPUTS)
+            && execution.point_inputs == LOOP_V2_NATIVE_POINT_INPUTS
             && execution.request.is_object(),
         "unsupported plan v4 execution declaration",
     )?;

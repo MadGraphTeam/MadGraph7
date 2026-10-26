@@ -960,7 +960,7 @@ def test_validate_carriers_and_refused_native_inputs(tmp_path, monkeypatch):
     (``--digits``) select binary64, double-double and arbitrary precision
     (the older ``--precision`` still reads); with ``--inputs native`` a
     process whose trees cannot be exported natively is a failure (exit 1,
-    ``point_inputs`` "regenerated-at-load" with the refusal recorded), never
+    ``point_inputs`` null with the refusal recorded), never
     a fallback to Python inputs."""
 
     import argparse
@@ -995,7 +995,7 @@ def test_validate_carriers_and_refused_native_inputs(tmp_path, monkeypatch):
     assert loop_v2_generate.main([*arguments, "--json", str(out)]) == 1
     record = json.loads(out.read_text())
     assert record["passed"] is False and record["carrier"] == "dd"
-    assert record["point_inputs"] == "regenerated-at-load"
+    assert record["point_inputs"] is None
     assert record["native_refusal"] == "a Weyl-line counterterm root term"
 
 

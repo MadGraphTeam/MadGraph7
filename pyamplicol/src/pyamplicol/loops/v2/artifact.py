@@ -44,26 +44,25 @@ SymJIT plane applications (``point-inputs/*.symjit``: storage-v4 IR,
 recompiled for the loading CPU; binary64 then touches no Symbolica state,
 DESIGN §3.7). A load then regenerates nothing: the native executor binds
 every parameter-dependent value from the external parameters and forms all
-of it per point. Correlated and resolved calls, and flavour members served by a
-representative, still need the generation objects: those regenerate the
-slice on first use from the artifact's own compiled model and the saved
-request (the recursive generator, no diagram is listed) and require the
-regenerated plan to have the stored plan's digest (byte equality).
-Regeneration does not depend on the interpreter's Symbolica symbol history:
+of it per point. Correlated, spin-correlated and resolved calls run the
+stored observable columns (``native_observables.StoredObservables``) and a
+flavour member served by a representative its stored identity-port
+substitution, so no call of a loaded process regenerates anything
+(REQUIREMENTS_ADDENDUM G). A process whose point inputs or observable
+columns cannot be exported natively is refused at generation, never stored
+for a regeneration at load; the former ``point_inputs =
+"regenerated-at-load"`` declaration is refused at load like ``native-v1``.
+Generation does not depend on the interpreter's Symbolica symbol history:
 tree stages use canonical symbols (``assemble._canonical_stage``) and kernel
-terms a canonical order (``reference_executor.ExactKernel``). The same
-process reuses generation objects already built in this interpreter
-(generation and its staged validation). A process without a native program
-(``point_inputs = "regenerated-at-load"``) regenerates at load and evaluates
-on Python inputs.
+terms a canonical order (``reference_executor.ExactKernel``).
 
 Evaluation returns the public result types: Born per squared Born order, the
 complete virtual per squared coupling-order sector with its three Laurent
 coefficients (finite only on request), and, when stability checks were asked
 for, one ``VirtualStabilityEstimate`` per point. Correlated (colour and spin)
 and resolved outputs and flavour members run through the observables package
-(``runtime.virtual.V2ObservablesRuntime`` over ``observables.ObservableSlice``),
-whose column plans are exported from the same regenerated slice. Binary64,
+(``runtime.virtual.V2ObservablesRuntime`` over the stored columns,
+``native_observables.StoredObservableSlice``). Binary64,
 double-double and arbitrary precision run natively. Escalation of the
 arithmetic is the caller's decision (requirements addendum C).
 """
@@ -553,8 +552,8 @@ class GeneratedProcess:
     exported: Any
     request: Mapping[str, Any]
     plan_json: str
-    # The native point inputs (``native_process.NativeProcess``), or None when
-    # the process has no native program (loads then regenerate the slice).
+    # The native point inputs (``native_process.NativeProcess``; None only for
+    # generation objects that are never stored).
     native: Any = None
     scaleless_exported: Any = None
     scaleless_plan_json: str | None = None
@@ -565,13 +564,12 @@ class GeneratedProcess:
 
     @property
     def point_inputs(self) -> str:
-        from pyamplicol.generation.loop_artifact import (
-            LOOP_V2_NATIVE_POINT_INPUTS,
-            LOOP_V2_POINT_INPUTS,
-        )
+        from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
 
         if self.native is None:
-            return LOOP_V2_POINT_INPUTS
+            raise ArtifactError(
+                "the generated process has no native point inputs; it cannot be stored"
+            )
         return LOOP_V2_NATIVE_POINT_INPUTS
 
     @cached_property
@@ -742,7 +740,8 @@ def generate_process(
     # The plan carries the native point inputs (``native_process``): the tree
     # program with the Born, counterterm and field components, so a load
     # needs no regeneration. A process whose tree program cannot be exported
-    # natively keeps the plan alone (its loads regenerate the slice).
+    # natively is refused: a stored process never regenerates at load
+    # (REQUIREMENTS_ADDENDUM G).
     native = None
     # The observable column sets (``native_observables``): their seed records
     # are formed on the plan's own export (``column_sets``) and stored with
@@ -763,8 +762,8 @@ def generate_process(
             keep_kets=declared,
             column_sets={kind: plan.seed_columns for kind, plan in plans.items()},
         )
-    except NotImplementedError:
-        exported = export_plan(observables.slice, forward=False)
+    except NotImplementedError as error:
+        raise _not_storable(request, "native point inputs", error) from error
     plan_json = exported.json()
     # The companion plan of the certified-scaleless families, which the "uv"
     # and "ir" pole selections run (design §12.4). With native point inputs
@@ -800,9 +799,8 @@ def generate_process(
             None if scaleless is None else (scaleless, cast(str, scaleless_json)),
         )
         # A column set the native trees cannot form (no native counterterm
-        # components) keeps the process without stored columns: its
-        # correlated and resolved calls then regenerate the slice on first
-        # use.
+        # components) is refused like the point inputs: a correlated or
+        # resolved call of a stored process never regenerates.
         from dataclasses import replace
 
         from .native_observables import StoredObservables
@@ -811,8 +809,8 @@ def generate_process(
             stored_columns = StoredObservables.export(
                 observables, exported, native, plans, scaleless
             )
-        except NotImplementedError:
-            stored_columns = None
+        except NotImplementedError as error:
+            raise _not_storable(request, "observable columns", error) from error
         native = replace(native, observables=stored_columns)
     resolved = CorrelatorConfig(
         tuple(observables.histories), tuple(observables.spin_classes)
@@ -831,6 +829,20 @@ def generate_process(
     return generated
 
 
+def _not_storable(request: Any, what: str, error: Exception) -> Exception:
+    """The generation refusal of a process whose ``what`` cannot be exported
+    natively (the export's ``NotImplementedError``): a plan v4 process is
+    stored with them, so no call of a loaded process regenerates it."""
+
+    from pyamplicol.api.errors import GenerationError
+
+    return GenerationError(
+        f"{request.process}: its {what} cannot be exported natively ({error}); "
+        "a stored plan v4 process evaluates from them and never regenerates "
+        "at load (REQUIREMENTS_ADDENDUM G)"
+    )
+
+
 def _remember(model: str, generated: GeneratedProcess) -> None:
     key = (model, _record_key(generated.request), generated.plan_sha256)
     with _slices_lock:
@@ -847,10 +859,9 @@ def _trim() -> None:
 @contextmanager
 def retained(count: int) -> Iterator[None]:
     """Keep ``count`` more generated processes in the generation cache while
-    the block runs: a generation run holds every process it generated, and
-    its staged validation loads them through ``Runtime.load``, which then
-    reuses them instead of regenerating the processes evicted beyond
-    ``_SLICE_CACHE_SIZE``."""
+    the block runs: a generation run's processes stay inspectable (tests,
+    tools) until it ends. Loads never read the cache: a stored process
+    evaluates from its native program."""
 
     with _slices_lock:
         _retained[0] += count
@@ -860,17 +871,6 @@ def retained(count: int) -> Iterator[None]:
         with _slices_lock:
             _retained[0] -= count
             _trim()
-
-
-def _recall(
-    model: str, record: Mapping[str, Any], plan: str
-) -> GeneratedProcess | None:
-    key = (model, _record_key(record), plan)
-    with _slices_lock:
-        found = _slices.get(key)
-        if found is not None:
-            _slices.move_to_end(key)
-        return found
 
 
 # --------------------------------------------------------------------- runtime
@@ -973,8 +973,8 @@ class V2VirtualRuntime:
     ``process`` selects a process record or a flavour member that the
     artifact serves through its representative (``process-groups.json``):
     the member's momenta, colour histories, spin legs and helicity rows are
-    read on the representative (``observables.admit_member`` re-proves the
-    substitution at load).
+    read on the representative (generation proved the substitution,
+    ``observables.admit_member``; ``_stored_member``).
     """
 
     contribution_kind = "virtual"
@@ -1012,7 +1012,7 @@ class V2VirtualRuntime:
         # Payload digests are not recomputed on the runtime path (as for every
         # artifact, ``runtime.backend``): the native admission below checks
         # the execution and physics declarations and the plan member against
-        # its declared digest, and a regenerated plan must have that digest.
+        # its declared digest.
         manifest = load_manifest(root)
         selected, group_member = _select(manifest, process)
         process_id = str(selected["id"])
@@ -1028,8 +1028,6 @@ class V2VirtualRuntime:
         self._scaleless_plan_sha256 = admission["scaleless_plan_sha256"]
         self._group_member = group_member
         self._member = None
-        self._generated: GeneratedProcess | None = None
-        self._native_process = None
         self._observables: Any = None
         self._execution = execution
         compiled = CompiledModel.from_dict(model_payload, validate_fingerprint=False)
@@ -1038,33 +1036,36 @@ class V2VirtualRuntime:
             for record in compiled.ir.parameters
             if record.nature == "external"
         }
-        if execution["point_inputs"] == LOOP_V2_NATIVE_POINT_INPUTS:
-            # The stored native program evaluates every point in every pole
-            # selection (with the stored companion of the certified-scaleless
-            # families): no slice is regenerated (WP3.1 I6). A flavour member
-            # is an identity-port member of its representative, proved at
-            # generation (``process-groups.json``); correlated and resolved
-            # calls run the stored observable columns (``native_observables``;
-            # a process stored without them regenerates the slice on first
-            # use, ``_observable_runtime``).
-            runtime = root / "processes" / process_id / str(execution["runtime_path"])
-            self._native_process = read_native_process(
-                runtime,
-                read_plan(runtime),
-                read_plan(runtime, SCALELESS_PLAN_MEMBER),
+        if execution["point_inputs"] != LOOP_V2_NATIVE_POINT_INPUTS:
+            # The native admission refuses every other declaration first.
+            raise ArtifactError(
+                f"plan v4 point inputs {execution['point_inputs']!r} are not "
+                "supported; regenerate the artifact"
             )
-            if group_member is not None:
-                self._member = _stored_member(group_member, str(selected["expression"]))
-            record = self._native_process.record
-            self._fixed = dict(record["fixed_parameters"])
-            self._scale_parameter = record["scale_parameter"]
-            self._executor = self._native_process.executor(native)
-        else:
-            generated = self._regenerated(compiled)
-            slice_ = generated.slice
-            self._fixed = dict(slice_.request.fixed_parameters)
-            self._scale_parameter = slice_.scale_parameter
-            self._executor = generated.executor()
+        # The stored native program evaluates every point in every pole
+        # selection (with the stored companion of the certified-scaleless
+        # families): no slice is regenerated (WP3.1 I6). A flavour member is
+        # an identity-port member of its representative, proved at generation
+        # (``process-groups.json``); correlated and resolved calls run the
+        # stored observable columns (``native_observables``). Nothing of a
+        # loaded process regenerates (REQUIREMENTS_ADDENDUM G).
+        runtime = root / "processes" / process_id / str(execution["runtime_path"])
+        self._native_process = read_native_process(
+            runtime,
+            read_plan(runtime),
+            read_plan(runtime, SCALELESS_PLAN_MEMBER),
+        )
+        if self._native_process.observables is None:
+            raise ArtifactError(
+                "the stored process has no observable columns (an older "
+                "build's artifact); regenerate the artifact"
+            )
+        if group_member is not None:
+            self._member = _stored_member(group_member, str(selected["expression"]))
+        record = self._native_process.record
+        self._fixed = dict(record["fixed_parameters"])
+        self._scale_parameter = record["scale_parameter"]
+        self._executor = self._native_process.executor(native)
         self._parameters = self._checked_parameters(model_parameters)
         self._load_seconds = time.perf_counter() - started
         self._admission = admission
@@ -1091,75 +1092,6 @@ class V2VirtualRuntime:
             )
             for item in self._metadata["sectors"]
         )
-        if self._native_process is None:
-            self._observable_runtime()
-
-    # -- generation objects ---------------------------------------------------
-
-    def _regenerated(self, compiled: Any = None) -> GeneratedProcess:
-        """The process's generation objects: reused from this interpreter or
-        regenerated from the artifact's compiled model and request (the
-        regenerated plan must have the stored digest), with a flavour member
-        admitted on them. Loads with native point inputs need them only for
-        the correlated and resolved calls of a process stored without its
-        observable columns (``native_observables``)."""
-
-        from pyamplicol.models.loading import CompiledModel
-
-        from .observables import admit_member
-
-        with self._lock:
-            if self._generated is not None:
-                return self._generated
-            request = self._execution["request"]
-            model = model_digest(self._model_payload)
-            generated = _recall(model, request, self._plan_sha256)
-            if generated is None:
-                if compiled is None:
-                    compiled = CompiledModel.from_dict(
-                        self._model_payload, validate_fingerprint=False
-                    )
-                generated = generate_process(
-                    compiled,
-                    request_from_record(request),
-                    self._native,
-                    correlators_from_record(request),
-                    model=model,
-                )
-                if generated.plan_sha256 != self._plan_sha256:
-                    raise ArtifactError(
-                        "the plan v4 regenerated from this artifact differs from "
-                        "the stored one: it was written by a different pyAmpliCol "
-                        "build; regenerate the artifact"
-                    )
-            if generated.scaleless_plan_sha256 != self._scaleless_plan_sha256:
-                raise ArtifactError(
-                    "the companion plan of certified-scaleless families "
-                    "regenerated from this artifact differs from the stored one: "
-                    "it was written by a different pyAmpliCol build; regenerate "
-                    "the artifact"
-                )
-            group_member = self._group_member
-            if group_member is not None:
-                try:
-                    member = admit_member(
-                        generated.observables.slice, group_member.expression
-                    )
-                except ValueError as error:
-                    raise ArtifactError(
-                        f"flavour member {group_member.process_id!r} is not "
-                        f"admitted by its representative: {error}"
-                    ) from error
-                if member.alias or tuple(member.legs) != tuple(
-                    group_member.permutation
-                ):
-                    raise ArtifactError(
-                        f"flavour member {group_member.process_id!r} is not an "
-                        "identity-port member of its representative"
-                    )
-                self._member = member
-            self._generated = generated
-            return generated
 
     def _executor_for(self, poles: PoleSelection) -> Any:
         """The executor of a pole selection: one executor serves all of them
@@ -1172,31 +1104,21 @@ class V2VirtualRuntime:
     def _observable_runtime(self) -> Any:
         """The correlated and resolved outputs' runtime (``runtime.virtual.
         V2ObservablesRuntime``), built on first use on the stored observable
-        columns of a native process (nothing regenerates), else on the
-        generation objects."""
+        columns of the native process (nothing regenerates)."""
 
         from pyamplicol.runtime.virtual import V2ObservablesRuntime
 
+        from .native_observables import StoredObservableSlice
+
         with self._lock:
             if self._observables is None:
-                stored = (
-                    None
-                    if self._native_process is None
-                    else self._native_process.observables
+                correlators = correlators_from_record(self._execution["request"])
+                observables = StoredObservableSlice(
+                    self._native_process,
+                    self._native_process.observables,
+                    () if correlators is None else correlators.color_correlations,
+                    self._native,
                 )
-                if stored is not None:
-                    # The stored observable columns: nothing regenerates.
-                    from .native_observables import StoredObservableSlice
-
-                    correlators = correlators_from_record(self._execution["request"])
-                    observables: Any = StoredObservableSlice(
-                        self._native_process,
-                        stored,
-                        () if correlators is None else correlators.color_correlations,
-                        self._native,
-                    )
-                else:
-                    observables = self._regenerated().observables
                 runtime = V2ObservablesRuntime(
                     observables,
                     member=self._member,
@@ -1635,10 +1557,7 @@ class V2VirtualRuntime:
     def clear(self) -> None:
         """Drop the native executors (and their master caches)."""
         with self._lock:
-            if self._native_process is not None:
-                self._executor = self._native_process.executor(self._native)
-            else:
-                self._executor = self._regenerated().executor()
+            self._executor = self._native_process.executor(self._native)
             if self._observables is not None:
                 self._observables.clear()
 

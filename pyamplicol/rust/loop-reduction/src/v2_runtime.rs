@@ -137,10 +137,7 @@ impl V2Runtime {
         let verified = VerifiedArtifact::open(path)?;
         let artifact = load_loop_v2_artifact(&verified, process)?;
         let native = read_loop_v2_native_inputs(&verified, &artifact)?.ok_or_else(|| {
-            invalid(
-                "the process has no native point inputs (point_inputs = \
-                 \"regenerated-at-load\"): it is evaluated through the Python API",
-            )
+            invalid("the process has no native point inputs; regenerate the artifact")
         })?;
         let record: NativeRecord = serde_json::from_slice(&native.record_json)
             .map_err(|e| invalid(format!("native process record: {e}")))?;

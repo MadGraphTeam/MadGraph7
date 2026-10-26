@@ -1068,10 +1068,10 @@ def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
     evaluates them with generation forbidden (no slice is regenerated),
     giving the same plan and bitwise-identical binary64 Born and virtual
     values whatever Symbolica symbols it created before. The correlation
-    catalogue reads the stored observable columns (nothing regenerates,
-    ``test_loop_v2_stored_process.py``); the regeneration path of a process
-    stored without native inputs refuses a stored plan unequal to the
-    regenerated one."""
+    catalogue reads the stored observable columns: a load in this
+    interpreter whose generator would give other plan bytes (another
+    build's) never calls it (nothing regenerates,
+    ``test_loop_v2_stored_process.py``)."""
 
     from pyamplicol import Runtime
 
@@ -1111,28 +1111,18 @@ def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
         fresh = json.loads(process.stdout.strip().splitlines()[-1])
         assert fresh == expected, fillers
 
-    from pyamplicol.api.errors import ArtifactError
     from pyamplicol.loops.v2 import artifact
 
-    original = artifact.generate_process
-
     def drifted(*args, **kwargs):
-        # Another build's generator: the same process with other plan bytes.
-        generated = original(*args, **kwargs)
-        return artifact.GeneratedProcess(
-            generated.observables,
-            generated.exported,
-            generated.request,
-            generated.plan_json.replace('"schema":4', '"schema": 4'),
-        )
+        raise AssertionError("a load must not generate")
 
     monkeypatch.setattr(artifact, "_slices", type(artifact._slices)())
     monkeypatch.setattr(artifact, "generate_process", drifted)
     loaded = Runtime.load(full_colour, process="gg")
     # The stored columns serve the catalogue without the generator.
     assert [item.id for item in loaded.available_color_correlations()] == ["born"]
-    with pytest.raises(ArtifactError, match="differs from the stored one"):
-        loaded._backend._regenerated()
+    resolved = loaded.evaluate_resolved([POINT], mu_r2="1000000")
+    assert resolved.values
 
 
 def _rewrite_payloads(source: Path, destination: Path, edits) -> Path:
@@ -1223,6 +1213,12 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
         execution["point_inputs"] = "native"
         return execution
 
+    def regenerated(execution):
+        # The retired declaration of a process stored without native inputs
+        # (its loads regenerated it; REQUIREMENTS_ADDENDUM G).
+        execution["point_inputs"] = "regenerated-at-load"
+        return execution
+
     def unresolved(physics):
         physics["metadata"]["resolved"] = False
         return physics
@@ -1270,6 +1266,12 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
             {"processes/gg/execution.json": native_inputs},
             "unsupported plan v4 execution declaration",
             "unsupported plan v4 execution declaration",
+        ),
+        (
+            "regenerated",
+            {"processes/gg/execution.json": regenerated},
+            "no longer supported .*regenerate the artifact",
+            "no longer supported .*regenerate the artifact",
         ),
         (
             "poles",
