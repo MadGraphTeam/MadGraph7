@@ -70,6 +70,15 @@ int rusticol_virtual_free(rusticol_virtual_handle *handle); /* NULL is accepted 
 int rusticol_virtual_clear(rusticol_virtual_handle *handle);
 int rusticol_virtual_update_parameters(rusticol_virtual_handle *handle,
   const char *changes_json, uint64_t *source_revision);
+/* Pole selection of later evaluations (REQUIREMENTS_ADDENDUM I): "all" (NULL,
+ * the default), "none" (plan v4: the finite part alone, its pole-only work
+ * skipped; the single and double pole entries are quiet NaNs), "uv" (plan v4:
+ * the poles are the bare loop's UV poles) or "ir" (plan v4: the poles are the
+ * renormalised virtual's IR poles). The split selections run the stored
+ * companion of the certified-scaleless families; the finite part is the same
+ * in every selection. Plan v1-v3 artifacts accept "all" only.
+ */
+int rusticol_virtual_set_poles(rusticol_virtual_handle *handle, const char *poles);
 int rusticol_virtual_shape(const rusticol_virtual_handle *handle,
   rusticol_virtual_shape_info *output);
 /* JSON size query: output=NULL, capacity=0; needed includes terminal NUL.

@@ -1234,6 +1234,11 @@ class V2ObservablesRuntime:
             if found is None:
                 kind, value = key
                 options = {"member": self._member, **self._native_options}
+                stored = getattr(self._observables, "native_columns", None)
+                if stored is not None:
+                    # A loaded process's stored columns (no slice).
+                    found = self._native[key] = stored(kind, value, **options)
+                    return found
                 found = self._native[key] = (
                     NativeObservables.correlated(self._observables, value, **options)
                     if kind == "correlated"

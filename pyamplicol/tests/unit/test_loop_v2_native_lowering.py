@@ -188,7 +188,11 @@ def check(exported, native) -> bytes:
     assert binary_load.digest == json_load.digest
     assert native_lowering.read(member, native) == json_load.digest
     assert not host_paths(member, decoded)
-    assert struct.unpack_from("<Q", member, 32)[0] == 0, "no plan needs padding"
+    if "column_weights" not in exported.program:
+        # Columns sharing seed-weight columns store their weights once, while
+        # the loader still expands the row links over every column: such a
+        # member may be padded to pay for its derivations.
+        assert struct.unpack_from("<Q", member, 32)[0] == 0, "no plan needs padding"
     memory, allocated, work = again.derive_bound()
     assert 0 < memory <= allocated
     assert allocated + work <= DERIVED_PER_BYTE * len(member)
@@ -224,7 +228,8 @@ def check_companion_plans(slice_, native, resolved=None) -> None:
 
 # The keys the exporter omits when their value is absent, by record (the
 # writer's ``OMITTED_WHEN_ABSENT``); every other key it always writes.
-OMITTED = {("", "column_rows"), (".families[].steps[]", "rows")}
+OMITTED = {("", "column_rows"), ("", "column_weights")}
+OMITTED |= {(".families[].steps[]", "rows")}
 OMITTED |= {(".families[].steps[].edges[]", "links")}
 
 
@@ -291,8 +296,15 @@ def test_massive_plan_links_and_resolved_columns(slices, stored, loop_native):
     plan = ColumnPlan(observables, observables.resolved_columns("helicity-colour", {}))
     resolved = export_plan(slice_, forward=False, columns=plan.seed_columns)
     assert any(rows is not None for rows in resolved.program["column_rows"])
+    # Columns that differ only by their rows share a seed-weight column.
+    weights = resolved.program["column_weights"]
+    assert len(set(weights)) < len(weights) == len(plan.seed_columns)
     check(resolved, loop_native)
     check_every_key_written(resolved, loop_native)
+    program = json.loads(resolved.python_json())
+    program["column_weights"] = None
+    with pytest.raises(ValueError, match=re.escape(".column_weights: None where")):
+        loop_native.V2PlanModel.from_program(program)
 
 
 @pytest.mark.parametrize(

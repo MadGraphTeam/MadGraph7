@@ -70,13 +70,89 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from pyamplicol.color.contraction_types import NC
 
 from .families import Orders, add_orders
 
-TREE_SCHEMA = 3
+TREE_SCHEMA = 4
+
+
+@dataclass(frozen=True)
+class NativeExportRefusal:
+    """A feature the native export of a process does not cover
+    (``NativeExportUnsupported.feature``): the generation refuses the
+    process naming it (``artifact._not_storable``), since a stored plan v4
+    process evaluates from its native programs and never regenerates at load
+    (REQUIREMENTS_ADDENDUM G; there is no plan-only downgrade). ``owner``
+    covers it with ``follow_up``. Any other exception of the export
+    propagates (fail closed)."""
+
+    key: str
+    feature: str
+    owner: str
+    follow_up: str
+
+
+_EXPORT_OWNER = "WP3.1 generation-scale (native_trees)"
+
+NATIVE_EXPORT_REFUSALS = (
+    NativeExportRefusal(
+        "mass-parameter",
+        "a mass that is neither an external nor a derived model parameter",
+        _EXPORT_OWNER,
+        "none: a UFO mass is a model parameter (derived masses are parameter "
+        "program outputs, bound exactly)",
+    ),
+    NativeExportRefusal(
+        "parameter-read",
+        "a scalar plan, kernel constant, counterterm program, Weyl-line factor "
+        "or derived mass reading a parameter the tree program has not",
+        _EXPORT_OWNER,
+        "the parameter in the tree program's inputs with the first request "
+        "that reads one",
+    ),
+    NativeExportRefusal(
+        "parameter-kind",
+        "a tree or counterterm-program model parameter of another kind than an "
+        "external or derived parameter or a coupling",
+        _EXPORT_OWNER,
+        "the kind's parameter-program output with the first model that has one",
+    ),
+    NativeExportRefusal(
+        "whole-rule-block",
+        "a whole-rule counterterm term on a non-vector block",
+        _EXPORT_OWNER,
+        "its polynomial in the block rows with the first model whose whole "
+        "rules close on spinor or scalar blocks",
+    ),
+    NativeExportRefusal(
+        "whole-rule-root",
+        "a scaled or pole whole-rule counterterm root term",
+        _EXPORT_OWNER,
+        "a scaled or pole whole-rule slot with the first model that has one",
+    ),
+    NativeExportRefusal(
+        "observable-columns",
+        "stored observable columns of a process without native counterterm components",
+        "WP3.1 generation-scale (native_observables)",
+        "none while every native tree program forms its counterterm components",
+    ),
+)
+_EXPORT_REFUSAL_KEYS = frozenset(refusal.key for refusal in NATIVE_EXPORT_REFUSALS)
+
+
+class NativeExportUnsupported(NotImplementedError):
+    """A listed feature the native export does not cover
+    (``NATIVE_EXPORT_REFUSALS``); ``feature`` is its key."""
+
+    def __init__(self, feature: str, message: str) -> None:
+        if feature not in _EXPORT_REFUSAL_KEYS:
+            raise ValueError(f"unknown native export refusal {feature!r}")
+        super().__init__(f"{feature}: {message}")
+        self.feature = feature
+
 
 # Prune the exported tree program to what its outputs read
 # (``prune_program``); False exports the unpruned program (the oracle of
@@ -107,6 +183,10 @@ class NativeTrees:
     # The binary64 SymJIT plane application of each saved evaluator: the
     # kernels, then the parameter program (``_plane_applications``).
     planes: tuple[bytes, ...] = ()
+    # The literal colour tensors of the counterterm closure's ket tensors
+    # (generation only, not stored: ``native_observables`` forms the stored
+    # columns' overlaps from them).
+    ket_tensors: tuple[Any, ...] = ()
 
     def json(self) -> str:
         return json.dumps(self.program, separators=(",", ":"))
@@ -173,6 +253,7 @@ def export_trees(
     *,
     born_squared: bool,
     with_counterterms: bool = True,
+    keep_kets: bool = False,
 ) -> NativeTrees:
     """The tree program of ``slice_`` for the plan ``exporter`` is lowering.
 
@@ -338,7 +419,9 @@ def export_trees(
 
         ids = [block_id(block) for block in term.blocks]
         if any(block_dimensions[i] != 4 for i in ids):
-            raise NotImplementedError("a whole-rule term on a non-vector block")
+            raise NativeExportUnsupported(
+                "whole-rule-block", "a whole-rule term on a non-vector block"
+            )
         polynomial: dict[tuple[int, ...], Fraction] = defaultdict(Fraction)
         for coefficient, pairs in term.pairings:
             partial = {(): Fraction(coefficient)}
@@ -476,7 +559,9 @@ def export_trees(
     }
     ct_saved = () if ct is None else ct.saved
     if PRUNE:
-        program, saved, ct_saved = prune_program(program, saved, ct_saved)
+        program, saved, ct_saved = prune_program(
+            program, saved, ct_saved, keep_kets=keep_kets
+        )
     # The kernels the pruned program still uses; their plane applications
     # are compiled after the pruning, so a dropped kernel compiles none.
     kernels = (*saved, *ct_saved)
@@ -491,6 +576,7 @@ def export_trees(
         parameter_evaluator,
         () if counterterms is None else counterterms.outputs,
         _plane_applications((*kernels, parameter_evaluator)),
+        () if counterterms is None else counterterms.tensors,
     )
 
 
@@ -536,6 +622,8 @@ class _CountertermTrees:
             "model_count": model_count,
             "momentum_slots": momentum_slots,
             "source_fill": source_fill,
+            # The slot table (``counterterm_slots``) of the program's masks.
+            "slots": counterterm_slots(program.recursion),
             "interactions": interactions,
         }
         return cls(
@@ -566,24 +654,11 @@ class _CountertermTrees:
             for label in record["external_labels"]:
                 mask |= 1 << (int(label) - 1)
             momentum_slots.append([value_count + int(record["component_start"]), mask])
-        # Currents of a pole slot (an epsilon power other than 0): only pole
-        # terms read them, so finite-only evaluations skip them.
-        from pyamplicol.models.loading import counterterm_slot_order
-
-        pole_orders = {
-            counterterm_slot_order(*slot)
-            for slot in program.recursion.slots
-            if slot[1] != 0
-        }
-        pole_currents = frozenset(
-            current.id
-            for current in rows.dag.currents
-            if any(
-                power and name in pole_orders
-                for name, power in current.index.coupling_orders
-            )
+        # Per-slot reachability (``_interaction_program``): finite-only
+        # evaluations skip the currents only pole slots read.
+        interactions, saved = _interaction_program(
+            rows, counterterm_slots(program.recursion)
         )
-        interactions, saved = _interaction_program(rows, pole_currents)
         return rows, slots, momentum_slots, schema["source_fill"], interactions, saved
 
 
@@ -596,6 +671,9 @@ class _Counterterms:
     couplings: tuple[tuple[Any, ...], ...]
     # (component, sector, epsilon power) per output.
     outputs: tuple[tuple[str, Orders, int], ...]
+    # The literal colour tensor of every ket tensor (the Born basis first):
+    # stored observable columns form their overlaps (``native_observables``).
+    tensors: tuple[Any, ...] = ()
 
 
 def _counterterm_program(
@@ -665,6 +743,16 @@ def _counterterm_program(
         weighting terms of epsilon power ``term_power``."""
 
         spec = ("scalar", name, power, grade)
+        return coupling_slot((*spec, term_power), spec, term_power)
+
+    def scaled_slot(
+        name: str, power: int, grade: int, term_power: int, scale: str
+    ) -> int:
+        """The slot of a coupling's coefficient times a Weyl line's factor
+        ``kappa`` (``ct_closure.ClosureTerm.scale``, a model expression of
+        the counterterm-lowered model)."""
+
+        spec = ("scaled", name, power, grade, scale)
         return coupling_slot((*spec, term_power), spec, term_power)
 
     def whole_slot(term: Any, degree: int, expression: Any) -> int:
@@ -765,7 +853,9 @@ def _counterterm_program(
         )
         if isinstance(term, WholeRuleTerm):
             if item.scale is not None or item.power != 0:
-                raise NotImplementedError("a scaled or pole whole-rule CT root term")
+                raise NativeExportUnsupported(
+                    "whole-rule-root", "a scaled or pole whole-rule CT root term"
+                )
             for degree, expression in term.grades:
                 slot = whole_slot(term, degree, expression)
                 contribute(
@@ -774,15 +864,15 @@ def _counterterm_program(
             if contributions:
                 terms.append(whole_term(term, contributions))
             continue
-        if item.scale is not None:
-            # A Weyl line's kappa (no loop_sm process has one): the writer
-            # then keeps the plan alone and loads regenerate the slice.
-            raise NotImplementedError(
-                "native counterterm root terms with a Weyl-line factor"
-            )
         name, power = item.coupling
         for grade, _column in layout.get(item.coupling, ()):
-            slot = scalar_slot(name, power, grade, item.power)
+            # A Weyl line's root copy carries its factor kappa (g u > w+ d):
+            # the slot's coupling times kappa.
+            slot = (
+                scalar_slot(name, power, grade, item.power)
+                if item.scale is None
+                else scaled_slot(name, power, grade, item.power, item.scale)
+            )
             contribute(contributions, slot, vector, grade + item.grade, items, power2)
         if contributions:
             terms.append(closure_term(term, contributions))
@@ -888,6 +978,7 @@ def _counterterm_program(
         tuple(
             (component, slice_.sectors[s][0], power) for component, s, power in outputs
         ),
+        tuple(literal),
     )
 
 
@@ -921,9 +1012,10 @@ class _CountertermReferences:
         inputs = []
         for name, symbol in zip(plan.external_names, plan.input_symbols, strict=True):
             if name not in index:
-                raise NotImplementedError(
+                raise NativeExportUnsupported(
+                    "parameter-read",
                     f"the counterterm coefficient plan reads {name!r}, which the "
-                    "tree program has not"
+                    "tree program has not",
                 )
             inputs.append(Replacement(symbol, symbol_of[name]))
         columns = {
@@ -1048,7 +1140,9 @@ def _parameter_program(
             )
             model.append(["output", o, record["complex_component"] == "imag"])
         else:
-            raise NotImplementedError(f"a tree model parameter of kind {kind!r}")
+            raise NativeExportUnsupported(
+                "parameter-kind", f"a tree model parameter of kind {kind!r}"
+            )
     # The counterterm program's model parameters: the model's, plus the CT
     # multiplicities and slot switches of the request (integers fixed per
     # process; every slot on, finite-only evaluations skip the pole terms)
@@ -1056,12 +1150,12 @@ def _parameter_program(
     counterterm_model = []
     finite: list[int] = []
     helpers: dict[Any, Any] = {}
+    ct_externals: list[Any] = []
     if counterterm_trees is not None:
         ct_rows = counterterm_trees.rows
         fixed = counterterm_trees.fixed
         references = _CountertermReferences.of(slice_, index, symbol_of)
         ct_symbols = symbols.model(ct_rows.compiled.name)
-        ct_externals = []
         for record in ct_rows._records:
             if record["kind"] != "external_parameter":
                 continue
@@ -1074,8 +1168,9 @@ def _parameter_program(
             elif name in references.parameters:
                 ct_externals.append(Replacement(symbol, references.part(name)))
             else:
-                raise NotImplementedError(
-                    f"the counterterm program reads {name!r}, which the trees have not"
+                raise NativeExportUnsupported(
+                    "parameter-read",
+                    f"the counterterm program reads {name!r}, which the trees have not",
                 )
         for record in ct_rows._records:
             kind = record["kind"]
@@ -1111,8 +1206,9 @@ def _parameter_program(
                     ["output", o, record["complex_component"] == "imag"]
                 )
             else:
-                raise NotImplementedError(
-                    f"a counterterm program model parameter of kind {kind!r}"
+                raise NativeExportUnsupported(
+                    "parameter-kind",
+                    f"a counterterm program model parameter of kind {kind!r}",
                 )
 
     # Born couplings per N_c grade, from the slice's scalar plans (the Born's
@@ -1128,8 +1224,9 @@ def _parameter_program(
         replacements = []
         for name, symbol in zip(plan.external_names, plan.input_symbols, strict=True):
             if name not in index:
-                raise NotImplementedError(
-                    f"the scalar plan reads {name!r}, which the tree program has not"
+                raise NativeExportUnsupported(
+                    "parameter-read",
+                    f"the scalar plan reads {name!r}, which the tree program has not",
                 )
             replacements.append(Replacement(symbol, symbol_of[name]))
         plan_inputs.append(replacements)
@@ -1181,6 +1278,23 @@ def _parameter_program(
                 output(("counterterm", name, power, grade), lambda v=value: v)
             )
             continue
+        if slot[0] == "scaled":
+            _kind, name, power, grade, scale = slot
+            value = scalar(name, power, grade)
+            counterterm_outputs.append(
+                output(
+                    ("scaled", name, power, grade, scale),
+                    lambda v=value, scale=scale: (
+                        v
+                        * _line_factor(
+                            cast(_CountertermTrees, counterterm_trees).rows.compiled,
+                            scale,
+                            ct_externals,
+                        )
+                    ),
+                )
+            )
+            continue
         _kind, degree, coefficient, scalars = slot
         bound = coefficient.replace_multiple(
             [
@@ -1205,15 +1319,34 @@ def _parameter_program(
             if helpers.setdefault(head, body) != body:
                 raise ValueError(f"the scalar plans define {head!r} differently")
 
-    # Plan kernel constants.
+    # Derived model parameters (internal), on the program's inputs.
+    derived = {
+        record.name
+        for record in slice_.compiled.ir.parameters
+        if record.nature == "internal"
+    }
+    derived_values: dict[str, Any] = {}
+
+    def derived_value(name: str) -> Any:
+        if name not in derived_values:
+            derived_values[name] = _derived_parameter(
+                slice_.compiled, name, index, externals
+            )
+        return derived_values[name]
+
+    # Plan kernel constants (a loop propagator's kernel reads its mass, a
+    # derived one on the inputs as the plan masses below).
     def base(factor: Any, flips: Mapping[str, int]) -> Any:
         kind, value = factor
         if kind == "param":
-            if value not in index:
-                raise NotImplementedError(
-                    f"a kernel constant reads {value!r}, which the tree program has not"
-                )
-            return symbol_of[value] * flips.get(value, 1)
+            if value in index:
+                return symbol_of[value] * flips.get(value, 1)
+            if value in derived:
+                return derived_value(value) * flips.get(value, 1)
+            raise NativeExportUnsupported(
+                "parameter-read",
+                f"a kernel constant reads {value!r}, which is no model parameter",
+            )
         if kind == "prime":
             return Expression.num(int(value))
         if kind == "pi":
@@ -1259,18 +1392,41 @@ def _parameter_program(
                     lambda factor=factor, signs=signs: base(factor, signs),
                 )
             )
-    # Exact masses: external spinors and loop propagators.
-    for _pdg, name in masses:
-        if name not in index:
-            raise NotImplementedError(f"the external mass {name!r} is no input")
-    plan_masses = []
+    # Masses: external spinors and loop propagators. A mass that is an
+    # external parameter is exact (an input); one that is a derived model
+    # parameter (loop_sm's MW: irrational) is a carrier output of the
+    # program on the inputs, checked real and positive per point, which the
+    # native binder reads exactly (its carrier value's rational): its legs'
+    # invariants and its propagators take its square, the value its sources
+    # take (DESIGN §11.1), as ``assemble._model_masses`` binds them.
+    exact_masses, derived_masses = [], []
+
+    def derived_mass(name: str) -> int:
+        o = output(("derived-mass", name), lambda name=name: derived_value(name))
+        positive.append(o)
+        return o
+
+    for pdg, name in masses:
+        if name in index:
+            exact_masses.append([int(pdg), index[name]])
+        elif name in derived:
+            derived_masses.append([int(pdg), derived_mass(name)])
+        else:
+            raise NativeExportUnsupported(
+                "mass-parameter", f"the external mass {name!r} is no model parameter"
+            )
+    plan_masses: list[Any] = []
     for mass in exporter.masses:
         if mass.massless:
             plan_masses.append(None)
-        elif mass.mass not in index:
-            raise NotImplementedError(f"the loop mass {mass.mass!r} is no input")
-        else:
+        elif mass.mass in index:
             plan_masses.append(index[mass.mass])
+        elif mass.mass in derived:
+            plan_masses.append(["output", derived_mass(mass.mass)])
+        else:
+            raise NativeExportUnsupported(
+                "mass-parameter", f"the loop mass {mass.mass!r} is no model parameter"
+            )
     # The helpers in the order of their names, not the library's (which
     # follows the model's function bindings: a model compiled from its UFO
     # source and the same model read from the cache list them in different
@@ -1311,10 +1467,91 @@ def _parameter_program(
         "finite": finite,
         "constants": constants,
         "positive": sorted(set(positive)),
-        "masses": [[int(pdg), index[name]] for pdg, name in masses],
+        "masses": exact_masses,
         "plan_masses": plan_masses,
     }
+    if derived_masses:
+        # Written only when present: an older native refuses the record
+        # (unknown field) instead of reading the legs as massless.
+        record["derived_masses"] = derived_masses
     return record, bytes(evaluator.save())
+
+
+def _line_factor(compiled: Any, scale: str, externals: Sequence[Any]) -> Any:
+    """A Weyl line's factor ``kappa`` (``ct_closure.ClosureTerm.scale``, a
+    payload expression of the counterterm-lowered model, which
+    ``ct_closure.model_value`` evaluates in Python) on the parameter
+    program's inputs: its internal parameters resolved
+    (``ct_sites.resolved_internal_parameters``), its external ones replaced
+    as the counterterm program's (``externals``); one they do not bind is
+    refused."""
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    from .ct_sites import resolved_internal_parameters
+
+    model_symbols = symbols.model(compiled.name)
+    value = E(scale)
+    for record in compiled.ir.parameters:
+        payload = E(f"UFO::{{}}::{record.name}")
+        if value.contains(payload):
+            value = value.replace(
+                payload, E(model_symbols.symbol(record.name).to_canonical_string())
+            )
+    value = resolved_internal_parameters(compiled, value).replace_multiple(
+        list(externals)
+    )
+    missing = sorted(
+        record.name
+        for record in compiled.ir.parameters
+        if value.contains(E(model_symbols.symbol(record.name).to_canonical_string()))
+    )
+    if missing:
+        raise NativeExportUnsupported(
+            "parameter-read",
+            f"a Weyl line's factor reads {missing}, which the counterterm "
+            "program has not",
+        )
+    return value
+
+
+def _derived_parameter(
+    compiled: Any, name: str, index: Mapping[str, int], externals: Sequence[Any]
+) -> Any:
+    """The derived (internal) model parameter ``name`` (a mass) on the
+    parameter program's inputs: its resolved definition
+    (``ct_sites.resolved_internal_parameters``: in the model's external
+    parameters alone), each external parameter
+    replaced by its input (``externals``); one the tree program has not is
+    refused."""
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    from .ct_sites import resolved_internal_parameters
+
+    model_symbols = symbols.model(compiled.name)
+
+    def symbol(parameter: str) -> Any:
+        return E(model_symbols.symbol(parameter).to_canonical_string())
+
+    value = resolved_internal_parameters(compiled, symbol(name))
+    missing = sorted(
+        record.name
+        for record in compiled.ir.parameters
+        if record.nature == "external"
+        and record.name not in index
+        and value.contains(symbol(record.name))
+    )
+    if missing:
+        raise NativeExportUnsupported(
+            "parameter-read",
+            f"the mass {name!r} reads {missing}, which the tree program has not",
+        )
+    return value.replace_multiple(list(externals))
 
 
 # ------------------------------------------------- interaction-program kernels
@@ -1463,7 +1700,7 @@ def _saved_kernel(
 
 
 def _interaction_program(
-    trees: Any, pole_currents: frozenset[int] = frozenset()
+    trees: Any, slots: Sequence[Sequence[Any]] = ()
 ) -> tuple[dict[str, Any], tuple[bytes, ...]]:
     """The blocks DAG of ``trees`` (a ``TreeRows``) as an interaction program.
 
@@ -1481,12 +1718,18 @@ def _interaction_program(
     size is that of the DAG; the saved evaluators come first for the
     kernels, then for the propagators.
 
-    ``pole_currents`` are currents only epsilon-pole terms read (a
-    counterterm program's pole slots): per step the indices of the
-    interactions and outputs of such currents (``pole_interactions``,
-    ``pole_outputs``), which finite-only evaluations skip. The kernels
-    follow the shared recipe (``_vertex_kernel``, ``_propagator_kernel``,
-    ``_saved_kernel``)."""
+    ``slots`` is a counterterm program's slot table (``counterterm_slots``:
+    per CT slot its pseudo-order, component, epsilon power and N_c grade;
+    empty for the trees). The program then records per-slot reachability
+    (``slot_masks``): ``masks`` lists slot sets (``masks[0]`` every slot,
+    ``masks[1 + s]`` slot ``s`` alone) and each step's
+    ``accumulator_masks`` the set of slots its result current reaches: a
+    current with one insertion carries its slot's order and reaches that
+    slot only, one without an insertion (CT = 0) feeds every slot. An
+    evaluation skips every interaction and output whose current reaches no
+    slot it computes (finite-only: no slot of epsilon power 0, the native
+    runtime's skip). The kernels follow the shared recipe
+    (``_vertex_kernel``, ``_propagator_kernel``, ``_saved_kernel``)."""
 
     from pyamplicol.generation.stage_parameters import (
         _model_symbolica_functions,
@@ -1551,6 +1794,19 @@ def _interaction_program(
         if found is None:
             mask = dag.currents[current_id].index.momentum_mask
             found = momenta[current_id] = momentum_start[mask]
+        return found
+
+    slot_of = {str(slot[0]): s for s, slot in enumerate(slots)}
+    current_masks: dict[int, int] = {}
+
+    def mask_of(current_id: int) -> int:
+        """The current's ``masks`` index (``slot_masks``)."""
+
+        found = current_masks.get(current_id)
+        if found is None:
+            found = current_masks[current_id] = slot_masks(
+                dag.currents[current_id].index.coupling_orders, slot_of
+            )
         return found
 
     def weight_text(color_weight: tuple[float, float]) -> tuple[str, str]:
@@ -1619,13 +1875,10 @@ def _interaction_program(
             accumulators[current] = len(dimensions)
             dimensions.append(int(current_slots[current]["dimension"]))
         rows = []
-        pole_rows = []
         for item in stage["interaction_ids"]:
             interaction = dag.interactions[int(item)]
             if complex(*interaction.evaluation_factor) == 0j:
                 continue  # a certified zero attachment (as the stage program)
-            if int(interaction.result_id) in pole_currents:
-                pole_rows.append(len(rows))
             left, right = inputs[interaction.left_id], inputs[interaction.right_id]
             real, imag = weight_text(tuple(interaction.color_weight))
             rows.append(
@@ -1643,12 +1896,9 @@ def _interaction_program(
                 ]
             )
         outputs = []
-        pole_outputs = []
         for slot_id in stage["output_value_slot_ids"]:
             slot = value_slots[int(slot_id)]
             current = int(slot["current_id"])
-            if current in pole_currents:
-                pole_outputs.append(len(outputs))
             variant = str(slot["variant"])
             if variant not in ("propagated", "unpropagated"):
                 raise ValueError(f"a stage output of variant {variant!r}")
@@ -1662,16 +1912,51 @@ def _interaction_program(
                 ]
             )
         step = {"interactions": rows, "accumulators": dimensions, "outputs": outputs}
-        if pole_rows or pole_outputs:
-            step["pole_interactions"] = pole_rows
-            step["pole_outputs"] = pole_outputs
+        if slots:
+            step["accumulator_masks"] = [mask_of(current) for current in accumulators]
         steps.append(step)
     program = {
         "kernels": shapes["kernels"],
         "propagators": shapes["propagators"],
         "steps": steps,
     }
+    if slots:
+        program["masks"] = slot_mask_table(len(slots))
     return program, (*saved["kernels"], *saved["propagators"])
+
+
+def counterterm_slots(recursion: Any) -> list[list[Any]]:
+    """The slot table of a counterterm program (``ct_recursion.
+    CountertermRecursion.slots``, sorted): per CT slot its pseudo-order
+    (``counterterm_slot_order``), component, epsilon power and N_c grade.
+    Slot ``s`` of the program's ``masks`` is entry ``s``."""
+
+    from pyamplicol.models.loading import counterterm_slot_order
+
+    return [
+        [counterterm_slot_order(*slot), str(slot[0]), int(slot[1]), int(slot[2])]
+        for slot in recursion.slots
+    ]
+
+
+def slot_mask_table(count: int) -> list[list[int]]:
+    """The slot sets of a counterterm program with ``count`` slots: every
+    slot (index 0, the currents without an insertion), then each slot alone
+    (index ``1 + s``)."""
+
+    return [list(range(count)), *([s] for s in range(count))]
+
+
+def slot_masks(orders: Any, slot_of: Mapping[str, int]) -> int:
+    """The ``slot_mask_table`` index of a current with coupling ``orders``:
+    its one insertion's slot, or every slot without an insertion. A current
+    with insertions of two slots is refused (the program inserts exactly
+    one counterterm)."""
+
+    found = {slot_of[name] for name, power in orders if power and name in slot_of}
+    if len(found) > 1:
+        raise ValueError("a counterterm program current carries two slot orders")
+    return 0 if not found else 1 + found.pop()
 
 
 # ---------------------------------------------------------------- pruning
@@ -1681,6 +1966,8 @@ def prune_program(
     program: dict[str, Any],
     saved: Sequence[bytes],
     ct_saved: Sequence[bytes],
+    *,
+    keep_kets: bool = False,
 ) -> tuple[dict[str, Any], tuple[bytes, ...], tuple[bytes, ...]]:
     """``program`` without the work no output of it reads; with the saved
     kernel evaluators ``saved`` (the trees') and ``ct_saved`` (the
@@ -1712,7 +1999,10 @@ def prune_program(
     (design §7.5, Table 7.5c)."""
 
     counterterms = program.get("counterterms")
-    if counterterms is not None:
+    if counterterms is not None and not keep_kets:
+        # With stored observable columns (``keep_kets``) every ket component
+        # stays: a component the inclusive metric does not read can enter a
+        # colour history's interference.
         _prune_counterterm_terms(counterterms)
     state_size = int(program["state_size"])
     ct = program.get("counterterm_trees")
@@ -1937,8 +2227,6 @@ def _prune_interactions(
         accumulator_of = [-1] * len(step["accumulators"])
         for new, old in enumerate(accumulators):
             accumulator_of[old] = new
-        pole_rows = set(step.get("pole_interactions", ()))
-        pole_outputs = set(step.get("pole_outputs", ()))
         new_rows = []
         for k in rows:
             row = step["interactions"][k]
@@ -1952,17 +2240,12 @@ def _prune_interactions(
             if output[1] >= 0:
                 output[1] = propagator_of[output[1]]
             new_outputs.append(output)
-        new_pole_rows = [i for i, k in enumerate(rows) if k in pole_rows]
-        new_pole_outputs = [i for i, k in enumerate(outputs) if k in pole_outputs]
         step["interactions"] = new_rows
         step["accumulators"] = [step["accumulators"][a] for a in accumulators]
+        if "accumulator_masks" in step:
+            masks = step["accumulator_masks"]
+            step["accumulator_masks"] = [masks[a] for a in accumulators]
         step["outputs"] = new_outputs
-        if new_pole_rows or new_pole_outputs:
-            step["pole_interactions"] = new_pole_rows
-            step["pole_outputs"] = new_pole_outputs
-        else:
-            step.pop("pole_interactions", None)
-            step.pop("pole_outputs", None)
     interactions["kernels"] = [interactions["kernels"][k] for k in used]
     interactions["propagators"] = [interactions["propagators"][p] for p in propagators]
     return (

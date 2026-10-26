@@ -26,8 +26,9 @@ poles are compared with the providers instead. With ``--inputs python``
 ``--inputs native`` the executor forms the trees, the Born, the counterterm
 and external-field components itself (``native_trees``; the counterterms
 from the slice's counterterm closure) and every point is native; a process
-whose trees cannot be exported natively fails (``point_inputs =
-"regenerated-at-load"`` in the record), never falls back. Electroweak
+whose trees cannot be exported natively fails (``point_inputs`` null and
+the refusal in the record; such a process cannot be stored either), never
+falls back. Electroweak
 fixtures (``correction`` "EW") are generated on the G_mu UFO (``--ufo`` or
 ``PYAMPLICOL_EW_UFO_REFERENCE``, unless ``--model``) with corrections QCD
 and QED, its compatibility profile ``gmu_particle_anti`` and scale
@@ -403,10 +404,7 @@ def _fixture_request(reference: Mapping[str, Any], compiled: Any, args) -> tuple
 
 
 def _validate(args) -> dict[str, Any]:
-    from pyamplicol.generation.loop_artifact import (
-        LOOP_V2_NATIVE_POINT_INPUTS,
-        LOOP_V2_POINT_INPUTS,
-    )
+    from pyamplicol.generation.loop_artifact import LOOP_V2_NATIVE_POINT_INPUTS
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.v2.assemble import LoopSlice
     from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
@@ -447,14 +445,13 @@ def _validate(args) -> dict[str, Any]:
     _reset_peak()
     start = time.perf_counter()
     if args.inputs == "native":
-        # A process whose tree program cannot be exported natively would be
-        # stored as the plan alone (``point_inputs = "regenerated-at-load"``,
-        # ``artifact.py``): with native inputs requested that is a failure,
-        # never a silent fallback (WP3.2 M8).
+        # A process whose tree program cannot be exported natively is refused
+        # at generation (``artifact.generate_process``): with native inputs
+        # requested that is a failure, never a silent fallback (WP3.2 M8).
         try:
             executor = NativeExecutor(slice_, forward=False, inputs="native")
         except NotImplementedError as error:
-            record["point_inputs"] = LOOP_V2_POINT_INPUTS
+            record["point_inputs"] = None
             record["native_refusal"] = str(error)
             record["passed"] = False
             return record

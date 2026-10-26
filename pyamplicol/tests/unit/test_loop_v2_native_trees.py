@@ -218,10 +218,20 @@ def test_native_finite_only_keeps_every_finite_part(executors):
     with poles."""
 
     native, _python = executors("uux_ddxg")
-    # The counterterm program flags the currents of its pole slots, which
-    # finite-only batches skip.
-    steps = native.exported.trees.program["counterterm_trees"]["interactions"]["steps"]
-    assert any(step.get("pole_interactions") for step in steps)
+    # The counterterm program records per current the slots it reaches
+    # (its slot table and masks); finite-only batches skip the currents
+    # that reach pole slots only.
+    ct = native.exported.trees.program["counterterm_trees"]
+    powers = [slot[2] for slot in ct["slots"]]
+    pole_masks = {
+        m
+        for m, mask in enumerate(ct["interactions"]["masks"])
+        if all(powers[s] != 0 for s in mask)
+    }
+    steps = ct["interactions"]["steps"]
+    assert pole_masks and any(
+        mask in pole_masks for step in steps for mask in step["accumulator_masks"]
+    )
     points, scales = _points(PROCESSES["uux_ddxg"][3])
     points, scales = points[:1], scales[:1]
     (full,) = native.evaluate(points, scales, parameters=PARAMETERS)

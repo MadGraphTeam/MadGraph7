@@ -737,15 +737,31 @@ def test_complex_ckm_vertices_are_read_through_their_conjugate_rule(
     _assert_form_factor(slice_, [_two_to_two("0", "0")], ["1000000"])
 
 
-@pytest.mark.loop_physics
-@pytest.mark.parametrize("name", ["udx_epve", "emu_emu"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        *(
+            pytest.param(name, marks=pytest.mark.loop_physics)
+            for name in ("udx_epve", "emu_emu", "udx_wpg", "gu_wpd")
+        ),
+        *(
+            pytest.param(name, marks=pytest.mark.loop_nightly)
+            for name in ("gb_twm", "uux_wpwm", "bbx_wpwm")
+        ),
+    ],
+)
 def test_native_inputs_equal_the_python_inputs(
     loop_sm_compiled_model, loop_native, name
 ):
     """The native per-point inputs (``NativeExecutor(inputs="native")``: tree
     program, Born and counterterm root closures) equal the Python inputs on
-    the conjugate rule's root terms (u d~ > e+ ve) and on a lepton line
-    closing at the root (e- u > e- u), in binary64."""
+    the conjugate rule's root terms (u d~ > e+ ve), on a lepton line closing
+    at the root (e- u > e- u), on external W bosons (loop_sm's MW is a
+    derived parameter: the parameter program forms it per point, and the W
+    legs are bound on its shell, ``test_derived_w_masses_are_bound_on_shell``)
+    and on a Weyl
+    line's factor kappa at a counterterm root copy (g u > w+ d: a scaled
+    coupling slot, ``native_trees._line_factor``), in binary64."""
 
     from pyamplicol.loops.v2.plan_export import NativeExecutor
 
@@ -760,7 +776,10 @@ def test_native_inputs_equal_the_python_inputs(
     )
     native = NativeExecutor(slice_, forward=False, inputs="native")
     python = NativeExecutor(slice_, forward=False, exported=native.exported)
-    points = [entry["point"], _massless_points()[0][0]]
+    points = [entry["point"]]
+    if name in ("udx_epve", "emu_emu"):
+        # A second, massless point (all four legs massless).
+        points.append(_massless_points()[0][0])
     scales = [LEGACY["mu_r2"]] * len(points)
     mine = native.evaluate(points, scales, parameters=PARAMETERS)
     theirs = python.evaluate(points, scales, parameters=PARAMETERS)
@@ -781,6 +800,67 @@ def test_native_inputs_equal_the_python_inputs(
                     strict=True,
                 ):
                     assert abs(float(x) - float(y)) <= TOLERANCE * scale, component
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["udx_wpg", "gu_wpd"])
+def test_derived_w_masses_are_bound_on_shell(loop_sm_compiled_model, loop_native, name):
+    """loop_sm's MW is a derived parameter. Both lanes bind the W legs on its
+    shell (DESIGN §11.1; genericity audit M2) in every carrier: the Python
+    lane's leg invariant is exactly the square of the MW its wavefunctions
+    take (``TreeRows._model_values`` at the working digits, the slice's one
+    mass evaluator ``assemble._model_masses``), the native lane's is exactly
+    the square of its parameter program's MW carrier value (a binary64 value
+    in binary64), and the two agree to the carrier's rounding; every leg of
+    an external mass is bound to the same exact square in both lanes."""
+
+    import math
+
+    from pyamplicol.loops.v2.assemble import Precision, _leg_masses
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    entry = LEGACY["processes"][name]
+    slice_ = _slice(
+        loop_sm_compiled_model,
+        loop_native,
+        entry["process"],
+        entry["born_orders"],
+        entry["loop_orders"],
+        LEGACY["fixed_parameters"],
+    )
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    assert native.exported.trees.program["parameters"]["derived_masses"]
+    legs = [leg.mass.mass for leg in slice_.families.legs]
+    (w,) = [k for k, mass in enumerate(legs) if mass == "MW"]
+    parameters = {**LEGACY["fixed_parameters"], **PARAMETERS}
+    rows = slice_.tree_rows
+    (index,) = [
+        k
+        for k, record in enumerate(rows._records)
+        if record.get("runtime_name") == "MW" and record["complex_component"] != "imag"
+    ]
+    carriers = [
+        (Precision.double(), 5e-16),
+        (Precision.double_double(), 1e-30),
+        (Precision.arbitrary(32), 1e-30),
+    ]
+    for precision, rounding in carriers:
+        digits = precision.working_digits
+        python = _leg_masses(slice_, parameters, digits)
+        wavefunction = Fraction(rows._model_values(parameters, digits)[index])
+        assert python[w] == wavefunction**2
+        _plan, bound = native.bound_masses(
+            [entry["point"]], [LEGACY["mu_r2"]], PARAMETERS, precision
+        )
+        for k, mass in enumerate(legs):
+            if k != w:
+                assert bound[k] == python[k], (precision, k, mass)
+        square = bound[w]
+        root = Fraction(math.isqrt(square.numerator), math.isqrt(square.denominator))
+        assert root * root == square
+        if precision.arithmetic == "double":
+            assert Fraction(float(root)) == root
+        assert abs(square - python[w]) <= Fraction(rounding) * python[w]
 
 
 @pytest.mark.loop_physics

@@ -13,9 +13,11 @@ colour-basis elements on the Born (bra) side.
   K_BL[b, c] = <bra(b)|ket(kappa_c)> and K_LB = (K_BL^swapped)^dagger. The
   first term is seeded with the directed seed table, the second with the
   table of the swapped history and conjugated after reduction (one column if
-  the history is symmetric). Counterterm and field components use the same
-  directed overlaps; the Born is B^dagger K_BB B. Results are complex. At LC
-  and NLC every directed output is projected at the leading degree of its
+  the history is symmetric, or self-adjoint: a dipole T_i.T_j whose swapped
+  table equals its direct one, ``DirectedColour._self_adjoint``).
+  Counterterm and field components use the same directed overlaps; the Born
+  is B^dagger K_BB B. Results are complex. At LC and NLC every directed
+  output is projected at the leading degree of its
   history's complete family (all diagonal catalogue histories of its order
   and output legs, every pair, both directions; ``colour_family``), and the
   slice's colour pruning keeps the skeletons live in any of those tables.
@@ -142,6 +144,12 @@ ComplexPair = tuple[Decimal, Decimal]
 # Kind of the resolved colour components (design §1.6, decision 3).
 BORN_BASIS_COMPONENTS = "born-basis-anchored-interference"
 INCLUSIVE = "born"
+# A history of one gluon emission on each side, off two different legs with
+# the same emitted gluon (a dipole T_i.T_j), whose swapped seed table equals
+# its direct one is self-adjoint (``DirectedColour.swapped``): one seed
+# column (2 Re) instead of two, and its swapped metric is its direct one.
+# False keeps two columns for every asymmetric history (the oracle).
+SELF_ADJOINT_HISTORIES = True
 
 
 # --------------------------------------------------------------------- columns
@@ -292,6 +300,7 @@ class DirectedColour:
         history: ColorCorrelator,
         cells: _PrimitiveCells | None = None,
         literals: dict | None = None,
+        adjoint: dict | None = None,
     ):
         legs = table.basis.legs
         self.history = history
@@ -301,6 +310,10 @@ class DirectedColour:
             raise ValueError(
                 f"colour history {history.id!r} has incompatible bra/ket outputs"
             )
+        # Self-adjointness decided once per history for a slice and its
+        # certified-scaleless companion (``ObservableSlice._adjoint``), so
+        # their column plans number their lanes alike.
+        self._adjoint = {} if adjoint is None else adjoint
         self._legs = legs
         self._images: dict[tuple[bool, Any], ConnectedColorTensor] = {}
         self._operators: dict[tuple[bool, Any], ConnectedColorTensor] = {}
@@ -313,9 +326,78 @@ class DirectedColour:
 
     @cached_property
     def swapped(self) -> SeedTable:
-        """The seed table of the history with bra and ket exchanged."""
+        """The seed table of the history with bra and ket exchanged: the
+        direct table itself (one seed column, 2 Re) when the history is
+        symmetric or self-adjoint (``_self_adjoint``)."""
 
-        return self.table if self.symmetric else self._table(self._seeds, True)
+        if self.symmetric:
+            return self.table
+        table = self._table(self._seeds, True)
+        return self.table if self._self_adjoint(table) else table
+
+    def _commuting(self) -> bool:
+        """One gluon emission on each side, off two different legs, with the
+        same emitted gluon: bra(b) = T_i b and ket(k) = T_j k."""
+
+        bra, ket = self._bra.emissions, self._ket.emissions
+        return (
+            len(bra) == 1
+            and len(ket) == 1
+            and isinstance(bra[0], EmitGluon)
+            and isinstance(ket[0], EmitGluon)
+            and bra[0].emitted_label == ket[0].emitted_label
+            and bra[0].emitter_label != ket[0].emitter_label
+        )
+
+    def _self_adjoint(self, swapped: SeedTable) -> bool:
+        """Whether the swapped direction equals the direct one on every
+        tensor: the seed table of the swapped history and every metric that
+        reads it (the stored columns' counterterm metrics,
+        ``native_observables._Metrics``).
+
+        For a dipole (``_commuting``) the direct cells are <T_i b|T_j k> =
+        s_i <b|T_i T_j k> and the swapped ones <T_j b|T_i k> = s_j <b|T_j T_i
+        k>, with T_i^dagger = s_i T_i (a colour charge is hermitian up to its
+        convention's phase) and T_i T_j = T_j T_i (different legs). The
+        slice's two exact seed tables decide it: equal with a nonzero cell,
+        so s_i = s_j and the two directions are equal on every tensor. A
+        certified-scaleless companion takes the slice's decision (its lanes
+        are numbered alike) and checks its own tables against it."""
+
+        if not SELF_ADJOINT_HISTORIES or not self._commuting():
+            return False
+        key = (self.history.bra, self.history.ket)
+        equal, nonzero = self._compare(swapped)
+        decided = self._adjoint.get(key)
+        if decided is None:
+            decided = self._adjoint[key] = equal and nonzero
+        elif decided and not equal:
+            raise ValueError(
+                f"colour history {self.history.id!r}: the swapped seed table "
+                "differs from the direct one although the slice's tables "
+                "showed the dipole self-adjoint"
+            )
+        return decided
+
+    def _compare(self, swapped: SeedTable) -> tuple[bool, bool]:
+        """(the swapped table's cells equal the direct ones, the direct table
+        has a nonzero cell): on the native tables (package C's "cells" stage
+        keeps them, ``native_cells.directed_table``) their distinct cells and
+        first-seen ids, which equal tables share; else the Python cells."""
+
+        from . import native_cells
+
+        handles = native_cells._DIRECTED.get(self, {})
+        direct, other = handles.get(False), handles.get(True)
+        if direct is not None and other is not None:
+            values, ids = direct.decode()
+            return (values, ids) == other.decode(), any(
+                Fraction(re) or Fraction(im) for value in values for _p, re, im in value
+            )
+        cells = self.table.cells
+        return swapped.cells == cells, any(
+            value for row in cells for cell in row for value in cell.values()
+        )
 
     def _sides(self, swapped: bool) -> tuple[ColorConnection, ColorConnection]:
         """(Born side, loop side) connections of one direction."""
@@ -623,6 +705,9 @@ class ObservableSlice:
     # The observables of the certified-scaleless companion (``scaleless``),
     # once built: [ObservableSlice or None].
     _scaleless: list = field(default_factory=list, repr=False)
+    # Per directed history (bra, ket): self-adjoint or not
+    # (``DirectedColour._self_adjoint``), shared with the companion.
+    _adjoint: dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def generate(
@@ -652,8 +737,10 @@ class ObservableSlice:
         *,
         correlators: CorrelatorConfig | None = None,
         ward: bool = False,
+        adjoint: dict | None = None,
     ) -> ObservableSlice:
-        """The observables of an already generated slice.
+        """The observables of an already generated slice (``adjoint``: the
+        self-adjointness decisions of the slice whose companion this is).
 
         At LC/NLC a slice generated without colour pruning is pruned here,
         keeping every skeleton live in the inclusive seed table or in the
@@ -687,6 +774,8 @@ class ObservableSlice:
             tuple(correlators.spin_correlations),
             ward,
         )
+        if adjoint is not None:
+            out._adjoint = adjoint
         directed = [history for history in out.histories if history.bra]
         if slice_.request.accuracy != "full":
             if slice_.colour_pruned and directed:
@@ -737,6 +826,7 @@ class ObservableSlice:
                         tuple(self.histories), tuple(self.spin_classes)
                     ),
                     ward=self.ward,
+                    adjoint=self._adjoint,
                 )
             self._scaleless.append(companion)
         return self._scaleless[0]
@@ -765,7 +855,7 @@ class ObservableSlice:
         found = self._directed.get(key)
         if found is None:
             found = self._directed[key] = DirectedColour(
-                self.slice.table, history, self._cells, self._literals
+                self.slice.table, history, self._cells, self._literals, self._adjoint
             )
         return found
 

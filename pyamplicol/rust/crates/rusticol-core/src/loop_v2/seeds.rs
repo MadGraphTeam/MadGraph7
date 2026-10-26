@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: 0BSD
 
 //! Born-weighted seeds (DESIGN.md §7.3): per seed class and loop orders
-//! `U0_c[o][h] = Σ_b K[c, b] conj(A0_b(h))` per observable column `o` and
+//! `U0_c[o][h] = Σ_b K[c, b] conj(A0_b(h))` per observable column `o` (its
+//! weights `K` those of its seed-weight column, `LoopProgramV4::
+//! column_weights`) and
 //! Born helicity row `h`, from the plan's exact weights and the batch's Born
 //! components (zero on the rows a helicity-resolved column does not keep,
 //! [`super::observables::ColumnRows`]); per seed key `U0[k] = Σ_c x_c U0_c`;
@@ -44,10 +46,11 @@ pub fn seeds<T: Carrier, const L: usize>(plan: &LoopProgramV4, data: &LaneData<T
                 .collect();
             let mut out = vec![data.zero.clone(); plan.rows * columns * v];
             for h in 0..plan.rows {
-                for (o, terms) in weights.iter().enumerate() {
+                for (o, &w) in plan.column_weights.iter().enumerate() {
                     if !plan.column_rows.keeps(h, o) {
                         continue;
                     }
+                    let terms = &weights[w];
                     let target = &mut out[(h * columns + o) * v..][..v];
                     for (component, re, im) in terms {
                         let born = &data.born[(h * plan.born_components + component) * v..][..v];
