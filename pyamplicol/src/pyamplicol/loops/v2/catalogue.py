@@ -829,16 +829,13 @@ class _CatalogueBuilder:
             equations = []
             for term in self.compiled.ir.vertex_terms:
                 records = tuple(self.particles[name] for name in term.particles)
-                if (
-                    any(
-                        abs(record.color) != 1
-                        or record.ghost_number
-                        or record.spin == _FERMION_SPIN
-                        or record.auxiliary_kind is not None
-                        for record in records
-                    )
-                    or not self._closed(term.particles)
-                ):
+                if any(
+                    abs(record.color) != 1
+                    or record.ghost_number
+                    or record.spin == _FERMION_SPIN
+                    or record.auxiliary_kind is not None
+                    for record in records
+                ) or not self._closed(term.particles):
                     continue
                 equations.append((term.particles, self.reading_sign(term)))
             self._field_signs = _FieldSigns(equations)
