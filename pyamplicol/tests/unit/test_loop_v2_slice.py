@@ -6,7 +6,9 @@ FeynKit diagrams appear only inside the frozen legacy oracles. The slice
 processes are gg -> gg (massless b), uu~ -> dd~g and the identical-flavour
 sign controls uu~ -> uu~ and uu~ -> uu~g (O13), in binary64 and at 200 bits,
 and the leading- and next-to-leading-colour projections of gg -> gg,
-uu~ -> ggg, uu~ -> dd~g, Drell-Yan and uu~ -> tt~. Oracles:
+uu~ -> ggg, uu~ -> dd~g, Drell-Yan, uu~ -> tt~ and uu~ -> uu~g (identical
+flavours: one colour word reached by trees of two N_c grades, separate blocks
+at LC and NLC, ``generation.dag_grades``). Oracles:
 
 * providers (O8): MadLoop, Recola and OpenLoops within 1e-9 (the
   required-references metric) for the virtual's three Laurent coefficients;
@@ -191,8 +193,10 @@ def test_massive_quark_line_equals_legacy(slices, carrier):
 
 
 # Controls with legacy LC and NLC projections (``legacy_capture``); Drell-Yan
-# is the photon-only control, so the Z is excluded from its v2 request.
-PROJECTED = ("gg_gg", "uux_ggg", "uux_ddxg", "dy", "tt")
+# is the photon-only control, so the Z is excluded from its v2 request. The
+# legacy engine's formal-N_c colour algebra is independent of the v2 grade
+# split, which uu~ -> uu~g needs (identical-flavour lines).
+PROJECTED = ("gg_gg", "uux_ggg", "uux_ddxg", "dy", "tt", "uux_uuxg")
 DRELL_YAN_PARAMETERS = {"aS": "0.118", "aEWM1": "132.507"}
 
 
