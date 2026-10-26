@@ -52,7 +52,14 @@ from fractions import Fraction
 import pytest
 
 from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
-from pyamplicol.loops.v2.families import onshell_leg
+from pyamplicol.loops.v2.families import (
+    ZERO,
+    ExternalLeg,
+    Family,
+    MassId,
+    canonical_family_key,
+    onshell_leg,
+)
 from pyamplicol.loops.v2.plan_export import NativeExecutor
 from pyamplicol.loops.v2.stability import Budget, StabilityChecks, deviation
 
@@ -284,6 +291,34 @@ def test_a_single_leg_fixes_its_arc_and_the_complement():
     assert onshell_leg(0b11011, full) == 2
     assert onshell_leg(0b00110, full) is None
     assert onshell_leg(0, full) is None
+
+
+@pytest.mark.loop_fast
+def test_structural_onshell_bindings_follow_the_same_rule():
+    """``Family.onshell_bindings`` (the certified-scaleless proof) binds the
+    invariants of a single-leg arc or single-leg complement, and only those,
+    to that leg's mass: the ``onshell_leg`` rule of every carrier. Expected
+    bindings written out by hand on 5-leg rings (every leg a distinct mass,
+    so a wrong leg shows)."""
+
+    legs = tuple(ExternalLeg(index, "t", MassId(f"M{index}"), 3) for index in range(5))
+    masses = [MassId(f"M{index}") for index in range(5)]
+    expected = {
+        # 10 invariants; arcs {1}..{4} and the complement of {0}.
+        (1, 2, 4, 8, 16): dict(
+            zip((2, 4, 8, 16, 30), masses[1:] + masses[:1], strict=True)
+        ),
+        # Legs 0 and 1 merged: 4, 8, 16 and 12 ({2,3}), 24, 28 (complement {0,1}).
+        (3, 4, 8, 16): {4: masses[2], 8: masses[3], 16: masses[4]},
+        # Invariants 30 (complement {0}), 6 ({1,2}) and 24 ({3,4}).
+        (1, 6, 24): {30: masses[0]},
+        # Invariants 2 ({1}), 24 ({3,4}) and 26 (complement {0,2}).
+        (5, 2, 24): {2: masses[1]},
+    }
+    for masks, bindings in expected.items():
+        key = canonical_family_key(masks, [MassId(ZERO)] * len(masks))
+        family = Family(key, 0, ())
+        assert family.onshell_bindings(legs) == bindings, masks
 
 
 @pytest.mark.loop_fast
