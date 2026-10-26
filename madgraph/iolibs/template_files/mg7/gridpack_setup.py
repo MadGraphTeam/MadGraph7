@@ -99,9 +99,6 @@ def make_context(device_name: str, cpu_mode: str, cpu_thread_pool_size: int,
 def load_context_data(contexts, backends, madspace_data: dict) -> None:
     """Load the globals and the matrix elements of the gridpack into every
     context."""
-    # run-time matrix-element parameters (bwcutoff) of the run that made the
-    # gridpack; gridpacks written before they were recorded used the default
-    me_parameters = madspace_data.get("me_parameters", {})
     for context in contexts:
         context.load_globals(gridpack_path("data", "globals.tar"))
     # custom functions come first, as in the run that made the gridpack
@@ -114,12 +111,13 @@ def load_context_data(contexts, backends, madspace_data: dict) -> None:
         load_custom_function(
             ms, contexts, device_types, kind, _gridpack_relative(path), parameters
         )
+    # in the order of the run, which gave them their indices
     for context, backend in zip(contexts, backends):
-        for me_path in madspace_data["matrix_elements"]:
+        for path_format, init_path, parameters in madspace_data["matrix_elements"]:
             context.load_matrix_element(
-                _gridpack_relative(me_path.format(device=backend)),
-                gridpack_path("Cards", "param_card.dat"),
-                me_parameters,
+                _gridpack_relative(path_format.format(device=backend)),
+                _gridpack_relative(init_path),
+                parameters,
             )
 
 
@@ -139,6 +137,21 @@ def load_channels(contexts, config, file_dir=None):
         )
         for name, channel in channels.items()
     ]
+
+
+def load_weighting_groups(max_overweight_truncation, freeze_max_weight_after):
+    """The re- and unweighting steps after the first unweighting stored in
+    data/groups.json, with the unweighting settings of the final pass, and
+    whether a step unweights: the first unweighting is then a first pass."""
+    with open(gridpack_path("data", "groups.json")) as f:
+        groups = json.load(f)
+    unweights = False
+    for group in groups:
+        for step in group["steps"]:
+            step["max_overweight_truncation"] = max_overweight_truncation
+            step["freeze_max_weight_after"] = freeze_max_weight_after
+            unweights |= step["mode"] == "unweight"
+    return ms.weighting_groups_from_json(json.dumps(groups)), unweights
 
 
 def load_lhe_completer():

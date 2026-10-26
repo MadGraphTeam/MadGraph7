@@ -6957,9 +6957,9 @@ class RunCardMG7(RunCard):
         self.add_toml_param('amplicol', 'mode', "reweight", allowed=["unweight", "reweight"],
             comment="unweight or reweight the events to the colour accuracy")
         self.add_toml_param('amplicol', 'first_pass_max_overweight_truncation', 0.01,
-            comment="max_overweight_truncation of the leading-colour unweighting")
+            gridpack=True, comment="max_overweight_truncation of the leading-colour unweighting")
         self.add_toml_param('amplicol', 'first_pass_freeze_max_weight_after', 10000,
-            comment="freeze_max_weight_after of the leading-colour unweighting")
+            gridpack=True, comment="freeze_max_weight_after of the leading-colour unweighting")
 
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,

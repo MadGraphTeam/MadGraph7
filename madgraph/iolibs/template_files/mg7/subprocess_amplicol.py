@@ -9,7 +9,6 @@ colour orderings, at the helicity of the event.
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 from madgraph.iolibs.template_files.mg7.common import lhe_helicities, ms
@@ -94,14 +93,22 @@ class AmplicolSubprocess(MadgraphSubprocess):
                         f"subprocess {self.meta['incoming']} > {self.meta['outgoing']}"
                     )
 
-    def load_matrix_elements(self, all_api_paths, api_path_formats, member_metas):
+    def load_matrix_elements(self, api_path_formats, member_metas):
         run_args = self.process.run_card["run"]
         if any(device != "cpu" for device in self.process.device_types):
             raise RuntimeError("[amplicol] processes are only supported on CPUs")
         if run_args["dummy_matrix_element"]:
             raise RuntimeError("[amplicol] processes need their matrix elements")
-        if self.process.run_card["gridpack"]["save_gridpack"]:
-            raise RuntimeError("[amplicol] processes do not support gridpacks yet")
+        gridpack_args = self.process.run_card["gridpack"]
+        if gridpack_args["save_gridpack"] and gridpack_args["include_source"]:
+            raise RuntimeError(
+                "gridpacks of [amplicol] processes cannot include the sources"
+            )
+        if self.meta["qcd_power"] < 0 and self.process.systematics_enabled():
+            raise RuntimeError(
+                "the scale and PDF systematics of [amplicol] processes that mix "
+                "coupling orders are not supported yet: disable [systematics]"
+            )
         self.supports_alpha_s = self.meta.get("supports_alpha_s", True)
         if not self.supports_alpha_s and not self.process.run_card["beam"]["fixed_ren_scale"]:
             raise RuntimeError(
@@ -125,10 +132,7 @@ class AmplicolSubprocess(MadgraphSubprocess):
         # loaded once for all channels; each load reads the whole pyamplicol artifact
         apis = self.process.amplicol_apis
         if path not in apis:
-            for context in self.process.contexts:
-                apis[path] = context.load_matrix_element(
-                    path, os.path.abspath(artifact), parameters
-                )
+            apis[path] = self.process.load_matrix_element(path, artifact, parameters)
         return apis[path]
 
     def build_multi_channel_data(self):

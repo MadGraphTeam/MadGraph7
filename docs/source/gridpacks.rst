@@ -154,6 +154,9 @@ gridpack is created.
     * -
       - ``cut_efficiency_threshold``, ``max_cut_repetitions``
       - Card only.
+    * - ``[amplicol]``
+      - ``first_pass_max_overweight_truncation``, ``first_pass_freeze_max_weight_after``
+      - ``--first_pass_max_overweight_truncation``, ``--first_pass_freeze_max_weight_after``
     * - ``[gridpack]``
       - ``output_dir``, ``temp_output_dir``
       - ``--output_dir``, ``--temp_output_dir``
@@ -166,6 +169,13 @@ An option on the command line overrides the card. The settings have the same mea
 the main run card, see :doc:`run_card`. ``./bin/generate_events --help`` lists all options.
 Relative ``output_dir`` and ``temp_output_dir`` paths in the card refer to the gridpack
 directory. Both are reset to ``""`` when the gridpack is created.
+
+With ``[amplicol]`` processes unweighted to full colour, ``max_overweight_truncation`` and
+``freeze_max_weight_after`` set the second pass, which gives the events, and the
+``first_pass_`` options the leading-colour unweighting, as in the main run. The colour
+accuracy and the mode are fixed when the gridpack is created. The pyamplicol artifacts
+the libraries read are copied to ``SubProcesses/``, and ``include_source = true`` is not
+supported for these processes.
 
 The card names the ``cpu_mode`` that the gridpack was built with, which can differ from the
 ``"auto"`` of the original run card. The matrix element libraries carry this name. If you

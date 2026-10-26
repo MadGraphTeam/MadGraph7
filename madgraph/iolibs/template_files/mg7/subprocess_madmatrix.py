@@ -250,12 +250,6 @@ class MadgraphSubprocess:
             else:
                 self.unmerged_meta = unmerged_meta
 
-        # The libraries were all built up front by MadgraphProcess.compile_matrix_elements
-        all_api_paths = [
-            [api_path_format.format(device=backend) for backend in self.process.backends]
-            for api_path_format in api_path_formats
-        ]
-
         self.incoming_masses = [
             self.process.get_mass(pid) for pid in clean_pids(self.meta["incoming"])
         ]
@@ -339,21 +333,21 @@ class MadgraphSubprocess:
             **self.process.scale_kwargs
         )
 
-        self.load_matrix_elements(all_api_paths, api_path_formats, member_metas)
+        # the libraries were all built up front by MadgraphProcess.compile_matrix_elements
+        self.load_matrix_elements(api_path_formats, member_metas)
 
-    def load_matrix_elements(self, all_api_paths, api_path_formats, member_metas):
+    def load_matrix_elements(self, api_path_formats, member_metas):
         """The matrix element and [surrogate] of every member subprocess."""
         if self.process.run_card["run"]["dummy_matrix_element"]:
-            self.matrix_elements = [None] * len(all_api_paths)
+            self.matrix_elements = [None] * len(api_path_formats)
         else:
-            self.matrix_elements = []
-            for api_paths in all_api_paths:
-                for context, api_path in zip(self.process.contexts, api_paths):
-                    mat = context.load_matrix_element(
-                        api_path, self.process.param_card_path,
-                        me_parameters(self.process.run_card)
-                    )
-                self.matrix_elements.append(mat)
+            self.matrix_elements = [
+                self.process.load_matrix_element(
+                    path_format, self.process.param_card_path,
+                    me_parameters(self.process.run_card)
+                )
+                for path_format in api_path_formats
+            ]
         self.surrogates = []
         if self.process.surrogate is not None:
             for path_format, member_meta in zip(api_path_formats, member_metas):

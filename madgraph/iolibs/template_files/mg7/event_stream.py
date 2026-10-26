@@ -39,6 +39,7 @@ from gridpack_setup import (
     load_lhe_completer,
     load_madspace_data,
     load_run_card,
+    load_weighting_groups,
     make_context,
     resolve_seed,
     source_hash_matches,
@@ -188,8 +189,13 @@ class EventStream:
         self.seed = resolve_seed(pick(seed, run_args.get("seed", -1)))
         load_context_data([self._context], [backend], madspace_data)
         channel_generators = load_channels([self._context], config)
+        # the maxima of all passes are fixed, so their settings do not matter
+        groups, _ = load_weighting_groups(
+            gen_args["max_overweight_truncation"], gen_args["freeze_max_weight_after"]
+        )
         self._stream = ms.EventStream(
-            self._context, channel_generators, self.seed, load_lhe_completer(), config
+            self._context, channel_generators, self.seed, load_lhe_completer(), config,
+            groups=groups,
         )
 
     def __iter__(self) -> Iterator["ms.LHEEvent"]:

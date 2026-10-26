@@ -302,6 +302,8 @@ class MadgraphProcess:
         self.contexts = []
         # AmpliCol libraries, shared by all channels of their process
         self.amplicol_apis = {}
+        # [path format, init path, parameters] of every load_matrix_element, in order
+        self.loaded_matrix_elements = []
         self.device_types = []
         self.devices = []
         self.pool_sizes = []
@@ -325,6 +327,18 @@ class MadgraphProcess:
             self.devices.append(device)
             self.pool_sizes.append(pool_size)
             self.contexts.append(ms.Context(device=device, thread_count=pool_size))
+
+    def load_matrix_element(self, path_format: str, init_path: str, parameters: dict):
+        """Load a matrix-element library into every context, recorded for the
+        gridpack to load the same ones at the same indices. The init path is
+        the param card, or the artifact of an AmpliCol library."""
+        for context, backend in zip(self.contexts, self.backends):
+            api = context.load_matrix_element(
+                path_format.format(device=backend), os.path.abspath(init_path),
+                parameters
+            )
+        self.loaded_matrix_elements.append([path_format, init_path, parameters])
+        return api
 
     CUSTOM_FUNCTION_KINDS = ("cut", "scale", "pdf", "bias")
 
@@ -1367,13 +1381,16 @@ class MadgraphProcess:
                 subprocess_channels[i].append(len(channel_generators))
                 channel_generators.append(channel.event_generator)
 
+        groups = self.weighting_groups(subprocess_channels)
+        # the groups of the last generator built, the one a gridpack stores
+        self.weighting_groups_json = ms.weighting_groups_to_json(groups)
         event_generator = ms.EventGenerator(
             contexts=self.contexts,
             channels=channel_generators,
             status_file=self.status_file,
             config=self.event_generator_config,
             seed=self.run_seed,
-            groups=self.weighting_groups(subprocess_channels),
+            groups=groups,
         )
         unused_globals = (
             set(self.contexts[0].global_names()) - event_generator.used_globals()
@@ -1997,6 +2014,8 @@ class MadgraphProcess:
         ]
         with open(os.path.join(data_path, "channels.json"), "w") as f:
             f.write("{" + ",".join(channel_entries) + "}")
+        with open(os.path.join(data_path, "groups.json"), "w") as f:
+            f.write(self.weighting_groups_json)
 
         lib_path = os.path.join(gridpack_path, "lib")
         if self.run_card["gridpack"]["include_source"]:
@@ -2032,10 +2051,18 @@ class MadgraphProcess:
                 ignore=shutil.ignore_patterns("include"),
             )
 
-        matrix_elements = []
-        for subproc in self.subprocess_data:
-            me_path = subproc["me_path"]
-            matrix_elements.append(me_path)
+        # the AmpliCol artifacts are read at run time; the ratio library finds
+        # them next to its own, otherwise empty, reweight directory
+        for artifact_dir in sorted({
+            os.path.dirname(meta["artifact"])
+            for meta in self.subprocess_data if is_amplicol(meta)
+        }):
+            for name in ("lc", "full"):
+                shutil.copytree(
+                    os.path.join(artifact_dir, name),
+                    os.path.join(gridpack_path, artifact_dir, name),
+                )
+            os.makedirs(os.path.join(gridpack_path, artifact_dir, "reweight"))
 
         cards_path = os.path.join(gridpack_path, "Cards")
         os.mkdir(cards_path)
@@ -2100,7 +2127,7 @@ class MadgraphProcess:
             shutil.copy(os.path.join(template_dir, "event_stream.py"), bin_path)
 
         data = {
-            "matrix_elements": matrix_elements,
+            "matrix_elements": self.loaded_matrix_elements,
             # loaded before the matrix elements, as in the run
             "custom_functions": gridpack_custom_paths,
             "me_parameters": me_parameters(self.run_card),

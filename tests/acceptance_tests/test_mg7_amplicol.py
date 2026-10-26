@@ -45,8 +45,13 @@ _NSIGMA = float(os.environ.get('MG7_AMPLICOL_NSIGMA', 4))
 _PDF = 'NNPDF23_lo_as_0130_qed'
 
 
-def _edit_run_card(path, **amplicol):
+def _edit_run_card(path, gridpack=False, **amplicol):
     card = open(path).read()
+    if gridpack:
+        card = re.sub(r'(?m)^save_gridpack = false', 'save_gridpack = true', card)
+        card = re.sub(r'(?m)^compress = true', 'compress = false', card)
+        # with events, for the cross section of the run
+        card = re.sub(r'(?m)^run_mode = ".*"', 'run_mode = "regular"', card)
     card = card.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
     card = card.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
     card = re.sub(r'(?m)^(pdf[12]) = ".*"$', r'\1 = "%s"' % _PDF, card)
@@ -101,7 +106,7 @@ class MG7AmplicolTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.path, ignore_errors=True)
 
-    def run_mg7(self, name, processes, **amplicol):
+    def run_mg7(self, name, processes, gridpack=False, **amplicol):
         """Output and run the processes, returns the cross section, its error
         and the run directory."""
         run_dir = pjoin(self.path, name)
@@ -112,7 +117,7 @@ class MG7AmplicolTest(unittest.TestCase):
             mg.exec_cmd('%s %s' % ('generate' if index == 0 else 'add process',
                                    process))
         mg.exec_cmd('output mg7 %s' % run_dir)
-        _edit_run_card(pjoin(run_dir, 'Cards', 'run_card.toml'), **amplicol)
+        _edit_run_card(pjoin(run_dir, 'Cards', 'run_card.toml'), gridpack, **amplicol)
         log = pjoin(run_dir, 'generate_events.log')
         with open(log, 'w') as stream:
             status = subprocess.call(
@@ -167,3 +172,26 @@ class MG7AmplicolTest(unittest.TestCase):
         mixed = self.run_mg7('mixed', ['p p > j j', 'g g > g g g [amplicol]'])[:2]
         self.assert_compatible(
             mixed, (jj[0] + ggg[0], (jj[1]**2 + ggg[1]**2)**0.5))
+
+    def test_gridpack(self):
+        """A gridpack of [amplicol] and madmatrix processes, with the second
+        pass unweighting to full colour, reproduces the cross section of its run."""
+        mean, error, run_dir = self.run_mg7(
+            'grid', ['p p > j j', 'g g > g g g [amplicol]'], gridpack=True,
+            mode='unweight')
+        gridpack = sorted(glob.glob(pjoin(run_dir, 'Events', '*', 'gridpack')))[-1]
+        self.assertTrue(glob.glob(pjoin(gridpack, 'SubProcesses', 'A*', 'lc')))
+        log = pjoin(self.path, 'gridpack.log')
+        with open(log, 'w') as stream:
+            status = subprocess.call(
+                [sys.executable, pjoin(gridpack, 'bin', 'generate_events'),
+                 '--seed', '11', '--output_dir', pjoin(self.path, 'grid_events')],
+                cwd=self.path, stdout=stream, stderr=subprocess.STDOUT)
+        self.assertEqual(status, 0, open(log).read()[-3000:])
+        with open(pjoin(self.path, 'grid_events', 'info.json')) as stream:
+            result = json.load(stream)['process']
+        self.assertTrue(result['done'], open(log).read()[-3000:])
+        self.assert_compatible((float(result['mean']), float(result['error'])),
+                               (mean, error))
+        self.assertTrue(_color_balanced(
+            pjoin(self.path, 'grid_events', 'events.lhe.gz')))

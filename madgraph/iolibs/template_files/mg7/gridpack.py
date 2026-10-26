@@ -21,6 +21,7 @@ from gridpack_setup import (
     load_madspace_data,
     load_run_card,
     load_systematics,
+    load_weighting_groups,
     make_context,
     resolve_seed,
     source_hash_matches,
@@ -76,6 +77,7 @@ def main() -> None:
     run_args = run_card["run"]
     gen_args = run_card["generation"]
     grid_args = run_card.get("gridpack", {})
+    amplicol_args = run_card["amplicol"]
     madspace_data = load_madspace_data()
 
     # parse command line arguments
@@ -123,8 +125,21 @@ def main() -> None:
         choices=["lhe", "lhe_npy", "compact_npy"]
     )
     parser.add_argument("--events", type=int, default=gen_args["events"])
+    # these two set the final pass, which gives the events
     parser.add_argument("--max_overweight_truncation", type=float, default=gen_args["max_overweight_truncation"])
     parser.add_argument("--freeze_max_weight_after", type=int, default=gen_args["freeze_max_weight_after"])
+    parser.add_argument(
+        "--first_pass_max_overweight_truncation", type=float,
+        default=amplicol_args["first_pass_max_overweight_truncation"],
+        help="max_overweight_truncation of the leading-colour unweighting of "
+             "[amplicol] processes unweighted to full colour"
+    )
+    parser.add_argument(
+        "--first_pass_freeze_max_weight_after", type=int,
+        default=amplicol_args["first_pass_freeze_max_weight_after"],
+        help="freeze_max_weight_after of the leading-colour unweighting of "
+             "[amplicol] processes unweighted to full colour"
+    )
     parser.add_argument("--cpu_batch_size", type=int, default=gen_args["cpu_batch_size"])
     parser.add_argument("--gpu_batch_size", type=int, default=gen_args["gpu_batch_size"])
     args = parser.parse_args()
@@ -198,8 +213,15 @@ def main() -> None:
     # set up generator configuration
     config = ms.GeneratorConfig()
     config.target_count = args.events
-    config.max_overweight_truncation = args.max_overweight_truncation
-    config.freeze_max_weight_after = args.freeze_max_weight_after
+    groups, first_pass = load_weighting_groups(
+        args.max_overweight_truncation, args.freeze_max_weight_after
+    )
+    if first_pass:
+        config.max_overweight_truncation = args.first_pass_max_overweight_truncation
+        config.freeze_max_weight_after = args.first_pass_freeze_max_weight_after
+    else:
+        config.max_overweight_truncation = args.max_overweight_truncation
+        config.freeze_max_weight_after = args.freeze_max_weight_after
     config.cpu_batch_size = args.cpu_batch_size
     config.gpu_batch_size = args.gpu_batch_size
     config.verbosity = resolve_verbosity(args.verbosity)
@@ -216,6 +238,7 @@ def main() -> None:
         status_file=ms.StatusFile(os.path.join(run_path, "info.json")),
         config=config,
         seed=seed,
+        groups=groups,
     )
 
     # scale/PDF systematics (as configured when the gridpack was made)
