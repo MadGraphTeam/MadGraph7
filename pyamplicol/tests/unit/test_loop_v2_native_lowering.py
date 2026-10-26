@@ -222,6 +222,54 @@ def check_companion_plans(slice_, native, resolved=None) -> None:
         check(export_plan(twin.slice, forward=False, columns=twin.seed_columns), native)
 
 
+# The keys the exporter omits when their value is absent, by record (the
+# writer's ``OMITTED_WHEN_ABSENT``); every other key it always writes.
+OMITTED = {("", "column_rows"), (".families[].steps[]", "rows")}
+OMITTED |= {(".families[].steps[].edges[]", "links")}
+
+
+def check_every_key_written(exported, native) -> int:
+    """Each key of the first record of every kind (by path, list indices
+    dropped) removed in turn: refused naming the key, unless the writer omits
+    it when absent (then accepted and written as ``json.dumps`` writes the
+    records). The number of keys tried."""
+
+    program = json.loads(exported.python_json())
+    first: dict[str, tuple] = {}
+
+    def walk(value: object, kind: str, path: tuple) -> None:
+        if isinstance(value, dict):
+            first.setdefault(kind, path)
+            for key, item in value.items():
+                walk(item, f"{kind}.{key}", (*path, key))
+        elif isinstance(value, list):
+            for k, item in enumerate(value):
+                walk(item, f"{kind}[]", (*path, k))
+
+    walk(program, "", ())
+    tried = 0
+    for kind, path in first.items():
+        record = program
+        for step in path:
+            record = record[step]
+        items = list(record.items())
+        for key, _value in items:
+            del record[key]
+            tried += 1
+            try:
+                if (kind, key) in OMITTED:
+                    model = native.V2PlanModel.from_program(program)
+                    expected = json.dumps(program, separators=(",", ":")).encode()
+                    assert bytes(model.json()) == expected, (kind, key)
+                else:
+                    with pytest.raises(ValueError, match=f'missing field "{key}"'):
+                        native.V2PlanModel.from_program(program)
+            finally:
+                record.clear()
+                record.update(items)  # the key back in its place
+    return tried
+
+
 @pytest.mark.loop_fast
 def test_massive_plan_links_and_resolved_columns(slices, stored, loop_native):
     """g g > t t~ (mass flips): schedule B, stored, with derived and with
@@ -237,18 +285,14 @@ def test_massive_plan_links_and_resolved_columns(slices, stored, loop_native):
     check(stored, loop_native)
     linked = export_plan(slice_, forward=False, links=True)
     check(linked, loop_native)
-    # The keys the writer omits when absent (written here) may be absent:
-    # accepted, and written as ``json.dumps`` writes the records.
-    program = json.loads(linked.python_json())
-    step = program["families"][0]["steps"][0]
-    del step["rows"], step["edges"][0]["links"]
-    model = loop_native.V2PlanModel.from_program(program)
-    assert bytes(model.json()) == json.dumps(program, separators=(",", ":")).encode()
+    # The keys the writer omits when absent (written here) may be absent.
+    check_every_key_written(linked, loop_native)
     observables = ObservableSlice.of(slice_)
     plan = ColumnPlan(observables, observables.resolved_columns("helicity-colour", {}))
     resolved = export_plan(slice_, forward=False, columns=plan.seed_columns)
     assert any(rows is not None for rows in resolved.program["column_rows"])
     check(resolved, loop_native)
+    check_every_key_written(resolved, loop_native)
 
 
 @pytest.mark.parametrize(
@@ -272,31 +316,9 @@ def test_merged_plan(slices, loop_native, name):
         edge.get("weight") is not None for state in states for edge in state["edges"]
     )
     check(merged, loop_native)
-    # A key the writer writes as null when absent must be present: a merged
-    # state's closure, a merged edge's weight.
-    k = next(k for k, state in enumerate(states) if state["closure"] is not None)
-    e = next(
-        (k, e)
-        for k, state in enumerate(states)
-        for e, edge in enumerate(state["edges"])
-        if edge.get("weight") is not None
-    )
-    for path, key in (
-        ((k,), "closure"),
-        ((e[0], "edges", e[1]), "weight"),
-    ):
-        program = json.loads(merged.python_json())
-        record = program["merged"]["states"]
-        for step in path:
-            record = record[step]
-        del record[key]
-        where = ".merged.states" + "".join(
-            f"[{step}]" if isinstance(step, int) else f".{step}" for step in path
-        )
-        with pytest.raises(
-            ValueError, match=re.escape(f'{where}: missing field "{key}"')
-        ):
-            loop_native.V2PlanModel.from_program(program)
+    # Every key of schedule M's records is written (a merged state's closure
+    # and an edge's weight as null when absent).
+    check_every_key_written(merged, loop_native)
     assert slice_.scaleless is not None
     check(export_plan(slice_.scaleless, forward=False), loop_native)
 
@@ -377,6 +399,7 @@ def test_program_records_convert_as_json_writes_them(stored, loop_native):
     # option (``None``, written as ``null``) included, and so is a key that
     # only another record's writer omits when absent (a content's ``rows``).
     assert program["forward"] is None and program["merged"] is None
+    assert check_every_key_written(stored, loop_native) > 50
     refused(lambda p: p.pop("forward"), re.escape('missing field "forward"'))
     refused(lambda p: p.pop("merged"), re.escape('missing field "merged"'))
     refused(
@@ -562,7 +585,11 @@ def test_quark_line_massive_and_electroweak_plans(slices, loop_native, name):
 
     slice_ = slices(name)
     check_leaf_weights(slice_)
-    check(export_plan(slice_), loop_native)
+    forward = export_plan(slice_)
+    check(forward, loop_native)
+    # Every key of schedule F's records is written (a closure's relabelling
+    # as null when absent).
+    check_every_key_written(forward, loop_native)
     check(export_plan(slice_, forward=False, links=True), loop_native)
     # The stored main plan: its tree program and Born metric (the native
     # per-point inputs, ``artifact.generate``); its Born kernels join the
