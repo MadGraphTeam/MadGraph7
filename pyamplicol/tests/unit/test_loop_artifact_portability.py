@@ -24,13 +24,13 @@ cross-host acceptance (its docstring), on:
   no load-time regeneration (``point_inputs = "native-v2"``: the native
   programs and the binary64 SymJIT plane application of every saved
   evaluator, storage-v4 IR recompiled at load);
-* the loop SDK (C ABI through ``rusticol_virtual_open``): bitwise equal to the
-  Python API at both locations and usable without a licence by concurrent
-  processes (expected failures until the SDK evaluates plan v4,
-  generation-scale-2); the legacy loop SDK, whose evaluation decodes exact
-  states, runs without a licence in concurrent processes while another
-  process holds the user's restricted permit (pyAmpliCol's Symbolica library
-  key in the native code, crate ``rust/crates/pyamplicol``);
+* the loop SDK (C ABI through ``rusticol_virtual_open``, which dispatches a
+  plan v4 artifact to the native ``V2Runtime``): bitwise equal to the Python
+  API at both locations and usable without a licence by concurrent processes;
+  the legacy loop SDK, whose evaluation decodes exact states, runs without a
+  licence in concurrent processes while another process holds the user's
+  restricted permit (pyAmpliCol's Symbolica library key in the native code,
+  crate ``rust/crates/pyamplicol``);
 * unlicensed concurrent processes (Symbolica's restricted mode admits one
   thread per user, so any state access of the Rust copy of Symbolica aborts
   while another process holds the permit): two pyAmpliCol processes without
@@ -70,10 +70,6 @@ _spec = importlib.util.spec_from_file_location("loop_artifact_portability", TOOL
 portability = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(portability)
 
-SDK_WITHOUT_V4 = (
-    "the loop SDK refuses plan v4 until generation-scale-2 (V2Runtime and the "
-    "rusticol_virtual_open dispatch)"
-)
 RESTRICTED = "restricted Symbolica"
 # Disables pyAmpliCol's Symbolica library key in the native code
 # (``pyamplicol::DISABLE_VARIABLE``, crate ``rust/crates/pyamplicol``).
@@ -856,16 +852,10 @@ def loop_sdk_client(tmp_path_factory):
     )
 
 
-def _sdk_evaluates_v4(loop_native) -> bool:
-    return hasattr(loop_native, "evaluate_v2_artifact")
-
-
 @pytest.mark.loop_physics
 def test_loop_v4_sdk_equals_python_bitwise_at_both_locations(
-    request, loop_artifact, loop_sdk_client, loop_native, tmp_path
+    loop_artifact, loop_sdk_client, tmp_path
 ):
-    if not _sdk_evaluates_v4(loop_native):
-        request.applymarker(pytest.mark.xfail(reason=SDK_WITHOUT_V4, strict=True))
     artifact, _, _ = loop_artifact("gg")
     verdict = portability.check(
         artifact, "gg", tmp_path, count=2, client=loop_sdk_client, instances=1
@@ -876,16 +866,140 @@ def test_loop_v4_sdk_equals_python_bitwise_at_both_locations(
 
 
 @pytest.mark.loop_physics
+def test_loop_v4_sdk_selects_poles_like_python(
+    loop_artifact, loop_sdk_client, tmp_path
+):
+    """``rusticol_virtual_set_poles(handle, poles)`` (REQUIREMENTS_ADDENDUM I:
+    the pole option reaches the SDKs): every selection ("all", "none" and
+    the split "uv" and "ir", which run the stored companion of the
+    certified-scaleless families) is bitwise the Python API's, the finite
+    part is the same in all four, and "none" leaves the poles absent (NaN;
+    None in Python)."""
+
+    artifact, _, _ = loop_artifact("gg")
+    points = tmp_path / "points.json"
+    points.write_text(json.dumps(portability.points(4, 2)))
+    records = {
+        poles: portability.sdk(
+            artifact,
+            "gg",
+            points,
+            loop_sdk_client,
+            workdir=tmp_path / f"sdk-{poles}",
+            poles=poles,
+        )
+        for poles in ("all", "none", "uv", "ir")
+    }
+    assert all(r["exit_status"] == [0] for r in records.values()), records
+    finite = None
+    for poles, record in records.items():
+        python = portability.evaluate(artifact, "gg", points, poles=poles)
+        assert record["results"]["born"] == python["results"]["born"], poles
+        sdk = record["results"]["virtual"]
+        here = [[laurent[0] for laurent in point] for point in sdk]
+        assert finite is None or here == finite, poles
+        finite = here
+        if poles == "none":
+            assert here == [
+                [laurent[0] for laurent in point]
+                for point in python["results"]["virtual"]
+            ]
+            assert all(
+                laurent[1:] == ["nan", "nan"] for point in sdk for laurent in point
+            )
+            assert all(
+                laurent[1:] == [None, None]
+                for point in python["results"]["virtual"]
+                for laurent in point
+            )
+        else:
+            assert sdk == python["results"]["virtual"], poles
+    # The split selections differ from "all" in their poles.
+    assert records["uv"]["results"]["virtual"] != records["all"]["results"]["virtual"]
+    assert records["ir"]["results"]["virtual"] != records["uv"]["results"]["virtual"]
+
+
+SDK = ROOT / "rust" / "loop-reduction" / "sdk"
+
+
+@pytest.mark.loop_fast
+def test_loop_sdk_cpp_pole_wrapper_compiles(tmp_path):
+    """The C++ wrapper's ``set_poles`` takes every pole selection (syntax
+    check against the C header; no SDK library needed)."""
+
+    compiler = os.environ.get("CXX") or shutil.which("c++") or shutil.which("g++")
+    if compiler is None:
+        pytest.skip("environment: no C++ compiler (CXX, c++ or g++)")
+    source = tmp_path / "poles.cpp"
+    source.write_text(
+        '#include "rusticol_virtual.hpp"\n'
+        "void select(rusticol::VirtualRuntime &runtime) {\n"
+        '  for (const char *poles : {"all", "none", "uv", "ir"})\n'
+        "    runtime.set_poles(poles);\n"
+        "}\n"
+    )
+    run = subprocess.run(
+        [compiler, "-std=c++17", "-fsyntax-only", f"-I{SDK / 'include'}", str(source)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+
+@pytest.mark.loop_fast
+def test_loop_sdk_fortran_pole_wrapper_compiles(tmp_path):
+    """The Fortran module's ``set_poles`` takes every pole selection (the
+    module compiled, a caller syntax-checked against it)."""
+
+    compiler = os.environ.get("FC") or shutil.which("gfortran")
+    if compiler is None:
+        pytest.skip("environment: no Fortran compiler (FC or gfortran)")
+    module = subprocess.run(
+        [
+            compiler,
+            "-std=f2018",
+            "-c",
+            str(SDK / "fortran" / "rusticol_virtual.f90"),
+            "-J",
+            str(tmp_path),
+            "-o",
+            str(tmp_path / "rusticol_virtual.o"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert module.returncode == 0, module.stderr
+    source = tmp_path / "poles.f90"
+    source.write_text(
+        "subroutine select(runtime)\n"
+        "  use rusticol_virtual\n"
+        "  type(virtual_runtime), intent(inout) :: runtime\n"
+        '  call runtime%set_poles("all")\n'
+        '  call runtime%set_poles("none")\n'
+        '  call runtime%set_poles("uv")\n'
+        '  call runtime%set_poles("ir")\n'
+        "end subroutine\n"
+    )
+    run = subprocess.run(
+        [compiler, "-std=f2018", "-fsyntax-only", f"-I{tmp_path}", str(source)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr
+
+
+@pytest.mark.loop_physics
 def test_loop_v4_sdk_needs_no_symbolica_licence(
-    request, loop_artifact, loop_sdk_client, loop_native, tmp_path
+    loop_artifact, loop_sdk_client, tmp_path
 ):
     """The f64 SDK follows the tree engine's rule: no Symbolica licence, so
     concurrent unlicensed SDK processes (a Monte Carlo farm) all run. A
     Symbolica state access takes the user's single restricted-thread permit,
     so the instances run while another process holds it: any access aborts."""
 
-    if not _sdk_evaluates_v4(loop_native):
-        request.applymarker(pytest.mark.xfail(reason=SDK_WITHOUT_V4, strict=True))
     artifact, _, _ = loop_artifact("gg")
     points = tmp_path / "points.json"
     points.write_text(json.dumps(portability.points(4, 1)))

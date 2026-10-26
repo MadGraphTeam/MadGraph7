@@ -38,7 +38,7 @@ use super::{ColumnarDag, DagError, DagResult, invalid};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-pub const PROGRAM_INPUT_SCHEMA: &str = "pyamplicol.loop-v2.dag-program-input/1";
+pub const PROGRAM_INPUT_SCHEMA: &str = "pyamplicol.loop-v2.dag-program-input/2";
 
 #[derive(Deserialize)]
 struct RawProgramInput {
@@ -47,16 +47,16 @@ struct RawProgramInput {
     /// propagator of every `(particle id, chirality)` the DAG's currents
     /// carry (`Model._propagator_ir`).
     propagators: Vec<(i64, i8, bool)>,
-    /// Coupling-order names whose non-zero power marks a current that only
-    /// epsilon-pole terms read (a CT program's pole slots).
+    /// A CT program's slot table: the pseudo-order of each slot, in slot
+    /// order (`native_trees.counterterm_slots`); empty for other programs.
     #[serde(default)]
-    pole_orders: Vec<String>,
+    slot_orders: Vec<String>,
 }
 
 /// The model data of a program (`dag_input.program_input`).
 pub struct ProgramInput {
     propagators: HashMap<(i64, i8), bool>,
-    pole_orders: Vec<String>,
+    slot_orders: Vec<String>,
 }
 
 impl ProgramInput {
@@ -75,7 +75,7 @@ impl ProgramInput {
                 .into_iter()
                 .map(|(pdg, chirality, applies)| ((pdg, chirality), applies))
                 .collect(),
-            pole_orders: raw.pole_orders,
+            slot_orders: raw.slot_orders,
         })
     }
 }
@@ -126,9 +126,9 @@ pub struct Step {
     /// Dimension of each accumulator.
     pub accumulators: Vec<i64>,
     pub outputs: Vec<Output>,
-    /// Indices of the rows and outputs of pole currents.
-    pub pole_rows: Vec<u32>,
-    pub pole_outputs: Vec<u32>,
+    /// A CT program's per-accumulator slot set (`native_trees.slot_masks`:
+    /// 0 every slot, `1 + s` slot `s` alone); empty for other programs.
+    pub accumulator_masks: Vec<u32>,
 }
 
 /// The interaction program and the schema layout the export reads.
@@ -217,17 +217,38 @@ impl ColumnarDag {
             .map(|(slot, mask)| (*mask, slot as i64))
             .collect();
         let momentum = |id: usize| value_count as i64 + 4 * slot_of[&self.c_momentum[id]];
-        // Pole currents.
-        let pole_orders: Vec<bool> = t
-            .orders
-            .iter()
-            .map(|orders| {
-                orders
-                    .iter()
-                    .any(|(name, power)| *power != 0 && input.pole_orders.contains(name))
-            })
-            .collect();
-        let pole = |id: usize| pole_orders[self.c_orders[id] as usize];
+        // Per-slot reachability (`native_trees.slot_masks`): the slot set
+        // of a current's order tuple, 0 (every slot) without an insertion;
+        // a current with insertions of two slots is refused. Per order
+        // tuple once, for the tuples of the program's result currents only
+        // (the order table may hold others).
+        let slots = !input.slot_orders.is_empty();
+        let mut order_masks: Vec<Option<u32>> = vec![None; t.orders.len()];
+        let mut mask = |id: usize| -> DagResult<u32> {
+            let index = self.c_orders[id] as usize;
+            if let Some(found) = order_masks[index] {
+                return Ok(found);
+            }
+            let orders = &t.orders[index];
+            let mut found: Vec<usize> = orders
+                .iter()
+                .filter(|(_, power)| *power != 0)
+                .filter_map(|(name, _)| input.slot_orders.iter().position(|slot| slot == name))
+                .collect();
+            found.sort_unstable();
+            found.dedup();
+            let value = match found.as_slice() {
+                [] => 0,
+                [slot] => 1 + *slot as u32,
+                _ => {
+                    return invalid(format!(
+                        "a counterterm program current carries two slot orders: {orders:?}"
+                    ));
+                }
+            };
+            order_masks[index] = Some(value);
+            Ok(value)
+        };
         // Stages by result size, interactions in DAG order.
         let mut by_size: std::collections::BTreeMap<u32, Vec<u32>> = Default::default();
         for (k, result) in self.i_result.iter().enumerate() {
@@ -271,9 +292,6 @@ impl ColumnarDag {
                     self.i_right[k] as usize,
                     self.i_result[k] as usize,
                 );
-                if pole(result) {
-                    step.pole_rows.push(step.rows.len() as u32);
-                }
                 let key = [
                     t.vertices[self.i_vertex[k] as usize].kind,
                     pdg(result),
@@ -312,8 +330,8 @@ impl ColumnarDag {
             }
             for (index, current) in results.iter().enumerate() {
                 let current = *current as usize;
-                if pole(current) {
-                    step.pole_outputs.push(index as u32);
+                if slots {
+                    step.accumulator_masks.push(mask(current)?);
                 }
                 let propagator = match variants[current] {
                     Variant::Source => {
@@ -436,7 +454,7 @@ mod tests {
     #[test]
     fn layout_follows_the_runtime_schema() {
         let input = ProgramInput::from_json(&format!(
-            r#"{{"schema":"{PROGRAM_INPUT_SCHEMA}","propagators":[[21,0,true]],"pole_orders":["CT1"]}}"#
+            r#"{{"schema":"{PROGRAM_INPUT_SCHEMA}","propagators":[[21,0,true]],"slot_orders":["CT0","CT1"]}}"#
         ))
         .expect("input");
         let program = dag().program(&input).expect("program");
@@ -449,8 +467,9 @@ mod tests {
         assert_eq!(program.weights, vec![[0.0, 1.0]]);
         assert_eq!(program.steps[0].rows[0], [0, 0, 4, 4, 4, 20, 24, 0, 0]);
         assert_eq!(program.steps[1].outputs, vec![[0, 0, 36, 16, 4]]);
-        assert_eq!(program.steps[1].pole_rows, vec![0]);
-        assert_eq!(program.steps[1].pole_outputs, vec![0]);
+        // Current 3 (no insertion) reaches every slot, current 4 slot 1.
+        assert_eq!(program.steps[0].accumulator_masks, vec![0]);
+        assert_eq!(program.steps[1].accumulator_masks, vec![2]);
         assert_eq!(
             program.kernels,
             vec![

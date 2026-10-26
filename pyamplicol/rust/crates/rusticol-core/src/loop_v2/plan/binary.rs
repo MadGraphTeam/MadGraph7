@@ -143,8 +143,9 @@ use std::sync::Arc;
 
 /// The first bytes of a binary plan member.
 pub const MAGIC: [u8; 8] = *b"LOOPPLAN";
-/// The binary member's format (one version; another is refused).
-pub const FORMAT: u32 = 2;
+/// The binary member's format (one version; another is refused). Format 3
+/// adds the plan's `column_weights` (three columns after the column rows).
+pub const FORMAT: u32 = 3;
 
 /// The most bytes of decoded model a member may declare per member byte
 /// (module docs, "Bounded decoding").
@@ -372,6 +373,8 @@ columns! {
     Chunk,
     // column rows
     ColumnRowsFlag, ColumnRowsLen, ColumnRowFlag, ColumnRowLen, ColumnRow,
+    // column weights
+    ColumnWeightsFlag, ColumnWeightsLen, ColumnWeight,
 }
 
 // ------------------------------------------------------------------ streams
@@ -824,6 +827,7 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
         forward,
         merged,
         column_rows,
+        column_weights,
     } = file;
     num(s, Col::Schema, schema)?;
     num(s, Col::Legs, legs)?;
@@ -874,6 +878,9 @@ fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
                 nums(s, Col::ColumnRowLen, Col::ColumnRow, rows)
             })
         })
+    })?;
+    option(s, Col::ColumnWeightsFlag, column_weights, |s, weights| {
+        nums(s, Col::ColumnWeightsLen, Col::ColumnWeight, weights)
     })
 }
 
@@ -1912,7 +1919,7 @@ fresh_records! {
     PlanFile {
         schema, legs, rows, helicities, columns, average, born_components, constants, masses,
         block_rows, kernels, contents, factors, seed_classes, seeds, families, forward, merged,
-        column_rows,
+        column_rows, column_weights,
     },
     KernelFile { inputs, outputs },
     ContentFile { d_in, d_out, degree, rows, mask, row_helicities, fused, terms },

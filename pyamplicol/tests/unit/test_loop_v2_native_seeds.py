@@ -697,11 +697,18 @@ def test_native_seeds_in_the_slice(
         export_plan(native, forward=False).json()
         == export_plan(python, forward=False).json()
     )
-    # B1: main slice and companion seeded in-crate from complete builds;
-    # at LC/NLC each extended after a rebuild from the retained skeletons.
+    # B1: the main slice seeded in-crate from its complete build; its poles
+    # companion extends an empty table holding the slice's certificates
+    # (``LoopSlice._companion_seeds``, generation-scale-2's lean companion),
+    # also in-crate from its own complete build; at LC/NLC each extended
+    # after a rebuild from the retained skeletons.
     built = [stage for stage in native_stages if stage.kind == "build"]
-    assert len(built) == 2  # the main slice and the companion
+    assert len(built) == 1  # the main slice
     assert all(s.build_source is not None and s.build_source.complete for s in built)
+    assert any(
+        s.kind == "extend" and s.build_source is not None and s.build_source.complete
+        for s in native_stages
+    )  # the companion
     pruned = accuracy != "full"
     for slice_ in (native, native.scaleless):
         decodes = dict(slice_.generation.decodes)
@@ -804,7 +811,13 @@ def test_native_prune_liveness_with_directed_colour_tables(
 
     def checking(self, observables=()):
         observables = list(observables)
-        (stage,) = [s for s in stages if s.table is self.table]
+        found = [s for s in stages if s.table is self.table]
+        if not found:
+            # The poles companion's table extends the slice's certificates
+            # (``LoopSlice._companion_seeds``): no build stage, no observables.
+            assert not observables
+            return prune(self, observables)
+        (stage,) = found
         _flags, keep = stage.keep(self, observables)
         oracle = _oracle_keep(self, prune, observables)
         checked.append(
@@ -839,8 +852,8 @@ def test_native_prune_liveness_with_directed_colour_tables(
             color_correlations=(ColorCorrelator.dipole("T12", 1, 2),)
         ),
     )
-    # The companion pruned for the inclusive virtual, the slice for the
-    # dipole's directed tables.
+    # The slice pruned natively for the dipole's directed tables (the poles
+    # companion, on the slice's certificates, by the Python callback).
     assert all(equal for _directed, equal in checked)
     assert any(directed for directed, _equal in checked)
 
