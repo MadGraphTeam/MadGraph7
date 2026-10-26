@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import importlib.metadata
+import io
 import json
 import math
 import os
@@ -33,7 +34,7 @@ from pyamplicol.artifacts.process_groups import (
     process_groups_payload,
     validate_process_groups,
 )
-from pyamplicol.artifacts.security import sha256_file
+from pyamplicol.artifacts.writer import PAYLOAD_CONTAINER_PATH, PAYLOAD_CONTAINER_ROLE
 from pyamplicol.config import (
     ConfigClamp,
     ConfigResolution,
@@ -149,8 +150,8 @@ _EAGER_PACK_IDENTITY_SCHEMA_VERSION = 1
 _EVALUATOR_PAYLOAD_CONTAINER_EXTENSION = "evaluator_payload_container"
 _RECURRENCE_BOOTSTRAP_FILENAME = "recurrence-bootstrap.bin"
 _EVALUATOR_PAYLOAD_CONTAINER_PATH = "evaluators.pacbin"
-_PAYLOAD_CONTAINER_PATH = "payloads.pacbin"
-_PAYLOAD_CONTAINER_ROLE = "payload-container"
+_PAYLOAD_CONTAINER_PATH = PAYLOAD_CONTAINER_PATH
+_PAYLOAD_CONTAINER_ROLE = PAYLOAD_CONTAINER_ROLE
 # trees whose payloads generation.pack_payloads moves into payloads.pacbin
 _PACKED_PAYLOAD_PREFIXES = (
     "processes/",
@@ -612,8 +613,12 @@ class _EvaluatorPayloadCollector:
         relative: str,
         kind: PacbinMemberKind,
     ) -> None:
-        path = self._builder.staged_path(relative)
-        self._new_sources[relative] = PacbinMemberSource(relative, kind, path)
+        source: Path | BinaryIO = (
+            io.BytesIO(self._builder.read_staged(relative))
+            if self._builder.is_spooled(relative)
+            else self._builder.staged_path(relative)
+        )
+        self._new_sources[relative] = PacbinMemberSource(relative, kind, source)
         self._staged_loose_paths.add(relative)
 
     def _is_discarded(self, relative: str) -> bool:
@@ -859,11 +864,7 @@ def _write_umami_bundle(
         physics = (
             process.umami_physics
             if process is not None and process.umami_physics is not None
-            else json.loads(
-                builder.staged_path(str(record["physics_path"])).read_text(
-                    encoding="utf-8"
-                )
-            )
+            else json.loads(builder.read_staged(str(record["physics_path"])))
         )
         umami_input = UmamiProcessInput(
             process_id=identifier,
@@ -1045,6 +1046,7 @@ def write_schema_v3_artifact(
         output,
         mode=write_mode,
         expected_artifact_id=(existing.artifact_id if existing is not None else None),
+        packs=_packs_payload if _payloads_packed(configuration.effective) else None,
     ) as builder:
         evaluator_payloads = _EvaluatorPayloadCollector(
             builder,
@@ -1171,10 +1173,8 @@ def write_schema_v3_artifact(
             for process_record in process_records:
                 process_id = str(process_record["id"])
                 execution_path = f"processes/{process_id}/execution.json"
-                execution_file = builder.staged_path(execution_path)
-                execution_payload = json.loads(
-                    execution_file.read_text(encoding="utf-8")
-                )
+                execution_bytes = builder.read_staged(execution_path)
+                execution_payload = json.loads(execution_bytes.decode("utf-8"))
                 if not isinstance(execution_payload, Mapping):
                     raise ValueError(
                         f"execution payload for {process_id!r} is not an object"
@@ -1187,11 +1187,12 @@ def write_schema_v3_artifact(
                     source_revision=source_revision,
                     native_build_inputs_sha256=native_build_inputs_sha256,
                     execution_path=execution_path,
-                    execution_sha256=sha256_file(execution_file),
+                    execution_sha256=hashlib.sha256(execution_bytes).hexdigest(),
                     execution=execution_payload,
                     evaluator_container_path=evaluator_container_path,
                     evaluator_container_index_sha256=(evaluator_container_index_sha256),
                     cache=proof_cache,
+                    payloads=builder,
                 )
                 builder.add_json(
                     f"processes/{process_id}/structural-source-proof.json",
@@ -1200,6 +1201,9 @@ def write_schema_v3_artifact(
                     process_id=process_id,
                     compact=True,
                 )
+        if _payloads_packed(configuration.effective):
+            # the native recurrence bootstrap reads the packed payloads
+            builder.seal_payload_container()
         _write_recurrence_bootstraps(
             builder,
             processes=recurrence_processes,
@@ -1243,8 +1247,6 @@ def write_schema_v3_artifact(
                 compiled_model=compiled_model,
                 process_groups=group_map,
             )
-        if _payloads_packed(configuration.effective):
-            _pack_payloads(builder)
         builder.finalize(
             kind=(
                 "pyamplicol-process"
@@ -2167,8 +2169,8 @@ def _write_recurrence_bootstraps(
                 separators=(",", ":"),
                 allow_nan=False,
             ).encode("utf-8"),
-            builder.staged_path(execution_path).read_bytes(),
-            builder.staged_path(physics_path).read_bytes(),
+            builder.read_staged(execution_path),
+            builder.read_staged(physics_path),
         )
         if not isinstance(image, bytes) or not image:
             raise RuntimeError(
@@ -5435,51 +5437,15 @@ def _payloads_packed(config: GenerationConfig | RunConfig) -> bool:
     return bool(generation.pack_payloads)
 
 
-def _is_packable_payload(record: PayloadRecord) -> bool:
-    path = record.path
+def _packs_payload(path: str) -> bool:
+    """Whether generation.pack_payloads stores ``path`` in payloads.pacbin."""
+
     return (
         path.startswith(_PACKED_PAYLOAD_PREFIXES)
-        and not record.executable
         # nested containers below processes/ are opened as files by their loaders
         and not (path.startswith("processes/") and path.endswith(".pacbin"))
         # a loose bootstrap sidecar selects the fast recurrence loading path
         and not path.endswith("/recurrence-bootstrap.bin")
-    )
-
-
-def _pack_payloads(builder: ArtifactBuilder) -> None:
-    """Move the packable staged payloads into payloads.pacbin.
-
-    Their manifest records are kept, so the artifact identity does not change.
-    """
-
-    records = [
-        record for record in builder.payload_records() if _is_packable_payload(record)
-    ]
-    if not records:
-        return
-    index = write_pacbin_atomic(
-        builder.staged_path(_PAYLOAD_CONTAINER_PATH),
-        (
-            PacbinMemberSource(
-                record.path,
-                PacbinMemberKind.DECLARED_PAYLOAD,
-                builder.staged_path(record.path),
-            )
-            for record in records
-        ),
-    )
-    members = {member.logical_path: member for member in index.members}
-    for record in records:
-        member = members[record.path]
-        if member.length != record.size_bytes or member.sha256 != record.sha256:
-            raise ValueError(f"packed payload {record.path!r} changed while packing")
-    for record in records:
-        builder.staged_path(record.path).unlink()
-    builder.register_staged_file(
-        _PAYLOAD_CONTAINER_PATH,
-        role=_PAYLOAD_CONTAINER_ROLE,
-        media_type="application/octet-stream",
     )
 
 

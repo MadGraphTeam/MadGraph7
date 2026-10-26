@@ -1098,7 +1098,8 @@ def test_process_group_update_waits_for_the_generation_lock(
 
 
 def _build_packable(path: Path, *, pack: bool) -> None:
-    with ArtifactBuilder(path) as builder:
+    packs = generation_artifact_writer._packs_payload if pack else None
+    with ArtifactBuilder(path, packs=packs) as builder:
         builder.add_json(
             "physics/process.json",
             {"schema_version": 1},
@@ -1123,8 +1124,26 @@ def _build_packable(path: Path, *, pack: bool) -> None:
                 media_type="application/octet-stream",
                 process_id="dd_to_z",
             )
+        assert builder.root is not None
         if pack:
-            generation_artifact_writer._pack_payloads(builder)
+            # packable payloads are spooled, never written as files
+            assert not (builder.root / "processes/dd_to_z/execution.json").exists()
+            assert not (builder.root / "recurrence").exists()
+        assert builder.read_staged("processes/dd_to_z/recurrence-binding.bin") == (
+            b"binding"
+        )
+        if pack:
+            builder.seal_payload_container()
+            assert builder.read_staged("processes/dd_to_z/recurrence-binding.bin") == (
+                b"binding"
+            )
+            with pytest.raises(RuntimeError, match="sealed"):
+                builder.add_bytes(
+                    "processes/dd_to_z/late.bin",
+                    b"late",
+                    role="evaluator-manifest",
+                    media_type="application/octet-stream",
+                )
         builder.finalize(
             kind="pyamplicol-process",
             producer=_producer(),

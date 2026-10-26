@@ -1838,14 +1838,15 @@ pub(crate) fn open_staged_recurrence_bootstrap_artifact(
         }
     }
     validate_evaluator_payload_container_declaration(&evaluator_payload_container, &payloads)?;
+    let payload_container = load_payload_container(&root, &payloads)?;
     Ok(VerifiedArtifact {
         manifest_path: root.join(ARTIFACT_MANIFEST_FILE),
         root,
         manifest,
         payloads: Arc::new(payloads),
-        // Process-ready lowering reads only loose plan/binding/color payloads.
+        // Process-ready lowering reads only plan/binding/color payloads.
         evaluator_payload_container: None,
-        payload_container: None,
+        payload_container,
         #[cfg(feature = "f64-compiled")]
         native_library_cache: Arc::new(Mutex::new(BTreeMap::new())),
     })

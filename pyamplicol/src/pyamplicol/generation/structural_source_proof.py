@@ -13,7 +13,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pyamplicol.artifacts.security import sha256_file
 
@@ -238,23 +238,45 @@ def execution_lanes(
     return tuple(lanes)
 
 
+class StagedPayloads(Protocol):
+    """The payloads of a staged artifact, wherever they are stored."""
+
+    def has_payload(self, relative: str) -> bool: ...
+
+    def read_staged(self, relative: str) -> bytes: ...
+
+
+class _DirectoryPayloads:
+    """Payloads stored as files below ``root``."""
+
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def has_payload(self, relative: str) -> bool:
+        path = self._root / relative
+        return path.is_file() and not path.is_symlink()
+
+    def read_staged(self, relative: str) -> bytes:
+        return (self._root / relative).read_bytes()
+
+
 def _loose_object(
-    root: Path,
+    payloads: StagedPayloads,
     loose: str,
 ) -> tuple[dict[str, object], tuple[str, ...]]:
     """The inventory record of a loose payload and the paths it references."""
 
-    path = root / loose
+    data = payloads.read_staged(loose)
     record: dict[str, object] = {
         "path": loose,
-        "sha256": sha256_file(path),
-        "size_bytes": path.stat().st_size,
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "size_bytes": len(data),
     }
-    if path.suffix != ".json":
+    if not loose.endswith(".json"):
         return record, ()
     try:
-        nested = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+        nested = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError(
             f"referenced lane manifest is not valid JSON: {loose}"
         ) from error
@@ -262,14 +284,13 @@ def _loose_object(
 
 
 def _resolve_loose_payload(
-    root: Path,
+    payloads: StagedPayloads,
     process_id: str,
     relative: str,
 ) -> str | None:
     candidates = (relative, f"processes/{process_id}/{relative}")
     for candidate in candidates:
-        path = root / candidate
-        if path.is_file() and not path.is_symlink():
+        if payloads.has_payload(candidate):
             return candidate
     return None
 
@@ -286,12 +307,17 @@ def build_generation_structural_proof(
     evaluator_container_path: str | None,
     evaluator_container_index_sha256: str | None,
     cache: StructuralProofCache | None = None,
+    payloads: StagedPayloads | None = None,
 ) -> dict[str, object]:
     """Build exact source/lane evidence from the private artifact staging tree.
 
     ``cache`` shares the records of payloads common to the processes of one
-    staged artifact.
+    staged artifact. ``payloads`` reads the staged payloads, by default the
+    files below ``artifact_root``.
     """
+
+    if payloads is None:
+        payloads = _DirectoryPayloads(artifact_root)
 
     lanes = execution_lanes(execution)
     member_records: dict[str, dict[str, object]] = {}
@@ -336,7 +362,7 @@ def build_generation_structural_proof(
         execution_path: {
             "path": execution_path,
             "sha256": execution_sha256,
-            "size_bytes": (artifact_root / execution_path).stat().st_size,
+            "size_bytes": len(payloads.read_staged(execution_path)),
         }
     }
     used_members: set[str] = set()
@@ -363,7 +389,7 @@ def build_generation_structural_proof(
                 loose = resolved[relative] = relative
             else:
                 loose = resolved[relative] = _resolve_loose_payload(
-                    artifact_root, process_id, relative
+                    payloads, process_id, relative
                 )
             if loose is None:
                 # Some manifest paths are logical roots interpreted by the
@@ -375,7 +401,7 @@ def build_generation_structural_proof(
             lane_loose.add(loose)
             cached = None if cache is None else cache.loose.get(loose)
             if cached is None:
-                cached = _loose_object(artifact_root, loose)
+                cached = _loose_object(payloads, loose)
                 if cache is not None:
                     cache.loose[loose] = cached
             record, nested_paths = cached
@@ -697,6 +723,7 @@ __all__ = [
     "ROLE",
     "SCHEMA",
     "SEMANTIC_MAP_DOMAINS",
+    "StagedPayloads",
     "StructuralProofCache",
     "build_generation_structural_proof",
     "canonical_sha256",
