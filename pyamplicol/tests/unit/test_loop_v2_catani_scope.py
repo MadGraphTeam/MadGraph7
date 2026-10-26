@@ -342,3 +342,64 @@ def test_vetoed_light_quark_leaves_beta0(loop_sm_compiled_model, loop_native):
     born = float(sum(result.born.values()))
     shift = 4 * (1 / 3) * 0.118 / (2 * 3.141592653589793) * born
     assert shift > 1e3 * TOLERANCE * scale
+
+
+@pytest.mark.loop_nightly
+def test_joint_request_predicts_its_cross_order_sector(
+    loop_qcd_qed_sm_ufo, loop_native, monkeypatch
+):
+    """u u~ > d d~ with gluon and photon/Z Borns, QCD and QED corrections
+    (full SM loops on loop_qcd_qed_sm, 't Hooft-Feynman gauge, widths zero),
+    loop orders g^4 and g^2 e^2: QCD^6 and the mixed QCD^4 QED^2 are
+    predicted and equal the virtual's poles. The mixed sector takes both
+    operators with their cross-order correlators (the QCD operator on the
+    gluon x photon/Z Born interference, colour-forbidden as a Born but not
+    under T_i.T_j: 99.9 % of the single pole; the QED operator on the gluon
+    Born squared: 0.12 %), each far above the tolerance (the agreement is
+    3e-15 at this point). QCD^2 QED^4 has no prediction: the
+    request has no e^4 loop for the QED operator's gluon x photon/Z
+    interference to pair with. Nightly: generation about 2 min."""
+
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import compile_model_source
+
+    compiled = compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
+    request = SliceRequest(
+        "u u~ > d d~",
+        {"QCD": 2, "QED": 2},
+        ({"QCD": 4, "QED": 0}, {"QCD": 2, "QED": 2}),
+        corrections=("QCD", "QED"),
+        fixed_parameters={"WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    shares = {}
+    for name in ("_qcd_poles", "_qed_poles"):
+        operator = getattr(assemble._PointEvaluation, name)
+
+        def spy(self, operator=operator, name=name):
+            shares[name] = found = operator(self)
+            return found
+
+        monkeypatch.setattr(assemble._PointEvaluation, name, spy)
+    point = [
+        ["500", "0", "0", "500"],
+        ["500", "0", "0", "-500"],
+        ["500", "240", "320", "300"],
+        ["500", "-240", "-320", "-300"],
+    ]
+    result = slice_.evaluate(point, "1000000", parameters={"aS": "0.118", "MT": "173"})
+    qcd, mixed = _orders(QCD=6), _orders(QCD=4, QED=2)
+    assert set(result.ir_poles) == {qcd, mixed}
+    assert _orders(QCD=2, QED=4) in result.components["virtual"]
+    for sector in (qcd, mixed):
+        virtual = result.components["virtual"][sector]
+        single, double = (float(x) for x in result.ir_poles[sector])
+        scale = max(abs(single), abs(double))
+        assert abs(float(virtual.single_pole) - single) <= TOLERANCE * scale, sector
+        assert abs(float(virtual.double_pole) - double) <= TOLERANCE * scale, sector
+    single = abs(float(result.ir_poles[mixed][0]))
+    for name in ("_qcd_poles", "_qed_poles"):
+        assert abs(float(shares[name][mixed][0])) > 1e-4 * single, name
