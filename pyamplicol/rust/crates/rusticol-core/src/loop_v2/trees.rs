@@ -1004,6 +1004,26 @@ impl PlaneRows<f64> for BinaryPlane {
     }
 }
 
+/// Per slot set of a counterterm program (`InteractionFile::masks`: slot
+/// indices, increasing, into the slot table whose epsilon powers are
+/// `powers`) whether it holds no slot of epsilon power 0: a current reaching
+/// only such a set is pole-only work, skipped by finite-only evaluations.
+fn pole_slot_sets(masks: &[Vec<usize>], powers: &[i32]) -> RusticolResult<Vec<bool>> {
+    require(
+        !masks.is_empty()
+            && masks.iter().all(|mask| {
+                !mask.is_empty()
+                    && mask.windows(2).all(|pair| pair[0] < pair[1])
+                    && mask.iter().all(|&slot| slot < powers.len())
+            }),
+        "counterterm slot masks",
+    )?;
+    Ok(masks
+        .iter()
+        .map(|mask| mask.iter().all(|&slot| powers[slot] != 0))
+        .collect())
+}
+
 /// Validate and group an interaction program (`InteractionFile`); `saved`
 /// holds its kernels' evaluators, vertex kernels first.
 /// `slots` is a counterterm program's slot table (none for the trees): the
@@ -1020,22 +1040,7 @@ fn load_interactions(
 ) -> RusticolResult<Interactions> {
     // Per slot set whether it reaches no finite slot (the finite-only skip).
     let pole_masks: Vec<bool> = match slots {
-        Some(powers) => {
-            require(
-                !program.masks.is_empty()
-                    && program.masks.iter().all(|mask| {
-                        !mask.is_empty()
-                            && mask.windows(2).all(|pair| pair[0] < pair[1])
-                            && mask.iter().all(|&slot| slot < powers.len())
-                    }),
-                "counterterm slot masks",
-            )?;
-            program
-                .masks
-                .iter()
-                .map(|mask| mask.iter().all(|&slot| powers[slot] != 0))
-                .collect()
-        }
+        Some(powers) => pole_slot_sets(&program.masks, powers)?,
         None => {
             require(
                 program.masks.is_empty(),

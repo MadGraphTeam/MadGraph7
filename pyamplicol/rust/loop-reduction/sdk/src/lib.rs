@@ -641,6 +641,20 @@ fn diagnostics(
 mod tests {
     use super::*;
     use symbolica::domains::rational::Rational;
+
+    #[test]
+    fn pole_selection_serves_all_or_none_and_names_the_split_route() {
+        assert_eq!(Poles::default(), Poles::All);
+        assert_eq!(Poles::parse("all").unwrap(), Poles::All);
+        assert_eq!(Poles::parse("none").unwrap(), Poles::None);
+        for split in ["uv", "ir"] {
+            let message = Poles::parse(split).unwrap_err().to_string();
+            assert!(message.contains("Python API"), "{message}");
+        }
+        for other in ["", "All", "finite", "split"] {
+            assert!(Poles::parse(other).is_err(), "{other:?}");
+        }
+    }
     #[test]
     fn binary64_ingress_preserves_exact_values() {
         for value in [

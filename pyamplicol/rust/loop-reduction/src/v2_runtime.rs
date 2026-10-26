@@ -434,3 +434,74 @@ fn order_pairs(orders: &[(String, u32)]) -> Orders {
 fn program_legs(artifact: &LoadedLoopV2Artifact) -> usize {
     artifact.program.legs
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn orders(pairs: &[(&str, i64)]) -> Orders {
+        pairs.iter().map(|(n, p)| ((*n).to_owned(), *p)).collect()
+    }
+
+    #[test]
+    fn orders_compare_as_sets_without_zero_powers() {
+        assert_eq!(
+            canonical(&orders(&[("QED", 0), ("QCD", 2), ("NP", 1)])),
+            orders(&[("NP", 1), ("QCD", 2)])
+        );
+        assert!(canonical(&orders(&[("QCD", 0)])).is_empty());
+        // The plan's declared (unsigned) orders meet the record's the same way.
+        let declared = vec![("QED".to_owned(), 0_u32), ("QCD".to_owned(), 4)];
+        assert_eq!(
+            canonical(&order_pairs(&declared)),
+            canonical(&orders(&[("QCD", 4)]))
+        );
+    }
+
+    #[test]
+    fn native_record_reads_the_assembly_fields_and_keeps_the_rest() {
+        // `native_process.NativeProcess`'s record: the fields the assembly
+        // reads; any other key (the tree program's own, observables) passes.
+        let json = r#"{
+            "schema": 2,
+            "legs": [[1, true, 21], [2, true, 21], [3, false, 21], [4, false, 21]],
+            "sectors": [[[["QCD", 6]], [[[["QCD", 2]], [["QCD", 4]]]]]],
+            "average": 256,
+            "fixed_parameters": {"MB": "0"},
+            "trees": {
+                "squared_orders": [[["QCD", 4], ["QED", 0]]],
+                "counterterm_outputs": [["r2", [["QCD", 6]], 0], ["uv_local", [["QCD", 6]], -1]],
+                "program": {"anything": [1, 2]}
+            },
+            "observables": null
+        }"#;
+        let record: NativeRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.schema, NATIVE_PROCESS_SCHEMA);
+        assert_eq!(record.legs.len(), 4);
+        assert!(record.legs[0].1 && !record.legs[3].1);
+        assert_eq!(record.sectors.len(), 1);
+        assert_eq!(canonical(&record.sectors[0].0), orders(&[("QCD", 6)]));
+        assert_eq!(record.average, 256);
+        assert_eq!(record.fixed_parameters["MB"], "0");
+        assert_eq!(
+            canonical(&record.trees.squared_orders[0]),
+            orders(&[("QCD", 4)])
+        );
+        assert_eq!(record.trees.counterterm_outputs[1].0, "uv_local");
+        assert_eq!(record.trees.counterterm_outputs[1].2, -1);
+        // A field the assembly needs is required.
+        let missing = json.replace(r#""average": 256,"#, "");
+        assert!(serde_json::from_str::<NativeRecord>(&missing).is_err());
+    }
+
+    #[test]
+    fn a_path_without_an_artifact_is_refused() {
+        let missing = std::env::temp_dir().join(format!(
+            "rusticol-v2-runtime-no-artifact-{}",
+            std::process::id()
+        ));
+        assert!(!missing.exists());
+        assert!(is_v2_artifact(&missing).is_err());
+        assert!(V2Runtime::open(&missing, None, Some(1)).is_err());
+    }
+}
