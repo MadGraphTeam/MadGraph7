@@ -302,6 +302,43 @@ def test_mixed_sectors_of_a_qcd_request_have_no_prediction(mixed_uudd, monkeypat
 
 
 @pytest.mark.loop_physics
+def test_an_absent_lower_tree_is_decided_by_its_tree_program(
+    loop_sm_compiled_model, loop_native
+):
+    """e+ e- > u u~ a with QCD corrections (Born e^3, loop g^2 e^3): a QED
+    exchange of the loop would leave a tree of order g^2 e, for which every
+    leg has a vertex of the request (e+ e- a, u u~ g, u u~ a), but no such
+    tree exists (the lepton pair needs e^2): the tree program of that order
+    decides, so the sector is predicted and its poles are the virtual's."""
+
+    import json
+
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request = SliceRequest(
+        "e+ e- > u u~ a",
+        {"QCD": 0, "QED": 3},
+        {"QCD": 2, "QED": 3},
+        fixed_parameters={"MB": "0", "WZ": "0", "WW": "0", "WT": "0", "WH": "0"},
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    sector = _orders(QCD=2, QED=6)
+    assert assemble._predicted_sectors(slice_) == {sector}
+    fixture = ROOT / "tests/fixtures/loop/legacy/uux_ddxg.json"
+    point = json.loads(fixture.read_text())["points"][0]
+    result = slice_.evaluate(point, "1000000", parameters={"aS": "0.118"})
+    virtual = result.components["virtual"][sector]
+    single, double = (float(x) for x in result.ir_poles[sector])
+    scale = max(abs(single), abs(double))
+    assert scale > 0
+    assert abs(float(virtual.single_pole) - single) <= TOLERANCE * scale
+    assert abs(float(virtual.double_pole) - double) <= TOLERANCE * scale
+
+
+@pytest.mark.loop_physics
 def test_vetoed_light_quark_leaves_beta0(loop_sm_compiled_model, loop_native):
     """g g > g g with the (massless) b vetoed: its loops and counterterms
     drop the b, so gamma_g takes four flavours (genericity audit m3; the

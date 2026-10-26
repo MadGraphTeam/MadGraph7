@@ -4258,8 +4258,14 @@ def _predicted_sectors(slice_) -> frozenset[Orders]:
     order lies within the request's Born bounds (the program holds every
     tree there), or when an external leg's species has no vertex of the
     request (vetoed particles excluded) whose coupling orders fit within it
-    (every leg of a tree attaches to one vertex, and powers only add up);
-    otherwise its existence is unknown."""
+    (every leg of a tree attaches to one vertex, and powers only add up).
+    Otherwise one tree DAG of the process within that order decides
+    (``artifact.born_amplitude_orders``, compiled as the slice's Born with
+    the request's particle_veto, every coupling order of the request bounded
+    by its power in the order): e+ e- > t t~ h has no tree of order
+    g_s^2 e, which the vertex test alone cannot tell. It runs only for a
+    loop order whose lower tree lies outside the Born program, once per
+    slice, at the first IR-pole prediction."""
 
     cache = slice_._cache
     found = cache.get("predicted-sectors")
@@ -4267,6 +4273,9 @@ def _predicted_sectors(slice_) -> frozenset[Orders]:
         return found
     compiled, request = slice_.compiled, slice_.request
     bounds = add_orders(tuple(request.born_orders.items()))
+    named = set(request.born_orders) | {
+        name for orders in request.exact_loop_orders for name in orders
+    }
     names = {str(record.name): record for record in compiled.ir.particles}
     veto = set(request.particle_veto)
     vertices: dict[str, list[Orders]] = defaultdict(list)
@@ -4280,7 +4289,7 @@ def _predicted_sectors(slice_) -> frozenset[Orders]:
             vertices[str(record.antiname)].append(orders)
     legs = [leg.field for leg in slice_.families.legs]
 
-    def tree_exists(order: Orders) -> bool | None:
+    def tree_exists(order: Orders) -> bool:
         if orders_within(order, bounds):
             return False
         if any(
@@ -4288,7 +4297,16 @@ def _predicted_sectors(slice_) -> frozenset[Orders]:
             for field in legs
         ):
             return False
-        return None
+        from .artifact import born_amplitude_orders
+
+        powers = dict(order)
+        found, _dag = born_amplitude_orders(
+            compiled,
+            request.process,
+            {name: powers.get(name, 0) for name in named | set(powers)},
+            request.particle_veto,
+        )
+        return order in found
 
     found = cache["predicted-sectors"] = predicted_sectors(
         slice_.sectors,
