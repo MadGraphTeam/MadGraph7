@@ -167,7 +167,8 @@ namespace madmatrix
   inline cxtype_denom_sv operator/( const cxtype_denom_sv& a, const cxtype_denom_sv& b )
   {
     const fptype_denom_sv n = b.real() * b.real() + b.imag() * b.imag();
-    return { ( a.real() * b.real() + a.imag() * b.imag() ) / n, ( a.imag() * b.real() - a.real() * b.imag() ) / n };
+    const fptype_denom_sv rn = fpdenom_bcast( 1. ) / n;
+    return { ( a.real() * b.real() + a.imag() * b.imag() ) * rn, ( a.imag() * b.real() - a.real() * b.imag() ) * rn };
   }
   inline cxtype_denom_sv operator/( const cxtype_denom_sv& a, const fptype_denom_sv& b ) { return { a.real() / b, a.imag() / b }; }
   // Scalar operands (M, W, Ccoeff): gcc vector types do not convert implicitly from a scalar.
@@ -181,7 +182,8 @@ namespace madmatrix
   inline cxtype_denom_sv operator/( const fptype_denom_sv& a, const cxtype_denom_sv& b )
   {
     const fptype_denom_sv n = b.real() * b.real() + b.imag() * b.imag();
-    return { a * b.real() / n, -a * b.imag() / n };
+    const fptype_denom_sv rn = fpdenom_bcast( 1. ) / n;
+    return { a * b.real() * rn, -a * b.imag() * rn };
   }
   inline cxtype_denom_sv operator/( fptype_momenta a, const cxtype_denom_sv& b ) { return fpdenom_bcast( a ) / b; }
 #endif
@@ -504,23 +506,26 @@ namespace madmatrix
   operator/( const cxtype_v& a, const cxtype_v& b )
   {
     fptype_v bnorm = b.real() * b.real() + b.imag() * b.imag();
-    return cxtype_v( ( a.real() * b.real() + a.imag() * b.imag() ) / bnorm,
-                     ( a.imag() * b.real() - a.real() * b.imag() ) / bnorm );
+    const fptype_v rnorm = fptype( 1 ) / bnorm;
+    return cxtype_v( ( a.real() * b.real() + a.imag() * b.imag() ) * rnorm,
+                     ( a.imag() * b.real() - a.real() * b.imag() ) * rnorm );
   }
 
   inline cxtype_v
   operator/( const cxtype& a, const cxtype_v& b )
   {
     fptype_v bnorm = b.real() * b.real() + b.imag() * b.imag();
-    return cxtype_v( ( cxreal( a ) * b.real() + cximag( a ) * b.imag() ) / bnorm,
-                     ( cximag( a ) * b.real() - cxreal( a ) * b.imag() ) / bnorm );
+    const fptype_v rnorm = fptype( 1 ) / bnorm;
+    return cxtype_v( ( cxreal( a ) * b.real() + cximag( a ) * b.imag() ) * rnorm,
+                     ( cximag( a ) * b.real() - cxreal( a ) * b.imag() ) * rnorm );
   }
 
   inline cxtype_v
   operator/( const fptype& a, const cxtype_v& b )
   {
     fptype_v bnorm = b.real() * b.real() + b.imag() * b.imag();
-    return cxtype_v( ( a * b.real() ) / bnorm, ( -a * b.imag() ) / bnorm );
+    const fptype_v rnorm = fptype( 1 ) / bnorm;
+    return cxtype_v( ( a * b.real() ) * rnorm, ( -a * b.imag() ) * rnorm );
   }
 
   inline cxtype_v
@@ -539,8 +544,9 @@ namespace madmatrix
   operator/( const cxtype_v& a, const cxtype& b )
   {
     const fptype bnorm = b.real() * b.real() + b.imag() * b.imag();
-    return cxtype_v( ( a.real() * b.real() + a.imag() * b.imag() ) / bnorm,
-                     ( a.imag() * b.real() - a.real() * b.imag() ) / bnorm );
+    const fptype rnorm = fptype( 1 ) / bnorm;
+    return cxtype_v( ( a.real() * b.real() + a.imag() * b.imag() ) * rnorm,
+                     ( a.imag() * b.real() - a.real() * b.imag() ) * rnorm );
   }
 
   //--------------------------------------------------------------------------
