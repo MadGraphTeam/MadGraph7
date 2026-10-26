@@ -554,9 +554,7 @@ def _contact_split_catalog(
 def _contact_recurrence_color_contract(
     kernel: CompiledOrientedKernel,
     term_by_id: dict[int, CompiledVertexTerm],
-    catalog: tuple[
-        dict[str, list[_CatalogSplit]], dict[int, list[_CatalogSplit]]
-    ]
+    catalog: tuple[dict[str, list[_CatalogSplit]], dict[int, list[_CatalogSplit]]]
     | None = None,
 ) -> tuple[str, str, tuple[tuple[str, str], ...]] | None:
     is_partial = kernel.vertex.endswith("::contact-partial")
@@ -753,7 +751,10 @@ def _annotate_oriented_kernel_evaluation_equivalence(
                     int(kernel.lc_color_normalization_power or 0),
                     list(kernel.component_expressions),
                     # As the oracle's dict: one replacement per symbol.
-                    [derived(term_id) for term_id in dict.fromkeys(derived_terms(kernel))],
+                    [
+                        derived(term_id)
+                        for term_id in dict.fromkeys(derived_terms(kernel))
+                    ],
                     dimensions_of(kernel),
                 )
                 for kernel in kernels
@@ -778,35 +779,29 @@ def _annotate_oriented_kernel_evaluation_equivalence(
     if len(_KERNEL_PROOFS) + len(proofs) > _KERNEL_PROOF_BOUND:
         _KERNEL_PROOFS.clear()
     _KERNEL_PROOFS.update(proofs)
-    annotated: list[CompiledOrientedKernel] = []
-    for kernel, key in zip(kernels, keys, strict=True):
-        class_digest, factor, input_order, input_exchange_factor = needed[key]
-        annotated.append(
-            replace(
-                kernel,
-                evaluation_class=f"symbolica-sha256:{class_digest}",
-                evaluation_factor=factor,
-                evaluation_input_order=input_order,
-                evaluation_input_exchange_factor=input_exchange_factor,
-                evaluation_equivalence_verified=True,
-            )
-        )
+    # Each kernel's factor relative to the first factor of its class.
     reference_factor_by_class: dict[str, complex] = {}
     normalized: list[CompiledOrientedKernel] = []
-    for kernel in annotated:
-        class_factor_complex = complex(*kernel.evaluation_factor)
+    for kernel, key in zip(kernels, keys, strict=True):
+        class_digest, factor, input_order, input_exchange_factor = needed[key]
+        evaluation_class = f"symbolica-sha256:{class_digest}"
+        class_factor_complex = complex(*factor)
         reference_factor = reference_factor_by_class.setdefault(
-            kernel.evaluation_class,
+            evaluation_class,
             class_factor_complex,
         )
         relative_factor = class_factor_complex / reference_factor
         normalized.append(
             replace(
                 kernel,
+                evaluation_class=evaluation_class,
                 evaluation_factor=(
                     float(relative_factor.real),
                     float(relative_factor.imag),
                 ),
+                evaluation_input_order=input_order,
+                evaluation_input_exchange_factor=input_exchange_factor,
+                evaluation_equivalence_verified=True,
             )
         )
     return tuple(normalized)

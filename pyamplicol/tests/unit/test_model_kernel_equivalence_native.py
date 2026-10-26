@@ -7,12 +7,17 @@ EWI-3R), with the Python stage as the oracle
 stages rely on the kind independence of the kernel networks.
 
 * loop_sm (R2 and UV vertices, four-point contacts, complex couplings whose
-  canonical strings hold ``𝑖``) compiles to the same IR with the native and
-  the Python keys and proofs, on one worker and on several;
+  canonical strings hold the imaginary unit) compiles to the same IR with the
+  native and the Python keys and proofs, on one worker and on several;
 * the oriented components and the contact partials of a structure formed for
   one kernel kind, renamed to another kind, equal those formed for that kind
   directly (``compiler_entry._compile_oriented_kernels`` and
-  ``compiler_contacts._contact_partial_component_expressions`` reuse them).
+  ``compiler_contacts._contact_partial_component_expressions`` reuse them),
+  and so do the contact finals (``_contact_final_component_expressions``);
+* the kind renamed on the canonical text (``_renamed_kernel_text``) equals
+  Symbolica's renaming, and loop_sm compiles to the same IR with the
+  compile's text renamings and fused-component memo (``_fused_components``)
+  as with Symbolica's renaming and every fusion formed.
 """
 
 from __future__ import annotations
@@ -66,6 +71,7 @@ def test_kernel_networks_do_not_depend_on_the_kind(loop_sm_payload):
     from pyamplicol.models.compiler_kernels import (
         _oriented_component_expressions,
         _remap_kernel_symbols,
+        _renamed_kernel_text,
     )
 
     _sym._ensure_symbolica()
@@ -74,12 +80,20 @@ def test_kernel_networks_do_not_depend_on_the_kind(loop_sm_payload):
     particle_by_name = {particle.name: particle for particle in ir.particles}
 
     def renamed(values, old, new):
-        return tuple(
+        symbolica = tuple(
             _remap_kernel_symbols(
                 _sym.E(value), old_kind=old, new_kind=new, model_symbols=model_symbols
             ).to_canonical_string()
             for value in values
         )
+        text = tuple(
+            _renamed_kernel_text(
+                value, old_kind=old, new_kind=new, model_symbols=model_symbols
+            )
+            for value in values
+        )
+        assert text == symbolica
+        return symbolica
 
     oriented, partials = set(), set()
     for term in ir.vertex_terms:
@@ -123,3 +137,91 @@ def test_kernel_networks_do_not_depend_on_the_kind(loop_sm_payload):
             }
             assert renamed(formed[9], 9, 41) == formed[41], key
     assert len(oriented) > 20 and len(partials) > 3
+
+
+def test_contact_finals_do_not_depend_on_the_kind(loop_sm_payload):
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.models import compiler_contacts
+    from pyamplicol.models import compiler_symbolica as _sym
+    from pyamplicol.models.compiler_entry import _compile_four_point_contact_kernels
+    from pyamplicol.models.compiler_kernels import _remap_kernel_symbols
+
+    _sym._ensure_symbolica()
+    ir = loop_sm_payload.ir
+    model_symbols = symbols.model(ir.name)
+
+    def compiled(start_kind):
+        # Each structure's first final is formed for its own kind.
+        compiler_contacts._FINALS.clear()
+        compiler_contacts._PARTIALS.clear()
+        return _compile_four_point_contact_kernels(
+            ir.vertex_terms,
+            ir.particles,
+            start_kind=start_kind,
+            model_symbols=model_symbols,
+        )[1]
+
+    first, second = compiled(1000), compiled(5000)
+    finals = [k for k in first if k.vertex.endswith("::contact-final")]
+    assert len(first) == len(second) and len(finals) > 3
+    for a, b in zip(first, second, strict=True):
+        assert b.kind == a.kind + 4000
+        assert b.component_expressions == tuple(
+            _remap_kernel_symbols(
+                _sym.E(value),
+                old_kind=a.kind,
+                new_kind=b.kind,
+                model_symbols=model_symbols,
+            ).to_canonical_string()
+            for value in a.component_expressions
+        ), a.vertex
+
+
+def test_text_renamings_and_fused_memo_equal_the_formed_compile(
+    loop_sm_payload, monkeypatch
+):
+    from pyamplicol.models import (
+        compiler_contacts,
+        compiler_entry,
+        compiler_kernels,
+    )
+    from pyamplicol.models import compiler_symbolica as _sym
+
+    def memos_cleared():
+        compiler_kernels._FUSED.clear()
+        compiler_kernels._CANONICAL_COMPONENTS.clear()
+        compiler_contacts._FINALS.clear()
+        compiler_contacts._PARTIALS.clear()
+
+    original = compiler_kernels._renamed_fused_texts
+    renamed = []
+
+    def counted(*args, **kwargs):
+        result = original(*args, **kwargs)
+        renamed.append(result is not None)
+        return result
+
+    memos_cleared()
+    with monkeypatch.context() as patch:
+        patch.setattr(compiler_kernels, "_renamed_fused_texts", counted)
+        fast = _compiled_ir(loop_sm_payload, native=True)
+    assert sum(renamed) > 10
+
+    def symbolica_renamed(text, *, old_kind, new_kind, model_symbols):
+        if old_kind == new_kind:
+            return text
+        return compiler_kernels._remap_kernel_symbols(
+            _sym.E(text),
+            old_kind=old_kind,
+            new_kind=new_kind,
+            model_symbols=model_symbols,
+        ).to_canonical_string()
+
+    memos_cleared()
+    with monkeypatch.context() as patch:
+        patch.setattr(compiler_kernels, "_renamed_fused_texts", lambda *a, **k: None)
+        for module in (compiler_kernels, compiler_contacts, compiler_entry):
+            patch.setattr(module, "_renamed_kernel_text", symbolica_renamed)
+        formed = _compiled_ir(loop_sm_payload, native=True)
+    memos_cleared()
+    assert formed == fast
