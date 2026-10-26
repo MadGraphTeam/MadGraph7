@@ -35,10 +35,12 @@ def test_real_writer_emits_virtual_bundle_without_tree_umami_provider(
         LoopSchemeDeclaration,
     )
     from pyamplicol.generation.validation import ValidationPointRecord
-    from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
     from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
     from pyamplicol.loops.physical_orders import BornSquaredSector, PhysicalOrderLayout
     from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
 
     original = load_manifest(fixture)
     selected = original.processes[0]

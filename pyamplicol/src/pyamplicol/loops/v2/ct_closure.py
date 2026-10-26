@@ -943,7 +943,9 @@ def lowered_counterterm_model(
             from pyamplicol.loops.compiler import prepare_loop_request_model
 
             prepared = prepare_loop_request_model(
-                compiled, fixed_parameters=dict(fixed_parameters)
+                compiled,
+                fixed_parameters=dict(fixed_parameters),
+                certify_primitives=False,
             )
             continuation = None
             if declaration is not None:

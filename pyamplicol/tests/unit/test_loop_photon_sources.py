@@ -14,8 +14,8 @@ from pyamplicol import CorrelatedRequest, CorrelatorConfig, Runtime
 from pyamplicol.api import VirtualArithmeticSpec, VirtualStabilityPolicy
 from pyamplicol.api.errors import EvaluationError
 from pyamplicol.cli import run_cli
-from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.models.loading import compile_model_source
+from tools.loop_reference.model_compatibility import prepare_loop_sm_scalar_declarations
 
 from .test_loop_generation_public_runtime import _card
 

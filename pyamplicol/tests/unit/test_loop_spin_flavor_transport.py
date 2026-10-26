@@ -29,10 +29,12 @@ def source_pair(loop_sm_ufo, tmp_path_factory):
     if not symbolica.is_licensed():
         pytest.skip("licensed loop_sm source control required")
     from pyamplicol.loops.compiler import prepare_loop_request_model
-    from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
     from pyamplicol.loops.native import load_loop_native
     from pyamplicol.loops.physical_model_correlations import NativeDirectedModelProgram
     from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
 
     root = tmp_path_factory.mktemp("spin-flavor-sources")
     model = compile_model_source(
