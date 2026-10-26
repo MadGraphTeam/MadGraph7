@@ -208,14 +208,16 @@ def test_colour_projections_are_formal_nc_projections(
         )
         return LoopSlice.generate(compiled, request, loop_native, prune=prune)
 
-    if mixed_grades:
-        refusal = "^" + re.escape(_MIXED_GRADE_REFUSAL.format(accuracy.upper()))
-        with pytest.raises(ValueError, match=refusal) as refused:
-            build(accuracy)
-        raise refused.value
-    projected, unpruned, full = build(accuracy), build("lc", prune=False), build("full")
     parameters = reference["parameters"]
     point, scale = reference["points"][0], str(Fraction(reference["mu_r"][0]) ** 2)
+    if mixed_grades:
+        # The projected slice is generated; its first evaluation refuses.
+        refusal = "^" + re.escape(_MIXED_GRADE_REFUSAL.format(accuracy.upper()))
+        projected = build(accuracy)
+        with pytest.raises(ValueError, match=refusal) as refused:
+            projected.evaluate(point, scale, parameters=parameters)
+        raise refused.value
+    projected, unpruned, full = build(accuracy), build("lc", prune=False), build("full")
     degrees = unpruned.degrees()
 
     def at(power):
