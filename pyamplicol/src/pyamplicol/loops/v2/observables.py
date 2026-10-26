@@ -365,15 +365,10 @@ class DirectedColour:
         if not SELF_ADJOINT_HISTORIES or not self._commuting():
             return False
         key = (self.history.bra, self.history.ket)
-        equal = swapped.cells == self.table.cells
+        equal, nonzero = self._compare(swapped)
         decided = self._adjoint.get(key)
         if decided is None:
-            decided = self._adjoint[key] = equal and any(
-                value
-                for row in self.table.cells
-                for cell in row
-                for value in cell.values()
-            )
+            decided = self._adjoint[key] = equal and nonzero
         elif decided and not equal:
             raise ValueError(
                 f"colour history {self.history.id!r}: the swapped seed table "
@@ -381,6 +376,26 @@ class DirectedColour:
                 "showed the dipole self-adjoint"
             )
         return decided
+
+    def _compare(self, swapped: SeedTable) -> tuple[bool, bool]:
+        """(the swapped table's cells equal the direct ones, the direct table
+        has a nonzero cell): on the native tables (package C's "cells" stage
+        keeps them, ``native_cells.directed_table``) their distinct cells and
+        first-seen ids, which equal tables share; else the Python cells."""
+
+        from . import native_cells
+
+        handles = native_cells._DIRECTED.get(self, {})
+        direct, other = handles.get(False), handles.get(True)
+        if direct is not None and other is not None:
+            values, ids = direct.decode()
+            return (values, ids) == other.decode(), any(
+                Fraction(re) or Fraction(im) for value in values for _p, re, im in value
+            )
+        cells = self.table.cells
+        return swapped.cells == cells, any(
+            value for row in cells for cell in row for value in cell.values()
+        )
 
     def _sides(self, swapped: bool) -> tuple[ColorConnection, ColorConnection]:
         """(Born side, loop side) connections of one direction."""
