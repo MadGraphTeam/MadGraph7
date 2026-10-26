@@ -19,12 +19,17 @@
 //!   class orders and the LC/NLC prune liveness of
 //!   `assemble.LoopSlice._prune_colour`.
 //!
-//! The work runs in three steps, because two inputs only Python computes:
+//! The work runs in steps, because one input only Python computes (the
+//! certificate check of each compression on its smallest instance):
 //! [`SeedBuilder::analyse`] (combinations and certificate candidates), then
 //! [`SeedBuilder::needs`] once the caller has certified the compressions
 //! (the distinct canonical quark rings whose exact SU(N_c) reduction keys
-//! their classes, and the skeletons that keep a generic seed), and
-//! [`SeedBuilder::complete`] with those reduced tensors.
+//! their classes, and the skeletons that keep a generic seed), then
+//! [`SeedBuilder::reduce`], which reduces those needs in-crate
+//! (`networks`, the twin of `reduce_network`), and
+//! [`SeedBuilder::complete_reduced`]. [`SeedBuilder::complete`] takes the
+//! reduced tensors from the caller instead (the Python reductions, with
+//! `native_seeds.NATIVE_REDUCTIONS` off).
 //!
 //! **What Python hands over.** Per distinct content its compression
 //! (`CompressedColour._content`: position kind, single-leg flag, terms as
@@ -40,8 +45,11 @@
 //! rotations of quark rings are ordered by the `repr` strings Python sorts by,
 //! compared as UTF-8 bytes (= code points) without building the joined
 //! strings. Labels and coefficients are exact (`Rational`); no float is used.
-//! No Symbolica licence call is made. The stages are sequential, so the
-//! output does not depend on the thread count.
+//! No Symbolica licence call is made. The output does not depend on the
+//! thread count: every step is sequential except [`SeedBuilder::reduce`],
+//! whose needs reduce in parallel into an order-preserving collect, each
+//! result depending on its need only (a thread's Fierz memo caches a pure
+//! function).
 
 use super::FastMap;
 use super::networks::{self, NetString, Network, Product};

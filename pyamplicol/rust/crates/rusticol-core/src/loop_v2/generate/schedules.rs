@@ -51,8 +51,16 @@ pub struct ScheduleInput {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum FramePolicy {
-    /// `schedules.cheapest(lambda mask: 2 ** mask.bit_count(), model)`.
-    Cheapest { model: CostModel },
+    /// `schedules.cheapest(rows, model)` with `rows(mask)` the product of
+    /// the helicity rows of the mask's legs: `leg_rows[i]` for leg `i` (bit
+    /// `i`; the request's helicity count of the leg,
+    /// `generator_input.leg_rows`), or two per leg without `leg_rows`
+    /// (`lambda mask: 2 ** mask.bit_count()`).
+    Cheapest {
+        model: CostModel,
+        #[serde(default)]
+        leg_rows: Option<Vec<u64>>,
+    },
     /// Per family (in output order) the frame `(start, reflected)` to use;
     /// only that frame's trie is built.
     Fixed { frames: Vec<Option<(usize, bool)>> },
@@ -659,16 +667,34 @@ fn build_trie(
     (nodes, rank)
 }
 
+/// The helicity rows of a segment's legs: the product of `leg_rows` over
+/// the mask's legs, or 2^|legs| without them; None past 128 bits or for a
+/// leg without its count.
+fn segment_rows(mask: LegSet, leg_rows: Option<&[u64]>) -> Option<u128> {
+    let Some(leg_rows) = leg_rows else {
+        return 1u128.checked_shl(mask.count_ones());
+    };
+    let mut rows: u128 = 1;
+    let mut rest = mask;
+    while rest != 0 {
+        let leg = rest.trailing_zeros() as usize;
+        rows = rows.checked_mul(u128::from(*leg_rows.get(leg)?))?;
+        rest &= rest - 1;
+    }
+    Some(rows)
+}
+
 fn trie_cost(
     nodes: &[TrieNode],
     rank: i64,
     count: usize,
     model: &CostModel,
+    leg_rows: Option<&[u64]>,
     segments: &SegmentTable,
 ) -> Result<u128, String> {
-    let overflow = || "the schedule-B cost exceeds 128 bits".to_string();
-    let rows =
-        |label: u32| -> Option<u128> { 1u128.checked_shl(segments[label as usize].0.count_ones()) };
+    let overflow =
+        || "the schedule-B cost exceeds 128 bits (or a leg has no helicity count)".to_string();
+    let rows = |label: u32| -> Option<u128> { segment_rows(segments[label as usize].0, leg_rows) };
     let accumulators = nodes.iter().filter(|node| node.depth == count).count() as u128;
     let mut total = model
         .close(rank)
@@ -997,8 +1023,8 @@ fn view_and_tries(
                 }
                 let (nodes, rank) = build_trie(key, &oriented, &data.orders, space, &segments);
                 let cost = match &input.policy {
-                    FramePolicy::Cheapest { model } => {
-                        trie_cost(&nodes, rank, count, model, &segments)?
+                    FramePolicy::Cheapest { model, leg_rows } => {
+                        trie_cost(&nodes, rank, count, model, leg_rows.as_deref(), &segments)?
                     }
                     FramePolicy::Fixed { .. } => 0,
                 };
@@ -1026,4 +1052,29 @@ fn view_and_tries(
         }
     }
     Ok((labels, out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::segment_rows;
+
+    #[test]
+    fn segment_rows_are_the_product_of_the_legs_helicity_counts() {
+        // Without counts: two rows per leg (the production default).
+        assert_eq!(segment_rows(0b1011, None), Some(8));
+        // A scalar (1), a massive vector (3), a fermion (2), a massive
+        // spin-2 state (5): legs 0..3.
+        let counts = [1, 3, 2, 5];
+        assert_eq!(segment_rows(0b0001, Some(&counts)), Some(1));
+        assert_eq!(segment_rows(0b0110, Some(&counts)), Some(6));
+        assert_eq!(segment_rows(0b1111, Some(&counts)), Some(30));
+        // A leg without its count, and a product past 128 bits.
+        assert_eq!(segment_rows(0b10000, Some(&counts)), None);
+        let wide = [u64::MAX; 3];
+        assert_eq!(
+            segment_rows(0b11, Some(&wide)),
+            Some(u128::from(u64::MAX).pow(2))
+        );
+        assert_eq!(segment_rows(0b111, Some(&wide)), None);
+    }
 }

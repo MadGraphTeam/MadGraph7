@@ -185,21 +185,27 @@ CONTROLS = ["gg_gg", "uux_ggg", "uux_ddxg"]
 def test_native_seed_tables_equal_python(controls, loop_native, name, compress):
     """Build on two thirds of the skeletons, then extend with an overlapping
     later part (new skeletons and skeletons already seeded): tables and
-    ``class_of`` equal the Python stages', and so do the skeletons' orders."""
+    ``class_of`` equal the Python stages', and so do the skeletons' orders.
+    The native stages run first on empty reduction caches, so their cells
+    read the natively reduced rings; the oracle recomputes its own. The
+    stage keeps no replay copy of its inputs by default."""
 
     colour, skeletons = controls(name)
     first = skeletons[: (2 * len(skeletons)) // 3]
-    python = python_build(colour, first, compress=compress)
+    rest = skeletons[len(first) // 2 :]
+    with native_seeds.python_oracle():
+        pass  # empty the reduction caches
     stage = native_seeds.NativeSeedStage(colour, loop_native)
     native = stage.build(first, compress=compress)
+    assert stage.spec_text == "" and stage.reduce_inputs is None
+    extended = native_seeds.extend_seed_table(*native, colour, rest, compress=compress)
+    python = python_build(colour, first, compress=compress)
     assert_same_tables(native, python)
     orders = stage._builder.skeleton_orders()
     assert [stage._orders[o] for o in orders] == [s.orders for s in first]
     assert bool(native[0].certificates) == compress
-    rest = skeletons[len(first) // 2 :]
     assert_same_tables(
-        native_seeds.extend_seed_table(*native, colour, rest, compress=compress),
-        python_extend(*python, colour, rest, compress=compress),
+        extended, python_extend(*python, colour, rest, compress=compress)
     )
     # The switch: the colour functions run the native stages.
     assert_same_tables(build_seed_table(colour, first, compress=compress), python)
@@ -404,7 +410,7 @@ print(json.dumps([digest, generation.max_rank(rebuilt[0]), len(out[3])]))
 
 
 @pytest.mark.loop_fast
-def test_retained_arena(controls, loop_native, tmp_path):
+def test_retained_arena(controls, loop_native, tmp_path, monkeypatch):
     """B1 on u u~ > g g g (seed colour model): the readings of a retained
     build feed the seed stage in-crate (equal to the Python oracle and to the
     bytes tables); a skeleton list that is not exactly a build's readings
@@ -419,6 +425,8 @@ def test_retained_arena(controls, loop_native, tmp_path):
     from pyamplicol.loops.v2 import reference_executor as rx
     from pyamplicol.loops.v2.schedules import SkeletonView, build_schedules
 
+    # The stages' inputs are replayed in subprocesses below.
+    monkeypatch.setattr(generator_input, "KEEP_REPLAY_INPUTS", True)
     colour, generation, families, catalogue = _native_generation(
         controls, loop_native, "uux_ggg"
     )
@@ -669,10 +677,15 @@ def test_native_seeds_in_the_slice(
     request = _slice_request(
         process, born, loop, colour_contraction="direct", **_colour_options(accuracy)
     )
+    # Native first on empty reduction caches (its cells read the natively
+    # reduced rings), then the oracle, which recomputes its own.
+    with native_seeds.python_oracle():
+        pass
+    native = assemble.LoopSlice.generate(compiled, request, loop_native)
+    native_stages = list(seed_stages)
     with native_seeds.python_oracle():
         python = assemble.LoopSlice.generate(compiled, request, loop_native)
-    assert not seed_stages
-    native = assemble.LoopSlice.generate(compiled, request, loop_native)
+    assert seed_stages == native_stages  # the oracle ran no native stage
     assert snapshot.digest(snapshot.seeds_records(native)) == snapshot.digest(
         snapshot.seeds_records(python)
     )
@@ -686,7 +699,7 @@ def test_native_seeds_in_the_slice(
     )
     # B1: main slice and companion seeded in-crate from complete builds;
     # at LC/NLC each extended after a rebuild from the retained skeletons.
-    built = [stage for stage in seed_stages if stage.kind == "build"]
+    built = [stage for stage in native_stages if stage.kind == "build"]
     assert len(built) == 2  # the main slice and the companion
     assert all(s.build_source is not None and s.build_source.complete for s in built)
     pruned = accuracy != "full"
@@ -858,10 +871,12 @@ def test_native_seeds_at_six_legs(
 
     def build(colour, skeletons, basis=None, *, compress=False):
         skeletons = list(skeletons)
-        captured["python"] = python_build(colour, skeletons, basis, compress=compress)
+        with native_seeds.python_oracle():
+            pass  # native first on empty reduction caches
         captured["native"] = native_seeds.build_seed_table(
             colour, skeletons, basis, compress=compress, native=loop_native
         )
+        captured["python"] = python_build(colour, skeletons, basis, compress=compress)
         raise _Captured
 
     monkeypatch.setattr(assemble, "build_seed_table", build)

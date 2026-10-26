@@ -25,6 +25,14 @@ decoding them again: ``keep`` is evaluated on the retained skeleton objects
 ``ReadingKeep``), and the rebuilt plan reuses the retained objects. The seed
 stage reads a build's readings in-crate (``NativeBuild.readings_of``), and
 ``NativeBuild.max_rank`` answers ``MonomialLayout``'s rank bound.
+
+**Frame cost** (genericity audit m4). The cheapest-frame policy prices a
+segment by the helicity rows of its legs: ``leg_rows(blocks)`` counts each
+leg's helicities in the request's enumeration (1 for a scalar, 3 for a
+massive vector, ...) and ``schedules(leg_rows=...)`` (native) and
+``cheapest(frame_rows(...), model)`` (Python) use their product. Without
+``leg_rows`` both price two rows per leg, exact whenever every leg has two
+helicity states (fermions, massless vectors).
 """
 
 from __future__ import annotations
@@ -235,6 +243,49 @@ def _key(tables: _Tables, raw: Iterable[Any]) -> tuple[tuple[int, MassId], ...]:
 _ONE = Fraction(1)
 _HALF = Fraction(1, 2)
 
+#: Keep each stage's native inputs as JSON (``NativeGeneration.input_json``,
+#: ``native_seeds.NativeSeedStage.spec_text``, ``reduce_inputs`` and
+#: ``reductions_text``) to replay the stage in another process (tests). Off
+#: in production: the copies would live as long as the generation.
+KEEP_REPLAY_INPUTS = False
+
+
+def leg_rows(blocks: Any) -> tuple[int, ...]:
+    """The helicity rows of each external leg (bit ``i`` of a mask is tree
+    label ``i + 1``): the distinct helicities of the rows of the leg's source
+    blocks (``TreeBlocks.blocks``), i.e. the request's own helicity
+    enumeration. The frame policy prices a segment by their product
+    (``frame_rows``, ``NativeGeneration.schedules(leg_rows=...)``)."""
+
+    found: dict[int, set[int]] = defaultdict(set)
+    for block in blocks.blocks:
+        if block.is_source:
+            for row in block.rows:
+                for label, helicity in row.helicities:
+                    found[label].add(helicity)
+    count = len(blocks.process.legs)
+    if set(found) != set(range(1, count + 1)):
+        raise ValueError("every external leg needs a source block with rows")
+    return tuple(len(found[label]) for label in range(1, count + 1))
+
+
+def frame_rows(rows: Sequence[int]) -> Callable[[int], int]:
+    """``schedules.cheapest``'s ``rows`` from per-leg helicity rows: the
+    product over a mask's legs (the Python twin of the native policy with
+    ``leg_rows``; ``2 ** mask.bit_count()`` when every leg has two)."""
+
+    counts = tuple(int(count) for count in rows)
+
+    def product(mask: int) -> int:
+        out = 1
+        while mask:
+            low = mask & -mask
+            out *= counts[low.bit_length() - 1]
+            mask ^= low
+        return out
+
+    return product
+
 
 class NativeBuild:
     """A schedule build retained by the native generation (its arena
@@ -408,10 +459,11 @@ class NativeGeneration:
         self.catalogue = catalogue
         self.legs = tuple(table.legs)
         self._merged = merged
-        #: The native family input (JSON), e.g. to rebuild the generation in
-        #: another process.
-        self.input_json = _json(payload)
-        self._native = native.V2Generation(self.input_json)
+        text = _json(payload)
+        #: The native family input (JSON), to rebuild the generation in
+        #: another process; kept only with ``KEEP_REPLAY_INPUTS``.
+        self.input_json: str | None = text if KEEP_REPLAY_INPUTS else None
+        self._native = native.V2Generation(text)
         self._families: FamilySet | None = None
         self._positions: list[Position] = []
         self._state_positions: list[int] = []
@@ -544,11 +596,14 @@ class NativeGeneration:
         model: CostModel = STRUCTURED,
         frames: Mapping[FamilyKey, FamilyFrame] | None = None,
         keep: Callable[[Skeleton], bool] | None = None,
+        leg_rows: Sequence[int] | None = None,
     ) -> LoopSchedules:
         """``build_schedules(families, catalogue, colour, ...)`` natively.
 
-        Without ``frames`` the policy is ``cheapest(lambda mask: 2 **
-        mask.bit_count(), model)``; with ``frames`` (a family's stored frame,
+        Without ``frames`` the policy is ``cheapest(frame_rows(leg_rows),
+        model)``, the helicity rows of each leg (``leg_rows(blocks)``)
+        pricing a frame; without ``leg_rows`` two per leg, ``cheapest(lambda
+        mask: 2 ** mask.bit_count(), model)``. With ``frames`` (a family's stored frame,
         e.g. ``_prune_colour``'s ``same_frame``) only that frame's trie is
         built. ``keep`` filters skeletons as ``SkeletonView(keep=...)``; it
         may also be a ``ReadingKeep`` of the base build. With a base build
@@ -558,12 +613,12 @@ class NativeGeneration:
 
         base = self.base
         if keep is not None and base is not None and base.colour is colour:
-            return self._rebuild(base, colour, model, frames, keep)
+            return self._rebuild(base, colour, model, frames, keep, leg_rows)
         if isinstance(keep, ReadingKeep):
             raise ValueError("reading flags need their complete build as the base")
         payload, ordered = self._colour_payload(colour)
         keys = list(self.families().families)
-        payload = {**payload, "policy": self._policy(model, frames, keys)}
+        payload = {**payload, "policy": self._policy(model, frames, keys, leg_rows)}
         if keep is not None:
             payload["keep"] = self._keep_flags(keep, payload, ordered, keys)
         raw = self._native.schedules(_json(payload))
@@ -610,15 +665,22 @@ class NativeGeneration:
             payload["scaleless"] = self._scaleless
         return payload, ordered
 
-    @staticmethod
     def _policy(
+        self,
         model: CostModel,
         frames: Mapping[FamilyKey, FamilyFrame] | None,
         keys: Sequence[FamilyKey],
+        leg_rows: Sequence[int] | None = None,
     ) -> dict[str, Any]:
         if frames is None:
+            cheapest: dict[str, Any] = {"kind": "cheapest"}
+            if leg_rows is not None:
+                rows = [int(count) for count in leg_rows]
+                if len(rows) != len(self.legs) or min(rows, default=1) < 1:
+                    raise ValueError("leg_rows needs a positive count per leg")
+                cheapest["leg_rows"] = rows
             return {
-                "kind": "cheapest",
+                **cheapest,
                 "model": {
                     name: getattr(model, name)
                     for name in (
@@ -647,11 +709,15 @@ class NativeGeneration:
         model: CostModel,
         frames: Mapping[FamilyKey, FamilyFrame] | None,
         keep: Callable[[Skeleton], bool],
+        leg_rows: Sequence[int] | None,
     ) -> LoopSchedules:
         """The filtered schedules rebuilt from ``base``'s skeletons."""
 
         keys = list(self.families().families)
-        payload = {**base.payload, "policy": self._policy(model, frames, keys)}
+        payload = {
+            **base.payload,
+            "policy": self._policy(model, frames, keys, leg_rows),
+        }
         if isinstance(keep, ReadingKeep):
             if keep.build is not base:
                 raise ValueError("reading flags of another build than the base")

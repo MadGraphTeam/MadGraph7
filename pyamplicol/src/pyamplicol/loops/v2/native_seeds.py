@@ -125,9 +125,10 @@ _POSITIONS = {"adjoint": 0, "fundamental": 1, "exact": 2}
 #: the main slice, the poles companion, the LC/NLC prune and the
 #: observables' prune all take them. Off, the Python stages run: they are
 #: the oracle (``python_oracle``). The native stage covers every input the
-#: Python stage covers (the exact colour algebra stays in Python, called per
-#: distinct object), so no feature has a per-request Python fallback; any
-#: native failure fails closed.
+#: Python stage covers (Python keeps, per distinct object, each content's
+#: compression, the certificate check and the cells; the exact reductions
+#: run in-crate, ``NATIVE_REDUCTIONS``), so no feature has a per-request
+#: Python fallback; any native failure fails closed.
 NATIVE = True
 
 
@@ -444,9 +445,10 @@ class NativeSeedStage:
         self._class_orders: list[list[int]] = []
         self.timings: dict[str, float] = {}
         self.counts: dict[str, int] = {}
-        # The stage's native inputs (JSON), e.g. to replay it elsewhere: the
-        # content tables, and the inputs of the in-crate reductions (legs,
-        # exact descriptor and content networks) or the reduced tensors.
+        # The stage's native inputs (JSON), to replay it elsewhere (kept only
+        # with ``generator_input.KEEP_REPLAY_INPUTS``): the content tables,
+        # and the inputs of the in-crate reductions (legs, exact descriptor
+        # and content networks) or the reduced tensors.
         self.spec_text = ""
         self.reduce_inputs: tuple[list[int], list[int], str, str] | None = None
         self.reductions_text = ("[]", "[]")
@@ -547,7 +549,10 @@ class NativeSeedStage:
             "existing": existing,
             "tensors": encoder.tensors,
         }
-        text = self.spec_text = json.dumps(spec, separators=(",", ":"))
+        text = json.dumps(spec, separators=(",", ":"))
+        replay = generator_input.KEEP_REPLAY_INPUTS
+        if replay:
+            self.spec_text = text
         self._step("content_tables")
         if source is not None:
             builder = self.native.SeedBuilder.from_generation(
@@ -579,7 +584,7 @@ class NativeSeedStage:
             # The quark rings and generic seeds reduced in-crate; the ring
             # tensors also fill ``_reduced_primitive``'s cache (the cells).
             networks = _Networks()
-            self.reduce_inputs = (
+            reduce_inputs = (
                 [leg.label for leg in legs],
                 [leg.label for leg in colour.legs],
                 networks.encode(
@@ -590,7 +595,10 @@ class NativeSeedStage:
                     colour, ((c, contents[c]) for c in builder.generic_contents())
                 ),
             )
-            builder.reduce(*self.reduce_inputs)
+            if replay:
+                self.reduce_inputs = reduce_inputs
+            builder.reduce(*reduce_inputs)
+            del reduce_inputs
             self._step("reductions")
             for k, need in enumerate(rings):
                 _prime_reduction(encoder.ring(need), legs, builder.ring_tensor(k))
@@ -609,15 +617,17 @@ class NativeSeedStage:
             python_seeds = [colour.seed(skeletons[s]) for s in generics]
             generic_seeds = python_seeds.__getitem__
             self._step("reductions")
-            self.reductions_text = (
+            reductions_text = (
                 json.dumps(ring_tensors, separators=(",", ":")),
                 json.dumps(
                     [encoder.key_tensor(seed) for seed in python_seeds],
                     separators=(",", ":"),
                 ),
             )
+            if replay:
+                self.reductions_text = reductions_text
             new_classes, class_orders, raw_rows, skeleton_rows = builder.complete(
-                *self.reductions_text
+                *reductions_text
             )
         self._step("native_classes")
         coefficients = [
