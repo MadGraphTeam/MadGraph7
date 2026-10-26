@@ -515,11 +515,12 @@ def test_foreign_and_damaged_members_are_refused(stored, loop_native):
     are refused."""
 
     member = native_lowering.plan_binary(stored, loop_native)
+    (form,) = struct.unpack_from("<I", member, 8)  # the member's format
     damaged = [
         member + bytes(8),
         b"LOOPPLAX" + member[8:],
-        member[:8] + (1).to_bytes(4, "little") + member[12:],
-        member[:8] + (3).to_bytes(4, "little") + member[12:],
+        member[:8] + (form - 1).to_bytes(4, "little") + member[12:],
+        member[:8] + (form + 1).to_bytes(4, "little") + member[12:],
         member[:12] + (3).to_bytes(4, "little") + member[16:],
     ]
     for data in damaged:
