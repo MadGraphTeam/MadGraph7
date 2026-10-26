@@ -223,10 +223,10 @@ def internal_mt_executors(loop_sm_ufo, loop_native, tmp_path_factory):
 
     from dataclasses import replace
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source
 
     root = tmp_path_factory.mktemp("loop-sm-internal-mt")
     ufo = internal_mass_ufo(loop_sm_ufo, root / "loop_sm_internal_mt", "MT")
