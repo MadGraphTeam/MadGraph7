@@ -54,7 +54,7 @@
 //! compile).
 
 use super::dress::{Carrier, cast, parse_rational};
-use super::interference::{Entry, Interference, InterferenceRuntime, Ket};
+use super::interference::{Entry, Interference, InterferenceRuntime, Ket, MetricCells};
 use super::plan::LoopProgramV4;
 use crate::engine::{PlaneDescriptor, SchemaSources, SymjitPlaneKernel, SymjitPlaneLayout};
 use crate::{RusticolError, RusticolResult};
@@ -618,9 +618,15 @@ pub struct Columns {
     counterterms: SourceSlots,
 }
 
-/// The overlap cells (Born basis element, ket tensor, N_c power, re, im) of
-/// one colour metric.
-type CellsFile = Vec<(usize, usize, i32, String, String)>;
+/// The overlap cells of one colour metric: its distinct cells (per N_c
+/// power, re, im) and, per ket tensor and Born basis element, the index of
+/// its cell (`native_observables._Metrics`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CellsFile {
+    values: Vec<Vec<(i32, String, String)>>,
+    ids: Vec<Vec<u32>>,
+}
 
 /// One interference program of the columns: its entries (kind, bra Born
 /// order, vector or Born order, coupling slot, N_c grade, output, degree),
@@ -1456,7 +1462,7 @@ fn load_counterterms(
         basis,
         orders,
         file.tensors,
-        cells,
+        MetricCells::List(cells),
         &file.born,
         &file.ket,
         file.vectors,
@@ -1513,13 +1519,20 @@ fn load_entries(
         .collect()
 }
 
-fn load_cells(
-    cells: &[(usize, usize, i32, String, String)],
-) -> RusticolResult<Vec<(usize, usize, i32, [Rational; 2])>> {
-    cells
+fn load_cells(cells: CellsFile) -> RusticolResult<MetricCells> {
+    let values = cells
+        .values
         .iter()
-        .map(|(b, t, power, re, im)| Ok((*b, *t, *power, [exact(re)?, exact(im)?])))
-        .collect()
+        .map(|cell| {
+            cell.iter()
+                .map(|(power, re, im)| Ok((*power, [exact(re)?, exact(im)?])))
+                .collect()
+        })
+        .collect::<RusticolResult<_>>()?;
+    Ok(MetricCells::Table {
+        values,
+        ids: cells.ids,
+    })
 }
 
 impl TreeProgram {
@@ -2132,8 +2145,13 @@ impl TreeProgram {
     /// counterterm components, whose interference layout the columns share.
     /// Build the runtime after setting them.
     pub fn set_columns(&mut self, json: &[u8]) -> RusticolResult<()> {
-        let file: ColumnsFile =
+        let mut file: ColumnsFile =
             serde_json::from_slice(json).map_err(|e| invalid(format!("columns: {e}")))?;
+        // Each metric is loaded once (the columns share them by index).
+        let mut metrics: Vec<Option<MetricCells>> = Vec::with_capacity(file.cells.len());
+        for cells in std::mem::take(&mut file.cells) {
+            metrics.push(cells.map(load_cells).transpose()?);
+        }
         // Columns need the counterterm interference layout; a program
         // without counterterms (the certified-scaleless companion's) takes
         // the spin sources only.
@@ -2170,14 +2188,13 @@ impl TreeProgram {
                 .programs
                 .get(program)
                 .ok_or_else(|| invalid("a column's program index"))?;
-            let metric = match file
-                .cells
+            let metric = match metrics
                 .get(cells)
                 .ok_or_else(|| invalid("a column's metric index"))?
             {
-                Some(metric) => load_cells(metric)?,
+                Some(metric) => metric.clone(),
                 // The Born metric: the counterterm interference's own cells.
-                None => ct.interference.cells().to_vec(),
+                None => ct.interference.cells().clone(),
             };
             programs.push(Interference::new(
                 layout.basis,

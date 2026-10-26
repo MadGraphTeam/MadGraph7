@@ -52,12 +52,27 @@ pub struct Entry {
     pub degree: Option<i32>,
 }
 
+/// The exact overlap cells `<b|t>` of one colour metric.
+#[derive(Clone, Debug)]
+pub enum MetricCells {
+    /// (basis element, ket tensor, N_c power, exact cell) per nonzero cell
+    /// (the counterterm interference's own Born metric).
+    List(Vec<(usize, usize, i32, [Rational; 2])>),
+    /// The distinct cells, each a list of (N_c power, exact cell), and per
+    /// ket tensor and basis element the index of its cell (an observable
+    /// column's metric, `loops/v2/native_observables`: a few dozen distinct
+    /// cells over every (b, t) pair).
+    Table {
+        values: Vec<Vec<(i32, [Rational; 2])>>,
+        ids: Vec<Vec<u32>>,
+    },
+}
+
 /// The interference program of a process.
 pub struct Interference {
     basis: usize,
     tensors: usize,
-    /// (basis element, ket tensor, N_c power, exact cell).
-    cells: Vec<(usize, usize, i32, [Rational; 2])>,
+    cells: MetricCells,
     /// Per Born order, its Born components by N_c power.
     bra: Vec<Groups>,
     /// Per counterterm vector, its ket components by N_c power.
@@ -132,7 +147,7 @@ impl Interference {
         basis: usize,
         orders: usize,
         tensors: usize,
-        cells: Vec<(usize, usize, i32, [Rational; 2])>,
+        cells: MetricCells,
         born: &[(usize, usize, i32)],
         ket: &[(usize, usize, i32)],
         vectors: usize,
@@ -144,8 +159,23 @@ impl Interference {
         if tensors < basis {
             return Err(invalid("the ket tensors start with the Born basis"));
         }
-        if cells.iter().any(|&(b, t, _, _)| b >= basis || t >= tensors) {
-            return Err(invalid("overlap cell outside the basis or the ket tensors"));
+        match &cells {
+            MetricCells::List(cells) => {
+                if cells.iter().any(|&(b, t, _, _)| b >= basis || t >= tensors) {
+                    return Err(invalid("overlap cell outside the basis or the ket tensors"));
+                }
+            }
+            MetricCells::Table { values, ids } => {
+                if ids.len() != tensors
+                    || ids.iter().any(|row| {
+                        row.len() != basis || row.iter().any(|&id| id as usize >= values.len())
+                    })
+                {
+                    return Err(invalid(
+                        "an overlap table needs one cell index per ket tensor and basis element",
+                    ));
+                }
+            }
         }
         if born.iter().any(|&(b, o, _)| b >= basis || o >= orders) {
             return Err(invalid("Born component"));
@@ -215,36 +245,70 @@ impl Interference {
         &self.outputs
     }
 
-    /// The metric classes in carrier `T`.
+    /// The metric classes in carrier `T`: per class, the exact sum of each
+    /// (b, t) cell's kept powers times `3^e`, cast once (a table's distinct
+    /// cells are summed once per class, then indexed).
     pub fn runtime<T: Carrier>(&self, zero: &T) -> InterferenceRuntime<T> {
         let metrics = self
             .class_keys
             .iter()
             .map(|&(degree, shift)| {
-                let mut rows: Vec<BTreeMap<usize, [Rational; 2]>> =
-                    vec![BTreeMap::new(); self.basis];
-                for (b, t, power, [re, im]) in &self.cells {
-                    let exponent = power + shift;
-                    if !kept(exponent, degree, self.depth) {
-                        continue;
+                let sum = |cell: &[(i32, [Rational; 2])]| -> [Rational; 2] {
+                    let mut out = [Rational::from(0), Rational::from(0)];
+                    for (power, [re, im]) in cell {
+                        let exponent = power + shift;
+                        if !kept(exponent, degree, self.depth) {
+                            continue;
+                        }
+                        let scale = nc_power(exponent);
+                        out[0] = &out[0] + &(re * &scale);
+                        out[1] = &out[1] + &(im * &scale);
                     }
-                    let scale = nc_power(exponent);
-                    let cell = rows[*b]
-                        .entry(*t)
-                        .or_insert_with(|| [Rational::from(0), Rational::from(0)]);
-                    cell[0] = &cell[0] + &(re * &scale);
-                    cell[1] = &cell[1] + &(im * &scale);
-                }
-                rows.into_iter()
-                    .map(|row| {
-                        row.into_iter()
-                            .filter(|(_, [re, im])| !re.is_zero() || !im.is_zero())
-                            .map(|(t, [re, im])| {
-                                (t, Complex::new(cast(zero, &re), cast(zero, &im)))
+                    out
+                };
+                let complex = |[re, im]: &[Rational; 2]| -> Option<Complex<T>> {
+                    (!re.is_zero() || !im.is_zero())
+                        .then(|| Complex::new(cast(zero, re), cast(zero, im)))
+                };
+                match &self.cells {
+                    MetricCells::List(cells) => {
+                        let mut rows: Vec<BTreeMap<usize, [Rational; 2]>> =
+                            vec![BTreeMap::new(); self.basis];
+                        for (b, t, power, [re, im]) in cells {
+                            let exponent = power + shift;
+                            if !kept(exponent, degree, self.depth) {
+                                continue;
+                            }
+                            let scale = nc_power(exponent);
+                            let cell = rows[*b]
+                                .entry(*t)
+                                .or_insert_with(|| [Rational::from(0), Rational::from(0)]);
+                            cell[0] = &cell[0] + &(re * &scale);
+                            cell[1] = &cell[1] + &(im * &scale);
+                        }
+                        rows.into_iter()
+                            .map(|row| {
+                                row.into_iter()
+                                    .filter_map(|(t, cell)| complex(&cell).map(|value| (t, value)))
+                                    .collect()
                             })
                             .collect()
-                    })
-                    .collect()
+                    }
+                    MetricCells::Table { values, ids } => {
+                        let scaled: Vec<Option<Complex<T>>> =
+                            values.iter().map(|cell| complex(&sum(cell))).collect();
+                        (0..self.basis)
+                            .map(|b| {
+                                ids.iter()
+                                    .enumerate()
+                                    .filter_map(|(t, row)| {
+                                        scaled[row[b] as usize].clone().map(|value| (t, value))
+                                    })
+                                    .collect()
+                            })
+                            .collect()
+                    }
+                }
             })
             .collect();
         InterferenceRuntime { metrics }
@@ -339,9 +403,8 @@ impl Interference {
         self.basis
     }
 
-    /// The overlap cells (basis element, ket tensor, N_c power, exact
-    /// weight) of the program's metric.
-    pub fn cells(&self) -> &[(usize, usize, i32, [Rational; 2])] {
+    /// The overlap cells of the program's metric.
+    pub fn cells(&self) -> &MetricCells {
         &self.cells
     }
 

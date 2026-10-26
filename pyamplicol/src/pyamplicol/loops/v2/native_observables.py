@@ -54,7 +54,9 @@ from typing import Any
 
 from .families import Orders
 
-SCHEMA = 1
+# 2: a directed metric is stored as its distinct cells and per (ket tensor,
+# basis element) the index of its cell (``_table``).
+SCHEMA = 2
 KINDS = ("correlated", "resolved")
 
 
@@ -94,27 +96,58 @@ def _key_of(record: Any) -> Hashable:
 # --------------------------------------------------------------------- export
 
 
-def _cells(basis_literals, ket_literals, overlap) -> list[list[Any]]:
-    """Exact overlap cells (b, t, N_c power, re, im) of the Born basis with
-    every ket tensor under ``overlap(left, right)`` (a dict power -> exact
-    coefficient)."""
+def _table(cells: Sequence[Sequence[Sequence[Any]]]) -> dict[str, Any]:
+    """The stored form of one metric (``loop_v2::trees`` ``CellsFile``) from
+    its cells per (ket tensor t, basis element b), each a list of nonzero
+    [N_c power, re, im] by power: the distinct cells in first-seen order
+    (t-major) and per t and b the index of its cell. Equal metrics have
+    equal tables."""
 
-    out = []
-    for b, left in enumerate(basis_literals):
-        for t, right in enumerate(ket_literals):
-            for power, cell in sorted(overlap(left, right).items()):
-                if cell:
-                    out.append([b, t, power, _text(cell.real), _text(cell.imag)])
-    return out
+    index: dict[tuple, int] = {}
+    values: list[list[Any]] = []
+    ids = []
+    for row in cells:
+        out = []
+        for cell in row:
+            key = tuple(map(tuple, cell))
+            found = index.get(key)
+            if found is None:
+                found = index[key] = len(values)
+                values.append([list(entry) for entry in cell])
+            out.append(found)
+        ids.append(out)
+    return {"values": values, "ids": ids}
+
+
+def _cells(basis_literals, ket_literals, overlap) -> dict[str, Any]:
+    """The exact overlap cells (N_c power, re, im) of the Born basis with
+    every ket tensor under ``overlap(left, right)`` (a dict power -> exact
+    coefficient), as a table (``_table``): the oracle of ``_Metrics``."""
+
+    return _table(
+        [
+            [
+                [
+                    [power, _text(cell.real), _text(cell.imag)]
+                    for power, cell in sorted(overlap(left, right).items())
+                    if cell
+                ]
+                for left in basis_literals
+            ]
+            for right in ket_literals
+        ]
+    )
 
 
 class _Metrics:
-    """The exact overlap cells (Born basis element, ket tensor, N_c power,
-    re, im) of every colour metric the stored columns read, formed once per
-    process: the Born metric is the counterterm record's own (``record
-    ["cells"]``, ``native_trees._counterterm_program``), stored as None (the
-    native columns read the tree program's), a directed history's (and its
-    swap) the history's operator overlaps.
+    """The exact overlap cells of every colour metric the stored columns
+    read, formed once per process: the Born metric is the counterterm
+    record's own (``record["cells"]``, ``native_trees._counterterm_program``),
+    stored as None (the native columns read the tree program's), a directed
+    history's (and its swap) the history's operator overlaps, stored as a
+    table (``_table``: a few dozen distinct cells and one index per (ket
+    tensor, basis element); g g > g g g g: 29 distinct cells over 120 x 265
+    pairs).
 
     A directed metric is formed natively (package C's colour cells, the
     "cells" stage of ``native_cells.NATIVE_STAGES``) when the direction's
@@ -133,13 +166,13 @@ class _Metrics:
         self.ket_literals = ket_literals
         slice_ = observables.slice
         self.basis = [tensor.terms[0].tensor for tensor in slice_.basis.tensors]
-        self._found: dict[tuple[Any, bool], list[list[Any]]] = {}
+        self._found: dict[tuple[Any, bool], dict[str, Any]] = {}
         self._alias: dict[tuple[Any, bool], tuple[Any, bool]] = {}
         # A direct metric's native table until its swap is compared with it.
         self._raw: dict[tuple[Any, bool], tuple[list, list]] = {}
         self._engine: Any = None
 
-    def cells(self, column: Any, swapped: bool) -> tuple[tuple[Any, bool], list | None]:
+    def cells(self, column: Any, swapped: bool) -> tuple[tuple[Any, bool], dict | None]:
         """(key, cells) of a column's direct or swapped metric; a swapped
         metric equal to its direct one (a history whose operator is its own
         adjoint, e.g. T_i.T_j: the two emissions commute) has the direct
@@ -212,10 +245,12 @@ class _Metrics:
         values, ids = engine.table(kets).decode(0, None)
         return values, ids
 
-    def _format(self, raw: tuple[list, list]) -> list[list[Any]]:
-        """The stored cells (``_cells``' order and texts: per basis element,
-        per ket tensor, by N_c power, nonzero only) of a native table's
-        distinct cells and ids: each distinct cell formatted once."""
+    def _format(self, raw: tuple[list, list]) -> dict[str, Any]:
+        """The stored table (``_table``: ``_cells``' texts, by N_c power,
+        nonzero only) of a native table's distinct cells and per (ket
+        tensor, basis element) ids (``NativeCellTable.decode``, t-major):
+        each distinct cell is formatted once, and the table is re-indexed in
+        first-seen order (equal to the oracle's for equal cells)."""
 
         values, ids = raw
         texts: dict[str, str] = {}
@@ -226,21 +261,26 @@ class _Metrics:
                 found = texts[value] = _text(Fraction(value))
             return found
 
-        entries = []
+        # The decoded ids are in first-seen (t-major) order already; two
+        # distinct cells that format alike take the first one's index.
+        index: dict[tuple, int] = {}
+        cells: list[list[Any]] = []
+        remap = []
         for value in values:
             cell = []
             for power, re, im in sorted(value):
                 re, im = text(re), text(im)
                 if re != "0" or im != "0":
                     cell.append((power, re, im))
-            entries.append(cell)
-        out: list[list[Any]] = []
-        append = out.append
-        for b in range(len(self.basis)):
-            for t, row in enumerate(ids):
-                for power, re, im in entries[row[b]]:
-                    append([b, t, power, re, im])
-        return out
+            key = tuple(cell)
+            found = index.get(key)
+            if found is None:
+                found = index[key] = len(cells)
+                cells.append([list(entry) for entry in cell])
+            remap.append(found)
+        if remap != list(range(len(remap))):
+            ids = [[remap[k] for k in row] for row in ids]
+        return {"values": cells, "ids": ids}
 
 
 class _Programs:
@@ -263,7 +303,7 @@ class _Programs:
         self.outputs = outputs
         self.born_orders = born_orders
         self.squared_orders = squared_orders
-        self.cells: list[list[list[Any]] | None] = []
+        self.cells: list[dict[str, Any] | None] = []
         self.programs: list[dict[str, Any]] = []
         self._cells: dict[tuple[Any, bool], int] = {}
         self._programs: dict[str, int] = {}
