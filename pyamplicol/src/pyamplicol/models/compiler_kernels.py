@@ -182,6 +182,11 @@ def _canonicalize_oriented_kernel_component(
     )
 
 
+# A kernel's input component and momentum symbols, by name
+# (``ModelSymbolRegistry.kernel_component``, ``kernel_momentum``).
+_KERNEL_SYMBOL = re.compile(r"kernel_([0-9]+)_(left|right)_(momentum_)?([0-9]+)")
+
+
 def _remap_kernel_symbols(
     expression: _sym.Expression,
     *,
@@ -190,16 +195,20 @@ def _remap_kernel_symbols(
     model_symbols: ModelSymbolRegistry,
     swap_sides: bool = False,
 ) -> _sym.Expression:
-    source = expression.to_canonical_string()
-    kernel_symbols = {
-        (side, momentum_marker == "momentum_", int(index))
-        for side, momentum_marker, index in re.findall(
-            rf"kernel_{old_kind}_(left|right)_(momentum_)?([0-9]+)",
-            source,
-        )
-    }
+    """``expression`` with the input symbols of kernel ``old_kind`` renamed
+    to those of ``new_kind`` (the sides exchanged with ``swap_sides``). The
+    symbols are found by name among the expression's variables, so neither a
+    canonical string nor a pattern per kind is formed."""
+
+    kernel_symbols = set()
+    for symbol in expression.get_all_symbols(False):
+        found = _KERNEL_SYMBOL.fullmatch(symbol.get_name().rsplit("::", 1)[-1])
+        if found is not None and int(found.group(1)) == old_kind:
+            kernel_symbols.add(
+                (found.group(2), found.group(3) is not None, int(found.group(4)))
+            )
     replacements: list[_sym.Replacement] = []
-    for side, is_momentum, index in kernel_symbols:
+    for side, is_momentum, index in sorted(kernel_symbols):
         target_side = ("right" if side == "left" else "left") if swap_sides else side
         if is_momentum:
             replacements.append(
