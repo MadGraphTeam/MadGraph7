@@ -826,11 +826,12 @@ def test_top_pair_and_leptons_equal_three_providers(
     other two to the fixture's cross-provider tolerance, in the fixtures'
     metric. The Goldstone sector with top Yukawas: Z* -> G0 H triangles and W
     G+- H loops on the top line, which the colour-singlet segments' reading
-    sign fixes (O(1) in the finite part without it). Evaluated in
-    double-double: binary64 loses 2e-10 of the finite part to cancellations
-    at point 0. Generation about 10 min, 8 GB."""
+    sign fixes (O(1) in the finite part without it). Evaluated by the native
+    executor in double-double: binary64 loses 2e-10 of the finite part to
+    cancellations at point 0. Generation about 10 min, 8 GB."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
     from pyamplicol.models.loading import compile_model_source
 
     reference = loop_reference(TOP_PAIR_LEPTONS)
@@ -847,6 +848,9 @@ def test_top_pair_and_leptons_equal_three_providers(
         scale_parameter="MU_R",
     )
     slice_ = LoopSlice.generate(compiled, request, loop_native)
+    executor = NativeExecutor(
+        slice_, forward=False, exported=export_plan(slice_, forward=False)
+    )
     alpha = float(reference["derived_parameters"]["alpha"])
     tolerances = {"madloop": 1e-11, "recola": reference["tolerance"]}
     tolerances["openloops"] = reference["tolerance"]
@@ -854,13 +858,13 @@ def test_top_pair_and_leptons_equal_three_providers(
     for point, mu, row in zip(
         reference["points"], reference["mu_r"], reference["rows"], strict=True
     ):
-        result = slice_.evaluate(
-            point,
-            str(Fraction(mu) ** 2),
+        (result,) = executor.evaluate(
+            [point],
+            [str(Fraction(mu) ** 2)],
             parameters=dict(reference["parameters"]),
             precision=Precision.double_double(),
         )
-        born, virtual = _totals(result)
+        born, *virtual = (float(x) for x in result.totals[:4])
         for provider, tolerance in tolerances.items():
             values = row["providers"][provider]
             floor = abs(values["born"]) * alpha / (2 * math.pi)
