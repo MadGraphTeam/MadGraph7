@@ -739,13 +739,18 @@ class NativeSeedStage:
 
         sectors = [sector for sector, _pairs in slice_.sectors]
         criteria = [(table, slice_.degrees()["virtual"]), *observables]
+        # The powers of each cell's nonzero coefficients (``class_live``'s
+        # ``value and ...``), in any order: the liveness tests "any". The
+        # components are tested directly, cheaper than
+        # ``ExactColorCoefficient.__bool__`` (3.65 M coefficients in 0.78 M
+        # cells at g g > g g g g g LC: the flags take 4.9 s instead of 5.3 s).
         spec = {
             "accuracy": accuracy,
             "tables": [
                 {
                     "powers": [
                         [
-                            sorted(power for power, value in cell.items() if value)
+                            [p for p, value in cell.items() if value.real or value.imag]
                             for cell in row
                         ]
                         for row in criterion.cells
