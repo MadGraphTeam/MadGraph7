@@ -518,10 +518,42 @@ class _CountertermTrees:
 
     @classmethod
     def of(cls, program: Any, offset: int) -> _CountertermTrees:
+        # A5: the interaction program of a native CT DAG, without its decode
+        # and runtime schema (``dag_input.NATIVE_PROGRAM``); ``_program`` on
+        # the Python rows stays the oracle. Both give the rows, value slots,
+        # momentum slots, source fill, interaction program and saved kernels.
+        from .dag_input import native_counterterm_trees
+
+        native = native_counterterm_trees(program)
+        rows, slots, momentum_slots, source_fill, interactions, saved = (
+            cls._program(program) if native is None else native
+        )
+        model_count = len(rows._records)
+        record = {
+            "offset": offset,
+            "state_size": max(rows._size, rows._offset + model_count),
+            "model_offset": rows._offset,
+            "model_count": model_count,
+            "momentum_slots": momentum_slots,
+            "source_fill": source_fill,
+            "interactions": interactions,
+        }
+        return cls(
+            rows,
+            record,
+            tuple(saved),
+            slots,
+            frozenset(id(block) for block in program.blocks.blocks.blocks),
+            dict(program.recursion.parameter_values(poles=True)),
+        )
+
+    @staticmethod
+    def _program(program: Any) -> tuple[Any, ...]:
+        """The parts of ``of`` from the program's Python ``TreeRows``."""
+
         rows = program.rows
         schema = rows.schema
         value_count = rows._value_count
-        model_count = len(rows._records)
         slots: dict[tuple[int, str], tuple[int, int]] = {}
         for record in schema["value_storage"]["value_slots"]:
             key = (int(record["current_id"]), str(record["variant"]))
@@ -552,23 +584,7 @@ class _CountertermTrees:
             )
         )
         interactions, saved = _interaction_program(rows, pole_currents)
-        record = {
-            "offset": offset,
-            "state_size": max(rows._size, rows._offset + model_count),
-            "model_offset": rows._offset,
-            "model_count": model_count,
-            "momentum_slots": momentum_slots,
-            "source_fill": schema["source_fill"],
-            "interactions": interactions,
-        }
-        return cls(
-            rows,
-            record,
-            tuple(saved),
-            slots,
-            frozenset(id(block) for block in program.blocks.blocks.blocks),
-            dict(program.recursion.parameter_values(poles=True)),
-        )
+        return rows, slots, momentum_slots, schema["source_fill"], interactions, saved
 
 
 @dataclass(frozen=True)
@@ -875,6 +891,76 @@ def _counterterm_program(
     )
 
 
+@dataclass(frozen=True)
+class _CountertermReferences:
+    """The reference parameters of a slice's counterterm program (WP3.2
+    EWI-3) on the parameter program's inputs.
+
+    ``parameters`` maps every reference parameter of the CT model
+    (``CountertermModel.coefficients``) to its coefficient-plan output
+    (CT scalar, epsilon power) and whether it is the imaginary part;
+    ``columns`` holds every such output's (value, active diagnostic), the
+    plan's inputs replaced by the program's; ``library`` is the scalar
+    library whose helper functions they call (``None`` without references).
+    """
+
+    parameters: Mapping[str, tuple[tuple[str, int], bool]]
+    columns: Mapping[tuple[str, int], tuple[Any, Any]]
+    library: Any
+
+    @classmethod
+    def of(
+        cls, slice_: Any, index: Mapping[str, int], symbol_of: Mapping[str, Any]
+    ) -> _CountertermReferences:
+        from symbolica import Replacement
+
+        model = slice_.counterterm_program.recursion.model
+        if not model.coefficients:
+            return cls({}, {}, None)
+        plan = model.coefficient_plan
+        inputs = []
+        for name, symbol in zip(plan.external_names, plan.input_symbols, strict=True):
+            if name not in index:
+                raise NotImplementedError(
+                    f"the counterterm coefficient plan reads {name!r}, which the "
+                    "tree program has not"
+                )
+            inputs.append(Replacement(symbol, symbol_of[name]))
+        columns = {
+            output: (
+                expression.value.replace_multiple(inputs),
+                expression.diagnostic.replace_multiple(inputs),
+            )
+            for output, expression in zip(plan.outputs, plan.expressions, strict=True)
+        }
+        parameters = {
+            name: ((scalar, power), part == "im")
+            for name, (scalar, power, part) in model.coefficients.items()
+        }
+        return cls(parameters, columns, plan.program.library)
+
+    def part(self, name: str) -> Any:
+        """The reference parameter ``name`` as a real expression: the real
+        or imaginary part of its output (the scalar library's projection,
+        which every carrier evaluates exactly)."""
+
+        key, imaginary = self.parameters[name]
+        projection = self.library.predicates[
+            "imaginary_part" if imaginary else "real_part"
+        ]
+        return projection(self.columns[key][0])
+
+    def finiteness(self, diagnostic: Any) -> Any:
+        """1 for a finite active ``diagnostic``, NaN otherwise (the scalar
+        library's ``equal(d, d)``): what the executor checks. The diagnostic's
+        own value only marks the singularities of the active branches and
+        need not be well conditioned (e.g. the electroweak helpers' 1e-10
+        regulators), so it is not an output the binary64 plane application
+        must reproduce."""
+
+        return self.library.predicates["equal"](diagnostic, diagnostic)
+
+
 def _parameter_program(
     slice_: Any,
     exporter: Any,
@@ -904,7 +990,13 @@ def _parameter_program(
     a fractional power was distributed over (the executor checks it
     positive, as ``KernelConstants`` does). The evaluator is compiled on
     canonical symbols (``assemble._canonical_stage``): its term order does
-    not depend on the process history.
+    not depend on the process history. The counterterm program's reference
+    parameters (``ct_recursion.CoefficientLowering``, WP3.2 EWI-3) are
+    outputs too: per referenced CT scalar coefficient its coefficient-plan
+    expression (``CountertermModel.coefficient_plan``, the helpers again the
+    scalar library's functions) and its active diagnostic; a reference reads
+    its real or imaginary part, as ``CountertermModel.coefficient_values``
+    binds it in Python.
     """
 
     from symbolica import E, Expression, FunctionDefinition, Replacement
@@ -959,11 +1051,15 @@ def _parameter_program(
             raise NotImplementedError(f"a tree model parameter of kind {kind!r}")
     # The counterterm program's model parameters: the model's, plus the CT
     # multiplicities and slot switches of the request (integers fixed per
-    # process; every slot on, finite-only evaluations skip the pole terms).
+    # process; every slot on, finite-only evaluations skip the pole terms)
+    # and the referenced CT scalars' coefficients (per card).
     counterterm_model = []
+    finite: list[int] = []
+    helpers: dict[Any, Any] = {}
     if counterterm_trees is not None:
         ct_rows = counterterm_trees.rows
         fixed = counterterm_trees.fixed
+        references = _CountertermReferences.of(slice_, index, symbol_of)
         ct_symbols = symbols.model(ct_rows.compiled.name)
         ct_externals = []
         for record in ct_rows._records:
@@ -975,6 +1071,8 @@ def _parameter_program(
                 ct_externals.append(Replacement(symbol, symbol_of[name]))
             elif name in fixed:
                 ct_externals.append(Replacement(symbol, Expression.num(fixed[name])))
+            elif name in references.parameters:
+                ct_externals.append(Replacement(symbol, references.part(name)))
             else:
                 raise NotImplementedError(
                     f"the counterterm program reads {name!r}, which the trees have not"
@@ -985,6 +1083,19 @@ def _parameter_program(
                 name = str(record["name"])
                 if name in index:
                     counterterm_model.append(["input", index[name], False])
+                    continue
+                if name in references.parameters:
+                    key, imaginary = references.parameters[name]
+                    value, diagnostic = references.columns[key]
+                    o = output(("ct-reference", key), lambda v=value: v)
+                    counterterm_model.append(["output", o, imaginary])
+                    if diagnostic != 0:
+                        finite.append(
+                            output(
+                                ("ct-reference-diagnostic", key),
+                                lambda d=diagnostic: references.finiteness(d),
+                            )
+                        )
                     continue
                 o = output(("ct-fixed", name), lambda v=fixed[name]: Expression.num(v))
                 counterterm_model.append(["output", o, False])
@@ -1042,7 +1153,7 @@ def _parameter_program(
 
     # Counterterm and field couplings per epsilon power and N_c grade; they
     # may read the renormalisation scale (one value per point).
-    counterterm_outputs, finite = [], []
+    counterterm_outputs = []
     used: set[int] = set()
 
     def scalar(name: str, power: int, grade: int) -> Any:
@@ -1084,10 +1195,13 @@ def _parameter_program(
             )
         )
     # The scalar library's helper functions (e.g. ``cond``, ``reglog``) the
-    # counterterm and field couplings call; every plan shares the library.
-    helpers: dict[Any, Any] = {}
-    for p in sorted(used):
-        for head, body in plans[p].program.library._bodies.items():
+    # counterterm and field couplings and the CT references call; every plan
+    # shares the library.
+    libraries = [plans[p].program.library for p in sorted(used)]
+    if counterterm_trees is not None and references.library is not None:
+        libraries.append(references.library)
+    for library in libraries:
+        for head, body in library._bodies.items():
             if helpers.setdefault(head, body) != body:
                 raise ValueError(f"the scalar plans define {head!r} differently")
 
@@ -1203,6 +1317,151 @@ def _parameter_program(
     return record, bytes(evaluator.save())
 
 
+# ------------------------------------------------- interaction-program kernels
+#
+# The kernel recipe of the interaction programs, shared by the oracle
+# (``_interaction_program``) and the native emission of a counterterm
+# program's (``dag_input.native_interaction_program``, WP3.1 A5), so the two
+# cannot drift apart.
+
+
+def _kernel_symbols(name: str, count: int) -> list[Any]:
+    """The formal symbols ``pyamplicol_v2_trees::<name><i>``, ``i < count``."""
+
+    from pyamplicol._internal.physics.symbols import symbols as registry
+
+    return [registry.qualified(f"pyamplicol_v2_trees::{name}{i}") for i in range(count)]
+
+
+def _kernel_model(
+    model: Any, records: Sequence[dict[str, Any]]
+) -> tuple[list[Any], Any]:
+    """The model block's symbols (``m<i>`` for the ``i``-th parameter
+    record) and ``model`` reading its runtime parameters from them."""
+
+    from pyamplicol.generation.stage_parameters import (
+        _logical_model_parameter_symbols,
+    )
+
+    model_symbols = _kernel_symbols("m", len(records))
+    return model_symbols, model.with_runtime_parameters(
+        _logical_model_parameter_symbols(
+            records,
+            {
+                str(r["name"]): sym
+                for r, sym in zip(records, model_symbols, strict=True)
+            },
+        )
+    )
+
+
+def _vertex_kernel(
+    model: Any, key: tuple[int, ...], coupling: Any
+) -> tuple[list[Any], Sequence[Any]]:
+    """The formal inputs ``[left, right, p_left, p_right]`` and the
+    components (``vertex_component_expression``) of the vertex kernel
+    ``key``: (vertex kind, result particle id, result chirality, left
+    chirality, right chirality, left dimension, right dimension)."""
+
+    lhs, rhs = _kernel_symbols("l", key[5]), _kernel_symbols("r", key[6])
+    pl, pr = _kernel_symbols("pl", 4), _kernel_symbols("pr", 4)
+    return [*lhs, *rhs, *pl, *pr], model.vertex_component_expression(
+        key[0],
+        lhs,
+        rhs,
+        result_particle_id=key[1],
+        result_chirality=key[2],
+        left_chirality=key[3],
+        right_chirality=key[4],
+        coupling=coupling,
+        left_momentum=pl,
+        right_momentum=pr,
+    )
+
+
+def _propagator_kernel(
+    model: Any,
+    particle_id: int,
+    chirality: int,
+    dimension: int,
+    propagator: Mapping[str, Any],
+) -> tuple[list[Any], Sequence[Any]]:
+    """The formal inputs ``[value, p]`` and the components
+    (``propagator_component_expression``) of a propagator kernel."""
+
+    from pyamplicol.models._physics_ir import PropagatorIR
+
+    value, momentum = _kernel_symbols("v", dimension), _kernel_symbols("p", 4)
+    return [*value, *momentum], model.propagator_component_expression(
+        particle_id,
+        value,
+        momentum,
+        chirality=chirality,
+        propagator=PropagatorIR.from_json_dict(dict(propagator)),
+    )
+
+
+def _saved_kernel(
+    model_symbols: Sequence[Any],
+    inputs: Sequence[Any],
+    outputs: Sequence[Any],
+    retained: Sequence[tuple[Any, Any, Any]],
+) -> tuple[bytes, list[Any]]:
+    """A kernel saved as an exact Symbolica evaluator, and its shape
+    ``[inputs, outputs, model inputs]`` (TREE_SCHEMA 3): ``outputs`` are its
+    components with the model's kernel functions inlined
+    (``_specialize_stage_symbolica_functions``), ``retained`` the functions
+    they still call; the evaluator reads ``inputs`` and then the model
+    parameters the expressions hold (``model inputs``: their indices into
+    ``model_symbols``, the model block)."""
+
+    from symbolica import Expression, FunctionDefinition
+
+    from .assemble import _canonical_stage
+
+    # The kernel reads the model parameters its expressions hold, in the
+    # model block's order: a counterterm program's model block holds every
+    # coupling, multiplicity and slot switch of the request (160-190 at
+    # six legs), a kernel a few, and each kernel row copied all of them.
+    held = {
+        symbol.to_canonical_string()
+        for expression in (*outputs, *(body for _f, _a, body in retained))
+        for symbol in expression.get_all_symbols()
+    }
+    model_inputs = [
+        k
+        for k, symbol in enumerate(model_symbols)
+        if symbol.to_canonical_string() in held
+    ]
+    # On canonical symbols the kernel's term order, and so its binary64
+    # rounding, does not depend on the symbols created earlier in the
+    # interpreter (``assemble._canonical_stage``).
+    canonical, parameters, functions = _canonical_stage(
+        SimpleNamespace(
+            output_expressions=list(outputs),
+            parameter_symbols=[
+                *inputs,
+                *(model_symbols[k] for k in model_inputs),
+            ],
+            symbolica_functions=list(retained),
+        )
+    )
+    evaluator = Expression.evaluator_multiple(
+        canonical,
+        parameters,
+        functions=[
+            FunctionDefinition(function, arguments, body, inlining="always")
+            for function, arguments, body in functions
+        ],
+        jit_compile=False,
+    )
+    return bytes(evaluator.save()), [
+        len(inputs) + len(model_inputs),
+        len(canonical),
+        model_inputs,
+    ]
+
+
 def _interaction_program(
     trees: Any, pole_currents: frozenset[int] = frozenset()
 ) -> tuple[dict[str, Any], tuple[bytes, ...]]:
@@ -1225,34 +1484,17 @@ def _interaction_program(
     ``pole_currents`` are currents only epsilon-pole terms read (a
     counterterm program's pole slots): per step the indices of the
     interactions and outputs of such currents (``pole_interactions``,
-    ``pole_outputs``), which finite-only evaluations skip."""
+    ``pole_outputs``), which finite-only evaluations skip. The kernels
+    follow the shared recipe (``_vertex_kernel``, ``_propagator_kernel``,
+    ``_saved_kernel``)."""
 
-    from symbolica import Expression, FunctionDefinition
-
-    from pyamplicol._internal.physics.symbols import symbols as registry
     from pyamplicol.generation.stage_parameters import (
-        _logical_model_parameter_symbols,
         _model_symbolica_functions,
         _specialize_stage_symbolica_functions,
     )
-    from pyamplicol.models._physics_ir import PropagatorIR
-
-    from .assemble import _canonical_stage
 
     dag, schema = trees.dag, trees.schema
-    records = trees._records
-    model_symbols = [
-        registry.qualified(f"pyamplicol_v2_trees::m{i}") for i in range(len(records))
-    ]
-    model = trees.model.with_runtime_parameters(
-        _logical_model_parameter_symbols(
-            records,
-            {
-                str(r["name"]): sym
-                for r, sym in zip(records, model_symbols, strict=True)
-            },
-        )
-    )
+    model_symbols, model = _kernel_model(trees.model, trees._records)
     value_count = trees._value_count
     value_slots = {
         int(slot["value_slot_id"]): slot
@@ -1267,13 +1509,8 @@ def _interaction_program(
         for slot in schema["momentum_slots"]
     }
     saved: dict[str, list[bytes]] = {"kernels": [], "propagators": []}
-    shapes: dict[str, list[list[int]]] = {"kernels": [], "propagators": []}
+    shapes: dict[str, list[list[Any]]] = {"kernels": [], "propagators": []}
     ids: dict[tuple, int] = {}
-
-    def symbols(name: str, count: int) -> list[Any]:
-        return [
-            registry.qualified(f"pyamplicol_v2_trees::{name}{i}") for i in range(count)
-        ]
 
     def compile_kernel(kind: str, key: tuple, build) -> int:
         found = ids.get((kind, key))
@@ -1284,47 +1521,10 @@ def _interaction_program(
         outputs, retained = _specialize_stage_symbolica_functions(
             list(components), _model_symbolica_functions(model)
         )
-        # The kernel reads the model parameters its expressions hold, in the
-        # model block's order: a counterterm program's model block holds every
-        # coupling, multiplicity and slot switch of the request (160-190 at
-        # six legs), a kernel a few, and each kernel row copied all of them.
-        held = {
-            symbol.to_canonical_string()
-            for expression in (*outputs, *(body for _f, _a, body in retained))
-            for symbol in expression.get_all_symbols()
-        }
-        model_inputs = [
-            k
-            for k, symbol in enumerate(model_symbols)
-            if symbol.to_canonical_string() in held
-        ]
-        # On canonical symbols the kernel's term order, and so its binary64
-        # rounding, does not depend on the symbols created earlier in the
-        # interpreter (``assemble._canonical_stage``).
-        outputs, parameters, functions = _canonical_stage(
-            SimpleNamespace(
-                output_expressions=list(outputs),
-                parameter_symbols=[
-                    *inputs,
-                    *(model_symbols[k] for k in model_inputs),
-                ],
-                symbolica_functions=list(retained),
-            )
-        )
-        evaluator = Expression.evaluator_multiple(
-            outputs,
-            parameters,
-            functions=[
-                FunctionDefinition(function, arguments, body, inlining="always")
-                for function, arguments, body in functions
-            ],
-            jit_compile=False,
-        )
+        kernel, shape = _saved_kernel(model_symbols, inputs, outputs, retained)
         found = ids[(kind, key)] = len(saved[kind])
-        saved[kind].append(bytes(evaluator.save()))
-        shapes[kind].append(
-            [len(inputs) + len(model_inputs), len(outputs), model_inputs]
-        )
+        saved[kind].append(kernel)
+        shapes[kind].append(shape)
         return found
 
     # Per current: (particle id, chirality, dimension) and its momentum
@@ -1378,26 +1578,9 @@ def _interaction_program(
         found = ids.get(("kernels", key))
         if found is not None:
             return found
-        left = dag.currents[interaction.left_id]
-        right = dag.currents[interaction.right_id]
-
-        def build():
-            lhs, rhs = symbols("l", left.dimension), symbols("r", right.dimension)
-            pl, pr = symbols("pl", 4), symbols("pr", 4)
-            return [*lhs, *rhs, *pl, *pr], model.vertex_component_expression(
-                key[0],
-                lhs,
-                rhs,
-                result_particle_id=key[1],
-                result_chirality=key[2],
-                left_chirality=key[3],
-                right_chirality=key[4],
-                coupling=interaction.coupling,
-                left_momentum=pl,
-                right_momentum=pr,
-            )
-
-        return compile_kernel("kernels", key, build)
+        return compile_kernel(
+            "kernels", key, lambda: _vertex_kernel(model, key, interaction.coupling)
+        )
 
     def propagator(current_id: int, slot: Mapping[str, Any]) -> int:
         current = current_slots[current_id]
@@ -1409,17 +1592,13 @@ def _interaction_program(
             json.dumps(slot["propagator"], sort_keys=True),
         )
 
-        def build():
-            value, momentum = symbols("v", dimension), symbols("p", 4)
-            return [*value, *momentum], model.propagator_component_expression(
-                key[0],
-                value,
-                momentum,
-                chirality=key[1],
-                propagator=PropagatorIR.from_json_dict(dict(slot["propagator"])),
-            )
-
-        return compile_kernel("propagators", key, build)
+        return compile_kernel(
+            "propagators",
+            key,
+            lambda: _propagator_kernel(
+                model, key[0], key[1], dimension, slot["propagator"]
+            ),
+        )
 
     steps = []
     for stage in schema["stages"]:

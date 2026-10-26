@@ -384,9 +384,18 @@ where
     let nh = nsf * i64::from(helicity);
     let integer = |value: i64| energy.from_i64(value);
     let [px, py, pz] = [1, 2, 3].map(|mu| momentum[mu].clone());
-    let pp = (px.clone() * px.clone() + py.clone() * py.clone() + pz.clone() * pz.clone())
-        .sqrt()
-        .norm();
+    // Along the z axis |p| is |pz| exactly. DoubleFloat's square root is not
+    // correctly rounded, so sqrt(pz²) can miss |pz| by an ulp: for p along
+    // -z, |p| + pz below was then a rounding residue instead of zero, which
+    // took the general branch and made the spinor vanish (binary64 and MPFR
+    // keep sqrt(pz²) = |pz|; their values are unchanged).
+    let pp = if is_zero(&px) && is_zero(&py) {
+        pz.norm()
+    } else {
+        (px.clone() * px.clone() + py.clone() * py.clone() + pz.clone() * pz.clone())
+            .sqrt()
+            .norm()
+    };
     let omega1 = (energy.norm() + pp.clone()).sqrt();
     if is_zero(&omega1) {
         return Err(RusticolError::invalid_argument(
@@ -1015,6 +1024,52 @@ mod tests {
             let incoming = ext_massive_vector(negate(momentum), -helicity, 5.0);
             for (left, right) in incoming.into_iter().zip(outgoing) {
                 assert_complex_close(left, right);
+            }
+        }
+    }
+
+    /// A massive spinor along -z in DoubleFloat equals binary64's: before the
+    /// exact |p| = |pz| on the axis it vanished (|p| + pz a rounding residue)
+    /// at the b b~ > t t~ reproducer's b (|pz| = 499.97790951201034 GeV, the
+    /// binary64 sqrt(500² - 4.7·4.7), m = 4.7 GeV), cast from its exact
+    /// decimal as the native trees do; whether DoubleFloat's sqrt(pz²) misses
+    /// |pz| from above depends on the value (499.97790951189532 kept it).
+    #[cfg(feature = "loop-v2")]
+    #[test]
+    fn massive_dirac_spinor_along_the_axis_survives_double_float() {
+        use super::ext_dirac_massive_generic;
+        use crate::loop_v2::dress::{cast, parse_rational};
+        use symbolica::domains::float::{DoubleFloat, RealLike};
+
+        let zero = DoubleFloat::from(0.0);
+        let exact = |text: &str| cast(&zero, &parse_rational(text).unwrap());
+        let mass = exact("4.7");
+        for pz in [
+            "499.97790951201034",
+            "-499.97790951201034",
+            "499.97790951189532",
+            "-499.97790951189532",
+        ] {
+            let wide = [exact("500"), zero.clone(), zero.clone(), exact(pz)];
+            let momentum = wide.clone().map(|x| x.to_f64());
+            for antiparticle in [false, true] {
+                for helicity in [-1, 1] {
+                    let narrow = ext_dirac_massive_generic(
+                        &momentum,
+                        helicity,
+                        mass.to_f64(),
+                        antiparticle,
+                    )
+                    .unwrap();
+                    let double =
+                        ext_dirac_massive_generic(&wide, helicity, mass.clone(), antiparticle)
+                            .unwrap();
+                    let size: f64 = narrow.iter().map(|z| z.re.abs() + z.im.abs()).sum();
+                    assert!(size > 1.0, "{narrow:?}");
+                    for (a, b) in narrow.iter().zip(&double) {
+                        assert_complex_close(*a, Complex::new(b.re.to_f64(), b.im.to_f64()));
+                    }
+                }
             }
         }
     }

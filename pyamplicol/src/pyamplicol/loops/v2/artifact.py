@@ -290,21 +290,17 @@ def coloured_widths(
 
     from pyamplicol.models.compiler_kernels import _is_compile_time_zero_parameter
 
+    from .blocks import propagated_species
+
     particles = {int(record.pdg_code): record for record in compiled.ir.particles}
     parameters = {record.name: record for record in compiled.ir.parameters}
     out: dict[str, str] = {}
     for dag in dags:
-        sources = set(dag.sources)
-        legs = (1 << len(dag.process.legs)) - 1
-        for current_id, current in enumerate(dag.currents):
-            index = current.index
-            if (
-                current_id in sources
-                or index.auxiliary_kind is not None
-                or (legs & ~index.momentum_mask).bit_count() == 1
-            ):
+        # The current scan (native for a ``dag_input.NativeDag``: no decode).
+        for particle_id, amputated in propagated_species(dag):
+            if amputated:
                 continue
-            record = particles.get(int(index.particle_id))
+            record = particles.get(particle_id)
             if record is None or abs(int(record.color)) == 1:
                 continue
             width = str(record.width)
@@ -604,6 +600,17 @@ class GeneratedProcess:
         if program is None:
             return {}
         return dict(sorted(program.recursion.inert.items()))
+
+    def native_fallbacks(self) -> dict[str, str]:
+        """The generation stages that took the tree engine instead of the
+        native loop-request DAG builder, each with the listed feature it
+        does not cover (``dag_input.fallback_record``, RUST-MIGRATION rule
+        2): the generation record's ``native_fallbacks``; empty when every
+        stage was native (the record then has no entry)."""
+
+        from .dag_input import fallback_record
+
+        return fallback_record(self.slice)
 
 
 def _order_text(order: Orders) -> str:

@@ -441,16 +441,22 @@ def test_compiling_in_feynman_gauge_applies_it_to_the_cached_compile(
 
     from pyamplicol.models.loading import compile_model_source, with_model_gauge
 
+    # Compared within one cache entry: a fresh compile's colour expressions
+    # can differ in argument order from ``gmu`` (another process's compile)
+    # when trees were evaluated earlier in this process (pre-existing
+    # history dependence of the model compile, slice-status 2026-10-25).
     cache = tmp_path / "models"
     feynman = compile_model_source(
         loop_gmu_ufo, require_supported=False, cache_dir=cache, gauge="feynman"
     )
-    assert feynman.ir == with_model_gauge(gmu, "feynman").ir
     assert len(list(cache.glob("*.json"))) == 1
-    assert (
-        compile_model_source(loop_gmu_ufo, require_supported=False, cache_dir=cache).ir
-        == gmu.ir
+    unitary = compile_model_source(
+        loop_gmu_ufo, require_supported=False, cache_dir=cache
     )
+    assert len(list(cache.glob("*.json"))) == 1
+    assert unitary.ir.gauge == "unitary" and unitary.source == gmu.source
+    assert feynman.ir == with_model_gauge(unitary, "feynman").ir
+    assert with_model_gauge(feynman, "unitary").ir == unitary.ir
 
 
 def test_feynman_gauge_needs_a_model_declaring_gauge_1(gmu):

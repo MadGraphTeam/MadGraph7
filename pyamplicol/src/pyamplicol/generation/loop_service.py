@@ -1472,6 +1472,13 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 ),
                                 # REQUIREMENTS_ADDENDUM J: rule -> reason.
                                 "counterterms_inert": process.inert_counterterms(),
+                                # RUST-MIGRATION rule 2: stage -> listed feature
+                                # (absent when every stage was native).
+                                **(
+                                    {"native_fallbacks": fallbacks}
+                                    if (fallbacks := process.native_fallbacks())
+                                    else {}
+                                ),
                                 "model_declaration": context.declaration.to_dict(),
                                 **(
                                     {"correlators": correlators.to_json_dict()}

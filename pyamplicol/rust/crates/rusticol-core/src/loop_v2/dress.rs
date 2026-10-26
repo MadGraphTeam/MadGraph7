@@ -76,6 +76,20 @@ pub fn cast<T: Carrier>(zero: &T, value: &Rational) -> T {
     zero.from_rational(value)
 }
 
+/// The leg whose mass shell fixes the invariant of `mask` among `legs`
+/// legs: the leg of a single-leg subset or of a single-leg complement
+/// (momentum conservation), else `None` (`families.onshell_leg`).
+pub fn onshell_leg(mask: u64, legs: usize) -> Option<usize> {
+    if legs == 0 || legs >= 64 {
+        return None;
+    }
+    let full = (1u64 << legs) - 1;
+    [mask & full, full ^ (mask & full)]
+        .into_iter()
+        .find(|&subset| subset != 0 && subset & (subset - 1) == 0)
+        .map(|subset| subset.trailing_zeros() as usize)
+}
+
 /// One batch of points: exact kinematics, carrier inputs.
 #[derive(Clone)]
 pub struct V2Batch<T> {
@@ -85,6 +99,14 @@ pub struct V2Batch<T> {
     pub scales: Vec<Rational>,
     /// Squared mass per plan mass id.
     pub masses: Vec<Rational>,
+    /// Squared mass of each leg's external state (in leg order): the value
+    /// of every invariant a single leg fixes on its mass shell (a single-leg
+    /// arc or its complement), never the `p²` of the given momenta, which
+    /// rounding leaves off shell (DESIGN §11.1, on-shell external
+    /// invariants). `None` leaves a leg's invariants to the momenta (a mass
+    /// that is no model parameter); empty: every invariant from the momenta
+    /// (callers without external states, e.g. synthetic benchmark batches).
+    pub leg_masses: Vec<Option<Rational>>,
     /// Model constants of the kernel terms.
     pub constants: Vec<Complex<T>>,
     /// Per point, the components of every block row, in plan order.
@@ -117,6 +139,9 @@ impl<T: Carrier> V2Batch<T> {
         }
         if self.masses.len() != plan.masses || self.constants.len() != plan.constants {
             return bad("masses or kernel constants do not match the plan");
+        }
+        if !self.leg_masses.is_empty() && self.leg_masses.len() != plan.legs {
+            return bad("leg masses need one squared mass per leg");
         }
         if self.block_rows.iter().any(|rows| rows.len() != block) {
             return bad("block rows do not match the plan");
@@ -156,15 +181,20 @@ pub(super) fn cadd<T: Carrier, const L: usize>(acc: &mut [T], a: &[T]) {
 // ------------------------------------------------------------------ chunk data
 
 /// Exact invariants of one chunk, per distinct point: the summed incoming
-/// momentum `p(mask)` and `s[mask] = p(mask)²` of each leg subset in use.
+/// momentum `p(mask)` and the invariant `s[mask]` of each leg subset in use.
 /// A subset's momentum is its lowest leg added to the cached momentum of
 /// the rest, so every subset costs one exact addition per component, once
 /// per chunk, however many factors, closures and reduction lanes read it.
+/// `s[mask]` is `p(mask)²`, except that a subset that is a single leg, or
+/// whose complement is, takes that leg's squared mass from `onshell`
+/// ([`V2Batch::leg_masses`]; empty: none).
 struct ExactInvariants {
     /// Per distinct point, `4 × legs` momentum components.
     legs: Vec<Vec<Rational>>,
     momenta: Vec<HashMap<u64, [Rational; 4]>>,
     squares: Vec<HashMap<u64, Rational>>,
+    /// Squared mass of each leg's external state (empty: none).
+    onshell: Vec<Option<Rational>>,
 }
 
 impl ExactInvariants {
@@ -186,6 +216,11 @@ impl ExactInvariants {
     fn square(&mut self, point: usize, mask: u64) -> Rational {
         if let Some(found) = self.squares[point].get(&mask) {
             return found.clone();
+        }
+        if let Some(Some(mass)) =
+            onshell_leg(mask, self.onshell.len()).map(|leg| &self.onshell[leg])
+        {
+            return mass.clone();
         }
         let p = self.momentum(point, mask);
         let value = p[0].clone() * &p[0]
@@ -270,6 +305,7 @@ impl<T: Carrier, const L: usize> LaneData<T, L> {
             legs: points.iter().map(|&p| batch.momenta[p].clone()).collect(),
             momenta: vec![HashMap::new(); points.len()],
             squares: vec![HashMap::new(); points.len()],
+            onshell: batch.leg_masses.clone(),
         };
         Ok(Self {
             points: lanes,
@@ -298,7 +334,8 @@ impl<T: Carrier, const L: usize> LaneData<T, L> {
             .momentum(self.distinct[lane], mask)
     }
 
-    /// Exact `p(mask)²` at `lane`.
+    /// The exact invariant `s[mask]` at `lane`: `p(mask)²`, or the squared
+    /// mass of the leg whose mass shell fixes it ([`V2Batch::leg_masses`]).
     pub fn exact_square(&self, lane: usize, mask: u64) -> Rational {
         self.exact
             .lock()
@@ -335,8 +372,8 @@ impl<T: Carrier, const L: usize> LaneData<T, L> {
         out
     }
 
-    /// `p(mask)²` as a real lane vector (exact squares cast once per
-    /// distinct point).
+    /// The invariant `s[mask]` ([`Self::exact_square`]) as a real lane
+    /// vector (exact values cast once per distinct point).
     pub fn square(&self, mask: u64) -> std::sync::Arc<Vec<T>> {
         if let Some(found) = self.square.lock().expect("square cache").get(&mask) {
             return found.clone();
@@ -828,6 +865,7 @@ mod tests {
             legs: vec![legs.clone()],
             momenta: vec![HashMap::new()],
             squares: vec![HashMap::new()],
+            onshell: Vec::new(),
         };
         for mask in [0b101u64, 0b111, 0b010, 0] {
             let direct: [Rational; 4] = std::array::from_fn(|mu| {
@@ -842,6 +880,37 @@ mod tests {
                 - direct[3].clone() * &direct[3];
             assert_eq!(table.square(0, mask), square);
         }
+    }
+
+    #[test]
+    fn exact_invariants_bind_single_legs_on_shell() {
+        let legs: Vec<Rational> = (0..16)
+            .map(|k| Rational::from(((k * 5 % 9) as i64 - 4, 1)))
+            .collect();
+        let table = |onshell| ExactInvariants {
+            legs: vec![legs.clone()],
+            momenta: vec![HashMap::new()],
+            squares: vec![HashMap::new()],
+            onshell,
+        };
+        let mut plain = table(Vec::new());
+        let mut bound = table(vec![
+            Some(Rational::from(2)),
+            Some(Rational::from(7)),
+            Some(Rational::from(0)),
+            None,
+        ]);
+        assert_eq!(bound.square(0, 0b0010), Rational::from(7));
+        // The complement of leg 1 (momentum conservation).
+        assert_eq!(bound.square(0, 0b1101), Rational::from(7));
+        assert_eq!(bound.square(0, 0b0100), Rational::from(0));
+        // An unbound leg and a two-leg arc keep p(arc)^2; momenta are kept.
+        for mask in [0b1000u64, 0b0011, 0b0110] {
+            assert_eq!(bound.square(0, mask), plain.square(0, mask));
+        }
+        assert_eq!(bound.momentum(0, 0b0010), plain.momentum(0, 0b0010));
+        assert_eq!(onshell_leg(0b0111, 4), Some(3));
+        assert_eq!(onshell_leg(0, 4), None);
     }
 
     #[test]
