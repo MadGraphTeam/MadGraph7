@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
@@ -114,13 +115,36 @@ class ArtifactBuilder:
         if executable is not None:
             path.chmod(0o755 if executable else 0o644)
         fsync_file(path)
-        record = PayloadRecord(
-            path=path_value,
+        return self._record_payload(
+            path_value,
             role=role,
             media_type=media_type,
             size_bytes=path.stat().st_size,
             sha256=sha256_file(path),
             executable=executable_bit(path),
+            target=target,
+            process_id=process_id,
+        )
+
+    def _record_payload(
+        self,
+        path_value: str,
+        *,
+        role: str,
+        media_type: str,
+        size_bytes: int,
+        sha256: str,
+        executable: bool,
+        target: Mapping[str, object] | None,
+        process_id: str | None,
+    ) -> PayloadRecord:
+        record = PayloadRecord(
+            path=path_value,
+            role=role,
+            media_type=media_type,
+            size_bytes=size_bytes,
+            sha256=sha256,
+            executable=executable,
             target=dict(target) if target is not None else None,
             process_id=process_id,
         )
@@ -178,6 +202,9 @@ class ArtifactBuilder:
         )
         temporary = Path(temporary_name)
         descriptor_open = True
+        # hashed while written: the staged file is not read back
+        digest = hashlib.sha256()
+        size_bytes = 0
         try:
             with os.fdopen(descriptor, "wb") as stream:
                 descriptor_open = False
@@ -192,6 +219,8 @@ class ArtifactBuilder:
                             "artifact stream source returned more bytes than requested"
                         )
                     view = memoryview(chunk)
+                    digest.update(view)
+                    size_bytes += len(view)
                     written = 0
                     while written < len(view):
                         count = stream.write(view[written:])
@@ -207,10 +236,12 @@ class ArtifactBuilder:
                 os.close(descriptor)
             with suppress(FileNotFoundError):
                 temporary.unlink()
-        return self.register_staged_file(
+        return self._record_payload(
             path_value,
             role=role,
             media_type=media_type,
+            size_bytes=size_bytes,
+            sha256=digest.hexdigest(),
             executable=executable,
             target=target,
             process_id=process_id,

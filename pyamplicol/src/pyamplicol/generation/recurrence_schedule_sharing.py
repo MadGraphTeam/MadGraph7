@@ -677,8 +677,11 @@ def _executor_catalog(direct_catalog: object, kernel_pack: object) -> _ExecutorC
     with _EXECUTOR_CATALOGS_LOCK:
         entry = _EXECUTOR_CATALOGS.get(key)
         if entry is None:
-            entry = (direct_catalog, kernel_pack,
-                     _build_executor_catalog(direct_catalog, kernel_pack))
+            entry = (
+                direct_catalog,
+                kernel_pack,
+                _build_executor_catalog(direct_catalog, kernel_pack),
+            )
             if len(_EXECUTOR_CATALOGS) >= _EXECUTOR_CATALOGS_LIMIT:
                 _EXECUTOR_CATALOGS.pop(next(iter(_EXECUTOR_CATALOGS)))
             _EXECUTOR_CATALOGS[key] = entry

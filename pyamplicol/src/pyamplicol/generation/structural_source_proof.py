@@ -340,6 +340,8 @@ def build_generation_structural_proof(
         }
     }
     used_members: set[str] = set()
+    # the staged files do not change while this proof is built
+    resolved: dict[str, str | None] = {}
     lane_records: list[dict[str, object]] = []
     roles: list[dict[str, str]] = []
     for lane_id, lane in lanes:
@@ -355,10 +357,14 @@ def build_generation_structural_proof(
                 lane_members.add(relative)
                 used_members.add(relative)
                 return
-            if cache is not None and relative in cache.loose:
-                loose: str | None = relative
+            if relative in resolved:
+                loose = resolved[relative]
+            elif cache is not None and relative in cache.loose:
+                loose = resolved[relative] = relative
             else:
-                loose = _resolve_loose_payload(artifact_root, process_id, relative)
+                loose = resolved[relative] = _resolve_loose_payload(
+                    artifact_root, process_id, relative
+                )
             if loose is None:
                 # Some manifest paths are logical roots interpreted by the
                 # runtime rather than physical files.  Preserve them in the
