@@ -30,10 +30,14 @@ on-shell, momentum-conserving 140-digit neighbour in MPFR:
   1e-13: the rounded momenta only move the value at their own (analytic)
   order.
 
-The SDK's plan v4 runtime (``v2_runtime::V2Runtime``, no Python) binds the
-legs as the Python API does: at the rounded g g > t t~ point its binary64
-values are bitwise the API's (both gluons are off shell there, so a batch
-without ``leg_masses`` would differ) and agree with MPFR by the rule above.
+The SDK's plan v4 runtime (``v2_runtime::V2Runtime``, no Python, binary64
+only) takes its leg masses from ``TreeProgram::bind`` as the Python API's
+executor does: at the rounded g g > t t~ point its values are bitwise the
+API's and agree with MPFR by the rule above. Binary64 alone cannot tell a
+missing binding (its fast engine snaps the single-leg invariants: the
+Python-input lane gives the same bits with every leg unbound at this point
+and at the u u~ > t t~ g one); the carriers it matters for (DoubleFloat,
+MPFR) run through the Python API's executor above.
 
 The loop_fast test keeps only the binary64-against-MPFR check at the
 reproducer point.
@@ -338,13 +342,11 @@ def test_the_sdk_runtime_binds_the_legs_of_a_rounded_massive_point(
     executors, loop_sm_compiled_model, loop_native, tmp_path
 ):
     """The SDK's plan v4 runtime (``v2_runtime::V2Runtime`` through
-    ``evaluate_v2_artifact``: no Python generation or assembly) binds every
-    leg's on-shell invariants as the Python API does (``TreeProgram::bind``'s
-    ``leg_masses``; a batch without them reads the rounded momenta's p^2, and
-    rounding leaves both gluons off shell here): at the rotated rounded
-    g g > t t~ point its binary64 Born and virtual, with and without poles,
-    are bitwise the Python API's, and the virtual agrees with MPFR by the
-    binary64 rule above."""
+    ``evaluate_v2_artifact``: no Python generation or assembly; its batch
+    takes ``leg_masses`` from ``TreeProgram::bind``) at the rotated rounded
+    g g > t t~ point (every leg off shell by rounding): its binary64 Born
+    and virtual, with and without poles, are bitwise the Python API's, and
+    the virtual agrees with MPFR by the binary64 rule above."""
 
     import json
 
@@ -353,7 +355,7 @@ def test_the_sdk_runtime_binds_the_legs_of_a_rounded_massive_point(
     from pyamplicol.config import resolve_config
 
     # The rounded decimals leave the massless legs off shell (exactly; the
-    # invariants the leg binding sets to 0).
+    # invariants the leg binding sets to 0, which binary64 snaps anyway).
     assert all(
         e * e - x * x - y * y - z * z != 0
         for e, x, y, z in ([Fraction(v) for v in leg] for leg in GG_TTX[:2])
