@@ -551,6 +551,7 @@ def _validate(args) -> dict[str, Any]:
 # virtual's projection drops.
 _CASIMIRS = {1: Fraction(0), 3: Fraction(4, 3), 6: Fraction(10, 3), 8: Fraction(3)}
 _LEADING_CASIMIRS = {1: Fraction(0), 3: Fraction(3, 2), 6: Fraction(3), 8: Fraction(3)}
+LEADING_CASIMIRS = _LEADING_CASIMIRS  # public: the G1 harness's leading-colour poles
 
 
 def poles(args) -> dict[str, Any]:

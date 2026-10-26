@@ -10,8 +10,9 @@ from .base import (
     PropagatorLoweringRule,
 )
 from .compiler_kernels import (
+    DenseTensors,
     _as_expression,
-    _ordered_dense_tensor_components,
+    _execute_dense_network,
     _spin_axis_labels,
     _spin_representations,
     _spin_slots,
@@ -731,12 +732,13 @@ def custom_propagator_components(
         symbols.custom_propagator_component(model_name, "momentum", index)
         for index in range(4)
     )
-    library = _sym.TensorLibrary.hep_lib_atom()
+    # Both networks run on canonical symbols (``_execute_dense_network``).
+    library = DenseTensors()
     representations = _spin_representations(spin)
     if representations:
-        name = _sym.TensorName(symbols.custom_propagator_tensor_name(model_name))
-        library.register(_sym.Tensor.dense(name(*representations), components))
-        numerator *= name(*_spin_slots(spin, 1)).to_expression()
+        name = symbols.custom_propagator_tensor_name(model_name)
+        library.register_dense(name, representations, components)
+        numerator *= _sym.TensorName(name)(*_spin_slots(spin, 1)).to_expression()
     else:
         numerator *= components[0]
     minkowski = _sym.Representation.mink(4)
@@ -746,24 +748,13 @@ def custom_propagator_components(
         for part in (numerator, denominator)
     )
     for leg in (1, 2):
-        library.register(
-            _sym.Tensor.dense(
-                _sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg))(minkowski),
-                momenta,
-            )
+        library.register_dense(
+            model_symbols.ufo_momentum_tensor_name(leg), (minkowski,), momenta
         )
-    axis_labels = _spin_axis_labels(spin, 2)
-    network = _sym.TensorNetwork(
-        _sym.as_tensor(numerator) if axis_labels else numerator, library
-    )
-    network.execute(library=library)
-    tensor_components = _ordered_dense_tensor_components(
-        network.result_tensor(library),
-        axis_labels,
+    tensor_components = _execute_dense_network(
+        numerator, library, _spin_axis_labels(spin, 2)
     ).values
-    scalar = _sym.TensorNetwork(_sym.as_tensor(denominator), library)
-    scalar.execute(library=library)
-    denominator = _as_expression(scalar.result_scalar())
+    (denominator,) = _execute_dense_network(denominator, library, ()).values
     if len(tensor_components) != dimension:
         raise ValueError(
             f"custom propagator of {model_name!r} produced {len(tensor_components)} "
