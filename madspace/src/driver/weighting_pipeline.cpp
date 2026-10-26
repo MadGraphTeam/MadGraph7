@@ -95,6 +95,7 @@ json matrix_element_to_json(const MatrixElement& matrix_element) {
         {"sample_random_inputs", matrix_element.sample_random_inputs()},
         {"me_frame", me_frame},
         {"incoming_count", incoming_count},
+        {"channel", matrix_element.channel()},
     };
 }
 
@@ -115,7 +116,8 @@ MatrixElement matrix_element_from_json(const json& j) {
         j.at("diagram_count").get<std::size_t>(),
         j.at("sample_random_inputs").get<bool>(),
         j.at("me_frame").get<std::vector<me_int_t>>(),
-        j.at("incoming_count").get<std::size_t>()
+        j.at("incoming_count").get<std::size_t>(),
+        j.at("channel").get<me_int_t>()
     );
 }
 

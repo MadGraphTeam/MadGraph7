@@ -334,6 +334,15 @@ def test_ratio_matrix_element_rules(tmp_path):
     loaded = ms.weighting_groups_from_json(text)
     assert loaded[0].steps[0].returns_ratio()
     assert ms.weighting_groups_to_json(loaded) == text
+    # a fixed channel (AmpliCol colour ordering) survives the round trip
+    channel_me = python_matrix_element(
+        context, true_over_surrogate, ("matrix_element_ratio",), 3
+    )
+    text = ms.weighting_groups_to_json(
+        [ms.WeightingGroup([0], [ms.WeightingStep([channel_me])])]
+    )
+    loaded = ms.weighting_groups_from_json(text)
+    assert loaded[0].steps[0].matrix_elements[0].channel() == 3
 
 
 def test_invalid_groups(tmp_path):
