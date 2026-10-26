@@ -129,7 +129,6 @@ from .ct_sites import (
     SiteClosure,
     SiteTerm,
     generate_counterterm_sites,
-    require_one_singlet_line,
     vanishes_identically,
 )
 from .ct_sites import (
@@ -1632,9 +1631,6 @@ class LoopSlice:
         process = build_model_process_ir(
             request.process, compiled.ir, color_accuracy="full"
         )
-        # The root closure and the loops sign one colour-singlet fermion line
-        # only (``ct_sites.require_one_singlet_line``; WP3.2 EWI-5 lifts it).
-        require_one_singlet_line(process)
         # Fail-closed guards of electroweak requests (WP3.2 EWI-0b), before
         # any tree, family or counterterm generation (``ew_policy``).
         electroweak = ew_policy.electroweak(

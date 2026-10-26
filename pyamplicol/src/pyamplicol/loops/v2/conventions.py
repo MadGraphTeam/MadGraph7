@@ -40,6 +40,21 @@ with eps_s the product of
   lines through the loop join the open ends of the two blocks where the loop
   line turns fermionic and back; the identity pairing inside each block
   represents its trees, as for counterterm sites;
+* the Koszul sign of the colour-singlet fermions (``colour_singlet_sign``).
+  A block row carries the tree engine's Koszul signs of colour-singlet
+  fermions (``generation/fermion_ordering.py``): it is the block current's
+  coefficient of the product of its singlet sources in source order. The
+  loop diagram is the coefficient of all of them, so eps_s carries the sign
+  of concatenating the blocks' singlet supports in the order of the contents,
+  times the sign that brings the open singlet ends the loop joins into
+  (antiparticle, particle) pairs, the input order of the tree engine's
+  two-fermion merge with sign +1 (the block of incoming field f holds the
+  external end of anti(f)). Every singlet line is then listed (antiparticle,
+  particle), inside the blocks and through the loop alike, so the Wick sign
+  of every diagram is kept up to one sign per process, which the Born shares
+  (its root closes singlet lines with the same sign, ``ct_sites.
+  SiteClosure``). This is the tree engine's ``merge_sign`` composed over the
+  blocks; no property of the vertices enters;
 * -1 per closed fermion or ghost loop (Wick sewing of the cut pair);
 * -1 per fermion propagator on the loop. The tree reading of a fermion line
   is its transposed Dirac chain: every vertex tensor is contracted on its
@@ -63,10 +78,11 @@ with eps_s the product of
 The tree engine's ``merge_sign`` (``generation/fermion_ordering.py``) is +1
 for coloured lines, whose ordering the colour flow owns, so for coloured
 fermions the rule above is the design §3.3 ring sign. It is refused
-(``FermionSignError``, at generation) wherever it is not established:
-colour-singlet fermion lines through the loop (they need the Koszul signs of
-``fermion_ordering.py``), vertices with more than one fermion line, and loop
-fermion vertices coupling through the mass of the line they emit (above).
+(``FermionSignError``, at generation) wherever it is not established: a
+line joining a coloured and a colour-singlet end (the tree engine refuses
+such mixed sign ownership too), vertices with more than one fermion line, and
+loop fermion vertices coupling through the mass of the line they emit
+(above).
 
 Normalisation. NinjaRS returns mu^(2 eps) / (i pi^(2-eps) r_Gamma) times the
 integral of N / prod D (design §11.1), so with Born-weighted family numerators
@@ -89,7 +105,11 @@ from fractions import Fraction
 from types import MappingProxyType
 from typing import Any
 
-from pyamplicol.generation.fermion_ordering import _fermion_rep_requires_exterior_sign
+from pyamplicol.generation.fermion_ordering import (
+    _external_fermion_support_sign,
+    _fermion_input_orientation_sign,
+    _fermion_rep_requires_exterior_sign,
+)
 
 from .blocks import _open_last, _parity, identity_pairing_sign
 from .families import ZERO, add_orders, mass_name, model_data
@@ -322,6 +342,83 @@ class TreeReading:
 _FIRST: Mapping[int, int] = MappingProxyType({0: 0})
 
 
+# Source orientations of ``fermion_ordering._fermion_input_orientation_sign``.
+PARTICLE, ANTIPARTICLE = "particle", "antiparticle"
+# The value of a colour-singlet external fermion in the fermion ends of
+# ``LeafWeights`` and ``ct_sites.SiteClosure`` (its colour representation;
+# coloured ends hold their all-outgoing representation, 3 or -3).
+SINGLET_END = 1
+
+
+def open_end_orientation(field: Mapping[str, Any]) -> str:
+    """Source orientation of the external end of the open fermion line of a
+    block whose incoming field is the native particle entry ``field``: the
+    block of incoming field f holds the external end of anti(f) (an incoming
+    e- enters as the field e- and is the outgoing source e+)."""
+
+    if field["name"] == field["antiname"]:
+        raise FermionSignError(
+            f"self-conjugate fermion {field['name']}: Majorana lines have no "
+            "source orientation (the tree engine refuses them too)"
+        )
+    return ANTIPARTICLE if int(field["pdg_code"]) > 0 else PARTICLE
+
+
+def colour_singlet_sign(
+    supports: Sequence[Sequence[int]], lines: Sequence[tuple[int, str, int, str]]
+) -> int:
+    """The Koszul sign that joins blocks carrying colour-singlet fermions
+    (module docstring; design §3.3).
+
+    ``supports`` lists, per block in the order the blocks are read (loop
+    contents, or the legs of a root vertex), the labels of the colour-singlet
+    external fermions it holds; labels rank the sources as the tree engine
+    ranks them (source slots, in label order). ``lines`` lists every
+    singlet line the blocks' open ends join outside them, as (index into
+    ``supports``, source orientation of that open end) for its two ends.
+
+    A block row is its current's coefficient of the product of its singlet
+    sources in source order, so the product of the rows in block order is the
+    diagram's coefficient of all sources times the Koszul sign of
+    concatenating the supports (the tree engine's support sign, merged block
+    by block); the open ends, odd elements in block order, then pair as the
+    tree engine's two-fermion merge pairs its inputs (support sign of the two
+    ends by block order, times their orientation sign), and the closed pairs,
+    even, join in any order (support sign of each line against the lines
+    before it). The product does not depend on the block order.
+    """
+
+    ranks = {label: label for support in supports for label in support}
+    sign = 1
+    joined: tuple[int, ...] = ()
+    for support in supports:
+        labels = tuple(sorted(support))
+        sign *= _external_fermion_support_sign(joined, labels, ranks)
+        joined = (*joined, *labels)
+    ends = {index: index for line in lines for index in line[0::2]}
+    if len(ends) != 2 * len(lines):
+        raise FermionSignError(
+            "a colour-singlet fermion line with two ends in one block"
+        )
+    joined = ()
+    for first, first_orientation, second, second_orientation in lines:
+        if not supports[first] or not supports[second]:
+            raise FermionSignError(
+                "an open colour-singlet fermion line without a singlet source"
+            )
+        try:
+            sign *= _external_fermion_support_sign(
+                (first,), (second,), ends
+            ) * _fermion_input_orientation_sign(
+                True, first_orientation, True, True, second_orientation, True
+            )
+        except ValueError as error:
+            raise FermionSignError(str(error)) from error
+        sign *= _external_fermion_support_sign(joined, (first, second), ends)
+        joined = (*joined, first, second)
+    return sign
+
+
 # The kind of a content for ``LeafWeights.fermion_sign``: no fermion line
 # (its loop line a ghost, or another boson), or a fermion line or anything
 # else the full sign must read.
@@ -332,7 +429,8 @@ class LeafWeights:
     """Leaf weights w_s of skeletons (module docstring), a ``LeafWeight``.
 
     ``ends`` maps the label of every coloured external fermion to its
-    all-outgoing representation (+3 or -3), as ``SiteClosure`` records them.
+    all-outgoing representation (+3 or -3) and of every colour-singlet one to
+    ``SINGLET_END``, as ``SiteClosure`` records them.
 
     eps_s depends on the skeleton's ``contents`` alone, and every caller asks
     for it per reading: generation checks every reading of every skeleton
@@ -474,22 +572,29 @@ class LeafWeights:
         return found
 
     def _line_parity(self, contents: Sequence[Content]) -> int:
-        """Pairing parity of the coloured lines and closed-loop sewing signs.
+        """Pairing parity of the coloured lines, the Koszul sign of the
+        colour-singlet fermions (``colour_singlet_sign``) and closed-loop
+        sewing signs.
 
         An input of eps_s: every content whose loop line, block field or
-        coloured fermion end (``_ends``) this reads makes ``_content_kind``
-        return ``_FERMIONIC``, and ``fermion_sign``'s fast path returns +1 or
-        the ghost sign without calling it. Any new input read here (WP3.2
-        EWI-5: Koszul signs of colour-singlet lines through the loop, e.g.
-        colourless fermion ends outside ``_ends``) must make ``_content_kind``
-        fermionic too; ``check_leaf_weights`` in
-        ``tests/unit/test_loop_v2_native_lowering.py`` is the guard (on the
-        controls with such content)."""
+        external fermion end (``_ends``: coloured ends +3/-3, colour-singlet
+        ends 1) this reads makes ``_content_kind`` return ``_FERMIONIC``, and
+        ``fermion_sign``'s fast path returns +1 or the ghost sign without
+        calling it. A block holding a colour-singlet fermion is read even
+        when its own field is a boson (its support enters the Koszul sign);
+        its labels are in ``_ends``, so ``_content_kind`` reads it too.
+        ``check_leaf_weights`` in ``tests/unit/test_loop_v2_native_lowering.py``
+        is the guard (on the controls with such content)."""
 
         sign = 1
         pairs: list[tuple[int, int]] = []
         links: dict[tuple, list[tuple]] = {}
         open_ends: dict[tuple, tuple[int, int]] = {}
+        # Colour-singlet fermions: each block's singlet labels in content
+        # order, and per open singlet end (port) its block's index there and
+        # the source orientation of its external end.
+        supports: list[tuple[int, ...]] = []
+        singlet_ends: dict[tuple, tuple[int, str]] = {}
 
         def link(a: tuple, b: tuple) -> None:
             links.setdefault(a, []).append(b)
@@ -510,21 +615,33 @@ class LeafWeights:
                 ]
                 starts = [label for label in labels if self._ends[label] == 3]
                 stops = [label for label in labels if self._ends[label] == -3]
+                singlets = tuple(
+                    label for label in labels if self._ends[label] == SINGLET_END
+                )
+                if singlets:
+                    supports.append(singlets)
+                port = ("block", position, slot)
                 entry = self._particles[block.field]
                 if int(entry["spin"]) == FERMION_SPIN:
                     if _fermion_rep_requires_exterior_sign(int(entry["color"])):
-                        raise FermionSignError(
-                            "a colour-singlet fermion line through the loop needs "
-                            "the Koszul signs of generation/fermion_ordering.py"
+                        if not singlets:
+                            raise FermionSignError(
+                                f"a colour-singlet fermion block {block.field} "
+                                "holds no colour-singlet fermion end"
+                            )
+                        singlet_ends[port] = (
+                            len(supports) - 1,
+                            open_end_orientation(entry),
                         )
-                    (starts if int(entry["color"]) == 3 else stops).append(None)
+                        ports.append(port)
+                    else:
+                        (starts if int(entry["color"]) == 3 else stops).append(None)
                 sign *= identity_pairing_sign(starts, stops)
                 for start, stop in zip(
                     sorted(starts, key=_open_last),
                     sorted(stops, key=_open_last),
                     strict=True,
                 ):
-                    port = ("block", position, slot)
                     if start is None:
                         open_ends[port] = (3, stop)
                         ports.append(port)
@@ -539,6 +656,7 @@ class LeafWeights:
                 link(*ports)
             if self._fermion(content.loop_out):
                 link(("out", position), ("in", (position + 1) % count))
+        lines: list[tuple[int, str, int, str]] = []
         seen: set[tuple] = set()
         for start in links:
             if start in seen:
@@ -551,8 +669,19 @@ class LeafWeights:
                     component.append(port)
                     stack.extend(links[port])
             ends = [open_ends[port] for port in component if port in open_ends]
-            if not ends:
+            singlet = [singlet_ends[port] for port in component if port in singlet_ends]
+            if not ends and not singlet:
                 sign = -sign  # a closed fermion loop
+                continue
+            if ends and singlet:
+                raise FermionSignError(
+                    "a fermion line through the loop joins a coloured and a "
+                    "colour-singlet end"
+                )
+            if singlet:
+                if len(singlet) != 2:
+                    raise FermionSignError("an open fermion line without two ends")
+                lines.append((*singlet[0], *singlet[1]))
                 continue
             partners = dict(ends)
             if len(ends) != 2 or set(partners) != {3, -3}:
@@ -560,16 +689,21 @@ class LeafWeights:
             # The open end of a fundamental-type block faces an antifundamental
             # endpoint: the joined line runs from partners[-3] to partners[3].
             pairs.append((partners[-3], partners[3]))
+        if supports:
+            sign *= colour_singlet_sign(supports, lines)
         return sign * _parity([label for pair in pairs for label in pair])
 
 
 __all__ = [
     "LOOP_FACTOR_DENOMINATOR",
+    "SINGLET_END",
     "FermionSignError",
     "LeafWeights",
     "Normalisation",
     "TreeReading",
     "closed_under_conjugation",
+    "colour_singlet_sign",
     "conjugate_vertex_rules",
+    "open_end_orientation",
     "tree_reading_legs",
 ]

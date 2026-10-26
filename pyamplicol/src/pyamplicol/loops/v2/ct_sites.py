@@ -68,11 +68,13 @@ Colour, kinematics and signs of a site term (design §6.4, §6.6):
 * ``Block.wick_sign`` turns each block into its Feynman-rule current and the
   root sign completes FeynKit's diagram sign: the parity of the full coloured
   fermion line listing over the product of the blocks' listings
-  (``loops.v2.blocks``). One coloured fermion line may close at the root,
-  and one colour-singlet fermion line: the blocks carry the tree engine's
-  Koszul signs of colour-singlet fermions (``generation/fermion_ordering.py``),
-  so the root completes them with the sign of the merge that joins the
-  line's two ends (``SiteClosure._singlet_root_sign``).
+  (``loops.v2.blocks``). One coloured or colour-singlet fermion line may
+  close at the root. The blocks carry the tree engine's Koszul signs of
+  colour-singlet fermions (``generation/fermion_ordering.py``), so the root
+  completes them as the loops do (``conventions.colour_singlet_sign``): the
+  Koszul sign of the attached blocks' singlet supports in leg order, times
+  the merge sign of the singlet line's two open ends if one closes at the
+  root (WP3.2 EWI-1 for one singlet line, EWI-5 for any number).
 
 Entries whose Lorentz structure the catalogue cannot normalise (a
 Levi-Civita tensor) have no ``ct-site`` kernel. Where the same UFO colour and
@@ -135,7 +137,14 @@ from .colour import (
     multiply,
     reduce_network,
 )
-from .conventions import GHOST_SPIN, FermionSignError, closed_under_conjugation
+from .conventions import (
+    GHOST_SPIN,
+    SINGLET_END,
+    FermionSignError,
+    closed_under_conjugation,
+    colour_singlet_sign,
+    open_end_orientation,
+)
 from .families import (
     BlockCurrent,
     BlockTable,
@@ -910,7 +919,6 @@ class SiteClosure:
         catalogue: LoopKernelCatalogue,
         conjugates: ConjugateVertices | None = None,
     ):
-        require_one_singlet_line(blocks.process)
         data = model_data(native_model)
         self.tree = blocks
         self.catalogue = catalogue
@@ -919,12 +927,22 @@ class SiteClosure:
         self._anti = {name: entry["antiname"] for name, entry in self._by_name.items()}
         self.legs = process_color_legs(blocks.process)
         self._representations = {leg.label: leg.representation for leg in self.legs}
-        # Coloured fermion endpoints (label -> all-outgoing representation).
+        # External fermion endpoints: label -> all-outgoing representation
+        # (3 or -3) of a coloured one, ``SINGLET_END`` of a colour-singlet one
+        # (``conventions.LeafWeights``). Labels rank the singlet sources as
+        # the tree engine's source slots do (``colour_singlet_sign``).
+        labels = [leg.label for leg in blocks.process.legs]
+        if labels != sorted(labels):
+            raise ValueError("process legs out of label order")
         self._ends = {
-            leg.label: self._representations[leg.label]
+            leg.label: (
+                self._representations[leg.label]
+                if abs(self._representations[leg.label]) == 3
+                else SINGLET_END
+            )
             for leg in blocks.process.legs
-            if abs(self._representations[leg.label]) == 3
-            and self._fields.by_pdg[int(leg.outgoing_pdg)]["spin"] == 2
+            if self._fields.by_pdg[int(leg.outgoing_pdg)]["spin"] == 2
+            and abs(self._representations[leg.label]) in (1, 3)
         }
         self._bindings = {
             binding.key: binding for binding in catalogue.counterterm_sites
@@ -966,7 +984,8 @@ class SiteClosure:
 
     @property
     def fermion_ends(self) -> Mapping[int, int]:
-        """Coloured external fermions: label -> all-outgoing representation."""
+        """External fermions: label -> all-outgoing representation (3, -3)
+        of a coloured one, ``SINGLET_END`` of a colour-singlet one."""
         return MappingProxyType(self._ends)
 
     def terms(
@@ -1217,25 +1236,42 @@ class SiteClosure:
         return tensor
 
     def _root_sign(self, attachments: Sequence[BlockCurrent]) -> int:
-        """FeynKit diagram parity over the product of the blocks' parities.
+        """FeynKit diagram parity over the product of the blocks' parities,
+        and the Koszul sign of the colour-singlet fermions.
 
         Each block's diagrams are signed by the parity of their coloured
         fermion lines listed (fundamental, antifundamental) with the open end
         last; the ratio to the parity of the full trees depends only on the
         labels, so any pairing (here the identity pairing) represents it.
+        Colour-singlet fermions carry the tree engine's Koszul signs inside
+        the block rows, so the root completes them as the loops do
+        (``conventions.colour_singlet_sign``, design §3.3): the blocks'
+        singlet supports in the order of the root's legs, and the two open
+        ends of a singlet line that closes at the root.
         """
 
         pairs: list[tuple[int, int]] = []
         opened: list[tuple[int, int]] = []  # (open-end representation, partner)
-        singlets: list[BlockCurrent] = []
+        supports: list[tuple[int, ...]] = []
+        singlet_ends: list[tuple[int, str]] = []
         sign = 1
         for current in attachments:
             labels = [label for label in self._ends if current.mask >> (label - 1) & 1]
             starts = [label for label in labels if self._ends[label] == 3]
             stops = [label for label in labels if self._ends[label] == -3]
+            singlets = tuple(
+                label for label in labels if self._ends[label] == SINGLET_END
+            )
+            if singlets:
+                supports.append(singlets)
             entry = self._by_name[current.field]
             if entry["spin"] == 2 and abs(int(entry["color"])) != 3:
-                singlets.append(current)
+                if not singlets:
+                    raise FermionSignError(
+                        f"a colour-singlet fermion block {current.field} holds no "
+                        "colour-singlet fermion end"
+                    )
+                singlet_ends.append((len(supports) - 1, open_end_orientation(entry)))
             elif entry["spin"] == 2:
                 (starts if int(entry["color"]) == 3 else stops).append(None)
             sign *= identity_pairing_sign(starts, stops)
@@ -1258,101 +1294,15 @@ class SiteClosure:
                     "vertices with more fermion lines need their spinor flow"
                 )
             pairs.append((ends[-3], ends[3]))
-        if singlets:
-            sign *= self._singlet_root_sign(singlets)
+        if singlet_ends and len(singlet_ends) != 2:
+            raise NotImplementedError(
+                "site closure joins one colour-singlet fermion line at the root; "
+                "vertices with more fermion lines need their spinor flow"
+            )
+        if supports:
+            lines = [(*singlet_ends[0], *singlet_ends[1])] if singlet_ends else []
+            sign *= colour_singlet_sign(supports, lines)
         return sign * _parity([label for pair in pairs for label in pair])
-
-    def _singlet_root_sign(self, attachments: Sequence[BlockCurrent]) -> int:
-        """The tree engine's merge sign of a colour-singlet fermion line that
-        closes at the root (design §3.3, WP3.2 EWI-1).
-
-        Colour-singlet fermions carry the tree engine's Koszul signs
-        (``generation/fermion_ordering.py``) inside the block rows, so the
-        root completes them with the sign of the merge that joins the line's
-        two ends, as the tree engine signs that merge: the Koszul sign of the
-        two supports times the orientation sign of the two-fermion kernel.
-        The process has one singlet line (``require_one_singlet_line``), so
-        the merges of the other blocks at the root carry no singlet fermion
-        and no sign.
-        """
-
-        from pyamplicol.generation.fermion_ordering import FermionOrderingSign
-
-        process = self.tree.process
-        legs = _singlet_fermion_legs(process)
-        if len(attachments) != 2:
-            raise NotImplementedError(
-                "a colour-singlet fermion line closing at the root on more than "
-                "two blocks"
-            )
-        ends = [
-            next(leg for leg in legs if current.mask >> (leg.label - 1) & 1)
-            for current in attachments
-        ]
-        if ends[0] is ends[1]:
-            raise NotImplementedError(
-                "a colour-singlet fermion line closing at the root on one block"
-            )
-        ordering = FermionOrderingSign(process, _SingletSignModel(self._fields))
-        return ordering.tree_sign([(ends[0], ends[1])])
-
-
-def _singlet_fermion_legs(process: Any) -> list[Any]:
-    return [
-        leg
-        for leg in process.legs
-        if leg.statistics == "fermion" and leg.color_role == "singlet"
-    ]
-
-
-def require_one_singlet_line(process: Any) -> None:
-    """Refuse a process with more than one colour-singlet fermion line
-    (more than two lepton legs: u u~ > e- e+ m- m+, e+ e- > e+ e-) until
-    WP3.2 EWI-5.
-
-    The tree engine signs every merge of currents whose supports hold
-    colour-singlet fermions with their Koszul sign
-    (``generation/fermion_ordering.py``). Inside a block the rows carry it;
-    between the blocks a root vertex or a loop joins, the closure and the
-    loop's leaf weights would have to supply it. With one singlet line no
-    other block holds a singlet fermion, so the only such merge is the
-    line's own (``SiteClosure._singlet_root_sign``). With two lines the
-    supports of two blocks can interleave in the leg order (u u~ > e- m- e+
-    m+: the supports {3, 5} and {4, 6} have a Koszul sign of -1; e- e- e+ e+
-    has such a pairing too), and the Born and the virtual would be silently
-    wrong (Born closure / tree runtime 0.53 and 0.34 at an exact point), so
-    every such process is refused, wherever its lines sit, before any tree
-    is built.
-    """
-
-    legs = _singlet_fermion_legs(process)
-    if len(legs) > 2:
-        raise FermionSignError(
-            f"{len(legs) // 2} colour-singlet fermion lines (legs "
-            f"{', '.join(str(leg.label) for leg in legs)}): the Koszul signs "
-            "between the blocks that carry them, at the root and in the loop, "
-            "are not implemented yet (WP3.2 EWI-5)"
-        )
-
-
-class _SingletSignModel:
-    """The particle facts ``FermionOrderingSign`` reads, from a native model
-    (the tree engine's classification, ``models.contracts``)."""
-
-    def __init__(self, fields: _NativeFields):
-        self._by_pdg = fields.by_pdg
-
-    def is_fermion(self, particle_id: int) -> bool:
-        return int(self._by_pdg[int(particle_id)]["spin"]) == 2
-
-    def color_rep(self, particle_id: int) -> int:
-        return int(self._by_pdg[int(particle_id)]["color"])
-
-    def source_orientation(self, particle_id: int) -> str:
-        entry = self._by_pdg[int(particle_id)]
-        if entry["name"] == entry["antiname"]:
-            return "self-conjugate"
-        return "particle" if int(entry["pdg_code"]) > 0 else "antiparticle"
 
 
 def _open_last(label: int | None) -> tuple[bool, int]:
@@ -1521,7 +1471,6 @@ __all__ = [
     "entry_cell",
     "generate_counterterm_sites",
     "ghost_partners",
-    "require_one_singlet_line",
     "ufo_colour_network",
     "vanishes_identically",
     "witness_alternatives",
