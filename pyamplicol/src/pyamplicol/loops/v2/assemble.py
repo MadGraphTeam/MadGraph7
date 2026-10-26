@@ -154,6 +154,7 @@ from .families import (
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
 from .generator_input import NativeGeneration
 from .poles import (
+    EXTERNAL_PHOTON_CONVENTION,
     ORIGINS,
     catani_poles,
     colour_casimir,
@@ -1546,6 +1547,11 @@ class LoopSlice:
     # Born, counterterms and degrees): dressed only by the "uv" and "ir" pole
     # selections, whose bare UV and IR parts they carry (design §12.4).
     scaleless: LoopSlice | None = None
+    # The alpha(0) convention of the on-shell external photons of an
+    # electroweak request (WP3.2 EWI-6b, ``ew_policy.ExternalPhotons``): the
+    # point's (alpha(0) / alpha)^n scales every output
+    # (``_PointEvaluation.average``), the conversion is a field insertion.
+    external_photons: ew_policy.ExternalPhotons | None = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -1647,8 +1653,13 @@ class LoopSlice:
         electroweak = ew_policy.electroweak(
             compiled, request, structure.perturbative_species_orders
         )
+        photons = None
         if electroweak:
-            ew_policy.require_no_external_photons(compiled, request, process, fixed)
+            # On-shell external photons couple with alpha(0) (WP3.2 EWI-6b,
+            # [U9]); a model that cannot take that convention is refused.
+            photons = ew_policy.external_photon_scheme(
+                compiled, request, process, fixed, structure.perturbative_species_orders
+            )
             # One gauge throughout (DESIGN §6.8, WP3.2 EWI-4b): Born, blocks,
             # loop lines and counterterms of a request with electroweak loop
             # species take 't Hooft-Feynman gauge with explicit Goldstones
@@ -1789,9 +1800,16 @@ class LoopSlice:
             if program is None
             else CountertermSites((), {}, (), 0)
         )
+        field_rules = prepare_external_field_rules(prepared.counterterms.source)
+        if photons is not None:
+            # alpha(0)'s field-like term on each external photon (EWI-6b).
+            field_rules = (
+                *field_rules,
+                *_alpha0_field_rules(prepared.counterterms.source, photons, process),
+            )
         insertions = external_field_insertions(
             table.legs,
-            prepare_external_field_rules(prepared.counterterms.source),
+            field_rules,
             data,
             selection,
             blocks.born_orders,
@@ -1919,6 +1937,7 @@ class LoopSlice:
             generation=generation,
             counterterm_program=program,
             cancelled_cells=cancelled,
+            external_photons=photons,
         )
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
@@ -2897,7 +2916,7 @@ class _PointEvaluation:
                             counterterms[FIELD_COMPONENT, sector, power] += (
                                 value + value.conjugate()
                             )
-        average = slice_.normalisation.average
+        average = self.average
         self.born = {order: value.real / average for order, value in born.items()}
         self.counterterms = {
             key: value.real / average for key, value in counterterms.items()
@@ -3266,7 +3285,7 @@ class _PointEvaluation:
 
     def _bare(self, families) -> dict[Orders, Laurent]:
         numbers = self.numbers
-        average = self.slice.normalisation.average
+        average = self.average
         factor = numbers.pair(0, 1) * (
             1 / (LOOP_FACTOR_DENOMINATOR * numbers.pi * numbers.pi * average)
         )
@@ -3379,9 +3398,7 @@ class _PointEvaluation:
         """Per sector, sum_lanes |delta bare| <= 2 |delta Omega| / (16 pi^2
         average) plus the absolute local components."""
 
-        factor = 2 / (
-            LOOP_FACTOR_DENOMINATOR * math.pi**2 * self.slice.normalisation.average
-        )
+        factor = 2 / (LOOP_FACTOR_DENOMINATOR * math.pi**2 * float(self.average))
         width = 3 if self.poles else 1
         budget = {sector: [0.0] * width for sector, _pairs in self.slice.sectors}
         for (_family, _loop, sector), errors in lanes.items():
@@ -3424,6 +3441,48 @@ class _PointEvaluation:
                 for name in LOCAL_COMPONENTS
             ]
         return self._lane_budget(lanes, local)
+
+    # -- normalisation -----------------------------------------------------------------
+
+    @property
+    def average(self) -> Any:
+        """The divisor of every output of this point: the slice's spin and
+        colour average and symmetry factor (``Normalisation.average``),
+        divided by (alpha(0) / alpha)^n for n on-shell external photons of an
+        electroweak request (``LoopSlice.external_photons``, WP3.2 EWI-6b):
+        the Born, the loop lanes, the counterterm and field components, the
+        correlators of Catani's operator and the stability budgets all take
+        each photon's coupling e(0) instead of the loops' e. Without such
+        photons it is the slice's average itself (outputs unchanged)."""
+
+        found = self.__dict__.get("_average")
+        if found is None:
+            found = self.__dict__["_average"] = self._scaled_average()
+        return found
+
+    def _scaled_average(self) -> Any:
+        slice_ = self.slice
+        average = slice_.normalisation.average
+        photons = getattr(slice_, "external_photons", None)
+        if photons is None:
+            return average
+        values = _kernel_parameters(slice_.compiled, self.parameters)
+        inverse = values.get(photons.alpha0_inverse)
+        if not inverse:
+            raise ValueError(
+                f"the on-shell external photons of {slice_.request.process!r} "
+                f"couple with alpha(0) (WP3.2 EWI-6b): set {photons.alpha0_inverse} "
+                "(1/alpha(0), e.g. 137.035999) among the parameters, not "
+                f"{inverse}"
+            )
+        alpha = self._qed_alpha()
+        if alpha is None:
+            raise ValueError(
+                "alpha of the photon couplings is not real and positive at this point"
+            )
+        numbers = self.numbers
+        ratio = numbers.real(1 / inverse) / alpha
+        return numbers.real(average) / ratio ** len(photons.legs)
 
     # -- IR poles ----------------------------------------------------------------------
 
@@ -3571,7 +3630,7 @@ class _PointEvaluation:
                             if add_orders(a, b, correction) != sector:
                                 continue
                             total += self._sandwich(left, right, dipoles[(i, j)])
-                return total / slice_.normalisation.average
+                return total / self.average
 
             prediction = catani_poles(
                 coloured,
@@ -3602,11 +3661,13 @@ class _PointEvaluation:
         prefactor alpha / 2 pi takes alpha of the model's photon couplings at
         this point (``_qed_alpha``: alpha_Gmu in a G_mu model), the coupling
         of the loops. A leg is massless where the model's runtime mass is
-        zero (``ZERO``, a compile-time zero or a value bound to 0). No
-        prediction for a charged leg of unknown mass, a massless charged
-        vector or an on-shell external photon: the engine does not yet couple
-        such a photon with alpha(0), the user's convention [U9] (WP3.2
-        EWI-6b), and ``ew_policy`` refuses electroweak requests with one.
+        zero (``ZERO``, a compile-time zero or a value bound to 0). On-shell
+        external photons couple with alpha(0) (``LoopSlice.external_photons``,
+        WP3.2 EWI-6b): the Born is the alpha(0) one (``average``) and the
+        photons add no gamma_gamma (``poles.qed_catani_poles``, convention
+        "alpha0"). No prediction for a charged leg of unknown mass, a
+        massless charged vector or an external photon of a slice without that
+        convention.
         """
 
         slice_, numbers = self.slice, self.numbers
@@ -3618,13 +3679,18 @@ class _PointEvaluation:
         records = {record.name: record for record in compiled.ir.particles}
         fixed = slice_.request.fixed_parameters
         values = _kernel_parameters(compiled, self.parameters)
+        convention = getattr(slice_, "external_photons", None)
         charges: dict[int, Fraction] = {}
         masses: dict[int, Fraction] = {}
         spins: dict[int, int] = {}
+        photons = 0
         for leg in slice_.families.legs:
             record = records[leg.field]
             if ew_policy.is_photon(record, parameters, fixed):
-                return None
+                if convention is None:
+                    return None
+                photons += 1
+                continue
             charge = exact_charge(record.charge)
             if charge == 0:
                 continue
@@ -3655,6 +3721,12 @@ class _PointEvaluation:
                 log=lambda x: _log(x, numbers),
                 real=numbers.real,
                 sqrt=lambda x: math.sqrt(x) if numbers.double else x.sqrt(),
+                photons=photons,
+                convention=(
+                    EXTERNAL_PHOTON_CONVENTION
+                    if convention is None
+                    else convention.convention
+                ),
             )
             if prediction is None:
                 return None
@@ -4106,6 +4178,51 @@ def _charged_fields(compiled) -> frozenset[str]:
     return frozenset(
         str(record.name) for record in compiled.ir.particles if float(record.charge)
     )
+
+
+def _alpha0_field_rules(source, photons, process) -> tuple[Any, ...]:
+    """The field-like term of the alpha(0) convention (WP3.2 EWI-6b) as an
+    external-field rule of each external photon species: coefficient
+    -(delta Z_e^{G_mu} - delta Z_e^{alpha(0)}) (the model's conversion
+    parameter ``photons.conversion``; the field component adds 2 Re of the
+    coefficient times the Born per photon leg, MG5_aMC's
+    -2 n_gamma DGmua0 Born), of the electromagnetic correction, with no loop
+    species (no particle_veto applies: ``ew_policy.external_photon_scheme``
+    refuses vetoes of electromagnetically perturbative species)."""
+
+    from pyamplicol.loops.wavefunction import ExternalFieldRule, _laurent
+
+    labels = set(photons.legs)
+    pdgs = {abs(int(leg.pdg)) for leg in process.legs if int(leg.label) in labels}
+    terms = ((0, f"-{photons.conversion}"),)
+    value = {"kind": "mapping", "entries": terms}
+    out = []
+    for particle in source.raw.collections["particles"]:
+        fields = particle["fields"]
+        pdg = int(fields["pdg_code"])
+        if pdg not in pdgs:
+            continue
+        groups = fields.get("loop_particles")
+        coefficient, diagnostic = _laurent(value, source)
+        out.append(
+            ExternalFieldRule(
+                particle["id"],
+                pdg,
+                fields["spin"],
+                fields["color"],
+                photons.correction,
+                # After the model's own loop groups of the photon, if any.
+                len(groups) if isinstance(groups, tuple) else 0,
+                ((),),
+                coefficient,
+                diagnostic,
+                source.scalar_program,
+                terms,
+            )
+        )
+    if {rule.pdg for rule in out} != pdgs:
+        raise ValueError("an external photon species has no source particle record")
+    return tuple(out)
 
 
 def _correction_orders(slice_) -> ew_policy.CorrectionOrders:

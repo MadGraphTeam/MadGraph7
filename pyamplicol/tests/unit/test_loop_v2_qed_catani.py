@@ -404,9 +404,11 @@ def test_external_photon_conventions():
 
 @pytest.mark.loop_physics
 def test_engine_operator_makes_no_prediction_with_an_external_photon(gmu):
-    """u u~ > a g at QCD + QED orders: the engine's QED operator gives none
-    (its photon coupling is not alpha(0) yet), so the joint request has no
-    prediction rather than a partial sum."""
+    """u u~ > a g at QCD + QED orders on a slice without the alpha(0)
+    convention of external photons (``LoopSlice.external_photons``, which
+    every electroweak request with one takes since WP3.2 EWI-6b): the
+    engine's QED operator gives none, so the joint request has no prediction
+    rather than a partial sum."""
 
     point = [
         [1, 0, 0, 1],
