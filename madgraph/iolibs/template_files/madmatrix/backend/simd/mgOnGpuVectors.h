@@ -78,6 +78,7 @@ namespace madmatrix
 #else
   typedef fptype_momenta fptype_denom_sv __attribute__( ( vector_size( neppV * sizeof( fptype_momenta ) ), aligned( neppVD * sizeof( fptype_momenta ) ) ) );
 #endif
+  static_assert( sizeof( fptype_denom_sv ) == neppV * sizeof( fptype_momenta ), "fptype_denom_sv must hold one FP64 value per FP32 lane" );
   inline fptype_denom_sv fpdenom_bcast( fptype_momenta s ) { return fptype_denom_sv{} + s; }
   inline fptype_v fpdenom_narrow( const fptype_denom_sv& p ) { return __builtin_convertvector( p, fptype_v ); }
   inline fptype_denom_sv fpdenom_widen( const fptype_v& f ) { return __builtin_convertvector( f, fptype_denom_sv ); }
