@@ -16,10 +16,15 @@ the call it ran in), and each must count zero:
   checks, in double-double and arbitrary precision, after
   ``set_model_parameters``, and its per-coupling-order partials;
 * an exact flavour member served by its representative;
-* colour-correlated (also with the companion's columns in ``uv``, with
-  stability checks and in double-double), spin-correlated and
-  helicity-resolved outputs and the correlation catalogue (the stored
-  observable columns, ``native_observables``).
+* colour-correlated (also with the companion's columns in ``uv``, finite
+  only, with stability checks and in double-double), spin-correlated (also
+  in ``uv``) and helicity-resolved outputs (also in ``ir``) and the
+  correlation catalogue (the stored observable columns,
+  ``native_observables``);
+* the same calls of a leading-colour process (its colour-pruned slice, the
+  pruned companion and its column twins), and nightly of a five-leg
+  next-to-leading-colour one (``test_nlc_five_leg_stored_process_regenerates
+  _nothing``).
 
 Every call's values in the fresh interpreter equal those of the generating
 test process's own load (bitwise; extended precision as decimal text).
@@ -74,7 +79,9 @@ def _record_path(name: str) -> Path:
     return OBSERVABLES / ("gg_gg.json" if name == "gg_plain" else f"{name}.json")
 
 
-def _card(model: Path, output: Path, entries, process: str = "") -> str:
+def _card(
+    model: Path, output: Path, entries, process: str = "", accuracy: str = "full"
+) -> str:
     processes = ", ".join(
         f"{{expression={json.dumps(expression)}, name={json.dumps(name)}}}"
         for name, expression in entries
@@ -89,7 +96,7 @@ loop_coupling_orders = ["QCD"]
 coupling_order_policy = "minimal"
 {process}
 [color]
-accuracy = "full"
+accuracy = "{accuracy}"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
@@ -106,48 +113,62 @@ samples = 1
 """
 
 
-@pytest.fixture(scope="module")
-def stored(loop_sm_compiled_model, loop_native, tmp_path_factory):
-    """The artifacts of the g g > g g observables record (colour histories
-    and spin classes declared), of d d~ > g g with its exact flavour member
-    s s~ > g g, and of g g > g g without declared observables (``gg_plain``:
-    the Born colour metric and the resolved columns only), generated through
-    the public API."""
+def _generate(model: Path, name: str, root: Path, process: str = "") -> Path:
+    """The artifact of observables record ``name`` (its processes, colour
+    histories, spin classes and colour accuracy) through the public API."""
 
     from pyamplicol.api import Generator, ProcessRequest, ProcessSet
     from pyamplicol.config import resolve_config
     from pyamplicol.correlators import CorrelatorConfig
+
+    record = _record(name)
+    entries = tuple((key, expression) for key, expression in record["processes"])
+    card = root / "card.toml"
+    card.write_text(
+        _card(
+            model,
+            root / "artifact",
+            entries,
+            process,
+            record.get("accuracy", "full"),
+        )
+    )
+    correlators = CorrelatorConfig.from_json_dict(
+        {
+            "color_correlations": record["histories"],
+            "spin_correlations": record["spin_classes"],
+        }
+    )
+    Generator(resolve_config(card)).generate(
+        ProcessSet(
+            tuple(
+                ProcessRequest.parse(expression, name=key)
+                for key, expression in entries
+            )
+        ),
+        root / "artifact",
+        correlators=correlators,
+    )
+    return root / "artifact"
+
+
+@pytest.fixture(scope="module")
+def stored(loop_sm_compiled_model, loop_sm_colour_model, loop_native, tmp_path_factory):
+    """The artifacts of the g g > g g observables record (colour histories
+    and spin classes declared) in full and leading colour (``gg_gg_lc``), of
+    d d~ > g g with its exact flavour member s s~ > g g, and of g g > g g
+    without declared observables (``gg_plain``: the Born colour metric and
+    the resolved columns only), generated through the public API."""
 
     out = {}
     for name, process in (
         ("gg_gg", ""),
         ("ddgg_ssgg", "flavor_blind = true"),
         ("gg_plain", ""),
+        ("gg_gg_lc", ""),
     ):
-        record = _record(name)
-        entries = tuple((key, expression) for key, expression in record["processes"])
-        root = tmp_path_factory.mktemp(name)
-        card = root / "card.toml"
-        card.write_text(
-            _card(loop_sm_compiled_model, root / "artifact", entries, process)
-        )
-        correlators = CorrelatorConfig.from_json_dict(
-            {
-                "color_correlations": record["histories"],
-                "spin_correlations": record["spin_classes"],
-            }
-        )
-        Generator(resolve_config(card)).generate(
-            ProcessSet(
-                tuple(
-                    ProcessRequest.parse(expression, name=key)
-                    for key, expression in entries
-                )
-            ),
-            root / "artifact",
-            correlators=correlators,
-        )
-        out[name] = root / "artifact"
+        model = loop_sm_colour_model if name == "gg_gg_lc" else loop_sm_compiled_model
+        out[name] = _generate(model, name, tmp_path_factory.mktemp(name), process)
     return out
 
 
@@ -177,6 +198,16 @@ CALLS = {
     "plain-catalogue": ("gg_plain", "gg", "catalogue"),
     "plain-born": ("gg_plain", "gg", "correlated-born"),
     "plain-resolved": ("gg_plain", "gg", "resolved"),
+    # Pole-selected resolved, spin and finite-only correlated calls.
+    "resolved-ir": ("gg_gg", "gg", "resolved-ir"),
+    "spin-uv": ("gg_gg", "gg", "correlated-spin-uv"),
+    "colour-none": ("gg_gg", "gg", "correlated-none"),
+    # Leading colour: the colour-pruned slice, its pruned companion and the
+    # companion's column twins.
+    "lc-ir": ("gg_gg_lc", "gg", "evaluate-ir"),
+    "lc-colour-uv": ("gg_gg_lc", "gg", "correlated-uv"),
+    "lc-spin": ("gg_gg_lc", "gg", "correlated-spin"),
+    "lc-resolved-ir": ("gg_gg_lc", "gg", "resolved-ir"),
 }
 
 # Runs call kinds of one stored process in turn (argv: artifact, process or
@@ -302,6 +333,15 @@ def run(Runtime, artifact, process, call, record):
         result = runtime.evaluate_correlated_many(
             points, {"spin": CorrelatedRequest("born", spin)}, mu_r2=scales
         )["spin"]
+    elif call == "correlated-spin-uv":
+        result = runtime.evaluate_correlated_many(
+            points, {"spin": CorrelatedRequest("born", spin)}, mu_r2=scales, poles="uv"
+        )["spin"]
+        return [bits(result.values), bits(result.pole_part("uv", "bare"))]
+    elif call == "correlated-none":
+        result = runtime.evaluate_correlated(
+            points, color_correlation="T12", mu_r2=scales, poles="none"
+        )
     elif call == "correlated-many":
         values = runtime.evaluate_correlated_many(
             points,
@@ -314,6 +354,8 @@ def run(Runtime, artifact, process, call, record):
         return {name: bits(value.values) for name, value in sorted(values.items())}
     elif call == "resolved":
         result = runtime.evaluate_resolved(points, mu_r2=scales)
+    elif call == "resolved-ir":
+        result = runtime.evaluate_resolved(points, mu_r2=scales, poles="ir")
     elif call == "catalogue":
         return [item.id for item in runtime.available_color_correlations()]
     else:
@@ -393,6 +435,48 @@ def test_stored_process_call_regenerates_nothing(stored, fresh, name):
     assert json.loads(json.dumps(here)) == found["values"]
 
 
+# The call kinds of the five-leg NLC process (its record declares dipoles,
+# no spin classes).
+NLC_CALLS = (
+    "evaluate",
+    "evaluate-none",
+    "evaluate-uv",
+    "evaluate-ir",
+    "correlated-colour",
+    "correlated-uv",
+    "correlated-none",
+    "resolved",
+    "resolved-ir",
+    "catalogue",
+)
+
+
+@pytest.mark.loop_nightly
+def test_nlc_five_leg_stored_process_regenerates_nothing(
+    loop_sm_colour_model, loop_native, tmp_path
+):
+    """u u~ > g g g at next-to-leading colour with its record's dipoles (the
+    colour-pruned slice, its companion and the companion's column twins
+    rebuilt for the directed histories, ``StoredObservables.export``): every
+    call kind in a fresh interpreter regenerates nothing and gives the bits
+    of the generating process's own load."""
+
+    artifact = _generate(loop_sm_colour_model, "uux_ggg_nlc", tmp_path)
+    record = _record_path("uux_ggg_nlc")
+    found = _calls(artifact, "uuggg", list(NLC_CALLS), record)
+    assert found[""]["calls"] == {}
+    namespace: dict = {}
+    exec(_RUN, namespace)
+    from pyamplicol import Runtime
+
+    for call in NLC_CALLS:
+        assert found[call]["calls"] == {}, (call, found[call]["calls"])
+        here = namespace["run"](
+            Runtime, artifact, "uuggg", call, _record("uux_ggg_nlc")
+        )
+        assert json.loads(json.dumps(here)) == found[call]["values"], call
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
     ("artifact", "process"), [("gg_gg", "gg"), ("ddgg_ssgg", "ddgg")]
@@ -400,11 +484,17 @@ def test_stored_process_call_regenerates_nothing(stored, fresh, name):
 def test_rust_runtime_equals_the_python_api(stored, loop_native, artifact, process):
     """The SDK's plan v4 runtime (``rusticol_loop_reduction::v2_runtime::
     V2Runtime``, through ``evaluate_v2_artifact``: no Python generation or
-    assembly) gives bitwise the Python API's binary64 Born and virtual, with
-    and without poles, at the default and at caller-set model parameters."""
+    assembly) gives bitwise the Python API's binary64 Born and virtual in
+    every pole selection (the split ones with the stored companion of the
+    certified-scaleless families), at the default and at caller-set model
+    parameters."""
 
     from pyamplicol import Runtime
+    from pyamplicol.loops.v2.artifact import SCALELESS_PLAN_MEMBER, read_plan
 
+    pacbin = next(stored[artifact].rglob(f"{process}/loop-runtime.pacbin"))
+    # The split selections run the stored companion here.
+    assert read_plan(pacbin, SCALELESS_PLAN_MEMBER) is not None
     record = _record(artifact)
     points, scales = record["points"], record["scales_squared"]
     flat = [[str(x) for momentum in point for x in momentum] for point in points]
@@ -412,10 +502,9 @@ def test_rust_runtime_equals_the_python_api(stored, loop_native, artifact, proce
         runtime = Runtime.load(
             stored[artifact], process=process, model_parameters=parameters
         )
-        for poles in (True, False):
-            python = runtime.evaluate(
-                points, mu_r2=scales, poles="all" if poles else "none"
-            )
+        finite = None
+        for poles in ("all", "none", "uv", "ir"):
+            python = runtime.evaluate(points, mu_r2=scales, poles=poles)
             native = loop_native.evaluate_v2_artifact(
                 str(stored[artifact]),
                 flat,
@@ -424,14 +513,18 @@ def test_rust_runtime_equals_the_python_api(stored, loop_native, artifact, proce
                 parameters=parameters,
                 poles=poles,
             )
+            width = 1 if poles == "none" else 3
             for index, (values, failures) in enumerate(native):
                 assert not failures, failures
                 born, virtual = values
                 assert born == list(python.born_values[index])
-                width = 3 if poles else 1
                 assert virtual == [
                     list(laurent)[:width] for laurent in python.values[index]
                 ], (index, poles)
+            # The finite part is the same in every selection.
+            here = [[laurent[0] for laurent in values[1]] for values, _ in native]
+            assert finite is None or here == finite, poles
+            finite = here
 
 
 # Disables pyAmpliCol's Symbolica library key in the native code
