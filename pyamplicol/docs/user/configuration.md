@@ -397,12 +397,23 @@ difference of about 3e-10). Validate such legacy artifacts with
 is not affected.
 
 The v2 engine's post-build validation compares the reopened artifact with
-its reference executor in binary64 at `relative_tolerance`. A validation
-point where binary64 itself cannot resolve that tolerance (an
-ill-conditioned point, whose binary64 stability estimate exceeds it) is
-compared again at the same tolerance in double-double against the
-reference at 32 digits, so such a point does not refuse a correct artifact
-and a defective one is refused in either carrier.
+its reference executor in binary64 at `relative_tolerance` (Borns per
+coupling order, virtual Laurent coefficients relative to their sector's
+largest one). A validation point where the two binary64 values miss that
+tolerance is checked again, alone, against the reference at 32 digits, in
+both carriers: the artifact in double-double must agree to the same
+`relative_tolerance`, its binary64 Borns to `relative_tolerance` and its
+binary64 virtuals to the larger of `relative_tolerance` and their own
+stability estimate (one exact rotation and the reduction-direction check),
+an estimate that must exist and not exceed 1e-9. A binary64 virtual off by
+more than the tolerance is thus accepted only where binary64 itself
+estimates that it cannot resolve the tolerance (an ill-conditioned point),
+and a defect of either carrier beyond that is refused. An accepted point is
+reported as a warning of the `pyamplicol.generation` logger with its
+deviations and estimates. This costs one double-double and one checked
+binary64 evaluation of the artifact and one 32-digit reference evaluation
+per re-checked point; the 32-digit reference took about 11 times the binary64
+one for d d~ > g g at NLC (7.8 s against 0.7 s for five colour outputs).
 
 ## Numerical current reuse
 

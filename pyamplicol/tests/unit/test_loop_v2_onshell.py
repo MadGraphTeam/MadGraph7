@@ -252,30 +252,30 @@ def test_a_single_leg_fixes_its_arc_and_the_complement():
 
 @pytest.mark.loop_fast
 def test_structural_onshell_bindings_follow_the_same_rule():
-    """``Family.onshell_bindings`` (the certified-scaleless proof) binds
-    exactly the invariants ``onshell_leg`` gives the carriers, by that leg's
-    mass: one rule for the structure and every evaluation."""
+    """``Family.onshell_bindings`` (the certified-scaleless proof) binds the
+    invariants of a single-leg arc or single-leg complement, and only those,
+    to that leg's mass: the ``onshell_leg`` rule of every carrier. Expected
+    bindings written out by hand on 5-leg rings (every leg a distinct mass,
+    so a wrong leg shows)."""
 
-    legs = tuple(
-        ExternalLeg(index, "g", MassId(ZERO), 8)
-        if index < 3
-        else ExternalLeg(index, "t", MassId("MT"), 3)
-        for index in range(5)
-    )
-    for masks in ((1, 2, 4, 8, 16), (3, 4, 8, 16), (1, 6, 24), (5, 2, 24)):
+    legs = tuple(ExternalLeg(index, "t", MassId(f"M{index}"), 3) for index in range(5))
+    masses = [MassId(f"M{index}") for index in range(5)]
+    expected = {
+        # 10 invariants; arcs {1}..{4} and the complement of {0}.
+        (1, 2, 4, 8, 16): dict(
+            zip((2, 4, 8, 16, 30), masses[1:] + masses[:1], strict=True)
+        ),
+        # Legs 0 and 1 merged: 4, 8, 16 and 12 ({2,3}), 24, 28 (complement {0,1}).
+        (3, 4, 8, 16): {4: masses[2], 8: masses[3], 16: masses[4]},
+        # Invariants 30 (complement {0}), 6 ({1,2}) and 24 ({3,4}).
+        (1, 6, 24): {30: masses[0]},
+        # Invariants 2 ({1}), 24 ({3,4}) and 26 (complement {0,2}).
+        (5, 2, 24): {2: masses[1]},
+    }
+    for masks, bindings in expected.items():
         key = canonical_family_key(masks, [MassId(ZERO)] * len(masks))
         family = Family(key, 0, ())
-        full = (1 << len(legs)) - 1
-        expected = {
-            mask: legs[leg].mass
-            for mask in family.invariant_masks()
-            if (leg := onshell_leg(mask, full)) is not None
-        }
-        assert family.onshell_bindings(legs) == expected
-        assert all(
-            onshell_leg(mask, full) is None
-            for mask in set(family.invariant_masks()) - set(expected)
-        )
+        assert family.onshell_bindings(legs) == bindings, masks
 
 
 @pytest.mark.loop_fast
