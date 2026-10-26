@@ -1596,7 +1596,29 @@ The liveness of `_prune_colour` stays Python (no switch line is given to it; `na
 
 **C2: the batched seed-record projection for D's `_Exporter.seed_records`.** `native_cells.project_records(slice_, columns, seeds, born_components, tables=None) -> (class_json: bytes, records_json: bytes)`: `columns` are the exporter's `SeedColumn`s, `seeds` its seed keys (combination, loop order) in plan order, `born_components` its dict, extended in place in first-seen order; `tables` maps `id(column.table)` to a `NativeCellTable` (default: encoded from the Python cells). The bytes equal `json.dumps(records, separators=(",", ":"))` of the oracle's two lists exactly; a class no sector admits raises the oracle's `KeyError`. D owns the call site (D3); the Rust API is `cells::project_records` (in-crate).
 
-**Measured** (see the WP3.1 package C phase-1 status in `workspace/reports/engine-v2/wp31/RUST-MIGRATION.md` §10 and the package report).
+**Measured** (2026-10-26; this package merged on slice `392d3f4a`, release native `loop-native-native-cells-8ef63961`; loop_sm with the top, compiled once; QED = 0; one process at a time pinned to 12 idle cores of the shared host at load 120–280, `RAYON_NUM_THREADS=12`; the Python column is the oracle lane on the same inputs; evidence and stage digests in `workspace/tmp/native-cells/oracle/p3/`). Every native table equals its oracle exactly where both ran; S5 of the slice and of its companion are equal in both lanes (u u~ > g g g g g) and to the earlier heads' (g g > g g g g g).
+
+| Seven legs | Python | Native | Target (`RUST-MIGRATION.md` §3.C) |
+|---|---|---|---|
+| Cells, g g > g g g g g FC: slice table (1,080 classes × 720) and companion (10,080) | 8.1 s and ≳ 19 min (the oracle lane's LC generation, stopped at its 30 min bound, exceeds the native one by more than 1,155 s) | 1.1 s and 2.8 s (equal values share one cell: peak 11.5 → 4.4 GB) | ≤ 10 s |
+| Cells, u u~ > g g g g g FC: 7,620 × 274 = 2.09 M cells (all compared) and companion | 44.2 s and 2.3 s | 1.9 s and 0.2 s | ≤ 10 s |
+| Degrees, g g > g g g g g LC (recursion counterterms) | 5.1 s (54 s in the plan's survey of an earlier head) | 1.1 s | ≤ 10 s |
+| Dipole orbit build at generation, g g > g g g g g / u u~ > g g g g g | 198 s / 40.6 s (`LoopSlice.dipoles`, phase 0) | 2.7 s / 0.33 s; no peak above the process (4,320 / 26,384 representatives, 133 / 538 kB) | ≤ 60 s, ≤ 1 GB |
+| FC directed table T12, g g > g g g g g / u u~ > g g g g g | 90.6 s / 70.2 s | 1.3 s / 1.5 s (its swap the same) | ≤ 10 s each |
+| Complete family, g g > g g g g g LC, T12 (7 histories, 49 tables) | ≈ 74 min (49 × 90 s) | 70 s (tables 59 s) | — |
+| Seed records (C2), g g > g g g g g / u u~ > g g g g g FC | 36.1 s / 62.8 s | 1.5 s / 2.75 s (phase 0, byte-identical) | ≤ 10 s |
+
+Generation (`LoopSlice.generate`, wall time and process peak; both lanes in one process each, the compiled model and kernel caches warm, as package C's stages keep no disk cache): u u~ > g g g g g FC (site closure) 180.4 s / 1.25 GB in the oracle lane → 137.1 s / 1.24 GB; g g > g g g g g LC (recursion) > 1,800 s (stopped at its bound, 9.6 GB) → 644.8 s / 5.9 GB; g g > g g g g g FC (site closure) 543.5 s / 4.4 GB native. The rest of these generations is outside package C: the Python seed tables (`build_seed_table`, 69 + 341 s at g g > g g g g g, the companion's the larger; package B) and the LC prune's trie rebuild (below).
+
+**LC pruning and loop families** (investigation of slice-status DECISIONS 2026-10-25 ~20:45 item 3: the top-free g g > g g g g g LC plan keeps all 4,707 FC families). Not a defect. A family is keyed by its propagators' momenta and masses (§4), so a closed massless-quark loop shares its family with the gluon and ghost rings of the same topology: the prune drops the quark loops' skeletons inside the family, and drops a family only when none of its skeletons is live, i.e. for closed loops of a mass class no gluon ring has (the massive top). With loop_sm's top the families halve at every multiplicity; with `particle_veto` [t] they cannot, while the tries shrink alike and the LC plans with and without the top are the same:
+
+| loop_sm, LC prune | families FC → LC | trie leaves FC → LC | trie nodes FC → LC |
+|---|---|---|---|
+| g g > g g g, with the top / vetoed | 154 → 77 / 77 → 77 | 3,489 → 2,481 / 2,985 → 2,481 | 1,730 → 801 / 1,227 → 801 |
+| g g > g g g g, with the top / vetoed | 1,100 → 550 / 550 → 550 | 50,850 → 38,610 / 44,730 → 38,610 | 17,360 → 8,290 / 12,550 → 8,290 |
+| g g > g g g g g, with the top / vetoed (measure-g1-7leg's plans) | 9,414 → 4,707 / 4,707 → 4,707 | 810,495 → 647,775 / — | 197,539 → 97,140 / 144,986 → 97,140 |
+
+The lower multiplicities quoted against seven gluons kept the top. LC generates slower than FC because the prune rebuilds the tries after the seed table (the native schedules with `keep` evaluated per skeleton in Python, the readings and the table extension: 5–6 s of a 63–93 s generation at g g > g g g g top-free, 38 s and 10 s for the companion at seven gluons), and, before package C, the Python degrees; the liveness itself (`class_live`, cached per class) is under a second at six legs. Building the LC tries once, with `keep`, would remove the rebuild (generation-scale-2's `generator_input`).
 
 ---
 
