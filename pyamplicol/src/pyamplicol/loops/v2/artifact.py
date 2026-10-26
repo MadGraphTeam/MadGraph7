@@ -74,9 +74,7 @@ import json
 import math
 import time
 import zlib
-from collections import OrderedDict
-from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal
@@ -144,14 +142,6 @@ NATIVE_OBSERVABLES_PREFIX = "point-inputs/"
 # ``loop_runtime::LOOP_PROGRAM_V4_SCALELESS_MEMBER``).
 SCALELESS_PLAN_MEMBER = "schedule/loop-plan-v4-scaleless.json.zlib"
 ENGINE = "v2"
-# Generation objects of recently generated or loaded processes, keyed by the
-# compiled-model payload digest, the request record and the plan digest. A
-# generation run retains all of its processes until its staged validation
-# loaded them (``retained``).
-_SLICE_CACHE_SIZE = 4
-_slices: OrderedDict[tuple[str, str, str], tuple[Any, Any]] = OrderedDict()
-_slices_lock = RLock()
-_retained = [0]
 
 
 # --------------------------------------------------------------------- request
@@ -237,17 +227,6 @@ def correlators_from_record(record: Mapping[str, Any]) -> Any:
 
     value = record.get("correlators")
     return None if value is None else CorrelatorConfig.from_json_dict(value)
-
-
-def _record_key(record: Mapping[str, Any]) -> str:
-    return json.dumps(record, sort_keys=True, separators=(",", ":"))
-
-
-def model_digest(payload: Mapping[str, Any]) -> str:
-    """Digest of a compiled-model payload (``CompiledModel.to_dict``)."""
-
-    text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(text.encode()).hexdigest()
 
 
 # --------------------------------------------------------------------- preflight
@@ -693,12 +672,11 @@ def generate_process(
     request: Any,
     native: Any,
     correlators: Any = None,
-    *,
-    model: str | None = None,
 ) -> GeneratedProcess:
-    """Generate one process through v2 with its declared observables and
-    remember its generation objects (under ``model``, the compiled model's
-    ``model_digest`` when the caller already has it).
+    """Generate one process through v2 with its declared observables. The
+    returned ``GeneratedProcess`` holds the generation objects (the slice,
+    the exported plans); nothing keeps them after the caller drops it, and
+    no load reads them (a stored process evaluates from its native program).
 
     Without colour histories or spin classes this is the inclusive slice
     (``LoopSlice.generate``, colour-pruned at LC/NLC for the inclusive table);
@@ -833,7 +811,6 @@ def generate_process(
         scaleless_exported=scaleless,
         scaleless_plan_json=scaleless_json,
     )
-    _remember(model_digest(compiled.to_dict()) if model is None else model, generated)
     return generated
 
 
@@ -851,36 +828,6 @@ def _not_storable(request: Any, what: str, error: Exception) -> Exception:
         "a stored plan v4 process evaluates from them and never regenerates "
         "at load (REQUIREMENTS_ADDENDUM G)"
     )
-
-
-def _remember(model: str, generated: GeneratedProcess) -> None:
-    key = (model, _record_key(generated.request), generated.plan_sha256)
-    with _slices_lock:
-        _slices[key] = generated
-        _slices.move_to_end(key)
-        _trim()
-
-
-def _trim() -> None:
-    while len(_slices) > _SLICE_CACHE_SIZE + _retained[0]:
-        _slices.popitem(last=False)
-
-
-@contextmanager
-def retained(count: int) -> Iterator[None]:
-    """Keep ``count`` more generated processes in the generation cache while
-    the block runs: a generation run's processes stay inspectable (tests,
-    tools) until it ends. Loads never read the cache: a stored process
-    evaluates from its native program."""
-
-    with _slices_lock:
-        _retained[0] += count
-    try:
-        yield
-    finally:
-        with _slices_lock:
-            _retained[0] -= count
-            _trim()
 
 
 # --------------------------------------------------------------------- runtime

@@ -78,6 +78,8 @@ import json
 import math
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
@@ -217,7 +219,6 @@ def _assert_inclusive_o1(
 
     fixture = _fixture(name)
     results = fixture["results"]["arbitrary-200"]
-    _forget_generation()
     runtime = Runtime.load(
         artifact, process=process, model_parameters=_parameters(fixture)
     )
@@ -695,41 +696,30 @@ def test_loop_orders_follow_the_born_amplitude_orders():
             _v2_scale_parameter(candidates, fixed)
 
 
-@pytest.mark.loop_fast
-def test_a_generation_run_retains_its_processes(monkeypatch):
-    """Staged validation reuses every process of its run: the generation
-    cache keeps them while ``retained`` holds, then trims to its size."""
-
-    from collections import OrderedDict
-
-    from pyamplicol.loops.v2 import artifact
-
-    monkeypatch.setattr(artifact, "_slices", OrderedDict())
-
-    def remember(index: int) -> None:
-        artifact._remember(
-            "model",
-            artifact.GeneratedProcess(None, None, {"process": str(index)}, str(index)),
-        )
-
-    with artifact.retained(6):
-        for index in range(10):
-            remember(index)
-        assert len(artifact._slices) == 10
-    assert len(artifact._slices) == artifact._SLICE_CACHE_SIZE
-    remember(10)
-    assert len(artifact._slices) == artifact._SLICE_CACHE_SIZE
-
-
-def _forget_generation() -> None:
-    """Make the next ``Runtime.load`` regenerate from the artifact's request
-    record, as a fresh interpreter does, instead of reusing this
-    interpreter's generation objects (``artifact._recall``)."""
+@contextmanager
+def _capturing(found: dict) -> Iterator[None]:
+    """Keep every process ``artifact.generate_process`` returns while the
+    block runs (by plan digest), for tests that inspect the generated slices
+    (nothing else keeps them)."""
 
     from pyamplicol.loops.v2 import artifact
 
-    with artifact._slices_lock:
-        artifact._slices.clear()
+    original = artifact.generate_process
+
+    def generate(*args, **kwargs):
+        generated = original(*args, **kwargs)
+        found[generated.plan_sha256] = generated
+        return generated
+
+    artifact.generate_process = generate
+    try:
+        yield
+    finally:
+        artifact.generate_process = original
+
+
+# The processes the ``full_colour`` fixture generated, by plan digest.
+_FULL_COLOUR: dict = {}
 
 
 # ------------------------------------------------------------------ public path
@@ -743,9 +733,10 @@ def full_colour(loop_sm_compiled_model, loop_native, tmp_path_factory):
         ("uux_ddxg", "u u~ > d d~ g"),
         ("tt", "u u~ > t t~"),
     )
-    return _generate(
-        _card(loop_sm_compiled_model, tmp / "artifact", entries), tmp, entries
-    )
+    with _capturing(_FULL_COLOUR):
+        return _generate(
+            _card(loop_sm_compiled_model, tmp / "artifact", entries), tmp, entries
+        )
 
 
 @pytest.fixture(scope="module")
@@ -789,14 +780,9 @@ def test_public_generation_publishes_plan_v4(full_colour):
     # no counterterm site closure, no veto unless requested (ADDENDUM J).
     assert info["request"]["counterterms"] == "recursion"
     assert info["request"]["particle_veto"] == []
-    from pyamplicol.loops.v2 import artifact
-
-    with artifact._slices_lock:
-        generated = [
-            item.slice
-            for (_model, _record, plan), item in artifact._slices.items()
-            if plan == info["plan_sha256"]
-        ]
+    generated = [
+        item.slice for plan, item in _FULL_COLOUR.items() if plan == info["plan_sha256"]
+    ]
     assert generated
     for slice_ in generated:
         assert slice_.counterterm_program is not None
@@ -838,7 +824,6 @@ def test_public_particle_veto_equals_njet_five_flavours(
     manifest = load_manifest(output, verify_payloads=True)
     (record,) = manifest.extensions["generation"]["concrete_processes"]
     assert record["filters"]["particle_veto"] == ["t"]
-    _forget_generation()
     runtime = Runtime.load(output, process="gg", model_parameters={"aS": "0.118"})
     assert runtime.inspect()["request"]["particle_veto"] == [6]
     controls = json.loads(
@@ -1183,7 +1168,6 @@ def test_fresh_interpreter_loads_native_inputs_without_generation(
     def drifted(*args, **kwargs):
         raise AssertionError("a load must not generate")
 
-    monkeypatch.setattr(artifact, "_slices", type(artifact._slices)())
     monkeypatch.setattr(artifact, "generate_process", drifted)
     loaded = Runtime.load(full_colour, process="gg")
     # The stored columns serve the catalogue without the generator.
@@ -2065,7 +2049,6 @@ def _assert_public_o1(observables_artifact, name: str, carriers) -> None:
     points, scales = record["points"], record["scales_squared"]
     # Without the generation objects of this interpreter: the loads read the
     # stored observable columns and the members listed at generation.
-    _forget_generation()
     for process, _expression in record["processes"]:
         expected = record["results"]["arbitrary-200"][process]
         runtime = Runtime.load(
@@ -2396,7 +2379,6 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     points = json.loads((ROOT / "tools/loop_reference/uudd_qcd.json").read_text())
     born_key = {_canonical(v): k for k, v in reference["born_orders"].items()}
     loop_key = {_canonical(v): k for k, v in reference["loop_orders"].items()}
-    _forget_generation()
     runtime = Runtime.load(
         tmp_path / "b", process="uudd", model_parameters=GG_PARAMETERS
     )

@@ -1457,7 +1457,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
         initial_process_groups,
     )
     from pyamplicol.loops.native import load_loop_native
-    from pyamplicol.loops.v2.artifact import generate_process, retained, write_plan
+    from pyamplicol.loops.v2.artifact import generate_process, write_plan
 
     from .process_grouping import GroupingBasis, GroupMember, LegMapping
 
@@ -1487,10 +1487,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
         native = load_loop_native()
         compiled = context.resolved.compiled
         validation = backend._generation_config.validation
-        with (
-            retained(len(context.expanded)),
-            TemporaryDirectory(prefix="pyamplicol-loop-v2-") as temporary,
-        ):
+        with TemporaryDirectory(prefix="pyamplicol-loop-v2-") as temporary:
             artifacts, generated, members = [], {}, {}
             with reporter.phase(
                 "loop-compile",
