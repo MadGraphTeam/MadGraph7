@@ -6156,14 +6156,16 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fortran_model.axial_gauge_refs = \
             helas_call_writers.get_axial_gauge_refs(matrix_element) \
             if fortran_model.axial_gauge else {}
+        # the propagators of the --zerowidth_decay particles of this matrix
+        # element, if any, are written with a zero width. Not with
+        # misc.TMP_variable: the writer is a dict, which it addresses by key.
+        fortran_model.zerowidth_pdgs = self.get_zerowidth_pdgs(matrix_element)
         try:
-            # Extract helas calls (with the propagators of the --zerowidth_decay
-            # particles of this matrix element, if any, written with a zero width)
-            with misc.TMP_variable(fortran_model, 'zerowidth_pdgs',
-                                   self.get_zerowidth_pdgs(matrix_element)):
-                helas_calls = fortran_model.get_matrix_element_calls(\
+            # Extract helas calls
+            helas_calls = fortran_model.get_matrix_element_calls(\
                         matrix_element)
         finally:
+            fortran_model.zerowidth_pdgs = frozenset()
             fortran_model.use_flavor_mask = False
             fortran_model.me_n_flavors = 0
             fortran_model.axial_gauge_refs = {}

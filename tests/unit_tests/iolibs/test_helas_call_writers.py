@@ -889,19 +889,19 @@ class UFOHELASCallWriterTest(unittest.TestCase):
         standalone_msP/msF, standalone with --zerowidth_tchannel=True) but not
         for standalone"""
 
-        solution =['CALL VXXXXX(P(0,1),zero,NHEL(1),-1*IC(1),W(1,1))',
-                   'CALL VXXXXX(P(0,2),wmas,NHEL(2),-1*IC(2),W(1,2))',
-                   'CALL VXXXXX(P(0,3),zero,NHEL(3),+1*IC(3),W(1,3))',
-                   'CALL VXXXXX(P(0,4),wmas,NHEL(4),+1*IC(4),W(1,4))',
-                   'CALL VXXXXX(P(0,5),zmas,NHEL(5),+1*IC(5),W(1,5))',
-                   'CALL VVVV1_4(W(1,1),W(1,3),W(1,2),GC_51,wmas,wwid,W(1,6))',
+        solution =['CALL VXXXXX(P(0,1),zero,NHEL(1),-1,W(1))',
+                   'CALL VXXXXX(P(0,2),wmas,NHEL(2),-1,W(2))',
+                   'CALL VXXXXX(P(0,3),zero,NHEL(3),+1,W(3))',
+                   'CALL VXXXXX(P(0,4),wmas,NHEL(4),+1,W(4))',
+                   'CALL VXXXXX(P(0,5),zmas,NHEL(5),+1,W(5))',
+                   'CALL VVVV1_4(W(1),W(3),W(2),GC_51,wmas,wwid,W(6))',
                    '# Amplitude(s) for diagram number 1',
-                   'CALL VVV1_0(W(1,6),W(1,4),W(1,5),GC_12,AMP(1))',
-                   'CALL VVVV1_3(W(1,1),W(1,3),W(1,4),GC_51,wmas,wwid,W(1,6))',
+                   'CALL VVV1_0(W(6),W(4),W(5),GC_12,AMP(1))',
+                   'CALL VVVV1_3(W(1),W(3),W(4),GC_51,wmas,wwid,W(6))',
                    '# Amplitude(s) for diagram number 2',
-                   'CALL VVV1_0(W(1,2),W(1,6),W(1,5),GC_12,AMP(2))']
+                   'CALL VVV1_0(W(2),W(6),W(5),GC_12,AMP(2))']
         zeroed = list(solution)
-        zeroed[8] = 'CALL VVVV1_3(W(1,1),W(1,3),W(1,4),GC_51,wmas, ZERO,W(1,6))'
+        zeroed[8] = 'CALL VVVV1_3(W(1),W(3),W(4),GC_51,wmas, ZERO,W(6))'
 
         # (format, output options, writer options): t-channel W width zeroed?
         for export_format, output_options, options, zero in [

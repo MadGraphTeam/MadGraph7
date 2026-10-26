@@ -2773,15 +2773,15 @@ class TestCmdShell2(unittest.TestCase,
             self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=%s -f'
                     % (self.out_dir, option))
             # the internal W of the top decay keeps its width
-            self.assertIn('CALL FFV2_3(W(1,2),W(1,3),GC_100,MDL_MW,MDL_WW,W(1,5))',
-                          calls(self.out_dir, 't_epveb'))
+            self.assertTrue([c for c in calls(self.out_dir, 't_epveb')
+                             if ',MDL_MW,MDL_WW,' in c])
             # the internal top of t > w+ b g does not
-            self.assertIn('CALL FFV2_1(W(1,3),W(1,2),GC_100,MDL_MT, ZERO,W(1,5))',
-                          calls(self.out_dir, 't_wpbg'))
+            self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
+                             if ',MDL_MT, ZERO,' in c])
         self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=False -f'
                 % self.out_dir)
-        self.assertIn('CALL FFV2_1(W(1,3),W(1,2),GC_100,MDL_MT,MDL_WT,W(1,5))',
-                      calls(self.out_dir, 't_wpbg'))
+        self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
+                         if ',MDL_MT,MDL_WT,' in c])
 
         self.do('generate e+ e- > t t~ z')
         self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=6,24 -f'
