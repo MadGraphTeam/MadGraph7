@@ -44,6 +44,7 @@ from .compiler_kernels import (
     _lc_color_normalization_power,
     _oriented_component_expressions,
     _remap_kernel_symbols,
+    _renamed_kernel_text,
     _replace_expression_symbols,
     _spin_axis_labels,
 )
@@ -1076,12 +1077,12 @@ def _compile_oriented_kernels(
                     ordered_components = replace(
                         ordered_components,
                         values=tuple(
-                            _remap_kernel_symbols(
-                                _sym.E(value),
+                            _renamed_kernel_text(
+                                value,
                                 old_kind=formed,
                                 new_kind=len(kernels),
                                 model_symbols=model_symbols,
-                            ).to_canonical_string()
+                            )
                             for value in ordered_components.values
                         ),
                     )

@@ -109,11 +109,13 @@ def _fuse_oriented_kernels(
         first = members[0]
         remapped_components = [
             tuple(
-                _remap_kernel_symbols(
-                    _sym.E(component),
-                    old_kind=member.kind,
-                    new_kind=kind,
-                    model_symbols=model_symbols,
+                _sym.E(
+                    _renamed_kernel_text(
+                        component,
+                        old_kind=member.kind,
+                        new_kind=kind,
+                        model_symbols=model_symbols,
+                    )
                 )
                 for component in member.component_expressions
             )
@@ -240,6 +242,70 @@ def _remap_kernel_symbols(
                 )
             )
     return expression.replace_multiple(replacements) if replacements else expression
+
+
+# A kernel's input component or momentum symbol in a canonical string, with
+# its kind (``ModelSymbolRegistry.kernel_component``, ``kernel_momentum``).
+_KERNEL_TOKEN = re.compile(
+    r"::kernel_([0-9]+)_(?:left|right)_(?:momentum_)?[0-9]+(?![0-9A-Za-z_])"
+)
+
+
+def _kernel_token_prefix(model_symbols: ModelSymbolRegistry) -> str:
+    """The canonical-string text of the model's kernel symbols up to their
+    kind (``<namespace>::compiler::{}::kernel_``)."""
+
+    found = _KERNEL_TOKEN_PREFIXES.get(model_symbols.namespace)
+    if found is None:
+        text = model_symbols.kernel_component(0, "left", 0).to_canonical_string()
+        tail = "0_left_0"
+        if not text.endswith(f"::kernel_{tail}"):
+            raise ValueError(f"unexpected canonical kernel symbol {text}")
+        found = _KERNEL_TOKEN_PREFIXES[model_symbols.namespace] = text[: -len(tail)]
+    return found
+
+
+_KERNEL_TOKEN_PREFIXES: dict[str, str] = {}
+
+
+def _renamed_kernel_text(
+    text: str,
+    *,
+    old_kind: int,
+    new_kind: int,
+    model_symbols: ModelSymbolRegistry,
+) -> str:
+    """``_remap_kernel_symbols(E(text), old_kind=..., new_kind=...)
+    .to_canonical_string()`` of a canonical string ``text``.
+
+    Formed on the text when every kernel symbol it holds is an input
+    component or momentum symbol of kernel ``old_kind`` in the model's
+    namespace. Symbolica's canonical string sorts the arguments, factors and
+    terms of every node by their own canonical strings; two such strings
+    first differ outside the kind of a kernel symbol (all of them have the
+    same kind, so a difference inside one would be one between two kinds),
+    so writing ``new_kind`` for ``old_kind`` in place keeps every order and
+    gives the renamed expression's canonical string. Any other text goes
+    through Symbolica."""
+
+    if old_kind == new_kind:
+        return text
+    prefix = _kernel_token_prefix(model_symbols)
+    old = f"{prefix}{old_kind}_"
+    kinds = _KERNEL_TOKEN.findall(text)
+    occurrences = text.count("::kernel_")
+    if (
+        len(kinds) == occurrences
+        and text.count(old) == occurrences
+        and all(kind == str(old_kind) for kind in kinds)
+    ):
+        return text.replace(old, f"{prefix}{new_kind}_")
+    return _remap_kernel_symbols(
+        _sym.E(text),
+        old_kind=old_kind,
+        new_kind=new_kind,
+        model_symbols=model_symbols,
+    ).to_canonical_string()
 
 
 def _replace_expression_symbols(

@@ -19,7 +19,7 @@ from .compiler_kernels import (
     _function_arguments,
     _input_tensor_expression,
     _permutation_sign,
-    _remap_kernel_symbols,
+    _renamed_kernel_text,
     _replace_expression_symbols,
     _spin_axis_labels,
     _spin_dimension,
@@ -101,11 +101,13 @@ def _fuse_contact_finals(
                 sum(
                     (
                         _replace_expression_symbols(
-                            _remap_kernel_symbols(
-                                _sym.E(member.component_expressions[index]),
-                                old_kind=member.kind,
-                                new_kind=first.kind,
-                                model_symbols=model_symbols,
+                            _sym.E(
+                                _renamed_kernel_text(
+                                    member.component_expressions[index],
+                                    old_kind=member.kind,
+                                    new_kind=first.kind,
+                                    model_symbols=model_symbols,
+                                )
                             ),
                             runtime_aliases,
                         )
@@ -184,12 +186,12 @@ def _contact_partial_component_expressions(
         if formed == kind:
             return values
         return tuple(
-            _remap_kernel_symbols(
-                _sym.E(value),
+            _renamed_kernel_text(
+                value,
                 old_kind=formed,
                 new_kind=kind,
                 model_symbols=model_symbols,
-            ).to_canonical_string()
+            )
             for value in values
         )
     values = _formed_contact_partial_component_expressions(
@@ -347,7 +349,66 @@ def projected_contact_partial_components(
     return direct if unchanged else projected
 
 
+# Contact final components by (model namespace, spins, auxiliary dimension,
+# legs, auxiliary side, component expansion), with the kernel kind they were
+# formed for (as ``_PARTIALS``: the network runs on canonical symbols, so
+# another kernel's components are these with its input symbols renamed).
+_FINALS: dict[tuple[object, ...], tuple[int, tuple[str, ...]]] = {}
+_FINALS_BOUND = 1 << 14
+
+
 def _contact_final_component_expressions(
+    particles: Sequence[CompiledParticleRecord],
+    auxiliary: CompiledParticleRecord,
+    *,
+    open_legs: tuple[int, ...],
+    remaining_leg: int,
+    result_leg: int,
+    kind: int,
+    auxiliary_on_left: bool,
+    component_expansion: tuple[tuple[int, int] | None, ...],
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[str, ...]:
+    key = (
+        model_symbols.namespace,
+        tuple(particle.spin for particle in particles),
+        compiled_particle_component_dimension(auxiliary),
+        tuple(open_legs),
+        remaining_leg,
+        result_leg,
+        auxiliary_on_left,
+        tuple(component_expansion),
+    )
+    found = _FINALS.get(key)
+    if found is not None:
+        formed, values = found
+        return tuple(
+            _renamed_kernel_text(
+                value,
+                old_kind=formed,
+                new_kind=kind,
+                model_symbols=model_symbols,
+            )
+            for value in values
+        )
+    values = _formed_contact_final_component_expressions(
+        particles,
+        auxiliary,
+        open_legs=open_legs,
+        remaining_leg=remaining_leg,
+        result_leg=result_leg,
+        kind=kind,
+        auxiliary_on_left=auxiliary_on_left,
+        component_expansion=component_expansion,
+        model_symbols=model_symbols,
+    )
+    if len(_FINALS) >= _FINALS_BOUND:
+        _FINALS.clear()
+    _FINALS[key] = (kind, values)
+    return values
+
+
+def _formed_contact_final_component_expressions(
     particles: Sequence[CompiledParticleRecord],
     auxiliary: CompiledParticleRecord,
     *,
