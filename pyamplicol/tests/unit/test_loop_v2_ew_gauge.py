@@ -916,6 +916,54 @@ def test_qcd_corrections_agree_in_both_gauges(gmu_massive_b, loop_native):
             assert abs(float(mine) - float(theirs)) <= 1e-14 * scale
 
 
+@pytest.mark.loop_nightly
+def test_born_closure_reads_the_z_h_goldstone_root_in_both_gauges(gmu, loop_native):
+    """z h > t t~ QED=2 [virt=QCD]: the slice closes its Born and its
+    counterterms at leg 1, the Z, where the 't Hooft-Feynman gauge adds the
+    all-self-conjugate, momentum-odd Z-H-G0 vertex (the G0 s-channel). The
+    root closure reads it as the tree engine does
+    (``ct_sites.SiteClosure._reading_sign``, -1 on it; WP3.2 EWI-7b): Born
+    and virtual agree between the gauges (one point, 32 digits). With the
+    closure's own reading (sign 1) the Feynman-gauge Born was 56.37 against
+    2.86 in unitary gauge."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+
+    request = SliceRequest(
+        "z h > t t~",
+        {"QCD": 0, "QED": 2},
+        {"QCD": 2, "QED": 2},
+        fixed_parameters={"MB": "0", "ymb": "0", **ZERO_WIDTHS},
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    point = [
+        [repr(x) for x in leg] for leg in _process_point(gmu, "z h > t t~", 1000.0)
+    ]
+    results = {}
+    for gauge in ("unitary", "feynman"):
+        compiled = gmu if gauge == "unitary" else _feynman(gmu)
+        slice_ = LoopSlice.generate(compiled, request, loop_native)
+        assert slice_.compiled.ir.gauge == gauge
+        results[gauge] = slice_.evaluate(
+            point,
+            "250000",
+            parameters={"aS": "0.118"},
+            precision=Precision.arbitrary(32),
+        )
+    unitary, feynman = results["unitary"], results["feynman"]
+    for sector, born in unitary.born.items():
+        assert float(feynman.born[sector]) == pytest.approx(float(born), rel=1e-13)
+    for sector, laurent in unitary.components["virtual"].items():
+        scale = max(abs(float(x)) for x in laurent.coefficients)
+        for mine, theirs in zip(
+            feynman.components["virtual"][sector].coefficients,
+            laurent.coefficients,
+            strict=True,
+        ):
+            assert abs(float(mine) - float(theirs)) <= 1e-14 * scale
+
+
 # g t > t t t~ (binary64, on shell to rounding): a top line joined to a top
 # pair by a Z, a photon or a G0, with the gluon at leg 1.
 GT_TTTX_POINT = [
