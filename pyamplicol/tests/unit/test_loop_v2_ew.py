@@ -1299,14 +1299,10 @@ def test_every_referenced_coupling_equals_the_ufo_coupling(gmu, gmu_ufo, gmu_pla
 # B3 (unitary-gauge massive vectors in the loops) by EWI-4b (ew-gauge: every
 # electroweak request takes 't Hooft-Feynman gauge throughout, its
 # Goldstone-vector mixings are lowered as vertex insertions).
-# B4: more than one colour-singlet fermion line, refused when the request is
-# prepared, before any tree or counterterm is built
-# (``ct_sites.require_one_singlet_line``, until EWI-5).
-B4 = ("FermionSignError", r"colour-singlet fermion lines .*Koszul signs")
-# B4 in the loop: a colour-singlet fermion line through the loop
-# (``conventions.LeafWeights``, until EWI-5), reached after the families,
-# the counterterm program and the kernel catalogue.
-B4_LOOP = ("FermionSignError", r"colour-singlet fermion line through the loop")
+# B4 (several colour-singlet fermion lines; a colour-singlet line through the
+# loop) by EWI-5 (ew-leptons: the Koszul signs of the tree engine at the root
+# and in the loops, ``conventions.colour_singlet_sign``); their values against
+# MadLoop: ``test_loop_v2_ew_leptons``.
 LIFTED = None  # the rung generates (and runs its check)
 _PHOTON_ONLY = (23, 24, 25, 250, 251)  # Z, W, H and the Goldstones vetoed
 # Electroweak requests need every propagating width fixed to zero outside
@@ -1386,16 +1382,20 @@ def _rung(name, model, process, born, loop, blocker, **options):
 
 LADDER = [
     # Photon-only QED corrections of a lepton process: two colour-singlet
-    # fermion lines (B4, EWI-5; B2 was lifted by EWI-1).
+    # fermion lines, one through every loop (B4, lifted by EWI-5; B2 by
+    # EWI-1); its UV poles cancel. Its IR poles against the QED Catani
+    # operator: ``test_loop_v2_ew_leptons``.
     _rung(
         "qq_eemm_photon",
         "loop_qcd_qed_sm",
         "e- e+ > m- m+",
         {"QED": 2, "QCD": 0},
         {"QED": 4, "QCD": 0},
-        B4,
+        LIFTED,
         corrections=("QED",),
         particle_veto=_PHOTON_ONLY,
+        point=_MASSLESS_POINT,
+        poles="uv",
         fixed_parameters=_ZERO_WIDTHS,
     ),
     # Lifted by EWI-1 (B2 at the root: a lepton as leg 1); its values
@@ -1480,15 +1480,15 @@ LADDER = [
         LIFTED,
     ),
     # The G_mu ladder of PLAN wp32 §1 (real masses, widths zero). e- e+ >
-    # m- m+ has two colour-singlet fermion lines: B4 (EWI-5) is refused
-    # before its CT lowering, which M1 measured before that guard (EWI-1).
+    # m- m+ has two colour-singlet fermion lines (B4, lifted by EWI-5); its
+    # values against the MadLoop controls: ``test_loop_v2_ew_leptons``.
     _rung(
         "gmu_eemm",
         "loop_gmu",
         "e- e+ > m- m+",
         {"QED": 2, "QCD": 0},
         {"QED": 4, "QCD": 0},
-        B4,
+        LIFTED,
         corrections=("QED",),
         fixed_parameters=_G_MU_FIXED,
     ),
@@ -1523,15 +1523,17 @@ LADDER = [
         poles="uv",
         fixed_parameters=_G_MU_FIXED,
     ),
-    # The lepton line of the Z/photon decay runs through the loops (B4, EWI-5);
-    # g g > t t~ e- e+ lowers its G0-Z and G0-A mixings first (EWI-4b).
+    # The lepton line of the Z/photon decay runs through the loops (B4,
+    # lifted by EWI-5); g g > t t~ e- e+ lowers its G0-Z and G0-A mixings
+    # (EWI-4b). Each generates in about 10 min (8 GB); their values against
+    # the three-provider fixtures are EWI-7's.
     _rung(
         "gmu_uux_emepg",
         "loop_gmu",
         "u u~ > e- e+ g",
         {"QCD": 1, "QED": 2},
         {"QCD": 1, "QED": 4},
-        B4_LOOP,
+        LIFTED,
         corrections=("QCD", "QED"),
         fixed_parameters=_G_MU_FIXED,
     ),
@@ -1541,7 +1543,7 @@ LADDER = [
         "g g > t t~ e- e+",
         {"QCD": 2, "QED": 2},
         {"QCD": 2, "QED": 4},
-        B4_LOOP,
+        LIFTED,
         corrections=("QCD", "QED"),
         fixed_parameters=_G_MU_FIXED,
     ),
@@ -1551,7 +1553,7 @@ LADDER = [
         "g g > t t~ e- e+ g",
         {"QCD": 3, "QED": 2},
         {"QCD": 3, "QED": 4},
-        B4_LOOP,
+        LIFTED,
         corrections=("QCD", "QED"),
         fixed_parameters=_G_MU_FIXED,
     ),

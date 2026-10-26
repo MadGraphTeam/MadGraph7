@@ -8,26 +8,44 @@ leaf weights and the root closure complete them with one rule,
 ``conventions.colour_singlet_sign``: the Koszul sign of the blocks' singlet
 supports in the order they are read, times the merge sign of the open ends
 each line joins outside the blocks, listed (antiparticle, particle) as the
-tree engine's two-fermion merge takes them. Checks:
+tree engine's two-fermion merge takes them. Any number of singlet lines,
+mixed with any number of coloured ones (whose ordering the colour flow
+owns). Checks:
 
 * the rule's defining identity, against an independent count of inversions:
   the product of the blocks' own Koszul signs and the rule is the sign of the
   whole diagram, every line listed (antiparticle, particle), in every block
   order; with every block one source, that sign is the tree engine's
   ``FermionOrderingSign.tree_sign``;
-* processes with two colour-singlet lines, refused before EWI-5 (Born closure
-  / tree runtime 0.53 and 0.34): the Born closed at leg 1 is the tree
-  runtime's amplitude up to a real sign, with identical leptons too, and Born
-  and virtual (QCD corrections) are invariant under a relabelling of the
-  final state that changes the interleaving of the lines' supports (without
-  the loop's Koszul sign the virtual moves by O(1)); the leaf weights' fast
-  path equals the full rule there (``check_leaf_weights``, WP3.1 D1).
+* two colour-singlet lines and a quark line (QCD corrections, loop_sm),
+  refused before EWI-5 (Born closure / tree runtime 0.53 and 0.34): the Born
+  closed at leg 1 is the tree runtime's amplitude up to a real sign, with
+  identical leptons too; Born and virtual are invariant under a relabelling
+  of the final state that changes the interleaving of the lines' supports
+  (without the loop's Koszul sign the virtual moves by O(1)); the leaf
+  weights' fast path equals the full rule (``check_leaf_weights``, WP3.1 D1);
+  u u~ > e- e+ mu- mu+ equals MadLoop (``required/uux_emepmummp``);
+* nightly, full electroweak corrections with lepton lines through the loop:
+  the four MadLoop G_mu controls (``electroweak-*-control.json``, Feynman
+  gauge, lhv = 1) per Laurent coefficient and component (bare, R2, UV,
+  field and counterterm parts), Bhabha on loop_qcd_qed_sm against MadLoop
+  (``required/emep_emep_ew``: the s- and t-channel lines through the boxes),
+  O2 per family against the legacy engine (L1/L2) on e- e+ > mu- mu+ with
+  massless and massive muons, the photon-only QED corrections of
+  e- e+ > mu- mu+ on loop_qcd_qed_sm (UV poles cancel, IR poles are the QED
+  Catani operator's), the legacy engine's FFS projector exchange checked
+  against MadLoop before the legacy engine serves as the second engine, and
+  the native point inputs of e- e+ > mu- mu+ (a strict xfail until EWI-N).
 """
 
 from __future__ import annotations
 
 import itertools
+import json
+import math
 import random
+import shutil
+from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -42,7 +60,10 @@ from pyamplicol.loops.v2.conventions import (
 
 pytestmark = pytest.mark.loop_physics
 
+ROOT = Path(__file__).resolve().parents[2]
+FIXTURES = ROOT / "tests/fixtures/loop"
 TOLERANCE = 1e-12
+LAURENT = ("finite", "single_pole", "double_pole")
 _SIBLINGS: dict[str, object] = {}
 
 
@@ -60,6 +81,29 @@ def _sibling(name: str):
         spec.loader.exec_module(module)
         _SIBLINGS[name] = module
     return _SIBLINGS[name]
+
+
+def _metric(got: float, want: float, floor: float) -> float:
+    """The fixtures' metric: |a - b| / max(|a|, |b|, floor), the floor
+    |Born| times the loop coupling over 2 pi for Laurent coefficients."""
+
+    scale = max(abs(got), abs(want), floor)
+    return abs(got - want) / scale if scale else 0.0
+
+
+def _totals(result) -> tuple[float, list[float]]:
+    """(Born, the virtual's finite part, single and double pole), summed
+    over the squared-order sectors."""
+
+    born = sum(float(value) for value in result.born.values())
+    return born, _component(result, "virtual")
+
+
+def _component(result, name: str) -> list[float]:
+    total = [0.0, 0.0, 0.0]
+    for laurent in result.components[name].values():
+        total = [a + float(b) for a, b in zip(total, laurent.coefficients, strict=True)]
+    return total
 
 
 # ---------------------------------------------------------------- the rule
@@ -206,10 +250,11 @@ def test_singlet_sign_refuses_lines_it_cannot_pair():
         colour_singlet_sign([(1, 2)], [(0, ANTIPARTICLE, 0, PARTICLE)])
 
 
-# ------------------------------------------- two singlet lines (QCD, loop_sm)
+# --------------------------- two singlet lines and a quark line (QCD, loop_sm)
 
-ZERO_WIDTHS = {"MB": "0", "WT": "0", "WZ": "0", "WW": "0", "WH": "0"}
-PARAMETERS = {"aS": "0.118", "MT": "173"}
+# MadLoop's u u~ > e- e+ mu- mu+ [virt=QCD] (loop_sm-no_b_mass), whose fixed
+# parameters every slice of this section takes.
+FOUR_LEPTONS = "required/uux_emepmummp"
 # An exact massless 2 -> 4 point at sqrt(s) = 1000 (rational directions).
 FOUR_LEPTON_POINT = [
     ["500", "0", "0", "500"],
@@ -230,10 +275,14 @@ RELABELLINGS = [
 
 
 @pytest.fixture(scope="module")
-def four_leptons(loop_sm_compiled_model, loop_native):
+def four_leptons(loop_sm_compiled_model, loop_native, loop_reference):
+    """(slice factory, MadLoop reference): two lepton lines and a quark line
+    on loop_sm with QCD corrections, each process generated once."""
+
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.models.loading import load_compiled_model
 
+    reference = loop_reference(FOUR_LEPTONS)
     compiled = load_compiled_model(loop_sm_compiled_model)
     built = {}
 
@@ -245,23 +294,13 @@ def four_leptons(loop_sm_compiled_model, loop_native):
                     process,
                     {"QCD": 0, "QED": 4},
                     {"QCD": 2, "QED": 4},
-                    fixed_parameters=ZERO_WIDTHS,
+                    fixed_parameters=dict(reference["fixed_parameters"]),
                 ),
                 loop_native,
             )
         return built[process]
 
-    return build
-
-
-def _totals(result) -> tuple[float, list[float]]:
-    born = sum(float(value) for value in result.born.values())
-    virtual = [0.0, 0.0, 0.0]
-    for laurent in result.components["virtual"].values():
-        virtual = [
-            a + float(b) for a, b in zip(virtual, laurent.coefficients, strict=True)
-        ]
-    return born, virtual
+    return build, reference
 
 
 @pytest.mark.parametrize(("process", "relabelled", "legs"), RELABELLINGS)
@@ -280,25 +319,518 @@ def test_two_singlet_lines_are_invariant_under_relabelling(
 
     _born_closure_ratio = _sibling("test_loop_v2_ew_lines")._born_closure_ratio
     check_leaf_weights = _sibling("test_loop_v2_native_lowering").check_leaf_weights
-    first, second = four_leptons(process), four_leptons(relabelled)
+    build, reference = four_leptons
+    parameters = dict(reference["parameters"])
+    first, second = build(process), build(relabelled)
     ratio, residual = _born_closure_ratio(
-        first, FOUR_LEPTON_POINT, "1000000", PARAMETERS
+        first, FOUR_LEPTON_POINT, "1000000", parameters
     )
     assert abs(abs(ratio) - 1) <= TOLERANCE and abs(ratio.imag) <= TOLERANCE, ratio
     assert residual <= TOLERANCE, residual
     check_leaf_weights(first)
     born, virtual = _totals(
-        first.evaluate(FOUR_LEPTON_POINT, "1000000", parameters=PARAMETERS)
+        first.evaluate(FOUR_LEPTON_POINT, "1000000", parameters=parameters)
     )
     other_born, other_virtual = _totals(
         second.evaluate(
-            [FOUR_LEPTON_POINT[i] for i in legs], "1000000", parameters=PARAMETERS
+            [FOUR_LEPTON_POINT[i] for i in legs], "1000000", parameters=parameters
         )
     )
     assert abs(born - other_born) <= TOLERANCE * abs(born), (born, other_born)
     scale = max(map(abs, virtual))
     for mine, theirs in zip(virtual, other_virtual, strict=True):
-        assert abs(mine - theirs) <= 1e-12 * scale, (virtual, other_virtual)
+        assert abs(mine - theirs) <= TOLERANCE * scale, (virtual, other_virtual)
+
+
+def test_two_lepton_lines_and_a_quark_line_equal_madloop(four_leptons):
+    """u u~ > e- e+ mu- mu+ with QCD corrections equals MadLoop at the
+    reference's three points and scales, Born and every Laurent coefficient
+    to 1e-12 in the fixtures' metric (measured: 3.9e-14 for the finite part,
+    MadLoop's own estimate 5e-14 to 9e-14). The lepton lines' Z/photon blocks
+    interleave at the root and in every loop (B4)."""
+
+    build, reference = four_leptons
+    slice_ = build("u u~ > e- e+ m- m+")
+    alpha_s = float(reference["parameters"]["aS"])
+    for point, mu, row in zip(
+        reference["points"], reference["mu_r"], reference["rows"], strict=True
+    ):
+        result = slice_.evaluate(
+            point, str(Fraction(mu) ** 2), parameters=dict(reference["parameters"])
+        )
+        born, virtual = _totals(result)
+        madloop = row["providers"]["madloop"]
+        floor = abs(madloop["born"]) * alpha_s / (2 * math.pi)
+        assert _metric(born, madloop["born"], 0.0) <= TOLERANCE
+        for value, key in zip(virtual, LAURENT, strict=True):
+            assert _metric(value, madloop[key], floor) <= TOLERANCE, (key, value)
+
+
+# ------------------------------------- full electroweak corrections (nightly)
+
+# The G_mu inputs of the MadLoop controls (their ``parameters``).
+CONTROL_PARAMETERS = {
+    "Gf": "0.0000116639",
+    "MW": "80.419",
+    "MZ": "91.188",
+    "MH": "125",
+    "MT": "173.3",
+    "ymt": "173.3",
+    "aS": "0.118",
+}
+# Electroweak requests fix every width to zero outside the complex-mass
+# scheme (``ew_policy``, [U8]); the controls' massless b and tau.
+ZERO_WIDTHS = {"WT": "0", "WW": "0", "WZ": "0", "WH": "0"}
+G_MU_FIXED = {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", **ZERO_WIDTHS}
+# alpha_Gmu at the controls' inputs (the loop coupling of the metric's floor).
+ALPHA_GMU = 0.0075467722613403515
+# The controls' phase-space points (``phase_space_fixture``; the massive
+# control states its own ``exact_points``).
+CONTROL_POINTS = ROOT / "tools/loop_reference/uudd_qcd.json"
+# control -> (process, slice); the components MadLoop instruments: the full
+# virtual, the bare loops, R2, the UV vertex counterterms, the field
+# counterterms (no separate field amplitudes: zero) and all counterterms.
+CONTROLS = {
+    "electroweak-mumu-control": ("e- e+ > m- m+", "massless"),
+    "electroweak-mumu-scale-control": ("e- e+ > m- m+", "massless"),
+    "electroweak-eeuu-control": ("e- e+ > u u~", "massless"),
+    "electroweak-massive-mumu-control": ("e- e+ > m- m+", "massive"),
+}
+COMPONENTS = {
+    "full": ("virtual",),
+    "bare": ("bare",),
+    "r2": ("r2",),
+    "uv_local": ("uv",),
+    "uv": ("uv",),
+    "fields": ("uv_external_fields",),
+    "ct": ("r2", "uv", "uv_external_fields"),
+}
+
+
+def _massive_muon_ufo(loop_gmu_ufo, directory: Path, control) -> Path:
+    """The G_mu UFO with the massive-muon control's restriction card (its
+    exact text: MM = ymm = 0.105658 GeV, the rest the default restriction):
+    the model MadLoop generated the control with, which keeps the massless
+    leptons' counterterms."""
+
+    import hashlib
+
+    card = control["restriction_card_text"]
+    assert (
+        hashlib.sha256(card.encode()).hexdigest() == control["restriction_card_sha256"]
+    )
+    target = directory / "loop_qcd_qed_sm_Gmu_massive_muon"
+    shutil.copytree(
+        loop_gmu_ufo, target, ignore=shutil.ignore_patterns("__pycache__", "*.pkl")
+    )
+    (target / "restrict_default.dat").write_text(card)
+    return target
+
+
+@pytest.fixture(scope="module")
+def gmu_slices(loop_gmu_ufo, loop_native, tmp_path_factory):
+    """``slice(process, muons)``: full electroweak corrections (QED^4 loops
+    over QED^2 Borns, 't Hooft-Feynman gauge) on the G_mu UFO, with
+    massless or massive muons, each generated once (about 5 min)."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import compile_model_source
+
+    built = {}
+
+    def build(process: str, muons: str):
+        if (process, muons) not in built:
+            if muons == "massive":
+                control = json.loads(
+                    (FIXTURES / "electroweak-massive-mumu-control.json").read_text()
+                )
+                ufo = _massive_muon_ufo(
+                    loop_gmu_ufo, tmp_path_factory.mktemp("massive-muon"), control
+                )
+                fixed = ZERO_WIDTHS
+            else:
+                ufo, fixed = loop_gmu_ufo, G_MU_FIXED
+            compiled = compile_model_source(ufo, require_supported=False)
+            request = SliceRequest(
+                process,
+                {"QED": 2, "QCD": 0},
+                {"QED": 4, "QCD": 0},
+                corrections=("QED",),
+                fixed_parameters=fixed,
+                compatibility="gmu_particle_anti",
+                scale_parameter="MU_R",
+            )
+            built[process, muons] = LoopSlice.generate(compiled, request, loop_native)
+        return built[process, muons]
+
+    return build
+
+
+def _control_rows(control: dict):
+    """(point, mu_R^2, row) of every row of a MadLoop control."""
+
+    if control.get("exact_points"):
+        points = control["exact_points"]
+    else:
+        points = json.loads(CONTROL_POINTS.read_text())["points"]
+        points = [[[str(x) for x in leg] for leg in point] for point in points]
+    scales = control.get("mu_r2") or [
+        row.get("mu_r2", "1000000") for row in control["rows"]
+    ]
+    for index, row in enumerate(control["rows"]):
+        yield points[index % len(points)], row.get("mu_r2") or scales[index], row
+
+
+def _control_parameters(muons: str) -> dict[str, str]:
+    if muons == "massive":
+        return {**CONTROL_PARAMETERS, "MM": "0.105658", "ymm": "0.105658"}
+    return dict(CONTROL_PARAMETERS)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("name", tuple(CONTROLS))
+def test_electroweak_controls_equal_madloop(gmu_slices, name):
+    """The four MadLoop G_mu controls (full electroweak corrections, Feynman
+    gauge, lhv = 1; two colour-singlet lines, the lepton lines through the
+    boxes and vertex loops): Born and every Laurent coefficient of the full
+    virtual and of each instrumented component (bare loops, R2, UV vertex
+    counterterms, field counterterms, all counterterms) at 1e-12 in the
+    fixtures' metric, at every row's point and scale. The massive control
+    carries the muon's Yukawa couplings: G0, H and G+- loops on the muon
+    line, the Z-G0-H triangles included."""
+
+    control = json.loads((FIXTURES / f"{name}.json").read_text())
+    process, muons = CONTROLS[name]
+    slice_ = gmu_slices(process, muons)
+    worst: dict[str, float] = {}
+    for point, scale, row in _control_rows(control):
+        result = slice_.evaluate(point, scale, parameters=_control_parameters(muons))
+        born = sum(float(value) for value in result.born.values())
+        theirs = row["born"]["1"]
+        assert _metric(born, theirs, 0.0) <= TOLERANCE, (born, theirs)
+        floor = abs(theirs) * ALPHA_GMU / (2 * math.pi)
+        for key, parts in COMPONENTS.items():
+            if key not in row:
+                continue
+            mine = [0.0, 0.0, 0.0]
+            for part in parts:
+                mine = [
+                    a + b for a, b in zip(mine, _component(result, part), strict=True)
+                ]
+            for value, laurent in zip(mine, LAURENT, strict=True):
+                error = _metric(value, row[key]["1"][laurent], floor)
+                worst[key] = max(worst.get(key, 0.0), error)
+                assert error <= TOLERANCE, (key, laurent, value, row[key]["1"])
+    print(name, {key: f"{error:.1e}" for key, error in worst.items()})
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "WP3.2 EWI-N: the native point inputs of electroweak requests are not "
+        "exported yet"
+    ),
+)
+def test_mumu_control_validates_with_native_inputs(gmu_slices):
+    """e- e+ > mu- mu+ (full EW) through the native executor with native
+    point inputs: a strict xfail until EWI-N exports them, so that a native
+    gap shows here (WP3.2 M8), never as a silent fallback."""
+
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    control = json.loads((FIXTURES / "electroweak-mumu-control.json").read_text())
+    slice_ = gmu_slices("e- e+ > m- m+", "massless")
+    executor = NativeExecutor(slice_, forward=False, inputs="native")
+    point, scale, row = next(_control_rows(control))
+    (result,) = executor.evaluate([point], [scale], parameters=CONTROL_PARAMETERS)
+    mine = [float(x) for x in result.totals[:4]]
+    theirs = [row["born"]["1"], *(row["full"]["1"][key] for key in LAURENT)]
+    floor = abs(theirs[0]) * ALPHA_GMU / (2 * math.pi)
+    for index, (value, want) in enumerate(zip(mine, theirs, strict=True)):
+        assert _metric(value, want, 0.0 if index == 0 else floor) <= TOLERANCE
+
+
+# -------------------------------------------------- O2 against the legacy engine
+
+# Legacy (``loops.physical_source``) inputs of the G_mu controls: the
+# restriction "full" with the default restriction's zeros fixed.
+_LEGACY_ZEROS = (
+    "aEW0M1",
+    "MD",
+    "MU",
+    "MS",
+    "MC",
+    "MB",
+    "Me",
+    "MTA",
+    "lamWS",
+    "AWS",
+    "rhoWS",
+    "etaWS",
+    "ymdo",
+    "ymup",
+    "yms",
+    "ymc",
+    "ymb",
+    "yme",
+    "ymtau",
+)
+_LEGACY_ONES = ("epsUV", "epsIR", "LogSwitch", "GfRedefinitionChoice")
+# 60 digits (O2's arbitrary carrier, ``test_loop_v2_slice.O2_TOLERANCE``).
+O2_DIGITS = 60
+O2_TOLERANCE = 1e-50
+
+
+def _legacy_families(loop_gmu_ufo, muons: str, point, scale) -> dict:
+    """The legacy engine's per-family numerators of e- e+ > mu- mu+ (full
+    EW, G_mu) at one point, in ``tools/loop_reference/legacy_capture``'s
+    layout (60 digits)."""
+
+    import numpy as np
+
+    from pyamplicol.loops.covariant_model import build_covariant_structure
+    from pyamplicol.loops.physical_source import source_bare_program
+    from pyamplicol.models.loop_import import load_raw_loop_model
+    from tools.loop_reference.legacy_capture import _family_layout
+
+    zeros = _LEGACY_ZEROS + (("MM", "ymm") if muons == "massless" else ())
+    source = build_covariant_structure(
+        load_raw_loop_model(str(loop_gmu_ufo), restriction="full"),
+        compatibility="gmu_particle_anti",
+        fixed_parameters={
+            **dict.fromkeys(zeros, "0"),
+            **dict.fromkeys(_LEGACY_ONES, "1"),
+        },
+        covariant_multiplets={
+            23: [23, 250, 9000002, -9000002],
+            24: [24, 251, 9000003, -9000004],
+            -24: [-24, -251, 9000004, -9000003],
+        },
+    )
+    parameters = {**_control_parameters(muons), **ZERO_WIDTHS, "MU_R": "1000"}
+    program = source_bare_program(
+        source,
+        ("e-", "e+"),
+        ("m-", "m+"),
+        selected_corrections=["QED"],
+        born_order_bounds={"QCD": 0, "QED": 2},
+        loop_order_bounds={"QCD": 0, "QED": 4},
+        parameters=parameters,
+        arithmetic="arbitrary",
+        precision=O2_DIGITS,
+        reduction_engine="generic",
+        coefficient_engine="interpreted",
+    )
+    bare = program.bare
+    currents = bare.prepare_currents_native(np.asarray([point], dtype=str), [scale])
+    weights = getattr(bare, "dual_born_weights", None)
+    dual = None if weights is None else weights.evaluate_batch(currents.born)
+    rows = []
+    for family in bare.families:
+        values = family.projector.evaluate_batch(
+            bare.family_projection_arguments(currents, family, weights=dual)
+        ).to_decimal()
+        width = len(family.powers)
+        rows.append([values[i : i + width] for i in range(0, len(values), width)])
+    return {"families": _family_layout(bare), "rows": rows}
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("muons", ["massless", "massive"])
+def test_family_numerators_equal_the_legacy_engine(gmu_slices, loop_gmu_ufo, muons):
+    """O2 per family (DESIGN risk 2) on e- e+ > mu- mu+ with full EW
+    corrections: every legacy family's numerator equals the sum of the v2
+    families on its ring (v2 keeps the widths' labels apart: the W, Goldstone
+    and ghost rings at M_W, equal at zero widths) after an exact affine frame
+    map, symmetrised over the ring's automorphisms, coefficients weighted by
+    sqrt(s)^rank (``test_loop_v2_slice``), at 60 digits. This localises a
+    sign of a Goldstone, ghost or lepton line to a family: the families of
+    the lepton lines through the loop (Koszul signs) and, with massive
+    muons, of the Yukawa couplings (G0, H and G+- on the muon line, the Z G0
+    H triangles)."""
+
+    from pyamplicol.loops.v2 import reference_executor as rx
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.poly_affine import size, substitute
+
+    slice_o2 = _sibling("test_loop_v2_slice")
+    point = [["500", "0", "0", "500"], ["500", "0", "0", "-500"]]
+    point += [["500", "300", "0", "400"], ["500", "-300", "0", "-400"]]
+    if muons == "massive":
+        control = json.loads(
+            (FIXTURES / "electroweak-massive-mumu-control.json").read_text()
+        )
+        point = control["exact_points"][0]
+    scale = "1000000"
+    legacy = _legacy_families(loop_gmu_ufo, muons, point, scale)
+    slice_ = gmu_slices("e- e+ > m- m+", muons)
+    execution, momenta = slice_.family_numerators(
+        point,
+        scale,
+        parameters=_control_parameters(muons),
+        precision=Precision.arbitrary(O2_DIGITS),
+    )
+    legs = 4
+    signs = [1, 1, -1, -1]  # given momenta -> all incoming
+    rings = [
+        (
+            [
+                slice_o2._normal([c * s for c, s in zip(v, signs, strict=True)])
+                for v in family["shifts"]
+            ],
+            family["masses_squared"],
+        )
+        for family in legacy["families"]
+    ]
+    groups: dict[int, list] = {}
+    for (key, _orders), numerator in execution.numerators.items():
+        vectors, masses = slice_o2._ring(numerator.sequence, legs)
+        found = [
+            index
+            for index, (shifts, masses_) in enumerate(rings)
+            if slice_o2._maps(vectors, masses, shifts, masses_)
+        ]
+        assert len(found) == 1, key
+        groups.setdefault(found[0], []).append((numerator, vectors, masses))
+    assert sorted(groups) == list(range(len(rings)))  # no scaleless family here
+    layout, average = slice_.layout, slice_.normalisation.average
+    for index, members in groups.items():
+        family, (row,) = legacy["families"][index], legacy["rows"][index]
+        _first, vectors, masses = members[0]
+        rank = max(
+            [sum(p[:4]) for p in family["powers"]] + [n.rank for n, _v, _m in members]
+        )
+        dense = [rx.Complex(0, 0)] * size(rank)
+        for powers, (re, im) in zip(family["powers"], row, strict=True):
+            assert powers[4:] == [0, 0]
+            dense[layout.index[tuple(powers[:4])]] = rx.Complex(
+                Fraction(re), Fraction(im)
+            )
+
+        def frame(sign_shift):
+            sign, shift = sign_shift
+            return sign, [slice_o2._momentum(shift, momenta, mu) for mu in range(4)]
+
+        sign, shift = frame(slice_o2._maps(vectors, masses, *rings[index])[0])
+        theirs = substitute(dense, layout, sign=sign, shift=shift)
+        mine = [0] * len(theirs)
+        for numerator, other_vectors, other_masses in members:
+            (column,) = numerator.columns
+            part = [rx.exact(x) * Fraction(1, average) for x in column]
+            part += [0] * (len(theirs) - len(part))
+            if (other_vectors, other_masses) != (vectors, masses):
+                # Into the first member's frame.
+                sign, shift = frame(
+                    slice_o2._maps(vectors, masses, other_vectors, other_masses)[0]
+                )
+                part = substitute(part, layout, sign=sign, shift=shift)
+            mine = [a + b for a, b in zip(mine, part, strict=True)]
+        autos = slice_o2._maps(vectors, masses, vectors, masses)
+        if len(autos) > 1:
+            mine = slice_o2._symmetrised(mine, layout, momenta, autos)
+            theirs = slice_o2._symmetrised(theirs, layout, momenta, autos)
+        weights = slice_o2._weights(layout, len(theirs), momenta)
+        largest = max(
+            slice_o2._magnitude(b) * w for b, w in zip(theirs, weights, strict=True)
+        )
+        error = max(
+            slice_o2._magnitude(a - b) * w
+            for a, b, w in zip(mine, theirs, weights, strict=True)
+        )
+        assert error <= O2_TOLERANCE * largest, (masses, error / largest)
+
+
+# ------------------------------------------------ Bhabha (loop_qcd_qed_sm)
+
+BHABHA = "required/emep_emep_ew"
+
+
+@pytest.mark.loop_nightly
+def test_bhabha_equals_madloop(loop_qcd_qed_sm_ufo, loop_native, loop_reference):
+    """e- e+ > e- e+ with full electroweak corrections on loop_qcd_qed_sm
+    (alpha(M_Z) scheme, Feynman gauge) equals MadLoop at the reference's three
+    points and scales, Born and every Laurent coefficient to 1e-12 in the
+    fixtures' metric (measured: 5.8e-15). Two identical lepton lines in the
+    s- and t-channel Borns, both through the boxes: their relative sign is
+    the Koszul sign. Generation about 2 min."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import compile_model_source
+
+    reference = loop_reference(BHABHA)
+    compiled = compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
+    request = SliceRequest(
+        "e- e+ > e- e+",
+        {"QCD": 0, "QED": 2},
+        {"QCD": 0, "QED": 4},
+        corrections=("QED",),
+        fixed_parameters=dict(reference["fixed_parameters"]),
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    alpha = float(reference["derived_parameters"]["alpha"])
+    for point, mu, row in zip(
+        reference["points"], reference["mu_r"], reference["rows"], strict=True
+    ):
+        result = slice_.evaluate(
+            point, str(Fraction(mu) ** 2), parameters=dict(reference["parameters"])
+        )
+        born, virtual = _totals(result)
+        madloop = row["providers"]["madloop"]
+        floor = abs(madloop["born"]) * alpha / (2 * math.pi)
+        assert _metric(born, madloop["born"], 0.0) <= TOLERANCE
+        for value, key in zip(virtual, LAURENT, strict=True):
+            assert _metric(value, madloop[key], floor) <= TOLERANCE, (key, value)
+
+
+# ------------------------- photon-only QED corrections (loop_qcd_qed_sm)
+
+
+@pytest.mark.loop_nightly
+def test_photon_only_qed_poles_are_catani_and_uv_cancels(
+    loop_qcd_qed_sm_ufo, loop_native
+):
+    """e- e+ > mu- mu+ with photon-only QED corrections on loop_qcd_qed_sm
+    (Z, W, H and the Goldstones vetoed): a lepton line through every box and
+    vertex loop. The bare loops' UV poles cancel against the counterterms'
+    (``poles="uv"``: the renormalised virtual has no UV pole), and the
+    virtual's IR poles equal the QED Catani operator's prediction (EWI-6),
+    per sector, to 1e-12. Generation about 1 min."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import compile_model_source
+
+    compiled = compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
+    request = SliceRequest(
+        "e- e+ > m- m+",
+        {"QED": 2, "QCD": 0},
+        {"QED": 4, "QCD": 0},
+        corrections=("QED",),
+        particle_veto=(23, 24, 25, 250, 251),
+        fixed_parameters=ZERO_WIDTHS,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    point = [["500", "0", "0", "500"], ["500", "0", "0", "-500"]]
+    point += [["500", "240", "320", "300"], ["500", "-240", "-320", "-300"]]
+    parameters = {"aS": "0.118", "MT": "173"}
+    uv = slice_.evaluate(point, "1000000", parameters=parameters, poles="uv")
+    for sector, laurent in uv.pole_origins["uv"]["virtual"].items():
+        bare = [abs(float(x)) for x in uv.components["bare"][sector].coefficients]
+        assert max(bare[1:]) > 0
+        for pole in laurent.coefficients[1:]:
+            assert abs(float(pole)) <= TOLERANCE * max(bare), (sector, laurent)
+    result = slice_.evaluate(point, "1000000", parameters=parameters)
+    assert result.ir_poles is not None
+    for sector, virtual in result.components["virtual"].items():
+        single, double = (complex(x) for x in result.ir_poles[sector])
+        scale = max(abs(single), abs(double))
+        assert scale > 0
+        assert abs(complex(virtual.single_pole) - single) <= TOLERANCE * scale
+        assert abs(complex(virtual.double_pole) - double) <= TOLERANCE * scale
 
 
 # ------------------------------- the legacy loop path as an EW oracle (L1/L2)
@@ -362,9 +894,7 @@ def test_legacy_ffs_projector_exchange_is_checked_by_the_massive_muon_control(
     expected = np.asarray(reference["ffs_bare"])
 
     def ffs_subset():
-        structure, prepared = legacy.source_model.__wrapped__(
-            loop_gmu_ufo, loop_native
-        )
+        structure, prepared = legacy.source_model.__wrapped__(loop_gmu_ufo, loop_native)
         from symbolica import E
 
         from pyamplicol.loops.physical_source import source_model_program
