@@ -70,6 +70,7 @@ _PAYLOAD_ROLES = {
     "api-build-file",
     "sdk-metadata",
     "process-groups",
+    "payload-container",
 }
 _RUNTIME_IDENTITY_PAYLOAD_ROLES = frozenset(
     {

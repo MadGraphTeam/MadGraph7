@@ -149,6 +149,14 @@ _EAGER_PACK_IDENTITY_SCHEMA_VERSION = 1
 _EVALUATOR_PAYLOAD_CONTAINER_EXTENSION = "evaluator_payload_container"
 _RECURRENCE_BOOTSTRAP_FILENAME = "recurrence-bootstrap.bin"
 _EVALUATOR_PAYLOAD_CONTAINER_PATH = "evaluators.pacbin"
+_PAYLOAD_CONTAINER_PATH = "payloads.pacbin"
+_PAYLOAD_CONTAINER_ROLE = "payload-container"
+# trees whose payloads generation.pack_payloads moves into payloads.pacbin
+_PACKED_PAYLOAD_PREFIXES = (
+    "processes/",
+    "recurrence/schedules/",
+    "model/eager-kernels/",
+)
 _COMPILED_COLOR_CONTRACTION_MEMBER_PATH = "compiled-color.pacrclr3"
 _EVALUATOR_PAYLOAD_CONTAINER_KIND = "pyamplicol-evaluator-payload-container"
 _EVALUATOR_PAYLOAD_CONTAINER_SCHEMA_VERSION = 1
@@ -945,6 +953,11 @@ def write_schema_v3_artifact(
     existing = load_manifest(output) if mode == "append" else None
     if existing is not None:
         _reject_legacy_eager_append(existing)
+        if any(record.role == _PAYLOAD_CONTAINER_ROLE for record in existing.payloads):
+            raise ValueError(
+                "cannot append to an artifact with packed payloads; regenerate it "
+                "with mode='replace'"
+            )
     hook = api_bundle_hook or _default_api_bundle_hook()
     requested_config = _config_payload(configuration.requested)
     effective_config = _config_payload(configuration.effective)
@@ -1230,6 +1243,8 @@ def write_schema_v3_artifact(
                 compiled_model=compiled_model,
                 process_groups=group_map,
             )
+        if _payloads_packed(configuration.effective):
+            _pack_payloads(builder)
         builder.finalize(
             kind=(
                 "pyamplicol-process"
@@ -1269,9 +1284,13 @@ def write_schema_v3_artifact(
             )
 
     manifest = load_manifest(output)
-    _validate_artifact_references(manifest)
+    packed = _validate_artifact_references(manifest)
     files = tuple(
-        [output / record.path for record in manifest.payloads]
+        [
+            output / record.path
+            for record in manifest.payloads
+            if record.path not in packed
+        ]
         + [output / "artifact.json"]
     )
     return ArtifactWriteResult(
@@ -5366,8 +5385,11 @@ def _call_api_bundle_hook(
     return "API"
 
 
-def _validate_artifact_references(manifest: ArtifactManifest) -> None:
+def _validate_artifact_references(manifest: ArtifactManifest) -> frozenset[str]:
+    """Check the payload references and files; return the packed payload paths."""
+
     declared = {record.path for record in manifest.payloads}
+    packed = _validate_payload_container(manifest)
     _validate_evaluator_payload_container(manifest)
     _validate_recurrence_schedule_sharing(manifest)
     required = {
@@ -5400,6 +5422,99 @@ def _validate_artifact_references(manifest: ArtifactManifest) -> None:
         raise ValueError(
             "artifact contains undeclared files: " + ", ".join(sorted(undeclared))
         )
+    if actual & packed:
+        raise ValueError(
+            "packed payloads are also stored as files: "
+            + ", ".join(sorted(actual & packed))
+        )
+    return packed
+
+
+def _payloads_packed(config: GenerationConfig | RunConfig) -> bool:
+    generation = config if isinstance(config, GenerationConfig) else config.generation
+    return bool(generation.pack_payloads)
+
+
+def _is_packable_payload(record: PayloadRecord) -> bool:
+    path = record.path
+    return (
+        path.startswith(_PACKED_PAYLOAD_PREFIXES)
+        and not record.executable
+        # nested containers below processes/ are opened as files by their loaders
+        and not (path.startswith("processes/") and path.endswith(".pacbin"))
+        # a loose bootstrap sidecar selects the fast recurrence loading path
+        and not path.endswith("/recurrence-bootstrap.bin")
+    )
+
+
+def _pack_payloads(builder: ArtifactBuilder) -> None:
+    """Move the packable staged payloads into payloads.pacbin.
+
+    Their manifest records are kept, so the artifact identity does not change.
+    """
+
+    records = [
+        record for record in builder.payload_records() if _is_packable_payload(record)
+    ]
+    if not records:
+        return
+    index = write_pacbin_atomic(
+        builder.staged_path(_PAYLOAD_CONTAINER_PATH),
+        (
+            PacbinMemberSource(
+                record.path,
+                PacbinMemberKind.DECLARED_PAYLOAD,
+                builder.staged_path(record.path),
+            )
+            for record in records
+        ),
+    )
+    members = {member.logical_path: member for member in index.members}
+    for record in records:
+        member = members[record.path]
+        if member.length != record.size_bytes or member.sha256 != record.sha256:
+            raise ValueError(f"packed payload {record.path!r} changed while packing")
+    for record in records:
+        builder.staged_path(record.path).unlink()
+    builder.register_staged_file(
+        _PAYLOAD_CONTAINER_PATH,
+        role=_PAYLOAD_CONTAINER_ROLE,
+        media_type="application/octet-stream",
+    )
+
+
+def _validate_payload_container(manifest: ArtifactManifest) -> frozenset[str]:
+    """Check that the payload container holds exactly declared payloads."""
+
+    containers = [
+        record for record in manifest.payloads if record.role == _PAYLOAD_CONTAINER_ROLE
+    ]
+    if not containers:
+        return frozenset()
+    if len(containers) != 1 or containers[0].path != _PAYLOAD_CONTAINER_PATH:
+        raise ValueError(
+            f"an artifact declares at most one payload container, at "
+            f"{_PAYLOAD_CONTAINER_PATH!r}"
+        )
+    records = {record.path: record for record in manifest.payloads}
+    with PacbinReader.open(
+        manifest.root / _PAYLOAD_CONTAINER_PATH, verify_payloads=False
+    ) as reader:
+        members = reader.members
+    for member in members:
+        record = records.get(member.logical_path)
+        if (
+            record is None
+            or member.kind is not PacbinMemberKind.DECLARED_PAYLOAD
+            or record.role == _PAYLOAD_CONTAINER_ROLE
+            or record.executable
+            or member.length != record.size_bytes
+            or member.sha256 != record.sha256
+        ):
+            raise ValueError(
+                f"invalid payload container member {member.logical_path!r}"
+            )
+    return frozenset(member.logical_path for member in members)
 
 
 def _validate_recurrence_schedule_sharing(manifest: ArtifactManifest) -> None:

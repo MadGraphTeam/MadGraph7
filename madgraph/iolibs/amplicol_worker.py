@@ -47,7 +47,8 @@ def generate_artifact(pyamplicol, artifact, accuracy, process, model):
         'process': {'multiparticles': process['multiparticles'],
                     'coupling_order_policy': 'explicit',
                     'max_coupling_orders': process['orders']},
-        'generation': {'emit_api_bundle': True,
+        # pack_payloads: one payloads.pacbin instead of files per process
+        'generation': {'emit_api_bundle': True, 'pack_payloads': True,
                        'relation_discovery': {'mode': 'off'}},
         'evaluator': {'backend': 'jit', 'execution_mode': 'recurrence',
                       'jit': {'optimization_level': 2}},

@@ -1095,3 +1095,99 @@ def test_process_group_update_waits_for_the_generation_lock(
     writer.join()
     assert read_process_groups(root) is not None
     load_manifest(root, verify_payloads=True)
+
+
+def _build_packable(path: Path, *, pack: bool) -> None:
+    with ArtifactBuilder(path) as builder:
+        builder.add_json(
+            "physics/process.json",
+            {"schema_version": 1},
+            role="runtime-physics",
+            process_id="dd_to_z",
+        )
+        builder.add_json(
+            "processes/dd_to_z/execution.json",
+            {"plan": [1, 2, 3]},
+            role="evaluator-manifest",
+            process_id="dd_to_z",
+        )
+        for relative, content in (
+            ("processes/dd_to_z/recurrence-binding.bin", b"binding"),
+            ("processes/dd_to_z/eager-runtime.pacbin", b"nested container"),
+            ("recurrence/schedules/ab/recurrence-runtime.pacbin", b"schedule"),
+        ):
+            builder.add_bytes(
+                relative,
+                content,
+                role="evaluator-manifest",
+                media_type="application/octet-stream",
+                process_id="dd_to_z",
+            )
+        if pack:
+            generation_artifact_writer._pack_payloads(builder)
+        builder.finalize(
+            kind="pyamplicol-process",
+            producer=_producer(),
+            model=_model(),
+            configuration=_configuration(),
+            processes=[_process()],
+            default_process_id="dd_to_z",
+            runtime=_runtime(),
+        )
+
+
+def test_packed_payloads_keep_records_and_artifact_identity(tmp_path: Path) -> None:
+    _build_packable(tmp_path / "loose", pack=False)
+    _build_packable(tmp_path / "packed", pack=True)
+    loose = load_manifest(tmp_path / "loose")
+    packed = load_manifest(tmp_path / "packed")
+
+    assert packed.artifact_id == loose.artifact_id
+    assert {record.path for record in packed.payloads} == {
+        record.path for record in loose.payloads
+    } | {"payloads.pacbin"}
+    assert generation_artifact_writer._validate_payload_container(packed) == {
+        "processes/dd_to_z/execution.json",
+        "processes/dd_to_z/recurrence-binding.bin",
+        "recurrence/schedules/ab/recurrence-runtime.pacbin",
+    }
+    root = tmp_path / "packed"
+    assert not [
+        path for path in root.rglob("*") if path.is_dir() and not any(path.iterdir())
+    ]
+    assert not (root / "recurrence").exists()
+    assert not (root / "processes/dd_to_z/execution.json").exists()
+    # a nested container stays a file for the loaders that open it
+    assert (root / "processes/dd_to_z/eager-runtime.pacbin").is_file()
+    with PacbinReader.open(root / "payloads.pacbin") as reader:
+        assert (
+            reader.read_member(
+                "processes/dd_to_z/recurrence-binding.bin", length=len(b"binding")
+            )
+            == b"binding"
+        )
+
+
+def test_payload_container_must_match_its_records(tmp_path: Path) -> None:
+    from pyamplicol.generation.evaluator_container import (
+        PacbinMemberKind,
+        PacbinMemberSource,
+        write_pacbin_atomic,
+    )
+
+    root = tmp_path / "packed"
+    _build_packable(root, pack=True)
+    container = root / "payloads.pacbin"
+    container.chmod(0o644)
+    write_pacbin_atomic(
+        container,
+        [
+            PacbinMemberSource(
+                "processes/dd_to_z/recurrence-binding.bin",
+                PacbinMemberKind.DECLARED_PAYLOAD,
+                io.BytesIO(b"tampered"),
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="invalid payload container member"):
+        generation_artifact_writer._validate_payload_container(load_manifest(root))

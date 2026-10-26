@@ -102,6 +102,8 @@ mode = "error"
 workers = "auto"
 # generation.emit_api_bundle: Emit Python/Rust/C/C++/Fortran/UMAMI API bundle. Default true.
 emit_api_bundle = true
+# generation.pack_payloads: Store per-process payloads and recurrence schedules in one payloads.pacbin. Default false.
+pack_payloads = false
 [generation.validation]
 # generation.validation.enabled: Run generation validation. Default true.
 enabled = true

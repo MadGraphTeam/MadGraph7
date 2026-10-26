@@ -371,6 +371,7 @@ class ArtifactBuilder:
     ) -> Path:
         if not self._payloads:
             raise ValueError("an artifact must contain at least one payload")
+        self._remove_empty_directories()
         manifest_extensions = dict(extensions or {})
         supplied_identity = manifest_extensions.get(ARTIFACT_IDENTITY_EXTENSION)
         expected_identity = artifact_identity_extension()
@@ -408,6 +409,15 @@ class ArtifactBuilder:
         path.chmod(0o644)
         fsync_file(path)
         return path
+
+    def _remove_empty_directories(self) -> None:
+        """Remove the directories left empty by payloads moved into containers."""
+
+        root = self._root()
+        for directory, _, _ in os.walk(root, topdown=False):
+            if Path(directory) != root:
+                with suppress(OSError):
+                    os.rmdir(directory)
 
     def __exit__(self, *exception: object) -> bool:
         if exception[0] is None and not (self._root() / MANIFEST_NAME).is_file():

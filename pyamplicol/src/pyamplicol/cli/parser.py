@@ -367,6 +367,12 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--pack-payloads",
+        dest="generation.pack_payloads",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--validation",
         dest="generation.validation.enabled",
         action=argparse.BooleanOptionalAction,

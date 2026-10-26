@@ -655,6 +655,8 @@ class GenerationConfig:
     )
     workers: AutoInt = field(default="auto", metadata=_setting("auto_int"))
     emit_api_bundle: bool = field(default=True, metadata=_setting("bool"))
+    # store per-process payloads and schedules in one payloads.pacbin
+    pack_payloads: bool = field(default=False, metadata=_setting("bool"))
     validation: GenerationValidationConfig = field(
         default_factory=GenerationValidationConfig, metadata=_section()
     )
@@ -673,6 +675,8 @@ class GenerationConfig:
         )
         if not isinstance(self.emit_api_bundle, bool):
             raise ConfigurationError("generation.emit_api_bundle must be a boolean")
+        if not isinstance(self.pack_payloads, bool):
+            raise ConfigurationError("generation.pack_payloads must be a boolean")
         if not isinstance(self.validation, GenerationValidationConfig):
             raise ConfigurationError(
                 "generation.validation must be a GenerationValidationConfig"
