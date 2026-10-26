@@ -7232,8 +7232,9 @@ class RunCardMG7(RunCard):
         'ievo_eva', 'evaorder', 'event_norm', 'dynamical_scale_choice',
         'nevents',
         # keys read by the reused madevent post-processing tools (shower, ...).
-        # mg7 does no MLM/CKKW merging, so these all take their "no merging"
-        # value, which keeps the tools on the plain (unmatched) code path.
+        # mg7 does no CKKW merging, so those take their "no merging" value; an
+        # MLM run (dynamical_scale_choice = "mlm" with xqcut > 0) reports
+        # ickkw = 1 and its xqcut, so that the shower does the jet matching.
         'ktdurham', 'ptlund', 'xqcut', 'maxjetflavor', 'sys_matchscale',
         'dparameter', 'lhaid', 'iseed', 'python_seed',
         # read by MadSpin (check_launch, do_import) and by Banner.write for
@@ -7254,6 +7255,16 @@ class RunCardMG7(RunCard):
         'half_transverse_mass': 3,
         'transverse_energy': 1,
     }
+
+    def is_mlm_merged(self):
+        """Whether the events are an MLM merged sample: clustered with
+        dynamical_scale_choice = "mlm" and vetoed at a merging cut xqcut > 0,
+        on hadronic beams. Such a sample needs MLM jet matching in the shower
+        (ickkw = 1 for the madevent tools) or it double counts."""
+        beam = self['beam']
+        return (beam['dynamical_scale_choice'] == 'mlm'
+                and not bool(beam['leptonic'])
+                and float(self['phasespace']['xqcut']) > 0)
 
     def _legacy_compat(self, key):
         beam = self['beam']
@@ -7282,7 +7293,9 @@ class RunCardMG7(RunCard):
             return float(beam['scale_factor'])
         if key in ('mur_over_ref', 'muf_over_ref'):
             return 1.0
-        if key in ('ickkw', 'ievo_eva', 'evaorder'):
+        if key == 'ickkw':
+            return 1 if self.is_mlm_merged() else 0
+        if key in ('ievo_eva', 'evaorder'):
             return 0
         if key == 'event_norm':
             return 'average'
@@ -7290,15 +7303,23 @@ class RunCardMG7(RunCard):
             if beam['fixed_ren_scale'] and beam['fixed_fact_scale']:
                 return -1  # fixed scale: no dynamical-scale variation
             return self._dyn_scale_legacy.get(beam['dynamical_scale_choice'], -1)
-        # --- merging / matching: mg7 does none, keep the "off" values ---
+        # --- merging / matching: MLM through ickkw / xqcut, no CKKW ---
         if key in ('ktdurham', 'ptlund'):
-            return -1.0          # <=0 => no CKKW / no MLM shower matching
-        if key in ('xqcut', 'sys_matchscale'):
+            return -1.0          # <=0 => no CKKW-L merging
+        if key == 'xqcut':
+            if self.is_mlm_merged():
+                return float(self['phasespace']['xqcut'])
+            return 0.0
+        if key == 'sys_matchscale':
             return 0.0
         if key == 'maxjetflavor':
+            # JetMatching:nQmatch: the heaviest quark the matching treats as a
+            # jet, which must be the one the clustering treated as a jet
+            if self.is_mlm_merged():
+                return int(beam['max_jet_flavor'])
             return 5
         if key == 'dparameter':
-            return 0.4           # only used by the (unused) matching machinery
+            return 0.4           # only used by the (unused) CKKW-L machinery
         # --- run / seed bookkeeping ---
         if key == 'lhaid':
             return self.get_lhapdf_id()
@@ -7739,6 +7760,9 @@ class RunCardMG7(RunCard):
             jet = self._lo_jet_group(flavours)
             self.dynamic_sections['multiparticles']['jet'] = jet
             changes['multiparticles.jet'] = jet
+            # the MLM clustering's jet flavours, which madevent's maxjetflavor
+            # also sets
+            put('beam.max_jet_flavor', flavours)
 
         else:
             # per-pdg cuts, written {pdg: value, ...} as in the run_card.dat
@@ -8165,6 +8189,14 @@ class RunCardMG7(RunCard):
         # lepton beams respectively); treat them like their concrete partners.
         hadronic = set([1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 21, 22, 81, -81])
         leptons = set([11, -11, 13, -13, 15, -15, 82, -82])
+
+        if beam_id & hadronic:
+            # the heaviest quark the MLM clustering treats as a jet follows the
+            # flavour scheme of the model, as madevent's maxjetflavor does: 5
+            # once the b is massless and in the proton
+            nflav = get_model_flavour_scheme(proc_def) or 4
+            self['beam']['max_jet_flavor'] = max(
+                [nflav] + [abs(i) for i in beam_id if -7 < i < 7])
 
         if beam_id and beam_id <= leptons:
             # lepton collider: no PDF, lower default energy, no hadronic cuts
@@ -8655,9 +8687,10 @@ class RunCardMG7(RunCard):
         'iseed', 'nhel', 'limhel', 'hel_recycling', 'hel_filtering',
         'hel_splitamp', 'hel_zeroamp',
         # matching / merging
-        'ickkw', 'xqcut', 'ktdurham', 'dparameter', 'ptlund', 'highestmult',
+        # (ickkw, xqcut and auto_ptj_mjj are translated: see MLM merging)
+        'ktdurham', 'dparameter', 'ptlund', 'highestmult',
         'ktscheme', 'alpsfact', 'chcluster', 'pdfwgt', 'asrwgtflavor',
-        'clusinfo', 'auto_ptj_mjj', 'pdgs_for_merging_cut',
+        'clusinfo', 'pdgs_for_merging_cut',
         # bias
         'bias_module', 'bias_parameters',
         # unsupported cuts: needs the opposite-hemisphere condition on the two
@@ -8775,6 +8808,31 @@ class RunCardMG7(RunCard):
         elif dyn not in (-1, 10) and nondefault('dynamical_scale_choice'):
             dropped.append('dynamical_scale_choice=%s (no mg7 equivalent)' % dyn)
 
+        # --- MLM merging ---
+        # madevent's ickkw = 1 back-clusters every event and vetoes it at
+        # xqcut; with its default dynamical_scale_choice -1 the scales are
+        # setclscales', which is mg7's "mlm" choice under scale_scheme
+        # "madevent". mg7 has no MLM with a closed-form scale choice: the
+        # clustering scales are used whatever dynamical_scale_choice said.
+        ickkw = int(lo['ickkw']) if 'ickkw' in lo else 0
+        if ickkw == 1:
+            xqcut = float(lo['xqcut']) if 'xqcut' in lo else 0.
+            if xqcut > 0:
+                mg7.set('beam.dynamical_scale_choice', 'mlm')
+                mg7.set('beam.scale_scheme', 'madevent')
+                mg7.set('phasespace.xqcut', xqcut)
+                if 'auto_ptj_mjj' in lo:
+                    mg7.set('phasespace.auto_ptj_mjj', bool(lo['auto_ptj_mjj']))
+                if dyn != -1:
+                    dropped.append('dynamical_scale_choice=%s with ickkw=1 '
+                                   '(mg7 uses the MLM clustering scales)' % dyn)
+            else:
+                dropped.append('ickkw=1 with xqcut=%s (no merging cut: not '
+                               'merged)' % xqcut)
+        elif nondefault('xqcut'):
+            dropped.append('xqcut=%s without ickkw=1 (no MLM merging)'
+                           % lo['xqcut'])
+
         # --- SDE strategy ---
         sde = lo['SDE_strategy'] if 'SDE_strategy' in lo else 1
         mg7.set('phasespace.sde_strategy',
@@ -8803,6 +8861,7 @@ class RunCardMG7(RunCard):
         if 'maxjetflavor' in lo:
             mg7.dynamic_sections['multiparticles']['jet'] = \
                 cls._lo_jet_group(int(lo['maxjetflavor']))
+            mg7.set('beam.max_jet_flavor', int(lo['maxjetflavor']))
 
         # --- cuts (rebuild from the LO card) ---
         cuts = collections.OrderedDict()
