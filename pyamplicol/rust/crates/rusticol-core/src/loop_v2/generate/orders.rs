@@ -13,7 +13,7 @@ use super::FastMap;
 pub type OrderVec = Vec<(u16, i64)>;
 
 /// Interned order vectors with memoised sums.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct OrderSpace {
     vectors: Vec<OrderVec>,
     index: FastMap<OrderVec, u32>,

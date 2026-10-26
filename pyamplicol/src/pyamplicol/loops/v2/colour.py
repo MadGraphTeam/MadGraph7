@@ -944,10 +944,19 @@ class Primitive:
         return _reduced_primitive(self, legs)
 
 
+#: Quark-ring reductions made natively by the seed stage
+#: (``native_seeds._prime_reduction``), taken by ``_reduced_primitive`` in
+#: place of ``reduce_network`` so its cache holds them.
+_NATIVE_REDUCED: dict[tuple[Primitive, tuple[ColorLeg, ...]], ConnectedColorTensor] = {}
+
+
 @lru_cache(maxsize=1 << 14)
 def _reduced_primitive(
     primitive: Primitive, legs: tuple[ColorLeg, ...]
 ) -> ConnectedColorTensor:
+    native = _NATIVE_REDUCED.pop((primitive, legs), None)
+    if native is not None:
+        return native
     external = {leg.label: leg.label for leg in legs}
     return reduce_network(primitive.network(), legs, external)
 
@@ -1980,6 +1989,15 @@ def _at_three(
 SeedCombination = tuple[tuple[int, ExactColorCoefficient], ...]
 
 
+def _native_seeds() -> Any:
+    """The native seed stage module when it is switched on (WP3.1 B; the
+    one flag ``native_seeds.NATIVE``), else None."""
+
+    from . import native_seeds
+
+    return native_seeds if native_seeds.NATIVE else None
+
+
 def build_seed_table(
     colour: SeedColour,
     skeletons: Iterable[Skeleton],
@@ -1997,8 +2015,13 @@ def build_seed_table(
     outside every certified class keep their generic seed. ``basis``
     defaults to the tree engine's Born basis (``born_basis``); any set of
     literal colour tensors whose amplitudes the caller provides works.
+
+    Runs natively (``native_seeds``, WP3.1 B) unless ``native_seeds.NATIVE``
+    is off: this Python stage is the native stage's oracle.
     """
 
+    if (native := _native_seeds()) is not None:
+        return native.build_seed_table(colour, skeletons, basis, compress=compress)
     if basis is None:
         basis = born_basis(colour.blocks)
     skeletons = list(skeletons)
@@ -2030,8 +2053,13 @@ def extend_seed_table(
 ) -> tuple[SeedTable, dict[Skeleton, SeedCombination]]:
     """``table`` and ``class_of`` with the seeds of further skeletons (e.g.
     new readings of the same skeletons). Existing classes keep their index;
-    compressions are used only where ``table`` holds their certificate."""
+    compressions are used only where ``table`` holds their certificate.
+    Native like ``build_seed_table``."""
 
+    if (native := _native_seeds()) is not None:
+        return native.extend_seed_table(
+            table, class_of, colour, skeletons, compress=compress
+        )
     return _extended(
         table,
         class_of,
