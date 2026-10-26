@@ -73,56 +73,6 @@ class NormalizedTensorExpression:
     tensor_heads: tuple[str, ...]
 
 
-# The four-dimensional Levi-Civita tensor of UFO Lorentz structures (``Epsilon``,
-# e.g. the axial R2 of a Z with gluons). The name is the one the loop
-# catalogue's counterterm sites introduced (WP3.1 I-AX), so that their kernels
-# stay byte-identical.
-LEVI_CIVITA = symbols.qualified_name("loop_v2_ufo_levi_civita")
-
-
-def _permutation_sign(permutation: Sequence[int]) -> int:
-    sign, order = 1, list(permutation)
-    for index in range(len(order)):
-        while order[index] != index:
-            target = order[index]
-            order[index], order[target] = order[target], order[index]
-            sign = -sign
-    return sign
-
-
-@cache
-def levi_civita_components() -> tuple[int, ...]:
-    """The dense components of ``LEVI_CIVITA`` in row-major index order.
-
-    ALOHA (``aloha_object.L_Epsilon``) represents UFO's ``Epsilon`` by its
-    contravariant components with epsilon^{0123} = -1 (epsilon_{0123} = +1)
-    and contracts every Lorentz index with the metric. Spenso contracts
-    Minkowski slots the same way (vectors are contravariant components), so
-    the components are ALOHA's: minus the sign of the index permutation.
-    Tree kernels (``tests/unit/test_model_levi_civita_kernels.py``) and the
-    loop catalogue's ``ct-site`` kernels (``test_loop_v2_levi_civita``) of
-    ``R2_GGZ`` and ``R2_GGGVa`` equal compiled ALOHA routines to rounding.
-    """
-
-    return tuple(
-        -_permutation_sign(axes) if len(set(axes)) == 4 else 0
-        for axes in product(range(4), repeat=4)
-    )
-
-
-def levi_civita_tensor() -> Any:
-    """``LEVI_CIVITA`` as a dense Spenso tensor, for a tensor library."""
-
-    _ensure_symbolica()
-    from symbolica.community.tensor import Tensor
-
-    minkowski = Representation.mink(4)
-    return Tensor.dense(
-        TensorName(LEVI_CIVITA)(*[minkowski] * 4),
-        [E(str(value)) for value in levi_civita_components()],
-    )
-
-
 def normalize_lorentz_expression(
     source: str,
     spins: Sequence[int],
@@ -220,6 +170,67 @@ def normalize_vertex_tensor_term(
             model_symbols=model_symbols,
         ),
         normalize_color_expression(color, color_representations),
+    )
+
+
+# The four-dimensional Levi-Civita tensor of UFO Lorentz structures
+# (``Epsilon``: the axial R2 of a Z with gluons, ``R2_GGZ`` and ``R2_GGGVa``).
+# The name is the one the loop catalogue's counterterm sites introduced
+# (WP3.1 I-AX); tree kernels and sites contract the same dense tensor.
+LEVI_CIVITA = symbols.qualified_name("loop_v2_ufo_levi_civita")
+
+
+def _permutation_sign(permutation: Sequence[int]) -> int:
+    sign, order = 1, list(permutation)
+    for index in range(len(order)):
+        while order[index] != index:
+            target = order[index]
+            order[index], order[target] = order[target], order[index]
+            sign = -sign
+    return sign
+
+
+@cache
+def levi_civita_components() -> tuple[int, ...]:
+    """The dense components of ``LEVI_CIVITA`` in row-major index order.
+
+    ALOHA (``aloha_object.L_Epsilon``) represents UFO's ``Epsilon`` by its
+    contravariant components with epsilon^{0123} = -1 (epsilon_{0123} = +1)
+    and contracts every Lorentz index with the metric. Spenso contracts
+    Minkowski slots the same way (vectors are contravariant components), so
+    the components are ALOHA's: minus the sign of the index permutation. With
+    the engine's gamma matrices (``gamma5`` = i gamma^0 gamma^1 gamma^2
+    gamma^3) this reads Tr(gamma5 gamma^mu gamma^nu gamma^rho gamma^sigma) =
+    4 i epsilon^{mu nu rho sigma}, as with ALOHA's.
+
+    Evidence: the tree kernels of ``R2_GGZ`` and ``R2_GGGVa`` equal compiled
+    ALOHA routines on identical numbers
+    (``tests/unit/test_model_levi_civita_kernels.py``); with them the
+    Levi-Civita R2 of ``u u~ > e- e+ g g`` with ``particle_veto = [d, s, b]``
+    (an incomplete doublet: the cells do not cancel and are lowered) equals
+    MadLoop's ``/ d s b`` R2, and its bare part MadLoop's, separately to
+    1e-12, and the R2 restores the gluon Ward identity that the anomalous
+    quark triangle breaks (WP3.2 EWI-7b, EW-20;
+    ``tests/unit/test_loop_v2_epsilon_sign.py``).
+    """
+
+    return tuple(
+        -_permutation_sign(axes) if len(set(axes)) == 4 else 0
+        for axes in product(range(4), repeat=4)
+    )
+
+
+@cache
+def levi_civita_tensor() -> Any:
+    """``LEVI_CIVITA`` as a dense Spenso tensor, for a tensor library."""
+
+    _ensure_symbolica()
+    from symbolica.community.tensor import Tensor
+
+    minkowski = Representation.mink(4)
+    return Tensor.dense(
+        TensorName(LEVI_CIVITA)(*[minkowski] * 4),
+        [E(str(value)) for value in levi_civita_components()],
     )
 
 

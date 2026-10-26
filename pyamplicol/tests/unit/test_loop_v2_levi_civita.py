@@ -2,11 +2,16 @@
 """Levi-Civita counterterm kernels of the v2 catalogue against ALOHA.
 
 ``R2_GGZ`` and ``R2_GGGVa`` (the axial parts of the Z-gluon R2 rules) carry
-``Epsilon``. The catalogue's ``ct-site`` contraction of each, on exact
-off-shell complex currents and conserved momenta flowing into the vertex,
-equals the unchanged compiled ALOHA routine of MG5_aMC 3.7.0 ``loop_sm``
-(values frozen below, produced by ``tools/loop_reference/levi_civita_aloha.py``)
-to binary64 rounding.
+``Epsilon``, which the tree compiler normalises to the dense
+``models.tensors.LEVI_CIVITA`` (ALOHA's components). The catalogue's
+``ct-site`` contraction of each, on exact off-shell complex currents and
+momenta, equals the unchanged compiled ALOHA routine of MG5_aMC 3.7.0
+``loop_sm`` (values frozen below, produced by
+``tools/loop_reference/levi_civita_aloha.py``) to binary64 rounding; the tree
+kernels do too (``test_model_levi_civita_kernels``). The root closure reads
+these vertices with the momenta flowing in and the incoming colour, the tree
+engine with its outgoing particles': ``ct_sites.SiteClosure._reading_sign``
+(WP3.2 EWI-7b, ``test_loop_v2_epsilon_sign``).
 """
 
 from __future__ import annotations
@@ -57,7 +62,7 @@ def _complex(value) -> complex:
 @pytest.mark.parametrize("name", tuple(STRUCTURES))
 def test_levi_civita_ct_kernels_equal_aloha(name):
     from pyamplicol._internal.physics.symbols import symbols
-    from pyamplicol.loops.v2.catalogue import _contract_lorentz, _with_levi_civita
+    from pyamplicol.loops.v2.catalogue import _contract_lorentz
     from pyamplicol.models import compiler_symbolica as sym
     from pyamplicol.models.tensors import normalize_lorentz_expression
 
@@ -66,7 +71,7 @@ def test_levi_civita_ct_kernels_equal_aloha(name):
     legs = len(INPUTS[name][0][0])
     spins = (3,) * legs
     expression = normalize_lorentz_expression(
-        _with_levi_civita(STRUCTURES[name]), spins, model_symbols=registry
+        STRUCTURES[name], spins, model_symbols=registry
     ).expression
     for (momenta, polarisations), (real, imaginary) in zip(
         INPUTS[name], ALOHA[name], strict=True
@@ -94,10 +99,12 @@ def test_levi_civita_ct_kernels_equal_aloha(name):
 
 
 @pytest.mark.loop_fast
-def test_the_tree_compiler_still_refuses_epsilon():
-    """Only the loop catalogue's counterterm sites admit Epsilon."""
+def test_the_tree_compiler_normalises_epsilon():
+    """The tree compiler admits Epsilon (WP3.2 EWI-7b): the normalised
+    structure contracts ``LEVI_CIVITA`` and no UFO tensor is left."""
 
-    from pyamplicol.models.tensors import normalize_lorentz_expression
+    from pyamplicol.models.tensors import LEVI_CIVITA, normalize_lorentz_expression
 
-    with pytest.raises(ValueError, match="unsupported UFO tensors: Epsilon"):
-        normalize_lorentz_expression(STRUCTURES["R2_GGGVa"], (3, 3, 3, 3))
+    normalized = normalize_lorentz_expression(STRUCTURES["R2_GGGVa"], (3, 3, 3, 3))
+    assert LEVI_CIVITA.rsplit("::", 1)[-1] in normalized.tensor_heads
+    assert "UFO::" not in normalized.expression
