@@ -925,11 +925,12 @@ def test_insertion_reachability_tells_a_vertex_from_its_conjugate(
     assert not admitted(neutral, -1, 1)
 
 
-def _program_and_rules(compiled_path, text, born, loop, veto=()):
+def _program_and_rules(compiled_path, text, born, loop, veto=(), *, u1_grades=False):
     """The production CT program (``ct_closure.counterterm_program_blocks``,
-    as ``LoopSlice.generate`` builds it) of ``text`` on a compiled model,
-    with the request's rules, native model, selection and the CT-lowered
-    model's process IR."""
+    as ``LoopSlice.generate`` builds it; ``u1_grades`` as for a leading- or
+    next-to-leading-colour request) of ``text`` on a compiled model, with the
+    request's rules, native model, selection and the CT-lowered model's
+    process IR."""
 
     import json
 
@@ -985,6 +986,7 @@ def _program_and_rules(compiled_path, text, born, loop, veto=()):
             tuple(sorted(request.loop_order_bounds.items())),
             request.compatibility,
         ),
+        u1_grades=u1_grades,
     )
     return program, prepared.counterterms.rules, data, selection
 

@@ -134,6 +134,33 @@ def test_native_loop_blocks_equal_the_tree_engine(models, text, orders):
 
 
 @pytest.mark.loop_fast
+def test_native_grade_split_equals_the_tree_engine(models):
+    """Leading and next-to-leading colour grade the blocks whose trees mix
+    N_c grades (``generation.dag_grades``): in u u~ > u u~ g the quark
+    current of word (3, 1, 2) is reached through the gluon (1, 2) and through
+    the U(1)-subtraction piece of (3, 1). Both lanes are equal, and every
+    block has one grade (full colour keeps blocks that mix them). A request
+    whose blocks have one grade each keeps its DAG (u u~ > d d~ g)."""
+
+    compiled, model = models
+    text, orders = "u u~ > u u~ g", {"QCD": 5}
+    python, _native_dag = _assert_equal(compiled, model, text, orders, u1_grades=True)
+    assert any(c.index.color_state.nc_grade is not None for c in python.currents)
+    assert all(
+        block.colour_flow.nc_grade is not None
+        for block in _blocks(python, model, VARIANTS[0])
+    )
+    plain = _python(model, _process(compiled, text), orders)
+    assert any(
+        block.colour_flow.nc_grade is None
+        for block in _blocks(plain, model, VARIANTS[0])
+    )
+    text = "u u~ > d d~ g"
+    graded, _native_dag = _assert_equal(compiled, model, text, orders, u1_grades=True)
+    assert graded == _python(model, _process(compiled, text), orders)
+
+
+@pytest.mark.loop_fast
 def test_python_dag_round_trips_through_the_columns(models):
     compiled, model = models
     process = _process(compiled, "u u~ > d d~ g")
@@ -822,35 +849,43 @@ def test_native_reuse_derivation_fails_closed_where_the_oracle_does(monkeypatch)
 _PROGRAMS: dict = {}
 
 
-def _python_program(compiled_path, text, born, loop, veto=()):
+def _python_program(compiled_path, text, born, loop, veto=(), *, u1_grades=False):
     """The production Python CT program of a request, once per module."""
 
     from .test_loop_v2_ct_recursion import _program_and_rules
 
-    key = (str(compiled_path), text, repr(born), repr(loop), tuple(veto))
+    key = (str(compiled_path), text, repr(born), repr(loop), tuple(veto), u1_grades)
     if key not in _PROGRAMS:
         with _flag(False):
-            _PROGRAMS[key] = _program_and_rules(compiled_path, text, born, loop, veto)[
-                0
-            ]
+            _PROGRAMS[key] = _program_and_rules(
+                compiled_path, text, born, loop, veto, u1_grades=u1_grades
+            )[0]
     return _PROGRAMS[key]
 
 
-def _assert_ct_equal(compiled_path, text, born, loop, veto=(), *, rebuild=False):
+def _assert_ct_equal(
+    compiled_path, text, born, loop, veto=(), *, rebuild=False, u1_grades=False
+):
     """The native CT program of a request equals the production Python one
-    (``counterterm_program_blocks``): whole ``GenericDAG``, flat-record digest,
-    blocks, clone lines, kernel variant, U(1) leakage, Ward query; with
-    ``rebuild`` a second native build is byte-identical (rule 5: the builder
-    is sequential, so no thread count enters)."""
+    (``counterterm_program_blocks``; ``u1_grades`` as for LC and NLC): whole
+    ``GenericDAG``, flat-record digest, blocks, clone lines, kernel variant,
+    U(1) leakage, Ward query; with ``rebuild`` a second native build is
+    byte-identical (rule 5: the builder is sequential, so no thread count
+    enters)."""
 
     from pyamplicol.models.external import CompiledUFOModel
 
-    program = _python_program(compiled_path, text, born, loop, veto)
+    program = _python_program(
+        compiled_path, text, born, loop, veto, u1_grades=u1_grades
+    )
     dag = program.blocks.blocks_dag
     lowered = CompiledUFOModel(program.recursion.model.lowered.compiled)
     ignored = vetoed_particle_ids(veto)
     native = dag_input.native_counterterm_blocks(
-        program.recursion, dag.process, ignored_particle_ids=ignored
+        program.recursion,
+        dag.process,
+        ignored_particle_ids=ignored,
+        u1_grades=u1_grades,
     )
     assert native.dag.decode() == dag
     assert native.dag.digest() == dag_input.NativeDag.from_dag(dag, lowered).digest()
@@ -863,7 +898,10 @@ def _assert_ct_equal(compiled_path, text, born, loop, veto=(), *, rebuild=False)
     assert native.dag.propagated_species() == propagated_species(dag)
     if rebuild:
         again = dag_input.native_counterterm_blocks(
-            program.recursion, dag.process, ignored_particle_ids=ignored
+            program.recursion,
+            dag.process,
+            ignored_particle_ids=ignored,
+            u1_grades=u1_grades,
         )
         assert again.dag.columns() == native.dag.columns()
         assert again.blocks == native.blocks
@@ -930,18 +968,28 @@ def test_native_counterterm_program_folds_mixed_connection_parities(
     lanes fold the other parity's -1 into the same derivations' colour
     weights (``apply_colour_connection_signs``, ``signs::apply_connection_
     signs``): the native CT program equals the Python one, whole DAG and
-    blocks (``_blocks`` refuses a block of mixed parities)."""
+    blocks (``_blocks`` refuses a block of mixed parities). The two
+    derivations differ in N_c grade: with the grade split of leading and
+    next-to-leading colour (``generation.dag_grades``, both lanes equal)
+    they are separate blocks, and no block mixes parities."""
 
     from pyamplicol.generation.fermion_ordering import colour_connection_parities
     from pyamplicol.models.external import CompiledUFOModel
 
-    program, _native = _assert_ct_equal(
-        loop_sm_compiled_model, "u u~ > u u~ u u~", {"QCD": 4}, {"QCD": 6}
-    )
+    request = ("u u~ > u u~ u u~", {"QCD": 4}, {"QCD": 6})
+    program, _native = _assert_ct_equal(loop_sm_compiled_model, *request)
     dag = program.blocks.blocks_dag
     lowered = CompiledUFOModel(program.recursion.model.lowered.compiled)
     _parity, deviating = colour_connection_parities(dag, lowered)
     assert deviating
+    assert all(current.index.color_state.nc_grade is None for current in dag.currents)
+    graded, _native = _assert_ct_equal(loop_sm_compiled_model, *request, u1_grades=True)
+    dag = graded.blocks.blocks_dag
+    assert any(
+        current.index.color_state.nc_grade is not None for current in dag.currents
+    )
+    _parity, deviating = colour_connection_parities(dag, lowered)
+    assert not deviating
 
 
 @pytest.mark.loop_physics

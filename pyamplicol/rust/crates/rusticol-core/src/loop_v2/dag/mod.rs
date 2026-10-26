@@ -13,8 +13,8 @@
 //!   first-seen order (rule 5);
 //! * [`colour`] is the loop-block colour engine (`ColorEngine._loop_block_*`,
 //!   `ordered_combination_labels`, `combine`);
-//! * [`grades`] splits the currents whose derivations mix N_c grades
-//!   (U(1)-subtraction pieces) into one current per grade
+//! * [`grades`] grades the blocks whose trees mix N_c grades
+//!   (U(1)-subtraction pieces) for leading and next-to-leading colour
 //!   (`generation/dag_grades.split_u1_grades`);
 //! * [`reuse`] is `assign_recursive_current_evaluation_reuse`: the
 //!   value-equivalence derivation of the currents that share an evaluation
@@ -543,16 +543,18 @@ fn put_opt_str(out: &mut Vec<u8>, value: Option<&str>) {
 }
 
 /// Builds the loop-request DAG of `input` (the JSON of
-/// `dag_input.dag_input`): recursion, prune, N_c grade split,
-/// colour-connection signs, evaluation reuse, colour-flow signs. The
-/// connection signs depend on the colour state, which the evaluation
-/// contracts of the reuse leave out, so they are folded before the reuse
-/// derives its value equivalences.
+/// `dag_input.dag_input`): recursion, prune, N_c grade split (leading and
+/// next-to-leading colour), colour-connection signs, evaluation reuse,
+/// colour-flow signs. The connection signs depend on the colour state, which
+/// the evaluation contracts of the reuse leave out, so they are folded
+/// before the reuse derives its value equivalences.
 pub fn build(input: &input::DagInput) -> DagResult<ColumnarDag> {
     let mut dag = recursion::compile(input)?;
     if dag.finish {
         recursion::prune_to_admitted(input, &mut dag);
-        grades::split_u1_grades(input, &mut dag)?;
+        if input.u1_grades {
+            grades::split_u1_grades(input, &mut dag)?;
+        }
         signs::apply_connection_signs(input, &mut dag)?;
         reuse::assign_reuse(input, &mut dag)?;
         signs::apply_colour_flow_signs(input, &mut dag)?;

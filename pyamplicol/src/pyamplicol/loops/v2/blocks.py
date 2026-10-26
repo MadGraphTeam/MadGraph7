@@ -38,11 +38,13 @@ Conventions a consumer relies on:
   apply (design §3.2 item 4). Trees of one word with different grades
   (identical-flavour lines: a gluon and the U(1) piece of the
   Fermi-exchanged pairing; a U(1) piece and a photon) are separate blocks:
-  the loop-request compilation puts the grade into the identity of those
-  currents (``generation.dag_grades.split_u1_grades``, ``ColorState.nc_grade``),
-  so a word and its grade name a block's colour (``colour.PositionColour``).
-  ``None`` (trees of one block disagreeing) is left only for a DAG compiled
-  without that pass; such blocks have only full colour (``SeedTable.seeds``).
+  the loop-request compilation of a leading- or next-to-leading-colour
+  request puts the grade into the identity of those currents
+  (``generation.dag_grades.split_u1_grades``, ``ColorState.nc_grade``), so a
+  word and its grade name a block's colour (``colour.PositionColour``). A
+  full-colour request needs no grades (every power is kept at N_c = 3) and
+  keeps its blocks as they are: there ``nc_grade`` is ``None`` for a block
+  whose trees disagree (``SeedTable.formal_nc`` false, full colour only).
 * **Signs.** ``BlockColourFlow.sign`` extends the tree engine's Born colour
   metric (``color/correlator_matrices.py``) to blocks: the parity of the
   antifundamental string ends listed in the order of their fundamental
@@ -595,6 +597,7 @@ def build_tree_blocks(
     ignored_particle_ids: Iterable[int] = (),
     ignored_vertex_kinds: Iterable[int] = (),
     progress_callback: DAGProgressCallback | None = None,
+    u1_grades: bool = False,
 ) -> TreeBlocks:
     """Compile the blocks and the Born of one loop request.
 
@@ -603,6 +606,8 @@ def build_tree_blocks(
     exact colour-flow currents, so they are compiled at full colour whatever
     the requested accuracy; ``block_coupling_orders`` bounds the orders a
     block may carry (the loop-amplitude orders bound it without loss).
+    ``u1_grades`` (leading and next-to-leading colour) makes every block
+    exact in N_c (``generation.dag_grades``).
     """
 
     ignored_particles = tuple(ignored_particle_ids)
@@ -627,6 +632,7 @@ def build_tree_blocks(
         ignored_vertex_kinds=ignored_kinds,
         progress_callback=progress_callback,
         kernel_variant=kernel_variant,
+        u1_grades=u1_grades,
     )
     return TreeBlocks(
         process=process,

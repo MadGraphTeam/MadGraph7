@@ -308,9 +308,12 @@ class CountertermBlocks:
         *,
         ignored_particle_ids: Iterable[int] = (),
         progress_callback: Any = None,
+        u1_grades: bool = False,
     ) -> CountertermBlocks:
         """Compile the CT program's blocks for ``process`` (a model process IR
-        of the lowered model at full colour).
+        of the lowered model at full colour); ``u1_grades`` (leading and
+        next-to-leading colour) makes every block exact in N_c
+        (``generation.dag_grades``).
 
         Under ``dag_input.NATIVE_DAG`` the native builder makes the program
         (``dag_input.native_counterterm_blocks``, WP3.1 A4): its DAG is a
@@ -328,7 +331,10 @@ class CountertermBlocks:
             dag_input.native_progress(progress_callback, stage)
             try:
                 native = dag_input.native_counterterm_blocks(
-                    recursion, process, ignored_particle_ids=ignored_particle_ids
+                    recursion,
+                    process,
+                    ignored_particle_ids=ignored_particle_ids,
+                    u1_grades=u1_grades,
                 )
             except dag_input.NativeDagUnsupported as error:
                 # Only a listed feature falls back (rule 2).
@@ -380,6 +386,7 @@ class CountertermBlocks:
             progress_callback=progress_callback,
             loop_blocks=True,
             loop_block_reachability=RootReachability(full),
+            u1_grades=u1_grades,
         ).compile(replace(process, color_accuracy="full"))
         variant = model_tree_kernel_variant(model)
         lines = _clone_lines(recursion)
@@ -988,6 +995,7 @@ def counterterm_program_blocks(
     continuation: Any = None,
     scope: Any = None,
     stage: Callable[[str, Callable[[], Any]], Any] | None = None,
+    u1_grades: bool = False,
 ) -> CountertermBlocks:
     """The CT program (``CountertermBlocks``) of a request (design §6.1).
 
@@ -1001,6 +1009,8 @@ def counterterm_program_blocks(
     same scope; without it every rule of the model is lowered. ``stage``
     (``name, work -> work()``) runs the lowering, the recursion and the
     program's DAG, e.g. to time them (``tools/loop_v2_dag.py``).
+    ``u1_grades`` (leading and next-to-leading colour) makes every block of
+    the program exact in N_c (``generation.dag_grades``).
 
     A rule the lowering cannot lower is inert when its vertex enters no tree
     of the program (``InsertionReachability``, REQUIREMENTS_ADDENDUM J); the
@@ -1069,7 +1079,10 @@ def counterterm_program_blocks(
     program = run(
         "CT program",
         lambda: CountertermBlocks.build(
-            recursion, ir, ignored_particle_ids=vetoed_particle_ids(veto)
+            recursion,
+            ir,
+            ignored_particle_ids=vetoed_particle_ids(veto),
+            u1_grades=u1_grades,
         ),
     )
     # The lowered model projects the gluon legs of its CT vertices onto

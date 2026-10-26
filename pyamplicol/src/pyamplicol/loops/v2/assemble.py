@@ -1690,6 +1690,8 @@ class LoopSlice:
                         reachable.block_requests() | born_requests, data
                     )
                 ),
+                # LC and NLC project formal N_c: every block of one grade.
+                u1_grades=request.accuracy != "full",
             )
             if electroweak:
                 # Widths in the Born or the loop-side trees, before their
@@ -1788,6 +1790,7 @@ class LoopSlice:
                     tuple(sorted(request.loop_order_bounds.items())),
                     request.compatibility,
                 ),
+                u1_grades=request.accuracy != "full",
             )
         sites = (
             # The O6 oracle: every rule closed at sites, witness admission.
