@@ -681,9 +681,29 @@ def test_single_clustering_scale_matches_the_measures():
 
     masses = [0.0] * 4
     for event, scale in zip(momenta, ren):
-        candidates = first_step_candidates(clustering, 4, event, 0.4, masses)
+        candidates = first_step_candidates(clustering, 4, event, 1.0, masses)
         assert candidates, "no clustering offered from the initial state"
         assert scale == pytest.approx(min(candidates.values()), rel=1e-9)
+
+
+def test_the_default_jet_radius_is_madevents():
+    """madevent's hidden run_card d (common/to_dj/D in kin_functions.f) and
+    FxFx both put 1 in the final-state kt measure. With 0.4 that measure came
+    out 2.5 times larger, and the merging cut weaker for final-state
+    splittings, than in the madevent samples it is compared against."""
+    diagrams = load_diagrams(PROCESSES["ttggg"][0])
+    pdg_ids = PROCESSES["ttggg"][1]
+    momenta = sample_momenta(diagrams)
+    default = run(make_clustering(diagrams, external_pdg_ids=pdg_ids), momenta)
+    one = run(
+        make_clustering(diagrams, external_pdg_ids=pdg_ids, jet_radius=1.0), momenta
+    )
+    old = run(
+        make_clustering(diagrams, external_pdg_ids=pdg_ids, jet_radius=0.4), momenta
+    )
+    for a, b in zip(default, one):
+        np.testing.assert_array_equal(a, b)
+    assert not np.array_equal(default[3], old[3])
 
 
 def test_kt_measure_matches_the_fortran():
