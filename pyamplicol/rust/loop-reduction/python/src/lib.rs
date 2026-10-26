@@ -16,6 +16,7 @@ mod v2_colour;
 mod v2_dag;
 mod v2_executor;
 mod v2_generate;
+mod v2_lower;
 mod virtual_runtime;
 use batch::NativeBatch;
 
@@ -263,6 +264,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     v2_executor::register(module)?;
     v2_generate::register(module)?;
     v2_colour::register(module)?;
+    v2_lower::register(module)?;
     module.add_function(wrap_pyfunction!(massless_spinors_decimal, module)?)?;
     Ok(())
 }
