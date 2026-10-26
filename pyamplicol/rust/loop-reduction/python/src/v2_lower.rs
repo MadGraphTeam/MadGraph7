@@ -258,6 +258,7 @@ impl<'py> Records<'_, 'py> {
             key: String::new(),
             record,
             next: 0,
+            missing: None,
         })
     }
 }
@@ -446,6 +447,10 @@ struct Fields<'py, I> {
     record: Option<(&'static str, &'static [&'static str])>,
     /// The first of the record's fields the next key may be.
     next: usize,
+    /// The first field the writer writes that a later key skipped: missing
+    /// (it cannot follow in the writer's order), refused at the record's end
+    /// unless a key out of order is refused first.
+    missing: Option<&'static str>,
 }
 
 /// The writer omits `key` of `record` when its value is absent.
@@ -453,17 +458,17 @@ fn omitted(record: &str, key: &str) -> bool {
     OMITTED_WHEN_ABSENT.contains(&(record, key))
 }
 
-/// Refuses the absence of `absent`, fields of `record` the dict lacks,
-/// unless the writer omits each when its value is absent: the writer
-/// writes every other key (an absent option as `null`), where `json.dumps`
-/// of the dict writes nothing.
-fn require_written(record: &str, absent: &[&str]) -> Result<(), RecordError> {
-    match absent.iter().find(|&&key| !omitted(record, key)) {
-        Some(key) => Err(RecordError(format!(
-            "missing field {key:?}: the writer writes it (json.dumps would not)"
-        ))),
-        None => Ok(()),
-    }
+/// The first of `absent`, fields of `record` the dict lacks, that the writer
+/// writes (every key but those it omits when absent, an absent option as
+/// `null`), where `json.dumps` of the dict writes nothing.
+fn first_written(record: &str, absent: &'static [&'static str]) -> Option<&'static str> {
+    absent.iter().copied().find(|&key| !omitted(record, key))
+}
+
+fn missing(key: &str) -> RecordError {
+    RecordError(format!(
+        "missing field {key:?}: the writer writes it (json.dumps would not)"
+    ))
 }
 
 impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAccess<'de>
@@ -476,9 +481,15 @@ impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAc
         seed: K,
     ) -> Result<Option<K::Value>, RecordError> {
         let Some((key, value)) = self.items.next() else {
-            // The record's end: the fields after the last key are absent.
+            // The record's end: the fields skipped and those after the last
+            // key are absent.
             if let Some((record, fields)) = self.record {
-                require_written(record, &fields[self.next..])?;
+                if let Some(key) = self
+                    .missing
+                    .or_else(|| first_written(record, &fields[self.next..]))
+                {
+                    return Err(missing(key));
+                }
                 self.next = fields.len();
             }
             return Ok(None);
@@ -496,7 +507,8 @@ impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAc
             // below.
             match fields[self.next..].iter().position(|&field| field == name) {
                 Some(skipped) => {
-                    require_written(record, &fields[self.next..self.next + skipped])?;
+                    let absent = &fields[self.next..self.next + skipped];
+                    self.missing = self.missing.or_else(|| first_written(record, absent));
                     self.next += skipped + 1;
                 }
                 None if fields.contains(&name) => {
