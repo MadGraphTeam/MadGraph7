@@ -1126,14 +1126,21 @@ the same augmented native model as its Born and bare-loop catalogues. The
 prepared model records the original `ufo` vertex frame. Every matched fermion
 CT must have a tested FFV/FFS expression as well as exact local source evidence;
 epsilon structures still reject. CT recurrences apply the same typed endpoint
-adapter as ordinary vertices. The neutral-lepton conformance helper admits only
-the proven ordered lepton/antilepton A/Z FFV and neutral A/Z two-point source
-expressions. Other source rules remain present and unvalidated, so a process
-that needs one fails the existing tensor-basis guard.
+adapter as ordinary vertices. The neutral-lepton conformance helper certifies
+by structure, never by particle identity (genericity audit m5): an FFV entry of
+any colour-singlet antifermion/fermion pair (the antiparticle first) with any
+self-conjugate vector whose exact Lorentz tensor `certified_ffv_source` accepts,
+and a two-point entry of two self-conjugate vectors whose tensor is one of the
+tested neutral two-vector bases. Other source rules remain present and
+unvalidated, so a process that needs one fails the existing tensor-basis guard.
 
-The separate `massive_neutral_lepton_counterterm_validations` catalogue adds
-the tested ordered electron/muon H/G0 scalar-Dirac bases and neutral G0-A/Z
-mixing entries, retaining every source key and all other unvalidated entries.
+The separate `massive_neutral_lepton_counterterm_validations` catalogue adds,
+by the same structural rule, the FFS entries of any colour-singlet
+antifermion/fermion pair with any self-conjugate colour-singlet scalar whose
+tensor `certified_ffs_source` accepts, and the self-conjugate scalar-vector
+mixing entries with a tested momentum tensor, retaining every source key and
+all other unvalidated entries. On the Gmu models this certifies the tau's
+A/Z/H/G0 and the neutrinos' A/Z entries alongside the electron's and muon's.
 The real-mass massive-muon control sets `MM=ymm=0.105658`, retains the same full
 Gmu electroweak species, and uses three exactly on-shell terminating-decimal
 points. It has two Born graphs, 145 loop graphs and 64 matched local CT

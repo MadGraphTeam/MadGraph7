@@ -4,8 +4,8 @@
 Entries are certified by structure (genericity audit m5): spins, colour
 representations, charge conjugation and the exact colour/Lorentz tensors,
 never by particle identities. A colour-singlet fermion pair is a particle and
-its own antiparticle (the antiparticle first, as UFO orders FFV/FFS vertices);
-a neutral boson is its own antiparticle.
+its antiparticle (the antiparticle first, as UFO orders FFV/FFS vertices); a
+neutral boson is its own antiparticle.
 """
 
 from types import SimpleNamespace
