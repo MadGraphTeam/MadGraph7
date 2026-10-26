@@ -988,10 +988,16 @@ def _born_block_requests(
     return frozenset(out)
 
 
-# Schedule-B frame policy of the slice: the cheapest frame by undressed rows
-# (``NativeGeneration.schedules`` runs the same policy natively).
+# Schedule-B frame policy of the slice: the cheapest frame by undressed rows,
+# a segment priced by its legs' helicity rows (``generator_input.leg_rows``;
+# ``NativeGeneration.schedules(leg_rows=...)`` runs the same policy natively).
+# ``_FRAME_POLICY`` prices two rows per leg (exact when every leg has two).
 _FRAME_MODEL = STRUCTURED
 _FRAME_POLICY = cheapest(lambda mask: 2 ** mask.bit_count(), _FRAME_MODEL)
+
+
+def _frame_policy(rows: Sequence[int]) -> Any:
+    return cheapest(generator_input.frame_rows(rows), _FRAME_MODEL)
 
 
 class SectorSeeds:
@@ -1719,10 +1725,13 @@ class LoopSlice:
 
         def schedules():
             colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
+            rows = generator_input.leg_rows(blocks)
             if generation is not None and "schedules" in generator_input.NATIVE_STAGES:
-                return colour, generation.schedules(colour, model=_FRAME_MODEL)
+                return colour, generation.schedules(
+                    colour, model=_FRAME_MODEL, leg_rows=rows
+                )
             return colour, build_schedules(
-                families, loop_catalogue, colour, policy=_FRAME_POLICY
+                families, loop_catalogue, colour, policy=_frame_policy(rows)
             )
 
         colour, plan = schedules()
@@ -1942,10 +1951,17 @@ class LoopSlice:
             # The native stages schedule the companion's subset of their
             # certified-scaleless families (and prune it at LC/NLC below).
             generation = self.generation.scaleless_companion(twin_families)
-            plan = generation.schedules(self.colour, model=_FRAME_MODEL)
+            plan = generation.schedules(
+                self.colour,
+                model=_FRAME_MODEL,
+                leg_rows=generator_input.leg_rows(self.blocks),
+            )
         else:
             plan = build_schedules(
-                twin_families, self.loop_catalogue, self.colour, policy=_FRAME_POLICY
+                twin_families,
+                self.loop_catalogue,
+                self.colour,
+                policy=_frame_policy(generator_input.leg_rows(self.blocks)),
             )
         readings = rx.reading_skeletons(plan)
         for skeleton in readings:
