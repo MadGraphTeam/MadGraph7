@@ -51,8 +51,8 @@ particle counterterm metadata are retained; process-dependent matching,
 external-wavefunction insertions, restrictions and scalar-kernel compilation
 remain separate work. The active four-gluon `loop_sm` R2 coefficients contain
 fixed SU(3) constants. Preserving them does not reconstruct their Nc dependence.
-`FormalColorIdentities` states explicit SU(Nc) CA/CF/TR/TF/Ncol substitutions
-with fixed Nf, but never applies them automatically or certifies LC/NLC.
+Formal-Nc identities of colour parameters (CA, CF, TR, ...) are never assumed:
+a model supplies them in its `LoopColorDeclaration.parameter_identities`.
 Legacy inconsistent non-QCD Lorentz spin signatures fail when requested.
 
 ## Exact restrictions and external requests
