@@ -385,21 +385,59 @@ C
       DOUBLE PRECISION SAVEMOM4(0:3,NEXTERNAL-1)
       DOUBLE COMPLEX SAVED_COUP(%(ncoup_check)d)
       SAVE SAVEMOM4, SAVED_COUP
+C     gscale: the strong coupling SAVED_G of the cached amplitudes,
+C     and the powers RPOW(K) = (G/SAVED_G)**K used by BORN_GSCALE
+      INTEGER MAXQCDPOW
+      PARAMETER (MAXQCDPOW=%(maxqcdpow)d)
+      LOGICAL DO_GSCALE
+      PARAMETER (DO_GSCALE=%(born_gscale)s)
+      DOUBLE PRECISION GSCALE_TOL
+      PARAMETER (GSCALE_TOL=1D-12)
+      DOUBLE PRECISION SAVED_G, RG, RPOW(0:MAXQCDPOW)
+      LOGICAL COUP_CHANGED, GSCALED
+      SAVE SAVED_G
+      DATA SAVED_G /0D0/
 C ----------
 C BEGIN CODE
 C ----------
       iden=iden_values(nfksprocess)
       glu_ij = ij_values(nfksprocess)
 C     set_ren_scale (or sreal_deg) kept the cached amplitudes instead of
-C     discarding them: discard them here unless the couplings of the
-C     Born and the momenta are exactly the ones they were computed with
+C     discarding them: discard them here unless the momenta are exactly
+C     the ones they were computed with, and the couplings of the Born
+C     too, or differ from them only through alpha_S (gscale below)
       if (calculatedBorn .and. check_born_amps) then
+         coup_changed=.false.
 %(coup_check_lines)s
          do j=1,nexternal-1
             do i=0,3
                if (p1(i,j).ne.savemom4(i,j)) calculatedBorn=.false.
             enddo
          enddo
+         if (calculatedBorn .and. coup_changed) then
+C     gscale: same momenta, other couplings. If only alpha_S
+C     changed (set_alphaS, e.g. the Born of the MC counterterm
+C     at the coupling of the real emission), every coupling
+C     changed by RPOW(n), n its QCD order: then rescale each
+C     cached amplitude by RPOW(n), n its own QCD order (each
+C     split order gets its power), instead of recomputing
+            gscaled=do_gscale .and. saved_g.ne.0d0
+            if (gscaled) then
+               rg=g/saved_g
+               rpow(0)=1d0
+               do i=1,maxqcdpow
+                  rpow(i)=rpow(i-1)*rg
+               enddo
+%(coup_gscale_lines)s
+            endif
+            if (gscaled) then
+               call born_gscale(rpow,born_cache_ans)
+%(coup_record_lines)s
+               saved_g=g
+            else
+               calculatedBorn=.false.
+            endif
+         endif
       endif
       check_born_amps=.false.
       if (calculatedBorn) then
@@ -447,6 +485,7 @@ C     AMP2/JAMP2 are still those of the last evaluation.
             savemom4(0:3,j)=p1(0:3,j)
          enddo
 %(coup_record_lines)s
+         saved_g=g
          do j=1,max_bhel
             do jj=1,ngraphs
                saveamp(jj,j)=(0d0,0d0)
@@ -502,6 +541,89 @@ C     is only needed on the first call, to find the good helicities.
       BORN_CACHE_ANS(:,:)=ANS(:,:)
       BORN_CACHE_NFKS=nFKSprocess
       BORN_CACHE_OK=.TRUE.
+      END
+
+
+      SUBROUTINE BORN_GSCALE(RPOW,CACHE_ANS)
+C
+%(info_lines)s
+C
+C Rescales what the Born keeps from its last evaluation, at the
+C strong coupling G0, to the strong coupling G (gscale), with
+C RPOW(K) = (G/G0)**K. Each saved amplitude (all helicities)
+C is rescaled by RPOW(AMPQCD), AMPQCD its QCD order. If the
+C cached SBORN result CACHE_ANS, the colour density RHO and
+C AMP2/JAMP2 are those of these amplitudes (BORN_CACHE_OK),
+C they are rescaled too, each split order with its own power:
+C the squared split order K by RPOW(SQSOQCD(K)), the JAMP2 of
+C the amplitude split order M by RPOW(2*AMPSOQCD(M)).
+C Otherwise, or if a split order has no single QCD power
+C (GSCALE_FAST false), BORN_CACHE_OK is set to false and SBORN
+C redoes the colour sums from the rescaled amplitudes.
+%(process_lines)s
+C
+      IMPLICIT NONE
+C
+C CONSTANTS
+C
+      include "nexternal.inc"
+      include "born_nhel.inc"
+      INTEGER NAMPSO, NSQAMPSO
+      PARAMETER (NAMPSO=%(nAmpSplitOrders)d, NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NGRAPHS
+      PARAMETER (NGRAPHS=   %(ngraphs)d)
+      INTEGER    NCOLOR, NCF
+      PARAMETER (NCOLOR=%(ncolor)d, NCF=NCOLOR*(NCOLOR+1)/2)
+      INTEGER MAXQCDPOW
+      PARAMETER (MAXQCDPOW=%(maxqcdpow)d)
+C
+C ARGUMENTS
+C
+      DOUBLE PRECISION RPOW(0:MAXQCDPOW)
+      COMPLEX*16 CACHE_ANS(2,0:NSQAMPSO)
+C
+C LOCAL VARIABLES
+C
+      INTEGER I,J,K
+      INTEGER AMPQCD(NGRAPHS), AMPSOQCD(NAMPSO), SQSOQCD(NSQAMPSO)
+      LOGICAL GSCALE_FAST
+C
+C GLOBAL VARIABLES
+C
+      double complex saveamp(ngraphs,max_bhel)
+      common/to_saveamp/saveamp
+      Double Precision amp2(ngraphs), jamp2(0:ncolor,0:nampso)
+      common/to_amps_born/  amp2,       jamp2
+      DOUBLE PRECISION RHO(NCF,NSQAMPSO)
+      COMMON /C_BORN_RHO/ RHO
+      LOGICAL BORN_CACHE_OK
+      INTEGER BORN_CACHE_NFKS
+      COMMON /C_BORN_CACHE/ BORN_CACHE_OK, BORN_CACHE_NFKS
+%(gscale_data_lines)s
+C ----------
+C BEGIN CODE
+C ----------
+      DO I=1,NGRAPHS
+        IF (AMPQCD(I).NE.0) SAVEAMP(I,:)=SAVEAMP(I,:)*RPOW(AMPQCD(I))
+      ENDDO
+      IF (.NOT.(BORN_CACHE_OK.AND.GSCALE_FAST)) THEN
+        BORN_CACHE_OK=.FALSE.
+        RETURN
+      ENDIF
+      DO I=1,NGRAPHS
+        AMP2(I)=AMP2(I)*RPOW(2*AMPQCD(I))
+      ENDDO
+      DO J=1,NAMPSO
+        DO I=1,NCOLOR
+          JAMP2(I,J)=JAMP2(I,J)*RPOW(2*AMPSOQCD(J))
+        ENDDO
+      ENDDO
+      CACHE_ANS(:,0)=(0D0,0D0)
+      DO K=1,NSQAMPSO
+        CACHE_ANS(:,K)=CACHE_ANS(:,K)*RPOW(SQSOQCD(K))
+        CACHE_ANS(:,0)=CACHE_ANS(:,0)+CACHE_ANS(:,K)
+        RHO(:,K)=RHO(:,K)*RPOW(SQSOQCD(K))
+      ENDDO
       END
 
 
