@@ -1472,6 +1472,14 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 ),
                                 # REQUIREMENTS_ADDENDUM J: rule -> reason.
                                 "counterterms_inert": process.inert_counterterms(),
+                                # The request's gauge (WP3.2 EWI-4b), recorded
+                                # off the default unitary gauge only.
+                                **(
+                                    {"gauge": gauge}
+                                    if (gauge := process.slice.compiled.ir.gauge)
+                                    != "unitary"
+                                    else {}
+                                ),
                                 # RUST-MIGRATION rule 2: stage -> listed feature
                                 # (absent when every stage was native).
                                 **(

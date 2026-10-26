@@ -34,6 +34,19 @@ public generator, the tools, the tests and the artifacts all see them:
   currents no tree of the request completes (g g > g g on loop_qcd_qed_sm:
   a Higgs from the R2 g g H vertex), whose widths enter no amplitude.
 
+* ``feynman_gauge_model`` is the gauge scope of an electroweak request
+  (WP3.2 EWI-4b, DESIGN §6.8): Born, blocks, loop lines and counterterms
+  all take the 't Hooft-Feynman gauge (xi = 1) with explicit Goldstones and
+  ghosts, the gauge of the model's UV and R2 rules, in which a massive
+  vector's loop line has rank <= 1 (the unitary k k / M^2 term would break
+  rank <= N). ``require_feynman_gauge`` refuses an electroweak request on a
+  model whose source does not declare gauge 1 (``ElectroweakGaugeError``);
+  ``prepare_request_model`` runs it, so the dry run reports it. QCD-only
+  requests keep the compiled model's gauge (unitary by default, their
+  validated trees); a model compiled in 't Hooft-Feynman gauge keeps it for
+  every request. The gauge of a generated request is its compiled model's
+  (``LoopSlice.compiled.ir.gauge``).
+
 The width query (``propagated_species``) is the current scan of
 ``artifact.coloured_widths``, for every species; a DAG that scans itself
 natively (A4's ``dag_input.NativeDag``) is asked directly. The two share
@@ -62,6 +75,12 @@ class ExternalPhotonError(GenerationError):
     alpha(0) convention v2 does not implement yet."""
 
 
+class ElectroweakGaugeError(GenerationError):
+    """An electroweak request on a model that cannot be taken in
+    't Hooft-Feynman gauge (its source declares no gauge 1, or a prepared
+    bundle carries another gauge)."""
+
+
 def electroweak(
     compiled: Any, request: Any, species_orders: Mapping[int, Iterable[str]]
 ) -> bool:
@@ -81,6 +100,51 @@ def electroweak(
         for pdg, orders in species_orders.items()
         if abs(int(pdg)) not in veto
     )
+
+
+def require_feynman_gauge(compiled: Any, request: Any) -> None:
+    """Refuse an electroweak ``request`` on a model that cannot be taken in
+    't Hooft-Feynman gauge (``ElectroweakGaugeError``): its source declares
+    no gauge 1 (``models.loading.declared_model_gauges``; the UFO's rules
+    are written for the gauges it declares), or it is a prepared bundle in
+    another gauge."""
+
+    from pyamplicol.models.loading import declared_model_gauges
+
+    if compiled.ir.gauge == "feynman":
+        return
+    declared = declared_model_gauges(compiled)
+    reason = None
+    if declared is None or 1 not in declared:
+        reason = (
+            "its source declares no gauge"
+            if declared is None
+            else f"its source declares only the gauges {list(declared)}"
+        )
+    elif compiled.prepared_bundle is not None:
+        reason = f"it is a model bundle prepared in {compiled.ir.gauge} gauge"
+    if reason is None:
+        return
+    raise ElectroweakGaugeError(
+        f"{request.process!r}: an electroweak request (corrections "
+        f"{list(request.corrections)}) needs the 't Hooft-Feynman gauge (gauge 1) "
+        f"of its loop model throughout (Born, blocks, loop lines and "
+        f"counterterms; the gauge of the model's UV and R2 rules), and "
+        f"{compiled.name!r} cannot be taken in it: {reason}. Use a UFO model "
+        "that declares gauge 1 (e.g. loop_qcd_qed_sm), or restrict the request "
+        "to QCD corrections"
+    )
+
+
+def feynman_gauge_model(compiled: Any, request: Any) -> Any:
+    """``compiled`` in 't Hooft-Feynman gauge for the electroweak
+    ``request`` (``models.loading.with_model_gauge``; module docstring),
+    refused by ``require_feynman_gauge``."""
+
+    from pyamplicol.models.loading import with_model_gauge
+
+    require_feynman_gauge(compiled, request)
+    return with_model_gauge(compiled, "feynman")
 
 
 def is_zero(name: str, parameters: Mapping[str, Any], fixed: Mapping[str, Any]) -> bool:
@@ -222,14 +286,17 @@ def require_zero_widths(
 
 
 __all__ = [
+    "ElectroweakGaugeError",
     "ElectroweakWidthError",
     "ExternalPhotonError",
     "electroweak",
     "external_photons",
+    "feynman_gauge_model",
     "is_photon",
     "is_zero",
     "propagated_species",
     "propagating_widths",
+    "require_feynman_gauge",
     "require_no_external_photons",
     "require_zero_widths",
 ]
