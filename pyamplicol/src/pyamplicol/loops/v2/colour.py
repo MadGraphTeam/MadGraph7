@@ -50,11 +50,13 @@ Conventions a consumer relies on:
 * **N_c grades.** Blocks with U(1)-subtraction pieces enter with their grade
   (``BlockColourFlow.nc_grade``) and the Born amplitude A0[b] is split into
   grades (``SeedTable.seeds``), so seeds are exact in N_c (design §3.2 item
-  4). Every block of a loop request has one grade: trees of one word with
-  different grades (identical-flavour lines) are separate blocks
-  (``generation.dag_grades``), told apart by ``PositionColour.grades``. A
-  table over blocks that mix grades (``formal_nc`` false; only from a DAG
-  compiled without that pass) has only full colour.
+  4). Every block of a leading- or next-to-leading-colour request has one
+  grade: trees of one word with different grades (identical-flavour lines)
+  are separate blocks (``generation.dag_grades``, ``TreeBlocks.graded``),
+  told apart by ``PositionColour.grades``. Full-colour blocks are named by
+  their words alone, as every power is kept at N_c = 3. A table over blocks
+  that mix grades (``formal_nc`` false; only from a DAG compiled without
+  that pass) has only full colour.
 * **Signs.** kappa uses the plain colour-flow strings of the blocks.
   ``Block.wick_sign``, the skeleton's fermion sign epsilon_s, its automorphism
   weight and its i-factors belong to the leaf weight (design §3.3), never to K.
@@ -555,25 +557,39 @@ class PositionColour:
     ``legs`` are the 1-based UFO legs of the vertex rule taken by the loop
     line entering and leaving the position and by each attached block, in the
     order of ``Position.blocks``; the kinematic segment uses the same legs.
-    ``words`` holds the block word of each attached block current and
-    ``grades`` its N_c grade (``BlockColourFlow.nc_grade``): identical-flavour
-    lines reach one word with several grades, as separate blocks
-    (``generation.dag_grades``), so a word and its grade name the block.
+    ``words`` holds the block word of each attached block current. Over
+    graded blocks (``TreeBlocks.graded``: leading and next-to-leading colour)
+    ``grades`` holds its N_c grade (``BlockColourFlow.nc_grade``):
+    identical-flavour lines reach one word with several grades, as separate
+    blocks (``generation.dag_grades``), so a word and its grade name the
+    block. Over full-colour blocks a word alone names its blocks (every power
+    is kept at N_c = 3) and ``grades`` is empty.
     """
 
     rule: str
     colour_index: int
     legs: tuple[int, ...]
     words: tuple[tuple[int, ...], ...]
-    grades: tuple[int | None, ...] = ()
+    grades: tuple[int, ...] = ()
 
     @property
     def graded_words(self) -> tuple[tuple[tuple[int, ...], int | None], ...]:
-        """(word, N_c grade) of each attached block: its key among the
-        blocks of its block current (``SeedColour.attached_blocks``, the
-        block rows of ``reference_executor.BlockRows``)."""
+        """(word, N_c grade or ``None`` over full-colour blocks) of each
+        attached block: its key among the blocks of its block current
+        (``SeedColour.attached_blocks``, the block rows of
+        ``reference_executor.BlockRows``, ``block_state_grade``)."""
 
+        if not self.grades:
+            return tuple((word, None) for word in self.words)
         return tuple(zip(self.words, self.grades, strict=True))
+
+
+def block_state_grade(blocks: TreeBlocks, block: Block) -> int | None:
+    """The grade with which a colour state names ``block`` of ``blocks``:
+    its N_c grade over graded blocks (``TreeBlocks.graded``), ``None`` over
+    full-colour blocks, whose word alone names them."""
+
+    return block.colour_flow.nc_grade if blocks.graded else None
 
 
 def block_colour_network(
@@ -694,7 +710,11 @@ class SeedColour:
             field_name = self._fields.incoming(key.particle_id)["name"]
             self._words.setdefault(
                 (key.external_mask, field_name, key.coupling_orders), {}
-            ).setdefault((key.word, block.colour_flow.nc_grade), block)
+            ).setdefault((key.word, block_state_grade(blocks, block)), block)
+        # The (word, grade) keys of each block current in state order, once.
+        self._ordered: dict[
+            tuple[int, str, Orders], tuple[tuple[tuple[int, ...], int | None], ...]
+        ] = {}
 
     # -- ColourModel ---------------------------------------------------------
 
@@ -709,10 +729,15 @@ class SeedColour:
             self._fields.by_name[vertex.loop_out]["antiname"],
             tuple(block.field for block in position.blocks),
         )
-        options = [
-            tuple(sorted(self._block_words(block), key=_graded_word_order))
-            for block in position.blocks
-        ]
+        options = [self._ordered_words(block) for block in position.blocks]
+        if not self.blocks.graded:
+            return tuple(
+                PositionColour(
+                    vertex.rule, index, legs, tuple(word for word, _ in choice)
+                )
+                for index in sorted(indices)
+                for choice in product(*options)
+            )
         return tuple(
             PositionColour(
                 vertex.rule,
@@ -835,6 +860,18 @@ class SeedColour:
         if not words:
             raise ValueError(f"no tree block for {block}")
         return tuple(words)
+
+    def _ordered_words(self, block) -> tuple[tuple[tuple[int, ...], int | None], ...]:
+        """``_block_words`` in state order (``_graded_word_order``), cached
+        per block current."""
+
+        key = (block.mask, block.field, block.orders)
+        found = self._ordered.get(key)
+        if found is None:
+            found = self._ordered[key] = tuple(
+                sorted(self._block_words(block), key=_graded_word_order)
+            )
+        return found
 
     def _canonical_legs(
         self, rule: str, loop_in: str, out_particle: str, attached: tuple[str, ...]

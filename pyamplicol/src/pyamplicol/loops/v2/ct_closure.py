@@ -356,6 +356,7 @@ class CountertermBlocks:
                         blocks=native.blocks,
                         born_roots=(),
                         kernel_variant=native.kernel_variant,
+                        graded=u1_grades,
                     ),
                     native.clones,
                 )
@@ -407,6 +408,7 @@ class CountertermBlocks:
             born_roots=(),
             kernel_variant=variant,
             dag_fallback=fallback,
+            graded=u1_grades,
         )
         return cls(recursion, tree, clones)
 

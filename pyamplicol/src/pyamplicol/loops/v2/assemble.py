@@ -4016,12 +4016,14 @@ class _BlockRows:
 
     def __init__(self, slice_: LoopSlice, rows):
         from .blocks import _NativeFields
+        from .colour import block_state_grade
 
         fields = _NativeFields.of(slice_.data)
         index = slice_._cache.get("block-rows")
         if index is None:
             index = defaultdict(lambda: defaultdict(dict))
-            for block in slice_.blocks.blocks:
+            trees = slice_.blocks
+            for block in trees.blocks:
                 key = block.key
                 if key.auxiliary_kind is not None:
                     continue
@@ -4031,7 +4033,7 @@ class _BlockRows:
                         key.external_mask,
                         name,
                         key.coupling_orders,
-                        (key.word, block.colour_flow.nc_grade),
+                        (key.word, block_state_grade(trees, block)),
                     )
                 ]
                 for row in block.rows:

@@ -453,7 +453,10 @@ class TreeBlocks:
     or the native builder's ``dag_input.NativeDag`` handle (module
     docstring, "Native DAG"); ``dag_fallback`` names the listed feature
     (``"<NativeFallback.key>: <detail>"``) for which the tree engine built it
-    under ``dag_input.NATIVE_DAG``.
+    under ``dag_input.NATIVE_DAG``. ``graded`` tells that the DAG was
+    compiled with the N_c grade split (leading and next-to-leading colour,
+    ``generation.dag_grades``): every block has one grade, and a colour state
+    names a block by its word and grade (``colour.block_state_grade``).
     """
 
     process: CanonicalProcessIR
@@ -463,6 +466,7 @@ class TreeBlocks:
     born_roots: tuple[BornRoot, ...]
     kernel_variant: TreeKernelVariant
     dag_fallback: str | None = None
+    graded: bool = False
 
     def blocks_on(self, mask: int) -> tuple[Block, ...]:
         return tuple(block for block in self.blocks if block.key.external_mask == mask)
@@ -642,6 +646,7 @@ def build_tree_blocks(
         born_roots=_born_roots(born_dag, model),
         kernel_variant=kernel_variant,
         dag_fallback=fallback,
+        graded=u1_grades,
     )
 
 
