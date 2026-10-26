@@ -10,8 +10,13 @@
   its tree kernels (a width takes the full kernels) and its counterterm
   lowering.
 * External photons: an electroweak request with an on-shell external photon
-  is refused (``ExternalPhotonError``) until the engine couples it with
-  alpha(0) (WP3.2 EWI-6b), before any tree is built (u u~ > a g).
+  takes the alpha(0) convention (WP3.2 EWI-6b, ``ew_policy.ExternalPhotons``;
+  its values against MadLoop in ``test_loop_v2_external_photons.py``); it is
+  refused (``ExternalPhotonError``) before any tree is built where the
+  convention cannot be applied: a model without the conversion counterterm
+  or whose loops couple with the alpha(0) parameter (loop_qcd_qed_sm), a
+  veto of an electromagnetically perturbative species, 1/alpha(0) fixed to
+  zero, or no electromagnetic correction.
 * QCD-only requests are not electroweak, and no guard applies to them (their
   plans are unchanged); the current scan skips sources, auxiliary and
   amputated currents and asks a DAG that scans itself natively.
@@ -77,26 +82,98 @@ def test_default_card_widths_are_refused_before_the_kernels(
     assert "complex-mass scheme" in message
 
 
+PHOTON_JET = ("u u~ > a g", {"QCD": 1, "QED": 1})
+PHOTON_JET_LOOPS = ({"QCD": 3, "QED": 1}, {"QCD": 1, "QED": 3})
+ZERO_WIDTHS = {**LIGHT_B, "WT": "0", "WW": "0", "WZ": "0", "WH": "0"}
+
+
+@pytest.fixture(scope="module")
+def qcd_qed(loop_qcd_qed_sm_ufo):
+    from pyamplicol.models.loading import compile_model_source
+
+    return compile_model_source(loop_qcd_qed_sm_ufo, require_supported=False)
+
+
+@pytest.fixture(scope="module")
+def gmu_a0(loop_gmu_ufo, tmp_path_factory):
+    """The G_mu UFO under its restriction a0 (1/alpha(0) = aEW0M1 an
+    adjustable input; MG5_aMC's loop_qcd_qed_sm_Gmu-a0)."""
+
+    from pyamplicol.models.loading import compile_model_source
+
+    return compile_model_source(
+        loop_gmu_ufo,
+        restriction="a0",
+        require_supported=False,
+        cache_dir=tmp_path_factory.mktemp("gmu-a0"),
+    )
+
+
 @pytest.mark.loop_physics
-def test_external_photons_are_refused_before_the_trees(gmu, loop_native, monkeypatch):
-    """u u~ > a g [QCD QED] (widths fixed to zero): refused for its on-shell
-    photon, naming the alpha(0) convention, before any tree is built."""
+@pytest.mark.parametrize(
+    ("model", "options", "reason"),
+    [
+        ("qcd_qed", {}, "declares no conversion counterterm eCoup_DGmua0_UV_EW"),
+        ("gmu", {}, r"no adjustable 1/alpha\(0\) at SMINPUTS \[1\] \(aEW0M1, aEW0"),
+        ("gmu_a0", {"particle_veto": (23,)}, r"removes the species \[23\]"),
+        (
+            "gmu_a0",
+            {"fixed_parameters": {**ZERO_WIDTHS, "aEW0M1": "0"}},
+            r"aEW0M1 \(1/alpha\(0\)\) is fixed to zero",
+        ),
+    ],
+    ids=["no-conversion", "default-card", "veto", "alpha0-zero"],
+)
+def test_external_photons_without_the_convention_are_refused_before_the_trees(
+    request, loop_native, monkeypatch, model, options, reason
+):
+    """u u~ > a g [QCD QED] (widths fixed to zero): an on-shell photon takes
+    alpha(0) (EWI-6b); where the convention cannot be applied the request is
+    refused, naming it, before any tree is built."""
 
     monkeypatch.setattr(assemble, "build_tree_blocks", _stop("the trees"))
-    request = SliceRequest(
-        "u u~ > a g",
-        {"QCD": 1, "QED": 1},
-        ({"QCD": 3, "QED": 1}, {"QCD": 1, "QED": 3}),
-        corrections=("QCD", "QED"),
-        fixed_parameters={**LIGHT_B, "WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
-        **GMU,
+    process, born = PHOTON_JET
+    options = {"fixed_parameters": ZERO_WIDTHS, **options}
+    request_ = SliceRequest(
+        process, born, PHOTON_JET_LOOPS, corrections=("QCD", "QED"), **options, **GMU
     )
-    with pytest.raises(ExternalPhotonError) as refused:
-        LoopSlice.generate(gmu, request, loop_native)
+    with pytest.raises(ExternalPhotonError, match=reason) as refused:
+        LoopSlice.generate(request.getfixturevalue(model), request_, loop_native)
     message = str(refused.value)
     assert "'u u~ > a g': on-shell external photons (legs [3])" in message
-    assert "alpha(0)" in message and "WP3.2 EWI-6b" in message
+    assert "alpha(0)" in message
     assert "QCD corrections to such processes are available" in message
+
+
+@pytest.mark.loop_physics
+def test_external_photons_take_the_alpha0_convention(gmu_a0):
+    """The G_mu UFO under its restriction a0 declares the convention:
+    1/alpha(0) at SMINPUTS 1 (aEW0M1, in no coupling) and the conversion
+    counterterm; a QCD-only request keeps the loops' coupling for its photon
+    (it is no electroweak request)."""
+
+    gmu = gmu_a0
+    from pyamplicol.loops.v2.assemble import prepare_request_model
+    from pyamplicol.processes.model import build_model_process_ir
+
+    process, born = PHOTON_JET
+    request = SliceRequest(
+        process,
+        born,
+        PHOTON_JET_LOOPS,
+        corrections=("QCD", "QED"),
+        fixed_parameters=ZERO_WIDTHS,
+        **GMU,
+    )
+    prepared = prepare_request_model(gmu, request)
+    species = prepared.prepared.structure.perturbative_species_orders
+    ir = build_model_process_ir(process, gmu.ir, color_accuracy="full")
+    scheme = ew_policy.external_photon_scheme(gmu, request, ir, ZERO_WIDTHS, species)
+    assert scheme == ew_policy.ExternalPhotons(
+        (3,), "aEW0M1", "eCoup_DGmua0_UV_EW", "QED"
+    )
+    qcd = SliceRequest(process, born, {"QCD": 3, "QED": 1}, fixed_parameters=LIGHT_B)
+    assert not ew_policy.electroweak(gmu, qcd, species)
 
 
 # ------------------------------------------------------------------ units
@@ -105,6 +182,8 @@ def test_external_photons_are_refused_before_the_trees(gmu, loop_native, monkeyp
 def _record(name, pdg, *, spin=3, color=1, charge=0.0, mass="ZERO", width="ZERO"):
     return SimpleNamespace(
         name=name,
+        antiname=name,
+        auxiliary_kind=None,
         pdg_code=pdg,
         spin=spin,
         color=color,
@@ -133,6 +212,9 @@ MODEL = SimpleNamespace(
             SimpleNamespace(name="WW", nature="external", value="2.085"),
             SimpleNamespace(name="WT", nature="external", value="1.5"),
             SimpleNamespace(name="MDARK", nature="external", value="1"),
+        ),
+        vertex_terms=(
+            SimpleNamespace(particles=("g", "g", "g"), coupling_orders=(("QCD", 1),)),
         ),
     )
 )
@@ -191,20 +273,40 @@ def test_the_width_scan_and_the_photon():
 
 @pytest.mark.loop_fast
 def test_only_electroweak_requests_are_guarded():
-    """A request is electroweak with a correction other than QCD, or with a
-    non-vetoed colour-singlet species perturbative in a requested
-    correction; a QCD-only request whose perturbative species are coloured
-    is not (no guard applies, its plan is unchanged)."""
+    """A request is electroweak with a correction other than the strong one
+    (the gluon's vertices' order), or with a non-vetoed colour-singlet
+    species perturbative in a requested correction; a QCD-only request whose
+    perturbative species are coloured is not (no guard applies, its plan is
+    unchanged)."""
 
-    qcd = SimpleNamespace(corrections=("QCD",), particle_veto=())
-    joint = SimpleNamespace(corrections=("QCD", "QED"), particle_veto=())
+    def request(*corrections, veto=()):
+        return SimpleNamespace(
+            corrections=corrections, particle_veto=veto, fixed_parameters={}
+        )
+
+    qcd, joint = request("QCD"), request("QCD", "QED")
     species = {21: ("QCD",), 6: ("QCD",), 22: ("QED",), 23: ("QED",), 11: ("QED",)}
     assert not ew_policy.electroweak(MODEL, qcd, species)
     assert ew_policy.electroweak(MODEL, joint, species)
-    assert ew_policy.electroweak(
-        MODEL, SimpleNamespace(corrections=("QED",), particle_veto=()), {}
-    )
+    assert ew_policy.electroweak(MODEL, request("QED"), {})
     singlet = {**species, 9000: ("QCD",)}
     assert ew_policy.electroweak(MODEL, qcd, singlet)
-    vetoed = SimpleNamespace(corrections=("QCD",), particle_veto=(9000,))
+    vetoed = request("QCD", veto=(9000,))
     assert not ew_policy.electroweak(MODEL, vetoed, singlet)
+    # The strong correction is the gluon's order, whatever its name
+    # (genericity audit m1): renamed, the decisions are the same.
+    renamed = SimpleNamespace(
+        ir=SimpleNamespace(
+            particles=MODEL.ir.particles,
+            parameters=MODEL.ir.parameters,
+            vertex_terms=(
+                SimpleNamespace(
+                    particles=("g", "g", "g"), coupling_orders=(("QS", 1),)
+                ),
+            ),
+        )
+    )
+    renamed_species = {21: ("QS",), 6: ("QS",), 22: ("Qe",), 23: ("Qe",)}
+    assert not ew_policy.electroweak(renamed, request("QS"), renamed_species)
+    assert ew_policy.electroweak(renamed, request("QS", "Qe"), renamed_species)
+    assert ew_policy.electroweak(renamed, request("QCD"), {})

@@ -354,6 +354,10 @@ class DirectedColour:
     def _table(self, table: SeedTable, swapped: bool) -> SeedTable:
         if not self._absorbable(swapped):
             return self.generic_table(swapped)
+        from . import native_cells  # WP3.1 C5 switch: the "cells" stage
+
+        if (found := native_cells.directed_table(self, table, swapped)) is not None:
+            return found
         images = replace(
             table.basis,
             tensors=tuple(self.operator(b, swapped) for b in table.basis.tensors),
@@ -802,6 +806,10 @@ class ObservableSlice:
         """The complete-family degrees; ``tables`` collects every pair's
         seed table (the pruning criteria)."""
 
+        from . import native_cells  # WP3.1 C5 switch: the "family" stage
+
+        if (found := native_cells.family_degrees(self, family, tables)) is not None:
+            return found
         slice_ = self.slice
         out: dict[str, dict] = {"born": {}, "virtual": {}}
         for alpha, beta in product(family, repeat=2):
@@ -1386,16 +1394,19 @@ class ColumnPlan:
                     out[swapped] = (sector, 1)
         return out
 
-    def _budget(self, key, lanes, width: int, local=()) -> dict[Orders, Budget]:
+    def _budget(
+        self, key, lanes, width: int, local=(), average=None
+    ) -> dict[Orders, Budget]:
         """Per sector sum_lanes m |delta Omega| / (16 pi^2 average) plus the
         absolute local components (``assemble._PointEvaluation._lane_budget``
         for observable columns). Differences arrive in the carrier and are
         rounded to binary64 only as magnitudes, so deviations below one
         binary64 unit of the values survive outside binary64."""
 
-        factor = 1 / (
-            LOOP_FACTOR_DENOMINATOR * math.pi**2 * self.slice.normalisation.average
-        )
+        # ``average``: the point's (``_PointEvaluation.average``, which takes
+        # the alpha(0) of external photons, WP3.2 EWI-6b).
+        average = self.slice.normalisation.average if average is None else average
+        factor = 1 / (LOOP_FACTOR_DENOMINATOR * math.pi**2 * float(average))
         mine = self._lanes_of(key)
         budget = {sector: [0.0] * width for sector, _pairs in self.slice.sectors}
         for (_family, _loop, column), errors in lanes.items():
@@ -1457,11 +1468,13 @@ class ColumnPlan:
 
         width = 3 if reference.poles else 1
         local = [result.components[name] for name in LOCAL_COMPONENTS]
+        average = reference.average
         scale = self._budget(
             key,
             {lane: value.coefficients for lane, value in reference.families.items()},
             width,
             local,
+            average,
         )
         budgets = {}
         zero = Laurent(*[reference.numbers.zero] * width)
@@ -1485,7 +1498,9 @@ class ColumnPlan:
                 differences(result.components[name], other.components[name])
                 for name in LOCAL_COMPONENTS
             ]
-            budgets[ROTATION.format(index)] = self._budget(key, lanes, width, changes)
+            budgets[ROTATION.format(index)] = self._budget(
+                key, lanes, width, changes, average
+            )
         deviations = None
         if reduction is not None:
             if reference.retest_families is None:
@@ -1503,7 +1518,7 @@ class ColumnPlan:
                 for lane, value in reference.families.items()
                 if lane[2] in mine
             }
-            budgets[reduction] = self._budget(key, deviations, width)
+            budgets[reduction] = self._budget(key, deviations, width, (), average)
         magnitudes = {
             sector: Laurent(*[float(abs(x)) for x in laurent.coefficients])
             for sector, laurent in result.components["virtual"].items()
@@ -1535,7 +1550,7 @@ class _Assembly:
         evaluation = self.evaluation
         width = 3 if evaluation.poles else 1
         born, local = self._local(column)
-        average = slice_.normalisation.average
+        average = evaluation.average
         factor = numbers.pair(0, 1) * (
             1 / (LOOP_FACTOR_DENOMINATOR * numbers.pi * numbers.pi * average)
         )
@@ -1699,7 +1714,7 @@ class _Assembly:
         powers = LAURENT_POWERS if evaluation.poles else (0,)
         born: dict[Orders, Any] = defaultdict(lambda: numbers.zero)
         local: dict[tuple[str, Orders, int], Any] = defaultdict(lambda: numbers.zero)
-        average = slice_.normalisation.average
+        average = evaluation.average
         for row, vectors in evaluation.born_vectors.items():
             if column.rows is not None and row not in column.rows:
                 continue

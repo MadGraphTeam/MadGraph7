@@ -12,8 +12,8 @@ import pytest
 from pyamplicol import CorrelatedRequest, CorrelatedValue, CorrelatorConfig, Runtime
 from pyamplicol.cli import run_cli
 from pyamplicol.color.correlator_matrices import ColorCorrelator
-from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.models.loading import compile_model_source
+from tools.loop_reference.model_compatibility import prepare_loop_sm_scalar_declarations
 
 from .test_loop_generation_public_runtime import _card
 

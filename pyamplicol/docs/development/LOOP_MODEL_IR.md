@@ -51,8 +51,8 @@ particle counterterm metadata are retained; process-dependent matching,
 external-wavefunction insertions, restrictions and scalar-kernel compilation
 remain separate work. The active four-gluon `loop_sm` R2 coefficients contain
 fixed SU(3) constants. Preserving them does not reconstruct their Nc dependence.
-`FormalColorIdentities` states explicit SU(Nc) CA/CF/TR/TF/Ncol substitutions
-with fixed Nf, but never applies them automatically or certifies LC/NLC.
+Formal-Nc identities of colour parameters (CA, CF, TR, ...) are never assumed:
+a model supplies them in its `LoopColorDeclaration.parameter_identities`.
 Legacy inconsistent non-QCD Lorentz spin signatures fail when requested.
 
 ## Exact restrictions and external requests
@@ -1126,14 +1126,21 @@ the same augmented native model as its Born and bare-loop catalogues. The
 prepared model records the original `ufo` vertex frame. Every matched fermion
 CT must have a tested FFV/FFS expression as well as exact local source evidence;
 epsilon structures still reject. CT recurrences apply the same typed endpoint
-adapter as ordinary vertices. The neutral-lepton conformance helper admits only
-the proven ordered lepton/antilepton A/Z FFV and neutral A/Z two-point source
-expressions. Other source rules remain present and unvalidated, so a process
-that needs one fails the existing tensor-basis guard.
+adapter as ordinary vertices. The neutral-lepton conformance helper certifies
+by structure, never by particle identity (genericity audit m5): an FFV entry of
+any colour-singlet antifermion/fermion pair (the antiparticle first) with any
+self-conjugate vector whose exact Lorentz tensor `certified_ffv_source` accepts,
+and a two-point entry of two self-conjugate vectors whose tensor is one of the
+tested neutral two-vector bases. Other source rules remain present and
+unvalidated, so a process that needs one fails the existing tensor-basis guard.
 
-The separate `massive_neutral_lepton_counterterm_validations` catalogue adds
-the tested ordered electron/muon H/G0 scalar-Dirac bases and neutral G0-A/Z
-mixing entries, retaining every source key and all other unvalidated entries.
+The separate `massive_neutral_lepton_counterterm_validations` catalogue adds,
+by the same structural rule, the FFS entries of any colour-singlet
+antifermion/fermion pair with any self-conjugate colour-singlet scalar whose
+tensor `certified_ffs_source` accepts, and the self-conjugate scalar-vector
+mixing entries with a tested momentum tensor, retaining every source key and
+all other unvalidated entries. On the Gmu models this certifies the tau's
+A/Z/H/G0 and the neutrinos' A/Z entries alongside the electron's and muon's.
 The real-mass massive-muon control sets `MM=ymm=0.105658`, retains the same full
 Gmu electroweak species, and uses three exactly on-shell terminating-decimal
 points. It has two Born graphs, 145 loop graphs and 64 matched local CT
@@ -1776,7 +1783,8 @@ fixed during preparation, and an attempted update is rejected atomically. An
 internal expression must reduce to the required value with the same fixed map.
 Scheme declarations alone cannot establish these ties.
 
-The explicit `qcd_source_color.prepare_loop_sm_four_gluon_color` profile supplies
+The explicit test-support profile
+`tools/loop_reference/qcd_source_color.prepare_loop_sm_four_gluon_color` supplies
 the source names `G` and `lhv`, always requires HV with `lhv=1`, and runs whole
 tensor/scalar/species conformance on each selected four-adjoint-vector R2 group.
 It preserves all unrelated caller declarations and original CT evidence. Model

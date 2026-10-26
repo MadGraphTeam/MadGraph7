@@ -8,10 +8,10 @@ complete SM continuation.
 
 import argparse
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 
-from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.models.loading import compile_model_source
 from pyamplicol.models.loop_color_declaration import (
     LoopColorDeclaration,
@@ -23,7 +23,27 @@ from pyamplicol.models.loop_declaration import (
 )
 
 
+def _scalar_arity_view():
+    """The checkout's source-compatibility view (``tools/loop_reference``,
+    test support: neither the wheel nor the sdist ships it)."""
+
+    root = Path(__file__).resolve().parents[3]
+    if not (root / "tools/loop_reference/model_compatibility.py").is_file():
+        raise SystemExit(
+            "prepare_model.py runs from a pyAmpliCol source checkout: it uses "
+            "the checkout's tools/loop_reference/model_compatibility.py"
+        )
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
+
+    return prepare_loop_sm_scalar_declarations
+
+
 def prepare(source: Path, output: Path) -> Path:
+    prepare_loop_sm_scalar_declarations = _scalar_arity_view()
     model = compile_model_source(source, cache_dir=output.parent / ".model-cache")
     if model.raw_loop_model is None:
         raise ValueError("the source model has no lossless NLO source snapshot")

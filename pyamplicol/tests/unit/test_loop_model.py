@@ -107,11 +107,12 @@ def test_laurent_coupling_and_parameter_aliases_cannot_hide_poles(symbolic):
     assert values[("couplings", 2)].value.coefficient(-1) == parse_exact_ufo("a")
 
 
-def test_formal_identities_do_not_replace_model_constants(symbolic):
+def test_loop_model_ir_claims_no_formal_colour_continuation(symbolic):
+    """Formal-N_c identities come per model from a LoopColorDeclaration
+    (``parameter_identities``); the IR carries no default (QCD) names."""
+
     ir = build_loop_model(capture_raw_loop_model(_scalars()))
-    substitutions = dict(ir.color_identities.substitutions())
-    assert substitutions[parse_exact_ufo("CF")] == parse_exact_ufo("(Nc**2-1)/(2*Nc)")
-    assert parse_exact_ufo("Nf") not in substitutions
+    assert not hasattr(ir, "color_identities")
     assert not ir.formal_nc_continuation_validated
     assert not ir.scheme_validated and not ir.completeness_validated
     assert not ir.arbitrary_precision_physics_validated

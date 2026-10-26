@@ -71,91 +71,119 @@ def _charge(record):
     return charge
 
 
+# The legacy UFO object library's ``Particle.anti`` (MG5_aMC's loop_qcd_qed_sm
+# and its G_mu variants): positional arguments bind ``self.goldstoneboson`` to
+# the ``line`` parameter, so the constructor default drops the antiparticle's
+# Goldstone flag. A fingerprint of the library code, not of any particle.
+_LEGACY_ANTI_PARAMETERS = (
+    "pdg_code",
+    "name",
+    "antiname",
+    "spin",
+    "color",
+    "mass",
+    "width",
+    "texname",
+    "antitexname",
+    "charge",
+    "loop_particles",
+    "counterterm",
+    "line",
+    "propagating",
+    "goldstoneboson",
+)
+_LEGACY_ANTI_ARGUMENTS = (
+    "-self.pdg_code",
+    "self.antiname",
+    "self.name",
+    "self.spin",
+    "newcolor",
+    "self.mass",
+    "self.width",
+    "self.antitexname",
+    "self.texname",
+    "-self.charge",
+    "self.line",
+    "self.propagating",
+    "self.goldstoneboson",
+)
+
+
+def _lost_goldstone_flag(raw, record) -> bool:
+    """Whether ``record`` is an antiparticle built by the legacy
+    ``Particle.anti`` from a declared Goldstone whose flag it lost, its other
+    conjugation-invariant metadata agreeing with the particle's."""
+
+    b = record["fields"]
+    source = b.get("charge_source", {})
+    call = source.get("anti_constructor", {})
+    if (
+        source.get("kind") != "source-antiparticle-charge"
+        or tuple(call.get("parameters", ())) != _LEGACY_ANTI_PARAMETERS
+        or tuple(call.get("arguments", ())) != _LEGACY_ANTI_ARGUMENTS
+        or ufo_goldstone_flag(b)
+        or b["antiname"] == b["name"]
+    ):
+        return False
+    try:
+        partner = raw.record("particles", b["antiname"])
+    except (KeyError, ValueError):
+        return False
+    a = partner["fields"]
+    return (
+        ufo_goldstone_flag(a)
+        and a["antiname"] == b["name"]
+        and a["pdg_code"] == -b["pdg_code"]
+        and (a["spin"], a["color"]) == (b["spin"], b["color"])
+        and (a["mass"]["name"], a["width"]["name"])
+        == (b["mass"]["name"], b["width"]["name"])
+        and _flag(a, ("Propagating", "propagating", True))
+        == _flag(b, ("Propagating", "propagating", True))
+        and _charge(partner) == -_charge(record)
+    )
+
+
 def _repair(raw, particles, compatibility):
+    """The explicit source-compatibility profile ``gmu_particle_anti``: every
+    antiparticle that lost its Goldstone flag to the legacy ``Particle.anti``
+    (``_lost_goldstone_flag``) gets it back, one diagnostic each. The profile
+    on a source without that defect is refused."""
+
     if compatibility is None:
         return ()
     if compatibility != "gmu_particle_anti":
         raise ValueError("unknown structural source compatibility profile")
-    positive = raw.record("particles", "G+")
-    negative = raw.record("particles", "G-")
-    a, b = positive["fields"], negative["fields"]
-    source = b.get("charge_source", {})
-    call = source.get("anti_constructor", {})
-    expected_parameters = (
-        "pdg_code",
-        "name",
-        "antiname",
-        "spin",
-        "color",
-        "mass",
-        "width",
-        "texname",
-        "antitexname",
-        "charge",
-        "loop_particles",
-        "counterterm",
-        "line",
-        "propagating",
-        "goldstoneboson",
-    )
-    expected_arguments = (
-        "-self.pdg_code",
-        "self.antiname",
-        "self.name",
-        "self.spin",
-        "newcolor",
-        "self.mass",
-        "self.width",
-        "self.antitexname",
-        "self.texname",
-        "-self.charge",
-        "self.line",
-        "self.propagating",
-        "self.goldstoneboson",
-    )
-    if (
-        tuple(raw.metadata.get("gauge", ())) != (1,)
-        or source.get("kind") != "source-antiparticle-charge"
-        or tuple(call.get("parameters", ())) != expected_parameters
-        or tuple(call.get("arguments", ())) != expected_arguments
-        or (a["name"], a["antiname"], b["name"], b["antiname"])
-        != ("G+", "G-", "G-", "G+")
-        or (a["pdg_code"], b["pdg_code"]) != (251, -251)
-        or (a["spin"], b["spin"], a["color"], b["color"]) != (1, 1, 1, 1)
-        or (
-            a["mass"]["name"],
-            b["mass"]["name"],
-            a["width"]["name"],
-            b["width"]["name"],
-        )
-        != ("MW", "MW", "WW", "WW")
-        or not ufo_goldstone_flag(a)
-        or ufo_goldstone_flag(b)
-        or not _flag(a, ("Propagating", "propagating", True))
-        or not _flag(b, ("Propagating", "propagating", True))
-        or _charge(positive) != 1
-        or _charge(negative) != -1
-    ):
+    repaired = [
+        record
+        for record in raw.collections["particles"]
+        if _lost_goldstone_flag(raw, record)
+    ]
+    if not repaired:
         raise ValueError(
-            "source does not match the recognized Gmu anti metadata mismatch"
+            "source does not match the recognized Gmu anti metadata mismatch "
+            "(an antiparticle of a declared Goldstone that the legacy "
+            "Particle.anti built without the flag)"
         )
-    particles[negative["id"]]["goldstoneboson"] = True
-    return (
-        MappingProxyType(
-            {
-                "profile": compatibility,
-                "particle_id": negative["id"],
-                "particle": "G-",
-                "field": "goldstoneboson",
-                "raw": False,
-                "derived": True,
-                "reason": (
-                    "legacy anti positional arguments bind Goldstone flag to line; "
-                    "constructor defaults lose the flag"
-                ),
-            }
-        ),
-    )
+    diagnostics = []
+    for record in repaired:
+        particles[record["id"]]["goldstoneboson"] = True
+        diagnostics.append(
+            MappingProxyType(
+                {
+                    "profile": compatibility,
+                    "particle_id": record["id"],
+                    "particle": record["name"],
+                    "field": "goldstoneboson",
+                    "raw": False,
+                    "derived": True,
+                    "reason": (
+                        "legacy anti positional arguments bind Goldstone flag to "
+                        "line; constructor defaults lose the flag"
+                    ),
+                }
+            )
+        )
+    return tuple(diagnostics)
 
 
 def _validate_pairs(particles):

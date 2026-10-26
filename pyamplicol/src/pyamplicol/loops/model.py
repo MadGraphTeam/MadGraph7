@@ -100,29 +100,6 @@ class NativeLocalKernel:
 
 
 @dataclass(frozen=True, slots=True)
-class FormalColorIdentities:
-    """Explicit SU(Nc), Tr(Ta Tb)=TR delta_ab convention, with fixed Nf.
-
-    These identities are opt-in substitutions, not reconstructed model rules.
-    A model must be separately certified before using them for LC/NLC.
-    """
-
-    def substitutions(self) -> tuple[tuple[Any, Any], ...]:
-        return tuple(
-            (parse_exact_ufo(name), parse_exact_ufo(value))
-            for name, value in (
-                ("CA", "Nc"),
-                ("CF", "(Nc**2-1)/(2*Nc)"),
-                ("TF", "1/2"),
-                ("TR", "1/2"),
-                ("Ncol", "Nc"),
-            )
-        )
-
-    fixed_flavour_symbol: str = "Nf"
-
-
-@dataclass(frozen=True, slots=True)
 class LoopModelIR:
     name: str
     raw: Any = field(repr=False)
@@ -131,7 +108,6 @@ class LoopModelIR:
     # Retain helper definitions without evaluating arbitrary Python bodies.
     functions: tuple[Any, ...]
     scalar_program: ScalarProgram | None = field(default=None, repr=False)
-    color_identities: FormalColorIdentities = FormalColorIdentities()
     stage: str = field(default="exact-local-kernel-preparation", init=False)
     scheme_validated: bool = field(default=False, init=False)
     completeness_validated: bool = field(default=False, init=False)

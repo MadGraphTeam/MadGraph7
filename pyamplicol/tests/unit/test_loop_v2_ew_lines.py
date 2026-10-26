@@ -486,10 +486,10 @@ def restricted_loop_sm(loop_sm_ufo, tmp_path_factory):
 
     from dataclasses import replace
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source, load_compiled_model
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source, load_compiled_model
 
     built = {}
 

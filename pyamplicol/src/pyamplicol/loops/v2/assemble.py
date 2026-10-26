@@ -116,7 +116,6 @@ from .colour import (
     seed_fourier,
 )
 from .conventions import (
-    FERMION_SPIN,
     LOOP_FACTOR_DENOMINATOR,
     LeafWeights,
     Normalisation,
@@ -148,18 +147,22 @@ from .families import (
     generate_families,
     mass_name,
     onshell_leg,
+    orders_within,
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
 from .generator_input import NativeGeneration
 from .poles import (
+    EXTERNAL_PHOTON_CONVENTION,
     ORIGINS,
     catani_poles,
+    colour_casimir,
     coupling_value,
     dressed_born,
     exact_charge,
     has_poles,
     pole_mode,
+    predicted_sectors,
     qed_catani_poles,
     qed_coupling,
     qed_gamma,
@@ -169,6 +172,8 @@ from .poles import (
     select_sector,
     split_sector,
     splits,
+    strong_beta0,
+    strong_gamma,
 )
 from .poly_affine import MonomialLayout, leg_momentum
 from .schedules import (
@@ -1305,9 +1310,11 @@ class PointResult:
     finite-only mode). ``families`` keeps each reduction lane's raw integrals
     ``(family, loop order, sector) -> Laurent``. ``ir_poles`` is Catani's
     prediction of the virtual's (single, double) poles per sector (the QCD
-    and QED operators, massless and massive legs), ``None`` in finite-only
-    and ``"uv"`` mode, at leading colour and where the operators make no
-    prediction (a correction without one); ``stability`` is ``None``
+    and QED operators, massless and massive legs) for the sectors whose
+    loops the requested corrections complete (``poles.predicted_sectors``;
+    the others are absent), ``None`` in finite-only and ``"uv"`` mode, at
+    leading colour and where the operators make no prediction (a correction
+    without one, or no predicted sector); ``stability`` is ``None``
     unless checks were asked. ``colour_contraction`` is the seed contraction
     used ("direct" or "symmetric-group-fft").
 
@@ -1449,11 +1456,14 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         compiled, request.scale_parameter, _LHA_SCALE, fixed
     )
     alpha_s_parameter = None
-    if set(request.corrections) == {"QCD"}:
+    # The strong correction is identified by the gluon's vertices, not by
+    # its order's name (``ew_policy.correction_orders``; genericity m1).
+    strong = ew_policy.correction_orders(compiled, fixed).strong
+    if strong is not None and set(request.corrections) == {strong}:
         alpha_s_parameter = _external_parameter(
             compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
         )
-    elif "QCD" in request.corrections:
+    elif strong is not None and strong in request.corrections:
         # The QCD operator of a joint request's IR-pole prediction (WP3.2
         # EWI-6); without an identified alpha_s it makes none.
         try:
@@ -1469,6 +1479,7 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         loop_order_bounds=request.loop_order_bounds,
         fixed_parameters=fixed,
         compatibility=request.compatibility,
+        certify_primitives=False,
     )
     continuation = None
     if declaration is not None:
@@ -1538,6 +1549,11 @@ class LoopSlice:
     # Born, counterterms and degrees): dressed only by the "uv" and "ir" pole
     # selections, whose bare UV and IR parts they carry (design §12.4).
     scaleless: LoopSlice | None = None
+    # The alpha(0) convention of the on-shell external photons of an
+    # electroweak request (WP3.2 EWI-6b, ``ew_policy.ExternalPhotons``): the
+    # point's (alpha(0) / alpha)^n scales every output
+    # (``_PointEvaluation.average``), the conversion is a field insertion.
+    external_photons: ew_policy.ExternalPhotons | None = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -1636,8 +1652,13 @@ class LoopSlice:
         electroweak = ew_policy.electroweak(
             compiled, request, structure.perturbative_species_orders
         )
+        photons = None
         if electroweak:
-            ew_policy.require_no_external_photons(compiled, request, process, fixed)
+            # On-shell external photons couple with alpha(0) (WP3.2 EWI-6b,
+            # [U9]); a model that cannot take that convention is refused.
+            photons = ew_policy.external_photon_scheme(
+                compiled, request, process, fixed, structure.perturbative_species_orders
+            )
             # One gauge throughout (DESIGN §6.8, WP3.2 EWI-4b): Born, blocks,
             # loop lines and counterterms of a request with electroweak loop
             # species take 't Hooft-Feynman gauge with explicit Goldstones
@@ -1778,9 +1799,16 @@ class LoopSlice:
             if program is None
             else CountertermSites((), {}, (), 0)
         )
+        field_rules = prepare_external_field_rules(prepared.counterterms.source)
+        if photons is not None:
+            # alpha(0)'s field-like term on each external photon (EWI-6b).
+            field_rules = (
+                *field_rules,
+                *_alpha0_field_rules(prepared.counterterms.source, photons, process),
+            )
         insertions = external_field_insertions(
             table.legs,
-            prepare_external_field_rules(prepared.counterterms.source),
+            field_rules,
             data,
             selection,
             blocks.born_orders,
@@ -1908,6 +1936,7 @@ class LoopSlice:
             generation=generation,
             counterterm_program=program,
             cancelled_cells=cancelled,
+            external_photons=photons,
         )
         if request.accuracy != "full" and prune:
             slice_._prune_colour()
@@ -2387,6 +2416,11 @@ class LoopSlice:
         found = self._cache.get("degrees") if inclusive else None
         if found is not None:
             return found
+        from . import native_cells  # WP3.1 C3 switch: the "degrees" stage
+
+        if inclusive and (found := native_cells.slice_degrees(self)) is not None:
+            self._cache["degrees"] = found
+            return found
         overlaps = overlaps or self.overlaps
         table = table or self.table
         _plan, layout = self._scalar_plan(LAURENT_POWERS)
@@ -2518,6 +2552,11 @@ class LoopSlice:
 
         found = self._cache.get("dipoles")
         if found is not None:
+            return found
+        from . import dipoles  # WP3.1 C4 switch: the "dipoles" stage
+
+        if (found := dipoles.slice_operators(self)) is not None:
+            self._cache["dipoles"] = found
             return found
         legs = self.basis.legs
         coloured = [leg.label for leg in legs if leg.representation != 1]
@@ -2886,7 +2925,7 @@ class _PointEvaluation:
                             counterterms[FIELD_COMPONENT, sector, power] += (
                                 value + value.conjugate()
                             )
-        average = slice_.normalisation.average
+        average = self.average
         self.born = {order: value.real / average for order, value in born.items()}
         self.counterterms = {
             key: value.real / average for key, value in counterterms.items()
@@ -3255,7 +3294,7 @@ class _PointEvaluation:
 
     def _bare(self, families) -> dict[Orders, Laurent]:
         numbers = self.numbers
-        average = self.slice.normalisation.average
+        average = self.average
         factor = numbers.pair(0, 1) * (
             1 / (LOOP_FACTOR_DENOMINATOR * numbers.pi * numbers.pi * average)
         )
@@ -3368,9 +3407,7 @@ class _PointEvaluation:
         """Per sector, sum_lanes |delta bare| <= 2 |delta Omega| / (16 pi^2
         average) plus the absolute local components."""
 
-        factor = 2 / (
-            LOOP_FACTOR_DENOMINATOR * math.pi**2 * self.slice.normalisation.average
-        )
+        factor = 2 / (LOOP_FACTOR_DENOMINATOR * math.pi**2 * float(self.average))
         width = 3 if self.poles else 1
         budget = {sector: [0.0] * width for sector, _pairs in self.slice.sectors}
         for (_family, _loop, sector), errors in lanes.items():
@@ -3414,6 +3451,48 @@ class _PointEvaluation:
             ]
         return self._lane_budget(lanes, local)
 
+    # -- normalisation -----------------------------------------------------------------
+
+    @property
+    def average(self) -> Any:
+        """The divisor of every output of this point: the slice's spin and
+        colour average and symmetry factor (``Normalisation.average``),
+        divided by (alpha(0) / alpha)^n for n on-shell external photons of an
+        electroweak request (``LoopSlice.external_photons``, WP3.2 EWI-6b):
+        the Born, the loop lanes, the counterterm and field components, the
+        correlators of Catani's operator and the stability budgets all take
+        each photon's coupling e(0) instead of the loops' e. Without such
+        photons it is the slice's average itself (outputs unchanged)."""
+
+        found = self.__dict__.get("_average")
+        if found is None:
+            found = self.__dict__["_average"] = self._scaled_average()
+        return found
+
+    def _scaled_average(self) -> Any:
+        slice_ = self.slice
+        average = slice_.normalisation.average
+        photons = getattr(slice_, "external_photons", None)
+        if photons is None:
+            return average
+        values = _kernel_parameters(slice_.compiled, self.parameters)
+        inverse = values.get(photons.alpha0_inverse)
+        if not inverse:
+            raise ValueError(
+                f"the on-shell external photons of {slice_.request.process!r} "
+                f"couple with alpha(0) (WP3.2 EWI-6b): set {photons.alpha0_inverse} "
+                "(1/alpha(0), e.g. 137.035999) among the parameters, not "
+                f"{inverse}"
+            )
+        alpha = self._qed_alpha()
+        if alpha is None:
+            raise ValueError(
+                "alpha of the photon couplings is not real and positive at this point"
+            )
+        numbers = self.numbers
+        ratio = numbers.real(1 / inverse) / alpha
+        return numbers.real(average) / ratio ** len(photons.legs)
+
     # -- IR poles ----------------------------------------------------------------------
 
     def _stable_coloured_legs(self) -> bool:
@@ -3422,9 +3501,10 @@ class _PointEvaluation:
         operators describe stable (real-mass) emitters."""
 
         values = _kernel_parameters(self.slice.compiled, self.parameters)
+        abelian = self._correction_orders().abelian
         charged = (
             _charged_fields(self.slice.compiled)
-            if "QED" in self.slice.request.corrections
+            if abelian is not None and abelian in self.slice.request.corrections
             else frozenset()
         )
         return all(
@@ -3445,9 +3525,23 @@ class _PointEvaluation:
         colour-summed Born). A sector's prediction is their sum
         (``poles.sector_sum``); a correction without an operator, or one of
         them making no prediction, gives none (never a partial sum).
+
+        The strong and the electromagnetic corrections are recognised by the
+        gluon's and the photon's vertices (``ew_policy.correction_orders``),
+        not by their orders' names (genericity audit m1). Only the sectors
+        whose loops the requested corrections complete are predicted
+        (``poles.predicted_sectors``; ``_predicted_sectors``): the mixed
+        QCD x EW sectors of a QCD-only request (MadLoop's loop selection
+        leaves out the gluon-photon boxes) have no prediction and are absent
+        from the mapping; None when no sector is predicted.
         """
 
-        operators = {"QCD": self._qcd_poles, "QED": self._qed_poles}
+        orders = self._correction_orders()
+        operators = {}
+        if orders.strong is not None:
+            operators[orders.strong] = self._qcd_poles
+        if orders.abelian is not None:
+            operators.setdefault(orders.abelian, self._qed_poles)
         predictions = []
         for name in self.slice.request.corrections:
             operator = operators.get(name)
@@ -3455,7 +3549,25 @@ class _PointEvaluation:
             if prediction is None:
                 return None
             predictions.append(prediction)
-        return sector_sum(predictions)
+        predicted = self._predicted_sectors()
+        out = {
+            sector: poles
+            for sector, poles in sector_sum(predictions).items()
+            if sector in predicted
+        }
+        return out or None
+
+    def _correction_orders(self) -> ew_policy.CorrectionOrders:
+        """The slice's strong and electromagnetic orders
+        (``ew_policy.correction_orders``), found once per slice."""
+
+        return _correction_orders(self.slice)
+
+    def _predicted_sectors(self) -> frozenset[Orders]:
+        """The sectors ``_ir_poles`` predicts (``poles.predicted_sectors``),
+        found once per slice."""
+
+        return _predicted_sectors(self.slice)
 
     def _qcd_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
         """The QCD operator per sector (``poles.catani_poles``), or None
@@ -3463,20 +3575,30 @@ class _PointEvaluation:
 
         V_poles = (alpha_s / 2 pi) sum_i sum_{j != i} (1/C_i) (C_i/eps^2 +
         gamma_i/eps) (1 + eps log(mu^2 / |2 p_i.p_j|)) <T_i.T_j> for massless
-        coloured legs, n_f light flavours in gamma_g; massive emitters take
-        the massive form. The legs' masses are the model's runtime values (a
-        symbolic mass bound to 0 is massless), not the p^2 of the given
-        (possibly rounded) momenta.
+        coloured legs, gamma_i by each leg's spin and representation
+        (``poles.strong_gamma``; gamma_g = beta_0 over the request's
+        eligible massless coloured species, ``_strong_beta0``); massive
+        emitters take the massive form. The legs' masses are the model's
+        runtime values (a symbolic mass bound to 0 is massless), not the p^2
+        of the given (possibly rounded) momenta. No prediction for a leg or a
+        loop species the operator does not cover (genericity audit m3).
         """
 
         slice_, numbers = self.slice, self.numbers
-        if slice_.alpha_s_parameter is None:
+        strong = self._correction_orders().strong
+        if slice_.alpha_s_parameter is None or strong is None:
             return None
         legs = {leg.label: leg for leg in slice_.basis.legs}
         coloured = sorted(
             label for label, leg in legs.items() if leg.representation != 1
         )
         values = _kernel_parameters(slice_.compiled, self.parameters)
+        beta0 = _strong_beta0(slice_, strong, values)
+        gammas = {}
+        for leg in slice_.families.legs:
+            label = leg.index + 1
+            if label in coloured:
+                gammas[label] = _strong_leg_gamma(slice_, leg, beta0)
         masses = {}
         for leg in slice_.families.legs:
             name = leg.mass.mass
@@ -3486,6 +3608,12 @@ class _PointEvaluation:
                 masses[leg.index + 1] = values[name] ** 2
             elif leg.index + 1 in coloured:
                 return None
+        if any(
+            colour_casimir(legs[j].representation) is None
+            or (masses[j] == 0 and gammas[j] is None)
+            for j in coloured
+        ):
+            return None
         dipoles = slice_.dipoles()
         three = Fraction(NC)
         physical = []
@@ -3496,11 +3624,10 @@ class _PointEvaluation:
                 for (tensor, power), value in vector.items():
                     scaled = value * numbers.real(three**power)
                     folded[tensor] = folded.get(tensor, numbers.zero) + scaled
-        light = _light_flavours(slice_.data, values)
         alpha = numbers.real(values[slice_.alpha_s_parameter])
         prefactor = alpha / (2 * numbers.pi)
         mu2 = numbers.real(self.scale)
-        correction = add_orders((("QCD", 2),))
+        correction = add_orders(((strong, 2),))
         out = {}
         for sector, _pairs in slice_.sectors:
 
@@ -3512,7 +3639,7 @@ class _PointEvaluation:
                             if add_orders(a, b, correction) != sector:
                                 continue
                             total += self._sandwich(left, right, dipoles[(i, j)])
-                return total / slice_.normalisation.average
+                return total / self.average
 
             prediction = catani_poles(
                 coloured,
@@ -3521,7 +3648,7 @@ class _PointEvaluation:
                 {label: masses[label] for label in coloured},
                 correlated,
                 casimir=_casimir,
-                gamma=lambda j: _gamma(legs[j].representation, light),
+                gamma=lambda j: gammas[j],
                 mu2=mu2,
                 log=lambda x: _log(x, numbers),
                 real=numbers.real,
@@ -3543,26 +3670,36 @@ class _PointEvaluation:
         prefactor alpha / 2 pi takes alpha of the model's photon couplings at
         this point (``_qed_alpha``: alpha_Gmu in a G_mu model), the coupling
         of the loops. A leg is massless where the model's runtime mass is
-        zero (``ZERO``, a compile-time zero or a value bound to 0). No
-        prediction for a charged leg of unknown mass, a massless charged
-        vector or an on-shell external photon: the engine does not yet couple
-        such a photon with alpha(0), the user's convention [U9] (WP3.2
-        EWI-6b), and ``ew_policy`` refuses electroweak requests with one.
+        zero (``ZERO``, a compile-time zero or a value bound to 0). On-shell
+        external photons couple with alpha(0) (``LoopSlice.external_photons``,
+        WP3.2 EWI-6b): the Born is the alpha(0) one (``average``) and the
+        photons add no gamma_gamma (``poles.qed_catani_poles``, convention
+        "alpha0"). No prediction for a charged leg of unknown mass, a
+        massless charged vector or an external photon of a slice without that
+        convention.
         """
 
         slice_, numbers = self.slice, self.numbers
+        abelian = self._correction_orders().abelian
+        if abelian is None:
+            return None
         compiled = slice_.compiled
         parameters = {record.name: record for record in compiled.ir.parameters}
         records = {record.name: record for record in compiled.ir.particles}
         fixed = slice_.request.fixed_parameters
         values = _kernel_parameters(compiled, self.parameters)
+        convention = getattr(slice_, "external_photons", None)
         charges: dict[int, Fraction] = {}
         masses: dict[int, Fraction] = {}
         spins: dict[int, int] = {}
+        photons = 0
         for leg in slice_.families.legs:
             record = records[leg.field]
             if ew_policy.is_photon(record, parameters, fixed):
-                return None
+                if convention is None:
+                    return None
+                photons += 1
+                continue
             charge = exact_charge(record.charge)
             if charge == 0:
                 continue
@@ -3587,12 +3724,18 @@ class _PointEvaluation:
                 charges,
                 {label: self.incoming[label - 1] for label in charges},
                 masses,
-                dressed_born(self.born, sector, "QED", zero),
+                dressed_born(self.born, sector, abelian, zero),
                 gamma=lambda j: qed_gamma(spins[j], charges[j]),
                 mu2=mu2,
                 log=lambda x: _log(x, numbers),
                 real=numbers.real,
                 sqrt=lambda x: math.sqrt(x) if numbers.double else x.sqrt(),
+                photons=photons,
+                convention=(
+                    EXTERNAL_PHOTON_CONVENTION
+                    if convention is None
+                    else convention.convention
+                ),
             )
             if prediction is None:
                 return None
@@ -4046,15 +4189,175 @@ def _charged_fields(compiled) -> frozenset[str]:
     )
 
 
-def _light_flavours(data, values: Mapping[str, Fraction]) -> int:
-    """Quark flavours (colour triplets) whose bound mass is zero."""
+def _alpha0_field_rules(source, photons, process) -> tuple[Any, ...]:
+    """The field-like term of the alpha(0) convention (WP3.2 EWI-6b) as an
+    external-field rule of each external photon species: coefficient
+    -(delta Z_e^{G_mu} - delta Z_e^{alpha(0)}) (the model's conversion
+    parameter ``photons.conversion``; the field component adds 2 Re of the
+    coefficient times the Born per photon leg, MG5_aMC's
+    -2 n_gamma DGmua0 Born), of the electromagnetic correction, with no loop
+    species (no particle_veto applies: ``ew_policy.external_photon_scheme``
+    refuses vetoes of electromagnetically perturbative species)."""
 
-    return sum(
-        1
-        for p in data["particles"]
-        if int(p["spin"]) == FERMION_SPIN
-        and int(p["color"]) == 3
-        and (mass_name(p["mass"]) == ZERO or values.get(p["mass"]) == 0)
+    from pyamplicol.loops.wavefunction import ExternalFieldRule, _laurent
+
+    labels = set(photons.legs)
+    pdgs = {abs(int(leg.pdg)) for leg in process.legs if int(leg.label) in labels}
+    terms = ((0, f"-{photons.conversion}"),)
+    value = {"kind": "mapping", "entries": terms}
+    out = []
+    for particle in source.raw.collections["particles"]:
+        fields = particle["fields"]
+        pdg = int(fields["pdg_code"])
+        if pdg not in pdgs:
+            continue
+        groups = fields.get("loop_particles")
+        coefficient, diagnostic = _laurent(value, source)
+        out.append(
+            ExternalFieldRule(
+                particle["id"],
+                pdg,
+                fields["spin"],
+                fields["color"],
+                photons.correction,
+                # After the model's own loop groups of the photon, if any.
+                len(groups) if isinstance(groups, tuple) else 0,
+                ((),),
+                coefficient,
+                diagnostic,
+                source.scalar_program,
+                terms,
+            )
+        )
+    if {rule.pdg for rule in out} != pdgs:
+        raise ValueError("an external photon species has no source particle record")
+    return tuple(out)
+
+
+def _correction_orders(slice_) -> ew_policy.CorrectionOrders:
+    """``ew_policy.correction_orders`` of a slice's model and fixed
+    parameters, kept in its cache."""
+
+    cache = slice_._cache
+    found = cache.get("correction-orders")
+    if found is None:
+        found = cache["correction-orders"] = ew_policy.correction_orders(
+            slice_.compiled, slice_.request.fixed_parameters
+        )
+    return found
+
+
+def _predicted_sectors(slice_) -> frozenset[Orders]:
+    """The sectors whose IR poles the request's operators predict
+    (``poles.predicted_sectors``), kept in the slice's cache.
+
+    A tree of an order the Born program does not hold is absent when the
+    order lies within the request's Born bounds (the program holds every
+    tree there), or when an external leg's species has no vertex of the
+    request (vetoed particles excluded) whose coupling orders fit within it
+    (every leg of a tree attaches to one vertex, and powers only add up).
+    Otherwise one tree DAG of the process within that order decides
+    (``artifact.born_amplitude_orders``, compiled as the slice's Born with
+    the request's particle_veto, every coupling order of the request bounded
+    by its power in the order): e+ e- > t t~ h has no tree of order
+    g_s^2 e, which the vertex test alone cannot tell. It runs only for a
+    loop order whose lower tree lies outside the Born program, once per
+    slice, at the first IR-pole prediction."""
+
+    cache = slice_._cache
+    found = cache.get("predicted-sectors")
+    if found is not None:
+        return found
+    compiled, request = slice_.compiled, slice_.request
+    bounds = add_orders(tuple(request.born_orders.items()))
+    named = set(request.born_orders) | {
+        name for orders in request.exact_loop_orders for name in orders
+    }
+    names = {str(record.name): record for record in compiled.ir.particles}
+    veto = set(request.particle_veto)
+    vertices: dict[str, list[Orders]] = defaultdict(list)
+    for term in compiled.ir.vertex_terms:
+        records = [names.get(name) for name in term.particles]
+        if any(r is None or abs(int(r.pdg_code)) in veto for r in records):
+            continue
+        orders = add_orders(term.coupling_orders)
+        for record in records:
+            vertices[str(record.name)].append(orders)
+            vertices[str(record.antiname)].append(orders)
+    legs = [leg.field for leg in slice_.families.legs]
+
+    def tree_exists(order: Orders) -> bool:
+        if orders_within(order, bounds):
+            return False
+        if any(
+            not any(orders_within(orders, order) for orders in vertices[field])
+            for field in legs
+        ):
+            return False
+        from .artifact import born_amplitude_orders
+
+        powers = dict(order)
+        found, _dag = born_amplitude_orders(
+            compiled,
+            request.process,
+            {name: powers.get(name, 0) for name in named | set(powers)},
+            request.particle_veto,
+        )
+        return order in found
+
+    found = cache["predicted-sectors"] = predicted_sectors(
+        slice_.sectors,
+        slice_.blocks.born_orders,
+        request.corrections,
+        tree_exists,
+    )
+    return found
+
+
+def _strong_beta0(slice_, strong: str, values: Mapping[str, Any]) -> Fraction | None:
+    """beta_0 of the strong correction (``poles.strong_beta0``) over the
+    request's eligible massless coloured species: perturbative in the strong
+    order, not vetoed, neither ghosts nor the gluon, massless at this point
+    (``ZERO`` or bound to 0); None where it is not covered (genericity
+    audit m3: a vetoed b gives the four-flavour value, a light octet fermion
+    or coloured scalar its own share)."""
+
+    gluons = _correction_orders(slice_).gluons
+    veto = set(slice_.request.particle_veto)
+    # The prepared model's particles (masses restricted to ZERO where the
+    # request's card makes them vanish), once per particle-antiparticle pair.
+    records = {}
+    for record in slice_.data["particles"]:
+        records.setdefault(abs(int(record["pdg_code"])), record)
+    species = []
+    for pdg, orders in slice_.prepared.structure.perturbative_species_orders.items():
+        pdg = abs(int(pdg))
+        record = records.get(pdg)
+        if strong not in set(orders) or pdg in veto or record is None:
+            continue
+        if (
+            abs(int(record["color"])) == 1
+            or int(record.get("ghost_number") or 0) != 0
+            or record["name"] in gluons
+        ):
+            continue
+        mass = record["mass"]
+        if not (mass_name(mass) == ZERO or values.get(mass) == 0):
+            continue
+        real = record["name"] == record.get("antiname")
+        species.append((int(record["spin"]), int(record["color"]), real))
+    return strong_beta0(sorted(species))
+
+
+def _strong_leg_gamma(slice_, leg, beta0: Fraction | None) -> Fraction | None:
+    """gamma_j of a coloured external leg (``poles.strong_gamma``)."""
+
+    record = next(r for r in slice_.data["particles"] if r["name"] == leg.field)
+    return strong_gamma(
+        int(record["spin"]),
+        int(record["color"]),
+        beta0,
+        gauge=record["name"] in _correction_orders(slice_).gluons,
     )
 
 
@@ -4093,17 +4396,10 @@ def _external_parameter(
 
 
 def _casimir(representation: int) -> Fraction:
-    if representation == 8:
-        return Fraction(NC)
-    if abs(representation) == 3:
-        return Fraction(NC * NC - 1, 2 * NC)
-    raise NotImplementedError(f"colour representation {representation}")
-
-
-def _gamma(representation: int, light: int) -> Fraction:
-    if representation == 8:
-        return Fraction(11, 6) * NC - Fraction(2, 3) * Fraction(1, 2) * light
-    return Fraction(3, 2) * _casimir(representation)
+    found = colour_casimir(representation)
+    if found is None:
+        raise NotImplementedError(f"colour representation {representation}")
+    return found
 
 
 class _AdjointOrbits:
@@ -4120,6 +4416,11 @@ class _AdjointOrbits:
     partition the legs, so two sites are related iff each block holds equally
     many legs of each class and the same other legs).
     """
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> _AdjointOrbits:
+        from . import native_cells  # WP3.1 C3 switch: the "orbits" stage
+
+        return super().__new__(native_cells.orbits_class(cls))
 
     def __init__(
         self,

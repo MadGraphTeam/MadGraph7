@@ -97,6 +97,7 @@ def prepare_loop_request_model(
     fixed_parameters=None,
     compatibility=None,
     covariant_multiplets=None,
+    certify_primitives=True,
 ):
     """Prepare source declarations once for model-driven process compilation.
 
@@ -105,6 +106,11 @@ def prepare_loop_request_model(
     source uses exact restriction simplification by default. Exact fixed values
     and existing explicit structural compatibility profiles retain their prior
     semantics; neither is inferred from a model or process display name.
+
+    ``certify_primitives=False`` skips the local tensor-basis certificates
+    (``model_catalogue.certified_source_counterterm_bases``), which only the
+    legacy physical assembler reads; the v2 engine lowers every counterterm
+    through the tree compiler and does not consume them.
     """
     from pyamplicol.models.loading import CompiledModel
 
@@ -146,7 +152,9 @@ def prepare_loop_request_model(
             for entry in ir.kernels
             if entry.kind != "tree" and entry.key in scope.admitted_keys
         ),
-        primitive_validations=certified_source_counterterm_bases(ir),
+        primitive_validations=(
+            certified_source_counterterm_bases(ir) if certify_primitives else ()
+        ),
         vertex_spinor_frame="ufo",
     )
     scope.require_local_counterterms(counterterms)
