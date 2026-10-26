@@ -657,8 +657,15 @@ declared `Qe`), and loop results carry the declared spelling; a name the model
 does not declare is refused, and so is a model declaring two names that differ
 only in case. Tree-level per-coupling-order partials still key orders by the
 tree engine's upper-case spelling (`QE` for a declared `Qe`); every shipped
-model declares upper-case names, where both spellings agree. What the engine
-does not admit yet fails at generation with the reason, for example:
+model declares upper-case names, where both spellings agree. The v2 engine
+still recognises the strong and electroweak corrections by the names `QCD` and
+`QED` (WP3.2): a model spelling its strong order otherwise gets the same
+values, but its QCD request is classified as electroweak (so a propagating
+width must be fixed to zero outside the complex-mass scheme) and carries no
+Catani pole prediction
+(`ir_poles` absent; `poles = "ir"` still selects the computed virtual's poles).
+What the engine does not admit yet fails at generation with the reason, for
+example:
 
 - QED corrections with W or Z bosons in the loops with MG5_aMC's
   `loop_qcd_qed_sm` (`u u~ > d d~` with QCD and QED corrections): "loop line …
