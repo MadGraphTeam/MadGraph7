@@ -9,6 +9,7 @@ from itertools import product
 from threading import RLock
 from typing import Any
 
+from .._internal.physics.canonical_order import canonical_plain
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from .contracts import validate_color_representation
 
@@ -107,7 +108,9 @@ def normalize_lorentz_expression(
     expression = as_tensor(expression).simplify_algebra(color=False).to_expression()
     return NormalizedTensorExpression(
         source=source,
-        expression=expression.format_plain(),
+        # The record (and the index bindings, proofs and kernels derived from
+        # it) must not depend on the process history (``canonical_order``).
+        expression=canonical_plain(expression),
         tensor_heads=tuple(sorted(_tensor_heads(expression))),
     )
 
@@ -146,7 +149,7 @@ def normalize_color_expression(
     expression = expression if context.expanded_symmetric_invariant else simplified
     return NormalizedTensorExpression(
         source=source,
-        expression=expression.format_plain(),
+        expression=canonical_plain(expression),
         tensor_heads=tuple(sorted(_tensor_heads(expression))),
     )
 

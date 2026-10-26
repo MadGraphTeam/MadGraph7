@@ -228,6 +228,14 @@ class ModelCompatibilityIssue:
 
 @dataclass(frozen=True)
 class CompiledModel:
+    """A compiled model.
+
+    ``phase_timings`` and ``conversion_seconds`` are the wall-clock durations
+    of the compile that produced this object in this process; they are not
+    part of the payload (``to_dict``), so equal compiles serialise, digest
+    and cache to equal bytes, and a model loaded from a file has none
+    (``{}`` and ``0.0``)."""
+
     source: Mapping[str, object]
     producer: Mapping[str, object]
     model: Mapping[str, object]
@@ -284,8 +292,6 @@ class CompiledModel:
             },
             "capabilities": dict(self.capabilities),
             "issues": [issue.to_dict() for issue in self.issues],
-            "phase_timings": dict(self.phase_timings),
-            "conversion_seconds": self.conversion_seconds,
         }
         if self.raw_loop_model is not None:
             payload["raw_loop_model"] = self.raw_loop_model.to_dict()
@@ -356,14 +362,8 @@ class CompiledModel:
                 ModelCompatibilityIssue.from_dict(_mapping(issue, "issue"))
                 for issue in raw_issues
             ),
-            phase_timings={
-                str(name): float(value)
-                for name, value in _mapping(
-                    payload.get("phase_timings"),
-                    "phase_timings",
-                ).items()
-            },
-            conversion_seconds=float(payload.get("conversion_seconds", 0.0)),
+            phase_timings={},
+            conversion_seconds=0.0,
             raw_loop_model=raw_loop_model,
             _serialized_path=(
                 None if serialized_path is None else Path(serialized_path).resolve()
@@ -991,6 +991,7 @@ def _load_external_model(
             # projection need not parse or evaluate their finite coefficients.
             include_counterterm_finite_parts=not source.is_dir(),
         )
+        _canonical_loader_values(model)
         from .loop_import import adapt_raw_ufo_model
 
         raw_loop_model = None
@@ -1031,6 +1032,74 @@ def _load_external_model(
         if raw_loop_import_error is not None:
             result["raw_loop_import_error"] = raw_loop_import_error
         return result
+
+
+def _canonical_loader_values(model: Any) -> None:
+    """Re-evaluate the loader's internal parameters and couplings on
+    canonical symbols.
+
+    ufo_model_loader evaluates them in binary64 in Symbolica's normal-form
+    order, which depends on the process history (``canonical_order``): the
+    same card gave loop_sm's ``yb = sqrt(2) ymb / v`` one ulp apart in two
+    processes, and with it every coupling built from it. Each value is
+    evaluated again by the loader's own function, with its model functions
+    and the values of the parameters it depends on, on the expression whose
+    variables are renamed to canonical symbols (function heads, which select
+    the model functions, keep theirs; their calls are evaluated first and
+    in a fixed order). Values in the loader's dependency order, as the loader
+    computes them; external and constant parameters keep the card's values.
+    """
+
+    from ufo_model_loader.symbolica_processing import (
+        evaluate_symbolica_expression_safe,
+    )
+
+    from .._internal.physics.canonical_order import canonical_expression
+    from .._internal.physics.symbols import symbols
+
+    functions = model.get_model_functions()
+    values: dict[Any, complex] = model.get_model_variables()
+
+    def evaluate(expression: Any) -> complex:
+        # Symbolica's own constants (pi) keep their symbols, as the heads.
+        variables = set(expression.get_all_symbols(False)).intersection(values)
+        canonical, renaming = canonical_expression(
+            expression, keep=lambda symbol: symbol not in variables
+        )
+        pool = {
+            renaming.pool[index]: values[symbol]
+            for index, symbol in enumerate(renaming.symbols)
+        }
+        return evaluate_symbolica_expression_safe(canonical, pool, functions)
+
+    pending = []
+    heads = set()
+    for parameter in model.parameters:
+        head = symbols.qualified(f"UFO::{parameter.name}")
+        heads.add(head)
+        if parameter.nature == "external" or parameter.expression is None:
+            if parameter.value is not None:
+                values[head] = parameter.value
+            continue
+        pending.append((parameter, head))
+    while pending:
+        remaining = []
+        for parameter, head in pending:
+            dependencies = heads.intersection(
+                parameter.expression.get_all_symbols(False)
+            )
+            if dependencies <= values.keys():
+                parameter.value = evaluate(parameter.expression)
+                values[head] = parameter.value
+            else:
+                remaining.append((parameter, head))
+        if len(remaining) == len(pending):
+            names = ", ".join(parameter.name for parameter, _ in remaining)
+            raise ValueError(f"UFO parameters depend on unknown symbols: {names}")
+        pending = remaining
+    for coupling in model.couplings:
+        if coupling.expression is not None and coupling.value is not None:
+            coupling.value = evaluate(coupling.expression)
 
 
 def _classify_external_propagators(model: Any) -> dict[str, str]:
