@@ -52,6 +52,11 @@ c the ML API (mlapi.f) as well as into madevent_mintMC.
       common /c_vegas_x_fold/x_save,ifold_picked
       integer icolup_s(2,nexternal-1),icolup_h(2,nexternal)
       common /colour_connections/ icolup_s,icolup_h
+c When called from the ML API (mlapi.f), the caller picks the group of
+c FKS configurations itself and no MC over the groups is done here.
+      logical mlapi_mode
+      integer mlapi_group
+      common /c_mlapi/ mlapi_mode,mlapi_group
 c
       if (new_point .and. ifl.ne.2) then
          pass_cuts_check=.false.
@@ -97,8 +102,14 @@ c "npNLO".
          do i=1,nndim
             x_save(i,ifold_counter)=x(i)
          enddo
-         if (ifl.eq.0)
-     &        call get_MC_integer(1,proc_map(0,0),proc_map(0,1),vol1)
+         if (ifl.eq.0) then
+            if (mlapi_mode) then
+               proc_map(0,1)=mlapi_group
+               vol1=1d0
+            else
+               call get_MC_integer(1,proc_map(0,0),proc_map(0,1),vol1)
+            endif
+         endif
 
 c The nbody contributions
          if (abrv.eq.'real') goto 11
@@ -292,7 +303,8 @@ c Update the shower starting scale for the S-events after we have
 c determined which contributions are identical.
          call update_shower_scale_Sevents(ifold_counter,ifold_picked)
          call fill_mint_function_NLOPS(f,n1body_wgt)
-         call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
+         if (.not.mlapi_mode)
+     &        call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
       endif
       return
       end
@@ -681,3 +693,14 @@ c     if there are no soft singularities at all, just do something trivial
       return
       end
 
+
+
+      block data mlapi_defaults
+c By default sigintF does its own MC over the groups of FKS
+c configurations (see the common block c_mlapi in sigintF).
+      logical mlapi_mode
+      integer mlapi_group
+      common /c_mlapi/ mlapi_mode,mlapi_group
+      data mlapi_mode /.false./
+      data mlapi_group /0/
+      end

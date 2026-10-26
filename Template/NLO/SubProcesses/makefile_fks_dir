@@ -75,6 +75,10 @@ MINTFO= $(RUN) driver_mintFO.o handling_lhe_events.o write_event.o BinothLHA.o p
 # Files for mintMC
 MINTMC= $(RUN) driver_mintMC.o driver_mintMC_routines.o handling_lhe_events.o write_event.o BinothLHA.o
 
+# Files for the ML API server (mlapi.f, mlapi_server.f): the MC@NLO
+# integrand at phase-space points chosen by an external program
+MLAPI= $(RUN) driver_mintMC_routines.o mlapi.o mlapi_server.o handling_lhe_events.o write_event.o BinothLHA.o
+
 # Files for check_poles
 POLES= $(RUN) check_poles.o BinothLHA.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o
 
@@ -175,6 +179,10 @@ madevent_mintMC: $(MINTMC) $(PYTHIA8TARGETS) $(libmadloop) makefile $(LIBS)
 	rm handling_lhe_events.o
 	strip madevent_mintMC
 
+madevent_mlapi: $(MLAPI) $(PYTHIA8TARGETS) $(libmadloop) makefile $(LIBS)
+	$(FC) -o madevent_mlapi $(MLAPI) $(PYTHIA8TARGETS) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS) $(PYTHIA8LINKLIBS)
+	rm handling_lhe_events.o
+
 madevent_mintFO: $(MINTFO) $(libmadloop) makefile $(LIBS)
 	$(FC) -o madevent_mintFO $(MINTFO) $(NLOLIBS) $(APPLLIBS) $(LINKLIBS) $(FJLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) $(LDFLAGS)
 	rm handling_lhe_events.o
@@ -195,6 +203,8 @@ reweight_xsec_events.o: weight_lines.o
 fks_singular.o: weight_lines.o mint_module.o
 driver_mintMC.o: weight_lines.o mint_module.o pythia8_control.inc pythia8_control_setup.inc
 driver_mintMC_routines.o: weight_lines.o mint_module.o
+mlapi.o: weight_lines.o mint_module.o FKSParams.o
+mlapi_server.o: mlapi.o
 driver_mintFO.o: weight_lines.o mint_module.o FKSParams.o
 pythia8_wrapper.o: pythia8_fortran.o LHAFortran_aMCatNLO.h
 chooser_functions.o: weight_lines.o
