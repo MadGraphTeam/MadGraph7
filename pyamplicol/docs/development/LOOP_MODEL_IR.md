@@ -1776,7 +1776,8 @@ fixed during preparation, and an attempted update is rejected atomically. An
 internal expression must reduce to the required value with the same fixed map.
 Scheme declarations alone cannot establish these ties.
 
-The explicit `qcd_source_color.prepare_loop_sm_four_gluon_color` profile supplies
+The explicit test-support profile
+`tools/loop_reference/qcd_source_color.prepare_loop_sm_four_gluon_color` supplies
 the source names `G` and `lhv`, always requires HV with `lhv=1`, and runs whole
 tensor/scalar/species conformance on each selected four-adjoint-vector R2 group.
 It preserves all unrelated caller declarations and original CT evidence. Model

@@ -202,7 +202,11 @@ scope therefore requires the explicit test-support view
 before serialization. It finds the mismatch structurally (a constant scalar
 tensor with fewer slots than the vertex's scalars), replaces only that tensor
 reference with the unique constant tensor of the full spin signature (`SSSS1`),
-and records the derivation while preserving the source snapshot. The public service does not repair a model by recognizing its name.
+and records the derivation while preserving the source snapshot. The public
+service does not repair a model by recognizing its name. The view ships with
+the source checkout (`tools/`), not with the installed package: preparing a
+broad `loop_sm` scope needs the checkout
+(`examples/loop/source_colour/prepare_model.py` imports it from there).
 Unprepared mismatches identify the vertex, Lorentz tensor, actual spin slots and
 required particle slots. The current Drell–Yan and four-gluon public controls use
 this explicitly prepared view.

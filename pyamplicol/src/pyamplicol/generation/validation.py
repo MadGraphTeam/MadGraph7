@@ -175,10 +175,11 @@ def _build_particles(
     """One on-shell point of ``process`` from the model's masses.
 
     A decay (1 -> n) is taken in the rest frame of the decaying particle; a
-    scattering (2 -> n) in its centre-of-mass frame, beams along +-z, at
-    ``sqrt(s) = max(1000, threshold + 100)`` (model units) above both the
-    initial and the final threshold. Massless beams keep the historical
-    formula exactly (their points are byte-identical).
+    scattering (2 -> n, n >= 2) in its centre-of-mass frame, beams along +-z,
+    at ``sqrt(s) = max(1000, max(final threshold, beam masses) + 100)``
+    (model units), above both the initial and the final threshold; a 2 -> 1
+    scattering at ``sqrt(s)`` = the final mass. Massless beams keep the
+    historical formula exactly (their points are byte-identical).
     """
 
     initial_pdgs = tuple(int(pdg) for pdg in process.initial_pdgs)

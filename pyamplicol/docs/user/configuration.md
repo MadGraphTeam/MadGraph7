@@ -655,7 +655,9 @@ names are case-insensitive: `process.loop_coupling_orders`,
 against the model's declared names (`qcd` names a declared `QCD`, `qe` a
 declared `Qe`), and loop results carry the declared spelling; a name the model
 does not declare is refused, and so is a model declaring two names that differ
-only in case. What the engine
+only in case. Tree-level per-coupling-order partials still key orders by the
+tree engine's upper-case spelling (`QE` for a declared `Qe`); every shipped
+model declares upper-case names, where both spellings agree. What the engine
 does not admit yet fails at generation with the reason, for example:
 
 - QED corrections with W or Z bosons in the loops with MG5_aMC's
