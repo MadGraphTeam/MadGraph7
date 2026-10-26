@@ -45,13 +45,16 @@ _NSIGMA = float(os.environ.get('MG7_AMPLICOL_NSIGMA', 4))
 _PDF = 'NNPDF23_lo_as_0130_qed'
 
 
-def _edit_run_card(path, gridpack=False, **amplicol):
+def _edit_run_card(path, gridpack=False, output_format=None, **amplicol):
     card = open(path).read()
     if gridpack:
         card = re.sub(r'(?m)^save_gridpack = false', 'save_gridpack = true', card)
         card = re.sub(r'(?m)^compress = true', 'compress = false', card)
         # with events, for the cross section of the run
         card = re.sub(r'(?m)^run_mode = ".*"', 'run_mode = "regular"', card)
+    if output_format:
+        card = re.sub(r'(?m)^output_format = ".*"', 'output_format = "%s"' %
+                      output_format, card)
     card = card.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
     card = card.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
     card = re.sub(r'(?m)^(pdf[12]) = ".*"$', r'\1 = "%s"' % _PDF, card)
@@ -87,6 +90,23 @@ def _color_balanced(lhe_path):
         if any(tags.values()):
             return False
     return True
+
+
+def _events(run_dir):
+    """The LHE events of the last run."""
+    events = sorted(glob.glob(pjoin(run_dir, 'Events', '*', 'events.lhe.gz')))
+    assert events, run_dir
+    return events[-1]
+
+
+def _resonances(lhe_path):
+    """The (pdg, mass) of the status-2 particles of every event."""
+    with gzip.open(lhe_path, 'rt') as stream:
+        text = stream.read()
+    return [[(int(particle[0]), float(particle[10]))
+             for particle in (line.split() for line in event.strip().splitlines()[1:])
+             if len(particle) > 10 and particle[1] == '2']
+            for event in re.findall(r'<event>\n(.*?)</event>', text, re.S)]
 
 
 class MG7AmplicolTest(unittest.TestCase):
@@ -165,6 +185,33 @@ class MG7AmplicolTest(unittest.TestCase):
         amplicol = self.run_mg7('amp', ['g g > t t~ g [amplicol]'])[:2]
         self.assert_compatible(amplicol, madmatrix)
 
+    def assert_resonances(self, lhe_path, pdg, mass, width):
+        """Some events write the resonance, within bw_cutoff widths of its
+        mass, and no other one."""
+        self.assertTrue(_color_balanced(lhe_path))
+        resonances = [r for event in _resonances(lhe_path) for r in event]
+        self.assertGreater(len(resonances), 0.2 * _EVENTS)
+        self.assertEqual({r[0] for r in resonances}, {pdg})
+        self.assertLess(max(abs(m - mass) for _, m in resonances), 15 * width)
+
+    def test_pp_eej(self):
+        """Colour singlets attached to the quark line in either order and a Z
+        resonance: three phase-space channels per colour order, weighted by
+        their mapping densities, and the Z in the event record."""
+        madmatrix = self.run_mg7('mm', ['p p > e+ e- j'])[:2]
+        amplicol = self.run_mg7('amp', ['p p > e+ e- j [amplicol]'],
+                                output_format='lhe')
+        self.assert_compatible(amplicol[:2], madmatrix)
+        self.assert_resonances(_events(amplicol[2]), 23, 91.188, 2.441404)
+
+    def test_pp_wpj(self):
+        """A charged resonance: W+, never W-, from the charge of its decay."""
+        madmatrix = self.run_mg7('mm', ['p p > e+ ve j'])[:2]
+        amplicol = self.run_mg7('amp', ['p p > e+ ve j [amplicol]'],
+                                output_format='lhe')
+        self.assert_compatible(amplicol[:2], madmatrix)
+        self.assert_resonances(_events(amplicol[2]), 24, 80.419, 2.0476)
+
     def test_mixed(self):
         """[amplicol] and madmatrix processes in one output."""
         jj = self.run_mg7('jj', ['p p > j j'])[:2]
@@ -175,9 +222,11 @@ class MG7AmplicolTest(unittest.TestCase):
 
     def test_gridpack(self):
         """A gridpack of [amplicol] and madmatrix processes, with the second
-        pass unweighting to full colour, reproduces the cross section of its run."""
+        pass unweighting to full colour, reproduces the cross section of its
+        run. The [amplicol] process has several phase-space channels per colour
+        order and writes its Z resonance."""
         mean, error, run_dir = self.run_mg7(
-            'grid', ['p p > j j', 'g g > g g g [amplicol]'], gridpack=True,
+            'grid', ['p p > e+ e- j [amplicol]', 'p p > mu+ mu- j'], gridpack=True,
             mode='unweight')
         gridpack = sorted(glob.glob(pjoin(run_dir, 'Events', '*', 'gridpack')))[-1]
         self.assertTrue(glob.glob(pjoin(gridpack, 'SubProcesses', 'A*', 'lc')))
@@ -193,5 +242,5 @@ class MG7AmplicolTest(unittest.TestCase):
         self.assertTrue(result['done'], open(log).read()[-3000:])
         self.assert_compatible((float(result['mean']), float(result['error'])),
                                (mean, error))
-        self.assertTrue(_color_balanced(
-            pjoin(self.path, 'grid_events', 'events.lhe.gz')))
+        self.assert_resonances(pjoin(self.path, 'grid_events', 'events.lhe.gz'),
+                               23, 91.188, 2.441404)

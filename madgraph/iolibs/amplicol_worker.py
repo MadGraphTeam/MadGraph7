@@ -45,6 +45,7 @@ def generate_artifact(pyamplicol, artifact, accuracy, process, model):
         'action': 'generate',
         'color': {'accuracy': accuracy},
         'process': {'multiparticles': process['multiparticles'],
+                    'flavor_blind_strict': True,
                     'coupling_order_policy': 'explicit',
                     'max_coupling_orders': process['orders']},
         # pack_payloads: one payloads.pacbin instead of files per process

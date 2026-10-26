@@ -1833,6 +1833,37 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("SubchannelWeights::channel_count")
         );
 
+    py::classh<MappingChannelWeights, FunctionGenerator>(
+        m, "MappingChannelWeights", pydoc::doc("MappingChannelWeights")
+    )
+        .def(
+            py::init<
+                const std::vector<PhaseSpaceMapping>&,
+                const nested_vector2<double>&,
+                const std::vector<me_int_t>&,
+                const nested_vector2<double>&>(),
+            py::arg("mappings"),
+            py::arg("flavor_masks"),
+            py::arg("diagram_channels") = std::vector<me_int_t>{},
+            py::arg("flavor_diagram_masks") = nested_vector2<double>{},
+            pydoc::doc("MappingChannelWeights::MappingChannelWeights")
+        )
+        .def(
+            "channel_count",
+            &MappingChannelWeights::channel_count,
+            pydoc::doc("MappingChannelWeights::channel_count")
+        )
+        .def(
+            "mirror_beams",
+            &MappingChannelWeights::mirror_beams,
+            pydoc::doc("MappingChannelWeights::mirror_beams")
+        )
+        .def(
+            "has_diagrams",
+            &MappingChannelWeights::has_diagrams,
+            pydoc::doc("MappingChannelWeights::has_diagrams")
+        );
+
     py::classh<MomentumPreprocessing, FunctionGenerator>(
         m, "MomentumPreprocessing", pydoc::doc("MomentumPreprocessing")
     )
@@ -2375,7 +2406,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::size_t>&,
                 std::size_t,
                 const std::optional<CustomFunction>&,
-                const std::optional<PdfGrid>&>(),
+                const std::optional<PdfGrid>&,
+                const std::optional<MappingChannelWeights>&>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -2406,6 +2438,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("compressed_channel_weight_count") = 50,
             py::arg("custom_bias") = std::nullopt,
             py::arg("pdf_grid2") = std::nullopt,
+            py::arg("mapping_chan_weights") = std::nullopt,
             pydoc::doc("Integrand::Integrand")
         )
         .def(
@@ -2454,6 +2487,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "energy_scale",
             &Integrand::energy_scale,
             pydoc::doc("Integrand::energy_scale")
+        )
+        .def(
+            "mapping_chan_weights",
+            &Integrand::mapping_chan_weights,
+            pydoc::doc("Integrand::mapping_chan_weights")
         )
         .def(
             "prop_chan_weights",
@@ -3193,7 +3231,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::unordered_map<int, int>,
                 nested_vector2<double>,
                 nested_vector3<int>,
-                nested_vector3<int>>(),
+                nested_vector3<int>,
+                nested_vector2<double>>(),
             py::arg("process_id") = 0,
             py::arg("topologies") = std::vector<Topology>{},
             py::arg("permutations") = nested_vector3<std::size_t>{},
@@ -3203,7 +3242,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pdg_color_types") = std::unordered_map<int, int>{},
             py::arg("helicities") = nested_vector2<double>{},
             py::arg("pdg_ids") = nested_vector3<int>{},
-            py::arg("diagram_propagator_pdgs") = nested_vector3<int>{}
+            py::arg("diagram_propagator_pdgs") = nested_vector3<int>{},
+            py::arg("pdg_id_weights") = nested_vector2<double>{}
         )
         .def_readwrite(
             "process_id",
@@ -3254,6 +3294,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "diagram_propagator_pdgs",
             &LHECompleter::SubprocArgs::diagram_propagator_pdgs,
             pydoc::doc("LHECompleter::SubprocArgs::diagram_propagator_pdgs")
+        )
+        .def_readwrite(
+            "pdg_id_weights",
+            &LHECompleter::SubprocArgs::pdg_id_weights,
+            pydoc::doc("LHECompleter::SubprocArgs::pdg_id_weights")
         );
     py::classh<MixMaxRandom>(m, "MixMaxRandom", pydoc::doc("MixMaxRandom"))
         .def(py::init<>(), pydoc::doc("MixMaxRandom::MixMaxRandom"))

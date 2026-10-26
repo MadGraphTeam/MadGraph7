@@ -57,7 +57,8 @@ namespace madspace {
  *
  * Only `matrix_element_out` is required from the matrix element.
  * `diagram_amp2_out` is needed for diagram-based channel weights, i.e. with
- * several channels and no @p prop_chan_weights.
+ * several channels and neither @p prop_chan_weights nor
+ * @p mapping_chan_weights.
  *
  * **References**
  * - [1] T. Heimel, O. Mattelaer, R. Winterhalder, "MadSpace",
@@ -155,6 +156,12 @@ public:
      *                                          the prefix @ref pdf2_prefix.
      *                                          Not allowed with a @ref CustomPdf,
      *                                          which receives the beam index.
+     * @param mapping_chan_weights              Optional
+     *                                          @ref MappingChannelWeights, in
+     *                                          place of @p prop_chan_weights.
+     *                                          Its sampled diagram is the
+     *                                          diagram index of the event when
+     *                                          the matrix element returns none.
      */
     Integrand(
         const PhaseSpaceMapping& mapping,
@@ -186,7 +193,8 @@ public:
         const std::vector<std::size_t>& flavor_per_subproc_remap = {},
         std::size_t compressed_channel_weight_count = 50,
         const std::optional<CustomFunction>& custom_bias = std::nullopt,
-        const std::optional<PdfGrid>& pdf_grid2 = std::nullopt
+        const std::optional<PdfGrid>& pdf_grid2 = std::nullopt,
+        const std::optional<MappingChannelWeights>& mapping_chan_weights = std::nullopt
     );
     /// Globals prefix under which the second beam's PDF grid is registered
     /// (PdfGrid::initialize_globals) when `pdf_grid2` is given.
@@ -235,6 +243,10 @@ public:
     const std::optional<PropagatorChannelWeights>& prop_chan_weights() const {
         return _prop_chan_weights;
     }
+    /// The mapping-density channel weights, if any.
+    const std::optional<MappingChannelWeights>& mapping_chan_weights() const {
+        return _mapping_chan_weights;
+    }
     /// The channel-weight network, if any.
     const std::optional<ChannelWeightNetwork>& chan_weight_net() const {
         return _chan_weight_net;
@@ -273,6 +285,7 @@ private:
     std::optional<RunningCoupling> _running_coupling;
     std::optional<EnergyScale> _energy_scale;
     std::optional<PropagatorChannelWeights> _prop_chan_weights;
+    std::optional<MappingChannelWeights> _mapping_chan_weights;
     std::optional<SubchannelWeights> _subchan_weights;
     std::optional<ChannelWeightNetwork> _chan_weight_net;
     nested_vector2<me_int_t> _first_chan_weight_remap;

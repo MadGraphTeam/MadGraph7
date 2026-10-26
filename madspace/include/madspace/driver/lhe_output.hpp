@@ -183,6 +183,10 @@ public:
         /// then by `Topology::Decay::flat_propagator_index`. Falls back to
         /// `Topology::Decay::pdg_id` if empty.
         nested_vector3<int> diagram_propagator_pdgs;
+        /// Relative weight of each PDG-id option of each flavor: an option is
+        /// written with probability proportional to its weight. Uniform if empty,
+        /// or for a flavor whose weights are empty.
+        nested_vector2<double> pdg_id_weights;
     };
 
     /// @param subproc_args  Bookkeeping for every subprocess, indexed like
@@ -244,6 +248,9 @@ private:
     std::vector<double> _helicities;
     std::vector<std::array<std::size_t, 2>> _pdg_id_and_count;
     std::vector<int> _pdg_ids;
+    // flavor slot -> offset of its cumulative option probabilities, if not uniform
+    std::unordered_map<std::size_t, std::size_t> _pdg_id_weight_offsets;
+    std::vector<double> _pdg_id_cumulative;
     std::unordered_map<std::size_t, std::array<std::size_t, 3>>
         _propagator_index_and_count;
     std::vector<PropagatorData> _propagators;
