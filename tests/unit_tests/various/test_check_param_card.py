@@ -98,6 +98,36 @@ BLOCK SMINPUTS Q= 1.000000e+00 #  test
 class TestParamCard(unittest.TestCase):
     """ Test the ParamCard Object """
 
+    def test_deepcopy(self):
+        """copy.deepcopy keeps every parameter of every block (it used to
+        leave the blocks empty: the restored param_dict made Block.append
+        skip each parameter) and the copy is independent of the original"""
+        import copy
+        import pickle
+
+        full_card = os.path.join(_file_path, os.path.pardir,
+                                     'input_files', 'param_card_sm.dat')
+        card = writter.ParamCard(full_card)
+        nparams = sum(len(card[block]) for block in card)
+        self.assertTrue(nparams)
+
+        new = copy.deepcopy(card)
+        self.assertEqual(sum(len(new[block]) for block in new), nparams)
+        for block in new:
+            for param in new[block]:
+                self.assertIs(new[block].get(param.lhacode), param)
+                self.assertEqual(param.value, card[block].get(param.lhacode).value)
+        mt = card['mass'].get((6,)).value
+        new['mass'].get((6,)).value = 2 * mt
+        self.assertEqual(card['mass'].get((6,)).value, mt)
+        reread = writter.ParamCard(new.write().splitlines())
+        self.assertEqual(sum(len(reread[block]) for block in reread), nparams)
+        self.assertAlmostEqual(reread['mass'].get((6,)).value, 2 * mt)
+
+        # pickling, which restores the state after the parameters, still works
+        new = pickle.loads(pickle.dumps(card))
+        self.assertEqual(sum(len(new[block]) for block in new), nparams)
+
     def test_mod_param(self):
         """ test that we can modify a param card """
 
