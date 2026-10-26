@@ -40,8 +40,10 @@ Per plan:
   ``tests/loop_v2_plan_derive_bound.rs``);
 * the Python records convert only as the writer writes them back as
   ``json.dumps`` (a bool for a number, a float, a wrong-length entry, an
-  unknown key, keys out of the writer's order and ``None`` under a key the
-  writer omits are refused with the record's path);
+  unknown key, keys out of the writer's order, a missing key the writer
+  writes, an absent option written as ``null`` included, and ``None`` under a
+  key the writer omits are refused with the record's path; the keys it omits
+  when absent may be absent);
 * a read decodes on one thread under an address-space limit (the wide member
   with the default pool loads or is refused, never aborts), and a thread pool
   that cannot start (its start shown failed) leaves every read on one thread;
@@ -233,7 +235,15 @@ def test_massive_plan_links_and_resolved_columns(slices, stored, loop_native):
 
     slice_ = slices("gg_ttx")
     check(stored, loop_native)
-    check(export_plan(slice_, forward=False, links=True), loop_native)
+    linked = export_plan(slice_, forward=False, links=True)
+    check(linked, loop_native)
+    # The keys the writer omits when absent (written here) may be absent:
+    # accepted, and written as ``json.dumps`` writes the records.
+    program = json.loads(linked.python_json())
+    step = program["families"][0]["steps"][0]
+    del step["rows"], step["edges"][0]["links"]
+    model = loop_native.V2PlanModel.from_program(program)
+    assert bytes(model.json()) == json.dumps(program, separators=(",", ":")).encode()
     observables = ObservableSlice.of(slice_)
     plan = ColumnPlan(observables, observables.resolved_columns("helicity-colour", {}))
     resolved = export_plan(slice_, forward=False, columns=plan.seed_columns)
@@ -262,6 +272,31 @@ def test_merged_plan(slices, loop_native, name):
         edge.get("weight") is not None for state in states for edge in state["edges"]
     )
     check(merged, loop_native)
+    # A key the writer writes as null when absent must be present: a merged
+    # state's closure, a merged edge's weight.
+    k = next(k for k, state in enumerate(states) if state["closure"] is not None)
+    e = next(
+        (k, e)
+        for k, state in enumerate(states)
+        for e, edge in enumerate(state["edges"])
+        if edge.get("weight") is not None
+    )
+    for path, key in (
+        ((k,), "closure"),
+        ((e[0], "edges", e[1]), "weight"),
+    ):
+        program = json.loads(merged.python_json())
+        record = program["merged"]["states"]
+        for step in path:
+            record = record[step]
+        del record[key]
+        where = ".merged.states" + "".join(
+            f"[{step}]" if isinstance(step, int) else f".{step}" for step in path
+        )
+        with pytest.raises(
+            ValueError, match=re.escape(f'{where}: missing field "{key}"')
+        ):
+            loop_native.V2PlanModel.from_program(program)
     assert slice_.scaleless is not None
     check(export_plan(slice_.scaleless, forward=False), loop_native)
 
@@ -299,10 +334,12 @@ def test_program_records_convert_as_json_writes_them(stored, loop_native):
     """``V2PlanModel.from_program`` reads only what the writer writes back as
     ``json.dumps`` writes it: tuples as lists; a bool for a number, a number
     for a flag, a float, a too long or short entry, an unknown or non-str key,
-    a missing field, keys out of the writer's order (a record's, the plan's
+    a missing key the writer writes (a value, or an absent option it writes
+    as ``null``), keys out of the writer's order (a record's, the plan's
     reversed or sorted) and ``None`` under a key the writer omits when absent
     (``column_rows``, a step's ``rows``, an edge's ``links``) are refused, the
-    error naming the record."""
+    error naming the record. The keys the writer omits when absent may be
+    absent (``test_massive_plan_links_and_resolved_columns``)."""
 
     program = json.loads(stored.python_json())
     expected = stored.python_json().encode()
@@ -332,7 +369,20 @@ def test_program_records_convert_as_json_writes_them(stored, loop_native):
     )
     refused(lambda p: p["factors"][0].pop(), re.escape(".factors[0]: "))
     refused(lambda p: p["families"][0].update(extra=1), "unknown field")
-    refused(lambda p: p["families"][0].pop("rank"), "missing field")
+    refused(
+        lambda p: p["families"][0].pop("rank"),
+        at(".families[0]", 'missing field "rank"'),
+    )
+    # A key the writer always writes is refused when missing, an absent
+    # option (``None``, written as ``null``) included, and so is a key that
+    # only another record's writer omits when absent (a content's ``rows``).
+    assert program["forward"] is None and program["merged"] is None
+    refused(lambda p: p.pop("forward"), re.escape('missing field "forward"'))
+    refused(lambda p: p.pop("merged"), re.escape('missing field "merged"'))
+    refused(
+        lambda p: p["contents"][0].pop("rows"),
+        at(".contents[0]", 'missing field "rows"'),
+    )
     refused(lambda p: p.update({1: 2}), "expected a str key")
     refused(
         lambda p: p["families"][0]["leaves"][0].update(weight=1),

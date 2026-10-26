@@ -30,12 +30,12 @@ omits when absent (a step's ``rows``, an edge's ``links``, ``column_rows``,
 the only keys a record may lack); anything else is an error naming the
 record, so the native JSON of an accepted program is ``json.dumps``'s byte
 for byte. The writer and the member name every field of the loader's file
-form, so a field added there does not compile until both carry it. ``ExportedPlan.json()``
-and ``ExportedPlan.binary()`` take this route (the D2' switch inside
-``export_plan``'s result, so the main plan, the companion's and the
-observables' column plans all do); ``NATIVE_JSON`` switches the JSON back to
-``json.dumps`` (``ExportedPlan.python_json()``, the oracle). The native
-lowering itself (D3) comes later.
+form, so a field added there does not compile until both carry it.
+``ExportedPlan.json()`` and ``ExportedPlan.binary()`` take this route (the
+D2' switch inside ``export_plan``'s result, so the main plan, the
+companion's and the observables' column plans all do); ``NATIVE_JSON``
+switches the JSON back to ``json.dumps`` (``ExportedPlan.python_json()``, the
+oracle). The native lowering itself (D3) comes later.
 """
 
 from __future__ import annotations
