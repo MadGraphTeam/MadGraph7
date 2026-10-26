@@ -19,6 +19,7 @@ from .compiler_contacts import (
     _source_structure_constant_product_coefficient,
 )
 from .compiler_kernels import (
+    DenseTensors,
     _as_expression,
     _canonicalize_oriented_kernel_component,
     _function_arguments,
@@ -1340,17 +1341,12 @@ def _contact_tree_final_component_expressions(
         )
         for component in range(4)
     )
-    library = _sym.TensorLibrary.hep_lib_atom()
+    library = DenseTensors()
     expression = _sym.E(term.lorentz_expression)
     minkowski = _sym.Representation.mink(4)
     for leg, momentum in momentum_by_leg.items():
-        library.register(
-            _sym.Tensor.dense(
-                _sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg + 1))(
-                    minkowski
-                ),
-                momentum,
-            )
+        library.register_dense(
+            model_symbols.ufo_momentum_tensor_name(leg + 1), (minkowski,), momentum
         )
     input_work = math.prod(
         _spin_dimension(source_particles[leg].spin) for leg in payload_by_leg
@@ -1399,7 +1395,7 @@ def _contact_tree_final_component_expressions(
 
 def _execute_contact_tensor_staged(
     expression: _sym.Expression,
-    library: _sym.TensorLibrary,
+    library: DenseTensors,
     source_particles: Sequence[CompiledParticleRecord],
     *,
     payload_by_leg: Mapping[
@@ -1474,7 +1470,7 @@ def _execute_contact_tensor_staged(
             if len(dense) != 1:
                 raise ValueError("scalar staged contact must have one component")
             expression = _as_expression(dense[0])
-            library = _sym.TensorLibrary.hep_lib_atom()
+            library = DenseTensors()
             continue
         slots = tuple(
             slot
@@ -1484,17 +1480,14 @@ def _execute_contact_tensor_staged(
                 remaining_leg + 1,
             )
         )
-        library = _sym.TensorLibrary.hep_lib_atom()
-        name = _sym.TensorName(
-            model_symbols.kernel_tensor_name(kind, f"contact_stage_{step}")
+        library = DenseTensors()
+        name = model_symbols.kernel_tensor_name(kind, f"contact_stage_{step}")
+        library.register_dense(
+            name,
+            representations,
+            tuple(_as_expression(component) for component in dense),
         )
-        library.register(
-            _sym.Tensor.dense(
-                name(*representations),
-                tuple(_as_expression(component) for component in dense),
-            )
-        )
-        expression = name(*slots).to_expression()
+        expression = _sym.TensorName(name)(*slots).to_expression()
         step += 1
     raise ValueError("staged contact contraction has no input legs")
 
@@ -1526,7 +1519,7 @@ def eager_color_singlet_vertex_term_components(
             "eager n-ary inputs must provide every non-result leg exactly once"
         )
 
-    library = _sym.TensorLibrary.hep_lib_atom()
+    library = DenseTensors()
     expression = _sym.E(term.lorentz_expression)
     momentum_by_leg: dict[int, tuple[_sym.Expression, ...]] = {}
     for leg in sorted(input_legs):
@@ -1559,13 +1552,8 @@ def eager_color_singlet_vertex_term_components(
     )
     minkowski = _sym.Representation.mink(4)
     for leg, momentum in momentum_by_leg.items():
-        library.register(
-            _sym.Tensor.dense(
-                _sym.TensorName(tensor_symbols.ufo_momentum_tensor_name(leg + 1))(
-                    minkowski
-                ),
-                momentum,
-            )
+        library.register_dense(
+            tensor_symbols.ufo_momentum_tensor_name(leg + 1), (minkowski,), momentum
         )
     if coupling is not None:
         expression *= coupling
@@ -1622,7 +1610,7 @@ def _contact_tree_payload_by_leg(
 
 
 def _contact_tree_physical_tensor_expression(
-    library: _sym.TensorLibrary,
+    library: DenseTensors,
     *,
     kind: int,
     leg: int,
@@ -1635,9 +1623,9 @@ def _contact_tree_physical_tensor_expression(
         if len(components) != 1:
             raise ValueError("scalar contact input must have one component")
         return components[0]
-    name = _sym.TensorName(model_symbols.contact_leg_tensor_name(kind, leg))
-    library.register(_sym.Tensor.dense(name(*representations), components))
-    return name(*_spin_slots(spin, leg + 1)).to_expression()
+    name = model_symbols.contact_leg_tensor_name(kind, leg)
+    library.register_dense(name, representations, components)
+    return _sym.TensorName(name)(*_spin_slots(spin, leg + 1)).to_expression()
 
 
 def _contact_tree_assignment_multiplicity(
