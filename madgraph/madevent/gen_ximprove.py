@@ -541,8 +541,11 @@ class gensym(object):
         Gdir = pjoin(Pdir, 'G%s' % G)
         self.write_parameter_file(pjoin(Gdir, 'input_app.txt'), options)   
         
-        # 2. check that ftn25 exists.
-        assert os.path.exists(pjoin(Gdir, "ftn25"))    
+        # 2. check that the grid the jobs start from exists: refine_splitted.sh
+        #    copies G/ftn26 into each job's ftn25. A split survey puts it there
+        #    when it combines its last iteration, an unsplit one
+        #    (survey_splitting = 1) leaves the one madevent wrote.
+        assert os.path.exists(pjoin(Gdir, "ftn26"))
         
         
         # 3. Submit the new jobs
