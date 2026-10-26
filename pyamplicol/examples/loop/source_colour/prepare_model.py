@@ -24,11 +24,17 @@ from pyamplicol.models.loop_declaration import (
 
 
 def _scalar_arity_view():
-    """The checkout's source-compatibility view (``tools/loop_reference``)."""
+    """The checkout's source-compatibility view (``tools/loop_reference``,
+    test support: neither the wheel nor the sdist ships it)."""
 
-    root = str(Path(__file__).resolve().parents[3])
-    if root not in sys.path:
-        sys.path.insert(0, root)
+    root = Path(__file__).resolve().parents[3]
+    if not (root / "tools/loop_reference/model_compatibility.py").is_file():
+        raise SystemExit(
+            "prepare_model.py runs from a pyAmpliCol source checkout: it uses "
+            "the checkout's tools/loop_reference/model_compatibility.py"
+        )
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
     from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
