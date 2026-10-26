@@ -928,6 +928,13 @@ namespace madmatrix
 #else
   inline __host__ __device__ fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); }
 #endif
+#ifdef MGONGPU_SIMD_DENOM64
+  // Coupling stays FP32, only the FP64 propagator is narrowed: no widening of COUP.
+  inline cxtype_amp_sv coup_over_denom( fptype ccoeff, const cxtype_amp_sv& coup, const cxtype_denom_sv& den ) { return static_cast<fptype_amp>( ccoeff ) * coup * static_cast<cxtype_amp_sv>( fptype_denom_sv( 1. ) / den ); }
+#else
+  template<typename C>
+  inline __host__ __device__ cxtype_amp_sv coup_over_denom( fptype ccoeff, const C& coup, const cxtype_denom_sv& den ) { return static_cast<cxtype_amp_sv>( static_cast<fptype_denom>( ccoeff ) * static_cast<cxtype_denom_sv>( coup ) / den ); }
+#endif
   template<typename T>
   inline __host__ __device__ fptype_amp fpamp_scalar( const T& x ) { return static_cast<fptype_amp>( x ); }
 
