@@ -707,6 +707,13 @@ class SeedColour:
                     f"loop seeds of block {key.word} with closed colour traces "
                     "(a colour-singlet vertex of two adjoint currents)"
                 )
+            if blocks.graded and block.colour_flow.nc_grade is None:
+                # The grade split leaves every block one grade; a graded
+                # table must never name a block by a mixed one.
+                raise ValueError(
+                    f"block {key.word} of a graded loop request mixes N_c "
+                    "grades (generation.dag_grades left it mixed)"
+                )
             field_name = self._fields.incoming(key.particle_id)["name"]
             self._words.setdefault(
                 (key.external_mask, field_name, key.coupling_orders), {}
