@@ -159,8 +159,15 @@ def test_virtual_equals_madloop_and_catani(loop_sm_compiled_model, loop_native, 
 # up); the loop-request compilation makes those separate blocks of one N_c
 # grade each (``generation.dag_grades``, design §3.3), so the projections are
 # exact for them as for distinct flavours. ``name -> (process, Born QCD, QED,
-# leg masses)`` of the requests without a provider fixture (an exact point).
-PROJECTION_SLICES = {"gg_uuxuux": ("g g > u u~ u u~", 4, 0, (0,) * 6)}
+# leg masses, exact point per carrier)`` of the requests without a provider
+# fixture. The first three exact points of g g > u u~ u u~ are outside the
+# binary64 scope of the O1 rule (full-colour estimates 9.5e-9, 1.1e-9 and
+# 4.1e-8 above its 1e-9 cap; true binary64 errors 6.6e-9, 3.5e-10 and 7.6e-8
+# against double-double), so binary64 takes the fourth (estimate 1.9e-11,
+# true error 1.0e-12) and double-double the first.
+PROJECTION_SLICES = {
+    "gg_uuxuux": ("g g > u u~ u u~", 4, 0, (0,) * 6, {"double": 3, "double-double": 0})
+}
 PROJECTION_PHYSICS = frozenset({"uux_uuxg"})
 PROJECTION_NAMES = (
     "uux_ddxssx",
@@ -182,10 +189,10 @@ PROJECTION_CARRIERS = {"double": 1e-12, "double-double": 1e-24}
 O1_CAP = 1e-9
 
 
-def _projection_request(compiled, name: str, accuracy: str):
+def _projection_request(compiled, name: str, accuracy: str, carrier: str):
     """The request of ``name`` at ``accuracy`` with the colour declaration of
-    the formal-N_c continuation (the counterterms' N_c grades), and its
-    first point, scale and parameters."""
+    the formal-N_c continuation (the counterterms' N_c grades), and the
+    ``carrier``'s point (a fixture's first), scale and parameters."""
 
     from pyamplicol.loops.v2.assemble import SliceRequest
     from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
@@ -200,7 +207,7 @@ def _projection_request(compiled, name: str, accuracy: str):
         "colour_contraction": "direct",
     }
     if name in PROJECTION_SLICES:
-        process, qcd, qed, masses = PROJECTION_SLICES[name]
+        process, qcd, qed, masses, points = PROJECTION_SLICES[name]
         request = SliceRequest(
             process,
             {"QCD": qcd, "QED": qed},
@@ -208,7 +215,8 @@ def _projection_request(compiled, name: str, accuracy: str):
             fixed_parameters=legacy_capture.FIXED_PARAMETERS,
             **colour,
         )
-        (point,) = exact_points.generate(list(masses), count=1)
+        index = points[carrier]
+        point = exact_points.generate(list(masses), count=index + 1)[index]
         point = [[exact_points.decimal_string(x) for x in p] for p in point]
         return request, point, "1000000", {"aS": "0.118"}
     reference = _reference(name)
@@ -255,10 +263,12 @@ def test_colour_projections_are_formal_nc_projections(
 
     compiled = load_compiled_model(loop_sm_compiled_model)
     tolerance = Decimal(str(PROJECTION_CARRIERS[carrier]))
-    _request0, point, scale, parameters = _projection_request(compiled, name, "lc")
+    _request0, point, scale, parameters = _projection_request(
+        compiled, name, "lc", carrier
+    )
 
     def build(accuracy, prune=True):
-        request = _projection_request(compiled, name, accuracy)[0]
+        request = _projection_request(compiled, name, accuracy, carrier)[0]
         return LoopSlice.generate(compiled, request, loop_native, prune=prune)
 
     def evaluate(slice_, stability=None):
