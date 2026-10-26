@@ -854,17 +854,15 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 # Need to add the unary operator before the coupling (OM fix for #825).
                 # pre_coup/post_coup wrap %(coup)s, so open the cast in pre_coup and
                 # close it in post_coup (the Ccoeff sign carrier multiplies from outside).
-                # coup_over_denom keeps the coupling at vertex precision and only the
-                # propagator at denom precision (no widening of COUP for FPTYPE=v).
                 coup_vertex = '%s%s%s' % (mydict['pre_coup'], coup_name, mydict['post_coup'])
                 if has_coup: # but in case where the coupling is not used (one)
                     mydict['pre_coup'] = 'static_cast<fptype_denom>(%s) * static_cast<cxtype_denom_sv>(%s' % (ccoeff, mydict['pre_coup'])
                     mydict['post_coup'] = '%s)' % mydict['post_coup']
-                    prop = lambda den: 'coup_over_denom( %s, %s, %s )' % (ccoeff, coup_vertex, den)
                 else:
                     mydict['pre_coup'] = 'static_cast<fptype_denom>(%s' % mydict['pre_coup']
                     mydict['post_coup'] = '%s)' % mydict['post_coup']
-                    prop = lambda den: 'static_cast<cxtype_amp_sv>( %s%s%s / %s )' % (mydict['pre_coup'], coup_name, mydict['post_coup'], den)
+                # Generic denominator (custom, complex mass, no coupling): divided at denom precision.
+                prop = lambda den: 'static_cast<cxtype_amp_sv>( %s%s%s / %s )' % (mydict['pre_coup'], coup_name, mydict['post_coup'], den)
                 if not aloha.complex_mass:
                     # This affects 'denom = COUP' in HelAmps_sm.cc
                     if self.routine.denominator:
@@ -878,10 +876,14 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         mydict['cId'] = 'cId'  # once per combined
                         if arith_doubleexpansion:
                             out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
-                        # same formula for all the FPTYPE confs
-                        out.write('    const cxtype_denom %(cId)s( 0., 1. );\n' % mydict) # AV
-                        den = '( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom>(M%(i)s) * ( static_cast<fptype_denom>(M%(i)s) - %(cId)s * static_cast<fptype_denom>(W%(i)s) ) )' % mydict
-                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop(den)))
+                        if has_coup:
+                            # Qualified: the local variable is also called denom.
+                            out.write('    %s = madmatrix::denom( %s, %s, dP%s, M%s, W%s );\n' % (mydict['declnamedenom'], ccoeff, coup_vertex, self.outgoing, self.outgoing, self.outgoing))
+                        else:
+                            # same formula for all the FPTYPE confs
+                            out.write('    const cxtype_denom %(cId)s( 0., 1. );\n' % mydict) # AV
+                            den = '( ( dP%(i)s[0] * dP%(i)s[0] ) - ( dP%(i)s[1] * dP%(i)s[1] ) - ( dP%(i)s[2] * dP%(i)s[2] ) - ( dP%(i)s[3] * dP%(i)s[3] ) - static_cast<fptype_denom>(M%(i)s) * ( static_cast<fptype_denom>(M%(i)s) - %(cId)s * static_cast<fptype_denom>(W%(i)s) ) )' % mydict
+                            out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop(den)))
                         if arith_doubleexpansion:
                             out.write('#endif\n')
                             out.write('#ifdef MADARITH_DOUBLEEXPANSION\n')

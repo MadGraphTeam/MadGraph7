@@ -79,7 +79,21 @@ namespace madmatrix
   typedef fptype_momenta fptype_denom_sv __attribute__( ( vector_size( neppV * sizeof( fptype_momenta ) ), aligned( neppVD * sizeof( fptype_momenta ) ) ) );
 #endif
   static_assert( sizeof( fptype_denom_sv ) == neppV * sizeof( fptype_momenta ), "fptype_denom_sv must hold one FP64 value per FP32 lane" );
-  inline fptype_denom_sv fpdenom_bcast( fptype_momenta s ) { return fptype_denom_sv{} + s; }
+  // Broadcast in one native register, then copy it into both halves: a broadcast straight into
+  // the double-width type goes through one scalar store per lane (store-forwarding stalls).
+#ifdef __clang__
+  typedef fptype_momenta fptype_denom_hv __attribute__( ( ext_vector_type( neppVD ) ) );
+#else
+  typedef fptype_momenta fptype_denom_hv __attribute__( ( vector_size( neppVD * sizeof( fptype_momenta ) ) ) );
+#endif
+  inline fptype_denom_sv fpdenom_bcast( fptype_momenta s )
+  {
+    const fptype_denom_hv half = fptype_denom_hv{} + s;
+    fptype_denom_sv out;
+    __builtin_memcpy( &out, &half, sizeof( half ) );
+    __builtin_memcpy( reinterpret_cast<char*>( &out ) + sizeof( half ), &half, sizeof( half ) );
+    return out;
+  }
   inline fptype_v fpdenom_narrow( const fptype_denom_sv& p ) { return __builtin_convertvector( p, fptype_v ); }
   inline fptype_denom_sv fpdenom_widen( const fptype_v& f ) { return __builtin_convertvector( f, fptype_denom_sv ); }
 #endif
@@ -877,13 +891,18 @@ namespace madmatrix
 #else
   inline __host__ __device__ fptype_amp_sv fpamp_of_mom( const fptype_momenta_sv& p ) { return static_cast<fptype_amp_sv>( p ); } 
 #endif
-#ifdef MGONGPU_SIMD_DENOM64
-  // Coupling stays FP32, only the FP64 propagator is narrowed: no widening of COUP.
-  inline cxtype_amp_sv coup_over_denom( fptype ccoeff, const cxtype_amp_sv& coup, const cxtype_denom_sv& den ) { return static_cast<fptype_amp>( ccoeff ) * coup * static_cast<cxtype_amp_sv>( fpdenom_bcast( 1. ) / den ); }
-#else
-  template<typename C>
-  inline __host__ __device__ cxtype_amp_sv coup_over_denom( fptype ccoeff, const C& coup, const cxtype_denom_sv& den ) { return static_cast<cxtype_amp_sv>( static_cast<fptype_denom>( ccoeff ) * static_cast<cxtype_denom_sv>( coup ) / den ); }
+#ifndef MGONGPU_SIMD_DENOM64
+  inline __host__ __device__ fptype_denom_sv fpdenom_bcast( fptype_denom s ) { return fptype_denom_sv{} + s; }
 #endif
+  // Propagator coupling Ccoeff * COUP / ( P^2 - M^2 + i M W ).
+  // Only P^2 - M^2 is computed at denom precision (it cancels near the pole); the division is at vertex precision.
+  template<typename C>
+  inline __host__ __device__ cxtype_amp_sv denom( fptype ccoeff, const C& coup, const fptype_denom_sv P[4], fptype M, fptype W )
+  {
+    const fptype_denom m = M;
+    const fptype_denom_sv p2 = ( P[0] * P[0] ) - ( P[1] * P[1] ) - ( P[2] * P[2] ) - ( P[3] * P[3] );
+    return static_cast<fptype_amp>( ccoeff ) * coup / cxmake( fpamp_of_mom( p2 - fpdenom_bcast( m * m ) ), static_cast<fptype_amp>( m * static_cast<fptype_denom>( W ) ) );
+  }
   template<typename T>
   inline __host__ __device__ fptype_amp fpamp_scalar( const T& x ) { return static_cast<fptype_amp>( x ); }
 
