@@ -40,6 +40,18 @@ std::size_t final_channel_count(
 // differ from one. Without it the systematics take the nominal densities at
 // the factorisation scale themselves, and a variation becomes the ratio of
 // the leading densities there, the ladder ratios left at their nominal value.
+// Whether the event carries the scales of its MLM alpha_s vertices, for the
+// systematics to vary them the way madevent's do: the same condition under
+// which mlm_weights applies them. A 2 -> 1 process has no vertex at all.
+bool emits_alphas_scales(
+    const std::optional<EnergyScale>& energy_scale,
+    const std::optional<RunningCoupling>& running_coupling,
+    std::size_t particle_count
+) {
+    return energy_scale && energy_scale->mlm_alphas_reweighting() &&
+        running_coupling && particle_count > 3;
+}
+
 bool emits_partial_weights(
     bool partial_weights, const std::optional<EnergyScale>& energy_scale
 ) {
@@ -175,6 +187,14 @@ Integrand::Integrand(
                     ret_types.push_back(
                         "cluster_scales",
                         batch_float_array(mapping.particle_count() - 2)
+                    );
+                }
+                if (emits_alphas_scales(
+                        energy_scale, running_coupling, mapping.particle_count()
+                    )) {
+                    ret_types.push_back(
+                        "alphas_scales",
+                        batch_float_array(mapping.particle_count() - 3)
                     );
                 }
                 // before "random": the outputs after it feed the discrete histograms
@@ -492,6 +512,9 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
 
     if (_energy_scale && _energy_scale->is_mlm()) {
         ret.push_back("cluster_scales_acc", acc_float_array(particle_count - 2));
+    }
+    if (emits_alphas_scales(_energy_scale, _running_coupling, particle_count)) {
+        ret.push_back("alphas_scales_acc", acc_float_array(particle_count - 3));
     }
 
     return ret;
@@ -856,6 +879,11 @@ NamedVector<Value> Integrand::build_channel_part(
     if (_energy_scale && _energy_scale->is_mlm()) {
         out.push_back("cluster_scales_acc", scales.at("outgoing_scales"));
     }
+    if (emits_alphas_scales(
+            _energy_scale, _running_coupling, _mapping.particle_count()
+        )) {
+        out.push_back("alphas_scales_acc", scales.at("alphas_scales"));
+    }
 
     return out;
 }
@@ -881,19 +909,22 @@ ValueVec Integrand::mlm_weights(
     // alphas(mu_R)^n. Without it a merged sample is short by one factor
     // per emission, compounding with multiplicity.
     //
-    // The kernel hands back mu_R for any vertex it does not reweight, so
-    // that vertex's ratio is one and no mask is needed here.
+    // The kernel hands back 0 for any vertex it does not reweight; that
+    // vertex is evaluated at mu_R, so its ratio is exactly one.
     if (_energy_scale->mlm_alphas_reweighting() && _running_coupling) {
         auto vertex_scales = scales.at("alphas_scales");
         std::size_t vertex_count = vertex_scales.type.shape.at(0);
         if (vertex_count > 0) {
-            auto reference = _running_coupling.value()
-                                 .build_function(fb, {scales.at("ren_scale")})
-                                 .at(0);
+            auto ren_scale = scales.at("ren_scale");
+            auto reference =
+                _running_coupling.value().build_function(fb, {ren_scale}).at(0);
             Value factor;
             for (std::size_t i = 0; i < vertex_count; ++i) {
-                auto [rest, one_scale] = fb.pop(vertex_scales);
+                auto [rest, vertex_scale] = fb.pop(vertex_scales);
                 vertex_scales = rest;
+                // 0 (not reweighted) -> mu_R; a reweighted scale is > 2 GeV
+                auto at_mur = fb.cut_one(vertex_scale, -1., 0.);
+                auto one_scale = fb.add(vertex_scale, fb.mul(at_mur, ren_scale));
                 auto alpha =
                     _running_coupling.value().build_function(fb, {one_scale}).at(0);
                 auto ratio = fb.div(alpha, reference);
@@ -1089,6 +1120,12 @@ NamedVector<Value> Integrand::build_common_part(
     if (_energy_scale && _energy_scale->is_mlm()) {
         cluster_scales_acc = args.at("cluster_scales_acc");
     }
+    bool has_alphas_scales =
+        emits_alphas_scales(_energy_scale, _running_coupling, _mapping.particle_count());
+    Value alphas_scales_acc;
+    if (has_alphas_scales) {
+        alphas_scales_acc = args.at("alphas_scales_acc");
+    }
 
     // Evaluate differential cross section
     auto make_xs_args = [&](std::array<Value, 2>& pdfs, Value alpha) {
@@ -1210,6 +1247,9 @@ NamedVector<Value> Integrand::build_common_part(
         }
         pdfs_acc = evaluate_pdfs(fb, scales, x_acc, flavor_id);
         cluster_scales_acc = scales.at("outgoing_scales");
+        if (has_alphas_scales) {
+            alphas_scales_acc = scales.at("alphas_scales");
+        }
         alpha_qcd_acc =
             _running_coupling.value().build_function(fb, {ren_scale_acc}).at(0);
         dxs_vec = _diff_xs.at(0)
@@ -1421,6 +1461,15 @@ NamedVector<Value> Integrand::build_common_part(
                 scatter_or_drop(
                     fb.full({0., batch_size_val, outgoing_count}),
                     cluster_scales_acc
+                )
+            );
+        }
+        if (has_alphas_scales) {
+            auto vertex_count = static_cast<me_int_t>(_mapping.particle_count() - 3);
+            outputs.push_back(
+                "alphas_scales",
+                scatter_or_drop(
+                    fb.full({0., batch_size_val, vertex_count}), alphas_scales_acc
                 )
             );
         }

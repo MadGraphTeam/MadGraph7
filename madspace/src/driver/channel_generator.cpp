@@ -34,6 +34,9 @@ int particle_extra_flags(
     if (index_map.contains("cluster_scales")) {
         flags |= ParticleRecord::f_clustering;
     }
+    if (index_map.contains("alphas_scales")) {
+        flags |= ParticleRecord::f_alphas_scales;
+    }
     return flags;
 }
 
@@ -325,6 +328,11 @@ void ChannelEventGenerator::init_field_indices() {
         _field_indices.cluster_scales = index_map.at("cluster_scales");
     } else {
         _field_indices.cluster_scales = -1;
+    }
+    if (index_map.contains("alphas_scales")) {
+        _field_indices.alphas_scales = index_map.at("alphas_scales");
+    } else {
+        _field_indices.alphas_scales = -1;
     }
     if (index_map.contains("subprocess_index")) {
         _field_indices.subprocess_index = index_map.at("subprocess_index");
@@ -822,6 +830,22 @@ void ChannelEventGenerator::write_events(
             for (std::size_t j = 0; j < _particle_count; ++j) {
                 auto particle = event_buffer.particle(i, j);
                 particle.cluster_scale() = j >= 2 ? scales[j - 2] : 0.;
+            }
+        }
+    }
+
+    if (_field_indices.alphas_scales != -1) {
+        // vertex i on outgoing particle 2 + i; there is one vertex less than
+        // there are outgoing particles, the remaining slots hold zero
+        auto alphas_view =
+            unweighted_events.at(_field_indices.alphas_scales).view<double, 2>();
+        for (std::size_t i = 0; i < w_view.size(); ++i) {
+            auto scales = alphas_view[i];
+            std::size_t vertex_count = scales.size();
+            for (std::size_t j = 0; j < _particle_count; ++j) {
+                auto particle = event_buffer.particle(i, j);
+                particle.alphas_scale() =
+                    j >= 2 && j - 2 < vertex_count ? scales[j - 2] : 0.;
             }
         }
     }

@@ -133,6 +133,7 @@ interference_helicity = %(generation.interference_helicity)s # options: exact, s
 enable = %(systematics.enable)s
 mur = %(systematics.mur)s # renormalization scale factors
 muf = %(systematics.muf)s # factorization scale factors
+alps = %(systematics.alps)s # MLM emission scale factors (dynamical_scale_choice = "mlm" only)
 together = %(systematics.together)s # true: all mur x muf combinations, false: one at a time
 # alternative dynamical scale choices, as for [beam] dynamical_scale_choice
 dynamical_scale = %(systematics.dynamical_scale)s

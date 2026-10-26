@@ -58,6 +58,10 @@ public:
     static constexpr int f_particle_data = 1;
     static constexpr int f_lhe_particle = 2;
     static constexpr int f_clustering = 4;
+    // MLM alpha_s reweighting: the scale of the clustering vertex stored on
+    // outgoing particle 2 + i is vertex i's. Only kept in the combined buffer
+    // the systematics read, never written to an event file.
+    static constexpr int f_alphas_scales = 8;
 
     static std::vector<FieldLayout> layout(int fields) {
         std::vector<FieldLayout> ret;
@@ -94,6 +98,9 @@ public:
         if (fields & f_clustering) {
             ret.push_back({"cluster_scale", FieldLayout::f64, 1});
         }
+        if (fields & f_alphas_scales) {
+            ret.push_back({"alphas_scale", FieldLayout::f64, 2});
+        }
         return ret;
     }
 
@@ -123,6 +130,9 @@ public:
 
     // clustering data
     UnalignedRef<double> cluster_scale() { return &_data[_offsets[0] + 0]; }
+    // scale alpha_s was evaluated at for one MLM clustering vertex, see
+    // f_alphas_scales
+    UnalignedRef<double> alphas_scale() { return &_data[_offsets[1] + 0]; }
 
     void from_lhe_particle(const LHEParticle& particle, bool has_clustering = false) {
         lhe_pdg_id() = particle.pdg_id;

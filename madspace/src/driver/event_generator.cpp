@@ -916,6 +916,23 @@ void EventGenerator::combine_to_lhe(
     _event_histograms = nullptr;
 }
 
+namespace {
+
+// The MLM alpha_s vertex scales of any channel: a merged run mixes a 2 -> 1
+// sample, which has no vertex, with the jet samples, which do, and channel 0
+// may be either.
+template <typename Channels>
+int any_alphas_scales(const Channels& channels) {
+    for (auto& channel : channels) {
+        if (channel->particle_layout_extra_flags() & ParticleRecord::f_alphas_scales) {
+            return ParticleRecord::f_alphas_scales;
+        }
+    }
+    return 0;
+}
+
+} // namespace
+
 DataLayout EventGenerator::combined_layout() const {
     return DataLayout(
         EventRecord::layout(
@@ -925,7 +942,7 @@ DataLayout EventGenerator::combined_layout() const {
         ),
         ParticleRecord::layout(
             ParticleRecord::f_particle_data |
-            _channels.at(0)->particle_layout_extra_flags()
+            _channels.at(0)->particle_layout_extra_flags() | any_alphas_scales(_channels)
         )
     );
 }
@@ -946,10 +963,13 @@ EventGenerator::output_layout(int event_flags, std::size_t particle_flags) const
             extra_flags |= EventRecord::f_syst_weights;
         }
     }
+    // the alpha_s vertex scales only serve the systematics, which run on the
+    // combined buffer: no event file carries them
     return DataLayout(
         EventRecord::layout(event_flags | extra_flags, syst_ids),
         ParticleRecord::layout(
-            particle_flags | _channels.at(0)->particle_layout_extra_flags()
+            particle_flags | (_channels.at(0)->particle_layout_extra_flags() &
+                              ~ParticleRecord::f_alphas_scales)
         )
     );
 }
@@ -1186,6 +1206,7 @@ void EventGenerator::read_and_combine(
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_partial_weights;
     bool has_clustering =
         _channels.at(0)->particle_layout_extra_flags() & ParticleRecord::f_clustering;
+    bool has_alphas_scales = any_alphas_scales(_channels) != 0;
     bool has_subproc_index =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_subproc_index;
     bool has_bias = _channels.at(0)->event_layout_extra_flags() & EventRecord::f_bias;
@@ -1202,6 +1223,8 @@ void EventGenerator::read_and_combine(
             --chan.cum_count;
         });
         auto& channel = _channels.at(sampled_chan - channel_data.begin());
+        bool channel_has_alphas_scales =
+            channel->particle_layout_extra_flags() & ParticleRecord::f_alphas_scales;
 
         double weight = 0.;
         while (true) {
@@ -1264,6 +1287,12 @@ void EventGenerator::read_and_combine(
             if (has_clustering) {
                 particle_out.cluster_scale() = particle_in.cluster_scale();
             }
+            if (has_alphas_scales) {
+                // zero from a channel without vertices (2 -> 1)
+                particle_out.alphas_scale() = channel_has_alphas_scales
+                    ? particle_in.alphas_scale().value()
+                    : 0.;
+            }
         }
         for (; i < buffer.particle_count(); ++i) {
             auto particle_out = buffer.particle(event_index, i);
@@ -1271,6 +1300,14 @@ void EventGenerator::read_and_combine(
             particle_out.px() = 0.;
             particle_out.py() = 0.;
             particle_out.pz() = 0.;
+            // the buffer is reused: a padding slot must not keep the scales of
+            // an earlier, higher-multiplicity event
+            if (has_clustering) {
+                particle_out.cluster_scale() = 0.;
+            }
+            if (has_alphas_scales) {
+                particle_out.alphas_scale() = 0.;
+            }
         }
         ++sampled_chan->buffer_index;
     }

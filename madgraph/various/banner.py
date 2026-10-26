@@ -6966,6 +6966,11 @@ class RunCardMG7(RunCard):
             comment="renormalization scale factors")
         self.add_toml_param('systematics', 'muf', [0.5, 1.0, 2.0], typelist=float, gridpack=True,
             comment="factorization scale factors")
+        # madevent's sys_alpsfact, which it sets to "0.5 1 2" for a matched
+        # process: the alpha_s of every MLM clustering vertex at the factor
+        # times the vertex scale, in an "Emission scale variation" group
+        self.add_toml_param('systematics', 'alps', [0.5, 1.0, 2.0], typelist=float, gridpack=True,
+            comment="MLM emission scale factors (dynamical_scale_choice = mlm only)")
         self.add_toml_param('systematics', 'together', True, gridpack=True,
             comment="true: all mur x muf combinations; false: vary one scale at a time")
         self.add_toml_param('systematics', 'dynamical_scale', [], typelist=str, gridpack=True,

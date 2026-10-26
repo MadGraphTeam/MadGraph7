@@ -1456,23 +1456,27 @@ def t_channel_momenta():
     return sample_momenta(t_channel_diagram(), batch_size=2000)
 
 
-def test_alphas_scales_are_clustering_scales_or_the_renormalisation_scale(
-    process,
-):
-    """Every vertex is handed either its own scale or mu_R, the latter meaning
-    "not reweighted": its ratio against mu_R is then exactly one and the
-    consumer needs no mask."""
+def test_alphas_scales_are_clustering_scales_or_zero(process):
+    """Every vertex is handed either its own scale or 0, the latter meaning
+    "not reweighted" (evaluated at mu_R). Not mu_R itself: a reweighted vertex
+    can sit exactly at mu_R, and the systematics vary the two differently."""
     _, diagrams, pdg_ids = process
     momenta = sample_momenta(diagrams)
     clustering = make_clustering(diagrams, external_pdg_ids=pdg_ids)
-    ren_scale = run(clustering, momenta)[0]
     scales, weight = alphas_outputs(clustering, momenta)
     assert np.all(np.isfinite(scales))
-    assert np.all(scales > 0.0)
+    assert np.all(scales >= 0.0)
     assert np.all((weight == 0.0) | (weight == 1.0))
     # gluon-only processes: every vertex is a QCD one, so few of them should
-    # have been left at mu_R
-    assert np.mean(np.isclose(scales, ren_scale[:, None])) < 0.5
+    # have been left out
+    assert np.mean(scales == 0.0) < 0.5
+    # without alpha_s reweighting none is
+    clustering = make_clustering(
+        diagrams, external_pdg_ids=pdg_ids,
+        alphas_scheme=ms.MLMClustering.AlphasScheme.none,
+    )
+    scales, weight = alphas_outputs(clustering, momenta)
+    assert np.all(scales == 0.0) and np.all(weight == 1.0)
 
 
 def test_pdf_reweighting_off_leaves_the_density_where_the_scale_is(

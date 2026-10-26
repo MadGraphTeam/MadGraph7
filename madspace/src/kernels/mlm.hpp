@@ -1438,10 +1438,14 @@ KERNELSPEC int mlm_clustering_walk(
     }
     FVal<T> mean_scale =
         reweighted > 0 ? exp(log_sum / reweighted) : ren_scale_val;
+    // A vertex left at mu_R is handed 0 rather than mu_R itself: a reweighted
+    // vertex can sit exactly at mu_R (one clustering under clustering_mean), and
+    // the systematics have to tell the two apart, since madevent varies a
+    // reweighted vertex with alpsfact and the others with mu_R.
     for (int i = 0; i < cluster_max; ++i) {
         bool is_qcd_vertex = (cluster_history[i] >> 27) & 1;
         if (alphas_scheme == ALPHAS_NONE || !is_qcd_vertex) {
-            alphas_scales[i] = ren_scale_val;
+            alphas_scales[i] = 0.0;
         } else if (alphas_scheme == ALPHAS_GEOMETRIC) {
             alphas_scales[i] = mean_scale;
         } else {

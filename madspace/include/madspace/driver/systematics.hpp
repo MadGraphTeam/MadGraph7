@@ -44,6 +44,12 @@ struct SystematicsConfig {
     std::vector<double> mur{1.};
     /// Factorization scale factors; `1.0` is the nominal point.
     std::vector<double> muf{1.};
+    /// Emission scale factors of an MLM merged sample, madevent's `alpsfact`:
+    /// the alpha_s of every clustering vertex is evaluated at the factor times
+    /// the vertex scale. `1.0` is the nominal point; the other values are
+    /// written in an "Emission scale variation" group. Only for events whose
+    /// record carries the vertex scales (ParticleRecord::f_alphas_scales).
+    std::vector<double> alps{1.};
     /// If true, vary every `(mur, muf)` combination; if false, vary one
     /// factor at a time.
     bool together = true;
@@ -97,13 +103,21 @@ struct Variation {
     /// Dynamical scale choice; `-1` for the scale the events were generated
     /// with.
     int dyn = -1;
+    /// Emission scale factor of the MLM alpha_s vertices (madevent's
+    /// `alpsfact`); `1` for the nominal vertex scales.
+    double alps = 1.;
     /// Whether this is a scale variation (a non-nominal `mur`, `muf` or `dyn`
     /// at the nominal PDF member).
     bool is_scale() const {
         return pdf_index == -1 && (mur != 1. || muf != 1. || dyn != -1);
     }
+    /// Whether this is an emission scale variation (a non-nominal `alps` at
+    /// the nominal scales and PDF member).
+    bool is_emission() const { return pdf_index == -1 && !is_scale() && alps != 1.; }
     /// Whether this is the nominal point (nominal scale and PDF member).
-    bool is_nominal() const { return pdf_index == -1 && !is_scale(); }
+    bool is_nominal() const {
+        return pdf_index == -1 && !is_scale() && !is_emission();
+    }
 };
 
 /// The variations belonging to one PDF set, for computing an uncertainty band.
@@ -186,6 +200,9 @@ public:
     /// Indices into @ref variations of the scale variations (the envelope
     /// group).
     std::vector<std::size_t> scale_variation_indices() const;
+    /// Indices into @ref variations of the MLM emission scale variations
+    /// (their own envelope group).
+    std::vector<std::size_t> emission_variation_indices() const;
     /// The PDF groups, one per set with members among @ref variations.
     std::vector<PdfGroupInfo> pdf_groups() const;
 

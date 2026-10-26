@@ -48,11 +48,21 @@ struct AlphaSKey {
     std::size_t alpha_s_index;
     double mur;
     int dyn;
+    double alps;
     bool operator<(const AlphaSKey& other) const {
-        return std::tie(alpha_s_index, mur, dyn) <
-            std::tie(other.alpha_s_index, other.mur, other.dyn);
+        return std::tie(alpha_s_index, mur, dyn, alps) <
+            std::tie(other.alpha_s_index, other.mur, other.dyn, other.alps);
     }
 };
+
+bool particle_layout_has(const DataLayout& layout, const std::string& name) {
+    for (auto& field : layout.particle_layout()) {
+        if (field.name == name) {
+            return true;
+        }
+    }
+    return false;
+}
 
 } // namespace
 
@@ -380,6 +390,14 @@ void SystematicsCalculator::build_variations() {
         );
     }
 
+    // emission scale variations of an MLM merged sample (madevent's alpsfact),
+    // at the nominal mu_R, mu_F and PDF, as systematics.py writes them
+    for (double alps : _config.alps) {
+        if (alps != 1.) {
+            _variations.push_back({id++, 1., 1., -1, -1, alps});
+        }
+    }
+
     // PDF variations: when members of the nominal set are requested, the group
     // starts with the nominal member itself so that the group is complete
     bool has_nominal_set_members = std::any_of(
@@ -413,11 +431,21 @@ std::vector<std::size_t> SystematicsCalculator::scale_variation_indices() const 
     return indices;
 }
 
+std::vector<std::size_t> SystematicsCalculator::emission_variation_indices() const {
+    std::vector<std::size_t> indices;
+    for (std::size_t k = 0; k < _variations.size(); ++k) {
+        if (_variations.at(k).is_emission()) {
+            indices.push_back(k);
+        }
+    }
+    return indices;
+}
+
 std::vector<PdfGroupInfo> SystematicsCalculator::pdf_groups() const {
     std::map<int, PdfGroupInfo> groups;
     for (std::size_t k = 0; k < _variations.size(); ++k) {
         auto& var = _variations.at(k);
-        if (var.is_scale()) {
+        if (var.is_scale() || var.is_emission()) {
             continue;
         }
         int set_lhaid, member;
@@ -668,9 +696,13 @@ void SystematicsCalculator::compute(
     bool has_subproc = layout_has(layout, "subprocess_index");
     bool use_pdf = _config.has_pdf && _nominal_pdf && (has_beam1 || has_beam2);
     bool has_dyn = !_config.dyn_scales.empty();
+    bool has_vertices = particle_layout_has(layout, "alphas_scale");
 
     // per-event inputs
     struct EventInput {
+        // the scales of the MLM clustering vertices whose alpha_s is evaluated
+        // at their own scale rather than at mu_R (empty if none)
+        std::vector<double> vertex_scales;
         double w0, ren_scale, x1, x2, muf1, muf2, alpha_s, nominal_product;
         int subproc, qcd_power;
         me_int_t slot1, slot2;
@@ -708,6 +740,16 @@ void SystematicsCalculator::compute(
             in.slot2 = pid_slot(pdgs.at(1));
             if (has_partial) {
                 in.nominal_product = event.partial_weight_product();
+            }
+        }
+        if (has_vertices) {
+            // A vertex the clustering did not reweight carries 0, as does an
+            // unused slot: its alpha_s is one of the mu_R powers.
+            for (std::size_t j = 2; j < buffer.particle_count(); ++j) {
+                double scale = buffer.particle(i, j).alphas_scale();
+                if (scale > 0.) {
+                    in.vertex_scales.push_back(scale);
+                }
             }
         }
         in.dyn_scale.fill(0.);
@@ -863,10 +905,10 @@ void SystematicsCalculator::compute(
         auto& var = _variations.at(k);
         std::size_t alpha_s_index =
             var.pdf_index >= 0 ? _member_pdfs.at(var.pdf_index).alpha_s_index : 0;
-        if (var.mur == 1. && var.dyn == -1 && alpha_s_index == 0) {
+        if (var.mur == 1. && var.dyn == -1 && alpha_s_index == 0 && var.alps == 1.) {
             continue;
         }
-        AlphaSKey key{alpha_s_index, var.mur, var.dyn};
+        AlphaSKey key{alpha_s_index, var.mur, var.dyn, var.alps};
         std::size_t pos = 0;
         for (; pos < keys.size(); ++pos) {
             if (!(keys[pos] < key) && !(key < keys[pos])) {
@@ -887,7 +929,20 @@ void SystematicsCalculator::compute(
             me_events[inputs[i].subproc].push_back(i);
         }
     }
-    if (!keys.empty()) {
+    // alpha_s at the nominal vertex scales, with the nominal set: what the
+    // events were generated with
+    std::vector<double> vertex_nominal;
+    if (has_vertices) {
+        std::vector<double> q;
+        for (auto& in : inputs) {
+            q.insert(q.end(), in.vertex_scales.begin(), in.vertex_scales.end());
+        }
+        vertex_nominal = evaluate_alpha_s(0, q);
+    }
+    bool needs_me = std::any_of(keys.begin(), keys.end(), [](auto& key) {
+        return key.mur != 1. || key.dyn != -1 || key.alpha_s_index != 0;
+    });
+    if (needs_me) {
         for (auto& [subproc, indices] : me_events) {
             std::vector<double> alpha_s(indices.size());
             for (std::size_t n = 0; n < indices.size(); ++n) {
@@ -902,24 +957,64 @@ void SystematicsCalculator::compute(
         for (std::size_t i = 0; i < count; ++i) {
             q[i] = key.mur * scale_of(inputs[i], key.dyn, inputs[i].ren_scale);
         }
-        auto varied = evaluate_alpha_s(key.alpha_s_index, q);
+        // an emission scale variation alone leaves the mu_R powers as they are
+        bool varies_mur = key.mur != 1. || key.dyn != -1 || key.alpha_s_index != 0;
+        auto varied = varies_mur ? evaluate_alpha_s(key.alpha_s_index, q)
+                                 : std::vector<double>(count, 0.);
         std::vector<double> ratio(count, 1.);
-        for (std::size_t i = 0; i < count; ++i) {
-            auto& in = inputs[i];
-            if (in.use_me || in.qcd_power == 0) {
-                continue;
+        if (varies_mur) {
+            for (std::size_t i = 0; i < count; ++i) {
+                auto& in = inputs[i];
+                if (in.use_me || in.qcd_power == 0) {
+                    continue;
+                }
+                ratio[i] = in.alpha_s == 0.
+                    ? 0.
+                    : std::pow(varied[i] / in.alpha_s, in.qcd_power);
             }
-            ratio[i] = in.alpha_s == 0. ? 0. : std::pow(varied[i] / in.alpha_s, in.qcd_power);
+            for (auto& [subproc, indices] : me_events) {
+                std::vector<double> alpha_s(indices.size());
+                for (std::size_t n = 0; n < indices.size(); ++n) {
+                    alpha_s[n] = varied[indices[n]];
+                }
+                auto me = matrix_elements(subproc, buffer, indices, alpha_s);
+                auto& nominal = me_nominal.at(subproc);
+                for (std::size_t n = 0; n < indices.size(); ++n) {
+                    ratio[indices[n]] = nominal[n] == 0. ? 0. : me[n] / nominal[n];
+                }
+            }
         }
-        for (auto& [subproc, indices] : me_events) {
-            std::vector<double> alpha_s(indices.size());
-            for (std::size_t n = 0; n < indices.size(); ++n) {
-                alpha_s[n] = varied[indices[n]];
+        // MLM vertices, as madevent's systematics.py: the weight is
+        // alpha_s(mu_R)^(n - n_v) prod_v alpha_s(q_v), and a variation takes the
+        // n - n_v powers at k mu_R but every vertex at alpsfact q_v. The ratio
+        // above moved all n powers to k mu_R, so the vertices are taken back
+        // out of it and put in at their own scales:
+        //   prod_v alpha'(alps q_v) / alpha(q_v) * (alpha(mu_R) / alpha'(k mu_R))^n_v
+        // which holds for the matrix element re-evaluation too, since that
+        // ratio is the same (alpha'(k mu_R) / alpha(mu_R))^n.
+        if (has_vertices) {
+            std::vector<double> vq;
+            for (auto& in : inputs) {
+                for (double scale : in.vertex_scales) {
+                    vq.push_back(key.alps * scale);
+                }
             }
-            auto me = matrix_elements(subproc, buffer, indices, alpha_s);
-            auto& nominal = me_nominal.at(subproc);
-            for (std::size_t n = 0; n < indices.size(); ++n) {
-                ratio[indices[n]] = nominal[n] == 0. ? 0. : me[n] / nominal[n];
+            auto vertex_varied = evaluate_alpha_s(key.alpha_s_index, vq);
+            for (std::size_t i = 0, n = 0; i < count; ++i) {
+                auto& in = inputs[i];
+                if (in.vertex_scales.empty()) {
+                    continue;
+                }
+                double factor = 1.;
+                for (std::size_t v = 0; v < in.vertex_scales.size(); ++v, ++n) {
+                    factor *= vertex_nominal[n] == 0.
+                        ? 0.
+                        : vertex_varied[n] / vertex_nominal[n];
+                    if (varies_mur) {
+                        factor *= varied[i] == 0. ? 0. : in.alpha_s / varied[i];
+                    }
+                }
+                ratio[i] *= factor;
             }
         }
         for (std::size_t k : key_vars[p]) {
@@ -960,9 +1055,11 @@ void SystematicsCalculator::accumulate(
 std::string SystematicsCalculator::initrwgt() const {
     std::string text;
     bool in_scale = false;
+    bool in_emission = false;
     int in_pdf = -1;
     for (auto& var : _variations) {
         bool is_scale = var.is_scale();
+        bool is_emission = var.is_emission();
         if (is_scale) {
             if (!in_scale) {
                 text += "<weightgroup name=\"Central scale variation\" "
@@ -973,10 +1070,24 @@ std::string SystematicsCalculator::initrwgt() const {
             text += "</weightgroup> # scale\n";
             in_scale = false;
         }
+        // systematics.py's name for the alpsfact group of a matched sample
+        if (is_emission) {
+            if (!in_emission) {
+                text += "<weightgroup name=\"Emission scale variation\" "
+                        "combine=\"envelope\">\n";
+                in_emission = true;
+            }
+        } else if (in_emission) {
+            text += "</weightgroup> # ALPS\n";
+            in_emission = false;
+        }
 
         std::string tag, info;
         int pdf_lhaid;
-        if (!is_scale) {
+        if (is_emission) {
+            pdf_lhaid = _config.nominal_lhaid;
+            info = std::format("ALPSFACT={} ", format_number(var.alps));
+        } else if (!is_scale) {
             // PDF group: the nominal member (pdf_index -1) belongs to the
             // nominal set's group
             int set_lhaid;
@@ -1031,10 +1142,13 @@ std::string SystematicsCalculator::initrwgt() const {
         if (var.dyn != -1) {
             tag += std::format("DYN_SCALE=\"{}\" ", var.dyn);
         }
+        if (var.alps != 1.) {
+            tag += std::format("ALPSFACT=\"{}\" ", format_number(var.alps));
+        }
         tag += std::format("PDF=\"{}\" ", pdf_lhaid);
         text += std::format("<weight id=\"{}\" {}> {} </weight>\n", var.id, tag, info);
     }
-    if (in_scale || in_pdf != -1) {
+    if (in_scale || in_emission || in_pdf != -1) {
         text += "</weightgroup>\n";
     }
     return text;
@@ -1096,6 +1210,23 @@ json SystematicsCalculator::summary() const {
             {"weight_ids", scale_ids},
             {"min", scale_min},
             {"max", scale_max},
+        };
+    }
+
+    // emission scale envelope (MLM alpsfact)
+    auto emission_indices = emission_variation_indices();
+    if (!emission_indices.empty()) {
+        json ids = json::array();
+        double low = nominal_xsec, high = nominal_xsec;
+        for (std::size_t k : emission_indices) {
+            ids.push_back(_variations.at(k).id);
+            low = std::min(low, variation_xsecs.at(k));
+            high = std::max(high, variation_xsecs.at(k));
+        }
+        result["emission"] = {
+            {"weight_ids", ids},
+            {"min", low},
+            {"max", high},
         };
     }
 
@@ -1162,6 +1293,7 @@ void madspace::to_json(json& j, const SystematicsConfig& config) {
     j = json{
         {"mur", config.mur},
         {"muf", config.muf},
+        {"alps", config.alps},
         {"together", config.together},
         {"dyn_scales", config.dyn_scales},
         {"scale_factor", config.scale_factor},
@@ -1179,6 +1311,7 @@ void madspace::to_json(json& j, const SystematicsConfig& config) {
 void madspace::from_json(const json& j, SystematicsConfig& config) {
     config.mur = j.at("mur").get<std::vector<double>>();
     config.muf = j.at("muf").get<std::vector<double>>();
+    config.alps = j.value("alps", std::vector<double>{1.});
     config.together = j.value("together", true);
     config.dyn_scales = j.value("dyn_scales", std::vector<int>{});
     config.scale_factor = j.value("scale_factor", 1.);
@@ -1207,6 +1340,7 @@ void madspace::to_json(json& j, const Variation& variation) {
         {"mur", variation.mur},
         {"muf", variation.muf},
         {"dyn", variation.dyn},
+        {"alps", variation.alps},
         {"pdf_index", variation.pdf_index},
     };
 }

@@ -3547,6 +3547,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             "muf", &SystematicsConfig::muf, pydoc::doc("SystematicsConfig::muf")
         )
         .def_readwrite(
+            "alps", &SystematicsConfig::alps, pydoc::doc("SystematicsConfig::alps")
+        )
+        .def_readwrite(
             "together",
             &SystematicsConfig::together,
             pydoc::doc("SystematicsConfig::together")
@@ -3645,8 +3648,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             "pdf_index", &Variation::pdf_index, pydoc::doc("Variation::pdf_index")
         )
         .def_readonly("dyn", &Variation::dyn, pydoc::doc("Variation::dyn"))
+        .def_readonly("alps", &Variation::alps, pydoc::doc("Variation::alps"))
         .def_property_readonly(
             "is_scale", &Variation::is_scale, pydoc::doc("Variation::is_scale")
+        )
+        .def_property_readonly(
+            "is_emission",
+            &Variation::is_emission,
+            pydoc::doc("Variation::is_emission")
         );
     py::classh<PdfGroupInfo>(m, "PdfGroupInfo", pydoc::doc("PdfGroupInfo"))
         .def_readonly(
@@ -3695,6 +3704,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "scale_variation_indices",
             &SystematicsCalculator::scale_variation_indices,
             pydoc::doc("SystematicsCalculator::scale_variation_indices")
+        )
+        .def_property_readonly(
+            "emission_variation_indices",
+            &SystematicsCalculator::emission_variation_indices,
+            pydoc::doc("SystematicsCalculator::emission_variation_indices")
         )
         .def_property_readonly(
             "pdf_groups",
@@ -3764,20 +3778,27 @@ PYBIND11_MODULE(_madspace_py, m) {
                const std::vector<double>& fact_scale2,
                const std::vector<double>& partial_weight_product,
                const nested_vector3<double>& momenta,
-               const std::vector<double>& alpha_qcd) {
+               const std::vector<double>& alpha_qcd,
+               const nested_vector2<double>& alphas_scales) {
                 // build a combined-layout buffer from columns (testing / scripting)
                 std::size_t count = event_weight.size();
                 std::size_t particle_count = momenta.empty() ? 0 : momenta.at(0).size();
+                // MLM vertex v rides on outgoing particle 2 + v
+                for (auto& row : alphas_scales) {
+                    particle_count = std::max(particle_count, row.size() + 3);
+                }
+                int particle_flags =
+                    (momenta.empty() ? ParticleRecord::f_none
+                                     : ParticleRecord::f_particle_data) |
+                    (alphas_scales.empty() ? ParticleRecord::f_none
+                                           : ParticleRecord::f_alphas_scales);
                 DataLayout layout(
                     EventRecord::layout(
                         EventRecord::f_weight | EventRecord::f_subproc_index |
                         EventRecord::f_event_data | EventRecord::f_beam1 |
                         EventRecord::f_beam2 | EventRecord::f_partial_weights
                     ),
-                    ParticleRecord::layout(
-                        particle_count > 0 ? ParticleRecord::f_particle_data
-                                           : ParticleRecord::f_none
-                    )
+                    ParticleRecord::layout(particle_flags)
                 );
                 EventBuffer buffer(count, particle_count, layout);
                 for (std::size_t i = 0; i < count; ++i) {
@@ -3795,13 +3816,21 @@ PYBIND11_MODULE(_madspace_py, m) {
                     event.x2() = x2.at(i);
                     event.fact_scale2() = fact_scale2.at(i);
                     event.partial_weight_product() = partial_weight_product.at(i);
-                    for (std::size_t j = 0; j < particle_count; ++j) {
+                    for (std::size_t j = 0;
+                         !momenta.empty() && j < momenta.at(i).size();
+                         ++j) {
                         auto particle = buffer.particle(i, j);
                         auto& p = momenta.at(i).at(j);
                         particle.energy() = p.at(0);
                         particle.px() = p.at(1);
                         particle.py() = p.at(2);
                         particle.pz() = p.at(3);
+                    }
+                    for (std::size_t j = 0; !alphas_scales.empty() && j < particle_count;
+                         ++j) {
+                        auto& row = alphas_scales.at(i);
+                        buffer.particle(i, j).alphas_scale() =
+                            j >= 2 && j - 2 < row.size() ? row.at(j - 2) : 0.;
                     }
                 }
                 std::vector<double> weights;
@@ -3826,7 +3855,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("fact_scale2"),
             py::arg("partial_weight_product"),
             py::arg("momenta") = nested_vector3<double>{},
-            py::arg("alpha_qcd") = std::vector<double>{}
+            py::arg("alpha_qcd") = std::vector<double>{},
+            py::arg("alphas_scales") = nested_vector2<double>{}
         );
     py::classh<EventHistogramSpec>(
         m, "EventHistogramSpec", pydoc::doc("EventHistogramSpec")

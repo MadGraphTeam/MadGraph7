@@ -1141,6 +1141,13 @@ class MadgraphProcess:
         config = ms.SystematicsConfig()
         config.mur = [float(v) for v in syst["mur"]]
         config.muf = [float(v) for v in syst["muf"]]
+        # the emission scale of the MLM alpha_s vertices, which only an MLM
+        # sample with per-vertex alpha_s has
+        if (self.mlm_clustering and not self.is_decay
+                and self.run_card["beam"]["alphas_reweighting"] != "none"):
+            config.alps = [float(v) for v in syst["alps"]]
+        else:
+            config.alps = [1.0]
         config.together = bool(syst["together"])
         config.dyn_scales = self.resolve_dynamical_scales()
         # alternative dynamical scales get the same factor as the nominal one
@@ -1356,7 +1363,8 @@ class MadgraphProcess:
             # values line up across rows, with extra spacing between the two
             return f"{'+%.3g' % up:>6}%   {'-%.3g' % down:>6}%"
 
-        scale_count = sum(1 for v in self.systematics.variations if v.is_scale)
+        scale_count = sum(1 for v in self.systematics.variations
+                          if v.is_scale or v.is_emission)
         member_count = len(self.systematics.members)
         rows = [("Variations per event:",
                  f"{self.systematics.weight_count} ({scale_count} scale, {member_count} PDF members)")]
@@ -1366,6 +1374,9 @@ class MadgraphProcess:
         scale = systematics_summary.scale_percentages(summary)
         if scale is not None:
             rows.append(("Scale variation:", format_variation(*scale)))
+        emission = systematics_summary.emission_percentages(summary)
+        if emission is not None:
+            rows.append(("Emission scale variation:", format_variation(*emission)))
         for _entry, up, down in systematics_summary.pdf_percentages(summary):
             rows.append(("PDF variation:", format_variation(up, down)))
         if self.event_generator_config.verbosity == ms.Verbosity.pretty:
