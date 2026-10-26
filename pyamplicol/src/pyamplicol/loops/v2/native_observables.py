@@ -134,28 +134,47 @@ class _Metrics:
         slice_ = observables.slice
         self.basis = [tensor.terms[0].tensor for tensor in slice_.basis.tensors]
         self._found: dict[tuple[Any, bool], list[list[Any]]] = {}
+        self._alias: dict[tuple[Any, bool], tuple[Any, bool]] = {}
+        # A direct metric's native table until its swap is compared with it.
+        self._raw: dict[tuple[Any, bool], tuple[list, list]] = {}
         self._engine: Any = None
 
     def cells(self, column: Any, swapped: bool) -> tuple[tuple[Any, bool], list | None]:
+        """(key, cells) of a column's direct or swapped metric; a swapped
+        metric equal to its direct one (a history whose operator is its own
+        adjoint, e.g. T_i.T_j: the two emissions commute) has the direct
+        one's key, so it is stored once."""
+
         key = (column.history.id if column.directed else None, swapped)
         if not column.directed:
             return key, None
         found = self._found.get(key)
         if found is None:
             directed = self.observables.directed(column.history)
-            found = self._native(directed, swapped)
-            if found is None:
+            direct = (key[0], False)
+            raw = self._native(directed, swapped)
+            if swapped and raw is not None and self._raw.pop(direct, None) == raw:
+                self._alias[key] = direct
+                found = self._found[direct]
+            elif raw is not None:
+                found = self._format(raw)
+                if not swapped:
+                    self._raw[key] = raw
+            else:
 
                 def overlap(left, right):
                     return directed.overlap(left, right, swapped=swapped)
 
                 found = _cells(self.basis, self.ket_literals, overlap)
+            if swapped and key not in self._alias and self._found.get(direct) == found:
+                self._alias[key] = direct
             self._found[key] = found
-        return key, found
+        return self._alias.get(key, key), found
 
-    def _native(self, directed: Any, swapped: bool) -> list[list[Any]] | None:
-        """The cells of one direction natively (class docstring), or None
-        where the oracle forms them."""
+    def _native(self, directed: Any, swapped: bool) -> tuple[list, list] | None:
+        """The native table of one direction (class docstring) as its
+        distinct cells and per ket tensor and basis element the cell's index
+        (``NativeCellTable.decode``), or None where the oracle forms it."""
 
         from dataclasses import replace
 
@@ -190,13 +209,37 @@ class _Metrics:
                 tensors=tuple(directed.operator(b, swapped) for b in basis.tensors),
             )
             engine = base.rebased(images)
-        rows = native_cells.decode(engine.table(kets))
-        out = []
+        values, ids = engine.table(kets).decode(0, None)
+        return values, ids
+
+    def _format(self, raw: tuple[list, list]) -> list[list[Any]]:
+        """The stored cells (``_cells``' order and texts: per basis element,
+        per ket tensor, by N_c power, nonzero only) of a native table's
+        distinct cells and ids: each distinct cell formatted once."""
+
+        values, ids = raw
+        texts: dict[str, str] = {}
+
+        def text(value: str) -> str:
+            found = texts.get(value)
+            if found is None:
+                found = texts[value] = _text(Fraction(value))
+            return found
+
+        entries = []
+        for value in values:
+            cell = []
+            for power, re, im in sorted(value):
+                re, im = text(re), text(im)
+                if re != "0" or im != "0":
+                    cell.append((power, re, im))
+            entries.append(cell)
+        out: list[list[Any]] = []
+        append = out.append
         for b in range(len(self.basis)):
-            for t, row in enumerate(rows):
-                for power, cell in sorted(row[b].items()):
-                    if cell:
-                        out.append([b, t, power, _text(cell.real), _text(cell.imag)])
+            for t, row in enumerate(ids):
+                for power, re, im in entries[row[b]]:
+                    append([b, t, power, re, im])
         return out
 
 
@@ -281,16 +324,22 @@ class _Programs:
         return found
 
     def column(self, column: Any) -> dict[str, Any]:
-        """One column's record: its program, metrics, rows and basis."""
+        """One column's record: its program, metrics, rows and basis. A
+        directed history whose swapped metric is its direct one stores no
+        swapped metric: the native column then adds the direct value's
+        conjugate (``TreeProgram::set_columns``), the same operations on the
+        same bits as a swapped metric equal to the direct one."""
 
         rows = None
         if column.rows is not None:
             index = {row: k for k, row in enumerate(self.observables.rows)}
             rows = sorted(index[row] for row in column.rows)
+        direct = self._metric(column, False)
+        swapped = self._metric(column, True) if column.directed else None
         return {
             "program": self._program(column),
-            "cells": self._metric(column, False),
-            "swapped": self._metric(column, True) if column.directed else None,
+            "cells": direct,
+            "swapped": None if swapped == direct else swapped,
             "rows": rows,
             "basis": None if column.basis is None else sorted(column.basis),
         }
