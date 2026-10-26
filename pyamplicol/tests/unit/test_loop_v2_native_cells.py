@@ -542,6 +542,9 @@ def _degrees_equal(native: Generated, oracle: Generated | None = None) -> None:
         else uncached(slice_, "degrees", slice_.degrees)
     )
     assert native_cells.degrees(slice_) == expected
+    # Rule 5: one thread or several.
+    assert native_cells.degrees(slice_, threads=1) == expected
+    assert native_cells.degrees(slice_, threads=3) == expected
     assert slice_.degrees() == expected
     table = slice_.table
     for pairs in (pairs for _sector, pairs in slice_.sectors):
