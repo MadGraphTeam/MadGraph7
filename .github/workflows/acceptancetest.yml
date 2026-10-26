@@ -769,6 +769,7 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5 
       - uses: ./.github/actions/restore-pip-cache
 
@@ -779,6 +780,10 @@ jobs:
             ./tests/test_manager.py test_quarkonium_standalone -pA -t0 -l INFO
             ./tests/test_manager.py test_quarkonium_production -pA -t0 -l INFO
             ./tests/test_manager.py test_leptonium_production -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
 
   acceptancetest_bundle_14:
