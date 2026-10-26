@@ -38,6 +38,26 @@ inputs:
 runs:
   using: composite
   steps:
+    # The hosted ubuntu images ship gh and jq; the self-hosted alma10 runners
+    # (no sudo) may not, so fetch pinned release binaries into the job's temp
+    # dir when either is missing.
+    - name: Ensure gh and jq
+      shell: bash
+      run: |
+        set -euo pipefail
+        bin="$RUNNER_TEMP/require_green_ci_bin"
+        mkdir -p "$bin"
+        if ! command -v jq >/dev/null; then
+          curl -fsSL -o "$bin/jq" \
+            https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64
+          chmod +x "$bin/jq"
+        fi
+        if ! command -v gh >/dev/null; then
+          curl -fsSL https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz \
+            | tar -xz -C "$bin" --strip-components=2 gh_2.63.2_linux_amd64/bin/gh
+        fi
+        echo "$bin" >> "$GITHUB_PATH"
+
     - name: Require CI to be green
       shell: bash
       env:

@@ -123,7 +123,10 @@ jobs:
   gate:
     needs: target
     if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
+    # Only polls other workflows (often for ~an hour) and does no work of its
+    # own, so it runs on the self-hosted alma10 runners to spare the hosted
+    # queue. Only push-to-main reaches it, never fork code.
+    runs-on: [self-hosted, alma10]
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/require_green_ci
