@@ -70,16 +70,13 @@ class CouplingOrderNames:
 
     @classmethod
     def of_model(cls, model: Any) -> CouplingOrderNames:
-        """The names of a ``CompiledModel``, its ``CompiledModelIR`` or a
-        tree-engine model holding one (``CompiledUFOModel``); identity
-        translation for a model without declared orders."""
+        """The names of a ``CompiledModel`` or of a tree-engine model holding
+        one (``CompiledUFOModel``); identity translation for a model without
+        a compiled IR (a built-in model keys its orders itself)."""
 
         ir = getattr(model, "ir", None)
         if ir is None:
-            compiled = getattr(model, "compiled", None)
-            ir = getattr(compiled, "ir", None)
-        if ir is None and hasattr(model, "orders"):
-            ir = model
+            ir = getattr(getattr(model, "compiled", None), "ir", None)
         orders = () if ir is None else getattr(ir, "orders", ())
         return cls.of(order.name for order in orders)
 
