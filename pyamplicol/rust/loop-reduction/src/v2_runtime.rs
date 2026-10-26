@@ -30,9 +30,10 @@
 //!    `pyamplicol.Runtime.load(...).evaluate` on the same exact inputs.
 //!
 //! Catani's pole prediction is not formed (the native lane has none), and
-//! correlated and resolved observables are not served (their columns are not
-//! stored natively yet). The pole selection is all or none (finite-only); the
-//! split selections ("uv", "ir") go through the Python API.
+//! the stored correlated and resolved columns are not served here (the
+//! Python API evaluates them, without regenerating). The pole selection is
+//! all or none (finite-only); the split selections ("uv", "ir") go through
+//! the Python API.
 
 use crate::runtime::{PoleSelection, V2Reducer, V2ReductionBackend};
 use rusticol_core::VerifiedArtifact;
