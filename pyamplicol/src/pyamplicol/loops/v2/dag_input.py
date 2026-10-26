@@ -102,6 +102,7 @@ from pyamplicol.generation.dag_types import (
     GenericDAG,
     InteractionNode,
 )
+from pyamplicol.loops.order_names import CouplingOrderNames
 from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND, TreeKernelVariant
 from pyamplicol.processes.ir import CanonicalProcessIR
 
@@ -1692,6 +1693,9 @@ class NativeDag:
             return found, dict(clone_map)
         out: list[Block] = []
         clones: dict[int, int] = {}
+        # The native DAG keys orders as the tree engine does; blocks carry
+        # the model's declared spelling (``blocks.BlockKey.from_index``).
+        names = CouplingOrderNames.of_model(self._model)
         raw, assignments = _call(self._native_handle().blocks, self._tables())
         # Equal values are built once: the rows' helicity assignments, the
         # colour states and orders repeat over the blocks of a leg set.
@@ -1709,7 +1713,9 @@ class NativeDag:
                 external_mask=block["mask"],
                 particle_id=block["pdg"],
                 word=tuple(block["word"]),
-                coupling_orders=one(tuple(tuple(pair) for pair in block["orders"])),
+                coupling_orders=one(
+                    names.orders(tuple(tuple(pair) for pair in block["orders"]))
+                ),
                 color_state=one(
                     ColorState(
                         accuracy=colour[0],

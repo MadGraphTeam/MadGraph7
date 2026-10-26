@@ -54,6 +54,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:  # the ``tools`` package, run as a script
+    sys.path.insert(0, str(ROOT))
+
 
 def _orders(text: str) -> dict[str, int]:
     return {
@@ -96,10 +100,10 @@ def _load_model(args: argparse.Namespace) -> Any:
     # The loop_sm recipe of tests/conftest.py (scalar-arity view).
     from dataclasses import replace
 
-    from pyamplicol.loops.model_compatibility import (
+    from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
         prepare_loop_sm_scalar_declarations,
     )
-    from pyamplicol.models.loading import compile_model_source
 
     cache = Path(args.cache)
     written = sorted(cache.glob("loop-sm.json*.json"))
