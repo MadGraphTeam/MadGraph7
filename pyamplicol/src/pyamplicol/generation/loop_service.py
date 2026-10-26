@@ -47,6 +47,7 @@ from pyamplicol.models.loop_preparation import (
     resolve_loop_preparation,
     with_loop_preparation,
 )
+from pyamplicol.models.order_names import CouplingOrderNameError, CouplingOrderNames
 
 from .dag_algorithms import infer_minimal_coupling_order_limits
 from .loop_artifact import (
@@ -186,9 +187,25 @@ def _prepare(
             "sidecar; this model contains only tree data"
         )
     run = backend._run_config
-    corrections = tuple(run.process.loop_coupling_orders)
+    # Coupling-order names resolve once, here, against the model's declared
+    # names (any case); the loop side carries the declared spelling and the
+    # tree engine's keys translate back (``models.order_names``).
+    names = _order_names(compiled)
+    corrections = _resolve_orders(
+        names, run.process.loop_coupling_orders, "process.loop_coupling_orders"
+    )
+    configured = run.loop.model
+    if configured is not None and configured.loop_coupling_orders is not None:
+        configured = replace(
+            configured,
+            loop_coupling_orders=_resolve_orders(
+                names,
+                configured.loop_coupling_orders,
+                "loop.model.loop_coupling_orders",
+            ),
+        )
     declaration = resolve_loop_model_declaration(
-        compiled.raw_loop_model, run.loop.model, selected_corrections=corrections
+        compiled.raw_loop_model, configured, selected_corrections=corrections
     )
     declaration.require_declared_completion(strategy="model")
     compiled = with_loop_model_declaration(compiled, declaration)
@@ -224,8 +241,9 @@ def _prepare(
     expanded = backend._expand_process_set(processes, resolved, phase)
     backend._apply_symbolica_resource_policy(license_state, process_count=len(expanded))
     cache, prepared, source_colors, entry_limits = {}, [], [], []
+    explicit = _resolve_limits(names, run.process.max_coupling_orders)
     for entry in expanded:
-        limits = backend._coupling_order_limits
+        limits = explicit
         if run.process.coupling_order_policy == "minimal":
             # The same model hierarchy, reachable Born closures and inclusive
             # envelope as the tree service, before adding virtual corrections.
@@ -234,7 +252,7 @@ def _prepare(
                 model=resolved.model,
                 max_coupling_orders=limits or None,
             )
-            limits = inferred or limits
+            limits = names.mapping(inferred) if inferred else limits
         entry_limits.append(dict(limits))
         if not prepare_models:
             continue
@@ -270,6 +288,38 @@ def _prepare(
         color_data,
         tuple(entry_limits),
     )
+
+
+def _order_names(compiled) -> CouplingOrderNames:
+    try:
+        return CouplingOrderNames.of_model(compiled)
+    except CouplingOrderNameError as error:
+        raise GenerationError(str(error)) from error
+
+
+def _resolve_orders(names, values, what: str) -> tuple[str, ...]:
+    """User-supplied coupling-order names in the model's declared spelling
+    (sorted, unique), refused when the model does not declare them."""
+
+    try:
+        return tuple(sorted(set(names.resolve_all(values, what=what))))
+    except CouplingOrderNameError as error:
+        raise GenerationError(str(error)) from error
+
+
+def _resolve_limits(names, limits: Mapping[str, int]) -> dict[str, int]:
+    """``process.max_coupling_orders`` keyed by the declared names."""
+
+    out: dict[str, int] = {}
+    for name, value in limits.items():
+        (declared,) = _resolve_orders(names, (name,), "process.max_coupling_orders")
+        if declared in out:
+            raise GenerationError(
+                f"process.max_coupling_orders names the coupling order "
+                f"{declared!r} twice"
+            )
+        out[declared] = int(value)
+    return out
 
 
 def _graph_plan(prepared, entry, corrections):
