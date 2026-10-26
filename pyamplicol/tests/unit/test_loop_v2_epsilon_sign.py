@@ -107,9 +107,21 @@ def test_epsilon_sign_bare_and_r2_equal_madloop(
         assert not math.isclose(row["components"]["r2"]["finite"], other, rel_tol=1e-6)
 
 
+# ``name -> (process, Born orders, Ward legs)``: the Levi-Civita R2 inside
+# the counterterm program's trees (u u~ > e- e+ g g) and at its root, the
+# gluon of leg 1 (g u > u e- e+: the root closure's reading sign,
+# ``ct_sites.SiteClosure._reading_sign``; without it this identity fails by
+# twice the R2 part, 86 and 53 times the physical scale).
+WARD = {
+    "uux_emepgg": ("u u~ > e- e+ g g", {"QCD": 2, "QED": 2}, (5, 6)),
+    "gu_uemep": ("g u > u e- e+", {"QCD": 1, "QED": 2}, (1,)),
+}
+
+
 @pytest.mark.loop_physics
+@pytest.mark.parametrize("name", tuple(WARD))
 def test_epsilon_sign_restores_the_gluon_ward_identity(
-    loop_sm_compiled_model, loop_native
+    loop_sm_compiled_model, loop_native, name
 ):
     """O10 on each external gluon (epsilon_j -> c p_j on the loop side, c = 1
     and c = i; the recursion's counterterms; one exact on-shell point, as
@@ -132,13 +144,14 @@ def test_epsilon_sign_restores_the_gluon_ward_identity(
     from .test_loop_v2_ct_closure import _slice_point
     from .test_loop_v2_observables import _ward_scale
 
+    process, born, legs = WARD[name]
     fixture = json.loads(FIXTURE.read_text())
     observables = ObservableSlice.generate(
         load_compiled_model(loop_sm_compiled_model),
         SliceRequest(
-            "u u~ > e- e+ g g",
-            {"QCD": 2, "QED": 2},
-            {"QCD": 4, "QED": 2},
+            process,
+            born,
+            {"QCD": born["QCD"] + 2, "QED": born["QED"]},
             fixed_parameters=fixture["fixed_parameters"],
             particle_veto=VETO,
         ),
@@ -146,14 +159,15 @@ def test_epsilon_sign_restores_the_gluon_ward_identity(
         ward=True,
     )
     parameters = {k: v for k, v in fixture["parameters"].items() if k != "MU_R"}
-    point, scale = _slice_point((0,) * 6), str(int(fixture["mu_r"][0]) ** 2)
+    point = _slice_point((0,) * len(process.replace(">", "").split()))
+    scale = str(int(fixture["mu_r"][0]) ** 2)
     physical = _ward_scale(
         observables.slice.evaluate(
             point, scale, parameters=parameters, precision=Precision.double()
         )
     )
     native = NativeObservables.correlated(observables, (INCLUSIVE,), lanes=4)
-    for leg in (5, 6):
+    for leg in legs:
         for factor in ((1, 0), (0, 1)):
             (result,) = native.evaluate(
                 [point],
