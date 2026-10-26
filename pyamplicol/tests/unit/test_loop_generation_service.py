@@ -796,7 +796,7 @@ class _Runner:
         }
 
 
-def _revalidate(runtime, runner=None, point="p"):
+def _revalidate(runtime, runner=None, point="p", tolerance=TOLERANCE):
     """Re-validate ``point`` of ``runtime`` after a binary64 miss."""
 
     miss = GenerationError("binary64 pair 1.3e-12 apart")
@@ -813,7 +813,7 @@ def _revalidate(runtime, runner=None, point="p"):
         0,
         point,
         "1",
-        TOLERANCE,
+        tolerance,
         miss,
     )
 
@@ -871,6 +871,15 @@ def test_a_binary64_miss_without_an_admissible_estimate_is_refused(estimate):
 
     with pytest.raises(GenerationError, match="no admissible stability estimate"):
         _revalidate(_Runtime({"p": _shifted(2.7e-12)}, estimate=estimate))
+
+
+def test_a_looser_tolerance_raises_the_estimate_cap_to_itself():
+    """The cap is max(tolerance, 1e-9): an estimate of 2e-9 is admissible
+    under a configured 1e-8, and the virtual is then held to the tolerance."""
+
+    _revalidate(_Runtime({"p": _shifted(5e-9)}, estimate=2e-9), tolerance=1e-8)
+    with pytest.raises(GenerationError, match="in binary64 against 32 digits"):
+        _revalidate(_Runtime({"p": _shifted(2e-8)}, estimate=2e-9), tolerance=1e-8)
 
 
 def test_a_double_double_mismatch_is_still_refused_at_the_tolerance():

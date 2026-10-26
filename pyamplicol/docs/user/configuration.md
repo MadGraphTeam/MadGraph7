@@ -412,8 +412,12 @@ and a defect of either carrier beyond that is refused. An accepted point is
 reported as a warning of the `pyamplicol.generation` logger with its
 deviations and estimates. This costs one double-double and one checked
 binary64 evaluation of the artifact and one 32-digit reference evaluation
-per re-checked point; the 32-digit reference took about 11 times the binary64
-one for d d~ > g g at NLC (7.8 s against 0.7 s for five colour outputs).
+per re-checked point; the 32-digit reference dominates, about 9 to 11 times
+the binary64 one (7.8 s against 0.7 s for d d~ > g g at NLC with five
+colour outputs, 60 s against 6.9 s for u u~ > g g g at NLC with four). The
+estimate cap is the larger of `relative_tolerance` and 1e-9: at high
+multiplicity, where binary64 estimates can exceed 1e-9, validate with a
+`relative_tolerance` that binary64 resolves.
 
 ## Numerical current reuse
 

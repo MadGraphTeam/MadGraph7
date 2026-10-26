@@ -63,10 +63,11 @@ _LOGGER = logging.getLogger("pyamplicol.generation")
 
 # The binary64 carrier at a staged-validation miss, under the user's O1 rule
 # of 2026-10-23 (HANDOFF §0): its virtual is held to max(tolerance, E), E its
-# own stability estimate, which must not exceed 1e-9; its Born to the
-# tolerance. E comes from one exact rotation and the reduction-direction
-# check, the checks the O1 tests use (the reduction direction alone does not
-# see tree-current rounding: 3.1e-13 against a 1.0e-12 error, d d~ > g g T12).
+# own stability estimate, which must not exceed 1e-9 (or the tolerance, where
+# a looser one is configured); its Born to the tolerance. E comes from one
+# exact rotation and the reduction-direction check, the checks the O1 tests
+# use (the reduction direction alone does not see tree-current rounding:
+# 3.1e-13 against a 1.0e-12 error, d d~ > g g T12).
 _BINARY64_CHECK_ROTATIONS = ("z:3/5:4/5",)
 _BINARY64_ESTIMATE_CAP = 1e-9
 
@@ -1720,9 +1721,9 @@ def _revalidate_v2_point(
       Borns at ``tolerance``, virtuals at max(``tolerance``, E), E the
       point's binary64 stability estimate (one exact rotation and the
       reduction-direction check), refused when absent or above 1e-9 (the
-      user's O1 rule). A binary64 virtual off by more than the tolerance is
-      therefore accepted only where binary64 itself estimates that it cannot
-      resolve the tolerance.
+      user's O1 rule; above the tolerance where that is looser). A binary64
+      virtual off by more than the tolerance is therefore accepted only where
+      binary64 itself estimates that it cannot resolve the tolerance.
 
     The binary64 pair is two routes (native and Python dressing), each
     rounded its own way: at d d~ > g g NLC the casimir virtual's estimate is
