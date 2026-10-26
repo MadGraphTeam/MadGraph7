@@ -921,6 +921,31 @@ def test_native_counterterm_program_block_sets(
 
 
 @pytest.mark.loop_physics
+def test_native_counterterm_program_folds_mixed_connection_parities(
+    loop_sm_compiled_model,
+):
+    """Three identical-flavour quark lines: a CT current closing the gluons
+    of the pairing (a, b~)(b, a~) and one taking the U(1)-subtraction
+    auxiliary of the pairing (a, a~)(b, b~) share their closed lines, so
+    one block has derivations of both colour-connection parities. Both
+    lanes fold the other parity's -1 into the same derivations' colour
+    weights (``apply_colour_connection_signs``, ``signs::apply_connection_
+    signs``): the native CT program equals the Python one, whole DAG and
+    blocks (``_blocks`` refuses a block of mixed parities)."""
+
+    from pyamplicol.generation.fermion_ordering import colour_connection_parities
+    from pyamplicol.models.external import CompiledUFOModel
+
+    program, _native = _assert_ct_equal(
+        loop_sm_compiled_model, "u u~ > u u~ u u~", {"QCD": 4}, {"QCD": 6}
+    )
+    dag = program.blocks.blocks_dag
+    lowered = CompiledUFOModel(program.recursion.model.lowered.compiled)
+    _parity, deviating = colour_connection_parities(dag, lowered)
+    assert deviating
+
+
+@pytest.mark.loop_physics
 def test_native_u1_leakage_scan_equals_the_closure(loop_sm_compiled_model, monkeypatch):
     """The DAG scan of ``u1_leaking_structures`` on a program whose d-symbol
     vertices absorb and feed quark lines' gluons, with the projection gate

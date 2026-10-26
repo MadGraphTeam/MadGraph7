@@ -420,9 +420,144 @@ def apply_fermion_ordering_signs(
     )
 
 
+def _coloured_fermion_endpoints(dag: GenericDAG, model: Model) -> frozenset[int]:
+    """Labels of the coloured fermion legs (``|colour rep| == 3``)."""
+
+    return frozenset(
+        leg.label
+        for leg in dag.process.legs
+        if leg.outgoing_pdg is not None
+        and abs(model.color_rep(int(leg.outgoing_pdg))) == 3
+        and model.is_fermion(int(leg.outgoing_pdg))
+    )
+
+
+def colour_connection_parities(
+    dag: GenericDAG, model: Model
+) -> tuple[list[int | None], frozenset[int]]:
+    """The colour-connection parity of every current of a loop-request DAG
+    (colour-flow convention) and the ids of the interactions whose
+    derivation has the other parity.
+
+    A merge connects two coloured fermion lines when both inputs hold
+    coloured fermion endpoints in their open words and one of them is a
+    colour-octet current (a gluon, contact or U(1)-subtraction auxiliary);
+    a colour singlet merged into a current that is no coloured fermion
+    connects nothing (its U(1)-subtraction sign is a colour weight of the
+    stage that absorbs it). Against Feynman rules a tree of the colour-flow
+    convention carries ``(-1)`` per connection (``loops/v2/blocks.py``).
+
+    A current whose trees pair its coloured fermion endpoints in more than
+    one way can be derived with both parities: with identical-flavour
+    lines, a counterterm stage closing the gluons of the pairing
+    (a, b~)(b, a~) and one taking the U(1)-subtraction auxiliary of the
+    pairing (a, a~)(b, b~) give the same closed lines. Every current of one
+    block (its index without the helicity ancestry) then takes the parity
+    of the block's first derivation (interactions by result size, in DAG
+    order), and the derivations with the other parity are returned:
+    ``apply_colour_connection_signs`` folds their ``-1`` into their colour
+    weights.
+    """
+
+    currents = dag.currents
+    endpoints = _coloured_fermion_endpoints(dag, model)
+
+    def octet(index: CurrentIndex) -> bool:
+        return (
+            model.color_rep(index.particle_id) == 8
+            or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
+        )
+
+    def singlet(index: CurrentIndex) -> bool:
+        return (
+            model.color_rep(index.particle_id) == 1
+            or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
+        )
+
+    def coloured_fermion(particle_id: int) -> bool:
+        return model.is_fermion(particle_id) and abs(model.color_rep(particle_id)) == 3
+
+    def has_endpoints(index: CurrentIndex) -> bool:
+        return any(label in endpoints for label in index.ordered_external_labels)
+
+    def block(index: CurrentIndex) -> tuple[object, ...]:
+        return (
+            index.particle_id,
+            index.external_mask,
+            index.chirality,
+            index.spin_state,
+            index.flavour_flow,
+            index.quantum_number_flow,
+            index.color_state,
+            index.coupling_orders,
+            index.auxiliary_kind,
+            index.ordered_external_labels,
+        )
+
+    parity: list[int | None] = [
+        0 if current.is_source else None for current in currents
+    ]
+    block_parity: dict[tuple[object, ...], int] = {}
+    deviating: set[int] = set()
+    for interaction in sorted(
+        dag.interactions,
+        key=lambda row: currents[row.result_id].index.external_mask.bit_count(),
+    ):
+        left = currents[interaction.left_id].index
+        right = currents[interaction.right_id].index
+        connects = (
+            has_endpoints(left)
+            and has_endpoints(right)
+            and (octet(left) or octet(right))
+            and (
+                coloured_fermion(currents[interaction.result_id].index.particle_id)
+                or not (singlet(left) or singlet(right))
+            )
+        )
+        left_parity = parity[interaction.left_id]
+        right_parity = parity[interaction.right_id]
+        if left_parity is None or right_parity is None:
+            raise ValueError(
+                f"interaction {interaction.id} reads a current without a derivation"
+            )
+        value = left_parity ^ right_parity ^ int(connects)
+        known = block_parity.setdefault(
+            block(currents[interaction.result_id].index), value
+        )
+        parity[interaction.result_id] = known
+        if known != value:
+            deviating.add(interaction.id)
+    return parity, frozenset(deviating)
+
+
+def apply_colour_connection_signs(dag: GenericDAG, model: Model) -> GenericDAG:
+    """Fold ``-1`` into the colour weight of every derivation whose
+    colour-connection parity differs from its current's
+    (``colour_connection_parities``), so each current of a loop-request DAG
+    has one parity and its blocks one connection sign. Without coloured
+    fermion legs no merge connects and nothing is folded."""
+
+    if not dag.interactions or not _coloured_fermion_endpoints(dag, model):
+        return dag
+    _, deviating = colour_connection_parities(dag, model)
+    if not deviating:
+        return dag
+    return replace(
+        dag,
+        interactions=tuple(
+            replace(row, color_weight=(-row.color_weight[0], -row.color_weight[1]))
+            if row.id in deviating
+            else row
+            for row in dag.interactions
+        ),
+    )
+
+
 __all__ = [
     "FermionOrderingSign",
+    "apply_colour_connection_signs",
     "apply_fermion_ordering_signs",
+    "colour_connection_parities",
     "gluon_joined_phase",
     "open_line_closure_sign",
 ]
