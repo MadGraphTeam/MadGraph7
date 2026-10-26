@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import cmath
 import json
+import logging
 import os
 import time
 from collections.abc import Iterable, Mapping, Sequence
@@ -57,6 +58,18 @@ from .loop_artifact import (
 )
 from .progress import GenerationPhaseReporter, PhaseHandle
 from .validation import build_process_validation_point
+
+_LOGGER = logging.getLogger("pyamplicol.generation")
+
+# The binary64 carrier at a staged-validation miss, under the user's O1 rule
+# of 2026-10-23 (HANDOFF §0): its virtual is held to max(tolerance, E), E its
+# own stability estimate, which must not exceed 1e-9 (or the tolerance, where
+# a looser one is configured); its Born to the tolerance. E comes from one
+# exact rotation and the reduction-direction check, the checks the O1 tests
+# use (the reduction direction alone does not see tree-current rounding:
+# 3.1e-13 against a 1.0e-12 error, d d~ > g g T12).
+_BINARY64_CHECK_ROTATIONS = ("z:3/5:4/5",)
+_BINARY64_ESTIMATE_CAP = 1e-9
 
 
 def _feature_blockers(backend, processes):
@@ -1472,6 +1485,14 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                 ),
                                 # REQUIREMENTS_ADDENDUM J: rule -> reason.
                                 "counterterms_inert": process.inert_counterterms(),
+                                # The request's gauge (WP3.2 EWI-4b), recorded
+                                # off the default unitary gauge only.
+                                **(
+                                    {"gauge": gauge}
+                                    if (gauge := process.slice.compiled.ir.gauge)
+                                    != "unitary"
+                                    else {}
+                                ),
                                 # RUST-MIGRATION rule 2: stage -> listed feature
                                 # (absent when every stage was native).
                                 **(
@@ -1599,10 +1620,11 @@ def _validate_v2_artifact(backend, output, context, generated, members):
     """Load every staged process (and flavour member) through the public
     runtime and compare its native evaluation, inclusive and for every
     declared colour history, with the Python reference executor of the
-    generated slice on the validation points."""
+    generated slice on the validation points, in binary64; a point whose
+    binary64 pair misses the tolerance is re-validated in both carriers
+    against the reference at 32 digits (``_revalidate_v2_point``)."""
     from pyamplicol.api import Runtime
     from pyamplicol.artifacts import load_manifest
-    from pyamplicol.correlators import CorrelatedRequest
     from pyamplicol.loops.v2.observables import MemberObservables
 
     manifest = load_manifest(output)
@@ -1629,37 +1651,182 @@ def _validate_v2_artifact(backend, output, context, generated, members):
             continue
         points, scales = _v2_validation_points(context, entry, validation, index)
         observables = generated[representative].observables
-        histories = tuple(history.id for history in observables.histories)
-        result = runtime.evaluate(points, mu_r2=scales)
-        correlated = (
-            runtime.evaluate_correlated_many(
-                points,
-                {history: CorrelatedRequest(history, {}) for history in histories},
-                mu_r2=scales,
-            )
-            if histories
-            else {}
+        _validate_v2_points(
+            name,
+            runtime,
+            observables if member is None else MemberObservables(observables, member),
+            tuple(history.id for history in observables.histories),
+            points,
+            scales,
+            validation.relative_tolerance,
         )
-        tolerance = validation.relative_tolerance
-        runner = (
-            observables if member is None else MemberObservables(observables, member)
+
+
+def _v2_outputs(runtime, points, scales, histories, **options):
+    """A runtime's native inclusive (``"born"``) and declared-colour-history
+    evaluations of a point batch, by label."""
+    from pyamplicol.correlators import CorrelatedRequest
+
+    outputs = {"born": runtime.evaluate(points, mu_r2=scales, **options)}
+    if histories:
+        outputs |= runtime.evaluate_correlated_many(
+            points,
+            {history: CorrelatedRequest(history, {}) for history in histories},
+            mu_r2=scales,
+            **options,
         )
-        for point_index, (point, scale) in enumerate(zip(points, scales, strict=True)):
-            references = runner.evaluate(
-                point, scale, correlations=("born", *histories)
-            )
-            for label, values in (("born", result), *correlated.items()):
+    return outputs
+
+
+def _validate_v2_points(name, runtime, runner, histories, points, scales, tolerance):
+    """Binary64 native outputs of the validation points against the reference
+    executor ``runner`` in binary64, at ``tolerance``; a point whose binary64
+    pair misses it (``_compare_v2`` refuses) is re-validated alone by
+    ``_revalidate_v2_point``, which refuses or records it."""
+
+    outputs = _v2_outputs(runtime, points, scales, histories)
+    for point_index, (point, scale) in enumerate(zip(points, scales, strict=True)):
+        references = runner.evaluate(point, scale, correlations=("born", *histories))
+        try:
+            for label, values in outputs.items():
                 _compare_v2(
-                    name,
-                    label,
-                    values,
-                    point_index,
-                    references[label],
-                    tolerance,
+                    name, label, values, point_index, references[label], tolerance
                 )
+        except GenerationError as miss:
+            _revalidate_v2_point(
+                name,
+                runtime,
+                runner,
+                histories,
+                outputs,
+                point_index,
+                point,
+                scale,
+                tolerance,
+                miss,
+            )
 
 
-def _compare_v2(name, label, result, point_index, reference, tolerance):
+def _revalidate_v2_point(
+    name,
+    runtime,
+    runner,
+    histories,
+    binary64,
+    point_index,
+    point,
+    scale,
+    tolerance,
+    miss,
+) -> None:
+    """One validation point whose binary64 pair ``miss``ed the tolerance,
+    checked against the reference executor at ``DOUBLE_DOUBLE_DIGITS``
+    decimal digits, every output of the point (Born and every declared colour
+    history), in both carriers:
+
+    - native double-double at the same ``tolerance``;
+    - the point's binary64 outputs (``binary64``, by label, as validated):
+      Borns at ``tolerance``, virtuals at max(``tolerance``, E), E the
+      point's binary64 stability estimate (one exact rotation and the
+      reduction-direction check), refused when absent or above 1e-9 (the
+      user's O1 rule; above the tolerance where that is looser). A binary64
+      virtual off by more than the tolerance is therefore accepted only where
+      binary64 itself estimates that it cannot resolve the tolerance.
+
+    The binary64 pair is two routes (native and Python dressing), each
+    rounded its own way: at d d~ > g g NLC the casimir virtual's estimate is
+    1.5e-11, the native value 2.7e-12 of its sector off the 32-digit value,
+    and the pair 1.3e-12 apart. A defect in either carrier is refused, the
+    binary64 refusal chained; an accepted point is logged with its record.
+    """
+    from pyamplicol.api.virtual_results import VirtualStabilityChecks
+    from pyamplicol.loops.v2.assemble import DOUBLE_DOUBLE_DIGITS, Precision
+
+    try:
+        native = _v2_outputs(
+            runtime, [point], [scale], histories, arithmetic="double-double"
+        )
+        checked = _v2_outputs(
+            runtime,
+            [point],
+            [scale],
+            histories,
+            stability_checks=VirtualStabilityChecks(_BINARY64_CHECK_ROTATIONS, True),
+        )
+        references = runner.evaluate(
+            point,
+            scale,
+            correlations=("born", *histories),
+            precision=Precision.arbitrary(DOUBLE_DOUBLE_DIGITS),
+        )
+    except Exception as error:
+        raise GenerationError(
+            f"{miss}; its re-validation at {DOUBLE_DOUBLE_DIGITS} digits could "
+            f"not run: {error}"
+        ) from miss
+    record = []
+    for label, values in native.items():
+        try:
+            double_double = _compare_v2(
+                name, label, values, 0, references[label], tolerance
+            )
+        except GenerationError as error:
+            raise GenerationError(
+                f"{error} in double-double, after binary64: {miss}"
+            ) from miss
+        stability = checked[label].stability
+        estimate = None if stability is None else stability[0]
+        if estimate is None or not estimate.relative <= max(
+            tolerance, _BINARY64_ESTIMATE_CAP
+        ):
+            raise GenerationError(
+                f"{miss}; the binary64 virtual of {name!r} ({label}) has no "
+                "admissible stability estimate ("
+                f"{None if estimate is None else estimate.relative!r}, at most "
+                f"{_BINARY64_ESTIMATE_CAP:g})"
+            ) from miss
+        try:
+            deviation = _compare_v2(
+                name,
+                label,
+                binary64[label],
+                point_index,
+                references[label],
+                tolerance,
+                virtual_tolerance=max(tolerance, estimate.relative),
+            )
+        except GenerationError as error:
+            raise GenerationError(
+                f"{error} in binary64 against {DOUBLE_DOUBLE_DIGITS} digits, "
+                f"beyond its estimate {estimate.relative:.3g}, after: {miss}"
+            ) from miss
+        record.append(
+            f"{label}: binary64 {deviation:.2g} (estimate {estimate.relative:.2g}),"
+            f" double-double {double_double:.2g}"
+        )
+    _LOGGER.warning(
+        "v2 validation of %r, point %d: binary64 missed the tolerance %g (%s); "
+        "re-validated against the reference at %d digits, deviations relative "
+        "to each sector's largest coefficient: %s",
+        name,
+        point_index,
+        tolerance,
+        miss,
+        DOUBLE_DOUBLE_DIGITS,
+        "; ".join(record),
+    )
+
+
+def _compare_v2(
+    name, label, result, point_index, reference, tolerance, virtual_tolerance=None
+):
+    """One native output at ``point_index`` against a reference-executor
+    result: every Born order within ``tolerance`` of its own value, every
+    virtual Laurent coefficient within ``virtual_tolerance`` (default
+    ``tolerance``) of its sector's largest one. Returns the largest virtual
+    deviation relative to its sector's largest coefficient."""
+
+    bound = tolerance if virtual_tolerance is None else virtual_tolerance
     born = {canonical_order(k): v for k, v in reference.born.items()}
     for order, value in zip(
         result.born_orders, result.born_values[point_index], strict=True
@@ -1675,16 +1842,21 @@ def _compare_v2(name, label, result, point_index, reference, tolerance):
     virtual = {
         canonical_order(k): v for k, v in reference.components["virtual"].items()
     }
+    largest = 0.0
     for sector, laurent in zip(result.sectors, result.values[point_index], strict=True):
         target = virtual[sector.order].coefficients
         size = max(abs(complex(x)) for x in target)
         for k, (value, expected) in enumerate(zip(laurent, target, strict=True)):
-            if abs(complex(value) - complex(expected)) > tolerance * size:
+            difference = abs(complex(value) - complex(expected))
+            if difference > bound * size:
                 raise GenerationError(
                     f"saved v2 virtual of {name!r} ({label}) differs from the "
                     f"reference executor (sector {sector.order}, coefficient {k}: "
                     f"{value!r} != {expected!r})"
                 )
+            if difference:
+                largest = max(largest, difference / size)
+    return largest
 
 
 def _v2_validation_points(context, entry, validation, index):
