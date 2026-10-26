@@ -334,7 +334,10 @@ install(TARGETS madspace DESTINATION madspace/lib)
 install(
     DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/"
     DESTINATION "madspace/include"
-    FILES_MATCHING PATTERN "*.hpp*"
+    # *.h (not just *.hpp*) so umami.h -- the public UMAMI ABI header needed by
+    # anyone implementing or consuming a MatrixElementApi-compatible shared
+    # library -- is installed too.
+    FILES_MATCHING PATTERN "*.hpp*" PATTERN "*.h"
 )
 # Generated public headers: installed alongside function.hpp/instruction.hpp
 # so a downstream #include "function_builder_mixin.inc" resolves the same
