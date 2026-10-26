@@ -3986,7 +3986,9 @@ json.dump(res, open(outfile, 'w'))
         dirs = {}
         for name, process in (('prod', 'generate p p > t* t~*'),
                               ('dec', 'generate t* > b w+, w+ > l+ vl')):
-            self.do(process)
+            # crossing off, as MadSpin generates them (decay.without_crossing):
+            # the PDG-keyed Fortran density does not reach a folded crossing
+            self.do(process + ' --use_crossing=False')
             dirs[name] = (pjoin(self.out_dir, 'mm_' + name), pjoin(self.out_dir, 'f_' + name))
             self.do('output standalone %s -f --noeps=True' % dirs[name][0])
             self.do('output standalone_fortran %s --prefix=int --density=1 -f' % dirs[name][1])
