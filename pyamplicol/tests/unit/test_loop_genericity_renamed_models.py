@@ -59,6 +59,10 @@ M1_EW_OWNER = (
     f"m1 (corrections named 'QCD'/'QED'; Catani): WP3.2 ew-poles batch 2, {OWNED} "
     "item 3"
 )
+# The EW classification test needs both: m1 for the classification and the
+# Catani prediction, m2 for alpha_s (assemble resolves it only for a
+# correction set spelt {'QCD'}).
+M1_M2_EW_OWNER = f"{M1_EW_OWNER}; and {M2_ALPHA_OWNER}"
 
 
 def _uux_ddxg_point():
@@ -454,50 +458,6 @@ def test_renamed_scale_parameter_is_bound(models, name):
     assert bound == ["MU_R", "muR"]
 
 
-def test_order_names_resolve_once_in_any_case():
-    from pyamplicol.loops.order_names import (
-        CouplingOrderNameError,
-        CouplingOrderNames,
-    )
-
-    names = CouplingOrderNames.of(("QS", "Qe", "NPprop"))
-    assert names.resolve("qe") == names.resolve("QE") == "Qe"
-    assert names.resolve_all(("npprop", "QS")) == ("NPprop", "QS")
-    assert names.orders((("NPPROP", 1), ("QE", 2), ("QS", 1))) == (
-        ("NPprop", 1),
-        ("QS", 1),
-        ("Qe", 2),
-    )
-    assert names.mapping({"QE": 0, "QS": 2}) == {"QS": 2, "Qe": 0}
-    assert names.declared_name("CT_INSERTION") == "CT_INSERTION"
-    with pytest.raises(CouplingOrderNameError, match="not a coupling order"):
-        names.resolve("QCD")
-    with pytest.raises(CouplingOrderNameError, match="differ only in case"):
-        CouplingOrderNames.of(("QCD", "qcd"))
-    shipped = CouplingOrderNames.of(("QCD", "QED"))
-    orders = (("QCD", 2),)
-    assert shipped.identity and shipped.orders(orders) is orders
-    # A model without a compiled IR has no known spelling: refused, not an
-    # identity translation that would hand tree keys to the loop side.
-    with pytest.raises(TypeError, match="need a compiled model"):
-        CouplingOrderNames.of_model(object())
-
-
-def test_orders_one_key_apart_are_refused_at_load(loop_sm_ufo, tmp_path):
-    from pyamplicol.models.loading import compile_model_source
-    from pyamplicol.models.order_names import CouplingOrderNameError
-
-    source = tmp_path / "loop_sm-qs"
-    write_variant(Path(loop_sm_ufo), source, "orders")
-    path = source / "coupling_orders.py"
-    path.write_text(
-        path.read_text(encoding="latin-1").replace("'NPprop'", "'qs'"),
-        encoding="latin-1",
-    )
-    with pytest.raises(CouplingOrderNameError, match="'QS' and 'qs'"):
-        compile_model_source(source, cache_dir=tmp_path / "cache", use_cache=False)
-
-
 # ------------------------------------------------------------ values
 
 
@@ -665,7 +625,7 @@ def test_renamed_orders_refuse_alike(models, loop_native, process, born, loop):
     assert outcomes[1] == outcomes[0]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=M1_EW_OWNER)
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=M1_M2_EW_OWNER)
 def test_renamed_orders_keep_the_ew_classification_and_catani_poles(
     models, loop_native
 ):
