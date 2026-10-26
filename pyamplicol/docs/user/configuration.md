@@ -614,6 +614,13 @@ counterterms_uv = result.pole_part("uv", "uv")    # UV_local + field factors' UV
 local_uv = result.pole_part("uv", "uv_local")     # the model's coupling and mass CTs
 ```
 
+The strong coupling of Catani's QCD operator is the model parameter named by
+`[loop] alpha_s_parameter` (an adjustable external parameter), else the unique
+adjustable SLHA `SMINPUTS 3` parameter; a model with neither (or with it fixed)
+generates the same virtual without a QCD pole prediction, whatever the
+correction set. Masses are the model's runtime values, a derived (internal)
+mass included.
+
 The selection is a runtime option: the same artifact serves all four (it stores
 the companion plan of its certified-scaleless loop families, which only `"uv"`
 and `"ir"` evaluate; they cost about 1 % (u u~ > e- e+ g g), 7 % (g g > g g g)
@@ -736,8 +743,10 @@ levels (checked under emulation) run the saved states and agree to rounding
 Binary64 evaluation needs no Symbolica licence; double-double and arbitrary
 precision use pyAmpliCol's own Symbolica key. The native SDKs (C, C++,
 Fortran, Rust) open a v2 artifact through `rusticol_virtual_open` and evaluate
-binary64 virtuals with poles or finite-only, bitwise equal to the Python API,
-without a licence; correlated, resolved, split-pole (`"uv"`, `"ir"`) and
+binary64 virtuals, bitwise equal to the Python API, without a licence:
+`rusticol_virtual_set_poles(handle, "none")` selects the finite part alone (its
+pole-only work skipped natively, the pole entries quiet NaNs), `"all"` (the
+default) every pole; correlated, resolved, split-pole (`"uv"`, `"ir"`) and
 extended-precision calls go through the Python API. A v2 artifact carries no API
 bundle (a requested `emit_api_bundle` is dropped with a recorded configuration
 adjustment).

@@ -1474,6 +1474,20 @@ class NativeExecutor:
         native = self.native(arithmetic, digits, len(evaluations))
         return native.tree_inputs(self._inputs(evaluations, arithmetic))
 
+    def bound_masses(self, points, scales, parameters=None, precision=None):
+        """The squared masses the native lane binds for a batch
+        (``inputs="native"``, ``TreeProgram::bind``): per plan mass and per
+        leg (the on-shell invariants, DESIGN §11.1), exact ``Fraction``s."""
+
+        from .assemble import Precision
+
+        precision = precision or Precision.double()
+        arithmetic, digits = self._arithmetic(precision, False)
+        evaluations = self._native_points(points, scales, parameters, precision)
+        native = self.native(arithmetic, digits, len(evaluations))
+        masses, legs = native.bound_masses(self._inputs(evaluations, arithmetic))
+        return [Fraction(m) for m in masses], [Fraction(m) for m in legs]
+
     def _native_points(self, points, scales, parameters, precision):
         from .assemble import _fraction, _NativePoint, _Numbers
 

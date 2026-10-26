@@ -46,8 +46,11 @@ reproducer point.
 from __future__ import annotations
 
 import math
+import re
+import shutil
 from decimal import Decimal, localcontext
 from fractions import Fraction
+from pathlib import Path
 
 import pytest
 
@@ -181,11 +184,9 @@ def _onshell_neighbour(point, masses) -> list[list[str]]:
         ]
 
 
-@pytest.fixture(scope="module")
-def executors(loop_sm_compiled_model, loop_native):
-    from pyamplicol.models.loading import load_compiled_model
+def _builder(compiled, loop_native):
+    """Per case name, its slice and native executor on ``compiled``."""
 
-    compiled = load_compiled_model(loop_sm_compiled_model)
     built: dict[str, tuple[LoopSlice, NativeExecutor]] = {}
 
     def build(name: str) -> tuple[LoopSlice, NativeExecutor]:
@@ -200,6 +201,71 @@ def executors(loop_sm_compiled_model, loop_native):
         return built[name]
 
     return build
+
+
+@pytest.fixture(scope="module")
+def executors(loop_sm_compiled_model, loop_native):
+    from pyamplicol.models.loading import load_compiled_model
+
+    return _builder(load_compiled_model(loop_sm_compiled_model), loop_native)
+
+
+def _internal_mass_ufo(source: Path, destination: Path, name: str) -> Path:
+    """A copy of a UFO whose external mass parameter ``name`` is internal:
+    ``name = {name}x``, a new external parameter in its place (same block,
+    code and value), so every value is unchanged."""
+
+    shutil.copytree(
+        source, destination, ignore=shutil.ignore_patterns("*.pkl", "__pycache__")
+    )
+    path = destination / "parameters.py"
+    text = path.read_text()
+    match = re.search(
+        rf"^{name} = Parameter\(name = '{name}',\n"
+        r"(?:.*\n)*?.*lhacode = \[ *\d+ *\]\)\n",
+        text,
+        re.MULTILINE,
+    )
+    assert match is not None
+    block = match.group(0)
+    external = block.replace(
+        f"{name} = Parameter(name = '{name}'", f"{name}x = Parameter(name = '{name}x'"
+    )
+    internal = (
+        f"{name} = Parameter(name = '{name}',\n"
+        "               nature = 'internal',\n"
+        "               type = 'real',\n"
+        f"               value = '{name}x',\n"
+        f"               texname = '{name}')\n"
+    )
+    path.write_text(text.replace(block, external + "\n" + internal))
+    return destination
+
+
+@pytest.fixture(scope="module")
+def internal_mt_executors(loop_sm_ufo, loop_native, tmp_path_factory):
+    """loop_sm with MT internal (``_internal_mass_ufo``), compiled as
+    ``loop_sm_compiled_model`` is."""
+
+    from dataclasses import replace
+
+    from pyamplicol.loops.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
+    from pyamplicol.models.loading import compile_model_source
+
+    root = tmp_path_factory.mktemp("loop-sm-internal-mt")
+    ufo = _internal_mass_ufo(loop_sm_ufo, root / "loop_sm_internal_mt", "MT")
+    model = compile_model_source(ufo, cache_dir=root / "model-cache")
+    model = replace(
+        model,
+        raw_loop_model=prepare_loop_sm_scalar_declarations(
+            model.raw_loop_model
+        ).derived,
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
+    return _builder(model, loop_native)
 
 
 def _virtual(result) -> dict:
@@ -298,6 +364,37 @@ def test_a_rounded_massive_qcd_point_agrees_in_every_carrier(executors):
     """g g > t t~ at a rotated rounded point: every leg off shell by rounding."""
 
     _agree_across_carriers(executors, "gg_ttx")
+
+
+@pytest.mark.loop_physics
+def test_an_internal_top_mass_is_bound_on_shell(executors, internal_mt_executors):
+    """loop_sm with MT internal (MT = MTx, an external parameter of the same
+    value; genericity audit M2): the top's loop propagators (``["output",
+    o]`` plan masses) and legs are bound from the parameter program's output
+    natively and from the slice's one mass evaluator in Python, so g g > t t~
+    at the rotated rounded point agrees in every carrier as with the external
+    MT (DoubleFloat and MPFR with the legs on their shell, the on-shell
+    neighbour), binds the external MT's exact masses (173 is a binary64
+    value), equals its virtual and keeps Catani's prediction."""
+
+    slice_, point, mpfr = _agree_across_carriers(internal_mt_executors, "gg_ttx")
+    _slice, executor = internal_mt_executors("gg_ttx")
+    program = executor.exported.trees.program["parameters"]
+    assert any(isinstance(mass, list) for mass in program["plan_masses"])
+    assert program["derived_masses"]
+    external_slice, external = executors("gg_ttx")
+    for precision in (None, Precision.double_double(), Precision.arbitrary(32)):
+        assert executor.bound_masses(
+            [point], [SCALE], PARAMETERS, precision
+        ) == external.bound_masses([point], [SCALE], PARAMETERS, precision)
+    (reference,) = external.evaluate(
+        [point], [SCALE], parameters=PARAMETERS, precision=Precision.arbitrary(32)
+    )
+    assert deviation(_virtual(reference), _virtual(mpfr)) < 1e-28
+    mine = slice_.evaluate(point, SCALE, parameters=PARAMETERS)
+    theirs = external_slice.evaluate(point, SCALE, parameters=PARAMETERS)
+    assert theirs.ir_poles is not None
+    assert mine.ir_poles == theirs.ir_poles
 
 
 _SDK_CARD = """

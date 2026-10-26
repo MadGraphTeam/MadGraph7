@@ -755,7 +755,6 @@ def generate_process(
     # the native process, so no correlated, resolved or catalogue call of a
     # loaded process regenerates.
     from .native_observables import column_plans
-
     from .native_trees import NativeExportUnsupported
 
     plans = column_plans(observables)

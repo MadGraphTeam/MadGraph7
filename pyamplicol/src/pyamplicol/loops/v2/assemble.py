@@ -1435,14 +1435,14 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     scale_parameter = _external_parameter(
         compiled, request.scale_parameter, _LHA_SCALE, fixed
     )
+    # alpha_s of the QCD operator of the IR-pole prediction (Catani, WP3.2
+    # EWI-6), one rule for every correction set (genericity audit m2): the
+    # named parameter (``loop.alpha_s_parameter``), which must be an
+    # adjustable external parameter, else the unique adjustable SLHA
+    # SMINPUTS 3 one, else none: the operator then makes no prediction (the
+    # virtual itself does not read it).
     alpha_s_parameter = None
-    if set(request.corrections) == {"QCD"}:
-        alpha_s_parameter = _external_parameter(
-            compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
-        )
-    elif "QCD" in request.corrections:
-        # The QCD operator of a joint request's IR-pole prediction (WP3.2
-        # EWI-6); without an identified alpha_s it makes none.
+    if "QCD" in request.corrections:
         try:
             alpha_s_parameter = _external_parameter(
                 compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
@@ -4123,7 +4123,9 @@ def _mass_values(
     }
 
 
-def _leg_masses(slice_, parameters: Mapping[str, str], digits: int) -> tuple[Fraction, ...]:
+def _leg_masses(
+    slice_, parameters: Mapping[str, str], digits: int
+) -> tuple[Fraction, ...]:
     """Each external leg's squared mass in leg order, the value of the
     invariants its mass shell fixes (``families.onshell_leg``; DESIGN §11.1):
     the value ``_mass_values`` gives its mass id (``_model_masses``: a

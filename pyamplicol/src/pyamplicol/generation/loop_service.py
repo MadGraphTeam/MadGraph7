@@ -1264,6 +1264,7 @@ def _v2_request(backend, context, index):
         accuracy=accuracy,
         colour_declaration=context.color_declaration if accuracy != "full" else None,
         scale_parameter=_v2_scale_parameter(compiled, fixed),
+        alpha_s_parameter=run.loop.alpha_s_parameter,
         colour_contraction=_V2_CONTRACTION[run.color.contraction],
         compatibility=context.preparation.compatibility,
     )
@@ -1273,10 +1274,15 @@ def _plan_v2(backend, processes, blockers, *, model=None):
     """The v2 dry run: per process the slice request (``_v2_request``) and
     the model preparation of the slice (``prepare_request_model``), whose
     refusals are reported. Loop admission (counterterm sites, fermion signs
-    of loop vertices, the loop-side tree currents) is checked only by the
-    generation (``loop_admission_checked`` is False)."""
+    of loop vertices, the loop-side tree currents) and the native export of
+    the point inputs are checked only by the generation
+    (``loop_admission_checked`` and ``native_export_checked`` are False;
+    ``native_export_refusals`` lists the features the export refuses,
+    ``native_trees.NATIVE_EXPORT_REFUSALS``: such a process fails generation,
+    a stored plan v4 process never regenerates at load)."""
     from pyamplicol.loops.v2.artifact import request_record
     from pyamplicol.loops.v2.assemble import prepare_request_model
+    from pyamplicol.loops.v2.native_trees import NATIVE_EXPORT_REFUSALS
 
     blockers = blockers + _v2_blockers(backend)
     context, coverage = None, []
@@ -1313,6 +1319,7 @@ def _plan_v2(backend, processes, blockers, *, model=None):
                         "scale_parameter": request.scale_parameter,
                         "numerator_compilation_deferred": True,
                         "loop_admission_checked": False,
+                        "native_export_checked": False,
                     }
                 )
         except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
@@ -1329,6 +1336,9 @@ def _plan_v2(backend, processes, blockers, *, model=None):
         exact_flavor_grouping=backend._run_config.process.flavor_blind,
         api_bundle=False,
         runtime_capability=LOOP_V2_RUNTIME_CAPABILITY,
+        native_export_refusals=tuple(
+            f"{refusal.key}: {refusal.feature}" for refusal in NATIVE_EXPORT_REFUSALS
+        ),
     )
     return replace(result, estimated_coverage=estimated)
 

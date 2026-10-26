@@ -858,6 +858,53 @@ def test_loop_v4_sdk_equals_python_bitwise_at_both_locations(
 
 
 @pytest.mark.loop_physics
+def test_loop_v4_sdk_selects_the_finite_part_like_python(
+    loop_artifact, loop_sdk_client, tmp_path
+):
+    """``rusticol_virtual_set_poles(handle, "none")`` (REQUIREMENTS_ADDENDUM
+    I: the pole option reaches the SDKs): the finite part, bitwise the
+    Python API's ``poles="none"`` and the SDK's own ``"all"``, the poles
+    absent (NaN; None in Python); "uv" is refused naming the Python API."""
+
+    artifact, _, _ = loop_artifact("gg")
+    points = tmp_path / "points.json"
+    points.write_text(json.dumps(portability.points(4, 2)))
+    records = {
+        poles: portability.sdk(
+            artifact,
+            "gg",
+            points,
+            loop_sdk_client,
+            workdir=tmp_path / f"sdk-{poles}",
+            poles=poles,
+        )
+        for poles in ("all", "none")
+    }
+    assert all(r["exit_status"] == [0] for r in records.values()), records
+    python = portability.evaluate(artifact, "gg", points, poles="none")
+    finite = records["none"]["results"]["virtual"]
+    assert records["none"]["results"]["born"] == python["results"]["born"]
+    assert [[laurent[0] for laurent in point] for point in finite] == [
+        [laurent[0] for laurent in point] for point in python["results"]["virtual"]
+    ]
+    assert [[laurent[0] for laurent in point] for point in finite] == [
+        [laurent[0] for laurent in point]
+        for point in records["all"]["results"]["virtual"]
+    ]
+    assert all(laurent[1:] == ["nan", "nan"] for point in finite for laurent in point)
+    assert all(
+        laurent[1:] == [None, None]
+        for point in python["results"]["virtual"]
+        for laurent in point
+    )
+    refused = portability.sdk(
+        artifact, "gg", points, loop_sdk_client, workdir=tmp_path / "uv", poles="uv"
+    )
+    assert refused["exit_status"] == [1]
+    assert "Python API" in refused["stderr"][0]
+
+
+@pytest.mark.loop_physics
 def test_loop_v4_sdk_needs_no_symbolica_licence(
     loop_artifact, loop_sdk_client, tmp_path
 ):

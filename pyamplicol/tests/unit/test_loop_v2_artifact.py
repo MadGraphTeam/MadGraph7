@@ -37,8 +37,9 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 * a fresh interpreter loads and evaluates the stored native point inputs
   (``point_inputs = "native-v2"``, WP3.1) with generation forbidden, with
   bitwise-identical binary64 values also after unrelated Symbolica symbols
-  were created; the regeneration path (a process stored without native
-  inputs) refuses a stored plan that differs from the regenerated one;
+  were created (no call regenerates: ``test_loop_v2_stored_process.py``;
+  a process whose native inputs cannot be exported is refused at
+  generation);
 * the native artifact loader (``load_loop_v2_artifact``) admits each plan v4
   process, cross-checks families, buckets, legs, helicity rows and sectors
   against the declarations, and refuses tampered declarations and digests;
@@ -572,6 +573,72 @@ def test_particle_veto_is_resolved_to_pdg_codes_and_refuses_the_site_oracle():
     assert request.particle_veto == (6, 23)
     with pytest.raises(ArtifactError, match="tree recursion"):
         generate_process(None, replace(request, counterterms="sites"), None)
+
+
+@pytest.mark.loop_physics
+def test_native_export_refusals_fail_the_generation(
+    loop_sm_compiled_model, loop_native, monkeypatch
+):
+    """A process whose native point inputs or observable columns cannot be
+    exported is refused at generation (genericity audit M1; a stored plan v4
+    process never regenerates at load, so there is no plan-only downgrade):
+    a listed feature (``native_trees.NATIVE_EXPORT_REFUSALS``) as a
+    ``GenerationError`` naming it, any other exception of the export as
+    itself; an unlisted feature key is refused."""
+
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.correlators import CorrelatorConfig
+    from pyamplicol.loops.v2 import plan_export
+    from pyamplicol.loops.v2.artifact import generate_process
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.native_observables import StoredObservables
+    from pyamplicol.loops.v2.native_trees import NativeExportUnsupported
+    from pyamplicol.models.loading import load_compiled_model
+
+    with pytest.raises(ValueError, match="unknown native export refusal"):
+        NativeExportUnsupported("plan-only", "a downgrade")
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request = SliceRequest(
+        "d d~ > g g",
+        {"QCD": 2, "QED": 0},
+        {"QCD": 4, "QED": 0},
+        fixed_parameters={"MB": "0"},
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    monkeypatch.setattr(LoopSlice, "generate", lambda *args, **kwargs: slice_)
+
+    def refuse(error):
+        def export(*args, **kwargs):
+            raise error
+
+        return export
+
+    with monkeypatch.context() as patch:
+        patch.setattr(plan_export, "export_plan", refuse(NotImplementedError("plain")))
+        with pytest.raises(NotImplementedError, match=r"^plain$") as raised:
+            generate_process(compiled, request, loop_native)
+        assert not isinstance(raised.value, GenerationError)
+        listed = NativeExportUnsupported("whole-rule-root", "a pole whole-rule root")
+        patch.setattr(plan_export, "export_plan", refuse(listed))
+        with pytest.raises(
+            GenerationError, match=r"native point inputs.*whole-rule-root"
+        ):
+            generate_process(compiled, request, loop_native)
+    # Declared observables whose columns cannot be stored: refused, never
+    # stored without columns.
+    columns = NativeExportUnsupported("observable-columns", "no native components")
+    monkeypatch.setattr(StoredObservables, "export", refuse(columns))
+    record = ROOT / "tests/fixtures/loop/legacy/observables/ddgg_ssgg.json"
+    correlators = CorrelatorConfig.from_json_dict(
+        {
+            "color_correlations": json.loads(record.read_text())["histories"][:1],
+            "spin_correlations": [],
+        }
+    )
+    with pytest.raises(
+        GenerationError, match=r"observable columns.*observable-columns"
+    ):
+        generate_process(compiled, request, loop_native, correlators)
 
 
 @pytest.mark.loop_fast
@@ -1417,6 +1484,12 @@ def test_cli_generates_and_evaluates_through_v2(
     assert coverage["processes"][0]["loop_orders"] == {"QCD": 4, "QED": 0}
     assert coverage["processes"][0]["scale_parameter"] == "MU_R"
     assert coverage["processes"][0]["loop_admission_checked"] is False
+    assert coverage["processes"][0]["native_export_checked"] is False
+    from pyamplicol.loops.v2.native_trees import NATIVE_EXPORT_REFUSALS
+
+    assert [item.split(":")[0] for item in coverage["native_export_refusals"]] == [
+        refusal.key for refusal in NATIVE_EXPORT_REFUSALS
+    ]
     assert not output.exists()
     code = run_cli(
         ("generate", "--card", str(card), *engine, "--progress", "off"),

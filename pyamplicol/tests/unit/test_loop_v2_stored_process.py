@@ -3,11 +3,12 @@
 
 REQUIREMENTS_ADDENDUM G / HANDOFF §0.2 (d): loading an artifact never
 regenerates the process, and neither does any call of the API contract on
-the loaded process. Each call kind runs in a fresh interpreter under the
-generation sentinel of ``tools/loop_artifact_portability.py``
-(``GenerationSentinel``: every call of slice, plan, tree-program or model
-generation code is counted from before the first pyAmpliCol import to the
-end of the call), and must count zero:
+the loaded process. The call kinds of one stored process run in one fresh
+interpreter under the generation sentinel of
+``tools/loop_artifact_portability.py`` (``GenerationSentinel``: every call of
+slice, plan, tree-program or model generation code is counted from before
+the first pyAmpliCol import to the end of the last call, and attributed to
+the call it ran in), and each must count zero:
 
 * the inclusive virtual in every pole selection (``all``, ``none``, ``uv``,
   ``ir``: the stored companion of the certified-scaleless families, with the
@@ -178,26 +179,37 @@ CALLS = {
     "plain-resolved": ("gg_plain", "gg", "resolved"),
 }
 
-# Runs one call kind (argv: artifact, process or "", call, record) under the
-# generation sentinel and prints its generation calls and values (binary64
-# bits as hexadecimal literals).
+# Runs call kinds of one stored process in turn (argv: artifact, process or
+# "", the calls as JSON, record) under one generation sentinel and prints per
+# call its generation calls (those counted while it ran; the imports' under
+# "") and values (binary64 bits as hexadecimal literals).
 _PROBE = r"""
 import json, sys
 from pathlib import Path
-spec_path, artifact, process, call, record_path = sys.argv[1:6]
+spec_path, artifact, process, calls, record_path = sys.argv[1:6]
 import importlib.util
 spec = importlib.util.spec_from_file_location("portability", spec_path)
 tool = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tool)
 record = json.loads(Path(record_path).read_text())
 process = process or None
+out = {}
 with tool.GenerationSentinel() as sentinel:
     from pyamplicol import Runtime
     from pyamplicol.api import VirtualStabilityChecks
     from pyamplicol.correlators import CorrelatedRequest
     from decimal import Decimal
-    values = run(Runtime, artifact, process, call, record)
-print(json.dumps({"calls": dict(sentinel.calls), "values": values}))
+    out[""] = {"calls": dict(sentinel.calls), "values": None}
+    for call in json.loads(calls):
+        before = dict(sentinel.calls)
+        values = run(Runtime, artifact, process, call, record)
+        counted = {
+            name: count - before.get(name, 0)
+            for name, count in sentinel.calls.items()
+            if count != before.get(name, 0)
+        }
+        out[call] = {"calls": counted, "values": values}
+print(json.dumps(out))
 """
 
 _RUN = r"""
@@ -310,13 +322,16 @@ def run(Runtime, artifact, process, call, record):
 """
 
 
-def _call(
+def _calls(
     artifact: Path,
     process: str | None,
-    call: str,
+    calls: list[str],
     record: Path,
     env: dict[str, str] | None = None,
 ) -> dict:
+    """``calls`` of one stored process in one fresh interpreter (``_PROBE``):
+    per call (and ``""``, the imports) its generation calls and values."""
+
     script = _RUN + _PROBE
     run = subprocess.run(
         [
@@ -326,7 +341,7 @@ def _call(
             str(ROOT / "tools" / "loop_artifact_portability.py"),
             str(artifact),
             process or "",
-            call,
+            json.dumps(calls),
             str(record),
         ],
         capture_output=True,
@@ -344,11 +359,30 @@ def _case(name: str):
     return pytest.param(name, marks=(pytest.mark.loop_physics,), id=name)
 
 
+@pytest.fixture(scope="module")
+def fresh(stored):
+    """Every call kind of ``CALLS`` in a fresh interpreter, one per stored
+    process (``_calls``): per call kind its generation calls and values, and
+    per stored process the imports' generation calls."""
+
+    groups: dict[tuple[str, str], list[str]] = {}
+    for artifact, process, call in CALLS.values():
+        calls = groups.setdefault((artifact, process), [])
+        if call not in calls:
+            calls.append(call)
+    out = {}
+    for (artifact, process), calls in groups.items():
+        found = _calls(stored[artifact], process, calls, _record_path(artifact))
+        out[(artifact, process)] = found
+    return out
+
+
 @pytest.mark.parametrize("name", [_case(name) for name in CALLS])
-def test_stored_process_call_regenerates_nothing(stored, name):
+def test_stored_process_call_regenerates_nothing(stored, fresh, name):
     artifact, process, call = CALLS[name]
-    fresh = _call(stored[artifact], process, call, _record_path(artifact))
-    assert fresh["calls"] == {}, fresh["calls"]
+    assert fresh[(artifact, process)][""]["calls"] == {}
+    found = fresh[(artifact, process)][call]
+    assert found["calls"] == {}, found["calls"]
     # The same call in this process (which generated the artifact) gives
     # the same bits.
     namespace: dict = {}
@@ -356,7 +390,7 @@ def test_stored_process_call_regenerates_nothing(stored, name):
     from pyamplicol import Runtime
 
     here = namespace["run"](Runtime, stored[artifact], process, call, _record(artifact))
-    assert json.loads(json.dumps(here)) == fresh["values"]
+    assert json.loads(json.dumps(here)) == found["values"]
 
 
 @pytest.mark.loop_physics
@@ -427,18 +461,14 @@ def test_binary64_observable_calls_touch_no_symbolica_state(stored, tmp_path):
             if key != "SYMBOLICA_LICENSE"
         }
         env = permit.environment({**env, **NO_NATIVE_KEY})
-        unlicensed = {
-            name: _call(
-                stored[CALLS[name][0]],
-                CALLS[name][1],
-                CALLS[name][2],
-                _record_path(CALLS[name][0]),
-                env,
-            )
-            for name in ("many", "spin", "resolved")
-        }
-    for name, fresh in unlicensed.items():
-        artifact, process, call = CALLS[name]
-        assert fresh["calls"] == {}, (name, fresh["calls"])
-        licensed = _call(stored[artifact], process, call, _record_path(artifact))
-        assert fresh["values"] == licensed["values"], name
+        names = ("many", "spin", "resolved")
+        artifact, process = CALLS[names[0]][:2]
+        assert all(CALLS[name][:2] == (artifact, process) for name in names)
+        calls = [CALLS[name][2] for name in names]
+        unlicensed = _calls(
+            stored[artifact], process, calls, _record_path(artifact), env
+        )
+    licensed = _calls(stored[artifact], process, calls, _record_path(artifact))
+    for call in calls:
+        assert unlicensed[call]["calls"] == {}, (call, unlicensed[call]["calls"])
+        assert unlicensed[call]["values"] == licensed[call]["values"], call
