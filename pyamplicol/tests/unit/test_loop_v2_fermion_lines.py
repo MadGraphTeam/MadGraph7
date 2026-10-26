@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 """One-loop QCD virtuals with several coloured fermion lines (package
-fermion-lines; design §3.3 "Fermion sign", "Validated range").
+fermion-lines; design §3.3 "Fermion sign", "Coloured fermion lines").
 
 The ring sign of design §3.3 has no cap on the number of coloured fermion
 lines: the colour flow owns their ordering, identical flavours included. The
@@ -13,25 +13,23 @@ each, colour-summed:
 * u u~ > u u~ d d~ (two identical-flavour lines and a third line);
 * u u~ > u u~ u u~ (three identical-flavour lines: two of them can pair the
   legs of one counterterm current in two ways, whose colour-connection
-  signs differ; ``generation.fermion_ordering.apply_colour_connection_signs``);
+  parities differ; ``generation.fermion_ordering.apply_colour_connection_signs``);
 * u u~ > u u~ e+ e- (two identical-flavour quark lines and a lepton line).
 
 The virtual of the production route (counterterms from the recursion, native
-executor with Python inputs) in double-double equals MadLoop's Born and every
-Laurent coefficient within 1e-12 (the required-references metric: relative,
-with the floor |Born| alpha_s / 2 pi for the coefficients), and its poles equal
-Catani's within 1e-12. LC, NLC and full colour are consistent: the projected
-slices are the sums of their kept N_c powers of the exact colour cells, and
-all powers sum to full colour. The 2->4 requests run in the nightly tier; the
-physics tier keeps a 2->3 control (u u~ > u u~ g, two identical-flavour lines)
-and the counterterm program of three identical-flavour lines.
+DAG, native executor with Python inputs) in double-double equals MadLoop's
+Born and every Laurent coefficient within 1e-12, strictly relative per
+coefficient, and its poles equal Catani's within 1e-12. LC, NLC and full
+colour are consistent: the projected slices are the sums of their kept N_c
+powers of the exact colour cells, and all powers sum to full colour. The
+2->4 requests run in the nightly tier; the physics tier keeps a 2->3 control
+(u u~ > u u~ g, two identical-flavour lines).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import math
 from fractions import Fraction
 from pathlib import Path
 
@@ -69,10 +67,10 @@ def _request(compiled, reference: dict, **changes):
     return dataclasses.replace(request, **changes)
 
 
-def _relative(a: float, b: float, floor: float = 0.0) -> float:
-    """The required-references metric: |a-b| / max(|a|, |b|, floor)."""
+def _relative(a: float, b: float) -> float:
+    """|a - b| / max(|a|, |b|): strictly relative, per coefficient."""
 
-    scale = max(abs(a), abs(b), floor)
+    scale = max(abs(a), abs(b))
     return 0.0 if scale == 0 else abs(a - b) / scale
 
 
@@ -92,10 +90,12 @@ def test_virtual_equals_madloop_and_catani(loop_sm_compiled_model, loop_native, 
     """Double-double virtual of the production route against MadLoop's
     quadruple-precision values (1e-12 per coefficient) and Catani's poles."""
 
+    from pyamplicol.loops.v2 import dag_input
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision
     from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
     from pyamplicol.models.loading import load_compiled_model
 
+    assert dag_input.NATIVE_DAG
     reference = _reference(name)
     compiled = load_compiled_model(loop_sm_compiled_model)
     slice_ = LoopSlice.generate(compiled, _request(compiled, reference), loop_native)
@@ -104,7 +104,6 @@ def test_virtual_equals_madloop_and_catani(loop_sm_compiled_model, loop_native, 
     executor = NativeExecutor(
         slice_, forward=False, exported=export_plan(slice_, forward=False)
     )
-    alpha_s = float(reference["parameters"]["aS"])
     for index in CASES[name]:
         point = reference["points"][index]
         scale = str(Fraction(reference["mu_r"][index]) ** 2)
@@ -116,10 +115,9 @@ def test_virtual_equals_madloop_and_catani(loop_sm_compiled_model, loop_native, 
         )
         born, *virtual = (float(x) for x in result.totals[:4])
         madloop = reference["rows"][index]["providers"]["madloop"]
-        floor = abs(born) * alpha_s / (2 * math.pi)
         assert _relative(born, madloop["born"]) <= TOLERANCE, (index, born)
         for key, value in zip(LAURENT, virtual, strict=True):
-            error = _relative(value, madloop[key], floor)
+            error = _relative(value, madloop[key])
             assert error <= TOLERANCE, (index, key, value, madloop[key], error)
         assert result.ir_poles, index
         for sector, (single, double) in result.ir_poles.items():
@@ -184,19 +182,22 @@ def test_colour_projections_are_formal_nc_projections(
         for value in kind.values()
         if value is not None
     )
-    parts = {power: at(power) for power in range(top - 10, top + 1)}
-    # Below the lowest power evaluated every part vanishes.
-    assert all(
-        float(x) == 0
-        for x in (
-            *parts[top - 10].born.values(),
-            *(
-                c
-                for sectors in parts[top - 10].components.values()
-                for laurent in sectors.values()
-                for c in laurent.coefficients
-            ),
-        )
+    lowest = top - 10
+    parts = {power: at(power) for power in range(lowest, top + 1)}
+
+    def coefficients(result, component, sector):
+        found = result.components[component].get(sector)
+        return None if found is None else [float(x) for x in found.coefficients]
+
+    # Below the lowest power evaluated every part vanishes: one power lower is
+    # zero in the Born and in every component.
+    below = at(lowest - 1)
+    assert not any(float(x) for x in below.born.values())
+    assert not any(
+        float(c)
+        for sectors in below.components.values()
+        for laurent in sectors.values()
+        for c in laurent.coefficients
     )
     depth = {"lc": 0, "nlc": 2}[accuracy]
     mine = projected.evaluate(point, scale, parameters=parameters)
@@ -218,25 +219,20 @@ def test_colour_projections_are_formal_nc_projections(
             values = [float(x) for x in laurent.coefficients]
             size = max(map(abs, values)) or 1.0
             totals = [0.0] * len(values)
-            for part in parts.values():
-                found = part.components[component].get(sector)
-                if found is not None:
-                    for k, x in enumerate(found.coefficients):
-                        totals[k] += float(x)
+            kept_values = [0.0] * len(values)
+            degree = degrees["virtual"][sector]
+            for p, part in parts.items():
+                found = coefficients(part, component, sector)
+                if found is None:
+                    continue
+                if p > degree:
+                    assert not any(found), (component, sector, p)
+                for k, x in enumerate(found):
+                    totals[k] += x
+                    if degree - depth <= p <= degree:
+                        kept_values[k] += x
             for a, b in zip(totals, values, strict=True):
                 assert abs(a - b) <= TOLERANCE * size, (component, sector)
-            degree = degrees["virtual"][sector]
-            projection = mine.components[component].get(sector)
-            kept_values = [0.0] * len(values)
-            for p in range(degree - depth, degree + 1):
-                found = parts[p].components[component].get(sector)
-                if found is not None:
-                    for k, x in enumerate(found.coefficients):
-                        kept_values[k] += float(x)
-            ours = (
-                [0.0] * len(values)
-                if projection is None
-                else [float(x) for x in projection.coefficients]
-            )
+            ours = coefficients(mine, component, sector) or [0.0] * len(values)
             for a, b in zip(ours, kept_values, strict=True):
                 assert abs(a - b) <= TOLERANCE * size, (component, sector, accuracy)
