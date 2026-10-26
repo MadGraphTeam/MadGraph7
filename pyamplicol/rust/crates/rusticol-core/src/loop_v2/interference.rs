@@ -483,3 +483,90 @@ impl Interference {
         out
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn r(n: i64) -> Rational {
+        Rational::from(n)
+    }
+
+    fn program(cells: MetricCells, depth: Option<i32>) -> Interference {
+        // Two basis elements, three ket tensors; the Born components carry
+        // N_c powers 0 and 1, the ket's 0, 0 and -1.
+        Interference::new(
+            2,
+            1,
+            3,
+            cells,
+            &[(0, 0, 0), (1, 0, 1)],
+            &[(0, 0, 0), (1, 0, 0), (2, 0, -1)],
+            1,
+            vec![Entry {
+                bra: 0,
+                ket: Ket::Vector(0),
+                coupling: None,
+                grade: 0,
+                output: 0,
+                degree: depth.map(|_| 1),
+            }],
+            vec![0],
+            0,
+            depth,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_table_metric_equals_its_list() {
+        let list = vec![
+            (0, 0, 0, [r(1), r(0)]),
+            (0, 0, -2, [r(-1), r(0)]),
+            (0, 2, 1, [r(2), r(1)]),
+            (1, 1, 0, [r(3), r(0)]),
+            (1, 2, 1, [r(2), r(1)]),
+        ];
+        // ids[t][b]: (0,0) -> cell 0, (1,0) -> the empty cell 1, (1,1) -> 3,
+        // (2,0) and (2,1) -> 2.
+        let table = MetricCells::Table {
+            values: vec![
+                vec![(0, [r(1), r(0)]), (-2, [r(-1), r(0)])],
+                vec![],
+                vec![(1, [r(2), r(1)])],
+                vec![(0, [r(3), r(0)])],
+            ],
+            ids: vec![vec![0, 1], vec![1, 3], vec![2, 2]],
+        };
+        for depth in [None, Some(0), Some(2)] {
+            let a = program(MetricCells::List(list.clone()), depth).runtime(&0.0_f64);
+            let b = program(table.clone(), depth).runtime(&0.0_f64);
+            assert_eq!(a.metrics.len(), b.metrics.len());
+            for (x, y) in a.metrics.iter().zip(&b.metrics) {
+                assert_eq!(x.len(), y.len());
+                for (row_x, row_y) in x.iter().zip(y) {
+                    let bits = |row: &Vec<(usize, Complex<f64>)>| -> Vec<(usize, u64, u64)> {
+                        row.iter()
+                            .map(|(t, z)| (*t, z.re.to_bits(), z.im.to_bits()))
+                            .collect()
+                    };
+                    assert_eq!(bits(row_x), bits(row_y), "depth {depth:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_table_metric_is_validated() {
+        let table = |ids: Vec<Vec<u32>>| MetricCells::Table {
+            values: vec![vec![(0, [r(1), r(0)])]],
+            ids,
+        };
+        let new = |cells| Interference::new(2, 1, 3, cells, &[], &[], 0, vec![], vec![], 0, None);
+        assert!(new(table(vec![vec![0, 0]; 3])).is_ok());
+        // One index per ket tensor and basis element, each a stored cell.
+        assert!(new(table(vec![vec![0, 0]; 2])).is_err());
+        assert!(new(table(vec![vec![0]; 3])).is_err());
+        assert!(new(table(vec![vec![0, 1]; 3])).is_err());
+    }
+}
