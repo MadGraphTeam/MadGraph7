@@ -12,6 +12,13 @@ ANNOUNCEMENT:
        pp>w+h [QED] (photon induced t-channel contribution). A typical
        value would be a few percent or so (e.g., 0.03). See also
        Sec.6.3 of 0908.4272 [hep-ph].
+   OM: real_channels_x0 is now set by default, at output, for the processes
+       whose real-emission diagrams have propagators that the Born channels
+       do not follow (0.05, e.g. pp>w+h [QED], pp>w+bb~ [QCD], pp>w+w- [QED];
+       -1 otherwise, e.g. pp>jj, pp>w+j, pp>tt~j, pp>tt~h [QCD]). The
+       decision is the same for a resonance and its decay products
+       (pp>w+j and pp>e+vej). The value is written in the run_card, and
+       ignored for MC@NLO/LO/merged runs.
    OM: Bug fix: 'check_sa.exe perf' of 'output standalone' ignored the alpha_s
        of the param card and always used 0.118 (the 'matrix' mode was right).
        With --momenta/-e and --dump-me, the matrix elements at user points are
