@@ -116,7 +116,6 @@ from .colour import (
     seed_fourier,
 )
 from .conventions import (
-    FERMION_SPIN,
     LOOP_FACTOR_DENOMINATOR,
     LeafWeights,
     Normalisation,
@@ -149,6 +148,7 @@ from .families import (
     generate_families,
     mass_name,
     onshell_leg,
+    orders_within,
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
@@ -156,11 +156,13 @@ from .generator_input import NativeGeneration
 from .poles import (
     ORIGINS,
     catani_poles,
+    colour_casimir,
     coupling_value,
     dressed_born,
     exact_charge,
     has_poles,
     pole_mode,
+    predicted_sectors,
     qed_catani_poles,
     qed_coupling,
     qed_gamma,
@@ -170,6 +172,8 @@ from .poles import (
     select_sector,
     split_sector,
     splits,
+    strong_beta0,
+    strong_gamma,
 )
 from .poly_affine import MonomialLayout, leg_momentum
 from .schedules import (
@@ -1450,11 +1454,14 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         compiled, request.scale_parameter, _LHA_SCALE, fixed
     )
     alpha_s_parameter = None
-    if set(request.corrections) == {"QCD"}:
+    # The strong correction is identified by the gluon's vertices, not by
+    # its order's name (``ew_policy.correction_orders``; genericity m1).
+    strong = ew_policy.correction_orders(compiled, fixed).strong
+    if strong is not None and set(request.corrections) == {strong}:
         alpha_s_parameter = _external_parameter(
             compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
         )
-    elif "QCD" in request.corrections:
+    elif strong is not None and strong in request.corrections:
         # The QCD operator of a joint request's IR-pole prediction (WP3.2
         # EWI-6); without an identified alpha_s it makes none.
         try:
@@ -3426,9 +3433,10 @@ class _PointEvaluation:
         operators describe stable (real-mass) emitters."""
 
         values = _kernel_parameters(self.slice.compiled, self.parameters)
+        abelian = self._correction_orders().abelian
         charged = (
             _charged_fields(self.slice.compiled)
-            if "QED" in self.slice.request.corrections
+            if abelian is not None and abelian in self.slice.request.corrections
             else frozenset()
         )
         return all(
@@ -3449,9 +3457,23 @@ class _PointEvaluation:
         colour-summed Born). A sector's prediction is their sum
         (``poles.sector_sum``); a correction without an operator, or one of
         them making no prediction, gives none (never a partial sum).
+
+        The strong and the electromagnetic corrections are recognised by the
+        gluon's and the photon's vertices (``ew_policy.correction_orders``),
+        not by their orders' names (genericity audit m1). Only the sectors
+        whose loops the requested corrections complete are predicted
+        (``poles.predicted_sectors``; ``_predicted_sectors``): the mixed
+        QCD x EW sectors of a QCD-only request (MadLoop's loop selection
+        leaves out the gluon-photon boxes) have no prediction and are absent
+        from the mapping; None when no sector is predicted.
         """
 
-        operators = {"QCD": self._qcd_poles, "QED": self._qed_poles}
+        orders = self._correction_orders()
+        operators = {}
+        if orders.strong is not None:
+            operators[orders.strong] = self._qcd_poles
+        if orders.abelian is not None:
+            operators.setdefault(orders.abelian, self._qed_poles)
         predictions = []
         for name in self.slice.request.corrections:
             operator = operators.get(name)
@@ -3459,7 +3481,25 @@ class _PointEvaluation:
             if prediction is None:
                 return None
             predictions.append(prediction)
-        return sector_sum(predictions)
+        predicted = self._predicted_sectors()
+        out = {
+            sector: poles
+            for sector, poles in sector_sum(predictions).items()
+            if sector in predicted
+        }
+        return out or None
+
+    def _correction_orders(self) -> ew_policy.CorrectionOrders:
+        """The slice's strong and electromagnetic orders
+        (``ew_policy.correction_orders``), found once per slice."""
+
+        return _correction_orders(self.slice)
+
+    def _predicted_sectors(self) -> frozenset[Orders]:
+        """The sectors ``_ir_poles`` predicts (``poles.predicted_sectors``),
+        found once per slice."""
+
+        return _predicted_sectors(self.slice)
 
     def _qcd_poles(self) -> dict[Orders, tuple[Any, Any]] | None:
         """The QCD operator per sector (``poles.catani_poles``), or None
@@ -3467,20 +3507,30 @@ class _PointEvaluation:
 
         V_poles = (alpha_s / 2 pi) sum_i sum_{j != i} (1/C_i) (C_i/eps^2 +
         gamma_i/eps) (1 + eps log(mu^2 / |2 p_i.p_j|)) <T_i.T_j> for massless
-        coloured legs, n_f light flavours in gamma_g; massive emitters take
-        the massive form. The legs' masses are the model's runtime values (a
-        symbolic mass bound to 0 is massless), not the p^2 of the given
-        (possibly rounded) momenta.
+        coloured legs, gamma_i by each leg's spin and representation
+        (``poles.strong_gamma``; gamma_g = beta_0 over the request's
+        eligible massless coloured species, ``_strong_beta0``); massive
+        emitters take the massive form. The legs' masses are the model's
+        runtime values (a symbolic mass bound to 0 is massless), not the p^2
+        of the given (possibly rounded) momenta. No prediction for a leg or a
+        loop species the operator does not cover (genericity audit m3).
         """
 
         slice_, numbers = self.slice, self.numbers
-        if slice_.alpha_s_parameter is None:
+        strong = self._correction_orders().strong
+        if slice_.alpha_s_parameter is None or strong is None:
             return None
         legs = {leg.label: leg for leg in slice_.basis.legs}
         coloured = sorted(
             label for label, leg in legs.items() if leg.representation != 1
         )
         values = _kernel_parameters(slice_.compiled, self.parameters)
+        beta0 = _strong_beta0(slice_, strong, values)
+        gammas = {}
+        for leg in slice_.families.legs:
+            label = leg.index + 1
+            if label in coloured:
+                gammas[label] = _strong_leg_gamma(slice_, leg, beta0)
         masses = {}
         for leg in slice_.families.legs:
             name = leg.mass.mass
@@ -3490,6 +3540,12 @@ class _PointEvaluation:
                 masses[leg.index + 1] = values[name] ** 2
             elif leg.index + 1 in coloured:
                 return None
+        if any(
+            colour_casimir(legs[j].representation) is None
+            or (masses[j] == 0 and gammas[j] is None)
+            for j in coloured
+        ):
+            return None
         dipoles = slice_.dipoles()
         three = Fraction(NC)
         physical = []
@@ -3500,11 +3556,10 @@ class _PointEvaluation:
                 for (tensor, power), value in vector.items():
                     scaled = value * numbers.real(three**power)
                     folded[tensor] = folded.get(tensor, numbers.zero) + scaled
-        light = _light_flavours(slice_.data, values)
         alpha = numbers.real(values[slice_.alpha_s_parameter])
         prefactor = alpha / (2 * numbers.pi)
         mu2 = numbers.real(self.scale)
-        correction = add_orders((("QCD", 2),))
+        correction = add_orders(((strong, 2),))
         out = {}
         for sector, _pairs in slice_.sectors:
 
@@ -3525,7 +3580,7 @@ class _PointEvaluation:
                 {label: masses[label] for label in coloured},
                 correlated,
                 casimir=_casimir,
-                gamma=lambda j: _gamma(legs[j].representation, light),
+                gamma=lambda j: gammas[j],
                 mu2=mu2,
                 log=lambda x: _log(x, numbers),
                 real=numbers.real,
@@ -3555,6 +3610,9 @@ class _PointEvaluation:
         """
 
         slice_, numbers = self.slice, self.numbers
+        abelian = self._correction_orders().abelian
+        if abelian is None:
+            return None
         compiled = slice_.compiled
         parameters = {record.name: record for record in compiled.ir.parameters}
         records = {record.name: record for record in compiled.ir.particles}
@@ -3591,7 +3649,7 @@ class _PointEvaluation:
                 charges,
                 {label: self.incoming[label - 1] for label in charges},
                 masses,
-                dressed_born(self.born, sector, "QED", zero),
+                dressed_born(self.born, sector, abelian, zero),
                 gamma=lambda j: qed_gamma(spins[j], charges[j]),
                 mu2=mu2,
                 log=lambda x: _log(x, numbers),
@@ -4050,15 +4108,112 @@ def _charged_fields(compiled) -> frozenset[str]:
     )
 
 
-def _light_flavours(data, values: Mapping[str, Fraction]) -> int:
-    """Quark flavours (colour triplets) whose bound mass is zero."""
+def _correction_orders(slice_) -> ew_policy.CorrectionOrders:
+    """``ew_policy.correction_orders`` of a slice's model and fixed
+    parameters, kept in its cache."""
 
-    return sum(
-        1
-        for p in data["particles"]
-        if int(p["spin"]) == FERMION_SPIN
-        and int(p["color"]) == 3
-        and (mass_name(p["mass"]) == ZERO or values.get(p["mass"]) == 0)
+    cache = slice_._cache
+    found = cache.get("correction-orders")
+    if found is None:
+        found = cache["correction-orders"] = ew_policy.correction_orders(
+            slice_.compiled, slice_.request.fixed_parameters
+        )
+    return found
+
+
+def _predicted_sectors(slice_) -> frozenset[Orders]:
+    """The sectors whose IR poles the request's operators predict
+    (``poles.predicted_sectors``), kept in the slice's cache.
+
+    A tree of an order the Born program does not hold is absent when the
+    order lies within the request's Born bounds (the program holds every
+    tree there), or when an external leg's species has no vertex of the
+    request (vetoed particles excluded) whose coupling orders fit within it
+    (every leg of a tree attaches to one vertex, and powers only add up);
+    otherwise its existence is unknown."""
+
+    cache = slice_._cache
+    found = cache.get("predicted-sectors")
+    if found is not None:
+        return found
+    compiled, request = slice_.compiled, slice_.request
+    bounds = add_orders(tuple(request.born_orders.items()))
+    names = {str(record.name): record for record in compiled.ir.particles}
+    veto = set(request.particle_veto)
+    vertices: dict[str, list[Orders]] = defaultdict(list)
+    for term in compiled.ir.vertex_terms:
+        records = [names.get(name) for name in term.particles]
+        if any(r is None or abs(int(r.pdg_code)) in veto for r in records):
+            continue
+        orders = add_orders(term.coupling_orders)
+        for record in records:
+            vertices[str(record.name)].append(orders)
+            vertices[str(record.antiname)].append(orders)
+    legs = [leg.field for leg in slice_.families.legs]
+
+    def tree_exists(order: Orders) -> bool | None:
+        if orders_within(order, bounds):
+            return False
+        if any(
+            not any(orders_within(orders, order) for orders in vertices[field])
+            for field in legs
+        ):
+            return False
+        return None
+
+    found = cache["predicted-sectors"] = predicted_sectors(
+        slice_.sectors,
+        slice_.blocks.born_orders,
+        request.corrections,
+        tree_exists,
+    )
+    return found
+
+
+def _strong_beta0(slice_, strong: str, values: Mapping[str, Any]) -> Fraction | None:
+    """beta_0 of the strong correction (``poles.strong_beta0``) over the
+    request's eligible massless coloured species: perturbative in the strong
+    order, not vetoed, neither ghosts nor the gluon, massless at this point
+    (``ZERO`` or bound to 0); None where it is not covered (genericity
+    audit m3: a vetoed b gives the four-flavour value, a light octet fermion
+    or coloured scalar its own share)."""
+
+    gluons = _correction_orders(slice_).gluons
+    veto = set(slice_.request.particle_veto)
+    # The prepared model's particles (masses restricted to ZERO where the
+    # request's card makes them vanish), once per particle-antiparticle pair.
+    records = {}
+    for record in slice_.data["particles"]:
+        records.setdefault(abs(int(record["pdg_code"])), record)
+    species = []
+    for pdg, orders in slice_.prepared.structure.perturbative_species_orders.items():
+        pdg = abs(int(pdg))
+        record = records.get(pdg)
+        if strong not in set(orders) or pdg in veto or record is None:
+            continue
+        if (
+            abs(int(record["color"])) == 1
+            or int(record.get("ghost_number") or 0) != 0
+            or record["name"] in gluons
+        ):
+            continue
+        mass = record["mass"]
+        if not (mass_name(mass) == ZERO or values.get(mass) == 0):
+            continue
+        real = record["name"] == record.get("antiname")
+        species.append((int(record["spin"]), int(record["color"]), real))
+    return strong_beta0(sorted(species))
+
+
+def _strong_leg_gamma(slice_, leg, beta0: Fraction | None) -> Fraction | None:
+    """gamma_j of a coloured external leg (``poles.strong_gamma``)."""
+
+    record = next(r for r in slice_.data["particles"] if r["name"] == leg.field)
+    return strong_gamma(
+        int(record["spin"]),
+        int(record["color"]),
+        beta0,
+        gauge=record["name"] in _correction_orders(slice_).gluons,
     )
 
 
@@ -4097,17 +4252,10 @@ def _external_parameter(
 
 
 def _casimir(representation: int) -> Fraction:
-    if representation == 8:
-        return Fraction(NC)
-    if abs(representation) == 3:
-        return Fraction(NC * NC - 1, 2 * NC)
-    raise NotImplementedError(f"colour representation {representation}")
-
-
-def _gamma(representation: int, light: int) -> Fraction:
-    if representation == 8:
-        return Fraction(11, 6) * NC - Fraction(2, 3) * Fraction(1, 2) * light
-    return Fraction(3, 2) * _casimir(representation)
+    found = colour_casimir(representation)
+    if found is None:
+        raise NotImplementedError(f"colour representation {representation}")
+    return found
 
 
 class _AdjointOrbits:

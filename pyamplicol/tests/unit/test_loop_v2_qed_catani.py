@@ -51,6 +51,7 @@ from types import SimpleNamespace
 import pytest
 
 from pyamplicol.loops.v2.assemble import Precision, _Numbers, _PointEvaluation
+from pyamplicol.loops.v2.ew_policy import CorrectionOrders
 from pyamplicol.loops.v2.families import ExternalLeg, MassId, add_orders, mass_name
 from pyamplicol.loops.v2.poles import (
     EXTERNAL_PHOTON_CONVENTION,
@@ -151,6 +152,10 @@ class _OperatorPoint(_PointEvaluation):
         self.incoming = incoming
         self.scale = Fraction(str(scale2))
         self.born = born
+
+    def _predicted_sectors(self):
+        # Operator-level points: their one sector is complete.
+        return frozenset(sector for sector, _pairs in self.slice.sectors)
 
 
 def _orders(orders) -> tuple:
@@ -488,6 +493,12 @@ def test_per_correction_sectors_and_sums():
                 request=SimpleNamespace(corrections=corrections)
             )
             self._qcd, self._qed = qcd, qed
+
+        def _correction_orders(self):
+            return CorrectionOrders("QCD", "QED")
+
+        def _predicted_sectors(self):
+            return frozenset({upper, lower})
 
         def _qcd_poles(self):
             return self._qcd
