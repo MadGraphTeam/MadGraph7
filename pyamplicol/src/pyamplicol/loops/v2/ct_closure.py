@@ -510,6 +510,11 @@ class CountertermClosure:
         slots = {
             name: slot for slot in recursion.slots for name in (_slot_order(slot),)
         }
+        # The vertex rules of the lowered tree model (its own and the copies).
+        tree_vertices = frozenset(
+            str(rule["name"])
+            for rule in recursion.model.lowered.compiled.model["vertex_rules"]
+        )
         terms: list[ClosureTerm] = []
         for entries in ordinary:
             fields = entries[0].particle_names
@@ -554,7 +559,15 @@ class CountertermClosure:
                         for b in lines
                     ):
                         # The root would read a Goldstone-vector mixing line's
-                        # vector current as the Goldstone (WP3.2 EWI-4b).
+                        # vector current as the Goldstone (WP3.2 EWI-4b). Only
+                        # the promoted copies of the lowered model's own
+                        # vertices consume it (``models.ct_line_insertions``):
+                        # a root vertex the request's tree model does not hold
+                        # (its coupling restricted to zero, e.g. a Yukawa of a
+                        # massless fermion) has no copy, so no tree of the
+                        # program closes there (WP3.2 EWI-5).
+                        if entries[0].vertex_name not in tree_vertices:
+                            continue
                         raise UnloweredCountertermError(
                             f"the counterterm root vertex {entries[0].vertex_name} "
                             "consumes a Goldstone-vector mixing line on its "
