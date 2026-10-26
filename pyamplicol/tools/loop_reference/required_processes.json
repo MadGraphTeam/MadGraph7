@@ -20,6 +20,16 @@
       "complex_mass_scheme": false,
       "active_flavours": 5,
       "loop_quark_flavours": 6
+    },
+    "ew-qcd-qed-sm": {
+      "description": "Full NLO EW in MG5_aMC's loop_qcd_qed_sm (alpha(M_Z) scheme: aEWM1, MZ and MW all inputs; lhv=1, epsUV=epsIR=1) at its default restriction (massless light fermions, diagonal CKM), real on-shell masses with all widths zero, stable top, Feynman gauge. MadLoop only: the Recola and OpenLoops drivers have no translation of these inputs.",
+      "madloop_model": "{reference}/models/loop_qcd_qed_sm",
+      "parameters": {"aS": "0.118", "aEWM1": "128.93", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173.3", "ymt": "173.3"},
+      "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
+      "electroweak_inputs": "alpha_mw",
+      "complex_mass_scheme": false,
+      "active_flavours": 5,
+      "loop_quark_flavours": 6
     }
   },
   "processes": [
@@ -177,6 +187,24 @@
       "scheme": "qcd",
       "madloop": {"process": "u u~ > g g g g g QED=0 [virt=QCD]"},
       "recola": {"process": "u u~ -> g g g g g"}
+    },
+    {
+      "name": "emep_emep_ew",
+      "role": "diagnostic",
+      "pdgs": [11, -11, 11, -11],
+      "born_orders": {"QCD": 0, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-qcd-qed-sm",
+      "madloop": {"process": "e- e+ > e- e+ QCD=0 QED=2 [virt=QED] QED^2==6"}
+    },
+    {
+      "name": "uux_emepmummp",
+      "role": "diagnostic",
+      "pdgs": [2, -2, 11, -11, 13, -13],
+      "born_orders": {"QCD": 0, "QED": 4},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > e- e+ mu- mu+ QED=4 [virt=QCD]"}
     }
   ]
 }
