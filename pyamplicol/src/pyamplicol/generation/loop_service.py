@@ -29,6 +29,7 @@ from pyamplicol.api.results import GenerationPlan, GenerationResult
 from pyamplicol.config import ColorContraction, LoopEngine
 from pyamplicol.loops.compiler import prepare_loop_request_model
 from pyamplicol.loops.graphs import build_loop_process
+from pyamplicol.loops.order_names import CouplingOrderNameError, CouplingOrderNames
 from pyamplicol.loops.orders import canonical_order
 from pyamplicol.loops.physical_orders import PhysicalOrderLayout
 from pyamplicol.loops.portable import write_loop_pacbin
@@ -47,7 +48,6 @@ from pyamplicol.models.loop_preparation import (
     resolve_loop_preparation,
     with_loop_preparation,
 )
-from pyamplicol.models.order_names import CouplingOrderNameError, CouplingOrderNames
 
 from .dag_algorithms import infer_minimal_coupling_order_limits
 from .loop_artifact import (
@@ -189,7 +189,7 @@ def _prepare(
     run = backend._run_config
     # Coupling-order names resolve once, here, against the model's declared
     # names (any case); the loop side carries the declared spelling and the
-    # tree engine's keys translate back (``models.order_names``).
+    # tree engine's keys translate back (``loops.order_names``).
     names = _order_names(compiled)
     corrections = _resolve_orders(
         names, run.process.loop_coupling_orders, "process.loop_coupling_orders"

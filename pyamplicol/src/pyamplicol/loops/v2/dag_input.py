@@ -102,8 +102,8 @@ from pyamplicol.generation.dag_types import (
     GenericDAG,
     InteractionNode,
 )
+from pyamplicol.loops.order_names import CouplingOrderNames
 from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND, TreeKernelVariant
-from pyamplicol.models.order_names import CouplingOrderNames
 from pyamplicol.processes.ir import CanonicalProcessIR
 
 from .blocks import (

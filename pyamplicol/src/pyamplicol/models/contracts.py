@@ -29,7 +29,7 @@ from .contact_decomposition import (
     compiled_contact_orbit_step,
     contact_orbit_evaluator_class_is_certifiable,
 )
-from .order_names import CouplingOrderNames
+from .order_names import require_distinct_order_keys
 
 PROPAGATOR_SOURCE_FIELD = "pyamplicol_source"
 DEFAULT_FEYNMAN_PROPAGATOR_SOURCE = "default-feynman"
@@ -1129,7 +1129,7 @@ class CompiledModelIR:
             raise ValueError(f"unsupported model gauge {self.gauge!r}")
         # Order names are case-insensitive identifiers (the tree engine keys
         # them by ``order_key``): two declared names one key apart are refused.
-        CouplingOrderNames.of(order.name for order in self.orders)
+        require_distinct_order_keys(order.name for order in self.orders)
         self._validate_particle_identities()
         self._validate_goldstone_partners()
         self._validate_contractions()

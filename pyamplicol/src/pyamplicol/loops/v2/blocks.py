@@ -107,6 +107,7 @@ from pyamplicol.generation.dag_types import (
     CurrentIndex,
     GenericDAG,
 )
+from pyamplicol.loops.order_names import CouplingOrderNames, order_key
 from pyamplicol.loops.v2.families import (
     BlockCurrent,
     ExternalLeg,
@@ -117,7 +118,6 @@ from pyamplicol.loops.v2.families import (
 )
 from pyamplicol.models.base import CouplingOrders, Model, QuantumNumberFlow
 from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND, TreeKernelVariant
-from pyamplicol.models.order_names import CouplingOrderNames, order_key
 from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 from pyamplicol.processes.ir import CanonicalProcessIR
 
