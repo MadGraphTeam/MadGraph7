@@ -21,10 +21,12 @@
 //! templates of a ring and multiplies them out.
 //!
 //! No float and no Symbolica licence call; the coefficients of the Fierz
-//! steps are checked integers.
+//! steps are exact integers of any size (`symbolica` `Integer`, a machine
+//! word until it needs more), as the oracle's Python integers: no domain cap.
 
 use super::FastMap;
 use super::seeds::{ColourTensor, Exact, OpenString, Tensor};
+use symbolica::domains::integer::Integer;
 use symbolica::domains::rational::Rational;
 
 pub type Label = i64;
@@ -168,10 +170,11 @@ fn error(message: impl Into<String>) -> String {
 /// A Fierz term: integer coefficient, N_c power and its traces (rows).
 ///
 /// Each Fierz step removes one contracted label pair and splits a term into
-/// coefficients +c and -c, so after k steps |c| <= 2^k: the checked i64
-/// suffices for networks of fewer than 63 contracted pairs (a refusal
-/// beyond, never a wrong value).
-type FierzTerm = (i64, i64, Vec<Vec<Label>>);
+/// coefficients +c and -c, so after k steps |c| <= 2^k. The coefficient is
+/// an unbounded `Integer` (one machine word while |c| < 2^63, i.e. for
+/// every network of fewer than 63 contracted pairs), so no network is
+/// refused for its size.
+type FierzTerm = (Integer, i64, Vec<Vec<Label>>);
 /// A Fierz input: traces and the sorted sentinel labels.
 type FierzKey = (Vec<Vec<Label>>, Vec<Label>);
 /// Joined strings: open strings, traces of closed loops, empty loops.
@@ -238,14 +241,14 @@ impl Reducer {
             sentinel_labels.sort_unstable();
             let key = (traces, sentinel_labels);
             if !self.fierz.contains_key(&key) {
-                let value = fierz(&key.0, &key.1)?;
+                let value = fierz(&key.0, &key.1);
                 self.fierz.insert(key.clone(), value);
             }
             let ends: FastMap<Label, (Label, Label)> = sentinels.into_iter().collect();
             for (coefficient, power, rows) in &self.fierz[&key] {
                 let tensor = self.decode(rows, &ends)?;
                 reduced.push((
-                    term.coefficient.mul(&integer(*coefficient)),
+                    term.coefficient.mul(&integer(coefficient)),
                     tensor,
                     term.nc_power + empty + power,
                     term.root2_power,
@@ -458,7 +461,7 @@ impl Numbering {
     }
 }
 
-fn integer(value: i64) -> Exact {
+fn integer(value: &Integer) -> Exact {
     Exact {
         re: Rational::from(value),
         im: Rational::from(0),
@@ -484,9 +487,9 @@ fn power_of_two(exponent: i64) -> Exact {
 
 /// `_fierz`: remove every repeated adjoint label (sentinels close open
 /// strings; a trace of one sentinel is a Kronecker delta).
-fn fierz(traces: &[Vec<Label>], sentinels: &[Label]) -> Result<Vec<FierzTerm>, String> {
+fn fierz(traces: &[Vec<Label>], sentinels: &[Label]) -> Vec<FierzTerm> {
     let is_sentinel = |l: Label| sentinels.binary_search(&l).is_ok();
-    let trivial = |terms: Vec<FierzTerm>| -> Result<Vec<FierzTerm>, String> {
+    let trivial = |terms: Vec<FierzTerm>| -> Vec<FierzTerm> {
         let mut out = Vec::with_capacity(terms.len());
         for (coefficient, power, rows) in terms {
             if rows.iter().any(|r| r.len() == 1 && !is_sentinel(r[0])) {
@@ -501,44 +504,39 @@ fn fierz(traces: &[Vec<Label>], sentinels: &[Label]) -> Result<Vec<FierzTerm>, S
         }
         combine(out)
     };
-    let mut terms = trivial(vec![(1, 0, traces.to_vec())])?;
+    let mut terms = trivial(vec![(Integer::one(), 0, traces.to_vec())]);
     loop {
         let (next, paired) = pair_simplify(terms);
-        terms = trivial(next)?;
+        terms = trivial(next);
         let (next, duplicated) = duplicate_simplify(terms);
-        terms = trivial(next)?;
+        terms = trivial(next);
         if !paired && !duplicated {
-            return Ok(terms);
+            return terms;
         }
     }
 }
 
 /// `combine_nc_power_terms`: equal (power, sorted traces) summed, first-seen
 /// order, zeros dropped.
-fn combine(terms: Vec<FierzTerm>) -> Result<Vec<FierzTerm>, String> {
+fn combine(terms: Vec<FierzTerm>) -> Vec<FierzTerm> {
     let mut index: FastMap<(i64, Vec<Vec<Label>>), usize> = FastMap::default();
     let mut out: Vec<FierzTerm> = Vec::new();
     for (coefficient, power, mut rows) in terms {
-        if coefficient == 0 {
+        if coefficient.is_zero() {
             continue;
         }
         rows.sort();
         let key = (power, rows);
         match index.get(&key) {
-            Some(&i) => {
-                out[i].0 = out[i]
-                    .0
-                    .checked_add(coefficient)
-                    .ok_or_else(|| error("a Fierz coefficient overflows 64 bits"))?;
-            }
+            Some(&i) => out[i].0 += &coefficient,
             None => {
                 index.insert(key.clone(), out.len());
                 out.push((coefficient, key.0, key.1));
             }
         }
     }
-    out.retain(|t| t.0 != 0);
-    Ok(out)
+    out.retain(|t| !t.0.is_zero());
+    out
 }
 
 /// `trace_pair_simplify_nc_power`: per term, the first pair of traces with a
@@ -577,6 +575,7 @@ fn pair_simplify(terms: Vec<FierzTerm>) -> (Vec<FierzTerm>, bool) {
                 .filter(|(k, _)| *k != i && *k != j)
                 .map(|(_, r)| r.clone()),
         );
+        let negated = -&coefficient;
         out.push((coefficient, power, fused));
         let reduced: Vec<Vec<Label>> = rows
             .iter()
@@ -591,7 +590,7 @@ fn pair_simplify(terms: Vec<FierzTerm>) -> (Vec<FierzTerm>, bool) {
                 }
             })
             .collect();
-        out.push((-coefficient, power - 1, reduced));
+        out.push((negated, power - 1, reduced));
         changed = true;
     }
     (out, changed)
@@ -630,10 +629,11 @@ fn duplicate_simplify(terms: Vec<FierzTerm>) -> (Vec<FierzTerm>, bool) {
             .map(|(_, r)| r.clone());
         let mut split = vec![a.iter().chain(c).copied().collect::<Vec<_>>(), b.to_vec()];
         split.extend(rest.clone());
+        let negated = -&coefficient;
         out.push((coefficient, power, split));
         let mut joined = vec![a.iter().chain(b).chain(c).copied().collect::<Vec<_>>()];
         joined.extend(rest);
-        out.push((-coefficient, power - 1, joined));
+        out.push((negated, power - 1, joined));
         changed = true;
     }
     (out, changed)
@@ -683,6 +683,34 @@ mod tests {
             .map(|(c, _, p)| (c.text().0, *p))
             .collect();
         assert_eq!(terms, vec![("-1/1".to_string(), 0), ("1/1".to_string(), 2)]);
+    }
+
+    #[test]
+    fn fierz_coefficients_are_exact_beyond_machine_words() {
+        // Sums and negations past i64 (|c| = 2^63 needs 63 contracted pairs
+        // in a network, so the steps are exercised directly).
+        let rows = vec![vec![1, 2]];
+        let max = Integer::from(i64::MAX);
+        let summed = combine(vec![
+            (max.clone(), 0, rows.clone()),
+            (max.clone(), 0, rows.clone()),
+        ]);
+        assert_eq!(summed.len(), 1);
+        assert_eq!(summed[0].0, &max + &max);
+        assert_eq!(summed[0].0.to_string(), "18446744073709551614");
+        // -(i64::MIN) = 2^63, one past i64.
+        let (split, changed) = pair_simplify(vec![(
+            Integer::from(i64::MIN),
+            0,
+            vec![vec![1, -5, 2], vec![-5, 3]],
+        )]);
+        assert!(changed);
+        assert_eq!(split[1].0.to_string(), "9223372036854775808");
+        let (split, changed) =
+            duplicate_simplify(vec![(Integer::from(i64::MIN), 0, vec![vec![1, -5, 2, -5]])]);
+        assert!(changed);
+        assert_eq!(split[1].0.to_string(), "9223372036854775808");
+        assert!(combine(vec![(max.clone(), 0, rows.clone()), (-&max, 0, rows)]).is_empty());
     }
 
     #[test]
