@@ -13,9 +13,11 @@ colour-basis elements on the Born (bra) side.
   K_BL[b, c] = <bra(b)|ket(kappa_c)> and K_LB = (K_BL^swapped)^dagger. The
   first term is seeded with the directed seed table, the second with the
   table of the swapped history and conjugated after reduction (one column if
-  the history is symmetric). Counterterm and field components use the same
-  directed overlaps; the Born is B^dagger K_BB B. Results are complex. At LC
-  and NLC every directed output is projected at the leading degree of its
+  the history is symmetric, or self-adjoint: a dipole T_i.T_j whose swapped
+  table equals its direct one, ``DirectedColour._self_adjoint``).
+  Counterterm and field components use the same directed overlaps; the Born
+  is B^dagger K_BB B. Results are complex. At LC and NLC every directed
+  output is projected at the leading degree of its
   history's complete family (all diagonal catalogue histories of its order
   and output legs, every pair, both directions; ``colour_family``), and the
   slice's colour pruning keeps the skeletons live in any of those tables.

@@ -16,14 +16,17 @@ observable call of a loaded process regenerates anything:
   Born basis element; ``ObservableSlice.resolved_columns``). Per set: the
   seed records of its plan v4 (the slice's families and tries with the
   columns' seed weights; ``_seed_overlay`` over the stored process plan,
-  which the set's first call completes, ``with_overlay``), the plan's Born
+  which the set's first call completes, ``with_overlay``; projected
+  natively, ``plan_export.NATIVE_COLUMN_RECORDS``), the plan's Born
   components in the tree program's numbering, the lanes of each column per
-  sector (direct, swapped), and the same for the companion of the
-  certified-scaleless families ("uv" and "ir");
+  sector (direct, swapped; one lane for a symmetric or self-adjoint history,
+  ``observables.DirectedColour._self_adjoint``), and the same for the
+  companion of the certified-scaleless families ("uv" and "ir");
 * **interferences** per column (``loop_v2::trees::TreeProgram::
   set_columns``): the exact overlaps of the Born basis with the ket tensors
   of the counterterm closure under the column's colour operator (the Born
-  metric, or a directed history's operator and its swap), with the column's
+  metric, or a directed history's operator and its swap, which a
+  self-adjoint history does not evaluate: ``_Metrics``), with the column's
   LC/NLC degrees, its kept Born rows and bra basis elements; metrics and
   entry lists are stored once per set and shared by the columns that read
   them (``_Programs``); the native trees form them per point next to the
