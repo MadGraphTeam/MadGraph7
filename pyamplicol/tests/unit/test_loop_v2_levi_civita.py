@@ -108,3 +108,57 @@ def test_the_tree_compiler_normalises_epsilon():
     normalized = normalize_lorentz_expression(STRUCTURES["R2_GGGVa"], (3, 3, 3, 3))
     assert LEVI_CIVITA.rsplit("::", 1)[-1] in normalized.tensor_heads
     assert "UFO::" not in normalized.expression
+
+
+@pytest.mark.loop_fast
+def test_reading_signs_of_self_conjugate_vertices():
+    """The parts of the root closure's reading sign: the colour's sign under
+    the transposition of its adjoint generators (-1 per ``f``; ``d``,
+    ``Identity``, two-index traces and singlets keep it; products multiply)
+    and the kernel's momentum parity. A colour without one (a trace of three
+    octets, a mixture of ``d`` and ``f`` terms, another tensor) or a kernel of
+    mixed parity is refused with the typed ``ReadingSignError`` naming the
+    vertex."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.ct_sites import (
+        ReadingSignError,
+        _colour_transposition_sign,
+        _momentum_parity,
+    )
+
+    for colour, sign in (
+        ("1", 1),
+        ("f(1,2,3)", -1),
+        ("d(1,2,3)", 1),
+        ("Identity(1,2)", 1),
+        ("Tr(1,2)", 1),
+        ("complex(0,1)*f(1,2,3)", -1),
+        ("f(-1,1,2)*f(3,4,-1)", 1),
+        ("d(-1,1,2)*f(3,4,-1)", -1),
+        ("f(1,2,3) - f(1,3,2)", -1),
+    ):
+        assert _colour_transposition_sign(colour) == sign, colour
+    for colour, message in (
+        ("Tr(1,2,3)", "colour tensor Tr of 3 indices"),
+        ("T(1,2,3)", "colour tensor T of 3 indices"),
+        ("f(1,2,3) + d(1,2,3)", "change sign differently"),
+    ):
+        with pytest.raises(ReadingSignError, match=rf"vertex V_X: .*{message}"):
+            _colour_transposition_sign(colour, "vertex V_X")
+
+    def kernel(*expressions):
+        inputs = (
+            SimpleNamespace(symbol="p0", role="block-momentum"),
+            SimpleNamespace(symbol="p1", role="block-momentum"),
+            SimpleNamespace(symbol="j0", role="block-current"),
+        )
+        return SimpleNamespace(inputs=inputs, exact_expressions=expressions)
+
+    assert _momentum_parity(kernel("j0*p0 - j0*p1", "p0")) == -1
+    assert _momentum_parity(kernel("j0", "p0*p1")) == 1
+    with pytest.raises(ReadingSignError, match=r"vertex V_X: .*neither even nor odd"):
+        _momentum_parity(kernel("j0*p0 + j0"), "vertex V_X")
+    with pytest.raises(ReadingSignError, match="neither even nor odd"):
+        _momentum_parity(kernel("j0*p0", "j0"))

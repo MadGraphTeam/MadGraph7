@@ -172,6 +172,14 @@ class CountertermCompletenessError(ValueError):
     """A divergent witness is covered neither by a rule nor by a certified zero."""
 
 
+class ReadingSignError(NotImplementedError):
+    """A vertex whose legs are all self-conjugate has no sign between the
+    tree engine's reading and the root closure's
+    (``SiteClosure._reading_sign``): its kernel is of mixed momentum parity,
+    or its colour tensor has no transposition sign (a trace of three or more
+    adjoint indices, an unknown tensor) or terms of both signs."""
+
+
 # --------------------------------------------------------------------------- records
 
 
@@ -1109,7 +1117,13 @@ class SiteClosure:
         found = self._reading.get(key)
         if found is None:
             kernel = self.catalogue.kernels[binding.kernel_id]
-            found = _momentum_parity(kernel) * _colour_transposition_sign(entry.color)
+            what = (
+                f"vertex {entry.vertex_name} [{' '.join(entry.particle_names)}] "
+                f"(Lorentz structure {entry.lorentz_name}, colour {entry.color})"
+            )
+            found = _momentum_parity(kernel, what) * _colour_transposition_sign(
+                entry.color, what
+            )
             self._reading[key] = found
         return found
 
@@ -1407,9 +1421,10 @@ def _entry_key(entry: Any) -> tuple[str, int, int, int, int]:
     )
 
 
-def _momentum_parity(kernel: Any) -> int:
+def _momentum_parity(kernel: Any, what: str = "a ct-site kernel") -> int:
     """(-1)^(momentum degree) of a ``ct-site`` kernel: 1 when its components
-    are even in its block momenta, -1 when odd; mixed parity is refused."""
+    are even in its block momenta, -1 when odd; mixed parity is refused
+    (``ReadingSignError`` naming ``what``)."""
 
     from symbolica import E, Replacement
 
@@ -1431,17 +1446,21 @@ def _momentum_parity(kernel: Any) -> int:
         else:
             parities.add(0)
     if len(parities) != 1 or 0 in parities:
-        raise NotImplementedError(
-            "a ct-site kernel of mixed momentum parity has no reading sign"
+        raise ReadingSignError(
+            f"{what}: its kernel is neither even nor odd in the block momenta, "
+            "so the root closure has no sign between the tree engine's reading "
+            "of its legs (all self-conjugate) and its own"
         )
     return parities.pop()
 
 
-def _colour_transposition_sign(colour: str) -> int:
+def _colour_transposition_sign(colour: str, what: str = "a vertex") -> int:
     """The sign a UFO colour tensor of adjoint and singlet legs takes when
-    every adjoint generator is transposed: -1 per ``f``, 1 per ``d``,
-    ``Identity`` or two-index trace; the terms of a sum must share it, and
-    other tensors (longer traces, fundamental generators) are refused."""
+    every adjoint generator is transposed (the order of every trace
+    reversed): -1 per ``f``, 1 per ``d``, ``Identity`` or two-index trace;
+    the terms of a sum must share it. Other tensors (traces of three or more
+    adjoint indices, which are mixtures of ``d`` and ``f``; any other
+    tensor) are refused with ``ReadingSignError`` naming ``what``."""
 
     import ast
 
@@ -1466,12 +1485,18 @@ def _colour_transposition_sign(colour: str) -> int:
                 (name == "d" and arity == 3)
                 or (name in ("Identity", "Tr") and arity == 2)
             ):
-                raise NotImplementedError(
-                    f"colour {colour}: no transposition sign for {name}/{arity}"
+                raise ReadingSignError(
+                    f"{what}: the colour tensor {name} of {arity} indices has no "
+                    "sign under the transposition of its adjoint generators (only "
+                    "f, d, Identity and two-index traces have one), so the root "
+                    "closure cannot read the vertex as the tree engine does"
                 )
         signs.add(sign)
     if len(signs) != 1:
-        raise NotImplementedError(f"colour {colour}: mixed transposition signs")
+        raise ReadingSignError(
+            f"{what}: the terms of its colour change sign differently under the "
+            "transposition of the adjoint generators"
+        )
     return signs.pop()
 
 
@@ -1618,6 +1643,7 @@ __all__ = [
     "CountertermSite",
     "CountertermSites",
     "Coverage",
+    "ReadingSignError",
     "Signature",
     "SiteClosure",
     "SiteTerm",
