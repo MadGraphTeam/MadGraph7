@@ -20,9 +20,9 @@ original and on the variant, renamed through the variant's map, and compares
 the decisions (dry-run route, orders, corrections, scale binding, EW
 classification, refusals, certificates, repairs) and the values (binary64,
 every component within 1e-12 of the largest coefficient). A decision another
-package owns is a strict xfail naming the owner and slice-status DECISIONS
-2026-10-26 ~00:20: it passes once the owner's fix lands, and then fails here
-until the marker goes.
+package owns is a strict xfail naming the owner and its slice-status DECISIONS
+entry: it passes once the owner's fix lands, and then fails here until the
+marker goes.
 """
 
 from __future__ import annotations
