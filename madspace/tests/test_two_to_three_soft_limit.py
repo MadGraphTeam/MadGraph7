@@ -107,7 +107,7 @@ def test_color_ordered_massless_volume(color_order):
         * cm_energy ** (2 * (n_out - 2))
         / (math.factorial(n_out - 1) * math.factorial(n_out - 2))
     )
-    mapping = ms.ColorOrderedMapping(color_order)
+    mapping = ms.ColorOrderedMapping(ms.ColorOrderedMapping.Options(color_order))
     n = 2_000_000
     means = []
     for seed in range(100, 108):

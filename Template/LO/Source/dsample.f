@@ -878,7 +878,7 @@ c
 c
 c     Local
 c
-      integer i,k
+      integer i
       integer ngu, ngd
 c
 c     Global
@@ -930,20 +930,16 @@ c
             do i=1,ngd-1
 c               grid(2,i,j) = ((1d0-a)/(xo-a))**(1d0-dble(i)/dble(ngd))
                grid(2,ngd-i,j) = xo-(grid(2,ngd+i,j)-xo)
-               if (grid(2,ngd-i,j) .lt. -1d0) then
-                  write(*,*) 'Error grid set too low',grid(2,ngd-i,j)
-                  do k=1,ng
-                     write(*,*) k,grid(2,k,j)
-                  enddo
-                  stop
-               endif
             enddo
 c
-c     tjs, ja 2/25/11
-c     Make sure sample all the way down to zero only if minimum positive
-c     
-            if (grid(2,1,j) .gt. 0) grid(2,1,j) = 0d0
-c            write(*,*) "Adjusted bin 1 to zero"
+c     The mirrored bins must stay inside [xgmin, xo]: otherwise use
+c     equal bins (a bin below xgmin has a negative width)
+c
+            if (grid(2,1,j) .le. xgmin) then
+               do i=1,ngd-1
+                  grid(2,i,j) = xgmin + (xo-xgmin)*dble(i)/dble(ngd)
+               enddo
+            endif
 
          elseif (itype .eq. 2) then
             do i=2,ng-1
@@ -2022,6 +2018,10 @@ c               vol = 1d0/(knt*itm)
                sigma = (sigma/vol/vol - knt*mean*mean)
      .              / dble(knt-1) / dble(knt)
             endif
+c     For a (numerically) constant integrand, e.g. a 1 > 2 decay, the
+c     difference above can round to exactly zero: the 1/sigma weights of
+c     the iterations are then infinite and the result NaN
+            sigma = max(sigma, (1d-12*mean)**2)
 
             tmean = tmean + mean * (mean**2 / sigma)
             trmean = trmean + rmean * (mean**2 / sigma)

@@ -444,7 +444,7 @@ class TestDensityLibrary(unittest.TestCase):
 
         #Get_Discord
         discord_ref = 0.007612231907878438
-        self.assertAlmostEqual(rho22_concurrence_instance.Get_Discord(maxiter=1000), discord_ref, places=4) #this test can sometimes fail because the minimisation can get stuck in a local minimum. I need to improve the minimisation.
+        self.assertAlmostEqual(rho22_concurrence_instance.Get_Discord(maxiter=1000), discord_ref, places=4) #deterministic: fixed set of starting points for the minimisation
 
     
     

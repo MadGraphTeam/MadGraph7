@@ -357,6 +357,13 @@ class Block(list):
             self.param_dict = {}
             
         if tuple(obj.lhacode) in self.param_dict:
+            if self.param_dict[tuple(obj.lhacode)] is obj:
+                # copy.deepcopy restores param_dict before re-appending the
+                # parameters (pickle does the reverse): the entry is this very
+                # parameter, which still has to go in the list
+                if not any(p is obj for p in self):
+                    list.append(self, obj)
+                return
             if self.param_dict[tuple(obj.lhacode)].value != obj.value:
                 raise InvalidParamCard('%s %s is already define to %s impossible to assign %s' % \
                     (self.name, obj.lhacode, self.param_dict[tuple(obj.lhacode)].value, obj.value))
