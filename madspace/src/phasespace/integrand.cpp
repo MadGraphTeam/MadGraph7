@@ -947,18 +947,13 @@ ValueVec Integrand::mlm_weights(
             auto denominator = density("pdf_rw_q_den");
             // madevent drops the event outright when the density it is
             // dividing by falls under 1e-10, where the grid is no longer
-            // saying anything. Same threshold, as a ramp rather than a
-            // branch, and the floor under the division keeps the term
-            // finite so that a vetoed slot multiplies to zero and not to
-            // a NaN.
+            // saying anything (reweight.f, rewgt=0 for pdfj2 < 1e-10). Same
+            // threshold, as a hard step: a ramp in the denominator would let
+            // 0 < den < 1e-10 through at num*den*1e20 instead of zero. The
+            // floor under the division keeps the term finite so that a
+            // vetoed slot multiplies to zero and not to a NaN.
             auto floor = fb.full({1e-10, batch_size_acc});
-            auto usable = fb.min(
-                fb.max(
-                    fb.mul(denominator, fb.full({1e10, batch_size_acc})),
-                    fb.full({0., batch_size_acc})
-                ),
-                ones
-            );
+            auto usable = fb.cut_one(denominator, 1e-10, 1e300);
             auto ratio = fb.div(numerator, fb.max(denominator, floor));
             // An inert slot contributes exactly one, whatever its density
             // came out as.

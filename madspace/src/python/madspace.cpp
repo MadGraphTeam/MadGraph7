@@ -1934,7 +1934,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pdg_color_types") = std::unordered_map<int, int>{},
             py::arg("xqcut") = 0.,
             py::arg("bw_cutoff") = 15.,
-            py::arg("jet_radius") = 0.4,
+            py::arg("jet_radius") = 1.0,
             py::arg("hadronic") = true,
             py::arg("external_pdg_ids") = std::vector<int>{},
             py::arg("max_jet_flavor") = 4,
