@@ -347,12 +347,27 @@ def _relabelled_runtime(runtime, relabel):
     }
 
 
-def _intern(table: list, value: Any) -> int:
-    try:
-        return table.index(value)
-    except ValueError:
+class _InternTable(list):
+    """A list with a hash index of its entries, so interning is O(1)."""
+
+    def __init__(self):
+        super().__init__()
+        self.positions: dict[Any, int] = {}
+
+
+def _frozen(value: Any) -> Any:
+    if isinstance(value, list | tuple):
+        return tuple(_frozen(v) for v in value)
+    return value
+
+
+def _intern(table: _InternTable, value: Any) -> int:
+    key = _frozen(value)
+    index = table.positions.get(key)
+    if index is None:
+        index = table.positions[key] = len(table)
         table.append(value)
-        return len(table) - 1
+    return index
 
 
 def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
@@ -365,7 +380,7 @@ def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
     argument is independent of runtime topology/reflection reuse certificates.
     """
 
-    def key(candidate):
+    def structure(candidate):
         tags = {}
         directed_edges = []
         for slot in candidate:
@@ -377,11 +392,11 @@ def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
                 for slot in candidate
             ),
             tuple(directed_edges),
-            tuple(
-                sorted(
-                    tuple(h["values"][slot] for slot in candidate) for h in helicities
-                )
-            ),
+        )
+
+    def helicity_domain(candidate):
+        return tuple(
+            sorted(tuple(h["values"][slot] for slot in candidate) for h in helicities)
         )
 
     starts = [0]
@@ -399,7 +414,16 @@ def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
     # Re-anchoring a trace, or cyclically rotating complete open-line blocks,
     # changes no colour tensor. Never reverse it or arbitrarily sort blocks.
     candidates = [order[i:word_size] + order[:i] + order[word_size:] for i in starts]
-    return min((key(candidate), candidate) for candidate in candidates)
+    # The key is (legs, colour edges, helicity domain), compared in that order.
+    # The helicity domain dominates its cost and can only decide between
+    # candidates tied on the cheaper structure, so build it for those alone.
+    scored = [(structure(candidate), candidate) for candidate in candidates]
+    best = min(score for score, _ in scored)
+    return min(
+        ((*score, helicity_domain(candidate)), candidate)
+        for score, candidate in scored
+        if score == best
+    )
 
 
 def _add_terms(entry, terms):
@@ -622,10 +646,10 @@ def _build_provider(
         },
         "grouping": {"assumptions": assumptions},
         "channels": [],
-        "pdg_ids": [],
-        "color_orders": [],
-        "color_flows": [],
-        "helicities": [],
+        "pdg_ids": _InternTable(),
+        "color_orders": _InternTable(),
+        "color_flows": _InternTable(),
+        "helicities": _InternTable(),
         "runtime_processes": [],
         "aliases": [],
         "xml_header": (
@@ -862,6 +886,10 @@ def _build_provider(
     data["grouping"]["exported_contributions"] = sum(
         len(c["processes"]) for c in data["channels"]
     )
+
+    # Convert to plain lists; the interning indices are only needed while building.
+    for name in ("pdg_ids", "color_orders", "color_flows", "helicities"):
+        data[name] = list(data[name])
     return data
 
 
