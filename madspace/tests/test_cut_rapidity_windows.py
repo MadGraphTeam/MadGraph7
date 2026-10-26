@@ -568,7 +568,7 @@ def test_color_ordered_window_is_exact(name):
             CM_ENERGY,
             mode=ms.PhaseSpaceMapping.color_ordered,
             cuts=c,
-            color_order=order,
+            color_ordered=ms.ColorOrderedMapping.Options(order),
         )
 
     n = 200_000
@@ -604,7 +604,7 @@ def test_color_ordered_blocks_respect_the_bounds(name):
 
     def outside(y_max):
         mapping = ms.ColorOrderedMapping(
-            order, 0.8, 0.8, [PT_JET] * 4, [], [], True, y_max
+            ms.ColorOrderedMapping.Options(order), [PT_JET] * 4, [], [], y_max
         )
         r = rand((n, mapping.random_dim()), generator=g)
         d = randint(0, 2, (n, mapping.discrete_dim()), generator=g, dtype=torch.int32)

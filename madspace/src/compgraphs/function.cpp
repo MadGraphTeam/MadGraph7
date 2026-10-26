@@ -348,8 +348,13 @@ FunctionBuilder::instruction(InstructionPtr instruction, const ValueVec& args) {
         auto& const_arg = args.at(1 - var_index);
         switch (opcode) {
         case opcodes::add:
-        case opcodes::sub:
             if (std::get<double>(const_arg.literal_value) == 0.) {
+                return {var_arg};
+            }
+            break;
+        case opcodes::sub:
+            // x - 0 = x, but 0 - x is not x
+            if (var_index == 0 && std::get<double>(const_arg.literal_value) == 0.) {
                 return {var_arg};
             }
             break;
