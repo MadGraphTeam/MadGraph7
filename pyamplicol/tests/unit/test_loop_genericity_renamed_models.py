@@ -778,23 +778,27 @@ def test_mw_nature_gives_the_same_virtual(w_slices, models, name):
 
 # loop_sm with MW a card input reaches the native export, whose SymJIT plane
 # check (rusticol-core loop_v2/trees.rs ``verify_plane``, from
-# artifact-portability) probes the parameter program at real inputs
-# 0.5 + frac(0.618 (k + 1)) assigned by input index: where MW > MZ there, the
-# W coupling's (1 - MW^2/MZ^2)^(-1/2) sits on its branch cut, the plane and
-# the exact evaluator take opposite sides of it (a sign) and the export is
-# refused (ValueError); which input gets which probe value depends on the
-# parameter order, so on the names (G_mu's card-input MW passes). It is a
-# native defect outside genericity-fixes (no Rust edit allowed); the
-# reproducer is workspace/tmp/genericity-fixes/probe/symjit/repro.py. The
-# routing is the coordinator's: when slice-status DECISIONS names the owner,
-# replace "NOT ROUTED YET" below by that owner and the entry's timestamp.
+# artifact-portability) compares the plane application with the exact
+# evaluator at real inputs 0.5 + frac(0.618 (k + 1)), assigned by input index.
+# Where MW > MZ there, the argument of the W coupling's (1 - MW^2/MZ^2)^(-1/2)
+# is a negated real: SymJIT's product with the real constant -1 gives it a
+# -0 imaginary part, Symbolica's complex product +0, so the two take opposite
+# sides of the cut (a sign) and the export is refused (ValueError). Which
+# input gets which probe depends on the parameter order, so on the names
+# (G_mu's card-input MW passes). Off the cut they agree: with every parameter
+# input moved to e_k (1 + i c_k), both this program and the parameter program
+# of g g > t t~ EW on G_mu, whose refusal is WP3.2 EWI-N's (slice-status
+# UPDATE 2026-10-26 ~07:25), pass the check and export. It is EWI-N's defect;
+# the Rust is outside genericity-fixes. Reproducers: the model-free
+# ``test_plane_check_accepts_a_negated_real_on_a_branch_cut`` below and
+# ``test_mw_nature_takes_the_same_native_route[loop_sm]`` (--runxfail).
 PLANE_CHECK_OWNER = (
-    "SymJIT plane check at index-ordered real probe inputs (branch cut of "
-    "(1 - MW^2/MZ^2)^(-1/2); rusticol-core loop_v2/trees.rs verify_plane): "
-    "NOT ROUTED YET in slice-status DECISIONS (genericity-fixes asked the "
-    "coordinator; proposed owner generation-scale-2, which holds "
-    "artifact-portability's open native-tree items, HANDOFF §6.4, and whose M2 "
-    f"acceptance meets the same check); and {M1_M2_OWNER}"
+    "SymJIT plane check at real probe inputs on a branch cut (SymJIT gives a "
+    "negated real a -0 imaginary part, Symbolica +0; rusticol-core "
+    "loop_v2/trees.rs verify_plane): WP3.2 EWI-N (ew-native, slice-status "
+    "DECISIONS 2026-10-25 ~02:25), the same refusal as EWI-N's g g > t t~ EW "
+    "parameter program (both export with the inputs off the real axis); "
+    "routing to be confirmed by the coordinator"
 )
 
 
@@ -806,7 +810,7 @@ PLANE_CHECK_OWNER = (
             marks=pytest.mark.xfail(
                 strict=True,
                 raises=(AssertionError, ValueError),
-                reason=PLANE_CHECK_OWNER,
+                reason=f"{PLANE_CHECK_OWNER}; and {M1_M2_OWNER}",
             ),
         ),
         pytest.param(
@@ -822,3 +826,20 @@ PLANE_CHECK_OWNER = (
 )
 def test_mw_nature_takes_the_same_native_route(w_slices, name):
     assert _route(w_slices(name, "mass")) == _route(w_slices(name, None))
+
+
+@pytest.mark.parametrize(
+    "text", ["sqrt(1 - x^2/y^2)", "(1 - x^2/y^2)^(-1/2)", "sqrt(-x)"]
+)
+@pytest.mark.xfail(strict=True, raises=ValueError, reason=PLANE_CHECK_OWNER)
+def test_plane_check_accepts_a_negated_real_on_a_branch_cut(loop_native, text):
+    """The mechanism of the loop_sm refusal above, model-free and in a second:
+    the native plane check of a program whose square-root argument is a
+    negated real at the check's real probes (x = 1.118 > y = 0.736 in row 0)."""
+
+    from symbolica import E, Expression, S
+
+    state = Expression.evaluator_multiple(
+        [E(text)], [S("x"), S("y")], jit_compile=False
+    ).save()
+    loop_native.compile_v2_plane(bytes(state), 2, False)
