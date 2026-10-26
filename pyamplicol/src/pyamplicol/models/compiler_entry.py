@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from typing import Any
 
@@ -639,6 +640,47 @@ def _contact_stage_structure(split: Any, stage: str) -> str:
 # of the lowered models of other processes. Cleared beyond the bound.
 _KERNEL_PROOFS: dict[str, tuple[Any, ...]] = {}
 _KERNEL_PROOF_BOUND = 1 << 16
+# The proofs a compile lacks run in one native batch, in parallel
+# (``rusticol_core::model_proofs`` through the loop extension's
+# ``model_kernel_proofs``; WP3.2 EWI-3R): byte-identical to
+# ``_kernel_equivalence_proof``, which stays the oracle
+# (``native_kernel_proofs(False)`` runs it).
+NATIVE_KERNEL_PROOFS = True
+
+
+@contextmanager
+def native_kernel_proofs(enabled: bool) -> Iterator[None]:
+    """``NATIVE_KERNEL_PROOFS`` set to ``enabled`` for the block and restored
+    after it: ``native_kernel_proofs(False)`` is the oracle lane."""
+
+    global NATIVE_KERNEL_PROOFS
+    before = NATIVE_KERNEL_PROOFS
+    NATIVE_KERNEL_PROOFS = bool(enabled)
+    try:
+        yield
+    finally:
+        NATIVE_KERNEL_PROOFS = before
+
+
+def _native_kernel_proofs(
+    items: Sequence[tuple[tuple[int, int, int], str, list[str], list[str]]],
+) -> list[tuple[str, tuple[float, float], tuple[int, int], tuple[float, float] | None]]:
+    """``_kernel_equivalence_proof`` of every item (dimensions, coupling and
+    components per input order as canonical strings) in one native batch."""
+
+    from pyamplicol.loops.native import load_loop_native
+
+    return [
+        (
+            class_digest,
+            (float(sign), 0.0),
+            tuple(input_order),
+            None if exchange is None else (float(exchange), 0.0),
+        )
+        for class_digest, sign, input_order, exchange in (
+            load_loop_native().model_kernel_proofs(list(items))
+        )
+    ]
 
 
 def _annotate_oriented_kernel_evaluation_equivalence(
@@ -666,6 +708,10 @@ def _annotate_oriented_kernel_evaluation_equivalence(
             parsed[term_id] = _sym.E(term_by_id[term_id].coupling_expression)
         return parsed[term_id]
 
+    keys: list[str] = []
+    # Proofs this compile lacks, by key: the oracle's arguments, and the
+    # native batch's canonical strings (those of the key).
+    missing: dict[str, tuple[Any, ...]] = {}
     for kernel in kernels:
         derived_couplings = {
             symbols.derived_coupling(model_symbols.model_name, term_id): term_coupling(
@@ -713,27 +759,36 @@ def _annotate_oriented_kernel_evaluation_equivalence(
             )
             for input_order, swap_sides in (((0, 1), False), ((1, 0), True))
         }
+        coupling_string = coupling.to_canonical_string()
+        component_strings = [
+            [component.to_canonical_string() for component in components]
+            for components in remapped.values()
+        ]
         key = hashlib.sha256(
             json.dumps(
-                [
-                    dimensions,
-                    coupling.to_canonical_string(),
-                    *(
-                        [component.to_canonical_string() for component in components]
-                        for components in remapped.values()
-                    ),
-                ],
+                [dimensions, coupling_string, *component_strings],
                 separators=(",", ":"),
             ).encode("utf-8")
         ).hexdigest()
-        proof = _KERNEL_PROOFS.get(key)
-        if proof is None:
-            if len(_KERNEL_PROOFS) >= _KERNEL_PROOF_BOUND:
-                _KERNEL_PROOFS.clear()
-            proof = _KERNEL_PROOFS[key] = _kernel_equivalence_proof(
-                remapped, coupling, dimensions
+        keys.append(key)
+        if key not in _KERNEL_PROOFS and key not in missing:
+            missing[key] = (
+                (remapped, coupling, dimensions),
+                (dimensions, coupling_string, *component_strings),
             )
-        class_digest, factor, input_order, input_exchange_factor = proof
+    if missing:
+        if len(_KERNEL_PROOFS) + len(missing) > _KERNEL_PROOF_BOUND:
+            _KERNEL_PROOFS.clear()
+        if NATIVE_KERNEL_PROOFS:
+            proofs = _native_kernel_proofs([item for _o, item in missing.values()])
+        else:
+            proofs = [
+                _kernel_equivalence_proof(*arguments)
+                for arguments, _item in missing.values()
+            ]
+        _KERNEL_PROOFS.update(zip(missing, proofs, strict=True))
+    for kernel, key in zip(kernels, keys, strict=True):
+        class_digest, factor, input_order, input_exchange_factor = _KERNEL_PROOFS[key]
         annotated.append(
             replace(
                 kernel,
