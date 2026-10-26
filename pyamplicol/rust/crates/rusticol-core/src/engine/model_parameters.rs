@@ -235,10 +235,22 @@ impl ExecutionRuntime {
             }
         }
         for (pdg, name) in &self.particle_mass_parameter_names {
-            let Some(slots) = self.model_parameter_runtime_slots.get(name) else {
-                continue;
+            // A settable mass has a runtime slot. A derived mass (for example MW from aEWM1, Gf and
+            // MZ in a G_mu-scheme UFO) has none: take the real component refreshed by the
+            // derived-parameter evaluator, so wavefunctions and propagators follow the inputs.
+            let index = match self.model_parameter_runtime_slots.get(name) {
+                Some(slots) => Some(slots.real),
+                None => self
+                    .model_parameters
+                    .iter()
+                    .find(|parameter| {
+                        parameter.kind == "derived_parameter_component"
+                            && parameter.runtime_name.as_deref() == Some(name.as_str())
+                            && parameter.complex_component.as_deref() == Some("real")
+                    })
+                    .map(|parameter| parameter.parameter_index),
             };
-            if let Some(value) = values.get(slots.real) {
+            if let Some(value) = index.and_then(|index| values.get(index)) {
                 particle_masses.insert(*pdg, *value);
             }
         }
