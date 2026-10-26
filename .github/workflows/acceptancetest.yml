@@ -139,6 +139,8 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_standalone_cpp_output_consistency -pA -t0 -l INFO
             ./tests/test_manager.py test_madmatrix_vs_fortran -pA -t0 -l INFO
+            # MadSpin's density matrices and |M|^2 from madmatrix against the f2py ones
+            ./tests/test_manager.py test_madmatrix_density_matches_fortran -pA -t0 -l INFO
             ./tests/test_manager.py test_standalone_cpp_perf_alpha_s_from_param_card -pA -t0 -l INFO
 
       # ---- acceptancetest_33 ----
@@ -757,14 +759,17 @@ jobs:
             ./tests/test_manager.py test_loop_induced_ggh -pA -t0 -l INFO
 
   acceptancetest_105:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue
+    # (needs no HEPTools); fork PRs stay on ubuntu-24.04 so outside code never
+    # runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5 
       - uses: ./.github/actions/restore-pip-cache
 
@@ -775,6 +780,10 @@ jobs:
             ./tests/test_manager.py test_quarkonium_standalone -pA -t0 -l INFO
             ./tests/test_manager.py test_quarkonium_production -pA -t0 -l INFO
             ./tests/test_manager.py test_leptonium_production -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
 
   acceptancetest_bundle_14:
@@ -803,7 +812,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -pA TestMLMReweight
+            ./tests/test_manager.py -pA TestMLMReweight TestMLMReweightAutoMatch
 
   acceptancetest_fks_standalone:
     # FKS Born building-block standalone output ('output standalone_fortran --fks'):
@@ -1016,3 +1025,39 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_loop_induced -pA -t0 -l INFO
+
+  acceptancetest_uncovered:
+    # Acceptance tests that no workflow selected (audit of 2026-10-24).
+    # Not here: test_madevent_triplet_diquarks, test_loop_improved_reweighting
+    # and test_nlo_output2 (@bypass_for_py3, never run), test_contur_from_file
+    # (disabled in acceptancetest_madevent.yml), test_madspace_example_gpu (GPU).
+    # Each step runs even when an earlier one failed.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_all
+      # StdHEP (the hw6/py6 stdhep tests) needs the rpc headers, as in parralel.yml
+      - name: Install libtirpc-dev
+        run: sudo apt install -y libtirpc-dev
+
+      - name: "standalone and madmatrix outputs"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madmatrix_goodhel_filter test_madmatrix_mssm_single_leg test_standalone_f2py_pdgs_not_modified test_standalone_interference_helicity_choice test_standalone_split_orders_interference test_standalone_umami_first_call test_fks_born_gscale_mixed_orders -pA -t0 -l INFO
+
+      - name: "loop-induced x tree interference, standalone"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_loop_induced_x_tree -pA -t0 -l INFO
+
+      - name: "aMC@NLO event generation"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_gen_evt_onlygen test_generate_events_lo_hw6_stdhep test_generate_events_lo_py6_stdhep -pA -t0 -l INFO

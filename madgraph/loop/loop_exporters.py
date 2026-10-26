@@ -381,7 +381,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
             all_iden += ' idens(%s) = %s \n' % (i, iden)
 
         formatting = {'python_information':'\n'.join(info), 
-                      'smatrixhel': dispatch(lambda prefix: ' call %sget_me(p, ALPHAS, DSQRT(SCALES2), NHEL, ANS, RETURNCODE)' % prefix),
+                      # get_me takes the squared scale (UPDATE_AS_PARAM2 sets MU_R = sqrt(SCALE2))
+                      'smatrixhel': dispatch(lambda prefix: ' call %sget_me(p, ALPHAS, SCALES2, NHEL, ANS, RETURNCODE)' % prefix),
                       'maxpart': max_nexternal,
                       'nb_me': len(allids),
                       'pdgs': ','.join([str(pdg[i]) if i<len(pdg) else '0' 
@@ -665,7 +666,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                     raise MadGraph5Error("CutTools installation in %s"\
                                  %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MadGraph7. Please recompile CutTools.")
+                    " the one specified in MadGraph7. Please recompile it by typing"+\
+                    " 'install cuttools_iregi' in the MadGraph7 interface.")
     
     def cat_coeff(self, ff_number, frac, is_imaginary, Nc_power, Nc_value=3):
         """Concatenate the coefficient information to reduce it to 

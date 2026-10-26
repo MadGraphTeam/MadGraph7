@@ -47,24 +47,20 @@ jobs:
     #   unittest_26 unittest_28 unittest_31 unittest_32 unittest_33
     #   unittest_customize_model
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
-
-      # ---- test_additional_unittest ----
-      - name: "test_additional_unittest"
-        if: ${{ !cancelled() }}
-        run: |
-            cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -v2 -t0 testIO_modification_to_cuts -e .github/workflows/IOtest.yml
+      - uses: ./.github/actions/clean_tmp
 
       # ---- unittest_0 ----
       - name: "unittest_0"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_ungrouping_lepton test_all_permutation test_permutation_from_id test_v31_syntax_crash test_polarisation_nlo_regimes test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card test_wrapped_model_path test_wrapped_processes test_processes_after_last_import_model test_model_v4 test_default_model test_density_option_survives_every_wrap_position test_regression_layout test_last_output_options test_wrapped_modelname test_density_flag_split_by_the_wrap test_density_flag_on_one_line test_no_density test_write_keeps_long_lines_whole -t0
+            ./tests/test_manager.py test_v31_syntax_crash test_polarisation_nlo_regimes test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card test_wrapped_model_path test_wrapped_processes test_processes_after_last_import_model test_model_v4 test_default_model test_density_option_survives_every_wrap_position test_regression_layout test_last_output_options test_wrapped_modelname test_density_flag_split_by_the_wrap test_density_flag_on_one_line test_no_density test_write_keeps_long_lines_whole -t0
 
       # ---- unittest_2 ----
       - name: "unittest_2"
@@ -213,16 +209,23 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_mg7_hwu_output test_cli_keeps_amcatnlo_scale_and_pdf_columns -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_bundle_2:
     # former jobs, run one after the other: unittest_1 unittest_4 unittest_5
     #   unittest_6 unittest_8 unittest_9 unittest_13 unittest_14 unittest_15
     #   unittest_21 unittest_30 unittest_config_location
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
 
       # ---- unittest_1 ----
       - name: "unittest_1"
@@ -278,7 +281,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_shower_card_py6_analyse test_shower_card_py8 test_shower_card_py8_analyse test_configuration_file test_install_update test_banner test_auto_handling test_config_iadd test_float_handling test_for_loop test_guess_type test_handling_dict_of_values test_handling_list_of_values test_integer_handling test_sum_object test_system_only test_MadAnalysis5Card test_initMadLoopParam test_modifparameter test_sum_object test_writeMLparam test_PY8Card_basic test_PY8Card_with_subruns test_add_definition test_add_unknown_entry test_cite_writes_logfile test_cite_deduplicates test_cite_noop_without_env test_collect_unions_and_keeps_contexts test_collect_empty_dir test_bibliography_parsing test_write_bibtex_reports_missing test_finalize_produces_two_files test_finalize_no_citation_returns_none test_write_log_and_collect_file test_generation_pairs_render_to_dir test_generation_log_seeds_a_run test_database_loads test_generation_pairs_keys_known test_optional_generation_pairs_keys_known test_every_cited_key_is_known -t0
+            ./tests/test_manager.py test_shower_card_py6_analyse test_shower_card_py8 test_shower_card_py8_analyse test_configuration_file test_install_update test_banner test_auto_handling test_config_iadd test_float_handling test_for_loop test_guess_type test_handling_dict_of_values test_handling_list_of_values test_integer_handling test_sum_object test_system_only test_MadAnalysis5Card test_initMadLoopParam test_modifparameter test_sum_object test_writeMLparam test_PY8Card_basic test_PY8Card_with_subruns test_add_definition test_add_unknown_entry test_cite_writes_logfile test_cite_deduplicates test_cite_noop_without_env test_cite_follows_env_across_runs test_nlo_output_ships_citation_files test_collect_unions_and_keeps_contexts test_collect_empty_dir test_bibliography_parsing test_write_bibtex_reports_missing test_finalize_produces_two_files test_finalize_no_citation_returns_none test_write_log_and_collect_file test_generation_pairs_render_to_dir test_generation_log_seeds_a_run test_database_loads test_generation_pairs_keys_known test_optional_generation_pairs_keys_known test_every_cited_key_is_known -t0
 
       # ---- unittest_15 ----
       - name: "unittest_15"
@@ -321,15 +324,22 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_lhe_ordering test_reweight_ordering test_boost_by_a_momentum_at_rest test_nested_identical_children -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_bundle_3:
     # former jobs, run one after the other: unittest_10 unittest_density_29
     #   unittest_madspin_sequential
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
       # tests.unit_tests.madspin.test_madspin imports numpy (the density
       # primitives, the sequential accept/reject and the maxwgt decomposition
       # all work on arrays), which is not on the runner by default.
@@ -342,13 +352,16 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_decay_chain_different_order1 test_decay_chain_different_order2 test_decay_chain_different_order3 test_decay_chain_different_pdgs test_decay_chain_process_overall_orders test_decay_processes_different_is_particles test_equal_decay_chains test_helas_multi_process test_helas_multiprocess_pp_nj test_majorana_decay_chain_process test_multistage_decay_chain_process test_multistage_symmetryfactor test_non_combine_processes test_setget_wavefunction_exceptions test_values_for_prop test_identify_me_tag_qq_qqg test_non_identify_me_tag_qq_qqg test_identify_me_tag_qq_qg test_extract_info test_get_final_state_particle test_get_proc_with_decay_LO test_get_proc_with_decay_NLO test_madspin_event test_find_symmetry_uu_tt test_find_symmetry_uu_tt_with_subprocess_group test_trimmed_decay_keeps_external_leg_order test_gluino_decay_chain_leg_numbering test_tree_pass_matches_enumeration test_tree_pass_error_handling test_tree_pass_ttbar_nested_decays test_tree_pass_vbs_same_sign_ww -t0
             ./tests/test_manager.py tests.unit_tests.madspin.test_madspin -t0
+            # madmatrix.density, the default density backend of MadSpin
+            ./tests/test_manager.py tests.unit_tests.iolibs.test_madmatrix_density -t0
 
       # ---- unittest_density_29 ----
       - name: "unittest_density_29"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            sudo pip install scipy
+            # no sudo/apt on the self-hosted runner: user install there
+            if command -v apt-get > /dev/null; then sudo pip install scipy; else python3 -m pip install --user scipy; fi
             ./tests/test_manager.py test_DensityMatrixObservables test_DensityMatrixObservables22 test_DensityMatrixObservables23 test_DensityMatrixObservables33 test_utilities -t0
 
       # ---- unittest_madspin_sequential ----
@@ -359,18 +372,26 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            sudo pip install numpy
+            # no sudo/apt on the self-hosted runner: user install there
+            if command -v apt-get > /dev/null; then sudo pip install numpy; else python3 -m pip install --user numpy; fi
             ./tests/test_manager.py test_madspin test_lhe_parser -t0
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
 
   unittest_bundle_4:
     # former jobs, run one after the other: unittest_18_2 unittest_24
     #   unittest_uncovered
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
 
       # ---- unittest_18_2 ----
       - name: "unittest_18_2"
@@ -395,15 +416,22 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_CF_simple test_cf_computation test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz testIO_test_pptt_ewsudakovSA testIO_test_ppzz_ewsudakov testIO_test_ppw_fksall testIO_Loop_sqso_uux_ddx test_check_import_model test_schedular test_dummy_fcts test_UFO_Python_helas_call_writer_fd test_get_symmetric_color test_get_symmetric_lorentz test_remove_interactions2 test_remove_interactions3 test_fd_python_value_matches_unitary_fixed_point test_shower_card_write -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_bundle_5:
     # former jobs, run one after the other: unittest_18_3 unittest_19
     #   unittest_27
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
 
       # ---- unittest_18_3 ----
       - name: "unittest_18_3"
@@ -426,14 +454,21 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_diagram_generation_gg_ng test_diagram_generation_uux_ddx test_diagram_generation_uux_ga test_diagram_generation_aa_ttx_EW test_diagram_generation_aa_wpwm_EW test_diagram_generation_epem_ttxa_EW test_diagram_generation_epem_ttxg_EW test_diagram_generation_gg_ggg_EW test_diagram_generation_gg_ttxg_EW test_diagram_generation_gg_ttxh_EW test_diagram_generation_hh_hh_EW test_diagram_generation_hh_hhh_EW test_diagram_generation_ttx_wpwm_EW test_diagram_generation_uux_epem_EW test_diagram_generation_uux_ga_EW test_fuse_line test_LO_draw_with_NLO_generation test_NLO_draw test_NLO_draw_all_gg_gg test_NLO_draw_all_reconstructed_dd_eemm test_NLO_draw_all_reconstructed_gg_gg test_NLO_draw_gg_ggg test_NLO_draw_uux_guux test_NLO_draw_uux_uuxddx test_flipping -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_bundle_6:
     # former jobs, run one after the other: unittest_22 unittest_29
     # Each keeps its own steps, run even when an earlier one failed.
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/restore_ufomodel
 
       # ---- unittest_22 ----
@@ -463,33 +498,114 @@ jobs:
             cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
             ./tests/test_manager.py test_cf_computation test_CF_simple test_merge_flavor test_diagram_generation_merged_charge_tuple test_check_import_model test_schedular test_create_get_color test_dummy_fcts test_fks_ppzz_in_RS test_helas_comparison_unmerged test_popen_with_closed_sys_stdout_and_stderr_stdout test_shower_card_write test_get_process_keeps_polarization test_shell_string_polarization_injective test_shell_string_polarization_in_dirname test_identify_me_tag_polarization test_real_keeps_born_polarization test_split_leg_polarization_transfer test_fks_helas_multi_process_polarizations_not_combined test_group_polarizations_not_combined test_polarisation_no_duplicate_helicity test_born_dir_collision_is_explicit test_born_dir_no_collision test_eq_distinguishes_polarization test_standalone_compresses test_fks_writes_the_entries_out test_split_orders_and_madspin_write_the_entries_out test_madevent_compresses_and_madweight_does_not test_whitelist_matches_the_templates -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
+
+  unittest_bundle_7:
+    # Unit tests that no workflow selected (audit of 2026-10-24): a test runs in
+    # CI only when some ./tests/test_manager.py line names it, its class, its
+    # module or its directory. Whole modules and classes are named where
+    # possible, so the tests added to them later run too.
+    # The ones needing a compiled madspace (test_mg7_interference_helicity,
+    # test_mg7_discrete_flavor, TestOneImplementation, TestRealRunNumbers) run
+    # in the unittest_mg7_launch job of acceptancetest_mg7.yml.
+    # Each step runs even when an earlier one failed.
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
+      # a skipped test fails the step (test_manager exits 1): test_mg7_plots
+      # renders with matplotlib, test_mg7_gridpack_compression compares with pigz.
+      # No sudo/apt on the self-hosted runner, which has pigz installed: user
+      # install of matplotlib there.
+      - name: install matplotlib and pigz
+        run: |
+            if command -v apt-get > /dev/null; then
+              sudo apt-get update -q && sudo apt-get install -y --no-install-recommends python3-matplotlib pigz
+            else
+              python3 -c 'import matplotlib' 2> /dev/null || python3 -m pip install --user matplotlib
+            fi
+
+      - name: "unittest_core_uncovered"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_plugin_diagram_filter test_tree_interference DDMColorBasisTest TestQuarticUnrolling TestSeedRule TestAsymmetricFlavorRestriction TestDiagramFlavorCheck TestDiagramFlavorCheckQQG TestDiagramFlavorCheckQQbarG TestExternalFlavorsQGTTXQG TestFlavorStore TestFlavorStoreDecayChain TestFlavorStoreNoMerged test_depends_on_scale test_get_running_blocks test_rge_parameters_used test_running_coupling_indexed_by_event test_nice_string_offshell_and_polarization test_nice_string_offshell_last_leg test_color_basis_symmetry test_color_basis_symmetry_no_symmetry test_color_factor_simplify_merges_like_strings test_color_matrix_matches_direct_computation test_permute_immutable test_relabel_canonical test_spanning_generators test_spanning_tree_rebuilds_color_matrix test_born_basis_link_matrices -t0
+
+      - name: "unittest_interface_uncovered"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_default_switch test_history_recording test_interference_syntax test_mg7_systematics_summary test_reweight_card_input test_tutorials TestNoFileOutsideOutputDir CheckDisplayWithoutProcessTest DisplayInertCouplingOrderTest NeglectedMassAdviceTest RequiredSChannelErrorTest TestHepToolsInstallTarget TestDelphesFusion TestLhapdfInfoPatch TestSharedPdfsetsDir test_generate_propagator_only_polarisation test_propagator_polarisation_round_trip test_dynamical_scale_choice_ht -e TestOneImplementation -e TestRealRunNumbers -t0
+
+      - name: "unittest_iolibs_uncovered"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madmatrix_writer test_mg7_gridpack_compression test_mg7_launcher_script AlohaModelPathTest DDMColorFlowMG7Test IOExportPythia8Test TestBornGscale F2PYSplitterFlavorOrderTest OptimiseJampTest AxialGaugeReferenceTest CombineNameHashTest test_flavor_mask_placeholders_present_in_nonstandalone_templates test_splitorders_entry_points_agree_with_their_callers test_standalone_files_next_to_matrix_file test_UFO_cpp_flavor_mask_prefix_uses_index_bits test_UFO_fortran_flavor_mask_prefix_uses_index_bits -t0
+
+      - name: "unittest_loop_madevent_uncovered"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_loop_induced_output test_loop_induced_x_tree test_hel_recycle test_transpole test_copy_events_no_blank_line test_combine_grid test_gen_ximprove_resubmit -t0
+
+      - name: "unittest_various_uncovered"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_cluster test_collect_events test_make_opts test_mg7_plots test_systematics test_test_finder TestHistogramRegressions TestLorentzStructureCanonicalisation TestRestrictionDoesNotLeakIntoTheUFO TEST_pythia8_main164 TestPrecisionCheck test_write_inc_file_running_scale test_scan_summary_json test_collapse_duplicate_lorentz test_goldstone_mass_mismatches test_goldstone_merge_is_atomic test_goldstone_merge_keeps_coupling_orders_apart test_goldstone_phase_detects_a_rotated_convention test_goldstone_phase_of_the_sm_is_trivial test_lorentz_info_cache_refresh test_optimise_iden_coup_lorentz_added_after_cache test_optimise_iden_coup_unknown_lorentz_is_skipped test_parse_fermion_structure test_rotate_coupling test_fd_gauge_interaction_ids_stay_unique test_configure_gzip_resets_pigz_threads test_external_gzip_failure_removes_partial_archive test_external_gzip_keep_passes_thread_limit test_gzip_failure_keeps_source_and_leaves_no_archive test_gzip_keep_preserves_plain_source test_interrupted_gzip_removes_partial_archive -t0
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_new_coverage:
     # New unit tests added in 3.7.1: q_polynomial and hepmc_parser
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
 
       - name: test q_polynomial and hepmc_parser modules
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_q_polynomial test_hepmc_parser -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+
 
   unittest_write_model:
     # runs alone: excluded from the shared unittest jobs due to side effects
-    runs-on: ubuntu-24.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
+    # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
 
       - name: run test_write_model (usermod)
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_write_model -t0
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 

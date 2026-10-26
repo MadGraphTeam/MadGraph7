@@ -1,6 +1,7 @@
 from __future__ import division
 
 from __future__ import absolute_import
+import collections
 import itertools
 import filecmp
 import xml.etree.ElementTree as ET
@@ -31,6 +32,123 @@ class InvalidParamCard(Exception):
 class InvalidParam(Exception):
     """ a class for invalid parameter input """
     pass
+
+# A width set to 'auto' in a param_card is computed by 'compute_widths'. It can
+# carry options of that command, which follow it on the line:
+#
+#     DECAY 6 auto                            what compute_widths does by default
+#     DECAY 25 auto --nlo --body_decay=3      two-body decays at NLO, the rest at LO
+#     DECAY 25 auto --nlo=mcatnlo             NLO from MC@NLO even if the model has SMWidth
+#     DECAY 23 auto --nlo --corrections=QCD+QED   NLO QCD and EW two-body decays with MC@NLO
+#     DECAY 6 auto@NLO                        the older spelling of 'auto --nlo'
+AUTO_WIDTH_OPTIONS = ('nlo', 'body_decay', 'precision_channel', 'min_br', 'engine',
+                      'corrections')
+
+def parse_nlo_corrections(value):
+    """The corrections asked for with 'compute_widths --nlo --corrections=VALUE',
+    for the NLO widths of MC@NLO: 'QCD', 'QED' (the electroweak corrections, 'EW'
+    is accepted too) or both, written 'QCD+QED' (or 'QCD,QED'). Returns the
+    canonical text, in the order QCD, QED. Raises InvalidParam otherwise."""
+
+    names = [name for name in re.split(r'[+,]', str(value).strip().upper()) if name]
+    if not names:
+        raise InvalidParam("--corrections needs QCD, QED (or EW), or QCD+QED")
+    found = set()
+    for name in names:
+        if name == 'EW':
+            name = 'QED'
+        if name not in ('QCD', 'QED'):
+            raise InvalidParam("--corrections takes QCD, QED (or EW), or QCD+QED, not '%s'"
+                               % value)
+        found.add(name)
+    return '+'.join(name for name in ('QCD', 'QED') if name in found)
+
+def auto_width_options(value):
+    """The compute_widths arguments carried by the value of a width, as a list
+    like ['--nlo', '--body_decay=3'], or None if the value is not 'auto'.
+    Raises InvalidParam for an option that a width cannot be given."""
+
+    if not isinstance(value, str):
+        return None
+    tokens = value.split()
+    if not tokens or tokens[0].lower() not in ('auto', 'auto@nlo'):
+        return None
+
+    options = collections.OrderedDict()
+    if tokens[0].lower() == 'auto@nlo':
+        options['nlo'] = '--nlo'
+    for token in tokens[1:]:
+        name = token[2:].split('=', 1)[0].lower() if token.startswith('--') else ''
+        if name not in AUTO_WIDTH_OPTIONS:
+            raise InvalidParam("'%s' is not an option of an 'auto' width (valid: %s)"
+                    % (token, ', '.join('--' + n for n in AUTO_WIDTH_OPTIONS)))
+        if name == 'nlo':
+            value = token.partition('=')[2].lower()
+            if value not in ('', 'smwidth', 'mcatnlo'):
+                raise InvalidParam("'--nlo' takes smwidth or mcatnlo, got '%s'" % token)
+            options[name] = '--nlo=%s' % value if value else '--nlo'
+        elif '=' not in token or not token.split('=', 1)[1]:
+            raise InvalidParam("'%s' needs a value: %s=VALUE" % (token, token))
+        elif name == 'corrections':
+            options[name] = '--corrections=%s' % parse_nlo_corrections(token.split('=', 1)[1])
+        else:
+            options[name] = '--%s=%s' % (name, token.split('=', 1)[1])
+    # one order, whatever the user's: the same options make the same group
+    return [options[name] for name in AUTO_WIDTH_OPTIONS if name in options]
+
+def format_auto_width(value):
+    """The text of an 'auto' width in the param_card: 'Auto', 'Auto@NLO' for
+    the plain NLO, 'Auto --nlo --body_decay=3' with more options."""
+
+    options = auto_width_options(value)
+    if not options:
+        return 'Auto'
+    if options == ['--nlo']:
+        return 'Auto@NLO'
+    return ' '.join(['Auto'] + options)
+
+_auto_width_line = re.compile(r'^[ \t]*decay[ \t]+\+?(-?\d+)[ \t]+(auto[^#\n]*)',
+                              re.I | re.M)
+
+def merge_param_card_values(source, target, output=None):
+    """Write the param_card ``target`` to ``output`` (itself by default) with
+    the numerical value, in ``source``, of every parameter the two share.
+
+    The cards of two models of a same family (sm and loop_sm) have the same
+    external parameters but not the same list of them: this takes the values of
+    the card the user edited into the card the other model wrote. Widths are
+    taken as well, unless they are still on auto."""
+
+    source_card = ParamCard(source)
+    target_card = ParamCard(target)
+    for name, block in source_card.items():
+        if name not in target_card:
+            continue
+        for param in block:
+            if not isinstance(param.value, (int, float)):
+                continue
+            try:
+                target_param = target_card[name].get(param.lhacode)
+            except KeyError:
+                continue
+            target_param.value = param.value
+    target_card.write(output or target)
+
+def group_auto_widths(text):
+    """The widths set to 'auto' in the text of a param_card, grouped by the
+    options they carry: {('--nlo', '--body_decay=3'): ['6', '25'], (): ['23']},
+    the pdg codes being the strings compute_widths takes. One compute_widths
+    call per group computes them."""
+
+    groups = collections.OrderedDict()
+    for pdg, value in _auto_width_line.findall(text):
+        options = auto_width_options(value)
+        if options is None:
+            continue
+        pdgs = groups.setdefault(tuple(options), [])
+        if str(abs(int(pdg))) not in pdgs:
+            pdgs.append(str(abs(int(pdg))))
+    return groups
 
 class Parameter (object):
     """A class for a param_card parameter"""
@@ -239,6 +357,13 @@ class Block(list):
             self.param_dict = {}
             
         if tuple(obj.lhacode) in self.param_dict:
+            if self.param_dict[tuple(obj.lhacode)] is obj:
+                # copy.deepcopy restores param_dict before re-appending the
+                # parameters (pickle does the reverse): the entry is this very
+                # parameter, which still has to go in the list
+                if not any(p is obj for p in self):
+                    list.append(self, obj)
+                return
             if self.param_dict[tuple(obj.lhacode)].value != obj.value:
                 raise InvalidParamCard('%s %s is already define to %s impossible to assign %s' % \
                     (self.name, obj.lhacode, self.param_dict[tuple(obj.lhacode)].value, obj.value))

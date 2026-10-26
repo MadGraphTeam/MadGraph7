@@ -1025,23 +1025,29 @@ class DensityMatrixObservables22(DensityMatrixObservables):
         # Define the constraint for the unit sphere
         constraints = ({'type': 'eq', 'fun': lambda n: n[0]**2 + n[1]**2 + n[2]**2 - 1})
 
-        # Initial guess
-        vec = np.random.randn(3, 1)
-        vec /= np.linalg.norm(vec, axis=0)
-        x0 = [vec[0][0], vec[1][0], vec[2][0]]
+        # Fixed initial guesses (the axes and the cube diagonals; -n is equivalent to n) so that
+        # the result is reproducible and does not depend on a single, possibly bad, starting point
+        starts = [[1, 0, 0], [0, 1, 0], [0, 0, 1],
+                  [1, 1, 1], [1, 1, -1], [1, -1, 1], [-1, 1, 1]]
+        starts = [np.array(x0, dtype=float) / np.linalg.norm(x0) for x0 in starts]
+
+        def on_sphere(n) -> float: # the minimiser can end slightly off the sphere: evaluate on it
+            return objective_function(np.asarray(n) / np.linalg.norm(n))
 
         # Perform the optimization
-        if method == "quick": #gradient-descent based algorithm. Quick but can be stuck in local minima
+        if method == "quick": #gradient-descent based algorithm, restarted from each initial guess
             from scipy.optimize import minimize
-            result = minimize(objective_function, x0, constraints=constraints, options={'maxiter': maxiter})
+            min_result = min(on_sphere(minimize(objective_function, x0, constraints=constraints,
+                                                options={'maxiter': maxiter}).x)
+                             for x0 in starts)
         elif method == "basinhopper": #global minimiser, slower but is less sensitive to non-convex minimisation
             from scipy.optimize import basinhopping
             kwargs = {"constraints": constraints, "options": {'maxiter': maxiter}}
-            result = basinhopping(objective_function, x0, minimizer_kwargs=kwargs)
+            result = basinhopping(objective_function, starts[0], minimizer_kwargs=kwargs)
+            min_result = on_sphere(result.x)
         else:
             raise ValueError("Argument method must be 'quick' or 'basinhopper'")
 
-        min_result = result.fun
         Discord = SrhoB - Srho + min_result
         
         return Discord.real

@@ -5599,7 +5599,8 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                     raise aMCatNLOError("CutTools installation in %s"\
                                  %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MadGraph7. Please recompile CutTools.")
+                    " the one specified in MadGraph7. Please recompile it by typing"+\
+                    " 'install cuttools_iregi' in the MadGraph7 interface.")
 
         # make IREGI (only necessary with MG option output_dependencies='internal')
         if not os.path.exists(os.path.realpath(pjoin(libdir, 'libiregi.a'))) \
@@ -5627,7 +5628,8 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                         raise aMCatNLOError("IREGI installation in %s"\
                                 %os.path.realpath(pjoin(libdir, 'libiregi.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MadGraph7. Please recompile IREGI.")
+                    " the one specified in MadGraph7. Please recompile it by typing"+\
+                    " 'install cuttools_iregi' in the MadGraph7 interface.")
 
         # check if MadLoop virtuals have been generated
         if self.proc_characteristics['has_loops'] and \

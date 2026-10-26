@@ -2580,6 +2580,27 @@ def project_massless_partons(momenta, pdgs, model, n_initial=2,
     return out
 
 
+def merged_pdg(pid, merged_map):
+    """The merged-particle code of pid, antiparticles included: merged_map
+    (raw pdg -> merged code) lists the members of each merged particle by their
+    positive pdg only, so an antiparticle maps to minus the code of its
+    particle. pid itself when it belongs to no merged particle."""
+    try:
+        return merged_map[pid]
+    except KeyError:
+        try:
+            return -merged_map[-pid]
+        except KeyError:
+            return pid
+
+
+_newline_runs = re.compile('\n\n+')
+
+def _collapse_newlines(text):
+    """text with every run of newlines reduced to one (Event.__str__)"""
+    return _newline_runs.sub('\n', text) if '\n\n' in text else text
+
+
 class Event(list):
     """Class storing a single event information (list of particles + global information)"""
 
@@ -2746,6 +2767,56 @@ class Event(list):
             _add_lhe_timer("event_parse_total", time.perf_counter() - t0_total)
     
     
+    # What Event(str(event)) keeps of a particle: the fields of its LHE line
+    # (the mothers are re-pointed to the copy's own particles separately)
+    _copy_particle_fields = ('pid', 'status', 'color1', 'color2', 'px', 'py', 'pz',
+                             'E', 'mass', 'vtim', 'helicity', 'rwgt', 'comment')
+
+    def copy(self):
+        """The event Event(str(self)) gives, without the text round trip.
+
+        Only what the LHE text carries is copied: the particles' fields and
+        mothers, and the event's weights, flags, scales, tags and comments.
+        Attributes a caller hangs on an event or a particle (MadSpin's
+        ``_ms_*`` caches, ``new_mass``, ...) are not, exactly as they would not
+        survive the text. The one difference is the precision: the momenta are
+        the doubles themselves, where the text keeps 11 significant digits.
+        MadSpin copies an event per accept/reject trial, and rendering then
+        parsing it was a large part of the trial (and grows with the weights).
+        """
+        if getattr(self, 'nloweight', None) is not None:
+            # NLO weights are kept as an object that rewrites the tag: keep the
+            # exact round trip for those
+            return Event(str(self))
+        new = Event()
+        new.nexternal, new.ievent, new.wgt = self.nexternal, self.ievent, self.wgt
+        new.scale, new.aqed, new.aqcd = self.scale, self.aqed, self.aqcd
+        new.tag, new.comment = self.tag, self.comment
+        new.eventflag = dict(self.eventflag)
+        new.reweight_data = dict(self.reweight_data)
+        if hasattr(self, 'reweight_order'):
+            new.reweight_order = list(self.reweight_order)
+        new.matched_scale_data = None if self.matched_scale_data is None \
+                                 else list(self.matched_scale_data)
+        new.syscalc_data = dict(self.syscalc_data)
+        new.density = list(self.density)
+        fields = self._copy_particle_fields
+        position = {}
+        for i, particle in enumerate(self):
+            clone = Particle.__new__(Particle)
+            old = particle.__dict__
+            clone.__dict__.update((key, old[key]) for key in fields if key in old)
+            clone.event, clone.event_id = new, i
+            clone.mother1, clone.mother2 = particle.mother1, particle.mother2
+            position[id(particle)] = i
+            new.append(clone)
+        for clone in new:
+            if isinstance(clone.mother1, Particle):
+                clone.mother1 = new[position[id(clone.mother1)]]
+            if isinstance(clone.mother2, Particle):
+                clone.mother2 = new[position[id(clone.mother2)]]
+        return new
+
     def assign_mother(self):
         """convert the number in actual particle"""
         #Security if not incoming particle. Define a fake particle 
@@ -3840,8 +3911,12 @@ class Event(list):
         return jac
 
     @staticmethod
-    def mass_shuffle(momenta, sqrts, new_mass, new_sqrts=None):
-        """use the RAMBO method to shuffle the PS. initial sqrts is preserved."""
+    def mass_shuffle(momenta, sqrts, new_mass, new_sqrts=None, return_chi=False):
+        """use the RAMBO method to shuffle the PS. initial sqrts is preserved.
+
+        return_chi: also return RAMBO's chi, the common factor every
+        three-momentum is scaled by in the frame where the momenta sum to rest
+        (0 on the failure paths, where jac is 0 too)."""
 
         if not new_sqrts:
             new_sqrts = sqrts
@@ -3849,50 +3924,65 @@ class Event(list):
         oldm = [p.mass_sqr for p in momenta]
         newm = [m**2 for m in new_mass]
         tot_mom = sum(momenta, FourMomentum())
-        lor = tot_mom.get_lorentz_map(FourMomentum(sqrts, 0, 0, 0))
-        back_lor =FourMomentum(sqrts, 0, 0, 0).get_lorentz_map(tot_mom) 
-        for i,m in enumerate(momenta):
-            momenta[i] = m.apply_lorentzmap(lor) 
-        
-        tot_mom2 = sum(momenta, FourMomentum())
-        # this is the equation 4.3 of RAMBO paper        
-        f = lambda chi: new_sqrts - sum(math.sqrt(max(0, M + chi**2*(p.E**2-m))) 
-                                    for M,p,m in zip(newm, momenta,oldm))
-        # this is the derivation of the function
-        df = lambda chi: -1* sum(chi*(p.E**2-m)/math.sqrt(max(0,(p.E**2-m)*chi**2+M))
-            for M,p,m in zip(newm, momenta,oldm))
-        
-        if sum(new_mass) > new_sqrts:
-            return momenta, 0
-        try:
-            chi = misc.newtonmethod(f, df, 1.0, error=1e-7,maxiter=1000)
-        except:
-            return momenta, 0 
+        # Momenta that already sum to rest -- a decay generated at rest, i.e.
+        # every MadSpin decay reshuffle -- need neither map: both boosts would
+        # have a zero velocity, which _apply_boost_beta skips, so the numbers
+        # are the same without the ~4 us it costs to build and apply them.
+        # Only taken where from_p1_to_p2's p1^2 == p2^2 check would pass.
+        at_rest = (tot_mom.px == 0 and tot_mom.py == 0 and tot_mom.pz == 0 and
+                   abs(tot_mom.E**2 - sqrts**2) <= 1e-6 * max(tot_mom.E**2, sqrts**2))
+        if not at_rest:
+            lor = tot_mom.get_lorentz_map(FourMomentum(sqrts, 0, 0, 0))
+            back_lor =FourMomentum(sqrts, 0, 0, 0).get_lorentz_map(tot_mom)
+            for i,m in enumerate(momenta):
+                momenta[i] = m.apply_lorentzmap(lor)
 
-        # create the new set of momenta # eq. (4.2)        
-        new_momenta = []
-        for i,p in enumerate(momenta):
-            new_momenta.append(
-                FourMomentum(math.sqrt(newm[i]+chi**2*(p.E**2-oldm[i])),
-                              chi*p.px, chi*p.py, chi*p.pz))
-        
-        new_tot = sum(new_momenta, FourMomentum())
-        #if __debug__:
-        #    for i,p in enumerate(new_momenta):
-        #        misc.sprint(p.mass_sqr, new_mass[i]**2, i,p, momenta[i])
-        #        assert p.mass_sqr == new_mass[i]**2
-                
+        failed = (momenta, 0, 0.) if return_chi else (momenta, 0)
+        if sum(new_mass) > new_sqrts:
+            return failed
+        # Equation 4.3 of the RAMBO paper, f(chi) = 0, solved by Newton's method
+        # from chi = 1 to |f| <= 1e-7 in at most 1000 steps: the iteration of
+        # misc.newtonmethod, with the same arithmetic (hence the same chi, bit
+        # for bit), but f evaluated once per step instead of twice and
+        # E^2 - m^2 once per particle instead of in every evaluation. MadSpin
+        # reshuffles a decay per accept/reject trial. Failing to converge, a
+        # vanishing derivative or an overflow is a failed reshuffling, as it
+        # was around misc.newtonmethod.
+        avail = [p.E**2 - m for p, m in zip(momenta, oldm)]
+        pairs = list(zip(newm, avail))
+        chi = 1.0
+        try:
+            f = new_sqrts - sum(math.sqrt(max(0, M + chi**2*a)) for M, a in pairs)
+            nb_iter = 0
+            while abs(f) > 1e-7:
+                nb_iter += 1
+                # f'(chi)
+                df = -1* sum(chi*a/math.sqrt(max(0, a*chi**2+M)) for M, a in pairs)
+                chi = chi - f/df
+                if nb_iter == 1000:
+                    return failed
+                f = new_sqrts - sum(math.sqrt(max(0, M + chi**2*a)) for M, a in pairs)
+        except ArithmeticError:
+            return failed
+
+        # create the new set of momenta # eq. (4.2)
+        new_momenta = [FourMomentum(math.sqrt(newm[i]+chi**2*avail[i]),
+                                    chi*p.px, chi*p.py, chi*p.pz)
+                       for i, p in enumerate(momenta)]
+
         # compute the jacobian factor (eq. 4.9)
         jac = chi**(3*len(momenta)-3)
         jac *= reduce(operator.mul,[p.E/k.E for p,k in zip(momenta, new_momenta)],1)
         jac *= sum(p.norm_sq/p.E for p in momenta)
         jac /= sum(k.norm_sq/k.E for k in new_momenta)
-        
-        # boost back the events in the lab-frame
-        for i,m in enumerate(new_momenta):
-            new_momenta[i] = m.apply_lorentzmap(back_lor) 
 
-        new_tot2 = sum(new_momenta, FourMomentum())
+        # boost back the events in the lab-frame
+        if not at_rest:
+            for i,m in enumerate(new_momenta):
+                new_momenta[i] = m.apply_lorentzmap(back_lor)
+
+        if return_chi:
+            return new_momenta, jac, chi
         return new_momenta, jac
         
         
@@ -4091,12 +4181,30 @@ class Event(list):
                 copy.reshuffle_info = orig.reshuffle_info
         return probe.reshuffle_production(_allow_retry=False)
 
-    def reshuffle_production(self, _allow_retry=True):
+    def reshuffle_production(self, _allow_retry=True, min_recoil=0.,
+                             recoil_massless=None):
         """ particle that need new mass have the "new_mass" attribute
 
         _allow_retry: on a kinematically impossible mass set, resample the
         masses and try again (the historical behaviour). production_jacobian
         turns it off so the failure is reported to a caller that owns the retry.
+
+        min_recoil: refuse a mass set whose RAMBO scale factor chi -- the
+        factor by which every production three-momentum shrinks in the
+        partonic rest frame -- falls below it. Returns 0 and leaves the event
+        untouched, whatever _allow_retry says: this is a cut on the mass set,
+        which the caller turns into a zero weight, not an infeasible set to
+        be redrawn in place. A mass set redrawn after an infeasible one is
+        held to the same floor.
+
+        It applies only when a massless particle recoils: one of the
+        particles RAMBO rescales -- the top-level final state, see
+        split_event_by_onshell_propagator -- carries no virtuality of its own
+        and is massless by recoil_massless(particle) (default: its LHE mass is
+        zero). A resonance drawn up to sqrt(shat) then pushes it soft and the
+        weight grows like 1/chi. The decay products of a resonance already
+        decayed in the event are moved rigidly with it, never go soft, and do
+        not count.
         """
 
         # create a nice data structure for the reshuffling
@@ -4104,6 +4212,11 @@ class Event(list):
 
         #filter outsubdecay
         production = [p for p in subdiags if not isinstance(p, list)]
+        if min_recoil:
+            massless = recoil_massless or (lambda p: abs(p.mass) < 1e-6)
+            if not any(massless(p) for p in production
+                       if p.status != -1 and not hasattr(p, 'new_mass')):
+                min_recoil = 0.
 
         old_momenta = [FourMomentum(p) for p in production if p.status!=-1]
         new_masses = [getattr(p, 'new_mass', p.mass) for p in production if p.status!=-1]
@@ -4132,7 +4245,10 @@ class Event(list):
 
         if sum(new_masses,0) <=  sqrts:
             # apply the RAMBO algo
-            new_mom, jac = self.mass_shuffle(old_momenta, sqrts, new_masses)
+            new_mom, jac, chi = self.mass_shuffle(old_momenta, sqrts,
+                                                  new_masses, return_chi=True)
+            if min_recoil and jac not in [0, -1] and chi < min_recoil:
+                return 0
         else:
             jac = -1
         #if __debug__:
@@ -4151,7 +4267,9 @@ class Event(list):
             Event.nb_reshuffle_issue +=1
             if jac != -1:
                 misc.sprint('jac was 0 -> retry', Event.nb_reshuffle_issue)
-            return self.reshuffle_production(_allow_retry=_allow_retry)
+            return self.reshuffle_production(_allow_retry=_allow_retry,
+                                             min_recoil=min_recoil,
+                                             recoil_massless=recoil_massless)
 
         
         #modify the momenta of the particles:
@@ -4555,15 +4673,18 @@ class Event(list):
                 info_density += str(self.density[i]) + ' '
             density_to_write = "<density> " + info_density + "</density>"
         
-        out = out % {'event_flag': event_flag,
-                     'scale': scale_str, 
-                      'particles': '\n'.join([str(p) for p in self]),
-                      'tag': tag_str,
-                      'comments': self.comment,
-                      'reweight': reweight_str,
-                      'density': density_to_write}
-        
-        return re.sub('[\n]+', '\n', out)
+        # Every run of newlines collapses to one, as one re.sub over the whole
+        # event used to do. Only the free-text parts can hold such a run (a part
+        # left empty is skipped), so the regular expression runs over those and
+        # not over the particles and the weights, which are most of the text.
+        parts = ['<event%s>' % event_flag, scale_str]
+        parts += [str(p) for p in self]
+        for text in (self.comment, tag_str, reweight_str, density_to_write):
+            text = _collapse_newlines(text).strip('\n')
+            if text:
+                parts.append(text)
+        parts.append('</event>\n')
+        return '\n'.join(parts)
     
 
     def get_mapping(self, get_order, allow_reversed=True, allow_crossing=True, merged_map=None,
@@ -4831,14 +4952,7 @@ class Event(list):
         # remap before being looked up in get_order[1]; otherwise
         # final.index(raw_pdg) raises ValueError.
         if merged_map:
-            def map_pdg(x):
-                try:
-                    return merged_map[x]
-                except KeyError:
-                    try:
-                        return -merged_map[-x]
-                    except KeyError:
-                        return x
+            map_pdg = lambda x: merged_pdg(x, merged_map)
         else:
             map_pdg = lambda x: x
 
@@ -5947,17 +6061,9 @@ class NLO_PARTIALWEIGHT(object):
             _ = (allow_crossing, decay_chain)
 
             if merged_map:
-                def map_pdg(x):
-                    try:
-                        return merged_map[x]
-                    except KeyError:
-                        try:
-                            return -merged_map[-x]
-                        except KeyError:
-                            return x
+                map_pdg = lambda x: merged_pdg(x, merged_map)
             else:
-                def map_pdg(x):
-                    return x
+                map_pdg = lambda x: x
 
             out1 = {}
             out2 = {}
@@ -6004,17 +6110,9 @@ class NLO_PARTIALWEIGHT(object):
             out = [''] *(len(order[0])+len(order[1]))
             pdgs = self.get_pdg_code()
             if merged_map:
-                def map_pdg(x):
-                    try:
-                        return merged_map[x]
-                    except KeyError:
-                        try:
-                            return -merged_map[-x]
-                        except KeyError:
-                            return x
+                map_pdg = lambda x: merged_pdg(x, merged_map)
             else:
-                def map_pdg(x):
-                    return x
+                map_pdg = lambda x: x
             for pos, part in enumerate(self):
                 pdg = map_pdg(pdgs[pos])
                 if pos < len(get_order[0]): #initial

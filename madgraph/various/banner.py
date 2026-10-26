@@ -1115,6 +1115,35 @@ class ConfigFile(dict):
         
         return log(text)
 
+    @staticmethod
+    def parse_dict_value(value):
+        """Split the text of a dict parameter into ({key: value-text},
+        full_reset). Allowed entries:
+          {name1:value1, name2:value2}   => full reset
+          name : value                   => just add the entry
+          name , value                   => just add the entry
+          name  value                    => just add the entry
+        Raises ValueError for anything else."""
+        value = value.strip()
+        if value.startswith('{') and value.endswith('}'):
+            new_value = {}
+            for pair in value[1:-1].split(','):
+                if not pair.strip():
+                    break
+                x, y = pair.rsplit(':',1)
+                x, y = x.strip(), y.strip()
+                if x.startswith(('"',"'")) and x.endswith(x[0]):
+                    x = x[1:-1]
+                new_value[x] = y
+            return new_value, True
+        elif ',' in value:
+            x,y = value.split(',')
+        elif ':' in value:
+            x,y = value.split(':')
+        else:
+            x,y = value.split()
+        return {x.strip():y.strip()}, False
+
     def post_set(self, name, value, change_userdefine, raiseerror):
         
         if value is None:
@@ -1269,39 +1298,8 @@ class ConfigFile(dict):
             full_reset = True #check if we just update the current dict or not
             
             if isinstance(value, str):
-                value = value.strip()
-                # allowed entry:
-                #   name : value   => just add the entry
-                #   name , value   => just add the entry
-                #   name  value    => just add the entry
-                #   {name1:value1, name2:value2}   => full reset
-                
-                # split for each comma/space
-                if value.startswith('{') and value.endswith('}'):
-                    new_value = {}
-                    for pair in value[1:-1].split(','):
-                        if not pair.strip():
-                            break
-                        x, y = pair.rsplit(':',1)
-                        x, y = x.strip(), y.strip()
-                        if x.startswith(('"',"'")) and x.endswith(x[0]):
-                            x = x[1:-1] 
-                        new_value[x] = y
-                    value = new_value
-                elif ',' in value:
-                    x,y = value.split(',')
-                    value = {x.strip():y.strip()}
-                    full_reset = False
-                    
-                elif ':' in value:
-                    x,y = value.split(':')
-                    value = {x.strip():y.strip()}
-                    full_reset = False       
-                else:
-                    x,y = value.split()
-                    value = {x:y}
-                    full_reset = False 
-            
+                value, full_reset = self.parse_dict_value(value)
+
             if isinstance(value, dict):
                 for key in value:
                     value[key] = self.format_variable(value[key], targettype, name=name)
@@ -4473,6 +4471,10 @@ class RunCardLO(RunCard):
     else:
         default_run_card = None
     
+    # default lhaid when a photon is an initial-state parton of the proton:
+    # NNPDF40_nlo_as_01180_qed (no LO NNPDF4.0 set with a photon but the MC one)
+    photon_lhaid = 335900
+
     def default_setup(self):
         """default value for the run_card.dat"""
         
@@ -5227,6 +5229,14 @@ class RunCardLO(RunCard):
                     self['polbeam2'] = 100
                     if not all(id  in [-12,-14,-16,-83] for id in beam_id_split[1]):
                         logger.warning('Issue with default beam setup of neutrino in the run_card. Please check it up [polbeam2].')
+
+            # a photon taken from the proton needs a PDF set with a photon
+            # density: NNPDF40_lo_as_01180 has none, so use the QED set of the
+            # same family (issue #311)
+            if 'lhaid' not in self.user_set and self['pdlabel'] == 'lhapdf' and \
+                    any(22 in beam_id_split[i] and abs(self['lpp%d' % (i+1)]) == 1
+                        for i in range(2)):
+                self['lhaid'] = self.photon_lhaid
             
             
         # Check if need matching
@@ -5929,6 +5939,10 @@ class RunCardNLO(RunCard):
         default_run_card = None
                       
         
+    # default lhaid for EW corrections or a photon in the initial state:
+    # NNPDF40_nlo_as_01180_qed
+    photon_lhaid = 335900
+
     def default_setup(self):
         """define the default value"""
         
@@ -6494,6 +6508,19 @@ class RunCardNLO(RunCard):
             if b and b['mass'] != 'ZERO':
                 self['lhaid'] = [334700]  # NNPDF40_nlo_as_01180_nf_4
 
+        # EW corrections (photon-initiated real emission and the QED evolution)
+        # or a photon in the initial state need a PDF set with a photon density
+        # (issue #311). NNPDF4.0 has no 4-flavour QED set, so this wins over
+        # the 4-flavour rule above.
+        if 'lhaid' not in self.user_set and \
+                1 in (abs(self['lpp1']), abs(self['lpp2'])) and \
+                (22 in beam_id or 'QED' in proc_characteristic['splitting_types']):
+            if self['lhaid'] == [334700]:
+                logger.info('No 4-flavour PDF set with a photon: using the '
+                            '5-flavour NNPDF40_nlo_as_01180_qed (lhaid %s)',
+                            self.photon_lhaid)
+            self['lhaid'] = [self.photon_lhaid]
+
         # Check if need matching
         min_particle = 99
         max_particle = 0
@@ -6699,6 +6726,20 @@ class RunCardMG7(RunCard):
         if auto:
             self.auto_set.add(internal)
 
+    def gzip_configuration(self):
+        """The ``misc.configure_gzip`` settings given by the [run] section:
+        'auto' lets misc pick pigz, and a positive thread pool size caps it."""
+        run = self['run']
+        threads = run['cpu_thread_pool_size']
+        return {
+            'use_pigz': None if run['use_pigz'] == 'auto' else run['use_pigz'],
+            'nb_core': threads if threads > 0 else None,
+        }
+
+    # default PDF set when a photon is an initial-state parton of the proton
+    # (same as the LO run_card, lhaid 335900)
+    photon_pdf = "NNPDF40_nlo_as_01180_qed"
+
     def default_setup(self):
         """Define every parameter of the default ``run_card.toml``."""
 
@@ -6725,6 +6766,9 @@ class RunCardMG7(RunCard):
             comment="-1 chooses automatically; x86: 1, 4, 8; Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
             comment="threads for the cpu devices; -1 chooses automatically")
+        self.add_toml_param('run', 'use_pigz', False, gridpack=True, auto=True,
+            allowed=['auto', True, False],
+            comment="compress large event files with pigz when available; auto detects it, false uses gzip")
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True,
             comment="threads per gpu device")
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True,
@@ -7417,6 +7461,257 @@ class RunCardMG7(RunCard):
         self.dynamic_sections['cuts'].setdefault(cut, collections.OrderedDict())[bound] = value
         return cut, bound, value
 
+    @staticmethod
+    def _lo_cut_is_active(bound, value):
+        """Whether a madevent cut value imposes a constraint: a minimum must be
+        positive, a maximum non-negative (-1 is madevent's "no cut")."""
+        return (bound == 'min' and value > 0) or (bound == 'max' and value >= 0)
+
+    def set_lo_cut(self, name, value):
+        """Set a cut from its madevent run_card name (``ptj``, ``mmll``,
+        ``etaj``, ``mmllmax``, ... see ``_LO_CUT_MAP``) in the ``[cuts]``
+        section, with the same conventions as :meth:`from_LO`: a "no cut"
+        value (minimum <= 0, maximum < 0) removes that bound, and the cut
+        itself once it has no bound left. A cut on one of the
+        ``_LO_CUT_GROUPS`` (``ihtmin``, ``ptllmin``, ...) also defines that
+        group in ``[multiparticles]``, unless the card already has it.
+        Returns ``(cut, bound, value)``, with value None when the bound was
+        removed."""
+        cut, bound = self._LO_CUT_MAP[name.lower()]
+        value = self.parse_energy(value)
+        if isinstance(value, str):
+            value = self.format_variable(value, float, name=name)
+        value = self._put_lo_cut(cut, bound, float(value))
+        if value is not None:
+            multiparticles = self.dynamic_sections['multiparticles']
+            for group, build in self._LO_CUT_GROUPS.items():
+                if cut.startswith(group + '-') and group not in multiparticles:
+                    multiparticles[group] = build(multiparticles)
+        return cut, bound, value
+
+    def _put_lo_cut(self, cut, bound, value):
+        """Set one bound of a [cuts] entry, or remove it (and the entry once
+        it has no bound left) for a madevent "no cut" value. Returns the value
+        set, None when the bound was removed."""
+        cuts = self.dynamic_sections['cuts']
+        if self._lo_cut_is_active(bound, value):
+            cuts.setdefault(cut, collections.OrderedDict())[bound] = value
+            return value
+        if cut in cuts:
+            cuts[cut].pop(bound, None)
+            if not cuts[cut]:
+                del cuts[cut]
+        return None
+
+    @staticmethod
+    def _lo_jet_group(maxjetflavor):
+        """The jet group of a madevent maxjetflavor: the quarks up to that
+        flavour, their antiquarks and the gluon."""
+        return list(range(1, maxjetflavor + 1)) + \
+            [-i for i in range(1, maxjetflavor + 1)] + [21]
+
+    @staticmethod
+    def _lo_pdg_group(pdg):
+        """Name and content of the group a madevent per-pdg cut is put on."""
+        return 'pdg%d' % abs(pdg), [abs(pdg), -abs(pdg)]
+
+    @staticmethod
+    def _lo_pdg_dict(mapping):
+        """A madevent {pdg: value} parameter with integer pdg keys: a
+        run_card.dat is read with string keys ({'6': 100.0}). 'default' is
+        kept as such."""
+        out = {}
+        for key, val in (mapping or {}).items():
+            if str(key).strip().lower() == 'default':
+                out['default'] = val
+            elif re.match(r'^\s*[-+]?\d+\s*$', str(key)):
+                out[int(key)] = val
+        return out
+
+    @staticmethod
+    def _lo_pair_observable(pdg, only_part_antipart):
+        """Observable of mxx_min_pdg for this pdg: X X~ pairs only when
+        mxx_only_part_antipart says so (for it, or by default)."""
+        return 'sfos_pair_mass' if only_part_antipart.get(
+            pdg, only_part_antipart.get('default', False)) else 'pair_mass'
+
+    def _lo_card_pair_observable(self, pdg, only_part_antipart):
+        """Observable of ``set mxx_min_pdg`` for this pdg: what
+        ``set mxx_only_part_antipart`` chose, else the pair-mass cut the card
+        already has on that pdg (e.g. from the run_card.dat conversion), else
+        every pair of the group."""
+        if pdg in only_part_antipart or 'default' in only_part_antipart:
+            return self._lo_pair_observable(pdg, only_part_antipart)
+        cuts = self.dynamic_sections['cuts']
+        if 'pdg%d-sfos_pair_mass' % pdg in cuts and 'pdg%d-pair_mass' % pdg not in cuts:
+            return 'sfos_pair_mass'
+        return 'pair_mass'
+
+    @staticmethod
+    def _merge_cut_bounds(kept, other):
+        """Bounds of two [cuts] entries on the same quantity, as one entry:
+        the tighter of each bound; ``kept`` wins for anything else (mode)."""
+        merged = collections.OrderedDict(other)
+        for bound, value in kept.items():
+            if bound == 'min' and 'min' in other:
+                value = max(value, other['min'])
+            elif bound == 'max' and 'max' in other:
+                value = min(value, other['max'])
+            merged[bound] = value
+        return merged
+
+    def _lo_parse_pdg_items(self, name, text):
+        """The (key, value-text) pairs of a madevent {pdg: value} parameter,
+        in any form the run_card.dat editor takes ({6: 100, 25: 50}, 6:100,
+        6 100); keys are pdg integers or 'default'."""
+        try:
+            parsed, _ = self.parse_dict_value(text)
+        except ValueError:
+            raise InvalidCmd('%s takes {pdg: value, ...}, not %s' % (name, text))
+        items = []
+        for key, val in parsed.items():
+            if str(key).strip().lower() == 'default':
+                key = 'default'
+            else:
+                key = self.format_variable(key, int, name=name)
+            items.append((key, val))
+        return items
+
+    def set_lo_param(self, name, value, masses=None):
+        """Apply ``set <name> <value>`` for a madevent parameter that mg7 does
+        not just rename (``_LO_SET_PARAMS``): its value needs translating
+        (``dynamical_scale_choice 3``, ``maxjetflavor 4``, ...), or several
+        madevent settings make one mg7 entry (fixed_fac_scale1 and
+        fixed_fac_scale2 give beam.fixed_fact_scale). The beam energies,
+        types and PDFs go to :meth:`set_lo_beam_param` instead. A per-beam
+        fixed_fac_scale is combined with the other beam's from earlier ``set``
+        commands of the same launch question, and :meth:`lo_set_warnings`
+        reports a mismatch once the question closes.
+
+        Returns None when ``value`` is already an mg7 value (``set
+        sde_strategy denominators``, ``set dynamical_scale_choice HT/4``),
+        for the caller to set as usual. Otherwise returns ``(changes,
+        warnings)``: the {mg7 key: new value} written (None for a removed
+        cut) and what of the request could not be followed. Raises
+        InvalidCmd for a value of the wrong type."""
+        name = name.lower()
+        text = str(value).split('#')[0].strip()
+        beam = self['beam']
+        changes, warnings = collections.OrderedDict(), []
+
+        def put(key, val):
+            self.set(key, val, user=True)
+            changes[key] = self[key]
+
+        def number(val):
+            val = self.evaluate(val, masses)
+            if isinstance(val, str):
+                val = self.format_variable(val, float, name=name)
+            return float(val)
+
+        if name in ('dynamical_scale_choice', 'sde_strategy'):
+            code = text
+            if name == 'dynamical_scale_choice':
+                code = str(self._LO_DYNSCALE_SHORTCUTS.get(text.lower(), text))
+            if not re.match(r'^[-+]?\d+$', code):
+                return None
+            code = int(code)
+            if name == 'sde_strategy':
+                if code in (1, 2):
+                    put('phasespace.sde_strategy',
+                        'denominators' if code == 2 else 'diagrams')
+                else:
+                    warnings.append(
+                        'sde_strategy %d does not exist (1 = diagrams, '
+                        '2 = denominators): keeping %s'
+                        % (code, self['phasespace.sde_strategy']))
+            elif code in self._LO_DYNSCALE_MAP:
+                put('beam.dynamical_scale_choice', self._LO_DYNSCALE_MAP[code])
+            else:
+                what = {-1: ' (CKKW back-clustering)',
+                        0: ' (user-defined scale)'}.get(code, '')
+                warnings.append(
+                    'dynamical_scale_choice %d%s has no mg7 equivalent: '
+                    'keeping %s' % (code, what, beam['dynamical_scale_choice']))
+
+        elif name in ('fixed_fac_scale', 'fixed_fac_scale1', 'fixed_fac_scale2'):
+            flag = self.format_variable(text, bool, name=name)
+            current = beam['fixed_fact_scale']
+            flags = vars(self).setdefault('_lo_fixed_fac_scale', {1: current, 2: current})
+            for i in ((1, 2) if name == 'fixed_fac_scale' else (int(name[-1]),)):
+                flags[i] = flag
+            put('beam.fixed_fact_scale', flag)
+
+        elif name == 'maxjetflavor':
+            flavours = self.format_variable(text, int, name=name)
+            if not 0 <= flavours <= 6:
+                raise InvalidCmd('maxjetflavor must be between 0 and 6')
+            jet = self._lo_jet_group(flavours)
+            self.dynamic_sections['multiparticles']['jet'] = jet
+            changes['multiparticles.jet'] = jet
+
+        else:
+            # per-pdg cuts, written {pdg: value, ...} as in the run_card.dat
+            items = self._lo_parse_pdg_items(name, text)
+            cuts = self.dynamic_sections['cuts']
+            multiparticles = self.dynamic_sections['multiparticles']
+            # kept with the card, not the question: it decides the observable
+            # of a later "set mxx_min_pdg" too
+            only_pairs = vars(self).setdefault('_lo_only_part_antipart', {})
+            if name == 'mxx_only_part_antipart':
+                for key, val in items:
+                    only_pairs[key] = self.format_variable(val, bool, name=name)
+                # existing pair-mass cuts follow the new choice
+                for cut in list(cuts):
+                    match = re.match(r'^pdg(\d+)-(sfos_)?pair_mass$', cut)
+                    if not match or cut not in cuts:
+                        continue
+                    pdg = int(match.group(1))
+                    new = 'pdg%d-%s' % (pdg, self._lo_pair_observable(pdg, only_pairs))
+                    if new != cut:
+                        moved = cuts.pop(cut)
+                        if new in cuts:
+                            moved = self._merge_cut_bounds(cuts[new], moved)
+                        cuts[new] = moved
+                        changes['cuts.' + cut] = None
+                        changes['cuts.' + new] = cuts[new]
+            else:
+                for pdg, val in items:
+                    if pdg == 'default':
+                        continue
+                    group, pids = self._lo_pdg_group(pdg)
+                    if name == 'mxx_min_pdg':
+                        observable = self._lo_card_pair_observable(pdg, only_pairs)
+                        bound = 'min'
+                        # madevent has one pair-mass minimum per pdg: drop
+                        # the one on the other kind of pair
+                        other = '%s-%s' % (group, 'pair_mass' if observable
+                                           == 'sfos_pair_mass' else 'sfos_pair_mass')
+                        if 'min' in cuts.get(other, {}):
+                            self._put_lo_cut(other, 'min', 0.)
+                            changes['cuts.' + other] = cuts.get(other)
+                    else:
+                        observable, bound = self._LO_PDG_CUT_MAP[name]
+                    cut = '%s-%s' % (group, observable)
+                    if self._put_lo_cut(cut, bound, number(val)) is not None:
+                        multiparticles[group] = pids
+                    changes['cuts.' + cut] = cuts.get(cut)
+        return changes, warnings
+
+    def lo_set_warnings(self):
+        """What the madevent-style ``set`` commands of a launch question asked
+        for that mg7, with one factorisation-scale switch for both beams,
+        cannot do. Meant for when the question closes: the per-beam settings
+        are forgotten afterwards, so the next question starts over."""
+        flags = vars(self).pop('_lo_fixed_fac_scale', None)
+        beam = self['beam']
+        out = []
+        if flags and flags[1] != flags[2]:
+            out.append('fixed_fac_scale1 = %s and fixed_fac_scale2 = %s: mg7 has '
+                       'one beam.fixed_fact_scale for both beams (%s)'
+                       % (flags[1], flags[2], beam['fixed_fact_scale']))
+        return out
+
     # ------------------------------------------------------------------
     # expression evaluation (energy units + arithmetic + masses)
     # ------------------------------------------------------------------
@@ -7791,6 +8086,12 @@ class RunCardMG7(RunCard):
         elif beam_id and not (beam_id & hadronic):
             # e.g. photon/neutrino initiated: also no proton PDF
             self['beam']['leptonic'] = True
+        elif 22 in beam_id:
+            # a photon taken from the proton needs a PDF set with a photon
+            # density: NNPDF40_lo_as_01180 has none (issue #311)
+            for key in ('beam.pdf1', 'beam.pdf2'):
+                if key not in self.user_set:
+                    self[key] = self.photon_pdf
 
         # 1 -> N decay: no cuts at all. A partial width is an inclusive
         # quantity, so any kinematic cut biases it low (the collider defaults
@@ -8176,6 +8477,9 @@ class RunCardMG7(RunCard):
     # LO dynamical_scale_choice (int) -> MG7 string
     _LO_DYNSCALE_MAP = {1: 'transverse_energy', 2: 'transverse_mass',
                         3: 'half_transverse_mass', 4: 'partonic_energy'}
+    # the LO run_card's names for some of those codes ('ht' and 'ht/n' are
+    # handled by the launch question itself)
+    _LO_DYNSCALE_SHORTCUTS = {'et': 1, 'shat': 4, 'ckkw': -1}
     # LO cut parameter -> (MG7 cut key, bound)
     _LO_CUT_MAP = {
         'ptj': ('jet-pt', 'min'), 'ptjmax': ('jet-pt', 'max'),
@@ -8238,6 +8542,12 @@ class RunCardMG7(RunCard):
         'e_min_pdg': ('e', 'min'), 'e_max_pdg': ('e', 'max'),
         'eta_min_pdg': ('eta_abs', 'min'), 'eta_max_pdg': ('eta_abs', 'max'),
     }
+    # LO parameters that "set" translates with set_lo_param: not a plain
+    # rename (_LO_SCALAR_MAP) nor a cut (_LO_CUT_MAP) nor a beam setting
+    # (lo_beam_params). A set literal: set() is the method of this class here.
+    _LO_SET_PARAMS = {'fixed_fac_scale', 'fixed_fac_scale1', 'fixed_fac_scale2',
+                      'dynamical_scale_choice', 'sde_strategy', 'maxjetflavor',
+                      'mxx_min_pdg', 'mxx_only_part_antipart', *_LO_PDG_CUT_MAP}
     # built-in LO pdlabel -> LHAPDF set name
     _LO_PDF_LABEL_MAP = {
         'nn23lo': 'NNPDF23_lo_as_0130_qed', 'nn23lo1': 'NNPDF23_lo_as_0130_qed',
@@ -8247,6 +8557,7 @@ class RunCardMG7(RunCard):
     _LO_LHAID_MAP = {
         230000: 'NNPDF23_lo_as_0130_qed', 247000: 'NNPDF23_lo_as_0130_qed',
         331900: 'NNPDF40_lo_as_01180', 338500: 'NNPDF40MC_lo_as_01180',
+        335900: 'NNPDF40_nlo_as_01180_qed',
         10042: 'cteq6l1',
     }
     # LO parameters that have no MG7 equivalent (reported when non-default).
@@ -8407,9 +8718,8 @@ class RunCardMG7(RunCard):
 
         # --- maxjetflavor -> jet multiparticle ---
         if 'maxjetflavor' in lo:
-            mjf = int(lo['maxjetflavor'])
             mg7.dynamic_sections['multiparticles']['jet'] = \
-                list(range(1, mjf + 1)) + [-i for i in range(1, mjf + 1)] + [21]
+                cls._lo_jet_group(int(lo['maxjetflavor']))
 
         # --- cuts (rebuild from the LO card) ---
         cuts = collections.OrderedDict()
@@ -8423,9 +8733,9 @@ class RunCardMG7(RunCard):
                 val = max(entry[bound], val) if bound == 'min' else min(entry[bound], val)
             entry[bound] = float(val)
 
-        def is_active(bound, val):
-            # LO: a minimum of 0 and a maximum below 0 switch the cut off
-            return (bound == 'min' and val > 0) or (bound == 'max' and val >= 0)
+        # LO: a minimum of 0 and a maximum below 0 switch the cut off (shared
+        # with set_lo_cut, i.e. "set ptj 0" in the launch question)
+        is_active = cls._lo_cut_is_active
 
         for loname, (cutkey, bound) in cls._LO_CUT_MAP.items():
             if loname in lo and is_active(bound, lo[loname]):
@@ -8434,20 +8744,20 @@ class RunCardMG7(RunCard):
         # cuts on one particle type, given by pdg id: a group [pdg, -pdg] each
         # (the name has no "_<number>", which would select the n-th hardest)
         for loname, (observable, bound) in cls._LO_PDG_CUT_MAP.items():
-            for pdg, val in lo[loname].items() if loname in lo else []:
-                if isinstance(pdg, int) and is_active(bound, val):
-                    group = 'pdg%d' % abs(pdg)
-                    multiparticles[group] = [abs(pdg), -abs(pdg)]
+            for pdg, val in cls._lo_pdg_dict(lo[loname] if loname in lo else {}).items():
+                if pdg != 'default' and is_active(bound, val):
+                    group, pids = cls._lo_pdg_group(pdg)
+                    multiparticles[group] = pids
                     add_cut('%s-%s' % (group, observable), bound, val)
         if 'mxx_min_pdg' in lo:
-            only_pairs = lo['mxx_only_part_antipart'] if 'mxx_only_part_antipart' in lo else {}
-            for pdg, val in lo['mxx_min_pdg'].items():
-                if isinstance(pdg, int) and is_active('min', val):
-                    group = 'pdg%d' % abs(pdg)
-                    multiparticles[group] = [abs(pdg), -abs(pdg)]
+            only_pairs = cls._lo_pdg_dict(
+                lo['mxx_only_part_antipart'] if 'mxx_only_part_antipart' in lo else {})
+            for pdg, val in cls._lo_pdg_dict(lo['mxx_min_pdg']).items():
+                if pdg != 'default' and is_active('min', val):
+                    group, pids = cls._lo_pdg_group(pdg)
+                    multiparticles[group] = pids
                     # X X~ pairs only, or every pair of the group
-                    observable = 'sfos_pair_mass' if only_pairs.get(
-                        pdg, only_pairs.get('default', False)) else 'pair_mass'
+                    observable = cls._lo_pair_observable(pdg, only_pairs)
                     add_cut('%s-%s' % (group, observable), 'min', val)
 
         for group, build in cls._LO_CUT_GROUPS.items():

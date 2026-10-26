@@ -263,15 +263,34 @@ def _run_mg7_postproc(test, setup_cmds, run_dir, datadir, switch_lines=None,
     if proc.returncode != 0:
         # surface the generate_events output (the log lives in a tmp dir that CI
         # does not upload) so the real crash is visible in the test failure.
-        try:
-            tail = ''.join(open(log).readlines()[-120:])
-        except Exception as err:
-            tail = '(could not read %s: %s)' % (log, err)
-        test.fail('mg7 generate_events failed (rc=%s)\n'
-                  '----- %s (last 120 lines) -----\n%s' % (proc.returncode, log, tail))
+        test.fail('mg7 generate_events failed (rc=%s)\n%s'
+                  % (proc.returncode, _mg7_postproc_report(run_dir)))
     runs = sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*')))
     test.assertTrue(runs, 'no mg7 run directory under %s' % run_dir)
     return runs[0]
+
+
+def _mg7_postproc_report(run_dir, nlines=120):
+    """The content of the Events run directories and the end of the
+    generate_events log of _run_mg7_postproc, for a failure message: both live
+    in a tmp dir that CI does not upload."""
+    import glob
+    def tail(path):
+        try:
+            text = ''.join(open(path).readlines()[-nlines:])
+        except Exception as err:
+            text = '(could not read %s: %s)' % (path, err)
+        return '----- %s (last %d lines) -----\n%s' % (path, nlines, text)
+
+    out = []
+    for run in sorted(glob.glob(pjoin(run_dir, 'Events', 'run_*'))):
+        out.append('----- %s -----\n%s' % (run, '\n'.join(sorted(os.listdir(run)))))
+        # the logs and scripts of the post-processing tools (Pythia8 shower, ...)
+        for path in sorted(glob.glob(pjoin(run, '*.log')) + glob.glob(pjoin(run, '*.sh'))):
+            if not os.path.basename(path).startswith('compile_'):
+                out.append(tail(path))
+    out.append(tail(pjoin(run_dir, 'mg7_postproc.log')))
+    return '\n'.join(out)
 
 
 #===============================================================================
@@ -464,8 +483,19 @@ class TestMECmdShell(unittest.TestCase):
         self.assertGreater(len(set(biased_events_wgts)),1)
         # Make sure that there is significantly more events in the ptj tail
         self.assertGreater(biased_median_ptj,5.0*unbiased_median_ptj)
-        # Make sure that the cross-section is close enough for the bias and unbiased samples
-        self.assertLess((abs(biased_events.cross-unbiased_events.cross)/abs(unbiased_events.cross)),0.1)
+        # Make sure that the cross-section is close enough for the bias and
+        # unbiased samples. The biased sample estimates it from its event
+        # weights, which have a long tail (low ptj events carry large
+        # weights): its statistical error is ~4.5% for 10k events, so a
+        # fixed 10% (~2 sigma) tolerance fails for some seeds.
+        nb = len(biased_events_wgts)
+        mean_wgt = sum(biased_events_wgts) / nb
+        stat_err = math.sqrt(sum((w - mean_wgt)**2 for w in biased_events_wgts)
+                             / (nb - 1) / nb)
+        self.assertLess(abs(biased_events.cross-unbiased_events.cross),
+                        4 * stat_err,
+                        'biased %s +- %s vs unbiased %s' % (biased_events.cross,
+                                                stat_err, unbiased_events.cross))
 
     def test_madspin_gridpack(self):
 
@@ -2052,6 +2082,99 @@ class TestMECmdShell(unittest.TestCase):
                     )
                 )
 
+
+    def test_t_channel_survey_grid(self):
+        """check that refining on the survey grid is not biased for
+        u q > z u q (all channels pure t-channel chains). With the grid
+        defined on [-1,1] while the variables are in [0,1], the survey grid
+        starved the regions close to the kinematic end-points (below the
+        lowest x seen): the rare huge weights from there biased the refine
+        low (96.6 pb, -2.3%, averaged over 4 seeds).
+        Reference (fixed scale 91.188, default PDF) from high statistics
+        (8 iterations up to 2.5M points per channel, pooled over seeds):
+        98.840 +- 0.017 pb; madspace gives 98.78 +- 0.02 pb.
+        Only the grouped output is checked here (the non-grouped one is
+        test_madevent_merged_flavor_nogroup_symmetry)."""
+
+        from unittest import mock
+        gen_ximprove = MECmd.gen_ximprove
+
+        target = 98.84
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('define q = u d')
+        mg_cmd.exec_cmd('generate u q > z u q')
+        mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 10000, user=True)
+        run_card.set('iseed', 21, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('scale', 91.188, user=True)
+        run_card.set('dsqrt_q2fact1', 91.188, user=True)
+        run_card.set('dsqrt_q2fact2', 91.188, user=True)
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        # never split the refine jobs: they then restart from the
+        # survey grid (with a fixed grid)
+        with mock.patch.object(gen_ximprove.gen_ximprove_v4, 'max_request_event', 10**9):
+            self.do('generate_events -f')
+        val = self.cmd_line.results.current['cross']
+        err = self.cmd_line.results.current['error']
+        self.assertLess(abs(val - target) / target, 0.012,
+                        '%s +- %s vs %s' % (val, err, target))
+
+    def test_madevent_merged_flavor_nogroup_symmetry(self):
+        """u q > z u q (q = u d) without subprocess grouping: one
+        flavor-merged P dir (rows u u and u d). The identical-particle swap
+        of the final quarks is a symmetry of the u u row only; symfact.dat
+        used it to fold channel 2 onto channel 1 with weight 2, which made
+        the cross-section ~4.5% high (103.4 pb).
+        Reference (fixed scale 91.188, default PDF): 98.840 +- 0.017 pb
+        from the grouped output at high statistics; madspace 98.78 +- 0.02.
+        The tolerance leaves room for the low bias of the survey grid on
+        t-channel chains (see test_t_channel_survey_grid)."""
+
+        target = 98.84
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('set group_subprocesses False')
+        mg_cmd.exec_cmd('define q = u d')
+        mg_cmd.exec_cmd('generate u q > z u q')
+        mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
+
+        pdirs = [d for d in glob.glob(pjoin(self.run_dir, 'SubProcesses', 'P*'))
+                 if os.path.isdir(d)]
+        self.assertEqual(len(pdirs), 1, pdirs)
+        symfact = open(pjoin(pdirs[0], 'symfact_orig.dat')).read().split()
+        self.assertEqual(symfact[1::2], ['1'] * (len(symfact) // 2))
+
+        run_card = banner.RunCardLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 10000, user=True)
+        run_card.set('iseed', 21, user=True)
+        run_card.set('use_syst', False, user=True)
+        run_card.set('fixed_ren_scale', True, user=True)
+        run_card.set('fixed_fac_scale', True, user=True)
+        run_card.set('scale', 91.188, user=True)
+        run_card.set('dsqrt_q2fact1', 91.188, user=True)
+        run_card.set('dsqrt_q2fact2', 91.188, user=True)
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        self.do('generate_events -f')
+        val = self.cmd_line.results.current['cross']
+        err = self.cmd_line.results.current['error']
+        self.assertLess(abs(val - target) / target, 0.02,
+                        '%s +- %s vs %s' % (val, err, target))
 
     def test_e_p_collision(self):
         """check that e p > e j gives the correct result"""
@@ -3858,9 +3981,29 @@ set draw_rivet_plots True
             precopy_cards=['pythia8'],
             require_tools=('pythia8_path',),
             events=100)
+        report = _mg7_postproc_report(pjoin(self.path, 'MG7_py8'))
 
-        self.assertTrue(glob.glob(pjoin(run, '*hepmc*')),
-                        'mg7 Pythia8 shower produced no HepMC output in %s' % run)
+        hepmc = glob.glob(pjoin(run, '*hepmc*'))
+        self.assertTrue(hepmc, 'mg7 Pythia8 shower produced no HepMC output in %s\n%s'
+                        % (run, report))
+        # a file is not enough: an empty shower leaves one too. Both HepMC2
+        # and HepMC3 ascii start each event with an 'E ' line.
+        import gzip
+        opener = gzip.open if hepmc[0].endswith('.gz') else open
+        with opener(hepmc[0], 'rt') as fsock:
+            nb_showered = sum(1 for line in fsock if line.startswith('E '))
+        self.assertGreater(nb_showered, 0, 'no event in %s\n%s' % (hepmc[0], report))
+
+        # the Results Summary printed after the shower reports the generated
+        # sample (it read 0 events and 0 pb when the mg7 run was booked
+        # without them)
+        log = open(pjoin(self.path, 'MG7_py8', 'mg7_postproc.log')).read()
+        summary = log[log.rfind('Results Summary'):]
+        nb_event = re.search(r'Nb of events :\s+(\d+)', summary)
+        cross = re.search(r'Cross-section :\s+(\S+)', summary)
+        self.assertTrue(nb_event and cross, 'no Results Summary\n%s' % report)
+        self.assertEqual(int(nb_event.group(1)), 100, report)
+        self.assertGreater(float(cross.group(1)), 0., report)
 
     def test_delphes_mg7(self):
         """Delphes detector simulation chained on the mg7 output (Pythia8 shower
@@ -3879,7 +4022,8 @@ set draw_rivet_plots True
             events=100)
 
         self.assertTrue(glob.glob(pjoin(run, '*delphes*')),
-                        'mg7 Delphes run produced no output in %s' % run)
+                        'mg7 Delphes run produced no output in %s\n%s'
+                        % (run, _mg7_postproc_report(pjoin(self.path, 'MG7_delphes'))))
 
     def test_rivet_from_file_mg7(self):
         """Rivet analysis chained on the mg7 output (Pythia8 shower + Rivet)
