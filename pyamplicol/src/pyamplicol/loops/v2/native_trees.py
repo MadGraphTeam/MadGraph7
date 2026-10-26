@@ -70,7 +70,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from pyamplicol.color.contraction_types import NC
 
@@ -667,6 +667,16 @@ def _counterterm_program(
         spec = ("scalar", name, power, grade)
         return coupling_slot((*spec, term_power), spec, term_power)
 
+    def scaled_slot(
+        name: str, power: int, grade: int, term_power: int, scale: str
+    ) -> int:
+        """The slot of a coupling's coefficient times a Weyl line's factor
+        ``kappa`` (``ct_closure.ClosureTerm.scale``, a model expression of
+        the counterterm-lowered model)."""
+
+        spec = ("scaled", name, power, grade, scale)
+        return coupling_slot((*spec, term_power), spec, term_power)
+
     def whole_slot(term: Any, degree: int, expression: Any) -> int:
         """The slot of a whole-rule coefficient's N_c grade ``degree``."""
 
@@ -774,15 +784,15 @@ def _counterterm_program(
             if contributions:
                 terms.append(whole_term(term, contributions))
             continue
-        if item.scale is not None:
-            # A Weyl line's kappa (no loop_sm process has one): the writer
-            # then keeps the plan alone and loads regenerate the slice.
-            raise NotImplementedError(
-                "native counterterm root terms with a Weyl-line factor"
-            )
         name, power = item.coupling
         for grade, _column in layout.get(item.coupling, ()):
-            slot = scalar_slot(name, power, grade, item.power)
+            # A Weyl line's root copy carries its factor kappa (g u > w+ d):
+            # the slot's coupling times kappa.
+            slot = (
+                scalar_slot(name, power, grade, item.power)
+                if item.scale is None
+                else scaled_slot(name, power, grade, item.power, item.scale)
+            )
             contribute(contributions, slot, vector, grade + item.grade, items, power2)
         if contributions:
             terms.append(closure_term(term, contributions))
@@ -1057,12 +1067,12 @@ def _parameter_program(
     counterterm_model = []
     finite: list[int] = []
     helpers: dict[Any, Any] = {}
+    ct_externals: list[Any] = []
     if counterterm_trees is not None:
         ct_rows = counterterm_trees.rows
         fixed = counterterm_trees.fixed
         references = _CountertermReferences.of(slice_, index, symbol_of)
         ct_symbols = symbols.model(ct_rows.compiled.name)
-        ct_externals = []
         for record in ct_rows._records:
             if record["kind"] != "external_parameter":
                 continue
@@ -1182,6 +1192,23 @@ def _parameter_program(
                 output(("counterterm", name, power, grade), lambda v=value: v)
             )
             continue
+        if slot[0] == "scaled":
+            _kind, name, power, grade, scale = slot
+            value = scalar(name, power, grade)
+            counterterm_outputs.append(
+                output(
+                    ("scaled", name, power, grade, scale),
+                    lambda v=value, scale=scale: (
+                        v
+                        * _line_factor(
+                            cast(_CountertermTrees, counterterm_trees).rows.compiled,
+                            scale,
+                            ct_externals,
+                        )
+                    ),
+                )
+            )
+            continue
         _kind, degree, coefficient, scalars = slot
         bound = coefficient.replace_multiple(
             [
@@ -1260,10 +1287,29 @@ def _parameter_program(
                     lambda factor=factor, signs=signs: base(factor, signs),
                 )
             )
-    # Exact masses: external spinors and loop propagators.
-    for _pdg, name in masses:
-        if name not in index:
+    # Masses: external spinors and loop propagators. An external mass that
+    # is an external parameter is exact (an input); one that is a derived
+    # model parameter (loop_sm's MW: irrational) is a carrier output of the
+    # program on the inputs, checked real and positive per point, and its
+    # legs' invariants stay p^2 of the momenta (``assemble._leg_masses``).
+    exact_masses, derived_masses = [], []
+    derived = {
+        record.name
+        for record in slice_.compiled.ir.parameters
+        if record.nature == "internal"
+    }
+    for pdg, name in masses:
+        if name in index:
+            exact_masses.append([int(pdg), index[name]])
+            continue
+        if name not in derived:
             raise NotImplementedError(f"the external mass {name!r} is no input")
+        o = output(
+            ("derived-mass", name),
+            lambda name=name: _derived_mass(slice_.compiled, name, index, externals),
+        )
+        positive.append(o)
+        derived_masses.append([int(pdg), o])
     plan_masses = []
     for mass in exporter.masses:
         if mass.massless:
@@ -1312,10 +1358,89 @@ def _parameter_program(
         "finite": finite,
         "constants": constants,
         "positive": sorted(set(positive)),
-        "masses": [[int(pdg), index[name]] for pdg, name in masses],
+        "masses": exact_masses,
         "plan_masses": plan_masses,
     }
+    if derived_masses:
+        # Written only when present: an older native refuses the record
+        # (unknown field) instead of reading the legs as massless.
+        record["derived_masses"] = derived_masses
     return record, bytes(evaluator.save())
+
+
+def _line_factor(compiled: Any, scale: str, externals: Sequence[Any]) -> Any:
+    """A Weyl line's factor ``kappa`` (``ct_closure.ClosureTerm.scale``, a
+    payload expression of the counterterm-lowered model, which
+    ``ct_closure.model_value`` evaluates in Python) on the parameter
+    program's inputs: its internal parameters resolved
+    (``ct_sites.resolved_internal_parameters``), its external ones replaced
+    as the counterterm program's (``externals``); one they do not bind is
+    refused."""
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    from .ct_sites import resolved_internal_parameters
+
+    model_symbols = symbols.model(compiled.name)
+    value = E(scale)
+    for record in compiled.ir.parameters:
+        payload = E(f"UFO::{{}}::{record.name}")
+        if value.contains(payload):
+            value = value.replace(
+                payload, E(model_symbols.symbol(record.name).to_canonical_string())
+            )
+    value = resolved_internal_parameters(compiled, value).replace_multiple(
+        list(externals)
+    )
+    missing = sorted(
+        record.name
+        for record in compiled.ir.parameters
+        if value.contains(E(model_symbols.symbol(record.name).to_canonical_string()))
+    )
+    if missing:
+        raise NotImplementedError(
+            f"a Weyl line's factor reads {missing}, which the counterterm "
+            "program has not"
+        )
+    return value
+
+
+def _derived_mass(
+    compiled: Any, name: str, index: Mapping[str, int], externals: Sequence[Any]
+) -> Any:
+    """The derived mass parameter ``name`` on the parameter program's
+    inputs: its resolved definition (``ct_sites.resolved_internal_parameters``:
+    in the model's external parameters alone), each external parameter
+    replaced by its input (``externals``); one the tree program has not is
+    refused."""
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    from .ct_sites import resolved_internal_parameters
+
+    model_symbols = symbols.model(compiled.name)
+
+    def symbol(parameter: str) -> Any:
+        return E(model_symbols.symbol(parameter).to_canonical_string())
+
+    value = resolved_internal_parameters(compiled, symbol(name))
+    missing = sorted(
+        record.name
+        for record in compiled.ir.parameters
+        if record.nature == "external"
+        and record.name not in index
+        and value.contains(symbol(record.name))
+    )
+    if missing:
+        raise NotImplementedError(
+            f"the external mass {name!r} reads {missing}, which the tree "
+            "program has not"
+        )
+    return value.replace_multiple(list(externals))
 
 
 # ------------------------------------------------- interaction-program kernels

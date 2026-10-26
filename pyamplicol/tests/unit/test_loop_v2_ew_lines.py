@@ -737,15 +737,30 @@ def test_complex_ckm_vertices_are_read_through_their_conjugate_rule(
     _assert_form_factor(slice_, [_two_to_two("0", "0")], ["1000000"])
 
 
-@pytest.mark.loop_physics
-@pytest.mark.parametrize("name", ["udx_epve", "emu_emu"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        *(
+            pytest.param(name, marks=pytest.mark.loop_physics)
+            for name in ("udx_epve", "emu_emu", "udx_wpg", "gu_wpd")
+        ),
+        *(
+            pytest.param(name, marks=pytest.mark.loop_nightly)
+            for name in ("gb_twm", "uux_wpwm", "bbx_wpwm")
+        ),
+    ],
+)
 def test_native_inputs_equal_the_python_inputs(
     loop_sm_compiled_model, loop_native, name
 ):
     """The native per-point inputs (``NativeExecutor(inputs="native")``: tree
     program, Born and counterterm root closures) equal the Python inputs on
-    the conjugate rule's root terms (u d~ > e+ ve) and on a lepton line
-    closing at the root (e- u > e- u), in binary64."""
+    the conjugate rule's root terms (u d~ > e+ ve), on a lepton line closing
+    at the root (e- u > e- u), on external W bosons (loop_sm's MW is a
+    derived parameter: the parameter program forms it per point and the W
+    legs' invariants stay p^2, ``native_trees._derived_mass``) and on a Weyl
+    line's factor kappa at a counterterm root copy (g u > w+ d: a scaled
+    coupling slot, ``native_trees._line_factor``), in binary64."""
 
     from pyamplicol.loops.v2.plan_export import NativeExecutor
 
@@ -760,7 +775,10 @@ def test_native_inputs_equal_the_python_inputs(
     )
     native = NativeExecutor(slice_, forward=False, inputs="native")
     python = NativeExecutor(slice_, forward=False, exported=native.exported)
-    points = [entry["point"], _massless_points()[0][0]]
+    points = [entry["point"]]
+    if name in ("udx_epve", "emu_emu"):
+        # A second, massless point (all four legs massless).
+        points.append(_massless_points()[0][0])
     scales = [LEGACY["mu_r2"]] * len(points)
     mine = native.evaluate(points, scales, parameters=PARAMETERS)
     theirs = python.evaluate(points, scales, parameters=PARAMETERS)

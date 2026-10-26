@@ -266,6 +266,12 @@ struct ParameterFile {
     positive: Vec<usize>,
     /// (PDG code, external index) of every massive external particle.
     masses: Vec<(i32, usize)>,
+    /// (PDG code, output index) of every massive external particle whose
+    /// mass is a derived model parameter (e.g. loop_sm's MW): a carrier
+    /// value of the program, real and positive (also in `positive`). Its
+    /// legs' invariants stay p^2 of the momenta (no exact mass to bind).
+    #[serde(default)]
+    derived_masses: Vec<(i32, usize)>,
     /// Per plan mass: the external index of its mass parameter (squared),
     /// or none (massless).
     plan_masses: Vec<Option<usize>>,
@@ -531,6 +537,7 @@ struct Parameters {
     constants: Vec<usize>,
     positive: Vec<usize>,
     masses: Vec<(i32, usize)>,
+    derived_masses: Vec<(i32, usize)>,
     plan_masses: Vec<Option<usize>>,
     scale: Option<usize>,
 }
@@ -683,6 +690,9 @@ pub struct TreeBatch<T> {
     pub model: Vec<Vec<T>>,
     /// Exact masses of massive external particles by PDG code.
     pub masses: BTreeMap<i32, Rational>,
+    /// Carrier masses of massive external particles whose mass is a derived
+    /// model parameter, by PDG code (the parameter program's outputs).
+    pub derived_masses: BTreeMap<i32, T>,
     /// Couplings per (name, N_c grade) slot.
     pub couplings: Vec<Complex<T>>,
     /// Per point the counterterm and field couplings per (name, epsilon
@@ -1192,7 +1202,16 @@ fn load_parameters(
             .chain(&file.finite)
             .chain(&file.constants)
             .chain(&file.positive)
+            .chain(file.derived_masses.iter().map(|(_, o)| o))
             .all(|&o| output(o))
+            && file
+                .derived_masses
+                .iter()
+                .all(|(_, o)| file.positive.contains(o))
+            && file
+                .derived_masses
+                .iter()
+                .all(|(pdg, _)| !file.masses.iter().any(|(exact, _)| exact == pdg))
             && file.masses.iter().all(|&(_, i)| i < inputs)
             && file.plan_masses.iter().flatten().all(|&i| i < inputs)
             && file.scale.is_none_or(|i| i < inputs)
@@ -1241,6 +1260,7 @@ fn load_parameters(
         constants: file.constants,
         positive: file.positive,
         masses: file.masses,
+        derived_masses: file.derived_masses,
         plan_masses: file.plan_masses,
         scale: file.scale,
     })
@@ -1897,16 +1917,23 @@ impl TreeProgram {
             .iter()
             .map(|&(pdg, index)| (pdg, values[index].clone()))
             .collect();
+        let derived: Vec<usize> = program.derived_masses.iter().map(|&(_, o)| o).collect();
+        let derived_masses: BTreeMap<i32, T> = program
+            .derived_masses
+            .iter()
+            .zip(shared(
+                &derived,
+                "the points of one batch need equal external masses",
+            )?)
+            .map(|(&(pdg, _), value)| (pdg, value.re))
+            .collect();
+        let unbound: Vec<i32> = derived_masses.keys().copied().collect();
         Ok(BoundParameters {
-            leg_masses: self
-                .sources
-                .leg_masses(self.legs, &masses)?
-                .into_iter()
-                .map(Some)
-                .collect(),
+            leg_masses: self.sources.leg_masses(self.legs, &masses, &unbound)?,
             trees: TreeBatch {
                 model,
                 masses,
+                derived_masses,
                 couplings,
                 counterterm_couplings,
                 counterterm_model,
@@ -2270,6 +2297,12 @@ impl TreeProgram {
             .masses
             .iter()
             .map(|(&pdg, mass)| (pdg, cast(zero, mass)))
+            .chain(
+                batch
+                    .derived_masses
+                    .iter()
+                    .map(|(&pdg, mass)| (pdg, mass.clone())),
+            )
             .collect();
         // The tree state of every point.
         let layout = StateLayout {
