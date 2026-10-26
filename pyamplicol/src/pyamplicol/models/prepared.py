@@ -1151,6 +1151,12 @@ class PreparedKernelPack:
             default=None,
         )
     )
+    _recurrence_template_catalog: RecurrenceTemplateCatalog | None = field(
+        init=False,
+        repr=False,
+        compare=False,
+        default=None,
+    )
 
     def __post_init__(self) -> None:
         if self.backend not in _BACKENDS:
@@ -1412,12 +1418,18 @@ class PreparedKernelPack:
         recurrence_template = self.recurrence_template
         if recurrence_template is None:
             return None
+        # The catalog is immutable and model-wide, but rebuilding it is costly
+        cached = self._recurrence_template_catalog
+        if cached is not None:
+            return cached
         from .recurrence_template import RecurrenceTemplateCatalog
 
         thawed = _thaw_json(recurrence_template)
-        return RecurrenceTemplateCatalog.from_dict(
+        catalog = RecurrenceTemplateCatalog.from_dict(
             _mapping(thawed, "kernel_pack.recurrence_template")
         )
+        object.__setattr__(self, "_recurrence_template_catalog", catalog)
+        return catalog
 
     @property
     def recurrence_direct_template_catalog(

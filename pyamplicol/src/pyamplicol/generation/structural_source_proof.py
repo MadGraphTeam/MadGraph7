@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,24 @@ SEMANTIC_MAP_DOMAINS = {
 }
 # Compiler executables record provenance; they are not members of the artifact payload.
 _DIAGNOSTIC_PATH_FIELDS = frozenset({"compiler_path"})
+
+
+@dataclass
+class StructuralProofCache:
+    """Payload records shared by the proofs of one staged artifact.
+
+    Only valid while the referenced files do not change; existing paths are
+    cached, missing ones are checked again.
+    """
+
+    # loose path -> (object record, nested payload paths)
+    loose: dict[str, tuple[dict[str, object], tuple[str, ...]]] = field(
+        default_factory=dict
+    )
+    # (container path, index sha256) -> (member records, container record)
+    containers: dict[
+        tuple[str, str], tuple[dict[str, dict[str, object]], dict[str, object]]
+    ] = field(default_factory=dict)
 
 
 def canonical_sha256(domain: str, value: object) -> str:
@@ -219,6 +238,29 @@ def execution_lanes(
     return tuple(lanes)
 
 
+def _loose_object(
+    root: Path,
+    loose: str,
+) -> tuple[dict[str, object], tuple[str, ...]]:
+    """The inventory record of a loose payload and the paths it references."""
+
+    path = root / loose
+    record: dict[str, object] = {
+        "path": loose,
+        "sha256": sha256_file(path),
+        "size_bytes": path.stat().st_size,
+    }
+    if path.suffix != ".json":
+        return record, ()
+    try:
+        nested = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(
+            f"referenced lane manifest is not valid JSON: {loose}"
+        ) from error
+    return record, _payload_paths(nested)
+
+
 def _resolve_loose_payload(
     root: Path,
     process_id: str,
@@ -243,13 +285,25 @@ def build_generation_structural_proof(
     execution: Mapping[str, object],
     evaluator_container_path: str | None,
     evaluator_container_index_sha256: str | None,
+    cache: StructuralProofCache | None = None,
 ) -> dict[str, object]:
-    """Build exact source/lane evidence from the private artifact staging tree."""
+    """Build exact source/lane evidence from the private artifact staging tree.
+
+    ``cache`` shares the records of payloads common to the processes of one
+    staged artifact.
+    """
 
     lanes = execution_lanes(execution)
     member_records: dict[str, dict[str, object]] = {}
     container_record: dict[str, object] | None = None
-    if evaluator_container_path is not None:
+    container_key = (
+        None
+        if evaluator_container_path is None or evaluator_container_index_sha256 is None
+        else (evaluator_container_path, evaluator_container_index_sha256)
+    )
+    if cache is not None and container_key in cache.containers:
+        member_records, container_record = cache.containers[container_key]
+    elif evaluator_container_path is not None:
         container = artifact_root / evaluator_container_path
         if not container.is_file() or container.is_symlink():
             raise ValueError("evaluator container is absent during structural proof")
@@ -275,6 +329,8 @@ def build_generation_structural_proof(
                 "index_sha256": reader.index.index_sha256,
                 "member_count": len(reader.members),
             }
+        if cache is not None and container_key is not None:
+            cache.containers[container_key] = (member_records, container_record)
 
     loose_objects: dict[str, dict[str, object]] = {
         execution_path: {
@@ -299,7 +355,10 @@ def build_generation_structural_proof(
                 lane_members.add(relative)
                 used_members.add(relative)
                 return
-            loose = _resolve_loose_payload(artifact_root, process_id, relative)
+            if cache is not None and relative in cache.loose:
+                loose: str | None = relative
+            else:
+                loose = _resolve_loose_payload(artifact_root, process_id, relative)
             if loose is None:
                 # Some manifest paths are logical roots interpreted by the
                 # runtime rather than physical files.  Preserve them in the
@@ -308,24 +367,15 @@ def build_generation_structural_proof(
             if loose in lane_loose:
                 return
             lane_loose.add(loose)
-            path = artifact_root / loose
-            loose_objects.setdefault(
-                loose,
-                {
-                    "path": loose,
-                    "sha256": sha256_file(path),
-                    "size_bytes": path.stat().st_size,
-                },
-            )
-            if path.suffix == ".json":
-                try:
-                    nested = json.loads(path.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError) as error:
-                    raise ValueError(
-                        f"referenced lane manifest is not valid JSON: {loose}"
-                    ) from error
-                for nested_relative in _payload_paths(nested):
-                    include(nested_relative, lane_loose, lane_members)
+            cached = None if cache is None else cache.loose.get(loose)
+            if cached is None:
+                cached = _loose_object(artifact_root, loose)
+                if cache is not None:
+                    cache.loose[loose] = cached
+            record, nested_paths = cached
+            loose_objects.setdefault(loose, dict(record))
+            for nested_relative in nested_paths:
+                include(nested_relative, lane_loose, lane_members)
 
         for relative in _payload_paths(lane):
             include(relative, referenced_loose, referenced_members)
@@ -641,6 +691,7 @@ __all__ = [
     "ROLE",
     "SCHEMA",
     "SEMANTIC_MAP_DOMAINS",
+    "StructuralProofCache",
     "build_generation_structural_proof",
     "canonical_sha256",
     "execution_lanes",

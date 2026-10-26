@@ -118,7 +118,10 @@ from .recurrence_schedule_sharing import (
 from .structural_source_proof import (
     ROLE as STRUCTURAL_SOURCE_PROOF_ROLE,
 )
-from .structural_source_proof import build_generation_structural_proof
+from .structural_source_proof import (
+    StructuralProofCache,
+    build_generation_structural_proof,
+)
 from .validation import ValidationPointRecord, validation_point_map
 
 if TYPE_CHECKING:
@@ -1151,6 +1154,7 @@ def write_schema_v3_artifact(
             staged_root = builder.root
             if staged_root is None:  # pragma: no cover - builder invariant
                 raise RuntimeError("artifact builder is not active")
+            proof_cache = StructuralProofCache()
             for process_record in process_records:
                 process_id = str(process_record["id"])
                 execution_path = f"processes/{process_id}/execution.json"
@@ -1174,6 +1178,7 @@ def write_schema_v3_artifact(
                     execution=execution_payload,
                     evaluator_container_path=evaluator_container_path,
                     evaluator_container_index_sha256=(evaluator_container_index_sha256),
+                    cache=proof_cache,
                 )
                 builder.add_json(
                     f"processes/{process_id}/structural-source-proof.json",
