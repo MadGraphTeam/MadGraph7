@@ -800,79 +800,93 @@ fn input<S: Stream>(s: &mut S, [kind, a, b]: [Col; 3], item: &mut Input) -> Rust
     num(s, b, y)
 }
 
+/// The member's traversal of a plan. Every record is destructured whole (no
+/// `..`), so a field added to the loader's file form does not compile until
+/// the member encodes it.
 fn visit_plan<S: Stream>(s: &mut S, file: &mut PlanFile) -> RusticolResult<()> {
-    num(s, Col::Schema, &mut file.schema)?;
-    num(s, Col::Legs, &mut file.legs)?;
-    num(s, Col::Rows, &mut file.rows)?;
-    list(s, Col::HelicityLegs, &mut file.helicities, |s, leg| {
+    let PlanFile {
+        schema,
+        legs,
+        rows,
+        helicities,
+        columns,
+        average,
+        born_components,
+        constants,
+        masses,
+        block_rows,
+        kernels,
+        contents,
+        factors,
+        seed_classes,
+        seeds,
+        families,
+        forward,
+        merged,
+        column_rows,
+    } = file;
+    num(s, Col::Schema, schema)?;
+    num(s, Col::Legs, legs)?;
+    num(s, Col::Rows, rows)?;
+    list(s, Col::HelicityLegs, helicities, |s, leg| {
         nums(s, Col::HelicityLen, Col::Helicity, leg)
     })?;
-    num(s, Col::Columns, &mut file.columns)?;
-    num(s, Col::Average, &mut file.average)?;
-    num(s, Col::BornComponents, &mut file.born_components)?;
-    num(s, Col::Constants, &mut file.constants)?;
-    num(s, Col::Masses, &mut file.masses)?;
-    nums(s, Col::BlockRowLen, Col::BlockRow, &mut file.block_rows)?;
-    list(s, Col::KernelLen, &mut file.kernels, visit_kernel)?;
-    list(s, Col::ContentLen, &mut file.contents, visit_content)?;
-    list(
-        s,
-        Col::FactorLen,
-        &mut file.factors,
-        |s, (content, shift)| {
-            num(s, Col::FactorContent, content)?;
-            num(s, Col::FactorShift, shift)
-        },
-    )?;
-    s.records(Col::SeedClassLen, &mut file.seed_classes, |s, seed| {
-        list(s, Col::SeedColumnLen, &mut seed.columns, |s, column| {
-            list(s, Col::SeedWeightLen, column, |s, (born, re, im)| {
-                num(s, Col::SeedWeightBorn, born)?;
-                s.string(Col::SeedWeightRe, re)?;
-                s.string(Col::SeedWeightIm, im)
-            })
-        })
+    num(s, Col::Columns, columns)?;
+    num(s, Col::Average, average)?;
+    num(s, Col::BornComponents, born_components)?;
+    num(s, Col::Constants, constants)?;
+    num(s, Col::Masses, masses)?;
+    nums(s, Col::BlockRowLen, Col::BlockRow, block_rows)?;
+    list(s, Col::KernelLen, kernels, visit_kernel)?;
+    list(s, Col::ContentLen, contents, visit_content)?;
+    list(s, Col::FactorLen, factors, |s, (content, shift)| {
+        num(s, Col::FactorContent, content)?;
+        num(s, Col::FactorShift, shift)
     })?;
-    s.records(Col::SeedKeyLen, &mut file.seeds, |s, key| {
-        list(
-            s,
-            Col::SeedKeyClassLen,
-            &mut key.classes,
-            |s, (class, re, im)| {
-                num(s, Col::SeedKeyClass, class)?;
-                s.string(Col::SeedKeyRe, re)?;
-                s.string(Col::SeedKeyIm, im)
-            },
-        )
-    })?;
-    s.records(Col::FamilyLen, &mut file.families, visit_family)?;
-    option(s, Col::ForwardFlag, &mut file.forward, |s, forward| {
-        list(s, Col::StateLen, &mut forward.states, visit_state)
-    })?;
-    option(s, Col::MergedFlag, &mut file.merged, visit_merged)?;
-    option(
-        s,
-        Col::ColumnRowsFlag,
-        &mut file.column_rows,
-        |s, columns| {
-            list(s, Col::ColumnRowsLen, columns, |s, rows| {
-                option(s, Col::ColumnRowFlag, rows, |s, rows| {
-                    nums(s, Col::ColumnRowLen, Col::ColumnRow, rows)
+    s.records(
+        Col::SeedClassLen,
+        seed_classes,
+        |s, SeedFile { columns }| {
+            list(s, Col::SeedColumnLen, columns, |s, column| {
+                list(s, Col::SeedWeightLen, column, |s, (born, re, im)| {
+                    num(s, Col::SeedWeightBorn, born)?;
+                    s.string(Col::SeedWeightRe, re)?;
+                    s.string(Col::SeedWeightIm, im)
                 })
             })
         },
-    )
+    )?;
+    s.records(Col::SeedKeyLen, seeds, |s, SeedKeyFile { classes }| {
+        list(s, Col::SeedKeyClassLen, classes, |s, (class, re, im)| {
+            num(s, Col::SeedKeyClass, class)?;
+            s.string(Col::SeedKeyRe, re)?;
+            s.string(Col::SeedKeyIm, im)
+        })
+    })?;
+    s.records(Col::FamilyLen, families, visit_family)?;
+    option(s, Col::ForwardFlag, forward, |s, ForwardFile { states }| {
+        list(s, Col::StateLen, states, visit_state)
+    })?;
+    option(s, Col::MergedFlag, merged, visit_merged)?;
+    option(s, Col::ColumnRowsFlag, column_rows, |s, columns| {
+        list(s, Col::ColumnRowsLen, columns, |s, rows| {
+            option(s, Col::ColumnRowFlag, rows, |s, rows| {
+                nums(s, Col::ColumnRowLen, Col::ColumnRow, rows)
+            })
+        })
+    })
 }
 
 fn visit_kernel<S: Stream>(s: &mut S, kernel: &mut KernelFile) -> RusticolResult<()> {
-    list(s, Col::KernelInputLen, &mut kernel.inputs, |s, item| {
+    let KernelFile { inputs, outputs } = kernel;
+    list(s, Col::KernelInputLen, inputs, |s, item| {
         input(
             s,
             [Col::KernelInputKind, Col::KernelInputA, Col::KernelInputB],
             item,
         )
     })?;
-    list(s, Col::KernelOutputLen, &mut kernel.outputs, |s, terms| {
+    list(s, Col::KernelOutputLen, outputs, |s, terms| {
         list(s, Col::KernelTermLen, terms, |s, (constant, monomial)| {
             num(s, Col::KernelTermConstant, constant)?;
             list(s, Col::MonomialLen, monomial, |s, (input, power)| {
@@ -884,45 +898,55 @@ fn visit_kernel<S: Stream>(s: &mut S, kernel: &mut KernelFile) -> RusticolResult
 }
 
 fn visit_content<S: Stream>(s: &mut S, content: &mut ContentFile) -> RusticolResult<()> {
-    num(s, Col::ContentDIn, &mut content.d_in)?;
-    num(s, Col::ContentDOut, &mut content.d_out)?;
-    num(s, Col::ContentDegree, &mut content.degree)?;
-    num(s, Col::ContentRows, &mut content.rows)?;
-    num(s, Col::ContentMask, &mut content.mask)?;
-    let rows = &mut content.row_helicities;
+    let ContentFile {
+        d_in,
+        d_out,
+        degree,
+        rows,
+        mask,
+        row_helicities,
+        fused,
+        terms,
+    } = content;
+    num(s, Col::ContentDIn, d_in)?;
+    num(s, Col::ContentDOut, d_out)?;
+    num(s, Col::ContentDegree, degree)?;
+    num(s, Col::ContentRows, rows)?;
+    num(s, Col::ContentMask, mask)?;
     shared(
         s,
         Col::RowHelicityRef,
         Col::RowHelicityLen,
-        rows,
+        row_helicities,
         |s, row| nums(s, Col::RowHelicityLegs, Col::RowHelicity, row),
     )?;
-    shared(
-        s,
-        Col::FusedRef,
-        Col::FusedLen,
-        &mut content.fused,
-        |s, entry| {
-            const FUSED: [Col; 6] = [
-                Col::Fused0,
-                Col::Fused1,
-                Col::Fused2,
-                Col::Fused3,
-                Col::Fused4,
-                Col::Fused5,
-            ];
-            for (col, value) in FUSED.into_iter().zip(entry.iter_mut()) {
-                num(s, col, value)?;
-            }
-            Ok(())
-        },
-    )?;
-    list(s, Col::TermLen, &mut content.terms, visit_term)
+    shared(s, Col::FusedRef, Col::FusedLen, fused, |s, entry| {
+        const FUSED: [Col; 6] = [
+            Col::Fused0,
+            Col::Fused1,
+            Col::Fused2,
+            Col::Fused3,
+            Col::Fused4,
+            Col::Fused5,
+        ];
+        for (col, value) in FUSED.into_iter().zip(entry.iter_mut()) {
+            num(s, col, value)?;
+        }
+        Ok(())
+    })?;
+    list(s, Col::TermLen, terms, visit_term)
 }
 
 fn visit_term<S: Stream>(s: &mut S, term: &mut TermFile) -> RusticolResult<()> {
-    nums(s, Col::SlotLen, Col::Slot, &mut term.slots)?;
-    let dimensions = &mut term.dimensions;
+    let TermFile {
+        slots,
+        dimensions,
+        bindings,
+        vertex,
+        split,
+        rows,
+    } = term;
+    nums(s, Col::SlotLen, Col::Slot, slots)?;
     shared(
         s,
         Col::DimensionRef,
@@ -930,10 +954,10 @@ fn visit_term<S: Stream>(s: &mut S, term: &mut TermFile) -> RusticolResult<()> {
         dimensions,
         |s, d| num(s, Col::Dimension, d),
     )?;
-    list(s, Col::BindingLen, &mut term.bindings, visit_binding)?;
-    num(s, Col::TermVertex, &mut term.vertex)?;
-    list(s, Col::SplitLen, &mut term.split, visit_split)?;
-    list(s, Col::TermRowLen, &mut term.rows, |s, (row, blocks)| {
+    list(s, Col::BindingLen, bindings, visit_binding)?;
+    num(s, Col::TermVertex, vertex)?;
+    list(s, Col::SplitLen, split, visit_split)?;
+    list(s, Col::TermRowLen, rows, |s, (row, blocks)| {
         num(s, Col::TermRow, row)?;
         nums(s, Col::TermRowBlockLen, Col::TermRowBlock, blocks)
     })
@@ -945,8 +969,12 @@ fn visit_binding<S: Stream>(s: &mut S, binding: &mut BindingFile) -> RusticolRes
         Col::BindingInputA,
         Col::BindingInputB,
     ];
-    num(s, Col::BindingKernel, &mut binding.kernel)?;
-    let inputs = &mut binding.inputs;
+    let BindingFile {
+        kernel,
+        inputs,
+        entries,
+    } = binding;
+    num(s, Col::BindingKernel, kernel)?;
     shared(
         s,
         Col::BindingInputRef,
@@ -954,7 +982,6 @@ fn visit_binding<S: Stream>(s: &mut S, binding: &mut BindingFile) -> RusticolRes
         inputs,
         |s, item| input(s, INPUT, item),
     )?;
-    let entries = &mut binding.entries;
     shared(
         s,
         Col::BindingEntryRef,
@@ -966,8 +993,12 @@ fn visit_binding<S: Stream>(s: &mut S, binding: &mut BindingFile) -> RusticolRes
 
 fn visit_split<S: Stream>(s: &mut S, split: &mut SplitFile) -> RusticolResult<()> {
     const INPUT: [Col; 3] = [Col::SplitInputKind, Col::SplitInputA, Col::SplitInputB];
-    num(s, Col::SplitKernel, &mut split.kernel)?;
-    let inputs = &mut split.inputs;
+    let SplitFile {
+        kernel,
+        inputs,
+        entries,
+    } = split;
+    num(s, Col::SplitKernel, kernel)?;
     shared(
         s,
         Col::SplitInputRef,
@@ -975,7 +1006,6 @@ fn visit_split<S: Stream>(s: &mut S, split: &mut SplitFile) -> RusticolResult<()
         inputs,
         |s, item| input(s, INPUT, item),
     )?;
-    let entries = &mut split.entries;
     shared(
         s,
         Col::SplitEntryRef,
@@ -989,166 +1019,197 @@ fn visit_split<S: Stream>(s: &mut S, split: &mut SplitFile) -> RusticolResult<()
 }
 
 fn visit_family<S: Stream>(s: &mut S, family: &mut FamilyFile) -> RusticolResult<()> {
-    list(
-        s,
-        Col::SequenceLen,
-        &mut family.sequence,
-        |s, (mask, mass)| {
-            num(s, Col::SequenceMask, mask)?;
-            num(s, Col::SequenceMass, mass)
-        },
-    )?;
-    num(s, Col::FamilyRank, &mut family.rank)?;
-    nums(s, Col::FamilyOrderLen, Col::FamilyOrder, &mut family.orders)?;
-    list(
-        s,
-        Col::LeafLen,
-        &mut family.leaves,
-        |s, leaf: &mut LeafFile| {
-            num(s, Col::LeafSeed, &mut leaf.seed)?;
-            s.string(Col::LeafWeight, &mut leaf.weight)
-        },
-    )?;
-    list(
-        s,
-        Col::StepLen,
-        &mut family.steps,
-        |s, step: &mut StepFile| {
-            flag(s, Col::StepSeeded, &mut step.seeded)?;
-            num(s, Col::StepTrace, &mut step.trace)?;
-            num(s, Col::StepOut, &mut step.out)?;
-            option(s, Col::StepRowsFlag, &mut step.rows, |s, rows| {
-                num(s, Col::StepRows, rows)
-            })?;
-            num(s, Col::StepDAlpha, &mut step.d_alpha)?;
-            num(s, Col::StepDOut, &mut step.d_out)?;
-            num(s, Col::StepDegree, &mut step.degree)?;
-            num(s, Col::StepRankIn, &mut step.rank_in)?;
-            list(
-                s,
-                Col::EdgeLen,
-                &mut step.edges,
-                |s, edge: &mut EdgeFile| {
-                    num(s, Col::EdgeLeaf, &mut edge.leaf)?;
-                    num(s, Col::EdgeChild, &mut edge.child)?;
-                    num(s, Col::EdgeFactor, &mut edge.factor)?;
-                    option(s, Col::EdgeLinksFlag, &mut edge.links, |s, links| {
-                        nums(s, Col::EdgeLinkLen, Col::EdgeLink, links)
-                    })
-                },
-            )
-        },
-    )
+    let FamilyFile {
+        sequence,
+        rank,
+        orders,
+        leaves,
+        steps,
+    } = family;
+    list(s, Col::SequenceLen, sequence, |s, (mask, mass)| {
+        num(s, Col::SequenceMask, mask)?;
+        num(s, Col::SequenceMass, mass)
+    })?;
+    num(s, Col::FamilyRank, rank)?;
+    nums(s, Col::FamilyOrderLen, Col::FamilyOrder, orders)?;
+    list(s, Col::LeafLen, leaves, |s, LeafFile { seed, weight }| {
+        num(s, Col::LeafSeed, seed)?;
+        s.string(Col::LeafWeight, weight)
+    })?;
+    list(s, Col::StepLen, steps, visit_step)
+}
+
+fn visit_step<S: Stream>(s: &mut S, step: &mut StepFile) -> RusticolResult<()> {
+    let StepFile {
+        seeded,
+        trace,
+        out,
+        d_alpha,
+        d_out,
+        degree,
+        rank_in,
+        edges,
+        rows,
+    } = step;
+    flag(s, Col::StepSeeded, seeded)?;
+    num(s, Col::StepTrace, trace)?;
+    num(s, Col::StepOut, out)?;
+    option(s, Col::StepRowsFlag, rows, |s, rows| {
+        num(s, Col::StepRows, rows)
+    })?;
+    num(s, Col::StepDAlpha, d_alpha)?;
+    num(s, Col::StepDOut, d_out)?;
+    num(s, Col::StepDegree, degree)?;
+    num(s, Col::StepRankIn, rank_in)?;
+    list(s, Col::EdgeLen, edges, |s, edge: &mut EdgeFile| {
+        let EdgeFile {
+            leaf,
+            child,
+            factor,
+            links,
+        } = edge;
+        num(s, Col::EdgeLeaf, leaf)?;
+        num(s, Col::EdgeChild, child)?;
+        num(s, Col::EdgeFactor, factor)?;
+        option(s, Col::EdgeLinksFlag, links, |s, links| {
+            nums(s, Col::EdgeLinkLen, Col::EdgeLink, links)
+        })
+    })
 }
 
 fn visit_state<S: Stream>(s: &mut S, state: &mut StateFile) -> RusticolResult<()> {
-    num(s, Col::StateParent, &mut state.parent)?;
-    num(s, Col::StateFactor, &mut state.factor)?;
-    flag(s, Col::StateSeeded, &mut state.seeded)?;
-    num(s, Col::StateRows, &mut state.rows)?;
-    num(s, Col::StateDAlpha, &mut state.d_alpha)?;
-    num(s, Col::StateDOut, &mut state.d_out)?;
-    num(s, Col::StateDegree, &mut state.degree)?;
-    num(s, Col::StateRank, &mut state.rank)?;
-    nums(s, Col::StateLinkLen, Col::StateLink, &mut state.links)?;
+    let StateFile {
+        parent,
+        factor,
+        seeded,
+        rows,
+        d_alpha,
+        d_out,
+        degree,
+        rank,
+        links,
+        closures,
+    } = state;
+    num(s, Col::StateParent, parent)?;
+    num(s, Col::StateFactor, factor)?;
+    flag(s, Col::StateSeeded, seeded)?;
+    num(s, Col::StateRows, rows)?;
+    num(s, Col::StateDAlpha, d_alpha)?;
+    num(s, Col::StateDOut, d_out)?;
+    num(s, Col::StateDegree, degree)?;
+    num(s, Col::StateRank, rank)?;
+    nums(s, Col::StateLinkLen, Col::StateLink, links)?;
     list(
         s,
         Col::ClosureLen,
-        &mut state.closures,
+        closures,
         |s, closure: &mut ClosureFile| {
-            num(s, Col::ClosureFamily, &mut closure.family)?;
-            num(s, Col::ClosureAccumulator, &mut closure.accumulator)?;
-            num(s, Col::ClosureSeed, &mut closure.seed)?;
-            s.string(Col::ClosureWeight, &mut closure.weight)?;
-            nums(s, Col::ClosureRowLen, Col::ClosureRow, &mut closure.rows)?;
-            option(
-                s,
-                Col::ClosureRelabelFlag,
-                &mut closure.relabel,
-                |s, (sign, mask)| {
-                    num(s, Col::ClosureRelabelSign, sign)?;
-                    num(s, Col::ClosureRelabelMask, mask)
-                },
-            )
+            let ClosureFile {
+                family,
+                accumulator,
+                seed,
+                weight,
+                rows,
+                relabel,
+            } = closure;
+            num(s, Col::ClosureFamily, family)?;
+            num(s, Col::ClosureAccumulator, accumulator)?;
+            num(s, Col::ClosureSeed, seed)?;
+            s.string(Col::ClosureWeight, weight)?;
+            nums(s, Col::ClosureRowLen, Col::ClosureRow, rows)?;
+            option(s, Col::ClosureRelabelFlag, relabel, |s, (sign, mask)| {
+                num(s, Col::ClosureRelabelSign, sign)?;
+                num(s, Col::ClosureRelabelMask, mask)
+            })
         },
     )
 }
 
 fn visit_merged<S: Stream>(s: &mut S, merged: &mut MergedFile) -> RusticolResult<()> {
-    nums(
-        s,
-        Col::MergedFamilyLen,
-        Col::MergedFamily,
-        &mut merged.families,
-    )?;
+    let MergedFile {
+        families,
+        entries,
+        states,
+        chunks,
+    } = merged;
+    nums(s, Col::MergedFamilyLen, Col::MergedFamily, families)?;
     list(
         s,
         Col::EntryLen,
-        &mut merged.entries,
-        |s, entry: &mut EntryFile| {
-            num(s, Col::EntrySeed, &mut entry.seed)?;
-            let [re, im] = &mut entry.weight;
+        entries,
+        |s, EntryFile { seed, weight }| {
+            num(s, Col::EntrySeed, seed)?;
+            let [re, im] = weight;
             s.string(Col::EntryRe, re)?;
             s.string(Col::EntryIm, im)
         },
     )?;
+    list(s, Col::MergedStateLen, states, visit_merged_state)?;
+    nums(s, Col::ChunkLen, Col::Chunk, chunks)
+}
+
+fn visit_merged_state<S: Stream>(s: &mut S, state: &mut MergedStateFile) -> RusticolResult<()> {
+    let MergedStateFile {
+        seeded,
+        rows,
+        d_alpha,
+        d_out,
+        degree,
+        rank_in,
+        edges,
+        closure,
+    } = state;
+    flag(s, Col::MergedSeeded, seeded)?;
+    num(s, Col::MergedRows, rows)?;
+    num(s, Col::MergedDAlpha, d_alpha)?;
+    num(s, Col::MergedDOut, d_out)?;
+    num(s, Col::MergedDegree, degree)?;
+    num(s, Col::MergedRankIn, rank_in)?;
     list(
         s,
-        Col::MergedStateLen,
-        &mut merged.states,
-        |s, state: &mut MergedStateFile| {
-            flag(s, Col::MergedSeeded, &mut state.seeded)?;
-            num(s, Col::MergedRows, &mut state.rows)?;
-            num(s, Col::MergedDAlpha, &mut state.d_alpha)?;
-            num(s, Col::MergedDOut, &mut state.d_out)?;
-            num(s, Col::MergedDegree, &mut state.degree)?;
-            num(s, Col::MergedRankIn, &mut state.rank_in)?;
-            list(
-                s,
-                Col::MergedEdgeLen,
-                &mut state.edges,
-                |s, edge: &mut MergedEdgeFile| {
-                    num(s, Col::MergedEdgeEntry, &mut edge.entry)?;
-                    num(s, Col::MergedEdgeParent, &mut edge.parent)?;
-                    num(s, Col::MergedEdgeFactor, &mut edge.factor)?;
-                    option(
-                        s,
-                        Col::MergedEdgeWeightFlag,
-                        &mut edge.weight,
-                        |s, [re, im]| {
-                            s.string(Col::MergedEdgeRe, re)?;
-                            s.string(Col::MergedEdgeIm, im)
-                        },
-                    )?;
-                    nums(
-                        s,
-                        Col::MergedEdgeLinkLen,
-                        Col::MergedEdgeLink,
-                        &mut edge.links,
-                    )
-                },
-            )?;
+        Col::MergedEdgeLen,
+        edges,
+        |s, edge: &mut MergedEdgeFile| {
+            let MergedEdgeFile {
+                entry,
+                parent,
+                factor,
+                links,
+                weight,
+            } = edge;
+            num(s, Col::MergedEdgeEntry, entry)?;
+            num(s, Col::MergedEdgeParent, parent)?;
+            num(s, Col::MergedEdgeFactor, factor)?;
+            option(s, Col::MergedEdgeWeightFlag, weight, |s, [re, im]| {
+                s.string(Col::MergedEdgeRe, re)?;
+                s.string(Col::MergedEdgeIm, im)
+            })?;
+            nums(s, Col::MergedEdgeLinkLen, Col::MergedEdgeLink, links)
+        },
+    )?;
+    option(
+        s,
+        Col::MergedClosureFlag,
+        closure,
+        |s, closure: &mut MergedClosureFile| {
+            let MergedClosureFile {
+                family,
+                accumulator,
+                relabel,
+            } = closure;
+            num(s, Col::MergedClosureFamily, family)?;
+            num(s, Col::MergedClosureAccumulator, accumulator)?;
             option(
                 s,
-                Col::MergedClosureFlag,
-                &mut state.closure,
-                |s, closure: &mut MergedClosureFile| {
-                    num(s, Col::MergedClosureFamily, &mut closure.family)?;
-                    num(s, Col::MergedClosureAccumulator, &mut closure.accumulator)?;
-                    option(
-                        s,
-                        Col::MergedClosureRelabelFlag,
-                        &mut closure.relabel,
-                        |s, (sign, mask)| {
-                            num(s, Col::MergedClosureRelabelSign, sign)?;
-                            num(s, Col::MergedClosureRelabelMask, mask)
-                        },
-                    )
+                Col::MergedClosureRelabelFlag,
+                relabel,
+                |s, (sign, mask)| {
+                    num(s, Col::MergedClosureRelabelSign, sign)?;
+                    num(s, Col::MergedClosureRelabelMask, mask)
                 },
             )
         },
-    )?;
-    nums(s, Col::ChunkLen, Col::Chunk, &mut merged.chunks)
+    )
 }
 
 // ------------------------------------------------------------------ writing

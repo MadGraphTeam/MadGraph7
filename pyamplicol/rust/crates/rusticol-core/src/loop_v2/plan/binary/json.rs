@@ -12,20 +12,31 @@
 //!   edge's `links` only when written (after the other keys, as appended),
 //!   `column_rows` only when some column keeps a subset of the Born rows;
 //!   `forward`, `merged`, a relabelling, a merged edge's weight and a merged
-//!   state's closure as `null` when absent.
+//!   state's closure as `null` when absent;
+//! - every other key always.
+//!
+//! Every record is destructured whole (no `..`), so a field added to the
+//! loader's file form does not compile until the writer writes it.
 
 use super::super::{
-    ClosureFile, ContentFile, FamilyFile, KernelFile, MergedFile, PlanFile, StateFile, TermFile,
+    BindingFile, ClosureFile, ContentFile, EdgeFile, EntryFile, FamilyFile, ForwardFile,
+    KernelFile, LeafFile, MergedClosureFile, MergedEdgeFile, MergedFile, MergedStateFile, PlanFile,
+    SeedFile, SeedKeyFile, SplitFile, StateFile, StepFile, TermFile,
 };
 
-/// The keys the writer omits when their value is absent, where `json.dumps`
-/// of a record holding them as `None` would write `null`: a step's `rows`,
-/// an edge's `links` and the plan's `column_rows`. Every other key of these
-/// names holds a value that cannot be absent, and every other optional value
-/// is written as `null`. A records reader that accepts only what this writer
-/// writes back byte for byte refuses `None` under these keys
-/// (`V2PlanModel.from_program`).
-pub const OMITTED_WHEN_ABSENT: [&str; 3] = ["rows", "links", "column_rows"];
+/// The keys the writer omits when their value is absent, as (record, key):
+/// the plan's `column_rows`, a step's `rows` and an edge's `links`, where
+/// `json.dumps` of a record holding them as `None` would write `null`. The
+/// writer writes every other key of every record, an absent optional value
+/// as `null`. A records reader that accepts only what this writer writes back
+/// byte for byte (`V2PlanModel.from_program`) refuses `None` under these keys
+/// and the absence of any other key. The record is the file form's type name
+/// (`serde`'s struct name).
+pub const OMITTED_WHEN_ABSENT: [(&str, &str); 3] = [
+    ("PlanFile", "column_rows"),
+    ("StepFile", "rows"),
+    ("EdgeFile", "links"),
+];
 
 struct Out(Vec<u8>);
 
@@ -165,36 +176,57 @@ impl Out {
 
 /// The plan JSON of `file`.
 pub(super) fn write(file: &PlanFile) -> Vec<u8> {
+    let PlanFile {
+        schema,
+        legs,
+        rows,
+        helicities,
+        columns,
+        average,
+        born_components,
+        constants,
+        masses,
+        block_rows,
+        kernels,
+        contents,
+        factors,
+        seed_classes,
+        seeds,
+        families,
+        forward,
+        merged: merged_section,
+        column_rows,
+    } = file;
     let mut out = Out(Vec::new());
     let o = &mut out;
     o.key(true, "schema");
-    o.uint(u64::from(file.schema));
+    o.uint(u64::from(*schema));
     o.key(false, "legs");
-    o.usize(file.legs);
+    o.usize(*legs);
     o.key(false, "rows");
-    o.usize(file.rows);
+    o.usize(*rows);
     o.key(false, "helicities");
-    o.list(&file.helicities, |out, leg| {
+    o.list(helicities, |out, leg| {
         out.list(leg, |out, &h| out.int(i64::from(h)))
     });
     o.key(false, "columns");
-    o.usize(file.columns);
+    o.usize(*columns);
     o.key(false, "average");
-    o.uint(file.average);
+    o.uint(*average);
     o.key(false, "born_components");
-    o.usize(file.born_components);
+    o.usize(*born_components);
     o.key(false, "constants");
-    o.usize(file.constants);
+    o.usize(*constants);
     o.key(false, "masses");
-    o.usize(file.masses);
+    o.usize(*masses);
     o.key(false, "block_rows");
-    o.usizes(&file.block_rows);
+    o.usizes(block_rows);
     o.key(false, "kernels");
-    o.list(&file.kernels, kernel);
+    o.list(kernels, kernel);
     o.key(false, "contents");
-    o.list(&file.contents, content);
+    o.list(contents, content);
     o.key(false, "factors");
-    o.list(&file.factors, |out, &(content, shift)| {
+    o.list(factors, |out, &(content, shift)| {
         out.byte(b'[');
         out.usize(content);
         out.byte(b',');
@@ -202,28 +234,28 @@ pub(super) fn write(file: &PlanFile) -> Vec<u8> {
         out.byte(b']');
     });
     o.key(false, "seed_classes");
-    o.list(&file.seed_classes, |out, seed| {
+    o.list(seed_classes, |out, SeedFile { columns }| {
         out.key(true, "columns");
-        out.list(&seed.columns, |out, column| out.weights(column));
+        out.list(columns, |out, column| out.weights(column));
         out.byte(b'}');
     });
     o.key(false, "seeds");
-    o.list(&file.seeds, |out, key| {
+    o.list(seeds, |out, SeedKeyFile { classes }| {
         out.key(true, "classes");
-        out.weights(&key.classes);
+        out.weights(classes);
         out.byte(b'}');
     });
     o.key(false, "families");
-    o.list(&file.families, family);
+    o.list(families, family);
     o.key(false, "forward");
-    o.option(&file.forward, |out, forward| {
+    o.option(forward, |out, ForwardFile { states }| {
         out.key(true, "states");
-        out.list(&forward.states, state);
+        out.list(states, state);
         out.byte(b'}');
     });
     o.key(false, "merged");
-    o.option(&file.merged, merged);
-    if let Some(columns) = &file.column_rows {
+    o.option(merged_section, merged);
+    if let Some(columns) = column_rows {
         o.key(false, "column_rows");
         o.list(columns, |out, rows| {
             out.option(rows, |out, rows| out.usizes(rows))
@@ -233,11 +265,11 @@ pub(super) fn write(file: &PlanFile) -> Vec<u8> {
     out.0
 }
 
-fn kernel(out: &mut Out, kernel: &KernelFile) {
+fn kernel(out: &mut Out, KernelFile { inputs, outputs }: &KernelFile) {
     out.key(true, "inputs");
-    out.inputs(&kernel.inputs);
+    out.inputs(inputs);
     out.key(false, "outputs");
-    out.list(&kernel.outputs, |out, terms| {
+    out.list(outputs, |out, terms| {
         out.list(terms, |out, (constant, monomial)| {
             out.byte(b'[');
             out.usize(*constant);
@@ -256,54 +288,82 @@ fn kernel(out: &mut Out, kernel: &KernelFile) {
 }
 
 fn content(out: &mut Out, content: &ContentFile) {
+    let ContentFile {
+        d_in,
+        d_out,
+        degree,
+        rows,
+        mask,
+        row_helicities,
+        fused,
+        terms,
+    } = content;
     out.key(true, "d_in");
-    out.usize(content.d_in);
+    out.usize(*d_in);
     out.key(false, "d_out");
-    out.usize(content.d_out);
+    out.usize(*d_out);
     out.key(false, "degree");
-    out.usize(content.degree);
+    out.usize(*degree);
     out.key(false, "rows");
-    out.usize(content.rows);
+    out.usize(*rows);
     out.key(false, "mask");
-    out.uint(content.mask);
+    out.uint(*mask);
     out.key(false, "row_helicities");
-    out.list(&content.row_helicities, |out, row| {
+    out.list(row_helicities, |out, row| {
         out.list(row, |out, &h| out.int(i64::from(h)))
     });
     out.key(false, "fused");
-    out.list(&content.fused, |out, entry| {
+    out.list(fused, |out, entry| {
         out.list(entry, |out, &v| out.uint(u64::from(v)))
     });
     out.key(false, "terms");
-    out.list(&content.terms, term);
+    out.list(terms, term);
     out.byte(b'}');
 }
 
 fn term(out: &mut Out, term: &TermFile) {
+    let TermFile {
+        slots,
+        dimensions,
+        bindings,
+        vertex,
+        split,
+        rows,
+    } = term;
     out.key(true, "slots");
-    out.list(&term.slots, |out, &mask| out.uint(mask));
+    out.list(slots, |out, &mask| out.uint(mask));
     out.key(false, "dimensions");
-    out.usizes(&term.dimensions);
+    out.usizes(dimensions);
     out.key(false, "bindings");
-    out.list(&term.bindings, |out, binding| {
+    out.list(bindings, |out, binding| {
+        let BindingFile {
+            kernel,
+            inputs,
+            entries,
+        } = binding;
         out.key(true, "kernel");
-        out.usize(binding.kernel);
+        out.usize(*kernel);
         out.key(false, "inputs");
-        out.inputs(&binding.inputs);
+        out.inputs(inputs);
         out.key(false, "entries");
-        out.usizes(&binding.entries);
+        out.usizes(entries);
         out.byte(b'}');
     });
     out.key(false, "vertex");
-    out.int(term.vertex);
+    out.int(*vertex);
     out.key(false, "split");
-    out.list(&term.split, |out, split| {
+    out.list(split, |out, split| {
+        let SplitFile {
+            kernel,
+            inputs,
+            entries,
+        } = split;
         out.key(true, "kernel");
-        out.usize(split.kernel);
+        out.usize(*kernel);
         out.key(false, "inputs");
-        out.inputs(&split.inputs);
+        out.inputs(inputs);
         out.key(false, "entries");
-        out.list(&split.entries, |out, &(a, b)| {
+        out.list(entries, |out, &(a, b)| {
             out.byte(b'[');
             out.usize(a);
             out.byte(b',');
@@ -313,7 +373,7 @@ fn term(out: &mut Out, term: &TermFile) {
         out.byte(b'}');
     });
     out.key(false, "rows");
-    out.list(&term.rows, |out, (row, blocks)| {
+    out.list(rows, |out, (row, blocks)| {
         out.byte(b'[');
         out.usize(*row);
         out.byte(b',');
@@ -324,8 +384,15 @@ fn term(out: &mut Out, term: &TermFile) {
 }
 
 fn family(out: &mut Out, family: &FamilyFile) {
+    let FamilyFile {
+        sequence,
+        rank,
+        orders,
+        leaves,
+        steps,
+    } = family;
     out.key(true, "sequence");
-    out.list(&family.sequence, |out, &(mask, mass)| {
+    out.list(sequence, |out, &(mask, mass)| {
         out.byte(b'[');
         out.uint(mask);
         out.byte(b',');
@@ -333,155 +400,237 @@ fn family(out: &mut Out, family: &FamilyFile) {
         out.byte(b']');
     });
     out.key(false, "rank");
-    out.usize(family.rank);
+    out.usize(*rank);
     out.key(false, "orders");
-    out.usizes(&family.orders);
+    out.usizes(orders);
     out.key(false, "leaves");
-    out.list(&family.leaves, |out, leaf| {
+    out.list(leaves, |out, LeafFile { seed, weight }| {
         out.key(true, "seed");
-        out.usize(leaf.seed);
+        out.usize(*seed);
         out.key(false, "weight");
-        out.string(&leaf.weight);
+        out.string(weight);
         out.byte(b'}');
     });
     out.key(false, "steps");
-    out.list(&family.steps, |out, step| {
-        out.key(true, "seeded");
-        out.boolean(step.seeded);
-        out.key(false, "trace");
-        out.int(step.trace);
-        out.key(false, "out");
-        out.uint(step.out);
-        out.key(false, "d_alpha");
-        out.usize(step.d_alpha);
-        out.key(false, "d_out");
-        out.usize(step.d_out);
-        out.key(false, "degree");
-        out.usize(step.degree);
-        out.key(false, "rank_in");
-        out.usize(step.rank_in);
-        out.key(false, "edges");
-        out.list(&step.edges, |out, edge| {
-            out.key(true, "leaf");
-            out.int(edge.leaf);
-            out.key(false, "child");
-            out.int(edge.child);
-            out.key(false, "factor");
-            out.usize(edge.factor);
-            if let Some(links) = &edge.links {
-                out.key(false, "links");
-                out.list(links, |out, &v| out.uint(u64::from(v)));
-            }
-            out.byte(b'}');
-        });
-        if let Some(rows) = step.rows {
-            out.key(false, "rows");
-            out.usize(rows);
+    out.list(steps, step);
+    out.byte(b'}');
+}
+
+fn step(out: &mut Out, step: &StepFile) {
+    let StepFile {
+        seeded,
+        trace,
+        out: open,
+        d_alpha,
+        d_out,
+        degree,
+        rank_in,
+        edges,
+        rows,
+    } = step;
+    out.key(true, "seeded");
+    out.boolean(*seeded);
+    out.key(false, "trace");
+    out.int(*trace);
+    out.key(false, "out");
+    out.uint(*open);
+    out.key(false, "d_alpha");
+    out.usize(*d_alpha);
+    out.key(false, "d_out");
+    out.usize(*d_out);
+    out.key(false, "degree");
+    out.usize(*degree);
+    out.key(false, "rank_in");
+    out.usize(*rank_in);
+    out.key(false, "edges");
+    out.list(edges, |out, edge| {
+        let EdgeFile {
+            leaf,
+            child,
+            factor,
+            links,
+        } = edge;
+        out.key(true, "leaf");
+        out.int(*leaf);
+        out.key(false, "child");
+        out.int(*child);
+        out.key(false, "factor");
+        out.usize(*factor);
+        if let Some(links) = links {
+            out.key(false, "links");
+            out.list(links, |out, &v| out.uint(u64::from(v)));
         }
         out.byte(b'}');
     });
+    if let Some(rows) = rows {
+        out.key(false, "rows");
+        out.usize(*rows);
+    }
     out.byte(b'}');
 }
 
 fn state(out: &mut Out, state: &StateFile) {
+    let StateFile {
+        parent,
+        factor,
+        seeded,
+        rows,
+        d_alpha,
+        d_out,
+        degree,
+        rank,
+        links,
+        closures,
+    } = state;
     out.key(true, "parent");
-    out.int(state.parent);
+    out.int(*parent);
     out.key(false, "factor");
-    out.usize(state.factor);
+    out.usize(*factor);
     out.key(false, "seeded");
-    out.boolean(state.seeded);
+    out.boolean(*seeded);
     out.key(false, "rows");
-    out.usize(state.rows);
+    out.usize(*rows);
     out.key(false, "d_alpha");
-    out.usize(state.d_alpha);
+    out.usize(*d_alpha);
     out.key(false, "d_out");
-    out.usize(state.d_out);
+    out.usize(*d_out);
     out.key(false, "degree");
-    out.usize(state.degree);
+    out.usize(*degree);
     out.key(false, "rank");
-    out.usize(state.rank);
+    out.usize(*rank);
     out.key(false, "links");
-    out.list(&state.links, |out, &v| out.uint(u64::from(v)));
+    out.list(links, |out, &v| out.uint(u64::from(v)));
     out.key(false, "closures");
-    out.list(&state.closures, closure);
+    out.list(closures, closure);
     out.byte(b'}');
 }
 
 fn closure(out: &mut Out, closure: &ClosureFile) {
+    let ClosureFile {
+        family,
+        accumulator,
+        seed,
+        weight,
+        rows,
+        relabel,
+    } = closure;
     out.key(true, "family");
-    out.usize(closure.family);
+    out.usize(*family);
     out.key(false, "accumulator");
-    out.usize(closure.accumulator);
+    out.usize(*accumulator);
     out.key(false, "seed");
-    out.usize(closure.seed);
+    out.usize(*seed);
     out.key(false, "weight");
-    out.string(&closure.weight);
+    out.string(weight);
     out.key(false, "rows");
-    out.list(&closure.rows, |out, &v| out.int(v));
+    out.list(rows, |out, &v| out.int(v));
     out.key(false, "relabel");
-    out.relabel(&closure.relabel);
+    out.relabel(relabel);
     out.byte(b'}');
 }
 
 fn merged(out: &mut Out, merged: &MergedFile) {
+    let MergedFile {
+        families,
+        entries,
+        states,
+        chunks,
+    } = merged;
     out.key(true, "families");
-    out.usizes(&merged.families);
+    out.usizes(families);
     out.key(false, "entries");
-    out.list(&merged.entries, |out, entry| {
+    out.list(entries, |out, EntryFile { seed, weight }| {
         out.key(true, "seed");
-        out.usize(entry.seed);
+        out.usize(*seed);
         out.key(false, "weight");
-        out.pair(&entry.weight);
+        out.pair(weight);
         out.byte(b'}');
     });
     out.key(false, "states");
-    out.list(&merged.states, |out, state| {
-        out.key(true, "seeded");
-        out.boolean(state.seeded);
-        out.key(false, "rows");
-        out.usize(state.rows);
-        out.key(false, "d_alpha");
-        out.usize(state.d_alpha);
-        out.key(false, "d_out");
-        out.usize(state.d_out);
-        out.key(false, "degree");
-        out.usize(state.degree);
-        out.key(false, "rank_in");
-        out.usize(state.rank_in);
-        out.key(false, "edges");
-        out.list(&state.edges, |out, edge| {
-            out.key(true, "entry");
-            out.int(edge.entry);
-            out.key(false, "parent");
-            out.int(edge.parent);
-            out.key(false, "factor");
-            out.usize(edge.factor);
-            out.key(false, "links");
-            out.list(&edge.links, |out, &v| out.uint(u64::from(v)));
-            out.key(false, "weight");
-            out.option(&edge.weight, |out, weight| out.pair(weight));
-            out.byte(b'}');
-        });
-        out.key(false, "closure");
-        out.option(&state.closure, |out, closure| {
-            out.key(true, "family");
-            out.usize(closure.family);
-            out.key(false, "accumulator");
-            out.usize(closure.accumulator);
-            out.key(false, "relabel");
-            out.relabel(&closure.relabel);
-            out.byte(b'}');
-        });
+    out.list(states, merged_state);
+    out.key(false, "chunks");
+    out.usizes(chunks);
+    out.byte(b'}');
+}
+
+fn merged_state(out: &mut Out, state: &MergedStateFile) {
+    let MergedStateFile {
+        seeded,
+        rows,
+        d_alpha,
+        d_out,
+        degree,
+        rank_in,
+        edges,
+        closure,
+    } = state;
+    out.key(true, "seeded");
+    out.boolean(*seeded);
+    out.key(false, "rows");
+    out.usize(*rows);
+    out.key(false, "d_alpha");
+    out.usize(*d_alpha);
+    out.key(false, "d_out");
+    out.usize(*d_out);
+    out.key(false, "degree");
+    out.usize(*degree);
+    out.key(false, "rank_in");
+    out.usize(*rank_in);
+    out.key(false, "edges");
+    out.list(edges, |out, edge| {
+        let MergedEdgeFile {
+            entry,
+            parent,
+            factor,
+            links,
+            weight,
+        } = edge;
+        out.key(true, "entry");
+        out.int(*entry);
+        out.key(false, "parent");
+        out.int(*parent);
+        out.key(false, "factor");
+        out.usize(*factor);
+        out.key(false, "links");
+        out.list(links, |out, &v| out.uint(u64::from(v)));
+        out.key(false, "weight");
+        out.option(weight, |out, weight| out.pair(weight));
         out.byte(b'}');
     });
-    out.key(false, "chunks");
-    out.usizes(&merged.chunks);
+    out.key(false, "closure");
+    out.option(closure, |out, closure| {
+        let MergedClosureFile {
+            family,
+            accumulator,
+            relabel,
+        } = closure;
+        out.key(true, "family");
+        out.usize(*family);
+        out.key(false, "accumulator");
+        out.usize(*accumulator);
+        out.key(false, "relabel");
+        out.relabel(relabel);
+        out.byte(b'}');
+    });
     out.byte(b'}');
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Out;
+    use super::super::super::{EdgeFile, PlanFile, StepFile};
+    use super::{OMITTED_WHEN_ABSENT, Out};
+
+    #[test]
+    fn omitted_keys_name_their_records() {
+        let records = [
+            std::any::type_name::<PlanFile>(),
+            std::any::type_name::<StepFile>(),
+            std::any::type_name::<EdgeFile>(),
+        ];
+        for (&(record, _), name) in OMITTED_WHEN_ABSENT.iter().zip(records) {
+            assert_eq!(name.rsplit("::").next(), Some(record));
+        }
+    }
 
     #[test]
     fn strings_follow_ensure_ascii() {

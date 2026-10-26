@@ -33,10 +33,11 @@ impl V2PlanModel {
     /// The model of an exported plan's records (`ExportedPlan.program`),
     /// read from the Python objects. Only records the writer writes back as
     /// `json.dumps(program, separators=(",", ":"))` are accepted (`Records`:
-    /// the loader's types, every record's keys in the writer's order, no
-    /// `None` under a key the writer omits when absent), so the native JSON
-    /// of an accepted program is `json.dumps`'s byte for byte; anything else
-    /// fails with the record's path.
+    /// the loader's types, every record's keys in the writer's order, every
+    /// key the writer always writes present, no `None` under a key the writer
+    /// omits when absent), so the native JSON of an accepted program is
+    /// `json.dumps`'s byte for byte; anything else fails with the record's
+    /// path.
     #[staticmethod]
     fn from_program(program: &Bound<'_, PyAny>) -> PyResult<Self> {
         PlanModel::from_records(Records(program))
@@ -152,13 +153,15 @@ fn v2_plan_read(py: Python<'_>, data: &[u8]) -> PyResult<String> {
 /// number, a `bool` for a flag, a `str`, `None` for an absent option written
 /// as `null`, a `list` or `tuple` of the expected length, a `dict` with `str`
 /// keys for a record, its keys in the record's field order (the writer's,
-/// `plan.rs` file form; unknown keys refused) and without `None` under a key
-/// the writer omits when absent ([`OMITTED_WHEN_ABSENT`]). Anything else (a
-/// float, a `bool` for a number, a number beyond the field's type, keys out
-/// of order, an explicit `None` the writer would drop) fails with the
-/// record's path: an accepted program's native JSON is `json.dumps`'s byte
-/// for byte (`tests/unit/test_loop_v2_native_lowering.py` checks it on every
-/// control).
+/// `plan.rs` file form; unknown keys refused), every key the writer always
+/// writes present and no `None` under a key the writer omits when absent
+/// ([`OMITTED_WHEN_ABSENT`], the only keys a record may lack). Anything else
+/// (a float, a `bool` for a number, a number beyond the field's type, keys
+/// out of order, a missing key the writer would write, `null` included, an
+/// explicit `None` the writer would drop) fails with the record's path: an
+/// accepted program's native JSON is `json.dumps`'s byte for byte
+/// (`tests/unit/test_loop_v2_native_lowering.py` checks it on every control
+/// and refuses each kind of difference).
 struct Records<'a, 'py>(&'a Bound<'py, PyAny>);
 
 /// Why the records do not convert, with the path to the value.
@@ -238,10 +241,11 @@ impl<'py> Records<'_, 'py> {
         }
     }
 
-    /// A record (`fields` in the writer's order) or a map (`None`).
+    /// A record (its name and `fields` in the writer's order) or a map
+    /// (`None`).
     fn record<'de, V: Visitor<'de>>(
         self,
-        fields: Option<&'static [&'static str]>,
+        record: Option<(&'static str, &'static [&'static str])>,
         visitor: V,
     ) -> Result<V::Value, RecordError> {
         let dict = self
@@ -252,7 +256,7 @@ impl<'py> Records<'_, 'py> {
             items: dict.iter(),
             value: None,
             key: String::new(),
-            fields,
+            record,
             next: 0,
         })
     }
@@ -339,11 +343,11 @@ impl<'de> de::Deserializer<'de> for Records<'_, '_> {
 
     fn deserialize_struct<V: Visitor<'de>>(
         self,
-        _name: &'static str,
+        name: &'static str,
         fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, RecordError> {
-        self.record(Some(fields), visitor)
+        self.record(Some((name, fields)), visitor)
     }
 
     fn deserialize_ignored_any<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, RecordError> {
@@ -437,10 +441,29 @@ struct Fields<'py, I> {
     value: Option<Bound<'py, PyAny>>,
     /// The key of the value read next (the error's path).
     key: String,
-    /// A record's fields in the writer's order (`None` for a map).
-    fields: Option<&'static [&'static str]>,
-    /// The first of `fields` the next key may be.
+    /// A record's name (the file form's type) and its fields in the writer's
+    /// order (`None` for a map).
+    record: Option<(&'static str, &'static [&'static str])>,
+    /// The first of the record's fields the next key may be.
     next: usize,
+}
+
+/// The writer omits `key` of `record` when its value is absent.
+fn omitted(record: &str, key: &str) -> bool {
+    OMITTED_WHEN_ABSENT.contains(&(record, key))
+}
+
+/// Refuses the absence of `absent`, fields of `record` the dict lacks,
+/// unless the writer omits each when its value is absent: the writer
+/// writes every other key (an absent option as `null`), where `json.dumps`
+/// of the dict writes nothing.
+fn require_written(record: &str, absent: &[&str]) -> Result<(), RecordError> {
+    match absent.iter().find(|&&key| !omitted(record, key)) {
+        Some(key) => Err(RecordError(format!(
+            "missing field {key:?}: the writer writes it (json.dumps would not)"
+        ))),
+        None => Ok(()),
+    }
 }
 
 impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAccess<'de>
@@ -453,6 +476,11 @@ impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAc
         seed: K,
     ) -> Result<Option<K::Value>, RecordError> {
         let Some((key, value)) = self.items.next() else {
+            // The record's end: the fields after the last key are absent.
+            if let Some((record, fields)) = self.record {
+                require_written(record, &fields[self.next..])?;
+                self.next = fields.len();
+            }
             return Ok(None);
         };
         let name = key
@@ -461,12 +489,16 @@ impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAc
         let name = name
             .to_str()
             .map_err(|_| RecordError("a key with lone surrogates".to_owned()))?;
-        if let Some(fields) = self.fields {
-            // The writer's order: each key after the previous one. A key of
-            // the record met earlier is out of order; an unknown key is the
-            // field visitor's refusal below.
+        if let Some((record, fields)) = self.record {
+            // The writer's order: each key after the previous one, the
+            // fields between them absent. A key of the record met earlier is
+            // out of order; an unknown key is the field visitor's refusal
+            // below.
             match fields[self.next..].iter().position(|&field| field == name) {
-                Some(skipped) => self.next += skipped + 1,
+                Some(skipped) => {
+                    require_written(record, &fields[self.next..self.next + skipped])?;
+                    self.next += skipped + 1;
+                }
                 None if fields.contains(&name) => {
                     let after = self.key.as_str();
                     return Err(RecordError(format!(
@@ -475,7 +507,7 @@ impl<'de, 'py, I: Iterator<Item = (Bound<'py, PyAny>, Bound<'py, PyAny>)>> MapAc
                 }
                 None => {}
             }
-            if value.is_none() && OMITTED_WHEN_ABSENT.contains(&name) {
+            if value.is_none() && omitted(record, name) {
                 return Err(RecordError(format!(
                     ".{name}: None where the writer omits the key (json.dumps would \
                      write null)"

@@ -703,6 +703,31 @@ fn content(
 /// The bound of the loader's derivations for `file`, after refusing the
 /// values they would trust beyond the plan's tables (module docs).
 pub fn bound(file: &PlanFile) -> RusticolResult<DeriveBound> {
+    // Every field of the plan named (no `..`): a field added to the loader's
+    // file form does not compile until the bound accounts for what the
+    // derivations make of it (the fields bounded through their records'
+    // lists below, or by nothing: plain scalars the loader copies).
+    let PlanFile {
+        schema: _,
+        legs: _,
+        rows: _,
+        helicities: _,
+        columns: _,
+        average: _,
+        born_components: _,
+        constants: _,
+        masses: _,
+        block_rows: _,
+        kernels: _,
+        contents: _,
+        factors: _,
+        seed_classes: _,
+        seeds: _,
+        families: _,
+        forward: _,
+        merged: _,
+        column_rows: _,
+    } = file;
     require(
         file.legs < 64 && file.helicities.len() == file.legs,
         "plan helicities per leg differ from its legs",

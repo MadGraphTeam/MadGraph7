@@ -24,10 +24,13 @@ The model is fed with the records of a Python ``ExportedPlan``
 (``plan_export``), read from the Python objects themselves
 (``V2PlanModel.from_program``). It accepts only records the writer writes
 back as ``json.dumps`` writes them: the loader's types, every record's keys
-in the writer's order (the exporter's), no ``None`` under a key the writer
-omits when absent (a step's ``rows``, an edge's ``links``, ``column_rows``);
-anything else is an error naming the record, so the native JSON of an
-accepted program is ``json.dumps``'s byte for byte. ``ExportedPlan.json()``
+in the writer's order (the exporter's), every key the writer always writes
+present (an absent option as ``None``) and no ``None`` under a key the writer
+omits when absent (a step's ``rows``, an edge's ``links``, ``column_rows``,
+the only keys a record may lack); anything else is an error naming the
+record, so the native JSON of an accepted program is ``json.dumps``'s byte
+for byte. The writer and the member name every field of the loader's file
+form, so a field added there does not compile until both carry it. ``ExportedPlan.json()``
 and ``ExportedPlan.binary()`` take this route (the D2' switch inside
 ``export_plan``'s result, so the main plan, the companion's and the
 observables' column plans all do); ``NATIVE_JSON`` switches the JSON back to
@@ -47,21 +50,16 @@ from typing import Any
 NATIVE_JSON = True
 
 
-_NATIVE: list[Any] = []
-
-
 def _native(native: Any | None) -> Any:
-    """``native``, else the staged loop core, verified once per process
-    (each ``load_loop_native`` re-verifies the native build, about 0.2 s;
-    ``dag_input._native`` likewise)."""
+    """``native``, else the staged loop core, verified once per process: the
+    one cache of ``dag_input._native`` (each ``load_loop_native`` re-verifies
+    the native build, 0.2-0.4 s)."""
 
     if native is not None:
         return native
-    if not _NATIVE:
-        from pyamplicol.loops.native import load_loop_native
+    from .dag_input import _native as loop_core
 
-        _NATIVE.append(load_loop_native())
-    return _NATIVE[0]
+    return loop_core()
 
 
 def _program(exported: Any) -> Any:
