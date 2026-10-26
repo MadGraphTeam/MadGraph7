@@ -391,6 +391,7 @@ def project_records(
     seeds: Iterable[tuple[tuple[Any, ...], Orders]],
     born_components: dict[tuple[int, Orders, int], int],
     tables: Mapping[int, Any] | None = None,
+    threads: int | None = None,
 ) -> tuple[bytes, bytes]:
     """``_Exporter.seed_records``, natively: the JSON bytes of the seed class
     records and of the seed key records, byte-identical to their
@@ -398,7 +399,8 @@ def project_records(
     seed keys (combination, loop order) in plan order; ``born_components``
     is extended in place in first-seen order. ``tables`` maps ``id(table)``
     of a column table to its ``NativeCellTable`` (default: encoded from its
-    Python cells)."""
+    Python cells); ``threads`` selects a private pool (None: the global
+    one; the bytes do not depend on it)."""
 
     seeds = list(seeds)
     accuracy = slice_.request.accuracy
@@ -439,6 +441,7 @@ def project_records(
                 ([(c, *_texts(x)) for c, x in combination], ranks[order])
                 for combination, order in seeds
             ],
+            threads,
         )
     except ValueError as error:
         text = str(error)

@@ -361,6 +361,24 @@ def test_stored_dipole_orbits_are_validated(slices):
     broken = dict(stored, generators=[generator])
     with pytest.raises(ValueError, match="not a permutation"):
         reloaded(json.dumps(broken))
+    # Crafted members are refused at load with a typed error, before any
+    # table of their index space is allocated (an abort before): a basis
+    # the stored data cannot cover, an index space past the address space,
+    # coloured legs with a repeated label or out of leg order.
+    for basis, message in ((2**20, "do not cover"), (2**32, "overflow")):
+        crafted = dict(
+            stored, basis=basis, generators=[], representatives=[], gram=[]
+        )
+        with pytest.raises(ValueError, match=message):
+            dipoles.load(json.dumps(crafted)).check_conservation()
+    coloured = stored["coloured"]
+    for legs in (
+        [coloured[0], *coloured[:-1]],
+        [*coloured[1:], coloured[0]],
+        [[coloured[0][0], 6], *coloured[1:]],
+    ):
+        with pytest.raises(ValueError, match="leg order|representation 6"):
+            dipoles.operators(dipoles.load(json.dumps(dict(stored, coloured=legs))))
 
 
 # ------------------------------------------------- switched generation
@@ -518,6 +536,13 @@ def _records_equal(slice_, monkeypatch, columns=None) -> None:
     assert class_json == json.dumps(python_classes, separators=(",", ":")).encode()
     assert records_json == json.dumps(python_records, separators=(",", ":")).encode()
     assert list(components) == captured["after"]
+    # Rule 5: one thread or several.
+    for threads in (1, 3):
+        again = dict(captured["before"])
+        assert native_cells.project_records(
+            slice_, captured["columns"], captured["seeds"], again, threads=threads
+        ) == (class_json, records_json)
+        assert list(again) == captured["after"]
 
 
 @pytest.mark.loop_fast
@@ -565,6 +590,9 @@ def _degrees_equal(native: Generated, oracle: Generated | None = None) -> None:
     assert len(reference.kept) == len(pruned) == len(native.kept)
     for target, keep in zip(pruned, reference.kept, strict=True):
         live = native_cells.live_classes(target)
+        # Rule 5: one thread or several.
+        assert native_cells.live_classes(target, threads=1) == live
+        assert native_cells.live_classes(target, threads=3) == live
         checked = 0
         for skeleton, combination in target.class_of.items():
             native_live = any(live[c, skeleton.orders] for c, _x in combination)
@@ -984,8 +1012,10 @@ def test_new_rust_uses_only_exact_number_domains_of_symbolica():
 
 @pytest.mark.loop_fast
 def test_new_bindings_run_without_a_symbolica_key(tmp_path):
-    """The native cells, projection, degrees and dipole orbits (and their
-    stored form through ``loops/v2/dipoles``) run in a process without a
+    """Every binding of the package (cells, projection, degrees, liveness,
+    dipole orbits and their stored form through ``loops/v2/dipoles``, and
+    C5's operator images, directed and rebased engines, registered quark
+    rings and directed overlap degrees) runs in a process without a
     Symbolica key (smoke; the static check above is the one that fails on a
     Symbolica call)."""
 
@@ -1038,7 +1068,18 @@ def test_new_bindings_run_without_a_symbolica_key(tmp_path):
         native.project_records([(table, [[0]] * 3, [[0]] * 6)],
                                [(0, [(0, 0)], None, None)],
                                [((b, 0), [0]) for b in range(6)], "nlc", [],
-                               [([(0, "1", "0")], 0)])
+                               [([(0, "1", "0")], 0)], 2)
+        # C5: operator images, directed and rebased engines, quark rings.
+        images = native.operator_images(basis[:2], [(1, -1)], [(2, -1)])
+        assert len(images) == 2 and images[0][0] == legs
+        directed = engine.directed([(1, -1)], [(2, -1)], 2)
+        assert directed.table([(0, [1, 2, 3, 4], 0, [], None)]).decode()[1]
+        rebased = engine.rebased(basis[::-1])
+        ring = rebased.register_ring(basis[1])
+        assert rebased.table([(2, [], ring, [], None)]).decode()[1]
+        assert native.directed_overlap_degrees(
+            legs, [[(([], [[1, 2, 3, 4]]), 0)]], [[(([], [[1, 3, 2, 4]]), 0)]],
+            [([(1, -1)], [(2, -1)])], [(0, 0, 0, 0)], 2) == [3]
         print("no licence needed", orbits.representatives)
         """
     )

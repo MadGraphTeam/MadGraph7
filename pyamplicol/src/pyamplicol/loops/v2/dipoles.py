@@ -59,9 +59,15 @@ def stored(orbits: Any) -> str:
 
 
 def load(text: str) -> Any:
-    """``NativeDipoleOrbits`` from its stored form, validated (format,
-    index ranges, permutations; ``expand`` checks the orbit cover). No
-    Symbolica state and no licence are touched."""
+    """``NativeDipoleOrbits`` from its stored form, validated before any
+    table of its index space is allocated (``DipoleOrbits::validate``:
+    format; coloured legs with distinct labels in leg order and
+    representations 3, 3bar or 8; an index space c^2 B^2 that fits; scales,
+    generator permutations, index ranges and representatives off the
+    diagonal; orbits large enough to cover every entry). A crafted member
+    raises ``ValueError``; allocations of the expansions are fallible too.
+    ``expand`` checks the exact orbit cover and ``check_conservation`` the
+    values. No Symbolica state and no licence are touched."""
 
     return native_cells._native().NativeDipoleOrbits.from_json(text)
 
