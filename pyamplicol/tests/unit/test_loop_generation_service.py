@@ -296,7 +296,14 @@ def _colour_backend(monkeypatch, accuracy, declaration):
     backend = GenerationBackend(
         loop_config(color={"accuracy": accuracy, "contraction": "direct"}), None
     )
-    compiled = SimpleNamespace(raw_loop_model=object())
+    # A compiled model declares its coupling orders (``loops.order_names``
+    # refuses a model whose spelling it cannot read).
+    compiled = SimpleNamespace(
+        raw_loop_model=object(),
+        ir=SimpleNamespace(
+            orders=tuple(SimpleNamespace(name=n) for n in loop.loop_coupling_orders)
+        ),
+    )
     resolved = _ResolvedModel(source=None, model=None, compiled=compiled)
     for name in ("_resolve_model_for_plan", "_resolve_model"):
         monkeypatch.setattr(backend, name, lambda *_: resolved)
