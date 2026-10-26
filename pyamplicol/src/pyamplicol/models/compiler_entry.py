@@ -935,6 +935,13 @@ def _compile_oriented_kernels(
         if parameter.nature == "external"
     }
     kernels: list[CompiledOrientedKernel] = []
+    # The components of an oriented Lorentz structure, by (structure, spins,
+    # legs, transverse variant), with the kernel kind they were formed for:
+    # the network runs on canonical symbols whose order does not depend on
+    # the kind (``_execute_dense_network``), so another kernel's components
+    # are these with the kernel symbols renamed (the vertex copies of
+    # counterterm clone lines and every repeated structure).
+    oriented_memo: dict[tuple[object, ...], tuple[int, Any]] = {}
     for term in terms:
         if term.valence != 3:
             continue
@@ -967,24 +974,50 @@ def _compile_oriented_kernels(
                         f"vertex {term.vertex} particle {result_source.name} refers to "
                         f"absent antiparticle {result_source.antiname}"
                     ) from exc
-                ordered_components = _oriented_component_expressions(
-                    term,
-                    particle_by_name,
-                    left_leg=left_leg,
-                    right_leg=right_leg,
-                    result_leg=result_leg,
-                    kind=len(kernels),
-                    model_symbols=model_symbols,
-                    use_transverse_massless_yang_mills=(
-                        transverse_massless_yang_mills
-                        and _term_supports_transverse_massless_yang_mills(
-                            term,
-                            particle_by_name,
-                            parameter_by_name,
-                            propagator_by_name,
-                        )
-                    ),
+                transverse = (
+                    transverse_massless_yang_mills
+                    and _term_supports_transverse_massless_yang_mills(
+                        term,
+                        particle_by_name,
+                        parameter_by_name,
+                        propagator_by_name,
+                    )
                 )
+                memo_key = (
+                    term.lorentz_expression,
+                    tuple(particle_by_name[name].spin for name in term.particles),
+                    left_leg,
+                    right_leg,
+                    result_leg,
+                    transverse,
+                )
+                found = oriented_memo.get(memo_key)
+                if found is None:
+                    ordered_components = _oriented_component_expressions(
+                        term,
+                        particle_by_name,
+                        left_leg=left_leg,
+                        right_leg=right_leg,
+                        result_leg=result_leg,
+                        kind=len(kernels),
+                        model_symbols=model_symbols,
+                        use_transverse_massless_yang_mills=transverse,
+                    )
+                    oriented_memo[memo_key] = (len(kernels), ordered_components)
+                else:
+                    formed, ordered_components = found
+                    ordered_components = replace(
+                        ordered_components,
+                        values=tuple(
+                            _remap_kernel_symbols(
+                                _sym.E(value),
+                                old_kind=formed,
+                                new_kind=len(kernels),
+                                model_symbols=model_symbols,
+                            ).to_canonical_string()
+                            for value in ordered_components.values
+                        ),
+                    )
                 kernels.append(
                     CompiledOrientedKernel(
                         kind=len(kernels),
