@@ -2504,15 +2504,15 @@ def test_qed_declaring_model_names_its_blockers(
     kernels and the counterterm lowering. With those widths fixed to zero
     its electroweak counterterms are lowered (their CT scalars with the
     complex-mass scheme's helper recms and the CMS reglog are
-    parameter-program references, WP3.2 EWI-3), and the request stops at the
-    next blocker, the unitary-gauge W and Z on loop lines (WP3.2 EWI-4b).
-    The unlowerable G0-photon mixing between spins stays inert
-    (REQUIREMENTS_ADDENDUM J): the model's tree model absorbs the Goldstones
-    into the massive vectors (``CompiledUFOModel.inactive_goldstone_names``),
-    so it holds no G0 vertex and no tree of any request on this model holds
-    the mixing."""
+    parameter-program references, WP3.2 EWI-3) and the request generates in
+    't Hooft-Feynman gauge (WP3.2 EWI-4b: W, Z, Goldstones and ghosts on its
+    loop lines), recorded in its generation filters; its Goldstone-vector
+    mixings are lowered as vertex insertions, so none is inert (in unitary
+    gauge the tree model absorbed the Goldstones and the G0-photon mixing
+    was inert, REQUIREMENTS_ADDENDUM J)."""
 
     from pyamplicol.api import ProcessRequest, ProcessSet
+    from pyamplicol.artifacts import load_manifest
     from pyamplicol.loops.v2.ew_policy import ElectroweakWidthError
     from pyamplicol.models.loading import compile_model_source
 
@@ -2546,12 +2546,13 @@ def test_qed_declaring_model_names_its_blockers(
         engine="v2",
         fixed='MB = "0", WW = "0", WZ = "0"',
     )
-    with pytest.raises(
-        GenerationError, match=r"loop line -?\d+ has a unitary-gauge propagator"
-    ) as refused:
-        zero_widths.generate(processes, tmp_path / "c")
-    assert "G0" not in str(refused.value)
-    assert not (tmp_path / "c").exists()
+    zero_widths.generate(processes, tmp_path / "c")
+    (record,) = load_manifest(tmp_path / "c").extensions["generation"][
+        "concrete_processes"
+    ]
+    assert record["filters"]["gauge"] == "feynman"
+    inert = record["filters"]["counterterms_inert"]
+    assert not any("between spins" in reason for reason in inert.values()), inert
 
 
 @pytest.mark.loop_nightly

@@ -1337,6 +1337,32 @@ _GB_TW_POINT = [
 ]
 
 
+# g t > t t t~ (binary64, on shell to rounding): a top line joined to a top
+# pair by a Z, a photon or a G0, with the gluon at leg 1.
+_GT_TTTX_POINT = [
+    ["740.0236666666667", "0", "0", "740.0236666666667"],
+    ["759.9763333333334", "0", "0", "-740.0236666666667"],
+    [
+        "542.1014268447362",
+        "453.946802621722",
+        "-234.14080644548642",
+        "55.27513124065375",
+    ],
+    [
+        "679.7890319233611",
+        "-642.7918716317638",
+        "125.73449804624319",
+        "-56.51171284339019",
+    ],
+    [
+        "278.1095412319028",
+        "188.84506901004178",
+        "108.40630839924326",
+        "1.2365816027364396",
+    ],
+]
+
+
 def _rung(name, model, process, born, loop, blocker, **options):
     """One ladder rung: a strict xfail raising its blocker's exception, or a
     plain test once its blockers are lifted (``LIFTED``)."""
@@ -1476,6 +1502,23 @@ LADDER = [
         {"QCD": 2, "QED": 2},
         LIFTED,
         corrections=("QCD", "QED"),
+        fixed_parameters=_G_MU_FIXED,
+    ),
+    # The Goldstone-vector mixings (G0-Z, G0-A, G+-W-) as vertex insertions
+    # (EWI-4b): its trees join the top line and the top pair through a Z or
+    # photon on one side and a G0 on the other, with the gluon at leg 1; the
+    # UV poles of the QED corrections cancel only with the mixings (they do
+    # not with the mixings' momentum sign flipped, ew-gauge M-mix probe).
+    _rung(
+        "gmu_gt_tttx_mixing",
+        "loop_gmu",
+        "g t > t t t~",
+        {"QCD": 1, "QED": 2},
+        {"QCD": 1, "QED": 4},
+        LIFTED,
+        corrections=("QED",),
+        point=_GT_TTTX_POINT,
+        poles="uv",
         fixed_parameters=_G_MU_FIXED,
     ),
     # The lepton line of the Z/photon decay runs through the loops (B4, EWI-5);

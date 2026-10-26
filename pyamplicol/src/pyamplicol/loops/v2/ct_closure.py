@@ -539,16 +539,6 @@ class CountertermClosure:
                         continue
                     component, power, grade = slot
                     lines = closure._blocks.get(current) if clone else None
-                    if lines and any(program.clones[b.id].promoted for b in lines):
-                        # The root would read a Goldstone-vector mixing line's
-                        # vector current as the Goldstone (WP3.2 EWI-4b).
-                        raise UnloweredCountertermError(
-                            f"the counterterm root vertex {entries[0].vertex_name} "
-                            "consumes a Goldstone-vector mixing line on its "
-                            "Goldstone side, which only vertex copies carrying "
-                            "the line momentum consume (leg 1 couples to the "
-                            "Goldstone); not lowered yet"
-                        )
                     if lines and all(
                         add_orders(physical, program.clones[block.id].half) not in loop
                         for block in lines
@@ -558,6 +548,20 @@ class CountertermClosure:
                         # e.g. a W vertex not closed under conjugation at
                         # u u~ > e- e+ d d~ g, may sit at such orders).
                         continue
+                    if lines and any(
+                        program.clones[b.id].promoted
+                        and add_orders(physical, program.clones[b.id].half) in loop
+                        for b in lines
+                    ):
+                        # The root would read a Goldstone-vector mixing line's
+                        # vector current as the Goldstone (WP3.2 EWI-4b).
+                        raise UnloweredCountertermError(
+                            f"the counterterm root vertex {entries[0].vertex_name} "
+                            "consumes a Goldstone-vector mixing line on its "
+                            "Goldstone side, which only vertex copies carrying "
+                            "the line momentum consume (leg 1 couples to the "
+                            "Goldstone); not lowered yet"
+                        )
                     attachments = _assigned(fields, choice)
                     index = attachments.index(current)
                     for term in closure.vertex_terms(entries, attachments):
