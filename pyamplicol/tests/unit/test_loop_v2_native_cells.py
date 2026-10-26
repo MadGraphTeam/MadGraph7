@@ -532,11 +532,23 @@ def _records_equal(slice_, monkeypatch, columns=None) -> None:
     monkeypatch.setattr(plan_export._Exporter, "seed_records", spy)
     plan_export.export_plan(slice_, columns=columns)
     monkeypatch.undo()
+    # Columns that differ only by their helicity rows share one weight
+    # column (the third value, the plan's ``column_weights``; None when every
+    # column has its own): the class records hold one weight list per weight
+    # column, the projection of each weight column's first column.
+    python_classes, python_records, shared = captured["result"]
+    if shared is not None:
+        keys, of_column = plan_export.weight_columns(captured["columns"])
+        first: dict[int, int] = {}
+        for k, w in enumerate(of_column):
+            first.setdefault(w, k)
+        captured["columns"] = tuple(
+            captured["columns"][first[w]] for w in range(len(keys))
+        )
     components = dict(captured["before"])
     class_json, records_json = native_cells.project_records(
         slice_, captured["columns"], captured["seeds"], components
     )
-    python_classes, python_records = captured["result"]
     assert class_json == json.dumps(python_classes, separators=(",", ":")).encode()
     assert records_json == json.dumps(python_records, separators=(",", ":")).encode()
     assert list(components) == captured["after"]
@@ -553,6 +565,23 @@ def _records_equal(slice_, monkeypatch, columns=None) -> None:
 @pytest.mark.parametrize("name", sorted(DEFAULT))
 def test_seed_records_equal_the_exporter(slices, monkeypatch, name):
     _records_equal(slices(name).slice, monkeypatch)
+
+
+@pytest.mark.loop_fast
+def test_seed_records_of_shared_weight_columns_equal_the_exporter(slices, monkeypatch):
+    """The helicity-resolved columns of g g > g g share seed-weight columns
+    (generation-scale-2's ``column_weights``): the projection of each weight
+    column's first column equals the exporter's class and seed records."""
+
+    from pyamplicol.loops.v2 import plan_export
+    from pyamplicol.loops.v2.observables import ColumnPlan, ObservableSlice
+
+    slice_ = slices("gg_gg").slice
+    observables = ObservableSlice.of(slice_)
+    plan = ColumnPlan(observables, observables.resolved_columns("helicity-colour", {}))
+    _keys, of_column = plan_export.weight_columns(plan.seed_columns)
+    assert len(set(of_column)) < len(of_column)
+    _records_equal(slice_, monkeypatch, columns=plan.seed_columns)
 
 
 # ------------------------------------------------------------ C3 degrees

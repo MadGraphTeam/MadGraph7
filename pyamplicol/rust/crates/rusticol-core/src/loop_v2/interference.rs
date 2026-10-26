@@ -52,12 +52,27 @@ pub struct Entry {
     pub degree: Option<i32>,
 }
 
+/// The exact overlap cells `<b|t>` of one colour metric.
+#[derive(Clone, Debug)]
+pub enum MetricCells {
+    /// (basis element, ket tensor, N_c power, exact cell) per nonzero cell
+    /// (the counterterm interference's own Born metric).
+    List(Vec<(usize, usize, i32, [Rational; 2])>),
+    /// The distinct cells, each a list of (N_c power, exact cell), and per
+    /// ket tensor and basis element the index of its cell (an observable
+    /// column's metric, `loops/v2/native_observables`: a few dozen distinct
+    /// cells over every (b, t) pair).
+    Table {
+        values: Vec<Vec<(i32, [Rational; 2])>>,
+        ids: Vec<Vec<u32>>,
+    },
+}
+
 /// The interference program of a process.
 pub struct Interference {
     basis: usize,
     tensors: usize,
-    /// (basis element, ket tensor, N_c power, exact cell).
-    cells: Vec<(usize, usize, i32, [Rational; 2])>,
+    cells: MetricCells,
     /// Per Born order, its Born components by N_c power.
     bra: Vec<Groups>,
     /// Per counterterm vector, its ket components by N_c power.
@@ -132,7 +147,7 @@ impl Interference {
         basis: usize,
         orders: usize,
         tensors: usize,
-        cells: Vec<(usize, usize, i32, [Rational; 2])>,
+        cells: MetricCells,
         born: &[(usize, usize, i32)],
         ket: &[(usize, usize, i32)],
         vectors: usize,
@@ -144,8 +159,23 @@ impl Interference {
         if tensors < basis {
             return Err(invalid("the ket tensors start with the Born basis"));
         }
-        if cells.iter().any(|&(b, t, _, _)| b >= basis || t >= tensors) {
-            return Err(invalid("overlap cell outside the basis or the ket tensors"));
+        match &cells {
+            MetricCells::List(cells) => {
+                if cells.iter().any(|&(b, t, _, _)| b >= basis || t >= tensors) {
+                    return Err(invalid("overlap cell outside the basis or the ket tensors"));
+                }
+            }
+            MetricCells::Table { values, ids } => {
+                if ids.len() != tensors
+                    || ids.iter().any(|row| {
+                        row.len() != basis || row.iter().any(|&id| id as usize >= values.len())
+                    })
+                {
+                    return Err(invalid(
+                        "an overlap table needs one cell index per ket tensor and basis element",
+                    ));
+                }
+            }
         }
         if born.iter().any(|&(b, o, _)| b >= basis || o >= orders) {
             return Err(invalid("Born component"));
@@ -215,39 +245,167 @@ impl Interference {
         &self.outputs
     }
 
-    /// The metric classes in carrier `T`.
+    /// The metric classes in carrier `T`: per class, the exact sum of each
+    /// (b, t) cell's kept powers times `3^e`, cast once (a table's distinct
+    /// cells are summed once per class, then indexed).
     pub fn runtime<T: Carrier>(&self, zero: &T) -> InterferenceRuntime<T> {
         let metrics = self
             .class_keys
             .iter()
             .map(|&(degree, shift)| {
-                let mut rows: Vec<BTreeMap<usize, [Rational; 2]>> =
-                    vec![BTreeMap::new(); self.basis];
-                for (b, t, power, [re, im]) in &self.cells {
-                    let exponent = power + shift;
-                    if !kept(exponent, degree, self.depth) {
-                        continue;
+                let sum = |cell: &[(i32, [Rational; 2])]| -> [Rational; 2] {
+                    let mut out = [Rational::from(0), Rational::from(0)];
+                    for (power, [re, im]) in cell {
+                        let exponent = power + shift;
+                        if !kept(exponent, degree, self.depth) {
+                            continue;
+                        }
+                        let scale = nc_power(exponent);
+                        out[0] = &out[0] + &(re * &scale);
+                        out[1] = &out[1] + &(im * &scale);
                     }
-                    let scale = nc_power(exponent);
-                    let cell = rows[*b]
-                        .entry(*t)
-                        .or_insert_with(|| [Rational::from(0), Rational::from(0)]);
-                    cell[0] = &cell[0] + &(re * &scale);
-                    cell[1] = &cell[1] + &(im * &scale);
-                }
-                rows.into_iter()
-                    .map(|row| {
-                        row.into_iter()
-                            .filter(|(_, [re, im])| !re.is_zero() || !im.is_zero())
-                            .map(|(t, [re, im])| {
-                                (t, Complex::new(cast(zero, &re), cast(zero, &im)))
+                    out
+                };
+                let complex = |[re, im]: &[Rational; 2]| -> Option<Complex<T>> {
+                    (!re.is_zero() || !im.is_zero())
+                        .then(|| Complex::new(cast(zero, re), cast(zero, im)))
+                };
+                match &self.cells {
+                    MetricCells::List(cells) => {
+                        let mut rows: Vec<BTreeMap<usize, [Rational; 2]>> =
+                            vec![BTreeMap::new(); self.basis];
+                        for (b, t, power, [re, im]) in cells {
+                            let exponent = power + shift;
+                            if !kept(exponent, degree, self.depth) {
+                                continue;
+                            }
+                            let scale = nc_power(exponent);
+                            let cell = rows[*b]
+                                .entry(*t)
+                                .or_insert_with(|| [Rational::from(0), Rational::from(0)]);
+                            cell[0] = &cell[0] + &(re * &scale);
+                            cell[1] = &cell[1] + &(im * &scale);
+                        }
+                        rows.into_iter()
+                            .map(|row| {
+                                row.into_iter()
+                                    .filter_map(|(t, cell)| complex(&cell).map(|value| (t, value)))
+                                    .collect()
                             })
                             .collect()
-                    })
-                    .collect()
+                    }
+                    MetricCells::Table { values, ids } => {
+                        let scaled: Vec<Option<Complex<T>>> =
+                            values.iter().map(|cell| complex(&sum(cell))).collect();
+                        (0..self.basis)
+                            .map(|b| {
+                                ids.iter()
+                                    .enumerate()
+                                    .filter_map(|(t, row)| {
+                                        scaled[row[b] as usize].clone().map(|value| (t, value))
+                                    })
+                                    .collect()
+                            })
+                            .collect()
+                    }
+                }
             })
             .collect();
         InterferenceRuntime { metrics }
+    }
+
+    /// The complex sums `sum_rows c <A0(bra)|M|ket>` of one point per output
+    /// (an observable column's interferences, `loops/v2/native_observables`):
+    /// `born` holds `rows x born components`, `ket` `rows x ket components`,
+    /// `couplings` the point's coupling slots. `keep_rows` restricts the
+    /// rows (helicity-resolved columns, a spin source's fixed row) and
+    /// `keep_bra` the bra's basis elements (leading-colour resolved
+    /// columns; the ket is never masked). Without `poles`, outputs of a
+    /// nonzero epsilon power stay zero. Not divided by the average.
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_complex<T: Carrier>(
+        &self,
+        runtime: &InterferenceRuntime<T>,
+        born: &[Complex<T>],
+        born_width: usize,
+        ket: &[Complex<T>],
+        ket_width: usize,
+        keep_rows: &[bool],
+        keep_bra: Option<&[bool]>,
+        couplings: &[Complex<T>],
+        poles: bool,
+        zero: &T,
+    ) -> Vec<Complex<T>>
+    where
+        Complex<T>: Real,
+    {
+        let czero = Complex::new(zero.clone(), zero.clone());
+        let per_row: Vec<Vec<Complex<T>>> = keep_rows
+            .par_iter()
+            .enumerate()
+            .filter(|(_, keep)| **keep)
+            .map(|(row, _)| {
+                let a = &born[row * born_width..][..born_width];
+                let k = &ket[row * ket_width..][..ket_width];
+                let mut out = vec![czero.clone(); self.outputs.len()];
+                let mut cache: BTreeMap<(usize, usize, usize), Vec<Complex<T>>> = BTreeMap::new();
+                for (entry, classes) in self.entries.iter().zip(&self.classes) {
+                    if !poles && self.outputs[entry.output] != 0 {
+                        continue;
+                    }
+                    let (kets, values) = match entry.ket {
+                        Ket::Vector(v) => (&self.vectors[v], k),
+                        Ket::Born(o) => (&self.bra[o], a),
+                    };
+                    let mut value = czero.clone();
+                    for (g, ((_p, bras), classes)) in
+                        self.bra[entry.bra].iter().zip(classes).enumerate()
+                    {
+                        for ((_q, components), &class) in kets.iter().zip(classes) {
+                            let z = cache.entry((entry.bra, g, class)).or_insert_with(|| {
+                                let mut z = vec![czero.clone(); self.tensors];
+                                let metric = &runtime.metrics[class];
+                                for &(b, j) in bras {
+                                    if keep_bra.is_some_and(|keep| !keep[b]) {
+                                        continue;
+                                    }
+                                    let x = a[j].conj();
+                                    for (t, m) in &metric[b] {
+                                        z[*t] += x.clone() * m.clone();
+                                    }
+                                }
+                                z
+                            });
+                            for &(t, c) in components {
+                                value += z[t].clone() * values[c].clone();
+                            }
+                        }
+                    }
+                    if let Some(c) = entry.coupling {
+                        value = couplings[c].clone() * value;
+                    }
+                    out[entry.output] += value;
+                }
+                out
+            })
+            .collect();
+        let mut out = vec![czero; self.outputs.len()];
+        for row in per_row {
+            for (total, value) in out.iter_mut().zip(row) {
+                *total += value;
+            }
+        }
+        out
+    }
+
+    /// Number of basis elements of the bra.
+    pub fn basis(&self) -> usize {
+        self.basis
+    }
+
+    /// The overlap cells of the program's metric.
+    pub fn cells(&self) -> &MetricCells {
+        &self.cells
     }
 
     /// The outputs of one point: `born` holds `rows x born components`,
@@ -323,5 +481,92 @@ impl Interference {
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn r(n: i64) -> Rational {
+        Rational::from(n)
+    }
+
+    fn program(cells: MetricCells, depth: Option<i32>) -> Interference {
+        // Two basis elements, three ket tensors; the Born components carry
+        // N_c powers 0 and 1, the ket's 0, 0 and -1.
+        Interference::new(
+            2,
+            1,
+            3,
+            cells,
+            &[(0, 0, 0), (1, 0, 1)],
+            &[(0, 0, 0), (1, 0, 0), (2, 0, -1)],
+            1,
+            vec![Entry {
+                bra: 0,
+                ket: Ket::Vector(0),
+                coupling: None,
+                grade: 0,
+                output: 0,
+                degree: depth.map(|_| 1),
+            }],
+            vec![0],
+            0,
+            depth,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_table_metric_equals_its_list() {
+        let list = vec![
+            (0, 0, 0, [r(1), r(0)]),
+            (0, 0, -2, [r(-1), r(0)]),
+            (0, 2, 1, [r(2), r(1)]),
+            (1, 1, 0, [r(3), r(0)]),
+            (1, 2, 1, [r(2), r(1)]),
+        ];
+        // ids[t][b]: (0,0) -> cell 0, (1,0) -> the empty cell 1, (1,1) -> 3,
+        // (2,0) and (2,1) -> 2.
+        let table = MetricCells::Table {
+            values: vec![
+                vec![(0, [r(1), r(0)]), (-2, [r(-1), r(0)])],
+                vec![],
+                vec![(1, [r(2), r(1)])],
+                vec![(0, [r(3), r(0)])],
+            ],
+            ids: vec![vec![0, 1], vec![1, 3], vec![2, 2]],
+        };
+        for depth in [None, Some(0), Some(2)] {
+            let a = program(MetricCells::List(list.clone()), depth).runtime(&0.0_f64);
+            let b = program(table.clone(), depth).runtime(&0.0_f64);
+            assert_eq!(a.metrics.len(), b.metrics.len());
+            for (x, y) in a.metrics.iter().zip(&b.metrics) {
+                assert_eq!(x.len(), y.len());
+                for (row_x, row_y) in x.iter().zip(y) {
+                    let bits = |row: &Vec<(usize, Complex<f64>)>| -> Vec<(usize, u64, u64)> {
+                        row.iter()
+                            .map(|(t, z)| (*t, z.re.to_bits(), z.im.to_bits()))
+                            .collect()
+                    };
+                    assert_eq!(bits(row_x), bits(row_y), "depth {depth:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_table_metric_is_validated() {
+        let table = |ids: Vec<Vec<u32>>| MetricCells::Table {
+            values: vec![vec![(0, [r(1), r(0)])]],
+            ids,
+        };
+        let new = |cells| Interference::new(2, 1, 3, cells, &[], &[], 0, vec![], vec![], 0, None);
+        assert!(new(table(vec![vec![0, 0]; 3])).is_ok());
+        // One index per ket tensor and basis element, each a stored cell.
+        assert!(new(table(vec![vec![0, 0]; 2])).is_err());
+        assert!(new(table(vec![vec![0]; 3])).is_err());
+        assert!(new(table(vec![vec![0, 1]; 3])).is_err());
     }
 }

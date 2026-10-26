@@ -30,6 +30,15 @@ on-shell, momentum-conserving 140-digit neighbour in MPFR:
   1e-13: the rounded momenta only move the value at their own (analytic)
   order.
 
+The SDK's plan v4 runtime (``v2_runtime::V2Runtime``, no Python, binary64
+only) takes its leg masses from ``TreeProgram::bind`` as the Python API's
+executor does: at the rounded g g > t t~ point its values are bitwise the
+API's and agree with MPFR by the rule above. Binary64 alone cannot tell a
+missing binding (its fast engine snaps the single-leg invariants: the
+Python-input lane gives the same bits with every leg unbound at this point
+and at the u u~ > t t~ g one); the carriers it matters for (DoubleFloat,
+MPFR) run through the Python API's executor above.
+
 The loop_fast test keeps only the binary64-against-MPFR check at the
 reproducer point.
 """
@@ -38,6 +47,7 @@ from __future__ import annotations
 
 import math
 from decimal import Decimal, localcontext
+from fractions import Fraction
 
 import pytest
 
@@ -52,6 +62,8 @@ from pyamplicol.loops.v2.families import (
 )
 from pyamplicol.loops.v2.plan_export import NativeExecutor
 from pyamplicol.loops.v2.stability import Budget, StabilityChecks, deviation
+
+from .loop_v2_ufo_variants import internal_mass_ufo
 
 SCALE = "250000"
 PARAMETERS = {"aS": "0.118"}
@@ -178,11 +190,9 @@ def _onshell_neighbour(point, masses) -> list[list[str]]:
         ]
 
 
-@pytest.fixture(scope="module")
-def executors(loop_sm_compiled_model, loop_native):
-    from pyamplicol.models.loading import load_compiled_model
+def _builder(compiled, loop_native):
+    """Per case name, its slice and native executor on ``compiled``."""
 
-    compiled = load_compiled_model(loop_sm_compiled_model)
     built: dict[str, tuple[LoopSlice, NativeExecutor]] = {}
 
     def build(name: str) -> tuple[LoopSlice, NativeExecutor]:
@@ -197,6 +207,39 @@ def executors(loop_sm_compiled_model, loop_native):
         return built[name]
 
     return build
+
+
+@pytest.fixture(scope="module")
+def executors(loop_sm_compiled_model, loop_native):
+    from pyamplicol.models.loading import load_compiled_model
+
+    return _builder(load_compiled_model(loop_sm_compiled_model), loop_native)
+
+
+@pytest.fixture(scope="module")
+def internal_mt_executors(loop_sm_ufo, loop_native, tmp_path_factory):
+    """loop_sm with MT internal (``internal_mass_ufo``), compiled as
+    ``loop_sm_compiled_model`` is."""
+
+    from dataclasses import replace
+
+    from pyamplicol.models.loading import compile_model_source
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
+
+    root = tmp_path_factory.mktemp("loop-sm-internal-mt")
+    ufo = internal_mass_ufo(loop_sm_ufo, root / "loop_sm_internal_mt", "MT")
+    model = compile_model_source(ufo, cache_dir=root / "model-cache")
+    model = replace(
+        model,
+        raw_loop_model=prepare_loop_sm_scalar_declarations(
+            model.raw_loop_model
+        ).derived,
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
+    return _builder(model, loop_native)
 
 
 def _virtual(result) -> dict:
@@ -323,6 +366,155 @@ def test_a_rounded_massive_qcd_point_agrees_in_every_carrier(executors):
     """g g > t t~ at a rotated rounded point: every leg off shell by rounding."""
 
     _agree_across_carriers(executors, "gg_ttx")
+
+
+@pytest.mark.loop_physics
+def test_an_internal_top_mass_is_bound_on_shell(executors, internal_mt_executors):
+    """loop_sm with MT internal (MT = MTx, an external parameter of the same
+    value; genericity audit M2): the top's loop propagators (``["output",
+    o]`` plan masses) and legs are bound from the parameter program's output
+    natively and from the slice's one mass evaluator in Python, so g g > t t~
+    at the rotated rounded point agrees in every carrier as with the external
+    MT (DoubleFloat and MPFR with the legs on their shell, the on-shell
+    neighbour), binds the external MT's exact masses (173 is a binary64
+    value), equals its virtual and keeps Catani's prediction."""
+
+    slice_, point, mpfr = _agree_across_carriers(internal_mt_executors, "gg_ttx")
+    _slice, executor = internal_mt_executors("gg_ttx")
+    program = executor.exported.trees.program["parameters"]
+    assert any(isinstance(mass, list) for mass in program["plan_masses"])
+    assert program["derived_masses"]
+    external_slice, external = executors("gg_ttx")
+    for precision in (None, Precision.double_double(), Precision.arbitrary(32)):
+        assert executor.bound_masses(
+            [point], [SCALE], PARAMETERS, precision
+        ) == external.bound_masses([point], [SCALE], PARAMETERS, precision)
+    (reference,) = external.evaluate(
+        [point], [SCALE], parameters=PARAMETERS, precision=Precision.arbitrary(32)
+    )
+    assert deviation(_virtual(reference), _virtual(mpfr)) < 1e-28
+    mine = slice_.evaluate(point, SCALE, parameters=PARAMETERS)
+    theirs = external_slice.evaluate(point, SCALE, parameters=PARAMETERS)
+    assert theirs.ir_poles is not None
+    assert mine.ir_poles == theirs.ir_poles
+
+
+_SDK_CARD = """
+action = "generate"
+[model]
+source = {model}
+[process]
+entries = [{{expression="g g > t t~", name="ggttx"}}]
+loop_coupling_orders = ["QCD"]
+coupling_order_policy = "minimal"
+[color]
+accuracy = "full"
+contraction = "direct"
+[loop]
+r2_strategy = "model"
+engine = "v2"
+[loop.preparation]
+fixed_parameters = {{MB = "0", WT = "0"}}
+[loop.model]
+loop_coupling_orders = ["QCD"]
+uv_complete = true
+model_r2_complete = true
+[loop.model.scheme]
+dimensional_regularization = "HV"
+external_states = "physical-four-dimensional"
+gamma5 = "source-UFO-four-dimensional-prescription"
+renormalization = "source-UFO mass-dependent decoupling"
+mass_scheme = "real-on-shell"
+finite_restoration = "source-UFO-local-rules"
+model_convention = "loop_sm lhv=1 supplied QCD rules"
+[generation]
+output = {output}
+emit_api_bundle = false
+[generation.validation]
+post_build_validation = false
+samples = 1
+"""
+
+
+@pytest.mark.loop_physics
+def test_the_sdk_runtime_binds_the_legs_of_a_rounded_massive_point(
+    executors, loop_sm_compiled_model, loop_native, tmp_path
+):
+    """The SDK's plan v4 runtime (``v2_runtime::V2Runtime`` through
+    ``evaluate_v2_artifact``: no Python generation or assembly; its batch
+    takes ``leg_masses`` from ``TreeProgram::bind``) at the rotated rounded
+    g g > t t~ point (every leg off shell by rounding): its binary64 Born
+    and virtual, with and without poles, are bitwise the Python API's, and
+    the virtual agrees with MPFR by the binary64 rule above."""
+
+    import json
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    # The rounded decimals leave the massless legs off shell (exactly; the
+    # invariants the leg binding sets to 0, which binary64 snaps anyway).
+    assert all(
+        e * e - x * x - y * y - z * z != 0
+        for e, x, y, z in ([Fraction(v) for v in leg] for leg in GG_TTX[:2])
+    )
+    card = tmp_path / "card.toml"
+    output = tmp_path / "artifact"
+    card.write_text(
+        _SDK_CARD.format(
+            model=json.dumps(str(loop_sm_compiled_model)),
+            output=json.dumps(str(output)),
+        )
+    )
+    Generator(resolve_config(card)).generate(
+        ProcessSet((ProcessRequest.parse("g g > t t~", name="ggttx"),)), output
+    )
+    runtime = Runtime.load(output, process="ggttx", model_parameters=PARAMETERS)
+    for poles in (True, False):
+        python = runtime.evaluate(
+            [GG_TTX], mu_r2=[SCALE], poles="all" if poles else "none"
+        )
+        ((values, failures),) = loop_native.evaluate_v2_artifact(
+            str(output),
+            [[x for leg in GG_TTX for x in leg]],
+            [SCALE],
+            process="ggttx",
+            parameters=PARAMETERS,
+            poles=poles,
+        )
+        assert not failures, failures
+        born, virtual = values
+        assert born == list(python.born_values[0])
+        width = 3 if poles else 1
+        assert virtual == [list(laurent)[:width] for laurent in python.values[0]]
+    # The SDK's virtual against MPFR (the production executor's arbitrary
+    # precision at the same rounded point), by the binary64 rule.
+    _slice, executor = executors("gg_ttx")
+    (reference,) = executor.evaluate(
+        [GG_TTX], [SCALE], parameters=PARAMETERS, precision=Precision.arbitrary(32)
+    )
+    (double,) = executor.evaluate(
+        [GG_TTX],
+        [SCALE],
+        parameters=PARAMETERS,
+        stability=StabilityChecks(reduction_direction=True),
+    )
+    estimate = double.stability.relative
+    assert estimate <= ESTIMATE_CAP, estimate
+    ((sdk, _failures),) = loop_native.evaluate_v2_artifact(
+        str(output),
+        [[x for leg in GG_TTX for x in leg]],
+        [SCALE],
+        process="ggttx",
+        parameters=PARAMETERS,
+    )
+    ((sector, _laurent),) = _virtual(reference).items()
+    (sdk_virtual,) = sdk[1]
+    error = deviation(
+        _binary64(_virtual(reference)), {sector: Budget(tuple(sdk_virtual))}
+    )
+    assert error <= max(BINARY64, ESTIMATE_MARGIN * estimate), (error, estimate)
 
 
 @pytest.mark.loop_nightly

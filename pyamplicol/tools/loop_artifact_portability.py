@@ -36,8 +36,9 @@ Subcommands (``--help`` on each):
     Compiles the C client below (``CLIENT_SOURCE``) against the loop SDK
     (``rusticol_virtual.h``): from a wheel's ``rusticol-config`` or from a
     source checkout and a native build directory.
-``sdk ARTIFACT --process ID --points FILE --client EXE --out FILE``
-    The same evaluation through the C SDK (``rusticol_virtual_open``),
+``sdk ARTIFACT --process ID --points FILE --client EXE --out FILE [--poles P]``
+    The same evaluation through the C SDK (``rusticol_virtual_open``; with
+    ``--poles`` the pole selection, ``rusticol_virtual_set_poles``),
     optionally without ``SYMBOLICA_LICENSE`` and with concurrent instances:
     the f64 SDK must need no Symbolica licence (the tree engine's rule,
     ``docs/user/symbolica-and-licensing.md``), so a restricted-Symbolica
@@ -119,6 +120,27 @@ GENERATION_CODE = frozenset(
         ("pyamplicol/loops/v2/native_trees.py", "_interaction_program"),
         ("pyamplicol/loops/v2/native_trees.py", "_counterterm_program"),
         ("pyamplicol/loops/v2/native_trees.py", "_parameter_program"),
+        # The observables' slice and column plans, and the export of the
+        # stored observable columns.
+        ("pyamplicol/loops/v2/observables.py", "ObservableSlice.generate"),
+        ("pyamplicol/loops/v2/observables.py", "ColumnPlan.__init__"),
+        ("pyamplicol/loops/v2/observables.py", "NativeObservables.__init__"),
+        ("pyamplicol/loops/v2/native_observables.py", "StoredObservables.export"),
+        # The slice's own stages (also reachable outside LoopSlice.generate):
+        # the certified-scaleless companion and its seeds, the LC/NLC colour
+        # prune, the seed tables (Python and native) and the native colour
+        # cells' table and projection stages.
+        ("pyamplicol/loops/v2/assemble.py", "LoopSlice._scaleless_companion"),
+        ("pyamplicol/loops/v2/assemble.py", "LoopSlice._companion_seeds"),
+        ("pyamplicol/loops/v2/assemble.py", "LoopSlice._prune_colour"),
+        ("pyamplicol/loops/v2/colour.py", "build_seed_table"),
+        ("pyamplicol/loops/v2/colour.py", "extend_seed_table"),
+        ("pyamplicol/loops/v2/native_seeds.py", "build_seed_table"),
+        ("pyamplicol/loops/v2/native_seeds.py", "extend_seed_table"),
+        ("pyamplicol/loops/v2/native_seeds.py", "NativeSeedStage.__init__"),
+        ("pyamplicol/loops/v2/native_cells.py", "cell_table"),
+        ("pyamplicol/loops/v2/native_cells.py", "project_records"),
+        ("pyamplicol/loops/v2/native_cells.py", "directed_table"),
     }
 )
 GENERATION_FILES = (
@@ -604,8 +626,8 @@ static double next_value(FILE *input) {
   return strtod(text, NULL);
 }
 int main(int argc, char **argv) {
-  if (argc != 4) {
-    fprintf(stderr, "usage: %s artifact process points\n", argv[0]);
+  if (argc != 4 && argc != 5) {
+    fprintf(stderr, "usage: %s artifact process points [poles]\n", argv[0]);
     return 2;
   }
   FILE *input = fopen(argv[3], "r");
@@ -622,6 +644,7 @@ int main(int argc, char **argv) {
   fclose(input);
   rusticol_virtual_handle *runtime = NULL;
   check(rusticol_virtual_open(argv[1], argv[2], NULL, "model", &runtime));
+  if (argc == 5) check(rusticol_virtual_set_poles(runtime, argv[4]));
   rusticol_virtual_shape_info shape;
   check(rusticol_virtual_shape(runtime, &shape));
   if (shape.external_count != legs || shape.epsilon_count != 3) {
@@ -850,10 +873,13 @@ def sdk(
     instances: int = 1,
     workdir: Path | None = None,
     hold_permit: bool = False,
+    poles: str | None = None,
 ) -> dict[str, Any]:
     """Evaluate through the C client; ``instances`` concurrent copies (the
     record holds the first's values and every instance's exit status), with
-    ``hold_permit`` while ``RestrictedPermit`` holds the user's permit."""
+    ``hold_permit`` while ``RestrictedPermit`` holds the user's permit;
+    ``poles`` is the pole selection (``rusticol_virtual_set_poles``; absent
+    poles are NaN)."""
 
     workdir = Path(workdir or tempfile.mkdtemp(prefix="portability-sdk-"))
     workdir.mkdir(parents=True, exist_ok=True)
@@ -861,7 +887,7 @@ def sdk(
     _client_input(points_file, feed)
     record = _parse_client("")
     outcome = _run_instances(
-        [str(client), str(artifact), process, str(feed)],
+        [str(client), str(artifact), process, str(feed), *([poles] if poles else [])],
         workdir,
         licence=licence,
         instances=instances,
@@ -1594,6 +1620,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-licence", action="store_true")
     p.add_argument("--instances", type=int, default=1)
     p.add_argument("--hold-permit", action="store_true", help=HOLD_HELP)
+    p.add_argument("--poles", choices=("all", "none", "uv", "ir"))
     p.add_argument("--out")
     p = sub.add_parser("compare", help="bitwise comparison of two records")
     p.add_argument("a", type=Path)
@@ -1683,6 +1710,7 @@ def main(argv: list[str] | None = None) -> int:
             licence=not args.no_licence,
             instances=args.instances,
             hold_permit=args.hold_permit,
+            poles=args.poles,
         )
         _write(record, args.out)
         return 0 if all(s == 0 for s in record["exit_status"]) else 1

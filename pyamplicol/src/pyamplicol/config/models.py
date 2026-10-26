@@ -1501,6 +1501,12 @@ class LoopConfig:
     )
     model: LoopModelConfig = field(default_factory=LoopModelConfig, metadata=_section())
     preparation: LoopPreparationConfig | None = field(default=None, metadata=_section())
+    # The v2 engine's alpha_s parameter of the QCD IR-pole prediction (an
+    # adjustable external model parameter); None: the unique SLHA SMINPUTS 3
+    # one, else no QCD pole prediction.
+    alpha_s_parameter: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.model, LoopModelConfig):

@@ -979,7 +979,7 @@ def test_validate_carriers_and_refused_native_inputs(tmp_path, monkeypatch):
     (``--digits``) select binary64, double-double and arbitrary precision
     (the older ``--precision`` still reads); with ``--inputs native`` a
     process whose trees cannot be exported natively is a failure (exit 1,
-    ``point_inputs`` "regenerated-at-load" with the refusal recorded), never
+    ``point_inputs`` null with the refusal recorded), never
     a fallback to Python inputs."""
 
     import argparse
@@ -1014,7 +1014,7 @@ def test_validate_carriers_and_refused_native_inputs(tmp_path, monkeypatch):
     assert loop_v2_generate.main([*arguments, "--json", str(out)]) == 1
     record = json.loads(out.read_text())
     assert record["passed"] is False and record["carrier"] == "dd"
-    assert record["point_inputs"] == "regenerated-at-load"
+    assert record["point_inputs"] is None
     assert record["native_refusal"] == "a Weyl-line counterterm root term"
 
 
@@ -1266,6 +1266,63 @@ def test_counterterm_references_are_native_parameter_program_inputs(
         mine = native.evaluate(points[:count], scales[:count], **options)
         theirs = python.evaluate(points[:count], scales[:count], **options)
         assert _native_deviation(mine, theirs) <= tolerance, arithmetic
+
+
+@pytest.mark.loop_nightly
+def test_an_internal_w_mass_takes_the_external_route(
+    gmu, loop_gmu_ufo, loop_native, loop_reference, tmp_path
+):
+    """The G_mu UFO with MW internal (``MW = MWx``, an external parameter of
+    the same value; genericity audit M2, harness variant 4): u d~ > w+ g with
+    QCD corrections takes the same route as with the external MW (native
+    point inputs, the W legs bound on its shell from the parameter program's
+    output) and gives the same Born and virtual to rounding in binary64 and
+    double-double (10⁻¹² and 10⁻²⁶ of the sector's virtual)."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+
+    from .loop_v2_ufo_variants import internal_mass_ufo
+
+    variant = _ew_model(
+        internal_mass_ufo(loop_gmu_ufo, tmp_path / "gmu_internal_mw", "MW"),
+        loop_reference,
+    )
+    request = SliceRequest(
+        "u d~ > w+ g",
+        {"QCD": 1, "QED": 1},
+        {"QCD": 3, "QED": 1},
+        corrections=("QCD",),
+        fixed_parameters=_G_MU_FIXED,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    executors = {}
+    for name, model in (("external", gmu), ("internal", variant)):
+        slice_ = LoopSlice.generate(model.compiled, request, loop_native)
+        executors[name] = NativeExecutor(slice_, forward=False, inputs="native")
+    program = executors["internal"].exported.trees.program["parameters"]
+    assert program.get("derived_masses")
+    assert (
+        not executors["external"]
+        .exported.trees.program["parameters"]
+        .get("derived_masses")
+    )
+    # sqrt(s) = 500 GeV, the W at 80.419 GeV (the G_mu default), rounded.
+    momentum = (500.0**2 - 80.419**2) / 1000.0
+    point = [
+        ["250", "0", "0", "250"],
+        ["250", "0", "0", "-250"],
+        [repr(500.0 - momentum), "0", repr(0.6 * momentum), repr(0.8 * momentum)],
+        [repr(momentum), "0", repr(-0.6 * momentum), repr(-0.8 * momentum)],
+    ]
+    for arithmetic, tolerance in (("double", 1e-12), ("double-double", 1e-26)):
+        options = {"parameters": {"aS": "0.118"}}
+        if arithmetic == "double-double":
+            options["precision"] = Precision.double_double()
+        external = executors["external"].evaluate([point], ["250000"], **options)
+        internal = executors["internal"].evaluate([point], ["250000"], **options)
+        assert _native_deviation(internal, external) <= tolerance, arithmetic
 
 
 # ------------------------------------------------------------------ nightly

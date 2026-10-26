@@ -423,13 +423,9 @@ where
     Option::<String>::deserialize(deserializer)
 }
 
-/// How a plan v4 process obtains its per-point inputs (trees, Born
-/// amplitudes, counterterm and field components): rebuilt at load from the
-/// artifact's compiled model and generation request (Python), or
-/// [`LOOP_V2_NATIVE_POINT_INPUTS`].
-pub const LOOP_V2_POINT_INPUTS: &str = "regenerated-at-load";
-
-/// Native point inputs (WP3.1): the PACBIN also holds the process's native
+/// Native point inputs (WP3.1), how every plan v4 process obtains its
+/// per-point inputs (trees, Born amplitudes, counterterm and field
+/// components): the PACBIN also holds the process's native
 /// program (`loops/v2/native_process.py`): its assembly record and tree
 /// program (zlib JSON, kind `LoopRuntimePlan`), its parameter evaluator and
 /// kernel evaluators (saved exact Symbolica states, for DoubleFloat and
@@ -439,14 +435,52 @@ pub const LOOP_V2_POINT_INPUTS: &str = "regenerated-at-load";
 pub const LOOP_V2_NATIVE_POINT_INPUTS: &str = "native-v2";
 
 /// Former point-input declarations, refused with a request to regenerate:
-/// `native-v1` stored no plane applications.
-pub const LOOP_V2_RETIRED_POINT_INPUTS: [&str; 1] = ["native-v1"];
+/// `native-v1` stored no plane applications; `regenerated-at-load` rebuilt
+/// the inputs at load from the artifact's compiled model and generation
+/// request (a stored process never regenerates, REQUIREMENTS_ADDENDUM G).
+pub const LOOP_V2_RETIRED_POINT_INPUTS: [&str; 2] = ["native-v1", "regenerated-at-load"];
 
 /// The PACBIN members of native point inputs.
 pub const LOOP_V2_NATIVE_RECORD_MEMBER: &str = "point-inputs/native-process.json.zlib";
 pub const LOOP_V2_NATIVE_TREES_MEMBER: &str = "point-inputs/tree-program.json.zlib";
 pub const LOOP_V2_NATIVE_PARAMETERS_MEMBER: &str = "point-inputs/parameters.state";
 pub const LOOP_V2_NATIVE_PARAMETERS_PLANE_MEMBER: &str = "point-inputs/parameters.symjit";
+/// The interaction kernels' saved evaluators and plane applications,
+/// `kernel-0.state` / `kernel-0.symjit` onwards.
+pub const LOOP_V2_NATIVE_KERNEL_PREFIX: &str = "point-inputs/kernel-";
+/// The certified-scaleless companion's tree program (the "uv" and "ir" pole
+/// selections run it): the same members under this prefix
+/// (`tree-program.json.zlib`, `parameters.state`, `parameters.symjit`,
+/// `kernel-0.state` / `kernel-0.symjit` onwards).
+pub const LOOP_V2_NATIVE_SCALELESS_PREFIX: &str = "point-inputs/scaleless/";
+
+/// The native point inputs of a plan v4 process
+/// ([`LOOP_V2_NATIVE_POINT_INPUTS`]): the assembly record and the tree
+/// program (JSON), the interaction kernels' and the parameter program's
+/// saved exact evaluators and their binary64 SymJIT plane applications
+/// (`loop_v2::trees::TreeProgram::load` order: the kernels, then the
+/// parameter program).
+#[cfg(feature = "loop-v2")]
+pub struct LoopV2NativeInputs {
+    pub record_json: Vec<u8>,
+    pub trees_json: Vec<u8>,
+    pub evaluators: Vec<Vec<u8>>,
+    pub planes: Vec<Vec<u8>>,
+    /// The certified-scaleless companion's tree program
+    /// ([`LOOP_V2_NATIVE_SCALELESS_PREFIX`]), stored exactly when the
+    /// process stores its companion plan (`scaleless_plan_json`).
+    pub scaleless: Option<LoopV2NativeTrees>,
+}
+
+/// One stored tree program: its JSON and its kernels' and parameter
+/// program's saved exact evaluators and plane applications (the
+/// `loop_v2::trees::TreeProgram::load` order).
+#[cfg(feature = "loop-v2")]
+pub struct LoopV2NativeTrees {
+    pub trees_json: Vec<u8>,
+    pub evaluators: Vec<Vec<u8>>,
+    pub planes: Vec<Vec<u8>>,
+}
 
 #[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
@@ -480,6 +514,12 @@ pub struct LoadedLoopV2Artifact {
     pub scaleless_plan_sha256: Option<String>,
     pub scaleless_plan_json: Option<Vec<u8>>,
     pub scaleless_program: Option<Arc<crate::loop_v2::plan::LoopProgramV4>>,
+    /// The execution payload's path and its PACBIN's runtime path, and the
+    /// declared point inputs ([`read_loop_v2_native_inputs`] reads the
+    /// native ones on demand: the Python runtime reads them itself).
+    pub execution_path: String,
+    pub runtime_path: String,
+    pub point_inputs: String,
 }
 
 #[cfg(feature = "loop-v2")]
@@ -530,7 +570,8 @@ pub fn load_loop_v2_artifact(
     require(
         !LOOP_V2_RETIRED_POINT_INPUTS.contains(&execution.point_inputs.as_str()),
         "the artifact's point inputs are no longer supported (native-v1 stored \
-         no SymJIT plane applications); regenerate the artifact",
+         no SymJIT plane applications; regenerated-at-load regenerated the \
+         process at load); regenerate the artifact",
     )?;
     require(
         execution.schema_version == 4
@@ -539,8 +580,7 @@ pub fn load_loop_v2_artifact(
             && execution.contribution_kind == "virtual"
             && execution.execution_mode == "loop_recurrence"
             && execution.engine == "v2"
-            && (execution.point_inputs == LOOP_V2_POINT_INPUTS
-                || execution.point_inputs == LOOP_V2_NATIVE_POINT_INPUTS)
+            && execution.point_inputs == LOOP_V2_NATIVE_POINT_INPUTS
             && execution.request.is_object(),
         "unsupported plan v4 execution declaration",
     )?;
@@ -687,8 +727,93 @@ pub fn load_loop_v2_artifact(
         scaleless_plan_sha256: execution.scaleless_plan_sha256,
         scaleless_plan_json,
         scaleless_program,
+        execution_path: path,
+        runtime_path: execution.runtime_path,
+        point_inputs: execution.point_inputs,
     })
 }
+
+/// The native point inputs of an admitted plan v4 process (its declared
+/// `point_inputs` is [`LOOP_V2_NATIVE_POINT_INPUTS`]; `None` otherwise):
+/// read from the process's PACBIN, the zlib JSON members inflated.
+#[cfg(feature = "loop-v2")]
+pub fn read_loop_v2_native_inputs(
+    artifact: &VerifiedArtifact,
+    loaded: &LoadedLoopV2Artifact,
+) -> RusticolResult<Option<LoopV2NativeInputs>> {
+    use crate::pacbin::PacbinMemberKind;
+    use std::io::Read;
+
+    if loaded.point_inputs != LOOP_V2_NATIVE_POINT_INPUTS {
+        return Ok(None);
+    }
+    let root = artifact.root().join(
+        Path::new(&loaded.execution_path)
+            .parent()
+            .unwrap_or(Path::new("")),
+    );
+    let store = artifact.evaluator_payload_store(&root)?;
+    let reader = store.source(&loaded.runtime_path)?.pacbin()?;
+    let member = |name: &str, kind: PacbinMemberKind| -> RusticolResult<Vec<u8>> {
+        require(
+            reader.member(name)?.kind() == kind,
+            "native point inputs member of the wrong kind",
+        )?;
+        Ok(reader.member_bytes(name)?.to_vec())
+    };
+    let inflate = |name: &str| -> RusticolResult<Vec<u8>> {
+        let mut json = Vec::new();
+        flate2::read::ZlibDecoder::new(member(name, PacbinMemberKind::LoopRuntimePlan)?.as_slice())
+            .read_to_end(&mut json)
+            .map_err(|error| {
+                RusticolError::integrity(format!("{name} is not a zlib stream: {error}"))
+            })?;
+        Ok(json)
+    };
+    // The tree program under `prefix` (`point-inputs/` or the companion's).
+    let trees = |prefix: &str| -> RusticolResult<LoopV2NativeTrees> {
+        let mut evaluators = Vec::new();
+        let mut planes = Vec::new();
+        loop {
+            let state = format!("{prefix}kernel-{}.state", evaluators.len());
+            if reader.member(&state).is_err() {
+                break;
+            }
+            let plane = format!("{prefix}kernel-{}.symjit", evaluators.len());
+            evaluators.push(member(&state, PacbinMemberKind::SymbolicaExactState)?);
+            planes.push(member(&plane, PacbinMemberKind::SymjitApplication)?);
+        }
+        evaluators.push(member(
+            &format!("{prefix}parameters.state"),
+            PacbinMemberKind::SymbolicaExactState,
+        )?);
+        planes.push(member(
+            &format!("{prefix}parameters.symjit"),
+            PacbinMemberKind::SymjitApplication,
+        )?);
+        Ok(LoopV2NativeTrees {
+            trees_json: inflate(&format!("{prefix}tree-program.json.zlib"))?,
+            evaluators,
+            planes,
+        })
+    };
+    let main = trees(LOOP_V2_NATIVE_INPUTS_PREFIX)?;
+    let scaleless = match loaded.scaleless_plan_json {
+        Some(_) => Some(trees(LOOP_V2_NATIVE_SCALELESS_PREFIX)?),
+        None => None,
+    };
+    Ok(Some(LoopV2NativeInputs {
+        record_json: inflate(LOOP_V2_NATIVE_RECORD_MEMBER)?,
+        trees_json: main.trees_json,
+        evaluators: main.evaluators,
+        planes: main.planes,
+        scaleless,
+    }))
+}
+
+/// The prefix of the process's own tree program members.
+#[cfg(feature = "loop-v2")]
+const LOOP_V2_NATIVE_INPUTS_PREFIX: &str = "point-inputs/";
 
 #[cfg(feature = "loop-v2")]
 fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()> {
