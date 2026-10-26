@@ -667,12 +667,7 @@ KERNELSPEC void kernel_s23_position(
 // edges, which is where the arcsine map puts its points.
 template <typename T>
 KERNELSPEC Triplet<FVal<T>, FVal<T>, FVal<T>> s23_power_offsets(
-    FVal<T> x,
-    FVal<T> x_c,
-    FVal<T> s_min,
-    FVal<T> s_max,
-    FVal<T> power,
-    FVal<T> mass
+    FVal<T> x, FVal<T> x_c, FVal<T> s_min, FVal<T> s_max, FVal<T> power, FVal<T> mass
 ) {
     // returns s23 - s_min, s_max - s23 and d s23 / d x
     auto m2 = mass * mass - 1e-2;
@@ -785,8 +780,7 @@ KERNELSPEC void kernel_s23_arcsine_sample_inverse(
     auto big_r = expm1(p_safe * log_ratio);
     auto big_r_safe = where(fabs(big_r) > 0., big_r, FVal<T>(1.));
     auto pow_x = expm1(p_safe * log1p(d_lo / qa)) / big_r_safe;
-    auto pow_x_c =
-        -expm1(p_safe * log1p(-d_hi / qb)) * (1. + big_r) / big_r_safe;
+    auto pow_x_c = -expm1(p_safe * log1p(-d_hi / qb)) * (1. + big_r) / big_r_safe;
     auto is_flat = pw == 0.;
     auto is_log = pw == 1.;
     auto x = min(max(where(is_flat, flat_x, where(is_log, log_x, pow_x)), 0.), 1.);
@@ -809,9 +803,8 @@ KERNELSPEC void kernel_s23_arcsine_sample_inverse(
     auto v_c = max(cos_b * cos_b + x_c * den_safe, 0.);
     auto theta = atan2(sqrt(v), sqrt(v_c));
     auto r_arc = (theta - theta_a) / dtheta_safe;
-    auto dr_dx = where(
-        v * v_c > 0., den_safe / (dtheta_safe * 2. * sqrt(v * v_c)), FVal<T>(0.)
-    );
+    auto dr_dx =
+        where(v * v_c > 0., den_safe / (dtheta_safe * 2. * sqrt(v * v_c)), FVal<T>(0.));
     r = where(ok, min(max(r_arc, 0.), 1.), x);
     dr_dx = where(ok, dr_dx, FVal<T>(1.));
     det = where(offsets.third > 0., dr_dx / offsets.third, FVal<T>(0.));
@@ -850,15 +843,14 @@ KERNELSPEC void kernel_two_to_three_particle_scattering(
     //   cos(phi) = 2 u - 1,  u = (s23 - s23_min) / (s23_max - s23_min),
     //   -G4 = lambda(s12, ma^2, t2) / 16 * (s23 - s23_min) * (s23_max - s23).
     // Both are evaluated through u and 1 - u, which come in as inputs (see
-    // kernel_s23_position and kernel_s23_arcsine_sample). Forming G4 (or the equivalent cos(phi)
-    // expression) from the invariants instead cancels terms of order s^4 down
+    // kernel_s23_position and kernel_s23_arcsine_sample). Forming G4 (or the equivalent
+    // cos(phi) expression) from the invariants instead cancels terms of order s^4 down
     // to a result that can be many orders of magnitude smaller whenever the
     // s23 range is narrow (a soft particle), and returned Jacobians of up to
     // 1e20 times the typical weight. The range itself comes from momenta for
     // the same reason, see s23_min_max.
-    auto s23_range = s23_min_max<T>(
-        load_mom<T>(pa), load_mom<T>(p3), p_12, s12, t1_abs, m1, m2
-    );
+    auto s23_range =
+        s23_min_max<T>(load_mom<T>(pa), load_mom<T>(p3), p_12, s12, t1_abs, m1, m2);
     auto s23_width = s23_range.second - s23_range.first;
     FVal<T> u_val(u), u_c_val(u_c);
     // cos(phi) = u - (1 - u), |sin(phi)| = 2 sqrt(u (1 - u)), both at full
@@ -876,9 +868,8 @@ KERNELSPEC void kernel_two_to_three_particle_scattering(
     // The edges of the range (sin(phi) = 0) are a set of measure zero.
     auto det_2to3 = where(sqrt_neg_gram4_x8 > 0., 1. / sqrt_neg_gram4_x8, FVal<T>(0.));
 
-    auto scatter_out = p1com_from_tabs_cs<T>(
-        pa_com, s12, cos_phi, sin_phi, t1_abs, m1, m2, ma_2, t2
-    );
+    auto scatter_out =
+        p1com_from_tabs_cs<T>(pa_com, s12, cos_phi, sin_phi, t1_abs, m1, m2, ma_2, t2);
     auto p1_com = scatter_out.first;
     auto p3_p12 = boost<T>(load_mom<T>(p3), p_12, -1.);
     auto p1_rot = rotate_two_ref<T>(p1_com, pa_com, p3_p12);
@@ -964,6 +955,123 @@ KERNELSPEC void kernel_two_to_three_particle_scattering_inverse(
     m1 = sqrt(max(EPS2, m1_2));
     m2 = sqrt(max(EPS2, m2_2));
     det = 2 * det_2to3;
+}
+
+// Whether the solution of the 2->3 step with the given sign of sin(phi) passes
+// the transverse-energy floors, E^2 - p_z^2 >= etmin^2, of p1 and p2. The
+// momenta are formed as in kernel_two_to_three_particle_scattering.
+template <typename T>
+KERNELSPEC BVal<T> two_to_three_branch_passes(
+    FourMom<T> pa_com,
+    FourMom<T> p3_p12,
+    FourMom<T> p_12,
+    FVal<T> s12,
+    FVal<T> cos_phi,
+    FVal<T> sin_phi,
+    FVal<T> t1_abs,
+    FVal<T> m1,
+    FVal<T> m2,
+    FVal<T> ma_2,
+    FVal<T> t2,
+    FVal<T> etmin_1,
+    FVal<T> etmin_2
+) {
+    auto p1_com =
+        p1com_from_tabs_cs<T>(pa_com, s12, cos_phi, sin_phi, t1_abs, m1, m2, ma_2, t2)
+            .first;
+    auto p1 = boost<T>(rotate_two_ref<T>(p1_com, pa_com, p3_p12), p_12, 1.);
+    FourMom<T> p2;
+    for (int i = 0; i < 4; ++i) {
+        p2[i] = p_12[i] - p1[i];
+    }
+    auto mt2_1 = (p1[0] - p1[3]) * (p1[0] + p1[3]);
+    auto mt2_2 = (p2[0] - p2[3]) * (p2[0] + p2[3]);
+    return ((etmin_1 <= 0.) | (mt2_1 >= etmin_1 * etmin_1)) &
+        ((etmin_2 <= 0.) | (mt2_2 >= etmin_2 * etmin_2));
+}
+
+// Choice between the two azimuthal solutions of the 2->3 step as in AmpliCol's
+// gen23_one_step: both are formed, and only those passing the
+// transverse-energy floors of p1 and p2 are kept. If both pass, index_in picks
+// one (factor 1); if one passes it is taken whatever index_in is, and the two
+// values of index_in lead to the same point (factor 1/2); if none passes the
+// weight is zero. The factor is that of a uniformly sampled index_in.
+template <typename T>
+KERNELSPEC void kernel_two_to_three_branch_choice(
+    IIn<T, 0> index_in,
+    FIn<T, 1> pa,
+    FIn<T, 1> p12,
+    FIn<T, 1> p3,
+    FIn<T, 0> u,
+    FIn<T, 0> u_c,
+    FIn<T, 0> t1_abs,
+    FIn<T, 0> m1,
+    FIn<T, 0> m2,
+    FIn<T, 0> etmin_1,
+    FIn<T, 0> etmin_2,
+    IOut<T, 0> index_out,
+    FOut<T, 0> factor,
+    FOut<T, 0> inv_factor
+) {
+    auto p_12 = load_mom<T>(p12);
+    auto p_a = load_mom<T>(pa);
+    FourMom<T> p_c;
+    for (int i = 0; i < 4; ++i) {
+        p_c[i] = p_12[i] - p_a[i];
+    }
+    auto pa_com = boost<T>(p_a, p_12, -1.);
+    auto p3_p12 = boost<T>(load_mom<T>(p3), p_12, -1.);
+    auto ma_2 = lsquare<T>(p_a);
+    auto s12 = lsquare<T>(p_12);
+    auto t2 = lsquare<T>(p_c);
+    FVal<T> u_val(u), u_c_val(u_c), e1(etmin_1), e2(etmin_2);
+    auto u_sum = u_val + u_c_val;
+    auto u_sum_safe = where(u_sum > 0., u_sum, FVal<T>(1.));
+    auto cos_phi = (u_val - u_c_val) / u_sum_safe;
+    auto sin_phi_abs = 2. * sqrt(max(u_val * u_c_val, 0.)) / u_sum_safe;
+    // index 0: sin(phi) >= 0, index 1: sin(phi) < 0 (as the scattering kernel)
+    auto pass_0 = two_to_three_branch_passes<T>(
+        pa_com,
+        p3_p12,
+        p_12,
+        s12,
+        cos_phi,
+        sin_phi_abs,
+        t1_abs,
+        m1,
+        m2,
+        ma_2,
+        t2,
+        e1,
+        e2
+    );
+    auto pass_1 = two_to_three_branch_passes<T>(
+        pa_com,
+        p3_p12,
+        p_12,
+        s12,
+        cos_phi,
+        -sin_phi_abs,
+        t1_abs,
+        m1,
+        m2,
+        ma_2,
+        t2,
+        e1,
+        e2
+    );
+    IVal<T> index(index_in);
+    index_out = where(
+        pass_0 & pass_1,
+        index,
+        where(pass_0, IVal<T>(0), where(pass_1, IVal<T>(1), index))
+    );
+    factor = where(
+        pass_0 & pass_1, FVal<T>(1.), where(pass_0 | pass_1, FVal<T>(0.5), FVal<T>(0.))
+    );
+    inv_factor = where(
+        pass_0 & pass_1, FVal<T>(1.), where(pass_0 | pass_1, FVal<T>(2.), FVal<T>(0.))
+    );
 }
 
 } // namespace kernels

@@ -50,7 +50,7 @@ def _edit_run_card(path, **amplicol):
     card = open(path).read()
     card = card.replace('fixed_ren_scale = false', 'fixed_ren_scale = true')
     card = card.replace('fixed_fact_scale = false', 'fixed_fact_scale = true')
-    card = re.sub(r'(?m)^pdf = ".*"$', 'pdf = "%s"' % _PDF, card)
+    card = re.sub(r'(?m)^(pdf[12]) = ".*"$', r'\1 = "%s"' % _PDF, card)
     card = re.sub(r'(?m)^events = \d+', 'events = %d' % _EVENTS, card)
     card = re.sub(r'(?m)^seed = -1', 'seed = 7', card)
     card = re.sub(r'(?m)^make_plots = true', 'make_plots = false', card)

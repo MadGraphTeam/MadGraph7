@@ -66,7 +66,9 @@ def _optional_numpy():
     return _numpy_module
 
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
-sys.path.append(os.path.join(root_path)) 
+# only add root_path from bin/internal: in madgraph/ it would shadow models/ by madgraph/models
+if os.path.basename(os.path.dirname(os.path.realpath(__file__))) == 'internal':
+    sys.path.append(os.path.join(root_path))
 sys.path.append(os.path.join(root_path,os.pardir))
 try:
     # import from madgraph directory

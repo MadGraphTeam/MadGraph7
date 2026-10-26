@@ -137,6 +137,18 @@ public:
     void set_abs_integral_prior(double mean, double error);
     /// Whether @ref set_abs_integral_prior was called.
     bool has_abs_integral_prior() const { return _abs_integral_prior.has_value(); }
+    /// Set the signed integral known from an earlier run, with its standard error.
+    void set_integral_prior(double mean, double error);
+    /// Whether this run has too few samples for an integral estimate of its own, so
+    /// that @ref EventGenerator uses the priors instead.
+    bool uses_integral_prior(bool final_step = true) const;
+    /// The prior of the signed integral as (mean, standard error), or of the
+    /// absolute one if no signed prior was set.
+    std::pair<double, double> integral_prior() const;
+    /// The prior of the integral of the absolute weights as (mean, standard error).
+    std::pair<double, double> abs_integral_prior() const {
+        return *_abs_integral_prior;
+    }
     /// The integral of the absolute weights: the mean of this run, combined
     /// with the prior (if any) weighted by the inverse variances. Used to share
     /// the events between channels. With `final_step`, the integral after the
@@ -393,6 +405,7 @@ private:
     bool _max_weight_fixed = false;
     // mean and standard error
     std::optional<std::pair<double, double>> _abs_integral_prior;
+    std::optional<std::pair<double, double>> _integral_prior;
     std::size_t _count_requested_opt = 0;
     // Monotonic per-job counters keying each job's deterministic random stream;
     // never reset. Separate for survey/generate so neither depends on the other.

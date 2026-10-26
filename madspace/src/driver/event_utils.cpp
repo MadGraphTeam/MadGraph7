@@ -144,11 +144,21 @@ void madspace::sum_channel_status(
              !std::isfinite(integral.variance_abs))) {
             bad_channel = channel.get();
         }
-        total_mean += integral.mean;
-        total_mean_abs += integral.mean_abs;
-        if (integral.count > 0) {
-            total_var += integral.variance / integral.count;
-            total_var_abs += integral.variance_abs / integral.count;
+        if (channel->uses_integral_prior()) {
+            // not sampled in this run (no events assigned): use the earlier estimate
+            auto [mean, error] = channel->integral_prior();
+            auto [mean_abs, error_abs] = channel->abs_integral_prior();
+            total_mean += mean;
+            total_var += error * error;
+            total_mean_abs += mean_abs;
+            total_var_abs += error_abs * error_abs;
+        } else {
+            total_mean += integral.mean;
+            total_mean_abs += integral.mean_abs;
+            if (integral.count > 0) {
+                total_var += integral.variance / integral.count;
+                total_var_abs += integral.variance_abs / integral.count;
+            }
         }
         total_count += chan_status.count;
         total_count_opt += chan_status.count_opt;

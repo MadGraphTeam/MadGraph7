@@ -1,15 +1,21 @@
+import math
 from collections import namedtuple
 
-import numpy as np
 import pytest
-from pytest import approx
+import torch
+from madspace_testing import generator, rand, randn
 
 import madspace as ms
 
 
+def assert_approx(actual, expected):
+    """Elementwise pytest.approx with its default tolerances, for tensors."""
+    torch.testing.assert_close(actual, expected, rtol=1e-6, atol=1e-12)
+
+
 @pytest.fixture
 def rng():
-    return np.random.default_rng(1234)
+    return generator(1234)
 
 
 @pytest.fixture(
@@ -24,13 +30,13 @@ def rng():
 )
 def mapping_and_args(request):
     com = request.param["com"]
-    zeros = np.zeros(N)
+    zeros = torch.zeros(N)
     if request.param["decay"]:
         mapping = ms.ThreeBodyDecay(com=com)
         if com:
 
             def make_args(point):
-                p0 = np.stack([point.m0, zeros, zeros, zeros], axis=1)
+                p0 = torch.stack([point.m0, zeros, zeros, zeros], dim=1)
                 return (
                     [
                         point.r1,
@@ -73,7 +79,7 @@ def mapping_and_args(request):
 
 
 def mass(momentum):
-    return np.sqrt(momentum[:, 0] ** 2 - np.sum(momentum[:, 1:] ** 2, axis=1))
+    return torch.sqrt(momentum[:, 0] ** 2 - torch.sum(momentum[:, 1:] ** 2, dim=1))
 
 
 InputPoint = namedtuple(
@@ -84,31 +90,35 @@ InputPoint = namedtuple(
 N = 10000
 
 
+def uniform(rng, low, high):
+    return low + (high - low) * rand(N, generator=rng)
+
+
 @pytest.fixture
 def input_points(rng):
     max_mass = 125.0
-    r1 = rng.random(N)
-    r2 = rng.random(N)
-    r3 = rng.random(N)
-    r4 = rng.random(N)
-    r5 = rng.random(N)
+    r1 = rand(N, generator=rng)
+    r2 = rand(N, generator=rng)
+    r3 = rand(N, generator=rng)
+    r4 = rand(N, generator=rng)
+    r5 = rand(N, generator=rng)
 
-    pa = np.array([[0, 0, 4000.0]]) + rng.normal(0.0, 500.0, (N, 3))
-    ma = rng.uniform(2.5 * max_mass, 1000.0, N)
-    ea = np.sqrt(np.sum(pa**2, axis=1) + ma**2)
-    pa = np.concatenate([ea[:, None], pa], axis=1)
+    pa = torch.tensor([[0, 0, 4000.0]]) + 500.0 * randn((N, 3), generator=rng)
+    ma = uniform(rng, 2.5 * max_mass, 1000.0)
+    ea = torch.sqrt(torch.sum(pa**2, dim=1) + ma**2)
+    pa = torch.cat([ea[:, None], pa], dim=1)
 
-    pb = np.array([[0, 0, -4000.0]]) + rng.normal(0.0, 500.0, (N, 3))
-    mb = rng.uniform(20.0, 500.0, N)
-    eb = np.sqrt(np.sum(pb**2, axis=1) + mb**2)
-    pb = np.concatenate([eb[:, None], pb], axis=1)
+    pb = torch.tensor([[0, 0, -4000.0]]) + 500.0 * randn((N, 3), generator=rng)
+    mb = uniform(rng, 20.0, 500.0)
+    eb = torch.sqrt(torch.sum(pb**2, dim=1) + mb**2)
+    pb = torch.cat([eb[:, None], pb], dim=1)
 
     p0 = pa + pb
     m0 = mass(p0)
 
-    m1 = rng.uniform(1.0, max_mass, N)
-    m2 = rng.uniform(1.0, max_mass, N)
-    m3 = rng.uniform(1.0, max_mass, N)
+    m1 = uniform(rng, 1.0, max_mass)
+    m2 = uniform(rng, 1.0, max_mass)
+    m3 = uniform(rng, 1.0, max_mass)
 
     return InputPoint(r1, r2, r3, r4, r5, m0, m1, m2, m3, p0, pa, pb)
 
@@ -117,7 +127,7 @@ def test_momentum_conservation(mapping_and_args, input_points):
     mapping, make_args, com = mapping_and_args
     inputs, conditions, p0 = make_args(input_points)
     p1, p2, p3, det = mapping.map_forward(inputs, conditions)
-    assert p1 + p2 + p3 == approx(p0)
+    assert_approx(p1 + p2 + p3, p0)
 
 
 def test_inverse(mapping_and_args, input_points):
@@ -125,9 +135,11 @@ def test_inverse(mapping_and_args, input_points):
     inputs, conditions, p0 = make_args(input_points)
     p1, p2, p3, det = mapping.map_forward(inputs, conditions)
     *inv_inputs, inv_det = mapping.map_inverse([p1, p2, p3], conditions)
-    assert inv_det == approx(1 / det)
+    assert_approx(inv_det, 1 / det)
     for i, (inp, inv_inp) in enumerate(zip(inputs, inv_inputs)):
-        assert inp == approx(inv_inp), f"Mismatch at index {i}: {inp} vs {inv_inp}"
+        torch.testing.assert_close(
+            inp, inv_inp, rtol=1e-6, atol=1e-12, msg=f"Mismatch at index {i}"
+        )
 
 
 def test_outgoing_masses(mapping_and_args, input_points):
@@ -141,39 +153,39 @@ def test_outgoing_masses(mapping_and_args, input_points):
     index = 5
     print(p3[index])
     print(m3[index], input_points.m3[index])
-    assert m0 == approx(input_points.m0)
-    assert m1 == approx(input_points.m1)
-    assert m2 == approx(input_points.m2)
-    assert m3 == approx(input_points.m3)
+    assert_approx(m0, input_points.m0)
+    assert_approx(m1, input_points.m1)
+    assert_approx(m2, input_points.m2)
+    assert_approx(m3, input_points.m3)
 
 
 def test_phase_space_via_two_2body(mapping_and_args, rng):
     mapping_13, make_args, com = mapping_and_args  # your ThreeBodyDecay
     N = 50000
-    r = rng.random((N, 5))  # 5 random numbers for 1->3 decay
+    r = rand((N, 5), generator=rng)  # 5 random numbers for 1->3 decay
     u = r[:, 0]  # first random number for s12
 
     # Fix parent in COM for clarity (or use your fixture’s p0)
     m0, m1, m2, m3 = 120.0, 10.0, 15.0, 5.0
-    zeros = np.zeros(N)
-    p0 = np.stack([np.full(N, m0), zeros, zeros, zeros], axis=1)
+    zeros = torch.zeros(N)
+    p0 = torch.stack([torch.full((N,), m0), zeros, zeros, zeros], dim=1)
 
     smin = (m1 + m2) ** 2
     smax = (m0 - m3) ** 2
     s12 = smin + u * (smax - smin)
-    mQ = np.sqrt(s12)
+    mQ = torch.sqrt(s12)
 
     # --- First 2-body: 0 -> Q + 3 ---
     mapping1 = ms.TwoBodyDecay(com=True)
-    inputs1 = [r[:, 1], r[:, 2], np.full(N, m0), np.full(N, mQ), np.full(N, m3)]
+    inputs1 = [r[:, 1], r[:, 2], torch.full((N,), m0), mQ, torch.full((N,), m3)]
     pQ, p3, det1 = mapping1.map_forward(inputs1, [])
 
     # Ensure pQ has invariant mass sqrt(s12)
-    assert approx(np.sqrt(pQ[:, 0] ** 2 - (pQ[:, 1:] ** 2).sum(1))) == mQ
+    assert_approx(torch.sqrt(pQ[:, 0] ** 2 - (pQ[:, 1:] ** 2).sum(1)), mQ)
 
     # --- Second 2-body: Q -> 1 + 2 ---
     mapping2 = ms.TwoBodyDecay(com=False)  # use actual pQ (boosted)
-    inputs2 = [r[:, 3], r[:, 4], mQ, np.full(N, m1), np.full(N, m2), pQ]
+    inputs2 = [r[:, 3], r[:, 4], mQ, torch.full((N,), m1), torch.full((N,), m2), pQ]
     p1, p2, det2 = mapping2.map_forward(inputs2, [])
 
     # Reference Jacobian
@@ -187,10 +199,10 @@ def test_phase_space_via_two_2body(mapping_and_args, rng):
             r[:, 2],
             r[:, 3],
             r[:, 4],
-            np.full(N, m0),
-            np.full(N, m1),
-            np.full(N, m2),
-            np.full(N, m3),
+            torch.full((N,), m0),
+            torch.full((N,), m1),
+            torch.full((N,), m2),
+            torch.full((N,), m3),
         ]
     else:
         inputs13 = [
@@ -199,16 +211,18 @@ def test_phase_space_via_two_2body(mapping_and_args, rng):
             r[:, 2],
             r[:, 3],
             r[:, 4],
-            np.full(N, m0),
-            np.full(N, m1),
-            np.full(N, m2),
-            np.full(N, m3),
+            torch.full((N,), m0),
+            torch.full((N,), m1),
+            torch.full((N,), m2),
+            torch.full((N,), m3),
             p0,
         ]
     p1a, p2a, p3a, det = mapping_13.map_forward(inputs13, [])
 
     # Total volume match (mean Jacobian)
-    error1 = np.sqrt(np.var(det) / N)
-    error2 = np.sqrt(np.var(J_ref) / N)
+    error1 = math.sqrt(det.var(correction=0).item() / N)
+    error2 = math.sqrt(J_ref.var(correction=0).item() / N)
     print(f"Mean det error: {error1:.3e}, ref: {error2:.3e}")
-    assert np.mean(det) == approx(np.mean(J_ref), abs=3 * max(error1, error2))
+    assert det.mean().item() == pytest.approx(
+        J_ref.mean().item(), abs=3 * max(error1, error2)
+    )

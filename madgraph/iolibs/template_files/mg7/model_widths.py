@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 
+from madgraph.models.check_param_card import group_auto_widths
 from madgraph.various import misc
 from madgraph.iolibs.template_files.mg7.bootstrap import MG_ROOT as _MG_ROOT
 
@@ -72,7 +73,7 @@ def _proc_characteristic(me_dir=None) -> dict:
 
 def load_process_model(me_dir=None):
     """Import the UFO model this process was generated with, as
-    :func:`models.import_ufo.import_model` builds it -- the object every
+    :func:`madgraph.models.import_ufo.import_model` builds it -- the object every
     model-level consumer of the param_card expects (see
     :meth:`MG7Cmd.get_model`). None when the process recorded no model, or when
     that model no longer imports.
@@ -85,7 +86,7 @@ def load_process_model(me_dir=None):
     cms = _proc_characteristic(me_dir).get('complex_mass_scheme', False)
     key = (ref, bool(cms))
     if key not in _model_cache:
-        import models.import_ufo as import_ufo
+        import madgraph.models.import_ufo as import_ufo
         try:
             with misc.MuteLogger(['madgraph.model'], [50]):
                 _model_cache[key] = import_ufo.import_model(
@@ -116,12 +117,14 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
             text = f.read()
     except OSError:
         return
-    # matches "DECAY <pdg> auto" (optionally "auto@NLO"), as in
-    # common_run_interface.static_check_param_card
-    pdgs = re.findall(r"(?im)^\s*decay\s+([+-]?\d+)\s+auto", text)
-    if not pdgs:
+    # "DECAY <pdg> auto", with the options of compute_widths that may follow
+    # ("auto@NLO", "auto --nlo --body_decay=3"), as in
+    # common_run_interface.static_check_param_card: one compute_widths per set of
+    # options
+    groups = group_auto_widths(text)
+    if not groups:
         return
-    pdgs = list(dict.fromkeys(pdgs))  # de-duplicate, keep order
+    pdgs = [pdg for group in groups.values() for pdg in group]
 
     model = read_stored_model()
     if not model:
@@ -136,8 +139,10 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
         return
 
     import tempfile
-    cmds = "import model %s\ncompute_widths %s --path=%s\n" % (
-        model, " ".join(pdgs), os.path.abspath(param_card_path))
+    cmds = "import model %s\n" % model
+    for options, group in groups.items():
+        cmds += "compute_widths %s --path=%s %s\n" % (
+            " ".join(group), os.path.abspath(param_card_path), " ".join(options))
     with tempfile.NamedTemporaryFile("w", suffix=".mg5", delete=False) as fh:
         fh.write(cmds)
         cmdfile = fh.name

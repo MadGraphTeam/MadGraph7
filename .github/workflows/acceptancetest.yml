@@ -139,6 +139,8 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_standalone_cpp_output_consistency -pA -t0 -l INFO
             ./tests/test_manager.py test_madmatrix_vs_fortran -pA -t0 -l INFO
+            # MadSpin's density matrices and |M|^2 from madmatrix against the f2py ones
+            ./tests/test_manager.py test_madmatrix_density_matches_fortran -pA -t0 -l INFO
             ./tests/test_manager.py test_standalone_cpp_perf_alpha_s_from_param_card -pA -t0 -l INFO
 
       # ---- acceptancetest_33 ----
@@ -734,6 +736,12 @@ jobs:
             which f2py
             echo "f2py_compiler = $(which f2py)" >> input/mg7_configuration.txt
             ./tests/test_manager.py test_standalone_density_f2py -pA -t0 -l INFO
+      - name: "acceptancetest_density: test test_standalone_f2py_get_all_inter (all_matrix2py py_get_all_inter)"
+        if: ${{ !cancelled() }}
+        # numpy and f2py_compiler come from the density f2py step above
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_f2py_get_all_inter -pA -t0 -l INFO
 
 
   acceptancetest_104:
@@ -797,7 +805,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -pA TestMLMReweight
+            ./tests/test_manager.py -pA TestMLMReweight TestMLMReweightAutoMatch
 
   acceptancetest_fks_standalone:
     # FKS Born building-block standalone output ('output standalone_fortran --fks'):
@@ -1010,3 +1018,39 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_loop_induced -pA -t0 -l INFO
+
+  acceptancetest_uncovered:
+    # Acceptance tests that no workflow selected (audit of 2026-10-24).
+    # Not here: test_madevent_triplet_diquarks, test_loop_improved_reweighting
+    # and test_nlo_output2 (@bypass_for_py3, never run), test_contur_from_file
+    # (disabled in acceptancetest_madevent.yml), test_madspace_example_gpu (GPU).
+    # Each step runs even when an earlier one failed.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_heptools
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_all
+      # StdHEP (the hw6/py6 stdhep tests) needs the rpc headers, as in parralel.yml
+      - name: Install libtirpc-dev
+        run: sudo apt install -y libtirpc-dev
+
+      - name: "standalone and madmatrix outputs"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_madmatrix_goodhel_filter test_madmatrix_mssm_single_leg test_standalone_f2py_pdgs_not_modified test_standalone_interference_helicity_choice test_standalone_split_orders_interference test_standalone_umami_first_call test_fks_born_gscale_mixed_orders -pA -t0 -l INFO
+
+      - name: "loop-induced x tree interference, standalone"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_loop_induced_x_tree -pA -t0 -l INFO
+
+      - name: "aMC@NLO event generation"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_gen_evt_onlygen test_generate_events_lo_hw6_stdhep test_generate_events_lo_py6_stdhep -pA -t0 -l INFO

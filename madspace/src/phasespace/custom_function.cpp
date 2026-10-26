@@ -8,26 +8,35 @@ using namespace madspace;
 
 namespace {
 
-const char* output_name(CustomFunction::CustomFunctionType type) {
+std::vector<MatrixElement::MatrixElementOutput>
+output_keys(CustomFunction::CustomFunctionType type) {
     switch (type) {
     case CustomFunction::cut:
-        return "cut";
+        return {MatrixElement::cut_out};
     case CustomFunction::scale:
-        return "scale";
+        return {
+            MatrixElement::ren_scale_out,
+            MatrixElement::fact_scale1_out,
+            MatrixElement::fact_scale2_out
+        };
     case CustomFunction::bias:
-        return "bias";
+        return {MatrixElement::bias_out};
     }
     throw std::invalid_argument("unknown custom function type");
 }
 
-MatrixElement::MatrixElementOutput output_key(CustomFunction::CustomFunctionType type) {
+NamedVector<Type> output_types(CustomFunction::CustomFunctionType type) {
     switch (type) {
     case CustomFunction::cut:
-        return MatrixElement::cut_out;
+        return {{"cut", batch_float}};
     case CustomFunction::scale:
-        return MatrixElement::scale_out;
+        return {
+            {"ren_scale", batch_float},
+            {"fact_scale1", batch_float},
+            {"fact_scale2", batch_float}
+        };
     case CustomFunction::bias:
-        return MatrixElement::bias_out;
+        return {{"bias", batch_float}};
     }
     throw std::invalid_argument("unknown custom function type");
 }
@@ -51,7 +60,7 @@ CustomFunction::CustomFunction(
             }
             return arg_types;
         }(),
-        {{output_name(type), batch_float}}
+        output_types(type)
     ),
     _function_index(function_index),
     _type(type),
@@ -95,10 +104,8 @@ NamedVector<Value> CustomFunction::build_function_impl(
         {MatrixElement::momenta_in,
          MatrixElement::particle_count_in,
          MatrixElement::pdg_ids_in},
-        {output_key(_type)}
+        output_keys(_type)
     );
     auto particle_count = fb.full({static_cast<me_int_t>(_particle_count), batch_size});
-    auto value =
-        function.build_function(fb, {momenta, particle_count, fb.stack(pdg_ids)}).at(0);
-    return {{output_name(_type), value}};
+    return function.build_function(fb, {momenta, particle_count, fb.stack(pdg_ids)});
 }

@@ -30,6 +30,7 @@
 #include "ColorData.h"       // for shouldUseBlas/mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
 #include "color_sum.h"       // for color_sum_cpu/color_sum_cpu_blas
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstring>
@@ -104,6 +105,11 @@ namespace madmatrix
     cBWCUTOFF = bwcutoff;
   }
 
+  const short* getHelicities()
+  {
+    return &cHel[0][0];
+  }
+
   //--------------------------------------------------------------------------
 
   // SCALAR channelId for the whole SIMD neppV2 event page (C++), i.e. one or two neppV event page(s)
@@ -168,6 +174,25 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // The mass an external leg marked off-shell ('*': MadSpin's decaying particles)
+  // is evaluated with: the invariant mass of its momentum, as in the Fortran
+  // standalone output (SQRT(P(0,i)**2-...)), so that the wavefunction is the one
+  // of the momentum the leg actually has. The pole mass comes first only for the
+  // code generator, which maps it to its parameter.
+  template<class M_ACCESS>
+  inline fptype_amp
+  offshell_mass( const fptype_amp poleMass, const fptype_momenta* momenta, const int ipar )
+  {
+    (void)poleMass;
+    const double e = M_ACCESS::kernelAccessIp4IparConst( momenta, 0, ipar );
+    const double px = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
+    const double py = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
+    const double pz = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
+    return static_cast<fptype_amp>( std::sqrt( std::max( e * e - px * px - py * py - pz * pz, 0. ) ) );
+  }
+
+  //--------------------------------------------------------------------------
+
   // Accumulate a multichannel numerator contribution in place. In C++ each
   // event page is processed serially within the helicity loop, so a plain
   // sum suffices (CUDA needs atomicAdd instead: see backend/gpu/SigmaKin.cc).
@@ -181,7 +206,7 @@ namespace madmatrix
   // channelId because it is GUARANTEED that all events in a SIMD vector have the same
   // channelId #898.
   void
-  calculate_jamps( int ihel,
+  calculate_jamps( const short* hel,                 // input: helicity of each leg, hel[npar] (a row of cHel, or not: see Density.cc)
                    const fptype_momenta* allmomenta,   // input: momenta[nevt*npar*4]
                    const fptype* allcouplings,         // input: couplings[nevt*ndcoup*2]
                    const unsigned int* iflavorVec,     // input: indices of the flavor combinations
@@ -197,9 +222,20 @@ namespace madmatrix
     using A_ACCESS = HostAccessAmplitudes;      // TRIVIAL ACCESS (no kernel splitting yet): buffer for one event
     using CD_ACCESS = HostAccessCouplings;      // non-trivial access (dependent couplings): buffer includes all events
     using CI_ACCESS = HostAccessCouplingsFixed; // TRIVIAL access (independent couplings): buffer for one event
+    using CDPF_ACCESS = CD_ACCESS;              // the running flavor couplings gathered into dpf_value (one event page, as CD_ACCESS)
     using F_ACCESS = HostAccessIflavorVec;      // non-trivial access: buffer includes all events
     using NUM_ACCESS = HostAccessNumerators;    // non-trivial access: buffer includes all events
     mgDebug( 0, __FUNCTION__ );
+
+    // EvaluateDiagrams.inc reads the helicities as cHel[ihel][ipar]. Shadow the
+    // helicity table with the one row this call evaluates, so that the row need
+    // not be one of cHel at all: the density matrix builds combinations that a
+    // polarised process leaves out of its table (sigmaKin_density, Density.cc).
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+    const short( *cHel )[npar] = reinterpret_cast<const short( * )[npar]>( hel );
+#pragma GCC diagnostic pop
+    constexpr int ihel = 0;
 
     // Local TEMPORARY variables for a subset of Feynman diagrams in the given C++ event
     // page (ipagV) [NB these variables are reused several times (and re-initialised each
@@ -266,9 +302,9 @@ namespace madmatrix
       // an ordinary value-based view over it. The flavor index is constant across a SIMD lane
       // (guaranteed by the phase-space integrator), so each lane gets its own running value
       // while sharing the same flavor selection. This is the direct analogue of Fortran's
-      // FLV_xx%VAL(k)%P => GC_yyy(J). The vertex routines are instantiated with CD_ACCESS so
-      // get_coupling_def reads dpf_value with the right per-flavor stride (CD_ACCESS::flv_stride).
-      constexpr int ndpfbuf = ( nDPF > 0 ? nDPF * nMF * CD_ACCESS::flv_stride : 1 );
+      // FLV_xx%VAL(k)%P => GC_yyy(J). The vertex routines are instantiated with CDPF_ACCESS
+      // (= CD_ACCESS here) so get_coupling_def reads dpf_value with the right per-flavor stride.
+      constexpr int ndpfbuf = ( nDPF > 0 ? nDPF * nMF * CDPF_ACCESS::flv_stride : 1 );
       // cppAlign is only defined for SIMD
       alignas( mgOnGpu::cppAlign ) fptype dpf_value[ndpfbuf]{};
       for( int idpf = 0; idpf < nDPF; idpf++ )
@@ -276,10 +312,10 @@ namespace madmatrix
         {
           const int idc = cDPF_idcoup[idpf * nMF + imf];
           if( idc >= 0 )
-            CD_ACCESS::kernelAccess( dpf_value + ( idpf * nMF + imf ) * CD_ACCESS::flv_stride ) =
+            CDPF_ACCESS::kernelAccess( dpf_value + ( idpf * nMF + imf ) * CDPF_ACCESS::flv_stride ) =
               CD_ACCESS::kernelAccessConst( COUPs[idc] );
         }
-      FLV_COUPLING_ARRAY<nDPF, nMF, CD_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partner1, cDPF_partner2, dpf_value };
+      FLV_COUPLING_ARRAY<nDPF, nMF, CDPF_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partner1, cDPF_partner2, dpf_value };
 
       // Reset color flows (reset jamp_sv) at the beginning of a new event or event page
       for( int i = 0; i < njampso; i++ ) { jamp_sv[i] = cxzero_sv<cxtype_amp_sv>(); }
@@ -378,7 +414,7 @@ namespace madmatrix
 #else
         cxtype_amp_sv jamp_sv[njampso] = {}; // all zeros
 #endif
-        calculate_jamps( ihel, allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 );
+        calculate_jamps( cHel[ihel], allmomenta, allcouplings, hgFlavorVec, jamp_sv, false, allNumerators, allDenominators, jamp2_sv, ievt00 );
         color_sum_cpu( allMEs, jamp_sv, ievt00 );
         for( int ieppV = 0; ieppV < neppV; ++ieppV )
         {
@@ -418,6 +454,14 @@ namespace madmatrix
     cNGoodHel = nGoodHel;
     for( int ihel = 0; ihel < ncomb; ihel++ ) cGoodHel[ihel] = goodHel[ihel];
     return nGoodHel;
+  }
+
+  //--------------------------------------------------------------------------
+
+  int
+  sigmaKin_getNGoodHel()
+  {
+    return cNGoodHel;
   }
 
   //--------------------------------------------------------------------------
@@ -608,7 +652,7 @@ namespace madmatrix
           for( int i = 0; i < nParity * ncolor; i++ ) jamp_sv[i] = cxzero_sv<cxtype_sv>(); // calculate_jamps accumulates into jamp_sv
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
-          calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
+          calculate_jamps( cHel[ihel], allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
         }
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
         color_sum_cpu_blas( allMEs, MEs_ighel, MEs_ighel2, ghelJamp_sv.data(), cNGoodHel, ievt00 );
@@ -625,7 +669,7 @@ namespace madmatrix
           cxtype_amp_sv jamp_sv[nParity * njampso] = {}; // fixed nasty bug (omitting 'nParity' caused memory corruptions after calling calculate_jamps)
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
-          calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
+          calculate_jamps( cHel[ihel], allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
           color_sum_cpu( allMEs, jamp_sv, ievt00 );
           MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT

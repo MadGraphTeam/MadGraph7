@@ -69,8 +69,8 @@ module mint_module
   implicit none
   integer, parameter, private :: nintervals=32    ! max number of intervals in the integration grids
   integer, parameter, public  :: ndimmax=60       ! max number of dimensions of the integral
-  integer, parameter, public  :: n_ave_virt=10    ! max number of grids to set up to approx virtual
-  integer, parameter, public  :: nintegrals=26    ! number of integrals to keep track of
+  integer, parameter, public  :: n_ave_virt=16    ! max number of grids to set up to approx virtual
+  integer, parameter, public  :: nintegrals=38    ! number of integrals to keep track of
   integer, parameter, private :: nintervals_virt=8! max number of intervals in the grids for the approx virtual
   integer, parameter, private :: min_inter=4      ! minimal number of intervals
   integer, parameter, private :: min_it0=4        ! minimal number of iterations in the mint step 0 phase
@@ -125,7 +125,19 @@ module mint_module
                                                    'V  9         ', & ! 23
                                                    'B  9         ', & ! 24
                                                    'V 10         ', & ! 25
-                                                   'B 10         '/)  ! 26
+                                                   'B 10         ', & ! 26
+                                                   'V 11         ', & ! 27
+                                                   'B 11         ', & ! 28
+                                                   'V 12         ', & ! 29
+                                                   'B 12         ', & ! 30
+                                                   'V 13         ', & ! 31
+                                                   'B 13         ', & ! 32
+                                                   'V 14         ', & ! 33
+                                                   'B 14         ', & ! 34
+                                                   'V 15         ', & ! 35
+                                                   'B 15         ', & ! 36
+                                                   'V 16         ', & ! 37
+                                                   'B 16         '/)  ! 38
 
 
   integer, private :: nit,nit_included,kpoint_iter,nint_used,nint_used_virt,min_it,ncalls,pass_cuts_point,ng,npg,k

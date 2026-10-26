@@ -239,6 +239,189 @@ class TestMECmdRWGT(unittest.TestCase):
             self.assertEqual(event.wgt, rwgt_data['MYNLO_nlo'])
             self.assertIn('MYNLO_lo', rwgt_data)
             
+    def test_nlo_reweighting_new_parameter(self):
+        """ NLO-mode reweighting of p p > e+ e- [QCD] to a larger Z width.
+        The virtual (rw_mevirt) must be importable and evaluated with the new
+        width. Its finite part is proportional to the Born here, so the ratio
+        of the virtuals must be the one of the Borns at every configuration,
+        and the NLO weights must follow the LO ones.
+        """
+
+        me_cmd = self.get_aMCcmd(pjoin(_pickle_path, 'dy_nlo.lhe.gz'))
+
+        cmd_lines = """
+        change mode LO+NLO
+        launch --rwgt_name=wz26
+        set decay 23 2.6
+        """
+
+        ff = open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'),'w')
+        ff.write(cmd_lines)
+        ff.close()
+
+        # record the matrix elements the reweighting evaluates (it runs in
+        # this process: force_run), per kinematic configuration
+        evaluated = {}
+        keep = []
+        calculate = RGWTcmd.ReweightInterface.calculate_matrix_element
+        def record(rwgt, event, hypp_id, scale2=0, alphas=None):
+            value = calculate(rwgt, event, hypp_id, scale2=scale2, alphas=alphas)
+            keep.append(event)
+            evaluated.setdefault(id(event), {})[str(hypp_id)] = value
+            return value
+
+        with misc.TMP_variable(RGWTcmd.ReweightInterface, 'calculate_matrix_element', record):
+            with misc.stdchannel_redirected(sys.stdout, os.devnull):
+                me_cmd.exec_cmd('reweight run_01 --from_cards', precmd=True)
+
+        # the virtual is evaluated with the new width: V'/V = B'/B exactly
+        checked = 0
+        for me in evaluated.values():
+            if not all(k in me for k in ('0', '1', 'V0', 'V1')):
+                continue
+            self.assertAlmostEqual((me['V1'] / me['V0']) / (me['1'] / me['0']), 1., delta=1e-6)
+            checked += 1
+        self.assertGreater(checked, 10)
+
+        lhe = lhe_parser.EventFile(pjoin(self.run_dir,'Events','run_01', 'events.lhe.gz'))
+        orig, lo, nlo = 0., 0., 0.
+        for event in lhe:
+            rwgt_data = event.parse_reweight()
+            orig += event.wgt
+            lo += rwgt_data['wz26_lo']
+            nlo += rwgt_data['wz26_nlo']
+        # sigma ~ 1/Gamma_Z: the weights do move
+        self.assertLess(lo/orig, 0.97)
+        # The change of the virtual is carried by the Born of the same point
+        # while the virt-trick terms keep their weights: exact in expectation
+        # only, so nlo/lo fluctuates at the 1e-3 level on these 100 events.
+        # With the virtual left at the original width, nlo/lo = 1.015.
+        self.assertAlmostEqual(nlo/lo, 1., delta=5e-3)
+
+    def test_reweighting_failure_out_of_process(self):
+        """ aMC@NLO runs the reweighting in child processes, split over the
+        cores. A failing child must make the reweighting fail: it used to exit
+        0, the parent carried on and, on several cores, the children waiting
+        for the first one to compile waited forever.
+        """
+
+        me_cmd = self.get_aMCcmd(pjoin(_pickle_path, 'dy_nlo.lhe.gz'))
+
+        # raises while the card is read
+        ff = open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'),'w')
+        ff.write('change identical_particle_in_prod_and_decay not_an_option\nlaunch\n')
+        ff.close()
+
+        # the child alone: the single command mode of bin/internal
+        child = misc.Popen([sys.executable,
+                            pjoin(self.run_dir, 'bin', 'internal', 'amcatnlo_run_interface.py'),
+                            '--web', 'reweight', 'run_01', '-from_cards'],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           cwd=self.run_dir)
+        child.wait()
+        self.assertNotEqual(child.returncode, 0)
+
+        # the same through the parent, on one core and on several
+        me_cmd.force_run = False
+        me_cmd.options['run_mode'] = 2
+        me_cmd.options['nb_core'] = 1
+        with misc.stdchannel_redirected(sys.stdout, os.devnull):
+            self.assertRaisesRegex(MadGraph5Error, 'Reweighting failed',
+                    me_cmd.exec_cmd, 'reweight run_01 -from_cards', precmd=True)
+        me_cmd.options['nb_core'] = 2
+        with misc.stdchannel_redirected(sys.stdout, os.devnull):
+            self.assertRaisesRegex(Exception, 'non zero status',
+                    me_cmd.exec_cmd, 'reweight run_01 -from_cards', precmd=True)
+
+    def test_nlo_reweighting_eft_split_orders(self):
+        """ NLO-mode reweighting of an MC@NLO p p > t t~ [QCD] SMEFT sample in
+        ctu8 against direct fixed-order NLO runs at the new values.
+        The event weights are split by squared orders (SM, interference,
+        quadratic: the orderstag of the <mgrwgt> block), and those scale
+        differently with ctu8: one ratio per kinematic configuration is only
+        right if every order has the same local K-factor.
+        """
+        import madgraph.models.check_param_card as check_param_card
+
+        orig_c, new_c = 1., [10., 0.]
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.run_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.run_cmd('import model SMEFTatNLO-NLO')
+        mg_cmd.run_cmd('generate p p > t t~ NP=2 QCD=2 QED=0 [QCD]')
+        mg_cmd.run_cmd('output %s' % self.run_dir)
+
+        default_param = pjoin(self.run_dir, 'Cards', 'param_card_default.dat')
+        def write_param(c):
+            # the default card (all the Wilson coefficients of the restriction
+            # on) with ctu8 = c and mueft = 173 (MU_R is not in the card:
+            # aMC@NLO sets it to the renormalisation scale)
+            card = check_param_card.ParamCard(default_param)
+            card['dim64f'].get((7,)).value = c
+            card['renor'].get((1,)).value = 173.
+            card.write(pjoin(self.run_dir, 'Cards', 'param_card.dat'))
+
+        run_card = banner_mod.RunCardNLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        for key, value in dict(nevents=20000, pdlabel='lhapdf', lhaid=260000,
+                               fixed_ren_scale=True, fixed_fac_scale=True,
+                               mur_ref_fixed=173., muf_ref_fixed=173.,
+                               store_rwgt_info=True, req_acc=0.002,
+                               req_acc_fo=0.002).items():
+            run_card[key] = value
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        def run(mode, name):
+            out = subprocess.run([pjoin(self.run_dir, 'bin', 'generate_events'),
+                                  mode, '-f', '--name=%s' % name], cwd=self.run_dir,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 text=True).stdout
+            found = re.findall(r'Total cross section:\s+(\S+)\s+\+-\s+(\S+)\s+pb', out)
+            self.assertTrue(found, out[-2000:])
+            return float(found[-1][0]), float(found[-1][1])
+
+        # MC@NLO sample at ctu8 = 1, reweighted in NLO mode at generation
+        write_param(orig_c)
+        with open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'), 'w') as ff:
+            ff.write('change mode LO+NLO\n')
+            for c in new_c:
+                ff.write('launch --rwgt_name=c%g\nset DIM64F 7 %g\n' % (c, c))
+        # no shower_card: the shower switch defaults to OFF
+        os.remove(pjoin(self.run_dir, 'Cards', 'shower_card.dat'))
+        orig, orig_err = run('aMC@NLO', 'orig')
+
+        # sums of the weights and the ratio estimator of new over original
+        names = ['c%g_%s' % (c, t) for c in new_c for t in ['lo', 'nlo']]
+        events = []
+        lhe = lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'orig', 'events.lhe.gz'))
+        for event in lhe:
+            rwgt_data = event.parse_reweight()
+            missing = [n for n in names if n not in rwgt_data]
+            self.assertFalse(missing, 'the NLO reweighting did not produce %s' % missing)
+            events.append((event.wgt, [rwgt_data[n] for n in names]))
+        sum_orig = sum(w for w, _ in events)
+        reweighted = {}
+        for i, n in enumerate(names):
+            ratio = sum(new[i] for _, new in events) / sum_orig
+            err = math.sqrt(sum((new[i] - ratio * w)**2 for w, new in events)) / abs(sum_orig)
+            # times the integrated cross section of the sample
+            reweighted[n] = (ratio * orig, math.sqrt((err * orig)**2 + (ratio * orig_err)**2))
+
+        # direct fixed-order NLO runs
+        os.remove(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'))
+        direct = {}
+        for c in new_c:
+            write_param(c)
+            direct[c] = run('NLO', 'fo_c%g' % c)
+
+        summary = '\n'.join('ctu8=%g: direct %.4g +- %.2g, NLO-reweighted %.4g +- %.2g, LO-reweighted %.4g +- %.2g'
+                            % ((c,) + direct[c] + reweighted['c%g_nlo' % c] + reweighted['c%g_lo' % c])
+                            for c in new_c)
+        logger.info('original ctu8=%g: %.4g +- %.2g pb\n%s' % (orig_c, orig, orig_err, summary))
+        for c in new_c:
+            (d, d_err), (r, r_err) = direct[c], reweighted['c%g_nlo' % c]
+            self.assertLess(abs(d - r), 4 * math.sqrt(d_err**2 + r_err**2), summary)
+
     @test_manager.bypass_for_py3
     def test_nlo_output2(self):
         """ check identical re-weighting in ttbar 
@@ -332,6 +515,83 @@ class TestMECmdRWGT(unittest.TestCase):
             self.assertTrue(misc.equal(rwgt_data['MYNLO_tree'], event2.wgt, 3), '(event %s) %s != %s ' % (i, rwgt_data['MYNLO_tree'], event2.wgt))
         #misc.sprint(solutions)
             
+    def test_mg7_reweighting_at_generation(self):
+        """reweight=ON on an mg7 output. Its weights average to sigma: the log
+        printed sum(weights), N_events times sigma, for the original and the
+        new cross sections. The launch runs as an agent drives it, with stdin
+        a pipe left open, where the param_card question of each launch block
+        used to read stdin -- and wait forever -- once the card stopped
+        answering it. The end of the run must not report an I/O error (an mg7
+        output has no HTML/ for results.pkl)."""
+
+        def run(name, script, stdin):
+            cmd_path = pjoin(self.path, '%s.mg5' % name)
+            log_path = pjoin(self.path, '%s.log' % name)
+            with open(cmd_path, 'w') as fsock:
+                fsock.write("set crash_on_error True --no_save\n"
+                            "set automatic_html_opening False --no_save\n"
+                            "set notification_center False --no_save\n"
+                            + script % {'dir': self.run_dir})
+            with open(log_path, 'w') as log_file:
+                proc = subprocess.Popen(
+                    [sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'), cmd_path],
+                    cwd=self.path, stdin=stdin,
+                    stdout=log_file, stderr=subprocess.STDOUT)
+                try:
+                    return_code = proc.wait(timeout=600)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    self.fail('%s waited for input (or ran too long)' % name)
+                finally:
+                    if proc.stdin:
+                        proc.stdin.close()
+            with open(log_path) as log_file:
+                log = log_file.read()
+            self.assertEqual(return_code, 0, log[-3000:])
+            return log
+
+        run('output', "import model sm\ngenerate e+ e- > mu+ mu-\noutput %(dir)s\n",
+            subprocess.DEVNULL)
+        with open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'), 'w') as fsock:
+            fsock.write("launch --rwgt_name=wz26\nset decay 23 2.6\n"
+                        "launch --rwgt_name=wz23\nset decay 23 2.3\n")
+        # on the Z pole, where the cross section goes as 1/width^2
+        log = run('launch', "launch %(dir)s\nreweight=ON\nset nevents 1000\n"
+                            "set iseed 7\nset beam.e_cm 91.188\n"
+                            "set output_format lhe\ndone\n",
+                  subprocess.PIPE)
+        for line in ('Do you want to edit a card', 'I/O error'):
+            self.assertFalse(line in log, '"%s" in the log' % line)
+
+        lhe = lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'run_01',
+                                         'unweighted_events.lhe.gz'))
+        nb_event, mean = 0, {'orig': 0.}
+        for event in lhe:
+            nb_event += 1
+            mean['orig'] += event.wgt
+            for name, wgt in event.parse_reweight().items():
+                if name in ('wz26', 'wz23'):
+                    mean[name] = mean.get(name, 0.) + wgt
+        self.assertEqual(nb_event, 1000)
+        mean = dict((name, value / nb_event) for name, value in mean.items())
+
+        # INFO: Original cross-section: X +- E pb (cross-section from sum of weights: Y)
+        # INFO: wz26 : X +- E pb
+        orig = re.search(r'cross-section from sum of weights: ([0-9.eE+-]+)\)', log)
+        self.assertIsNotNone(orig)
+        logged = {'orig': float(orig.group(1))}
+        for name in ('wz26', 'wz23'):
+            new = re.search(r'%s : ([0-9.eE+-]+) \+-' % name, log)
+            self.assertIsNotNone(new, name)
+            logged[name] = float(new.group(1))
+        self.assertEqual(sorted(logged), sorted(mean))
+        for name in mean:
+            self.assertAlmostEqual(logged[name] / mean[name], 1., places=6, msg=name)
+        # a wider Z lowers the peak
+        self.assertLess(mean['wz26'], mean['orig'])
+        self.assertLess(mean['orig'], mean['wz23'])
+
     def test_scan_reweighting(self):
         """ testing that we can use the scan syntax and that we can assign name to weight
         """

@@ -1749,14 +1749,20 @@ def combine_name(name, other_names, outgoing, tag=None, unknown_tag=False):
 
     def myHash(target_string):
         suffix = ''
-        if '%(propa)s' in target_string:
-            if len(target_string.replace('%(propa)s',''))<50:
+        # the call sites fill 'propa' (wavefunctions) or 'tags' (amplitudes)
+        # afterwards: the placeholder is not part of the routine name that
+        # ALOHA hashes, so it must not enter the hash either
+        for placeholder in ('%(propa)s', '%(tags)s'):
+            if placeholder not in target_string:
+                continue
+            if len(target_string.replace(placeholder,''))<50:
                 # keep the placeholder where it is: it can sit before a
                 # propagator tag (see join_tag)
                 return target_string
-            target_string = target_string.replace('%(propa)s','')
-            suffix = '%(propa)s'
-            
+            target_string = target_string.replace(placeholder,'')
+            suffix = placeholder
+            break
+
         if len(target_string)<50:
             return '%s%s' % (target_string, suffix)
         else:

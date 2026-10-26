@@ -65,7 +65,9 @@ public:
         helicity_index_out, ///< Sampled helicity.
         diagram_index_out,  ///< Sampled diagram.
         cut_out,            ///< Custom cut value, 0 rejects the event.
-        scale_out,          ///< Custom energy scale.
+        ren_scale_out,      ///< Custom renormalization scale.
+        fact_scale1_out,    ///< Custom factorization scale, first incoming.
+        fact_scale2_out,    ///< Custom factorization scale, second incoming.
         pdf_out,            ///< Custom parton density x f(x, Q).
         bias_out,           ///< Custom event bias.
         /// Ratio of the matrix element to a reference matrix element, for a

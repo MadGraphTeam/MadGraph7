@@ -15,6 +15,10 @@ momenta     float64 tensor of shape (batch, particle_count, 4), the momenta
             (E, px, py, pz) of the external particles in GeV, lab frame,
             incoming ones first
 pdg_ids     int32 tensor of shape (batch, particle_count), their PDG ids
+params      the parameters of PARAMETERS, e.g. params.pt0. Their values
+            are set in Cards/run_card.toml with
+            [custom_functions]
+            bias_parameters.pt0 = ...
 
 Enable it in Cards/run_card.toml with
 [custom_functions]
@@ -25,11 +29,14 @@ import torch
 
 FRAMEWORK = "torch"
 
+# names and default values of the parameters, e.g. {"pt0": 100.}
+PARAMETERS = {}
 
-def custom_bias(momenta, pdg_ids):
+
+def custom_bias(momenta, pdg_ids, params):
     # Example: populate the tail of the pT distribution of the first
-    # final-state particle, b = (pT / 100 GeV)^2 with a floor of 1.
+    # final-state particle, b = (pT / pt0)^2 with a floor of 1.
     # pt2 = momenta[:, 2, 1] ** 2 + momenta[:, 2, 2] ** 2
-    # return torch.clamp(pt2 / 100. ** 2, min=1.)
+    # return torch.clamp(pt2 / params.pt0 ** 2, min=1.)
 
     return torch.ones(len(momenta), dtype=torch.float64, device=momenta.device)

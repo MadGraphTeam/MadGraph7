@@ -368,7 +368,20 @@ PYBIND11_MODULE(_madspace_py, m) {
     m.def("available_backends", &available_backends, pydoc::doc("available_backends"));
 
     py::classh<MatrixElementApi>(m, "MatrixElementApi", pydoc::doc("MatrixElementApi"))
-        //.def("device", &MatrixElementApi::device)
+        .def(
+            "device_type",
+            [](const MatrixElementApi& api) {
+                switch (api.device_type()) {
+                case DeviceType::cuda:
+                    return "cuda";
+                case DeviceType::hip:
+                    return "hip";
+                default:
+                    return "cpu";
+                }
+            },
+            "Device the library was built for: ``cpu``, ``cuda`` or ``hip``."
+        )
         .def(
             "particle_count",
             &MatrixElementApi::particle_count,
@@ -427,6 +440,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("output_keys"),
             py::arg("framework"),
             py::arg("name"),
+            py::arg("parameter_defaults") =
+                std::vector<std::pair<std::string, double>>{},
+            py::arg("parameters") = std::unordered_map<std::string, double>{},
             py::return_value_policy::reference_internal
         )
         .def(
@@ -525,7 +541,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("shape"),
         py::arg("stride"),
         py::arg("offset"),
-        py::arg("device")
+        py::arg("device"),
+        py::arg("device_index") = 0
     );
     py::dict umami_input_keys, umami_output_keys;
     for (auto [name, key] : std::initializer_list<std::pair<const char*, int>>{
@@ -553,7 +570,9 @@ PYBIND11_MODULE(_madspace_py, m) {
              {"helicity_index", UMAMI_OUT_HELICITY_INDEX},
              {"diagram_index", UMAMI_OUT_DIAGRAM_INDEX},
              {"cut", UMAMI_OUT_CUT},
-             {"scale", UMAMI_OUT_SCALE},
+             {"ren_scale", UMAMI_OUT_REN_SCALE},
+             {"fact_scale1", UMAMI_OUT_FACT_SCALE_1},
+             {"fact_scale2", UMAMI_OUT_FACT_SCALE_2},
              {"pdf", UMAMI_OUT_PDF},
              {"bias", UMAMI_OUT_BIAS},
              {"matrix_element_ratio", UMAMI_OUT_MATRIX_ELEMENT_RATIO},
@@ -841,7 +860,18 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "TwoToThreeParticleScattering", pydoc::doc("TwoToThreeParticleScattering")
     )
         .def(
-            py::init<double, double, double, double, double, double, bool, bool>(),
+            py::init<
+                double,
+                double,
+                double,
+                double,
+                double,
+                double,
+                bool,
+                bool,
+                bool,
+                bool,
+                bool>(),
             py::arg("t_invariant_power") = 0.,
             py::arg("t_mass") = 0.,
             py::arg("t_width") = 0.,
@@ -850,6 +880,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("s_width") = 0.,
             py::arg("has_cut") = false,
             py::arg("arcsine_s23") = true,
+            py::arg("p12_condition") = false,
+            py::arg("incoming_recoil") = false,
+            py::arg("cut_aware_branch") = false,
             pydoc::doc("TwoToThreeParticleScattering::TwoToThreeParticleScattering")
         )
         .def(
@@ -906,26 +939,51 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("TPropagatorMapping::random_dim")
         );
 
-    py::classh<ColorOrderedMapping, Mapping>(
+    auto color_ordered_mapping = py::classh<ColorOrderedMapping, Mapping>(
         m, "ColorOrderedMapping", pydoc::doc("ColorOrderedMapping")
+    );
+    py::class_<ColorOrderedMapping::Options>(
+        color_ordered_mapping, "Options", pydoc::doc("ColorOrderedMapping::Options")
     )
         .def(
+            py::init([](const std::vector<std::size_t>& color_order,
+                        std::optional<double> chain_invariant_power,
+                        bool cut_aware_branch) {
+                return ColorOrderedMapping::Options{
+                    color_order, chain_invariant_power, cut_aware_branch
+                };
+            }),
+            py::arg("color_order"),
+            py::arg("chain_invariant_power") = std::nullopt,
+            py::arg("cut_aware_branch") = true
+        )
+        .def_readwrite(
+            "color_order",
+            &ColorOrderedMapping::Options::color_order,
+            pydoc::doc("ColorOrderedMapping::Options::color_order")
+        )
+        .def_readwrite(
+            "chain_invariant_power",
+            &ColorOrderedMapping::Options::chain_invariant_power,
+            pydoc::doc("ColorOrderedMapping::Options::chain_invariant_power")
+        )
+        .def_readwrite(
+            "cut_aware_branch",
+            &ColorOrderedMapping::Options::cut_aware_branch,
+            pydoc::doc("ColorOrderedMapping::Options::cut_aware_branch")
+        );
+    color_ordered_mapping
+        .def(
             py::init<
-                std::vector<std::size_t>,
-                double,
-                double,
+                const ColorOrderedMapping::Options&,
                 std::vector<double>,
                 std::vector<std::vector<double>>,
                 std::vector<std::vector<double>>,
-                bool,
                 std::vector<double>>(),
-            py::arg("color_order"),
-            py::arg("t_invariant_power") = 0.8,
-            py::arg("s_invariant_power") = 0.8,
+            py::arg("options"),
             py::arg("pt_min") = std::vector<double>{},
             py::arg("m_inv_min") = std::vector<std::vector<double>>{},
             py::arg("dr_min") = std::vector<std::vector<double>>{},
-            py::arg("arcsine_s23") = true,
             py::arg("y_max") = std::vector<double>{},
             pydoc::doc("ColorOrderedMapping::ColorOrderedMapping")
         )
@@ -1451,7 +1509,10 @@ PYBIND11_MODULE(_madspace_py, m) {
                 PhaseSpaceMapping::TChannelMode,
                 const std::optional<Cuts>&,
                 const nested_vector2<std::size_t>&,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<ColorOrderedMapping::Options>&,
+                double,
+                bool,
+                std::optional<double>>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1459,7 +1520,10 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("t_channel_mode") = PhaseSpaceMapping::propagator,
             py::arg("cuts") = std::nullopt,
             py::arg("permutations") = nested_vector2<std::size_t>{},
-            py::arg("color_order") = std::nullopt,
+            py::arg("color_ordered") = std::nullopt,
+            py::arg("beam_rapidity") = 0.,
+            py::arg("mirror_beams") = false,
+            py::arg("s_hat_power") = std::nullopt,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping")
         )
         .def(
@@ -1470,14 +1534,20 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 PhaseSpaceMapping::TChannelMode,
                 std::optional<Cuts>,
-                const std::optional<std::vector<std::size_t>>&>(),
+                const std::optional<ColorOrderedMapping::Options>&,
+                double,
+                bool,
+                std::optional<double>>(),
             py::arg("external_masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
             py::arg("invariant_power") = 0.8,
             py::arg("mode") = PhaseSpaceMapping::rambo,
             py::arg("cuts") = std::nullopt,
-            py::arg("color_order") = std::nullopt,
+            py::arg("color_ordered") = std::nullopt,
+            py::arg("beam_rapidity") = 0.,
+            py::arg("mirror_beams") = false,
+            py::arg("s_hat_power") = std::nullopt,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping#2")
         )
         .def(
@@ -1500,6 +1570,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             &PhaseSpaceMapping::channel_count,
             pydoc::doc("PhaseSpaceMapping::channel_count")
         )
+        .def(
+            "beam_rapidity",
+            &PhaseSpaceMapping::beam_rapidity,
+            pydoc::doc("PhaseSpaceMapping::beam_rapidity")
+        )
+        .def(
+            "mirror_beams",
+            &PhaseSpaceMapping::mirror_beams,
+            pydoc::doc("PhaseSpaceMapping::mirror_beams")
+        )
+        .def("cuts", &PhaseSpaceMapping::cuts, pydoc::doc("PhaseSpaceMapping::cuts"))
         .def(
             "empty", &PhaseSpaceMapping::empty, pydoc::doc("PhaseSpaceMapping::empty")
         );
@@ -1548,7 +1629,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"helicity_index_out", MatrixElement::helicity_index_out},
             {"diagram_index_out", MatrixElement::diagram_index_out},
             {"cut_out", MatrixElement::cut_out},
-            {"scale_out", MatrixElement::scale_out},
+            {"ren_scale_out", MatrixElement::ren_scale_out},
+            {"fact_scale1_out", MatrixElement::fact_scale1_out},
+            {"fact_scale2_out", MatrixElement::fact_scale2_out},
             {"pdf_out", MatrixElement::pdf_out},
             {"bias_out", MatrixElement::bias_out},
             {"matrix_element_ratio_out", MatrixElement::matrix_element_ratio_out},
@@ -2291,7 +2374,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::size_t>&,
                 const std::vector<std::size_t>&,
                 std::size_t,
-                const std::optional<CustomFunction>&>(),
+                const std::optional<CustomFunction>&,
+                const std::optional<PdfGrid>&>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -2321,6 +2405,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("flavor_per_subproc_remap") = std::vector<std::size_t>{},
             py::arg("compressed_channel_weight_count") = 50,
             py::arg("custom_bias") = std::nullopt,
+            py::arg("pdf_grid2") = std::nullopt,
             pydoc::doc("Integrand::Integrand")
         )
         .def(
@@ -3679,7 +3764,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<AlphaSGrid>&,
                 ContextPtr,
                 const std::vector<std::optional<MatrixElement>>&,
-                const nested_vector2<me_int_t>&>(),
+                const nested_vector2<me_int_t>&,
+                const std::optional<PdfGrid>&>(),
             py::arg("config"),
             py::arg("subproc_args"),
             py::arg("nominal_pdf") = std::nullopt,
@@ -3687,6 +3773,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("context") = nullptr,
             py::arg("matrix_elements") = std::vector<std::optional<MatrixElement>>{},
             py::arg("me_flavor_remap") = nested_vector2<me_int_t>{},
+            py::arg("nominal_pdf2") = std::nullopt,
             pydoc::doc("SystematicsCalculator::SystematicsCalculator")
         )
         .def_property_readonly(

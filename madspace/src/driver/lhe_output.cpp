@@ -586,6 +586,13 @@ void LHECompleter::complete_event_data(
         ++particle_index;
     }
 
+    // The flavor tables list the incoming legs in leg order, and a mirrored
+    // event has them the other way round on the beams. LHE wants particle 1 to
+    // come from beam 1, moving along +z.
+    if (n_in == 2 && event.particles.at(0).pz < 0.) {
+        std::swap(event.particles.at(0), event.particles.at(1));
+    }
+
     if (!has_diagrams) {
         return;
     }

@@ -2,6 +2,7 @@
 
 #include "madspace/util.hpp"
 
+#include <format>
 #include <set>
 #include <utility>
 
@@ -74,7 +75,8 @@ Integrand::Integrand(
     const std::vector<std::size_t>& flavor_subproc_indices,
     const std::vector<std::size_t>& flavor_per_subproc_remap,
     std::size_t compressed_channel_weight_count,
-    const std::optional<CustomFunction>& custom_bias
+    const std::optional<CustomFunction>& custom_bias,
+    const std::optional<PdfGrid>& pdf_grid2
 ) :
     FunctionGenerator(
         "Integrand",
@@ -237,11 +239,33 @@ Integrand::Integrand(
             }
             std::vector<int> pid_vec(pids.begin(), pids.end());
             if (auto grid = std::get_if<PdfGrid>(&pdf_grid)) {
-                _pdfs.at(i) = PartonDensity(*grid, pid_vec);
-            } else {
+                bool own_grid = i == 1 && pdf_grid2;
                 _pdfs.at(i) = PartonDensity(
-                    std::get<CustomPdf>(pdf_grid), pid_vec, static_cast<int>(i)
+                    own_grid ? pdf_grid2.value() : *grid,
+                    pid_vec,
+                    false,
+                    own_grid ? pdf2_prefix : ""
                 );
+                if (pdf_grid2) {
+                    _pdfs_swapped.at(i) = PartonDensity(
+                        own_grid ? *grid : pdf_grid2.value(),
+                        pid_vec,
+                        false,
+                        own_grid ? "" : pdf2_prefix
+                    );
+                }
+            } else {
+                if (pdf_grid2) {
+                    throw std::invalid_argument(
+                        "pdf_grid2 cannot be combined with a custom PDF"
+                    );
+                }
+                auto& custom_pdf = std::get<CustomPdf>(pdf_grid);
+                int beam = static_cast<int>(i);
+                _pdfs.at(i) = PartonDensity(custom_pdf, pid_vec, beam);
+                // the custom PDF may differ per beam, so mirrored events need
+                // the other beam's density
+                _pdfs_swapped.at(i) = PartonDensity(custom_pdf, pid_vec, 1 - beam);
             }
         }
     }
@@ -277,10 +301,9 @@ Integrand::Integrand(
         }
     }
 
-    _flavor_mirror.reserve(flavor_mirror.size());
     _has_mirror = false;
     for (bool mirror : flavor_mirror) {
-        _flavor_mirror.push_back(mirror ? 2 : 1);
+        _flavor_mirror_factors.push_back(mirror ? 2. : 1.);
         _has_mirror |= mirror;
     }
     auto& me_first = diff_xs.at(0).matrix_element();
@@ -316,6 +339,13 @@ Integrand::Integrand(
         throw std::invalid_argument(
             "diagram-based channel weights need the diagram_amp2 output of the "
             "matrix element"
+        );
+    }
+    // The orientation is drawn before the mapping, so that the boost, the cuts
+    // and the PDFs all see the orientation the event is written with.
+    if (_has_mirror && !mapping.mirror_beams()) {
+        throw std::invalid_argument(
+            "mirrored flavors need a PhaseSpaceMapping built with mirror_beams = true"
         );
     }
     _channel_part_ret_types = compute_channel_part_ret_types();
@@ -378,12 +408,6 @@ NamedVector<Type> Integrand::compute_channel_part_ret_types() const {
     // outputs after cuts
     ret.push_back("indices_acc", Type(DataType::dt_int, acc_batch_size, {}));
     ret.push_back("momenta_acc", acc_four_vec_array(particle_count));
-    if (_has_mirror) {
-        if (!_madnis_training) {
-            ret.push_back("momenta_mirror_acc", acc_four_vec_array(particle_count));
-        }
-        ret.push_back("mirror_id_acc", acc_int);
-    }
     ret.push_back("x1_acc", acc_float);
     ret.push_back("x2_acc", acc_float);
     ret.push_back("flavor_id", acc_int);
@@ -439,7 +463,8 @@ NamedVector<Value> Integrand::build_channel_part(
 
     // Apply adaptive map (VEGAS or MadNIS flow)
     Value latent = r;
-    ValueVec mapping_conditions, flow_conditions;
+    NamedVector<Value> mapping_conditions;
+    ValueVec flow_conditions;
     std::visit(
         Overloaded{
             [&](std::monostate) {},
@@ -497,11 +522,26 @@ NamedVector<Value> Integrand::build_channel_part(
             _discrete_sym
         );
         chan_index = fb.gather_int(chan_index_in_group, _channel_indices);
-        mapping_conditions.push_back(chan_index_in_group);
+        mapping_conditions.push_back("permutation_index", chan_index_in_group);
     } else {
         chan_index =
             fb.full({static_cast<me_int_t>(_channel_indices.at(0)), batch_size_val});
         chan_index_in_group = fb.full({static_cast<me_int_t>(0), batch_size_val});
+    }
+
+    // Orientation of the event, for a mapping with a mirror_index condition.
+    // Drawn uniformly; the flavor-dependent factor follows the flavor sampling.
+    Value mirror_index;
+    if (_mapping.mirror_beams()) {
+        if (_has_mirror) {
+            // the det is 2; the flavor-dependent weight is applied after the cuts
+            auto [index, mirror_det] =
+                fb.sample_discrete(mirror_random, static_cast<me_int_t>(2));
+            mirror_index = index;
+        } else {
+            mirror_index = fb.full({static_cast<me_int_t>(0), batch_size_val});
+        }
+        mapping_conditions.push_back("mirror_index", mirror_index);
     }
 
     // Apply phase space mapping, its discrete choices are sampled uniformly
@@ -518,8 +558,9 @@ NamedVector<Value> Integrand::build_channel_part(
         }
         mapping_inputs.push_back(fb.stack(choices));
     }
-    auto mapping_result =
-        _mapping.build_forward(fb, mapping_inputs, mapping_conditions);
+    auto mapping_result = _mapping.build_forward(
+        fb, {_mapping.input_types().keys(), mapping_inputs}, mapping_conditions
+    );
     weights_before_cuts.push_back(mapping_result["det"]);
     Value momenta = mapping_result["momenta"];
     Value x0 = mapping_result["x1"];
@@ -554,6 +595,18 @@ NamedVector<Value> Integrand::build_channel_part(
                         .value()
                         .build_function(fb, {x_acc.at(i), scales.at(i + 1)})
                         .at(0);
+                if (_has_mirror && _pdfs_swapped.at(i)) {
+                    // leg i of a mirrored event comes from the other beam
+                    auto pdf_swapped =
+                        _pdfs_swapped.at(i)
+                            .value()
+                            .build_function(fb, {x_acc.at(i), scales.at(i + 1)})
+                            .at(0);
+                    pdf = fb.gather_vector(
+                        fb.batch_gather(indices_acc, mirror_index),
+                        fb.stack({pdf, pdf_swapped})
+                    );
+                }
                 pdf_results.at(i) = pdf;
                 pdf_priors.push_back(fb.select(pdf, _pdf_indices.at(i)));
             }
@@ -635,23 +688,12 @@ NamedVector<Value> Integrand::build_channel_part(
         }
     }
 
-    Value momenta_mirror_acc, mirror_id_acc;
     if (_has_mirror) {
-        Value option_count;
-        if (std::all_of(
-                _flavor_mirror.begin(), _flavor_mirror.end(), [](me_int_t mirror) {
-                    return mirror == 2;
-                }
-            )) {
-            option_count = static_cast<me_int_t>(2);
-        } else {
-            option_count = fb.gather_int(flavor_id, _flavor_mirror);
-        }
-        Value mirror_random_acc = fb.batch_gather(indices_acc, mirror_random);
-        auto [index, mirror_det] = fb.sample_discrete(mirror_random_acc, option_count);
-        mirror_id_acc = index;
-        momenta_mirror_acc = fb.mirror_momenta(momenta_acc, mirror_id_acc);
-        weights_after_cuts.push_back(mirror_det);
+        // Both orientations were sampled with probability 1/2. A flavor that
+        // stands for itself and its mirror image collects both (factor 2);
+        // for any other flavor the two orientations cover the same phase
+        // space (factor 1).
+        weights_after_cuts.push_back(fb.gather(flavor_id, _flavor_mirror_factors));
     }
 
     Value weight_after_cuts = weights_after_cuts.empty()
@@ -684,12 +726,6 @@ NamedVector<Value> Integrand::build_channel_part(
     // outputs after cuts
     out.push_back("indices_acc", indices_acc);
     out.push_back("momenta_acc", momenta_acc);
-    if (_has_mirror) {
-        if (!_madnis_training) {
-            out.push_back("momenta_mirror_acc", momenta_mirror_acc);
-        }
-        out.push_back("mirror_id_acc", mirror_id_acc);
-    }
     out.push_back("x1_acc", x_acc.at(0));
     out.push_back("x2_acc", x_acc.at(1));
     out.push_back("flavor_id", flavor_id);
@@ -728,26 +764,10 @@ NamedVector<Value> Integrand::build_common_part(
     auto flavor_id = args.at("flavor_id");
     auto batch_size_val = fb.batch_size({args.at("weight_before_cuts")});
 
-    // The matrix element is evaluated on the momenta the event is written
-    // with, which for the mirrored half of a beam-swapped subprocess is the
-    // mirrored set (mirror_momenta: py, pz -> -py, -pz, the rotation by pi
-    // about x that moves each leg onto the other beam). This is what madevent
-    // does too -- it flips the momentum array that then goes to both the matrix
-    // element and the event record (super_auto_dsig_group_v4.inc, "Flip momenta
-    // (rotate around x axis)") -- and it is what the systematics reweighting
-    // here already assumes, since that reads the momenta back out of the event
-    // buffer.
-    //
-    // Feeding the unmirrored momenta instead only ever worked because |M|^2 is
-    // invariant under that rotation. A polarised matrix element is not, once it
-    // is evaluated in a frame that holds the polarised particle at rest: HELAS
-    // quantises such a particle along the *frame* z axis (the pp == 0 branch of
-    // vxxxxx) rather than along its own momentum, the mirror flips that axis,
-    // and the + and - states swap. Measured at 48% on g q > z{+} q evaluated in
-    // the Z rest frame.
-    auto momenta_me = args.index_map().contains("momenta_mirror_acc")
-        ? args.at("momenta_mirror_acc")
-        : momenta_acc;
+    // The matrix element sees the momenta the event is written with: the mirror
+    // is applied inside the mapping. This matters for polarised matrix elements,
+    // which are not invariant under the mirror (HELAS quantises along the frame
+    // z axis).
 
     auto scatter_or_drop = [&](Value default_value, Value value) -> Value {
         if (_drop_cuts_and_rescale) {
@@ -798,7 +818,7 @@ NamedVector<Value> Integrand::build_common_part(
     ValueVec xs_args;
     for (auto input : me_first.external_inputs()) {
         if (input == MatrixElement::momenta_in) {
-            xs_args.push_back(momenta_me);
+            xs_args.push_back(momenta_acc);
         } else if (input == MatrixElement::flavor_in) {
             xs_args.push_back(me_flavor_id);
         }
@@ -884,7 +904,7 @@ NamedVector<Value> Integrand::build_common_part(
     // the event generator divides it out again
     Value bias_acc;
     if (_custom_bias) {
-        ValueVec bias_args{momenta_me};
+        ValueVec bias_args{momenta_acc};
         if (_custom_bias->dynamic_pdg_ids()) {
             bias_args.push_back(flavor_id);
         }
@@ -1030,14 +1050,7 @@ NamedVector<Value> Integrand::build_common_part(
         }
     } else {
         outputs.push_back("weight", optional_cut(weight));
-        if (_has_mirror) {
-            outputs.push_back(
-                "momenta",
-                scatter_or_drop(args.at("momenta"), args.at("momenta_mirror_acc"))
-            );
-        } else {
-            outputs.push_back("momenta", args.at("momenta"));
-        }
+        outputs.push_back("momenta", args.at("momenta"));
         auto zeros_int = fb.full({static_cast<me_int_t>(0), batch_size_val});
         auto zeros_float = fb.full({0., batch_size_val});
         // indices the matrix element does not provide are -1, a later

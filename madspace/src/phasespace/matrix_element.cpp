@@ -137,8 +137,14 @@ MatrixElement::MatrixElement(
                 case cut_out:
                     ret_types.push_back("cut", batch_float);
                     break;
-                case scale_out:
-                    ret_types.push_back("scale", batch_float);
+                case ren_scale_out:
+                    ret_types.push_back("ren_scale", batch_float);
+                    break;
+                case fact_scale1_out:
+                    ret_types.push_back("fact_scale1", batch_float);
+                    break;
+                case fact_scale2_out:
+                    ret_types.push_back("fact_scale2", batch_float);
                     break;
                 case pdf_out:
                     ret_types.push_back("pdf", batch_float);
@@ -330,8 +336,14 @@ NamedVector<Value> MatrixElement::build_function_impl(
         case cut_out:
             output_key = UMAMI_OUT_CUT;
             break;
-        case scale_out:
-            output_key = UMAMI_OUT_SCALE;
+        case ren_scale_out:
+            output_key = UMAMI_OUT_REN_SCALE;
+            break;
+        case fact_scale1_out:
+            output_key = UMAMI_OUT_FACT_SCALE_1;
+            break;
+        case fact_scale2_out:
+            output_key = UMAMI_OUT_FACT_SCALE_2;
             break;
         case pdf_out:
             output_key = UMAMI_OUT_PDF;

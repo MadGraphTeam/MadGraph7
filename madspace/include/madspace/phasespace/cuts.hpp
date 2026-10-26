@@ -6,6 +6,7 @@
 #include "madspace/phasespace/observable.hpp"
 
 #include <functional>
+#include <string>
 #include <utility>
 #include <vector>
 

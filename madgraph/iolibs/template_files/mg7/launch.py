@@ -24,6 +24,8 @@ from madgraph.iolibs.template_files.mg7.subprocess_madmatrix import (  # noqa: F
 )
 from madgraph.iolibs.template_files.mg7.madgraph_process import (  # noqa: F401
     MadgraphProcess,
+    PCH_MIN_SUBPROCESSES,
+    _single_flavor_metas,
 )
 from madgraph.iolibs.template_files.mg7.options import (  # noqa: F401
     _ROOTED_OPTIONS,
@@ -54,6 +56,8 @@ from madgraph.iolibs.template_files.mg7.postprocess import (  # noqa: F401
     run_lhe_postprocessing,
 )
 from madgraph.iolibs.template_files.mg7.driver import (  # noqa: F401
+    compute_decay_widths,
+    _decay_flavor_options,
     _release_channel_generators,
     run_single,
     detect_run_scan,

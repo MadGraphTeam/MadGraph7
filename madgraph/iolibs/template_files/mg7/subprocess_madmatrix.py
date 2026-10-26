@@ -300,6 +300,9 @@ class MadgraphSubprocess:
             self.cuts = ms.Cuts(self.particle_count, custom_cut)
         else:
             self.cuts = None
+        # A flavor standing for both beam orientations draws the orientation
+        # before the phase-space mapping, so boost, cuts and PDFs all see it.
+        self.mirror_beams = not self.process.is_decay and self.has_mirrored_flavors()
         # the integration histograms are functions of the momenta; the weight
         # distribution is a property of the final event sample, so it is only
         # filled by MadgraphProcess.build_event_histograms at combine time
@@ -442,6 +445,8 @@ class MadgraphSubprocess:
                     invariant_power=self.process.run_card["phasespace"]["invariant_power"],
                     permutations=chan_permutations,
                     leptonic=self.process.leptonic,
+                    beam_rapidity=self.process.beam_rapidity,
+                    mirror_beams=self.mirror_beams,
                 )
                 prefix = f"subproc{self.subproc_id}.channel{channel_id}"
                 if topo_count > 1:
@@ -495,6 +500,17 @@ class MadgraphSubprocess:
             subchan_weights=subchan_weights,
         )
 
+    def has_mirrored_flavors(self) -> bool:
+        """Does any flavor of this subprocess stand for both beam orientations?
+        Resolved the same way build_integrands resolves flavor_mirror."""
+        for flav in self.meta["flavors"]:
+            if self.unmerged_meta is not None:
+                subproc_index = self.meta["subprocesses"][flav["subprocess"]]
+                flav = self.unmerged_meta[subproc_index]["flavors"][flav["flavor"]]
+            if flav["mirror"]:
+                return True
+        return False
+
     def build_flat_phasespace(self) -> PhaseSpace:
         mapping = ms.PhaseSpaceMapping(
             self.incoming_masses + self.outgoing_masses,
@@ -502,6 +518,8 @@ class MadgraphSubprocess:
             mode=self.t_channel_mode(self.process.run_card["phasespace"]["flat_mode"]),
             cuts=self.cuts,
             leptonic=self.process.leptonic,
+            beam_rapidity=self.process.beam_rapidity,
+            mirror_beams=self.mirror_beams,
         )
         prefix = f"subproc{self.subproc_id}.flat"
         discrete_sym, discrete_flavor = self.build_discrete(
@@ -1153,6 +1171,7 @@ class MadgraphSubprocess:
                 flavor_per_subproc_remap,
                 madnis_args["compressed_channel_weight_count"],
                 custom_bias,
+                None if self.process.leptonic else self.process.pdf_grid2,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())

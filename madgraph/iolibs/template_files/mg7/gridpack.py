@@ -1,12 +1,15 @@
 #! /usr/bin/env python3
 
 import argparse
+import atexit
 import glob
 import gzip
 import json
 import os
 import shutil
+import subprocess
 import sys
+import tempfile
 
 # bin/gridpack_setup.py, next to this script: also locates madspace
 from gridpack_setup import (
@@ -32,6 +35,29 @@ def resolve_verbosity(verbosity: str) -> str:
     if verbosity == "auto":
         return "pretty" if sys.stdout.isatty() else "log"
     return verbosity
+
+
+def compress_lhe(path: str, use_pigz="auto", cpu_threads: int = -1) -> None:
+    """Compress the completed LHE with the same size/tool policy as misc.gzip.
+
+    A gridpack must be runnable without a MadGraph installation. Its run card
+    carries the compression preference, and positive CPU pool sizes also bound
+    pigz's worker count.
+    """
+    if os.path.getsize(path) > 256e6:
+        pigz = shutil.which("pigz") if use_pigz is not False else None
+        tool = pigz or shutil.which("gzip")
+        if tool:
+            command = [tool]
+            if pigz and cpu_threads > 0:
+                command += ["-p", str(cpu_threads)]
+            subprocess.run(command + ["-f", path], check=True)
+            return
+
+    with open(path, "rb") as fin, \
+            gzip.open(path + ".gz", "wb", compresslevel=6) as fout:
+        shutil.copyfileobj(fin, fout, 4 * 1024 * 1024)
+    os.remove(path)
 
 
 def write_lhe_header(run_path: str, meta) -> None:
@@ -69,8 +95,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--temp_output_dir", type=str, default=None,
-        help="directory for the temporary npy files (default: the run card "
-             "value, else the output directory)"
+        help="directory for the temporary npy files, 'auto' for a new temporary "
+             "directory (default: the run card value, else the output directory)"
     )
     parser.add_argument(
         "--ignore_source_hash", action="store_true",
@@ -118,6 +144,8 @@ def main() -> None:
     # initialize output directories; command line paths are relative to the
     # invocation directory, run card paths to the gridpack
     def resolve_dir(cli_value, card_value):
+        if (cli_value or card_value) == "auto":
+            return "auto"
         if cli_value:
             return os.path.abspath(
                 os.path.join(_INVOCATION_DIR, os.path.expanduser(cli_value)))
@@ -145,7 +173,10 @@ def main() -> None:
                 break
             except FileExistsError:
                 run_index += 1
-    if temp_dir is None:
+    if temp_dir == "auto":
+        temp_dir = tempfile.mkdtemp(prefix="mg7_events_")
+        atexit.register(shutil.rmtree, temp_dir, ignore_errors=True)
+    elif temp_dir is None:
         temp_dir = run_path
     else:
         os.makedirs(temp_dir, exist_ok=True)
@@ -219,16 +250,8 @@ def main() -> None:
             lhe_path, lhe_completer, build_lhe_meta(event_generator.status(), seed),
             systematics
         )
-        # Ship the LHE compressed, as the launcher that produced this gridpack
-        # does: the file is large and very compressible, and the consumers of
-        # an mg7 event file accept either form. The stdlib is used rather than
-        # madgraph.various.misc.gzip because a gridpack is meant to run without
-        # a madgraph installation, and copyfileobj streams the file instead of
-        # holding it in memory.
-        with open(lhe_path, "rb") as fin, \
-                gzip.open(lhe_path + ".gz", "wb") as fout:
-            shutil.copyfileobj(fin, fout)
-        os.remove(lhe_path)
+        compress_lhe(lhe_path, run_args.get("use_pigz", "auto"),
+                     args.cpu_thread_pool_size)
     else:
         raise ValueError("Unknown output format")
     if systematics is not None:

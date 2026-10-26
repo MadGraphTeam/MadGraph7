@@ -171,7 +171,8 @@ void EventGenerator::run_generate(GenerateMode mode) {
                     _channel_optimizing.at(channel_index) = true;
                     _ready_jobs.push_back({
                         .channel_index = channel_index,
-                        .unweight = true,
+                        // optimize_only keeps no events
+                        .unweight = mode != GenerateMode::optimize_only,
                         .batch_event_count = channel->next_vegas_batch_size(),
                         .is_vegas_batch = true,
                     });

@@ -142,7 +142,9 @@ class AmplicolSubprocess(MadgraphSubprocess):
             invariant_power=self.process.run_card["phasespace"]["invariant_power"],
             mode=ms.PhaseSpaceMapping.color_ordered,
             cuts=self.cuts,
-            color_order=self.meta["phasespace_order"],
+            color_ordered=ms.ColorOrderedMapping.Options(self.meta["phasespace_order"]),
+            beam_rapidity=self.process.beam_rapidity,
+            mirror_beams=self.mirror_beams,
         )
         prefix = f"subproc{self.subproc_id}.amplicol"
         discrete_sym, discrete_flavor = self.build_discrete(

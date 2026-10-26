@@ -118,6 +118,9 @@ c     Constants
 c
       include 'genps.inc'
       include 'nexternal.inc'
+c     scale passed to the model (extra running scale of the running parameters)
+      double precision model_scale
+      common /model_scale/model_scale
 C
 C     ARGUMENTS
 C
@@ -344,6 +347,7 @@ c     This is called only once in the application (FIRSTTIME=.true.)
 
          if(fixed_ren_scale) then
             G = SQRT(4d0*PI*ALPHAS(scale))
+            model_scale = scale
             do i =1, VECSIZE_USED
                call update_as_param(i)
             enddo

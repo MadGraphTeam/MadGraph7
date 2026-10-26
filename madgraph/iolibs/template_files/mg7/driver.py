@@ -12,6 +12,104 @@ from madgraph.iolibs.template_files.mg7.model_widths import compute_auto_widths
 from madgraph.iolibs.template_files.mg7.postprocess import run_lhe_postprocessing, run_selected_tools, selected_tools
 from madgraph.iolibs.template_files.mg7.madgraph_process import MadgraphProcess
 
+def compute_decay_widths(
+    me_dir: str = ".", precision: float = 0.01, nb_core: int | None = None,
+    extra_make_args=(),
+) -> list[dict]:
+    """Integrate the decays of an mg7 decay directory and return their widths.
+
+    This is the madspace counterpart of madevent's ``survey decay``: only the
+    survey runs (no unweighting, no events, no systematics), and it stops once
+    every channel is below ``precision`` relative error, like the
+    ``--precision_channel`` of ``compute_widths``.
+
+    ``me_dir`` is an output directory of 1 -> n processes of one decaying
+    particle. It is meant to run in a process of its own (``bin/generate_events
+    --decay-widths=FILE``, which is how ``compute_widths`` calls it): the
+    madspace objects write their status file from a destructor, and the
+    caller removes the temporary directory as soon as the widths are back.
+    The result holds one entry per decay and flavour assignment::
+
+        {"incoming": 25, "outgoing": [5, -5], "width": 4.3e-3, "error": 1e-9}
+
+    (signed pdg ids, width in GeV). The flavours of a subprocess (different
+    matrix elements, e.g. the u u~ g and d d~ g of z > q q~ g) are integrated
+    separately (MadgraphProcess.split_decay_flavors); the assignments of one
+    flavour share its matrix element (they are the same function of the
+    momenta, or they would not be grouped) and split its width evenly. A
+    decay the decaying particle is too light for has no entry.
+    """
+    cwd = os.getcwd()
+    os.chdir(me_dir)
+    process = None
+    try:
+        card_path = os.path.join("Cards", "run_card.toml")
+        card = RunCardMG7(card_path, consistency=False)
+        card["generation"]["survey_target_precision"] = precision
+        card["generation"]["survey_max_iters"] = 30
+        # one survey result per decay, not per group of mergeable ones
+        card["phasespace"]["merge_subprocesses"] = False
+        card["run"]["verbosity"] = "silent"
+        if nb_core:
+            card["run"]["cpu_thread_pool_size"] = int(nb_core)
+        card.write(card_path)
+
+        # one survey result per flavour, not per subprocess
+        process = MadgraphProcess(extra_make_args=extra_make_args,
+                                  split_flavors=True)
+        if not process.is_decay:
+            raise ValueError("compute_decay_widths needs a decay (1 -> n) output")
+        process.survey()
+
+        channel_status = process.event_generator.channel_status()
+        results = []
+        offset = 0
+        for subproc, phasespace in zip(process.subprocesses, process.phasespaces):
+            statuses = channel_status[offset:offset + len(phasespace.channels)]
+            offset += len(phasespace.channels)
+            width = sum(status.mean for status in statuses)
+            error = sum(status.error ** 2 for status in statuses) ** 0.5
+            options = _decay_flavor_options(subproc.meta)
+            for option in options:
+                results.append({
+                    "incoming": option[0],
+                    "outgoing": list(option[1:]),
+                    "width": width / len(options),
+                    "error": error / len(options),
+                })
+        return results
+    finally:
+        if process is not None:
+            # StatusFile finishes info.json from its destructor: run it before
+            # the caller removes the directory (see init_event_dir)
+            _release_channel_generators(process)
+            del process
+            gc.collect()
+        os.chdir(cwd)
+
+
+def _decay_flavor_options(meta: dict) -> list[list[int]]:
+    """The flavour assignments of a subprocess of compute_decay_widths, which
+    share its width evenly.
+
+    That is right for the assignments of one flavour, which have one matrix
+    element (d d~ and s s~ of a massless s, the three neutrinos). Different
+    flavours have different matrix elements (the u u~ and d d~ of a
+    flavour-grouped subprocess) and the survey of a subprocess only gives
+    their sum: compute_decay_widths splits them first (split_flavors), and a
+    subprocess still holding several is an error, not an even split that
+    would get the branching ratios wrong.
+    """
+    flavors = meta["flavors"]
+    if len(flavors) != 1:
+        raise ValueError(
+            "compute_decay_widths: the subprocess %s has %d flavours with "
+            "different matrix elements, the survey cannot give the width of "
+            "each" % (meta.get("path", "?"), len(flavors))
+        )
+    return [list(option) for option in flavors[0]["options"]]
+
+
 def _release_channel_generators(process) -> None:
     """Drop the per-channel event/weight generators so their intermediate
     .npy files are deleted right away. madspace only frees them when the
@@ -22,6 +120,8 @@ def _release_channel_generators(process) -> None:
     process.event_generator = None
     process.phasespaces = None
     gc.collect()
+    if getattr(process, "auto_temp_path", False):
+        shutil.rmtree(process.temp_path, ignore_errors=True)
 
 
 def run_single(switch=None) -> "MadgraphProcess":
@@ -59,7 +159,7 @@ def detect_param_scan(param_card_path):
     else None."""
     if not os.path.exists(param_card_path):
         return None
-    from models import check_param_card as param_card_mod
+    from madgraph.models import check_param_card as param_card_mod
     it = param_card_mod.ParamCardIterator(param_card_path)
     for block in it.order:
         for param in block:
@@ -78,7 +178,7 @@ def run_scan(iterator, card_path, switch=None) -> None:
     with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
         run_name = tomllib.load(f).get("run", {}).get("run_name", "run")
 
-    from models import check_param_card as param_card_mod
+    from madgraph.models import check_param_card as param_card_mod
     is_param_scan = isinstance(iterator, param_card_mod.ParamCardIterator)
 
     backup = card_path + ".scan_bak"

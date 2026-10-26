@@ -249,7 +249,7 @@ def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
         import madgraph.various.lhe_parser as lhe_parser
     except ImportError:
         import internal.lhe_parser as lhe_parser
-    from models import check_param_card as param_card_mod
+    from madgraph.models import check_param_card as param_card_mod
     from madgraph.various import misc as _misc
     import madgraph.iolibs.files as files
 

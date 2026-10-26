@@ -1,5 +1,6 @@
 import contextlib
 import ctypes
+import types
 
 from ._madspace_py import (
     _UMAMI_INPUT_KEYS,
@@ -33,7 +34,9 @@ _OUTPUT_TYPES = {
     "helicity_index": DataType.int,
     "diagram_index": DataType.int,
     "cut": DataType.float,
-    "scale": DataType.float,
+    "ren_scale": DataType.float,
+    "fact_scale1": DataType.float,
+    "fact_scale2": DataType.float,
     "pdf": DataType.float,
     "bias": DataType.float,
     "matrix_element_ratio": DataType.float,
@@ -66,6 +69,10 @@ class PythonFunction:
         particle_count: The particle count ``n`` for ``momenta`` and ``pdg_ids``, if
             the caller does not pass the ``particle_count`` input.
         name: Name used in error messages, by default the function's name.
+        parameters: Names and default values of parameters set through
+            ``umami_set_parameter``, e.g. the ``parameters`` argument of
+            ``Context.add_matrix_element``. With parameters, ``function`` gets a
+            namespace of their values as last argument, e.g. ``params.pt_min``.
     """
 
     def __init__(
@@ -76,6 +83,7 @@ class PythonFunction:
         framework="numpy",
         particle_count=None,
         name=None,
+        parameters=None,
     ):
         if framework not in ("numpy", "torch"):
             raise ValueError(f"framework must be 'numpy' or 'torch', not {framework!r}")
@@ -97,6 +105,11 @@ class PythonFunction:
         self.framework = framework
         self.particle_count = particle_count
         self.name = name or getattr(function, "__name__", "python_function")
+        self.parameters = (
+            None
+            if parameters is None
+            else {str(key): float(value) for key, value in parameters.items()}
+        )
         self._input_keys = [_UMAMI_INPUT_KEYS[key] for key in self.inputs]
         self._output_keys = [_UMAMI_OUTPUT_KEYS[key] for key in self.outputs]
         self._needs_particle_count = any(
@@ -118,7 +131,7 @@ class PythonFunction:
 
     def _view(self, address, dtype, shape, stride, offset, device):
         return self._from_dlpack(
-            _tensor_view(address, dtype, shape, stride, offset, device)
+            _tensor_view(address, dtype, shape, stride, offset, *device)
         )
 
     def _numpy_output(self, address, dtype, count, offset):
@@ -129,13 +142,29 @@ class PythonFunction:
         return self._numpy.frombuffer(buffer, dtype=self._numpy.dtype(ctype))
 
     def _stream(self, device, stream):
-        if self.framework == "torch" and device != "cpu" and stream is not None:
+        if self.framework == "torch" and device[0] != "cpu" and stream is not None:
             torch = self._torch
-            return torch.cuda.stream(torch.cuda.ExternalStream(stream))
+            # torch names HIP devices "cuda" as well
+            torch_device = torch.device("cuda", device[1])
+            return torch.cuda.stream(
+                torch.cuda.ExternalStream(stream, device=torch_device)
+            )
         return contextlib.nullcontext()
 
-    def _call(self, device, count, stride, offset, inputs, outputs, stream):
+    def _call(
+        self,
+        device_name,
+        device_index,
+        count,
+        stride,
+        offset,
+        inputs,
+        outputs,
+        stream,
+        parameter_values=None,
+    ):
         """Called by the UMAMI implementation with the raw buffer addresses."""
+        device = (device_name, device_index)
         with self._stream(device, stream):
             n = self.particle_count
             if self._needs_particle_count and n is None:
@@ -166,6 +195,8 @@ class PythonFunction:
                         device,
                     )
                 )
+            if self.parameters is not None:
+                args.append(types.SimpleNamespace(**(parameter_values or {})))
             results = self.function(*args)
             if len(self.outputs) == 1:
                 results = (results,)
@@ -199,9 +230,9 @@ class PythonFunction:
                 )
             expected = torch.float64 if dtype == DataType.float else torch.int32
             result_device = "cpu" if result.device.type == "cpu" else "gpu"
-            if result_device != ("cpu" if device == "cpu" else "gpu"):
+            if result_device != ("cpu" if device[0] == "cpu" else "gpu"):
                 raise ValueError(
-                    f"{prefix} must be on the {device} device, not {result.device}"
+                    f"{prefix} must be on the {device[0]} device, not {result.device}"
                 )
         else:
             numpy = self._numpy
@@ -227,10 +258,11 @@ def _prod(values):
     return result
 
 
-def _add_matrix_element(self, function, name=None):
+def _add_matrix_element(self, function, name=None, parameters=None):
     """
     Add a matrix element implemented in Python, see ``PythonFunction``. Returns its
-    ``MatrixElementApi``.
+    ``MatrixElementApi``. ``parameters`` maps parameter names to the values that
+    replace the defaults of ``PythonFunction``.
     """
     if not isinstance(function, PythonFunction):
         raise TypeError("add_matrix_element takes a madspace.PythonFunction")
@@ -242,6 +274,8 @@ def _add_matrix_element(self, function, name=None):
         function._output_keys,
         function.framework,
         name or function.name,
+        list((function.parameters or {}).items()),
+        {str(key): float(value) for key, value in (parameters or {}).items()},
     )
 
 

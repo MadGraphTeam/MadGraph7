@@ -946,6 +946,10 @@ std::string ChannelEventGenerator::to_json(bool include_estimates) const {
         double error = std::sqrt(integral.variance_abs / integral.count);
         if (integral.count > 1 && std::isfinite(error) && error > 0) {
             j["abs_integral"] = {{"mean", integral.mean_abs}, {"error", error}};
+            j["integral"] = {
+                {"mean", integral.mean},
+                {"error", std::sqrt(integral.variance / integral.count)}
+            };
         }
         if (!_step_states.empty()) {
             json step_max_weights = json::array();
@@ -1030,6 +1034,12 @@ ChannelEventGenerator ChannelEventGenerator::load_json(
             channel.at("abs_integral").at("error").get<double>()
         );
     }
+    if (channel.contains("integral")) {
+        generator.set_integral_prior(
+            channel.at("integral").at("mean").get<double>(),
+            channel.at("integral").at("error").get<double>()
+        );
+    }
     return generator;
 }
 
@@ -1050,6 +1060,24 @@ void ChannelEventGenerator::set_abs_integral_prior(double mean, double error) {
     _abs_integral_prior = {mean, error};
 }
 
+void ChannelEventGenerator::set_integral_prior(double mean, double error) {
+    if (!std::isfinite(mean) || !std::isfinite(error) || error < 0) {
+        throw std::invalid_argument("The integral prior must be finite");
+    }
+    _integral_prior = {mean, error};
+}
+
+bool ChannelEventGenerator::uses_integral_prior(bool final_step) const {
+    auto integral = final_step ? result_integral() : first_step_integral();
+    double error = std::sqrt(integral.variance_abs / integral.count);
+    return _abs_integral_prior &&
+        (integral.count < 2 || !std::isfinite(error) || !(error > 0));
+}
+
+std::pair<double, double> ChannelEventGenerator::integral_prior() const {
+    return _integral_prior ? *_integral_prior : *_abs_integral_prior;
+}
+
 double ChannelEventGenerator::abs_integral_estimate(bool final_step) const {
     auto integral = final_step ? result_integral() : first_step_integral();
     double mean = integral.mean_abs;
@@ -1058,8 +1086,7 @@ double ChannelEventGenerator::abs_integral_estimate(bool final_step) const {
     }
     auto [prior_mean, prior_error] = *_abs_integral_prior;
     double error = std::sqrt(integral.variance_abs / integral.count);
-    // too few samples for a variance
-    if (integral.count < 2 || !std::isfinite(error) || !(error > 0)) {
+    if (uses_integral_prior(final_step)) {
         return prior_mean;
     }
     double prior_weight = 1. / (prior_error * prior_error);

@@ -73,6 +73,13 @@ def test_extract_with_system_tar(tmp_path):
     )
 
 
+def anonymous(info):
+    # the uid of a cluster account can overflow the tar header fields
+    info.uid = info.gid = 0
+    info.uname = info.gname = ""
+    return info
+
+
 def test_read_tar_from_other_tool(tmp_path):
     ctx, values = make_context(tmp_path)
     first = tmp_path / "first.tar"
@@ -90,7 +97,7 @@ def test_read_tar_from_other_tool(tmp_path):
         other = tmp_path / name
         with tarfile.open(other, "w", format=fmt) as tar:
             for p in sorted(src.iterdir()):
-                tar.add(p, arcname=p.name)
+                tar.add(p, arcname=p.name, filter=anonymous)
         ctx2 = ms.Context(device=ms.cpu_device(), thread_count=1)
         ctx2.load_globals(str(other))
         for gname in values:

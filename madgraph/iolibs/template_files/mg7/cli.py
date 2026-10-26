@@ -1,6 +1,7 @@
 """The MG7> command line interface and its card editing."""
 
 import argparse
+import json
 import os
 import re
 import resource
@@ -9,9 +10,9 @@ from madgraph.iolibs.template_files.mg7.common import logger
 from madgraph.interface.extended_cmd import Cmd
 from madgraph.various.banner import RunCardMG7
 from madgraph.iolibs.template_files.mg7 import npy_to_lhe
-from madgraph.iolibs.template_files.mg7.driver import force_lhe_output_if_needed, run_generation
+from madgraph.iolibs.template_files.mg7.driver import compute_decay_widths, force_lhe_output_if_needed, run_generation
 from madgraph.iolibs.template_files.mg7.model_widths import compute_auto_widths, load_process_model
-from madgraph.iolibs.template_files.mg7.options import load_mg5_options
+from madgraph.iolibs.template_files.mg7.options import lhapdf_paths, load_mg5_options
 from madgraph.iolibs.template_files.mg7.postprocess import _off, _setup_logging
 
 class MG7Cmd(Cmd):
@@ -51,6 +52,11 @@ class MG7Cmd(Cmd):
             # configured in the session that is doing the launching.
             self.options.update({k: v for k, v in options.items()
                                  if k in self.options and v is not None})
+            # and so does its error policy: with crash_on_error a failing
+            # launch has to stop the script with a non-zero exit code, as a
+            # madevent launch does, instead of returning to the prompt.
+            if 'crash_on_error' in options:
+                self.options['crash_on_error'] = options['crash_on_error']
         self.plugin_path = []
         self.proc_characteristics = {'grouped_matrix': False, 'limitations': []}
         self._model = None  # lazily imported by get_model()
@@ -272,6 +278,21 @@ def build_selector_cmd(mother=None):
                 self.run_card.allow_scan = True
             return getattr(self, "run_set", out)
 
+        def check_card_consistency(self):
+            # madevent settings given per beam ("set fixed_fac_scale1 ...")
+            # that the mg7 card could not follow: said once, at the end, so
+            # "set fixed_fac_scale1 T" then "set fixed_fac_scale2 T" stays
+            # quiet. Collected first: lo_set_warnings also forgets them, which
+            # must happen even if the generic checks below raise.
+            warnings = []
+            if isinstance(getattr(self, "run_card", None), RunCardMG7):
+                warnings = self.run_card.lo_set_warnings()
+            try:
+                super().check_card_consistency()
+            finally:
+                for text in warnings:
+                    logger.warning(text)
+
         def do_set(self, line, *args, **kwargs):
             # madevent-style shortcuts (lhc/lep/fixed_scale/no_parton_cut), cut
             # editing, energy units and arithmetic/mass expressions on the TOML
@@ -338,6 +359,61 @@ def build_selector_cmd(mother=None):
                         self.modified_card.add("run")
                         return
 
+                    # legacy madevent cut names ("set ptj 20", "set mmll 200",
+                    # "set etaj -1", ...) -> the [cuts] entry the LO->MG7
+                    # run_card conversion maps them to (_LO_CUT_MAP), with the
+                    # same "no cut" sentinels (minimum <= 0, maximum < 0).
+                    if rest and nlow in run_card._LO_CUT_MAP:
+                        if rest.lower().startswith("scan"):
+                            logger.warning("ignoring 'set %s %s': the [cuts] entries of "
+                                           "the mg7 run_card.toml cannot be scanned",
+                                           nlow, rest)
+                            return
+                        try:
+                            cut, bound, val = run_card.set_lo_cut(
+                                nlow, run_card.evaluate(rest, masses))
+                        except _banner_mod.InvalidCmd:
+                            logger.warning("ignoring 'set %s %s': not a number", nlow, rest)
+                            return
+                        if val is None:
+                            logger.info("set %s (mg7 cut %s.%s) of the run_card.toml: "
+                                        "no cut", nlow, cut, bound)
+                        else:
+                            logger.info("set %s (mg7 cut %s.%s) of the run_card.toml to %s",
+                                        nlow, cut, bound, val)
+                        self.modified_card.add("run")
+                        return
+
+                    # madevent parameters that are not a plain rename: the
+                    # value is translated ("set dynamical_scale_choice 3") or
+                    # several of them make one mg7 entry (fixed_fac_scale1 +
+                    # fixed_fac_scale2 -> beam.fixed_fact_scale). mg7 values
+                    # ("set sde_strategy denominators") come back as None and
+                    # go on to the generic editor.
+                    if rest and nlow in run_card._LO_SET_PARAMS:
+                        try:
+                            done = run_card.set_lo_param(nlow, rest, masses)
+                        except _banner_mod.InvalidCmd as error:
+                            logger.warning("ignoring 'set %s %s': %s", nlow, rest, error)
+                            return
+                        if done is not None:
+                            changes, warnings = done
+                            for key, val in changes.items():
+                                if val is None:
+                                    logger.info("set %s: removed %s from the run_card.toml",
+                                                nlow, key)
+                                else:
+                                    logger.info("set %s (mg7 %s) of the run_card.toml to %s",
+                                                nlow, key, val)
+                            for text in warnings:
+                                logger.warning(text)
+                            if changes:
+                                self.modified_card.add("run")
+                            elif not warnings:
+                                logger.info("set %s %s: nothing to change in the run_card.toml",
+                                            nlow, rest)
+                            return
+
                     # 'iseed' is the madevent spelling of the mg7 run.seed,
                     # but the two disagree on how to ask for a random seed:
                     # madevent uses 0, mg7 uses -1 (0 being a perfectly good
@@ -357,6 +433,28 @@ def build_selector_cmd(mother=None):
                         run_card.set('run.seed', seed, user=True)
                         logger.info("set iseed (mg7 run.seed) of the run_card.toml to %s%s",
                                     seed, " (random)" if seed == -1 else "")
+                        self.modified_card.add("run")
+                        return
+
+                    # madevent beam settings (ebeam, lpp, pdlabel, lhaid, per
+                    # beam or for both) onto the per-beam [beam] entries
+                    if rest and nlow in run_card.lo_beam_params:
+                        data_paths = lhapdf_paths().data_paths if nlow == "lhaid" else ()
+                        try:
+                            done = run_card.set_lo_beam_param(nlow, rest, masses, data_paths)
+                        except _banner_mod.InvalidRunCard as error:
+                            logger.warning("ignoring 'set %s %s': %s", name, rest, error)
+                            return
+                        logger.info("set %s %s: %s", nlow, rest, done)
+                        self.modified_card.add("run")
+                        return
+
+                    # quantities the card stores per beam: set both beams
+                    if rest and nlow in ("e_cm", "beam.e_cm", "beam.pdf"):
+                        value = rest if nlow == "beam.pdf" else run_card.evaluate(rest, masses)
+                        run_card.set(nlow, value, user=True)
+                        logger.info("set %s of the run_card.toml to %s (both beams)",
+                                    nlow, run_card["beam." + nlow.split(".")[-1]])
                         self.modified_card.add("run")
                         return
 
@@ -465,6 +563,27 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
+    parser.add_argument(
+        "--decay-widths", metavar="JSON", default=None,
+        help="only integrate the 1 -> n decays of this directory and write "
+             "their widths (GeV) as JSON, see compute_decay_widths")
+    parser.add_argument(
+        "--precision", type=float, default=0.01,
+        help="relative precision aimed at for every channel (--decay-widths)")
+    parser.add_argument(
+        "--nb-core", type=int, default=None,
+        help="number of threads and compilation jobs (--decay-widths)")
+    parser.add_argument(
+        "--make-arg", action="append", default=[],
+        help="extra argument of the matrix element build (--decay-widths)")
     args = parser.parse_args()
+
+    if args.decay_widths:
+        results = compute_decay_widths(
+            ".", precision=args.precision, nb_core=args.nb_core,
+            extra_make_args=args.make_arg)
+        with open(args.decay_widths, "w") as f:
+            json.dump(results, f)
+        return
 
     MG7Cmd().run_cmd("generate_events" if args.ask_edit_cards else "generate_events -f")

@@ -61,10 +61,10 @@ import madgraph.core.diagram_generation as diagram_generation
 
 import madgraph.various.misc as misc
 
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 from madgraph import MadGraph5Error, MG5DIR
 
-import models.model_reader as model_reader
+import madgraph.models.model_reader as model_reader
 ZERO = 0
 #===============================================================================
 # Logger for decay_module

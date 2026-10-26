@@ -12,16 +12,24 @@
  * pdg_id          PDG id of the parton
  * x               momentum fraction
  * q               factorization scale in GeV
+ * params          parameters declared in parameters.h, e.g. params->gluon_norm
  *
  * Run `make` in this directory to build ../lib/custom_pdf.so.
  */
 
 #include <math.h>
 
-double custom_pdf(int beam_index, int pdg_id, double x, double q) {
-    // default: a toy density, replace it with your own
+#include "parameters.h"
+
+double custom_pdf(
+    int beam_index, int pdg_id, double x, double q,
+    const CustomParameters* params
+) {
+    // default: a toy density, replace it with your own. Its gluon
+    // normalization could be a parameter, with X(gluon_norm, 3.) in parameters.h.
     (void)beam_index;
     (void)q;
+    (void)params;
     double norm = pdg_id == 21 ? 3. : 0.5;
     return norm * sqrt(x) * pow(1. - x, 3);
 }

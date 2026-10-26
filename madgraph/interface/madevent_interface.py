@@ -89,7 +89,7 @@ else:
     import madgraph.madevent.combine_runs as combine_runs
     import madgraph.various.lhe_parser as lhe_parser
 #    import madgraph.various.histograms as histograms  # imported later to not slow down the loading of the code
-    import models.check_param_card as check_param_card
+    import madgraph.models.check_param_card as check_param_card
     from madgraph.iolibs.files import ln    
     from madgraph import InvalidCmd, MadGraph5Error, MG5DIR, ReadWrite
 
@@ -3114,6 +3114,9 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
 
         decay_lines = []
         comment = collections.defaultdict(str)
+        # the widths still on auto ('DECAY 6 auto --nlo'), which another call of
+        # compute_widths is to compute: they must come out as they went in
+        pending_auto = {}
         line_number = 0
         # Read and remove all decays from the param_card                     
         while line_number < len(param_card):
@@ -3130,6 +3133,12 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
                         particle = int(line[1])
                         width = float(line[2])
                     except Exception:
+                        try:
+                            auto_value = ' '.join(line[2:line.index('#')] if '#' in line else line[2:])
+                            if auto_value.lower().startswith('auto'):
+                                pending_auto[int(line[1])] = auto_value
+                        except ValueError:
+                            pass
                         particle = 0
                 # Read BRs for this decay
                 line = param_card[line_number]
@@ -3166,6 +3175,9 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
         param_card.append("#\n#*************************")
         param_card.append("#      Decay widths      *")
         param_card.append("#*************************")
+        for key in sorted(pending_auto):
+            param_card.append("#\n#      PDG        Width")
+            param_card.append("DECAY  %i  %s # %s" % (key, pending_auto[key], comment[key]))
         for key in sorted(decay_info.keys()):
             width = sum([r for p,r in decay_info[key]])
             param_card.append("#\n#      PDG        Width")
@@ -8245,9 +8257,18 @@ if '__main__' == __name__:
                     print('and %s  can not be interpreted as a valid command.' % args[0])
                 else:
                     print('ERROR: %s  not a valid command. Please retry' % args[0])
+                sys.exit(1)
             else:
                 cmd_line.use_rawinput = False
-                cmd_line.run_cmd(' '.join(args))
+                # Whoever started this process (e.g. a reweighting split over
+                # several cores) only sees its exit status: a failed command
+                # must not end with 0.
+                line = ' '.join(args)
+                try:
+                    cmd_line.exec_cmd(line, precmd=True)
+                except (Exception, KeyboardInterrupt) as error:
+                    cmd_line.error_handling(error, line)
+                    sys.exit(1)
                 cmd_line.run_cmd('quit')
 
     except KeyboardInterrupt:

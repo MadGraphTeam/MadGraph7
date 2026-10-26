@@ -4599,7 +4599,7 @@ RESTART = %(mint_mode)s
         except KeyError:
             mod = self.get_model()
             if not hasattr(mod, 'parameter_dict'):
-                from models import model_reader
+                from madgraph.models import model_reader
                 mod = model_reader.ModelReader(mod)
                 if "set EWscheme MZ_MW_alpha" in self.banner.get_detail('proc_card'):
                     mod.change_electroweak_mode("MZ_MW_alpha")
@@ -4966,7 +4966,7 @@ RESTART = %(mint_mode)s
             execpath = exe
         else:
             raise aMCatNLOError('Cannot find executable %s in %s' \
-                % (exe, os.getcwd()))
+                % (exe, cwd or os.getcwd()))
         # check that the executable has exec permissions
         if self.cluster_mode == 1 and not os.access(execpath, os.X_OK):
             subprocess.call(['chmod', '+x', exe], cwd=cwd)
@@ -4991,15 +4991,18 @@ RESTART = %(mint_mode)s
             input_files.append(pjoin(cwd, os.path.pardir, 'leshouche_info.dat'))
             input_files.append(pjoin(cwd, os.path.pardir, 'orderstags_glob.dat'))
             input_files.append(args[0])
-            open('%s.rwgt' % os.path.basename(args[0]), "a").close()
-            open('reweight_xsec_events.output', "a").close()
-            open('scale_pdf_dependence.dat', "a").close()
-            input_files.append('%s.rwgt' % os.path.basename(args[0]))
-            input_files.append('reweight_xsec_events.output')
-            input_files.append('scale_pdf_dependence.dat')
-            output_files.append('%s.rwgt' % os.path.basename(args[0]))
-            output_files.append('reweight_xsec_events.output')
-            output_files.append('scale_pdf_dependence.dat')
+            # The file names are relative to the job directory (cwd), as the
+            # cluster copies them from and back to there: create them in
+            # cwd, not in the directory MG was started from. They are
+            # emptied, so that the outputs of a previous reweighting of the
+            # same directory cannot pass for those of a job that failed.
+            rwgt_files = ['%s.rwgt' % os.path.basename(args[0]),
+                          'reweight_xsec_events.output',
+                          'scale_pdf_dependence.dat']
+            for name in rwgt_files:
+                open(pjoin(cwd, name), "w").close()
+            input_files.extend(rwgt_files)
+            output_files.extend(rwgt_files)
 
             return self.cluster.submit2(exe, args, cwd=cwd, 
                              input_files=input_files, output_files=output_files,
@@ -5591,7 +5594,8 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                     raise aMCatNLOError("CutTools installation in %s"\
                                  %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MadGraph7. Please recompile CutTools.")
+                    " the one specified in MadGraph7. Please recompile it by typing"+\
+                    " 'install cuttools_iregi' in the MadGraph7 interface.")
 
         # make IREGI (only necessary with MG option output_dependencies='internal')
         if not os.path.exists(os.path.realpath(pjoin(libdir, 'libiregi.a'))) \
@@ -5619,7 +5623,8 @@ PYTHIA8LINKLIBS=%(pythia8_prefix)s/lib/libpythia8.a -lz -ldl"""%{'pythia8_prefix
                         raise aMCatNLOError("IREGI installation in %s"\
                                 %os.path.realpath(pjoin(libdir, 'libiregi.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MadGraph7. Please recompile IREGI.")
+                    " the one specified in MadGraph7. Please recompile it by typing"+\
+                    " 'install cuttools_iregi' in the MadGraph7 interface.")
 
         # check if MadLoop virtuals have been generated
         if self.proc_characteristics['has_loops'] and \
@@ -6098,9 +6103,18 @@ if '__main__' == __name__:
                     print('and %s  can not be interpreted as a valid command.' % args[0])
                 else:
                     print('ERROR: %s  not a valid command. Please retry' % args[0])
+                sys.exit(1)
             else:
                 cmd_line.use_rawinput = False
-                cmd_line.run_cmd(' '.join(args))
+                # Whoever started this process (e.g. a reweighting split over
+                # several cores) only sees its exit status: a failed command
+                # must not end with 0.
+                line = ' '.join(args)
+                try:
+                    cmd_line.exec_cmd(line, precmd=True)
+                except (Exception, KeyboardInterrupt) as error:
+                    cmd_line.error_handling(error, line)
+                    sys.exit(1)
                 cmd_line.run_cmd('quit')
 
     except KeyboardInterrupt:

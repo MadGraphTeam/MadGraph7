@@ -205,7 +205,9 @@ def test_color_ordered_discrete_choices(tmp_path, color_order):
             leptonic=True,
             mode=mode,
             cuts=cuts,
-            color_order=order,
+            color_ordered=(
+                None if order is None else ms.ColorOrderedMapping.Options(order)
+            ),
         )
         if order is not None:
             assert mapping.discrete_dim() > 0

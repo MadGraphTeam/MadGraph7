@@ -14,6 +14,8 @@ precision = %(run.precision)s
 simd_vector_size = %(run.simd_vector_size)s
 # -1 sets the thread count automatically
 cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
+# auto uses pigz for large files when installed; false uses gzip
+use_pigz = %(run.use_pigz)s
 gpu_thread_pool_size = %(run.gpu_thread_pool_size)s
 combine_thread_pool_size = %(run.combine_thread_pool_size)s
 output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe
@@ -46,15 +48,19 @@ include_madspace_source = %(gridpack.include_madspace_source)s
 compress = %(gridpack.compress)s
 # end of a run creating a gridpack; options: regular, minimal (no events), fix_max_weight (no events, adds bin/event_stream.py)
 run_mode = %(gridpack.run_mode)s
-# temporary npy files; "" uses the output directory
+# temporary npy files; "" uses the output directory, "auto" a new temporary directory
 temp_output_dir = %(gridpack.temp_output_dir)s
 # output files; "" creates a new run folder in Events
 output_dir = %(gridpack.output_dir)s
 
 [beam]
-e_cm = %(beam.e_cm)s
+# beam 1 moves along +z; events and eta cuts are in this lab frame
+ebeam1 = %(beam.ebeam1)s
+ebeam2 = %(beam.ebeam2)s
 leptonic = %(beam.leptonic)s
-pdf = %(beam.pdf)s
+# "set beam.pdf X" sets both beams
+pdf1 = %(beam.pdf1)s
+pdf2 = %(beam.pdf2)s
 fixed_ren_scale = %(beam.fixed_ren_scale)s
 fixed_fact_scale = %(beam.fixed_fact_scale)s
 ren_scale = %(beam.ren_scale)s
@@ -129,6 +135,8 @@ cut = %(custom_functions.cut)s
 scale = %(custom_functions.scale)s # replaces dynamical_scale_choice
 pdf = %(custom_functions.pdf)s # replaces the PDF set, alpha_s still comes from [beam] pdf
 bias = %(custom_functions.bias)s # events are generated with |w| b and written with w / b
+# parameters declared by a function, e.g. cut_parameters.pt_min = 30.0
+$custom_function_parameters
 
 [surrogate]
 # a fast surrogate of the matrix element in the integrand: a .so library, which can

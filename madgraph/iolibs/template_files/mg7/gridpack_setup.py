@@ -39,18 +39,11 @@ def gridpack_path(*parts) -> str:
 
 
 def load_run_card():
-    """The gridpack run card (Cards/grid_run_card.toml). Use the RunCardMG7
-    representation when the madgraph package is importable; gridpacks are meant
-    to be portable, so fall back to a plain tomllib parse otherwise (the card is
-    the same TOML)."""
-    run_card_path = gridpack_path("Cards", "grid_run_card.toml")
-    try:
-        from madgraph.various.banner import RunCardMG7
-        return RunCardMG7(run_card_path)
-    except ImportError:
-        import tomllib
-        with open(run_card_path, "rb") as f:
-            return tomllib.load(f)
+    """The gridpack run card (Cards/grid_run_card.toml), as plain TOML: a
+    gridpack must run without a MadGraph installation."""
+    import tomllib
+    with open(gridpack_path("Cards", "grid_run_card.toml"), "rb") as f:
+        return tomllib.load(f)
 
 
 def load_madspace_data() -> dict:
@@ -115,9 +108,12 @@ def load_context_data(contexts, backends, madspace_data: dict) -> None:
     from custom_function_loader import load_custom_function
     device_types = [b if b in ("cuda", "hip") else "cpu" for b in backends]
     for entry in madspace_data.get("custom_functions", []):
-        # older gridpacks store only the path of a .so library
-        kind, path = entry if isinstance(entry, list) else ("", entry)
-        load_custom_function(ms, contexts, device_types, kind, _gridpack_relative(path))
+        # [kind, path, parameters]; older gridpacks store fewer entries
+        entry = entry if isinstance(entry, list) else ["", entry]
+        kind, path, parameters = (entry + [{}])[:3]
+        load_custom_function(
+            ms, contexts, device_types, kind, _gridpack_relative(path), parameters
+        )
     for context, backend in zip(contexts, backends):
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
@@ -243,9 +239,12 @@ def load_systematics(run_card, backends=(), me_parameters=None):
     subproc_args = [
         ms.SubprocessSystArgs.from_json(json.dumps(a)) for a in data["subproc_args"]
     ]
-    nominal_pdf = None
+    nominal_pdf = nominal_pdf2 = None
     if config.has_pdf:
         nominal_pdf = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file"]))
+        # the second beam's set, recorded only when it differs from the first
+        if data.get("nominal_grid_file2"):
+            nominal_pdf2 = ms.PdfGrid(_locate_pdf_file(data["nominal_grid_file2"]))
     # The mu_R variations always need an alpha_s grid, so a gridpack that does
     # not name one cannot reweight anything -- drop the systematics rather than
     # die here (gridpacks written before the launcher recorded the file for a
@@ -295,7 +294,7 @@ def load_systematics(run_card, backends=(), me_parameters=None):
             ))
     systematics = ms.SystematicsCalculator(
         config, subproc_args, nominal_pdf, nominal_alpha_s,
-        context, matrix_elements, flavor_remap)
+        context, matrix_elements, flavor_remap, nominal_pdf2=nominal_pdf2)
     for warning in systematics.warnings:
         print("WARNING systematics: %s" % warning)
     return systematics
