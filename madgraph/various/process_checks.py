@@ -6802,9 +6802,11 @@ def check_complex_mass_scheme_process(process, evaluator, opt = [],
                 # 2-body decay is the maximum that should be considered for NLO check.
                 # The default 1% accuracy is not enough when pushing to small
                 # lambdaCMS values, we need 1 per mil at least.
+                # MadEvent integrates it: the check works on the model of its
+                # evaluator, which madspace has not been validated on.
                 command = '%s --output=%s'%(particle_name,pjoin(path,'tmp.dat'))+\
                     ' --path=%s --body_decay=2'%pjoin(path,'tmp.dat')+\
-                    ' --precision_channel=0.001'
+                    ' --precision_channel=0.001 --engine=madevent'
 #                misc.sprint(command)
                 param_card.write(pjoin(options['output_path'],'tmp.dat'))
                 # The MG5 command get_width will change the cmd._curr_model

@@ -35,7 +35,8 @@ import madspace as ms
 # madspace is imported; stop its install directory from shadowing the caller's
 # yaml/packaging/... for the rest of what is now MG5's own session.
 _drop_install_path()
-from madgraph.models.check_param_card import ParamCard
+from madgraph.models.check_param_card import ParamCard, group_auto_widths
+from madgraph.models.model_reader import Alphas_Runner
 from madgraph.iolibs.template_files.mg7 import hwu_output
 from madgraph.iolibs.template_files.mg7 import plots
 from madgraph.iolibs.template_files.mg7 import systematics_summary
@@ -59,6 +60,13 @@ if _source_hash != ms.SOURCE_HASH:
     print()
 
 logger = logging.getLogger("madgraph7")
+
+# From this many subprocess directories to compile, the standard headers are
+# precompiled once ('make PCH=1', see madmatrix.mk): each file of a small process
+# spends most of its time parsing them. Below, building the precompiled header
+# costs about what it saves.
+PCH_MIN_SUBPROCESSES = 4
+
 LOG_LEVEL_MAP = {
     ms.Logger.LogLevel.level_debug: logging.DEBUG,
     ms.Logger.LogLevel.level_info: logging.INFO,
@@ -283,7 +291,11 @@ class HistItem:
 
 
 class MadgraphProcess:
-    def __init__(self):
+    def __init__(self, extra_make_args=(), split_flavors=False):
+        # appended to the make command that builds the matrix elements
+        self.extra_make_args = list(extra_make_args)
+        # one subprocess per flavour of a decay (split_decay_flavors)
+        self.split_flavors = split_flavors
         self.madnis_trained = False
         self.lhe_completer = None
         self.load_cards()
@@ -428,6 +440,29 @@ class MadgraphProcess:
         if self.decaying_mass <= 0.0:
             raise ValueError("the decaying particle must have a non-zero mass")
         self.drop_closed_channels()
+        if getattr(self, "split_flavors", False):
+            self.split_decay_flavors()
+
+    def split_decay_flavors(self) -> None:
+        """Integrate every flavour of a decay subprocess on its own.
+
+        A subprocess can hold several flavours with different matrix elements
+        (z > d d~ g and z > u u~ g in one P1_z_QQxg): its integrand samples
+        them, and its result is their sum. The widths of compute_decay_widths
+        need each of them, so each flavour becomes a subprocess of its own,
+        with the same matrix-element library and flavour index and the
+        diagrams active for it (see _single_flavor_metas).
+        """
+        if self.merged_subprocess_data is not None:
+            raise ValueError(
+                "split_flavors needs merge_subprocesses = false: "
+                "merged_subprocesses.json indexes the unsplit subprocesses"
+            )
+        self.subprocess_data = [
+            single
+            for meta in self.subprocess_data
+            for single in _single_flavor_metas(meta)
+        ]
 
     def drop_closed_channels(self) -> None:
         """Remove subprocesses the decaying particle is too light to produce.
@@ -1245,32 +1280,87 @@ class MadgraphProcess:
             for label, value in rows:
                 logger.info("systematics, %s %s", label, value)
 
+    # the scale below which the alpha_s of a decay is frozen (write_fixed_alphas_info)
+    ALPHAS_FREEZE_SCALE = 1.0
+
     def write_fixed_alphas_info(self) -> str:
-        """Write a minimal LHAPDF ``.info`` holding a constant alpha_s.
+        """Write a minimal LHAPDF ``.info`` with the alpha_s of a decay.
 
         A decay has no beams, so there is no PDF set to take alpha_s from --
         and demanding one (possibly downloading it) just to evaluate a coupling
         would be absurd. The renormalisation scale of a decay is fixed at the
-        decaying mass anyway, so a constant alpha_s is the right answer, not an
-        approximation: take it from the param card, exactly as the Fortran
-        decay matrix elements do.
+        decaying mass, so only alpha_s(M) matters. Like the Fortran decay
+        matrix elements (Source/alfas_functions.f, ``nloop = 2``) it is the
+        2-loop running from the alpha_s(m_Z) of the param card up to M -- not
+        alpha_s(m_Z) itself, which overshoots alpha_s(125 GeV) by 4.7% (and
+        h > g g, which goes like alpha_s^2, by 9.7%).
+
+        The grid carries the running over the whole scale range and has a node
+        exactly at the decaying mass, so the interpolation returns alpha_s(M)
+        untouched. Below ALPHAS_FREEZE_SCALE (or wherever the running stops
+        being defined, closer to the Landau pole) alpha_s is frozen at its last
+        value: a light decaying particle (the muon, ...) has no QCD to speak
+        of, and its widths must not fail on a coupling they do not use.
         """
         # SMINPUTS entry 3 is alpha_s(m_Z), the same value the Fortran
         # parameter setup feeds to G.
-        alpha_s = float(self.param_card.get_value("sminputs", 3))
+        alpha_s_mz = float(self.param_card.get_value("sminputs", 3))
+        runner = Alphas_Runner(alpha_s_mz, 2, cmass=1.42, bmass=4.7)
+        mass = float(self.decaying_mass)
         path = os.path.join(self.run_path, "fixed_alphas.info")
         # AlphaSGrid interpolates in log(q^2) across the grid, so give it a
-        # comfortable number of nodes rather than the bare minimum of three.
-        q_values = [10 ** (i / 4.0) for i in range(-4, 21)]
+        # comfortable number of nodes rather than the bare minimum of three:
+        # 1 GeV to 100 TeV, and the decaying mass.
+        nodes = [10 ** (i / 4.0) for i in range(0, 21)]
+        q_values = sorted(
+            [q for q in nodes if abs(q / mass - 1) > 1e-9] + [mass]
+        )
+
+        def running(q):
+            try:
+                value = runner(q)
+            except (ArithmeticError, ValueError):
+                return None
+            return value if math.isfinite(value) and value > 0 else None
+
+        # from the top down, freezing at the first scale where the running is
+        # not used (below ALPHAS_FREEZE_SCALE) or not defined
+        values = {}
+        frozen = None
+        for q in reversed(q_values):
+            value = None
+            if frozen is None and q >= self.ALPHAS_FREEZE_SCALE:
+                value = running(q)
+            if value is None:
+                if frozen is None:
+                    if not values:
+                        raise ValueError(
+                            f"alpha_s({q:g} GeV) cannot be computed from "
+                            f"alpha_s(m_Z) = {alpha_s_mz:g}"
+                        )
+                    frozen = min(values)
+                value = values[frozen]
+            values[q] = value
+        alpha_s_values = [values[q] for q in q_values]
+        if frozen is not None and mass < frozen:
+            logger.info(
+                "decay mode: alpha_s frozen below %g GeV at alpha_s(%g GeV) = "
+                "%.6g (decaying mass %g GeV)", frozen, frozen, values[frozen],
+                mass,
+            )
         with open(path, "w") as f:
-            f.write("SetDesc: constant alpha_s for a decay (no beams)\n")
-            f.write("AlphaS_Qs: [%s]\n" % ", ".join(f"{q:g}" for q in q_values))
+            f.write("SetDesc: 2-loop running alpha_s of a decay (no beams)\n")
+            f.write(
+                "AlphaS_Qs: [%s]\n" % ", ".join(f"{q:.12g}" for q in q_values)
+            )
             f.write(
                 "AlphaS_Vals: [%s]\n"
-                % ", ".join(f"{alpha_s:g}" for _ in q_values)
+                % ", ".join(f"{a:.12g}" for a in alpha_s_values)
             )
         logger.info(
-            "decay mode: fixed alpha_s = %g at mu = %g GeV", alpha_s, self.e_cm
+            "decay mode: alpha_s(mu = %g GeV) = %.6g (2-loop running from "
+            "alpha_s(m_Z) = %g, as madevent)",
+            mass, values[mass], alpha_s_mz,
         )
         return path
 
@@ -1386,10 +1476,11 @@ class MadgraphProcess:
 
         log_path = os.path.join(self.run_path, "compile_subprocesses.log")
         for backend in resolved:
-            missing = [
-                meta for meta in self.subprocess_data
+            # by library: the flavours of a split subprocess share one
+            missing = list({
+                meta["me_path"]: meta for meta in self.subprocess_data
                 if not os.path.isfile(meta["me_path"].format(device=backend))
-            ]
+            }.values())
             if not missing:
                 continue
             logger.info(
@@ -1398,11 +1489,12 @@ class MadgraphProcess:
                 f"see log detail in {log_path}"
             )
             start_time = time.time()
-            self.make_subprocesses(
-                subproc_path,
-                [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"],
-                nb_core, log_path,
-            )
+            make_args = [f"BACKEND={backend}", f"FPTYPE={fptype}", "USEBUILDDIR=1"]
+            make_args += self.extra_make_args
+            if (len(missing) >= PCH_MIN_SUBPROCESSES
+                    and not any(arg.startswith("PCH=") for arg in make_args)):
+                make_args.append("PCH=1")
+            self.make_subprocesses(subproc_path, make_args, nb_core, log_path)
             logger.info(
                 f"Compilation of SubProcesses done in {time.time() - start_time:.1f} s"
             )
@@ -3786,6 +3878,21 @@ def build_selector_cmd(mother=None):
                 self.run_card.allow_scan = True
             return getattr(self, "run_set", out)
 
+        def check_card_consistency(self):
+            # madevent settings given per beam ("set fixed_fac_scale1 ...")
+            # that the mg7 card could not follow: said once, at the end, so
+            # "set fixed_fac_scale1 T" then "set fixed_fac_scale2 T" stays
+            # quiet. Collected first: lo_set_warnings also forgets them, which
+            # must happen even if the generic checks below raise.
+            warnings = []
+            if isinstance(getattr(self, "run_card", None), RunCardMG7):
+                warnings = self.run_card.lo_set_warnings()
+            try:
+                super().check_card_consistency()
+            finally:
+                for text in warnings:
+                    logger.warning(text)
+
         def do_set(self, line, *args, **kwargs):
             # madevent-style shortcuts (lhc/lep/fixed_scale/no_parton_cut), cut
             # editing, energy units and arithmetic/mass expressions on the TOML
@@ -3851,6 +3958,61 @@ def build_selector_cmd(mother=None):
                         logger.info("modify cut %s.%s of the run_card.toml to %s", cut, bound, val)
                         self.modified_card.add("run")
                         return
+
+                    # legacy madevent cut names ("set ptj 20", "set mmll 200",
+                    # "set etaj -1", ...) -> the [cuts] entry the LO->MG7
+                    # run_card conversion maps them to (_LO_CUT_MAP), with the
+                    # same "no cut" sentinels (minimum <= 0, maximum < 0).
+                    if rest and nlow in run_card._LO_CUT_MAP:
+                        if rest.lower().startswith("scan"):
+                            logger.warning("ignoring 'set %s %s': the [cuts] entries of "
+                                           "the mg7 run_card.toml cannot be scanned",
+                                           nlow, rest)
+                            return
+                        try:
+                            cut, bound, val = run_card.set_lo_cut(
+                                nlow, run_card.evaluate(rest, masses))
+                        except _banner_mod.InvalidCmd:
+                            logger.warning("ignoring 'set %s %s': not a number", nlow, rest)
+                            return
+                        if val is None:
+                            logger.info("set %s (mg7 cut %s.%s) of the run_card.toml: "
+                                        "no cut", nlow, cut, bound)
+                        else:
+                            logger.info("set %s (mg7 cut %s.%s) of the run_card.toml to %s",
+                                        nlow, cut, bound, val)
+                        self.modified_card.add("run")
+                        return
+
+                    # madevent parameters that are not a plain rename: the
+                    # value is translated ("set dynamical_scale_choice 3") or
+                    # several of them make one mg7 entry (fixed_fac_scale1 +
+                    # fixed_fac_scale2 -> beam.fixed_fact_scale). mg7 values
+                    # ("set sde_strategy denominators") come back as None and
+                    # go on to the generic editor.
+                    if rest and nlow in run_card._LO_SET_PARAMS:
+                        try:
+                            done = run_card.set_lo_param(nlow, rest, masses)
+                        except _banner_mod.InvalidCmd as error:
+                            logger.warning("ignoring 'set %s %s': %s", nlow, rest, error)
+                            return
+                        if done is not None:
+                            changes, warnings = done
+                            for key, val in changes.items():
+                                if val is None:
+                                    logger.info("set %s: removed %s from the run_card.toml",
+                                                nlow, key)
+                                else:
+                                    logger.info("set %s (mg7 %s) of the run_card.toml to %s",
+                                                nlow, key, val)
+                            for text in warnings:
+                                logger.warning(text)
+                            if changes:
+                                self.modified_card.add("run")
+                            elif not warnings:
+                                logger.info("set %s %s: nothing to change in the run_card.toml",
+                                            nlow, rest)
+                            return
 
                     # 'iseed' is the madevent spelling of the mg7 run.seed,
                     # but the two disagree on how to ask for a random seed:
@@ -4458,12 +4620,14 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
             text = f.read()
     except OSError:
         return
-    # matches "DECAY <pdg> auto" (optionally "auto@NLO"), as in
-    # common_run_interface.static_check_param_card
-    pdgs = re.findall(r"(?im)^\s*decay\s+([+-]?\d+)\s+auto", text)
-    if not pdgs:
+    # "DECAY <pdg> auto", with the options of compute_widths that may follow
+    # ("auto@NLO", "auto --nlo --body_decay=3"), as in
+    # common_run_interface.static_check_param_card: one compute_widths per set of
+    # options
+    groups = group_auto_widths(text)
+    if not groups:
         return
-    pdgs = list(dict.fromkeys(pdgs))  # de-duplicate, keep order
+    pdgs = [pdg for group in groups.values() for pdg in group]
 
     model = read_stored_model()
     if not model:
@@ -4478,8 +4642,10 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
         return
 
     import tempfile
-    cmds = "import model %s\ncompute_widths %s --path=%s\n" % (
-        model, " ".join(pdgs), os.path.abspath(param_card_path))
+    cmds = "import model %s\n" % model
+    for options, group in groups.items():
+        cmds += "compute_widths %s --path=%s %s\n" % (
+            " ".join(group), os.path.abspath(param_card_path), " ".join(options))
     with tempfile.NamedTemporaryFile("w", suffix=".mg5", delete=False) as fh:
         fh.write(cmds)
         cmdfile = fh.name
@@ -4495,6 +4661,133 @@ def compute_auto_widths(param_card_path=os.path.join("Cards", "param_card.dat"))
             os.remove(cmdfile)
         except OSError:
             pass
+
+
+def compute_decay_widths(
+    me_dir: str = ".", precision: float = 0.01, nb_core: int | None = None,
+    extra_make_args=(),
+) -> list[dict]:
+    """Integrate the decays of an mg7 decay directory and return their widths.
+
+    This is the madspace counterpart of madevent's ``survey decay``: only the
+    survey runs (no unweighting, no events, no systematics), and it stops once
+    every channel is below ``precision`` relative error, like the
+    ``--precision_channel`` of ``compute_widths``.
+
+    ``me_dir`` is an output directory of 1 -> n processes of one decaying
+    particle. It is meant to run in a process of its own (``bin/generate_events
+    --decay-widths=FILE``, which is how ``compute_widths`` calls it): the
+    madspace objects write their status file from a destructor, and the
+    caller removes the temporary directory as soon as the widths are back.
+    The result holds one entry per decay and flavour assignment::
+
+        {"incoming": 25, "outgoing": [5, -5], "width": 4.3e-3, "error": 1e-9}
+
+    (signed pdg ids, width in GeV). The flavours of a subprocess (different
+    matrix elements, e.g. the u u~ g and d d~ g of z > q q~ g) are integrated
+    separately (MadgraphProcess.split_decay_flavors); the assignments of one
+    flavour share its matrix element (they are the same function of the
+    momenta, or they would not be grouped) and split its width evenly. A
+    decay the decaying particle is too light for has no entry.
+    """
+    cwd = os.getcwd()
+    os.chdir(me_dir)
+    process = None
+    try:
+        card_path = os.path.join("Cards", "run_card.toml")
+        card = RunCardMG7(card_path, consistency=False)
+        card["generation"]["survey_target_precision"] = precision
+        card["generation"]["survey_max_iters"] = 30
+        # one survey result per decay, not per group of mergeable ones
+        card["phasespace"]["merge_subprocesses"] = False
+        card["run"]["verbosity"] = "silent"
+        if nb_core:
+            card["run"]["cpu_thread_pool_size"] = int(nb_core)
+        card.write(card_path)
+
+        # one survey result per flavour, not per subprocess
+        process = MadgraphProcess(extra_make_args=extra_make_args,
+                                  split_flavors=True)
+        if not process.is_decay:
+            raise ValueError("compute_decay_widths needs a decay (1 -> n) output")
+        process.survey()
+
+        channel_status = process.event_generator.channel_status()
+        results = []
+        offset = 0
+        for subproc, phasespace in zip(process.subprocesses, process.phasespaces):
+            statuses = channel_status[offset:offset + len(phasespace.channels)]
+            offset += len(phasespace.channels)
+            width = sum(status.mean for status in statuses)
+            error = sum(status.error ** 2 for status in statuses) ** 0.5
+            options = _decay_flavor_options(subproc.meta)
+            for option in options:
+                results.append({
+                    "incoming": option[0],
+                    "outgoing": list(option[1:]),
+                    "width": width / len(options),
+                    "error": error / len(options),
+                })
+        return results
+    finally:
+        if process is not None:
+            # StatusFile finishes info.json from its destructor: run it before
+            # the caller removes the directory (see init_event_dir)
+            _release_channel_generators(process)
+            del process
+            gc.collect()
+        os.chdir(cwd)
+
+
+def _single_flavor_metas(meta: dict) -> list[dict]:
+    """The subprocess ``meta`` as one subprocess per flavour (see
+    MadgraphProcess.split_decay_flavors).
+
+    Each copy keeps the flavour (its matrix-element index and its assignments)
+    and, in every channel, the diagrams that flavour is active in, renumbered
+    to its only flavour, 0. A channel left without diagrams is dropped, and a
+    flavour left without channels (no diagram at all) has no subprocess. A
+    subprocess of one flavour is returned as it is.
+    """
+    flavors = meta["flavors"]
+    if len(flavors) == 1:
+        return [meta]
+    singles = []
+    for position, flavor in enumerate(flavors):
+        channels = []
+        for channel in meta["channels"]:
+            diagrams = [
+                dict(diagram, active_flavors=[0])
+                for diagram in channel["diagrams"]
+                if position in diagram["active_flavors"]
+            ]
+            if diagrams:
+                channels.append(dict(channel, diagrams=diagrams))
+        if channels:
+            singles.append(dict(meta, flavors=[flavor], channels=channels))
+    return singles
+
+
+def _decay_flavor_options(meta: dict) -> list[list[int]]:
+    """The flavour assignments of a subprocess of compute_decay_widths, which
+    share its width evenly.
+
+    That is right for the assignments of one flavour, which have one matrix
+    element (d d~ and s s~ of a massless s, the three neutrinos). Different
+    flavours have different matrix elements (the u u~ and d d~ of a
+    flavour-grouped subprocess) and the survey of a subprocess only gives
+    their sum: compute_decay_widths splits them first (split_flavors), and a
+    subprocess still holding several is an error, not an even split that
+    would get the branching ratios wrong.
+    """
+    flavors = meta["flavors"]
+    if len(flavors) != 1:
+        raise ValueError(
+            "compute_decay_widths: the subprocess %s has %d flavours with "
+            "different matrix elements, the survey cannot give the width of "
+            "each" % (meta.get("path", "?"), len(flavors))
+        )
+    return [list(option) for option in flavors[0]["options"]]
 
 
 def _release_channel_generators(process) -> None:
@@ -4693,7 +4986,28 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", action="store_false", dest="ask_edit_cards")
+    parser.add_argument(
+        "--decay-widths", metavar="JSON", default=None,
+        help="only integrate the 1 -> n decays of this directory and write "
+             "their widths (GeV) as JSON, see compute_decay_widths")
+    parser.add_argument(
+        "--precision", type=float, default=0.01,
+        help="relative precision aimed at for every channel (--decay-widths)")
+    parser.add_argument(
+        "--nb-core", type=int, default=None,
+        help="number of threads and compilation jobs (--decay-widths)")
+    parser.add_argument(
+        "--make-arg", action="append", default=[],
+        help="extra argument of the matrix element build (--decay-widths)")
     args = parser.parse_args()
+
+    if args.decay_widths:
+        results = compute_decay_widths(
+            ".", precision=args.precision, nb_core=args.nb_core,
+            extra_make_args=args.make_arg)
+        with open(args.decay_widths, "w") as f:
+            json.dump(results, f)
+        return
 
     cmd = MG7Cmd()
     cmd.run_cmd("generate_events" if args.ask_edit_cards else "generate_events -f")

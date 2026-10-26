@@ -240,6 +240,26 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
+  // The mass an external leg marked off-shell ('*': MadSpin's decaying particles)
+  // is evaluated with: the invariant mass of its momentum, as in the Fortran
+  // standalone output (SQRT(P(0,i)**2-...)) and the C++ backends; one event per
+  // thread. The pole mass comes first only for the code generator, which maps
+  // it to its parameter.
+  template<class M_ACCESS>
+  __device__ inline fptype_amp
+  offshell_mass( const fptype_amp poleMass, const fptype_momenta* momenta, const int ipar )
+  {
+    (void)poleMass;
+    const fptype_momenta e = M_ACCESS::kernelAccessIp4IparConst( momenta, 0, ipar );
+    const fptype_momenta px = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
+    const fptype_momenta py = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
+    const fptype_momenta pz = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
+    const fptype_momenta m2 = e * e - px * px - py * py - pz * pz;
+    return static_cast<fptype_amp>( m2 > 0 ? sqrt( m2 ) : 0 );
+  }
+
+  //--------------------------------------------------------------------------
+
   // Accumulate a multichannel numerator contribution in place. All good-helicity
   // blocks/streams for a given event race on the same numerator slot (the helicity
   // dimension has been removed to save memory), so an atomicAdd is mandatory.

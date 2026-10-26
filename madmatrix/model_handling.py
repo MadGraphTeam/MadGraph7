@@ -1501,8 +1501,33 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         else: return '\n' + '\n'.join(res_strings) + '\n' if res_strings else '\n'
 
     # AV - replace export_cpp.UFOModelConverterCPP method (add hardcoded parameters and couplings)
+    def used_dependent_parameters(self):
+        """The names of the aS-dependent parameters the dependent couplings of
+        the process need, directly or through one another.
+
+        computeDependentCouplings_fromG recomputes them event by event from G,
+        so writing every aS-dependent parameter of the model there costs work
+        per event, and breaks the build when an unused one calls a UFO
+        function the generated code does not define: loop_sm's R2/UV
+        counterterm parameters use COND, reglog and mdl_complexi, while the
+        tree-level couplings need only G."""
+        identifier = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+        by_name = dict((param.name, param) for param in self.params_dep)
+        todo = [name for coup in self.coups_dep.values()
+                for name in identifier.findall(coup.expr) if name in by_name]
+        used = set()
+        while todo:
+            name = todo.pop()
+            if name in used:
+                continue
+            used.add(name)
+            todo.extend(other for other in identifier.findall(by_name[name].expr)
+                        if other in by_name)
+        return used
+
     def super_generate_parameters_class_files(self):
         """Create the content of the Parameters_model.h and .cc files"""
+        params_dep_used = self.used_dependent_parameters()
         # First of all, identify which extra independent parameters must be made available through CPU static and GPU constant memory in BSM models
         # because they are used in the event by event calculation of alphaS-dependent couplings
         bsmparam_indep_real_used = []
@@ -1522,6 +1547,8 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             # Add BSM parameters which are needed to compute dependent parameters
             # Note: this was later added to also fix EFT processes (related to #616)
             for pardep in self.params_dep:
+                if pardep.name not in params_dep_used:
+                    continue
                 if param.name in pardep.expr:
                 ###if param.name in pardep.expr: # this is not enough, see review of PR #824 and mg5amcnlo#90
                     if param.type == 'real':
@@ -1615,6 +1642,9 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             foundG = False
             for pdep in self.params_dep:
                 ###misc.sprint(pdep.type, pdep.name) 
+                if foundG and pdep.name not in params_dep_used:
+                    # not needed by any dependent coupling of the process
+                    continue
                 line = '    ' + self.write_hardcoded_parameters([pdep]).rstrip('\n')
                 ###misc.sprint(line)
                 if not foundG:
@@ -3723,8 +3753,18 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         # Specify namespace for Helas calls
         call = call + '( momenta,'
         if argument.get('spin') != 1:
-            # For non-scalars, need mass and helicity
-            call = call + 'm_pars->%s, cHel[ihel][%d],'
+            # For non-scalars, need mass and helicity. A massive leg marked
+            # off-shell ('*', MadSpin's decaying particles) takes the invariant
+            # mass of its momentum, as the Fortran output does (offshell_mass in
+            # backend/*/SigmaKin.cc, per event in every backend); a massless one
+            # keeps its zero mass rather than a rounding error. 'offshell' is
+            # part of the call key, but the leg number and the mass are wf's own:
+            # argument is whichever wavefunction first had this key.
+            if argument.get('offshell') and str(wf.get('mass')).upper() != 'ZERO':
+                call = call + 'offshell_mass<M_ACCESS>( m_pars->%%s, momenta, %d ), cHel[ihel][%%d],' \
+                    % (wf.get('number_external') - 1)
+            else:
+                call = call + 'm_pars->%s, cHel[ihel][%d],'
         else:
             # AV This seems to be for scalars (spin==1???), pass neither mass nor helicity (#351)
             ###call = call + 'm_pars->%s,'
