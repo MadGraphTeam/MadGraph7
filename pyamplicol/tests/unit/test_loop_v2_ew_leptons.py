@@ -826,10 +826,11 @@ def test_top_pair_and_leptons_equal_three_providers(
     other two to the fixture's cross-provider tolerance, in the fixtures'
     metric. The Goldstone sector with top Yukawas: Z* -> G0 H triangles and W
     G+- H loops on the top line, which the colour-singlet segments' reading
-    sign fixes (O(1) in the finite part without it). Generation about 10 min,
-    8 GB."""
+    sign fixes (O(1) in the finite part without it). Evaluated in
+    double-double: binary64 loses 2e-10 of the finite part to cancellations
+    at point 0. Generation about 10 min, 8 GB."""
 
-    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
     from pyamplicol.models.loading import compile_model_source
 
     reference = loop_reference(TOP_PAIR_LEPTONS)
@@ -854,7 +855,10 @@ def test_top_pair_and_leptons_equal_three_providers(
         reference["points"], reference["mu_r"], reference["rows"], strict=True
     ):
         result = slice_.evaluate(
-            point, str(Fraction(mu) ** 2), parameters=dict(reference["parameters"])
+            point,
+            str(Fraction(mu) ** 2),
+            parameters=dict(reference["parameters"]),
+            precision=Precision.double_double(),
         )
         born, virtual = _totals(result)
         for provider, tolerance in tolerances.items():
