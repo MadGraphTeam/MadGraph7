@@ -354,6 +354,10 @@ class DirectedColour:
     def _table(self, table: SeedTable, swapped: bool) -> SeedTable:
         if not self._absorbable(swapped):
             return self.generic_table(swapped)
+        from . import native_cells  # WP3.1 C5 switch: the "cells" stage
+
+        if (found := native_cells.directed_table(self, table, swapped)) is not None:
+            return found
         images = replace(
             table.basis,
             tensors=tuple(self.operator(b, swapped) for b in table.basis.tensors),
@@ -802,6 +806,10 @@ class ObservableSlice:
         """The complete-family degrees; ``tables`` collects every pair's
         seed table (the pruning criteria)."""
 
+        from . import native_cells  # WP3.1 C5 switch: the "family" stage
+
+        if (found := native_cells.family_degrees(self, family, tables)) is not None:
+            return found
         slice_ = self.slice
         out: dict[str, dict] = {"born": {}, "virtual": {}}
         for alpha, beta in product(family, repeat=2):

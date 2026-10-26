@@ -12,6 +12,7 @@ mod portable;
 mod stability;
 mod states;
 mod v2;
+mod v2_colour;
 mod v2_dag;
 mod v2_executor;
 mod v2_generate;
@@ -263,6 +264,7 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     v2_dag::register(module)?;
     v2_executor::register(module)?;
     v2_generate::register(module)?;
+    v2_colour::register(module)?;
     v2_lower::register(module)?;
     v2_seeds::register(module)?;
     module.add_function(wrap_pyfunction!(massless_spinors_decimal, module)?)?;
