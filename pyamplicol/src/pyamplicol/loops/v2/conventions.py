@@ -31,10 +31,10 @@ projectors exchanged, so the segment takes the conjugate rule's kernels
 The tree engine also reads every momentum all-outgoing. On a coloured vertex
 its colour reading compensates that; on a colour-singlet vertex the segment
 kernel carries the difference, -1 on the momentum-odd Goldstone vertices
-(Z G0 H, W G0 G+-, W G+- H) and, by the field signs this implies, on the
-ghost-G0 vertices: the loops then share the tree engine's field basis, in
-which the Goldstones are negated and to which the Goldstone Yukawas are
-matched (``catalogue._CatalogueBuilder.reading_sign``, WP3.2 EWI-5).
+(Z G0 H, W G0 G+-, W G+- H) and, by the field signs of the closed vertices
+(G0 negated), on the ghost-G0 vertices: the loops then share the tree
+engine's readings, to which the Goldstone Yukawas are matched
+(``catalogue._CatalogueBuilder.reading_sign``, WP3.2 EWI-5).
 
 Leaf weight of a skeleton (``LeafWeights``), design §3.3:
 

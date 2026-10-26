@@ -287,10 +287,12 @@ def test_colour_singlet_segments_take_the_tree_engines_reading_sign(loop_gmu_ufo
     vertex of the G_mu UFO in 't Hooft-Feynman gauge the two readings differ
     by a sign, -1 exactly on the momentum-odd Goldstone vertices and the
     ghost-G0 vertices (``READING_FLIPS``); coloured vertices keep their
-    reading (their colour reading compensates). The signs are those of a
-    field basis: G0 and G+- negated, Z, photon, H and W kept, so the Goldstone
-    Yukawas' lone chiral projectors (matched to the tree engine's trees,
-    ``models.tensors``) and the loops share one basis."""
+    reading (their colour reading compensates). The signs of the closed
+    vertices are field signs: G0 negated, s(G+) s(G-) = 1, Z, photon, H and
+    W kept (W G0 G+- and W G+- H, read through their conjugate rules, are no
+    field signs), so the Goldstone Yukawas' lone chiral projectors (matched
+    to the tree engine's trees, ``models.tensors``) and the loops share one
+    reading."""
 
     from pyamplicol.loops.v2.catalogue import _CatalogueBuilder
     from pyamplicol.models.external import CompiledUFOModel

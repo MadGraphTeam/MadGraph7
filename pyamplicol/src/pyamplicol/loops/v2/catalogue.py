@@ -49,10 +49,13 @@ Conventions
   Lorentz structure and ``pi`` the exchange of each boson leg with its
   antiparticle's leg (identity for a vertex read through its conjugate rule,
   which already takes the antiparticles' legs). That ratio is -1 exactly on the
-  Z G0 H, W G0 G+- and W G+- H vertices of the SM: the tree engine works in the
-  field basis with the Goldstones negated, to which the Goldstone Yukawas'
-  lone chiral projectors are matched (``models.tensors``), and blocks, Born
-  and counterterms come from it. A colour-singlet ghost vertex has no tree
+  Z G0 H, W G0 G+- and W G+- H vertices of the SM. On the vertices closed
+  under conjugation these are the field signs of G0 negated (they fix
+  s(G0) = -1 and s(G+) s(G-) = 1); W G0 G+- and W G+- H, read through their
+  conjugate rules, take the ratio alone and are no field signs. The Goldstone
+  Yukawas' lone chiral projectors are matched to the tree engine's readings
+  (``models.tensors``), and blocks, Born and counterterms come from it. A
+  colour-singlet ghost vertex has no tree
   reading; it takes the product of the field signs of its other legs, solved
   over GF(2) from the closed colour-singlet boson vertices (-1 for the
   ghost-G0 vertices), so the loops' ghost lines share that basis. Found by O2
