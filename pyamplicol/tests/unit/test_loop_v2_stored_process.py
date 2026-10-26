@@ -534,14 +534,43 @@ def test_stored_metrics_equal_the_oracle(
     """The directed metrics of the stored columns (C's native colour cells;
     a swapped metric equal to its direct one stored once) equal the
     oracle's per-pair overlaps (``DirectedColour.overlap``) in the stored
-    table form, on every dipole of u u~ > g g g."""
+    table form, on every dipole of u u~ > g g g; and the column sets' seed
+    records, projected natively (``plan_export.NATIVE_COLUMN_RECORDS``:
+    package C's ``project_records`` on the directed tables' native cells),
+    are the bytes of the exporter's Python projection (the oracle), with the
+    same Born components registered in the same order, for the process's
+    sets and its companion's twins."""
 
     from pyamplicol.correlators import CorrelatorConfig
     from pyamplicol.loops.v2 import native_observables as no
+    from pyamplicol.loops.v2 import plan_export
     from pyamplicol.loops.v2.artifact import generate_process
     from pyamplicol.loops.v2.assemble import SliceRequest
     from pyamplicol.models.loading import load_compiled_model
 
+    assert plan_export.NATIVE_COLUMN_RECORDS
+    projected = []
+    set_records = plan_export._set_records
+
+    def records(exporter, columns):
+        before = dict(exporter.born_components)
+        native = set_records(exporter, columns)
+        after = list(exporter.born_components)
+        registered = exporter.born_components
+        exporter.born_components = dict(before)
+        try:
+            oracle = exporter.seed_records(columns)
+            assert list(exporter.born_components) == after
+        finally:
+            exporter.born_components = registered
+        for value, expected in zip(native[:2], oracle[:2], strict=True):
+            assert isinstance(value, plan_export.RawJSON)
+            assert value == json.dumps(expected, separators=(",", ":")).encode()
+        assert native[2] == oracle[2]
+        projected.append(len(columns))
+        return native
+
+    monkeypatch.setattr(plan_export, "_set_records", records)
     checked = []
     cells = no._Metrics.cells
 
@@ -585,6 +614,10 @@ def test_stored_metrics_equal_the_oracle(
     )
     # Both directions of all ten dipoles; each swap is its direct metric.
     assert len(checked) == 20 and sum(checked) == 10
+    # The correlated set (the Born metric and ten directed histories, two
+    # lanes each, per sector) and its companion twin; the resolved columns
+    # at full colour read the plan's own seed records.
+    assert projected == [21, 21]
 
 
 # Disables pyAmpliCol's Symbolica library key in the native code

@@ -569,7 +569,7 @@ class StoredObservables:
         (None: they are exported here, as when a twin runs on a rebuilt
         companion)."""
 
-        from .plan_export import export_plan
+        from .plan_export import dumps, export_plan
 
         trees = exported.trees
         counterterms = trees.program.get("counterterms")
@@ -693,13 +693,11 @@ class StoredObservables:
                 else list(companion_components),
             }
             sets[kind] = ObservableSet(
-                json.dumps(overlay, separators=(",", ":")),
+                dumps(overlay),
                 components,
                 columns_json,
                 # "null" when the companion's own seed records serve the set.
-                None
-                if twin is None
-                else json.dumps(companion_overlay, separators=(",", ":")),
+                None if twin is None else dumps(companion_overlay),
                 companion_components,
             )
         return cls(record, sets)

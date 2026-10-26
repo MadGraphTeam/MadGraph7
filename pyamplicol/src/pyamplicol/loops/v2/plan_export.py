@@ -131,7 +131,8 @@ class ExportedPlan:
     trees: Any = None
     # Per named observable column set (``export_plan(column_sets=...)``) the
     # seed records that replace the plan's for that set: ``seed_classes`` and
-    # ``seeds`` (None: the plan's own), ``columns`` (count), ``column_rows``
+    # ``seeds`` (None: the plan's own; ``RawJSON`` when projected natively,
+    # ``NATIVE_COLUMN_RECORDS``), ``columns`` (count), ``column_rows``
     # and ``column_weights`` (or None) and the Born components they read
     # (``born_components``, keys); ``{"same": True, ...}`` when the plan's
     # own columns serve the set.
@@ -790,6 +791,90 @@ def weight_columns(
     return list(keys), of_column
 
 
+# The seed records of the stored observable column sets
+# (``export_plan(column_sets=...)``) are projected natively: package C's C2
+# projection (``native_cells.project_records``) reads the directed tables'
+# native cells (``native_cells._DIRECTED``) and writes the records' JSON
+# bytes. False runs the exporter's Python projection
+# (``_Exporter.seed_records``), the oracle; the bytes are equal. The plan's
+# own seed records keep their call site (package D's D3 switch).
+NATIVE_COLUMN_RECORDS = True
+
+
+class RawJSON(bytes):
+    """The compact JSON text of a value (``json.dumps(value,
+    separators=(",", ":"))``), written into an enclosing record as is
+    (``dumps``) instead of being parsed into Python objects first."""
+
+
+def dumps(record: Mapping[str, Any] | None) -> str:
+    """``json.dumps(record, separators=(",", ":"))`` of a mapping (or None)
+    whose values may be ``RawJSON``: the same text, a raw value spliced as
+    is."""
+
+    if not isinstance(record, Mapping) or not any(
+        isinstance(value, RawJSON) for value in record.values()
+    ):
+        return json.dumps(record, separators=(",", ":"))
+    parts = []
+    for key, value in record.items():
+        text = (
+            value.decode()
+            if isinstance(value, RawJSON)
+            else json.dumps(value, separators=(",", ":"))
+        )
+        parts.append(f"{json.dumps(key)}:{text}")
+    return "{" + ",".join(parts) + "}"
+
+
+def _native_tables(columns: Sequence[SeedColumn]) -> dict[int, Any]:
+    """``id(table)`` -> its native cells for the columns' directed tables
+    whose cells package C formed natively (``native_cells.directed_table``
+    keeps them per history and direction), so the projection does not
+    encode their Python cells again; the others are encoded from them."""
+
+    from . import native_cells
+
+    wanted = {id(column.table) for column in columns}
+    out: dict[int, Any] = {}
+    for directed, handles in list(native_cells._DIRECTED.items()):
+        for swapped, handle in handles.items():
+            table = vars(directed).get("swapped") if swapped else directed.table
+            if table is not None and id(table) in wanted:
+                out[id(table)] = handle
+    return out
+
+
+def _set_records(
+    exporter: _Exporter, columns: Sequence[SeedColumn]
+) -> tuple[Any, Any, list[int] | None]:
+    """A column set's seed records, as ``_Exporter.seed_records`` returns
+    them (class records, seed key records, per column its weight column or
+    None); natively (``NATIVE_COLUMN_RECORDS``) the two record lists are
+    their JSON bytes (``RawJSON``): the projection of each weight column's
+    first column (``weight_columns``), ``born_components`` extended in place
+    in the same order."""
+
+    if not NATIVE_COLUMN_RECORDS:
+        return exporter.seed_records(columns)
+    from . import native_cells
+
+    keys, of_column = weight_columns(columns)
+    first: dict[int, int] = {}
+    for k, w in enumerate(of_column):
+        first.setdefault(w, k)
+    distinct = [columns[first[w]] for w in range(len(keys))]
+    class_json, records_json = native_cells.project_records(
+        exporter.slice_,
+        distinct,
+        exporter.seeds,
+        exporter.born_components,
+        tables=_native_tables(distinct),
+    )
+    shared = of_column != list(range(len(of_column)))
+    return RawJSON(class_json), RawJSON(records_json), of_column if shared else None
+
+
 def sector_columns(slice_: Any) -> tuple[SeedColumn, ...]:
     """One column per squared-order sector (the inclusive virtual)."""
 
@@ -960,7 +1045,9 @@ def export_plan(
                     None if of_column == list(range(len(of_column))) else of_column
                 )
             else:
-                set_classes, set_seeds, set_weights = exporter.seed_records(set_columns)
+                set_classes, set_seeds, set_weights = _set_records(
+                    exporter, set_columns
+                )
             column_seeds[name] = {
                 "seed_classes": set_classes,
                 "seeds": set_seeds,
