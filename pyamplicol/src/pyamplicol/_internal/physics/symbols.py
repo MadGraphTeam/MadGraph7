@@ -58,7 +58,9 @@ def _safe_text_path(text: str) -> str:
 
 
 @cache
-def _kernel_symbol(namespace: str, kind: int, side: str, marker: str, index: int) -> Any:
+def _kernel_symbol(
+    namespace: str, kind: int, side: str, marker: str, index: int
+) -> Any:
     """A kernel's input component (``marker`` empty) or momentum
     (``"momentum_"``) symbol of a model namespace: about 10^6 lookups per
     model compile, each one name (``ModelSymbolRegistry.symbol``)."""

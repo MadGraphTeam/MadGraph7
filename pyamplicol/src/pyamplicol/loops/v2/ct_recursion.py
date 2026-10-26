@@ -81,7 +81,7 @@ recursion's partials equal the sites of the lowered rules
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import reduce
@@ -334,11 +334,15 @@ def _reference_defaults(names: Iterable[str]) -> dict[str, float]:
     return found
 
 
-def _linear_degree(expression: Any, symbols_: frozenset) -> float:
+def _linear_degree(
+    expression: Any, symbols_: frozenset, conj: Callable[[str], bool] | None = None
+) -> float:
     """Polynomial degree of ``expression`` in the real symbols ``symbols_``;
     ``conj`` is transparent (it maps a real linear form to a real linear
-    form). Infinite when a symbol is in another function's argument, a
-    denominator or a non-integer power."""
+    form), and so is a unary function whose name ``conj`` accepts (e.g. the
+    scalar library's UFO-standard ``complexconjugate``). Infinite when a
+    symbol is in another function's argument, a denominator or a
+    non-integer power."""
 
     from symbolica import AtomType
 
@@ -349,19 +353,24 @@ def _linear_degree(expression: Any, symbols_: frozenset) -> float:
         return 1 if expression in symbols_ else 0
     children = list(expression)
     if kind == AtomType.Add:
-        return max(_linear_degree(child, symbols_) for child in children)
+        return max(_linear_degree(child, symbols_, conj) for child in children)
     if kind == AtomType.Mul:
-        return sum(_linear_degree(child, symbols_) for child in children)
+        return sum(_linear_degree(child, symbols_, conj) for child in children)
     if kind == AtomType.Pow:
         base, exponent = children
-        degree = _linear_degree(base, symbols_)
+        degree = _linear_degree(base, symbols_, conj)
         if not degree:
-            return float("inf") if _linear_degree(exponent, symbols_) else 0
+            return float("inf") if _linear_degree(exponent, symbols_, conj) else 0
         number = exponent.to_canonical_string()
         return degree * int(number) if number.isdigit() else float("inf")
-    if expression.get_name() == "symbolica::conj" and len(children) == 1:
-        return _linear_degree(children[0], symbols_)
-    return float("inf") if any(_linear_degree(c, symbols_) for c in children) else 0
+    name = expression.get_name()
+    if len(children) == 1 and (
+        name == "symbolica::conj" or (conj is not None and conj(name))
+    ):
+        return _linear_degree(children[0], symbols_, conj)
+    return (
+        float("inf") if any(_linear_degree(c, symbols_, conj) for c in children) else 0
+    )
 
 
 @dataclass(frozen=True)
@@ -418,13 +427,17 @@ class CoefficientLowering:
     vertex. The tree compiler sees one symbol per coefficient, so its kernel
     keys and equivalence proofs never expand the coupling's model parameters
     (e.g. the G_mu couplings resolved to ``Gf``, ``MW``, ``MZ`` and the
-    ``conj`` of real masses), and no dependence of the coupling on its CT
-    scalars is assumed (the coefficient is the exact Laurent coefficient of
-    the product). Which epsilon powers can be non-zero is decided from the
-    source (``is_zero``: a power the coupling's terms and its CT scalars'
-    non-zero powers cannot reach); a coefficient that vanishes at the fixed
-    parameters is a zero of the plan (``coefficient_plan``) and has no
-    vertex term.
+    ``conj`` of real masses), and the coupling may be any polynomial in its
+    CT scalars (the coefficient is the exact Laurent coefficient of the
+    product; NLOCT couplings are linear in them). Which epsilon powers can
+    be non-zero is decided from the source (``is_zero``: a power the
+    coupling's terms, its CT scalars' non-zero powers and the terms' degrees
+    in them cannot reach, ``_reachable_powers``); a coefficient that
+    vanishes at the fixed parameters is a zero of the plan
+    (``coefficient_plan``) and has no vertex term. A coupling that is not a
+    polynomial in its CT scalars, or that reaches a power below the CT
+    slots, raises ``CountertermCouplingError`` (fail closed: its rule is
+    residual, refused when a tree of the request can hold it).
 
     **Exact form** (``exact``). Under a formal-N_c continuation, a referenced
     coupling whose source reads one of the continuation's colour invariants
@@ -517,7 +530,8 @@ class CoefficientLowering:
         reach the power (``_reachable_powers``; one that vanishes at the fixed
         parameters is a zero of the coefficient plan) or, graded, in its
         exact form (no CT body is expanded), otherwise in the source scalar
-        program (``_coefficient_is_zero``)."""
+        program (``_coefficient_is_zero``). A referenced coupling
+        ``_reachable_powers`` cannot bound raises ``CountertermCouplingError``."""
 
         referenced = self._referenced(entry)
         if referenced is None:
@@ -675,6 +689,18 @@ class CoefficientLowering:
             parts.append(E(f"UFO::{{}}::{parameter}"))
         return parts[0] + parts[1] * Expression.I
 
+    def _is_conj(self, name: str) -> bool:
+        """Whether the function ``name`` is the scalar library's UFO-standard
+        ``complexconjugate`` (``standard_helpers``)."""
+
+        head = name.rsplit("::", 1)[-1]
+        return (
+            name.startswith("pyamplicol_scalar_model_")
+            and head.startswith("value_")
+            and self._standard.get(int(head.removeprefix("value_")))
+            == "complexconjugate"
+        )
+
     def _graded(self, referenced: _Referenced) -> bool:
         """Whether a referenced coupling's source reads a colour invariant of
         the formal-N_c continuation (its exact form keeps the N_c powers)."""
@@ -690,9 +716,19 @@ class CoefficientLowering:
     ) -> frozenset[int] | None:
         """The epsilon powers at which a referenced coupling's Laurent
         coefficient can be non-zero: a term's own power when its part free of
-        CT scalars does not vanish, and its power plus every non-zero power
-        of each CT scalar it reads (``_scalar_powers``); ``None`` (any power)
-        when a CT scalar's powers combine with others'."""
+        CT scalars does not vanish, and its power plus every sum of ``k``
+        non-zero powers of the CT scalars it reads (``_scalar_powers``), for
+        ``k`` from 1 to the term's polynomial degree in them (a linear term:
+        each scalar's powers; a product or power of CT scalars: their sums, a
+        superset whose exact zeros the coefficient plan drops); ``None`` (any
+        power) when a CT scalar's powers combine with others'.
+
+        Fail closed (``CountertermCouplingError``, the rule then residual): a
+        term that is not a polynomial in its CT scalars (one in a
+        denominator, under a non-integer power or in a function other than
+        ``conj``), whose Laurent coefficients this bound does not cover, and
+        a reachable power below the lowest CT slot (``COUNTERTERM_POWERS``),
+        which no vertex term could hold."""
 
         from symbolica import Replacement
 
@@ -708,6 +744,8 @@ class CoefficientLowering:
             if not _is_zero(value.replace_multiple(removed)):
                 found.add(order)
             read = value.get_all_symbols(False)
+            shifts: set[int] = set()
+            factors = []
             for name, symbol in referenced.scalars:
                 if symbol not in read:
                     continue
@@ -715,9 +753,28 @@ class CoefficientLowering:
                 if powers is None:
                     found = None
                     break
-                found.update(order + shift for shift in powers)
+                shifts.update(powers)
+                factors.append(symbol)
             if found is None:
                 break
+            if not factors:
+                continue
+            degree = _linear_degree(value, frozenset(factors), self._is_conj)
+            if degree == float("inf"):
+                raise CountertermCouplingError(
+                    f"the coupling {entry.coupling.name} is not a polynomial in "
+                    "its counterterm scalars "
+                    + ", ".join(name for name, _symbol in referenced.scalars)
+                )
+            sums = {0}
+            for _factor in range(int(degree)):
+                sums = {total + shift for total in sums for shift in shifts}
+                found.update(order + total for total in sums)
+        if found is not None and min(found, default=0) < min(COUNTERTERM_POWERS):
+            raise CountertermCouplingError(
+                f"the coupling {entry.coupling.name} reaches epsilon^"
+                f"{min(found)}, below the counterterm slots {COUNTERTERM_POWERS}"
+            )
         result = None if found is None else frozenset(found)
         self._coupling_powers[key] = result
         return result
@@ -1034,6 +1091,14 @@ def _number(value: Any) -> Any:
 # Decimal digits of the references' coefficients at least (those of a
 # double-double input), and the cards whose values a model keeps.
 _COEFFICIENT_DIGITS = 32
+# Guard digits of their evaluation: the plan's Symbolica evaluator orders its
+# operations by the process's symbol registrations (e.g. whether the base
+# model was compiled in this process or loaded from the cache), and the
+# couplings' cancellations lose up to about 3 digits (measured at the G_mu
+# target: 98 of 728 references differed between the two histories by up to
+# 3e-30 relative at 32 digits). With these the values a carrier rounds do
+# not depend on the history.
+_COEFFICIENT_GUARD_DIGITS = 16
 _BOUND_KEPT = 8
 
 
@@ -1095,9 +1160,10 @@ class CountertermModel:
         ``card`` (decimal strings; absent ones take their exact source
         defaults, the fixed ones are the generation's), as decimal strings:
         the scalar library evaluates the couplings' and CT scalars' exact
-        bodies at ``max(digits, 32)`` digits (a carrier rounds them once, as
-        it rounds its couplings). A value or active diagnostic that is not finite
-        raises ``scalar_bindings.SourceBindingFailure`` (fail closed)."""
+        bodies at ``max(digits, 32)`` digits and ``_COEFFICIENT_GUARD_DIGITS``
+        more (a carrier rounds them once, as it rounds its couplings). A
+        value or active diagnostic that is not finite raises
+        ``scalar_bindings.SourceBindingFailure`` (fail closed)."""
 
         if not self.coefficients:
             return {}
@@ -1112,7 +1178,10 @@ class CountertermModel:
             from pyamplicol.loops.scalar_bindings import NativeScalarBindings
 
             state = NativeScalarBindings(
-                plan, arithmetic="arbitrary", precision=digits, parameters=dict(inputs)
+                plan,
+                arithmetic="arbitrary",
+                precision=digits + _COEFFICIENT_GUARD_DIGITS,
+                parameters=dict(inputs),
             )
             values = dict(zip(plan.outputs, state.values.to_decimal(), strict=True))
             found = {
@@ -1269,6 +1338,8 @@ def lower_model_counterterms(
 
     from symbolica import E
 
+    from pyamplicol._internal.physics.symbols import symbols
+
     dirac_fields = frozenset(dirac_fields)
     veto = frozenset(abs(int(pdg)) for pdg in veto)
     vocabulary = TreeVocabulary(
@@ -1367,9 +1438,14 @@ def lower_model_counterterms(
         record.name for record in compiled.ir.parameters if record.nature == "internal"
     )
 
+    model_symbols = symbols.model(compiled.name)
+
     def vanishes(expression: Any) -> bool:
-        # Without an internal parameter of the payload's, the resolution of
-        # ``vanishes_identically`` leaves a non-zero expansion as it is.
+        # ``vanishes_identically``: without an internal parameter of the
+        # payload's its resolution leaves the expansion as it is, and only
+        # the re-parsed expansion is expanded again (Symbolica's expand is
+        # not idempotent: a second one can expand a sum the first left in a
+        # factor).
         value = expression.expand()
         if value == E("0"):
             return True
@@ -1377,7 +1453,8 @@ def lower_model_counterterms(
             symbol.get_name().rsplit("::", 1)[-1] in internal
             for symbol in value.get_all_symbols(False)
         ):
-            return False
+            parsed = model_symbols.expression(value.to_canonical_string())
+            return parsed.expand() == E("0")
         return vanishes_identically(compiled, expression)
 
     # Unlowered cells must cancel with the rules' multiplicities; otherwise
