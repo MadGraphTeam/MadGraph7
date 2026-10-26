@@ -345,6 +345,7 @@ class ProcessConfig:
         metadata=_setting("map_int", dynamic_kind="int"),
     )
     flavor_blind: bool = field(default=False, metadata=_setting("bool"))
+    flavor_blind_strict: bool = field(default=False, metadata=_setting("bool"))
     consider_charge_conjugation: bool = field(default=True, metadata=_setting("bool"))
     only_unit_multiplier: bool = field(default=False, metadata=_setting("bool"))
     analyze_process_groups: ProcessGroupAnalysis = field(
@@ -431,6 +432,7 @@ class ProcessConfig:
         )
         for name in (
             "flavor_blind",
+            "flavor_blind_strict",
             "consider_charge_conjugation",
             "only_unit_multiplier",
         ):
