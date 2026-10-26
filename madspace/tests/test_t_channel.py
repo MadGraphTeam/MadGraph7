@@ -19,7 +19,7 @@ def _color_order(n_out, mode):
     """Single-chain color order for color_ordered mode; None otherwise."""
     if mode != ms.PhaseSpaceMapping.color_ordered:
         return None
-    return [0] + [i + 2 for i in range(n_out)] + [1]
+    return ms.ColorOrderedMapping.Options([0] + [i + 2 for i in range(n_out)] + [1])
 
 
 def _fwd_inputs(mapping, rng, n):
@@ -95,7 +95,7 @@ def test_t_channel_masses(masses, rng, mode):
         masses,
         CM_ENERGY,
         mode=mode,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, _ = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -128,7 +128,7 @@ def test_t_channel_incoming(masses, rng, mode):
         masses,
         CM_ENERGY,
         mode=mode,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, _ = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -163,7 +163,7 @@ def test_t_channel_momentum_conservation(masses, rng, mode):
         masses,
         CM_ENERGY,
         mode=mode,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, _ = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -185,7 +185,7 @@ def test_t_channel_inverse(masses, rng, mode):
         CM_ENERGY,
         mode=mode,
         invariant_power=0.3,
-        color_order=_color_order(len(masses) - 2, mode),
+        color_ordered=_color_order(len(masses) - 2, mode),
     )
     inputs, r, disc = _fwd_inputs(mapping, rng, BATCH_SIZE)
     p_ext, x1, x2, det = mapping.map_forward(inputs)
@@ -228,7 +228,7 @@ def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
             energy,
             mode=mode,
             leptonic=False,
-            color_order=co,
+            color_ordered=co,
         )
     else:
         mapping = ms.PhaseSpaceMapping(
@@ -236,7 +236,7 @@ def test_t_channel_phase_space_volume(particle_count, energy, rng, mode):
             energy,
             mode=mode,
             leptonic=True,
-            color_order=co,
+            color_ordered=co,
         )
     sample_count = 100000
     inputs, r, _ = _fwd_inputs(mapping, rng, sample_count)
@@ -290,7 +290,7 @@ def test_color_ordered_color_orders(rng, color_order, out_masses, _label):
         CM_ENERGY,
         mode=ms.PhaseSpaceMapping.color_ordered,
         invariant_power=0.3,
-        color_order=color_order,
+        color_ordered=ms.ColorOrderedMapping.Options(color_order),
     )
     # random_dim is color-order invariant; discrete_dim tracks the peel count.
     assert mapping.random_dim() == 3 * len(out_masses) - 2

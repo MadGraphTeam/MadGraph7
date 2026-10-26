@@ -39,7 +39,7 @@ import  collections
 import aloha
 
 import madgraph
-import models
+import madgraph.models as models
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
 import madgraph.core.color_amp as color_amp
@@ -61,10 +61,10 @@ import madgraph.various.process_checks as process_checks
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph
 import aloha.create_aloha as create_aloha
-import models.import_ufo as import_ufo
-import models.write_param_card as param_writer
-import models.check_param_card as check_param_card
-from models import UFOError
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.write_param_card as param_writer
+import madgraph.models.check_param_card as check_param_card
+from madgraph.models import UFOError
 
 
 from madgraph import MadGraph5Error, MG5DIR, ReadWrite
@@ -5396,8 +5396,15 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             prefix, tag = value[0], value[1]
             info.append('#PY %s : %s # %s %s' % (tag, key, prefix, pid))
 
+        # The merged-code rewrite and the dispatch below work on LPDGS, a local
+        # copy of the caller's PDGS: f2py hands an int32 numpy array straight
+        # through for intent(in), so rewriting PDGS itself turned a reused
+        # [2,-2,-11,11] into [81,-81,-82,82] and the next call silently
+        # answered for d d~. Legs beyond npdg stay 0, which matches no process.
         flavor_text= "  flavor(:) = 1\n"
-        flavor_text += " do i =1, npdg\n"
+        flavor_text += "  lpdgs(:) = 0\n"
+        flavor_text += " do i =1, min(npdg, %i)\n" % max_nexternal
+        flavor_text += " lpdgs(i) = pdgs(i)\n"
         nb = 0
         for pdg, pids in self.model['merged_particles'].items():
             for group_pos, pid in enumerate(pids, 1):
@@ -5407,9 +5414,9 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     flavor_text += ' '
                 nb += 1
                 # flavor(i) is the 1-based position of the actual PDG within
-                # the merged-particle group; pdgs(i) is rewritten to carry
+                # the merged-particle group; lpdgs(i) is rewritten to carry
                 # the merged-particle ID (with the original sign).
-                flavor_text += 'if (abs(pdgs(i)).eq.%i)then\n flavor(i) = %i\n pdgs(i) = Sign(%i, pdgs(i))\n' % (pid, group_pos, pdg)
+                flavor_text += 'if (abs(lpdgs(i)).eq.%i)then\n flavor(i) = %i\n lpdgs(i) = Sign(%i, lpdgs(i))\n' % (pid, group_pos, pdg)
         if nb>0:
             flavor_text += 'endif\n'
         flavor_text += " enddo\n"
@@ -5455,7 +5462,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
 
             for ii,pdgs in enumerate(current_id):
                 pid = current_pid[ii]
-                condition = '.and.'.join(['%i.eq.pdgs(%i)' %(pdg, i+1) for i, pdg in enumerate(pdgs)])
+                condition = '.and.'.join(['%i.eq.lpdgs(%i)' %(pdg, i+1) for i, pdg in enumerate(pdgs)])
                 if ii==0:
                     line = ' if(%s.and.(procid.le.0.or.procid.eq.%d)) then ! %i' % (condition, pid, ii)
                 else:
@@ -5470,10 +5477,13 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                     # density: those must stay where they are, so they are
                     # passed as the frozen legs. smatrixhel has no such leg.
                     repair = (' call flavor_order_repair(%sget_flavor_index,'
-                              ' %sget_flavor, %i, %i, %i, %%s, flavor, pdgs,'
+                              ' %sget_flavor, %i, %i, %i, %%s, flavor, lpdgs,'
                               ' p, pfix)' % (prefix, prefix, n_ext,
                                              info_me[4], info_me[5]))
-                    text.append(repair % 'n_changing, pos, .true.')
+                    # GET_ALL_INTER fixes the helicity of every other leg from
+                    # NHEL, by leg position: it gets the same no-repair rule
+                    # as a specific smatrixhel row (below), hence the switch.
+                    text.append(repair % 'n_changing, pos, %(dorepair)s')
                     # a request for one specific helicity row names it by leg
                     # position, so re-ordering the legs would answer for a
                     # different helicity assignment: leave those calls alone.
@@ -5584,7 +5594,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                                            for i in range(max_nexternal) for (pdg,pid) in allids),
                           'prefix':'\',\''.join(allprefix),
                           'pids': ','.join(str(pid) for (pdg,pid) in allids),
-                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta},
+                          'inter_splitter': '\n'.join(text) % {'fct_name': 'GET_ALL_INTER(%s, LNHEL, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)' % momenta,
+                                                               'dorepair': '.false.'},
                           'flavor_repair_function': flavor_repair_function,
                           'parameter_setup': '\n'.join(parameter_setup),
                           'helreset_def' : '\n'.join(helreset_def),
@@ -5594,7 +5605,8 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
                           'nhel': all_nhel,
                           'f2py_prefix': f2py_prefix,
                           'idens_value': all_iden,
-                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta},
+                          'density_splitter': '\n'.join(text) % {'fct_name': 'GET_DENSITY(%s, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)' % momenta,
+                                                                 'dorepair': '.true.'},
                           
                           }
 
@@ -5623,15 +5635,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             params['%s_%s' % (block.upper(), lha)] = name
 
         if model['running_elements']:
-            add_scale = set()
-            for runs in self.model.get('running_elements'):
-                for line_run in runs.run_objects:
-                    for one_element in line_run:
-                        add_scale.add(one_element.lhablock)
-            for block in add_scale:
-                if block.upper() == "SMINPUTS":
-                    continue
-                name = block
+            for block in self.model.get_running_blocks():
                 params['%s__scale' % (block.upper())] = 'mdl__%s__scale' % (block.upper())
                 params['mdl__%s__scale' % (block.upper())] = 'mdl__%s__scale' % (block.upper())
 
@@ -6792,7 +6796,7 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         cp(_file_path+'/iolibs/file_writers.py', 
                               self.dir_path+'/bin/internal/file_writers.py')
         #model file                        
-        cp(_file_path+'../models/check_param_card.py', 
+        cp(_file_path+'models/check_param_card.py', 
                               self.dir_path+'/bin/internal/check_param_card.py')   
                 
         #madevent file
@@ -7653,7 +7657,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         cp(_file_path+'/iolibs/file_writers.py', 
                               self.dir_path+'/bin/internal/file_writers.py')
         #model file                        
-        cp(_file_path+'../models/check_param_card.py', 
+        cp(_file_path+'models/check_param_card.py', 
                               self.dir_path+'/bin/internal/check_param_card.py')   
         
         #copy all the file present in madevent directory
@@ -7892,7 +7896,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
 
         # Find config symmetries and permutations
         symmetry, perms, ident_perms = \
-                  diagram_symmetry.find_symmetry(matrix_element)
+                  diagram_symmetry.find_symmetry(matrix_element,
+                                                 check_flavor_rows=True)
 
         filename = pjoin(Ppath, 'symswap.inc')
         self.write_symswap_file(writers.FortranWriter(filename),
@@ -10726,25 +10731,23 @@ class UFO_model_to_mg4(object):
         
         if self.model.get('running_elements'):
             all_elements = set()
-            add_scale = set()
             for runs in self.model.get('running_elements'):
                 for line_run in runs.run_objects:
                     for one_element in line_run:
                         all_elements.add(one_element.name)
-                        add_scale.add(one_element.lhablock)
-            all_elements.union(set(self.PS_dependent_key))
+            all_elements.update(set(self.PS_dependent_key))
             self.PS_dependent_key = list(all_elements)
             MUE = [p for p in self.model.get('parameters')[('external',)] if p.lhablock.lower() == 'loop' and tuple(p.lhacode) == (2,)]
             
             if MUE:
                 self.MUE = MUE[0]
                 self.PS_dependent_key.append(MUE[0].name)
+                # the keys under which the parameters and couplings are
+                # stored use the name of the UFO model, without the prefix
+                if MUE[0].name.startswith('mdl_'):
+                    self.PS_dependent_key.append(MUE[0].name[4:])
             
-            try:
-                add_scale.remove('SMINPUTS')
-            except Exception:
-                pass
-            self.scales = add_scale
+            self.scales = self.model.get_running_blocks()
 
     
     def pass_parameter_to_case_insensitive(self):
@@ -10974,11 +10977,11 @@ class UFO_model_to_mg4(object):
         file_to_link = ['formats.inc', 'rw_para.f', 'testprog.f']
     
         for filename in file_to_link:
-            cp( MG5DIR + '/models/template_files/fortran/' + filename, \
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/' + filename, \
                                                                 self.dir_path)
             
         file = open(os.path.join(MG5DIR,\
-                              'models/template_files/fortran/rw_para.f')).read()
+                              'madgraph/models/template_files/fortran/rw_para.f')).read()
 
         if self.vector_size:
             includes=["include \'../vector.inc\'"]
@@ -11013,10 +11016,10 @@ class UFO_model_to_mg4(object):
             updateloop_default = '.false.'
 
         if self.opt['onia']:
-            cp( MG5DIR + '/models/template_files/fortran/rw_onia.f', \
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/rw_onia.f', \
                                        os.path.join(self.dir_path,'rw_onia.f'))
             
-        cp( MG5DIR + '/models/template_files/fortran/' + lha_read_filename, \
+        cp( MG5DIR + '/madgraph/models/template_files/fortran/' + lha_read_filename, \
                                        os.path.join(self.dir_path,'lha_read.f'))
         
         file=file%{'includes':'\n      '.join(includes),
@@ -11028,7 +11031,7 @@ class UFO_model_to_mg4(object):
 
         if self.opt['export_format'] in ['madevent', 'FKS5_default', 'FKS5_optimized'] \
             or self.opt['loop_induced']:
-            cp( MG5DIR + '/models/template_files/fortran/makefile_madevent', 
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/makefile_madevent', 
                 self.dir_path + '/makefile')
             if self.opt['export_format'] in ['FKS5_default', 'FKS5_optimized']:
                 path = pjoin(self.dir_path, 'makefile')
@@ -11038,7 +11041,7 @@ class UFO_model_to_mg4(object):
         elif self.opt['export_format'] in ['standalone_fortran', 'standalone_msP','standalone_msF',
                                   'madloop','madloop_optimized', 'standalone_rw', 
                                   'madweight','matchbox','madloop_matchbox', 'plugin']:
-            cp( MG5DIR + '/models/template_files/fortran/makefile_standalone', 
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/makefile_standalone', 
                 self.dir_path + '/makefile')
         else:
             raise MadGraph5Error('Unknown format')
@@ -11401,7 +11404,7 @@ C
             replace_dict['include_vector'] = ''
 
         fsock = self.open('printout.f', format='fortran')
-        text = open(pjoin(MG5DIR , 'models', 'template_files','fortran', 'printout.f')).read()
+        text = open(pjoin(MG5DIR, 'madgraph', 'models', 'template_files','fortran', 'printout.f')).read()
         text = text % replace_dict
         fsock.write(text)
 
@@ -11807,6 +11810,13 @@ C
                             {'args': 'vecid' if (self.vector_size) else '',
                             'args_dep': ' integer vecid' if self.vector_size  else ''}
                          )
+        if self.model['running_elements'] and self.opt['mp']:
+            # coupling used for the evolution of the running parameters in
+            # update_as_param, shared with the multiple precision version
+            fsock.writelines("""
+                            double precision gother_mp
+                            common /to_gother_mp/ gother_mp
+                            """)
 
 
         if self.opt['export_format'] in ['madevent']:
@@ -11842,6 +11852,14 @@ C
         fsock.writelines("""include \'input.inc\'
                             include \'coupl.inc\'
                             READLHA = .false.""")
+        if self.model['running_elements'] and self.MUE:
+            # the parameters depending on the extra scale (muprime**2) are
+            # evaluated in intparam_definition.inc: set the scale before
+            fsock.writelines(""" if (fixed_extra_scale) then
+                                  %s = mue_ref_fixed
+                                 else
+                                  %s = mue_over_ref*model_scale
+                                 endif""" % (self.MUE.name, self.MUE.name))
         fsock.writelines("""    
                             include \'intparam_definition.inc\'\n
                             
@@ -11859,6 +11877,8 @@ C
                 if self.MUE:
                     fsock.writelines(' %s = mue_ref_fixed' % self.MUE.name)
                 fsock.writelines(' Gother = SQRT(4.0D0*PI*ALPHAS(mue_ref_fixed))') 
+                if self.opt['mp']:
+                    fsock.writelines(' gother_mp = Gother')
                 fsock.writelines(' first = .false.') 
                 for i in range(len(running_block)):
                     fsock.writelines(" call C_RUNNING_%s(Gother) ! %s \n" % (i+1,list(running_block[i])))   
@@ -11874,6 +11894,8 @@ C
                 fsock.writelines(' if(mue_over_ref.ne.1d0)then')
                 fsock.writelines('  Gother = SQRT(4.0D0*PI*ALPHAS(mue_over_ref*model_scale))')
                 fsock.writelines(' endif')
+                if self.opt['mp']:
+                    fsock.writelines(' gother_mp = Gother')
                 
                 for i in range(len(running_block)):
                     fsock.writelines(" call C_RUNNING_%s(Gother) ! %s \n" % (i+1,list(running_block[i])))   
@@ -11971,8 +11993,13 @@ C
                             """%self.mp_real_format)
             fsock.writelines("""include \'input.inc\'""")
 
-            fsock.writelines("""include \'coupl.inc\'
-                                include \'actualize_mp_ext_params.inc\'
+            fsock.writelines("""include \'coupl.inc\'""")
+            if self.model['running_elements']:
+                fsock.writelines("""
+                                double precision gother_mp, gother_eff
+                                common /to_gother_mp/ gother_mp
+                                """)
+            fsock.writelines("""include \'actualize_mp_ext_params.inc\'
                                 READLHA = .false.
                                 include \'mp_intparam_definition.inc\'\n
                              """)
@@ -11986,8 +12013,12 @@ C
                 #running_block = self.model.get_running(self.used_running_key) 
                 if running_block:
                     fsock.write_comments('calculate the running parameter')
+                    # same coupling as the double precision version (fixed
+                    # or dynamical extra scale); G if it was not called
+                    fsock.writelines(" gother_eff = gother_mp")
+                    fsock.writelines(" if (gother_eff.le.0d0) gother_eff = G")
                     for i in range(len(running_block)):
-                        fsock.writelines(" call MP_C_RUNNING_%s(G) ! %s \n" % (i+1,list(running_block[i])))   
+                        fsock.writelines(" call MP_C_RUNNING_%s(gother_eff) ! %s \n" % (i+1,list(running_block[i])))   
             
                     
             fsock.write_comments('\ncouplings needed to be evaluated points by points\n')
@@ -12018,7 +12049,7 @@ C
       %(mpinput)s
 
       include '../cuts.inc'
-      include '../vector.inc'
+      %(include_vector)s
       INCLUDE 'coupl.inc'
       double precision GMU
 
@@ -12074,7 +12105,7 @@ C
       PARAMETER  (PI=3.141592653589793D0)
 
       include '../cuts.inc'
-      include '../vector.inc'
+      %(include_vector)s
       INCLUDE 'input.inc'
       %(mpinput)s
       INCLUDE 'coupl.inc'
@@ -12129,7 +12160,7 @@ C
       PARAMETER  (PI=3.141592653589793D0)
 
        include '../cuts.inc'
-       include '../vector.inc'
+       %(include_vector)s
       INCLUDE 'input.inc'
       %(mpinput)s
       INCLUDE 'coupl.inc'
@@ -12315,6 +12346,8 @@ C
                     data['initc0'] += "\n   MAT2(%i,%i) = %s" % (i+1, j+1, towrite)
 
         data['mpinput'] =''
+        # vector.inc only exists in the madevent output (not in aMC@NLO)
+        data['include_vector'] = "include '../vector.inc'" if self.vector_size else ''
         if any(mat1[i][j] for i,j in zip(range(size),range(size))):
             template = self.template_running_gs_gs2
         else:
@@ -13691,19 +13724,8 @@ c         segments from -DABS(tiny*Ga) to Ga
      
         external_param = [format(param) for param in self.params_ext]
         if self.model['running_elements']:
-            scales = set()
-            
-            for elements in self.model["running_elements"]:
-                for params in elements.run_objects:
-                    for param in params:
-                        scales.add(param.lhablock)
-
-            try:
-                scales.remove('SMINPUTS')
-            except Exception:
-                pass
             #entry should be a parameter ... not a string
-            for b in scales:
+            for b in self.model.get_running_blocks():
                 param = base_objects.ParamCardVariable(
                     'mdl__%s__scale' % b.lower(),
                      91.188, b, [0])
@@ -13766,19 +13788,8 @@ c         segments from -DABS(tiny*Ga) to Ga
                           for param in self.params_ext]
         
         if self.model['running_elements']:
-            scales = set()
-            
-            for elements in self.model["running_elements"]:
-                for params in elements.run_objects:
-                    for param in params:
-                        scales.add(param.lhablock)
-
-            try:
-                scales.remove('SMINPUTS')
-            except Exception:
-                pass
             #entry should be a parameter ... not a string
-            for b in scales:
+            for b in self.model.get_running_blocks():
                 param = base_objects.ParamCardVariable(
                     'mdl__%s__scale' % b,
                      91.188, b, 0)
@@ -13825,7 +13836,7 @@ c         segments from -DABS(tiny*Ga) to Ga
             model_name = model.get('name')
             # IF MSSM convert the card to SLAH1
             if model_name == 'mssm' or model_name.startswith('mssm-'):
-                import models.check_param_card as translator    
+                import madgraph.models.check_param_card as translator    
                 # Check the format of the param_card for Pythia and make it correct
                 if rule_card_path:
                     translator.make_valid_param_card(output_path, rule_card_path)

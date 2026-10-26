@@ -6,12 +6,19 @@
 #include <string>
 
 #include "madspace/driver/lhe_output.hpp"
+#include "madspace/driver/tar.hpp"
 #include "madspace/driver/tensor.hpp"
 
 namespace madspace {
 
+/// Read a tensor from the npy file `file`.
 Tensor load_tensor(const std::string& file);
+/// Write `tensor` to the npy file `file`.
 void save_tensor(const std::string& file, Tensor tensor);
+/// Read a tensor from the npy file `name` inside the tar archive `tar`.
+Tensor load_tensor(TarReader& tar, const std::string& name);
+/// Append `tensor` as an npy file called `name` to the tar archive `tar`.
+void save_tensor(TarWriter& tar, const std::string& name, Tensor tensor);
 
 struct FieldLayout {
     static constexpr const char* i32 = "<i4";
@@ -149,13 +156,12 @@ public:
     static constexpr int f_beam2 = 32;
     static constexpr int f_partial_weights = 64;
     static constexpr int f_syst_weights = 128;
+    static constexpr int f_bias = 256;
 
     // `syst_weight_count` columns of systematic variation weights are appended
     // when f_syst_weights is set; `syst_weight_ids` names them (rwgt_<id>).
-    static std::vector<FieldLayout> layout(
-        int fields,
-        const std::vector<int>& syst_weight_ids = {}
-    ) {
+    static std::vector<FieldLayout>
+    layout(int fields, const std::vector<int>& syst_weight_ids = {}) {
         std::vector<FieldLayout> ret;
         if (fields & f_weight) {
             ret.push_back({"weight", FieldLayout::f64, 0});
@@ -214,6 +220,9 @@ public:
                 ret.push_back({std::format("rwgt_{}", id), FieldLayout::f64, 7});
             }
         }
+        if (fields & f_bias) {
+            ret.push_back({"bias", FieldLayout::f64, 8});
+        }
         return ret;
     }
 
@@ -256,6 +265,9 @@ public:
     UnalignedRef<double> syst_weight(std::size_t index) {
         return &_data[_offsets[6] + 8 * index];
     }
+
+    // event bias, divided out of the weight when the channels are combined
+    UnalignedRef<double> bias() { return &_data[_offsets[7] + 0]; }
 
     void from_lhe_event(const LHEEvent& event) {
         lhe_process_id() = event.process_id;

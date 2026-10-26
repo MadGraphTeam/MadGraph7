@@ -694,6 +694,112 @@ class MG7CmdTest(unittest.TestCase):
         self.assertEqual(dict(obj.run_card['histograms']), before)
         self.assertNotIn('run', obj.modified_card)
 
+    # -- "set <madevent cut name> ..." in the launch question ---------------
+    def cut_selector(self):
+        """histogram_selector() whose generic editor must not be reached: it
+        is what answered "WARNING: invalid set command mmll 200"."""
+        obj = self.histogram_selector()
+        generic = mock.patch.object(type(obj).__mro__[1], 'do_set')
+        self.generic_do_set = generic.start()
+        self.addCleanup(generic.stop)
+        return obj
+
+    def test_set_madevent_cut_names(self):
+        """set mmll/mmllmax/... edit the [cuts] entry from_LO maps them to"""
+        obj = self.cut_selector()
+        obj.do_set('mmll 200')
+        self.assertEqual(dict(obj.run_card['cuts']['lepton-sfos_pair_mass']),
+                         {'min': 200.0})
+        self.assertIn('run', obj.modified_card)
+        obj.do_set('run_card mmllmax 2*100+100')
+        self.assertEqual(dict(obj.run_card['cuts']['lepton-sfos_pair_mass']),
+                         {'min': 200.0, 'max': 300.0})
+        obj.do_set('mmll 0')
+        obj.do_set('mmllmax -1')
+        self.assertNotIn('lepton-sfos_pair_mass', obj.run_card['cuts'])
+        # sqrt_s is also a histogram name: only the cut moves
+        obj.do_set('dsqrt_shat 500')
+        self.assertEqual(dict(obj.run_card['cuts']['sqrt_s']), {'min': 500.0})
+        self.assertEqual(dict(obj.run_card['histograms']['sqrt_s']),
+                         {'min': 0., 'max': 2000., 'bin_count': 50})
+        self.generic_do_set.assert_not_called()
+
+    def test_set_madevent_cut_name_rejects_non_numbers(self):
+        obj = self.cut_selector()
+        before = dict(obj.run_card['cuts'])
+        obj.do_set('ptj abc')
+        self.assertEqual(dict(obj.run_card['cuts']), before)
+        self.assertNotIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_madevent_scale_and_pdg_names(self):
+        """the integer scale/strategy codes, maxjetflavor and the per-pdg
+        cuts are translated. The generic editor aborted a launch script on
+        the integer codes."""
+        obj = self.cut_selector()
+        obj.do_set('dynamical_scale_choice 1')
+        self.assertEqual(obj.run_card['beam']['dynamical_scale_choice'],
+                         'transverse_energy')
+        obj.do_set('dynamical_scale_choice 0')     # no equivalent: kept
+        self.assertEqual(obj.run_card['beam']['dynamical_scale_choice'],
+                         'transverse_energy')
+        obj.do_set('sde_strategy 2')
+        self.assertEqual(obj.run_card['phasespace']['sde_strategy'], 'denominators')
+        obj.do_set('maxjetflavor 5')
+        self.assertIn(5, obj.run_card['multiparticles']['jet'])
+        obj.do_set('pt_min_pdg {6: 100}')
+        self.assertEqual(dict(obj.run_card['cuts']['pdg6-pt']), {'min': 100.0})
+        self.assertIn('run', obj.modified_card)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_mg7_values_still_reach_the_editor(self):
+        obj = self.cut_selector()
+        obj.do_set('dynamical_scale_choice transverse_mass')
+        obj.do_set('sde_strategy denominators')
+        obj.do_set('dynamical_scale_choice HT/4')
+        self.assertEqual(self.generic_do_set.call_count, 3)
+
+    def test_per_beam_fixed_fac_scale_is_reported_when_the_question_closes(self):
+        obj = self.cut_selector()
+        parent = type(obj).__mro__[1]
+        with mock.patch.object(parent, 'check_card_consistency'):
+            obj.do_set('fixed_fac_scale1 T')
+            obj.do_set('fixed_fac_scale2 F')
+            with self.assertLogs('madgraph7', level='WARNING') as logs:
+                obj.check_card_consistency()
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn('fixed_fac_scale1 = True and fixed_fac_scale2 = False',
+                      logs.output[0])
+
+    def test_set_madevent_cut_name_scan_is_refused_by_name(self):
+        obj = self.cut_selector()
+        before = dict(obj.run_card['cuts'])
+        with self.assertLogs('madgraph7', level='WARNING') as logs:
+            obj.do_set('ptj scan:[20, 30]')
+        self.assertIn('cannot be scanned', logs.output[0])
+        self.assertEqual(dict(obj.run_card['cuts']), before)
+        self.generic_do_set.assert_not_called()
+
+    def test_set_lo_param_bugs_are_not_hidden(self):
+        """only a bad value is reported as "ignoring set ..."; an error of
+        the translation itself is not swallowed"""
+        obj = self.cut_selector()
+        with mock.patch.object(type(obj.run_card), 'set_lo_param',
+                               side_effect=TypeError('bug')):
+            self.assertRaises(TypeError, obj.do_set, 'maxjetflavor 4')
+
+    def test_per_beam_state_is_cleared_when_the_check_fails(self):
+        obj = self.cut_selector()
+        parent = type(obj).__mro__[1]
+        obj.do_set('fixed_fac_scale1 T')
+        obj.do_set('fixed_fac_scale2 F')
+        with mock.patch.object(parent, 'check_card_consistency',
+                               side_effect=RuntimeError('card check')):
+            with self.assertLogs('madgraph7', level='WARNING') as logs:
+                self.assertRaises(RuntimeError, obj.check_card_consistency)
+        self.assertIn('fixed_fac_scale1 = True', logs.output[0])
+        self.assertEqual(obj.run_card.lo_set_warnings(), [])
+
     def test_set_madevent_beam_names(self):
         """set ebeam1/ebeam/pdlabel2/lpp, as a madevent launch script writes
         them, edit the per-beam [beam] entries"""
@@ -765,7 +871,10 @@ class MG7CmdTest(unittest.TestCase):
         try:
             process = self.launch.MadgraphProcess.__new__(
                 self.launch.MadgraphProcess)
-            process.run_card = {"run": {"run_name": "run"}}
+            process.run_card = {
+                "run": {"run_name": "run"},
+                "gridpack": {"output_dir": "", "temp_output_dir": ""},
+            }
             process.init_event_dir()
         finally:
             os.chdir(cwd)
@@ -826,7 +935,7 @@ class MG7CmdTest(unittest.TestCase):
         """End to end: the dependent parameters of the param_card are the ones
         the model computes from the free ones (here M_W from G_F/M_Z/alpha)."""
         from madgraph.interface.common_run_interface import AskforEditCard
-        from models.check_param_card import ParamCard
+        from madgraph.models.check_param_card import ParamCard
 
         self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
         path = os.path.join(self.me_dir, 'Cards', 'param_card.dat')
@@ -852,7 +961,7 @@ class MG7CmdTest(unittest.TestCase):
 
         self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
         self.launch._model_cache.clear()
-        with mock.patch('models.import_ufo.import_model',
+        with mock.patch('madgraph.models.import_ufo.import_model',
                         side_effect=TimeOutError):
             self.assertRaises(TimeOutError, self.launch.load_process_model,
                               self.me_dir)

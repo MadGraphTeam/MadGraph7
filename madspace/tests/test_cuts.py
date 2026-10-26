@@ -125,7 +125,9 @@ def _cut_volume(
         CM_ENERGY,
         mode=mode,
         leptonic=True,
-        color_order=color_order,
+        color_ordered=(
+            None if color_order is None else ms.ColorOrderedMapping.Options(color_order)
+        ),
         cuts=_cuts(pids, pt_min) if piped else None,
     )
 

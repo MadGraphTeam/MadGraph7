@@ -180,6 +180,12 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
             self['init_lep_split']=options['init_lep_split']
             del options['init_lep_split']
 
+        # filter (see --loop_diagram_filter) of the loop diagrams of the
+        # virtual amplitudes; the one of the tree-level diagrams (born, real)
+        # is the 'diagram_filter' of the MultiProcess. Both are given to each
+        # FKSProcess, which keeps them
+        loop_diagram_filter = options.pop('loop_diagram_filter', False)
+
         # ncores_for_proc_gen has the following meaning
         #   0 : do things the old way
         #   > 0 use ncores_for_proc_gen
@@ -267,7 +273,9 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
 
             born = FKSProcess(amp, ncores_for_proc_gen = self['ncores_for_proc_gen'], \
                                    init_lep_split=self['init_lep_split'], \
-                                   ewsudakov = self['ewsudakov'])
+                                   ewsudakov = self['ewsudakov'], \
+                                   diagram_filter = self['diagram_filter'],
+                                   loop_diagram_filter = loop_diagram_filter)
             self['born_processes'].append(born)
 
             born.generate_reals(self['pdgs'], self['real_amplitudes'], combine = False)
@@ -402,7 +410,9 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
                         i + 1, len(self['born_processes'])))
             try:
                 myamp = loop_diagram_generation.LoopAmplitude(myproc,  
-                                                loop_filter=self['loop_filter'])
+                                loop_filter=self['loop_filter'],
+                                diagram_filter=born.diagram_filter,
+                                loop_diagram_filter=born.loop_diagram_filter)
                 born.virt_amp = myamp
             except InvalidCmd:
                 logger.debug('invalid command for loop')
@@ -417,10 +427,12 @@ class FKSRealProcess(object):
     """
     
     def __init__(self, born_proc, leglist, ij, ij_id, born_pdgs, splitting_type,
-                 perturbed_orders = ['QCD']): #test written
+                 perturbed_orders = ['QCD'], diagram_filter = False): #test written
         """Initializes the real process based on born_proc and leglist.
         Stores the fks informations into the list of dictionaries fks_infos
+        diagram_filter selects the diagrams of the real amplitude
         """      
+        self.diagram_filter = diagram_filter
         #safety check
         assert type(splitting_type) == list and not type(splitting_type) == str 
         self.fks_infos = []
@@ -491,7 +503,8 @@ class FKSRealProcess(object):
 
     def generate_real_amplitude(self):
         """generates the real emission amplitude starting from self.process"""
-        self.amplitude = diagram_generation.Amplitude(self.process)
+        self.amplitude = diagram_generation.Amplitude(self.process,
+                                                diagram_filter=self.diagram_filter)
         return self.amplitude
 
 
@@ -605,7 +618,8 @@ class FKSProcess(object):
 
 ###############################################################################
     
-    def __init__(self, start_proc = None, remove_reals = True, ncores_for_proc_gen=0, init_lep_split = False, ewsudakov = False):
+    def __init__(self, start_proc = None, remove_reals = True, ncores_for_proc_gen=0, init_lep_split = False, ewsudakov = False,
+                 diagram_filter = False, loop_diagram_filter = False):
         """initialization: starts either from an amplitude or a process,
         then init the needed variables.
         remove_borns tells if the borns not needed for integration will be removed
@@ -616,6 +630,11 @@ class FKSProcess(object):
            -1 : use all cores
         """
                 
+        # filters of the tree-level (born, real) and of the loop diagrams,
+        # kept here since the FKSMultiProcess of several 'add process' are
+        # merged (see FKSMultiProcess.add)
+        self.diagram_filter = diagram_filter
+        self.loop_diagram_filter = loop_diagram_filter
         self.reals = []
         self.myorders = {}
         self.real_amps = []
@@ -646,7 +665,8 @@ class FKSProcess(object):
                                         start_proc, pert = self.perturbation)
                 self.born_amp = diagram_generation.Amplitude(\
                                 copy.copy(fks_common.sort_proc(\
-                                        start_proc, pert = self.perturbation)))
+                                        start_proc, pert = self.perturbation)),
+                                diagram_filter = self.diagram_filter)
             #initialize with an amplitude
             elif isinstance(start_proc, diagram_generation.Amplitude):
                 pertur = start_proc.get('process')['perturbation_couplings']
@@ -656,7 +676,8 @@ class FKSProcess(object):
                 self.born_amp = diagram_generation.Amplitude(\
                                 copy.copy(fks_common.sort_proc(\
                                     start_proc['process'], 
-                                    pert = self.perturbation)))
+                                    pert = self.perturbation)),
+                                diagram_filter = self.diagram_filter)
             else:
                 raise fks_common.FKSProcessError(\
                     'Not valid start_proc in FKSProcess')
@@ -682,7 +703,8 @@ class FKSProcess(object):
             # if ewsudakov is true, then look for the corresponding matrix elements
             self.ewsudakov = ewsudakov
             if ewsudakov:
-                self.sudakov_amps = sudakov.get_sudakov_amps(self.born_amp)
+                self.sudakov_amps = sudakov.get_sudakov_amps(self.born_amp,
+                                            diagram_filter=self.diagram_filter)
 
 
     def generate_real_amplitudes(self, pdg_list, real_amp_list):
@@ -770,7 +792,8 @@ class FKSProcess(object):
                     has_coll_sing_born = False
                 else:
                     born_proc_coll_sing['squared_orders'][real_dict['perturbation'][0]] += -2
-                    has_coll_sing_born = bool(diagram_generation.Amplitude(born_proc_coll_sing)['diagrams'])
+                    has_coll_sing_born = bool(diagram_generation.Amplitude(born_proc_coll_sing,
+                                diagram_filter=self.diagram_filter)['diagrams'])
 
                 # check that there is at most one extra mother
                 allmothers = []
@@ -807,7 +830,8 @@ class FKSProcess(object):
                     
                     cnt_process_for_amp = copy.copy(cnt_process)
                     cnt_process_for_amp['squared_orders'] = copy.copy(cnt_process['squared_orders'])
-                    cnt_amp = diagram_generation.Amplitude(cnt_process_for_amp)
+                    cnt_amp = diagram_generation.Amplitude(cnt_process_for_amp,
+                                diagram_filter=self.diagram_filter)
 
                     if bool(cnt_amp['diagrams']) and \
                        cnt_process['squared_orders'][cnt_ord] >= 2:
@@ -815,7 +839,8 @@ class FKSProcess(object):
                         # check condition 2) above (has_coll_sing_cnt)
                         # MZMZ17062014 beware that the Amplitude reorders the legs
                         cnt_process['squared_orders'][cnt_ord] += -2
-                        born_cnt_amp = diagram_generation.Amplitude(cnt_process)
+                        born_cnt_amp = diagram_generation.Amplitude(cnt_process,
+                                diagram_filter=self.diagram_filter)
                         has_coll_sing_cnt = bool(born_cnt_amp['diagrams'])
 
                 # remember there is at most one mom
@@ -853,7 +878,8 @@ class FKSProcess(object):
                         born_proc, real_dict['leglist'], ij, ij_id, \
                         [born_pdgs], 
                         real_dict['perturbation'], \
-                        perturbed_orders = born_proc['perturbation_couplings']))
+                        perturbed_orders = born_proc['perturbation_couplings'],
+                        diagram_filter = self.diagram_filter))
 
                 # keep the extra_cnt if needed
                 if has_coll_sing_cnt:

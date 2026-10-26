@@ -28,7 +28,7 @@ import madgraph.core.color_amp as color_amp
 import madgraph.core.color_algebra as color
 import madgraph.various.misc as misc
 import madgraph.iolibs.export_v4 as export_v4
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 
 #===============================================================================
 # HelasWavefunctionTest
