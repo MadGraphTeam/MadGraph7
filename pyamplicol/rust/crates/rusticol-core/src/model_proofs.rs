@@ -107,28 +107,43 @@ fn json_token(text: &str) -> String {
     out
 }
 
-struct Proof<'a> {
+/// The expanded oriented components (`(component * coupling).expand()`) and
+/// their signed canonical strings, by the component's canonical string,
+/// shared by the proofs of one cluster (`kernel_equivalence`: kernels with
+/// the same coupling whose component lists are equal or each other's input
+/// exchange, e.g. the two input orders of one vertex orientation), so each
+/// is formed once per cluster.
+#[derive(Default)]
+struct Shared<'a> {
+    oriented: HashMap<&'a str, Atom>,
+    // (component, sign index) -> canonical string.
+    strings: HashMap<(&'a str, usize), String>,
+}
+
+struct Proof<'a, 'm> {
     input: &'a KernelProofInput,
     coupling: Atom,
-    // (component * coupling).expand() per input order, formed lazily: the
-    // oracle forms them all, but only the candidates' compared components
-    // and, for inputs of equal dimensions, the exchange test read them.
-    oriented: [Vec<Option<Atom>>; 2],
-    // (order, sign index, component) -> canonical string, formed lazily.
-    strings: HashMap<(usize, usize, usize), String>,
+    // Formed lazily: the oracle forms every oriented component, but only the
+    // candidates' compared components and, for inputs of equal dimensions,
+    // the exchange test read them.
+    shared: &'m mut Shared<'a>,
 }
 
 const SIGNS: [i64; 2] = [1, -1];
 
-impl Proof<'_> {
+impl<'a> Proof<'a, '_> {
+    fn component(&self, order: usize, index: usize) -> &'a str {
+        let input: &'a KernelProofInput = self.input;
+        input.components[order][index].as_str()
+    }
+
     fn oriented(&mut self, order: usize, index: usize) -> RusticolResult<&Atom> {
-        if self.oriented[order][index].is_none() {
-            let component = parse(&self.input.components[order][index])?;
-            self.oriented[order][index] = Some((component * &self.coupling).expand());
+        let component = self.component(order, index);
+        if !self.shared.oriented.contains_key(component) {
+            let expanded = (parse(component)? * &self.coupling).expand();
+            self.shared.oriented.insert(component, expanded);
         }
-        Ok(self.oriented[order][index]
-            .as_ref()
-            .expect("formed above"))
+        Ok(&self.shared.oriented[component])
     }
 
     fn component_string(
@@ -137,19 +152,27 @@ impl Proof<'_> {
         sign: usize,
         index: usize,
     ) -> RusticolResult<&str> {
-        if !self.strings.contains_key(&(order, sign, index)) {
-            let text = (Atom::num(SIGNS[sign]) * self.oriented(order, index)?)
-                .expand()
-                .to_canonical_string();
-            self.strings.insert((order, sign, index), text);
+        let component = self.component(order, index);
+        if !self.shared.strings.contains_key(&(component, sign)) {
+            let oriented = self.oriented(order, index)?;
+            // The oracle's `(sign * oriented).expand()`: `oriented` is
+            // expanded already, so for the sign 1 that is `oriented` itself.
+            let text = if SIGNS[sign] == 1 {
+                oriented.to_canonical_string()
+            } else {
+                (Atom::num(SIGNS[sign]) * oriented)
+                    .expand()
+                    .to_canonical_string()
+            };
+            self.shared.strings.insert((component, sign), text);
         }
-        Ok(self.strings[&(order, sign, index)].as_str())
+        Ok(self.shared.strings[&(component, sign)].as_str())
     }
 
     fn signature(&mut self, order: usize, sign: usize) -> RusticolResult<String> {
         let dimensions = self.input.dimensions;
         let input = ORDERS[order];
-        let count = self.oriented[order].len();
+        let count = self.input.components[order].len();
         let mut out = String::from("{\"components\":[");
         for index in 0..count {
             if index > 0 {
@@ -170,7 +193,7 @@ impl Proof<'_> {
     /// (`(swapped - sign * direct).expand() == 0`, component by component,
     /// stopping at the first that is not; equal atoms are zero at once).
     fn exchanges(&mut self, sign: i64) -> RusticolResult<bool> {
-        for index in 0..self.oriented[0].len() {
+        for index in 0..self.input.components[0].len() {
             let direct = Atom::num(sign) * self.oriented(0, index)?;
             let swapped = self.oriented(1, index)?;
             if *swapped != direct && !(swapped - &direct).expand().is_zero() {
@@ -181,23 +204,19 @@ impl Proof<'_> {
     }
 }
 
-fn prove(input: &KernelProofInput) -> RusticolResult<KernelProof> {
+fn prove<'a>(input: &'a KernelProofInput, shared: &mut Shared<'a>) -> RusticolResult<KernelProof> {
     let mut proof = Proof {
         input,
         coupling: parse(&input.coupling)?,
-        oriented: [
-            vec![None; input.components[0].len()],
-            vec![None; input.components[1].len()],
-        ],
-        strings: HashMap::new(),
+        shared,
     };
     // Candidates in the oracle's order: per input order, the signs 1, -1.
     let candidates: Vec<(usize, usize)> = (0..2)
         .flat_map(|order| (0..2).map(move |sign| (order, sign)))
         .collect();
     let mut tied = candidates;
-    let first = proof.oriented[0].len();
-    if proof.oriented[1].len() == first {
+    let first = input.components[0].len();
+    if input.components[1].len() == first {
         for index in 0..first {
             if tied.len() == 1 {
                 break;
@@ -231,7 +250,7 @@ fn prove(input: &KernelProofInput) -> RusticolResult<KernelProof> {
         let _ = write!(class_digest, "{byte:02x}");
     }
     let mut exchange = None;
-    if input.dimensions[0] == input.dimensions[1] && proof.oriented[1].len() == first {
+    if input.dimensions[0] == input.dimensions[1] && input.components[1].len() == first {
         for exchange_sign in SIGNS {
             if proof.exchanges(exchange_sign)? {
                 exchange = Some(exchange_sign as i32);
@@ -422,12 +441,52 @@ pub fn kernel_equivalence(
         }
         keys.push(key);
     }
-    let proofs = pool.install(|| {
-        missing
+    // Clusters of the missing proofs whose kernels have the same coupling and
+    // equal or exchanged component lists (the two input orders of a vertex
+    // orientation): one task each, sharing their expanded components and
+    // canonical strings (`Shared`); the proofs are returned in first-occurrence
+    // order, so they depend neither on the clusters nor on the thread count.
+    let mut cluster_of: HashMap<(&str, &[String], &[String]), usize> = HashMap::new();
+    let mut clusters: Vec<Vec<usize>> = Vec::new();
+    for (position, (_, item)) in missing.iter().enumerate() {
+        let [direct, exchanged] = &item.components;
+        let (low, high) = if direct <= exchanged {
+            (direct, exchanged)
+        } else {
+            (exchanged, direct)
+        };
+        let next = clusters.len();
+        let cluster = *cluster_of
+            .entry((item.coupling.as_str(), low.as_slice(), high.as_slice()))
+            .or_insert(next);
+        if cluster == next {
+            clusters.push(Vec::new());
+        }
+        clusters[cluster].push(position);
+    }
+    let proved = pool.install(|| {
+        clusters
             .par_iter()
-            .map(|(key, item)| prove(item).map(|proof| (key.clone(), proof)))
+            .map(|members| {
+                let mut shared = Shared::default();
+                members
+                    .iter()
+                    .map(|&position| {
+                        prove(&missing[position].1, &mut shared).map(|proof| (position, proof))
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()
+            })
             .collect::<RusticolResult<Vec<_>>>()
     })?;
+    let mut proofs: Vec<Option<KernelProof>> = vec![None; missing.len()];
+    for (position, proof) in proved.into_iter().flatten() {
+        proofs[position] = Some(proof);
+    }
+    let proofs = missing
+        .into_iter()
+        .zip(proofs)
+        .map(|((key, _), proof)| (key, proof.expect("every cluster member is proved")))
+        .collect();
     Ok((keys, proofs))
 }
 
