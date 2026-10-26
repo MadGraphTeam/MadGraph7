@@ -123,7 +123,8 @@ public:
         // Zero disables it.
         double xqcut = 0,
         double bw_cutoff = 15,
-        double jet_radius = 0.4,
+        // D of the final-state kt measure; 1 as madevent's run_card d and FxFx.
+        double jet_radius = 1.0,
         bool hadronic = true,
         // pdg ids of the external particles, in leg order. When empty, every
         // clustering is assumed to be a QCD splitting between jets.

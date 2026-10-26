@@ -411,6 +411,36 @@ StateItem make_state_item(
     };
 }
 
+// A terminal state: nothing left to cluster, only the diagrams the history
+// can have come from, one of which the walk picks at random.
+void append_terminal_items(
+    std::vector<StateItem>& state, const std::vector<int>& diags
+) {
+    for (int diag_index : diags) {
+        state.push_back({
+            .next_state = diag_index,
+            .particle1 = 0,
+            .particle2 = 0,
+            .mass_index = 0,
+            .massive_in = false,
+            .massive_out1 = false,
+            .massive_out2 = false,
+            .is_qcd = false,
+            .is_jet1 = false,
+            .is_jet2 = false,
+            .trace_mode = trace_first,
+            .is_jet_in = false,
+            .is_colored_in = false,
+            .is_octet_in = false,
+            .mother_is_daughter1 = false,
+            .mother_is_daughter2 = false,
+            .all_colorless = false,
+            .flavor_class_in = flavor_class_none,
+            .same_flavor = false,
+        });
+    }
+}
+
 void find_clusterings(
     CompileContext& ctx,
     const std::vector<int>& particle_masks,
@@ -483,29 +513,7 @@ void find_clusterings(
             // per path leading to it.
             if (is_new_state) {
                 if (is_terminal) {
-                    for (int diag_index : new_diags) {
-                        states.at(index).push_back({
-                            .next_state = diag_index,
-                            .particle1 = 0,
-                            .particle2 = 0,
-                            .mass_index = 0,
-                            .massive_in = false,
-                            .massive_out1 = false,
-                            .massive_out2 = false,
-                            .is_qcd = false,
-                            .is_jet1 = false,
-                            .is_jet2 = false,
-                            .trace_mode = trace_first,
-                            .is_jet_in = false,
-                            .is_colored_in = false,
-                            .is_octet_in = false,
-                            .mother_is_daughter1 = false,
-                            .mother_is_daughter2 = false,
-                            .all_colorless = false,
-                            .flavor_class_in = flavor_class_none,
-                            .same_flavor = false,
-                        });
-                    }
+                    append_terminal_items(states.at(index), new_diags);
                 } else {
                     find_clusterings(
                         ctx, new_masks, new_diags, states, state_map,
@@ -884,7 +892,15 @@ MLMClustering::MLMClustering(
         .has_same_flavor = _has_same_flavor,
     };
     std::set<int> dead_states;
-    find_clusterings(ctx, masks, all_diags, states, state_map, dead_states, 0);
+    if (n_ext == 3) {
+        // A 2 -> 1 process (the 0-jet sample of p p > z + jets) has nothing to
+        // cluster: the walk starts at a terminal state, and the kernel takes
+        // the scales off the single outgoing line, as cluster.f's "special
+        // 2 -> 1 case" does.
+        append_terminal_items(states.at(0), all_diags);
+    } else {
+        find_clusterings(ctx, masks, all_diags, states, state_map, dead_states, 0);
+    }
 
     if (states.at(0).size() == 0) {
         throw std::logic_error(
@@ -959,15 +975,19 @@ MLMClustering::MLMClustering(
         int root = static_cast<int>(diagram_states.size());
         diagram_states.push_back({});
         diagram_state_map[{masks, {diag}}] = root;
-        find_clusterings(
-            diagram_ctx,
-            masks,
-            {diag},
-            diagram_states,
-            diagram_state_map,
-            diagram_dead_states,
-            root
-        );
+        if (n_ext == 3) {
+            append_terminal_items(diagram_states.at(root), {diag});
+        } else {
+            find_clusterings(
+                diagram_ctx,
+                masks,
+                {diag},
+                diagram_states,
+                diagram_state_map,
+                diagram_dead_states,
+                root
+            );
+        }
         if (diagram_states.at(root).size() > 0) {
             diagram_roots.push_back({diag_index, root});
         }

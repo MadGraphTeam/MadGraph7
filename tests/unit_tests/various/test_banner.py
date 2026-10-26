@@ -1592,6 +1592,18 @@ class TestRunCardMG7(unittest.TestCase):
         finally:
             os.remove(tmp.name)
 
+    def test_mlm_jet_radius_defaults_to_madevents_d(self):
+        """beam.jet_radius is madevent's hidden run_card d (common/to_dj/D),
+        which is 1 there and in FxFx, also as written to the TOML card"""
+        import tomllib
+        legacy = bannermod.RunCardLO()
+        self.assertEqual(legacy['d'], 1.0)
+        rc = bannermod.RunCardMG7()
+        self.assertEqual(rc['beam']['jet_radius'], legacy['d'])
+        out = io.StringIO()
+        rc.write(out, template=self.template)
+        self.assertEqual(tomllib.loads(out.getvalue())['beam']['jet_radius'], 1.0)
+
     def test_numeric_suffix_like_legacy(self):
         """integer/float k/M suffixes are parsed as in the legacy RunCard"""
         rc = bannermod.RunCardMG7()

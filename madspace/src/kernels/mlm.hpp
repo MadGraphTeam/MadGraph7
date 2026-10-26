@@ -741,7 +741,15 @@ KERNELSPEC int mlm_clustering_walk(
         }
     }
 
-    ren_scale_val = pow(ren_scale_val, 1.0 / cluster_max);
+    if (cluster_max == 0) {
+        // A 2 -> 1 process has no clustering at all. cluster.f's special
+        // 2 -> 1 case takes pt2ijcl = pcl(4, imocl), the invariant mass squared
+        // of the outgoing line, and setclscales sets every scale from it.
+        FourMom<T> p_out{momenta[2][0], momenta[2][1], momenta[2][2], momenta[2][3]};
+        ren_scale_val = sqrt(max(lsquare<T>(p_out), 0.0));
+    } else {
+        ren_scale_val = pow(ren_scale_val, 1.0 / cluster_max);
+    }
     if (fac_scale > ren_scale_val) {
         fac_scale = ren_scale_val;
     }

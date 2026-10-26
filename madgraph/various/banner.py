@@ -6822,8 +6822,10 @@ class RunCardMG7(RunCard):
                      'half_transverse_mass', 'partonic_energy', 'mlm'],
             comment="dynamical scale used unless the scale is fixed")
         # Jet radius entering the kt clustering measure of the MLM back-clustering
-        # (only used when dynamical_scale_choice = "mlm").
-        self.add_toml_param('beam', 'jet_radius', 0.4,
+        # (only used when dynamical_scale_choice = "mlm"). 1.0 is madevent's
+        # hidden run_card d (common/to_dj/D) and FxFx's value, and Pythia's
+        # JetMatching:coneRadius default.
+        self.add_toml_param('beam', 'jet_radius', 1.0,
             comment="jet radius of the MLM clustering measure (dynamical_scale_choice = mlm)")
         # Heaviest quark flavour treated as a jet by the MLM back-clustering
         # (the counterpart of maxjetflavor in the legacy run_card).
