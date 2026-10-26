@@ -483,30 +483,32 @@ def _annotate_oriented_kernel_color_projections(
                 oriented_representations[1],
                 _dual_color_representation(oriented_representations[2]),
             )
-        annotated_kernel = replace(
-            kernel,
-            color_projection_structure=structure,
-            color_projection_coefficient=(
+        projection = {
+            "color_projection_coefficient": (
                 float(coefficient.real),
                 float(coefficient.imag),
             ),
-            lc_recurrence_color_rule_kind=recurrence_structure,
-        )
+            "lc_recurrence_color_rule_kind": recurrence_structure,
+        }
         recurrence_kernel = replace(
-            annotated_kernel,
+            kernel,
             color_projection_structure=recurrence_structure,
+            **projection,
         )
-        annotated_kernel = replace(
-            annotated_kernel,
-            lc_color_transition_terms=compile_lc_color_transition_terms(
-                recurrence_kernel,
-                oriented_representations,
-                proof_source=recurrence_proof_source,
-                provenance=recurrence_provenance,
-                tensor_role_representations=tensor_role_representations,
-            ),
+        annotated.append(
+            replace(
+                kernel,
+                color_projection_structure=structure,
+                lc_color_transition_terms=compile_lc_color_transition_terms(
+                    recurrence_kernel,
+                    oriented_representations,
+                    proof_source=recurrence_proof_source,
+                    provenance=recurrence_provenance,
+                    tensor_role_representations=tensor_role_representations,
+                ),
+                **projection,
+            )
         )
-        annotated.append(annotated_kernel)
     return tuple(annotated)
 
 
