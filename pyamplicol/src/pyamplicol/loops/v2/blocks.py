@@ -33,10 +33,16 @@ Conventions a consumer relies on:
 * **N_c grade.** The tree engine weights every U(1)-subtraction auxiliary it
   produces from a fundamental line pair with the numeric 1/N_c of the Fierz
   identity at N_c = 3. A block whose trees produce k auxiliaries has grade
-  g = -k (``BlockColourFlow.nc_grade``; ``None`` if its trees disagree, e.g.
-  a U(1) piece and a photon giving the same flow) and rows carrying 3^g; the
+  g = -k (``BlockColourFlow.nc_grade``) and rows carrying 3^g; the
   formal-N_c current is the row times N_c^g 3^(-g), which the colour seeds
-  apply (design §3.2 item 4).
+  apply (design §3.2 item 4). Trees of one word with different grades
+  (identical-flavour lines: a gluon and the U(1) piece of the
+  Fermi-exchanged pairing; a U(1) piece and a photon) are separate blocks:
+  the loop-request compilation puts the grade into the identity of those
+  currents (``generation.dag_grades.split_u1_grades``, ``ColorState.nc_grade``),
+  so a word and its grade name a block's colour (``colour.PositionColour``).
+  ``None`` (trees of one block disagreeing) is left only for a DAG compiled
+  without that pass; such blocks have only full colour (``SeedTable.seeds``).
 * **Signs.** ``BlockColourFlow.sign`` extends the tree engine's Born colour
   metric (``color/correlator_matrices.py``) to blocks: the parity of the
   antifundamental string ends listed in the order of their fundamental
@@ -886,7 +892,8 @@ def _connection_parities(dag: GenericDAG, model: Model) -> list[int | None]:
 def u1_grades(dag: GenericDAG) -> list[int | None]:
     """N_c grade of every current: minus the number of U(1)-subtraction
     auxiliaries its trees produce (module docstring), ``None`` if its
-    derivations disagree."""
+    derivations disagree (``generation.dag_grades.split_u1_grades`` splits
+    such currents of a loop-request DAG)."""
 
     currents = dag.currents
     grade: list[int | None] = [0 if current.is_source else None for current in currents]

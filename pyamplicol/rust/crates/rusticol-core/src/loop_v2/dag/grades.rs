@@ -4,21 +4,28 @@
 //! §3.2 item 4 and §3.3).
 //!
 //! A current whose trees produce k U(1)-subtraction auxiliaries has the N_c
-//! grade `-k`. A current derived with several grades (identical-flavour
-//! lines reaching one colour word through a gluon and through the U(1)
-//! piece of the Fermi-exchanged pairing) is not exact in N_c, so
-//! [`split_u1_grades`] makes it one current per grade, each fed by the
-//! derivations of that grade, and so its consumers (a current fed by a mixed
-//! one mixes as well). The copies take the current's place by decreasing
-//! grade and carry it in their colour state (`ColourState::nc_grade`); the
-//! interactions of a split result are emitted in its place, one per grade
-//! of each split input (decreasing, left before right). A DAG without mixed
-//! currents is left as it is, and one without U(1)-subtraction auxiliaries
-//! is not even scanned.
+//! grade `-k`. A block (the currents of one key up to the helicity
+//! ancestry) is exact in N_c only if all its trees have one grade;
+//! identical-flavour lines reach one colour word through a gluon and
+//! through the U(1) piece of the Fermi-exchanged pairing, for different
+//! helicities of the lines' legs or for the same ones. [`split_u1_grades`]
+//! puts the grade into the colour state (`ColourState::nc_grade`) of exactly
+//! the currents of a block whose trees have several grades: a current whose
+//! own derivations mix grades becomes one current per grade, each fed by the
+//! derivations of that grade, and so do its consumers (a current fed by a
+//! mixed one mixes as well); a current of one grade in such a block only
+//! takes its grade as a label. The copies take the current's place by
+//! decreasing grade; the interactions of a split result are emitted in its
+//! place, one per grade of each split input (decreasing, left before right).
+//! A DAG whose blocks have one grade each is left as it is, and one without
+//! U(1)-subtraction auxiliaries is not even scanned.
 
 use super::input::DagInput;
-use super::recursion::{Current, Dag, Interaction};
+use super::recursion::{Current, Dag, FxMap, Interaction};
 use super::{ColourState, DagResult, invalid};
+
+/// A current's key without its helicity ancestry: its block.
+type BlockKey = (u32, u64, i8, i32, u32, u32, u32, u32);
 
 /// The grade set of every current as a bit set of `-grade` (bit k: grade
 /// -k), in DAG order; `None` without a U(1)-subtraction auxiliary.
@@ -76,16 +83,38 @@ fn split_by_grade(dag: &mut Dag, u1: &[bool]) -> DagResult<()> {
         return Ok(());
     }
     let sets = grade_sets(dag, u1)?;
-    if sets.iter().all(|set| set.count_ones() == 1) {
+    let block = |current: &Current| -> BlockKey {
+        let key = &current.key;
+        (
+            key.particle,
+            key.mask,
+            key.chirality,
+            key.spin,
+            key.flavour,
+            key.colour,
+            key.orders,
+            key.word,
+        )
+    };
+    let mut block_grades: FxMap<BlockKey, u64> = FxMap::default();
+    for (current, set) in dag.currents.iter().zip(&sets) {
+        *block_grades.entry(block(current)).or_insert(0) |= set;
+    }
+    let graded: Vec<bool> = dag
+        .currents
+        .iter()
+        .map(|current| block_grades[&block(current)].count_ones() > 1)
+        .collect();
+    if !graded.iter().any(|graded| *graded) {
         return Ok(());
     }
     // First new id of every current; a grade's copy follows at the rank of
-    // its bit.
+    // its bit (an unlabelled current has one grade, so one copy).
     let mut first = Vec::with_capacity(dag.currents.len());
     let mut currents: Vec<Current> = Vec::with_capacity(dag.currents.len());
-    for (current, set) in dag.currents.iter().zip(&sets) {
+    for ((current, set), graded) in dag.currents.iter().zip(&sets).zip(&graded) {
         first.push(currents.len() as u32);
-        if set.count_ones() == 1 {
+        if !graded {
             currents.push(*current);
             continue;
         }
@@ -213,7 +242,18 @@ mod tests {
             .collect();
         assert_eq!(
             grades,
-            vec![None, None, None, None, None, None, Some(0), Some(-1), Some(0), Some(-1)]
+            vec![
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(0),
+                Some(-1),
+                Some(0),
+                Some(-1)
+            ]
         );
         let edges: Vec<(u32, u32, u32)> = dag
             .interactions
@@ -222,14 +262,82 @@ mod tests {
             .collect();
         assert_eq!(
             edges,
-            vec![(0, 1, 4), (0, 1, 5), (4, 2, 6), (5, 2, 7), (6, 3, 8), (7, 3, 9)]
+            vec![
+                (0, 1, 4),
+                (0, 1, 5),
+                (4, 2, 6),
+                (5, 2, 7),
+                (6, 3, 8),
+                (7, 3, 9)
+            ]
         );
         assert_eq!(dag.sources, vec![0, 1, 2, 3]);
+        // The copies' consumers are copies too; nothing else moved.
+        assert_eq!(dag.currents[8].key.mask, 15);
+        assert_eq!(dag.currents[9].key.mask, 15);
         // Nothing mixes any more: a second pass changes nothing.
         let before: Vec<u32> = dag.currents.iter().map(|c| c.key.colour).collect();
         split_by_grade(&mut dag, &u1).expect("split");
         let after: Vec<u32> = dag.currents.iter().map(|c| c.key.colour).collect();
         assert_eq!(before, after);
         assert_eq!(dag.interactions.len(), 6);
+    }
+
+    #[test]
+    fn blocks_mixing_grades_over_helicities_are_labelled() {
+        let u1 = [false, false, true];
+        let mut dag = Dag::default();
+        dag.colours.intern(ColourState {
+            accuracy: "full".into(),
+            sector_id: 0,
+            line_groups: vec![],
+            basis_key: vec![],
+            traces: vec![],
+            lines: vec![],
+            nc_grade: None,
+        });
+        // 4 = gluon(0, 1) and 5 = U(1)(0, 2): for one helicity of leg 3 the
+        // block of 6 is reached through the gluon only, for the other (7,
+        // another ancestry) through the U(1) piece only.
+        let mut other = current(0, 7, false);
+        other.key.ancestry = 99;
+        dag.currents = vec![
+            current(0, 1, true),
+            current(0, 2, true),
+            current(0, 4, true),
+            current(1, 8, true),
+            current(1, 3, false),
+            current(2, 5, false),
+            current(0, 7, false),
+            other,
+        ];
+        dag.sources = vec![0, 1, 2, 3];
+        dag.interactions = vec![
+            interaction(0, 1, 4),
+            interaction(0, 2, 5),
+            interaction(4, 2, 6),
+            interaction(5, 1, 7),
+        ];
+        let before: Vec<(u32, u32, u32)> = dag
+            .interactions
+            .iter()
+            .map(|i| (i.left, i.right, i.result))
+            .collect();
+        split_by_grade(&mut dag, &u1).expect("split");
+        let grades: Vec<Option<i64>> = dag
+            .currents
+            .iter()
+            .map(|current| dag.colours.get(current.key.colour).nc_grade)
+            .collect();
+        assert_eq!(
+            grades,
+            vec![None, None, None, None, None, None, Some(0), Some(-1)]
+        );
+        let after: Vec<(u32, u32, u32)> = dag
+            .interactions
+            .iter()
+            .map(|i| (i.left, i.right, i.result))
+            .collect();
+        assert_eq!(before, after);
     }
 }

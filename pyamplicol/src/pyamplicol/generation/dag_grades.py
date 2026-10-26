@@ -5,31 +5,41 @@ The tree engine writes the ``-1/N_c`` of the SU(N_c) Fierz identity as a
 U(1)-subtraction auxiliary current with the numeric weight of N_c = 3. A
 current whose trees produce k such auxiliaries has the *N_c grade* ``-k``:
 its formal-N_c value is its value times ``N_c^-k 3^k``, which the loop seeds
-apply per block (``loops.v2.colour.block_colour_network``). A current
-derived both with and without such a piece has no single grade, and its
-value is not exact in N_c: from u u~ > u u~ g upward, identical-flavour lines
-reach one colour word through a gluon (grade 0) and through the
-U(1)-subtraction piece of the Fermi-exchanged pairing (grade -1); a photon
-and a U(1) piece joining the same lines do the same.
+apply per block (``loops.v2.colour.block_colour_network``). A block (the
+currents of one ``CurrentIndex`` up to the helicity ancestry, its rows) is
+exact in N_c only if all its trees have one grade. Identical-flavour lines
+break that from u u~ > u u~ g upward: one colour word is reached through a
+gluon (grade 0) and through the U(1)-subtraction piece of the
+Fermi-exchanged pairing (grade -1), for different helicities of the lines'
+legs or for the same ones; a photon and a U(1) piece joining the same lines
+do the same.
 
-``split_u1_grades`` makes every current of a loop-request DAG exact in N_c:
-a current whose derivations mix grades becomes one current per grade, each
-fed by the derivations of that grade, and so do its consumers (a current
-fed by a mixed one mixes as well). The split copies carry their grade in
-their identity (``ColorState.nc_grade``); every other current, interaction
-and id order is unchanged, so a DAG without mixed currents is returned as it
-is. The sum of the copies' values is the mixed current's value, so full
-colour at N_c = 3 is unchanged up to the summation order. The native builder
-(``rusticol-core`` ``loop_v2::dag::grades``) runs the same pass.
+``split_u1_grades`` makes every block of a loop-request DAG exact in N_c.
+The grade enters the identity (``ColorState.nc_grade``) of exactly the
+currents of a block whose trees have several grades:
+
+* a current whose own derivations mix grades becomes one current per grade,
+  each fed by the derivations of that grade, and so do its consumers (a
+  current fed by a mixed one mixes as well);
+* a current of one grade in such a block (the block mixes across its
+  helicity rows) only takes its grade as a label.
+
+Every other current, interaction and id order is unchanged, so a DAG whose
+blocks have one grade each is returned as it is (and one without
+U(1)-subtraction auxiliaries is not even scanned). The sum of a split
+current's copies is its value, so full colour at N_c = 3 is unchanged up to
+the summation order. The native builder (``rusticol-core``
+``loop_v2::dag::grades``) runs the same pass.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import replace
 
 from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
 
-from .dag_types import CurrentNode, GenericDAG, InteractionNode
+from .dag_types import CurrentIndex, CurrentNode, GenericDAG, InteractionNode
 
 
 def u1_grade_sets(dag: GenericDAG) -> list[frozenset[int]]:
@@ -58,11 +68,30 @@ def u1_grade_sets(dag: GenericDAG) -> list[frozenset[int]]:
     return [frozenset(grades) for grades in found]
 
 
-def split_u1_grades(dag: GenericDAG) -> GenericDAG:
-    """``dag`` with every current of mixed N_c grade split per grade
-    (module docstring).
+def _block_key(index: CurrentIndex) -> tuple[object, ...]:
+    """The current's identity without its helicity ancestry: its block
+    (``loops.v2.blocks.BlockKey``; the momentum mask of a loop-request
+    current is its leg mask)."""
 
-    The copies of a current take its place, by decreasing grade; the
+    return (
+        index.particle_id,
+        index.external_mask,
+        index.chirality,
+        index.spin_state,
+        index.flavour_flow,
+        index.quantum_number_flow,
+        index.color_state,
+        index.coupling_orders,
+        index.auxiliary_kind,
+        index.ordered_external_labels,
+    )
+
+
+def split_u1_grades(dag: GenericDAG) -> GenericDAG:
+    """``dag`` with every block of several N_c grades graded (module
+    docstring).
+
+    The copies of a split current take its place, by decreasing grade; the
     interactions of a split result are emitted in its place, one per grade
     of each split input (decreasing, left before right). Interactions keep
     their colour weights, couplings and evaluation records; the evaluation
@@ -78,7 +107,12 @@ def split_u1_grades(dag: GenericDAG) -> GenericDAG:
     if dag.amplitude_roots:
         raise ValueError("the N_c grade split takes loop-request DAGs (no roots)")
     grade_sets = u1_grade_sets(dag)
-    if all(len(grades) == 1 for grades in grade_sets):
+    keys = [_block_key(current.index) for current in currents]
+    block_grades: dict[tuple[object, ...], set[int]] = defaultdict(set)
+    for key, grades in zip(keys, grade_sets, strict=True):
+        block_grades[key].update(grades)
+    graded = [len(block_grades[key]) > 1 for key in keys]
+    if not any(graded):
         return dag
     u1 = [
         current.index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
@@ -87,8 +121,8 @@ def split_u1_grades(dag: GenericDAG) -> GenericDAG:
     # old id -> ((grade, new id), ...) by decreasing grade.
     copies: list[tuple[tuple[int, int], ...]] = []
     out_currents: list[CurrentNode] = []
-    for current, grades in zip(currents, grade_sets, strict=True):
-        if len(grades) == 1:
+    for current, grades, label in zip(currents, grade_sets, graded, strict=True):
+        if not label:
             new = len(out_currents)
             copies.append(((next(iter(grades)), new),))
             out_currents.append(
@@ -113,9 +147,8 @@ def split_u1_grades(dag: GenericDAG) -> GenericDAG:
         copies.append(tuple(ids))
     out_interactions: list[InteractionNode] = []
     for interaction in dag.interactions:
-        result = copies[interaction.result_id]
+        targets = dict(copies[interaction.result_id])
         shift = u1[interaction.result_id]
-        targets = dict(result)
         for left_grade, left in copies[interaction.left_id]:
             for right_grade, right in copies[interaction.right_id]:
                 new = len(out_interactions)

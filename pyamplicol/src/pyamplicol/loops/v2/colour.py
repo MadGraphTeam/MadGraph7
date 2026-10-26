@@ -49,8 +49,12 @@ Conventions a consumer relies on:
   contracts them with the native S_m FFT in binary64, the rest directly.
 * **N_c grades.** Blocks with U(1)-subtraction pieces enter with their grade
   (``BlockColourFlow.nc_grade``) and the Born amplitude A0[b] is split into
-  grades (``SeedTable.seeds``), so seeds are exact in N_c; a process whose
-  blocks mix grades has only full colour (design §3.2 item 4).
+  grades (``SeedTable.seeds``), so seeds are exact in N_c (design §3.2 item
+  4). Every block of a loop request has one grade: trees of one word with
+  different grades (identical-flavour lines) are separate blocks
+  (``generation.dag_grades``), told apart by ``PositionColour.grades``. A
+  table over blocks that mix grades (``formal_nc`` false; only from a DAG
+  compiled without that pass) has only full colour.
 * **Signs.** kappa uses the plain colour-flow strings of the blocks.
   ``Block.wick_sign``, the skeleton's fermion sign epsilon_s, its automorphism
   weight and its i-factors belong to the leaf weight (design §3.3), never to K.
@@ -1880,7 +1884,8 @@ class SeedTable:
     of the skeletons using class c and ``cells[c][b]`` the Laurent
     coefficients of K. Squared-order sectors are given as their (Born order,
     loop order) pairs. ``formal_nc`` is false when the tree currents carry
-    numeric U(1) pieces of mixed N_c grade; then only full colour is exact.
+    numeric U(1) pieces of mixed N_c grade (a DAG compiled without the grade
+    split of ``generation.dag_grades``); then only full colour is exact.
     ``certificates`` holds the loop-level certificate of every compression
     the classes use.
     """
@@ -1982,8 +1987,9 @@ class SeedTable:
         if accuracy != "full":
             if not self.formal_nc:
                 raise ValueError(
-                    f"{accuracy.upper()} seeds need N_c-exact tree currents; this "
-                    "process has numeric U(1)-subtraction currents (design §3.2)"
+                    f"{accuracy.upper()} seeds need N_c-exact tree currents; these "
+                    "blocks mix U(1)-subtraction grades (a DAG compiled without "
+                    "generation.dag_grades.split_u1_grades; design §3.2)"
                 )
             if degree is None:
                 degree = self.degree(
