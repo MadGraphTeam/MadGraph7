@@ -232,15 +232,17 @@ class _LorentzContext:
         self,
         match: Mapping[Expression, Expression],
     ) -> Expression:
-        """UFO ``ProjM`` = (1 - gamma^5)/2, spenso's ``projm`` at vertices.
-        Propagators keep their historical exchanged head (no supported
-        propagator uses a projector)."""
+        """UFO ``ProjM`` = (1 - gamma^5)/2, spenso's ``projm``, at vertices
+        and in propagators (consistent with ``gamma5`` in both readings).
+        Propagators used to exchange the two projectors, which gave a lone
+        projector in a model-supplied propagator (a chirality-flipping
+        two-point counterterm on a clone line) the opposite chirality
+        (WP3.2 EWI-4b; ``ct_line_insertions._reversed_chain``)."""
 
         first, second = self._spinor_pair(
             match[_WILDCARDS["a_"]], match[_WILDCARDS["b_"]]
         )
-        tensor = self.projm_tensor if self._vertex else self.projp_tensor
-        return _as_expression(tensor(first, second))
+        return _as_expression(self.projm_tensor(first, second))
 
     def projector_plus(
         self,
@@ -251,8 +253,7 @@ class _LorentzContext:
         first, second = self._spinor_pair(
             match[_WILDCARDS["a_"]], match[_WILDCARDS["b_"]]
         )
-        tensor = self.projp_tensor if self._vertex else self.projm_tensor
-        return _as_expression(tensor(first, second))
+        return _as_expression(self.projp_tensor(first, second))
 
     def identity(self, match: Mapping[Expression, Expression]) -> Expression:
         first, second = self._spinor_pair(

@@ -1411,8 +1411,9 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     """The model preparation of ``LoopSlice.generate``, before any tree,
     family or loop generation: the source-colour fixed parameters (LC and
     NLC need a colour declaration), the scale and alpha_s parameters,
-    ``prepare_loop_request_model`` and, with a colour declaration,
-    ``prepare_declared_source_color``. The public dry run
+    ``prepare_loop_request_model``, with a colour declaration
+    ``prepare_declared_source_color``, and the gauge refusal of an
+    electroweak request (``ew_policy.require_feynman_gauge``). The public dry run
     (``Generator.plan``) runs it alone to report its refusals."""
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
@@ -1466,6 +1467,14 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
         prepared, continuation = prepare_declared_source_color(
             prepared, declaration, scheme=declaration.scheme
         )
+    if ew_policy.electroweak(
+        compiled, request, prepared.structure.perturbative_species_orders
+    ):
+        # The gauge scope (WP3.2 EWI-4b), refused here so that the dry run
+        # reports it (a source without gauge 1 is refused by the loop
+        # preparation already, a bundle prepared in unitary gauge here);
+        # ``LoopSlice.generate`` switches the gauge.
+        ew_policy.require_feynman_gauge(compiled, request)
     return RequestModel(
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter
     )
@@ -1620,6 +1629,11 @@ class LoopSlice:
         )
         if electroweak:
             ew_policy.require_no_external_photons(compiled, request, process, fixed)
+            # One gauge throughout (DESIGN §6.8, WP3.2 EWI-4b): Born, blocks,
+            # loop lines and counterterms of a request with electroweak loop
+            # species take 't Hooft-Feynman gauge with explicit Goldstones
+            # and ghosts; QCD-only requests keep the model's gauge.
+            compiled = ew_policy.feynman_gauge_model(compiled, request)
         loop_catalogue = ModelLoopCatalogue(
             data,
             species_orders=structure.perturbative_species_orders,
