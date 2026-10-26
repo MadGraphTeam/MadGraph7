@@ -1,11 +1,38 @@
 # SPDX-License-Identifier: 0BSD
-"""Bounded local source conformance for neutral lepton electroweak controls."""
+"""Bounded local source conformance for colour-singlet electroweak tensors.
+
+Entries are certified by structure (genericity audit m5): spins, colour
+representations, charge conjugation and the exact colour/Lorentz tensors,
+never by particle identities. A colour-singlet fermion pair is a particle and
+its own antiparticle (the antiparticle first, as UFO orders FFV/FFS vertices);
+a neutral boson is its own antiparticle.
+"""
 
 from types import SimpleNamespace
 
 from .model_correspondence import CountertermPrimitiveValidation
 from .model_expressions import parse_exact_ufo
 from .vertex_frames import certified_ffs_source, certified_ffv_source
+
+
+def _neutral(particle) -> bool:
+    """A self-conjugate (neutral) particle."""
+
+    return particle["name"] == particle["antiname"]
+
+
+def _singlet_fermion_pair(first, second) -> bool:
+    """An antifermion and its fermion, colour singlets, the antiparticle
+    first (UFO's sign convention for antiparticle PDG codes)."""
+
+    return (
+        first["spin"] == second["spin"] == 2
+        and first["color"] == second["color"] == 1
+        and first["antiname"] == second["name"]
+        and second["antiname"] == first["name"]
+        and first["name"] != second["name"]
+        and first["pdg_code"] == -second["pdg_code"] < 0
+    )
 
 
 def neutral_scalar_vector_counterterm_validations(source):
@@ -27,9 +54,9 @@ def neutral_scalar_vector_counterterm_validations(source):
         colors = tuple(p["color"] for p in particles)
         expression = parse_exact_ufo(entry.lorentz)
         if (
-            pdgs in ((250, 22), (250, 23))
-            and spins == (1, 3)
+            spins == (1, 3)
             and colors == (1, 1)
+            and all(_neutral(p) for p in particles)
             and any((expression - item).expand() == 0 for item in structures)
         ):
             result.append(
@@ -82,15 +109,16 @@ def neutral_lepton_counterterm_validations(source):
         expression = parse_exact_ufo(entry.lorentz)
         ffv = (
             len(pdgs) == 3
-            and pdgs[:2] in ((-11, 11), (-13, 13))
-            and pdgs[2] in (22, 23)
+            and _singlet_fermion_pair(*particles[:2])
+            and spins[2] == 3
+            and _neutral(particles[2])
             and certified_ffv_source(
                 SimpleNamespace(spins=spins, structure=wrap_indices(expression))
             )
         )
         vector = (
             spins == (3, 3)
-            and all(pdg in (22, 23) for pdg in pdgs)
+            and all(_neutral(p) for p in particles)
             and any((expression - value).expand() == 0 for value in vector_sources)
         )
         if ffv or vector:
@@ -113,9 +141,10 @@ def neutral_lepton_counterterm_validations(source):
 def massive_neutral_lepton_counterterm_validations(source):
     """Add tested neutral FFS and scalar/vector local bases without pruning.
 
-    This source-key catalogue is bounded to electron/muon H/G0 vertices and
-    neutral mixing. The physical assembly must still retain every matched
-    source entry, check scalar diagnostics and reject any unvalidated tensor.
+    This source-key catalogue is bounded to a colour-singlet fermion pair with
+    a neutral scalar, and neutral scalar/vector mixing. The physical assembly
+    must still retain every matched source entry, check scalar diagnostics and
+    reject any unvalidated tensor.
     """
     from ufo_model_loader.symbolica_processing import wrap_indices
 
@@ -134,9 +163,10 @@ def massive_neutral_lepton_counterterm_validations(source):
         colors = tuple(p["color"] for p in particles)
         if (
             len(pdgs) == 3
-            and pdgs[:2] in ((-11, 11), (-13, 13))
-            and pdgs[2] in (25, 250)
+            and _singlet_fermion_pair(*particles[:2])
+            and spins[2] == 1
             and colors == (1, 1, 1)
+            and _neutral(particles[2])
             and certified_ffs_source(
                 SimpleNamespace(
                     spins=spins,
