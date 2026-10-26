@@ -1599,7 +1599,9 @@ def _validate_v2_artifact(backend, output, context, generated, members):
     """Load every staged process (and flavour member) through the public
     runtime and compare its native evaluation, inclusive and for every
     declared colour history, with the Python reference executor of the
-    generated slice on the validation points."""
+    generated slice on the validation points, in binary64; a point whose
+    binary64 pair misses the tolerance is re-validated at the same tolerance
+    in double-double (``_revalidate_v2_point``)."""
     from pyamplicol.api import Runtime
     from pyamplicol.artifacts import load_manifest
     from pyamplicol.correlators import CorrelatedRequest
@@ -1648,15 +1650,69 @@ def _validate_v2_artifact(backend, output, context, generated, members):
             references = runner.evaluate(
                 point, scale, correlations=("born", *histories)
             )
-            for label, values in (("born", result), *correlated.items()):
-                _compare_v2(
-                    name,
-                    label,
-                    values,
-                    point_index,
-                    references[label],
-                    tolerance,
+            try:
+                for label, values in (("born", result), *correlated.items()):
+                    _compare_v2(
+                        name,
+                        label,
+                        values,
+                        point_index,
+                        references[label],
+                        tolerance,
+                    )
+            except GenerationError as miss:
+                _revalidate_v2_point(
+                    name, runtime, runner, histories, point, scale, tolerance, miss
                 )
+
+
+def _revalidate_v2_point(
+    name, runtime, runner, histories, point, scale, tolerance, miss
+) -> None:
+    """One validation point whose binary64 comparison ``miss``ed the
+    tolerance, compared again at the same tolerance in carriers that resolve
+    it: the saved artifact's native runtime in double-double against the
+    reference executor at ``DOUBLE_DOUBLE_DIGITS`` decimal digits, every
+    output of the point (Born and every declared colour history).
+
+    The binary64 pair is two routes (native and Python dressing), each
+    rounded its own way; where binary64 itself is accurate only to E above
+    the tolerance (the runtime's stability estimate), the two cannot agree
+    to the tolerance although both are right (d d~ > g g at NLC, casimir:
+    estimate 1.5e-11, the routes 4e-12 apart, each within 1e-11 of the
+    40-digit value). A defect of the saved artifact differs in every
+    carrier and is refused here, with the binary64 refusal chained.
+    """
+    from pyamplicol.correlators import CorrelatedRequest
+    from pyamplicol.loops.v2.assemble import DOUBLE_DOUBLE_DIGITS, Precision
+
+    try:
+        options = {"arithmetic": "double-double"}
+        native = {"born": runtime.evaluate([point], mu_r2=[scale], **options)}
+        if histories:
+            native |= runtime.evaluate_correlated_many(
+                [point],
+                {history: CorrelatedRequest(history, {}) for history in histories},
+                mu_r2=[scale],
+                **options,
+            )
+        references = runner.evaluate(
+            point,
+            scale,
+            correlations=("born", *histories),
+            precision=Precision.arbitrary(DOUBLE_DOUBLE_DIGITS),
+        )
+    except Exception as error:
+        raise GenerationError(
+            f"{miss}; its double-double re-validation could not run: {error}"
+        ) from miss
+    try:
+        for label, values in native.items():
+            _compare_v2(name, label, values, 0, references[label], tolerance)
+    except GenerationError as error:
+        raise GenerationError(
+            f"{error} in double-double, after binary64: {miss}"
+        ) from miss
 
 
 def _compare_v2(name, label, result, point_index, reference, tolerance):
