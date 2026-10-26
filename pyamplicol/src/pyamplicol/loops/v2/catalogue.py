@@ -34,6 +34,30 @@ Conventions
 * Loop lines are full current states (chirality 0). Attached blocks come in
   every current state the tree engine produces, including Weyl-projected
   massless fermions.
+* Segments of colour-singlet vertices carry the tree engine's reading sign
+  (``_CatalogueBuilder.reading_sign``). The tree engine reads every vertex in
+  the all-outgoing convention: the current of each outgoing tree particle on
+  the leg of that particle, with its outgoing momentum
+  (``generation.runtime_schema``: "sum all-outgoing momenta ... negate
+  physical incoming momenta first"). The segments read boson legs by their
+  incoming fields with incoming momenta (fermion legs already take the tree
+  reading, ``conventions.TreeReading``). On a coloured vertex the colour
+  reading compensates the difference (the momentum reversal of the gluon
+  vertex against the transposition of its ``f`` flow; the colour seeds read
+  the incoming legs). On a colour-singlet one nothing does: the tree engine's
+  value is the segment's times ``L(pi legs, -p) / L(legs, p)``, ``L`` the
+  Lorentz structure and ``pi`` the exchange of each boson leg with its
+  antiparticle's leg (identity for a vertex read through its conjugate rule,
+  which already takes the antiparticles' legs). That ratio is -1 exactly on the
+  Z G0 H, W G0 G+- and W G+- H vertices of the SM: the tree engine works in the
+  field basis with the Goldstones negated, to which the Goldstone Yukawas'
+  lone chiral projectors are matched (``models.tensors``), and blocks, Born
+  and counterterms come from it. A colour-singlet ghost vertex has no tree
+  reading; it takes the product of the field signs of its other legs, solved
+  over GF(2) from the closed colour-singlet boson vertices (-1 for the
+  ghost-G0 vertices), so the loops' ghost lines share that basis. Found by O2
+  per family on e+ e- > t t~ h and e- e+ > mu- mu+ (massive muon) against the
+  legacy engine and MadLoop (WP3.2 EWI-5).
 """
 
 from __future__ import annotations
@@ -511,6 +535,8 @@ class _CatalogueBuilder:
         self.proof_classes: dict[str, set[str]] = {}
         self.pending: list[_PendingBinding] = []
         self.unsupported_counterterms: list[UnsupportedCountertermSite] = []
+        self._reading_signs: dict[int, int] = {}
+        self._field_signs: _FieldSigns | None = None
 
     # -- species -----------------------------------------------------------
 
@@ -634,6 +660,8 @@ class _CatalogueBuilder:
             tag=f"loop_v2_t{term.id}",
         )
         coupling = self._coupling(term)
+        if self.reading_sign(term) < 0:
+            coupling = -coupling
         outputs = self._numerator(
             out_species,
             tuple(coupling * component for component in vertex),
@@ -692,6 +720,129 @@ class _CatalogueBuilder:
                     ),
                 )
             )
+
+    # -- tree reading of colour-singlet vertices --------------------------
+
+    def reading_sign(self, term: CompiledVertexTerm) -> int:
+        """The sign of the tree engine's reading of ``term`` against its
+        segments' (module docstring): 1 on a coloured vertex, the ratio of the
+        two readings on a colour-singlet one, the product of its other legs'
+        field signs on a colour-singlet ghost vertex."""
+
+        found = self._reading_signs.get(term.id)
+        if found is None:
+            found = self._reading_signs[term.id] = self._reading_sign(term)
+        return found
+
+    def _reading_sign(self, term: CompiledVertexTerm) -> int:
+        records = tuple(self.particles[name] for name in term.particles)
+        if any(abs(record.color) != 1 for record in records):
+            return 1
+        if not any(record.ghost_number for record in records):
+            return self._kinematic_reading_sign(term, records)
+        if not self._closed(term.particles):
+            # Never read: the readings refuse a ghost vertex not closed under
+            # conjugation (``conventions.conjugate_vertex_rules``).
+            return 1
+        sign = self._signs().product(
+            record.name for record in records if not record.ghost_number
+        )
+        if sign is None:
+            raise LoopKernelCatalogueError(
+                f"ghost vertex {term.vertex} {tuple(term.particles)}: the field "
+                "signs of its other legs are not fixed by the closed "
+                "colour-singlet boson vertices"
+            )
+        return sign
+
+    def _closed(self, names: Sequence[str]) -> bool:
+        return sorted(names) == sorted(self.particles[name].antiname for name in names)
+
+    def _kinematic_reading_sign(
+        self, term: CompiledVertexTerm, records: tuple[CompiledParticleRecord, ...]
+    ) -> int:
+        """L(pi legs, -p) / L(legs, p): each boson current on the leg of its
+        antiparticle (a closed vertex; a vertex not closed under conjugation
+        is read through its conjugate rule, on the antiparticles' legs
+        already), every momentum reversed. Refused unless it is +-1."""
+
+        legs = range(len(records))
+        partner = {leg: leg for leg in legs}
+        if self._closed(term.particles):
+            free = [leg for leg in legs if records[leg].spin != _FERMION_SPIN]
+            while free:
+                leg = free.pop(0)
+                anti = records[leg].antiname
+                other = (
+                    leg
+                    if anti == records[leg].name
+                    else next(o for o in free if records[o].name == anti)
+                )
+                if other != leg:
+                    free.remove(other)
+                partner[leg], partner[other] = other, leg
+        pdgs = tuple(record.pdg_code for record in records)
+        dimensions = tuple(int(self.model.current_dimension(pdg, 0)) for pdg in pdgs)
+        values = formal_components(self.model, "block-current", sum(dimensions))
+        vectors = formal_components(self.model, "block-momentum", 4 * len(records))
+        currents, momenta = {}, {}
+        offset = 0
+        for leg, (pdg, dimension) in enumerate(zip(pdgs, dimensions, strict=True)):
+            currents[leg] = self._embedded_current(
+                pdg, 0, values[offset : offset + dimension]
+            )
+            momenta[leg] = vectors[4 * leg : 4 * leg + 4]
+            offset += dimension
+        spins = tuple(record.spin for record in records)
+        (incoming,) = _contract_lorentz(
+            self.model_symbols,
+            term.lorentz_expression,
+            spins,
+            currents,
+            momenta,
+            output_leg=None,
+            tag=f"loop_v2_r{term.id}",
+        )
+        (tree,) = _contract_lorentz(
+            self.model_symbols,
+            term.lorentz_expression,
+            spins,
+            {partner[leg]: currents[leg] for leg in legs},
+            {partner[leg]: tuple(-x for x in momenta[leg]) for leg in legs},
+            output_leg=None,
+            tag=f"loop_v2_r{term.id}",
+        )
+        for sign in (1, -1):
+            if (tree - sign * incoming).expand().to_canonical_string() == "0":
+                return sign
+        raise LoopKernelCatalogueError(
+            f"vertex {term.vertex} {tuple(term.particles)}: its tree reading is "
+            "not a sign of its loop segments' reading (a colour-singlet Lorentz "
+            "structure of mixed momentum parity or exchange symmetry)"
+        )
+
+    def _signs(self) -> _FieldSigns:
+        """Field signs of the tree engine's basis, from the closed colour-
+        singlet boson vertices of the model (module docstring)."""
+
+        if self._field_signs is None:
+            equations = []
+            for term in self.compiled.ir.vertex_terms:
+                records = tuple(self.particles[name] for name in term.particles)
+                if (
+                    any(
+                        abs(record.color) != 1
+                        or record.ghost_number
+                        or record.spin == _FERMION_SPIN
+                        or record.auxiliary_kind is not None
+                        for record in records
+                    )
+                    or not self._closed(term.particles)
+                ):
+                    continue
+                equations.append((term.particles, self.reading_sign(term)))
+            self._field_signs = _FieldSigns(equations)
+        return self._field_signs
 
     def _embedded_current(
         self,
@@ -1054,6 +1205,53 @@ class _CatalogueBuilder:
             ),
             unsupported_counterterms=tuple(sorted(set(self.unsupported_counterterms))),
         )
+
+
+# UFO spin of a fermion (2S + 1).
+_FERMION_SPIN = 2
+
+
+class _FieldSigns:
+    """Signs s_f = +-1 of fields with prod_legs s_f = sign per equation,
+    solved over GF(2) (``_CatalogueBuilder._signs``)."""
+
+    def __init__(self, equations: Iterable[tuple[Iterable[str], int]]):
+        self._index: dict[str, int] = {}
+        # Reduced rows: pivot bit -> (mask, parity); a mask is a field set.
+        self._rows: dict[int, tuple[int, int]] = {}
+        for names, sign in equations:
+            mask, parity = self._reduce(self._mask(names), int(sign < 0))
+            if not mask:
+                if parity:
+                    raise LoopKernelCatalogueError(
+                        "the tree reading signs of the colour-singlet boson "
+                        "vertices are not those of a field basis"
+                    )
+                continue
+            pivot = mask.bit_length() - 1
+            for bit, (other, other_parity) in list(self._rows.items()):
+                if other >> pivot & 1:
+                    self._rows[bit] = (other ^ mask, other_parity ^ parity)
+            self._rows[pivot] = (mask, parity)
+
+    def _mask(self, names: Iterable[str]) -> int:
+        mask = 0
+        for name in names:
+            mask ^= 1 << self._index.setdefault(name, len(self._index))
+        return mask
+
+    def _reduce(self, mask: int, parity: int) -> tuple[int, int]:
+        for bit in sorted(self._rows, reverse=True):
+            if mask >> bit & 1:
+                row, row_parity = self._rows[bit]
+                mask, parity = mask ^ row, parity ^ row_parity
+        return mask, parity
+
+    def product(self, names: Iterable[str]) -> int | None:
+        """prod s_f over ``names``, None when the equations do not fix it."""
+
+        mask, parity = self._reduce(self._mask(names), 0)
+        return None if mask else (-1 if parity else 1)
 
 
 def _counterterm_entry_key(entry: KernelBasisEntry) -> tuple[str, int, int, int, int]:
