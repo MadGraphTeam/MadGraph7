@@ -5,10 +5,12 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 import madgraph.interface.master_interface as mgcmd
 import madgraph.fks.fks_helas_objects as fks_helas
 import madgraph.fks.fks_real_channels_auto as auto
+from madgraph.interface.amcatnlo_interface import aMCatNLOInterface
 from madgraph.various import banner
 
 
@@ -78,6 +80,38 @@ class TestRealChannelsDecision(unittest.TestCase):
         directories = [{'born': {'legs': [], 'props': []}, 'reals': []}]
         self.assertEqual(auto.decide(directories,
                                      auto.MAX_HARD_CHANNELS + 1)[0], -1.)
+
+
+class TestRealChannelsAnalyserCache(unittest.TestCase):
+    """The parameter values are evaluated once per model of an output"""
+
+    def setUp(self):
+        auto.clear_analysers()
+        patcher = mock.patch.object(aMCatNLOInterface, 'get_parameter_values',
+                                    side_effect=lambda model: {'MT': 173.})
+        self.evaluate = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(auto.clear_analysers)
+
+    def test_alternating_models_are_evaluated_once(self):
+        """The Born and the real amplitudes of a directory carry different
+        model objects, used in turn"""
+        born, real = object(), object()
+        for _ in range(5):
+            self.assertIs(auto.get_analyser(born).model, born)
+            self.assertIs(auto.get_analyser(real).model, real)
+        self.assertEqual(self.evaluate.call_count, 2)
+
+    def test_reused_id_does_not_return_another_model(self):
+        old, new = object(), object()
+        auto._analysers[id(new)] = auto.RealChannelAnalyser(old, {})
+        self.assertIs(auto.get_analyser(new).model, new)
+        self.assertEqual(self.evaluate.call_count, 1)
+
+    def test_clear_releases_the_models(self):
+        auto.get_analyser(object())
+        auto.clear_analysers()
+        self.assertEqual(auto._analysers, {})
 
 
 class TestRealChannelsSectors(unittest.TestCase):

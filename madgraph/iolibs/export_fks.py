@@ -2054,6 +2054,8 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
     def set_real_channels_default(self):
         """Choose the default of real_channels_x0 in the run_card of the
         process, from the real_channels_structure.json of all directories"""
+        # all directories are written: the model analysers are not needed
+        fks_real_channels_auto.clear_analysers()
         directories = []
         for path in glob.glob(pjoin(self.dir_path, 'SubProcesses', 'P*',
                                     'real_channels_structure.json')):
