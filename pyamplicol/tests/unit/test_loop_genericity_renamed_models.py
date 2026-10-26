@@ -414,6 +414,10 @@ def test_order_names_resolve_once_in_any_case():
     shipped = CouplingOrderNames.of(("QCD", "QED"))
     orders = (("QCD", 2),)
     assert shipped.identity and shipped.orders(orders) is orders
+    # A model without a compiled IR has no known spelling: refused, not an
+    # identity translation that would hand tree keys to the loop side.
+    with pytest.raises(TypeError, match="need a compiled model"):
+        CouplingOrderNames.of_model(object())
 
 
 def test_orders_one_key_apart_are_refused_at_load(loop_sm_ufo, tmp_path):
