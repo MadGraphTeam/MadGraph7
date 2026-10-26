@@ -3193,7 +3193,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::unordered_map<int, int>,
                 nested_vector2<double>,
                 nested_vector3<int>,
-                nested_vector3<int>>(),
+                nested_vector3<int>,
+                nested_vector2<double>>(),
             py::arg("process_id") = 0,
             py::arg("topologies") = std::vector<Topology>{},
             py::arg("permutations") = nested_vector3<std::size_t>{},
@@ -3203,7 +3204,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("pdg_color_types") = std::unordered_map<int, int>{},
             py::arg("helicities") = nested_vector2<double>{},
             py::arg("pdg_ids") = nested_vector3<int>{},
-            py::arg("diagram_propagator_pdgs") = nested_vector3<int>{}
+            py::arg("diagram_propagator_pdgs") = nested_vector3<int>{},
+            py::arg("pdg_id_weights") = nested_vector2<double>{}
         )
         .def_readwrite(
             "process_id",
@@ -3254,6 +3256,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "diagram_propagator_pdgs",
             &LHECompleter::SubprocArgs::diagram_propagator_pdgs,
             pydoc::doc("LHECompleter::SubprocArgs::diagram_propagator_pdgs")
+        )
+        .def_readwrite(
+            "pdg_id_weights",
+            &LHECompleter::SubprocArgs::pdg_id_weights,
+            pydoc::doc("LHECompleter::SubprocArgs::pdg_id_weights")
         );
     py::classh<MixMaxRandom>(m, "MixMaxRandom", pydoc::doc("MixMaxRandom"))
         .def(py::init<>(), pydoc::doc("MixMaxRandom::MixMaxRandom"))
