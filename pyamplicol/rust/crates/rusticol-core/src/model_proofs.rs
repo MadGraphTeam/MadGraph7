@@ -154,16 +154,12 @@ impl<'a> Proof<'a, '_> {
     ) -> RusticolResult<&str> {
         let component = self.component(order, index);
         if !self.shared.strings.contains_key(&(component, sign)) {
-            let oriented = self.oriented(order, index)?;
-            // The oracle's `(sign * oriented).expand()`: `oriented` is
-            // expanded already, so for the sign 1 that is `oriented` itself.
-            let text = if SIGNS[sign] == 1 {
-                oriented.to_canonical_string()
-            } else {
-                (Atom::num(SIGNS[sign]) * oriented)
-                    .expand()
-                    .to_canonical_string()
-            };
+            // The oracle's `(sign * oriented).expand()`, for the sign 1 too:
+            // Symbolica's expansion is not idempotent (a second one can
+            // expand a sum the first left in a factor).
+            let text = (Atom::num(SIGNS[sign]) * self.oriented(order, index)?)
+                .expand()
+                .to_canonical_string();
             self.shared.strings.insert((component, sign), text);
         }
         Ok(self.shared.strings[&(component, sign)].as_str())
