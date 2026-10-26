@@ -114,7 +114,18 @@ class _Metrics:
     process: the Born metric is the counterterm record's own (``record
     ["cells"]``, ``native_trees._counterterm_program``), stored as None (the
     native columns read the tree program's), a directed history's (and its
-    swap) the history's operator overlaps."""
+    swap) the history's operator overlaps.
+
+    A directed metric is formed natively (package C's colour cells, the
+    "cells" stage of ``native_cells.NATIVE_STAGES``) when the direction's
+    loop side is gluon emissions (``DirectedColour._absorbable``): the
+    operator images ket^dagger bra(b) of the literal Born basis
+    (``NativeCells.directed``, natively when the Born side is gluon
+    emissions too, else the oracle's ``DirectedColour.operator``) against
+    every ket tensor in one native table. ``DirectedColour.overlap`` per
+    (b, t) pair is the oracle (``_cells``; the stage off or a quark-pair
+    splitting on the loop side): one Python contraction per pair, 96 % of the
+    export at five legs with every dipole declared."""
 
     def __init__(self, observables: Any, record: Mapping[str, Any], ket_literals):
         self.observables = observables
@@ -123,6 +134,7 @@ class _Metrics:
         slice_ = observables.slice
         self.basis = [tensor.terms[0].tensor for tensor in slice_.basis.tensors]
         self._found: dict[tuple[Any, bool], list[list[Any]]] = {}
+        self._engine: Any = None
 
     def cells(self, column: Any, swapped: bool) -> tuple[tuple[Any, bool], list | None]:
         key = (column.history.id if column.directed else None, swapped)
@@ -131,12 +143,61 @@ class _Metrics:
         found = self._found.get(key)
         if found is None:
             directed = self.observables.directed(column.history)
+            found = self._native(directed, swapped)
+            if found is None:
 
-            def overlap(left, right):
-                return directed.overlap(left, right, swapped=swapped)
+                def overlap(left, right):
+                    return directed.overlap(left, right, swapped=swapped)
 
-            found = self._found[key] = _cells(self.basis, self.ket_literals, overlap)
+                found = _cells(self.basis, self.ket_literals, overlap)
+            self._found[key] = found
         return key, found
+
+    def _native(self, directed: Any, swapped: bool) -> list[list[Any]] | None:
+        """The cells of one direction natively (class docstring), or None
+        where the oracle forms them."""
+
+        from dataclasses import replace
+
+        from . import native_cells
+
+        if "cells" not in native_cells.NATIVE_STAGES or not directed._absorbable(
+            swapped
+        ):
+            return None
+        legs = self.observables.slice.basis.legs
+        if self._engine is None:
+            from .observables import _literal
+
+            # The engine of the literal basis (unit coefficient, no
+            # normalisation), as ``DirectedColour.overlap`` reads it, and
+            # the ket tensors as generic classes, shared by every metric.
+            basis = replace(
+                self.observables.slice.basis,
+                tensors=tuple(_literal(b, legs) for b in self.basis),
+            )
+            kets = [_literal(t, legs) for t in self.ket_literals]
+            self._engine = (native_cells.NativeCells(basis), basis, kets)
+        base, basis, kets = self._engine
+        born, loop_side = directed._sides(swapped)
+        emissions = native_cells._gluon_emissions(born.emissions)
+        absorbed = native_cells._gluon_emissions(loop_side.emissions)
+        if emissions is not None and absorbed is not None:
+            engine = base.directed(emissions, absorbed)
+        else:
+            images = replace(
+                basis,
+                tensors=tuple(directed.operator(b, swapped) for b in basis.tensors),
+            )
+            engine = base.rebased(images)
+        rows = native_cells.decode(engine.table(kets))
+        out = []
+        for b in range(len(self.basis)):
+            for t, row in enumerate(rows):
+                for power, cell in sorted(row[b].items()):
+                    if cell:
+                        out.append([b, t, power, _text(cell.real), _text(cell.imag)])
+        return out
 
 
 class _Programs:
