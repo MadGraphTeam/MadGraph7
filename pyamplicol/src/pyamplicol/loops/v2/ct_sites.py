@@ -64,7 +64,11 @@ Colour, kinematics and signs of a site term (design §6.4, §6.6):
   rule, so its kernels and couplings are the conjugate rule's, which differ
   from the vertex's own by complex conjugation and the exchange of chiral
   projectors (``ConjugateVertices``), while its colour stays the incoming
-  reading of the vertex (WP3.2 EWI-2);
+  reading of the vertex (WP3.2 EWI-2). On a vertex whose legs are all
+  self-conjugate the two readings differ by the direction of the momenta
+  and the transposition of the adjoint colour flows; its terms carry the
+  sign between them (``SiteClosure._reading_sign``), 1 on every QCD vertex,
+  -1 on the Levi-Civita R2 of a Z with gluons (WP3.2 EWI-7b);
 * ``Block.wick_sign`` turns each block into its Feynman-rule current and the
   root sign completes FeynKit's diagram sign: the parity of the full coloured
   fermion line listing over the product of the blocks' listings
@@ -929,6 +933,8 @@ class SiteClosure:
         self._bindings = {
             binding.key: binding for binding in catalogue.counterterm_sites
         }
+        # (entry key, kernel id) -> ``_reading_sign``.
+        self._reading: dict[tuple[Any, int], int] = {}
         self._unsupported = frozenset(
             item.entry_key for item in catalogue.unsupported_counterterms
         )
@@ -1069,11 +1075,43 @@ class SiteClosure:
                         binding,
                         choice,
                         legs,
-                        sign * wick,
+                        sign * wick * self._reading_sign(entry, binding),
                         self._colour(colour_entry or entry, attachments, choice),
                     )
                 )
         return tuple(out)
+
+    def _reading_sign(self, entry: Any, binding: Any) -> int:
+        """The sign between the tree engine's reading of a vertex whose legs
+        are all self-conjugate fields and the root closure's (module
+        docstring, "Colour, kinematics and signs").
+
+        On such a vertex both readings fill each kernel leg with the same
+        block row, but the tree engine reads the momenta of its outgoing
+        tree particles and their colour flows, the closure the momenta
+        flowing in from the incoming fields and their colour: the momenta
+        are reversed and each adjoint colour flow is transposed, which
+        changes the sign of an ``f`` and keeps ``d``, two-index traces and
+        identities. The closure value then differs from the tree engine's
+        (the Feynman rule's) by (-1)^(momentum degree of the kernel) times
+        the colour's transposition sign: 1 for every QCD vertex (``f`` with
+        one momentum, ``d`` or metrics without), -1 for the Levi-Civita R2
+        of a Z with gluons (``R2_GGZ``: a two-index trace with one momentum;
+        ``R2_GGGVa``: ``f`` without; WP3.2 EWI-7b, EW-20). Other vertices
+        read through ``ConjugateVertices`` or their own conjugate legs keep
+        sign 1. A kernel of mixed momentum parity or a colour of mixed
+        transposition sign is refused.
+        """
+
+        if not all(self._anti[name] == name for name in entry.particle_names):
+            return 1
+        key = (_entry_key(entry), binding.kernel_id)
+        found = self._reading.get(key)
+        if found is None:
+            kernel = self.catalogue.kernels[binding.kernel_id]
+            found = _momentum_parity(kernel) * _colour_transposition_sign(entry.color)
+            self._reading[key] = found
+        return found
 
     def read_entries(self, entries: Sequence[Any]) -> tuple[Any, ...]:
         """The entries the root closure reads for a vertex's ``entries``
@@ -1367,6 +1405,74 @@ def _entry_key(entry: Any) -> tuple[str, int, int, int, int]:
         entry.lorentz_index,
         -1 if entry.loop_group_index is None else entry.loop_group_index,
     )
+
+
+def _momentum_parity(kernel: Any) -> int:
+    """(-1)^(momentum degree) of a ``ct-site`` kernel: 1 when its components
+    are even in its block momenta, -1 when odd; mixed parity is refused."""
+
+    from symbolica import E, Replacement
+
+    flipped = [
+        Replacement(E(item.symbol), -E(item.symbol))
+        for item in kernel.inputs
+        if item.role == "block-momentum"
+    ]
+    if not flipped:
+        return 1
+    parities = set()
+    for expression in kernel.exact_expressions:
+        value = E(expression)
+        mirrored = value.replace_multiple(flipped)
+        if (mirrored - value).expand() == E("0"):
+            parities.add(1)
+        elif (mirrored + value).expand() == E("0"):
+            parities.add(-1)
+        else:
+            parities.add(0)
+    if len(parities) != 1 or 0 in parities:
+        raise NotImplementedError(
+            "a ct-site kernel of mixed momentum parity has no reading sign"
+        )
+    return parities.pop()
+
+
+def _colour_transposition_sign(colour: str) -> int:
+    """The sign a UFO colour tensor of adjoint and singlet legs takes when
+    every adjoint generator is transposed: -1 per ``f``, 1 per ``d``,
+    ``Identity`` or two-index trace; the terms of a sum must share it, and
+    other tensors (longer traces, fundamental generators) are refused."""
+
+    import ast
+
+    def terms(node: ast.AST) -> list[ast.AST]:
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
+            return terms(node.left) + terms(node.right)
+        if isinstance(node, ast.UnaryOp):
+            return terms(node.operand)
+        return [node]
+
+    signs = set()
+    for term in terms(ast.parse(colour, mode="eval").body):
+        sign = 1
+        for call in (n for n in ast.walk(term) if isinstance(n, ast.Call)):
+            name = call.func.id if isinstance(call.func, ast.Name) else None
+            arity = len(call.args)
+            if name == "complex":
+                continue
+            if name == "f" and arity == 3:
+                sign = -sign
+            elif not (
+                (name == "d" and arity == 3)
+                or (name in ("Identity", "Tr") and arity == 2)
+            ):
+                raise NotImplementedError(
+                    f"colour {colour}: no transposition sign for {name}/{arity}"
+                )
+        signs.add(sign)
+    if len(signs) != 1:
+        raise NotImplementedError(f"colour {colour}: mixed transposition signs")
+    return signs.pop()
 
 
 def entry_cell(entry: Any) -> Cell:
