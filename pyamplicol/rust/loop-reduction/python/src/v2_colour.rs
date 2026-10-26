@@ -358,9 +358,11 @@ fn face_counts(pairs: Vec<(RawStructure, RawStructure)>) -> PyResult<Vec<i32>> {
 /// `tables[t]` = (cells, loop-order ranks per class, Born-order ranks per
 /// basis element); `columns` = (table, (Born rank, loop rank) pairs,
 /// degree, basis subset); `seeds` = (combination of (class, re, im), loop
-/// rank) in plan order; `components` the Born components seen so far.
+/// rank) in plan order; `components` the Born components seen so far;
+/// `threads` a private pool (None: the global one).
 #[pyfunction]
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+#[pyo3(signature = (tables, columns, born_grades, accuracy, components, seeds, threads=None))]
 fn project_records(
     py: Python<'_>,
     tables: Vec<(PyRef<'_, NativeCellTable>, Vec<Vec<u32>>, Vec<Vec<u32>>)>,
@@ -369,6 +371,7 @@ fn project_records(
     accuracy: &str,
     components: Vec<(usize, u32, i32)>,
     seeds: Vec<(Vec<(usize, String, String)>, u32)>,
+    threads: Option<usize>,
 ) -> PyResult<(Vec<u8>, Vec<u8>, Vec<(usize, u32, i32)>)> {
     let accuracy = self::accuracy(accuracy)?;
     let ordered: Vec<OrderedTable<'_>> = tables
@@ -402,18 +405,16 @@ fn project_records(
         })
         .collect::<PyResult<Vec<_>>>()?;
     let mut components = components;
-    let records = py
-        .detach(|| {
-            cells::project_records(
-                &ordered,
-                &columns,
-                &grades,
-                accuracy,
-                &mut components,
-                &seeds,
-            )
-        })
-        .map_err(error)?;
+    let records = on_threads(py, threads, || {
+        cells::project_records(
+            &ordered,
+            &columns,
+            &grades,
+            accuracy,
+            &mut components,
+            &seeds,
+        )
+    })?;
     Ok((
         records.class_records.into_bytes(),
         records.records.into_bytes(),
@@ -606,11 +607,6 @@ impl NativeDipoleOrbits {
             decodes: AtomicUsize::new(0),
         }
     }
-
-    fn entries(&self) -> usize {
-        let c = self.orbits.coloured.len();
-        c * c.saturating_sub(1) * self.orbits.basis * self.orbits.basis
-    }
 }
 
 #[pymethods]
@@ -676,21 +672,31 @@ impl NativeDipoleOrbits {
     fn expand(&self, py: Python<'_>) -> PyResult<RawDipoles> {
         let c = self.orbits.coloured.len();
         let n = self.orbits.basis;
-        let mut dense: Vec<Vec<Vec<String>>> = vec![vec![vec![String::new(); n]; n]; c * c];
-        py.detach(|| {
-            self.orbits.expand(|i, j, b, b2, value| {
-                dense[i * c + j][b][b2] = cells::fraction_text(value);
+        // Dense [i][j][b][b'] texts, allocated fallibly (the stored form's
+        // index space was validated at load).
+        let dense = py
+            .detach(|| {
+                self.orbits
+                    .expand_dense(String::new(), cells::fraction_text)
             })
-        })
-        .map_err(error)?;
-        self.decodes.fetch_add(self.entries(), Ordering::Relaxed);
-        let labels: Vec<i64> = self.orbits.coloured.iter().map(|leg| leg.0).collect();
-        Ok(dense
-            .into_iter()
-            .enumerate()
-            .filter(|(k, _)| k / c != k % c)
-            .map(|(k, rows)| ((labels[k / c], labels[k % c]), rows))
-            .collect())
+            .map_err(error)?;
+        let entries = self.orbits.entry_count().map_err(error)?;
+        self.decodes.fetch_add(entries, Ordering::Relaxed);
+        let mut values = dense.into_iter();
+        let mut out = Vec::with_capacity(c * c.saturating_sub(1));
+        for (i, a) in self.orbits.coloured.iter().enumerate() {
+            for (j, b) in self.orbits.coloured.iter().enumerate() {
+                if i == j {
+                    // The empty diagonal block (n * n <= c² n², validated).
+                    values.by_ref().take(n * n).for_each(drop);
+                    continue;
+                }
+                let rows: Vec<Vec<String>> =
+                    (0..n).map(|_| values.by_ref().take(n).collect()).collect();
+                out.push(((a.0, b.0), rows));
+            }
+        }
+        Ok(out)
     }
 
     /// SHA-256 of the expanded entries in `LoopSlice.dipoles` order.

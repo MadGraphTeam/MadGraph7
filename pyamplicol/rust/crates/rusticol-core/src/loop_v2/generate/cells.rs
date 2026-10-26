@@ -1109,12 +1109,26 @@ pub fn fundamental_trace_tensor(word: &[Label], legs: &[Leg]) -> RusticolResult<
     ))
 }
 
+/// The U(N_c) terms of an adjoint ring.
+type UnTerms = Vec<(i64, Vec<Vec<Label>>, i32)>;
+
 /// `Primitive.un_terms` of an adjoint ring: (sign, traces, N_c power) of
 /// Tr_adj(prod ad tau^w_i) = sum_S (-1)^|not S| tr(tau^w_S) tr(tau^rev(w_not S)).
-pub fn adjoint_un_terms(word: &[Label]) -> Vec<(i64, Vec<Vec<Label>>, i32)> {
+/// A ring whose 2^n subsets overflow the mask is refused (rule 2).
+pub fn adjoint_un_terms(word: &[Label]) -> RusticolResult<UnTerms> {
     let n = word.len();
-    let mut out = Vec::with_capacity(1 << n);
-    for mask in 0u64..(1u64 << n) {
+    let subsets = u32::try_from(n)
+        .ok()
+        .and_then(|n| 1u64.checked_shl(n))
+        .ok_or_else(|| {
+            invalid(format!(
+                "an adjoint ring of {n} letters has too many subsets"
+            ))
+        })?;
+    let mut out = Vec::new();
+    out.try_reserve_exact(usize::try_from(subsets).map_err(|e| invalid(e.to_string()))?)
+        .map_err(|error| invalid(format!("an adjoint ring of {n} letters: {error}")))?;
+    for mask in 0u64..subsets {
         let inside: Vec<Label> = (0..n)
             .filter(|i| mask >> i & 1 == 1)
             .map(|i| word[i])
@@ -1132,7 +1146,7 @@ pub fn adjoint_un_terms(word: &[Label]) -> Vec<(i64, Vec<Vec<Label>>, i32)> {
         let power = 2 - traces.len() as i32;
         out.push((sign, traces, power));
     }
-    out
+    Ok(out)
 }
 
 /// `_PrimitiveCells._overlap` of an adjoint ring: its U(N_c) expansion
@@ -1155,7 +1169,7 @@ pub fn adjoint_ring_overlap(word: &[Label], bra: &Tensor) -> RusticolResult<Laur
         Integer::from(2).pow((bra.normalization / 2) as u64),
     );
     let mut out = Laurent::new();
-    for (sign, traces, power) in adjoint_un_terms(word) {
+    for (sign, traces, power) in adjoint_un_terms(word)? {
         // Literal traces list tr(tau^w_k .. tau^w_1).
         let ket = Structure {
             strings: Vec::new(),
@@ -2484,7 +2498,7 @@ mod tests {
             let bra = adjoint_tensor(&legs, bra);
             let faces = adjoint_ring_overlap(&word, &bra).unwrap();
             let mut ket_terms = Vec::new();
-            for (sign, traces, power) in adjoint_un_terms(&word) {
+            for (sign, traces, power) in adjoint_un_terms(&word).unwrap() {
                 ket_terms.push(Term {
                     coefficient: Exact::integer(sign),
                     structure: Structure::new(

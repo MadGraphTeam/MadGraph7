@@ -42,6 +42,43 @@ fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("dipole orbits: {}", message.into()))
 }
 
+/// `len` copies of `value`, allocated fallibly: an index space the host
+/// cannot hold is a typed refusal, not an abort.
+fn filled<T: Clone>(len: usize, value: T, what: &str) -> RusticolResult<Vec<T>> {
+    let mut out = Vec::new();
+    out.try_reserve_exact(len)
+        .map_err(|error| invalid(format!("cannot allocate {len} {what}: {error}")))?;
+    out.resize(len, value);
+    Ok(out)
+}
+
+/// The orbit size of every point of `0..len` under the permutations
+/// `image(g, x)`, g in `0..generators` (union-find).
+fn orbit_sizes(
+    len: usize,
+    generators: usize,
+    image: impl Fn(usize, usize) -> usize,
+) -> RusticolResult<Vec<usize>> {
+    let mut parent: Vec<usize> = filled(len, 0, "orbit slots")?;
+    for (x, slot) in parent.iter_mut().enumerate() {
+        *slot = x;
+    }
+    for g in 0..generators {
+        for x in 0..len {
+            let (a, b) = (find(&mut parent, x), find(&mut parent, image(g, x)));
+            if a != b {
+                parent[b] = a;
+            }
+        }
+    }
+    let mut size: Vec<usize> = filled(len, 0, "orbit slots")?;
+    for x in 0..len {
+        let root = find(&mut parent, x);
+        size[root] += 1;
+    }
+    Ok((0..len).map(|x| size[find(&mut parent, x)]).collect())
+}
+
 /// One generator of the relabelling group: its action on the coloured legs
 /// (by index) and on the basis elements (image, index into the scales).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -298,9 +335,35 @@ impl DipoleOrbits {
         Ok(orbits)
     }
 
-    fn tuple_count(&self) -> usize {
-        let c = self.coloured.len();
-        c * c * self.basis * self.basis
+    /// c² B², the dense index space of (i, j, b, b′); a space that
+    /// overflows the address space is refused.
+    pub fn tuple_count(&self) -> RusticolResult<usize> {
+        let (c, n) = (self.coloured.len(), self.basis);
+        c.checked_mul(c)
+            .and_then(|x| x.checked_mul(n))
+            .and_then(|x| x.checked_mul(n))
+            .ok_or_else(|| {
+                invalid(format!(
+                    "{c} coloured legs and a basis of {n} overflow the index space"
+                ))
+            })
+    }
+
+    /// c (c − 1) B², the entries C_ij[b, b′] with i ≠ j.
+    pub fn entry_count(&self) -> RusticolResult<usize> {
+        let tuples = self.tuple_count()?;
+        // c B² <= c² B² once c >= 1 (and 0 for c = 0): no overflow.
+        Ok(tuples - self.coloured.len() * self.basis * self.basis)
+    }
+
+    /// B², the Born metric entries.
+    fn gram_count(&self) -> RusticolResult<usize> {
+        self.basis.checked_mul(self.basis).ok_or_else(|| {
+            invalid(format!(
+                "a basis of {} overflows the index space",
+                self.basis
+            ))
+        })
     }
 
     fn tuple(&self, index: usize) -> (usize, usize, usize, usize) {
@@ -322,10 +385,11 @@ impl DipoleOrbits {
     fn orbit_representatives(
         &self,
     ) -> RusticolResult<(Vec<(usize, usize, usize, usize)>, Vec<(usize, usize)>)> {
-        let mut visited = vec![false; self.tuple_count()];
+        let tuples = self.tuple_count()?;
+        let mut visited = filled(tuples, false, "orbit marks")?;
         let mut reps = Vec::new();
         let mut stack = Vec::new();
-        for start in 0..self.tuple_count() {
+        for start in 0..tuples {
             let (i, j, _, _) = self.tuple(start);
             if i == j || visited[start] {
                 continue;
@@ -344,7 +408,7 @@ impl DipoleOrbits {
             }
         }
         let n = self.basis;
-        let mut seen = vec![false; n * n];
+        let mut seen = filled(self.gram_count()?, false, "orbit marks")?;
         let mut gram = Vec::new();
         for start in 0..n * n {
             if seen[start] {
@@ -382,7 +446,8 @@ impl DipoleOrbits {
         &self,
         mut visit: impl FnMut(usize, usize, usize, usize, &Rational),
     ) -> RusticolResult<()> {
-        let mut visited = vec![false; self.tuple_count()];
+        let entries = self.entry_count()?;
+        let mut visited = filled(self.tuple_count()?, false, "orbit marks")?;
         let mut stack: Vec<(usize, Exact)> = Vec::new();
         let mut count = 0usize;
         for (i, j, b, b2, value) in &self.representatives {
@@ -410,8 +475,7 @@ impl DipoleOrbits {
                 }
             }
         }
-        let c = self.coloured.len();
-        if count != c * (c.saturating_sub(1)) * self.basis * self.basis {
+        if count != entries {
             return Err(invalid("the representatives do not cover every entry"));
         }
         Ok(())
@@ -423,7 +487,8 @@ impl DipoleOrbits {
         mut visit: impl FnMut(usize, usize, &Rational),
     ) -> RusticolResult<()> {
         let n = self.basis;
-        let mut visited = vec![false; n * n];
+        let entries = self.gram_count()?;
+        let mut visited = filled(entries, false, "orbit marks")?;
         let mut stack: Vec<(usize, Exact)> = Vec::new();
         let mut count = 0usize;
         for (b, b2, value) in &self.gram {
@@ -448,7 +513,7 @@ impl DipoleOrbits {
                 }
             }
         }
-        if count != n * n {
+        if count != entries {
             return Err(invalid(
                 "the Born metric representatives do not cover every entry",
             ));
@@ -465,7 +530,7 @@ impl DipoleOrbits {
     /// index (four bytes per entry) keeps the 7-leg comparison cheap.
     pub fn digest(&self) -> RusticolResult<String> {
         use sha2::{Digest, Sha256};
-        let mut ids = vec![u32::MAX; self.tuple_count()];
+        let mut ids = filled(self.tuple_count()?, u32::MAX, "value ids")?;
         let mut values: Vec<Rational> = Vec::new();
         let mut index: FastMap<Rational, u32> = FastMap::default();
         let (c, n) = (self.coloured.len(), self.basis);
@@ -519,7 +584,7 @@ impl DipoleOrbits {
         zero: T,
         cast: impl Fn(&Rational) -> T,
     ) -> RusticolResult<Vec<T>> {
-        let mut out = vec![zero; self.tuple_count()];
+        let mut out = filled(self.tuple_count()?, zero, "dense entries")?;
         let (c, n) = (self.coloured.len(), self.basis);
         self.expand(|i, j, b, b2, value| {
             out[((i * c + j) * n + b) * n + b2] = cast(value);
@@ -539,8 +604,9 @@ impl DipoleOrbits {
     pub fn check_conservation(&self) -> RusticolResult<()> {
         let n = self.basis;
         let c = self.coloured.len();
+        self.tuple_count()?;
         // One row per orbit of basis elements.
-        let mut seen = vec![false; n];
+        let mut seen = filled(n, false, "orbit marks")?;
         let mut rows = Vec::new();
         let mut stack = Vec::new();
         for start in 0..n {
@@ -560,8 +626,9 @@ impl DipoleOrbits {
             }
         }
         let row_of: FastMap<usize, usize> = rows.iter().enumerate().map(|(k, &b)| (b, k)).collect();
-        let mut sums = vec![Rational::zero(); c * rows.len() * n];
-        let mut gram = vec![Rational::zero(); rows.len() * n];
+        // rows.len() <= n, so c * rows * n <= c^2 n^2 does not overflow.
+        let mut sums = filled(c * rows.len() * n, Rational::zero(), "conservation sums")?;
+        let mut gram = filled(rows.len() * n, Rational::zero(), "Born metric rows")?;
         self.expand(|i, _j, b, b2, value| {
             if let Some(&k) = row_of.get(&b) {
                 let slot = &mut sums[(i * rows.len() + k) * n + b2];
@@ -612,62 +679,132 @@ impl DipoleOrbits {
         serde_json::to_string(&stored).map_err(|e| invalid(e.to_string()))
     }
 
-    /// Load the stored form; indices and group actions are validated.
+    /// Load the stored form, validated before any table of the index space
+    /// is allocated ([`DipoleOrbits::validate`]); `expand` then checks the
+    /// exact orbit cover and [`DipoleOrbits::check_conservation`] the
+    /// values.
     pub fn from_json(text: &str) -> RusticolResult<Self> {
         let stored: Stored = serde_json::from_str(text).map_err(|e| invalid(e.to_string()))?;
         if stored.format != FORMAT {
             return Err(invalid(format!("unknown format {:?}", stored.format)));
         }
-        let (c, n) = (stored.coloured.len(), stored.basis);
         let scales = stored
             .scales
             .iter()
             .map(|(re, im)| Exact::parse(re, im))
             .collect::<RusticolResult<Vec<_>>>()?;
-        if scales.first().is_none_or(|s| !s.is_one()) || scales.iter().any(Exact::is_zero) {
-            return Err(invalid("scale table must start with one and hold no zero"));
-        }
-        for g in &stored.generators {
-            let legs: FastSet<usize> = g.legs.iter().copied().collect();
-            let basis: FastSet<usize> = g.basis.iter().map(|x| x.0).collect();
-            if g.legs.len() != c
-                || legs.len() != c
-                || g.legs.iter().any(|&k| k >= c)
-                || g.basis.len() != n
-                || basis.len() != n
-                || g.basis.iter().any(|&(b, s)| b >= n || s >= scales.len())
-            {
-                return Err(invalid("a generator is not a permutation"));
-            }
-        }
         let representatives = stored
             .representatives
             .iter()
-            .map(|(i, j, b, b2, v)| {
-                if *i >= c || *j >= c || *b >= n || *b2 >= n {
-                    return Err(invalid("representative out of range"));
-                }
-                Ok((*i, *j, *b, *b2, parse_rational(v)?))
-            })
+            .map(|(i, j, b, b2, v)| Ok((*i, *j, *b, *b2, parse_rational(v)?)))
             .collect::<RusticolResult<_>>()?;
         let gram = stored
             .gram
             .iter()
-            .map(|(b, b2, v)| {
-                if *b >= n || *b2 >= n {
-                    return Err(invalid("Born metric representative out of range"));
-                }
-                Ok((*b, *b2, parse_rational(v)?))
-            })
+            .map(|(b, b2, v)| Ok((*b, *b2, parse_rational(v)?)))
             .collect::<RusticolResult<_>>()?;
-        Ok(Self {
+        let orbits = Self {
             coloured: stored.coloured,
-            basis: n,
+            basis: stored.basis,
             generators: stored.generators,
             scales,
             representatives,
             gram,
-        })
+        };
+        orbits.validate()?;
+        Ok(orbits)
+    }
+
+    /// The structural checks of a stored form, none of which allocates the
+    /// index space: coloured legs in leg order (strictly increasing labels)
+    /// of representation 3, 3̄ or 8; an index space c² B² that fits; a
+    /// scale table starting with one and holding no zero; generators that
+    /// permute the coloured legs and the basis; representatives in range
+    /// and off the diagonal; and orbits large enough to cover every entry:
+    /// the orbit of (i, j, b, b′) lies in O(i) × O(j) × O(b) × O(b′) of
+    /// the generators' leg and basis orbits, so the stored representatives
+    /// must satisfy Σ |O(i)||O(j)||O(b)||O(b′)| ≥ c (c − 1) B² (and the
+    /// Born metric's Σ |O(b)||O(b′)| ≥ B²).
+    pub fn validate(&self) -> RusticolResult<()> {
+        let (c, n) = (self.coloured.len(), self.basis);
+        for pair in self.coloured.windows(2) {
+            if pair[0].0 >= pair[1].0 {
+                return Err(invalid(format!(
+                    "coloured legs must have distinct labels in leg order, not {} then {}",
+                    pair[0].0, pair[1].0
+                )));
+            }
+        }
+        for leg in &self.coloured {
+            casimir(leg.1)?;
+        }
+        let entries = self.entry_count()?;
+        let gram_entries = self.gram_count()?;
+        if self.scales.first().is_none_or(|s| !s.is_one()) || self.scales.iter().any(Exact::is_zero)
+        {
+            return Err(invalid("scale table must start with one and hold no zero"));
+        }
+        for g in &self.generators {
+            if g.legs.len() != c
+                || g.basis.len() != n
+                || g.legs.iter().any(|&k| k >= c)
+                || g.basis
+                    .iter()
+                    .any(|&(b, s)| b >= n || s >= self.scales.len())
+            {
+                return Err(invalid("a generator is not a permutation"));
+            }
+            let legs: FastSet<usize> = g.legs.iter().copied().collect();
+            let basis: FastSet<usize> = g.basis.iter().map(|x| x.0).collect();
+            if legs.len() != c || basis.len() != n {
+                return Err(invalid("a generator is not a permutation"));
+            }
+        }
+        for &(i, j, b, b2, _) in &self.representatives {
+            if i >= c || j >= c || b >= n || b2 >= n {
+                return Err(invalid("representative out of range"));
+            }
+            if i == j {
+                return Err(invalid("overlapping or diagonal orbit representatives"));
+            }
+        }
+        for &(b, b2, _) in &self.gram {
+            if b >= n || b2 >= n {
+                return Err(invalid("Born metric representative out of range"));
+            }
+        }
+        // Orbit sizes; the basis ones are bounded by the stored generators'
+        // own length (B entries each) and are all one without generators.
+        let count = self.generators.len();
+        let leg_orbits = orbit_sizes(c, count, |g, x| self.generators[g].legs[x])?;
+        let basis_orbits = if count == 0 {
+            None
+        } else {
+            Some(orbit_sizes(n, count, |g, x| self.generators[g].basis[x].0)?)
+        };
+        let basis_orbit = |b: usize| basis_orbits.as_ref().map_or(1, |sizes| sizes[b]) as u128;
+        let covered = self
+            .representatives
+            .iter()
+            .fold(0u128, |sum, &(i, j, b, b2, _)| {
+                let bound = (leg_orbits[i] as u128)
+                    .saturating_mul(leg_orbits[j] as u128)
+                    .saturating_mul(basis_orbit(b))
+                    .saturating_mul(basis_orbit(b2));
+                sum.saturating_add(bound)
+            });
+        if covered < entries as u128 {
+            return Err(invalid("the representatives do not cover every entry"));
+        }
+        let covered = self.gram.iter().fold(0u128, |sum, &(b, b2, _)| {
+            sum.saturating_add(basis_orbit(b).saturating_mul(basis_orbit(b2)))
+        });
+        if covered < gram_entries as u128 {
+            return Err(invalid(
+                "the Born metric representatives do not cover every entry",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -750,5 +887,71 @@ mod tests {
                 assert_eq!(grouped[&(i, j, index.1, index.2)], *value);
             }
         }
+    }
+
+    fn crafted(edit: impl FnOnce(&mut serde_json::Value)) -> RusticolResult<DipoleOrbits> {
+        let labels = [1, 2, 3, 4];
+        let legs: Vec<Leg> = labels.iter().map(|&l| (l, ADJOINT)).collect();
+        let built = DipoleOrbits::build(&legs, &trace_basis(&labels), &[labels.to_vec()]).unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&built.to_json().unwrap()).unwrap();
+        edit(&mut value);
+        DipoleOrbits::from_json(&value.to_string())
+    }
+
+    fn refused(result: RusticolResult<DipoleOrbits>, text: &str) {
+        let message = result.expect_err("a crafted stored form loads").to_string();
+        assert!(message.contains(text), "{message}");
+    }
+
+    #[test]
+    fn crafted_stored_forms_are_refused_before_allocating() {
+        assert!(crafted(|_| {}).is_ok());
+        // An index space the stored data cannot cover (no table allocated)
+        // and one that overflows the address space.
+        let huge = |basis: u64| {
+            move |value: &mut serde_json::Value| {
+                value["basis"] = basis.into();
+                value["generators"] = serde_json::json!([]);
+                value["representatives"] = serde_json::json!([]);
+                value["gram"] = serde_json::json!([]);
+            }
+        };
+        refused(crafted(huge(1 << 20)), "do not cover");
+        refused(crafted(huge(1 << 32)), "overflow the index space");
+        // Coloured legs: distinct labels in leg order, representations 3, 3bar, 8.
+        refused(
+            crafted(|value| value["coloured"][1][0] = 1.into()),
+            "distinct labels in leg order",
+        );
+        refused(
+            crafted(|value| value["coloured"][3][0] = 0.into()),
+            "distinct labels in leg order",
+        );
+        refused(
+            crafted(|value| value["coloured"][0][1] = 6.into()),
+            "colour representation 6",
+        );
+        refused(
+            crafted(|value| {
+                value["representatives"][0][1] = value["representatives"][0][0].clone()
+            }),
+            "diagonal",
+        );
+        refused(
+            crafted(|value| value["representatives"].as_array_mut().unwrap().clear()),
+            "do not cover",
+        );
+        refused(
+            crafted(|value| value["gram"].as_array_mut().unwrap().clear()),
+            "Born metric representatives do not cover",
+        );
+    }
+
+    #[test]
+    fn oversized_adjoint_rings_are_refused() {
+        use super::super::generate::cells::adjoint_un_terms;
+        assert_eq!(adjoint_un_terms(&[1, 2, 3]).unwrap().len(), 8);
+        let word: Vec<Label> = (1..=64).collect();
+        assert!(adjoint_un_terms(&word).is_err());
     }
 }
