@@ -396,6 +396,14 @@ difference of about 3e-10). Validate such legacy artifacts with
 `relative_tolerance = 3e-9` and `absolute_tolerance = 2e-12`; the v2 engine
 is not affected.
 
+The v2 engine's post-build validation compares the reopened artifact with
+its reference executor in binary64 at `relative_tolerance`. A validation
+point where binary64 itself cannot resolve that tolerance (an
+ill-conditioned point, whose binary64 stability estimate exceeds it) is
+compared again at the same tolerance in double-double against the
+reference at 32 digits, so such a point does not refuse a correct artifact
+and a defective one is refused in either carrier.
+
 ## Numerical current reuse
 
 Certified current-relation reuse is an opt-in optimization. It is off by

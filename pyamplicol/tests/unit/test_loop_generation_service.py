@@ -9,7 +9,11 @@ from pyamplicol.api import GenerationError, Generator, ProcessRequest, ProcessSe
 from pyamplicol.config import resolve_config
 from pyamplicol.correlators import CorrelatorConfig
 from pyamplicol.generation.correlated import correlated_configuration
-from pyamplicol.generation.loop_service import _graph_plan, _order_bounds
+from pyamplicol.generation.loop_service import (
+    _graph_plan,
+    _order_bounds,
+    _revalidate_v2_point,
+)
 from pyamplicol.generation.service import GenerationBackend
 
 pytestmark = pytest.mark.loop_fast
@@ -701,3 +705,93 @@ def test_missing_formal_coverage_does_not_fallback_for_forced_or_projected(
             entry,
             object(),
         )
+
+
+# ------------------------------------------------- staged v2 re-validation
+
+BORN_ORDER, LOOP_ORDER = (("QCD", 2),), (("QCD", 4),)
+
+
+def _native_values(born, laurent):
+    """A runtime evaluation of one point as ``_compare_v2`` reads it."""
+
+    return SimpleNamespace(
+        born_orders=(BORN_ORDER,),
+        born_values=((born,),),
+        sectors=(SimpleNamespace(order=LOOP_ORDER),),
+        values=((tuple(laurent),),),
+    )
+
+
+def _reference_values(born, laurent):
+    """A reference-executor point result as ``_compare_v2`` reads it."""
+
+    return SimpleNamespace(
+        born={BORN_ORDER: born},
+        components={
+            "virtual": {LOOP_ORDER: SimpleNamespace(coefficients=tuple(laurent))}
+        },
+    )
+
+
+class _Runtime:
+    def __init__(self, laurent, fail=False):
+        self.laurent, self.fail, self.calls = laurent, fail, []
+
+    def evaluate(self, points, *, mu_r2, arithmetic):
+        self.calls.append(("evaluate", arithmetic, len(points)))
+        if self.fail:
+            raise ArithmeticError("no double-double here")
+        return _native_values(2.0, self.laurent)
+
+    def evaluate_correlated_many(self, points, requests, *, mu_r2, arithmetic):
+        self.calls.append(("correlated", arithmetic, tuple(requests)))
+        return {history: _native_values(2.0, self.laurent) for history in requests}
+
+
+class _Runner:
+    def __init__(self):
+        self.precisions = []
+
+    def evaluate(self, point, scale, *, correlations, precision):
+        self.precisions.append(precision)
+        return {
+            label: _reference_values(2.0, (-0.4776756003084305, 1.5, -2.0))
+            for label in correlations
+        }
+
+
+def _revalidate(runtime, runner):
+    miss = GenerationError("binary64 pair 4e-12 apart")
+    _revalidate_v2_point(
+        "ddgg", runtime, runner, ("casimir",), [[1, 0, 0, 1]], "1", 1e-12, miss
+    )
+    return miss
+
+
+def test_a_binary64_validation_miss_is_revalidated_in_double_double():
+    """A point whose binary64 pair misses the tolerance passes when the
+    native double-double values equal the reference at DOUBLE_DOUBLE_DIGITS
+    to the same tolerance (every output of the point)."""
+
+    from pyamplicol.loops.v2.assemble import DOUBLE_DOUBLE_DIGITS, Precision
+
+    runtime, runner = _Runtime((-0.4776756003084305, 1.5, -2.0)), _Runner()
+    _revalidate(runtime, runner)
+    assert runtime.calls == [
+        ("evaluate", "double-double", 1),
+        ("correlated", "double-double", ("casimir",)),
+    ]
+    assert runner.precisions == [Precision.arbitrary(DOUBLE_DOUBLE_DIGITS)]
+
+
+def test_a_double_double_mismatch_is_still_refused_at_the_tolerance():
+    """The re-validation keeps the tolerance: 4e-12 relative in double-double
+    is refused, the binary64 refusal chained."""
+
+    runtime = _Runtime((-0.4776756003084305 + 8e-12, 1.5, -2.0))
+    with pytest.raises(GenerationError, match="in double-double, after binary64"):
+        _revalidate(runtime, _Runner())
+    with pytest.raises(GenerationError, match="could not run") as refused:
+        _revalidate(_Runtime((0.0, 0.0, 0.0), fail=True), _Runner())
+    assert "binary64 pair 4e-12 apart" in str(refused.value)

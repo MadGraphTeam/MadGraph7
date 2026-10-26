@@ -42,7 +42,14 @@ from decimal import Decimal, localcontext
 import pytest
 
 from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
-from pyamplicol.loops.v2.families import onshell_leg
+from pyamplicol.loops.v2.families import (
+    ZERO,
+    ExternalLeg,
+    Family,
+    MassId,
+    canonical_family_key,
+    onshell_leg,
+)
 from pyamplicol.loops.v2.plan_export import NativeExecutor
 from pyamplicol.loops.v2.stability import Budget, StabilityChecks, deviation
 
@@ -241,6 +248,34 @@ def test_a_single_leg_fixes_its_arc_and_the_complement():
     assert onshell_leg(0b11011, full) == 2
     assert onshell_leg(0b00110, full) is None
     assert onshell_leg(0, full) is None
+
+
+@pytest.mark.loop_fast
+def test_structural_onshell_bindings_follow_the_same_rule():
+    """``Family.onshell_bindings`` (the certified-scaleless proof) binds
+    exactly the invariants ``onshell_leg`` gives the carriers, by that leg's
+    mass: one rule for the structure and every evaluation."""
+
+    legs = tuple(
+        ExternalLeg(index, "g", MassId(ZERO), 8)
+        if index < 3
+        else ExternalLeg(index, "t", MassId("MT"), 3)
+        for index in range(5)
+    )
+    for masks in ((1, 2, 4, 8, 16), (3, 4, 8, 16), (1, 6, 24), (5, 2, 24)):
+        key = canonical_family_key(masks, [MassId(ZERO)] * len(masks))
+        family = Family(key, 0, ())
+        full = (1 << len(legs)) - 1
+        expected = {
+            mask: legs[leg].mass
+            for mask in family.invariant_masks()
+            if (leg := onshell_leg(mask, full)) is not None
+        }
+        assert family.onshell_bindings(legs) == expected
+        assert all(
+            onshell_leg(mask, full) is None
+            for mask in set(family.invariant_masks()) - set(expected)
+        )
 
 
 @pytest.mark.loop_fast
