@@ -318,7 +318,7 @@ impl Runtime {
                 "color_contraction":metadata.color_contraction,
                 "color_components":self.color_components,
                 "color_component_semantics":"contracted colour",
-                "available_r2_strategies":["auto","model"],
+                "available_r2_strategies":["model"],
                 "r2_strategy":"model", "explicit_verification":false,
                 "source_only":true,
                 "retained_verification_policy":serde_json::Value::Null,
@@ -459,20 +459,18 @@ impl Runtime {
     }
 }
 
-/// Real model parameter overrides (a plan v4 process takes real external
-/// parameters).
+/// Real model parameter overrides: a plan v4 process takes real external
+/// parameters, an exactly zero imaginary part (any exact spelling), refused
+/// otherwise in the Python API's words (`artifact._real_parameters`).
 fn real_overrides(values: &SourceOverrides) -> RusticolResult<Vec<(&str, &str)>> {
+    use rusticol_core::loop_v2::dress::parse_rational;
     values
         .iter()
-        .map(|(name, [re, im])| {
-            let zero = im.trim().trim_start_matches(['-', '+']);
-            if zero.chars().all(|c| c == '0' || c == '.') && !zero.is_empty() {
-                Ok((name.as_str(), re.as_str()))
-            } else {
-                Err(invalid(format!(
-                    "plan v4 model parameter {name:?} must be real"
-                )))
-            }
+        .map(|(name, [re, im])| match parse_rational(im) {
+            Ok(imaginary) if imaginary.is_zero() => Ok((name.as_str(), re.as_str())),
+            _ => Err(RusticolError::model_parameter(format!(
+                "parameter '{name}': v2 loop runtimes take real external parameters"
+            ))),
         })
         .collect()
 }

@@ -56,7 +56,9 @@ fn v4_parameter_updates_follow_the_python_api() {
     for (parameters, message) in &refused {
         let at_open = Runtime::open(&path, Some("ggtt"), Some(&overrides(parameters)), "model");
         assert_eq!(at_open.err().unwrap().message(), *message);
-        let error = runtime.update_parameters(&overrides(parameters)).unwrap_err();
+        let error = runtime
+            .update_parameters(&overrides(parameters))
+            .unwrap_err();
         assert_eq!(error.message(), *message);
         // A refused update changes nothing.
         assert_eq!(values(&mut runtime), before);
@@ -67,6 +69,8 @@ fn v4_parameter_updates_follow_the_python_api() {
         .update_parameters(&overrides(&[("WT", "0.0"), ("MH", "130")]))
         .unwrap();
     assert_eq!(values(&mut runtime), before);
-    runtime.update_parameters(&overrides(&[("aS", "0.13")])).unwrap();
+    runtime
+        .update_parameters(&overrides(&[("aS", "0.13")]))
+        .unwrap();
     assert_ne!(values(&mut runtime), before);
 }

@@ -375,6 +375,22 @@ def test_refused_parameters_are_the_python_apis_in_every_client(
     for step, (_parameters, message) in zip(steps[1:], REFUSED, strict=True):
         assert step[:3] == ["update", 1, message], step
         assert step[3] == before
+    # A complex value: the Python API's CompatibilityError text, the C ABI's
+    # invalid-argument status.
+    from pyamplicol.api.errors import CompatibilityError
+
+    with pytest.raises(CompatibilityError) as refused:
+        Runtime.load(ggtt, process="ggtt", model_parameters={"aS": ("0.118", "0.1")})
+    (opened,) = _run_client(
+        c_client,
+        ggtt,
+        "ggtt",
+        POINT_173,
+        SCALES,
+        [json.dumps({"aS": ["0.118", "0.1"]})],
+        tmp_path,
+    )
+    assert opened[:3] == ["open", 1, str(refused.value)], opened
 
 
 def test_accepted_parameters_are_bitwise_the_python_apis_in_every_client(
