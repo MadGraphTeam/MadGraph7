@@ -1302,6 +1302,79 @@ class MG7ReweightingTest(unittest.TestCase):
     def test_reweighting_is_not_a_post_processing_tool(self):
         self.assertEqual(self.launch.selected_tools({'reweight': 'ON'}), [])
 
+    def test_a_failing_reweighting_does_not_stop_the_run(self):
+        """The events are kept and MadSpin/shower/analyses still run; the
+        failure is logged with how to reweight again."""
+        os.makedirs(os.path.join('Events', 'run_01'))
+        launch = self.launch
+        process = mock.Mock(gridpack_run_mode='regular',
+                            run_path=os.path.abspath(os.path.join('Events', 'run_01')))
+        calls = []
+
+        def failing(p, c, decision):
+            raise RuntimeError('SPINUP 9 in event 3')
+        with mock.patch.object(launch, 'compute_auto_widths'), \
+                mock.patch.object(launch, 'MadgraphProcess', lambda: process), \
+                mock.patch.object(launch, 'run_lhe_postprocessing'), \
+                mock.patch.object(launch, 'run_reweighting', failing), \
+                mock.patch.object(launch, 'run_selected_tools',
+                                  lambda switch, p: calls.append('tools')), \
+                self.assertLogs('madevent', 'WARNING') as logs:
+            launch.run_single({'reweight': 'ON', 'shower': 'Pythia8'}, 'DECISION')
+        self.assertEqual(calls, ['tools'])
+        text = '\n'.join(logs.output)
+        self.assertIn('reweighting failed: SPINUP 9 in event 3', text)
+        self.assertIn("'reweight run_01'", text)
+        self.assertTrue(os.path.exists(os.path.join('Events', 'run_01',
+                                                    'reweighting_crash.log')))
+
+    def test_existing_run_finds_the_event_file_and_its_format(self):
+        import gzip
+        for run, files in (('lhe', ['events.lhe.gz']),
+                           ('lhe_npy', ['events.npy', 'header.lhe', 'events.lhe.gz']),
+                           ('compact_npy', ['events.npy', 'lhe_completer.json'])):
+            os.makedirs(os.path.join('Events', run))
+            for name in files:
+                open(os.path.join('Events', run, name), 'w').close()
+        os.makedirs(os.path.join('Events', 'empty'))
+        for run, events in (('lhe', 'events.lhe.gz'), ('lhe_npy', 'events.npy'),
+                            ('compact_npy', 'events.npy')):
+            existing = self.launch.ExistingRun(run)
+            self.assertEqual(existing.run_card['run']['output_format'], run)
+            self.assertEqual(os.path.basename(existing.events_path), events)
+        self.assertEqual(self.launch.list_runs(), ['compact_npy', 'lhe', 'lhe_npy'])
+        with self.assertRaisesRegex(ValueError, 'no event file'):
+            self.launch.ExistingRun('empty')
+        with self.assertRaisesRegex(ValueError, "no run 'run_09'.*runs: compact_npy"):
+            self.launch.ExistingRun('run_09')
+
+    def test_reweight_command_reweights_an_existing_run(self):
+        os.makedirs(os.path.join('Events', 'run_01'))
+        open(os.path.join('Events', 'run_01', 'events.lhe.gz'), 'w').close()
+        card = self.write_card(self.CARD, os.path.join(self.tmpdir.name, 'rw.dat'))
+        launch = self.launch
+        cmd = launch.MG7Cmd(me_dir=self.me_dir)
+        seen = []
+
+        def fake_prepare(switch, cli, options):
+            seen.append(('prepare', switch, cli))
+            return 'DECISION'
+
+        def fake_run(process, card_path, decision):
+            seen.append(('run', os.path.basename(process.run_path),
+                         process.run_card['run']['output_format'], decision))
+        with mock.patch.object(launch, 'prepare_reweighting', fake_prepare), \
+                mock.patch.object(launch, 'run_reweighting', fake_run):
+            cmd.do_reweight('run_01 --reweight=%s --reweight-backend=madtrex' % card)
+        self.assertEqual(seen, [('prepare', {'reweight': 'ON'}, 'madtrex'),
+                                ('run', 'run_01', 'lhe', 'DECISION')])
+        with open(os.path.join('Cards', 'reweight_card.dat')) as f:
+            self.assertEqual(f.read(), self.CARD)
+        with self.assertRaisesRegex(cmd.InvalidCmd, r'give the run to reweight \(run_01\)'):
+            cmd.do_reweight('')
+        with self.assertRaisesRegex(cmd.InvalidCmd, "no run 'run_02'"):
+            cmd.do_reweight('run_02')
+
 
 class ReweightSwitchTest(unittest.TestCase):
     """The reweight switch of the launch question: an MG7 output offers the

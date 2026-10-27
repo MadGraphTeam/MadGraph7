@@ -3808,6 +3808,55 @@ class MG7Cmd(Cmd):
     # ``launch`` is the name MG5 users type; keep it working here too.
     do_launch = do_generate_events
 
+    def do_reweight(self, line):
+        """reweight RUN_NAME [--reweight=CARD] [--reweight-backend=classic|madtrex|auto]
+
+        Reweight the events of an earlier run with Cards/reweight_card.dat
+        (or CARD, which then becomes Cards/reweight_card.dat), as
+        generate_events does after the generation: the weights are added to
+        the run's event file, after the weights already there."""
+        args = self.split_arg(line)
+        run_name, card, backend = None, None, None
+        for arg in args:
+            if arg.startswith('--reweight='):
+                card = os.path.abspath(arg.split('=', 1)[1])
+            elif arg.startswith('--reweight-backend='):
+                backend = arg.split('=', 1)[1]
+            elif arg.startswith('-'):
+                logger.warning("'%s' is not an option of reweight and is ignored", arg)
+            else:
+                run_name = arg
+        cwd = os.getcwd()
+        target = self.me_dir if self.me_dir != '.' else cwd
+        try:
+            os.chdir(target)
+            _setup_logging()
+            if run_name is None:
+                runs = list_runs()
+                raise self.InvalidCmd(
+                    'reweight: give the run to reweight%s'
+                    % (' (%s)' % ', '.join(runs) if runs else ': there is no run yet'))
+            try:
+                run = ExistingRun(run_name)
+            except ValueError as error:
+                raise self.InvalidCmd('reweight: %s' % error)
+            if card:
+                install_reweight_card(card)
+            if not os.path.exists(REWEIGHT_CARD):
+                raise self.InvalidCmd('reweight: %s is missing' % REWEIGHT_CARD)
+            decision = prepare_reweighting({'reweight': 'ON'}, backend, self.options)
+            if decision is None:
+                return
+            run_reweighting(run, REWEIGHT_CARD, decision=decision)
+        finally:
+            os.chdir(cwd)
+
+    def complete_reweight(self, text, line, begidx, endidx):
+        me_dir = self.me_dir if self.me_dir != '.' else os.getcwd()
+        options = ['--reweight=', '--reweight-backend=']
+        return self.list_completion(text, list_runs(os.path.join(me_dir, 'Events'))
+                                    + options, line)
+
     def do_npy_to_lhe(self, line):
         """npy_to_lhe [RUN_NAME] [-o OUTPUT] [--seed N] [--no-gzip]
 
@@ -4887,6 +4936,44 @@ def _release_channel_generators(process) -> None:
 REWEIGHT_CARD = os.path.join("Cards", "reweight_card.dat")
 
 
+class ExistingRun:
+    """The run directory Events/<run_name> of an earlier generation, with
+    what run_reweighting() needs of a MadgraphProcess: run_path, events_path
+    (the file the generation wrote: events.npy for the npy formats, else
+    events.lhe[.gz]) and run_card["run"]["output_format"] (from the files)."""
+
+    def __init__(self, run_name, events_dir="Events"):
+        self.run_path = os.path.abspath(os.path.join(events_dir, run_name))
+        if not os.path.isdir(self.run_path):
+            runs = list_runs(events_dir)
+            raise ValueError("no run '%s' in %s%s" % (
+                run_name, events_dir,
+                "; runs: %s" % ", ".join(runs) if runs else ""))
+        npy = os.path.join(self.run_path, npy_to_lhe.EVENT_FILE)
+        if os.path.isfile(npy):
+            self.events_path = npy
+            compact = os.path.isfile(os.path.join(self.run_path,
+                                                  npy_to_lhe.COMPLETER_FILE))
+            output_format = "compact_npy" if compact else "lhe_npy"
+        else:
+            self.events_path = _find_event_file(self.run_path)
+            output_format = "lhe"
+        if self.events_path is None:
+            raise ValueError("no event file (events.npy, events.lhe[.gz]) in %s"
+                             % self.run_path)
+        self.run_card = {"run": {"output_format": output_format}}
+
+
+def list_runs(events_dir="Events") -> list:
+    """The runs of events_dir with an event file, sorted by name."""
+    if not os.path.isdir(events_dir):
+        return []
+    return sorted(
+        name for name in os.listdir(events_dir)
+        if any(os.path.isfile(os.path.join(events_dir, name, f)) for f in
+               (npy_to_lhe.EVENT_FILE, "events.lhe", "events.lhe.gz")))
+
+
 def install_reweight_card(path) -> None:
     """``--reweight=CARD``: CARD becomes Cards/reweight_card.dat. A different
     card already there is kept as reweight_card.dat.bak."""
@@ -5074,9 +5161,21 @@ def run_single(switch=None, reweight=None) -> "MadgraphProcess":
         return process
     # run_card-driven LHE post-processing (displaced vertex + systematics)
     run_lhe_postprocessing(process)
-    # reweighting, after the systematics, by the backend chosen beforehand
+    # reweighting, after the systematics, by the backend chosen beforehand.
+    # Like the post-processing tools, a failure is reported without losing
+    # the rest of the run (MadSpin, shower, analyses): the event file is only
+    # ever replaced atomically, so the events are kept, without the weights.
     if reweight is not None:
-        run_reweighting(process, REWEIGHT_CARD, decision=reweight)
+        try:
+            run_reweighting(process, REWEIGHT_CARD, decision=reweight)
+        except Exception as error:
+            log = logging.getLogger("madevent")
+            _report_failure(log, "reweighting", error, process.run_path)
+            log.warning(
+                "the events of %s are kept without the reweighting weights; to "
+                "reweight them once the problem is fixed: 'launch %s -i' in "
+                "MadGraph, then 'reweight %s'", os.path.basename(process.run_path),
+                os.getcwd(), os.path.basename(process.run_path))
     # run the post-processing tools (Pythia8/Delphes/MadSpin/analysis)
     # selected in the merged question above on the generated events.
     if switch:
