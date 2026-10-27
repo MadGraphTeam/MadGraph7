@@ -533,6 +533,12 @@ def _heft_contact_color_topology(
     *,
     model_symbols: ModelSymbolRegistry,
 ) -> tuple[tuple[tuple[int, int, int], ...], str] | None:
+    proof = term.contact_decomposition_proof
+    if proof is not None and proof.status == "proven":
+        # The four-point contact path lowers it (a momentum-independent term
+        # with a proven decomposition, e.g. the f-colour, Levi-Civita R2 of
+        # three gluons and a Z): one family per term, never both.
+        return None
     colors = tuple(particle.color for particle in source_particles)
     if term.valence == 4 and colors.count(8) == 3 and colors.count(1) == 1:
         expected_count = 1

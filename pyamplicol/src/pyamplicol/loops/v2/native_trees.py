@@ -407,7 +407,11 @@ def export_trees(
             if kind == "current":
                 inputs.append(["current", *current_slots[component]])
             elif kind == "momentum":
-                inputs.append(["momentum", component // 4, component % 4])
+                # Kernel leg l takes the momentum of the block whose row it
+                # takes (``ct_sites.SiteClosure._reading_sign``).
+                inputs.append(
+                    ["momentum", term.kernel_legs[component // 4], component % 4]
+                )
             else:
                 raise ValueError(f"a closure kernel reads a {kind} input")
         return record(term, kernel, inputs, contributions)

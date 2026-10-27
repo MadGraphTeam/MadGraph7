@@ -30,6 +30,34 @@
       "complex_mass_scheme": false,
       "active_flavours": 5,
       "loop_quark_flavours": 6
+    },
+    "ew-gmu-b-mass": {
+      "description": "The ew-gmu scheme with a massive b (MB = ymb = 4.5): every fermion line through a chiral W vertex is massive (pyAmpliCol refuses a line joining massive and massless fermions through one). The MadLoop model is a copy of loop_qcd_qed_sm_Gmu_py3 whose restrict_default.dat keeps MB and ymb (4.5); the UFO's own restrict_with_b_mass.dat omits SMINPUTS 1, which MG5 3.7.0 needs.",
+      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3_b_mass",
+      "parameters": {
+        "aS": "0.118",
+        "Gf": "0.0000116639",
+        "MZ": "91.188",
+        "MW": "80.419",
+        "MH": "125",
+        "MT": "173",
+        "ymt": "173",
+        "MB": "4.5",
+        "ymb": "4.5"
+      },
+      "fixed_parameters": {
+        "MTA": "0",
+        "ymtau": "0",
+        "WT": "0",
+        "WW": "0",
+        "WZ": "0",
+        "WH": "0",
+        "WTau": "0"
+      },
+      "electroweak_inputs": "gmu",
+      "complex_mass_scheme": false,
+      "active_flavours": 5,
+      "loop_quark_flavours": 6
     }
   },
   "processes": [
@@ -233,6 +261,24 @@
       "scheme": "ew-gmu",
       "madloop": {"process": "e- e+ > t t~ h QCD=0 QED=3 [virt=QED] QED^2==8"},
       "recola": {"process": "e- e+ -> t t~ H"}
+    },
+    {
+      "name": "gt_tttx_ew",
+      "role": "goldstone-mixing",
+      "pdgs": [21, 6, 6, 6, -6],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "g t > t t t~ QCD=1 QED=2 [virt=QCD QED] QCD^2==2 QED^2==6"}
+    },
+    {
+      "name": "gb_ttxb_ew_mb",
+      "role": "goldstone-mixing",
+      "pdgs": [21, 5, 6, -6, 5],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu-b-mass",
+      "madloop": {"process": "g b > t t~ b QCD=1 QED=2 [virt=QCD QED] QCD^2==2 QED^2==6"}
     },
     {
       "name": "uux_ddxssx",

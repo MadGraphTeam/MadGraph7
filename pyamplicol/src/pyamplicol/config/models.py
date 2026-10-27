@@ -728,6 +728,10 @@ class GenerationConfig:
     # (Born, blocks, loop vertices and propagators, counterterm program);
     # counterterm terms whose loop content holds one are dropped.
     particle_veto: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
+    # [U2]: lower the Levi-Civita counterterm cells that particle_veto keeps
+    # from cancelling but that cancel without it (an anomalous veto, e.g. one
+    # breaking a quark doublet); refused by default. Recorded in the artifact.
+    allow_anomalous_veto: bool = field(default=False, metadata=_setting("bool"))
     validation: GenerationValidationConfig = field(
         default_factory=GenerationValidationConfig, metadata=_section()
     )
@@ -751,6 +755,14 @@ class GenerationConfig:
             "particle_veto",
             _tuple_of_strings(self.particle_veto, "generation.particle_veto"),
         )
+        if not isinstance(self.allow_anomalous_veto, bool):
+            raise ConfigurationError(
+                "generation.allow_anomalous_veto must be a boolean"
+            )
+        if self.allow_anomalous_veto and not self.particle_veto:
+            raise ConfigurationError(
+                "generation.allow_anomalous_veto requires generation.particle_veto"
+            )
         if not isinstance(self.validation, GenerationValidationConfig):
             raise ConfigurationError(
                 "generation.validation must be a GenerationValidationConfig"
