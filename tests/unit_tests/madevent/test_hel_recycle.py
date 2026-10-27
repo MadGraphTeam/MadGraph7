@@ -411,10 +411,15 @@ class TestRecycledChunkPolicy(unittest.TestCase):
         calls = '\n'.join('      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP %d' % i
                           for i in range(5)) + '\n'
         decls, units, body = exporter.hr_chunk_calls(calls)
-        defs = ''.join(units)
-        self.assertEqual(defs.count('noinline'), 3)
-        self.assertEqual([line.split('(')[0].strip() for line in body.split('\n') if line],
+        self.assertEqual(len(units), 1)
+        defs = units[0]
+        self.assertEqual(defs.count('static void'), 3)
+        unit = defs[defs.index('hr_unit_0'):]
+        self.assertEqual([line.split('(')[0].strip() for line in unit.split('\n')
+                          if line.startswith('    hr_chunk_')],
                          ['hr_chunk_0', 'hr_chunk_1', 'hr_chunk_2'])
+        self.assertEqual([line.split('(')[0].strip() for line in body.split('\n') if line],
+                         ['hr_unit_0'])
         for decl, name in self.cls.HR_CHUNK_STATE:
             self.assertIn(decl, defs)
             self.assertIn(name, body)
@@ -426,12 +431,13 @@ class TestRecycledChunkPolicy(unittest.TestCase):
         calls = '\n'.join('      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP %d' % i
                           for i in range(9)) + '\n'
         decls, units, body = exporter.hr_chunk_calls(calls)
-        # chunks of 2 statements, files of 4: 2 + 2 + 1 chunks
-        self.assertEqual([unit.count('noinline') for unit in units], [2, 2, 1])
-        for unit in units:
+        # chunks of 2 statements, files of 4: 2 + 2 + 1 chunks, one unit each
+        self.assertEqual([unit.count('static void') for unit in units], [2, 2, 1])
+        for k, unit in enumerate(units):
             self.assertIn('#include "HelRecyclingChunks.h"', unit)
-            self.assertNotIn('static', unit)
-        self.assertEqual(decls.count('visibility( "hidden" )'), 5)
+            self.assertIn('visibility( "hidden" ) ) ) void\n  hr_unit_%d(' % k, unit)
+        self.assertEqual(decls.count('visibility( "hidden" )'), 3)
+        self.assertEqual(body.count('hr_unit_'), 3)
         # SigmaKin.cc's own tables are passed, but not named in its declarations
         for name in ('cIPD', 'cFlavors', 'cBWCUTOFF'):
             self.assertNotIn(name, decls)
