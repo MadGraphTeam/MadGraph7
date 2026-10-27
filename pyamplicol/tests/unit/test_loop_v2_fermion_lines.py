@@ -24,9 +24,11 @@ colour of several quark lines are consistent: the projected slices are the
 sums of their kept N_c powers of the exact colour cells, and all powers sum
 to full colour, identical flavours included (their blocks of one colour
 word and different U(1)-subtraction grades are separate blocks,
-``generation.dag_grades``), in binary64 and double-double. The 2->4 requests
-run in the nightly tier; the physics tier keeps a 2->3 control (u u~ > u u~ g,
-two identical-flavour lines).
+``generation.dag_grades``), in binary64 and double-double. The grades
+themselves are checked independently by an N_c scan of the tree currents:
+every block scales as its U(1)-subtraction pieces. The 2->4 requests run in
+the nightly tier; the physics tier keeps a 2->3 control (u u~ > u u~ g, two
+identical-flavour lines).
 """
 
 from __future__ import annotations
