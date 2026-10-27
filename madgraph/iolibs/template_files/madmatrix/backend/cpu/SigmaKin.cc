@@ -346,7 +346,7 @@ namespace madmatrix
   // compiled and the helicity loop calls calculate_jamps as before.
 #if __has_include( "HelRecycling.inc" ) and !defined MG_HR_PROBE
 #define MGONGPU_HEL_RECYCLING 1
-#include "HelRecycling.inc" // nHrRows, cHrRow[ncomb], hrNwf (and the recycled chunks, if any)
+#include "HelRecycling.inc" // nHrRows, cHrRow[ncomb], hrNwf (and the declarations of the chunks, if any: see HelRecyclingChunks.h)
 
   // The rows that were built are the rows that contributed AT THE PARAMETERS THE
   // WARM-UP RAN AT. getGoodHel still runs at run time, so when it finds a row that

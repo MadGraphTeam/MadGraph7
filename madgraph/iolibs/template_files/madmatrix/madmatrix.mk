@@ -802,6 +802,15 @@ processid_short=$(shell basename $(CURDIR))
 MADMATRIX_LIB = madmatrix_$(processid_short)_$(BACKEND)
 objects_lib=$(BUILDDIR)/CPPProcess.o $(BUILDDIR)/color_sum.o $(BUILDDIR)/MatrixElementKernels.o $(BUILDDIR)/CrossSectionKernels.o $(BUILDDIR)/umami.o $(BUILDDIR)/SigmaKin.o
 
+# --hel_recycling: the chunks of a big recycled block, in translation units of
+# their own so that they build in parallel (see HelRecyclingChunks.h). CPU only:
+# the GPU backend ignores the recycled build, and so does the warm-up probe.
+ifeq ($(GPUCC),)
+ifneq ($(HRPROBE),1)
+objects_lib += $(patsubst %%.cc,$(BUILDDIR)/%%.o,$(wildcard HelRecyclingChunks_*.cc))
+endif
+endif
+
 # Backend-owned sources
 vpath %%.cc ../../backend/$(BACKENDDIR)
 

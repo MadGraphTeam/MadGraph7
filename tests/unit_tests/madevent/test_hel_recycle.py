@@ -410,14 +410,33 @@ class TestRecycledChunkPolicy(unittest.TestCase):
         exporter = self.exporter({'hel_recycling_chunk': '2'})
         calls = '\n'.join('      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP %d' % i
                           for i in range(5)) + '\n'
-        defs, body = exporter.hr_chunk_calls(calls)
+        decls, units, body = exporter.hr_chunk_calls(calls)
+        defs = ''.join(units)
         self.assertEqual(defs.count('noinline'), 3)
         self.assertEqual([line.split('(')[0].strip() for line in body.split('\n') if line],
                          ['hr_chunk_0', 'hr_chunk_1', 'hr_chunk_2'])
         for decl, name in self.cls.HR_CHUNK_STATE:
             self.assertIn(decl, defs)
             self.assertIn(name, body)
-        self.assertEqual(self.exporter({}).hr_chunk_calls(calls), ('', calls))
+        self.assertEqual(self.exporter({}).hr_chunk_calls(calls), ('', [], calls))
+
+    def test_chunks_are_declared_without_names_and_spread_over_files(self):
+        exporter = self.exporter({'hel_recycling_chunk': '2'})
+        exporter.HR_FILE_STMTS = 4
+        calls = '\n'.join('      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP %d' % i
+                          for i in range(9)) + '\n'
+        decls, units, body = exporter.hr_chunk_calls(calls)
+        # chunks of 2 statements, files of 4: 2 + 2 + 1 chunks
+        self.assertEqual([unit.count('noinline') for unit in units], [2, 2, 1])
+        for unit in units:
+            self.assertIn('#include "HelRecyclingChunks.h"', unit)
+            self.assertNotIn('static', unit)
+        self.assertEqual(decls.count('visibility( "hidden" )'), 5)
+        # SigmaKin.cc's own tables are passed, but not named in its declarations
+        for name in ('cIPD', 'cFlavors', 'cBWCUTOFF'):
+            self.assertNotIn(name, decls)
+            self.assertIn(name, body)
+        self.assertIn('const short ( * )[npar]', decls)
 
 
 class TestHelRecyclingWarmup(unittest.TestCase):
