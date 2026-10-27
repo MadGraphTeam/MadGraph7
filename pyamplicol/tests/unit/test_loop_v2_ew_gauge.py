@@ -1290,7 +1290,7 @@ def test_charged_goldstone_vector_mixings_equal_madloop(
     at the W ghost vertex [ghA ghWm~ W-] of its loops, not closed under
     conjugation, whose loop-segment reading through a conjugate rule is not
     established (``conventions.FermionSignError``; WP3.2 Feynman-gauge loop
-    lines): exactly that refusal is an expected failure (about 4 minutes),
+    lines): exactly that refusal is an expected failure (about 10 minutes),
     and the comparison runs once the request generates."""
 
     from pyamplicol.loops.v2.conventions import FermionSignError

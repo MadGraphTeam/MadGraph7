@@ -43,7 +43,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 116
+    assert len(FIELD_REGISTRY) == 117
     assert FIELD_REGISTRY["loop.engine"].default == "legacy"
     assert FIELD_REGISTRY["loop.alpha_s_parameter"].nullable
     assert FIELD_REGISTRY["loop.alpha_s_parameter"].default is None
