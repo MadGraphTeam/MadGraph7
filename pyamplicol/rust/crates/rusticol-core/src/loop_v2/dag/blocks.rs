@@ -22,7 +22,7 @@
 //! can be grouped for a DAG the native builder made or one Python encoded.
 
 use super::recursion::FxMap;
-use super::{ColumnarDag, DagError, DagResult, invalid};
+use super::{ColumnarDag, DagError, DagResult, FERMION_LINE_REPRESENTATION, invalid, refused};
 use serde::Deserialize;
 use std::collections::{BTreeSet, HashMap};
 
@@ -297,7 +297,15 @@ fn identity_pairing_sign(
     starts.sort_by_key(key);
     ends.sort_by_key(key);
     if starts.len() != ends.len() {
-        return invalid("unpaired fermion endpoints");
+        return refused(
+            FERMION_LINE_REPRESENTATION,
+            format!(
+                "unpaired fermion endpoints ({} fundamental, {} antifundamental): a \
+                 coloured fermion line that does not end on an opposite coloured end",
+                starts.len(),
+                ends.len()
+            ),
+        );
     }
     let sequence: Vec<Option<u8>> = starts
         .iter()
@@ -649,5 +657,24 @@ impl ColumnarDag {
             });
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DagError, FERMION_LINE_REPRESENTATION, identity_pairing_sign};
+
+    #[test]
+    fn unpaired_fermion_ends_are_the_listed_refusal() {
+        // A quark line ending on a colour-singlet fermion: one fundamental
+        // end, no antifundamental one.
+        match identity_pairing_sign(&[Some(1)], &[]) {
+            Err(DagError::Unsupported(message)) => assert!(
+                message.starts_with(&format!("{FERMION_LINE_REPRESENTATION}: unpaired")),
+                "{message}"
+            ),
+            other => panic!("expected the listed refusal, got {other:?}"),
+        }
+        assert_eq!(identity_pairing_sign(&[Some(1)], &[Some(2)]).unwrap(), 1);
     }
 }

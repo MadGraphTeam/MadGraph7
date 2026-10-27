@@ -74,13 +74,30 @@ pub const TREE_SCHEMA: u32 = 4;
 /// input and output counts. The evaluator is the one binary64 would run
 /// without it (its coefficients, registered constants included, cast as
 /// [`TreeProgram::runtime`] casts them), compiled at `opt_level` into
-/// storage-v4 IR (`evaluator::symjit_plane`).
+/// storage-v4 IR (`evaluator::symjit_plane`). A plane application that
+/// disagrees with its evaluator at the check's probes is refused
+/// ([`compile_plane_application_checked`] returns the [`PlaneMismatch`]).
 #[cfg(feature = "python-generation-bridge")]
 pub fn compile_plane_application(
     saved: &[u8],
     opt_level: u8,
     compress: bool,
 ) -> RusticolResult<(Vec<u8>, usize, usize)> {
+    compile_plane_application_checked(saved, opt_level, compress)?
+        .map_err(|mismatch| invalid(mismatch.to_string()))
+}
+
+/// [`compile_plane_application`] with the plane check's refusal as a value:
+/// `Ok(Err(mismatch))` when the plane application disagrees with its exact
+/// evaluator (the generation refuses the program, naming the output:
+/// `native_trees.NATIVE_EXPORT_REFUSALS` key `plane-mismatch`); any other
+/// failure is an error.
+#[cfg(feature = "python-generation-bridge")]
+pub fn compile_plane_application_checked(
+    saved: &[u8],
+    opt_level: u8,
+    compress: bool,
+) -> RusticolResult<Result<(Vec<u8>, usize, usize), PlaneMismatch>> {
     let _unlock = crate::licence::unlock();
     let zero = 0.0_f64;
     let complex = |re: &Rational, im: &Rational| Complex::new(cast(&zero, re), cast(&zero, im));
@@ -92,22 +109,54 @@ pub fn compile_plane_application(
         crate::engine::compile_symbolica_evaluator_to_plane_application_bytes(
             &evaluator, opt_level, compress,
         )?;
-    verify_plane(&plane, evaluator.into_batch_evaluator(), (inputs, outputs))?;
-    Ok((plane, inputs, outputs))
+    Ok(
+        match verify_plane(&plane, evaluator.into_batch_evaluator(), (inputs, outputs))? {
+            Some(mismatch) => Err(mismatch),
+            None => Ok((plane, inputs, outputs)),
+        },
+    )
 }
 
-/// Refuse a plane application that disagrees with its evaluator at two fixed
-/// real points (inputs in (0.5, 1.5)): a translation error (a constant or a
-/// function read wrongly) changes an output at O(1), while the two
-/// evaluations' rounding differs by orders of magnitude less (the criterion
-/// of the tree engine's exporter, `symbolica_helpers._verify_symjit_plane_
-/// constants`).
+/// The first disagreement of a plane application with its exact evaluator at
+/// the plane check's probes ([`compile_plane_application_checked`]): the
+/// output index, the probe row, the real or imaginary part, and the two
+/// binary64 values.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlaneMismatch {
+    pub output: usize,
+    pub row: usize,
+    pub imaginary: bool,
+    pub plane: f64,
+    pub exact: f64,
+}
+
+impl std::fmt::Display for PlaneMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the SymJIT plane application disagrees with its exact evaluator at \
+             output {} ({} part, probe row {}: {:e} against {:e})",
+            self.output,
+            if self.imaginary { "imaginary" } else { "real" },
+            self.row,
+            self.plane,
+            self.exact
+        )
+    }
+}
+
+/// The plane check: the first disagreement of a plane application with its
+/// evaluator at two fixed real points (inputs in (0.5, 1.5)), or `None`. A
+/// translation error (a constant or a function read wrongly) changes an
+/// output at O(1), while the two evaluations' rounding differs by orders of
+/// magnitude less (the criterion of the tree engine's exporter,
+/// `symbolica_helpers._verify_symjit_plane_constants`).
 #[cfg(feature = "python-generation-bridge")]
 fn verify_plane(
     plane: &[u8],
     mut evaluator: BatchExpressionEvaluator<Complex<f64>>,
     shape: (usize, usize),
-) -> RusticolResult<()> {
+) -> RusticolResult<Option<PlaneMismatch>> {
     const ROWS: usize = 2;
     let (inputs, outputs) = shape;
     // A low-discrepancy sequence: deterministic, distinct per input.
@@ -124,10 +173,22 @@ fn verify_plane(
         .evaluate_batch(&values, &mut expected, ROWS)
         .map_err(|e| invalid(format!("plane check: {e}")))?;
     let got = evaluate_plane_application(plane, shape, &values, ROWS)?;
+    Ok(first_mismatch(&expected, &got, outputs))
+}
+
+/// The first value where `got` (the plane application's rows) and `expected`
+/// (the evaluator's) disagree beyond rounding, row-major over `outputs`
+/// complex outputs per row.
+#[cfg(any(test, feature = "python-generation-bridge"))]
+fn first_mismatch(
+    expected: &[Complex<f64>],
+    got: &[Complex<f64>],
+    outputs: usize,
+) -> Option<PlaneMismatch> {
     let parts = |values: &[Complex<f64>]| -> Vec<f64> {
         values.iter().flat_map(|z| [z.re, z.im]).collect()
     };
-    let (expected, got) = (parts(&expected), parts(&got));
+    let (expected, got) = (parts(expected), parts(got));
     let scale = expected
         .iter()
         .filter(|x| x.is_finite())
@@ -138,14 +199,17 @@ fn verify_plane(
             || (e - g).abs() <= 1e-6 * e.abs()
             || (e - g).abs() <= 1e-12 * scale;
         if !agree {
-            return Err(invalid(format!(
-                "the SymJIT plane application disagrees with its exact evaluator \
-                 (value {index}: {g:e} against {e:e}); keep this program on the \
-                 exact evaluator"
-            )));
+            let value = index / 2;
+            return Some(PlaneMismatch {
+                output: value % outputs.max(1),
+                row: value / outputs.max(1),
+                imaginary: index % 2 == 1,
+                plane: g,
+                exact: e,
+            });
         }
     }
-    Ok(())
+    None
 }
 
 /// The binary64 rows of a plane application (`compile_plane_application`)
