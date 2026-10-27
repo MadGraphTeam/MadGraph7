@@ -1548,10 +1548,18 @@ c         stop 1
 
 c     Store pdf information for systematics studies (initial)
 c     need to be done after      setclscales since that one clean the syscalc value
+c     The pdg is the one of the selected flavour combination (IPSEL), as in
+c     DSIG: after setclscales, ipdgcl of the external legs of a grouped
+c     subprocess holds the flavour class of the event (cluster maps it from
+c     the GET_FLAVOR index), e.g. 2 for c c~ > z or 1 for s s~ > z.
       if(use_syst)then
          do j=1,2
             n_pdfrw(j,ivec)=1
-            i_pdgpdf(1,j,ivec)=ipdgcl(j,igraphs(1),iproc)
+            if(abs(idup(j,ipsel,iproc)).ne.81)then
+               i_pdgpdf(1,j,ivec)=idup(j,ipsel,iproc)
+            else
+               i_pdgpdf(1,j,ivec)=ipdgcl(j,igraphs(1),iproc)
+            endif
             s_xpdf(1,j,ivec)=xbk(ib(j))
             s_qpdf(1,j,ivec)=sqrt(q2fact(j))
          enddo

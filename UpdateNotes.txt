@@ -5,6 +5,10 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: madevent MLM (ickkw=1) with use_syst: the <pdfrwt> entry of the incoming partons
+       used the flavour class of the grouped subprocess instead of the event's flavour
+       (pdg 1 for s s~, 2 for c c~), so the systematics (PDF and mu_F variations) of every
+       s/c-initiated event were computed with the d/u PDF (up to 9% for mu_F=2 on p p > z).
    OM: The default PDF follows the process when a photon is needed (issue #311):
        a photon in the initial state of a proton beam (LO, NLO and the mg7
        [beam] pdf) or NLO EW corrections ([QED]) select
