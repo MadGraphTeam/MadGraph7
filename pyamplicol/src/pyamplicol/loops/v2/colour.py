@@ -3165,6 +3165,7 @@ def certify_leading_colour(
 __all__ = [
     "COMPRESSION_THEOREMS",
     "SYMMETRIC_GROUP_FFT",
+    "BlockName",
     "BornBasis",
     "ColourNetwork",
     "ColourProduct",
@@ -3182,6 +3183,7 @@ __all__ = [
     "SeedTable",
     "VertexDecomposition",
     "block_colour_network",
+    "block_name",
     "born_basis",
     "build_seed_table",
     "canonical_primitive",
