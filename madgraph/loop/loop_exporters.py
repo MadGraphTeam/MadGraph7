@@ -870,12 +870,18 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         TIRCaching = AmplitudeReduction or n_squared_split_orders>1
         UseDensity = 'density' in self.cmd_options #detects if we want to compute the density matrix
         MadEventOutput = False
+        # Every evaluated virtual flavour keeps its own MadLoop filters
+        # (FILTER_FLAV_IDX=-1). Set by set_virtual_flavor_replace_dict_entries,
+        # which runs before loop_matrix.f, the only file it changes, is written.
+        FilterPerFlavor = getattr(matrix_element, 'virtual_filter_flavor',
+                                  None) == -1
         return {'LoopInduced': LoopInduced,
                 'ComputeColorFlows': ComputeColorFlows,
                 'AmplitudeReduction': AmplitudeReduction,
                 'TIRCaching': TIRCaching,
                 'MadEventOutput': MadEventOutput,
-                'UseDensity': UseDensity}
+                'UseDensity': UseDensity,
+                'FilterPerFlavor': FilterPerFlavor}
 
 
     #===========================================================================
@@ -1884,7 +1890,7 @@ C               ENDIF""")%replace_dict
         n_loop_calls = len([call for call in loop_amp_helas_calls if not loop_calls_finder.match(call) is None])
         if writer:
             # Write the file
-            writer.writelines(file)  
+            writer.writelines(file, context=self.get_context(matrix_element))
             return n_loop_calls
         else:
             # Return it to be written along with the others
@@ -1924,8 +1930,22 @@ C               ENDIF""")%replace_dict
             n_flavors = 1
             flav_table_flat = [1] * nexternal
         replace_dict['nvirtual_flavors'] = n_flavors
-        replace_dict['filter_flav_idx'] = self.get_virtual_filter_flavor(
-            matrix_element, n_flavors)
+        filter_flavor = self.get_virtual_filter_flavor(matrix_element,
+                                                       n_flavors)
+        replace_dict['filter_flav_idx'] = filter_flavor
+        # With FILTER_FLAV_IDX=-1, FILTER_SLOT maps every row to its own
+        # filter state, or to 0 for a row that is never evaluated.
+        filter_rows = []
+        if filter_flavor == -1:
+            filter_rows = self.get_virtual_filter_rows(matrix_element)
+        replace_dict['nfilter_slots'] = max(1, len(filter_rows))
+        replace_dict['filter_slots'] = ','.join(
+            '%d' % (filter_rows.index(row) + 1 if row in filter_rows else 0)
+            for row in range(1, n_flavors + 1))
+        # Read by get_context, since loop_matrix_standalone.inc only has the
+        # per-row filter code for -1, and by the FKS exporter, which tells
+        # BinothLHA which helicity filter file belongs to a row.
+        matrix_element.virtual_filter_flavor = filter_flavor
         replace_dict['virtual_flavor_array_function'] = \
             self._make_flavor_array_fortran_function(
                 replace_dict['proc_prefix'] + 'GET_VIRTUAL_FLAVOR',
@@ -1968,24 +1988,18 @@ C               ENDIF""")%replace_dict
         replace_dict['virtual_flavor_mask_common'] = mask_common
 
     @staticmethod
-    def get_virtual_filter_flavor(matrix_element, n_flavors):
-        """Return the virtual flavour row described by the MadLoop filters.
+    def get_virtual_filter_rows(matrix_element):
+        """Return the sorted virtual rows that the caller evaluates.
 
-        MadLoop sets its helicity and loop filters up from the first points
-        it evaluates and stores them in one HelFilter.dat and LoopFilter.dat,
-        which describe a single physical flavour.  The filters are therefore
-        only kept when one row is ever evaluated.  A caller restricted to
-        some rows lists their signed physical PDGs in the
-        ``evaluated_flavor_pdgs`` attribute (an FKS P directory sets its
-        physical Born rows).  Zero means that several rows can be evaluated
-        and switches the filters off.
+        A caller restricted to some rows lists their signed physical PDGs in
+        the ``evaluated_flavor_pdgs`` attribute (an FKS P directory sets its
+        physical Born rows).  None means that the rows are unknown: no such
+        list, or a list entry that matches no row.
         """
 
-        if n_flavors == 1:
-            return 1
         evaluated_pdgs = getattr(matrix_element, 'evaluated_flavor_pdgs', None)
         if not evaluated_pdgs:
-            return 0
+            return None
         # Same resolution as the FKS flavour map, but without the lazy
         # diagram trimming: MadLoop's amplitude numbering is already fixed.
         allow_trimming = getattr(matrix_element, '_flavor_allow_trimming',
@@ -1996,9 +2010,32 @@ C               ENDIF""")%replace_dict
                 pdgs, from_pdgs=True) for pdgs in evaluated_pdgs)
         finally:
             matrix_element._flavor_allow_trimming = allow_trimming
-        if len(rows) == 1 and 0 not in rows:
-            return rows.pop()
-        return 0
+        if 0 in rows:
+            return None
+        return sorted(rows)
+
+    @classmethod
+    def get_virtual_filter_flavor(cls, matrix_element, n_flavors):
+        """Return the virtual flavour row described by the MadLoop filters.
+
+        MadLoop sets its helicity and loop filters up from the first points
+        it evaluates and stores them in HelFilter.dat and LoopFilter.dat,
+        which describe a single physical flavour.  With one evaluated row
+        (see get_virtual_filter_rows), this is that row.  With several, it is
+        -1: each row then keeps its own filters, set up from its own first
+        points and stored in HelFilter_<row>.dat and LoopFilter_<row>.dat.
+        Zero means that the evaluated rows are unknown and switches the
+        filters off.
+        """
+
+        if n_flavors == 1:
+            return 1
+        rows = cls.get_virtual_filter_rows(matrix_element)
+        if not rows:
+            return 0
+        if len(rows) == 1:
+            return rows[0]
+        return -1
 
     @staticmethod
     def set_virtual_flavor_writer_state(fortran_model, replace_dict,
