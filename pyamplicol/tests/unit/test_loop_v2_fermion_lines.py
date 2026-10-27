@@ -167,7 +167,11 @@ def test_virtual_equals_madloop_and_catani(loop_sm_compiled_model, loop_native, 
 # against double-double), so binary64 takes the fourth (estimate 1.9e-11,
 # true error 1.0e-12) and double-double the first.
 PROJECTION_SLICES = {
-    "gg_uuxuux": ("g g > u u~ u u~", 4, 0, (0,) * 6, {"double": 3, "double-double": 0})
+    "gg_uuxuux": ("g g > u u~ u u~", 4, 0, (0,) * 6, {"double": 3, "double-double": 0}),
+    # Another flavour and a crossing with identical quarks on both sides
+    # (the grade scan below).
+    "ddx_ddxg": ("d d~ > d d~ g", 3, 0, (0,) * 5, {"double": 0, "double-double": 0}),
+    "ug_uuux": ("u g > u u u~", 3, 0, (0,) * 5, {"double": 0, "double-double": 0}),
 }
 PROJECTION_PHYSICS = frozenset({"uux_uuxg"})
 PROJECTION_NAMES = (
@@ -404,9 +408,16 @@ def test_colour_projections_are_formal_nc_projections(
 # process below has such blocks, so the scan sees a missing or wrong grade.
 # Binary64 (scaling by 2 is exact, measured bitwise) at the first exact
 # point with its last leg rescaled, so that no block current is on shell;
-# loop-request blocks and the CT program; the 2->4 requests run in the
-# nightly tier.
-GRADE_SCAN_NAMES = ("uux_uuxg", "uux_uuxuux", "uux_uuxepem", "gg_uuxuux")
+# loop-request blocks and the CT program; another flavour (d d~ > d d~ g), a
+# crossing (u g > u u u~) and the 2->4 requests run in the nightly tier.
+GRADE_SCAN_NAMES = (
+    "uux_uuxg",
+    "ddx_ddxg",
+    "ug_uuux",
+    "uux_uuxuux",
+    "uux_uuxepem",
+    "gg_uuxuux",
+)
 GRADE_SCAN_TOLERANCE = 1e-14
 
 
