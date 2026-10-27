@@ -1210,6 +1210,36 @@ def test_top_pair_and_leptons_equal_three_providers(
 TOP_PAIR_HIGGS = "required/emep_ttxh_ew"
 
 
+@pytest.mark.loop_fast
+@pytest.mark.parametrize("name", ["emep_ttxh_ew", "emep_emep_ew", "uux_emepmummp"])
+def test_reference_points_lie_on_the_scheme_mass_shells(name, loop_reference):
+    """The references toolkit refuses points off the scheme's mass shells
+    (``references.check_point_masses``, in ``run`` and ``merge``): a provider
+    evaluates such legs off shell while the masters take every leg's
+    invariant on its model mass shell, which made the first e- e+ > t t~ h
+    diagnostic (points at MT = 173.3, cards at 173) miss MadLoop even in the
+    double pole. This package's references pass; points recorded for
+    another top mass, or a leg moved off its shell, are refused."""
+
+    from tools.loop_reference import references, required_spec
+
+    reference = loop_reference(f"required/{name}")
+    spec = required_spec.load_process(required_spec.DEFAULT_SPEC, name)
+    points = {"points": reference["points"]}
+    references.check_point_masses(spec, points)
+    masses = [str(mass) for mass in required_spec.masses(spec)]
+    references.check_point_masses(spec, {**points, "masses": masses})
+    if "173" in masses:
+        other = ["173.3" if mass == "173" else mass for mass in masses]
+        with pytest.raises(SystemExit, match="built for the leg masses"):
+            references.check_point_masses(spec, {**points, "masses": other})
+    moved = json.loads(json.dumps(reference["points"]))
+    energy = Fraction(moved[0][-1][0])
+    moved[0][-1][0] = str(energy + energy / 10**12)
+    with pytest.raises(SystemExit, match="off the mass shell"):
+        references.check_point_masses(spec, {"points": moved})
+
+
 @pytest.mark.loop_nightly
 @pytest.mark.xfail(
     strict=True,
