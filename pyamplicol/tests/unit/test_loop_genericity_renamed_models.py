@@ -801,8 +801,8 @@ def test_mw_nature_gives_the_same_virtual(w_slices, models, name):
 # must not depend on the declaration order or names, by evidence either the
 # SymJIT fix (if its signed-zero branch is a defect against Symbolica), a
 # branch-cut-consistent comparison or off-axis probes that still certify the
-# real-axis evaluation (DECISIONS 2026-10-26 ~21:10 item 6, which supersedes
-# the ~10:10 routing). Reproducers: the model-free
+# real-axis evaluation (DECISIONS 2026-10-26 ~21:10 item 6, confirmed by the
+# user 2026-10-27 ~19:20; it supersedes the ~10:10 routing). Reproducers: the model-free
 # ``test_plane_check_accepts_a_negated_real_on_a_branch_cut`` below and
 # ``test_mw_nature_takes_the_same_native_route[loop_sm]`` (--runxfail).
 PLANE_CHECK_OWNER = (
@@ -810,7 +810,8 @@ PLANE_CHECK_OWNER = (
     "negated real a -0 imaginary part, Symbolica +0; rusticol-core "
     "loop_v2/trees.rs verify_plane), refused as the listed plane-mismatch: "
     "WP3.2 EWI-N (ew-native), the same refusal as EWI-N's g g > t t~ EW "
-    "parameter program; slice-status DECISIONS 2026-10-26 ~21:10 item 6"
+    "parameter program; slice-status DECISIONS 2026-10-26 ~21:10 item 6 "
+    "(user-confirmed 2026-10-27 ~19:20)"
 )
 
 

@@ -148,7 +148,7 @@ NATIVE_EXPORT_REFUSALS = (
         "WP3.2 EWI-N (ew-native)",
         "a plane check that does not depend on the model's parameter "
         "declaration order or names (slice-status DECISIONS 2026-10-26 ~21:10 "
-        "item 6)",
+        "item 6, user-confirmed 2026-10-27 ~19:20)",
     ),
     NativeExportRefusal(
         "external-photon-alpha0",
