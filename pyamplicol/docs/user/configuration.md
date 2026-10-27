@@ -687,33 +687,54 @@ declared `Qe`), and loop results carry the declared spelling; a name the model
 does not declare is refused, and so is a model declaring two names that differ
 only in case. Tree-level per-coupling-order partials still key orders by the
 tree engine's upper-case spelling (`QE` for a declared `Qe`); every shipped
-model declares upper-case names, where both spellings agree. The v2 engine
-still recognises the strong and electroweak corrections by the names `QCD` and
-`QED` (WP3.2): a model spelling its strong order otherwise gets the same
-values, but its QCD request is classified as electroweak (so a propagating
-width must be fixed to zero outside the complex-mass scheme) and carries no
-Catani pole prediction
-(`ir_poles` absent; `poles = "ir"` still selects the computed virtual's poles).
-What the engine does not admit yet fails at generation with the reason, for
-example:
+model declares upper-case names, where both spellings agree. The strong
+correction is recognised structurally, as the coupling order of the gluon's
+vertices (the massless adjoint vector's), whatever the model calls it; any
+other correction, or a perturbative colour-singlet species, makes the request
+electroweak. Electroweak requests take 't Hooft-Feynman gauge throughout
+(Born, trees attached to the loops, loop lines and counterterms; a model
+whose source declares no such gauge is refused) and need zero widths in
+their trees (see Widths below). Catani's QCD pole prediction needs the
+strong coupling parameter described above (`ir_poles` is absent otherwise;
+`poles = "ir"` still selects the computed virtual's poles).
+What the engine does not admit fails at generation with a typed error that
+names the rule, for example:
 
-- QED corrections with W or Z bosons in the loops with MG5_aMC's
-  `loop_qcd_qed_sm` (`u u~ > d d~` with QCD and QED corrections): "loop line …
-  has a unitary-gauge propagator" (loop lines need Feynman gauge). With the Z,
-  W, Higgs and Goldstones in `particle_veto`, the photon-only QED corrections
-  generate; the model's electroweak counterterms, written with the
-  complex-mass scheme's UFO helpers (`recms`, `regsqrt`, ...), are lowered.
-  Their finite part is not yet the photon-only one: the veto drops every
-  counterterm whose declared loop particles include a vetoed particle, and
-  `loop_qcd_qed_sm` declares some R2 couplings for the photon and Z loops
-  together (e.g. the `u u~ g` R2, `R2_GUU2Cp`, with loop particles `u` and
-  `Z`), so the photon's part of such a coupling is dropped too. R2
-  counterterms carry no poles, and the UV poles of such a request cancel
-  (checked on `u u~ > d d~`); its finite part is incomplete until the engine
-  handles such shared couplings;
+- leading and next-to-leading colour of processes whose tree currents are
+  not exact in N_c: identical-flavour quark lines, from `u u~ > u u~ g` up
+  (`u u~ > u u~ d d~`, `g g > u u~ u u~`, ...), whose currents mix
+  U(1)-subtraction grades: "colour-accuracy-nc-exact: ... LC needs N_c-exact
+  tree currents ...". Full colour (`color.accuracy = "full"`) is exact for
+  them; `u u~ > u u~` and distinct flavours (`u u~ > d d~ g`) are not
+  affected. The check runs right after the trees are built, and every export
+  repeats it, so no artifact carries such a projection;
+- a vertex joining a coloured and a colour-singlet fermion that the request
+  can use (a leptoquark `u e lq` vertex: one fermion line changing colour
+  representation): "fermion-line-representation: ... the vertex V (u~ e- lq)
+  joins a coloured and a colour-singlet fermion ...", before any tree is
+  built. Veto a particle of the vertex (`particle_veto`) or bound its
+  coupling order so that the request cannot use it;
 - more than one colour-singlet fermion line (`e- e+ > m- m+`,
   `u u~ > e- e+ m- m+`): "the Koszul signs between the blocks that carry them
   ... are not implemented yet".
+
+A process whose programs cannot be stored natively is refused with the
+feature's key (see the stored programs below), for example on-shell external
+photons with electroweak corrections ("external-photon-alpha0", refused as
+soon as the photons' alpha(0) convention is known; QCD corrections to such
+processes are available) and a program whose binary64 SymJIT application
+disagrees with its exact evaluator at the generation's check ("plane-mismatch",
+naming the parameter-program output or kernel; seen for a square-root
+argument on its branch cut, e.g. loop_sm with `MW` made a card input).
+
+A `particle_veto` drops every counterterm whose declared loop particles include
+a vetoed particle. MG5_aMC's `loop_qcd_qed_sm` declares some R2 couplings for
+the photon and Z loops together (e.g. the `u u~ g` R2, `R2_GUU2Cp`, with loop
+particles `u` and `Z`), so photon-only QED corrections (the Z, W, Higgs and
+Goldstones vetoed) drop the photon's part of such a coupling too: R2
+counterterms carry no poles and the UV poles of such a request cancel
+(checked on `u u~ > d d~`), but its finite part is incomplete until the engine
+handles such shared couplings.
 
 The model's UV and R2 counterterms are taken as declared (`uv_complete`,
 `model_r2_complete`): the engine does not check them against the loops.
@@ -724,7 +745,9 @@ MG5_aMC's `loop_qcd_qed_sm` needs
 goldstoneboson"); `loop.preparation.covariant_multiplets` and
 `color.contraction = "symmetric-group-fft"` need `engine = "legacy"`. A dry run
 (`generate --dry-run`) reports what the model preparation refuses; loop
-admission is checked by the generation only.
+admission is checked by the generation only, and the dry run lists what it
+refuses (`estimated_coverage.loop_admission_refusals`, with the remedies) and
+what the native export refuses (`native_export_refusals`).
 
 Particle veto. `[generation] particle_veto = ["t"]` (CLI `--particle-veto t`,
 repeatable; Python `GenerationConfig(particle_veto=("t",))`) removes the named
