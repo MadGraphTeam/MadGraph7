@@ -60,6 +60,7 @@ from .colour import project
 from .families import FamilyKey, Orders
 from .merged import MergedGraph, merged_graph
 from .poly_affine import size
+from .refusals import require_formal_nc_tables
 from .schedules import forward_graph
 
 PLAN_SCHEMA = 4
@@ -375,6 +376,10 @@ class _Exporter:
 
         slice_ = self.slice_
         accuracy = slice_.request.accuracy
+        # Projected at formal N_c only over N_c-exact blocks (``refusals``).
+        require_formal_nc_tables(
+            accuracy, (column.table for column in columns), "seed records"
+        )
         born_grades = slice_._born_grades()
         admitted: set[tuple[int, Orders]] = set()
         # Per column, once: its table, degree and, per (class, loop order),
@@ -921,15 +926,24 @@ def export_plan(
     """
 
     from .assemble import _BlockRows
+    from .refusals import require_nc_exact
 
+    # LC/NLC seed records, Born components and counterterm projections need
+    # N_c-exact tree blocks: the generation refuses others
+    # (``LoopSlice.generate``), and no export serves one (``refusals``).
+    require_nc_exact(slice_.blocks, slice_.request.accuracy, slice_.request.process)
     if trees and getattr(slice_, "external_photons", None) is not None:
         # The native inputs form the Born and the counterterm and field
         # components with the loops' coupling throughout; the alpha(0) scale
         # of external photons (WP3.2 EWI-6b, ``_PointEvaluation.average``)
-        # is applied by the Python inputs only (EWI-N).
-        raise NotImplementedError(
+        # is applied by the Python inputs only (EWI-N). A stored process is
+        # refused earlier (``LoopSlice.generate(native_inputs=True)``).
+        from .native_trees import NativeExportUnsupported
+
+        raise NativeExportUnsupported(
+            "external-photon-alpha0",
             "native point inputs of a request with on-shell external photons "
-            "(alpha(0) convention, WP3.2 EWI-6b)"
+            "(alpha(0) convention, WP3.2 EWI-6b)",
         )
     kinematics = rx.CatalogueKinematics(
         slice_.catalogue,

@@ -345,12 +345,24 @@ def _native() -> Any:
 
 
 def _call(operation: Any, *args: Any) -> Any:
+    """``operation(*args)`` with the native builder's refusals typed: a listed
+    loop-admission refusal (``rusticol_core::loop_v2::dag::ADMISSION_REFUSALS``,
+    ``refusals.LOOP_ADMISSION_REFUSALS``) as ``LoopRequestUnsupported``, a
+    feature it does not cover as ``NativeDagUnsupported``."""
+
     try:
         return operation(*args)
     except ValueError as error:
         message = str(error)
         if message.startswith("unsupported: "):
             message = message.removeprefix("unsupported: ")
+            from .refusals import LoopRequestUnsupported, listed_refusal_keys
+
+            for key in listed_refusal_keys():
+                if message.startswith(f"{key}: "):
+                    raise LoopRequestUnsupported(
+                        key, message.removeprefix(f"{key}: ")
+                    ) from None
             feature = next(
                 (key for prefix, key in _NATIVE_REFUSALS if message.startswith(prefix)),
                 None,

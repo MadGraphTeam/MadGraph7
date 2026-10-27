@@ -139,6 +139,25 @@ NATIVE_EXPORT_REFUSALS = (
         "WP3.1 generation-scale (native_observables)",
         "none while every native tree program forms its counterterm components",
     ),
+    NativeExportRefusal(
+        "plane-mismatch",
+        "a tree-program kernel or parameter-program output whose binary64 "
+        "SymJIT plane application disagrees with its exact evaluator at the "
+        "plane check's probes (e.g. a square-root argument on its branch cut "
+        "there, which SymJIT and Symbolica sign differently)",
+        "WP3.2 EWI-N (ew-native)",
+        "a plane check that does not depend on the model's parameter "
+        "declaration order or names (slice-status DECISIONS 2026-10-26 ~21:10 "
+        "item 6)",
+    ),
+    NativeExportRefusal(
+        "external-photon-alpha0",
+        "an electroweak request with on-shell external photons (their alpha(0) "
+        "convention: the coupling scale and the charge-conversion term)",
+        "WP3.2 EWI-N (ew-native)",
+        "the alpha(0) scale and the conversion term as parameter-program "
+        "outputs of the native point inputs",
+    ),
 )
 _EXPORT_REFUSAL_KEYS = frozenset(refusal.key for refusal in NATIVE_EXPORT_REFUSALS)
 
@@ -216,22 +235,41 @@ _PLANES: OrderedDict[bytes, bytes] = OrderedDict()
 _PLANES_KEPT = 4096
 
 
-def _plane_applications(states: Sequence[bytes]) -> tuple[bytes, ...]:
+def _plane_applications(
+    states: Sequence[bytes], parameter_outputs: Sequence[Any] = ()
+) -> tuple[bytes, ...]:
     """The binary64 SymJIT plane application of each saved exact evaluator
     (storage-v4 IR; the native ``compile_v2_plane`` checks it against the
-    evaluator and refuses a disagreement)."""
+    evaluator). A disagreement is the listed refusal ``plane-mismatch``
+    naming the kernel, or the parameter-program output by its key in
+    ``parameter_outputs`` when the last state is the parameter program (the
+    kernels come first, ``NativeTrees.planes``)."""
 
     from pyamplicol.loops.native import load_loop_native
 
     native = load_loop_native()
     out = []
-    for state in states:
+    for index, state in enumerate(states):
         key = hashlib.sha256(state).digest()
         plane = _PLANES.get(key)
         if plane is None:
-            compiled, _inputs, _outputs = native.compile_v2_plane(
-                bytes(state), _PLANE_OPTIMIZATION_LEVEL, False
-            )
+            try:
+                compiled, _inputs, _outputs = native.compile_v2_plane(
+                    bytes(state), _PLANE_OPTIMIZATION_LEVEL, False
+                )
+            except native.PlaneMismatchError as error:
+                message, output, row, _imaginary = error.args
+                parameter = parameter_outputs and index == len(states) - 1
+                where = (
+                    f"parameter-program output {output} "
+                    f"({_output_label(parameter_outputs[output])})"
+                    if parameter and output < len(parameter_outputs)
+                    else f"output {output} of tree-program kernel {index}"
+                )
+                raise NativeExportUnsupported(
+                    "plane-mismatch",
+                    f"{where} at probe row {row}: {message}",
+                ) from error
             plane = _PLANES[key] = bytes(compiled)
             while len(_PLANES) > _PLANES_KEPT:
                 _PLANES.popitem(last=False)
@@ -239,6 +277,14 @@ def _plane_applications(states: Sequence[bytes]) -> tuple[bytes, ...]:
             _PLANES.move_to_end(key)
         out.append(plane)
     return tuple(out)
+
+
+def _output_label(key: Any) -> str:
+    """A parameter-program output's key (``_parameter_program``'s ``output``:
+    kind, then the coupling, parameter or constant it forms) as text."""
+
+    kind, *rest = key
+    return " ".join([str(kind), *(str(part) for part in rest)])[:200]
 
 
 def _fraction_text(value: Fraction) -> str:
@@ -264,7 +310,11 @@ def export_trees(
     """
 
     from .assemble import LAURENT_POWERS, _BlockRows, _single
+    from .refusals import require_nc_exact
 
+    # The native Born components and counterterm projections of LC/NLC need
+    # N_c-exact blocks (``refusals``, asserted again at the export).
+    require_nc_exact(slice_.blocks, slice_.request.accuracy, slice_.request.process)
     trees = slice_.tree_rows
     schema = trees.schema
     process = slice_.blocks.process
@@ -289,6 +339,10 @@ def export_trees(
     # program on a state of its own, which follows the trees' state in the
     # closure's index space (``loop_v2::trees``).
     ct_program = slice_.counterterm_program if with_counterterms else None
+    if ct_program is not None:
+        require_nc_exact(
+            ct_program.blocks.blocks, slice_.request.accuracy, slice_.request.process
+        )
     ct = None if ct_program is None else _CountertermTrees.of(ct_program, state_size)
 
     def slot(block: Any, entry: Any) -> tuple[int, int]:
@@ -515,7 +569,7 @@ def export_trees(
             slice_, closure_term, whole_term, components, born_orders
         )
     masses = _external_masses(slice_)
-    parameters, parameter_evaluator = _parameter_program(
+    parameters, parameter_evaluator, parameter_outputs = _parameter_program(
         slice_,
         exporter,
         trees,
@@ -575,7 +629,7 @@ def export_trees(
         tuple(components),
         parameter_evaluator,
         () if counterterms is None else counterterms.outputs,
-        _plane_applications((*kernels, parameter_evaluator)),
+        _plane_applications((*kernels, parameter_evaluator), parameter_outputs),
         () if counterterms is None else counterterms.tensors,
     )
 
@@ -1061,9 +1115,10 @@ def _parameter_program(
     masses: Sequence[tuple[int, str]],
     counterterm_couplings: Sequence[tuple[Any, ...]] = (),
     counterterm_trees: _CountertermTrees | None = None,
-) -> tuple[dict[str, Any], bytes]:
-    """The parameter program of the native lane: its record and its saved
-    exact evaluator (``loop_v2::trees`` binds a batch with it).
+) -> tuple[dict[str, Any], bytes, tuple[Any, ...]]:
+    """The parameter program of the native lane: its record, its saved
+    exact evaluator (``loop_v2::trees`` binds a batch with it) and the key of
+    each output (what the plane check's refusal names, ``_plane_applications``).
 
     Inputs are the tree runtime schema's external model parameters (real),
     in the schema's order. Outputs are complex: per derived model parameter
@@ -1474,7 +1529,10 @@ def _parameter_program(
         # Written only when present: an older native refuses the record
         # (unknown field) instead of reading the legs as massless.
         record["derived_masses"] = derived_masses
-    return record, bytes(evaluator.save())
+    keys: list[Any] = [None] * len(outputs)
+    for key, index in output_of.items():
+        keys[index] = key
+    return record, bytes(evaluator.save()), tuple(keys)
 
 
 def _line_factor(compiled: Any, scale: str, externals: Sequence[Any]) -> Any:
