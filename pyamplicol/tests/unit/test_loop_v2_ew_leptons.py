@@ -654,10 +654,11 @@ O2_DIGITS = 60
 O2_TOLERANCE = 1e-50
 
 
-def _legacy_families(loop_gmu_ufo, muons: str, point, scale) -> dict:
-    """The legacy engine's per-family numerators of e- e+ > mu- mu+ (full
-    EW, G_mu) at one point, in ``tools/loop_reference/legacy_capture``'s
-    layout (60 digits)."""
+def _legacy_families(loop_gmu_ufo, process: str, muons: str, point, scale) -> dict:
+    """The legacy engine's per-family numerators of a 2 -> 2 lepton process
+    (full EW, G_mu) at one point, in ``tools/loop_reference/legacy_capture``'s
+    layout (60 digits). Its families are FeynKit's loop diagrams, each with
+    its FeynKit overall factor (closed-loop and external-fermion signs)."""
 
     import numpy as np
 
@@ -681,10 +682,11 @@ def _legacy_families(loop_gmu_ufo, muons: str, point, scale) -> dict:
         },
     )
     parameters = {**_control_parameters(muons), **ZERO_WIDTHS, "MU_R": "1000"}
+    initial, final = (tuple(side.split()) for side in process.split(">"))
     program = source_bare_program(
         source,
-        ("e-", "e+"),
-        ("m-", "m+"),
+        initial,
+        final,
         selected_corrections=["QED"],
         born_order_bounds={"QCD": 0, "QED": 2},
         loop_order_bounds={"QCD": 0, "QED": 4},
@@ -708,43 +710,28 @@ def _legacy_families(loop_gmu_ufo, muons: str, point, scale) -> dict:
     return {"families": _family_layout(bare), "rows": rows}
 
 
-@pytest.mark.loop_nightly
-@pytest.mark.parametrize("muons", ["massless", "massive"])
-def test_family_numerators_equal_the_legacy_engine(gmu_slices, loop_gmu_ufo, muons):
-    """O2 per family (DESIGN risk 2) on e- e+ > mu- mu+ with full EW
-    corrections: every legacy family's numerator equals the sum of the v2
-    families on its ring (v2 keeps the widths' labels apart: the W, Goldstone
-    and ghost rings at M_W, equal at zero widths) after an exact affine frame
-    map, symmetrised over the ring's automorphisms, coefficients weighted by
-    sqrt(s)^rank (``test_loop_v2_slice``), at 60 digits. This localises a
-    sign of a Goldstone, ghost or lepton line to a family: the families of
-    the lepton lines through the loop (Koszul signs) and, with massive
-    muons, of the Yukawa couplings (G0, H and G+- on the muon line, the Z G0
-    H triangles)."""
+def _assert_families_equal_legacy(slice_, legacy: dict, point, scale, parameters):
+    """O2 per family: every legacy family's numerator equals the sum of the
+    v2 families on its ring (v2 keeps the widths' labels apart: the W,
+    Goldstone and ghost rings at M_W, equal at zero widths) after an exact
+    affine frame map, symmetrised over the ring's automorphisms,
+    coefficients weighted by sqrt(s)^rank (``test_loop_v2_slice``), at 60
+    digits; the two family sets are equal (no scaleless family in these
+    2 -> 2 processes). Returns the number of families compared."""
 
     from pyamplicol.loops.v2 import reference_executor as rx
     from pyamplicol.loops.v2.assemble import Precision
     from pyamplicol.loops.v2.poly_affine import size, substitute
 
     slice_o2 = _sibling("test_loop_v2_slice")
-    point = [["500", "0", "0", "500"], ["500", "0", "0", "-500"]]
-    point += [["500", "300", "0", "400"], ["500", "-300", "0", "-400"]]
-    if muons == "massive":
-        control = json.loads(
-            (FIXTURES / "electroweak-massive-mumu-control.json").read_text()
-        )
-        point = control["exact_points"][0]
-    scale = "1000000"
-    legacy = _legacy_families(loop_gmu_ufo, muons, point, scale)
-    slice_ = gmu_slices("e- e+ > m- m+", muons)
     execution, momenta = slice_.family_numerators(
         point,
         scale,
-        parameters=_control_parameters(muons),
+        parameters=parameters,
         precision=Precision.arbitrary(O2_DIGITS),
     )
-    legs = 4
-    signs = [1, 1, -1, -1]  # given momenta -> all incoming
+    legs = len(point)
+    signs = [1, 1] + [-1] * (legs - 2)  # given momenta -> all incoming
     rings = [
         (
             [
@@ -811,6 +798,60 @@ def test_family_numerators_equal_the_legacy_engine(gmu_slices, loop_gmu_ufo, muo
             for a, b, w in zip(mine, theirs, weights, strict=True)
         )
         assert error <= O2_TOLERANCE * largest, (masses, error / largest)
+    return len(rings)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("muons", ["massless", "massive"])
+def test_family_numerators_equal_the_legacy_engine(gmu_slices, loop_gmu_ufo, muons):
+    """O2 per family (DESIGN risk 2) on e- e+ > mu- mu+ with full EW
+    corrections (``_assert_families_equal_legacy``). This localises a sign
+    of a Goldstone, ghost or lepton line to a family: the families of the
+    lepton lines through the loop (Koszul signs) and, with massive muons, of
+    the Yukawa couplings (G0, H and G+- on the muon line, the Z G0 H
+    triangles)."""
+
+    point = [["500", "0", "0", "500"], ["500", "0", "0", "-500"]]
+    point += [["500", "300", "0", "400"], ["500", "-300", "0", "-400"]]
+    if muons == "massive":
+        control = json.loads(
+            (FIXTURES / "electroweak-massive-mumu-control.json").read_text()
+        )
+        point = control["exact_points"][0]
+    scale = "1000000"
+    process = "e- e+ > m- m+"
+    legacy = _legacy_families(loop_gmu_ufo, process, muons, point, scale)
+    _assert_families_equal_legacy(
+        gmu_slices(process, muons), legacy, point, scale, _control_parameters(muons)
+    )
+
+
+@pytest.mark.loop_nightly
+def test_bhabha_families_carry_feynkit_overall_factors(gmu_slices, loop_gmu_ufo):
+    """O13 EW (DESIGN §14, WP3.2 EWI-5): e- e+ > e- e+ with full EW
+    corrections, per family against the legacy engine, whose families are
+    FeynKit's loop diagrams with FeynKit's overall factors (the closed-loop
+    sign and the relative sign of the two ways the identical external
+    leptons pair into lines). Bhabha is the process where that pairing
+    matters: the s- and t-channel lines run through different boxes and
+    vertex loops, so a Koszul sign of a lepton line through the loop that
+    were wrong on one pairing flips whole families, which the summed
+    virtual against MadLoop (``test_bhabha_equals_madloop``) would only show
+    as a total."""
+
+    point = [["500", "0", "0", "500"], ["500", "0", "0", "-500"]]
+    point += [["500", "300", "0", "400"], ["500", "-300", "0", "-400"]]
+    scale = "1000000"
+    process = "e- e+ > e- e+"
+    legacy = _legacy_families(loop_gmu_ufo, process, "massless", point, scale)
+    compared = _assert_families_equal_legacy(
+        gmu_slices(process, "massless"),
+        legacy,
+        point,
+        scale,
+        _control_parameters("massless"),
+    )
+    print("families", compared)
 
 
 # ------------------------------------- g g > t t~ e- e+ (EW, three providers)
