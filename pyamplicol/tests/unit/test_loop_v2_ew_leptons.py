@@ -40,9 +40,8 @@ owns). Checks:
   against MadLoop before the legacy engine serves as the second engine, the
   native point inputs of e- e+ > mu- mu+ (a strict xfail until EWI-N), and
   e- e+ > t t~ h against Recola (``required/emep_ttxh_ew``; MadLoop
-  excluded, it omits the G0 t t~ R2 of the b loops), a strict xfail until
-  the counterterm roots' reading of Z G0 H (genericity audit 2 G2-M7,
-  ew-epsilon) is integrated;
+  excluded, it omits the G0 t t~ R2 of the b loops; it needs the counterterm
+  roots' reading of Z G0 H, genericity audit 2 G2-M7);
 * the tree engine's reading sign of colour-singlet loop segments
   (``catalogue._CatalogueBuilder.reading_sign``): the tree engine reads
   every vertex all-outgoing, so a colour-singlet vertex odd in the momenta of
@@ -1241,18 +1240,6 @@ def test_reference_points_lie_on_the_scheme_mass_shells(name, loop_reference):
 
 
 @pytest.mark.loop_nightly
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "the counterterm roots' reading sign of momentum-odd vertices with all "
-        "legs self-conjugate (Z G0 H; genericity audit 2 G2-M7, work/v2-ew-epsilon): "
-        "the single pole misses Recola and Catani by 8.8e-3 of the Born floor at "
-        "point 0; with "
-        "work/v2-ew-epsilon c33ac24a merged every coefficient equals Recola within "
-        "5.7e-12 (whichever package integrates second removes this xfail)"
-    ),
-)
 def test_lepton_initiated_top_pair_higgs_ew_equals_recola(
     loop_gmu_ufo, loop_native, loop_reference
 ):
@@ -1266,8 +1253,10 @@ def test_lepton_initiated_top_pair_higgs_ew_equals_recola(
     coupling of the b loops (R2_G0tt_b), whose loop-particle label [W+, b]
     matches no 't Hooft-Feynman-gauge loop in MG5_aMC's counterterm
     matching, while the recursion inserts every admitted R2 vertex once
-    (ADDENDUM J); Recola - MadLoop is exactly that term. Generation about
-    11 min, 8 GB."""
+    (ADDENDUM J); Recola - MadLoop is exactly that term. Before the
+    counterterm roots read Z G0 H as the tree engine does (genericity audit 2
+    G2-M7, ew-epsilon) the single pole missed Recola and Catani by 8.8e-3 of
+    the Born floor at point 0. Generation about 11 min, 8 GB."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
     from pyamplicol.models.loading import compile_model_source
