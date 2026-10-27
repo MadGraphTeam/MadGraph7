@@ -384,12 +384,16 @@ namespace madmatrix
     using F_ACCESS = HostAccessIflavorVec;
     mgDebug( 0, __FUNCTION__ );
     // one wavefunction slot per COPY, which is more than the nwf of one row and
-    // far fewer than one row's worth per row
-    fptype_momenta_sv pvec_sv[hrNwf][np4];
-    cxtype_amp_sv w_sv[hrNwf][nw6];
+    // far fewer than one row's worth per row. A big process has thousands of
+    // them (g g > t t~ g g g: 4826, 1.3 MB), more than the stack of a worker
+    // thread (512 kB on macOS), so they live on the heap, once per thread.
+    static thread_local std::vector<fptype_momenta_sv> pvec_sv( (size_t)hrNwf * np4 );
+    static thread_local std::vector<cxtype_amp_sv> w_sv( (size_t)hrNwf * nw6 );
+    static thread_local std::vector<ALOHAOBJ> aloha_objs( hrNwf );
+    ALOHAOBJ* aloha_obj = aloha_objs.data();
+    for( int iwf = 0; iwf < hrNwf; iwf++ )
+      aloha_obj[iwf] = ALOHAOBJ{ pvec_sv.data() + (size_t)iwf * np4, w_sv.data() + (size_t)iwf * nw6 };
     cxtype_amp_sv amp_sv[1]; // every amplitude goes through this one scratch, then into the tables
-    ALOHAOBJ aloha_obj[hrNwf];
-    for( int iwf = 0; iwf < hrNwf; iwf++ ) aloha_obj[iwf] = ALOHAOBJ{ pvec_sv[iwf], w_sv[iwf] };
     fptype_amp* amp_fp = reinterpret_cast<fptype_amp*>( amp_sv );
     // the vertex with one leg left off, shared by every row that differs only in
     // that leg (the P1N amplitude split)
