@@ -318,6 +318,17 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_lhe_ordering test_reweight_ordering test_boost_by_a_momentum_at_rest test_nested_identical_children -t0
 
+      # ---- unittest_reweight_backend ----
+      # the reweighting backend choice (classic module or MadtRex) and the
+      # MadtRex reweight-card readers: pure Python, no madspace/madtrex. The
+      # tests needing an installed madtrex run in acceptancetest_mg7.yml
+      # (acceptancetest_mg7_madtrex).
+      - name: "unittest_reweight_backend: reweighting backend choice and MadtRex cards"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_reweight_backend NpyToLheNamedWeightsTest HelicityReweightingCardTest ClassicVocabularyTest GridpackSourceBuildTest -t0
+
 
   unittest_bundle_3:
     # former jobs, run one after the other: unittest_10 unittest_density_29
