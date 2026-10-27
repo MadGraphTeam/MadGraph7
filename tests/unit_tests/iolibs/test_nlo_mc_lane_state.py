@@ -12,6 +12,71 @@ from madgraph import MG5DIR
 
 class TestMCLaneState(unittest.TestCase):
 
+    def test_single_lane_integration_keeps_weight_lines_scalar(self):
+        """Exercise the production reset/final-copy decisions in all modes.
+
+        Single-lane integration already retains scalar contributions across
+        folds. Copying their full capacities to vector storage was unused
+        work. Generation must still supply that storage to event picking,
+        and multiple lanes need it for their separate fold histories.
+        """
+        compiler = shutil.which('gfortran')
+        if compiler is None:
+            self.skipTest('gfortran is required for the weight-storage probe')
+        with open(os.path.join(MG5DIR, 'Template', 'NLO', 'SubProcesses',
+                               'driver_mintMC.f')) as stream:
+            source = stream.read()
+        start = source.index('            icontr=0\n')
+        reset = source[start:source.index('            virt_wgt_mint', start)]
+        start = source.rindex('            f_vec(:,ivec) = f(:)\n')
+        start = source.index('\n', start) + 1
+        append = source[start:source.index('            MCcnt_vec', start)]
+        probe = '''      program probe
+      implicit none
+      integer nexternal,ivec,icontr,vector_size,imode,nreset,nappend
+      integer, allocatable :: itype(:)
+      common /calls/ nreset,nappend
+      nexternal=5
+      ivec=1
+      allocate(itype(20))
+      do imode=0,2
+         do vector_size=1,4,3
+            nreset=0
+            nappend=0
+''' + reset + append + '''
+            write(*,*) imode,vector_size,nreset,nappend
+         enddo
+      enddo
+      end
+      subroutine reset_weight_lines_vec(n)
+      implicit none
+      integer n,nreset,nappend
+      common /calls/ nreset,nappend
+      nreset=nreset+1
+      end
+      subroutine append_weight_lines(n,i)
+      implicit none
+      integer n,i,nreset,nappend
+      common /calls/ nreset,nappend
+      nappend=nappend+1
+      end
+'''
+        with tempfile.TemporaryDirectory(prefix='mg7_mc_weight_storage_') as tmp:
+            path = os.path.join(tmp, 'probe.f')
+            with open(path, 'w') as stream:
+                stream.write(probe)
+            binary = os.path.join(tmp, 'probe')
+            compiled = subprocess.run([compiler, '-O0', '-fcheck=all',
+                                       '-ffixed-line-length-132', path, '-o', binary],
+                                      stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout)
+            output = subprocess.check_output([binary], text=True)
+        rows = [tuple(map(int, line.split())) for line in output.splitlines()]
+        self.assertEqual(rows, [(0, 1, 0, 0), (0, 4, 1, 1),
+                                (1, 1, 0, 0), (1, 4, 1, 1),
+                                (2, 1, 1, 1), (2, 4, 1, 1)])
+
     def test_every_lane_starts_its_nbody_part_fresh(self):
         """Compile the head of the production lane loop of sigintF_vec.
 

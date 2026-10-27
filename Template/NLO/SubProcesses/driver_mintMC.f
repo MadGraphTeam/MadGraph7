@@ -1161,7 +1161,10 @@ C Clear per-fold MEs before preparing this fold's virtual approximations.
          call reset_storage()
          if (ifl.eq.0) then
             icontr=0
-            call reset_weight_lines_vec(nexternal)
+c Single-lane integration keeps its contribution history in scalar lines.
+c Event picking still needs vector lines, including at generation width 1.
+            if (vector_size.gt.1.or.imode.eq.2)
+     $         call reset_weight_lines_vec(nexternal)
             virt_wgt_mint(0:amp_split_size)=0d0
             born_wgt_mint(0:amp_split_size)=0d0
             virtual_over_born=0d0
@@ -1567,7 +1570,9 @@ c determined which contributions are identical.
             call fill_MC_integer(1,lane_group(ivec),
      $           n1body_wgt*lane_vol1(ivec))
             f_vec(:,ivec) = f(:)
-            if(allocated(itype)) call append_weight_lines(nexternal,ivec)
+            if((vector_size.gt.1.or.imode.eq.2).and.
+     $         allocated(itype))
+     $         call append_weight_lines(nexternal,ivec)
             MCcnt_vec(ivec)=MCcntcalled
             vegas_wgt_vec(ivec)=vegas_wgt
             virt_wgt_vec(:,ivec)=virt_wgt_mint
