@@ -1,6 +1,7 @@
 #pragma once
 
 #include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/custom_function.hpp"
 
 namespace madspace {
 
@@ -24,6 +25,8 @@ namespace madspace {
  * @f$H_\mathrm{T}/2@f$ (`half_transverse_mass`) or @f$\sqrt{\hat s}@f$
  * (`partonic_energy`). The dynamical scale is multiplied by `scale_factor`,
  * e.g. @f$H_\mathrm{T}/4@f$ is `half_transverse_mass` with `scale_factor = 0.5`.
+ * A @ref CustomFunction of type CustomFunction::scale replaces the dynamical
+ * choice, like `user_dynamical_scale` in MadGraph5.
  *
  * `batch` is the leading batch dimension.
  *
@@ -85,6 +88,8 @@ public:
      * @param fact_scale2          Fixed factorization scale for the second beam.
      * @param scale_factor         Factor on the dynamical scale; fixed scales are
      *                             left alone.
+     * @param custom_scale         Optional user-supplied function that replaces
+     *                             the dynamical scale choice.
      */
     EnergyScale(
         std::size_t particle_count,
@@ -94,7 +99,8 @@ public:
         double ren_scale,
         double fact_scale1,
         double fact_scale2,
-        double scale_factor = 1.
+        double scale_factor = 1.,
+        const std::optional<CustomFunction>& custom_scale = std::nullopt
     );
 
 private:
@@ -109,6 +115,7 @@ private:
     double _fact_scale1;
     double _fact_scale2;
     double _scale_factor;
+    std::optional<CustomFunction> _custom_scale;
 };
 
 } // namespace madspace

@@ -22,8 +22,8 @@ import tests.unit_tests as unittest
 
 import madgraph.core.base_objects as base_objects
 
-import models.import_ufo as import_ufo
-import models.write_param_card as writter
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.write_param_card as writter
 import madgraph.various.misc as misc 
 
 

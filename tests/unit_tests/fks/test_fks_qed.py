@@ -28,7 +28,7 @@ import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.core.base_objects as MG
 import madgraph.core.color_algebra as color
 import madgraph.core.diagram_generation as diagram_generation
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import madgraph.iolibs.helas_call_writers as helas_call_writers
 import copy
 import array

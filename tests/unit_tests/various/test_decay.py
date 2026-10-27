@@ -25,8 +25,8 @@ import cmath
 
 import tests.unit_tests as unittest
 import madgraph.core.base_objects as base_objects
-import models.import_ufo as import_ufo
-import models.model_reader as model_reader
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.model_reader as model_reader
 import madgraph.iolibs.save_model as save_model
 import madgraph.iolibs.drawing_eps as drawing_eps
 import madgraph.iolibs.import_v4 as import_v4

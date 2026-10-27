@@ -10,6 +10,7 @@
 #include "madspace/driver.hpp"
 #include "madspace/phasespace.hpp"
 #include "madspace/util.hpp"
+#include "python_function.hpp"
 
 namespace py = pybind11;
 using namespace madspace;
@@ -307,7 +308,20 @@ PYBIND11_MODULE(_madspace_py, m) {
     m.def("available_backends", &available_backends, pydoc::doc("available_backends"));
 
     py::classh<MatrixElementApi>(m, "MatrixElementApi", pydoc::doc("MatrixElementApi"))
-        //.def("device", &MatrixElementApi::device)
+        .def(
+            "device_type",
+            [](const MatrixElementApi& api) {
+                switch (api.device_type()) {
+                case DeviceType::cuda:
+                    return "cuda";
+                case DeviceType::hip:
+                    return "hip";
+                default:
+                    return "cpu";
+                }
+            },
+            "Device the library was built for: ``cpu``, ``cuda`` or ``hip``."
+        )
         .def(
             "particle_count",
             &MatrixElementApi::particle_count,
@@ -356,6 +370,20 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("parameters") = std::unordered_map<std::string, double>{},
             py::return_value_policy::reference_internal,
             pydoc::doc("Context::load_matrix_element")
+        )
+        .def(
+            "_add_python_function",
+            &add_python_function,
+            py::arg("function"),
+            py::arg("input_keys"),
+            py::arg("required_input_keys"),
+            py::arg("output_keys"),
+            py::arg("framework"),
+            py::arg("name"),
+            py::arg("parameter_defaults") =
+                std::vector<std::pair<std::string, double>>{},
+            py::arg("parameters") = std::unordered_map<std::string, double>{},
+            py::return_value_policy::reference_internal
         )
         .def(
             "define_global",
@@ -444,6 +472,54 @@ PYBIND11_MODULE(_madspace_py, m) {
         py::arg("stream"),
         pydoc::doc("set_caller_stream")
     );
+
+    m.def(
+        "_tensor_view",
+        &tensor_view,
+        py::arg("address"),
+        py::arg("dtype"),
+        py::arg("shape"),
+        py::arg("stride"),
+        py::arg("offset"),
+        py::arg("device"),
+        py::arg("device_index") = 0
+    );
+    py::dict umami_input_keys, umami_output_keys;
+    for (auto [name, key] : std::initializer_list<std::pair<const char*, int>>{
+             {"momenta", UMAMI_IN_MOMENTA},
+             {"alpha_s", UMAMI_IN_ALPHA_S},
+             {"flavor_index", UMAMI_IN_FLAVOR_INDEX},
+             {"random_color", UMAMI_IN_RANDOM_COLOR},
+             {"random_helicity", UMAMI_IN_RANDOM_HELICITY},
+             {"random_diagram", UMAMI_IN_RANDOM_DIAGRAM},
+             {"helicity_index", UMAMI_IN_HELICITY_INDEX},
+             {"diagram_index", UMAMI_IN_DIAGRAM_INDEX},
+             {"channel_index", UMAMI_IN_CHANNEL_INDEX},
+             {"particle_count", UMAMI_IN_PARTICLE_COUNT},
+             {"pdg_ids", UMAMI_IN_PDG_IDS},
+             {"momentum_fraction", UMAMI_IN_MOMENTUM_FRACTION},
+             {"scale", UMAMI_IN_SCALE},
+             {"pdg_id", UMAMI_IN_PDG_ID},
+             {"beam_index", UMAMI_IN_BEAM_INDEX},
+         }) {
+        umami_input_keys[name] = key;
+    }
+    for (auto [name, key] : std::initializer_list<std::pair<const char*, int>>{
+             {"matrix_element", UMAMI_OUT_MATRIX_ELEMENT},
+             {"color_index", UMAMI_OUT_COLOR_INDEX},
+             {"helicity_index", UMAMI_OUT_HELICITY_INDEX},
+             {"diagram_index", UMAMI_OUT_DIAGRAM_INDEX},
+             {"cut", UMAMI_OUT_CUT},
+             {"ren_scale", UMAMI_OUT_REN_SCALE},
+             {"fact_scale1", UMAMI_OUT_FACT_SCALE_1},
+             {"fact_scale2", UMAMI_OUT_FACT_SCALE_2},
+             {"pdf", UMAMI_OUT_PDF},
+             {"bias", UMAMI_OUT_BIAS},
+         }) {
+        umami_output_keys[name] = key;
+    }
+    m.attr("_UMAMI_INPUT_KEYS") = umami_input_keys;
+    m.attr("_UMAMI_OUTPUT_KEYS") = umami_output_keys;
 
     py::classh<FunctionRuntime>(m, "FunctionRuntime", py::dynamic_attr())
         .def(py::init<Function>(), py::arg("function"))
@@ -723,7 +799,18 @@ PYBIND11_MODULE(_madspace_py, m) {
         m, "TwoToThreeParticleScattering", pydoc::doc("TwoToThreeParticleScattering")
     )
         .def(
-            py::init<double, double, double, double, double, double, bool, bool>(),
+            py::init<
+                double,
+                double,
+                double,
+                double,
+                double,
+                double,
+                bool,
+                bool,
+                bool,
+                bool,
+                bool>(),
             py::arg("t_invariant_power") = 0.,
             py::arg("t_mass") = 0.,
             py::arg("t_width") = 0.,
@@ -732,6 +819,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("s_width") = 0.,
             py::arg("has_cut") = false,
             py::arg("arcsine_s23") = true,
+            py::arg("p12_condition") = false,
+            py::arg("incoming_recoil") = false,
+            py::arg("cut_aware_branch") = false,
             pydoc::doc("TwoToThreeParticleScattering::TwoToThreeParticleScattering")
         )
         .def(
@@ -788,26 +878,51 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("TPropagatorMapping::random_dim")
         );
 
-    py::classh<ColorOrderedMapping, Mapping>(
+    auto color_ordered_mapping = py::classh<ColorOrderedMapping, Mapping>(
         m, "ColorOrderedMapping", pydoc::doc("ColorOrderedMapping")
+    );
+    py::class_<ColorOrderedMapping::Options>(
+        color_ordered_mapping, "Options", pydoc::doc("ColorOrderedMapping::Options")
     )
         .def(
+            py::init([](const std::vector<std::size_t>& color_order,
+                        std::optional<double> chain_invariant_power,
+                        bool cut_aware_branch) {
+                return ColorOrderedMapping::Options{
+                    color_order, chain_invariant_power, cut_aware_branch
+                };
+            }),
+            py::arg("color_order"),
+            py::arg("chain_invariant_power") = std::nullopt,
+            py::arg("cut_aware_branch") = true
+        )
+        .def_readwrite(
+            "color_order",
+            &ColorOrderedMapping::Options::color_order,
+            pydoc::doc("ColorOrderedMapping::Options::color_order")
+        )
+        .def_readwrite(
+            "chain_invariant_power",
+            &ColorOrderedMapping::Options::chain_invariant_power,
+            pydoc::doc("ColorOrderedMapping::Options::chain_invariant_power")
+        )
+        .def_readwrite(
+            "cut_aware_branch",
+            &ColorOrderedMapping::Options::cut_aware_branch,
+            pydoc::doc("ColorOrderedMapping::Options::cut_aware_branch")
+        );
+    color_ordered_mapping
+        .def(
             py::init<
-                std::vector<std::size_t>,
-                double,
-                double,
+                const ColorOrderedMapping::Options&,
                 std::vector<double>,
                 std::vector<std::vector<double>>,
                 std::vector<std::vector<double>>,
-                bool,
                 std::vector<double>>(),
-            py::arg("color_order"),
-            py::arg("t_invariant_power") = 0.8,
-            py::arg("s_invariant_power") = 0.8,
+            py::arg("options"),
             py::arg("pt_min") = std::vector<double>{},
             py::arg("m_inv_min") = std::vector<std::vector<double>>{},
             py::arg("dr_min") = std::vector<std::vector<double>>{},
-            py::arg("arcsine_s23") = true,
             py::arg("y_max") = std::vector<double>{},
             pydoc::doc("ColorOrderedMapping::ColorOrderedMapping")
         )
@@ -955,6 +1070,71 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readonly_static("missing_pids", &Observable::missing_pids)
         .def_readonly_static("photon_pids", &Observable::photon_pids);
 
+    py::classh<CustomFunction, FunctionGenerator> custom_function(
+        m, "CustomFunction", pydoc::doc("CustomFunction")
+    );
+    add_enum<CustomFunction::CustomFunctionType>(
+        custom_function,
+        "CustomFunctionType",
+        {
+            {"cut", CustomFunction::cut},
+            {"scale", CustomFunction::scale},
+            {"bias", CustomFunction::bias},
+        }
+    );
+    custom_function
+        .def(
+            py::init<
+                std::size_t,
+                CustomFunction::CustomFunctionType,
+                std::size_t,
+                const nested_vector2<me_int_t>&>(),
+            py::arg("function_index"),
+            py::arg("type"),
+            py::arg("particle_count"),
+            py::arg("pdg_id_options") = nested_vector2<me_int_t>{},
+            pydoc::doc("CustomFunction::CustomFunction")
+        )
+        .def(
+            py::init<
+                const MatrixElementApi&,
+                CustomFunction::CustomFunctionType,
+                std::size_t,
+                const nested_vector2<me_int_t>&>(),
+            py::arg("function_api"),
+            py::arg("type"),
+            py::arg("particle_count"),
+            py::arg("pdg_id_options") = nested_vector2<me_int_t>{},
+            pydoc::doc("CustomFunction::CustomFunction#2")
+        )
+        .def(
+            "function_index",
+            &CustomFunction::function_index,
+            pydoc::doc("CustomFunction::function_index")
+        )
+        .def("type", &CustomFunction::type, pydoc::doc("CustomFunction::type"))
+        .def(
+            "dynamic_pdg_ids",
+            &CustomFunction::dynamic_pdg_ids,
+            pydoc::doc("CustomFunction::dynamic_pdg_ids")
+        );
+    py::classh<CustomPdf>(m, "CustomPdf", pydoc::doc("CustomPdf"))
+        .def(
+            py::init<std::size_t>(),
+            py::arg("function_index"),
+            pydoc::doc("CustomPdf::CustomPdf")
+        )
+        .def(
+            py::init<const MatrixElementApi&>(),
+            py::arg("function_api"),
+            pydoc::doc("CustomPdf::CustomPdf#2")
+        )
+        .def_readonly(
+            "function_index",
+            &CustomPdf::function_index,
+            pydoc::doc("CustomPdf::function_index")
+        );
+
     auto cuts = py::classh<Cuts, FunctionGenerator>(m, "Cuts", pydoc::doc("Cuts"));
     add_enum<Cuts::CutMode>(
         cuts,
@@ -991,13 +1171,17 @@ PYBIND11_MODULE(_madspace_py, m) {
             "min", &Cuts::PairMassAny::min, pydoc::doc("Cuts::PairMassAny::min")
         );
     cuts.def(
-            py::init<const std::vector<Cuts::CutItem>&>(),
+            py::init<
+                const std::vector<Cuts::CutItem>&,
+                const std::optional<CustomFunction>&>(),
             py::arg("cut_data"),
+            py::arg("custom_cut") = std::nullopt,
             pydoc::doc("Cuts::Cuts")
     )
         .def(
-            py::init<std::size_t>(),
+            py::init<std::size_t, const std::optional<CustomFunction>&>(),
             py::arg("particle_count"),
+            py::arg("custom_cut") = std::nullopt,
             pydoc::doc("Cuts::Cuts#2")
         )
         .def("sqrt_s_min", &Cuts::sqrt_s_min, pydoc::doc("Cuts::sqrt_s_min"))
@@ -1264,9 +1448,10 @@ PYBIND11_MODULE(_madspace_py, m) {
                 PhaseSpaceMapping::TChannelMode,
                 const std::optional<Cuts>&,
                 const nested_vector2<std::size_t>&,
-                const std::optional<std::vector<std::size_t>>&,
+                const std::optional<ColorOrderedMapping::Options>&,
                 double,
-                bool>(),
+                bool,
+                std::optional<double>>(),
             py::arg("topology"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
@@ -1274,9 +1459,10 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("t_channel_mode") = PhaseSpaceMapping::propagator,
             py::arg("cuts") = std::nullopt,
             py::arg("permutations") = nested_vector2<std::size_t>{},
-            py::arg("color_order") = std::nullopt,
+            py::arg("color_ordered") = std::nullopt,
             py::arg("beam_rapidity") = 0.,
             py::arg("mirror_beams") = false,
+            py::arg("s_hat_power") = std::nullopt,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping")
         )
         .def(
@@ -1287,18 +1473,20 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 PhaseSpaceMapping::TChannelMode,
                 std::optional<Cuts>,
-                const std::optional<std::vector<std::size_t>>&,
+                const std::optional<ColorOrderedMapping::Options>&,
                 double,
-                bool>(),
+                bool,
+                std::optional<double>>(),
             py::arg("external_masses"),
             py::arg("cm_energy"),
             py::arg("leptonic") = false,
             py::arg("invariant_power") = 0.8,
             py::arg("mode") = PhaseSpaceMapping::rambo,
             py::arg("cuts") = std::nullopt,
-            py::arg("color_order") = std::nullopt,
+            py::arg("color_ordered") = std::nullopt,
             py::arg("beam_rapidity") = 0.,
             py::arg("mirror_beams") = false,
+            py::arg("s_hat_power") = std::nullopt,
             pydoc::doc("PhaseSpaceMapping::PhaseSpaceMapping#2")
         )
         .def(
@@ -1362,6 +1550,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"helicity_in", MatrixElement::helicity_in},
             {"diagram_in", MatrixElement::diagram_in},
             {"channel_in", MatrixElement::channel_in},
+            {"particle_count_in", MatrixElement::particle_count_in},
+            {"pdg_ids_in", MatrixElement::pdg_ids_in},
+            {"momentum_fraction_in", MatrixElement::momentum_fraction_in},
+            {"scale_in", MatrixElement::scale_in},
+            {"pdg_id_in", MatrixElement::pdg_id_in},
+            {"beam_index_in", MatrixElement::beam_index_in},
         }
     );
     add_enum<MatrixElement::MatrixElementOutput>(
@@ -1373,6 +1567,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"color_index_out", MatrixElement::color_index_out},
             {"helicity_index_out", MatrixElement::helicity_index_out},
             {"diagram_index_out", MatrixElement::diagram_index_out},
+            {"cut_out", MatrixElement::cut_out},
+            {"ren_scale_out", MatrixElement::ren_scale_out},
+            {"fact_scale1_out", MatrixElement::fact_scale1_out},
+            {"fact_scale2_out", MatrixElement::fact_scale2_out},
+            {"pdf_out", MatrixElement::pdf_out},
+            {"bias_out", MatrixElement::bias_out},
         }
     );
     matrix_element
@@ -1803,6 +2003,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                     );
                     ++i;
                 }
+                py::gil_scoped_release release;
                 return opt.step(tensors);
             },
             py::arg("inputs"),
@@ -1883,6 +2084,14 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("dynamic_pid") = false,
             py::arg("prefix") = "",
             pydoc::doc("PartonDensity::PartonDensity")
+        )
+        .def(
+            py::init<const CustomPdf&, const std::vector<int>&, int, bool>(),
+            py::arg("custom_pdf"),
+            py::arg("pids"),
+            py::arg("beam_index"),
+            py::arg("dynamic_pid") = false,
+            pydoc::doc("PartonDensity::PartonDensity#2")
         );
 
     py::classh<AlphaSGrid>(m, "AlphaSGrid", pydoc::doc("AlphaSGrid"))
@@ -1972,7 +2181,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 double,
                 double,
                 double,
-                double>(),
+                double,
+                const std::optional<CustomFunction>&>(),
             py::arg("particle_count"),
             py::arg("dynamical_scale_type"),
             py::arg("ren_scale_fixed"),
@@ -1981,6 +2191,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("fact_scale1"),
             py::arg("fact_scale2"),
             py::arg("scale_factor") = 1.,
+            py::arg("custom_scale") = std::nullopt,
             pydoc::doc("EnergyScale::EnergyScale#4")
         );
 
@@ -2072,7 +2283,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const Integrand::AdaptiveDiscrete&,
                 const Integrand::AdaptiveDiscrete&,
                 const nested_vector2<me_int_t>&,
-                const std::optional<PdfGrid>&,
+                const Integrand::PdfSource&,
                 const std::optional<RunningCoupling>&,
                 const std::optional<EnergyScale>&,
                 const std::optional<PropagatorChannelWeights>&,
@@ -2094,6 +2305,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::size_t>&,
                 const std::vector<std::size_t>&,
                 std::size_t,
+                const std::optional<CustomFunction>&,
                 const std::optional<PdfGrid>&>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
@@ -2101,7 +2313,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("discrete_sym") = std::monostate{},
             py::arg("discrete_flavor") = std::monostate{},
             py::arg("pid_options") = nested_vector2<me_int_t>{},
-            py::arg("pdf_grid") = std::nullopt,
+            py::arg("pdf_grid") = std::monostate{},
             py::arg("running_coupling") = std::nullopt,
             py::arg("energy_scale") = std::nullopt,
             py::arg("prop_chan_weights") = std::nullopt,
@@ -2123,6 +2335,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("flavor_subproc_indices") = std::vector<std::size_t>{},
             py::arg("flavor_per_subproc_remap") = std::vector<std::size_t>{},
             py::arg("compressed_channel_weight_count") = 50,
+            py::arg("custom_bias") = std::nullopt,
             py::arg("pdf_grid2") = std::nullopt,
             pydoc::doc("Integrand::Integrand")
         )
@@ -2411,6 +2624,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "train_step",
             &MadnisTraining::train_step,
+            py::call_guard<py::gil_scoped_release>(),
             py::arg("batch_index"),
             pydoc::doc("MadnisTraining::train_step")
         )
@@ -2468,6 +2682,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "train",
             &MultiMadnisTraining::train,
+            py::call_guard<py::gil_scoped_release>(),
             pydoc::doc("MultiMadnisTraining::train")
         )
         .def(
@@ -2667,6 +2882,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             "iterations",
             &GeneratorStatus::iterations,
             pydoc::doc("GeneratorStatus::iterations")
+        )
+        .def_readwrite(
+            "iters_without_improvement",
+            &GeneratorStatus::iters_without_improvement,
+            pydoc::doc("GeneratorStatus::iters_without_improvement")
         )
         .def_readwrite(
             "optimized",
@@ -3111,6 +3331,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("config"),
             pydoc::doc("ChannelEventGenerator::load")
         )
+        .def_static(
+            "load_json",
+            &ChannelEventGenerator::load_json,
+            py::arg("channel_json"),
+            py::arg("contexts"),
+            py::arg("event_file"),
+            py::arg("weight_file"),
+            py::arg("config"),
+            pydoc::doc("ChannelEventGenerator::load_json")
+        )
         .def(
             py::init<
                 const std::vector<ContextPtr>&,
@@ -3141,6 +3371,18 @@ PYBIND11_MODULE(_madspace_py, m) {
             &ChannelEventGenerator::save,
             py::arg("save"),
             pydoc::doc("ChannelEventGenerator::save")
+        )
+        .def(
+            "to_json",
+            &ChannelEventGenerator::to_json,
+            py::arg("include_estimates") = false,
+            pydoc::doc("ChannelEventGenerator::to_json")
+        )
+        .def(
+            "set_fixed_max_weight",
+            &ChannelEventGenerator::set_fixed_max_weight,
+            py::arg("max_weight"),
+            pydoc::doc("ChannelEventGenerator::set_fixed_max_weight")
         );
 
     py::classh<PdfMemberSpec>(m, "PdfMemberSpec", pydoc::doc("PdfMemberSpec"))
@@ -3642,17 +3884,30 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "survey",
             &EventGenerator::survey,
+            py::call_guard<py::gil_scoped_release>(),
             py::arg("survey_pass") = 0,
             pydoc::doc("EventGenerator::survey")
         )
         .def(
             "generate",
             &EventGenerator::generate,
+            py::call_guard<py::gil_scoped_release>(),
             pydoc::doc("EventGenerator::generate")
+        )
+        .def(
+            "optimize",
+            &EventGenerator::optimize,
+            pydoc::doc("EventGenerator::optimize")
+        )
+        .def(
+            "fix_max_weights",
+            &EventGenerator::fix_max_weights,
+            pydoc::doc("EventGenerator::fix_max_weights")
         )
         .def(
             "combine_to_compact_npy",
             &EventGenerator::combine_to_compact_npy,
+            py::call_guard<py::gil_scoped_release>(),
             py::arg("file_name"),
             py::arg("systematics") = nullptr,
             py::arg("histograms") = nullptr,
@@ -3661,6 +3916,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "combine_to_lhe_npy",
             &EventGenerator::combine_to_lhe_npy,
+            py::call_guard<py::gil_scoped_release>(),
             py::arg("file_name"),
             py::arg("lhe_completer"),
             py::arg("systematics") = nullptr,
@@ -3670,6 +3926,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def(
             "combine_to_lhe",
             &EventGenerator::combine_to_lhe,
+            py::call_guard<py::gil_scoped_release>(),
             py::arg("file_name"),
             py::arg("lhe_completer"),
             py::arg_v("meta", LHEMeta{}, "LHEMeta()"),
@@ -3770,6 +4027,8 @@ PYBIND11_MODULE(_madspace_py, m) {
     );
 
     auto abort_check_function = [] {
+        // the long-running calls release the GIL
+        py::gil_scoped_acquire acquire;
         if (PyErr_CheckSignals() != 0) {
             throw py::error_already_set();
         }

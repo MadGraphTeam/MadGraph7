@@ -114,6 +114,32 @@ See :doc:`gridpacks` for details.
 ``include_madspace_source`` (``false``)
     Include the ``madspace`` source code.
 
+``compress`` (``false``)
+    Pack the gridpack into ``gridpack.tar.gz`` instead of leaving it as a directory.
+
+``run_mode`` (``"minimal"``)
+    How the run that creates the gridpack ends. Only used if ``save_gridpack`` is set.
+
+    - ``regular``: generate the events of the run, then store the gridpack.
+    - ``minimal``: no events. The gridpack is stored right after the MadNIS training or,
+      with VEGAS, once the grid of every channel has converged.
+    - ``fix_max_weight``: no events. Each channel runs until ``freeze_max_weight_after``
+      unweighted events are reached. Its maximum weight is then fixed in the gridpack,
+      and its integral is used to share the events between the channels. This can be
+      slow for channels with a low unweighting efficiency.
+
+    See :ref:`gridpack-run-mode`.
+
+``temp_output_dir`` (``""``)
+    Directory for the temporary npy files of the channels. ``""`` uses the output
+    directory. ``"auto"`` creates a new temporary directory for each run, see
+    :py:func:`tempfile.mkdtemp`. Its location can be set with the ``TMPDIR``
+    environment variable.
+
+``output_dir`` (``""``)
+    Directory for the output files. ``""`` creates a new run folder
+    ``Events/<run_name>_NN``. If set, no run folder is created.
+
 
 [beam]
 ------
@@ -312,6 +338,33 @@ VEGAS grids adapt the phase-space sampling during the survey.
 ``adaptive_symmetry_sampling`` (``true``)
     Learn the probabilities of the permutations of identical particles instead of using
     equal ones.
+
+[custom_functions]
+------------------
+
+User-written functions, created with ``bin/init_custom_func``. Each one is a shared
+library (``.so``) or a Python file (``.py``). Paths are relative to the process directory.
+An empty string disables the function. See :doc:`custom_functions` for details.
+
+``cut`` (``""``)
+    Custom cut, for example ``"lib/custom_cut.so"`` or ``"custom_cut/custom_cut.py"``. It
+    is applied on top of the ``[cuts]``.
+
+``scale`` (``""``)
+    Custom renormalization and factorization scales. They replace
+    ``dynamical_scale_choice``.
+
+``pdf`` (``""``)
+    Custom parton density. It replaces the PDF set, but :math:`\alpha_s` still comes from
+    ``[beam] pdf``. The systematics are disabled.
+
+``bias`` (``""``)
+    Custom event bias. Events are generated with the weight times the bias and written with
+    the weight divided by the bias.
+
+``<function>_parameters.<name>``
+    A parameter of a custom function, for example ``cut_parameters.pt_min = 30.0``. It replaces
+    the default value declared by the function. See :ref:`custom-function-parameters`.
 
 .. _run-card-multiparticles:
 

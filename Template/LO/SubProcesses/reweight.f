@@ -1932,6 +1932,11 @@ C      include 'maxparticles.inc'
 
       double precision all_scale(VECSIZE_MEMMAX)
       common/to_scale_vec/all_scale
+
+c     scale passed to the model: the extra running scale (mue_over_ref)
+c     of the running Wilson coefficients follows muR through it
+      double precision model_scale
+      common /model_scale/model_scale
       
 c     integer firsttime
 c      data firsttime/.true./
@@ -1946,6 +1951,7 @@ c      save firsttime
             if(scale.gt.0)then
                G = SQRT(4d0*PI*ALPHAS(scale))
                all_scale(i) = scale
+               model_scale = scale
             endif
          endif
 

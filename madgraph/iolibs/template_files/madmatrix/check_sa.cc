@@ -33,6 +33,7 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
 #include "RamboSamplingKernels.h"
+#include "rambo.h" // classic RAMBO of the matrix mode
 #include "RandomNumberKernels.h"
 #include "ProcessData.h"
 #include "read_slha.h"
@@ -50,6 +51,8 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #define STRINGIFY( s ) #s
@@ -173,6 +176,42 @@ namespace
     return true;
   }
 
+  // Raw binary per-event values (--alphas <file>, --flavors, --rnd-hel, --rnd-col): one
+  // value of type T per event, with no header, as array.tofile writes them in Python.
+  template<typename T>
+  bool read_binary_values( const std::string& path, const char* what, std::vector<T>& values )
+  {
+    std::ifstream in( path, std::ios::binary );
+    if( !in )
+    {
+      std::cerr << "ERROR! cannot open " << what << " file '" << path << "'" << std::endl;
+      return false;
+    }
+    T value;
+    while( in.read( reinterpret_cast<char*>( &value ), sizeof( T ) ) )
+      values.push_back( value );
+    if( values.empty() || in.gcount() != 0 )
+    {
+      std::cerr << "ERROR! " << what << " file '" << path << "' is empty or not a whole number of "
+                << sizeof( T ) << "-byte values" << std::endl;
+      return false;
+    }
+    return true;
+  }
+
+  // Perf-mode options that add inputs or outputs to the umami call, or change how it runs
+  struct PerfIO
+  {
+    std::string alphas;                                     // --alphas: a value, or a file of doubles
+    std::string flavorsFile;                                // --flavors: a file of 32-bit unsigned ints
+    std::string rndHelFile;                                 // --rnd-hel: a file of doubles
+    std::string rndColFile;                                 // --rnd-col: a file of doubles
+    std::string dumpHelFile;                                // --dump-hel: write the helicity indices
+    std::string dumpColFile;                                // --dump-col: write the color indices
+    std::vector<std::pair<std::string, double>> parameters; // --param <name>=<value>
+    bool nonblockingStream = false;                         // --nonblocking-stream (CUDA/HIP)
+  };
+
   int usage( const char* argv0, int ret = 1 )
   {
     std::cout
@@ -180,7 +219,9 @@ namespace
       << "  " << argv0 << " [matrix] [-v|--verbose] [<energy>]\n"
       << "  " << argv0 << " perf [-v|--verbose] [-f|--flavor <int>] [--rambo-massless]"
       << " [-e|--events <file.lhe>] [--momenta <file>] [--dump-momenta <file>] [--dump-me <file>]"
-      << " [--energy <GeV>] [<#blocksPerGrid> <#threadsPerBlock>] <#iterations>\n"
+      << " [--energy <GeV>] [--alphas <value|file>] [--flavors <file>] [--rnd-hel <file>]"
+      << " [--rnd-col <file>] [--dump-hel <file>] [--dump-col <file>] [--param <name>=<value>]"
+      << " [--nonblocking-stream] [<#blocksPerGrid> <#threadsPerBlock>] <#iterations>\n"
       << "  " << argv0 << " -p [opts]   (legacy alias for `perf`)\n"
       << "\n"
       << "Subcommands:\n"
@@ -204,6 +245,20 @@ namespace
       << "  --dump-momenta <file>  (perf only) Write the momenta of every event, raw doubles.\n"
       << "  --dump-me <file>  (perf only) Write the matrix element of every event, raw doubles.\n"
       << "  --energy <GeV>    (perf only) Ecms for RAMBO (default 1500 GeV).\n"
+      << "\n"
+      << "Per-event inputs and outputs (perf only). A <file> holds one raw value per event\n"
+      << "(no header): doubles, or 32-bit ints for the flavor and the indices. An input file\n"
+      << "needs a value for every event of the run, in the order of the momenta.\n"
+      << "  --alphas <value|file>  alpha_s of every event (default: the param card).\n"
+      << "  --flavors <file>  Flavor index of every event (instead of -f).\n"
+      << "  --rnd-hel <file>  Random numbers of the helicity choice (umami otherwise uses 0.5\n"
+      << "                    and returns the helicity sum for an interference |M|^2).\n"
+      << "  --rnd-col <file>  Random numbers of the color choice (otherwise 0.5).\n"
+      << "  --dump-hel <file>  Write the chosen helicity index of every event (-1: none).\n"
+      << "  --dump-col <file>  Write the chosen color index of every event (-1: none).\n"
+      << "  --param <name>=<value>  umami_set_parameter after umami_initialize (repeatable).\n"
+      << "  --nonblocking-stream  (CUDA/HIP) Give umami a non-blocking stream, which does not\n"
+      << "                    synchronise with the default stream.\n"
       << "\n"
       << "Both modes read the parameters, alpha_s included, from ../../Cards/param_card.dat.\n"
       << "perf times as MatrixElems (3) only the umami_matrix_element call (UMAMI input/output\n"
@@ -314,43 +369,22 @@ namespace
     return slha.get_block_entry( "sminputs", 3, 1.180000e-01 );
   }
 
-  // Run sigmaKin via UMAMI for `nevt` events and copy back the MEs.
-  // The momenta (UMAMI SoA layout), the per-event flavor and the per-event
-  // alpha_s buffers must be set by the caller. On GPU the buffers are device
-  // pointers and `hstMEs` receives the host-side copy; on CPU `umamiMEs` is the
-  // output buffer.
+  // Run sigmaKin via UMAMI for `nevt` events. The input and output buffers (the
+  // momenta in the UMAMI SoA layout, the per-event flavor and alpha_s, ...) are set
+  // by the caller, who also copies the outputs back: on GPU they are device pointers.
   bool run_umami(
     UmamiHandle handle,
     unsigned int nevt,
     mgOnGpu::TimerMap& timermap,
     double& wavetime,
-#ifdef MGONGPUCPP_GPUIMPL
-    const DeviceBufferBase<double>& devUmamiMomenta,
-    const DeviceBufferBase<unsigned int>& devFlv,
-    const DeviceBufferBase<double>& devAlphaS,
-    DeviceBufferBase<double>& devUmamiMEs,
-    std::vector<double>& hstMEs
-#else
-    const std::vector<double>& umamiMomenta,
-    const std::vector<unsigned int>& flvVec,
-    const std::vector<double>& alphasVec,
-    std::vector<double>& umamiMEs
-#endif
-  )
+    const std::vector<UmamiInputKey>& in_keys,
+    const std::vector<const void*>& inputs,
+    const std::vector<UmamiOutputKey>& out_keys,
+    const std::vector<void*>& outputs )
   {
-    constexpr unsigned int UmamiInKeyNum = 3;
     timermap.start( "3a UmamiCall" );
-    UmamiInputKey in_keys[UmamiInKeyNum] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
-    UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
-#ifdef MGONGPUCPP_GPUIMPL
-    const void* inputs[UmamiInKeyNum] = { devUmamiMomenta.data(), devFlv.data(), devAlphaS.data() };
-    void* outputs[1] = { devUmamiMEs.data() };
-#else
-    const void* inputs[UmamiInKeyNum] = { umamiMomenta.data(), flvVec.data(), alphasVec.data() };
-    void* outputs[1] = { umamiMEs.data() };
-#endif
     UmamiStatus st = umami_matrix_element(
-      handle, nevt, nevt, 0, UmamiInKeyNum, in_keys, inputs, 1, out_keys, outputs );
+      handle, nevt, nevt, 0, in_keys.size(), in_keys.data(), inputs.data(), out_keys.size(), out_keys.data(), outputs.data() );
 #ifdef MGONGPUCPP_GPUIMPL
     // UMAMI only enqueues the kernels; wait for them so the ME time is the computation, not the launch.
     checkGpu( gpuDeviceSynchronize() );
@@ -361,271 +395,34 @@ namespace
       std::cerr << "ERROR! umami_matrix_element failed (status=" << st << ")" << std::endl;
       return false;
     }
-
-#ifdef MGONGPUCPP_GPUIMPL
-    // Device-to-host copies are reported by the timer map, not as ME time.
-    timermap.start( "3b CpDTHmes" );
-    gpuMemcpy( hstMEs.data(), devUmamiMEs.data(), nevt * sizeof( double ), gpuMemcpyDeviceToHost );
-    timermap.stop();
-#endif
     return true;
   }
 
   // --------------------------------------------------------------------------
-  // Classic MadGraph standalone RAMBO (RANMAR generator seeded with the fixed
-  // values 1802/9373), reproducing the exact phase-space point used by the
+  // Classic MadGraph standalone RAMBO (rambo.h, RANMAR generator seeded with the
+  // fixed values 1802/9373), reproducing the exact phase-space point used by the
   // Fortran and C++ standalone 'check' drivers at the same energy, so that
-  // matrix-mode output can be compared line by line across backends.
-  // Host-side only; ported from madgraph/iolibs/template_files/rambo.cc.
+  // matrix-mode output can be compared line by line across backends. Its own
+  // generator: the shared one (rambo::rn) feeds RamboSamplingKernelHost.
+  // Host-side only.
   // --------------------------------------------------------------------------
-  namespace classic_rambo
+  std::vector<std::vector<double>>
+  classic_rambo_momenta( int ninitial, double energy, const std::vector<double>& masses, double& wgt )
   {
-    struct Random
+    static rambo::Random random;
+    static bool seeded = false;
+    if( !seeded )
     {
-      double ranu[98];
-      double ranc, rancd, rancm;
-      int iranmr, jranmr;
-
-      // universal random number generator proposed by Marsaglia and Zaman
-      double ranmar()
-      {
-        double uni = ranu[iranmr] - ranu[jranmr];
-        if( uni < 0 ) uni = uni + 1;
-        ranu[iranmr] = uni;
-        iranmr = iranmr - 1;
-        jranmr = jranmr - 1;
-        if( iranmr == 0 ) iranmr = 97;
-        if( jranmr == 0 ) jranmr = 97;
-        ranc = ranc - rancd;
-        if( ranc < 0 ) ranc = ranc + rancm;
-        uni = uni - ranc;
-        if( uni < 0 ) uni = uni + 1;
-        return uni;
-      }
-
-      void rmarin( int ij, int kl )
-      {
-        int i = ij / 177 % 177 + 2;
-        int j = ij % 177 + 2;
-        int k = ( kl / 169 ) % 178 + 1;
-        int l = kl % 169;
-        for( int ii = 1; ii < 98; ii++ )
-        {
-          double s = 0;
-          double t = .5;
-          for( int jj = 1; jj < 25; jj++ )
-          {
-            int m = ( ( i * j % 179 ) * k ) % 179;
-            i = j;
-            j = k;
-            k = m;
-            l = ( 53 * l + 1 ) % 169;
-            if( ( l * m ) % 64 >= 32 ) s = s + t;
-            t = .5 * t;
-          }
-          ranu[ii] = s;
-        }
-        ranc = 362436. / 16777216.;
-        rancd = 7654321. / 16777216.;
-        rancm = 16777213. / 16777216.;
-        iranmr = 97;
-        jranmr = 33;
-      }
+      random.rmarin( 1802, 9373 );
+      seeded = true;
+    }
+    auto draw = []( int )
+    {
+      double r = random.ranmar();
+      while( r <= 1e-16 ) r = random.ranmar();
+      return r;
     };
-
-    inline double rn()
-    {
-      static Random rand;
-      static bool init = true;
-      if( init )
-      {
-        init = false;
-        rand.rmarin( 1802, 9373 );
-      }
-      double ran;
-      while( true )
-      {
-        ran = rand.ranmar();
-        if( ran > 1e-16 ) break;
-      }
-      return ran;
-    }
-
-    // RAMBO: democratic multi-particle phase space generator (S.D. Ellis,
-    // R. Kleiss, W.J. Stirling); weights are logarithmic.
-    inline std::vector<std::vector<double>>
-    rambo( double et, const std::vector<double>& xm, double& wt )
-    {
-      const int n = (int)xm.size();
-      std::vector<std::vector<double>> q( n, std::vector<double>( 4 ) );
-      std::vector<std::vector<double>> p( n, std::vector<double>( 4 ) );
-      std::vector<double> z( n ), r( 4 ), b( 3 ), p2( n ), xm2( n ), e( n ), v( n );
-      const double acc = 1e-14;
-      const int itmax = 6;
-      const double twopi = 8. * atan( 1. );
-      const double po2log = log( twopi / 4. );
-
-      // factorials for the phase-space weight
-      z[1] = po2log;
-      for( int k = 2; k < n; k++ ) z[k] = z[k - 1] + po2log - 2. * log( double( k - 1 ) );
-      for( int k = 2; k < n; k++ ) z[k] = z[k] - log( double( k ) );
-
-      if( n < 1 || n > 101 )
-      {
-        std::cout << "Too few or many particles: " << n << std::endl;
-        exit( -1 );
-      }
-      double xmt = 0.;
-      int nm = 0;
-      for( int i = 0; i < n; i++ )
-      {
-        if( xm[i] != 0. ) nm = nm + 1;
-        xmt = xmt + std::abs( xm[i] );
-      }
-      if( xmt > et )
-      {
-        std::cout << "Too low energy: " << et << " needed " << xmt << std::endl;
-        exit( -1 );
-      }
-
-      // generate n massless momenta in infinite phase space
-      for( int i = 0; i < n; i++ )
-      {
-        double r1 = rn();
-        double c = 2. * r1 - 1.;
-        double s = sqrt( 1. - c * c );
-        double f = twopi * rn();
-        r1 = rn();
-        double r2 = rn();
-        q[i][0] = -log( r1 * r2 );
-        q[i][3] = q[i][0] * c;
-        q[i][2] = q[i][0] * s * cos( f );
-        q[i][1] = q[i][0] * s * sin( f );
-      }
-
-      // parameters of the conformal transformation
-      for( int k = 0; k < 4; k++ ) r[k] = 0.;
-      for( int i = 0; i < n; i++ )
-        for( int k = 0; k < 4; k++ ) r[k] = r[k] + q[i][k];
-      double rmas = sqrt( pow( r[0], 2 ) - pow( r[3], 2 ) - pow( r[2], 2 ) - pow( r[1], 2 ) );
-      for( int k = 1; k < 4; k++ ) b[k - 1] = -r[k] / rmas;
-      double g = r[0] / rmas;
-      double a = 1. / ( 1. + g );
-      double x = et / rmas;
-
-      // transform the q's conformally into the p's
-      for( int i = 0; i < n; i++ )
-      {
-        double bq = b[0] * q[i][1] + b[1] * q[i][2] + b[2] * q[i][3];
-        for( int k = 1; k < 4; k++ ) p[i][k] = x * ( q[i][k] + b[k - 1] * ( q[i][0] + a * bq ) );
-        p[i][0] = x * ( g * q[i][0] + bq );
-      }
-
-      wt = po2log;
-      if( n != 2 ) wt = ( 2. * n - 4. ) * log( et ) + z[n - 1];
-
-      // massless case is done
-      if( nm == 0 ) return p;
-
-      // massive particles: rescale the momenta by a factor x
-      double xmax = sqrt( 1. - pow( xmt / et, 2 ) );
-      for( int i = 0; i < n; i++ )
-      {
-        xm2[i] = pow( xm[i], 2 );
-        p2[i] = pow( p[i][0], 2 );
-      }
-      int iter = 0;
-      x = xmax;
-      double accu = et * acc;
-      while( true )
-      {
-        double f0 = -et;
-        double g0 = 0.;
-        double x2 = x * x;
-        for( int i = 0; i < n; i++ )
-        {
-          e[i] = sqrt( xm2[i] + x2 * p2[i] );
-          f0 = f0 + e[i];
-          g0 = g0 + p2[i] / e[i];
-        }
-        if( std::abs( f0 ) <= accu ) break;
-        iter = iter + 1;
-        if( iter > itmax )
-        {
-          std::cout << "Too many iterations without desired accuracy: " << itmax << std::endl;
-          break;
-        }
-        x = x - f0 / ( x * g0 );
-      }
-      for( int i = 0; i < n; i++ )
-      {
-        v[i] = x * p[i][0];
-        for( int k = 1; k < 4; k++ ) p[i][k] = x * p[i][k];
-        p[i][0] = e[i];
-      }
-
-      double wt2 = 1.;
-      double wt3 = 0.;
-      for( int i = 0; i < n; i++ )
-      {
-        wt2 = wt2 * v[i] / e[i];
-        wt3 = wt3 + pow( v[i], 2 ) / e[i];
-      }
-      double wtm = ( 2. * n - 3. ) * log( x ) + log( wt2 / wt3 * et );
-      wt = wt + wtm;
-      return p;
-    }
-
-    // Auxiliary function changing convention between MadGraph7 and
-    // RAMBO four-momenta (same as get_momenta in the standalone_cpp driver).
-    inline std::vector<std::vector<double>>
-    get_momenta( int ninitial, double energy, const std::vector<double>& masses, double& wgt )
-    {
-      const int nexternal = (int)masses.size();
-      const int nfinal = nexternal - ninitial;
-      const double e2 = pow( energy, 2 );
-      const double m1 = masses[0];
-
-      if( ninitial == 1 )
-      {
-        std::vector<std::vector<double>> p( 1, std::vector<double>( 4, 0. ) );
-        p[0][0] = m1;
-        std::vector<double> finalmasses( masses.begin() + 1, masses.end() );
-        std::vector<std::vector<double>> p_rambo = rambo( m1, finalmasses, wgt );
-        p.insert( p.end(), p_rambo.begin(), p_rambo.end() );
-        return p;
-      }
-
-      if( ninitial != 2 )
-      {
-        std::cout << "Rambo needs 1 or 2 incoming particles" << std::endl;
-        exit( -1 );
-      }
-
-      double etot = energy;
-      if( nfinal == 1 ) etot = m1;
-      const double m2 = masses[1];
-      const double mom = sqrt( ( pow( e2, 2 ) - 2 * e2 * pow( m1, 2 ) + pow( m1, 4 ) - 2 * e2 * pow( m2, 2 ) - 2 * pow( m1, 2 ) * pow( m2, 2 ) + pow( m2, 4 ) ) / ( 4 * e2 ) );
-      const double energy1 = sqrt( pow( mom, 2 ) + pow( m1, 2 ) );
-      const double energy2 = sqrt( pow( mom, 2 ) + pow( m2, 2 ) );
-      std::vector<std::vector<double>> p( 2, std::vector<double>( 4, 0. ) );
-      p[0][0] = energy1;
-      p[0][3] = mom;
-      p[1][0] = energy2;
-      p[1][3] = -mom;
-
-      if( nfinal == 1 )
-      {
-        p.push_back( std::vector<double>( 4, 0. ) );
-        p[2][0] = etot;
-        wgt = 1;
-        return p;
-      }
-      std::vector<double> finalmasses( masses.begin() + 2, masses.end() );
-      std::vector<std::vector<double>> p_rambo = rambo( etot, finalmasses, wgt );
-      p.insert( p.end(), p_rambo.begin(), p_rambo.end() );
-      return p;
-    }
+    return rambo::get_momenta( ninitial, energy, masses, wgt, draw );
   }
 
   // --------------------------------------------------------------------------
@@ -695,7 +492,7 @@ namespace
     // NB: feed the double-precision masses to the classic RAMBO, which works in
     // double throughout: 'masses' is fptype and would not convert at FPTYPE=f.
     std::vector<std::vector<double>> point =
-      classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
+      classic_rambo_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
 
     std::vector<double> alphasVec( nevt, param_card_alpha_s() );
 #ifdef MGONGPUCPP_GPUIMPL
@@ -805,7 +602,8 @@ namespace
                      const std::string& lheFile = "",
                      const std::string& momentaFile = "",
                      const std::string& dumpMomentaFile = "",
-                     const std::string& dumpMEFile = "" )
+                     const std::string& dumpMEFile = "",
+                     const PerfIO& io = PerfIO() )
   {
     const unsigned int nevt = gpublocks * gputhreads;
 
@@ -830,28 +628,62 @@ namespace
     }
     const bool eventsFromFile = !lheEvents.empty();
 
-    std::ofstream dumpMomenta, dumpMEs;
-    if( !dumpMomentaFile.empty() )
+    std::ofstream dumpMomenta, dumpMEs, dumpHel, dumpCol;
+    for( auto [file, path, what] : { std::make_tuple( &dumpMomenta, &dumpMomentaFile, "momenta" ),
+                                     std::make_tuple( &dumpMEs, &dumpMEFile, "matrix element" ),
+                                     std::make_tuple( &dumpHel, &io.dumpHelFile, "helicity" ),
+                                     std::make_tuple( &dumpCol, &io.dumpColFile, "color" ) } )
     {
-      dumpMomenta.open( dumpMomentaFile, std::ios::binary );
-      if( !dumpMomenta )
+      if( path->empty() ) continue;
+      file->open( *path, std::ios::binary );
+      if( !*file )
       {
-        std::cerr << "ERROR! cannot write momenta file '" << dumpMomentaFile << "'" << std::endl;
+        std::cerr << "ERROR! cannot write " << what << " file '" << *path << "'" << std::endl;
         return 2;
       }
     }
-    if( !dumpMEFile.empty() )
+
+    // Per-event inputs from files: one value for each event of the run, in the order
+    // of the momenta (the padding events of the last batch repeat its last real event)
+    double alphasValue = param_card_alpha_s();
+    std::vector<double> alphasIn, rndHelIn, rndColIn;
+    std::vector<unsigned int> flavorsIn;
+    if( is_float( io.alphas.c_str() ) )
+      alphasValue = atof( io.alphas.c_str() );
+    else if( !io.alphas.empty() && !read_binary_values( io.alphas, "alpha_s", alphasIn ) )
+      return 2;
+    if( !io.flavorsFile.empty() && !read_binary_values( io.flavorsFile, "flavor", flavorsIn ) ) return 2;
+    if( !io.rndHelFile.empty() && !read_binary_values( io.rndHelFile, "helicity random number", rndHelIn ) ) return 2;
+    if( !io.rndColFile.empty() && !read_binary_values( io.rndColFile, "color random number", rndColIn ) ) return 2;
+    const std::size_t nevtRun = eventsFromFile ? lheEvents.size() : (std::size_t)niter * nevt;
+    for( auto [size, what] : { std::make_pair( alphasIn.size(), "alpha_s" ),
+                               std::make_pair( flavorsIn.size(), "flavor" ),
+                               std::make_pair( rndHelIn.size(), "helicity random number" ),
+                               std::make_pair( rndColIn.size(), "color random number" ) } )
     {
-      dumpMEs.open( dumpMEFile, std::ios::binary );
-      if( !dumpMEs )
+      if( size != 0 && size < nevtRun )
       {
-        std::cerr << "ERROR! cannot write matrix element file '" << dumpMEFile << "'" << std::endl;
+        std::cerr << "ERROR! the " << what << " file has " << size << " values for " << nevtRun << " events" << std::endl;
+        return 2;
+      }
+    }
+    for( unsigned int iflav : flavorsIn )
+    {
+      if( iflav >= CPPProcess::nmaxflavor )
+      {
+        std::cerr << "ERROR! flavor index " << iflav << " in the flavor file is out of range [0, "
+                  << CPPProcess::nmaxflavor << ")" << std::endl;
         return 2;
       }
     }
 
     mgOnGpu::TimerMap timermap;
 
+    // The per-event inputs and outputs of one batch (host side)
+    std::vector<unsigned int> flvVec( nevt, flavorID );
+    std::vector<double> alphasVec( nevt, alphasValue );
+    std::vector<double> rndHelVec( nevt, 0.5 ), rndColVec( nevt, 0.5 );
+    std::vector<int> helVec( nevt ), colVec( nevt );
 #ifdef MGONGPUCPP_GPUIMPL
     timermap.start( "00 GpuInit" );
     GpuRuntime gpuRuntime( false );
@@ -865,21 +697,70 @@ namespace
     DeviceBufferBase<double> devUmamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     DeviceBufferBase<double> devUmamiMEs( nevt );
     DeviceBufferBase<unsigned int> devFlv( nevt );
-    std::vector<unsigned int> flvVec( nevt, flavorID );
-    std::vector<double> hstUmamiMEs( nevt );
-    // perf-mode runs a single flavor, so the device-side flavor buffer is filled once.
-    gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
-    std::vector<double> alphasVec( nevt, param_card_alpha_s() );
     DeviceBufferBase<double> devAlphaS( nevt );
+    DeviceBufferBase<double> devRndHel( nevt ), devRndCol( nevt );
+    DeviceBufferBase<int> devHel( nevt ), devCol( nevt );
+    std::vector<double> hstUmamiMEs( nevt );
+    // the inputs that are the same for every event are copied to the device once
+    gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
     gpuMemcpy( devAlphaS.data(), alphasVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
+    void* umamiMomentaPtr = devUmamiMomenta.data();
+    void* umamiMEsPtr = devUmamiMEs.data();
+    unsigned int* flvPtr = devFlv.data();
+    double* alphasPtr = devAlphaS.data();
+    double* rndHelPtr = devRndHel.data();
+    double* rndColPtr = devRndCol.data();
+    int* helPtr = devHel.data();
+    int* colPtr = devCol.data();
+    gpuStream_t stream = nullptr; // nullptr: the default stream
+    if( io.nonblockingStream ) gpuStreamCreateNonBlocking( &stream );
 #else
     HostBufferRndNumMomenta hstRndmom( nevt );
     HostBufferMomenta hstMomenta( nevt );
     HostBufferWeights hstWeights( nevt );
     std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     std::vector<double> umamiMEs( nevt );
-    std::vector<unsigned int> flvVec( nevt, flavorID );
-    std::vector<double> alphasVec( nevt, param_card_alpha_s() );
+    void* umamiMomentaPtr = umamiMomenta.data();
+    void* umamiMEsPtr = umamiMEs.data();
+    unsigned int* flvPtr = flvVec.data();
+    double* alphasPtr = alphasVec.data();
+    double* rndHelPtr = rndHelVec.data();
+    double* rndColPtr = rndColVec.data();
+    int* helPtr = helVec.data();
+    int* colPtr = colVec.data();
+#endif
+
+    // The keys and buffers of the umami call, the same for every batch
+    std::vector<UmamiInputKey> in_keys = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
+    std::vector<const void*> inputs = { umamiMomentaPtr, flvPtr, alphasPtr };
+    std::vector<UmamiOutputKey> out_keys = { UMAMI_OUT_MATRIX_ELEMENT };
+    std::vector<void*> outputs = { umamiMEsPtr };
+    if( !rndHelIn.empty() )
+    {
+      in_keys.push_back( UMAMI_IN_RANDOM_HELICITY );
+      inputs.push_back( rndHelPtr );
+    }
+    if( !rndColIn.empty() )
+    {
+      in_keys.push_back( UMAMI_IN_RANDOM_COLOR );
+      inputs.push_back( rndColPtr );
+    }
+    if( dumpHel.is_open() )
+    {
+      out_keys.push_back( UMAMI_OUT_HELICITY_INDEX );
+      outputs.push_back( helPtr );
+    }
+    if( dumpCol.is_open() )
+    {
+      out_keys.push_back( UMAMI_OUT_COLOR_INDEX );
+      outputs.push_back( colPtr );
+    }
+#ifdef MGONGPUCPP_GPUIMPL
+    if( stream != nullptr )
+    {
+      out_keys.push_back( UMAMI_OUT_GPU_STREAM );
+      outputs.push_back( stream );
+    }
 #endif
 
     std::unique_ptr<RandomNumberKernelBase> prnk(
@@ -890,6 +771,15 @@ namespace
     {
       std::cerr << "ERROR! umami_initialize failed" << std::endl;
       return 2;
+    }
+    for( const auto& [name, value] : io.parameters )
+    {
+      if( umami_set_parameter( umami_handle, name.c_str(), value, 0. ) != UMAMI_SUCCESS )
+      {
+        std::cerr << "ERROR! umami_set_parameter( " << name << ", " << value << " ) failed" << std::endl;
+        umami_free( umami_handle );
+        return 2;
+      }
     }
 
     // Retrieve masses
@@ -1017,20 +907,47 @@ namespace
 #endif
       rambtime += timermap.stop();
 
-      double wavetime = 0;
-      if( !run_umami( umami_handle, nevt, timermap, wavetime,
+      // The per-event inputs of this batch read from files
+      const std::size_t base = (std::size_t)iiter * nevt;
+      for( auto [batch, values] : { std::make_pair( &alphasVec, &alphasIn ),
+                                    std::make_pair( &rndHelVec, &rndHelIn ),
+                                    std::make_pair( &rndColVec, &rndColIn ) } )
+      {
+        if( values->empty() ) continue;
+        for( unsigned int ievt = 0; ievt < nevt; ++ievt )
+          ( *batch )[ievt] = ( *values )[base + std::min( ievt, nreal - 1 )];
+      }
+      if( !flavorsIn.empty() )
+      {
+        for( unsigned int ievt = 0; ievt < nevt; ++ievt )
+          flvVec[ievt] = flavorsIn[base + std::min( ievt, nreal - 1 )];
+      }
 #ifdef MGONGPUCPP_GPUIMPL
-                      devUmamiMomenta, devFlv, devAlphaS, devUmamiMEs, hstUmamiMEs
-#else
-                      umamiMomenta, flvVec, alphasVec, umamiMEs
+      if( !alphasIn.empty() ) gpuMemcpy( alphasPtr, alphasVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
+      if( !rndHelIn.empty() ) gpuMemcpy( rndHelPtr, rndHelVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
+      if( !rndColIn.empty() ) gpuMemcpy( rndColPtr, rndColVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
+      if( !flavorsIn.empty() ) gpuMemcpy( flvPtr, flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
+      // A non-blocking stream does not wait for the inputs copied and transposed on the
+      // default stream: finish them first, as any caller on such a stream must
+      if( stream != nullptr ) checkGpu( gpuDeviceSynchronize() );
 #endif
-                      ) )
+
+      double wavetime = 0;
+      if( !run_umami( umami_handle, nevt, timermap, wavetime, in_keys, inputs, out_keys, outputs ) )
       {
         umami_free( umami_handle );
         return 3;
       }
 
 #ifdef MGONGPUCPP_GPUIMPL
+      timermap.start( "3b CpDTHmes" );
+      // nor do the copies below wait for the work on a non-blocking stream
+      if( stream != nullptr ) gpuStreamSynchronize( stream );
+      gpuMemcpy( hstUmamiMEs.data(), umamiMEsPtr, nevt * sizeof( double ), gpuMemcpyDeviceToHost );
+      if( dumpHel.is_open() ) gpuMemcpy( helVec.data(), helPtr, nevt * sizeof( int ), gpuMemcpyDeviceToHost );
+      if( dumpCol.is_open() ) gpuMemcpy( colVec.data(), colPtr, nevt * sizeof( int ), gpuMemcpyDeviceToHost );
+      // Device-to-host copies are reported by the timer map, not as ME time.
+      timermap.stop();
       if( verbose || dumpMomenta.is_open() )
       {
         timermap.start( "3c CpDTHmom" );
@@ -1054,6 +971,10 @@ namespace
       }
       if( dumpMEs.is_open() )
         dumpMEs.write( reinterpret_cast<const char*>( mes ), (std::streamsize)nreal * sizeof( double ) );
+      if( dumpHel.is_open() )
+        dumpHel.write( reinterpret_cast<const char*>( helVec.data() ), (std::streamsize)nreal * sizeof( int ) );
+      if( dumpCol.is_open() )
+        dumpCol.write( reinterpret_cast<const char*>( colVec.data() ), (std::streamsize)nreal * sizeof( int ) );
 
       timermap.start( "4@ UpdtStat" );
       for( unsigned int ievt = 0; ievt < nreal; ++ievt )
@@ -1112,7 +1033,8 @@ namespace
     std::cout << "NumBlocksPerGrid            = " << gpublocks << std::endl
               << "NumThreadsPerBlock          = " << gputhreads << std::endl
               << "NumIterations               = " << niter << std::endl
-              << "FlavorIndex                 = " << flavorID << " / " << CPPProcess::nmaxflavor << std::endl
+              << "FlavorIndex                 = " << ( flavorsIn.empty() ? std::to_string( flavorID ) : "per event" )
+              << " / " << CPPProcess::nmaxflavor << std::endl
               << std::string( SEP79, '-' ) << std::endl
               << "NaN/abnormal MEs            = " << nevtABN << std::endl
               << "Zero MEs                    = " << nevtZERO << std::endl
@@ -1141,10 +1063,16 @@ namespace
     std::cout << std::string( SEP79, '*' ) << std::endl;
 
     umami_free( umami_handle );
-    if( ( dumpMomenta.is_open() && !dumpMomenta.flush() ) || ( dumpMEs.is_open() && !dumpMEs.flush() ) )
+#ifdef MGONGPUCPP_GPUIMPL
+    if( stream != nullptr ) gpuStreamDestroy( stream );
+#endif
+    for( std::ofstream* file : { &dumpMomenta, &dumpMEs, &dumpHel, &dumpCol } )
     {
-      std::cerr << "ERROR! failed to write the dump files" << std::endl;
-      return 2;
+      if( file->is_open() && !file->flush() )
+      {
+        std::cerr << "ERROR! failed to write the dump files" << std::endl;
+        return 2;
+      }
     }
     return 0;
   }
@@ -1168,6 +1096,7 @@ int main( int argc, char** argv )
   std::string dumpMomentaFile; // --dump-momenta: write the momenta of every event (perf mode only)
   std::string dumpMEFile;      // --dump-me: write the matrix element of every event (perf mode only)
   double perfEnergy = -1.;     // --energy: Ecms for the perf-mode RAMBO
+  PerfIO io;                   // the per-event inputs and outputs of perf mode (--alphas, ...)
 
   // Optional leading subcommand (no leading dash).
   int firstArg = 1;
@@ -1216,6 +1145,27 @@ int main( int argc, char** argv )
     }
     else if( arg == "--energy" && argn + 1 < argc && is_float( argv[argn + 1] ) )
       perfEnergy = atof( argv[++argn] );
+    else if( ( arg == "--alphas" || arg == "--flavors" || arg == "--rnd-hel" || arg == "--rnd-col" ||
+               arg == "--dump-hel" || arg == "--dump-col" ) && argn + 1 < argc )
+    {
+      std::string& value = ( arg == "--alphas" ? io.alphas : arg == "--flavors" ? io.flavorsFile :
+                             arg == "--rnd-hel" ? io.rndHelFile : arg == "--rnd-col" ? io.rndColFile :
+                             arg == "--dump-hel" ? io.dumpHelFile : io.dumpColFile );
+      value = argv[++argn];
+      mode = MODE_PERF;
+    }
+    else if( arg == "--param" && argn + 1 < argc && strchr( argv[argn + 1], '=' ) != nullptr )
+    {
+      const std::string param = argv[++argn];
+      const std::size_t eq = param.find( '=' );
+      io.parameters.emplace_back( param.substr( 0, eq ), atof( param.c_str() + eq + 1 ) );
+      mode = MODE_PERF;
+    }
+    else if( arg == "--nonblocking-stream" )
+    {
+      io.nonblockingStream = true;
+      mode = MODE_PERF;
+    }
     else if( is_number( argv[argn] ) && nnum < 3 )
     {
       numvec[nnum++] = strtoul( argv[argn], nullptr, 0 );
@@ -1272,6 +1222,13 @@ int main( int argc, char** argv )
     return usage( argv[0] );
   }
   if( perfEnergy > 0 ) kEnergy = perfEnergy;
+#ifndef MGONGPUCPP_GPUIMPL
+  if( io.nonblockingStream )
+  {
+    std::cerr << "ERROR: --nonblocking-stream needs a CUDA or HIP build." << std::endl;
+    return 1;
+  }
+#endif
 
   if( flavorID >= CPPProcess::nmaxflavor )
   {
@@ -1281,5 +1238,5 @@ int main( int argc, char** argv )
   }
 
   return run_perf_mode( verbose, gpublocks, gputhreads, niter, flavorID, ramboType, lheFile,
-                        momentaFile, dumpMomentaFile, dumpMEFile );
+                        momentaFile, dumpMomentaFile, dumpMEFile, io );
 }
