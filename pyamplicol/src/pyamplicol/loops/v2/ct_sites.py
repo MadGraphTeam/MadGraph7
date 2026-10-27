@@ -65,17 +65,27 @@ Colour, kinematics and signs of a site term (design §6.4, §6.6):
   from the vertex's own by complex conjugation and the exchange of chiral
   projectors (``ConjugateVertices``), while its colour stays the incoming
   reading of the vertex (WP3.2 EWI-2). The tree engine reads every vertex
-  with its outgoing particles' momenta and colour flows, the closure with
-  the momenta flowing in and the incoming colour: on a vertex without
-  fermion legs the two differ by (-1)^(momentum degree) times the
-  transposition sign of the adjoint colour flows, which its terms carry
-  (``SiteClosure._reading_sign``): 1 on every QCD vertex, -1 on the
-  colourless vertices odd in the momenta (W+ W- A/Z, Z H G0, the
-  W-Goldstone-scalar vertices, the Goldstone-vector mixings at two-point
-  sites) and on the Levi-Civita R2 of a Z with gluons, at Born roots,
-  counterterm roots and sites alike (WP3.2 EWI-7b; the closure's own reading
-  gave w+ w- > u u~ a Born 177 times the tree engine's and z h > t t~ a
-  Feynman-gauge Born 20 times its unitary-gauge one);
+  with the rows and tree momenta of its particles' currents and their
+  outgoing colour flows; the closure gives each kernel leg the same row and
+  the same block's momentum, but flowing in (the tree momentum negated), and
+  closes the incoming colour. The two readings differ by (-1)^(momentum
+  degree of the kernel) times the transposition sign of the colour, which
+  every term carries (``SiteClosure._reading_sign``), on every vertex, at
+  Born roots, counterterm roots and two-point sites alike (WP3.2 EWI-7b,
+  genericity audit 2 G2-M7). It is 1 on every QCD vertex (``f`` with one
+  momentum; ``d``, generators and metrics without; a quark two-point odd
+  in the momentum and diagonal in colour, whose two block momenta are
+  opposite, as in the earlier reading of its legs) and -1 on every
+  colourless vertex odd in the momenta: W+ W- A/Z, Z H G0, W G H, W G G0,
+  their R2 and UV counterterms, the Goldstone-vector mixings G0-Z, G0-A
+  and G-W at two-point sites (the clone lines read them the same way,
+  ``models.ct_line_insertions._momentum_ratio``), the Levi-Civita R2 of a
+  Z with gluons and the d*f cells of the four-gluon R2 (which sum to
+  zero). The earlier reading kept sign 1 and gave the momenta in UFO-leg
+  order: w+ w- > u u~ had a Born 177 times its time-reversed process's and
+  z h > t t~ a Feynman-gauge Born 20 times its unitary-gauge one. A kernel
+  neither even nor odd in the momenta or a colour without a transposition
+  sign is refused (``ReadingSignError``);
 * ``Block.wick_sign`` turns each block into its Feynman-rule current and the
   root sign completes FeynKit's diagram sign: the parity of the full coloured
   fermion line listing over the product of the blocks' listings
@@ -180,11 +190,13 @@ class CountertermCompletenessError(ValueError):
 
 
 class ReadingSignError(NotImplementedError):
-    """A vertex whose legs are all self-conjugate has no sign between the
-    tree engine's reading and the root closure's
-    (``SiteClosure._reading_sign``): its kernel is of mixed momentum parity,
-    or its colour tensor has no transposition sign (a trace of three or more
-    adjoint indices, an unknown tensor) or terms of both signs."""
+    """A vertex closed at a root has no sign between the tree engine's
+    reading of its legs and the root closure's
+    (``SiteClosure._reading_sign``): its kernel is neither even nor odd in
+    the block momenta, or its colour tensor has no transposition sign (a
+    trace of three or more adjoint indices, a sextet or epsilon tensor, an
+    unknown tensor) or terms of both signs. Generation refuses the request
+    naming the vertex."""
 
 
 # --------------------------------------------------------------------------- records
@@ -805,9 +817,9 @@ class SiteTerm:
 
     ``blocks[i]`` attaches to UFO leg i + 1 with its incoming field, the
     reading of the colour and of the family recursion. The kernel reads the
-    same vertex as the tree engine does: the row of the block
-    ``blocks[kernel_legs[i]]``, whose tree particle is UFO particle i + 1,
-    fills kernel leg i + 1 (module docstring). The term's value is
+    same vertex as the tree engine does: the row and the momentum of the
+    block ``blocks[kernel_legs[i]]``, whose tree particle is UFO particle
+    i + 1, fill kernel leg i + 1 (module docstring). The term's value is
     ``sign * coupling(entry) * kernel(rows, momenta)`` times ``colour``.
     """
 
@@ -1097,40 +1109,26 @@ class SiteClosure:
         return tuple(out)
 
     def _reading_sign(self, entry: Any, binding: Any) -> int:
-        """The sign between the tree engine's reading of a vertex without
-        fermion legs and the root closure's (module docstring, "Colour,
-        kinematics and signs").
+        """The sign between the tree engine's reading of a vertex and the
+        root closure's (module docstring, "Colour, kinematics and signs").
 
         Both readings fill each kernel leg with the block row of its tree
-        particle (a vertex not closed under conjugation through its conjugate
-        rule, ``read_entries``), but the tree engine reads every vertex with
-        the momenta of its outgoing tree particles and their colour flows,
-        the closure with the momenta flowing in and the incoming colour: the
-        momenta are reversed and each adjoint colour flow is transposed (an
+        particle (``_kernel_legs``; a vertex not closed under conjugation
+        through its conjugate rule, ``read_entries``) and with that block's
+        momentum (``value``, the native closure terms alike), but the tree
+        engine takes the tree momenta and the outgoing colour flows, the
+        closure the momenta flowing in and the incoming colour: every
+        momentum is reversed and every adjoint colour flow transposed (an
         ``f`` changes sign; ``d``, generators between the swapped ends of a
         fundamental line, two-index traces and identities do not). The
-        closure value differs from the tree engine's, the reading of every
-        other vertex of the amplitude, by (-1)^(momentum degree of the
-        kernel) times the colour's transposition sign. It is -1 on every
-        colourless (or ``d``-coloured) vertex odd in the momenta, on Born
-        roots, counterterm roots and two-point sites alike: W+ W- A, W+ W- Z,
-        Z H G0, the W-Goldstone-scalar vertices, their R2 and UV
-        counterterms, the Goldstone-vector mixings G0-Z, G0-A and G+-W- (whose
-        clone lines read them the same way, ``ct_line_insertions.
-        _momentum_ratio``), the Levi-Civita R2 of a Z with gluons
-        (``R2_GGZ``: a two-index trace with one momentum; ``R2_GGGVa``: ``f``
-        without) and the d*f cells of the four-gluon R2 (which sum to zero);
-        it is 1 on every QCD vertex (``f`` with one momentum, ``d`` or metrics
-        without). Vertices with fermion legs keep sign 1: their kernels read
-        the transposed Dirac chain, as the tree engine does. A kernel of
-        mixed momentum parity or a colour without a transposition sign is
-        refused (``ReadingSignError``).
+        closure value is therefore the tree engine's, the reading of every
+        other vertex of the amplitude, times (-1)^(momentum degree of the
+        kernel) times the colour's transposition sign, on every vertex. A
+        kernel neither even nor odd in the momenta or a colour without a
+        transposition sign is refused (``ReadingSignError`` naming the
+        vertex).
         """
 
-        if any(
-            int(self._by_name[name]["spin"]) % 2 == 0 for name in entry.particle_names
-        ):
-            return 1
         key = (_entry_key(entry), binding.kernel_id)
         found = self._reading.get(key)
         if found is None:
@@ -1179,15 +1177,16 @@ class SiteClosure:
 
         ``rows[i]`` is the tree row of ``term.blocks[i]`` and ``momenta[i]``
         its tree momentum (the leg-mask momentum, initial legs negated). The
-        kernel takes the rows in its own leg order and the momenta flowing
-        into the vertex. Coupling, sign and colour are not applied.
+        kernel takes the rows and the momenta flowing into the vertex in its
+        own leg order (``term.kernel_legs``). Coupling, sign and colour are
+        not applied.
         """
 
         kernel = self.catalogue.kernels[term.binding.kernel_id]
         currents = [value for index in term.kernel_legs for value in rows[index]]
-        # Momenta keep the physical reading: UFO leg i + 1 carries the momentum
-        # flowing in from the block whose incoming field is its particle.
-        vectors = [-value for momentum in momenta for value in momentum]
+        # Kernel leg i + 1 takes the row and the momentum of the block of its
+        # tree particle, the momentum flowing in (``_reading_sign``).
+        vectors = [-value for index in term.kernel_legs for value in momenta[index]]
         sources = {"block-current": currents, "block-momentum": vectors}
         try:
             values = [sources[item.role][item.component] for item in kernel.inputs]
@@ -1467,7 +1466,7 @@ def _momentum_parity(kernel: Any, what: str = "a ct-site kernel") -> int:
         raise ReadingSignError(
             f"{what}: its kernel is neither even nor odd in the block momenta, "
             "so the root closure has no sign between the tree engine's reading "
-            "of its legs (all self-conjugate) and its own"
+            "of its legs and its own"
         )
     return parities.pop()
 

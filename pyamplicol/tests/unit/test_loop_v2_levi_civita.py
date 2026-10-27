@@ -111,14 +111,16 @@ def test_the_tree_compiler_normalises_epsilon():
 
 
 @pytest.mark.loop_fast
-def test_reading_signs_of_self_conjugate_vertices():
-    """The parts of the root closure's reading sign: the colour's sign under
-    the transposition of its adjoint generators (-1 per ``f``; ``d``,
-    ``Identity``, two-index traces and singlets keep it; products multiply)
-    and the kernel's momentum parity. A colour without one (a trace of three
-    octets, a mixture of ``d`` and ``f`` terms, another tensor) or a kernel of
-    mixed parity is refused with the typed ``ReadingSignError`` naming the
-    vertex."""
+def test_reading_signs_of_root_vertices():
+    """The parts of the root closure's reading sign, applied to every vertex
+    closed at a root (WP3.2 EWI-7b, genericity audit 2 G2-M7): the colour's
+    sign under the transposition of its adjoint generators (-1 per ``f``;
+    ``d``, fundamental generators between swapped ends, ``Identity``,
+    two-index traces and singlets keep it; products multiply) and the
+    kernel's momentum parity. A colour without one (a trace of three octets,
+    a sextet generator, an epsilon tensor, a mixture of ``d`` and ``f``
+    terms) or a kernel neither even nor odd in the momenta is refused with the
+    typed ``ReadingSignError`` naming the vertex."""
 
     from types import SimpleNamespace
 
@@ -132,17 +134,20 @@ def test_reading_signs_of_self_conjugate_vertices():
         ("1", 1),
         ("f(1,2,3)", -1),
         ("d(1,2,3)", 1),
+        ("T(3,2,1)", 1),
         ("Identity(1,2)", 1),
         ("Tr(1,2)", 1),
         ("complex(0,1)*f(1,2,3)", -1),
         ("f(-1,1,2)*f(3,4,-1)", 1),
         ("d(-1,1,2)*f(3,4,-1)", -1),
+        ("f(-1,1,2)*T(-1,4,3)", -1),
         ("f(1,2,3) - f(1,3,2)", -1),
     ):
         assert _colour_transposition_sign(colour) == sign, colour
     for colour, message in (
         ("Tr(1,2,3)", "colour tensor Tr of 3 indices"),
-        ("T(1,2,3)", "colour tensor T of 3 indices"),
+        ("T6(1,2,3)", "colour tensor T6 of 3 indices"),
+        ("Epsilon(1,2,3)", "colour tensor Epsilon of 3 indices"),
         ("f(1,2,3) + d(1,2,3)", "change sign differently"),
     ):
         with pytest.raises(ReadingSignError, match=rf"vertex V_X: .*{message}"):
