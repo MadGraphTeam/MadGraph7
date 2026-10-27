@@ -1154,7 +1154,9 @@ c "npNLO".
 c Skipped cache fields are still copied into unused contribution arguments.
 c Initialize their defaults once; consumed single-lane fields are replaced
 c from the current momenta before every read, including subsequent folds.
-         if (single_lane_preparation) call reset_storage()
+c Generation retains per-fold defaults for the event-writing cache below.
+         if (single_lane_preparation.and.imode.ne.2)
+     $      call reset_storage()
       endif
 
       if (ifl.eq.0) then
@@ -1165,9 +1167,10 @@ c from the current momenta before every read, including subsequent folds.
 
       fold=ifl
       if (ifl.eq.0 .or. ifl.eq.1) then
-C Batched preparation still needs fresh per-fold validity markers/zeros.
+C Batched preparation and event generation need per-fold markers/zeros.
 C Scalar preparation overwrites consumed fields and clears real_active itself.
-         if (.not.single_lane_preparation) call reset_storage()
+         if (.not.single_lane_preparation.or.imode.eq.2)
+     $      call reset_storage()
          if (ifl.eq.0) then
             icontr=0
 c Single-lane integration keeps its contribution history in scalar lines.

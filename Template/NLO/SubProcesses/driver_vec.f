@@ -867,7 +867,7 @@ c Pythia8 NLOPS disables the random granny mapping in generate_momenta.
 c Other showers retain their prepass, including its random draws.
 c A short final batch of a wider run must retain the batched path too.
       use_single_lane_preparation=configured.eq.1.and.active.eq.1
-     $     .and.(mode.eq.0.or.mode.eq.1).and.matching.ne.3
+     $     .and.(mode.ge.0.and.mode.le.2).and.matching.ne.3
      $     .and.shower.eq.'PYTHIA8'.and.mg7_nlo_real_is_fortran()
       end
 

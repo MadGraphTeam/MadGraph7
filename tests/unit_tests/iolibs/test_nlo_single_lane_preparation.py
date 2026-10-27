@@ -14,7 +14,122 @@ from madmatrix import output as madmatrix_output
 
 
 class TestSingleLanePreparation(unittest.TestCase):
-    def test_scalar_cache_defaults_are_initialized_once(self):
+    def test_rejected_last_fold_keeps_born_colour_fallback(self):
+        compiler = shutil.which('gfortran')
+        if compiler is None:
+            self.skipTest('gfortran is required for the colour lifecycle probe')
+        directory = os.path.join(MG5DIR, 'Template', 'NLO', 'SubProcesses')
+        with open(os.path.join(directory, 'driver_mintMC.f')) as stream:
+            source = stream.read()
+        start = source.index('         call generate_momenta(nndim,iconfig,jac,x,p)',
+                             source.index('      function sigintF_vec(ifl)'))
+        end = source.index('         if (passcuts_nbody) then', start)
+        preparation = source[start:end]
+        with open(os.path.join(directory, 'add_write_info.f')) as stream:
+            source = stream.read()
+        start = source.index('      if (colour_connections(1,1).lt.0) then')
+        end = source.index('         xtarget=ran2()*sumborn', start)
+        fallback = source[start:end]
+        program = '''      module state
+      implicit none
+      double precision sborn_jamp2(2,1)
+      integer fold,prepared
+      end module
+      program probe
+      use state
+      implicit none
+      integer nndim,iconfig,izero,ivec,nFKS_picked_nbody,ickkw
+      integer nFKSprocess,i,max_bcol,iBornGraph
+      parameter(max_bcol=2)
+      integer colour_connections(2,2)
+      logical single_lane_preparation,passcuts_nbody,passcuts
+      logical icolamp(2,1,1)
+      double precision jac,x(1),p(0:3,4),p_born(0:3,3)
+      double precision vegas_wgt,p1_cnt(0:3,4,-2:2),rwgt
+      double precision born_amp2(1),sborn_amp2(1,1)
+      double precision born_jamp2(2),born_amp_split(1)
+      double precision sborn_amp_split(1,1)
+      double precision born_amp_split_cnt(1,1,1)
+      double precision sborn_amp_split_cnt(1,1,1,1)
+      double precision born_ans_cnt(1,1),sborn_ans_cnt(1,1,1)
+      double precision born_saveamp(1,1),sborn_saveamp(1,1,1)
+      double precision wgt_born,swgt_born(1),jamp2(2),sumborn
+      external passcuts
+      single_lane_preparation=.true.
+      nndim=1
+      iconfig=1
+      izero=0
+      ivec=1
+      nFKS_picked_nbody=1
+      nFKSprocess=1
+      ickkw=0
+      iBornGraph=1
+      icolamp=.true.
+      p_born=1d0
+      prepared=0
+      do fold=1,2
+c Poison the previous fold, then reject the last fold's Born cuts.
+         sborn_jamp2=-999d0
+''' + preparation + '''
+         if (passcuts_nbody.neqv.(fold.eq.1)) stop 21
+         if (prepared.ne.fold) stop 22
+         colour_connections=-1
+''' + fallback + '''
+         if (sumborn.ne.3d0*fold) stop 23
+         if (any(jamp2.ne.(/1d0,2d0/)*fold)) stop 24
+      endif
+      enddo
+      print *, 'PASS'
+      stop
+ 12   stop 25
+      end
+      subroutine prepare_single_lane_cache(p,nbody,cut1,cut2)
+      use state
+      double precision p(0:3,4)
+      logical nbody,cut1,cut2
+      if (.not.(nbody.and.cut1.and.cut2)) stop 26
+      sborn_jamp2(:,1)=(/1d0,2d0/)*fold
+      prepared=prepared+1
+      end
+      logical function passcuts(p,rwgt)
+      use state
+      double precision p(*),rwgt
+      passcuts=fold.eq.1
+      end
+      subroutine generate_momenta(n,c,j,x,p)
+      integer n,c
+      double precision j,x(*),p(*)
+      end
+      subroutine compute_prefactors_nbody(w)
+      double precision w
+      end
+      subroutine set_cms_stuff(i)
+      integer i
+      end
+      subroutine set_shower_scale_noshape(p,i)
+      double precision p(*)
+      integer i
+      end
+      subroutine set_FxFx_scale(i,p,j)
+      integer i,j
+      double precision p(*)
+      end
+'''
+        with tempfile.TemporaryDirectory(prefix='mg7_generation_colour_') as tmp:
+            path = os.path.join(tmp, 'probe.f')
+            binary = os.path.join(tmp, 'probe')
+            with open(path, 'w') as stream:
+                stream.write(program)
+            compiled = subprocess.run([compiler, '-O0', '-fcheck=all',
+                '-ffixed-line-length-132', path, '-o', binary], cwd=tmp,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout)
+            run = subprocess.run([binary], stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout)
+            self.assertEqual(run.stdout.strip(), 'PASS')
+
+    def test_scalar_cache_defaults_preserve_generation_fold_resets(self):
         compiler = shutil.which('gfortran')
         if compiler is None:
             self.skipTest('gfortran is required for the cache lifecycle probe')
@@ -31,9 +146,11 @@ class TestSingleLanePreparation(unittest.TestCase):
       logical firsttime,single_lane_preparation,goodhel_set
       integer policy,callback,ifl,i,counts,proc_map(0:1,0:1)
       integer sum,ini_fin_fks,born_class_map(1)
+      integer imode
       integer BORN_FLAVOR_INDEX_D(1),goodhel_calls(1)
       common /reset_calls/counts
       BORN_FLAVOR_INDEX_D=1
+      do imode=0,2
       do policy=0,1
          firsttime=.true.
          single_lane_preparation=policy.eq.1
@@ -43,7 +160,9 @@ class TestSingleLanePreparation(unittest.TestCase):
 ''' + first + reset + '''         endif
          enddo
          if (policy.eq.0.and.counts.ne.8) stop 1
-         if (policy.eq.1.and.counts.ne.1) stop 2
+         if (policy.eq.1.and.imode.ne.2.and.counts.ne.1) stop 2
+         if (policy.eq.1.and.imode.eq.2.and.counts.ne.8) stop 3
+      enddo
       enddo
       print *, 'PASS'
       end
@@ -263,7 +382,7 @@ c Poison the previous sector's dispatch flag; it must not be replayed.
         self.assertIn(anchor, source)
         function = source[source.index(anchor):]
         function = function[:function.index('\n      end\n')+len('\n      end\n')]
-        cases = list(itertools.product((1, 256), (1, 256), (0, 1, 2),
+        cases = list(itertools.product((1, 256), (1, 256), (-1, 0, 1, 2, 3),
                                        (0, 3), ('PYTHIA8', 'HERWIG6'),
                                        (False, True)))
         program = '''      program probe
@@ -297,7 +416,7 @@ c Poison the previous sector's dispatch flag; it must not be replayed.
         self.assertEqual(len(actual), len(cases))
         for case, value in zip(cases, actual):
             configured, active, mode, matching, shower, backend = case
-            expected = (configured == active == 1 and mode in (0, 1)
+            expected = (configured == active == 1 and mode in (0, 1, 2)
                         and matching != 3 and shower == 'PYTHIA8' and backend)
             with self.subTest(case=case):
                 self.assertEqual(value == 'T', expected)
