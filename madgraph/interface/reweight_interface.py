@@ -98,7 +98,7 @@ REWEIGHT_CHANGE_OPTIONS = frozenset([
     'allow_missing_finalstate', 'boost', 'virtual_path', 'tree_path',
     'output', 'helicity', 'mode', 'rwgt_dir', 'systematics', 'soft_threshold',
     'multicore', 'identical_particle_in_prod_and_decay', 'include_sudakov',
-    'sudakov_xi'])
+    'sudakov_xi', 'sudakov_density_prescription', 'sudakov_density_keep_initial'])
 DENSITY_CHANGE_OPTIONS = frozenset([
     'helicity_direction', 'boost_choice', 'order_helicities',
     'symmetrise_initial_state', 'axis_referential', 'matrix_normalisation',
@@ -175,6 +175,8 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         # on |s_ij|, with xi >= 1; one set of Sudakov variants per xi.
         # None -> [mW2_cluster_scale] (1.5).
         self.sudakov_xi_scan = None
+        self.sudakov_density_prescription = "amplitude"
+        self.sudakov_density_keep_initial = False
         self._sudakov_xi_list = None      # xi values of the output weight layout
         self._current_xi_idx = 0          # index of the xi being evaluated
         self.event_path = event_path
@@ -572,6 +574,15 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
             if args[1] == 'True':
                 self.inc_sudakov = True
                 self.rwgt_mode = 'LO'
+        elif args[0] == 'sudakov_density_prescription':
+            if len(args) != 2 or args[1] not in ('amplitude', 'goldstone_relative'):
+                raise self.InvalidCmd('sudakov_density_prescription must be '
+                                      'amplitude or goldstone_relative')
+            self.sudakov_density_prescription = args[1]
+        elif args[0] == 'sudakov_density_keep_initial':
+            if len(args) != 2 or args[1].lower() not in ('true', 'false'):
+                raise self.InvalidCmd('sudakov_density_keep_initial must be True or False')
+            self.sudakov_density_keep_initial = args[1].lower() == 'true'
         elif args[0] == 'sudakov_xi':
             try:
                 xi_values = fxfx_ewsudakov.validate_sudakov_xi(args[1:])
@@ -2939,6 +2950,8 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
 
         commandline = 'output %s %s --prefix=int' % (self.sa_class, out_path)
         mgcmd.exec_cmd(commandline, precmd=True)
+        with open(pjoin(out_path, 'Cards', 'param_card.dat'), 'w') as card:
+            card.write(self.banner['slha'])
         logger.info('Density output (%s) written to %s', label, out_path)
         return True
 
@@ -3966,6 +3979,7 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         to_save['nb_library'] = self.nb_library
         if self.inc_sudakov:
             to_save['sudakov_source_ids'] = self._sudakov_source_ids
+            to_save['sudakov_density_version'] = 2
         # the jobs that load this pickle (--multicore=wait, a reused rwgt_dir)
         # have no model, and get_beampol needs the spin of the incoming
         # particles, flavour-merged ones included
@@ -3986,6 +4000,8 @@ class ReweightInterface(FxFxEWSudakovMixin, extended_cmd.Cmd):
         
         obj = save_load_object.load_from_file( pjoin(self.rwgt_dir, 'rw_me', 'rwgt.pkl'))
         
+        if self.inc_sudakov and obj.get('sudakov_density_version') != 2:
+            raise self.InvalidCmd('Regenerate rw_me: cached library is not density interface version 2')
         self.has_standalone_dir = True
         if self.inc_sudakov and self.multicore == 'wait':
             sources = set(obj['sudakov_source_ids'])

@@ -106,10 +106,7 @@ class TestDensityInitialization(unittest.TestCase):
 
     def density_scan(self):
         scalar = self.fixture.scalar_module(self.interface, [1.7, 1.4, 1.05])
-        scalar.density_sudakov = mock.Mock(return_value={
-            'density_delta': limits.np.full(9, .1),
-            'density_delta_var': limits.np.full(9, .05),
-            'born_diag': limits.np.ones(9), 'total_dim': 9, 'nres': 2})
+        scalar.density_sudakov = mock.Mock(return_value=limits.density_result(9, .2, .1, .05))
         for _ in range(2):
             for xi in (1., 1.5, 3.):
                 self.interface.mW2_cluster_scale = xi
@@ -120,18 +117,23 @@ class TestDensityInitialization(unittest.TestCase):
 
     def test_production_and_decay_cards_read_once_across_events_and_xis(self):
         self.density_scan()
+        # The event path takes the production matrix from the Sudakov kernel.
+        self.assertEqual(self.modules['rw_me_density_prod'].py_get_density.call_count, 0)
+        self.assertEqual(self.modules['rw_me_density_decay'].py_get_density.call_count, 12)
+        for _ in range(2):
+            self.production()
         for name, module in self.modules.items():
             module.initialise.assert_called_once_with(
                 str(self.root / name / 'Cards' / 'param_card.dat'))
             module.p0_initialisemodel.assert_not_called()
             module.p1_initialisemodel.assert_not_called()
-        self.assertEqual(self.modules['rw_me_density_prod'].py_get_density.call_count, 6)
-        self.assertEqual(self.modules['rw_me_density_decay'].py_get_density.call_count, 12)
 
     def test_subprocess_only_initializers_are_cached_separately(self):
         for module in self.modules.values():
             del module.initialise
         self.density_scan()
+        self.production()
+        self.production()
         prod = self.modules['rw_me_density_prod']
         decay = self.modules['rw_me_density_decay']
         prod.p0_initialisemodel.assert_called_once()
@@ -147,6 +149,7 @@ class TestDensityInitialization(unittest.TestCase):
 
     def test_explicit_library_reload_resets_initialization_even_for_same_module_object(self):
         self.density_scan()
+        self.production()
         self.write_card('rw_me_density_prod', 5.)
         self.write_card('rw_me_density_decay', 7.)
         self.load()

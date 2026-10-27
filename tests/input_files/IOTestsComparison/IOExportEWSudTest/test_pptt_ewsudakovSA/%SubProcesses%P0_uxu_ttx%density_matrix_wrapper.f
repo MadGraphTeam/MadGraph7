@@ -188,3 +188,584 @@ C     Save momenta (PAR numerical derivatives may modify p)
       RETURN
       END
 
+C     Exact spectator sum of the linear interference, retaining all
+C      colours.
+C     The physical Born is kept. Longitudinal corrections are mapped
+C      from the
+C     Goldstone amplitudes with HELAS equivalence phases. The second
+C      output is
+C     a spectator-resolved Goldstone-normalised projection for
+C      comparison.
+
+      SUBROUTINE SDK_DENSITY_INTERFERENCE(P,NRES,POS,DIMS,BORN,
+     $     correction,relative,zero_gold,status)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      INTEGER NRES,POS(10),DIMS(10),ZERO_GOLD,STATUS
+      DOUBLE PRECISION P(0:3,NEXTERNAL-1)
+      DOUBLE COMPLEX BORN(36,36),CORRECTION(36,36,5)
+      DOUBLE COMPLEX RELATIVE(36,36,5)
+      INTEGER NCOMB
+      PARAMETER (NCOMB=16)
+      INTEGER NHEL(NEXTERNAL-1,NCOMB),I
+      DATA (NHEL(I,   1),I=1,4) /-1, 1,-1, 1/
+      DATA (NHEL(I,   2),I=1,4) /-1, 1,-1,-1/
+      DATA (NHEL(I,   3),I=1,4) /-1, 1, 1, 1/
+      DATA (NHEL(I,   4),I=1,4) /-1, 1, 1,-1/
+      DATA (NHEL(I,   5),I=1,4) /-1,-1,-1, 1/
+      DATA (NHEL(I,   6),I=1,4) /-1,-1,-1,-1/
+      DATA (NHEL(I,   7),I=1,4) /-1,-1, 1, 1/
+      DATA (NHEL(I,   8),I=1,4) /-1,-1, 1,-1/
+      DATA (NHEL(I,   9),I=1,4) / 1, 1,-1, 1/
+      DATA (NHEL(I,  10),I=1,4) / 1, 1,-1,-1/
+      DATA (NHEL(I,  11),I=1,4) / 1, 1, 1, 1/
+      DATA (NHEL(I,  12),I=1,4) / 1, 1, 1,-1/
+      DATA (NHEL(I,  13),I=1,4) / 1,-1,-1, 1/
+      DATA (NHEL(I,  14),I=1,4) / 1,-1,-1,-1/
+      DATA (NHEL(I,  15),I=1,4) / 1,-1, 1, 1/
+      DATA (NHEL(I,  16),I=1,4) / 1,-1, 1,-1/
+      INTEGER ISPEC,H,HP,R,K,D,IV,S,IP,IB,BASE(36)
+      INTEGER HELS(NEXTERNAL-1,36),IFLIST(NEXTERNAL-1)
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      INTEGER IDEN_VALUES(1)
+      DATA IDEN_VALUES / 36 /
+      DOUBLE PRECISION INVARIANTS(NEXTERNAL-1,NEXTERNAL-1,5),NORM(36)
+      DOUBLE COMPLEX AMPS(NC,NO,NS,36),DERIV(NC,NO,6,36)
+      DOUBLE COMPLEX COEFF(NS),PARCOEFF(6,5),PHASE(36)
+      DOUBLE COMPLEX DELTA(36,5),MIXED(36,36,5),BROW(36,36)
+      DOUBLE COMPLEX SDK_DENSITY_INTER,TERM
+      EXTERNAL SDK_DENSITY_INTER
+      LOGICAL OK,SELECTED
+      INTEGER SUD_MOD,SAVED_MOD
+      COMMON/TO_SUD_MOD/SUD_MOD
+      LOGICAL S_TO_RIJ,RIJ_GE_MW,SAVED_STOR,SAVED_RIJ
+      COMMON/TO_S_TO_RIJ/S_TO_RIJ
+      COMMON/RIJ_GE_MW/RIJ_GE_MW
+
+      BORN=(0D0,0D0)
+      CORRECTION=(0D0,0D0)
+      RELATIVE=(0D0,0D0)
+      ZERO_GOLD=0
+      STATUS=0
+C     The underlying Sudakov charge/reshuffling functions do not
+C      implement
+C     massive vector beams. Do not return their undefined numerical
+C      results.
+      IF (.NOT..TRUE.) THEN
+        STATUS=4
+        RETURN
+      ENDIF
+      D=1
+      IF (NRES.LT.1.OR.NRES.GT.10) THEN
+        STATUS=1
+        RETURN
+      ENDIF
+      DO R=1,NRES
+        IF (DIMS(R).LT.2.OR.DIMS(R).GT.3.OR.POS(R).LT.1.OR.
+     $      pos(r).gt.nexternal-1) then
+        STATUS=1
+        RETURN
+        ENDIF
+        DO K=1,R-1
+          IF (POS(K).EQ.POS(R)) THEN
+            STATUS=1
+            RETURN
+          ENDIF
+        ENDDO
+        IF (D.GT.36/DIMS(R)) THEN
+          STATUS=1
+          RETURN
+        ENDIF
+        D=D*DIMS(R)
+      ENDDO
+      SAVED_MOD=SUD_MOD
+      SAVED_STOR=S_TO_RIJ
+      SAVED_RIJ=RIJ_GE_MW
+      IFLIST=(/-1,-1,1,1/)
+C     Each variant builds its invariants with its own floor.
+      DO IV=1,5
+        CALL SDK_DENSITY_VARIANT(IV)
+        CALL SDK_GET_INVARIANTS(P,IFLIST,INVARIANTS(1,1,IV))
+        CALL SDK_DENSITY_PARCOEFF(INVARIANTS(1,1,IV),PARCOEFF(1,IV))
+      ENDDO
+
+C     One representative of each spectator tuple. No good-helicity
+C      filtering:
+C     a zero Born component can have a nonzero mixed-helicity
+C      interference.
+      DO ISPEC=1,NCOMB
+        SELECTED=.TRUE.
+        DO R=1,NRES
+          IF (NHEL(POS(R),ISPEC).NE.-1) SELECTED=.FALSE.
+        ENDDO
+        IF (.NOT.SELECTED) CYCLE
+        AMPS=(0D0,0D0)
+        DERIV=(0D0,0D0)
+        MIXED=(0D0,0D0)
+        DELTA=(0D0,0D0)
+        DO H=1,D
+          HELS(:,H)=NHEL(:,ISPEC)
+          K=H-1
+          DO R=1,NRES
+            IP=MOD(K,DIMS(R))
+            K=K/DIMS(R)
+            IF (DIMS(R).EQ.2) THEN
+              HELS(POS(R),H)=2*IP-1
+            ELSE
+              HELS(POS(R),H)=IP-1
+            ENDIF
+          ENDDO
+          CALL SDK_DENSITY_BASE(HELS(1,H),BASE(H),PHASE(H))
+          CALL SDK_DENSITY_EVAL(1,P,HELS(1,H),AMPS(1,1,1,H),OK)
+          IF (.NOT.OK) THEN
+            STATUS=2
+            GOTO 900
+          ENDIF
+          IB=BASE(H)
+          IF (IB.EQ.0) CYCLE
+          DO S=2,NS
+            CALL SDK_DENSITY_NEEDED(IB,S,SELECTED)
+            IF (.NOT.SELECTED) CYCLE
+            CALL SDK_DENSITY_EVAL(S,P,HELS(1,H),AMPS(1,1,S,H),OK)
+            IF (.NOT.OK) THEN
+              STATUS=2
+              GOTO 900
+            ENDIF
+          ENDDO
+          CALL SDK_DENSITY_DERIVATIVES(IB,P,HELS(1,H),
+     $         deriv(1,1,1,h),ok)
+          IF (.NOT.OK) THEN
+            STATUS=3
+            GOTO 900
+          ENDIF
+        ENDDO
+        DO H=1,D
+          DO HP=1,D
+            BROW(H,HP)=SDK_DENSITY_INTER(1,1,AMPS(1,1,1,HP),
+     $                                  amps(1,1,1,h))
+          ENDDO
+          IB=BASE(H)
+          IF (IB.EQ.0) THEN
+            NORM(H)=0D0
+          ELSE
+            NORM(H)=DBLE(SDK_DENSITY_INTER(IB,IB,
+     $                           amps(1,1,ib,h),amps(1,1,ib,h)))
+          ENDIF
+          IF (NORM(H).LE.0D0.AND.DBLE(BROW(H,H)).GT.0D0)
+     $        zero_gold=zero_gold+1
+        ENDDO
+        DO IV=1,5
+          CALL SDK_DENSITY_VARIANT(IV)
+          DO H=1,D
+            IB=BASE(H)
+            IF (IB.EQ.0) CYCLE
+            CALL SDK_DENSITY_COEFF(IB,HELS(1,H),INVARIANTS(1,1,IV),
+     $                             coeff)
+            TERM=(0D0,0D0)
+            DO S=1,NS
+              IF (COEFF(S).EQ.(0D0,0D0)) CYCLE
+              TERM=TERM+COEFF(S)*SDK_DENSITY_INTER(IB,S,
+     $                    amps(1,1,ib,h),amps(1,1,s,h))
+              DO HP=1,D
+                MIXED(H,HP,IV)=MIXED(H,HP,IV)+PHASE(H)*COEFF(S)*
+     $              sdk_density_inter(1,s,amps(1,1,1,hp),
+     $                                    amps(1,1,s,h))
+              ENDDO
+            ENDDO
+            DO IP=1,6
+              TERM=TERM+PARCOEFF(IP,IV)*SDK_DENSITY_INTER(IB,IB,
+     $                        amps(1,1,ib,h),deriv(1,1,ip,h))
+              DO HP=1,D
+                MIXED(H,HP,IV)=MIXED(H,HP,IV)+PHASE(H)*
+     $             parcoeff(ip,iv)*sdk_density_inter(1,ib,
+     $                          amps(1,1,1,hp),deriv(1,1,ip,h))
+              ENDDO
+            ENDDO
+            IF (NORM(H).GT.0D0) DELTA(H,IV)=TERM/NORM(H)
+          ENDDO
+          DO H=1,D
+            DO HP=1,D
+              CORRECTION(H,HP,IV)=CORRECTION(H,HP,IV)+
+     $             mixed(h,hp,iv)+dconjg(mixed(hp,h,iv))
+              RELATIVE(H,HP,IV)=RELATIVE(H,HP,IV)+BROW(H,HP)*
+     $             (delta(h,iv)+dconjg(delta(hp,iv)))
+            ENDDO
+          ENDDO
+        ENDDO
+        BORN(1:D,1:D)=BORN(1:D,1:D)+BROW(1:D,1:D)
+      ENDDO
+      BORN=BORN/DBLE(IDEN_VALUES(NFKSPROCESS))
+      CORRECTION=CORRECTION/DBLE(IDEN_VALUES(NFKSPROCESS))
+      RELATIVE=RELATIVE/DBLE(IDEN_VALUES(NFKSPROCESS))
+ 900  CONTINUE
+      SUD_MOD=SAVED_MOD
+      S_TO_RIJ=SAVED_STOR
+      RIJ_GE_MW=SAVED_RIJ
+      END
+
+      SUBROUTINE SDK_DENSITY_VARIANT(IV)
+      IMPLICIT NONE
+      INTEGER IV,SUD_MOD
+      LOGICAL S_TO_RIJ,RIJ_GE_MW
+      COMMON/TO_SUD_MOD/SUD_MOD
+      COMMON/TO_S_TO_RIJ/S_TO_RIJ
+      COMMON/RIJ_GE_MW/RIJ_GE_MW
+C     Same order as ewsudakov_py results(2:6): QED, weak, s/r off,
+C     s/r off and invariant floor off, invariant floor off.
+      SUD_MOD=1
+      IF (IV.EQ.1) SUD_MOD=0
+      S_TO_RIJ=IV.NE.3.AND.IV.NE.4
+      RIJ_GE_MW=IV.LT.4
+      END
+
+      SUBROUTINE SDK_DENSITY_BASE(HELS,IBASE,PHASE)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INTEGER HELS(NEXTERNAL-1),IBASE
+      DOUBLE COMPLEX PHASE
+      IBASE=1
+      PHASE=(1D0,0D0)
+      END
+
+      SUBROUTINE SDK_DENSITY_NEEDED(IBASE,ISOURCE,NEEDED)
+      IMPLICIT NONE
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      INTEGER IBASE,ISOURCE,SOURCE_BASE(NS)
+      LOGICAL NEEDED
+      DATA SOURCE_BASE /1,1,1/
+      NEEDED=SOURCE_BASE(ISOURCE).EQ.IBASE
+      END
+
+      SUBROUTINE SDK_DENSITY_EVAL(ISOURCE,P,HELS,JAMP,OK)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      INTEGER ISOURCE,HELS(NEXTERNAL-1)
+      DOUBLE PRECISION P(0:3,NEXTERNAL-1)
+      DOUBLE COMPLEX JAMP(NC,NO)
+      LOGICAL OK
+      JAMP=(0D0,0D0)
+      OK=.FALSE.
+      IF (ISOURCE.EQ.1) THEN
+        CALL SDK_DENSITY_RAW_1(P,HELS,JAMP,OK)
+      ELSE IF (ISOURCE.EQ.2) THEN
+        CALL SDK_DENSITY_RAW_2(P,HELS,JAMP,OK)
+      ELSE IF (ISOURCE.EQ.3) THEN
+        CALL SDK_DENSITY_RAW_3(P,HELS,JAMP,OK)
+      ENDIF
+      END
+
+      SUBROUTINE SDK_DENSITY_COEFF(IBASE,HELS,INVARIANTS,COEFF)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'ewsudakov_haslo.inc'
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      INTEGER IBASE,HELS(NEXTERNAL-1),IFLIST(NEXTERNAL-1)
+      INTEGER PDGLIST(NEXTERNAL-1)
+      DOUBLE PRECISION INVARIANTS(NEXTERNAL-1,NEXTERNAL-1)
+      DOUBLE COMPLEX COEFF(NS)
+      DOUBLE COMPLEX GET_LSC_DIAG,GET_SSC_N_DIAG,GET_XXC_DIAG
+      DOUBLE COMPLEX GET_LSC_NONDIAG,GET_XXC_NONDIAG
+      DOUBLE COMPLEX GET_SSC_N_NONDIAG_1,GET_SSC_N_NONDIAG_2,GET_SSC_C
+      EXTERNAL GET_LSC_DIAG,GET_SSC_N_DIAG,GET_XXC_DIAG
+      EXTERNAL GET_LSC_NONDIAG,GET_XXC_NONDIAG
+      EXTERNAL GET_SSC_N_NONDIAG_1,GET_SSC_N_NONDIAG_2,GET_SSC_C
+      COEFF=(0D0,0D0)
+      IF (.NOT.HAS_LO1) RETURN
+      IFLIST=(/-1,-1,1,1/)
+      IF (IBASE.EQ.1) THEN
+        PDGLIST=(/-2,2,6,-6/)
+        COEFF(1)=GET_LSC_DIAG(PDGLIST,HELS,IFLIST,INVARIANTS)
+        COEFF(1)=COEFF(1)+GET_SSC_N_DIAG(PDGLIST,HELS,IFLIST
+     $   ,INVARIANTS)
+        COEFF(1)=COEFF(1)+GET_XXC_DIAG(PDGLIST,HELS,IFLIST,INVARIANTS)
+        COEFF(2)=GET_SSC_C(1,2,PDGLIST,-1,1,HELS,IFLIST,INVARIANTS)
+        COEFF(3)=GET_SSC_C(3,4,PDGLIST,5,-5,HELS,IFLIST,INVARIANTS)
+      ENDIF
+      END
+
+      DOUBLE COMPLEX FUNCTION SDK_DENSITY_INTER(IBASE,ISOURCE,A,B)
+      IMPLICIT NONE
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      INTEGER IBASE,ISOURCE,I,J,M,N,MASK(NO,NO)
+      DOUBLE COMPLEX A(NC,NO),B(NC,NO),METRIC(NC,NC,NS,NB)
+      DATA MASK /1/
+      DATA (METRIC(I,1,1,1),I=1,NC)/(9.00000000000000000D+00
+     $ ,0.00000000000000000D+00),(3.00000000000000000D+00
+     $ ,0.00000000000000000D+00)/
+      DATA (METRIC(I,2,1,1),I=1,NC)/(3.00000000000000000D+00
+     $ ,0.00000000000000000D+00),(9.00000000000000000D+00
+     $ ,0.00000000000000000D+00)/
+      DATA (METRIC(I,1,2,1),I=1,NC)/(9.00000000000000000D+00
+     $ ,0.00000000000000000D+00),(3.00000000000000000D+00
+     $ ,0.00000000000000000D+00)/
+      DATA (METRIC(I,2,2,1),I=1,NC)/(3.00000000000000000D+00
+     $ ,0.00000000000000000D+00),(9.00000000000000000D+00
+     $ ,0.00000000000000000D+00)/
+      DATA (METRIC(I,1,3,1),I=1,NC)/(9.00000000000000000D+00
+     $ ,0.00000000000000000D+00),(3.00000000000000000D+00
+     $ ,0.00000000000000000D+00)/
+      DATA (METRIC(I,2,3,1),I=1,NC)/(3.00000000000000000D+00
+     $ ,0.00000000000000000D+00),(9.00000000000000000D+00
+     $ ,0.00000000000000000D+00)/
+      SDK_DENSITY_INTER=(0D0,0D0)
+      DO M=1,NO
+        DO N=1,NO
+          IF (MASK(M,N).EQ.0) CYCLE
+          DO I=1,NC
+            DO J=1,NC
+              SDK_DENSITY_INTER=SDK_DENSITY_INTER+
+     $         dconjg(metric(i,j,isource,ibase)*a(i,n))*b(j,m)
+            ENDDO
+          ENDDO
+        ENDDO
+      ENDDO
+      END
+
+      SUBROUTINE SDK_DENSITY_DERIVATIVES(IBASE,P,HELS,DERIV,OK)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'coupl.inc'
+      INCLUDE '../../Source/MODEL/input.inc'
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      INTEGER IBASE,HELS(NEXTERNAL-1),IP
+      DOUBLE PRECISION P(0:3,NEXTERNAL-1),VALUE,STEP,ORIGINAL
+      DOUBLE COMPLEX DERIV(NC,NO,6),UP(NC,NO),DN(NC,NO)
+      LOGICAL OK,OKUP,OKDN
+      DERIV=(0D0,0D0)
+      OK=.FALSE.
+      IF (MDL_MT.NE.MDL_YMT.OR.MDL_NTADPOLE.NE.1D0) RETURN
+      DO IP=1,6
+        CALL SDK_DENSITY_PARAMETER(IP,VALUE,.FALSE.)
+        ORIGINAL=VALUE
+        STEP=ABS(VALUE)*1D-5
+        IF (STEP.EQ.0D0) RETURN
+        VALUE=VALUE+STEP
+        CALL SDK_DENSITY_PARAMETER(IP,VALUE,.TRUE.)
+        CALL COUP()
+        CALL SDK_DENSITY_EVAL(IBASE,P,HELS,UP,OKUP)
+        VALUE=ORIGINAL-STEP
+        CALL SDK_DENSITY_PARAMETER(IP,VALUE,.TRUE.)
+        CALL COUP()
+        CALL SDK_DENSITY_EVAL(IBASE,P,HELS,DN,OKDN)
+        VALUE=ORIGINAL
+        CALL SDK_DENSITY_PARAMETER(IP,VALUE,.TRUE.)
+        CALL COUP()
+        IF (.NOT.OKUP.OR..NOT.OKDN) RETURN
+        DERIV(:,:,IP)=(UP-DN)/(2D0*STEP)
+      ENDDO
+      OK=.TRUE.
+      END
+
+      SUBROUTINE SDK_DENSITY_PARAMETER(IP,VALUE,WRITE_VALUE)
+      IMPLICIT NONE
+      INCLUDE 'coupl.inc'
+      INCLUDE '../../Source/MODEL/input.inc'
+      INTEGER IP
+      DOUBLE PRECISION VALUE,PARAMS(6)
+      LOGICAL WRITE_VALUE
+      IF (WRITE_VALUE) THEN
+        IF (IP.EQ.1) MDL_GF=VALUE
+        IF (IP.EQ.2) MDL_MZ=VALUE
+        IF (IP.EQ.3) MDL_MW=VALUE
+        IF (IP.EQ.4) THEN
+          MDL_MT=VALUE
+          MDL_YMT=VALUE
+        ENDIF
+        IF (IP.EQ.5) MDL_MH=VALUE
+        IF (IP.EQ.6) MDL_NTADPOLE=VALUE
+      ELSE
+        PARAMS=(/MDL_GF,MDL_MZ,MDL_MW,MDL_MT,MDL_MH,
+     $            mdl_ntadpole/)
+        VALUE=PARAMS(IP)
+      ENDIF
+      END
+
+      SUBROUTINE SDK_DENSITY_PARCOEFF(INVARIANTS,COEFF)
+C     Reuse the scalar kernel's renormalisation constants. It acts
+C      linearly
+C     on derivatives of |M|^2 and divides by two; probe with unit
+C      derivatives
+C     and undo that division for derivatives of the complex amplitude.
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'orders.inc'
+      INCLUDE 'ewsudakov_haslo.inc'
+      DOUBLE PRECISION INVARIANTS(NEXTERNAL-1,NEXTERNAL-1)
+      DOUBLE COMPLEX COEFF(6),DER(AMP_SPLIT_SIZE,6)
+      DOUBLE COMPLEX DER2(AMP_SPLIT_SIZE,6),ANS(AMP_SPLIT_SIZE)
+      COMMON/TO_AMP_SPLIT_EWSUD_DER/DER
+      COMMON/TO_AMP_SPLIT_EWSUD_DER2/DER2
+      COMMON/TO_AMP_SPLIT_EWSUD/ANS
+      DOUBLE COMPLEX SAVED(AMP_SPLIT_SIZE,6),SAVED2(AMP_SPLIT_SIZE,6)
+      DOUBLE COMPLEX SAVEDANS(AMP_SPLIT_SIZE)
+      INTEGER IP
+      COEFF=(0D0,0D0)
+      IF (.NOT.HAS_LO1) RETURN
+      SAVED=DER
+      SAVED2=DER2
+      SAVEDANS=ANS
+      DER2=(0D0,0D0)
+      DO IP=1,6
+        DER=(0D0,0D0)
+        DER(LO1_POS,IP)=(1D0,0D0)
+        CALL GET_PAR_REN_GMU(INVARIANTS)
+        COEFF(IP)=2D0*ANS(LO1_POS)
+      ENDDO
+      DER=SAVED
+      DER2=SAVED2
+      ANS=SAVEDANS
+      END
+
+      SUBROUTINE SDK_DENSITY_DIMENSIONS(NCOLOR,NORDER,NSOURCE,NBASE)
+      IMPLICIT NONE
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      INTEGER NCOLOR,NORDER,NSOURCE,NBASE
+      NCOLOR=NC
+      NORDER=NO
+      NSOURCE=NS
+      NBASE=NB
+      END
+
+      SUBROUTINE SDK_DENSITY_RAW_1(PIN,NHEL,RESULT,OK)
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'coupl.inc'
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      DOUBLE PRECISION PIN(0:3,NEXTERNAL-1),P(0:3,NEXTERNAL-1)
+      DOUBLE PRECISION PRESH(0:3,NEXTERNAL-1)
+      INTEGER NHEL(NEXTERNAL-1),IC(NEXTERNAL-1)
+      DATA IC /4*1/
+      INTEGER FLAVOR(NEXTERNAL-1)
+      DATA FLAVOR /4*1/
+      DOUBLE PRECISION ZERO
+      PARAMETER (ZERO=0D0)
+      DOUBLE COMPLEX IMAG1
+      PARAMETER (IMAG1=(0D0,1D0))
+      DOUBLE COMPLEX RESULT(NC,NO)
+      DOUBLE COMPLEX AMP(1),JAMP(2,1),TMP_JAMP(0)
+      TYPE(ALOHA) W(5)
+      LOGICAL OK
+      RESULT=(0D0,0D0)
+      OK=.TRUE.
+      P=PIN
+      CALL OXXXXX(P(0,1),ZERO,NHEL(1),-1, FLAVOR(1),W(1))
+      CALL IXXXXX(P(0,2),ZERO,NHEL(2),+1, FLAVOR(2),W(2))
+      CALL OXXXXX(P(0,3),MDL_MT,NHEL(3),+1, FLAVOR(3),W(3))
+      CALL IXXXXX(P(0,4),MDL_MT,NHEL(4),-1, FLAVOR(4),W(4))
+      CALL FFV1P0_3(W(2),W(1),GC_11,ZERO,ZERO,W(5))
+C     Amplitude(s) for diagram number 1
+      CALL FFV1_0(W(4),W(3),W(5),GC_11,AMP(1))
+C     JAMPs contributing to orders QCD=2 QED=0
+      JAMP(1,1) = (-1.666666666666667D-01)*AMP(1)
+      JAMP(2,1) = (5.000000000000000D-01)*AMP(1)
+      RESULT(1:2,1)=JAMP(:,1)
+      END
+
+      SUBROUTINE SDK_DENSITY_RAW_2(PIN,NHEL,RESULT,OK)
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'coupl.inc'
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      DOUBLE PRECISION PIN(0:3,NEXTERNAL-1),P(0:3,NEXTERNAL-1)
+      DOUBLE PRECISION PRESH(0:3,NEXTERNAL-1)
+      INTEGER NHEL(NEXTERNAL-1),IC(NEXTERNAL-1)
+      DATA IC /4*1/
+      INTEGER FLAVOR(NEXTERNAL-1)
+      DATA FLAVOR /4*1/
+      DOUBLE PRECISION ZERO
+      PARAMETER (ZERO=0D0)
+      DOUBLE COMPLEX IMAG1
+      PARAMETER (IMAG1=(0D0,1D0))
+      DOUBLE COMPLEX RESULT(NC,NO)
+      DOUBLE COMPLEX AMP(1),JAMP(2,1),TMP_JAMP(0)
+      TYPE(ALOHA) W(5)
+      LOGICAL OK
+      RESULT=(0D0,0D0)
+      OK=.TRUE.
+      P=PIN
+      CALL RESHUFFLE_MOMENTA(P,PRESH,(/1,2/),(/-2,2/),(/-1,1/),OK)
+      IF (.NOT.OK) THEN
+        OK=.TRUE.
+        RETURN
+      ENDIF
+      P=PRESH
+      CALL OXXXXX(P(0,1),ZERO,NHEL(1),-1, FLAVOR(1),W(1))
+      CALL IXXXXX(P(0,2),ZERO,NHEL(2),+1, FLAVOR(2),W(2))
+      CALL OXXXXX(P(0,3),MDL_MT,NHEL(3),+1, FLAVOR(3),W(3))
+      CALL IXXXXX(P(0,4),MDL_MT,NHEL(4),-1, FLAVOR(4),W(4))
+      CALL FFV1P0_3(W(2),W(1),GC_11,ZERO,ZERO,W(5))
+C     Amplitude(s) for diagram number 1
+      CALL FFV1_0(W(4),W(3),W(5),GC_11,AMP(1))
+C     JAMPs contributing to orders QCD=2 QED=0
+      JAMP(1,1) = (-1.666666666666667D-01)*AMP(1)
+      JAMP(2,1) = (5.000000000000000D-01)*AMP(1)
+      RESULT(1:2,1)=JAMP(:,1)
+      END
+
+      SUBROUTINE SDK_DENSITY_RAW_3(PIN,NHEL,RESULT,OK)
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'coupl.inc'
+      INTEGER NC,NO,NS,NB
+      PARAMETER (NC=2,NO=1,NS=3,NB=1)
+
+      DOUBLE PRECISION PIN(0:3,NEXTERNAL-1),P(0:3,NEXTERNAL-1)
+      DOUBLE PRECISION PRESH(0:3,NEXTERNAL-1)
+      INTEGER NHEL(NEXTERNAL-1),IC(NEXTERNAL-1)
+      DATA IC /4*1/
+      INTEGER FLAVOR(NEXTERNAL-1)
+      DATA FLAVOR /4*1/
+      DOUBLE PRECISION ZERO
+      PARAMETER (ZERO=0D0)
+      DOUBLE COMPLEX IMAG1
+      PARAMETER (IMAG1=(0D0,1D0))
+      DOUBLE COMPLEX RESULT(NC,NO)
+      DOUBLE COMPLEX AMP(1),JAMP(2,1),TMP_JAMP(0)
+      TYPE(ALOHA) W(5)
+      LOGICAL OK
+      RESULT=(0D0,0D0)
+      OK=.TRUE.
+      P=PIN
+      CALL RESHUFFLE_MOMENTA(P,PRESH,(/3,4/),(/6,-6/),(/5,-5/),OK)
+      IF (.NOT.OK) THEN
+        OK=.TRUE.
+        RETURN
+      ENDIF
+      P=PRESH
+      CALL OXXXXX(P(0,1),ZERO,NHEL(1),-1, FLAVOR(1),W(1))
+      CALL IXXXXX(P(0,2),ZERO,NHEL(2),+1, FLAVOR(2),W(2))
+      CALL OXXXXX(P(0,3),ZERO,NHEL(3),+1, FLAVOR(3),W(3))
+      CALL IXXXXX(P(0,4),ZERO,NHEL(4),-1, FLAVOR(4),W(4))
+      CALL FFV1P0_3(W(2),W(1),GC_11,ZERO,ZERO,W(5))
+C     Amplitude(s) for diagram number 1
+      CALL FFV1_0(W(4),W(3),W(5),GC_11,AMP(1))
+C     JAMPs contributing to orders QCD=2 QED=0
+      JAMP(1,1) = (-1.666666666666667D-01)*AMP(1)
+      JAMP(2,1) = (5.000000000000000D-01)*AMP(1)
+      RESULT(1:2,1)=JAMP(:,1)
+      END
+

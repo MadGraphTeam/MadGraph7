@@ -55,11 +55,8 @@ class TestFxFxPreparation(unittest.TestCase):
                                     correction * 2., correction * 3.])
 
         def density(tag, p, coupling, indices, dims):
-            dimension = math.prod(dims)
-            return {'total_dim': dimension, 'nres': len(dims),
-                    'density_delta': limits.np.full(dimension, len(p) * .01),
-                    'density_delta_var': limits.np.full(dimension, len(p) * .005),
-                    'born_diag': limits.np.ones(dimension)}
+            return limits.density_result(math.prod(dims), len(p) * .02, len(p) * .01,
+                                         len(p) * .005, len(dims))
 
         return SimpleNamespace(original_pdg_list_dict=catalogue,
                                ewsudakov=mock.Mock(side_effect=scalar),
@@ -110,7 +107,8 @@ class TestFxFxPreparation(unittest.TestCase):
         self.assertEqual(fx.FKS_QUALITY_COUNTS, expected_outcomes)
         self.assertEqual(forced.call_count, 1)
         self.assertEqual(pattern.findall.call_count, 1 if self.event.tag else 0)
-        self.assertEqual(module.ewsudakov.call_count, len(self.xis))
+        # The density contraction supplies every variant; no scalar kernel call.
+        module.ewsudakov.assert_not_called()
         self.assertEqual(module.density_sudakov.call_count, len(self.xis))
         self.assertEqual(len(actual_inputs), len(expected_inputs))
         for (actual_pdgs, actual_p), (expected_pdgs, expected_p) in zip(actual_inputs, expected_inputs):

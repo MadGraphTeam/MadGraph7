@@ -166,10 +166,7 @@ class TestDensityFallback(unittest.TestCase):
         self.event = self.fixture.event
         self.driver = limits.FactorDriver()
         self.module = self.fixture.scalar_module(self.driver, [1.2, 1.1, 1.05])
-        self.module.density_sudakov = mock.Mock(return_value={
-            'density_delta': limits.np.full(9, .1),
-            'density_delta_var': limits.np.full(9, .05),
-            'born_diag': limits.np.ones(9), 'total_dim': 9, 'nres': 2})
+        self.module.density_sudakov = mock.Mock(return_value=limits.density_result(9, .2, .1, .05))
         self.driver.density_prod_id_to_path = {'process': True}
         self.driver.density_prod_f2pylib = {'module': True}
         self.driver.density_decay_id_to_path = {'decay': True}
@@ -193,7 +190,7 @@ class TestDensityFallback(unittest.TestCase):
         self.assertEqual(fx.FKS_QUALITY_COUNTS['events_density_fallback_' + stage], 1)
 
     def test_production_failure_counted_once_per_event_across_xis(self):
-        with mock.patch.object(fx.DensityHelper, 'compute_density_matrix',
+        with mock.patch.object(fx.DensityMatrix, 'from_full_matrix',
                                side_effect=ArithmeticError('production pole failed')):
             for event_id in (0, 1, 2):
                 fx.CURRENT_EVENT_ID = event_id
@@ -210,7 +207,7 @@ class TestDensityFallback(unittest.TestCase):
 
     def test_decay_exception_reaches_fallback_with_original_cause(self):
         with mock.patch.object(fx.DensityHelper, 'compute_density_matrix',
-                               side_effect=[limits.np.eye(9), ArithmeticError('decay boost failed')]):
+                               side_effect=ArithmeticError('decay boost failed')):
             self.assert_fallback('decay', 'ArithmeticError: decay boost failed')
 
     def test_kernel_event_error_uses_scalar_factors(self):
@@ -232,21 +229,26 @@ class TestDensityFallback(unittest.TestCase):
     def test_contraction_error_uses_scalar_factors(self):
         with mock.patch.object(fx.DensityHelper, 'compute_density_matrix',
                                side_effect=self.density_matrix), \
-                mock.patch.object(fx, 'compute_density_weight',
+                mock.patch.object(fx, 'compute_density_interference_weight',
                                   side_effect=ZeroDivisionError('zero density norm')):
             self.assert_fallback('contraction', 'ZeroDivisionError: zero density norm')
 
-    def test_unavailable_matrix_is_reported(self):
-        for stage, matrices, message in (
-                ('production', [None], 'B matrix'),
-                ('decay', [limits.np.eye(9), None], 'Decay density matrix')):
-            with self.subTest(stage=stage), \
-                    mock.patch.object(fx.DensityHelper, 'compute_density_matrix', side_effect=matrices):
-                fx.fks_reset_accounting()
-                self.assert_fallback(stage, message)
+    def test_unavailable_decay_matrix_is_reported(self):
+        with mock.patch.object(fx.DensityHelper, 'compute_density_matrix', return_value=None):
+            self.assert_fallback('decay', 'Decay density matrix')
+
+    def test_events_take_the_production_matrix_from_the_kernel(self):
+        del self.driver.density_prod_id_to_path, self.driver.density_prod_f2pylib
+        with mock.patch.object(fx.DensityHelper, 'compute_density_matrix',
+                               side_effect=self.density_matrix) as matrix:
+            result = self.evaluate()
+        self.assertTrue(all(len(call.args[0].get_tag_and_order()[0][0]) == 1
+                            for call in matrix.call_args_list))
+        self.fixture.assert_factors(self.driver, result, [1.2, 1.1, 1.05])
+        self.assertEqual(self.driver._density_logger.log_event.call_args.kwargs['mode'], 'density')
 
     def test_required_kernel_or_libraries_are_fatal(self):
-        for missing in ('density_sudakov', 'density_prod_id_to_path', 'density_decay_id_to_path'):
+        for missing in ('density_sudakov', 'density_decay_id_to_path'):
             target = self.module if missing == 'density_sudakov' else self.driver
             previous = getattr(target, missing)
             delattr(target, missing)

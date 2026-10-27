@@ -295,7 +295,7 @@ class TestReweightSetupPlugin(unittest.TestCase):
             'rwgt_dir': str(self.root), 'has_nlo': False, 'rwgt_mode': 'LO',
             'rwgt_name': 'cached_name', 'allow_missing_finalstate': False,
             'identical_particle_in_prod_and_decay': 'average', 'nb_library': 1,
-            'sudakov_source_ids': {'1001'},
+            'sudakov_source_ids': {'1001'}, 'sudakov_density_version': 2,
         })
 
     def test_explicit_name_survives_cached_setup_and_worker_setup(self):

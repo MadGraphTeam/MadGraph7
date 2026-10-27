@@ -69,9 +69,11 @@ def ewsudakov(pdgs, p, g):
 # shape of res_indices/res_dims and must match it
 MAX_DIM = 36
 MAX_RES = 10
+DENSITY_VERSION = 2
+PROCESS_TENSOR_VERSION = 1
 
 
-def density_sudakov(pdgs, p, g, res_indices, res_dims):
+def density_sudakov(pdgs, p, g, res_indices, res_dims, keep_initial=False):
     """
     Compute density matrix EW Sudakov for spin-correlated reweighting.
 
@@ -81,47 +83,130 @@ def density_sudakov(pdgs, p, g, res_indices, res_dims):
         g: strong coupling constant
         res_indices: list of resonance leg indices (1-based)
         res_dims: list of spin dimensions (2 for fermion, 3 for vector)
+        keep_initial: also retain both incoming spin indices in process_tensor
 
     Returns:
         dict with:
-          - density_born: Born density matrix B[h,h'] (upper triangle)
-          - density_delta: central Sudakov corrections (s_to_rij=True)
-          - density_delta_var: variation Sudakov corrections (s_to_rij=False)
-          - born_diag: diagonal Born elements (IDEN-normalized)
-          - results: scalar results array
+          - density_born: physical Born matrix, full complex array
+          - density_correction: full linear interference, shape (D,D,5)
+          - density_relative: Goldstone-normalised comparison, shape (D,D,5)
+          - zero_gold: number of nonzero physical Born states with zero
+            Goldstone norm (relative prescription undefined there)
           - total_dim, nres: dimensions
     """
+    if keep_initial:
+        return density_process_tensor(pdgs, p, g, res_indices, res_dims)
     if pdgs not in pdg2ewsud_dict:
         raise KeyError(f"No EW Sudakov module for PDGs: {pdgs}. "
                       f"Available: {list(pdg2ewsud_dict.keys())}")
 
-    p_transp = np.array([[pp[i] for pp in p] for i in range(4)], order='F')
-
     nres = len(res_indices)
+    if nres != len(res_dims) or not 1 <= nres <= MAX_RES:
+        raise ValueError('Invalid density resonance arrays')
+    if any(d not in (2, 3) for d in res_dims):
+        raise ValueError('Density resonances must have two or three spin states')
+    total_dim = int(np.prod(res_dims))
+    if total_dim > MAX_DIM:
+        raise ValueError('Density helicity space exceeds compiled capacity')
+    if (len(set(res_indices)) != nres or
+            any(i < 1 or i > len(p) for i in res_indices)):
+        raise ValueError('Invalid density resonance positions')
+    p_transp = np.asfortranarray(np.asarray(p, dtype=float).T)
+    if p_transp.shape != (4, len(p)) or not np.isfinite(p_transp).all():
+        raise ValueError('Invalid density momenta')
     res_idx_arr = np.zeros(MAX_RES, dtype=np.int32, order='F')
     res_dim_arr = np.zeros(MAX_RES, dtype=np.int32, order='F')
     for i, (idx, dim) in enumerate(zip(res_indices, res_dims)):
         res_idx_arr[i] = idx
         res_dim_arr[i] = dim
 
-    density_born, density_delta, density_delta_var, born_diag, results = (
-        pdg2ewsud_dict[pdgs].density_sudakov_py(
+    kernel = getattr(pdg2ewsud_dict[pdgs], 'density_interference_py', None)
+    if kernel is None:
+        raise NotImplementedError('Regenerate rw_me: this compiled Sudakov '
+                                  'library has no full density interface')
+    density_born, correction, relative, zero_gold, status = (
+        kernel(
             p_transp, g, nres, res_idx_arr, res_dim_arr
         )
     )
-
-    total_dim = 1
-    for dim in res_dims:
-        total_dim *= dim
-
-    actual_born_size = total_dim * (total_dim + 1) // 2
+    if status == 4:
+        raise NotImplementedError('The Sudakov kernel does not support massive vector beams')
+    if status:
+        raise RuntimeError(f'Full density kernel failed with status {status}')
+    density_born = density_born[:total_dim, :total_dim]
+    correction = correction[:total_dim, :total_dim, :]
+    relative = relative[:total_dim, :total_dim, :]
+    if not np.isfinite(density_born).all() or not np.isfinite(correction).all():
+        raise FloatingPointError('Non-finite full density interference')
 
     return {
-        'density_born': density_born[:actual_born_size],
-        'density_delta': density_delta[:total_dim],
-        'density_delta_var': density_delta_var[:total_dim],
-        'born_diag': born_diag[:total_dim],
-        'results': results,
+        'version': DENSITY_VERSION,
+        'density_born': density_born,
+        'density_correction': correction,
+        'density_relative': relative,
+        'zero_gold': int(zero_gold),
         'total_dim': total_dim,
         'nres': nres
     }
+
+
+def density_process_tensor(pdgs, p, g, res_indices, res_dims):
+    """Retain incoming coherences as well as the reduced outgoing state.
+
+    The combined index is i = a + 4*h: incoming leg 1 varies fastest,
+    followed by incoming leg 2 and the supplied resonance legs. Thus the
+    matrix can be viewed as (h,a,h_prime,a_prime), with a 4x4 block for
+    every outgoing-helicity pair. Incoming colour averages and identical
+    final-particle factors are retained; the incoming spin average is undone.
+    This is a scattering tensor, not a joint state of incoming and outgoing
+    particles. All five linear EW variants are retained without normalisation.
+    """
+    initial = tuple(pdgs[0])
+    two_spin_pdgs = {1, 2, 3, 4, 5, 6, 11, 13, 15, 21, 22}
+    if len(initial) != 2 or any(abs(pid) not in two_spin_pdgs for pid in initial):
+        raise NotImplementedError('Open initial spins require two quark, charged '
+                                  'lepton, photon or gluon beams')
+    if (len(res_indices) != len(res_dims) or not res_indices or
+            any(i <= 2 for i in res_indices)):
+        raise ValueError('Open-tensor resonance positions must be outgoing legs')
+    dimension = int(np.prod(res_dims))
+    if 4 * dimension > MAX_DIM or len(res_indices) + 2 > MAX_RES:
+        raise NotImplementedError('Open initial/outgoing spin space exceeds '
+                                  'compiled capacity (36 combined states)')
+    raw = density_sudakov(pdgs, p, g, [1, 2] + list(res_indices),
+                         [2, 2] + list(res_dims))
+    legs = [1, 2] + list(res_indices)
+    dims = [2, 2] + list(res_dims)
+    # The kernel divides by the usual initial spin/colour multiplicities.
+    # Remove the spin divisor only; contract with rho_in=I_4/4 to recover B.
+    tensor = {
+        'version': PROCESS_TENSOR_VERSION,
+        'born': 4.0 * raw['density_born'],
+        'correction': 4.0 * raw['density_correction'],
+        'relative': 4.0 * raw['density_relative'],
+        'incoming_dim': 4,
+        'outgoing_dim': dimension,
+        'leg_indices': legs,
+        'spin_dims': dims,
+        'index_order': 'first listed leg fastest; i=a+incoming_dim*h',
+        'helicities': [[(-1, 1)[(i // int(np.prod(dims[:j]))) % d]
+                        if d == 2 else (i // int(np.prod(dims[:j]))) % d - 1
+                        for j, d in enumerate(dims)] for i in range(4 * dimension)],
+        'normalisation': 'incoming spin unaveraged; native colour and symmetry divisors retained',
+        'variants': ['qed', 'weak', 'sr_off', 'sr_and_floor_off', 'floor_off'],
+        'pdg_key': [list(part) for part in pdgs],
+        'pdgs': [list(part) for part in original_pdg_list_dict.get(pdgs, pdgs)],
+        'momenta': np.asarray(p, dtype=float).tolist(),
+        'gstr': float(g),
+        'zero_gold': raw['zero_gold'],
+        'basis': 'native HELAS helicities at the stored momenta',
+    }
+    result = dict(version=DENSITY_VERSION, total_dim=dimension,
+                  nres=len(res_indices), zero_gold=raw['zero_gold'],
+                  process_tensor=tensor)
+    for name, field in [('born', 'density_born'), ('correction', 'density_correction'),
+                        ('relative', 'density_relative')]:
+        array = tensor[name]
+        blocks = array.reshape((dimension, 4, dimension, 4) + array.shape[2:])
+        result[field] = np.trace(blocks, axis1=1, axis2=3) / 4.0
+    return result

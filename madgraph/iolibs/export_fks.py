@@ -3575,6 +3575,10 @@ Parameters              %(params)s\n\
 
         writer.writelines(file)
 
+        from madgraph.iolibs.export_ewsud_density import DensityExporter
+        DensityExporter(self, matrix_element, fortran_model,
+                        aloha_objects=True).write(writer)
+
         return
 
 
