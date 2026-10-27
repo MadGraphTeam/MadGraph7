@@ -84,12 +84,15 @@ def _sibling(name: str):
     path, ``--import-mode=importlib``), loaded once under a private name."""
 
     import importlib.util
+    import sys
 
     if name not in _SIBLINGS:
         path = Path(__file__).with_name(f"{name}.py")
         spec = importlib.util.spec_from_file_location(f"_ew_leptons_{name}", path)
         assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
+        # Registered first: dataclasses resolve their module by name.
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         _SIBLINGS[name] = module
     return _SIBLINGS[name]
@@ -572,6 +575,114 @@ def test_two_singlet_lines_are_invariant_under_relabelling(
         second.evaluate(
             [FOUR_LEPTON_POINT[i] for i in legs], "1000000", parameters=parameters
         )
+    )
+    assert abs(born - other_born) <= TOLERANCE * abs(born), (born, other_born)
+    scale = max(map(abs, virtual))
+    for mine, theirs in zip(virtual, other_virtual, strict=True):
+        assert abs(mine - theirs) <= TOLERANCE * scale, (virtual, other_virtual)
+
+
+# The renamed and renumbered leptons of ``_renamed_lepton_ufo``.
+LEPTON_NAMES = {"e-": "ell-", "e+": "ell+", "m-": "mul-", "m+": "mul+"}
+LEPTON_PDGS = {11: 9000011, 13: 9000013}
+LEPTON_MASSES = {"Me": 11, "MM": 13}
+
+
+def _renamed_lepton_ufo(source: Path, target: Path) -> Path:
+    """loop_sm with the electron and the muon renamed (``LEPTON_NAMES``) and
+    renumbered (``LEPTON_PDGS``: particles and their MASS codes, in the
+    parameters and the restriction card), every value unchanged; the
+    rewrites of the renamed-model harness (``loop_renamed_models``), each
+    checked to apply."""
+
+    import re
+
+    harness = _sibling("loop_renamed_models")
+    shutil.copytree(
+        source, target, ignore=shutil.ignore_patterns("__pycache__", "*.pkl")
+    )
+    path = target / "particles.py"
+    text = path.read_text(encoding="latin-1")
+    for old, new in LEPTON_NAMES.items():
+        text = harness._sub(
+            rf"\b(name|antiname)(\s*=\s*)'{re.escape(old)}'",
+            rf"\g<1>\g<2>'{new}'",
+            text,
+            what=f"particle {old!r}",
+        )
+    for old, new in LEPTON_PDGS.items():
+        text = harness._sub(
+            rf"pdg_code\s*=\s*{old}\b", f"pdg_code = {new}", text, what=str(old)
+        )
+    path.write_text(harness._renumber_loop_particles(text, LEPTON_PDGS), "latin-1")
+    path = target / "parameters.py"
+    text = path.read_text(encoding="latin-1")
+    card = harness._Card((target / "restrict_default.dat").read_text())
+    for name, code in LEPTON_MASSES.items():
+        start, end = harness._parameter_span(text, name)
+        definition = harness._sub(
+            rf"lhacode\s*=\s*\[\s*{code}\s*\]",
+            f"lhacode = [ {LEPTON_PDGS[code]} ]",
+            text[start:end],
+            what=f"{name} code",
+        )
+        text = text[:start] + definition + text[end:]
+        value = card.remove("MASS", code)
+        assert value is not None, name
+        card.add("MASS", LEPTON_PDGS[code], value, name)
+    path.write_text(text, "latin-1")
+    (target / "restrict_default.dat").write_text(card.text())
+    return target
+
+
+def test_renamed_and_renumbered_leptons_give_the_same_virtual(
+    four_leptons, loop_sm_ufo, loop_native, tmp_path
+):
+    """Genericity of the lepton signs (G2-M5): the Koszul signs and the
+    open ends' orientations come from labels, spins, colour and the PDG
+    sign, never a name or a code. u u~ > e- e+ mu- mu+ with QCD corrections
+    (two lepton lines through Z/photon blocks, at the root and in every
+    loop) gives the same Born and virtual on a loop_sm copy whose electron
+    and muon are renamed and renumbered (``_renamed_lepton_ufo``)."""
+
+    from dataclasses import replace
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import compile_model_source, load_compiled_model
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
+
+    build, reference = four_leptons
+    parameters = dict(reference["parameters"])
+    born, virtual = _totals(
+        build("u u~ > e- e+ m- m+").evaluate(
+            FOUR_LEPTON_POINT, "1000000", parameters=parameters
+        )
+    )
+    ufo = _renamed_lepton_ufo(loop_sm_ufo, tmp_path / "loop_sm_renamed_leptons")
+    model = compile_model_source(ufo, cache_dir=tmp_path / "model-cache")
+    model = replace(
+        model,
+        raw_loop_model=prepare_loop_sm_scalar_declarations(
+            model.raw_loop_model
+        ).derived,
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
+    compiled = load_compiled_model(model.write(tmp_path / "loop-sm-renamed.json"))
+    renamed = LoopSlice.generate(
+        compiled,
+        SliceRequest(
+            "u u~ > ell- ell+ mul- mul+",
+            {"QCD": 0, "QED": 4},
+            {"QCD": 2, "QED": 4},
+            fixed_parameters=dict(reference["fixed_parameters"]),
+        ),
+        loop_native,
+    )
+    other_born, other_virtual = _totals(
+        renamed.evaluate(FOUR_LEPTON_POINT, "1000000", parameters=parameters)
     )
     assert abs(born - other_born) <= TOLERANCE * abs(born), (born, other_born)
     scale = max(map(abs, virtual))
