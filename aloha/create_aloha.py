@@ -36,7 +36,7 @@ import aloha.aloha_lib as aloha_lib
 import aloha.aloha_object as aloha_object
 import aloha.aloha_parsers as aloha_parsers
 import aloha.aloha_fct as aloha_fct
-import models
+import madgraph.models as models
 try:
     import madgraph.iolibs.files as files
     import madgraph.various.misc as misc

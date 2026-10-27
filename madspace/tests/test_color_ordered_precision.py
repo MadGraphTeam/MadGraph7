@@ -27,7 +27,9 @@ CUTS = dict(
 def run(color_order, cm_energy, seed, cuts=None):
     cuts = cuts or {}
     n_out = len(color_order) - 2
-    mapping = ms.ColorOrderedMapping(color_order, **cuts)
+    mapping = ms.ColorOrderedMapping(
+        ms.ColorOrderedMapping.Options(color_order), **cuts
+    )
     g = generator(seed)
     r = rand((N, mapping.random_dim()), generator=g)
     d = randint(0, 2, (N, mapping.discrete_dim()), generator=g, dtype=torch.int32)
@@ -48,9 +50,12 @@ def test_massless_on_shell(color_order):
     *_, momenta, _, det = run(color_order, cm_energy, 5)
     p = torch.stack(momenta, dim=1)[:, 2:]
     p = p[det > 0]
-    m2 = p[..., 0] ** 2 - torch.sum(p[..., 1:] ** 2, dim=-1)
-    # sqrt(|m^2|) / E is ~1e-8 from rounding alone; it reached 4e-5 before
-    assert torch.max(torch.sqrt(torch.abs(m2)) / p[..., 0]) < 1e-6
+    # |p^2| / E^2 from (E - |p|) (E + |p|): ~1e-16 from rounding, up to ~1e-12
+    # for particles with E ~ 1e-8 sqrt(s), which the 1/sqrt(s) sampling of the
+    # rest masses reaches; it was up to ~2e-9 before
+    p_abs = torch.sqrt(torch.sum(p[..., 1:] ** 2, dim=-1))
+    m2 = (p[..., 0] - p_abs) * (p[..., 0] + p_abs)
+    assert torch.max(torch.abs(m2) / p[..., 0] ** 2) < 1e-10
     # momentum conservation to a few ulps of the total energy
     p_sum = torch.sum(p, dim=1)
     p_sum[:, 0] -= cm_energy
@@ -87,7 +92,7 @@ def test_lab_frame_on_shell(masses):
         masses,
         cm_energy,
         mode=ms.PhaseSpaceMapping.color_ordered,
-        color_order=[0, 2, 3, 4, 5, 1],
+        color_ordered=ms.ColorOrderedMapping.Options([0, 2, 3, 4, 5, 1]),
     )
     g = generator(3)
     inputs = [rand((N, mapping.random_dim()), generator=g)]

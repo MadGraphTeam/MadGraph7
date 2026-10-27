@@ -118,6 +118,9 @@ c     Constants
 c
       include 'genps.inc'
       include 'nexternal.inc'
+c     scale passed to the model (extra running scale of the running parameters)
+      double precision model_scale
+      common /model_scale/model_scale
 C
 C     ARGUMENTS
 C
@@ -344,6 +347,7 @@ c     This is called only once in the application (FIRSTTIME=.true.)
 
          if(fixed_ren_scale) then
             G = SQRT(4d0*PI*ALPHAS(scale))
+            model_scale = scale
             do i =1, VECSIZE_USED
                call update_as_param(i)
             enddo
@@ -642,7 +646,7 @@ C       TO APPLY A CUT FOR JUST A SINGLE MASSIVE PARTICLE IN THE FINAL STATE.
         NMASSLESS = 0
         DO I=NINCOMING+1,NEXTERNAL
           if(is_pdg_for_merging_cut(i) .and. .not. from_decay(I) .and.
-     &                        is_a_j(i).or.is_a_b(i)) then
+     &                        (is_a_j(i).or.is_a_b(i))) then
             NMASSLESS = NMASSLESS + 1
           ENDIF
         ENDDO
@@ -744,7 +748,7 @@ C       THIS CUT WILL ONLY APPLY TO THE TWO-MASSLESS PARTICLE STATE.
         NMASSLESS = 0
         DO I=NINCOMING+1,NEXTERNAL
           if(is_pdg_for_merging_cut(i) .and. .not. from_decay(I) .and. 
-     &                          is_a_j(i).or.is_a_b(i)) THEN
+     &                          (is_a_j(i).or.is_a_b(i))) THEN
             NMASSLESS = NMASSLESS + 1
           ENDIF
         ENDDO

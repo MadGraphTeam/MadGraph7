@@ -30,6 +30,7 @@ elif (_LOCAL_MADSPACE_DIR / "install.py").is_file():
     sys.path.insert(0, str(_LOCAL_INSTALL_DIR))
 
 import madspace as ms
+from custom_function_loader import load_custom_function
 import glob
 import json
 import tomllib
@@ -50,6 +51,29 @@ def resolve_seed(seed: int) -> int:
     if seed == -1:
         return int.from_bytes(os.urandom(8), "big")
     return seed
+
+
+def compress_lhe(path: str, use_pigz="auto", cpu_threads: int = -1) -> None:
+    """Compress the completed LHE with the same size/tool policy as misc.gzip.
+
+    A gridpack must be runnable without a MadGraph installation. Its run card
+    carries the compression preference, and positive CPU pool sizes also bound
+    pigz's worker count.
+    """
+    if os.path.getsize(path) > 256e6:
+        pigz = shutil.which("pigz") if use_pigz is not False else None
+        tool = pigz or shutil.which("gzip")
+        if tool:
+            command = [tool]
+            if pigz and cpu_threads > 0:
+                command += ["-p", str(cpu_threads)]
+            subprocess.run(command + ["-f", path], check=True)
+            return
+
+    with open(path, "rb") as fin, \
+            gzip.open(path + ".gz", "wb", compresslevel=6) as fout:
+        shutil.copyfileobj(fin, fout, 4 * 1024 * 1024)
+    os.remove(path)
 
 
 def build_lhe_meta(event_generator, seed: int, systematics=None):
@@ -265,8 +289,16 @@ def main() -> None:
     # gridpack; gridpacks written before they were recorded used the default
     me_parameters = madspace_data.get("me_parameters", {})
     globals_path = os.path.join("data", "globals.tar")
-    for context, backend in zip(contexts, backends):
+    for context in contexts:
         context.load_globals(globals_path)
+    # custom functions come first, as in the run that made the gridpack
+    device_types = [b if b in ("cuda", "hip") else "cpu" for b in backends]
+    for entry in madspace_data.get("custom_functions", []):
+        # [kind, path, parameters]; older gridpacks store fewer entries
+        entry = entry if isinstance(entry, list) else ["", entry]
+        kind, path, parameters = (entry + [{}])[:3]
+        load_custom_function(ms, contexts, device_types, kind, path, parameters)
+    for context, backend in zip(contexts, backends):
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
                 me_path.format(device=backend), param_card_path, me_parameters
@@ -325,16 +357,8 @@ def main() -> None:
             lhe_path, lhe_completer, build_lhe_meta(event_generator, seed),
             systematics
         )
-        # Ship the LHE compressed, as the launcher that produced this gridpack
-        # does: the file is large and very compressible, and the consumers of
-        # an mg7 event file accept either form. The stdlib is used rather than
-        # madgraph.various.misc.gzip because a gridpack is meant to run without
-        # a madgraph installation, and copyfileobj streams the file instead of
-        # holding it in memory.
-        with open(lhe_path, "rb") as fin, \
-                gzip.open(lhe_path + ".gz", "wb") as fout:
-            shutil.copyfileobj(fin, fout)
-        os.remove(lhe_path)
+        compress_lhe(lhe_path, run_args.get("use_pigz", "auto"),
+                     args.cpu_thread_pool_size)
     else:
         raise ValueError("Unknown output format")
     if systematics is not None:

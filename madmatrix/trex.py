@@ -46,7 +46,7 @@ import madgraph.iolibs.export_v4 as export_v4
 import madgraph.various.misc as misc
 import madgraph.interface.reweight_interface as rwgt_interface
 import madgraph.various.banner as banner
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 import madgraph.interface.extended_cmd as extended_cmd
 import madgraph.interface.common_run_interface as common_run_interface
 

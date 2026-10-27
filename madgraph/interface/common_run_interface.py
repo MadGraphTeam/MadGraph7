@@ -90,7 +90,7 @@ else:
     import madgraph.various.FO_analyse_card as FO_analyse_card 
     import madgraph.iolibs.save_load_object as save_load_object
     import madgraph.madevent.gen_crossxhtml as gen_crossxhtml
-    import models.check_param_card as param_card_mod
+    import madgraph.models.check_param_card as param_card_mod
     import madgraph.madevent.sum_html as sum_html
     import madgraph.various.citation as citation
 #    import madgraph.various.histograms as histograms # imported later to not slow down the loading of the code
@@ -256,8 +256,8 @@ class CheckValidForCmd(object):
         elif MADEVENT:
             sys.path.append(self.options['mg5_path'])
         try:
-            import models.model_reader as model_reader
-            import models.import_ufo as import_ufo
+            import madgraph.models.model_reader as model_reader
+            import madgraph.models.import_ufo as import_ufo
         except ImportError:
             raise self.ConfigurationError('''Can\'t load MG5.
             The variable mg5_path should not be correctly configure.''')
@@ -295,7 +295,8 @@ class CheckValidForCmd(object):
         
         output = {'model': model, 'force': False, 'output': None, 
                   'path':None, 'particles': set(), 'body_decay':4.0025,
-                  'min_br':None, 'precision_channel':0.01}
+                  'min_br':None, 'precision_channel':0.01, 'engine':None,
+                  'corrections':None}
         for arg in args:
             if arg.startswith('--output='):
                 output_path = arg.split('=',1)[1]
@@ -317,6 +318,21 @@ class CheckValidForCmd(object):
                 if ftype != 'param_card.dat':
                     raise self.InvalidCmd('%s is not a valid param_card.' % arg)
                 output['path'] = arg
+            elif arg.startswith('--nlo'):
+                value = arg.partition('=')[2].lower()
+                if value not in ('', 'true', 'false', 'smwidth', 'mcatnlo'):
+                    raise self.InvalidCmd('--nlo takes smwidth or mcatnlo, not %s' % value)
+                output['nlo'] = value if value in ('smwidth', 'mcatnlo') else value != 'false'
+            elif arg.startswith('--corrections='):
+                try:
+                    output['corrections'] = param_card_mod.parse_nlo_corrections(
+                                                              arg.split('=',1)[1])
+                except param_card_mod.InvalidParam as error:
+                    raise self.InvalidCmd(str(error))
+            elif arg.startswith('--engine='):
+                output['engine'] = arg.split('=',1)[1].lower()
+                if output['engine'] not in ('madspace', 'madevent'):
+                    raise self.InvalidCmd('--engine takes madspace or madevent, not %s' % output['engine'])
             elif arg.startswith('--'):
                 if "=" in arg:
                     name, value = arg.split('=',1)
@@ -1085,7 +1101,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
         if self.options['mg5_path']:
             sys.path.append(self.options['mg5_path'])
-            import models.import_ufo as import_ufo
+            import madgraph.models.import_ufo as import_ufo
             complexmass = self.proc_characteristics['complex_mass_scheme']
             with misc.MuteLogger(['madgraph.model'],[50]):
                 out= import_ufo.import_model(pjoin(self.me_dir,'bin','internal','ufomodel'),
@@ -4025,7 +4041,6 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
     def static_check_param_card(path, interface, run=True, dependent=False, 
                                 iterator_class=param_card_mod.ParamCardIterator):
         pattern_scan = re.compile(r'''^(decay)?[\s\d]*scan''', re.I+re.M)  
-        pattern_width = re.compile(r'''decay\s+(\+?\-?\d+)\s+auto(@NLO|)''',re.I)
         text = open(path).read()
                
         if pattern_scan.search(text):
@@ -4039,17 +4054,15 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             first_card.write(path)
             return CommonRunCmd.static_check_param_card(path, interface, run, dependent=True)
         
-        pdg_info = pattern_width.findall(text)
-        if pdg_info:
+        # the widths on auto, grouped by the compute_widths options they carry
+        # ('DECAY 6 auto --nlo --body_decay=3'): one call per group
+        auto_widths = param_card_mod.group_auto_widths(text)
+        if auto_widths:
             if run:
                 logger.info('Computing the width set on auto in the param_card.dat')
-                has_nlo = any(nlo.lower()=="@nlo" for _,nlo in pdg_info)
-                pdg = [pdg for pdg,nlo in pdg_info]
-                if not has_nlo:
-                    line = '%s' % (' '.join(pdg))
-                else:
-                    line = '%s --nlo' % (' '.join(pdg))
-                CommonRunCmd.static_compute_widths(line, interface, path)
+                for options, pdgs in auto_widths.items():
+                    line = ' '.join(pdgs + list(options))
+                    CommonRunCmd.static_compute_widths(line, interface, path)
             else:
                 logger.info('''Some width are on Auto in the card. 
     Those will be computed as soon as you have finish the edition of the cards.
@@ -5338,9 +5351,9 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             else:
                 raise
                 
-        # this will be removed once some issues in lhapdf6 will be fixed
-        if lhapdf_version.startswith('6.0'):
-            raise MadGraph5Error('LHAPDF 6.0.x not supported. Please use v6.1 or later')
+        # the PDF glue (pdf_lhapdf62.cc) requires LHAPDF 6.2 or later
+        if lhapdf_version.startswith(('6.0.', '6.1.')):
+            raise MadGraph5Error('LHAPDF %s not supported. Please use v6.2 or later' % lhapdf_version)
         return lhapdf_version
 
 
@@ -6471,6 +6484,17 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
         return self.deal_multiple_categories(possibilities, formatting)
          
+    @staticmethod
+    def join_auto_width_options(args):
+        """A width on auto carries compute_widths options: in 'set decay 6 auto
+        --nlo --body_decay=3' they are part of the value, not options of 'set'.
+        Returns the arguments with the 'auto' and what follows made one."""
+        for i, arg in enumerate(args):
+            if i and arg.lower() in ('auto', 'auto@nlo') and \
+                    i < len(args) - 1 and args[i+1].startswith('--'):
+                return args[:i] + [' '.join(args[i:])]
+        return args
+
     def do_set(self, line):
         """ edit the value of one parameter in the card"""
 
@@ -6486,7 +6510,9 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             args += [arg1, arg2]
         if '=' in args:
             args.remove('=')
-        
+
+        args = self.join_auto_width_options(args)
+
         args[:-1] = [ a.lower() for a in args[:-1]]
         if len(args) == 1: #special shortcut without argument -> lowercase
             args = [args[0].lower()]
@@ -6807,7 +6833,8 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                     text += "You need to match this expression for external program (such pythia)."
                     logger.warning(text)
 
-                if args[-1].lower() in ['default', 'auto', 'auto@nlo'] or args[-1].startswith('scan'):
+                if args[-1].lower() == 'default' or args[-1].startswith('scan') or \
+                        args[-1].lower().split()[:1] in (['auto'], ['auto@nlo']):
                     self.setP(args[start], key, args[-1])
                 else:
                     try:
@@ -7151,13 +7178,14 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 default = param_card_mod.ParamCard(self.paths['param_default'])
                 value = default[block].param_dict[lhaid].value
 
-            elif value in ['auto', 'auto@nlo']:
-                if 'nlo' in value:
-                    value = 'Auto@NLO'
-                else:
-                    value = 'Auto'
+            elif value.split()[:1] in (['auto'], ['auto@nlo']):
                 if block != 'decay':
                     logger.warning('Invalid input: \'Auto\' value only valid for DECAY')
+                    return
+                try:
+                    value = param_card_mod.format_auto_width(value)
+                except param_card_mod.InvalidParam as error:
+                    logger.warning('Invalid input: %s' % error)
                     return
             elif value.startswith('scan'):
                 if ':' not in value:
@@ -7579,7 +7607,6 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             if not self.mother_interface:
                 logger.warning('Failed to update dependent parameter. This might create trouble for external program (like MadSpin/shower/...)')
             
-            pattern_width = re.compile(r'''decay\s+(\+?\-?\d+)\s+auto(@NLO|)''',re.I)
             pattern_scan = re.compile(r'''^(decay)?[\s\d]*scan''', re.I+re.M)
             param_text= open(self.paths['param']).read()
             
@@ -7588,7 +7615,7 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 #    self.param_card[block].get(key).value = -9.999e-99
                 #    self.param_card.write(self.paths['param'])
                 return
-            elif pattern_width.search(param_text):
+            elif param_card_mod.group_auto_widths(param_text):
                 self.do_compute_widths('')
                 self.param_card = param_card_mod.ParamCard(self.paths['param'])
                 
@@ -8084,21 +8111,23 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             self.modified_card.discard('param')
             
         path = self.paths['param']
-        pattern = re.compile(r'''decay\s+(\+?\-?\d+)\s+auto(@NLO|)''',re.I)
         text = open(path).read()
-        pdg_info = pattern.findall(text)
-        has_nlo = any("@nlo"==nlo.lower() for _, nlo in pdg_info)
-        pdg = [p for p,_ in pdg_info]
-        
-        
-        line = '%s %s' % (line, ' '.join(pdg))
+        # the widths on auto carry the options of their own compute_widths:
+        # 'DECAY 6 auto --nlo --body_decay=3'. One call per set of options.
+        auto_widths = param_card_mod.group_auto_widths(text)
         if not '--path' in line:
             line += ' --path=%s' % path
-        if has_nlo:
-            line += ' --nlo'
+        if auto_widths:
+            lines = ['%s %s %s' % (line, ' '.join(pdgs), ' '.join(options))
+                     for options, pdgs in auto_widths.items()]
+        else:
+            lines = [line]
 
+        out = {}
         try:
-            out = self.mother_interface.do_compute_widths(line)
+            for one_line in lines:
+                # SMWidth (--nlo, SM) does not report the widths it sets
+                out.update(self.mother_interface.do_compute_widths(one_line) or {})
         except InvalidCmd as error:
             logger.error("Invalid command: %s " % error)
         else:

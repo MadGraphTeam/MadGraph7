@@ -21,6 +21,9 @@ int event_extra_flags(const std::unordered_map<std::string, std::size_t>& index_
     if (index_map.contains("subprocess_index")) {
         flags |= EventRecord::f_subproc_index;
     }
+    if (index_map.contains("bias")) {
+        flags |= EventRecord::f_bias;
+    }
     return flags;
 }
 
@@ -323,6 +326,7 @@ void ChannelEventGenerator::init_field_indices() {
     } else {
         _field_indices.subprocess_index = -1;
     }
+    _field_indices.bias = index_map.contains("bias") ? index_map.at("bias") : -1;
     _field_indices.random = index_map.at("random");
     _field_indices.rest = _field_indices.random + 1;
 }
@@ -362,7 +366,14 @@ void ChannelEventGenerator::integrate(const GeneratorBatchJob& job) {
         if (w_view[i] != 0) {
             ++sample_count_after_cuts;
         }
-        _cross_section.push(w_view[i]);
+        // With a bias b the weights are w b: the absolute integral, which drives
+        // the adaptation, unweighting and channel allocation, keeps the bias,
+        // while the reported cross section divides it out.
+        double weight = w_view[i];
+        if (_field_indices.bias != -1 && weight != 0.) {
+            weight /= job.biases.view<double, 1>()[i];
+        }
+        _cross_section.push(weight);
         _abs_cross_section.push(std::abs(w_view[i]));
     }
     _status.mean = _cross_section.mean();
@@ -558,6 +569,9 @@ void ChannelEventGenerator::start_job(
                 throw std::runtime_error("job cancelled");
             }
             job.weights = job.events.at(_field_indices.weight).cpu();
+            if (_field_indices.bias != -1) {
+                job.biases = job.events.at(_field_indices.bias).cpu();
+            }
             // observable_histograms/vegas_histogram/discrete_histogram don't consume
             // random numbers, so they're never seeded.
             if (runtimes.observable_histograms) {
@@ -805,6 +819,13 @@ void ChannelEventGenerator::write_events(
         for (std::size_t i = 0; i < pw_view.size(); ++i) {
             auto event = event_buffer.event(i);
             event.partial_weight_product() = pw_view[i];
+        }
+    }
+
+    if (_field_indices.bias != -1) {
+        auto bias_view = unweighted_events.at(_field_indices.bias).view<double, 1>();
+        for (std::size_t i = 0; i < bias_view.size(); ++i) {
+            event_buffer.event(i).bias() = bias_view[i];
         }
     }
 

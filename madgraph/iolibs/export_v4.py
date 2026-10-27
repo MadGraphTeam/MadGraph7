@@ -39,7 +39,7 @@ import  collections
 import aloha
 
 import madgraph
-import models
+import madgraph.models as models
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
 import madgraph.core.color_amp as color_amp
@@ -61,10 +61,10 @@ import madgraph.various.process_checks as process_checks
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph
 import aloha.create_aloha as create_aloha
-import models.import_ufo as import_ufo
-import models.write_param_card as param_writer
-import models.check_param_card as check_param_card
-from models import UFOError
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.write_param_card as param_writer
+import madgraph.models.check_param_card as check_param_card
+from madgraph.models import UFOError
 
 
 from madgraph import MadGraph5Error, MG5DIR, ReadWrite
@@ -5155,6 +5155,33 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         self.prefix_info = {}
         ProcessExporterFortran.__init__(self, *args, **opts)
 
+    def zero_tchannel_width(self):
+        """True if the t-channel widths are set to zero (zerowidth_tchannel)
+        as in madevent: by default for the reweighting (standalone_rw) and
+        MadSpin (standalone_msP/msF) outputs, not for standalone. The output
+        option --zerowidth_tchannel=True/False overrides it (used by MadSpin
+        for its standalone outputs). Never for the loop outputs."""
+
+        export_format = self.opt['export_format']
+        if export_format not in ['standalone_fortran', 'standalone_rw',
+                                 'standalone_msP', 'standalone_msF']:
+            return False
+        output_options = self.opt.get('output_options') or {}
+        if 'zerowidth_tchannel' in output_options:
+            return banner_mod.ConfigFile.format_variable(
+                output_options['zerowidth_tchannel'], bool, 'zerowidth_tchannel')
+        return export_format != 'standalone_fortran'
+
+    # helper function for customise helas writter
+    def custom_helas_call(self, call, arg):
+        """Tag the propagator width with fk_ as madevent does, such that the
+        HelasCallWriter sets the t-channel widths to zero like in the generated
+        sample. The remaining tags are removed in write_matrix_element_v4."""
+
+        if arg['mass'] == '%(M)s,%(W)s,' and self.zero_tchannel_width():
+            arg['mass'] = '%(M)s,fk_%(W)s,'
+        return call, arg
+
     def copy_template(self, model):
         """Additional actions needed for setup of Template
         """
@@ -5635,15 +5662,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             params['%s_%s' % (block.upper(), lha)] = name
 
         if model['running_elements']:
-            add_scale = set()
-            for runs in self.model.get('running_elements'):
-                for line_run in runs.run_objects:
-                    for one_element in line_run:
-                        add_scale.add(one_element.lhablock)
-            for block in add_scale:
-                if block.upper() == "SMINPUTS":
-                    continue
-                name = block
+            for block in self.model.get_running_blocks():
                 params['%s__scale' % (block.upper())] = 'mdl__%s__scale' % (block.upper())
                 params['mdl__%s__scale' % (block.upper())] = 'mdl__%s__scale' % (block.upper())
 
@@ -6137,15 +6156,23 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         fortran_model.axial_gauge_refs = \
             helas_call_writers.get_axial_gauge_refs(matrix_element) \
             if fortran_model.axial_gauge else {}
+        # the propagators of the --zerowidth_decay particles of this matrix
+        # element, if any, are written with a zero width. Not with
+        # misc.TMP_variable: the writer is a dict, which it addresses by key.
+        fortran_model.zerowidth_pdgs = self.get_zerowidth_pdgs(matrix_element)
         try:
             # Extract helas calls
             helas_calls = fortran_model.get_matrix_element_calls(\
                         matrix_element)
         finally:
+            fortran_model.zerowidth_pdgs = frozenset()
             fortran_model.use_flavor_mask = False
             fortran_model.me_n_flavors = 0
             fortran_model.axial_gauge_refs = {}
             fortran_model.me_active_flavor_mask = None
+        if self.zero_tchannel_width():
+            # t-channel widths are already zeroed, no fake width in standalone
+            helas_calls = [call.replace(',fk_', ',') for call in helas_calls]
 
         replace_dict['helas_calls'] = "\n".join(helas_calls)
 
@@ -6397,6 +6424,39 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         else:
             replace_dict['return_value'] = len([call for call in helas_calls if call.find('#') != 0])
             return replace_dict # for subclass update
+
+    def get_zerowidth_pdgs(self, matrix_element):
+        """The |pdg| whose propagators are written with a zero width in this
+        matrix element, from the output option --zerowidth_decay=, which is
+        either True/False or a list <pdg>,<pdg>,...
+
+        A particle is zeroed in a process where it is an external leg: in a
+        2 > N process where it is in the final state, and in a 1 > N process
+        (a decay) where it is the decaying particle -- and only then, so that
+        the decay of one particle keeps the width of any other particle it
+        propagates (the W of t > e+ ve b). True takes every such particle (in
+        a decay: the decaying particle), a list only those listed, False or
+        an empty list none. This is what MadSpin's pole approximation needs
+        for its production (list) and decay (True) density matrices; the
+        param_card, and hence every other use of the width, is untouched.
+        """
+        option = self.cmd_options.get('zerowidth_decay')
+        if option is True or str(option).strip().lower() == 'true':
+            asked = None
+        elif not option or str(option).strip().lower() == 'false':
+            return frozenset()
+        else:
+            asked = set(abs(int(pid)) for pid in str(option).split(',')
+                        if pid.strip())
+        active = set()
+        for proc in matrix_element.get('processes'):
+            legs = proc.get('legs')
+            if proc.get_ninitial() == 1:
+                active.add(abs(legs[0].get('id')))
+            else:
+                active.update(abs(leg.get('id')) for leg in legs
+                              if leg.get('state'))
+        return frozenset(active if asked is None else active & asked)
 
     #===========================================================================
     # write_check_sa   
@@ -6804,7 +6864,7 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         cp(_file_path+'/iolibs/file_writers.py', 
                               self.dir_path+'/bin/internal/file_writers.py')
         #model file                        
-        cp(_file_path+'../models/check_param_card.py', 
+        cp(_file_path+'models/check_param_card.py', 
                               self.dir_path+'/bin/internal/check_param_card.py')   
                 
         #madevent file
@@ -7665,7 +7725,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         cp(_file_path+'/iolibs/file_writers.py', 
                               self.dir_path+'/bin/internal/file_writers.py')
         #model file                        
-        cp(_file_path+'../models/check_param_card.py', 
+        cp(_file_path+'models/check_param_card.py', 
                               self.dir_path+'/bin/internal/check_param_card.py')   
         
         #copy all the file present in madevent directory
@@ -7904,7 +7964,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
 
         # Find config symmetries and permutations
         symmetry, perms, ident_perms = \
-                  diagram_symmetry.find_symmetry(matrix_element)
+                  diagram_symmetry.find_symmetry(matrix_element,
+                                                 check_flavor_rows=True)
 
         filename = pjoin(Ppath, 'symswap.inc')
         self.write_symswap_file(writers.FortranWriter(filename),
@@ -8695,6 +8756,20 @@ c of an explicit polarisation in the process
         double precision WGT
         integer iwarp
         return 
+        end
+
+        SUBROUTINE STORE_GROUPING_CHOICE(IWARP)
+        integer iwarp
+        return
+        end
+
+        SUBROUTINE SELECT_GROUPING_VEC(IMIRROR_VEC, IPROC, ICONF_VEC, WGT, VECSIZE_USED)
+        integer imirror_vec(*)
+        integer iproc
+        integer iconf_vec(*)
+        double precision WGT(*)
+        integer VECSIZE_USED
+        return
         end
         
         
@@ -10738,25 +10813,23 @@ class UFO_model_to_mg4(object):
         
         if self.model.get('running_elements'):
             all_elements = set()
-            add_scale = set()
             for runs in self.model.get('running_elements'):
                 for line_run in runs.run_objects:
                     for one_element in line_run:
                         all_elements.add(one_element.name)
-                        add_scale.add(one_element.lhablock)
-            all_elements.union(set(self.PS_dependent_key))
+            all_elements.update(set(self.PS_dependent_key))
             self.PS_dependent_key = list(all_elements)
             MUE = [p for p in self.model.get('parameters')[('external',)] if p.lhablock.lower() == 'loop' and tuple(p.lhacode) == (2,)]
             
             if MUE:
                 self.MUE = MUE[0]
                 self.PS_dependent_key.append(MUE[0].name)
+                # the keys under which the parameters and couplings are
+                # stored use the name of the UFO model, without the prefix
+                if MUE[0].name.startswith('mdl_'):
+                    self.PS_dependent_key.append(MUE[0].name[4:])
             
-            try:
-                add_scale.remove('SMINPUTS')
-            except Exception:
-                pass
-            self.scales = add_scale
+            self.scales = self.model.get_running_blocks()
 
     
     def pass_parameter_to_case_insensitive(self):
@@ -10986,11 +11059,11 @@ class UFO_model_to_mg4(object):
         file_to_link = ['formats.inc', 'rw_para.f', 'testprog.f']
     
         for filename in file_to_link:
-            cp( MG5DIR + '/models/template_files/fortran/' + filename, \
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/' + filename, \
                                                                 self.dir_path)
             
         file = open(os.path.join(MG5DIR,\
-                              'models/template_files/fortran/rw_para.f')).read()
+                              'madgraph/models/template_files/fortran/rw_para.f')).read()
 
         if self.vector_size:
             includes=["include \'../vector.inc\'"]
@@ -11025,10 +11098,10 @@ class UFO_model_to_mg4(object):
             updateloop_default = '.false.'
 
         if self.opt['onia']:
-            cp( MG5DIR + '/models/template_files/fortran/rw_onia.f', \
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/rw_onia.f', \
                                        os.path.join(self.dir_path,'rw_onia.f'))
             
-        cp( MG5DIR + '/models/template_files/fortran/' + lha_read_filename, \
+        cp( MG5DIR + '/madgraph/models/template_files/fortran/' + lha_read_filename, \
                                        os.path.join(self.dir_path,'lha_read.f'))
         
         file=file%{'includes':'\n      '.join(includes),
@@ -11040,7 +11113,7 @@ class UFO_model_to_mg4(object):
 
         if self.opt['export_format'] in ['madevent', 'FKS5_default', 'FKS5_optimized'] \
             or self.opt['loop_induced']:
-            cp( MG5DIR + '/models/template_files/fortran/makefile_madevent', 
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/makefile_madevent', 
                 self.dir_path + '/makefile')
             if self.opt['export_format'] in ['FKS5_default', 'FKS5_optimized']:
                 path = pjoin(self.dir_path, 'makefile')
@@ -11050,7 +11123,7 @@ class UFO_model_to_mg4(object):
         elif self.opt['export_format'] in ['standalone_fortran', 'standalone_msP','standalone_msF',
                                   'madloop','madloop_optimized', 'standalone_rw', 
                                   'madweight','matchbox','madloop_matchbox', 'plugin']:
-            cp( MG5DIR + '/models/template_files/fortran/makefile_standalone', 
+            cp( MG5DIR + '/madgraph/models/template_files/fortran/makefile_standalone', 
                 self.dir_path + '/makefile')
         else:
             raise MadGraph5Error('Unknown format')
@@ -11099,7 +11172,9 @@ C
                 double precision MU_R, all_mu_r%(vec)s
                 common/rscale/ MU_R, all_mu_r
 
-                """   % {'vec': ('' if not self.vector_size else '(1)' if self.vector_size<=1 else '(VECSIZE_MEMMAX)')}
+                """   % {'vec': ('' if not self.vector_size else '(VECSIZE_MEMMAX)')}
+                # NB: always VECSIZE_MEMMAX (as for the coupling arrays) since the
+                #     vector_size can be changed at run time (run_card) after the output
                 ###   % {'vec': ("(VECSIZE_MEMMAX)" if self.vector_size else '')}
                 ###   % {'vec': ("(%i)" % max(1,self.vector_size) if self.vector_size else '')}
 
@@ -11413,7 +11488,7 @@ C
             replace_dict['include_vector'] = ''
 
         fsock = self.open('printout.f', format='fortran')
-        text = open(pjoin(MG5DIR , 'models', 'template_files','fortran', 'printout.f')).read()
+        text = open(pjoin(MG5DIR, 'madgraph', 'models', 'template_files','fortran', 'printout.f')).read()
         text = text % replace_dict
         fsock.write(text)
 
@@ -11819,6 +11894,13 @@ C
                             {'args': 'vecid' if (self.vector_size) else '',
                             'args_dep': ' integer vecid' if self.vector_size  else ''}
                          )
+        if self.model['running_elements'] and self.opt['mp']:
+            # coupling used for the evolution of the running parameters in
+            # update_as_param, shared with the multiple precision version
+            fsock.writelines("""
+                            double precision gother_mp
+                            common /to_gother_mp/ gother_mp
+                            """)
 
 
         if self.opt['export_format'] in ['madevent']:
@@ -11854,6 +11936,14 @@ C
         fsock.writelines("""include \'input.inc\'
                             include \'coupl.inc\'
                             READLHA = .false.""")
+        if self.model['running_elements'] and self.MUE:
+            # the parameters depending on the extra scale (muprime**2) are
+            # evaluated in intparam_definition.inc: set the scale before
+            fsock.writelines(""" if (fixed_extra_scale) then
+                                  %s = mue_ref_fixed
+                                 else
+                                  %s = mue_over_ref*model_scale
+                                 endif""" % (self.MUE.name, self.MUE.name))
         fsock.writelines("""    
                             include \'intparam_definition.inc\'\n
                             
@@ -11871,6 +11961,8 @@ C
                 if self.MUE:
                     fsock.writelines(' %s = mue_ref_fixed' % self.MUE.name)
                 fsock.writelines(' Gother = SQRT(4.0D0*PI*ALPHAS(mue_ref_fixed))') 
+                if self.opt['mp']:
+                    fsock.writelines(' gother_mp = Gother')
                 fsock.writelines(' first = .false.') 
                 for i in range(len(running_block)):
                     fsock.writelines(" call C_RUNNING_%s(Gother) ! %s \n" % (i+1,list(running_block[i])))   
@@ -11886,6 +11978,8 @@ C
                 fsock.writelines(' if(mue_over_ref.ne.1d0)then')
                 fsock.writelines('  Gother = SQRT(4.0D0*PI*ALPHAS(mue_over_ref*model_scale))')
                 fsock.writelines(' endif')
+                if self.opt['mp']:
+                    fsock.writelines(' gother_mp = Gother')
                 
                 for i in range(len(running_block)):
                     fsock.writelines(" call C_RUNNING_%s(Gother) ! %s \n" % (i+1,list(running_block[i])))   
@@ -11983,8 +12077,13 @@ C
                             """%self.mp_real_format)
             fsock.writelines("""include \'input.inc\'""")
 
-            fsock.writelines("""include \'coupl.inc\'
-                                include \'actualize_mp_ext_params.inc\'
+            fsock.writelines("""include \'coupl.inc\'""")
+            if self.model['running_elements']:
+                fsock.writelines("""
+                                double precision gother_mp, gother_eff
+                                common /to_gother_mp/ gother_mp
+                                """)
+            fsock.writelines("""include \'actualize_mp_ext_params.inc\'
                                 READLHA = .false.
                                 include \'mp_intparam_definition.inc\'\n
                              """)
@@ -11998,8 +12097,12 @@ C
                 #running_block = self.model.get_running(self.used_running_key) 
                 if running_block:
                     fsock.write_comments('calculate the running parameter')
+                    # same coupling as the double precision version (fixed
+                    # or dynamical extra scale); G if it was not called
+                    fsock.writelines(" gother_eff = gother_mp")
+                    fsock.writelines(" if (gother_eff.le.0d0) gother_eff = G")
                     for i in range(len(running_block)):
-                        fsock.writelines(" call MP_C_RUNNING_%s(G) ! %s \n" % (i+1,list(running_block[i])))   
+                        fsock.writelines(" call MP_C_RUNNING_%s(gother_eff) ! %s \n" % (i+1,list(running_block[i])))   
             
                     
             fsock.write_comments('\ncouplings needed to be evaluated points by points\n')
@@ -12030,7 +12133,7 @@ C
       %(mpinput)s
 
       include '../cuts.inc'
-      include '../vector.inc'
+      %(include_vector)s
       INCLUDE 'coupl.inc'
       double precision GMU
 
@@ -12086,7 +12189,7 @@ C
       PARAMETER  (PI=3.141592653589793D0)
 
       include '../cuts.inc'
-      include '../vector.inc'
+      %(include_vector)s
       INCLUDE 'input.inc'
       %(mpinput)s
       INCLUDE 'coupl.inc'
@@ -12141,7 +12244,7 @@ C
       PARAMETER  (PI=3.141592653589793D0)
 
        include '../cuts.inc'
-       include '../vector.inc'
+       %(include_vector)s
       INCLUDE 'input.inc'
       %(mpinput)s
       INCLUDE 'coupl.inc'
@@ -12327,6 +12430,8 @@ C
                     data['initc0'] += "\n   MAT2(%i,%i) = %s" % (i+1, j+1, towrite)
 
         data['mpinput'] =''
+        # vector.inc only exists in the madevent output (not in aMC@NLO)
+        data['include_vector'] = "include '../vector.inc'" if self.vector_size else ''
         if any(mat1[i][j] for i,j in zip(range(size),range(size))):
             template = self.template_running_gs_gs2
         else:
@@ -13703,19 +13808,8 @@ c         segments from -DABS(tiny*Ga) to Ga
      
         external_param = [format(param) for param in self.params_ext]
         if self.model['running_elements']:
-            scales = set()
-            
-            for elements in self.model["running_elements"]:
-                for params in elements.run_objects:
-                    for param in params:
-                        scales.add(param.lhablock)
-
-            try:
-                scales.remove('SMINPUTS')
-            except Exception:
-                pass
             #entry should be a parameter ... not a string
-            for b in scales:
+            for b in self.model.get_running_blocks():
                 param = base_objects.ParamCardVariable(
                     'mdl__%s__scale' % b.lower(),
                      91.188, b, [0])
@@ -13778,19 +13872,8 @@ c         segments from -DABS(tiny*Ga) to Ga
                           for param in self.params_ext]
         
         if self.model['running_elements']:
-            scales = set()
-            
-            for elements in self.model["running_elements"]:
-                for params in elements.run_objects:
-                    for param in params:
-                        scales.add(param.lhablock)
-
-            try:
-                scales.remove('SMINPUTS')
-            except Exception:
-                pass
             #entry should be a parameter ... not a string
-            for b in scales:
+            for b in self.model.get_running_blocks():
                 param = base_objects.ParamCardVariable(
                     'mdl__%s__scale' % b,
                      91.188, b, 0)
@@ -13837,7 +13920,7 @@ c         segments from -DABS(tiny*Ga) to Ga
             model_name = model.get('name')
             # IF MSSM convert the card to SLAH1
             if model_name == 'mssm' or model_name.startswith('mssm-'):
-                import models.check_param_card as translator    
+                import madgraph.models.check_param_card as translator    
                 # Check the format of the param_card for Pythia and make it correct
                 if rule_card_path:
                     translator.make_valid_param_card(output_path, rule_card_path)

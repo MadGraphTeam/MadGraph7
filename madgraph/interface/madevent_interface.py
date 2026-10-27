@@ -89,7 +89,7 @@ else:
     import madgraph.madevent.combine_runs as combine_runs
     import madgraph.various.lhe_parser as lhe_parser
 #    import madgraph.various.histograms as histograms  # imported later to not slow down the loading of the code
-    import models.check_param_card as check_param_card
+    import madgraph.models.check_param_card as check_param_card
     from madgraph.iolibs.files import ln    
     from madgraph import InvalidCmd, MadGraph5Error, MG5DIR, ReadWrite
 
@@ -3114,6 +3114,9 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
 
         decay_lines = []
         comment = collections.defaultdict(str)
+        # the widths still on auto ('DECAY 6 auto --nlo'), which another call of
+        # compute_widths is to compute: they must come out as they went in
+        pending_auto = {}
         line_number = 0
         # Read and remove all decays from the param_card                     
         while line_number < len(param_card):
@@ -3130,6 +3133,12 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
                         particle = int(line[1])
                         width = float(line[2])
                     except Exception:
+                        try:
+                            auto_value = ' '.join(line[2:line.index('#')] if '#' in line else line[2:])
+                            if auto_value.lower().startswith('auto'):
+                                pending_auto[int(line[1])] = auto_value
+                        except ValueError:
+                            pass
                         particle = 0
                 # Read BRs for this decay
                 line = param_card[line_number]
@@ -3166,6 +3175,9 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
         param_card.append("#\n#*************************")
         param_card.append("#      Decay widths      *")
         param_card.append("#*************************")
+        for key in sorted(pending_auto):
+            param_card.append("#\n#      PDG        Width")
+            param_card.append("DECAY  %i  %s # %s" % (key, pending_auto[key], comment[key]))
         for key in sorted(decay_info.keys()):
             width = sum([r for p,r in decay_info[key]])
             param_card.append("#\n#      PDG        Width")
@@ -3291,6 +3303,36 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
     
 
     ############################################################################      
+    def check_mlm_massless_b(self, run_card):
+        """MLM matching with a massless quark among the external particles
+        requires maxjetflavor to include it (5 for a massless b). Otherwise
+        the quark is not a jet: nothing regulates its collinear region, and a
+        subprocess grouping it with lighter quarks is cut and reweighted as if
+        it were the lighter quark (#456)."""
+
+        if run_card['ickkw'] != 1 or run_card['maxjetflavor'] >= 5:
+            return
+        heaviest, Pname = 0, None
+        for Pdir in self.get_Pdir():
+            pmass = {}
+            for line in open(pjoin(Pdir, 'pmass.inc')):
+                found = re.search(r'PMASS\((\d+)\)\s*=\s*(\S+)', line, re.I)
+                if found:
+                    pmass[int(found.group(1))] = found.group(2).upper()
+            for ids in SubProcesses.get_subP_ids(Pdir):
+                for i, pdg in enumerate(ids):
+                    if run_card['maxjetflavor'] < abs(pdg) <= 5 and \
+                            abs(pdg) > heaviest and pmass.get(i+1) == 'ZERO':
+                        heaviest, Pname = abs(pdg), os.path.basename(Pdir)
+        if heaviest:
+            name = {4: 'c', 5: 'b'}.get(heaviest, str(heaviest))
+            raise banner_mod.InvalidRunCard(
+                'MLM matching (ickkw=1) with a massless %s quark (%s) requires '
+                'maxjetflavor=%s (set to %s): the %s must then be treated as a '
+                'jet. Set maxjetflavor to %s, or use a model with a massive %s.'
+                % (name, Pname, heaviest,
+                   run_card['maxjetflavor'], name, heaviest, name))
+
     def do_treatcards(self, line, mode=None, opt=None):
         """Advanced commands: create .inc files from param_card.dat/run_card.dat"""
 
@@ -3390,6 +3432,7 @@ Beware that MadGraph7 now changes your runtime options to a multi-core mode with
             else:
                 run_card = self.run_card
             self.run_card = run_card
+            self.check_mlm_massless_b(run_card)
             if self.cluster:
                 self.cluster.modify_interface(self)
             if self.ninitial == 1:

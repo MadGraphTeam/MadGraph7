@@ -1212,6 +1212,53 @@ two_to_three_particle_scattering_inverse:
       desc: "Jacobian of the mapping"
   desc: "Inverse of `two_to_three_particle_scattering`. Building block of @ref TwoToThreeParticleScattering."
 
+two_to_three_branch_choice:
+  inputs:
+    - name: phi_choice_in
+      type: [int]
+      desc: "sampled branch selector, used when both solutions pass"
+    - name: pa
+      type: [float, 4]
+      desc: "first incoming momentum"
+    - name: p12
+      type: [float, 4]
+      desc: "momentum of the system of the first and second outgoing particles"
+    - name: p3
+      type: [float, 4]
+      desc: "momentum of the already-generated third particle"
+    - name: u
+      type: [float]
+      desc: "position of s23 in its kinematic range"
+    - name: u_c
+      type: [float]
+      desc: "1 - u"
+    - name: t1_abs
+      type: [float]
+      desc: "absolute value of the first momentum transfer"
+    - name: m1
+      type: [float]
+      desc: "mass of the first outgoing particle"
+    - name: m2
+      type: [float]
+      desc: "mass of the second outgoing particle"
+    - name: etmin_1
+      type: [float]
+      desc: "transverse-energy floor of the first outgoing momentum"
+    - name: etmin_2
+      type: [float]
+      desc: "transverse-energy floor of the second outgoing momentum"
+  outputs:
+    - name: phi_choice
+      type: [int]
+      desc: "branch selector to use: a passing solution"
+    - name: factor
+      type: [float]
+      desc: "weight factor for a uniformly sampled selector: 1 if both solutions pass, 1/2 if one does, 0 if none"
+    - name: inv_factor
+      type: [float]
+      desc: "inverse of the factor, 0 if no solution passes"
+  desc: "Choice of the azimuthal solution of the 2 to 3 step that passes the transverse-energy cuts, as in AmpliCol. Building block of @ref TwoToThreeParticleScattering."
+
 double_t_scattering:
   inputs:
     - name: r_phi

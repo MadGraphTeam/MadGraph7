@@ -52,13 +52,13 @@ import madgraph.various.progressbar as pbar
 import madgraph.various.q_polynomial as q_polynomial
 import madgraph.core.color_amp as color_amp
 import madgraph.iolibs.helas_call_writers as helas_call_writers
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 from madgraph.loop.loop_base_objects import LoopDiagram
 from madgraph.loop.MadLoopBannerStyles import MadLoopBannerStyles
 pjoin = os.path.join
 
 import aloha.create_aloha as create_aloha
-import models.write_param_card as param_writer
+import madgraph.models.write_param_card as param_writer
 from madgraph import MadGraph5Error, MG5DIR, InvalidCmd
 from madgraph.iolibs.files import cp, ln, mv
 pjoin = os.path.join
@@ -381,7 +381,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
             all_iden += ' idens(%s) = %s \n' % (i, iden)
 
         formatting = {'python_information':'\n'.join(info), 
-                      'smatrixhel': dispatch(lambda prefix: ' call %sget_me(p, ALPHAS, DSQRT(SCALES2), NHEL, ANS, RETURNCODE)' % prefix),
+                      # get_me takes the squared scale (UPDATE_AS_PARAM2 sets MU_R = sqrt(SCALE2))
+                      'smatrixhel': dispatch(lambda prefix: ' call %sget_me(p, ALPHAS, SCALES2, NHEL, ANS, RETURNCODE)' % prefix),
                       'maxpart': max_nexternal,
                       'nb_me': len(allids),
                       'pdgs': ','.join([str(pdg[i]) if i<len(pdg) else '0' 
@@ -665,7 +666,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                     raise MadGraph5Error("CutTools installation in %s"\
                                  %os.path.realpath(pjoin(libdir, 'libcts.a'))+\
                  " seems to have been compiled with a different compiler than"+\
-                    " the one specified in MadGraph7. Please recompile CutTools.")
+                    " the one specified in MadGraph7. Please recompile it by typing"+\
+                    " 'install cuttools_iregi' in the MadGraph7 interface.")
     
     def cat_coeff(self, ff_number, frac, is_imaginary, Nc_power, Nc_value=3):
         """Concatenate the coefficient information to reduce it to 

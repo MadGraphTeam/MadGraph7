@@ -650,8 +650,9 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
     def ML5export(self, nojpeg = False, main_file_name = ""):
         """Export a generated amplitude to file"""
 
-        if not self._curr_helas_model:
-            self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
+        # Always use a new writer: the one of a previous output caches calls
+        # formatted for that exporter (e.g. fk_ widths of madevent/standalone_rw)
+        self._curr_helas_model = helas_call_writers.FortranUFOHelasCallWriter(self._curr_model)
         def generate_matrix_elements(self):
             """Helper function to generate the matrix elements before exporting"""
 
@@ -876,6 +877,10 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
             self.validate_model()
 
         loop_filter=None
+        diagram_filter=False
+        # filter options, given back to each process of a multiprocess below
+        filter_options = [a for a in args if a.startswith('--loop_filter=')
+                          or a.startswith('--diagram_filter')]
         if args[0] == 'process':
 
             # Extract potential loop_filter          
@@ -890,6 +895,7 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
                 if not isinstance(self, extended_cmd.CmdShell):
                     raise self.InvalidCmd("loop_filter is not allowed in web mode")
             args = [a for a in args if not a.startswith('--loop_filter=')]
+            diagram_filter = self.extract_diagram_filter(args)
 
             # Rejoin line
             line = ' '.join(args[1:])
@@ -911,6 +917,7 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
                 command = "add process %s" % base_proc.nice_string(prefix=False, print_weighted=True)
                 if '@' not in command:
                     command += ' @%s'  % base_proc.get('id')
+                command = ' '.join([command] + filter_options)
                 try:
                     self.exec_cmd(command)
                     succes += 1
@@ -945,7 +952,8 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
 
         myproc = multiprocessclass(myprocdef, collect_mirror_procs = False,
                                             ignore_six_quark_processes = False,
-                                            loop_filter = loop_filter)
+                                            loop_filter = loop_filter,
+                                            diagram_filter = diagram_filter)
         
         for amp in myproc.get('amplitudes'):
             if amp not in self._curr_amps:

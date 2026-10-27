@@ -455,7 +455,19 @@ class TestEditCardCmd(unittest.TestCase):
         self.assertEqual(param['decay'].get((6,)).value, 'Auto@NLO')          
         self.cmd.do_set('param_card width 6 auto@nLo')        
         self.assertEqual(param['decay'].get((6,)).value, 'Auto@NLO')  
-        
+        # the options of compute_widths, after the auto
+        self.cmd.do_set('param_card width 6 auto --nlo --body_decay=3')
+        self.assertEqual(param['decay'].get((6,)).value, 'Auto --nlo --body_decay=3')
+        self.cmd.do_set('width 6 AUTO --body_decay=2')
+        self.assertEqual(param['decay'].get((6,)).value, 'Auto --body_decay=2')
+        self.cmd.do_set('width 6 auto --nlo')
+        self.assertEqual(param['decay'].get((6,)).value, 'Auto@NLO')
+        # an option a width does not have: nothing changes
+        self.cmd.do_set('width 6 auto --foo=1')
+        self.assertEqual(param['decay'].get((6,)).value, 'Auto@NLO')
+        self.cmd.do_set('wt default')
+        self.assertEqual(param['decay'].get((6,)).value, wt)
+
     def test_modif_run_card(self):
         """ """
 

@@ -315,8 +315,8 @@ FunctionBuilder::instruction(InstructionPtr instruction, const ValueVec& args) {
         return arg.local_index == -1 &&
             std::holds_alternative<me_int_t>(arg.literal_value);
     };
-    bool all_float_literals = args.size() > 0 &&
-        std::all_of(args.begin(), args.end(), is_float_literal);
+    bool all_float_literals =
+        args.size() > 0 && std::all_of(args.begin(), args.end(), is_float_literal);
     bool all_int_literals =
         args.size() > 0 && std::all_of(args.begin(), args.end(), is_int_literal);
     if (all_float_literals) {

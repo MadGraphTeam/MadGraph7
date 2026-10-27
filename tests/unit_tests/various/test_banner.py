@@ -22,7 +22,7 @@ import tempfile
 import madgraph.various.banner as bannermod
 import madgraph.various.misc as misc
 import os
-import models
+import madgraph.models as models
 import io
 import re
 import sys
@@ -542,6 +542,63 @@ Beams:LHEF='events_ouaf.lhe.gz'
         read_PY8Card=bannermod.PY8Card(out)
         self.assertEqual(modified_PY8Card, read_PY8Card)
 
+
+class TestRivetCard(unittest.TestCase):
+    """ Test the RivetCard functionality """
+
+    def get_weight_name(self, run_opts={}, py8_opts={}, weight_name=None):
+        run_card = bannermod.RunCardLO()
+        for key, value in run_opts.items():
+            run_card[key] = value
+        py8_card = bannermod.PY8Card()
+        for key, value in py8_opts.items():
+            py8_card[key] = value
+        rivet_card = bannermod.RivetCard()
+        if weight_name is not None:
+            rivet_card['weight_name'] = weight_name
+        rivet_card.setWeightName(runcard=run_card, py8card=py8_card)
+        return rivet_card['weight_name']
+
+    def test_setWeightName(self):
+        """ check that the weight name matches the HepMC weight name written
+            by MG5aMC_PY8_interface for the central merging scale """
+
+        # no merging
+        self.assertEqual(self.get_weight_name({'ickkw': 0}), 'None')
+
+        # MLM: user-defined and automatic (1.5*xqcut) qCut
+        self.assertEqual(self.get_weight_name({'ickkw': 1},
+                                              {'JetMatching:qCut': 30.0}),
+                         'Weight_MERGING=30.000')
+        self.assertEqual(self.get_weight_name({'ickkw': 1, 'xqcut': 20.0},
+                                              {'JetMatching:qCut': -1.0}),
+                         'Weight_MERGING=30.000')
+
+        # CKKW-L: user-defined and automatic (ptlund/ktdurham) TMS
+        self.assertEqual(self.get_weight_name({'ickkw': 0, 'ptlund': 15.0},
+                                              {'Merging:TMS': 25.5}),
+                         'Weight_MERGING=25.500')
+        self.assertEqual(self.get_weight_name({'ickkw': 0, 'ptlund': 15.0},
+                                              {'Merging:TMS': -1.0}),
+                         'Weight_MERGING=15.000')
+        self.assertEqual(self.get_weight_name({'ickkw': 0, 'ktdurham': 40.0},
+                                              {'Merging:TMS': -1.0}),
+                         'Weight_MERGING=40.000')
+
+        # NLO run_card (no ktdurham/ptlund/xqcut entries): no crash
+        for ickkw in [0, 3]:
+            run_card = bannermod.RunCardNLO()
+            run_card['ickkw'] = ickkw
+            rivet_card = bannermod.RivetCard()
+            rivet_card.setWeightName(runcard=run_card,
+                                     py8card=bannermod.PY8Card())
+            self.assertEqual(rivet_card['weight_name'], 'None')
+
+        # user-defined weight name is kept
+        self.assertEqual(self.get_weight_name({'ickkw': 1},
+                                              {'JetMatching:qCut': 30.0},
+                                              weight_name='MUR=1_MUF=1'),
+                         'MUR=1_MUF=1')
 
 
 def wrap_like_older_versions(text):
@@ -1544,6 +1601,34 @@ c
 class TestRunCardMG7(unittest.TestCase):
     """Test the TOML run_card (RunCardMG7) used by the mg7/madnis mode."""
 
+    def test_gridpack_pigz_setting(self):
+        import io
+        import tomllib
+        for value in ("auto", True, False):
+            card = bannermod.RunCardMG7()
+            card.set("run.use_pigz", value)
+            output = io.StringIO()
+            card.write_gridpack_card(output)
+            parsed = tomllib.loads(output.getvalue())
+            self.assertEqual(parsed["run"]["use_pigz"], value)
+            full_output = io.StringIO()
+            card.write(full_output)
+            self.assertEqual(
+                tomllib.loads(full_output.getvalue())["run"]["use_pigz"], value)
+
+    def test_gzip_configuration(self):
+        card = bannermod.RunCardMG7()
+        card.set("run.use_pigz", "auto")
+        card.set("run.cpu_thread_pool_size", -1)
+        self.assertEqual(card.gzip_configuration(),
+                         {'use_pigz': None, 'nb_core': None})
+        card.set("run.use_pigz", True)
+        card.set("run.cpu_thread_pool_size", 4)
+        self.assertEqual(card.gzip_configuration(),
+                         {'use_pigz': True, 'nb_core': 4})
+        card.set("run.use_pigz", False)
+        self.assertEqual(card.gzip_configuration()['use_pigz'], False)
+
     template = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
                      'mg7', 'run_card.toml')
 
@@ -1596,6 +1681,194 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertTrue(rc.is_cut_name('jet-pt.min'))
         self.assertTrue(rc.is_cut_name('cuts.jet-pt.max'))
         self.assertFalse(rc.is_cut_name('generation.events'))
+
+    def test_set_lo_cut(self):
+        """madevent cut names land in [cuts] as from_LO maps them, the "no
+        cut" sentinels removing the bound; [histograms] is left alone"""
+        rc = bannermod.RunCardMG7()
+        rc.dynamic_sections['histograms']['sqrt_s'] = \
+            {'min': 0., 'max': 2000., 'bin_count': 50}
+        self.assertEqual(rc.set_lo_cut('mmll', '200'),
+                         ('lepton-sfos_pair_mass', 'min', 200.0))
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'], {'min': 200.0})
+        rc.set_lo_cut('MMLLMAX', '1 TeV')
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'],
+                         {'min': 200.0, 'max': 1000.0})
+        # minimum 0 / maximum -1 mean "no cut"
+        self.assertEqual(rc.set_lo_cut('mmll', 0),
+                         ('lepton-sfos_pair_mass', 'min', None))
+        self.assertEqual(rc['cuts']['lepton-sfos_pair_mass'], {'max': 1000.0})
+        rc.set_lo_cut('mmllmax', -1)
+        self.assertNotIn('lepton-sfos_pair_mass', rc['cuts'])
+        # a maximum of 0 is a real cut, as in from_LO
+        rc.set_lo_cut('ptjmax', 0)
+        self.assertEqual(rc['cuts']['jet-pt'], {'min': 20.0, 'max': 0.0})
+        rc.set_lo_cut('etaj', -1)
+        self.assertNotIn('jet-eta_abs', rc['cuts'])
+        # sqrt_s is a cut and a histogram under the same key
+        rc.set_lo_cut('dsqrt_shat', '500')
+        self.assertEqual(rc['cuts']['sqrt_s'], {'min': 500.0})
+        self.assertEqual(rc['histograms']['sqrt_s'],
+                         {'min': 0., 'max': 2000., 'bin_count': 50})
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_cut, 'ptj', 'abc')
+
+    def test_set_lo_cut_composite(self):
+        """the ordered/summed cuts from_LO converts are settable too, and
+        bring the group they are written on when the card lacks it"""
+        rc = bannermod.RunCardMG7()
+        multiparticles = rc['multiparticles']
+        self.assertNotIn('parton', multiparticles)
+        self.assertNotIn('alllepton', multiparticles)
+        rc.set_lo_cut('ptj1min', 50)
+        rc.set_lo_cut('ht3min', 200)
+        self.assertEqual(rc['cuts']['jet_1-pt'], {'min': 50.0})
+        self.assertEqual(rc['cuts']['jet_1-jet_2-jet_3-pt-sum'], {'min': 200.0})
+        self.assertNotIn('parton', multiparticles)
+        rc.set_lo_cut('ihtmin', 100)
+        self.assertEqual(rc['cuts']['parton-pt-sum'], {'min': 100.0})
+        self.assertEqual(sorted(multiparticles['parton']),
+                         [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 21])
+        rc.set_lo_cut('ptllmin', 30)
+        self.assertEqual(rc['cuts']['alllepton-sum-pt'], {'min': 30.0})
+        self.assertEqual(list(multiparticles['alllepton']),
+                         list(multiparticles['lepton']) + list(multiparticles['missing']))
+        # a group the user defined is kept
+        multiparticles['alllepton'] = [11, -11]
+        rc.set_lo_cut('mmnl', 80)
+        self.assertEqual(multiparticles['alllepton'], [11, -11])
+        # "no cut" removes the cut, not the group
+        rc.set_lo_cut('ihtmin', 0)
+        self.assertNotIn('parton-pt-sum', rc['cuts'])
+        self.assertIn('parton', multiparticles)
+
+    def test_set_lo_param_value_translation(self):
+        """madevent codes become the mg7 names; mg7 values are left alone"""
+        rc = bannermod.RunCardMG7()
+        self.assertEqual(rc.set_lo_param('dynamical_scale_choice', '1'),
+                         ({'beam.dynamical_scale_choice': 'transverse_energy'}, []))
+        rc.set_lo_param('dynamical_scale_choice', 'shat')
+        self.assertEqual(rc['beam.dynamical_scale_choice'], 'partonic_energy')
+        # no mg7 equivalent: a warning, the value is kept
+        changes, warnings = rc.set_lo_param('dynamical_scale_choice', '0')
+        self.assertEqual(changes, {})
+        self.assertIn('user-defined', warnings[0])
+        self.assertEqual(rc['beam.dynamical_scale_choice'], 'partonic_energy')
+        self.assertIsNone(rc.set_lo_param('dynamical_scale_choice', 'transverse_mass'))
+        self.assertIsNone(rc.set_lo_param('dynamical_scale_choice', 'HT/4'))
+        rc.set_lo_param('sde_strategy', '2')
+        self.assertEqual(rc['phasespace.sde_strategy'], 'denominators')
+        rc.set_lo_param('sde_strategy', '1')
+        self.assertEqual(rc['phasespace.sde_strategy'], 'diagrams')
+        self.assertEqual(len(rc.set_lo_param('sde_strategy', '3')[1]), 1)
+        self.assertIsNone(rc.set_lo_param('sde_strategy', 'denominators'))
+        rc.set_lo_param('maxjetflavor', '5')
+        self.assertEqual(sorted(rc['multiparticles']['jet']),
+                         [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 21])
+        rc.set_lo_param('fixed_fac_scale', 'T')
+        self.assertIs(rc['beam.fixed_fact_scale'], True)
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'maxjetflavor', '9')
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'fixed_fac_scale', 'abc')
+        # the beam settings are set_lo_beam_param's
+        for name in rc.lo_beam_params:
+            self.assertNotIn(name, rc._LO_SET_PARAMS)
+        self.assertEqual(rc.lo_set_warnings(), [])
+
+    def test_set_lo_param_fixed_fac_scale_per_beam(self):
+        """fixed_fac_scale1/2 combine within one question; different values,
+        which the one mg7 switch cannot hold, are reported once, at the end"""
+        rc = bannermod.RunCardMG7()
+        rc.set_lo_param('fixed_fac_scale1', 'T')
+        self.assertIs(rc['beam.fixed_fact_scale'], True)
+        self.assertEqual(rc.set_lo_param('fixed_fac_scale2', 'T')[1], [])
+        self.assertEqual(rc.lo_set_warnings(), [])
+        rc.set_lo_param('fixed_fac_scale1', 'F')
+        self.assertIs(rc['beam.fixed_fact_scale'], False)
+        self.assertIn('fixed_fac_scale1 = False and fixed_fac_scale2 = True',
+                      rc.lo_set_warnings()[0])
+        self.assertEqual(rc.lo_set_warnings(), [])    # said once
+
+    def test_set_lo_param_pdg_cuts(self):
+        """{pdg: value} cuts as written in a run_card.dat"""
+        rc = bannermod.RunCardMG7()
+        rc.set_lo_param('pt_min_pdg', '{6: 100, 25: 50}')
+        self.assertEqual(rc['cuts']['pdg6-pt'], {'min': 100.0})
+        self.assertEqual(rc['cuts']['pdg25-pt'], {'min': 50.0})
+        self.assertEqual(rc['multiparticles']['pdg6'], [6, -6])
+        rc.set_lo_param('eta_max_pdg', '{6: 2.5}')
+        self.assertEqual(rc['cuts']['pdg6-eta_abs'], {'max': 2.5})
+        changes, _ = rc.set_lo_param('pt_min_pdg', '{6: 0}')
+        self.assertEqual(changes, {'cuts.pdg6-pt': None})
+        self.assertNotIn('pdg6-pt', rc['cuts'])
+        # X X~ pairs only, whichever of the two is set first
+        rc.set_lo_param('mxx_only_part_antipart', '{6: True}')
+        rc.set_lo_param('mxx_min_pdg', '{6: 500}')
+        self.assertEqual(rc['cuts']['pdg6-sfos_pair_mass'], {'min': 500.0})
+        rc.set_lo_param('mxx_only_part_antipart', "{'default': False, 6: False}")
+        self.assertNotIn('pdg6-sfos_pair_mass', rc['cuts'])
+        self.assertEqual(rc['cuts']['pdg6-pair_mass'], {'min': 500.0})
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'pt_min_pdg', '{6: abc}')
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'pt_min_pdg', '100')
+
+    def test_set_lo_param_pdg_cut_forms(self):
+        """the {pdg: value} parameters take the forms the run_card.dat editor
+        takes, a single entry updating only that pdg"""
+        rc = bannermod.RunCardMG7()
+        rc.set_lo_param('pt_min_pdg', '6 100')
+        rc.set_lo_param('pt_min_pdg', '25:50')
+        rc.set_lo_param('pt_min_pdg', "{'23': 30}")
+        self.assertEqual(rc['cuts']['pdg6-pt'], {'min': 100.0})
+        self.assertEqual(rc['cuts']['pdg25-pt'], {'min': 50.0})
+        self.assertEqual(rc['cuts']['pdg23-pt'], {'min': 30.0})
+        self.assertRaises(bannermod.InvalidCmd, rc.set_lo_param, 'pt_min_pdg', '{top: 100}')
+
+    def test_set_lo_param_pair_mass_follows_the_card(self):
+        """mxx_min_pdg updates the pair-mass cut the card already has, and
+        mg7 never ends up with two pair-mass minima on one pdg"""
+        rc = bannermod.RunCardMG7()
+        cuts = rc.dynamic_sections['cuts']
+        # as converted from a run_card.dat with mxx_only_part_antipart {6: True}
+        cuts['pdg6-sfos_pair_mass'] = {'min': 250.0}
+        rc.set_lo_param('mxx_min_pdg', '{6: 600}')
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'min': 600.0})
+        self.assertNotIn('pdg6-pair_mass', cuts)
+        # an explicit choice wins, and the other kind of pair loses its minimum
+        rc.set_lo_param('mxx_only_part_antipart', '{6: False}')
+        self.assertEqual(cuts['pdg6-pair_mass'], {'min': 600.0})
+        self.assertNotIn('pdg6-sfos_pair_mass', cuts)
+        cuts['pdg6-sfos_pair_mass'] = {'min': 100.0, 'max': 900.0}
+        rc.set_lo_param('mxx_min_pdg', '{6: 700}')
+        self.assertEqual(cuts['pdg6-pair_mass'], {'min': 700.0})
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'max': 900.0})
+        # renaming onto an existing cut merges the bounds, the tighter wins
+        rc.set_lo_param('mxx_only_part_antipart', '{6: True}')
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'max': 900.0, 'min': 700.0})
+        self.assertNotIn('pdg6-pair_mass', cuts)
+        # the choice is kept with the card, not with the question
+        rc.lo_set_warnings()
+        rc.set_lo_param('mxx_min_pdg', '{25: 300}')
+        self.assertNotIn('pdg25-sfos_pair_mass', cuts)
+        rc.set_lo_param('mxx_only_part_antipart', '{25: True}')
+        rc.lo_set_warnings()
+        rc.set_lo_param('mxx_min_pdg', '{25: 400}')
+        self.assertEqual(cuts['pdg25-sfos_pair_mass'], {'min': 400.0})
+        self.assertNotIn('pdg25-pair_mass', cuts)
+
+    def test_set_lo_param_matches_from_LO(self):
+        """"set" lands where the run_card.dat conversion puts the same values"""
+        lo = bannermod.RunCardLO()
+        values = {'dynamical_scale_choice': 1, 'sde_strategy': 2,
+                  'maxjetflavor': 5, 'fixed_fac_scale': True}
+        for name, value in values.items():
+            lo.set(name, value, user=True)
+        converted, _ = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        rc = bannermod.RunCardMG7()
+        for name, value in values.items():
+            self.assertIsNotNone(rc.set_lo_param(name, str(value)), name)
+        for key in ('beam.dynamical_scale_choice', 'beam.fixed_fact_scale',
+                    'phasespace.sde_strategy'):
+            self.assertEqual(rc[key], converted[key], key)
+        self.assertEqual(rc['multiparticles']['jet'], converted['multiparticles']['jet'])
+        self.assertEqual(rc.lo_set_warnings(), [])
 
     def test_evaluate_math_and_masses(self):
         """values support arithmetic and mass references"""
@@ -1878,6 +2151,25 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertNotIn('alllepton', plain['multiparticles'])
         self.assertNotIn('parton', plain['multiparticles'])
 
+    def test_from_LO_pdg_cuts_read_from_a_run_card(self):
+        """the per-pdg cuts of a run_card.dat file, which is read with string
+        pdg keys ({'6': 100.0}), are converted too"""
+        lo = bannermod.RunCardLO()
+        lo.set('pt_min_pdg', '{6: 100}', user=True)
+        lo.set('mxx_min_pdg', '{6: 250, 25: 100}', user=True)
+        lo.set('mxx_only_part_antipart', '{6: True}', user=True)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, 'run_card.dat')
+            lo.write(path)
+            lo = bannermod.RunCardLO(path)
+        self.assertEqual(lo['pt_min_pdg'], {'6': 100.0})
+        mg7, _ = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        cuts = mg7['cuts']
+        self.assertEqual(cuts['pdg6-pt'], {'min': 100.0})
+        self.assertEqual(cuts['pdg6-sfos_pair_mass'], {'min': 250.0})
+        self.assertEqual(cuts['pdg25-pair_mass'], {'min': 100.0})
+        self.assertEqual(mg7['multiparticles']['pdg25'], [25, -25])
+
     def test_from_LO_me_frame(self):
         """me_frame is carried over, the LO default included: madevent's [1,2]
         is the partonic c.m., mg7's own default [] the lab frame"""
@@ -2053,6 +2345,81 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertFalse([k for k in rc['cuts'] if k.startswith('jet')])
 
 
+class TestPhotonPDFDefault(unittest.TestCase):
+    """issue #311: the NNPDF4.0 default sets have no photon, so a process with
+    a photon taken from the proton, or with EW corrections at NLO, defaults to
+    the QED set of the same family."""
+
+    model = None
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        cls.model = import_ufo.import_model('sm')
+
+    def process(self, initial, final=(11, -11), nlo=False):
+        import madgraph.core.base_objects as base_objects
+        import madgraph.fks.fks_common as fks_common
+        Leg = fks_common.FKSLeg if nlo else base_objects.Leg
+        legs = [Leg({'id': i, 'state': False}) for i in initial]
+        legs += [Leg({'id': i, 'state': True}) for i in final]
+        return base_objects.Process({'legs': base_objects.LegList(legs),
+                                     'model': self.model})
+
+    def lo_card(self, initial, **user):
+        rc = bannermod.RunCardLO()
+        for key, value in user.items():
+            rc.set(key, value, user=True)
+        pc = bannermod.ProcCharacteristic()
+        pc['ninitial'] = 2
+        rc.create_default_for_process(pc, '', [[self.process(initial)]])
+        return rc
+
+    def nlo_card(self, initial, splitting_types=('QCD',), **user):
+        rc = bannermod.RunCardNLO()
+        for key, value in user.items():
+            rc.set(key, value, user=True)
+        pc = bannermod.ProcCharacteristic()
+        pc['ninitial'] = 2
+        pc['splitting_types'] = list(splitting_types)
+        rc.create_default_for_process(pc, '', [self.process(initial, nlo=True)])
+        return rc
+
+    def test_lo(self):
+        self.assertEqual(self.lo_card([2, -2])['lhaid'], 331900)
+        self.assertEqual(self.lo_card([22, 22])['lhaid'], 335900)
+        self.assertEqual(self.lo_card([2, 22])['lhaid'], 335900)
+        # the user choice wins
+        self.assertEqual(self.lo_card([22, 22], lhaid=331900)['lhaid'], 331900)
+
+    def test_nlo(self):
+        # plain sm has a massive b: 4-flavour set
+        self.assertEqual(self.nlo_card([2, -2])['lhaid'], [334700])
+        # EW corrections or a photon in the initial state: QED set
+        self.assertEqual(self.nlo_card([2, -2], ('QCD', 'QED'))['lhaid'], [335900])
+        self.assertEqual(self.nlo_card([22, 2])['lhaid'], [335900])
+        # lepton collider: no proton PDF, nothing changes
+        rc = self.nlo_card([11, -11], ('QED',))
+        self.assertEqual(rc['lpp1'], 0)
+        self.assertEqual(rc['lhaid'], [334700])
+        # the user choice wins
+        self.assertEqual(self.nlo_card([2, -2], ('QED',), lhaid=[331700])['lhaid'],
+                         [331700])
+
+    def test_mg7(self):
+        def card(initial):
+            rc = bannermod.RunCardMG7()
+            pc = bannermod.ProcCharacteristic()
+            pc['ninitial'] = 2
+            rc.create_default_for_process(pc, '', [[self.process(initial)]])
+            return rc
+        self.assertEqual(card([2, -2])['beam']['pdf1'], 'NNPDF40_lo_as_01180')
+        rc = card([22, 22])
+        self.assertEqual(rc['beam']['pdf1'], 'NNPDF40_nlo_as_01180_qed')
+        self.assertEqual(rc['beam']['pdf2'], 'NNPDF40_nlo_as_01180_qed')
+        self.assertIs(rc['beam']['leptonic'], False)
+
+
 class FakeParticle(dict):
     def get(self, key, default=None):
         return dict.get(self, key, default)
@@ -2168,7 +2535,7 @@ class TestRunCardMG7Histograms(unittest.TestCase):
         PhysicsObjectError, and a Model gave 0. MW is an internal parameter
         of sm-full, so it has to be evaluated from the external ones.
         """
-        import models.import_ufo as import_ufo
+        import madgraph.models.import_ufo as import_ufo
         import madgraph.core.base_objects as base_objects
         import madgraph.loop.loop_base_objects as loop_base_objects
 

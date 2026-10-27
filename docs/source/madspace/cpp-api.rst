@@ -43,6 +43,7 @@ Builders that assemble compute-graph functions for channel weights, energy scale
    cpp/BatchSampler
    cpp/BufferUnweighter
    cpp/ChannelWeightNetwork
+   cpp/CustomFunction
    cpp/Cuts
    cpp/DifferentialCrossSection
    cpp/DiscreteHistogram
@@ -79,6 +80,7 @@ Supporting types shared by the mappings: topologies, cuts, observables and densi
    :maxdepth: 1
 
    cpp/AlphaSGrid
+   cpp/CustomPdf
    cpp/Diagram
    cpp/PdfGrid
    cpp/Propagator
@@ -165,6 +167,7 @@ The high-level driver plus the tensor and device layer it runs on: integration, 
    cpp/TensorView
    cpp/ThreadPool
    cpp/ThreadResource
+   cpp/UmamiFunctions
    cpp/UnalignedRef
    cpp/Variation
    cpp/VegasGridOptimizer

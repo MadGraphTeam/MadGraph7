@@ -242,6 +242,7 @@ add_library(
     src/phasespace/madnis.cpp
     src/phasespace/rambo.cpp
     src/phasespace/cuts.cpp
+    src/phasespace/custom_function.cpp
     src/phasespace/observable.cpp
     src/phasespace/histograms.cpp
     src/phasespace/chili.cpp
@@ -551,6 +552,8 @@ python_add_library(
     ${MADSPACE_GENERATED_DIR}/python/docstrings.hpp
     src/python/function_runtime.cpp
     src/python/function_runtime.hpp
+    src/python/python_function.cpp
+    src/python/python_function.hpp
     WITH_SOABI
 )
 target_include_directories(_madspace_py PRIVATE ${MADSPACE_GENERATED_DIR}/python)
