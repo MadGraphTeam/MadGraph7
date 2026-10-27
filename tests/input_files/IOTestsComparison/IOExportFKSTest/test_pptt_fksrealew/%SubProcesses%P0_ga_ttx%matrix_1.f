@@ -177,49 +177,58 @@ C     ----------
         ANS(I) = 0D0
       ENDDO
       DO IHEL=1,NCOMB
-        IF (GOODHEL(IHEL) .OR. NTRY .LT. 2 .OR.
-     &      get_real_diagram_weights) THEN
-        IF (NTRY.LT.2) THEN
-C         for the first ps-point, check for helicities that give
-C         identical matrix elements
-          CALL MATRIX_1(P ,NHEL(1,IHEL),T)
-          DO I=0,NSQAMPSO
-            T_SAVE(IHEL,I)=T(I)
-          ENDDO
-          T_IDENT(IHEL)=-1
-          DO I=1,IHEL-1
-            IF (T(0).EQ.0D0) EXIT
-            IF (T_SAVE(I,0).EQ.0D0) CYCLE
-            DO J = 0, NSQAMPSO
-              IF (ABS(T(J)/T_SAVE(I,J)-1D0) .GT. 1D-12) GOTO 444
+        IF (GOODHEL(IHEL) .OR. NTRY .LT. 2) THEN
+          IF (NTRY.LT.2) THEN
+C           for the first ps-point, check for helicities that give
+C           identical matrix elements
+            CALL MATRIX_1(P ,NHEL(1,IHEL),T)
+            DO I=0,NSQAMPSO
+              T_SAVE(IHEL,I)=T(I)
             ENDDO
-            T_IDENT(IHEL) = I
- 444        CONTINUE
+            T_IDENT(IHEL)=-1
+            DO I=1,IHEL-1
+              IF (T(0).EQ.0D0) EXIT
+              IF (T_SAVE(I,0).EQ.0D0) CYCLE
+              DO J = 0, NSQAMPSO
+                IF (ABS(T(J)/T_SAVE(I,J)-1D0) .GT. 1D-12) GOTO 444
+              ENDDO
+              T_IDENT(IHEL) = I
+ 444          CONTINUE
+            ENDDO
+          ELSE
+            IF (T_IDENT(IHEL).GT.0) THEN
+C             if two helicity states are identical, dont recompute
+              DO I=0,NSQAMPSO
+                T(I)=T_SAVE(T_IDENT(IHEL),I)
+                T_SAVE(IHEL,I)=T(I)
+              ENDDO
+            ELSE
+              CALL MATRIX_1(P ,NHEL(1,IHEL),T)
+              DO I=0,NSQAMPSO
+                T_SAVE(IHEL,I)=T(I)
+              ENDDO
+            ENDIF
+          ENDIF
+C         add to the sum of helicities
+          DO I=1,NSQAMPSO  !keep loop from 1!!
+            ANS(I)=ANS(I)+T(I)
           ENDDO
-        ELSE
-          IF (T_IDENT(IHEL).GT.0 .AND.
-     &          .NOT.get_real_diagram_weights) THEN
-C         if two helicity states are identical, dont recompute
-          DO I=0,NSQAMPSO
-            T(I)=T_SAVE(T_IDENT(IHEL),I)
-            T_SAVE(IHEL,I)=T(I)
-          ENDDO
-        ELSE
-          CALL MATRIX_1(P ,NHEL(1,IHEL),T)
-          DO I=0,NSQAMPSO
-            T_SAVE(IHEL,I)=T(I)
-          ENDDO
-        ENDIF
-        ENDIF
-C       add to the sum of helicities
-        DO I=1,NSQAMPSO  !keep loop from 1!!
-          ANS(I)=ANS(I)+T(I)
-        ENDDO
-        IF (T(0) .NE. 0D0 .AND. .NOT. GOODHEL(IHEL)) THEN
-          GOODHEL(IHEL)=.TRUE.
-        ENDIF
+          IF (T(0) .NE. 0D0 .AND. .NOT. GOODHEL(IHEL)) THEN
+            GOODHEL(IHEL)=.TRUE.
+          ENDIF
         ENDIF
       ENDDO
+C     the diagram weights sum over the helicities computed after the
+C     first point (good ones, not identical to an earlier one), also
+C     at the first point, so that they depend on P only
+      IF (NTRY.LT.2 .AND. GET_REAL_DIAGRAM_WEIGHTS) THEN
+        REAL_AMP2(:)=0D0
+        DO IHEL=1,NCOMB
+          IF (GOODHEL(IHEL) .AND. T_IDENT(IHEL).LE.0) THEN
+            CALL MATRIX_1(P ,NHEL(1,IHEL),T)
+          ENDIF
+        ENDDO
+      ENDIF
       DO I=1,NSQAMPSO
         ANS(I)=ANS(I)/DBLE(IDEN)
         ANS(0)=ANS(0)+ANS(I)

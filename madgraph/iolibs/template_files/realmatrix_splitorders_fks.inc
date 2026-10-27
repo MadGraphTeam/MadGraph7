@@ -139,8 +139,7 @@ C ----------
       	ANS(I) = 0D0	  
       ENDDO
       DO IHEL=1,NCOMB
-        IF (GOODHEL(IHEL) .OR. NTRY .LT. 2 .OR.
-     &      get_real_diagram_weights) THEN
+        IF (GOODHEL(IHEL) .OR. NTRY .LT. 2) THEN
           IF (NTRY.LT.2) THEN
 C for the first ps-point, check for helicities that give
 C identical matrix elements
@@ -159,8 +158,7 @@ C identical matrix elements
  444            continue
             ENDDO
           ELSE
-            IF (T_IDENT(IHEL).GT.0 .AND.
-     &          .NOT.get_real_diagram_weights) THEN
+            IF (T_IDENT(IHEL).GT.0) THEN
 C if two helicity states are identical, dont recompute
             DO I=0,NSQAMPSO
               T(I)=T_SAVE(T_IDENT(IHEL),I)
@@ -182,6 +180,17 @@ C add to the sum of helicities
           ENDIF
         ENDIF
       ENDDO
+C the diagram weights sum over the helicities computed after the
+C first point (good ones, not identical to an earlier one), also
+C at the first point, so that they depend on P only
+      IF (NTRY.LT.2 .AND. get_real_diagram_weights) THEN
+        real_amp2(:)=0d0
+        DO IHEL=1,NCOMB
+          IF (GOODHEL(IHEL) .AND. T_IDENT(IHEL).LE.0) THEN
+            CALL MATRIX_%(proc_prefix)s(P ,NHEL(1,IHEL),T)
+          ENDIF
+        ENDDO
+      ENDIF
       DO I=1,NSQAMPSO			
         ANS(I)=ANS(I)/DBLE(IDEN)
         ANS(0)=ANS(0)+ANS(I)

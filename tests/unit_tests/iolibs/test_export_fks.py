@@ -175,7 +175,7 @@ class TestRealChannelExport(unittest.TestCase):
             self.assertIn('real_channel_me(1)', output)
             self.assertIn('real_sector_me(1)', output)
 
-    def test_real_diagram_weights_include_cached_helicities(self):
+    def test_real_diagram_weights_follow_computed_helicities(self):
         compiler = shutil.which('gfortran')
         if not compiler:
             self.skipTest('gfortran is needed for the real helicity regression')
@@ -187,18 +187,21 @@ class TestRealChannelExport(unittest.TestCase):
             template = stream.read()
         template = template[template.index('      SUBROUTINE SMATRIX%(proc_prefix)s_SPLITORDERS'):]
         template = template[:template.index('C Helper functions')]
-        # Both helicities have the same full matrix element, but unequal
-        # individual diagram squares. Reusing just T would lose one helicity.
+        # Helicity -1 has the same full matrix element as +1 and is not
+        # recomputed; helicity 0 has none (its two diagrams cancel) and is
+        # skipped. Both have nonzero diagram squares, which the weights
+        # leave out at every point, the first one included.
         source = template % {
             'proc_prefix': '1', 'info_lines': '', 'process_lines': '',
-            'ncomb': 2, 'nSqAmpSplitOrders': 1, 'nAmpSplitOrders': 1,
-            'helicity_lines': '      data nhel /1,-1/',
+            'ncomb': 3, 'nSqAmpSplitOrders': 1, 'nAmpSplitOrders': 1,
+            'helicity_lines': '      data nhel /1,-1,0/',
             'den_factor_line': '      data iden /1/',
             'ngraphs': 2, 'nwavefuncs': 1, 'ncolor': 1,
             'wavefunctionsize': 8, 'nb_temp_jamp': 1,
             'color_data_lines': '      data cf /1,0/\n      data denom /1/',
             'helas_calls': ('      amp(1)=dcmplx(p(0,1)+nhel(1),0d0)\n'
-                            '      amp(2)=dcmplx(p(0,1)-nhel(1),0d0)'),
+                            '      amp(2)=dcmplx((2*nhel(1)**2-1)*p(0,1)'
+                            '-nhel(1),0d0)'),
             'real_amp2_lines': ('      real_amp2(1)=real_amp2(1)+abs(amp(1))**2\n'
                                '      real_amp2(2)=real_amp2(2)+abs(amp(2))**2'),
             'jamp_lines': '      jamp(1,1)=amp(1)+amp(2)'}
@@ -212,22 +215,19 @@ class TestRealChannelExport(unittest.TestCase):
       double precision p(0:3,1),ans(0:1)
       include 'real_matrix_weights.inc'
       p=0d0
-      get_real_diagram_weights=.false.
+      get_real_diagram_weights=.true.
       real_amp2=-1d0
       p(0,1)=2d0
       call smatrix1_splitorders(p,ans)
-      if (ans(0).ne.32d0.or.any(real_amp2.ne.-1d0)) stop 1
-      get_real_diagram_weights=.true.
+      if (ans(0).ne.32d0.or.any(real_amp2.ne.(/9d0,1d0/))) stop 1
       p(0,1)=3d0
       call smatrix1_splitorders(p,ans)
-      if (ans(0).ne.72d0.or.any(real_amp2.ne.20d0)) stop 2
-      p(0,1)=4d0
-      call smatrix1_splitorders(p,ans)
-      if (ans(0).ne.128d0.or.any(real_amp2.ne.34d0)) stop 3
+      if (ans(0).ne.72d0.or.any(real_amp2.ne.(/16d0,4d0/))) stop 2
       get_real_diagram_weights=.false.
       real_amp2=-1d0
+      p(0,1)=4d0
       call smatrix1_splitorders(p,ans)
-      if (ans(0).ne.128d0.or.any(real_amp2.ne.-1d0)) stop 4
+      if (ans(0).ne.128d0.or.any(real_amp2.ne.-1d0)) stop 3
       end
 """
         with tempfile.TemporaryDirectory() as path:
