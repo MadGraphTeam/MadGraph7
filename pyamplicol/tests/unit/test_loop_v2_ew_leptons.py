@@ -1247,7 +1247,8 @@ def test_reference_points_lie_on_the_scheme_mass_shells(name, loop_reference):
     reason=(
         "the counterterm roots' reading sign of momentum-odd vertices with all "
         "legs self-conjugate (Z G0 H; genericity audit 2 G2-M7, work/v2-ew-epsilon): "
-        "the single pole misses Recola and Catani by 8.8e-3 of the Born floor; with "
+        "the single pole misses Recola and Catani by 8.8e-3 of the Born floor at "
+        "point 0; with "
         "work/v2-ew-epsilon c33ac24a merged every coefficient equals Recola within "
         "5.7e-12 (whichever package integrates second removes this xfail)"
     ),
