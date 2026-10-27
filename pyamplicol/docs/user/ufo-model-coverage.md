@@ -32,7 +32,7 @@ Status words used below:
 | Input | UFO directories (trusted Python), serialized JSON, compiled IR files, prepared kernel bundles | anything else; ufo-model-loader older than 1.0.0 |
 | Fields | scalars, Dirac fermions, vectors, massless spin-2 (validated); massive spin-2 (experimental) | Majorana and fermion-number-violating fermions, spin 3/2, higher spins; ghosts and Goldstones only internally |
 | Colour | one SU(3) with 1, 3, 3̄, 8; external coloured legs are triplet fermions or octet vectors | sextets, other groups, N_c other than 3, d^abc, epsilon and sextet tensors |
-| Lorentz | Identity, Gamma, Gamma5, ProjM, ProjP, Sigma, Metric, P; PSlash in propagators | Epsilon, C, IdentityL, form factors, functions outside the registry |
+| Lorentz | Identity, Gamma, Gamma5, ProjM, ProjP, Sigma, Metric, P, Epsilon (four-index Levi-Civita; validated on the loop_sm axial R2 vertices); PSlash in propagators | C, IdentityL, form factors, functions outside the registry |
 | Three-point vertices | any spins with colour 1, delta, T^a, f^abc | d^abc; one- and two-point terms are ignored |
 | Four-point vertices | colour-singlet (any Lorentz structure); the two-f gauge contact; HEFT Hggg | other coloured contacts (four-fermion operators, delta couplings, d^abc) |
 | Five-point and higher | colour-singlet contacts of any valence (tested to ten scalars); HEFT Hgggg | every other coloured contact |
@@ -140,7 +140,8 @@ carry a `ValueError` message instead of a code; they are marked below.
 | Feature | Status | Condition and consequence |
 | --- | --- | --- |
 | Normalized tensor heads | supported | `Identity(i, j)`, `Gamma(mu, i, j)`, `Gamma5(i, j)`, `ProjM(i, j)`, `ProjP(i, j)`, `Sigma(mu, nu, i, j)`, `Metric(mu, nu)`, `P(mu, k)` with the standard UFO argument conventions; `PSlash(i, j)` only in its two-argument propagator form. |
-| Other tensor heads | rejected | `Epsilon`, `EpsilonBar`, `C`, `IdentityL`, three-argument `PSlash` and any accepted head with a wrong arity fail model compilation with `ValueError: ... contains unsupported UFO tensors`. |
+| Levi-Civita tensor | conditional | `Epsilon(mu, nu, rho, sigma)` in Lorentz structures lowers to the dense four-index Levi-Civita tensor with ALOHA's components (contravariant, epsilon^{0123} = -1), in every vertex of every model. Validated: the tree kernels of loop_sm's axial R2 vertices `R2_GGZ` and `R2_GGGVa` equal compiled ALOHA routines exactly, and the R2 and bare virtual of u u~ > e- e+ g g [QCD] with `particle_veto = [d, s, b]` equal MadLoop to 1e-12. Ordinary tree vertices with `Epsilon` (e.g. a pseudoscalar coupling to two gluons) take the same lowering but have no reference check: experimental. |
+| Other tensor heads | rejected | `EpsilonBar`, `C`, `IdentityL`, three-argument `PSlash` and any accepted head with a wrong arity fail model compilation with `ValueError: ... contains unsupported UFO tensors`. |
 | Form factors | rejected | `form-factors`. |
 | Sigma normalisation | experimental | expanded as (i/2)(gamma^mu gamma^nu - gamma^nu gamma^mu); vertices using `Sigma` have not been validated against a reference implementation. |
 | Chiral structures | supported | `ProjM`, `ProjP` and `Gamma5` are validated through the packaged Standard Model. |

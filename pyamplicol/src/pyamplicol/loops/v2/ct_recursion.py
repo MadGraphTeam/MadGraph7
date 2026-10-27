@@ -42,7 +42,7 @@ Born x CT interference directly; no CT tree and no site is listed:
   exactly-once constraint is the insertion order. ``M_rule`` is the number
   of those alternatives (``admitted_alternatives``).
 * **Not lowered** (``residual`` with the reason): Lorentz structures the
-  tree compiler does not normalise (Levi-Civita cells that do not cancel),
+  tree compiler does not normalise,
   contact vertices without a colour-flow decomposition, the two-point terms
   ``models.ct_line_insertions`` refuses (mixing between spins), couplings
   of left-out cells (or graded by a formal N_c) that are not linear in their
@@ -66,11 +66,27 @@ Born x CT interference directly; no CT tree and no site is listed:
   compiler cannot lower does not make its rule residual when it cancels
   exactly between the rules of that cell (the loop groups of one vertex):
   the sum over those rules of ``M_rule`` times their Laurent coefficients
-  vanishes identically (``ct_sites.vanishes_identically``), e.g. the
-  Levi-Civita R2 of a Z with gluons, whose axial couplings cancel between
-  the up- and down-type quark loops of complete doublets. The lowered model
-  leaves the cell out (``CountertermModel.unlowered``); a veto that breaks a
-  doublet makes the cell's rules residual.
+  vanishes identically (``ct_sites.vanishes_identically``). The lowered model
+  leaves the cell out (``CountertermModel.unlowered``); one that does not
+  cancel makes the cell's rules residual. Levi-Civita cells
+  (``TreeVocabulary.levi_civita``: the Levi-Civita R2 of a Z with gluons,
+  whose axial couplings cancel between the up- and down-type quark loops of
+  complete doublets) are left out where they cancel, so loop_sm's lowered
+  models keep their bytes, and lowered where they do not (an incomplete
+  doublet, an anomalous model): the tree compiler lowers ``Epsilon``
+  (``models.tensors.LEVI_CIVITA``, WP3.2 EWI-7b; ``_CellSettlement``).
+* **Anomalous vetoes** ([U2], the user's decision: refuse by default with a
+  recorded override). A Levi-Civita cell that does not cancel under the
+  request's ``particle_veto`` but cancels with every flavour admitted (the
+  same cancellation test with the multiplicities of no veto, the vetoed-out
+  rules included: a veto that breaks a doublet, e.g. ``[d, s, b]`` or
+  ``[t]`` with a Z and gluons) makes its rules residual with a reason that
+  names the cell and the override (``CountertermModel.anomalous_veto``);
+  a request reaching one is refused with ``AnomalousVetoError``. With
+  ``allow_anomalous_veto`` (``SliceRequest``, ``generation.
+  allow_anomalous_veto``, ``--allow-anomalous-veto``) the cell is lowered
+  and the artifact's generation record lists it. Without a veto the test is
+  not run (an incomplete doublet or an anomalous model is lowered).
 
 The site closure with MadLoop-style witness admission (``ct_sites``) stays a
 test oracle (O6): per component, squared order and Laurent coefficient, the
@@ -102,6 +118,7 @@ from pyamplicol.models.loading import (
     CountertermLoweringError,
     CountertermStructure,
     counterterm_lorentz_error,
+    counterterm_lorentz_levi_civita,
     counterterm_slot_order,
     lower_counterterm_vertices,
 )
@@ -122,6 +139,19 @@ _PREFIX = "PYAMPLICOL_CT_"
 
 class UnloweredCountertermError(NotImplementedError):
     """A request admits a counterterm rule its lowered model does not hold."""
+
+
+class AnomalousVetoError(UnloweredCountertermError):
+    """A request reaches a Levi-Civita counterterm cell that cancels with
+    every flavour admitted but not under its ``particle_veto`` ([U2]: refused
+    by default; ``allow_anomalous_veto`` lowers it)."""
+
+
+# The override of an anomalous veto, as the refusals name it.
+ANOMALOUS_VETO_OVERRIDE = (
+    "allow_anomalous_veto (SliceRequest.allow_anomalous_veto, TOML "
+    "generation.allow_anomalous_veto, CLI --allow-anomalous-veto)"
+)
 
 
 class CountertermCouplingError(NotImplementedError):
@@ -208,6 +238,7 @@ class TreeVocabulary:
             str(item["name"]): item for item in compiled.model["particles"]
         }
         self._lorentz: dict[str, str | None] = {}
+        self._levi_civita: dict[str, bool] = {}
 
     def rule_reason(self, rule: Any) -> str | None:
         """Why no entry of ``rule`` can enter the tree recursion, or ``None``."""
@@ -235,8 +266,22 @@ class TreeVocabulary:
         )
 
     def entry_reason(self, entry: Any) -> str | None:
-        """Why the colour or Lorentz cell of ``entry`` cannot be lowered."""
+        """Why the colour or Lorentz cell of ``entry`` is not lowered as it
+        stands: it cannot be, or it is a Levi-Civita cell (``levi_civita``),
+        left out where it cancels between the rules of its vertex and lowered
+        where it does not (module docstring)."""
 
+        return self._cell(entry)[0]
+
+    def levi_civita(self, entry: Any) -> bool:
+        """Whether the cell of ``entry`` is a Levi-Civita cell the tree
+        compiler lowers: its colour in the tree vocabulary and its Lorentz
+        structure contracting ``models.tensors.LEVI_CIVITA`` (UFO
+        ``Epsilon``, e.g. the axial R2 of a Z with gluons)."""
+
+        return self._cell(entry)[1]
+
+    def _cell(self, entry: Any) -> tuple[str | None, bool]:
         records = [self.particles[name] for name in entry.particle_names]
         try:
             tree_colour_source(
@@ -245,13 +290,22 @@ class TreeVocabulary:
                 multi_trace=self.multi_trace,
             )
         except UnloweredCountertermColour as error:
-            return str(error)
+            return str(error), False
         name = entry.lorentz_name
         if name not in self._lorentz:
             self._lorentz[name] = counterterm_lorentz_error(self.compiled, name)
+            self._levi_civita[name] = self._lorentz[
+                name
+            ] is None and counterterm_lorentz_levi_civita(self.compiled, name)
         if self._lorentz[name] is not None:
-            return f"Lorentz structure {name}: {self._lorentz[name]}"
-        return None
+            return f"Lorentz structure {name}: {self._lorentz[name]}", False
+        if self._levi_civita[name]:
+            return (
+                f"Lorentz structure {name}: Levi-Civita tensor (Epsilon), left "
+                "out where it cancels",
+                True,
+            )
+        return None, False
 
 
 # ------------------------------------------------------------------- coefficients
@@ -1121,6 +1175,10 @@ class CountertermModel:
     vetoed |PDG| codes (``particle_veto``) and ``species_orders`` the
     model's perturbative species facts of the admission
     (``admitted_alternatives``), ``None`` when the lowering had none.
+    ``anomalous_veto`` maps every rule with a Levi-Civita cell that cancels
+    with every flavour admitted but not under ``veto`` to those cells
+    (module docstring, "Anomalous vetoes"): residual unless
+    ``allow_anomalous_veto``, lowered otherwise.
 
     ``coefficients`` maps every reference parameter of the lowered model
     (``CoefficientLowering``: a part of a referenced coupling's Laurent
@@ -1148,6 +1206,8 @@ class CountertermModel:
     species_orders: Mapping[int, frozenset[str]] | None = field(
         default=None, repr=False
     )
+    anomalous_veto: Mapping[RuleKey, frozenset[Cell]] = field(default_factory=dict)
+    allow_anomalous_veto: bool = False
     coefficients: Mapping[str, tuple[str, int, str]] = field(default_factory=dict)
     coefficient_plan: Any = field(default=None, compare=False, repr=False)
     # (card, digits) -> reference values (``coefficient_values``).
@@ -1295,6 +1355,7 @@ def lower_model_counterterms(
     dirac_fields: Iterable[str] = (),
     order_limits: Mapping[str, int] | None = None,
     species_orders: Mapping[int, frozenset[str]] | None = None,
+    allow_anomalous_veto: bool = False,
 ) -> CountertermModel:
     """The tree model of ``compiled`` with every lowerable rule's CT vertices.
 
@@ -1334,6 +1395,10 @@ def lower_model_counterterms(
     ``perturbative_species_orders``) admit an alternative only as a loop of a
     selected correction (``admitted_alternatives``); a rule without one is
     inert.
+
+    ``allow_anomalous_veto`` lowers the Levi-Civita cells a ``veto`` keeps
+    from cancelling that cancel without it; by default their rules are
+    residual (module docstring, "Anomalous vetoes"; [U2]).
     """
 
     from symbolica import E
@@ -1358,6 +1423,32 @@ def lower_model_counterterms(
     # Cells the tree compiler cannot lower, per rule: (reason, coefficients).
     unlowered: dict[RuleKey, dict[Cell, tuple[str, dict[int, Any]]]] = {}
     weights: dict[RuleKey, int] = {}
+    # The anomalous-veto test (module docstring): the multiplicities without
+    # the veto, and the unlowered cells of the rules the veto leaves without
+    # loop content (from their own lowering, so that the lowered model's
+    # assumptions and references stay those of the admitted rules).
+    unvetoed: dict[RuleKey, int] = {}
+    vetoed_cells: dict[RuleKey, dict[Cell, tuple[str, dict[int, Any]]]] = {}
+    probe: list[CoefficientLowering] = []
+
+    def unlowered_cells(
+        rule: Any, lowering: CoefficientLowering
+    ) -> dict[Cell, tuple[str, dict[int, Any]]]:
+        cells: dict[Cell, tuple[str, dict[int, Any]]] = {}
+        for entry in rule.entries:
+            reason = vocabulary.entry_reason(entry)
+            if reason is None:
+                continue
+            powers = cells.setdefault(entry_cell(entry), (reason, {}))[1]
+            for power in COUNTERTERM_POWERS:
+                if lowering.is_zero(entry, power):
+                    continue
+                # Left out: its cancellation needs the CT scalars shared
+                # between couplings (``CoefficientLowering.exact``).
+                value = lowering.exact(entry, power)
+                powers[power] = powers[power] + value if power in powers else value
+        return cells
+
     for rule in rules.values():
         key = rule_key(rule)
         reason = vocabulary.rule_reason(rule)
@@ -1372,11 +1463,32 @@ def lower_model_counterterms(
             if beyond:
                 reason = f"its orders {beyond[0]} exceed the program's limits"
                 inert.add(key)
+        if reason is None and veto:
+            unvetoed[key] = len(
+                admitted_alternatives(rule, (), corrections, species_orders)
+            )
         if reason is None and not admitted_alternatives(
             rule, veto, corrections, species_orders
         ):
             reason = "no admitted loop content (particle_veto or correction)"
             inert.add(key)
+            if unvetoed.get(key) and rule.whole_rule_continuation is None:
+                if not probe:
+                    probe.append(
+                        CoefficientLowering(
+                            compiled,
+                            fixed_parameters or {},
+                            None
+                            if continuation is None
+                            else _payload_identities(continuation),
+                        )
+                    )
+                try:
+                    found = unlowered_cells(rule, probe[0])
+                except (CountertermCouplingError, NotImplementedError):
+                    found = {}
+                if found:
+                    vetoed_cells[key] = found
         if reason is not None:
             residual[key] = reason
             continue
@@ -1386,20 +1498,7 @@ def lower_model_counterterms(
             if rule.whole_rule_continuation is not None:
                 rows = whole_rule_rows(rule, coefficients)
             else:
-                for entry in rule.entries:
-                    reason = vocabulary.entry_reason(entry)
-                    if reason is None:
-                        continue
-                    powers = cells.setdefault(entry_cell(entry), (reason, {}))[1]
-                    for power in COUNTERTERM_POWERS:
-                        if coefficients.is_zero(entry, power):
-                            continue
-                        # Left out: its cancellation needs the CT scalars
-                        # shared between couplings (``CoefficientLowering``).
-                        value = coefficients.exact(entry, power)
-                        powers[power] = (
-                            powers[power] + value if power in powers else value
-                        )
+                cells = unlowered_cells(rule, coefficients)
             for entry, structure in (
                 rule_terms(rule, coefficients.is_zero)
                 if rule.whole_rule_continuation is None
@@ -1457,13 +1556,43 @@ def lower_model_counterterms(
             return parsed.expand() == E("0")
         return vanishes_identically(compiled, expression)
 
+    def cancels_unvetoed(cell: Cell) -> bool:
+        """Whether ``cell`` cancels with every flavour admitted: the
+        cancellation test with the multiplicities of no veto, over the
+        cell's admitted and vetoed-out rules."""
+
+        cells = {
+            key: {cell: found[cell]}
+            for key, found in (*unlowered.items(), *vetoed_cells.items())
+            if cell in found and unvetoed.get(key)
+        }
+        _members, cancelled = _cell_cancellation(cells, unvetoed, vanishes)
+        return bool(cells) and cancelled(cell)
+
     # Unlowered cells must cancel with the rules' multiplicities; otherwise
-    # every rule of the cell is residual (refused by a request admitting it).
-    for key in uncancelled_rules(unlowered, weights, vanishes, frozenset(residual)):
-        if key in values:
-            del values[key]
-            residual[key] = _uncancelled_reason(unlowered[key])
-    unlowered = {key: cells for key, cells in unlowered.items() if key in values}
+    # a Levi-Civita cell is lowered (unless the veto keeps it from
+    # cancelling: refused by default, [U2]), and any other makes every rule
+    # of the cell residual (refused by a request admitting it).
+    by_key = {rule_key(rule): rule for rule in rules.values()}
+    anomalous: dict[RuleKey, set[Cell]] = defaultdict(set)
+    settle = _CellSettlement(
+        weights,
+        vanishes,
+        by_key,
+        vocabulary,
+        coefficients,
+        fixed_parameters or {},
+        multi_trace=multi_trace,
+        nc=nc,
+        anomalous=anomalous,
+        cancels_unvetoed=cancels_unvetoed if veto else None,
+        allow_anomalous_veto=allow_anomalous_veto,
+        veto=veto,
+    )
+    plan = settle(plan, unlowered, residual, values)
+    unlowered = {
+        key: cells for key, cells in unlowered.items() if key in values and cells
+    }
     multiplicities = {
         key: f"{_PREFIX}M{index}" for index, key in enumerate(sorted(values, key=repr))
     }
@@ -1518,15 +1647,22 @@ def lower_model_counterterms(
                 structure = next(s for s in values.pop(key) if s in refused)
                 residual[key] = refused[structure]
                 del multiplicities[key]
-            # The other rules of a refused rule's cancelling cells follow it.
-            for key in uncancelled_rules(
-                unlowered, weights, vanishes, frozenset(residual)
+            # The other rules of a refused rule's cancelling cells follow it
+            # (a Levi-Civita cell is lowered for them instead).
+            plan = settle(plan, unlowered, residual, values)
+            for key in [k for k in multiplicities if k not in values]:
+                del multiplicities[key]
+            for slot in sorted(
+                {
+                    (s.component, s.power, s.grade)
+                    for rows in values.values()
+                    for s in rows
+                }
             ):
-                if key in values:
-                    del values[key]
-                    residual[key] = _uncancelled_reason(unlowered[key])
-                    del multiplicities[key]
-            unlowered = {k: cells for k, cells in unlowered.items() if k in values}
+                switches.setdefault(slot, _switch_name(slot))
+            unlowered = {
+                k: cells for k, cells in unlowered.items() if k in values and cells
+            }
             continue
         return CountertermModel(
             lowered=replace(lowered, refused=refused),
@@ -1540,6 +1676,10 @@ def lower_model_counterterms(
             inert=frozenset(inert),
             veto=veto,
             species_orders=species_orders,
+            anomalous_veto={
+                key: frozenset(cells) for key, cells in sorted(anomalous.items())
+            },
+            allow_anomalous_veto=allow_anomalous_veto,
             coefficients={name: coefficients.references[name] for name in sorted(read)},
             coefficient_plan=plan if read else None,
         )
@@ -2001,19 +2141,13 @@ def _nonfinite_at_defaults(plan: Any) -> set[tuple[str, int]]:
     }
 
 
-def uncancelled_rules(
+def _cell_cancellation(
     unlowered: Mapping[Any, Mapping[Cell, tuple[str, Mapping[int, Any]]]],
     weights: Mapping[Any, int],
     vanishes: Any,
-    residual: frozenset = frozenset(),
-) -> frozenset:
-    """Rules (keys of ``unlowered``) whose unlowered cells do not cancel.
-
-    A cell cancels when the sum over its rules of ``weights`` (multiplicities)
-    times their coefficients ``vanishes`` at every Laurent power, and none of
-    its rules is ``residual``. Every rule of a cell that does not cancel is
-    returned, to a fixed point.
-    """
+) -> tuple[dict[Cell, list[Any]], Any]:
+    """The rules of every cell of ``unlowered`` and whether a cell's
+    coefficients, weighted by the multiplicities, vanish at every power."""
 
     members: dict[Cell, list[Any]] = defaultdict(list)
     for key, cells in unlowered.items():
@@ -2040,17 +2174,237 @@ def uncancelled_rules(
             )
         return cancels[cell]
 
+    return members, cancelled
+
+
+def uncancelled_rules(
+    unlowered: Mapping[Any, Mapping[Cell, tuple[str, Mapping[int, Any]]]],
+    weights: Mapping[Any, int],
+    vanishes: Any,
+    residual: frozenset = frozenset(),
+    lowered: frozenset = frozenset(),
+) -> frozenset:
+    """Rules (keys of ``unlowered``) whose unlowered cells do not cancel.
+
+    A cell cancels when the sum over its rules of ``weights`` (multiplicities)
+    times their coefficients ``vanishes`` at every Laurent power, and none of
+    its rules is ``residual``. Every rule of a cell that does not cancel is
+    returned, to a fixed point; a cell of ``lowered`` (a Levi-Civita cell,
+    ``TreeVocabulary.levi_civita``) makes no rule residual: where it does not
+    cancel it is lowered (``uncancelled_cells``).
+    """
+
+    members, cancelled = _cell_cancellation(unlowered, weights, vanishes)
     out = {key for key in unlowered if key in residual}
     changed = True
     while changed:
         changed = False
         for cell, keys in members.items():
-            if all(key in out for key in keys):
+            if cell in lowered or all(key in out for key in keys):
                 continue
             if any(key in out for key in keys) or not cancelled(cell):
                 out.update(keys)
                 changed = True
     return frozenset(out)
+
+
+def uncancelled_cells(
+    unlowered: Mapping[Any, Mapping[Cell, tuple[str, Mapping[int, Any]]]],
+    weights: Mapping[Any, int],
+    vanishes: Any,
+    residual: frozenset = frozenset(),
+) -> frozenset[Cell]:
+    """The cells of ``unlowered`` that do not cancel: one of their rules is
+    ``residual``, or the sum over their rules of ``weights`` times the
+    coefficients does not vanish at some Laurent power (``uncancelled_rules``)."""
+
+    members, cancelled = _cell_cancellation(unlowered, weights, vanishes)
+    return frozenset(
+        cell
+        for cell, keys in members.items()
+        if any(key in residual for key in keys) or not cancelled(cell)
+    )
+
+
+@dataclass(frozen=True)
+class _CellSettlement:
+    """The settlement of the cells a lowering leaves out (module docstring,
+    "Cancelling cells"; ``lower_model_counterterms``).
+
+    A cell that cancels between the rules of its vertex stays out of the
+    lowered model. One that does not cancel makes every rule of it residual
+    (to a fixed point, ``uncancelled_rules``), unless it is a Levi-Civita cell
+    (``TreeVocabulary.levi_civita``): the tree compiler lowers ``Epsilon``
+    (``models.tensors.LEVI_CIVITA``), so the cell's vertex terms join the
+    rows of each of its rules that is lowered (incomplete doublets,
+    doublet-breaking vetoes, anomalous models; WP3.2 EWI-7b). Cells that
+    cancel stay out, so models whose cells all cancel (loop_sm with every
+    flavour) lower to the same bytes.
+    """
+
+    weights: Mapping[RuleKey, int]
+    vanishes: Any
+    rules: Mapping[RuleKey, Any]
+    vocabulary: TreeVocabulary
+    coefficients: CoefficientLowering
+    fixed_parameters: Mapping[str, Any]
+    multi_trace: bool
+    nc: Any
+    # The anomalous-veto guard ([U2]): rule -> its Levi-Civita cells that
+    # cancel only without the veto (filled here), the test of such a cell
+    # (``None`` without a veto), the override and the vetoed |PDG| codes.
+    anomalous: dict[RuleKey, set[Cell]] = field(default_factory=dict)
+    cancels_unvetoed: Any = None
+    allow_anomalous_veto: bool = False
+    veto: frozenset[int] = frozenset()
+
+    def __call__(
+        self,
+        plan: Any,
+        unlowered: dict[RuleKey, dict[Cell, tuple[str, dict[int, Any]]]],
+        residual: dict[RuleKey, str],
+        values: dict[RuleKey, dict[CountertermStructure, Any]],
+    ) -> Any:
+        """Settle ``unlowered``, updating ``unlowered`` (a lowered cell leaves
+        its rules' entries), ``residual`` and ``values`` (the lowered rows)
+        in place, and return the coefficient plan (``_referenced_scalars``),
+        formed again when lowered cells read references."""
+
+        while (
+            self._settle(unlowered, residual, values) and self.coefficients.references
+        ):
+            kept = frozenset(values)
+            plan = _referenced_scalars(
+                self.coefficients, values, unlowered, residual, self.fixed_parameters
+            )
+            if frozenset(values) == kept:
+                break
+        return plan
+
+    def _settle(
+        self,
+        unlowered: dict[RuleKey, dict[Cell, tuple[str, dict[int, Any]]]],
+        residual: dict[RuleKey, str],
+        values: dict[RuleKey, dict[CountertermStructure, Any]],
+    ) -> frozenset[RuleKey]:
+        """One settlement; the rules whose rows gained a lowered cell."""
+
+        levi_civita = frozenset(
+            cell
+            for key, cells in unlowered.items()
+            for cell in cells
+            if all(
+                self.vocabulary.levi_civita(entry)
+                for entry in self.rules[key].entries
+                if entry_cell(entry) == cell
+            )
+        )
+        self._refuse_anomalous(unlowered, residual, values, levi_civita)
+        for key in uncancelled_rules(
+            unlowered, self.weights, self.vanishes, frozenset(residual), levi_civita
+        ):
+            if key in values:
+                del values[key]
+                residual[key] = _uncancelled_reason(
+                    {c: v for c, v in unlowered[key].items() if c not in levi_civita}
+                )
+        lowered: set[RuleKey] = set()
+        uncancelled = uncancelled_cells(
+            unlowered, self.weights, self.vanishes, frozenset(residual)
+        )
+        for cell in sorted(uncancelled & levi_civita):
+            for key in sorted(
+                (k for k, cells in unlowered.items() if cell in cells and k in values),
+                key=repr,
+            ):
+                try:
+                    rows = self._cell_rows(self.rules[key], cell)
+                except (
+                    CountertermCouplingError,
+                    NotImplementedError,
+                    ValueError,
+                ) as error:
+                    del values[key]
+                    residual[key] = (
+                        f"its Levi-Civita cell {cell} does not cancel and its "
+                        f"coupling cannot be lowered: {error}"
+                    )
+                    continue
+                merged = dict(values[key])
+                for structure, value in rows.items():
+                    merged[structure] = (
+                        merged[structure] + value if structure in merged else value
+                    )
+                values[key] = {s: v for s, v in merged.items() if not _is_zero(v)}
+                del unlowered[key][cell]
+                lowered.add(key)
+        return frozenset(lowered)
+
+    def _refuse_anomalous(
+        self,
+        unlowered: dict[RuleKey, dict[Cell, tuple[str, dict[int, Any]]]],
+        residual: dict[RuleKey, str],
+        values: dict[RuleKey, dict[CountertermStructure, Any]],
+        levi_civita: frozenset[Cell],
+    ) -> None:
+        """Record the Levi-Civita cells that do not cancel under the veto but
+        cancel without it ([U2]) and, without the override, make their rules
+        residual, to a fixed point (a rule made residual can keep another of
+        its cells from cancelling)."""
+
+        if self.cancels_unvetoed is None:
+            return
+        tested: set[Cell] = set()
+        while True:
+            uncancelled = uncancelled_cells(
+                unlowered, self.weights, self.vanishes, frozenset(residual)
+            )
+            found = sorted(
+                cell
+                for cell in (uncancelled & levi_civita) - tested
+                if self.cancels_unvetoed(cell)
+            )
+            tested.update(uncancelled & levi_civita)
+            if not found:
+                return
+            for cell in found:
+                for key in sorted(
+                    (k for k, cells in unlowered.items() if cell in cells), key=repr
+                ):
+                    self.anomalous.setdefault(key, set()).add(cell)
+                    if self.allow_anomalous_veto or key not in values:
+                        continue
+                    entry = next(
+                        e for e in self.rules[key].entries if entry_cell(e) == cell
+                    )
+                    del values[key]
+                    residual[key] = (
+                        f"its Levi-Civita cell of {entry.vertex_name} (colour "
+                        f"{entry.color}, Lorentz structure {entry.lorentz_name}) "
+                        "cancels between the rules of "
+                        "its vertex with every flavour admitted but not under "
+                        f"particle_veto {sorted(self.veto)} (an anomalous veto, "
+                        "e.g. one that breaks a quark doublet); refused by default, "
+                        f"lowered with {ANOMALOUS_VETO_OVERRIDE}"
+                    )
+            if self.allow_anomalous_veto:
+                return
+
+    def _cell_rows(self, rule: Any, cell: Cell) -> dict[CountertermStructure, Any]:
+        """The vertex terms of the entries of one cell of ``rule``
+        (``rule_terms``), as ``lower_model_counterterms`` forms a rule's rows."""
+
+        rows: dict[CountertermStructure, Any] = {}
+        for entry, structure in rule_terms(rule, self.coefficients.is_zero):
+            if entry_cell(entry) != cell:
+                continue
+            value = self.coefficients(entry, structure.power)
+            rows[structure] = rows[structure] + value if structure in rows else value
+        if self.multi_trace:
+            rows = _without_u1_terms(rows, self.nc)
+        if self.nc is not None:
+            rows = _graded(rows, self.nc)
+        return {s: v for s, v in rows.items() if not _is_zero(v)}
 
 
 def _uncancelled_reason(cells: Mapping[Cell, tuple[str, Any]]) -> str:
@@ -2563,6 +2917,8 @@ def _physical(orders: Iterable[tuple[str, int]]) -> Orders:
 
 
 __all__ = [
+    "ANOMALOUS_VETO_OVERRIDE",
+    "AnomalousVetoError",
     "CoefficientLowering",
     "CountertermCouplingError",
     "CountertermModel",

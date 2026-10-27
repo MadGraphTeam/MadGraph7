@@ -168,6 +168,12 @@ emit_api_bundle = true
 # loop_particles) holds a vetoed particle are dropped. Virtual-only. Default
 # empty. Example: the five-flavour QCD of a model with a top quark.
 # particle_veto = ["t"]
+# generation.allow_anomalous_veto: Lower the Levi-Civita counterterm cells that
+# particle_veto keeps from cancelling but that cancel without it (an anomalous
+# veto, e.g. one breaking a quark doublet with a Z and gluons); such requests
+# are refused by default. Recorded in the artifact. Needs particle_veto.
+# Virtual-only. Default false.
+# allow_anomalous_veto = true
 [generation.validation]
 # generation.validation.enabled: Run generation validation. Default true.
 enabled = true
