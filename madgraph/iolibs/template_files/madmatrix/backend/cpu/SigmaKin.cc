@@ -402,7 +402,15 @@ namespace madmatrix
     ALOHAOBJ _p1n = ALOHAOBJ{ p1n_pvec_sv, p1n_w_sv };
     (void)_p1n;
     (void)amp_fp;
+    // the shared sub-expressions of the color flows (jampTmp_sv of calculate_jamps),
+    // one set per row: the amplitudes are folded into them as the plain build
+    // folds them into its own, and HelRecyclingJamps.inc then makes the row's
+    // color flows out of them
+    static thread_local std::vector<cxtype_amp_sv> jampTmpAll( (size_t)nHrRows * nParity * ( hrNtmp > 0 ? hrNtmp : 1 ) );
+    cxtype_amp_sv* jampTmpAll_sv = jampTmpAll.data();
+    (void)jampTmpAll_sv;
     for( int i = 0; i < nHrRows * nParity * njampso; i++ ) jampAll_sv[i] = cxzero_sv<cxtype_amp_sv>();
+    for( int i = 0; i < nHrRows * nParity * hrNtmp; i++ ) jampTmpAll_sv[i] = cxzero_sv<cxtype_amp_sv>();
     if( storeChannelWeights )
       for( int i = 0; i < nHrRows * nParity * ndiagrams; i++ ) numAll_sv[i] = fptype_amp_sv{ 0 };
     for( int iParity = 0; iParity < nParity; ++iParity )
@@ -410,6 +418,17 @@ namespace madmatrix
       const int ievt0 = ievt00 + iParity * neppV;
 #include "JampsPreamble.h" // a fragment of the iParity loop body, not a header
 #include "HelRecyclingCalls.inc"
+    }
+    if constexpr( hrNtmp > 0 )
+    {
+      for( int slot = 0; slot < nHrRows * nParity; slot++ )
+      {
+        cxtype_amp_sv* jampTmp_sv = jampTmpAll_sv + (size_t)slot * hrNtmp;
+        cxtype_amp_sv* jamp_sv = jampAll_sv + (size_t)slot * njampso;
+        (void)jampTmp_sv;
+        (void)jamp_sv;
+#include "HelRecyclingJamps.inc"
+      }
     }
     mgDebug( 1, __FUNCTION__ );
   }

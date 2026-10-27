@@ -406,6 +406,22 @@ class TestRecycledChunkPolicy(unittest.TestCase):
         self.assertEqual(self.exporter({'hel_recycling_chunk': '0'})
                          .hel_recycling_chunk_size(10**6), 0)
 
+    def test_the_size_limit_and_its_option(self):
+        self.assertEqual(self.exporter({}).hel_recycling_max_stmts(),
+                         self.cls.HR_MAX_STMTS)
+        self.assertEqual(self.exporter({'hel_recycling_max': '0'})
+                         .hel_recycling_max_stmts(), 0)
+        self.assertEqual(self.exporter({'hel_recycling_max': '12'})
+                         .hel_recycling_max_stmts(), 12)
+        self.assertEqual(self.exporter({'hel_recycling_max': 'x'})
+                         .hel_recycling_max_stmts(), self.cls.HR_MAX_STMTS)
+        # what is counted is what hr_chunk_calls counts: no comment, no blank
+        calls = ('      // recycled row 0\n\n'
+                 '      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP 1\n'
+                 '      if( storeChannelWeights )\n      {\n'
+                 '        numAll_sv[0] += cxabs2( amp_sv[0] );\n      }\n')
+        self.assertEqual(self.cls.hr_count_statements(calls), 5)
+
     def test_chunks_take_the_state_and_are_called_in_order(self):
         exporter = self.exporter({'hel_recycling_chunk': '2'})
         calls = '\n'.join('      FFV1_0<W_ACCESS>( a, b, &amp_fp[0] ); //HRAMP %d' % i
@@ -443,6 +459,109 @@ class TestRecycledChunkPolicy(unittest.TestCase):
             self.assertNotIn(name, decls)
             self.assertIn(name, body)
         self.assertIn('const short ( * )[npar]', decls)
+
+
+class TestRecycledColourSubExpressions(unittest.TestCase):
+    """The recycled folds keep the shared sub-expressions of the color flows
+    (build_jamp_plan) that the plain build writes, one set per helicity row:
+    each amplitude is added into its row's sub-expressions, and hr_post_lines
+    then makes the row's color flows out of them. Checked by running the
+    emitted statements -- they are valid Python as well as C++ -- against the
+    color flows written out term by term, with some amplitudes left out of the
+    row (the ones that vanish there are never folded in)."""
+
+    def setUp(self):
+        from fractions import Fraction
+        from madmatrix.model_handling import MadMatrixUFOHelasCallWriter
+        writer = MadMatrixUFOHelasCallWriter.__new__(MadMatrixUFOHelasCallWriter)
+        writer.cmd_options = {'jamp_optim': True}
+        writer.jamp_orbit = False
+        writer.split_order_index = lambda matrix_element: None
+        self.writer = writer
+        # six color flows over eight amplitudes, sharing the obvious partial
+        # sums; coefficients (sign, fraction, imaginary, power of Nc)
+        self.color_amplitudes = [
+            [((1, Fraction(1), False, 0), 1), ((1, Fraction(1), False, 0), 2),
+             ((-1, Fraction(1), False, 0), 3)],
+            [((1, Fraction(1), False, 0), 1), ((1, Fraction(1), False, 0), 2),
+             ((1, Fraction(1, 3), False, 0), 4)],
+            [((1, Fraction(1), False, 0), 1), ((1, Fraction(1), False, 0), 2),
+             ((-1, Fraction(1), False, 0), 3), ((1, Fraction(1), True, 0), 5)],
+            [((1, Fraction(1), False, 0), 6), ((1, Fraction(1), False, 0), 7),
+             ((1, Fraction(1), False, 0), 1), ((1, Fraction(1), False, 0), 2)],
+            [((1, Fraction(1), False, 0), 6), ((1, Fraction(1), False, 0), 7),
+             ((-1, Fraction(2), False, 0), 8)],
+            [((1, Fraction(1), False, 0), 6), ((1, Fraction(1), False, 0), 7),
+             ((1, Fraction(1), False, 0), 8), ((-1, Fraction(1), False, 0), 3)],
+        ]
+        self.color = {}
+        for njamp, coeff_list in enumerate(self.color_amplitudes):
+            for coeff, namp in coeff_list:
+                self.color.setdefault(namp, {})[njamp] = coeff
+
+    def run_row(self, plan, amps, row=2, nrows=4):
+        ntmp, post = self.writer.hr_post_lines(plan)
+        njamp = len(self.color_amplitudes)
+        scope = {'nParity': 1, 'iParity': 0, 'hrNtmp': ntmp, 'njampso': njamp,
+                 'cxtype': complex, 'cxtype_amp': complex, 'fptype': float,
+                 'jampAll_sv': [0j] * (nrows * njamp),
+                 'jampTmpAll_sv': [0j] * (nrows * max(ntmp, 1))}
+
+        class Diagram(object):
+            def get(self, key):
+                return 1
+
+        from string import Template
+        self.writer.nb_tmp_jamp = ntmp
+        for namp, value in amps.items():
+            captures = plan[1].get(namp, []) if plan is not None else None
+            fold = self.writer._hr_orig_amplitude('FFV1_0( a ); ', namp, Diagram(),
+                                                  False, self.color, captures)
+            self.assertEqual(fold[-1], '//HRENDFOLD')
+            scope['amp_sv'] = [value]
+            for line in fold[2:-1]:
+                exec(Template(line).substitute(row=row).rstrip(';'), scope)
+        # the per-row post lines run in place on the row's slice of the tables
+        tmp = scope['jampTmpAll_sv'][row * ntmp:(row + 1) * ntmp]
+        jamp = scope['jampAll_sv'][row * njamp:(row + 1) * njamp]
+        post_scope = {'jampTmp_sv': tmp, 'jamp_sv': jamp, 'cxtype': complex}
+        for line in post:
+            exec(line.strip().rstrip(';'), post_scope)
+        return jamp
+
+    def expected(self, amps):
+        jamp = [0j] * len(self.color_amplitudes)
+        for njamp, coeff_list in enumerate(self.color_amplitudes):
+            for (sign, frac, imag, ncp), namp in coeff_list:
+                jamp[njamp] += sign * float(frac) * (1j if imag else 1) * \
+                               3**ncp * amps.get(namp, 0)
+        return jamp
+
+    def check(self, amps):
+        plan = self.writer.build_jamp_plan(None, self.color_amplitudes)
+        self.assertIsNotNone(plan)
+        self.assertGreater(plan[0], 0)
+        for got, want in zip(self.run_row(plan, amps), self.expected(amps)):
+            self.assertAlmostEqual(got, want, places=12)
+        # and the expanded fold (no plan) agrees with it
+        for got, want in zip(self.run_row(None, amps), self.expected(amps)):
+            self.assertAlmostEqual(got, want, places=12)
+
+    def test_every_amplitude_in_the_row(self):
+        self.check({n: complex(n, 0.5 * n - 1) for n in range(1, 9)})
+
+    def test_amplitudes_missing_from_the_row(self):
+        # the first amplitude of a sub-expression, which the plain build
+        # assigns rather than adds, is among the ones left out
+        self.check({n: complex(n, -n) for n in (2, 4, 5, 7)})
+
+    def test_post_lines_only_ever_add(self):
+        plan = self.writer.build_jamp_plan(None, self.color_amplitudes)
+        _ntmp, post = self.writer.hr_post_lines(plan)
+        self.assertTrue(post)
+        for line in post:
+            self.assertIn(' += ', line)
+        self.assertEqual(self.writer.hr_post_lines(None), (0, []))
 
 
 class TestHelRecyclingWarmup(unittest.TestCase):
