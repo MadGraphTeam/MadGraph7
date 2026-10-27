@@ -255,13 +255,6 @@ Process artifacts are trusted executable inputs. Direct SymJIT applications
 are lowered to native code, and C++/ASM artifacts contain native libraries.
 Generate them yourself or receive them through a channel you trust.
 
-## Campaign artifacts are a separate state layer
-
-A profiling campaign stores generated process artifacts, attempts, and current
-pointers below its own visible `campaign_artifacts/` root. Move the entire
-campaign directory to move that state. Do not transplant individual current
-pointer files between campaigns. See [Profiling Campaigns](profiling-campaigns.md).
-
 ## Common compatibility failures
 
 | Message or symptom | Meaning | Next step |

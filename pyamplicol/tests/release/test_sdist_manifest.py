@@ -27,8 +27,6 @@ def test_maturin_includes_required_sdist_source_trees() -> None:
         "schemas/**/*",
         "tests/**/*",
         "tools/developer/**/*",
-        "tools/fft_profiling/**/*",
-        "tools/performance_report/**/*",
         "tools/release/**/*",
         "tools/typing/**/*",
     } <= includes
@@ -43,7 +41,6 @@ def test_maturin_includes_required_sdist_source_trees() -> None:
         "dependencies/contributor-lock.toml",
         "dependencies/install_dependencies.py",
         "dependencies/python-runtime-lock.toml",
-        "flake.nix",
         "release_assets/**",
     } <= excludes
 

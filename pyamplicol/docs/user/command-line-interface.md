@@ -34,7 +34,6 @@ drives the typed [Python API](python-api.md).
 | `examples list` | List shipped card names, actions, and descriptions | `pyamplicol examples list` |
 | `examples copy` | Create an editable, self-contained example workspace | `pyamplicol examples copy ./pyamplicol-examples --force` |
 | `examples run` | Run one named packaged card in a private cache workspace | `pyamplicol examples run evaluate_total` |
-| `profiling-campaign copy` | Create a self-contained performance campaign | See [Profiling Campaigns](profiling-campaigns.md) |
 | `doctor` | Diagnose the installed runtime and SDK | `pyamplicol doctor` |
 | `self-test` | Run the installed-package smoke test | `pyamplicol self-test` |
 
@@ -181,9 +180,6 @@ remain direct/trace. Use `--color-contraction direct` to opt out.
 Do not combine `--fft` and `--color-contraction`; use either spelling. Card
 settings are overridden by dedicated flags, then by ordered `--set` options
 as usual.
-
-For the dedicated direct/FFT/reference scaling scan, see
-[FullColor FFT Profiling](fullcolor-fft-profiling.md).
 
 `--dry-run` performs the operation exposed as `Generator.plan()`. It creates no
 artifact, output directory, or model-cache entry. A raw UFO or JSON source must

@@ -29,50 +29,6 @@ def test_installed_smoke_uses_the_v1_builtin_model_name() -> None:
     assert 'build_info["source_revision"]' in deployment._INSTALLED_SMOKE
 
 
-def test_installed_smoke_copies_and_dry_runs_the_profiling_campaign() -> None:
-    smoke = deployment._INSTALLED_SMOKE
-    assert 'campaign = Path(raw).resolve() / "campaign"' in smoke
-    assert 'campaign = Path(raw) / "campaign"' not in smoke
-    assert '"profiling-campaign"' in smoke
-    assert 'campaign / "steer_performance_campaign.py"' in smoke
-    assert 'campaign / "pyAmpliCol.pdf"' in smoke
-    assert '"scalar_contact"' in smoke
-    assert '"--generation-engine"' in smoke
-    assert '"compiled"' in smoke
-    assert '"compact retention (default)"' in smoke
-    assert '"--retain-workspaces"' in smoke
-    assert '"full debug workspaces (--retain-workspaces)"' in smoke
-
-
-def test_installed_smoke_finishes_cli_children_before_native_imports() -> None:
-    tree = ast.parse(deployment._INSTALLED_SMOKE)
-    native_imports = [
-        node.lineno
-        for node in ast.walk(tree)
-        if (
-            isinstance(node, ast.Import)
-            and any(
-                name.name.split(".")[0] in {"pyamplicol", "symbolica"}
-                for name in node.names
-            )
-        )
-        or (
-            isinstance(node, ast.ImportFrom)
-            and (node.module or "").split(".")[0] in {"pyamplicol", "symbolica"}
-        )
-    ]
-    child_calls = [
-        node.lineno
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "subprocess"
-    ]
-    assert native_imports and child_calls
-    assert max(child_calls) < min(native_imports)
-
-
 def test_f64_deployment_smoke_hard_blocks_symbolica() -> None:
     smoke = deployment._SYMBOLICA_FREE_F64_SMOKE
     assert 'os.environ.pop("SYMBOLICA_LICENSE", None)' in smoke

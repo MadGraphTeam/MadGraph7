@@ -31,30 +31,6 @@ def _git(repo: Path, *arguments: str) -> str:
     return completed.stdout.strip()
 
 
-def _source_identity_checkout(tmp_path: Path) -> Path:
-    repo = tmp_path / "source-identity-checkout"
-    repo.mkdir()
-    _git(repo, "init", "-q")
-    _git(repo, "config", "user.email", "build@example.invalid")
-    _git(repo, "config", "user.name", "Build Test")
-    classifier = repo / "tools/performance_report/source_identity.py"
-    classifier.parent.mkdir(parents=True)
-    shutil.copy2(ROOT / "tools/performance_report/source_identity.py", classifier)
-    profile = repo / "docs/performance_reports/manual"
-    (profile / "results").mkdir(parents=True)
-    (profile / "results/cache.json").write_text("{}\n", encoding="utf-8")
-    (profile / "result_sample_table.tex").write_text("% table\n", encoding="utf-8")
-    (profile / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.4\n")
-    (profile / "pyAmpliCol.tex").write_text("% report source\n", encoding="utf-8")
-    source = repo / "src/runtime.py"
-    source.parent.mkdir()
-    source.write_text("VALUE = 1\n", encoding="utf-8")
-    (repo / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
-    _git(repo, "add", ".")
-    _git(repo, "commit", "-qm", "fixture")
-    return repo
-
-
 def test_prepared_model_bootstrap_is_candidate_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -441,9 +417,6 @@ def test_candidate_bootstrap_wheel_strips_stale_generated_assets(
     monkeypatch.setattr(backend, "_check_dependencies", lambda _mode: None)
     monkeypatch.setattr(backend, "_rust_remap_flags", lambda *_args: "")
     monkeypatch.setattr(backend, "_stage_packaged_examples", lambda _path: None)
-    monkeypatch.setattr(
-        backend, "_stage_packaged_profiling_campaign", lambda _path: None
-    )
     monkeypatch.setattr(backend, "_stage_python_stub", lambda _path: None)
     monkeypatch.setattr(backend, "_stage_runtime_resources", lambda _path: None)
     monkeypatch.setattr(
@@ -532,9 +505,6 @@ def test_ordinary_wheel_build_rejects_prepared_model_digest_drift(
         lambda _path: "0.1.0",
     )
     monkeypatch.setattr(backend, "_stage_packaged_examples", lambda _path: None)
-    monkeypatch.setattr(
-        backend, "_stage_packaged_profiling_campaign", lambda _path: None
-    )
     monkeypatch.setattr(backend, "_stage_python_stub", lambda _path: None)
     monkeypatch.setattr(backend, "_stage_runtime_resources", lambda _path: None)
     monkeypatch.setattr(
@@ -957,123 +927,6 @@ def test_release_prepared_model_bootstrap_does_not_require_git_identity(
     assert build_info["native_build_inputs_sha256"] == "c" * 64
 
 
-def test_candidate_source_revision_ignores_only_generated_report_outputs(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    checkout = _source_identity_checkout(tmp_path)
-    profile = checkout / "docs/performance_reports/manual"
-    (profile / "results/cache.json").write_text('{"updated":true}\n', encoding="utf-8")
-    (profile / "result_sample_table.tex").write_text("% updated\n", encoding="utf-8")
-    (profile / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.7\n")
-    summary = profile / "campaign_summary_ids"
-    summary.mkdir()
-    (summary / "error.txt").write_text("cell-a\n", encoding="utf-8")
-    monkeypatch.setattr(backend, "ROOT", checkout)
-
-    assert backend._clean_source_revision() is None
-    assert backend._clean_source_revision(allow_generated_report_outputs=True) == _git(
-        checkout, "rev-parse", "HEAD"
-    )
-
-
-@pytest.mark.parametrize(
-    "destination",
-    (Path("x86_epyc_manual"), Path("scratch/campaigns/x86_epyc_manual")),
-)
-def test_candidate_source_revision_ignores_untracked_copied_campaign_anywhere(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    destination: Path,
-) -> None:
-    checkout = _source_identity_checkout(tmp_path)
-    copied = checkout / destination
-    (copied / "results").mkdir(parents=True)
-    (copied / "README.md").write_text("# copied campaign\n", encoding="utf-8")
-    (copied / "steer_performance_campaign.py").write_text(
-        "#!/usr/bin/env python3\n",
-        encoding="utf-8",
-    )
-    (copied / "report-workspace.json").write_text("{}\n", encoding="utf-8")
-    (copied / "pyAmpliCol.tex").write_text("% copied template\n", encoding="utf-8")
-    (copied / "results/cache.json").write_text("{}\n", encoding="utf-8")
-    monkeypatch.setattr(backend, "ROOT", checkout)
-
-    assert backend._clean_source_revision() is None
-    assert backend._clean_source_revision(allow_generated_report_outputs=True) == _git(
-        checkout, "rev-parse", "HEAD"
-    )
-    assert not any(
-        path == destination or destination in path.parents
-        for path in backend._git_inventory() or ()
-    )
-
-    tracked = checkout / "src/runtime.py"
-    tracked.write_text("VALUE = 2\n", encoding="utf-8")
-    assert (
-        backend._clean_source_revision(allow_generated_report_outputs=True) is None
-    )
-
-
-def test_candidate_source_revision_rejects_incomplete_untracked_campaign(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    checkout = _source_identity_checkout(tmp_path)
-    copied = checkout / "scratch/incomplete"
-    copied.mkdir(parents=True)
-    (copied / "report-workspace.json").write_text("{}\n", encoding="utf-8")
-    (copied / "README.md").write_text("# incomplete\n", encoding="utf-8")
-    monkeypatch.setattr(backend, "ROOT", checkout)
-
-    assert backend._clean_source_revision(allow_generated_report_outputs=True) is None
-
-
-def test_candidate_source_revision_rejects_campaign_markers_in_tracked_tree(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    checkout = _source_identity_checkout(tmp_path)
-    tracked_tree = checkout / "src"
-    (tracked_tree / "report-workspace.json").write_text("{}\n", encoding="utf-8")
-    (tracked_tree / "steer_performance_campaign.py").write_text(
-        "#!/usr/bin/env python3\n",
-        encoding="utf-8",
-    )
-    (tracked_tree / "rogue_runtime.py").write_text(
-        "VALUE = 'untracked'\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(backend, "ROOT", checkout)
-
-    assert backend._clean_source_revision(allow_generated_report_outputs=True) is None
-
-
-@pytest.mark.parametrize(
-    "relative",
-    (
-        "src/runtime.py",
-        "docs/performance_reports/manual/pyAmpliCol.tex",
-        "pyproject.toml",
-        "docs/performance_reports/manual/unexpected.json",
-    ),
-)
-def test_candidate_source_revision_rejects_non_generated_dirt(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    relative: str,
-) -> None:
-    checkout = _source_identity_checkout(tmp_path)
-    profile = checkout / "docs/performance_reports/manual"
-    (profile / "results/cache.json").write_text('{"updated":true}\n', encoding="utf-8")
-    changed = checkout / relative
-    changed.parent.mkdir(parents=True, exist_ok=True)
-    changed.write_text("changed\n", encoding="utf-8")
-    monkeypatch.setattr(backend, "ROOT", checkout)
-
-    assert backend._clean_source_revision(allow_generated_report_outputs=True) is None
-
-
 def test_release_build_info_is_minimal_and_retained_from_sdist(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1238,15 +1091,6 @@ def test_overlay_excludes_managed_dependencies_and_includes_licenses() -> None:
         assert not (overlay / "build_backend" / "python_lock.py").exists()
 
 
-def test_fft_profiling_tool_is_retained_by_source_release_manifests() -> None:
-    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    includes = {entry["path"] for entry in pyproject["tool"]["maturin"]["include"]}
-
-    assert "tools/fft_profiling" in backend.ALLOWLIST
-    assert "tools/fft_profiling/**/*" in includes
-    assert (ROOT / "tools/fft_profiling/fft_profiling.py").is_file()
-
-
 def test_wheel_examples_are_staged_from_the_single_canonical_tree() -> None:
     with backend._overlay("release") as (overlay, _target):
         packaged = overlay / "src" / "pyamplicol" / "_examples"
@@ -1265,61 +1109,6 @@ def test_wheel_examples_are_staged_from_the_single_canonical_tree() -> None:
         ).read_bytes()
         with pytest.raises(RuntimeError, match="already contains"):
             backend._stage_packaged_examples(overlay)
-
-
-def test_wheel_profiling_campaign_is_a_bounded_reset_template() -> None:
-    with backend._overlay("release") as (overlay, _target):
-        source = overlay / backend._PROFILING_CAMPAIGN_SOURCE
-        packaged = overlay / "src/pyamplicol/_profiling_campaign"
-        assert packaged == source
-        before = {
-            path.relative_to(packaged): path.read_bytes()
-            for path in packaged.rglob("*")
-            if path.is_file()
-        }
-        backend._stage_packaged_profiling_campaign(overlay)
-        copied = {
-            path.relative_to(packaged) for path in packaged.rglob("*") if path.is_file()
-        }
-        assert copied == set(backend._profiling_campaign_inventory(source))
-        assert len(copied) == 69
-        assert {
-            Path("result_matrix_on_the_fly_builtin_sm_full_table.tex"),
-            Path("result_matrix_on_the_fly_builtin_sm_lc_table.tex"),
-            Path("result_matrix_on_the_fly_builtin_sm_nlc_table.tex"),
-            Path("results/matrix_on_the_fly_builtin_sm_full.json"),
-            Path("results/matrix_on_the_fly_builtin_sm_lc.json"),
-            Path("results/matrix_on_the_fly_builtin_sm_nlc.json"),
-        } <= copied
-        assert {
-            path.relative_to(packaged): path.read_bytes()
-            for path in packaged.rglob("*")
-            if path.is_file()
-        } == before
-        assert Path("steer_performance_campaign.py") in copied
-        assert Path("results/report-cache.schema.json") in copied
-        runtime = overlay / "src/pyamplicol/_performance_report"
-        assert {path.name for path in runtime.glob("*.py")} == {
-            path.name for path in (overlay / "tools/performance_report").glob("*.py")
-        } | {"_memory_watchdog.py"}
-        assert (runtime / "manual_campaign.py").read_bytes() == (
-            overlay / "tools/performance_report/manual_campaign.py"
-        ).read_bytes()
-        assert (runtime / "_memory_watchdog.py").read_bytes() == (
-            overlay / "tools/ci/memory_watchdog.py"
-        ).read_bytes()
-        assert (runtime / "_developer/__init__.py").is_file()
-        assert (runtime / "_developer/legacy_amplicol.py").read_bytes() == (
-            overlay / "tools/developer/legacy_amplicol.py"
-        ).read_bytes()
-        oracle = runtime / "_developer/legacy_oracle"
-        assert {path.name for path in oracle.glob("*.py")} == {
-            path.name
-            for path in (overlay / "tools/developer/legacy_oracle").glob("*.py")
-        }
-        assert (oracle / "__init__.py").is_file()
-        with pytest.raises(RuntimeError, match="already contains"):
-            backend._stage_packaged_profiling_campaign(overlay)
 
 
 def test_wheel_stages_the_single_maintained_rusticol_stub() -> None:
@@ -1430,9 +1219,7 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
     source = tmp_path / "archive"
     retained = {
         Path("build_backend/backend.py"): "archive = True\n",
-        Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.tex"): (
-            "maintained TeX\n"
-        ),
+        Path("docs/user/report.tex"): "maintained TeX\n",
         Path("release_assets/prepared_models/README.md"): "release store\n",
         Path("src/pyamplicol/_sdk/config.py"): "maintained SDK config\n",
         Path("src/rusticol_config/__init__.py"): "standalone SDK config\n",
@@ -1449,13 +1236,9 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
         Path("build_backend/python_lock.py"),
         Path("docs/.result_outputs/cache.json"),
         Path("docs/archive/retired.md"),
-        Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.aux"),
-        Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.synctex.gz"),
-        Path("docs/performance_reports/macbook_M3/pyAmpliCol.toc"),
-        Path(
-            "src/pyamplicol/_profiling_campaign/campaign_artifacts/"
-            "private-attempt.bin"
-        ),
+        Path("docs/user/report.aux"),
+        Path("docs/user/report.synctex.gz"),
+        Path("docs/user/report.toc"),
         Path("src/pyamplicol.egg-info/PKG-INFO"),
         Path("src/pyamplicol/_rusticol.abi3.so"),
         Path("src/pyamplicol/_rusticol.dylib"),
@@ -1659,9 +1442,6 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
         lambda _path: "0.1.0",
     )
     monkeypatch.setattr(backend, "_stage_packaged_examples", lambda path: None)
-    monkeypatch.setattr(
-        backend, "_stage_packaged_profiling_campaign", lambda path: None
-    )
     monkeypatch.setattr(backend, "_stage_python_stub", lambda path: None)
     monkeypatch.setattr(backend, "_stage_runtime_resources", lambda path: None)
     monkeypatch.setattr(

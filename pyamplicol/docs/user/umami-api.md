@@ -300,24 +300,9 @@ flavour classes, the recorded relations and their warnings.
 
 ## MadSpace example
 
-The repository's
+The upstream pyAmpliCol repository's
 [`umami_example`](https://github.com/MadGraphTeam/pyamplicol/tree/umami/umami_example)
 contains close adaptations of AmpliCol's loading and integration examples. They
 use the real MadSpace matrix-element loader, phase-space mappings and
-differential cross section, with VEGAS from MadNIS. The default is a bounded
-partonic `g g > g g g` run for LC and full colour, with no PDF downloads:
-
-```console
-python -m pip install -r umami_example/requirements.txt
-python umami_example/run.py
-```
-
-The orchestrator generates both artifacts, compiles the libraries and linked
-drivers, checks batched UMAMI/native numerical agreement, and writes integrated
-cross sections with statistical uncertainties. It disables numerical
-current-relation discovery during generation. Optional PDF and neural-flow
-workflows, provider selection, cuts and all commands are explained in the
-example README. Those dependencies are not part of pyAmpliCol's core install.
-The integration example uses MadSpace's massless two-beam scattering flux and
-rejects massive incoming legs; this is a limitation of that example, not of the
-UMAMI provider.
+differential cross section, with VEGAS from MadNIS. Setup, options and all
+commands are explained in its README.
