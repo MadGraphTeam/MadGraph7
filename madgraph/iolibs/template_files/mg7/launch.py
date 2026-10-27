@@ -3670,6 +3670,11 @@ class MadgraphSubprocess:
         partial_weights = self.process.systematics_enabled()
         madnis_args = self.process.run_card["madnis"]
         custom_bias = self.process.custom_function("bias", self.particle_count, flavors)
+        # With an MLM history picked per diagram, the cross section at the
+        # scales of that history is the first matrix-element evaluation rescaled
+        # by alpha_s and PDF ratios when every diagram has the same power of
+        # alpha_s (-1: mixed powers, evaluate the matrix element again)
+        mlm_history_qcd_power = int(self.meta.get("qcd_power", -1))
         integrands = []
         for channel in phasespace.channels:
             integrands.append(ms.Integrand(
@@ -3703,6 +3708,7 @@ class MadgraphSubprocess:
                 madnis_args["compressed_channel_weight_count"],
                 custom_bias,
                 None if self.process.leptonic else self.process.pdf_grid2,
+                mlm_history_qcd_power,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())

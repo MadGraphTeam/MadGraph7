@@ -146,6 +146,15 @@ public:
      *                                          the prefix @ref pdf2_prefix.
      *                                          Not allowed with a @ref CustomPdf,
      *                                          which receives the beam index.
+     * @param mlm_history_qcd_power             Power of alpha_s in |M|^2 when it
+     *                                          is the same for every diagram,
+     *                                          -1 otherwise. With an MLM history
+     *                                          picked per diagram, the matrix
+     *                                          element at the scales of that
+     *                                          history is then the first
+     *                                          evaluation rescaled by the alpha_s
+     *                                          and PDF ratios instead of a second
+     *                                          evaluation.
      */
     Integrand(
         const PhaseSpaceMapping& mapping,
@@ -177,7 +186,8 @@ public:
         const std::vector<std::size_t>& flavor_per_subproc_remap = {},
         std::size_t compressed_channel_weight_count = 50,
         const std::optional<CustomFunction>& custom_bias = std::nullopt,
-        const std::optional<PdfGrid>& pdf_grid2 = std::nullopt
+        const std::optional<PdfGrid>& pdf_grid2 = std::nullopt,
+        int mlm_history_qcd_power = -1
     );
     /// Globals prefix under which the second beam's PDF grid is registered
     /// (PdfGrid::initialize_globals) when `pdf_grid2` is given.
@@ -299,6 +309,8 @@ private:
     // MLMClustering::diagram_start_states padded to the matrix element's
     // diagram count, so that any diagram the pick can return has an entry.
     std::vector<me_int_t> _mlm_start_states;
+    // see mlm_history_qcd_power in the constructor; -1 re-evaluates
+    int _mlm_history_qcd_power = -1;
     // abs pdg id of every external leg per flavour option, row-major, for the
     // clusterings that only exist for some flavours of a merged subprocess.
     // Empty when the clustering does not depend on the flavours.

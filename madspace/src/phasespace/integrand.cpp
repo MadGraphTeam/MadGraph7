@@ -110,7 +110,8 @@ Integrand::Integrand(
     const std::vector<std::size_t>& flavor_per_subproc_remap,
     std::size_t compressed_channel_weight_count,
     const std::optional<CustomFunction>& custom_bias,
-    const std::optional<PdfGrid>& pdf_grid2
+    const std::optional<PdfGrid>& pdf_grid2,
+    int mlm_history_qcd_power
 ) :
     FunctionGenerator(
         "Integrand",
@@ -285,6 +286,7 @@ Integrand::Integrand(
         flavor_per_subproc_remap.begin(), flavor_per_subproc_remap.end()
     ),
     _custom_bias(custom_bias) {
+    _mlm_history_qcd_power = mlm_history_qcd_power;
     if (energy_scale && energy_scale->mlm_flavor_dependent() &&
         pid_options.size() > 1) {
         for (auto& option : pid_options) {
@@ -1308,10 +1310,11 @@ NamedVector<Value> Integrand::build_common_part(
     // |A_i|^2 / sum_j |A_j|^2 (and the channel weights, which stay as they
     // are). One diagram is picked from them - a choice between histories, not
     // an importance sample, so it puts no factor on the weight - the event is
-    // clustered along it, and the matrix element is evaluated again at the
-    // scales that history gives. Evaluating it again rather than rescaling by
-    // alpha_s ratios keeps this exact when coupling orders mix, as they do for
-    // gluon fusion and VBF in one process.
+    // clustered along it, and the cross section is taken at the scales that
+    // history gives: by rescaling the first evaluation when every diagram has
+    // the same power of alpha_s (mlm_history_qcd_power), by evaluating the
+    // matrix element again when coupling orders mix, as they do for gluon
+    // fusion and VBF in one process.
     ValueVec mlm_history_weights;
     if (_energy_scale && _energy_scale->mlm_history_per_diagram()) {
         auto batch_size_acc = fb.batch_size({momenta_acc});
@@ -1345,6 +1348,8 @@ NamedVector<Value> Integrand::build_common_part(
                 fact_scales_acc.at(i) = scales.at(std::format("fact_scale{}", i + 1));
             }
         }
+        auto pdfs_first = pdfs_acc;
+        auto alpha_first = alpha_qcd_acc;
         pdfs_acc = evaluate_pdfs(fb, scales, x_acc, flavor_id);
         cluster_scales_acc = scales.at("outgoing_scales");
         if (has_alphas_scales) {
@@ -1352,9 +1357,42 @@ NamedVector<Value> Integrand::build_common_part(
         }
         alpha_qcd_acc =
             _running_coupling.value().build_function(fb, {ren_scale_acc}).at(0);
-        dxs_vec = _diff_xs.at(0)
-                      .build_function(fb, make_xs_args(pdfs_acc, alpha_qcd_acc))
-                      .values();
+        if (_mlm_history_qcd_power >= 0) {
+            // Only the scales changed, and the matrix element sees them only
+            // through alpha_s: with one power n of alpha_s for every diagram
+            // |M|^2 = C alpha_s^n, and the cross section is linear in each
+            // beam density. So the first evaluation, rescaled by
+            // (alpha_s' / alpha_s)^n f1' f2' / (f1 f2), is the second one to
+            // rounding - and exactly it where the history did not change, as
+            // for most events under clustering_history = madevent. The colour,
+            // helicity and diagram weights of the first evaluation stay valid:
+            // their probabilities are ratios of terms of the same power.
+            auto batch_size_acc = fb.batch_size({momenta_acc});
+            auto ones = fb.full({1., batch_size_acc});
+            Value factor = ones;
+            auto alpha_ratio = fb.div(alpha_qcd_acc, alpha_first);
+            for (int k = 0; k < _mlm_history_qcd_power; ++k) {
+                factor = fb.mul(factor, alpha_ratio);
+            }
+            for (std::size_t i = 0; i < 2; ++i) {
+                if (_diff_xs.at(0).has_pdf(i)) {
+                    // a first density of exactly zero gave a zero weight, which
+                    // stays zero (the guard only keeps 0 * x / 0 from a NaN)
+                    auto denominator = fb.add(
+                        pdfs_first.at(i), fb.cut_one(pdfs_first.at(i), 0., 0.)
+                    );
+                    factor =
+                        fb.mul(factor, fb.div(pdfs_acc.at(i), denominator));
+                }
+            }
+            dxs_vec.at(0) = fb.mul(dxs_vec.at(0), factor);
+        } else {
+            // several powers of alpha_s mix (gluon fusion and VBF in one
+            // process, say): the matrix element has to be evaluated again
+            dxs_vec = _diff_xs.at(0)
+                          .build_function(fb, make_xs_args(pdfs_acc, alpha_qcd_acc))
+                          .values();
+        }
     }
 
     auto diff_xs_acc = dxs_vec.at(0);
