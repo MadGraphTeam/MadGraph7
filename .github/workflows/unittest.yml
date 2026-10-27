@@ -393,6 +393,15 @@ jobs:
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_CF_simple test_cf_computation test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz testIO_test_pptt_ewsudakovSA testIO_test_ppzz_ewsudakov testIO_test_ppw_fksall testIO_Loop_sqso_uux_ddx test_check_import_model test_schedular test_dummy_fcts test_UFO_Python_helas_call_writer_fd test_get_symmetric_color test_get_symmetric_lorentz test_remove_interactions2 test_remove_interactions3 test_fd_python_value_matches_unitary_fixed_point test_shower_card_write -t0
 
+      # ---- grouped FKS metadata ----
+      # Physical flavour classes of grouped NLO P directories, and the virtual
+      # row the MadLoop filters (HelFilter.dat) are set up for.
+      - name: "grouped FKS metadata: flavour classes and MadLoop filters"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -t0 TestGroupedFKSMetadata
+
 
   unittest_bundle_5:
     # former jobs, run one after the other: unittest_18_3 unittest_19

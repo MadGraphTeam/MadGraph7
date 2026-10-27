@@ -552,6 +552,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             self.write_lh_order(filename, [matrix_element.born_me.get('processes')[0]], OLP)
         
         if matrix_element.virt_matrix_element:
+                    matrix_element.virt_matrix_element.evaluated_flavor_pdgs = \
+                        self.get_virtual_evaluated_flavor_pdgs(matrix_element)
                     calls += self.generate_virt_directory( \
                             matrix_element.virt_matrix_element, \
                             fortran_model, \
@@ -2704,6 +2706,22 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         return proc_def_to_label
             
                                 
+    @staticmethod
+    def get_virtual_evaluated_flavor_pdgs(matrix_element):
+        """Return the physical Born rows (signed PDGs) for which this P
+        directory evaluates its virtual.
+
+        MadLoop only keeps its filters, and so writes the HelFilter.dat that
+        BinothLHA reads for the MC over helicities, when these are a single
+        row of the virtual (see
+        LoopProcessExporterFortranSA.get_virtual_filter_flavor).  The rows
+        are read without resolving the virtual ones, since that can trim the
+        loop matrix element before it is exported.
+        """
+        return [info['flavor_class']['born_pdgs'] for info in
+                matrix_element.get_fks_info_list(resolve_virtual=False)
+                if 'flavor_class' in info]
+
     def generate_virt_directory(self, loop_matrix_element, fortran_model, dir_name):
         """writes the V**** directory inside the P**** directories specified in
         dir_name"""
