@@ -86,6 +86,17 @@ _MODE_RE = re.compile(r"^\s*(?P<verb>change|set)\s+mode\s+(?P<mode>\S+)\s*$", re
 _LAUNCH_RE = re.compile(r"^\s*launch\b", re.I)
 
 
+# A "!" comment: from a "!" at the start of the line or after whitespace (the
+# reweight cards' examples use both "#" and "!" for trailing comments).
+_BANG_COMMENT_RE = re.compile(r"(?:^|\s)!.*$")
+
+
+def strip_comment(line: str) -> str:
+    """line without its comment: what follows a "#", or a "!" at the start
+    of the line or after whitespace."""
+    return _BANG_COMMENT_RE.sub("", line.split("#", 1)[0])
+
+
 def deprecated(old: str, new: str) -> None:
     """Warns that the reweight-card spelling old is replaced by new."""
     logger.warning("reweight card: '%s' is deprecated, use '%s' instead", old, new)
@@ -152,7 +163,7 @@ def card_kind(text: str) -> str:
     madgraph/various/reweight_backend.classify_card()."""
     has_pdf = False
     for raw_line in text.splitlines():
-        words = raw_line.split("#", 1)[0].split()
+        words = strip_comment(raw_line).split()
         if len(words) < 2:
             continue
         keyword, name = words[0].lower(), words[1].lower()
@@ -178,7 +189,7 @@ def split_by_mode(text: str) -> dict[str, str]:
     current_mode = "parameter"
 
     for raw_line in text.splitlines():
-        line = raw_line.split("#", 1)[0]
+        line = strip_comment(raw_line)
 
         mode_match = _MODE_RE.match(line) if line.strip() else None
         if mode_match:

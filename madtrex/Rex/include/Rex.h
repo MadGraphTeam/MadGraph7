@@ -3745,6 +3745,10 @@ namespace REX
         double get(const std::string &block,
                    int index,
                    double fallback = 0.0) const;
+        // indices known only at run time (multi-index blocks of a reweight card)
+        double get(const std::string &block,
+                   const std::vector<int> &indices,
+                   double fallback = 0.0) const;
 
         // Set
         void set(const std::string &block,
@@ -3752,6 +3756,9 @@ namespace REX
                  double value);
         void set(const std::string &block,
                  int index,
+                 double value);
+        void set(const std::string &block,
+                 const std::vector<int> &indices,
                  double value);
 
         // -------- DECAY: Get / Set --------

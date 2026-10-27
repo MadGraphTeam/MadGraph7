@@ -177,7 +177,7 @@ def classify_card(text):
     has_pdf_names = False
 
     for number, raw in enumerate(text.splitlines(), 1):
-        line = raw.split('#', 1)[0].strip()
+        line = strip_comment(raw).strip()
         if not line:
             continue
         words = line.split()
@@ -248,6 +248,14 @@ def classify_card(text):
     elif has_pdf_names:
         traits.madtrex_kind = 'pdf'
     return traits
+
+
+def strip_comment(line):
+    """line without its comment ("#", or "!" at the start or after
+    whitespace), as the MadtRex card readers strip it
+    (generic_reweight_card.strip_comment)."""
+    from madgraph.iolibs.template_files.mg7 import generic_reweight_card
+    return generic_reweight_card.strip_comment(line)
 
 
 def strip_backend_line(text):

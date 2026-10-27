@@ -113,7 +113,9 @@ class MadtrexStandaloneTest(unittest.TestCase):
         bin/, the gridpack is the default process directory, and the
         resolved cpu backend comes from grid_run_card.toml."""
         with tempfile.TemporaryDirectory() as gridpack:
-            gridpack = Path(gridpack)
+            # resolved: the driver locates itself through its resolved path
+            # (macOS's /var/folders is a symlink into /private)
+            gridpack = Path(gridpack).resolve()
             for pkg in ("madspace", "madtrex"):
                 (gridpack / pkg / "install").mkdir(parents=True)
                 os.symlink(MG_ROOT / pkg / "install" / pkg,
@@ -545,6 +547,36 @@ class ClassicVocabularyTest(unittest.TestCase):
             self.param.resolve_parameter_names(
                 self.param.parse_reweight_card("launch\nset MW 80\n").groups[0].launches,
                 self.PARAM_CARD)
+
+    def test_bang_comments(self):
+        """'!' starts a comment, as '#' does (the default card's examples
+        use both), at the start of a line or after whitespace."""
+        card = self.param.expand_scans(self.param.parse_reweight_card(
+            "! a comment line\nlaunch --rwgt_name=a  ! first weight\n"
+            "set MT 173 ! named\nset MASS 25 scan:[120, 130]   ! one weight per value\n"))
+        launches = card.groups[0].launches
+        self.assertEqual([b.name for b in launches], ["a_1", "a_2"])
+        self.assertEqual(launches[0].sets, [("MT", None, "173"), ("MASS", "25", "120")])
+        pdf = self.pdf.parse_pdf_reweight_card(
+            "change mode pdf ! PDF section\nlaunch\nset PDF_SET CT18NNLO ! or BEAM1_PDF_SET\n")
+        self.assertEqual(len(pdf.launches), 1)
+        self.assertEqual(self.generic.card_kind("launch\nset PDF_SET X ! comment\n"), "pdf")
+        self.assertEqual(self.generic.strip_comment("set A 1 # x ! y"), "set A 1 ")
+        self.assertEqual(self.generic.strip_comment("set A b!c"), "set A b!c")
+
+    def test_multi_index_parameters(self):
+        """'set NMIX 1 2 0.5': every index is kept, also when the
+        parameter is given by its param_card name."""
+        param_card = ("BLOCK NMIX #\n  1 1 9.0e-01 # NMIX11\n  1 2 1.0e-01 # NMIX12\n"
+                      "BLOCK MASS #\n  6 1.73e+02 # MT\n")
+        card = self.param.expand_scans(self.param.parse_reweight_card(
+            "launch --rwgt_name=a\nset NMIX 1  2 0.5\nset MASS 6 175\nset nmix11 0.3\n"
+            "launch --rwgt_name=b\nset NMIX 1 2 scan:[0.1, 0.2]\n"))
+        launches = self.param.resolve_parameter_names(card.groups[0].launches, param_card)
+        self.assertEqual(self.param.render_launches(launches).splitlines(), [
+            "launch --rwgt_name=a", "set NMIX 1 2 0.5", "set MASS 6 175", "set NMIX 1 1 0.3",
+            "launch --rwgt_name=b_1", "set NMIX 1 2 0.1",
+            "launch --rwgt_name=b_2", "set NMIX 1 2 0.2"])
 
     def test_card_kind(self):
         kind = self.generic.card_kind

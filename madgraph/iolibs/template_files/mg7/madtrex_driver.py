@@ -1104,7 +1104,7 @@ def check_card_for_standalone(rwgt_path: str) -> None:
     problems = []
     with open(rwgt_path) as f:
         for number, raw_line in enumerate(f, 1):
-            line = raw_line.split("#", 1)[0]
+            line = generic_rwgt_card.strip_comment(raw_line)
             words = line.split()
             if len(words) >= 2 and words[0].lower() == "change" and words[1].lower() == "backend":
                 value = words[2].lower() if len(words) > 2 else ""

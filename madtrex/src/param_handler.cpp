@@ -61,17 +61,25 @@ bool ParamHandler::apply_launch(std::size_t idx) {
         }
     }
 
+    auto set_everywhere = [this](const std::string& location, double value) {
+        for (auto* api : _apis) {
+            std::lock_guard<std::mutex> guard(detail::api_call_mutex(*api));
+            auto& cache = _nominal[api];
+            if (cache.find(location) == cache.end()) {
+                cache[location] = api->get_parameter(location);
+            }
+            api->set_parameter(location, value, 0.0);
+        }
+    };
     for (auto& [block_name, block] : _card_iter.cards[idx].blocks) {
         for (auto [param_id, value] : block.params) {
-            std::string location = block_name + " " + std::to_string(param_id);
-            for (auto* api : _apis) {
-                std::lock_guard<std::mutex> guard(detail::api_call_mutex(*api));
-                auto& cache = _nominal[api];
-                if (cache.find(location) == cache.end()) {
-                    cache[location] = api->get_parameter(location);
-                }
-                api->set_parameter(location, value, 0.0);
-            }
+            set_everywhere(block_name + " " + std::to_string(param_id), value);
+        }
+        // multi-index entries: the UMAMI location is "BLOCK I J ..."
+        for (const auto& [param_ids, value] : block.multi_params) {
+            std::string location = block_name;
+            for (int param_id : param_ids) location += " " + std::to_string(param_id);
+            set_everywhere(location, value);
         }
     }
     return true;

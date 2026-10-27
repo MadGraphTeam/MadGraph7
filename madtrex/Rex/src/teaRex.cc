@@ -66,6 +66,15 @@ namespace REX::tea
         this->add_param(block_name, std::make_pair(param_id, param_value));
     }
 
+    void rwgt_slha::rwgt_card::add_param(const std::string &block_name, std::vector<int> param_ids, double param_value)
+    {
+        if (param_ids.size() == 1)
+            return this->add_param(block_name, param_ids[0], param_value);
+        if (this->blocks.find(block_name) == this->blocks.end())
+            this->blocks[block_name] = rwgt_block{block_name, {}};
+        this->blocks[block_name].multi_params.emplace_back(std::move(param_ids), param_value);
+    }
+
     void rwgt_slha::parse_rwgt_card(std::istream &is)
     {
         this->cards.clear();
@@ -117,10 +126,15 @@ namespace REX::tea
                     ++curr_ind_of_line;
                 std::string curr_block = std::string(rwgt_line[curr_ind_of_line]);
                 ++curr_ind_of_line;
-                int curr_param = REX::ctoi(rwgt_line[curr_ind_of_line]);
-                ++curr_ind_of_line;
+                // one index, or several for a multi-index block ("set NMIX 1 2
+                // 0.5"): every word between the block and the value
+                if (curr_ind_of_line + 1 >= rwgt_line.size())
+                    throw std::runtime_error("rwgt_slha::parse_rwgt_card: \"set\" line without a parameter index: " + line);
+                std::vector<int> curr_params;
+                for (; curr_ind_of_line + 1 < rwgt_line.size(); ++curr_ind_of_line)
+                    curr_params.push_back(REX::ctoi(rwgt_line[curr_ind_of_line]));
                 double curr_val = REX::ctod(rwgt_line[curr_ind_of_line]);
-                this->cards[curr_launch].add_param(curr_block, curr_param, curr_val);
+                this->cards[curr_launch].add_param(curr_block, std::move(curr_params), curr_val);
                 this->cards[curr_launch].rwgt_com += line + "\n";
                 continue;
             }
@@ -216,6 +230,10 @@ namespace REX::tea
                     {
                         this->REX::slha::set(key, param_id, param_value);
                     }
+                    for (const auto &[param_ids, param_value] : val.multi_params)
+                    {
+                        this->REX::slha::set(key, param_ids, param_value);
+                    }
                 }
             }
             this->orig_params.blocks.clear();
@@ -238,6 +256,12 @@ namespace REX::tea
                     auto curr_param = this->REX::slha::get(key, param_id);
                     this->orig_params.add_param(key, param_id, curr_param);
                     this->REX::slha::set(key, param_id, param_value);
+                }
+                for (const auto &[param_ids, param_value] : val.multi_params)
+                {
+                    auto curr_param = this->REX::slha::get(key, param_ids);
+                    this->orig_params.add_param(key, param_ids, curr_param);
+                    this->REX::slha::set(key, param_ids, param_value);
                 }
             }
         }

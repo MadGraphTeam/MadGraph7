@@ -101,6 +101,13 @@ class ClassifyCardTest(unittest.TestCase):
         traits = rb.classify_card("change mode LO\n" + LAUNCH)
         self.assertEqual((traits.classic_only, traits.madtrex_only), ([], []))
 
+    def test_bang_comments(self):
+        """A '!' comment does not hide what a line asks for."""
+        traits = rb.classify_card("launch ! first\nset PDF_SET 331700 ! NNPDF\n")
+        self.assertEqual([d.line for d in traits.madtrex_only], [2])
+        self.assertEqual(traits.madtrex_kind, 'pdf')
+        self.assertEqual(rb.classify_card("! launch\n").launches, 0)
+
     def test_named_parameters_are_shared(self):
         traits = rb.classify_card("launch\nset MT 175\nset param_card mass 6 175\n")
         self.assertEqual((traits.classic_only, traits.madtrex_only), ([], []))

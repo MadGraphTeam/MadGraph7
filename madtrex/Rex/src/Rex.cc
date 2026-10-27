@@ -7506,6 +7506,17 @@ namespace REX
         return get(block, {i1}, fallback);
     }
 
+    double slha::get(const std::string &block,
+                     const std::vector<int> &indices,
+                     double fallback) const
+    {
+        auto itb = blocks_.find(upper(block));
+        if (itb == blocks_.end())
+            return fallback;
+        auto itv = itb->second.entries.find(indices);
+        return (itv == itb->second.entries.end()) ? fallback : itv->second;
+    }
+
     void slha::set(const std::string &block,
                    std::initializer_list<int> indices,
                    double value)
@@ -7520,6 +7531,13 @@ namespace REX
                    double value)
     {
         set(block, {i1}, value);
+    }
+
+    void slha::set(const std::string &block,
+                   const std::vector<int> &indices,
+                   double value)
+    {
+        blocks_[upper(block)].entries[indices] = value;
     }
 
     double slha::get_decay(int pid, double fallback) const

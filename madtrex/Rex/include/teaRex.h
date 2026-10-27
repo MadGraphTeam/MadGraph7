@@ -113,6 +113,8 @@ namespace REX::tea
         {
             std::string name;
             std::vector<std::pair<int, double>> params;
+            // entries with several indices ("set NMIX 1 2 0.5")
+            std::vector<std::pair<std::vector<int>, double>> multi_params = {};
         };
 
         struct rwgt_card
@@ -122,6 +124,7 @@ namespace REX::tea
             std::unordered_map<std::string, rwgt_block> blocks;
             void add_param(const std::string &block_name, std::pair<int, double> param);
             void add_param(const std::string &block_name, int param_id, double param_value);
+            void add_param(const std::string &block_name, std::vector<int> param_ids, double param_value);
         };
 
         std::vector<rwgt_card> cards = {};

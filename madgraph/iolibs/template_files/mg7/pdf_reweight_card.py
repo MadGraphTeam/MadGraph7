@@ -233,7 +233,7 @@ def parse_pdf_reweight_card(text: str) -> ParsedPdfCard:
     current_launch: PdfLaunch | None = None
 
     for raw_line in text.splitlines():
-        line = raw_line.split("#", 1)[0]
+        line = _vocab.strip_comment(raw_line)
         if not line.strip():
             continue
 

@@ -121,11 +121,13 @@ _MODEL_RE = re.compile(r"^\s*change\s+model\s+(?P<spec>.+?)\s*$", re.I)
 _PROCESS_RE = re.compile(r"^\s*change\s+process\s+(?P<definition>.+?)\s*$", re.I)
 _LAUNCH_RE = re.compile(r"^\s*launch\b(?P<rest>.*)$", re.I)
 _NAME_RE = re.compile(r"rwgt_name\s*=\s*(?P<name>\S+)", re.I)
-# "set [param_card] <block> <id> <value>", <id> an integer; and "set
-# [param_card] <name> <value>" for a parameter named by its param_card name.
-# <value> may hold spaces (scan:[1, 2]).
+# "set [param_card] <block> <id> <value>", <id> one integer or several
+# (multi-index blocks: "set NMIX 1 2 0.5"); and "set [param_card] <name>
+# <value>" for a parameter named by its param_card name. <value> may hold
+# spaces (scan:[1, 2]).
 _SET_RE = re.compile(
-    r"^\s*set\s+(?:param_card\s+)?(?P<block>\S+)\s+(?P<id>[+-]?\d+)\s+(?P<value>.+?)\s*$",
+    r"^\s*set\s+(?:param_card\s+)?(?P<block>\S+)\s+(?P<id>[+-]?\d+(?:\s+[+-]?\d+)*)"
+    r"\s+(?P<value>.+?)\s*$",
     re.I,
 )
 _NAMED_SET_RE = re.compile(r"^\s*set\s+(?:param_card\s+)?(?P<name>\S+)\s+(?P<value>.+?)\s*$", re.I)
@@ -318,7 +320,7 @@ def parse_reweight_card(text: str) -> ParsedCard:
     driver_options = DriverOptions()
 
     for raw_line in text.splitlines():
-        line = raw_line.split("#", 1)[0]
+        line = _vocab.strip_comment(raw_line)
         if not line.strip():
             continue
         _vocab.check_not_classic_only(line, raw_line)
@@ -417,7 +419,8 @@ def parse_reweight_card(text: str) -> ParsedCard:
                 if not after_launch:
                     raise ValueError(f"reweight card 'set' line appears before any 'launch': {raw_line!r}")
                 if set_match:
-                    entry = (set_match.group("block"), set_match.group("id"), set_match.group("value"))
+                    entry = (set_match.group("block"), " ".join(set_match.group("id").split()),
+                             set_match.group("value"))
                 else:
                     entry = (named_match.group("name"), None, named_match.group("value"))
                 current_group.launches[-1].sets.append(entry)
@@ -525,8 +528,8 @@ def read_param_card_names(text: str) -> dict[str, tuple[str, str]]:
     """{name: (block, id)} for the parameters of the param_card text, named
     by the comment of their line as the classic reweighting module does
     (eg "  6 1.730000e+02 # MT" in BLOCK MASS, "DECAY 6 1.49 # WT"), names
-    lowercase. Entries with several indices are left out: give those as
-    "set BLOCK ID VALUE"."""
+    lowercase. An entry with several indices (eg "  1  2 5.0e-01 # NMIX12")
+    gets them all, space separated ("1 2")."""
     names: dict[str, tuple[str, str]] = {}
     block = None
     for line in text.splitlines():
@@ -543,8 +546,8 @@ def read_param_card_names(text: str) -> dict[str, tuple[str, str]]:
             if len(words) >= 3 and comment.split():
                 names.setdefault(comment.split()[0].lower(), ("DECAY", words[1]))
             continue
-        if block is not None and len(words) == 2 and comment.split():
-            names.setdefault(comment.split()[0].lower(), (block, words[0]))
+        if block is not None and len(words) >= 2 and comment.split():
+            names.setdefault(comment.split()[0].lower(), (block, " ".join(words[:-1])))
     return names
 
 
