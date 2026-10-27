@@ -74,24 +74,11 @@ pub const TREE_SCHEMA: u32 = 4;
 /// input and output counts. The evaluator is the one binary64 would run
 /// without it (its coefficients, registered constants included, cast as
 /// [`TreeProgram::runtime`] casts them), compiled at `opt_level` into
-/// storage-v4 IR (`evaluator::symjit_plane`). A plane application that
-/// disagrees with its evaluator at the check's probes is refused
-/// ([`compile_plane_application_checked`] returns the [`PlaneMismatch`]).
-#[cfg(feature = "python-generation-bridge")]
-pub fn compile_plane_application(
-    saved: &[u8],
-    opt_level: u8,
-    compress: bool,
-) -> RusticolResult<(Vec<u8>, usize, usize)> {
-    compile_plane_application_checked(saved, opt_level, compress)?
-        .map_err(|mismatch| invalid(mismatch.to_string()))
-}
-
-/// [`compile_plane_application`] with the plane check's refusal as a value:
-/// `Ok(Err(mismatch))` when the plane application disagrees with its exact
-/// evaluator (the generation refuses the program, naming the output:
-/// `native_trees.NATIVE_EXPORT_REFUSALS` key `plane-mismatch`); any other
-/// failure is an error.
+/// storage-v4 IR (`evaluator::symjit_plane`). The plane check's refusal is
+/// a value: `Ok(Err(mismatch))` when the plane application disagrees with
+/// its exact evaluator at the check's probes (the generation refuses the
+/// program, naming the output: `native_trees.NATIVE_EXPORT_REFUSALS` key
+/// `plane-mismatch`); any other failure is an error.
 #[cfg(feature = "python-generation-bridge")]
 pub fn compile_plane_application_checked(
     saved: &[u8],
@@ -212,7 +199,7 @@ fn first_mismatch(
     None
 }
 
-/// The binary64 rows of a plane application (`compile_plane_application`)
+/// The binary64 rows of a plane application (`compile_plane_application_checked`)
 /// through the production loader, row-major: a cold-path check of an export
 /// against its exact evaluator.
 #[cfg(feature = "python-generation-bridge")]
