@@ -112,7 +112,7 @@ def _resonances(lhe_path):
 class MG7AmplicolTest(unittest.TestCase):
 
     def setUp(self):
-        from madgraph.iolibs.template_files.mg7 import bootstrap
+        from madgraph.mg7 import bootstrap
         # not imported: Symbolica would hold its lock against the pyamplicol worker
         missing = [name for name, installed in (
             ('madspace', bootstrap.madspace_is_installed()),

@@ -9805,11 +9805,11 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # what needs madspace). The bootstrap has to be told whether it may
             # take over the terminal: in a subprocess it could read that off
             # sys.argv/sys.stdin, but in process those describe MG5, not the run.
-            from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
+            from madgraph.mg7 import bootstrap as mg7_bootstrap
             mg7_bootstrap.ensure_madspace(
                 interactive=bool(self.use_rawinput) and not options['force'],
                 jobs=self.options['nb_core'])
-            from madgraph.iolibs.template_files.mg7 import launch as mg7_launch
+            from madgraph.mg7 import launch as mg7_launch
 
             MG7 = mg7_launch.MG7Cmd(me_dir=me_dir, options=self.options)
             if options['interactive']:
@@ -13766,7 +13766,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         after others succeeded, the caller still has the decay_info it would
         hand to MadEvent.
         """
-        from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
+        from madgraph.mg7 import bootstrap as mg7_bootstrap
         # the survey of a decay uses no PDF: only the build needs the environment
         self.setup_mg7_environment(lhapdf=False)
         mg7_bootstrap.ensure_madspace(interactive=False,

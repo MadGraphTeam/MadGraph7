@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from madgraph.iolibs.template_files.mg7.common import ms
+from madgraph.mg7.common import ms
 
 @dataclass
 class CutItem:

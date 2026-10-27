@@ -5,8 +5,8 @@ import os
 import sys
 import time
 
-from madgraph.iolibs.template_files.mg7 import npy_to_lhe
-from madgraph.iolibs.template_files.mg7.options import lhapdf_paths, load_mg5_options
+from madgraph.mg7 import npy_to_lhe
+from madgraph.mg7.options import lhapdf_paths, load_mg5_options
 
 def _find_event_file(run_path):
     """Locate the LHE event file produced by generate_events (if any)."""
@@ -162,7 +162,7 @@ def run_selected_tools(switch, process) -> None:
     log.info("Post-processing the generated events with: %s", ", ".join(tools))
 
     try:
-        from madgraph.iolibs.template_files.mg7.run_interface import MG7RunCmd
+        from madgraph.mg7.run_interface import MG7RunCmd
         cmd = MG7RunCmd(os.getcwd(), load_mg5_options(), run_name, lhe_path)
         cmd.set_run_name(run_name, None, "parton")
     except Exception as error:

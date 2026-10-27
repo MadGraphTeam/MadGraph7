@@ -13,16 +13,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from madgraph.iolibs.template_files.mg7.common import lhe_helicities, ms
-from madgraph.iolibs.template_files.mg7.observables import clean_pids
-from madgraph.iolibs.template_files.mg7.subprocess_madmatrix import (
+from madgraph.mg7.common import lhe_helicities, ms
+from madgraph.mg7.observables import clean_pids
+from madgraph.mg7.subprocess_madmatrix import (
     Channel,
     MadgraphSubprocess,
     PhaseSpace,
 )
 
 if TYPE_CHECKING:
-    from madgraph.iolibs.template_files.mg7.madgraph_process import MadgraphProcess
+    from madgraph.mg7.madgraph_process import MadgraphProcess
 
 
 def is_amplicol(meta: dict) -> bool:

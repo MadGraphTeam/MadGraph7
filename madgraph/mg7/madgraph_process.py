@@ -9,23 +9,23 @@ import subprocess
 import tempfile
 import time
 
-from madgraph.iolibs.template_files.mg7.common import backend_of, fptype_of, get_start_time, interference_helicities_summed, lhe_helicities, lhe_weight_info, logger, me_parameters, ms, resolve_auto_backend, resolve_seed, resolve_verbosity
+from madgraph.mg7.common import backend_of, fptype_of, get_start_time, interference_helicities_summed, lhe_helicities, lhe_weight_info, logger, me_parameters, ms, resolve_auto_backend, resolve_seed, resolve_verbosity
 from madgraph.various import misc
 from madgraph.various.banner import RunCardMG7
 from madgraph.models.check_param_card import ParamCard
 from madgraph.models.model_reader import Alphas_Runner
-from madgraph.iolibs.template_files.mg7 import hwu_output
-from madgraph.iolibs.template_files.mg7 import npy_to_lhe
-from madgraph.iolibs.template_files.mg7 import options
-from madgraph.iolibs.template_files.mg7 import plots
-from madgraph.iolibs.template_files.mg7 import systematics_summary
-from madgraph.iolibs.template_files.mg7.bootstrap import INSTALL_DIR as _INSTALL_DIR
-from madgraph.iolibs.template_files.mg7.bootstrap import MADSPACE_DIR as _MADSPACE_DIR
+from madgraph.mg7 import hwu_output
+from madgraph.mg7 import npy_to_lhe
+from madgraph.mg7 import options
+from madgraph.mg7 import plots
+from madgraph.mg7 import systematics_summary
+from madgraph.mg7.bootstrap import INSTALL_DIR as _INSTALL_DIR
+from madgraph.mg7.bootstrap import MADSPACE_DIR as _MADSPACE_DIR
 from madgraph.iolibs.template_files.mg7.custom_function_loader import load_custom_function
-from madgraph.iolibs.template_files.mg7.observables import CutItem, HistItem, build_observable, clean_pids, observable_pids
-from madgraph.iolibs.template_files.mg7.options import lhapdf_paths
-from madgraph.iolibs.template_files.mg7.subprocess_amplicol import AmplicolSubprocess, amplicol_subproc_args, is_amplicol
-from madgraph.iolibs.template_files.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
+from madgraph.mg7.observables import CutItem, HistItem, build_observable, clean_pids, observable_pids
+from madgraph.mg7.options import lhapdf_paths
+from madgraph.mg7.subprocess_amplicol import AmplicolSubprocess, amplicol_subproc_args, is_amplicol
+from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
 
 # From this many subprocess directories to compile, the standard headers are
 # precompiled once ('make PCH=1', see madmatrix.mk): each file of a small process
@@ -2035,7 +2035,8 @@ class MadgraphProcess:
         bin_path = os.path.join(gridpack_path, "bin")
         os.mkdir(bin_path)
         gen_events_file = os.path.join(bin_path, "generate_events")
-        template_dir = os.path.dirname(__file__)
+        template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                    "iolibs", "template_files", "mg7")
         shutil.copy(os.path.join(template_dir, "gridpack.py"), gen_events_file)
         shutil.copy(os.path.join(template_dir, "custom_function_loader.py"), bin_path)
         os.chmod(gen_events_file, 0o755)

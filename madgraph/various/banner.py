@@ -8201,7 +8201,7 @@ class RunCardMG7(RunCard):
 
     # MadGraph gives a leg whose flavours were merged one of these codes; the
     # mg7 runtime resolves them to the same representatives (clean_pids /
-    # _MERGED_PID_REPRESENTATIVE in template_files/mg7/launch.py), so the
+    # _MERGED_PID_REPRESENTATIVE in madgraph/mg7/launch.py), so the
     # observables have to be written in terms of those.
     merged_pid_representative = {81: 1, 82: 11, 83: 12}
 

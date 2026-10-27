@@ -7,7 +7,7 @@ import subprocess
 
 from madgraph.models.check_param_card import group_auto_widths
 from madgraph.various import misc
-from madgraph.iolibs.template_files.mg7.bootstrap import MG_ROOT as _MG_ROOT
+from madgraph.mg7.bootstrap import MG_ROOT as _MG_ROOT
 
 logger = logging.getLogger("madgraph7")
 

@@ -10,7 +10,7 @@ import time
 # Install madspace on first use, then import it. The bootstrap lives in its own
 # module (which must not import madspace) so that an in-process caller can run
 # it *before* importing this one -- see bootstrap.ensure_madspace.
-from madgraph.iolibs.template_files.mg7.bootstrap import (
+from madgraph.mg7.bootstrap import (
     ensure_madspace as _ensure_madspace,
     drop_install_path as _drop_install_path,
     MADSPACE_DIR as _MADSPACE_DIR,

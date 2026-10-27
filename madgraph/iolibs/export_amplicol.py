@@ -73,7 +73,7 @@ PYTHONPATH=%(install)s${PYTHONPATH:+:$PYTHONPATH} exec %(python)s -m rusticol_co
 def check_pyamplicol(interactive=None, jobs=None):
     """Install pyamplicol in pyamplicol/install if needed and put it first on
     sys.path, which the worker inherits. Never imported here, see amplicol_worker."""
-    from madgraph.iolibs.template_files.mg7 import bootstrap
+    from madgraph.mg7 import bootstrap
     try:
         bootstrap.ensure_pyamplicol(interactive=interactive, jobs=jobs)
     except RuntimeError as error:
@@ -83,7 +83,7 @@ def check_pyamplicol(interactive=None, jobs=None):
 
 def write_rusticol_config(subproc_dir):
     """SubProcesses/rusticol-config, the RUSTICOL_CONFIG of the makefiles."""
-    from madgraph.iolibs.template_files.mg7 import bootstrap
+    from madgraph.mg7 import bootstrap
     path = pjoin(subproc_dir, 'rusticol-config')
     with open(path, 'w') as stream:
         stream.write(RUSTICOL_CONFIG % {

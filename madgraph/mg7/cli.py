@@ -6,14 +6,14 @@ import os
 import re
 import resource
 
-from madgraph.iolibs.template_files.mg7.common import logger
+from madgraph.mg7.common import logger
 from madgraph.interface.extended_cmd import Cmd
 from madgraph.various.banner import RunCardMG7
-from madgraph.iolibs.template_files.mg7 import npy_to_lhe
-from madgraph.iolibs.template_files.mg7.driver import compute_decay_widths, force_lhe_output_if_needed, run_generation
-from madgraph.iolibs.template_files.mg7.model_widths import compute_auto_widths, load_process_model
-from madgraph.iolibs.template_files.mg7.options import lhapdf_paths, load_mg5_options
-from madgraph.iolibs.template_files.mg7.postprocess import _off, _setup_logging
+from madgraph.mg7 import npy_to_lhe
+from madgraph.mg7.driver import compute_decay_widths, force_lhe_output_if_needed, run_generation
+from madgraph.mg7.model_widths import compute_auto_widths, load_process_model
+from madgraph.mg7.options import lhapdf_paths, load_mg5_options
+from madgraph.mg7.postprocess import _off, _setup_logging
 
 class MG7Cmd(Cmd):
     """The mg7 run interface: the command object that drives a launch.

@@ -7,12 +7,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal, NamedTuple, TYPE_CHECKING
 
-from madgraph.iolibs.template_files.mg7.common import logger, me_parameters, ms
+from madgraph.mg7.common import logger, me_parameters, ms
 from madgraph.iolibs.template_files.mg7.custom_function_loader import load_surrogate
-from madgraph.iolibs.template_files.mg7.observables import build_observable, clean_pids, decay_products, observable_pids, pid_is_qcd
+from madgraph.mg7.observables import build_observable, clean_pids, decay_products, observable_pids, pid_is_qcd
 
 if TYPE_CHECKING:
-    from madgraph.iolibs.template_files.mg7.madgraph_process import MadgraphProcess
+    from madgraph.mg7.madgraph_process import MadgraphProcess
 
 @dataclass
 class Channel:

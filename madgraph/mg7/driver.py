@@ -6,11 +6,11 @@ import os
 import re
 import shutil
 
-from madgraph.iolibs.template_files.mg7.common import logger
+from madgraph.mg7.common import logger
 from madgraph.various.banner import RunCardMG7
-from madgraph.iolibs.template_files.mg7.model_widths import compute_auto_widths
-from madgraph.iolibs.template_files.mg7.postprocess import run_lhe_postprocessing, run_selected_tools, selected_tools
-from madgraph.iolibs.template_files.mg7.madgraph_process import MadgraphProcess
+from madgraph.mg7.model_widths import compute_auto_widths
+from madgraph.mg7.postprocess import run_lhe_postprocessing, run_selected_tools, selected_tools
+from madgraph.mg7.madgraph_process import MadgraphProcess
 
 def compute_decay_widths(
     me_dir: str = ".", precision: float = 0.01, nb_core: int | None = None,

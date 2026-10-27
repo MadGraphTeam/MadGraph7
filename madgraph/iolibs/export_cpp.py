@@ -3223,7 +3223,7 @@ def mg7_launcher_source(interpreter, mg5_dir):
           "    os.execv(_INTERPRETER, [_INTERPRETER,\n"
           "                            os.path.abspath(__file__)] + sys.argv[1:])\n"
         + "sys.path.append(%r)\n" % mg5_dir
-        + "from madgraph.iolibs.template_files.mg7.launch import main\n"
+        + "from madgraph.mg7.launch import main\n"
           "if __name__ == '__main__':\n"
           "    os.chdir(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
           "    try:\n"
@@ -3319,7 +3319,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
                     "#! /usr/bin/env python3\n"
                     "import sys, os\n"
                     f"sys.path.append('{MG5DIR}')\n"
-                    "from madgraph.iolibs.template_files.mg7.npy_to_lhe import main\n"
+                    "from madgraph.mg7.npy_to_lhe import main\n"
                     "if __name__ == '__main__':\n"
                     "    main(me_dir=os.path.dirname(os.path.dirname(os.path.realpath(__file__))))\n"
                 )
@@ -3331,7 +3331,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
                     "#! /usr/bin/env python3\n"
                     "import sys, os\n"
                     f"sys.path.append('{MG5DIR}')\n"
-                    "from madgraph.iolibs.template_files.mg7.init_custom_func import main\n"
+                    "from madgraph.mg7.init_custom_func import main\n"
                     "if __name__ == '__main__':\n"
                     "    sys.exit(main(me_dir=os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))\n"
                 )
