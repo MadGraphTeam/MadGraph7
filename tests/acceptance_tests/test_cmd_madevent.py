@@ -2083,6 +2083,55 @@ class TestMECmdShell(unittest.TestCase):
                 )
 
 
+    def test_mlm_pdfrwt_flavour(self):
+        """With MLM (ickkw=1) and use_syst, the leading <pdfrwt> entry of each
+        beam must be the event's incoming parton. A grouped subprocess
+        (q q~ > z with q = d s / u c) clusters with the representative of its
+        coupling class: s s~ > z was booked as 1 and c c~ > z as 2, so the
+        systematics of every s/c-initiated event used the d/u PDF."""
+
+        run_dir = pjoin(self.path, 'MGPROC_pdfrwt')
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.exec_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.exec_cmd('import model sm')
+        mg_cmd.exec_cmd('generate p p > z @0')
+        mg_cmd.exec_cmd('add process p p > z j @1')
+        mg_cmd.exec_cmd('output madevent %s' % run_dir)
+
+        run_card = banner.RunCardLO(pjoin(run_dir, 'Cards', 'run_card.dat'))
+        run_card.set('nevents', 2000, user=True)
+        run_card.set('iseed', 7, user=True)
+        run_card.set('ickkw', 1, user=True)
+        run_card.set('xqcut', 20.0, user=True)
+        run_card.set('use_syst', True, user=True)
+        run_card.set('systematics_program', 'none', user=True)
+        run_card.write(pjoin(run_dir, 'Cards', 'run_card.dat'))
+
+        self.cmd_line = MECmd.MadEventCmdShell(me_dir=run_dir)
+        self.cmd_line.no_notification()
+        self.cmd_line.exec_cmd('set automatic_html_opening False')
+        self.do('generate_events -f')
+
+        import gzip
+        path = pjoin(run_dir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        text = gzip.open(path, 'rt').read()
+        checked = collections.Counter()
+        for event in re.findall(r'<event[^>]*>(.*?)</event>', text, re.S):
+            lines = [l.split() for l in event.split('<')[0].strip().splitlines()]
+            incoming = [int(l[0]) for l in lines[1:] if l[1] == '-1']
+            pdfrwt = dict(re.findall(r'<pdfrwt beam="(\d)">\s*\d+\s+(-?\d+)', event))
+            self.assertEqual(sorted(pdfrwt), ['1', '2'], event)
+            for beam in (1, 2):
+                self.assertEqual(int(pdfrwt[str(beam)]), incoming[beam-1],
+                                 'leading pdfrwt entry of beam %s is not the '
+                                 'incoming parton:\n%s' % (beam, event))
+            checked[max(abs(p) for p in incoming if p != 21) if any(
+                p != 21 for p in incoming) else 21] += 1
+        # the check is only meaningful with s and c initiated events
+        self.assertGreater(checked[3], 0, checked)
+        self.assertGreater(checked[4], 0, checked)
+
     def test_t_channel_survey_grid(self):
         """check that refining on the survey grid is not biased for
         u q > z u q (all channels pure t-channel chains). With the grid

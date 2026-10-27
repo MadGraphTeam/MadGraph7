@@ -1504,28 +1504,17 @@ c     Guard against invalid subprocess selection (can happen if IPSEL is unset)
          rewgt = 0d0
          return
       endif
-c     Set incoming particle identities
-      ipdgcl(1,igraphs(1),iproc)=idup(1,ipsel,iproc)
-      ipdgcl(2,igraphs(1),iproc)=idup(2,ipsel,iproc)
-      if (btest(mlevel,2)) then
-         write(*,*) 'Set particle identities: ',
-     $        1,ipdgcl(1,igraphs(1),iproc),
-     $        ' and ',
-     $        2,ipdgcl(2,igraphs(1),iproc)
-
-      endif
-      
+c     The flavours of this event are those of row IPSEL of leshouche.inc,
+c     as in DSIG. The rows always carry physical pdg codes (merged legs such
+c     as 81 are expanded per flavour), while FLAVOR(:) only holds the
+c     position of the coupling-class representative (see cluster).
 
       if(ickkw.le.0)then
 c     Store pdf information for systematics studies (initial)
          if(use_syst)then
             do j=1,2
                 n_pdfrw(j,ivec)=1
-                if(abs(ipdgcl(j,igraphs(1),iproc)).eq.81) then
-                   i_pdgpdf(1,j,ivec)=abs(flavor(j))*sign(1,ipdgcl(j,igraphs(1),iproc))
-                else
-                   i_pdgpdf(1,j,ivec)=ipdgcl(j,igraphs(1),iproc)
-                endif
+                i_pdgpdf(1,j,ivec)=idup(j,ipsel,iproc)
                 s_xpdf(1,j,ivec)=xbk(ib(j))
                 s_qpdf(1,j,ivec)=sqrt(q2fact(j))
             enddo
@@ -1545,21 +1534,24 @@ c         stop 1
       endif
       vec_igraph(ivec) = igraphs(1)  ! save MLM-matched graph for this event
 
+c     Set the external identities of the clustered graph to the flavours of
+c     this event: setclscales leaves there the representative of the
+c     coupling class of a grouped subprocess (e.g. d for s s~ > z, u for
+c     c c~ > z), which would otherwise enter the PDF ratios, the Sudakov
+c     factors and the pdfrwt information below.
+      do i=1,nexternal
+         ipdgcl(ishft(1,i-1),igraphs(1),iproc)=idup(i,ipsel,iproc)
+         if (btest(mlevel,2))
+     $        write(*,*) 'Set particle identities: ',
+     $        i,ipdgcl(ishft(1,i-1),igraphs(1),iproc)
+      enddo
 
 c     Store pdf information for systematics studies (initial)
 c     need to be done after      setclscales since that one clean the syscalc value
-c     The pdg is the one of the selected flavour combination (IPSEL), as in
-c     DSIG: after setclscales, ipdgcl of the external legs of a grouped
-c     subprocess holds the flavour class of the event (cluster maps it from
-c     the GET_FLAVOR index), e.g. 2 for c c~ > z or 1 for s s~ > z.
       if(use_syst)then
          do j=1,2
             n_pdfrw(j,ivec)=1
-            if(abs(idup(j,ipsel,iproc)).ne.81)then
-               i_pdgpdf(1,j,ivec)=idup(j,ipsel,iproc)
-            else
-               i_pdgpdf(1,j,ivec)=ipdgcl(j,igraphs(1),iproc)
-            endif
+            i_pdgpdf(1,j,ivec)=ipdgcl(j,igraphs(1),iproc)
             s_xpdf(1,j,ivec)=xbk(ib(j))
             s_qpdf(1,j,ivec)=sqrt(q2fact(j))
          enddo
@@ -1616,12 +1608,6 @@ c     Prepare for resetting q2fact based on PDF reweighting
 c     Prepare checking for parton vertices
       do i=1,nexternal
          j=ishft(1,i-1)
-c        Set jet identities according to chosen subprocess
-         if(isjet(idup(i,ipsel,iproc)))
-     $        ipdgcl(j,igraphs(1),iproc)=idup(i,ipsel,iproc)
-         if (btest(mlevel,2))
-     $        write(*,*) 'Set particle identities: ',
-     $        i,ipdgcl(j,igraphs(1),iproc)
          if(i.le.2)then
             goodjet(j)=isparton(ipdgcl(j,igraphs(1),iproc))
          elseif(iqjets(i).gt.0) then
@@ -1891,15 +1877,9 @@ c     Need to multiply by: initial PDF, alpha_s^n_qcd to get
 c     factor in front of matrix element
          do i=1,2
             if (lpp(IB(i)).ne.0) then
-                if( abs(i_pdgpdf(1,i,ivec)).ne.81)then
                 s_rwfact(ivec)=s_rwfact(ivec)*pdg2pdf(abs(lpp(IB(i))),
      $           i_pdgpdf(1,i,ivec)*sign(1,lpp(IB(i))),IB(i),
      $           s_xpdf(1,i,ivec),s_qpdf(1,i,ivec))
-            else
-                s_rwfact(ivec)=s_rwfact(ivec)*pdg2pdf(abs(lpp(IB(i))),
-     $           abs(flavor(i))*sign(1, i_pdgpdf(1,i,ivec))*sign(1,lpp(IB(i))),IB(i),
-     $           s_xpdf(1,i,ivec),s_qpdf(1,i,ivec))
-            endif
             endif
          enddo
          if (asref.gt.0d0.and.n_qcd(ivec).le.nexternal)then
