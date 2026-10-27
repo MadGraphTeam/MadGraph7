@@ -631,8 +631,9 @@ def test_goldstone_vector_mixing_is_a_vertex_insertion(gmu):
     lines with the propagator kappa N_S N_V / (D_S D_V), the copies of the
     Goldstone's vertices carry the leg's momentum on a promoted vector leg,
     the vector's copies are plain; P(2,1) (the Goldstone's momentum) is
-    +P(k) and P(2,2) is -P(k), P(k) the tree engine's momentum of the copy's
-    leg (minus the momentum flowing in). In unitary gauge the absorbed Goldstone's
+    -P(k) and P(2,2) is +P(k), P(k) the tree engine's momentum of the copy's
+    leg (minus the momentum flowing in), as the tree engine reads every
+    vertex (WP3.2 EWI-7b). In unitary gauge the absorbed Goldstone's
     terms are refused (inert in every request, REQUIREMENTS_ADDENDUM J)."""
 
     from symbolica import E
@@ -650,7 +651,7 @@ def test_goldstone_vector_mixing_is_a_vertex_insertion(gmu):
     lorentz = {item["name"]: item for item in payload["lorentz_structures"]}
     terms = _mixing_terms(feynman, "Z")
     ratios = {s.lorentz: _momentum_ratio(s, lorentz, particles) for s in terms}
-    assert ratios == {"l_GpWmMass4": E("1"), "l_GpWmMass5": E("-1")}
+    assert ratios == {"l_GpWmMass4": E("-1"), "l_GpWmMass5": E("1")}
 
     def lower(gauge, absorbed=frozenset()):
         return lower_line_insertions(
@@ -670,7 +671,7 @@ def test_goldstone_vector_mixing_is_a_vertex_insertion(gmu):
     assert not any(item["goldstoneboson"] for item in clones.values())
     assert sorted(lines.reads_as.values()) == ["G0", "Z"]
     (scale,) = lines.parameters
-    assert E(scale["expression"]) == E("2*UFO::{}::MZ-(2+𝑖)*UFO::{}::MZ")  # noqa: RUF001
+    assert E(scale["expression"]) == E("(2+𝑖)*UFO::{}::MZ-2*UFO::{}::MZ")  # noqa: RUF001
     for record in lines.propagators:
         assert record["pyamplicol_source"] == "model-supplied"
         assert "Metric" in record["numerator"] and scale["name"] in record["numerator"]
@@ -962,6 +963,123 @@ def test_born_closure_reads_the_z_h_goldstone_root_in_both_gauges(gmu, loop_nati
             strict=True,
         ):
             assert abs(float(mine) - float(theirs)) <= 1e-14 * scale
+
+
+def _born_and_virtual(compiled, process, point, loop_native):
+    """Born and virtual of ``process`` (QED=2 [virt=QCD], G_mu, widths zero)
+    at one point, 32 digits."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+
+    request = SliceRequest(
+        process,
+        {"QCD": 0, "QED": 2},
+        {"QCD": 2, "QED": 2},
+        fixed_parameters=ZERO_WIDTHS,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    assert slice_.compiled.ir.gauge == compiled.ir.gauge
+    return slice_.evaluate(
+        point, "250000", parameters={"aS": "0.118"}, precision=Precision.arbitrary(32)
+    )
+
+
+def _assert_same_born_and_virtual(found, expected):
+    for sector, born in expected.born.items():
+        assert float(found.born[sector]) == pytest.approx(float(born), rel=1e-13)
+    for sector, laurent in expected.components["virtual"].items():
+        scale = max(abs(float(x)) for x in laurent.coefficients)
+        for mine, theirs in zip(
+            found.components["virtual"][sector].coefficients,
+            laurent.coefficients,
+            strict=True,
+        ):
+            assert abs(float(mine) - float(theirs)) <= 1e-14 * scale
+
+
+@pytest.mark.loop_nightly
+def test_root_closure_reads_the_w_goldstone_higgs_root_in_both_gauges_and_leg_orders(
+    gmu_massive_b, loop_native
+):
+    """w+ h > t b~ QED=2 [virt=QCD] with a massive b: in 't Hooft-Feynman
+    gauge its Born and its counterterms close at leg 1, the W+, on the
+    W G H vertex, which is not closed under conjugation (read through its
+    conjugate rule) and odd in the momenta. The root closure reads it as
+    the tree engine does (``ct_sites.SiteClosure._reading_sign``, -1 on it,
+    with each kernel leg taking the momentum of the block whose row it
+    takes; genericity audit 2 G2-M7): Born and virtual equal the
+    unitary-gauge ones, and the legs in the other order (h w+ > t b~, the H
+    at leg 1 closing on the same vertex, at the same physical point) give the
+    same values (one point, 32 digits). With the earlier reading sign 1 the
+    Feynman-gauge Born is wrong."""
+
+    unitary, feynman = gmu_massive_b, _feynman(gmu_massive_b)
+    point = [
+        [repr(x) for x in leg]
+        for leg in _process_point(gmu_massive_b, "w+ h > t b~", 1000.0)
+    ]
+    swapped = [point[1], point[0], *point[2:]]
+    reference = _born_and_virtual(unitary, "w+ h > t b~", point, loop_native)
+    _assert_same_born_and_virtual(
+        _born_and_virtual(feynman, "w+ h > t b~", point, loop_native), reference
+    )
+    _assert_same_born_and_virtual(
+        _born_and_virtual(feynman, "h w+ > t b~", swapped, loop_native), reference
+    )
+
+
+@pytest.mark.loop_nightly
+def test_born_closure_reads_the_w_w_vector_root_as_the_time_reversed_process(
+    gmu, loop_native
+):
+    """w+ w- > u u~ closes its Born at leg 1, the W+, on the W+ W- Z and
+    W+ W- A vertices, closed under conjugation with the W+ and W- rows on
+    each other's UFO legs: each kernel leg takes the momentum of the block
+    whose row it takes and the term the reading sign -1 (genericity audit 2
+    G2-M7). Its summed squared Born equals the time-reversed u u~ > w+ w-'s
+    (closed at a quark root) at the same momenta in both gauges (32
+    digits); the earlier reading gave it 177 times that."""
+
+    import math as _math
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+
+    mass = _mass(gmu, "MW")
+    energy, cosine, sine = 250.0, 0.6, 0.8
+    momentum = _math.sqrt(energy**2 - mass**2)
+    w_plus, w_minus = [energy, 0.0, 0.0, momentum], [energy, 0.0, 0.0, -momentum]
+    quark = [energy, energy * sine, 0.0, energy * cosine]
+    antiquark = [energy, -energy * sine, 0.0, -energy * cosine]
+    fixed = {"MB": "0", "ymb": "0", **ZERO_WIDTHS}
+    for compiled in (gmu, _feynman(gmu)):
+        summed = {}
+        # Initial spin x colour averages: 3 x 3 for the W pair, 2 x 2 x 3 x 3
+        # for the quark pair.
+        for process, legs, average in (
+            ("w+ w- > u u~", (w_plus, w_minus, quark, antiquark), 9),
+            ("u u~ > w+ w-", (quark, antiquark, w_plus, w_minus), 36),
+        ):
+            request = SliceRequest(
+                process,
+                {"QCD": 0, "QED": 2},
+                {"QCD": 2, "QED": 2},
+                fixed_parameters=fixed,
+                compatibility="gmu_particle_anti",
+                scale_parameter="MU_R",
+            )
+            slice_ = LoopSlice.generate(compiled, request, loop_native)
+            result = slice_.evaluate(
+                [[repr(x) for x in leg] for leg in legs],
+                "250000",
+                parameters={"aS": "0.118"},
+                precision=Precision.arbitrary(32),
+            )
+            summed[process] = average * sum(float(x) for x in result.born.values())
+        assert summed["w+ w- > u u~"] == pytest.approx(
+            summed["u u~ > w+ w-"], rel=1e-13
+        )
 
 
 # g t > t t t~ (binary64, on shell to rounding): a top line joined to a top
