@@ -111,7 +111,7 @@ The wheel contains:
 
 - the typed Python package and one native extension;
 - model assets with their provenance and content manifest;
-- packaged examples, an empty profiling-campaign workspace, and
+- packaged examples and
   Python/C11/C++17/Fortran 2008/Rust 2021 API templates;
 - direct-JIT f64 self-test data;
 - license and third-party notice files;

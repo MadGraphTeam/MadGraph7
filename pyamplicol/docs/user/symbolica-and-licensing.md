@@ -285,7 +285,7 @@ Exact dependency versions and notices are included in release metadata and
 ## Original AmpliCol is not a pyAmpliCol runtime dependency
 
 The optional original Fortran AmpliCol checkout is used only as an independent
-numerical/performance reference in [Profiling Campaigns](profiling-campaigns.md). It is not shipped
+numerical reference for developer validation. It is not shipped
 in pyAmpliCol wheels or source distributions and is unnecessary for ordinary
 generation or evaluation.
 

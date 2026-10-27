@@ -88,8 +88,7 @@ Version `0.2.0` adds exact symmetric-group FFT full-colour contraction,
 helicity-parametric recurrence and on-the-fly scheduling, built-in SM+HEFT and
 trusted UFO HEFT support, and the resumable fixed-helicity/helicity-sum FFT
 profiling workflow with its final comparison reports.
-See the runnable [scalar HEFT workflow](models-and-processes.md#built-in-scalar-heft-model)
-and the [FullColor FFT profiling guide](fullcolor-fft-profiling.md).
+See the runnable [scalar HEFT workflow](models-and-processes.md#built-in-scalar-heft-model).
 
 ## 0.1.4 release
 
@@ -135,7 +134,7 @@ The release set consists of:
 - one source distribution;
 - supported-platform `cp311-abi3` wheels;
 - the Python extension and target-specific static Rusticol SDK in each wheel;
-- packaged model resources, examples, profiling-campaign templates, and user
+- packaged model resources, examples, and user
   documentation required by installed workflows.
 
 Source installation may work elsewhere, but a platform is not advertised as
@@ -190,8 +189,7 @@ hand.
 - Source contributor builds and release builds have separate dependency
   boundaries. Contributor candidate wheels are deliberately non-publishable.
 
-See [Symbolica and Licensing](symbolica-and-licensing.md),
-[Profiling Campaigns](profiling-campaigns.md), and
+See [Symbolica and Licensing](symbolica-and-licensing.md) and
 [Artifacts and Portability](artifacts-and-portability.md).
 
 ## Report a problem

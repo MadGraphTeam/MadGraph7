@@ -35,7 +35,7 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 | prepare and evaluate tree-level spin and colour correlations | [Born Correlations](correlators.md) and [Correlation Conventions](correlator-conventions.md), LC/NLC/full colour and grouped Python evaluation |
 | use C, C++, Fortran, Rust, or generated Python drivers | [Native APIs](user/native-apis.md) |
 | build a UMAMI shared library or integrate with MadSpace | [UMAMI and MadSpace](user/umami-api.md) |
-| benchmark, reproduce, or view performance reports | [Profiling and Benchmarking](user/profiling-and-benchmarking.md), [FullColor FFT Profiling](user/fullcolor-fft-profiling.md), and [published performance reports](performance_reports/README.md) |
+| benchmark or profile a process | [Profiling and Benchmarking](user/profiling-and-benchmarking.md) |
 | diagnose an error | [Troubleshooting](user/troubleshooting.md) |
 
 ## Install and try it
@@ -111,7 +111,7 @@ flows, and resolved metadata; particles never cross the `>` boundary. See
 
 - **Using pyAmpliCol:** [Examples Gallery](user/examples-gallery.md), [Command-Line Interface](user/command-line-interface.md), [Runtime and Selectors](user/runtime-and-selectors.md)
 - **Generation:** [Models and Processes](user/models-and-processes.md), including scalar HEFT, [Generation Modes and Evaluators](user/generation-modes-and-evaluators.md), and [Process Grouping](user/process-grouping.md) of subprocesses with equal matrix elements
-- **Guided workflows:** [LC workloads and execution modes](user/lc-workloads-and-execution-modes.md), [Profiling campaign: from measurements to the PDF](user/profiling-campaign-walkthrough.md), [FullColor FFT Profiling](user/fullcolor-fft-profiling.md)
+- **Guided workflows:** [LC workloads and execution modes](user/lc-workloads-and-execution-modes.md)
 - **Deployment:** [Artifacts and Portability](user/artifacts-and-portability.md), [Release and Platform Support](user/release-and-support.md)
 - **Background:** [Architecture Overview](user/architecture-overview.md), [Symbolica and Licensing](user/symbolica-and-licensing.md)
 

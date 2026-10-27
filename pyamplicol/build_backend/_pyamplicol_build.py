@@ -17,7 +17,7 @@ import sys
 import tomllib
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
 
@@ -117,48 +117,15 @@ ALLOWLIST = (
     "tools/ci/__init__.py",
     "tools/ci/memory_watchdog.py",
     "tools/developer",
-    "tools/fft_profiling",
-    "tools/performance_report",
     "tools/release",
     "tools/typing",
 )
-_PROFILING_CAMPAIGN_SOURCE = Path("src/pyamplicol/_profiling_campaign")
-_PROFILING_CAMPAIGN_REQUIRED_FILES = (
-    Path("README.md"),
-    Path("TABLE_FILLING.md"),
-    Path("build_pdf.py"),
-    Path("pyAmpliCol.tex"),
-    Path("report-workspace.json"),
-    Path("report_environment.json"),
-    Path("report_environment.tex"),
-    Path("result_tables.py"),
-    Path("result_validation_summary.tex"),
-    Path("steer_performance_campaign.py"),
-)
-_PROFILING_CAMPAIGN_GLOBS = (
-    "result_*_table.tex",
-    "section_*.tex",
-    "results/*.json",
-)
-_PROFILING_CAMPAIGN_FILE_COUNT = 69
 _RELEASE_BUILD_INFO_FIELDS = {
     "publishable",
     "schema_version",
     "selftest_fixture_bootstrap",
     "source_revision",
     "version",
-}
-_PERFORMANCE_REPORT_REQUIRED_MODULES = {
-    "__init__.py",
-    "cli.py",
-    "manual_campaign.py",
-    "scheduler.py",
-}
-_LEGACY_ORACLE_REQUIRED_MODULES = {
-    "__init__.py",
-    "checkout.py",
-    "model.py",
-    "probe.py",
 }
 IGNORED_NAMES = {
     "__pycache__",
@@ -186,7 +153,6 @@ _EXCLUDED_TREES = (
     Path("docs/.result_outputs"),
     Path("docs/archive"),
     Path("outputs"),
-    _PROFILING_CAMPAIGN_SOURCE / "campaign_artifacts",
     Path("src/pyamplicol/_sdk/fortran"),
     Path("src/pyamplicol/_sdk/include"),
     Path("src/pyamplicol/_sdk/lib"),
@@ -523,10 +489,9 @@ def _is_excluded(relative: Path) -> bool:
         and relative.name.endswith(_NATIVE_EXTENSION_SUFFIXES)
     ):
         return True
-    report_source = relative.is_relative_to(Path("docs")) or relative.is_relative_to(
-        _PROFILING_CAMPAIGN_SOURCE
+    return relative.is_relative_to(Path("docs")) and relative.name.endswith(
+        _TEX_BUILD_SUFFIXES
     )
-    return report_source and relative.name.endswith(_TEX_BUILD_SUFFIXES)
 
 
 def _reject_symlinks(path: Path, relative: Path = Path()) -> None:
@@ -719,76 +684,6 @@ def _stage_packaged_examples(overlay: Path) -> None:
     if target.exists():
         raise RuntimeError("wheel overlay already contains packaged examples")
     shutil.copytree(source, target, ignore=_copy_ignore(overlay))
-
-
-def _profiling_campaign_inventory(source: Path) -> tuple[Path, ...]:
-    selected = set(_PROFILING_CAMPAIGN_REQUIRED_FILES)
-    for pattern in _PROFILING_CAMPAIGN_GLOBS:
-        selected.update(path.relative_to(source) for path in source.glob(pattern))
-    missing = tuple(
-        relative
-        for relative in _PROFILING_CAMPAIGN_REQUIRED_FILES
-        if not (source / relative).is_file()
-    )
-    if missing or len(selected) != _PROFILING_CAMPAIGN_FILE_COUNT:
-        detail = ", ".join(path.as_posix() for path in missing)
-        raise RuntimeError(
-            "wheel profiling campaign has an invalid inventory"
-            + (f": missing {detail}" if detail else "")
-        )
-    for relative in selected:
-        path = source / relative
-        if path.is_symlink() or not path.is_file():
-            raise RuntimeError(
-                f"wheel profiling campaign has an unsafe member: {relative}"
-            )
-    return tuple(sorted(selected, key=lambda path: path.as_posix()))
-
-
-def _stage_packaged_profiling_campaign(overlay: Path) -> None:
-    source = overlay / _PROFILING_CAMPAIGN_SOURCE
-    if not source.is_dir():
-        raise RuntimeError("wheel build input has no profiling campaign directory")
-    _profiling_campaign_inventory(source)
-
-    performance_source = overlay / "tools" / "performance_report"
-    watchdog_source = overlay / "tools" / "ci" / "memory_watchdog.py"
-    legacy_source = overlay / "tools" / "developer" / "legacy_amplicol.py"
-    oracle_source = overlay / "tools" / "developer" / "legacy_oracle"
-    runtime_target = overlay / "src" / "pyamplicol" / "_performance_report"
-    performance_modules = tuple(sorted(performance_source.glob("*.py")))
-    oracle_modules = tuple(sorted(oracle_source.glob("*.py")))
-    if (
-        not _PERFORMANCE_REPORT_REQUIRED_MODULES.issubset(
-            {path.name for path in performance_modules}
-        )
-        or not _LEGACY_ORACLE_REQUIRED_MODULES.issubset(
-            {path.name for path in oracle_modules}
-        )
-        or not watchdog_source.is_file()
-        or not legacy_source.is_file()
-    ):
-        raise RuntimeError("wheel build input has incomplete profiling runtime sources")
-    for path in (*performance_modules, watchdog_source, legacy_source, *oracle_modules):
-        if path.is_symlink() or not path.is_file():
-            raise RuntimeError(f"wheel profiling runtime has an unsafe member: {path}")
-    if runtime_target.exists():
-        raise RuntimeError("wheel overlay already contains a profiling runtime")
-    runtime_target.mkdir(parents=True)
-    for path in performance_modules:
-        shutil.copy2(path, runtime_target / path.name)
-    shutil.copy2(watchdog_source, runtime_target / "_memory_watchdog.py")
-    developer_target = runtime_target / "_developer"
-    developer_target.mkdir()
-    (developer_target / "__init__.py").write_text(
-        "# SPDX-License-Identifier: 0BSD\n",
-        encoding="utf-8",
-    )
-    shutil.copy2(legacy_source, developer_target / legacy_source.name)
-    oracle_target = developer_target / "legacy_oracle"
-    oracle_target.mkdir()
-    for path in oracle_modules:
-        shutil.copy2(path, oracle_target / path.name)
 
 
 def _stage_python_stub(overlay: Path) -> None:
@@ -1114,7 +1009,7 @@ def _mark_candidate(
 
     package = overlay / "src" / "pyamplicol"
     package.mkdir(parents=True, exist_ok=True)
-    source_revision = _clean_source_revision(allow_generated_report_outputs=True)
+    source_revision = _clean_source_revision()
     (package / "_build_info.json").write_text(
         json.dumps(
             {
@@ -1229,101 +1124,8 @@ def _stage_release_build_info(overlay: Path, version: str) -> None:
         raise RuntimeError("release source archive has invalid build provenance")
 
 
-def _generated_report_status_only(status: bytes) -> bool:
-    """Recognize only report outputs already excluded by campaign identity."""
-
-    records = status.split(b"\0")
-    if (
-        not records
-        or records[-1]
-        or not all(len(record) >= 4 and record[2:3] == b" " for record in records[:-1])
-    ):
-        return False
-    entries = tuple(
-        (record[:2], os.fsdecode(record[3:])) for record in records[:-1]
-    )
-    paths = tuple(path for _state, path in entries)
-    classifier_path = Path("tools/performance_report/source_identity.py")
-    if classifier_path.as_posix() in paths:
-        return False
-    try:
-        namespace = runpy.run_path(str(ROOT / classifier_path))
-        classifier = namespace.get("_generated_report_path")
-    except (OSError, RuntimeError, TypeError, ValueError):
-        return False
-    if not callable(classifier):
-        return False
-    try:
-        tracked = _git_inventory(build_inputs_only=False)
-        if tracked is None:
-            return False
-        copied_campaign_roots = _untracked_profiling_campaign_roots(
-            entries,
-            tracked=tracked,
-        )
-        return all(
-            classifier(path) is True
-            or (
-                state == b"??"
-                and any(
-                    len(PurePosixPath(path).parts) > len(root)
-                    and PurePosixPath(path).parts[: len(root)] == root
-                    for root in copied_campaign_roots
-                )
-            )
-            for state, path in entries
-        )
-    except (OSError, RuntimeError, TypeError, ValueError):
-        return False
-
-
-def _untracked_profiling_campaign_roots(
-    entries: tuple[tuple[bytes, str], ...],
-    *,
-    tracked: list[Path],
-) -> set[tuple[str, ...]]:
-    """Recognize roots of user-owned untracked copied report campaigns.
-
-    ``pyamplicol profiling-campaign copy`` is intentionally useful inside a
-    contributor checkout.  Its files are trusted steering inputs and outputs,
-    but the candidate overlay is built exclusively from Git-tracked inventory,
-    so they cannot alter its Python or native runtime.  This exception is
-    applied only to ``??`` status records; edits to tracked report sources
-    remain source dirt.
-    """
-
-    markers: dict[tuple[str, ...], set[str]] = {}
-    for state, value in entries:
-        path = PurePosixPath(value)
-        parts = path.parts
-        if (
-            state != b"??"
-            or path.is_absolute()
-            or len(parts) < 2
-            or any(part in {"", ".", ".."} for part in parts)
-            or parts[-1]
-            not in {"report-workspace.json", "steer_performance_campaign.py"}
-        ):
-            continue
-        markers.setdefault(parts[:-1], set()).add(parts[-1])
-    required = {"report-workspace.json", "steer_performance_campaign.py"}
-    tracked_parts = tuple(
-        PurePosixPath(path.as_posix()).parts for path in tracked
-    )
-    return {
-        root
-        for root, names in markers.items()
-        if required <= names
-        and not any(
-            len(parts) >= len(root) and parts[: len(root)] == root
-            for parts in tracked_parts
-        )
-    }
-
-
 def _clean_source_revision(
     *,
-    allow_generated_report_outputs: bool = False,
     allow_dirty: bool = False,
 ) -> str | None:
     """Return the exact source revision only for a clean Git checkout.
@@ -1367,10 +1169,7 @@ def _clean_source_revision(
             else record
             for record in status.split(b"\0")
         )
-        if status and not allow_dirty and (
-            not allow_generated_report_outputs
-            or not _generated_report_status_only(status)
-        ):
+        if status and not allow_dirty:
             return None
         revision = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -1937,7 +1736,6 @@ def _from_overlay(
                 if with_sdk:
                     _stage_source_hash(overlay)
                     _stage_packaged_examples(overlay)
-                    _stage_packaged_profiling_campaign(overlay)
                     _stage_python_stub(overlay)
                     _stage_runtime_resources(overlay)
                     if prepared_model_recovery:

@@ -210,4 +210,3 @@ SDK discovery.
 - [Configuration](configuration.md) — adapt a TOML card or use direct CLI overrides.
 - [Models and Processes](models-and-processes.md) — load your own JSON/UFO model.
 - [Artifacts and Portability](artifacts-and-portability.md) — understand schema-v3 artifacts, portable compiled JIT O1/O2, and prepared O2 packs.
-- [Profiling Campaigns](profiling-campaigns.md) — run reproducible multi-process measurements.

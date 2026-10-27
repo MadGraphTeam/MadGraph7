@@ -683,9 +683,6 @@ evaluator call. Native component rows describe a separate profiled pass and
 must not be subtracted from that headline as though they were measured in one
 identical call. `pyamplicol benchmark` is a compatibility alias for `profile`.
 
-For controlled, multi-process comparisons and report generation, use
-[Profiling Campaigns](profiling-campaigns.md) instead.
-
 ## Handle ownership and warnings
 
 Parameter and warning state belongs to one runtime handle. Do not invoke the
