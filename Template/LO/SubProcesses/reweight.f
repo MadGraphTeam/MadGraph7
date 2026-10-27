@@ -1508,6 +1508,15 @@ c     The flavours of this event are those of row IPSEL of leshouche.inc,
 c     as in DSIG. The rows always carry physical pdg codes (merged legs such
 c     as 81 are expanded per flavour), while FLAVOR(:) only holds the
 c     position of the coupling-class representative (see cluster).
+      do j=1,2
+         if(abs(idup(j,ipsel,iproc)).ge.81.and.
+     $        abs(idup(j,ipsel,iproc)).le.83)then
+            write(*,*) 'Error: rewgt: merged particle ',idup(j,ipsel,iproc),
+     $           ' in leshouche.inc (row ',ipsel,'): no physical pdg for',
+     $           ' the PDF of beam ',j
+            stop 1
+         endif
+      enddo
 
       if(ickkw.le.0)then
 c     Store pdf information for systematics studies (initial)
@@ -1534,13 +1543,15 @@ c         stop 1
       endif
       vec_igraph(ivec) = igraphs(1)  ! save MLM-matched graph for this event
 
-c     Set the external identities of the clustered graph to the flavours of
-c     this event: setclscales leaves there the representative of the
-c     coupling class of a grouped subprocess (e.g. d for s s~ > z, u for
-c     c c~ > z), which would otherwise enter the PDF ratios, the Sudakov
-c     factors and the pdfrwt information below.
+c     Set the identities of the incoming partons and of the jets of the
+c     clustered graph to the flavours of this event: setclscales leaves there
+c     the representative of the coupling class of a grouped subprocess (e.g.
+c     d for s s~ > z, u for c c~ > z), which would otherwise enter the PDF
+c     ratios, the Sudakov factors and the pdfrwt information below. Other
+c     legs are left as set by cluster (nothing below reads their flavour).
       do i=1,nexternal
-         ipdgcl(ishft(1,i-1),igraphs(1),iproc)=idup(i,ipsel,iproc)
+         if(i.le.2.or.isjet(idup(i,ipsel,iproc)))
+     $        ipdgcl(ishft(1,i-1),igraphs(1),iproc)=idup(i,ipsel,iproc)
          if (btest(mlevel,2))
      $        write(*,*) 'Set particle identities: ',
      $        i,ipdgcl(ishft(1,i-1),igraphs(1),iproc)

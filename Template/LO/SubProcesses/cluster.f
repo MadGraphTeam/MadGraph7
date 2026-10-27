@@ -666,12 +666,12 @@ c     of the event (s s~ > z gives 1, c c~ > z gives 2): the flavour
 c     combination (IPSEL) is only drawn after the scales are set, and rewgt
 c     sets the external identities to it after clustering.
       do i=1,nexternal
-         if(flavor(i).ge.1.and.flavor(i).le.5)then
+         if(flavor(i).ge.1.and.flavor(i).le.6)then
                do igraph=1,n_max_cg
                tmppdg=ipdgcl(ishft(1,i-1),igraph,iproc)
-                  if(tmppdg.eq.81.or.(tmppdg.gt.0.and.tmppdg.le.5)) then
+                  if(tmppdg.eq.81.or.(tmppdg.gt.0.and.tmppdg.le.6)) then
                      ipdgcl(ishft(1,i-1),igraph,iproc)=flavor(i)
-                  else if(tmppdg.eq.-81.or.(tmppdg.lt.0.and.tmppdg.ge.-5))then
+                  else if(tmppdg.eq.-81.or.(tmppdg.lt.0.and.tmppdg.ge.-6))then
                      ipdgcl(ishft(1,i-1),igraph,iproc)=-flavor(i)
                   endif
                enddo
