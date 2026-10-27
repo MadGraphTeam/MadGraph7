@@ -15,7 +15,9 @@ parameters and scales (second genericity audit, G2-M2 and G2-m3).
   process does not read) give bitwise the Python API's binary64 values in
   every client, at points exact in binary64 and on shell at their top mass.
   The C++ and Fortran wrappers compile against the typed errors
-  (``VirtualError::status``, ``update_parameters(..., error_message=...)``).
+  (``VirtualError::status``, ``update_parameters(..., error_message=...)``)
+  and report them; the native runtime keeps its tree and closure stages on
+  its own thread pool (``threads=1`` starts no global rayon pool).
 * **Scale-dependent batches (G2-m3).** Generation records which outputs of
   the parameter program depend on the scale (``native_trees._scale_outputs``).
   loop_sm's NLO couplings read MU_R in the counterterms only, so its Born
@@ -775,3 +777,44 @@ def test_the_cheapest_frame_policy_requires_the_legs_helicity_rows():
         generation._policy(STRUCTURED, None, [], None)
     policy = generation._policy(STRUCTURED, None, [], (2, 2, 1, 3))
     assert policy["kind"] == "cheapest" and policy["leg_rows"] == [2, 2, 1, 3]
+
+
+THREADS_SCRIPT = r"""
+import sys
+from pyamplicol.loops.native import load_loop_native
+
+def threads():
+    with open("/proc/self/status") as status:
+        return int(next(l for l in status if l.startswith("Threads:")).split()[1])
+
+artifact, point = sys.argv[1], sys.argv[2:]
+native = load_loop_native()
+before = threads()
+native.evaluate_v2_artifact(artifact, [point] * 32, ["1000000"] * 32, threads=1)
+print(before, threads())
+"""
+
+
+@pytest.mark.skipif(not Path("/proc/self/status").is_file(), reason="needs procfs")
+def test_the_native_runtime_honours_its_thread_bound(ggtt, tmp_path):
+    """``V2Runtime``'s tree and closure stages run on the executor's pool
+    (its ``threads`` bound), not on rayon's global pool: an evaluation with
+    ``threads=1`` in a fresh interpreter starts no global pool (whose workers
+    would outlive the call; before, eight with ``RAYON_NUM_THREADS=8``)."""
+
+    import sys
+
+    script = tmp_path / "threads.py"
+    script.write_text(THREADS_SCRIPT)
+    point = [c for momentum in POINT_173 for c in momentum]
+    run = subprocess.run(
+        [sys.executable, str(script), str(ggtt), *point],
+        capture_output=True,
+        text=True,
+        timeout=600,
+        env={**os.environ, "RAYON_NUM_THREADS": "8"},
+        check=False,
+    )
+    assert run.returncode == 0, run.stderr[-4000:]
+    before, after = map(int, run.stdout.split()[-2:])
+    assert after == before, (before, after)
