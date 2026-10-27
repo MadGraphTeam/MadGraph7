@@ -169,21 +169,22 @@ def require_formal_nc_tables(accuracy: str, tables: Iterable[Any], what: str) ->
 # ------------------------------------------------- fermion-line representation
 
 
-def _sign_ownership(model: Any, pdg: int) -> bool | None:
-    """Whether the colour-singlet (Wick) convention signs fermion ``pdg`` in a
-    loop-request DAG (True), the colour flow (False), or None: not a
-    fermion, or a colour representation the fermion ordering refuses on its
-    own (``generation.fermion_ordering._fermion_rep_requires_exterior_sign``,
-    the predicate both DAG lanes use)."""
+def _sign_ownership(record: Any) -> bool | None:
+    """Whether the colour-singlet (Wick) convention signs the fermion of a
+    compiled particle record in a loop-request DAG (True), the colour flow
+    (False), or None: not a fermion, or a colour representation the fermion
+    ordering refuses on its own. These are the predicates both DAG lanes use
+    (``CompiledUFOModel.is_fermion`` and ``color_rep`` read the same record
+    fields; ``generation.fermion_ordering._fermion_rep_requires_exterior_sign``)."""
 
     from pyamplicol.generation.fermion_ordering import (
         _fermion_rep_requires_exterior_sign,
     )
 
-    if not model.is_fermion(pdg):
+    if record.statistics != "fermion":
         return None
     try:
-        return _fermion_rep_requires_exterior_sign(model.color_rep(pdg), False)
+        return _fermion_rep_requires_exterior_sign(record.color, False)
     except ValueError:
         return None
 
@@ -213,9 +214,8 @@ def representation_changing_vertices(
         _coupling_orders_within_limits,
         _normalize_coupling_order_limits,
     )
-    from pyamplicol.models.external import CompiledUFOModel
 
-    model = CompiledUFOModel(compiled)
+    record_of = {record.pdg_code: record for record in compiled.ir.particles}
     pdg_of = {record.name: record.pdg_code for record in compiled.ir.particles}
     ignored = {int(pdg) for pdg in ignored_particle_ids}
     limits = [_normalize_coupling_order_limits(limit) for limit in order_limits]
@@ -266,7 +266,7 @@ def representation_changing_vertices(
         )
         if not used:
             continue
-        owners = {_sign_ownership(model, pdg) for pdg in pdgs}
+        owners = {_sign_ownership(record_of[pdg]) for pdg in pdgs}
         owners.discard(None)
         if len(owners) > 1:
             found.setdefault((kernel.vertex, particles_of[kernel.vertex]), None)

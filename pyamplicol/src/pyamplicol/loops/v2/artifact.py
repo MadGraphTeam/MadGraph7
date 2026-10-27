@@ -775,14 +775,17 @@ def generate_process(
                 twin = plan.scaleless()
                 if twin is not None and twin.slice is companion:
                     twins[kind] = twin.seed_columns
-        scaleless = export_plan(
-            companion,
-            forward=False,
-            trees=exported.trees is not None,
-            born_squared=False,
-            counterterms=False,
-            column_sets=twins or None,
-        )
+        try:
+            scaleless = export_plan(
+                companion,
+                forward=False,
+                trees=exported.trees is not None,
+                born_squared=False,
+                counterterms=False,
+                column_sets=twins or None,
+            )
+        except NativeExportUnsupported as error:
+            raise _not_storable(request, "companion point inputs", error) from error
     scaleless_json = None if scaleless is None else scaleless.json()
     if exported.trees is not None:
         from .native_process import NativeProcess
