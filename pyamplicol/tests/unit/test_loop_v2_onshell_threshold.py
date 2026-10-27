@@ -30,10 +30,17 @@ in the production path (native executor, native inputs):
 * where oneloopmaster's binary64 masters cannot evaluate the light lanes
   (g g > g g: a box of four light lines, D0 not finite), the point fails with
   the master's reason instead of taking the massless integral, and
-  DoubleFloat evaluates it (to its own conditioning there, 2.1e-18).
+  DoubleFloat evaluates it (to its own conditioning there, 2.1e-18);
+* the artifact records the routing: a public generation with MT = 1e-6 fixed
+  names MT with its square and the threshold in the generation record of
+  e+ e- > t t~ (``binary64_exact_engine``) and writes no entry for
+  e+ e- > u u~, which has no top line.
 """
 
 from __future__ import annotations
+
+import json
+from pathlib import Path
 
 import pytest
 
@@ -240,3 +247,89 @@ def test_light_lanes_beyond_the_binary64_masters_fail_closed(executors):
     reference = _evaluate(executor, POINT, SCALE, light, Precision.arbitrary(32))
     double_double = _evaluate(executor, POINT, SCALE, light, Precision.double_double())
     assert deviation(_virtual(reference), _virtual(double_double)) < BINARY64
+
+
+def _light_top_card(model: Path, output: Path, entries) -> str:
+    """A public v2 generation card of loop_sm with the light top fixed."""
+
+    processes = ", ".join(
+        f"{{expression={json.dumps(expression)}, name={json.dumps(name)}}}"
+        for name, expression in entries
+    )
+    fixed = ", ".join(
+        f"{name} = {json.dumps(value)}"
+        for name, value in {**FIXED, "MT": LIGHT_MT}.items()
+    )
+    return f"""
+action = "generate"
+[model]
+source = {json.dumps(str(model))}
+[process]
+entries = [{processes}]
+loop_coupling_orders = ["QCD"]
+coupling_order_policy = "minimal"
+[color]
+accuracy = "full"
+contraction = "direct"
+[loop]
+r2_strategy = "model"
+engine = "v2"
+[loop.preparation]
+fixed_parameters = {{{fixed}}}
+[loop.model]
+loop_coupling_orders = ["QCD"]
+uv_complete = true
+model_r2_complete = true
+[loop.model.scheme]
+dimensional_regularization = "HV"
+external_states = "physical-four-dimensional"
+gamma5 = "source-UFO-four-dimensional-prescription"
+renormalization = "source-UFO mass-dependent decoupling"
+mass_scheme = "real-on-shell"
+finite_restoration = "source-UFO-local-rules"
+model_convention = "loop_sm lhv=1 supplied QCD rules"
+[generation]
+output = {json.dumps(str(output))}
+emit_api_bundle = false
+[generation.validation]
+post_build_validation = false
+samples = 1
+"""
+
+
+@pytest.mark.loop_physics
+def test_the_artifact_records_the_light_masses(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """The generation record names the masses whose binary64 lanes take the
+    exact engine at the generation parameters: MT = 1e-6 fixed gives
+    e+ e- > t t~ the entry ``binary64_exact_engine`` with MT's square and the
+    fast engine's threshold; e+ e- > u u~ (no top line, massless legs) has
+    none, so its record is unchanged."""
+
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.artifacts import load_manifest
+    from pyamplicol.config import resolve_config
+
+    entries = (("epem_ttx", "e+ e- > t t~"), ("epem_uux", "e+ e- > u u~"))
+    output = tmp_path / "artifact"
+    card = tmp_path / "card.toml"
+    card.write_text(_light_top_card(loop_sm_compiled_model, output, entries))
+    processes = ProcessSet(
+        tuple(
+            ProcessRequest.parse(expression, name=name) for name, expression in entries
+        )
+    )
+    Generator(resolve_config(card)).generate(processes, output)
+    manifest = load_manifest(output, verify_payloads=True)
+    filters = {
+        record["id"]: record["filters"]
+        for record in manifest.extensions["generation"]["concrete_processes"]
+    }
+    threshold = loop_native.V2_FAST_ENGINE_THRESHOLD
+    assert threshold == 1e-9
+    assert filters["epem_ttx"]["binary64_exact_engine"] == {
+        "threshold": repr(threshold),
+        "squared_masses": {"MT": "1e-12"},
+    }
+    assert "binary64_exact_engine" not in filters["epem_uux"]

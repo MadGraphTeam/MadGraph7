@@ -1565,6 +1565,13 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                                     if (fallbacks := process.native_fallbacks())
                                     else {}
                                 ),
+                                # G2-M3: masses whose binary64 lanes take the
+                                # exact engine (absent when none is that light).
+                                **(
+                                    {"binary64_exact_engine": light}
+                                    if (light := process.binary64_exact_engine())
+                                    else {}
+                                ),
                                 "model_declaration": context.declaration.to_dict(),
                                 **(
                                     {"correlators": correlators.to_json_dict()}
