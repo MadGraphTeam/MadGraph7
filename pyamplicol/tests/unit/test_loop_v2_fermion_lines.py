@@ -624,3 +624,98 @@ def test_graded_blocks_scale_as_their_u1_pieces(
             else:
                 mixed = [power for grade, power in powers.values() if grade is None]
                 assert mixed and not any(power is not None for power in mixed)
+
+
+# The legacy engine's own formal-N_c projections (its colour algebra,
+# ``SUNColorSpace(N_c)``, independent of the grade split) of three
+# identical-flavour lines, at the first point of the provider fixture: the
+# projection-only records of ``legacy_capture.PROJECTION_CONTROLS``
+# (``<name>.<accuracy>.json``; the legacy program of one accuracy takes over
+# an hour, so only these are captured). u u~ > u u~ g's projections are in
+# its full legacy capture (``test_loop_v2_slice.py``, ``test_loop_v2_artifact.py``).
+LEGACY = Path(__file__).resolve().parents[1] / "fixtures" / "loop" / "legacy"
+LEGACY_PROJECTIONS = (("uux_uuxuux", "lc"),)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("carrier", list(PROJECTION_CARRIERS))
+@pytest.mark.parametrize(("name", "accuracy"), LEGACY_PROJECTIONS)
+def test_identical_flavour_projections_equal_legacy(
+    loop_sm_compiled_model, loop_native, name, accuracy, carrier
+):
+    """The production slice's LC (NLC) equals the legacy projection: leading
+    degrees, Born and every component and Laurent coefficient against its
+    200-bit values, binary64 (Python reference path) within 1e-12 and
+    double-double (native executor) within 1e-24 of each component's largest
+    coefficient (the Born's own size for the Born)."""
+
+    from decimal import Decimal, localcontext
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+    from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    from tools.loop_reference import legacy_capture
+
+    fixture = json.loads((LEGACY / f"{name}.{accuracy}.json").read_text())
+    projection = fixture["colour_projections"][accuracy]
+    assert projection["colour_declaration"] == str(
+        legacy_capture.COLOUR_DECLARATION.relative_to(legacy_capture.ROOT)
+    )
+    control = legacy_capture.PROJECTION_CONTROLS[name]
+    declaration = LoopColorDeclaration.from_dict(
+        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+    )
+    slice_ = LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model),
+        SliceRequest(
+            control.process,
+            control.born_order_bounds,
+            control.loop_order_bounds,
+            fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+            accuracy=accuracy,
+            colour_declaration=declaration,
+        ),
+        loop_native,
+    )
+    ((born_degree,), (virtual_degree,)) = (
+        tuple(slice_.degrees()[kind].values()) for kind in ("born", "virtual")
+    )
+    assert (born_degree, virtual_degree) == (
+        projection["born_degree"],
+        projection["virtual_degree"],
+    )
+    (point,), (scale,) = fixture["points"], fixture["scales_squared"]
+    parameters = {k: v for k, v in fixture["parameters"].items() if k != "MU_R"}
+    if carrier == "double":
+        result = slice_.evaluate(
+            point, scale, parameters=parameters, precision=Precision.double()
+        )
+    else:
+        executor = NativeExecutor(
+            slice_, forward=False, exported=export_plan(slice_, forward=False)
+        )
+        (result,) = executor.evaluate(
+            [point],
+            [scale],
+            parameters=parameters,
+            precision=Precision.double_double(),
+        )
+    reference = projection["results"]["arbitrary-200"]
+    tolerance = Decimal(str(PROJECTION_CARRIERS[carrier]))
+    with localcontext() as context:
+        context.prec = 60
+        (((born, _imaginary),),) = reference["born"]
+        born = Decimal(born)
+        (value,) = result.born.values()
+        assert abs(Decimal(str(value)) - born) <= tolerance * abs(born)
+        for component in legacy_capture.COMPONENTS:
+            ((coefficients,),) = reference[component]
+            expected = [Decimal(real) for real, _imaginary in coefficients]
+            (laurent,) = result.components[component].values()
+            size = max(map(abs, expected)) or abs(born)
+            for k, (a, b) in enumerate(
+                zip(laurent.coefficients, expected, strict=True)
+            ):
+                error = abs(Decimal(str(a)) - b)
+                assert error <= tolerance * size, (component, k, error / size)
