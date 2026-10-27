@@ -693,6 +693,7 @@ c
       function sigintF(xx,vegas_wgt,ifl,f)
       use weight_lines
       use mint_module
+      use virt_surrogate
       implicit none
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
@@ -776,6 +777,9 @@ c "npNLO".
             virt_wgt_mint(0:amp_split_size)=0d0
             born_wgt_mint(0:amp_split_size)=0d0
             virtual_over_born=0d0
+            vs_vcomp=.false.
+            vs_featok=.false.
+            vs_ratio_set=.false.
          endif
          MCcntcalled=0
          wgt_me_real=0d0
@@ -981,6 +985,8 @@ c determined which contributions are identical.
          call update_shower_scale_Sevents(ifold_counter,ifold_picked)
          call fill_mint_function_NLOPS(f,n1body_wgt)
          call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
+c fit of the surrogate of the virtual (VirtTrickSurrogate=1,2)
+         call virt_surrogate_fit_point
       endif
       return
       end
