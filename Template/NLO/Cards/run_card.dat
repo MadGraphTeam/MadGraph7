@@ -50,6 +50,9 @@
  %(niters_fo_grid)s      = niters_FO_grid   ! number of iter. to setup grids
  %(npoints_fo)s  = npoints_FO       ! number of points to compute Xsec
  %(niters_fo)s      = niters_FO        ! number of iter. to compute Xsec
+# Separate integration channels for the hard real emission (0<x0<1: on,
+# -1: off). Default chosen at output from the real-emission diagrams
+ %(real_channels_x0)s  = real_channels_x0 ! f(x)=1/(1+(x/x0)^2), x=2ki.kj/shat
 #***********************************************************************
 # Random number seed                                                   *
 #***********************************************************************

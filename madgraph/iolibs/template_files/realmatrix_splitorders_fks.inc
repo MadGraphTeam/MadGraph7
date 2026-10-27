@@ -128,11 +128,13 @@ C
       DATA GOODHEL/NCOMB*.FALSE./
       INTEGER NTRY
       DATA NTRY/0/
+      include 'real_matrix_weights.inc'
 %(den_factor_line)s
 C ----------
 C BEGIN CODE
 C ----------
       NTRY=NTRY+1
+      if (get_real_diagram_weights) real_amp2(:)=0d0
       DO I=0,NSQAMPSO
       	ANS(I) = 0D0	  
       ENDDO
@@ -178,6 +180,17 @@ C add to the sum of helicities
           ENDIF
         ENDIF
       ENDDO
+C the diagram weights sum over the helicities computed after the
+C first point (good ones, not identical to an earlier one), also
+C at the first point, so that they depend on P only
+      IF (NTRY.LT.2 .AND. get_real_diagram_weights) THEN
+        real_amp2(:)=0d0
+        DO IHEL=1,NCOMB
+          IF (GOODHEL(IHEL) .AND. T_IDENT(IHEL).LE.0) THEN
+            CALL MATRIX_%(proc_prefix)s(P ,NHEL(1,IHEL),T)
+          ENDIF
+        ENDDO
+      ENDIF
       DO I=1,NSQAMPSO			
         ANS(I)=ANS(I)/DBLE(IDEN)
         ANS(0)=ANS(0)+ANS(I)
@@ -230,6 +243,7 @@ C
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 TMP_JAMP(%(nb_temp_jamp)i)
+      include 'real_matrix_weights.inc'
 C
 C FUNCTION
 C
@@ -243,6 +257,9 @@ C BEGIN CODE
 C ----------
       jamp(:,:) = (0d0,0d0)
 %(helas_calls)s
+      if (get_real_diagram_weights) then
+%(real_amp2_lines)s
+      endif
 %(jamp_lines)s
 
       RES(:) = 0d0
