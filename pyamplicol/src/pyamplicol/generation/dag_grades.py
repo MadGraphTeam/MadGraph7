@@ -119,7 +119,7 @@ def split_u1_grades(dag: GenericDAG) -> GenericDAG:
         for current in currents
     ]
     # old id -> ((grade, new id), ...) by decreasing grade.
-    copies: list[tuple[tuple[int | None, int], ...]] = []
+    copies: list[tuple[tuple[int, int], ...]] = []
     out_currents: list[CurrentNode] = []
     for current, grades, label in zip(currents, grade_sets, graded, strict=True):
         if not label:
@@ -127,7 +127,7 @@ def split_u1_grades(dag: GenericDAG) -> GenericDAG:
             # that is not a source: nothing reads it; the native pass keeps
             # it too).
             new = len(out_currents)
-            copies.append(tuple((grade, new) for grade in grades) or ((None, new),))
+            copies.append(tuple((grade, new) for grade in grades))
             out_currents.append(
                 current if current.id == new else replace(current, id=new)
             )
