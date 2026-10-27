@@ -30,10 +30,11 @@ Born x CT interference directly; no CT tree and no site is listed:
   precision stays exact. A coupling that reads a CT scalar whose body needs
   the model's scalar library (the electroweak helpers, a rebound ``reglog``;
   WP3.2) is lowered on *reference parameters*, the real and imaginary parts
-  of the scalars' Laurent coefficients, which the CT program binds at the
-  card from their exact bodies (``coefficient_plan``,
-  ``CountertermRecursion.parameter_values``): no CT body is inlined into a
-  vertex.
+  of its own Laurent coefficients, which the CT program binds at the card
+  from its exact source and its CT scalars' bodies (``coefficient_plan``,
+  ``CountertermRecursion.parameter_values``): no CT body and none of the
+  coupling's model parameters is inlined into a vertex, so the tree
+  compiler's kernel proofs see one symbol per coefficient (EWI-3R).
 * **Admission** (design §6.2) is the plain tree-level rule, without any
   matching to the loop: a rule of a selected correction enters with every
   loop-content alternative (``rule.alternatives``, the UFO ``loop_particles``)
@@ -44,7 +45,8 @@ Born x CT interference directly; no CT tree and no site is listed:
   tree compiler does not normalise (Levi-Civita cells that do not cancel),
   contact vertices without a colour-flow decomposition, the two-point terms
   ``models.ct_line_insertions`` refuses (mixing between spins), couplings
-  that are not linear in their referenced CT scalars, and coefficients that
+  of left-out cells (or graded by a formal N_c) that are not linear in their
+  referenced CT scalars (``CoefficientLowering.exact``), and coefficients that
   are not finite at the fixed parameters (an infinity or indeterminate in a
   taken branch); no loop_sm rule is among them. A request that admits such
   a rule is refused (``UnloweredCountertermError``) when the rule's vertex
@@ -79,7 +81,7 @@ recursion's partials equal the sites of the lowered rules
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import reduce
@@ -299,8 +301,9 @@ def standard_helpers(library: Any) -> dict[int, str]:
 
 def reference_name(scalar: str, power: int, part: str) -> str:
     """The lowered model's external parameter holding one part (``"re"`` or
-    ``"im"``) of the epsilon^``power`` coefficient of a referenced CT scalar
-    (``CoefficientLowering``)."""
+    ``"im"``) of the epsilon^``power`` coefficient of a referenced coupling
+    or CT scalar ``scalar`` (``CoefficientLowering``; the UFO's scalar names
+    are unique across parameters, CT parameters and couplings)."""
 
     tag = "0" if not power else f"{'M' if power < 0 else 'P'}{abs(power)}"
     return f"{_PREFIX}P_{scalar}_E{tag}_{part.upper()}"
@@ -331,11 +334,15 @@ def _reference_defaults(names: Iterable[str]) -> dict[str, float]:
     return found
 
 
-def _linear_degree(expression: Any, symbols_: frozenset) -> float:
+def _linear_degree(
+    expression: Any, symbols_: frozenset, conj: Callable[[str], bool] | None = None
+) -> float:
     """Polynomial degree of ``expression`` in the real symbols ``symbols_``;
     ``conj`` is transparent (it maps a real linear form to a real linear
-    form). Infinite when a symbol is in another function's argument, a
-    denominator or a non-integer power."""
+    form), and so is a unary function whose name ``conj`` accepts (e.g. the
+    scalar library's UFO-standard ``complexconjugate``). Infinite when a
+    symbol is in another function's argument, a denominator or a
+    non-integer power."""
 
     from symbolica import AtomType
 
@@ -346,19 +353,24 @@ def _linear_degree(expression: Any, symbols_: frozenset) -> float:
         return 1 if expression in symbols_ else 0
     children = list(expression)
     if kind == AtomType.Add:
-        return max(_linear_degree(child, symbols_) for child in children)
+        return max(_linear_degree(child, symbols_, conj) for child in children)
     if kind == AtomType.Mul:
-        return sum(_linear_degree(child, symbols_) for child in children)
+        return sum(_linear_degree(child, symbols_, conj) for child in children)
     if kind == AtomType.Pow:
         base, exponent = children
-        degree = _linear_degree(base, symbols_)
+        degree = _linear_degree(base, symbols_, conj)
         if not degree:
-            return float("inf") if _linear_degree(exponent, symbols_) else 0
+            return float("inf") if _linear_degree(exponent, symbols_, conj) else 0
         number = exponent.to_canonical_string()
         return degree * int(number) if number.isdigit() else float("inf")
-    if expression.get_name() == "symbolica::conj" and len(children) == 1:
-        return _linear_degree(children[0], symbols_)
-    return float("inf") if any(_linear_degree(c, symbols_) for c in children) else 0
+    name = expression.get_name()
+    if len(children) == 1 and (
+        name == "symbolica::conj" or (conj is not None and conj(name))
+    ):
+        return _linear_degree(children[0], symbols_, conj)
+    return (
+        float("inf") if any(_linear_degree(c, symbols_, conj) for c in children) else 0
+    )
 
 
 @dataclass(frozen=True)
@@ -400,21 +412,44 @@ class CoefficientLowering:
       constant, a coefficient that is not finite and any other helper raise
       ``CountertermCouplingError``.
 
-    **Referenced CT scalars** (WP3.2 EWI-3). A coupling that reads a CT scalar
-    (a UFO ``CTParameter``, or a parameter with epsilon) whose body calls a
-    helper that is not UFO-standard (the electroweak ``re``, ``recms``,
-    ``regsqrt``, ``reglogp``, ``grreglog``, ``arg``, or a rebound ``reglog``)
-    is not inlined. The NLOCT couplings are linear in their CT scalars, so the
-    epsilon^p coefficient of a coupling ``sum_q eps^q (a_q0 + sum_k a_qk P_k)``
-    is ``a_p0 + sum_q sum_k a_qk P_k^(p - q)``: the lowering writes each
-    ``P_k^(r)`` as a pair of real external parameters of the lowered model
-    (real and imaginary part, ``reference_name``; ``references``), and the CT
-    program binds them at the card from the scalars' exact bodies, with every
-    helper a function of the model's scalar library
-    (``CountertermModel.coefficient_plan``, the scalar program of the Born
-    and field couplings): one helper semantics in every lane, each CT body
-    evaluated once per card and never expanded into a vertex. A coupling that
-    is not linear in its CT scalars raises ``CountertermCouplingError``.
+    **Referenced couplings** (WP3.2 EWI-3, EWI-3R). A coupling that reads a CT
+    scalar (a UFO ``CTParameter``, or a parameter with epsilon) whose body
+    calls a helper that is not UFO-standard (the electroweak ``re``,
+    ``recms``, ``regsqrt``, ``reglogp``, ``grreglog``, ``arg``, or a rebound
+    ``reglog``) is not inlined: the epsilon^p coefficient of the coupling is
+    a pair of real external parameters of the lowered model (real and
+    imaginary part, ``reference_name(coupling, p, part)``; ``references``),
+    and the CT program binds them at the card from the coupling's exact
+    source with its CT scalars' bodies, every helper a function of the
+    model's scalar library (``CountertermModel.coefficient_plan``, the scalar
+    program of the Born and field couplings): one helper semantics in every
+    lane, each CT body evaluated once per card and never expanded into a
+    vertex. The tree compiler sees one symbol per coefficient, so its kernel
+    keys and equivalence proofs never expand the coupling's model parameters
+    (e.g. the G_mu couplings resolved to ``Gf``, ``MW``, ``MZ`` and the
+    ``conj`` of real masses), and the coupling may be any polynomial in its
+    CT scalars (the coefficient is the exact Laurent coefficient of the
+    product; NLOCT couplings are linear in them). Which epsilon powers can
+    be non-zero is decided from the source (``is_zero``: a power the
+    coupling's terms, its CT scalars' non-zero powers and the terms' degrees
+    in them cannot reach, ``_reachable_powers``); a coefficient that
+    vanishes at the fixed parameters is a zero of the plan
+    (``coefficient_plan``) and has no vertex term. A coupling that is not a
+    polynomial in its CT scalars, or that reaches a power below the CT
+    slots, raises ``CountertermCouplingError`` (fail closed: its rule is
+    residual, refused when a tree of the request can hold it).
+
+    **Exact form** (``exact``). Under a formal-N_c continuation, a referenced
+    coupling whose source reads one of the continuation's colour invariants
+    keeps its N_c dependence explicit, and the cells the lowered model leaves
+    out (``CountertermModel.unlowered``) need the CT scalars shared between
+    the couplings of their rules to cancel: there the coupling is written on
+    references of its CT scalars' Laurent coefficients (``P_k^(r)``, pairs as
+    above, ``reference_name(scalar, r, part)``). The NLOCT couplings are
+    linear in their CT scalars, so the epsilon^p coefficient of a coupling
+    ``sum_q eps^q (a_q0 + sum_k a_qk P_k)`` is
+    ``a_p0 + sum_q sum_k a_qk P_k^(p - q)``; a coupling that is not linear in
+    its CT scalars raises ``CountertermCouplingError`` in this form.
     """
 
     def __init__(
@@ -454,20 +489,34 @@ class CoefficientLowering:
             ScalarFunctionLibrary(compiled.raw_loop_model)
         )
         self.assumptions: set[str] = set()
-        # Referenced CT scalars: reference parameter -> (scalar, epsilon
+        # Reference parameters: name -> (coupling or CT scalar, epsilon
         # power, "re" | "im"), and the scalar program they belong to.
         self.references: dict[str, tuple[str, int, str]] = {}
         self.program: Any = None
+        self._identities = frozenset(identities)
         self._couplings: dict[tuple[int, int], _Referenced | None] = {}
         self._names: dict[int, dict[str, tuple[str, int]]] = {}
         self._scalars: dict[tuple[int, tuple[str, int]], bool | None] = {}
         self._powers: dict[tuple[int, str], frozenset[int] | None] = {}
+        self._coupling_powers: dict[tuple[int, int], frozenset[int] | None] = {}
 
     def __call__(self, entry: Any, power: int) -> Any:
         referenced = self._referenced(entry)
         if referenced is not None:
-            return self._referenced_coefficient(entry, power, referenced)
+            if self._graded(referenced):
+                return self._referenced_coefficient(entry, power, referenced)
+            return self._pair(entry.coupling.name, power)
         return self._finite(self._resolve(entry.coupling.value.coefficient(power)))
+
+    def exact(self, entry: Any, power: int) -> Any:
+        """The epsilon^``power`` coefficient of ``entry``'s coupling in its
+        exact form (class docstring): a referenced coupling on references of
+        its CT scalars' coefficients, any other as ``__call__`` gives it."""
+
+        referenced = self._referenced(entry)
+        if referenced is not None:
+            return self._referenced_coefficient(entry, power, referenced)
+        return self(entry, power)
 
     def payload_expression(self, expression: Any) -> Any:
         """An expression in source (``UFO::name``) symbols, e.g. a whole-rule
@@ -477,14 +526,20 @@ class CoefficientLowering:
 
     def is_zero(self, entry: Any, power: int) -> bool:
         """Whether the epsilon^``power`` coefficient of ``entry``'s coupling
-        vanishes identically: in its referenced form when it reads a
-        referenced CT scalar (no CT body is expanded), otherwise in the source
-        scalar program (``_coefficient_is_zero``)."""
+        vanishes identically: for a referenced coupling when no term can
+        reach the power (``_reachable_powers``; one that vanishes at the fixed
+        parameters is a zero of the coefficient plan) or, graded, in its
+        exact form (no CT body is expanded), otherwise in the source scalar
+        program (``_coefficient_is_zero``). A referenced coupling
+        ``_reachable_powers`` cannot bound raises ``CountertermCouplingError``."""
 
         referenced = self._referenced(entry)
         if referenced is None:
             return _coefficient_is_zero(entry, power)
-        return _is_zero(self._referenced_coefficient(entry, power, referenced))
+        if self._graded(referenced):
+            return _is_zero(self._referenced_coefficient(entry, power, referenced))
+        powers = self._reachable_powers(entry, referenced)
+        return powers is not None and power not in powers
 
     @staticmethod
     def _finite(value: Any) -> Any:
@@ -499,7 +554,7 @@ class CoefficientLowering:
             )
         return value
 
-    # -- referenced CT scalars ---------------------------------------------------
+    # -- referenced couplings ----------------------------------------------------
 
     def _referenced(self, entry: Any) -> _Referenced | None:
         """The referenced form of ``entry``'s coupling when it reads a CT
@@ -620,6 +675,109 @@ class CoefficientLowering:
             found = None
         self._powers[cached] = found
         return found
+
+    def _pair(self, name: str, power: int) -> Any:
+        """The reference pair ``re + i im`` of the epsilon^``power``
+        coefficient of the coupling or CT scalar ``name``."""
+
+        from symbolica import E, Expression
+
+        parts = []
+        for part in ("re", "im"):
+            parameter = reference_name(name, power, part)
+            self.references[parameter] = (name, power, part)
+            parts.append(E(f"UFO::{{}}::{parameter}"))
+        return parts[0] + parts[1] * Expression.I
+
+    def _is_conj(self, name: str) -> bool:
+        """Whether the function ``name`` is the scalar library's UFO-standard
+        ``complexconjugate`` (``standard_helpers``)."""
+
+        head = name.rsplit("::", 1)[-1]
+        return (
+            name.startswith("pyamplicol_scalar_model_")
+            and head.startswith("value_")
+            and self._standard.get(int(head.removeprefix("value_")))
+            == "complexconjugate"
+        )
+
+    def _graded(self, referenced: _Referenced) -> bool:
+        """Whether a referenced coupling's source reads a colour invariant of
+        the formal-N_c continuation (its exact form keeps the N_c powers)."""
+
+        return bool(self._identities) and any(
+            symbol.get_name().rsplit("::", 1)[-1] in self._identities
+            for _power, value in referenced.terms
+            for symbol in value.get_all_symbols(False)
+        )
+
+    def _reachable_powers(
+        self, entry: Any, referenced: _Referenced
+    ) -> frozenset[int] | None:
+        """The epsilon powers at which a referenced coupling's Laurent
+        coefficient can be non-zero: a term's own power when its part free of
+        CT scalars does not vanish, and its power plus every sum of ``k``
+        non-zero powers of the CT scalars it reads (``_scalar_powers``), for
+        ``k`` from 1 to the term's polynomial degree in them (a linear term:
+        each scalar's powers; a product or power of CT scalars: their sums, a
+        superset whose exact zeros the coefficient plan drops); ``None`` (any
+        power) when a CT scalar's powers combine with others'.
+
+        Fail closed (``CountertermCouplingError``, the rule then residual): a
+        term that is not a polynomial in its CT scalars (one in a
+        denominator, under a non-integer power or in a function other than
+        ``conj``), whose Laurent coefficients this bound does not cover, and
+        a reachable power below the lowest CT slot (``COUNTERTERM_POWERS``),
+        which no vertex term could hold."""
+
+        from symbolica import Replacement
+
+        program = entry.scalar_program
+        key = (id(program), entry.coupling.id)
+        if key in self._coupling_powers:
+            return self._coupling_powers[key]
+        removed = [
+            Replacement(symbol, self._zero) for _name, symbol in referenced.scalars
+        ]
+        found: set[int] | None = set()
+        for order, value in referenced.terms:
+            if not _is_zero(value.replace_multiple(removed)):
+                found.add(order)
+            read = value.get_all_symbols(False)
+            shifts: set[int] = set()
+            factors = []
+            for name, symbol in referenced.scalars:
+                if symbol not in read:
+                    continue
+                powers = self._scalar_powers(program, name)
+                if powers is None:
+                    found = None
+                    break
+                shifts.update(powers)
+                factors.append(symbol)
+            if found is None:
+                break
+            if not factors:
+                continue
+            degree = _linear_degree(value, frozenset(factors), self._is_conj)
+            if degree == float("inf"):
+                raise CountertermCouplingError(
+                    f"the coupling {entry.coupling.name} is not a polynomial in "
+                    "its counterterm scalars "
+                    + ", ".join(name for name, _symbol in referenced.scalars)
+                )
+            sums = {0}
+            for _factor in range(int(degree)):
+                sums = {total + shift for total in sums for shift in shifts}
+                found.update(order + total for total in sums)
+        if found is not None and min(found, default=0) < min(COUNTERTERM_POWERS):
+            raise CountertermCouplingError(
+                f"the coupling {entry.coupling.name} reaches epsilon^"
+                f"{min(found)}, below the counterterm slots {COUNTERTERM_POWERS}"
+            )
+        result = None if found is None else frozenset(found)
+        self._coupling_powers[key] = result
+        return result
 
     def _referenced_coefficient(
         self, entry: Any, power: int, referenced: _Referenced
@@ -930,9 +1088,17 @@ def _number(value: Any) -> Any:
 # ------------------------------------------------------------------------ model
 
 
-# Decimal digits of the referenced CT scalars' coefficients at least (those of
-# a double-double input), and the cards whose values a model keeps.
+# Decimal digits of the references' coefficients at least (those of a
+# double-double input), and the cards whose values a model keeps.
 _COEFFICIENT_DIGITS = 32
+# Guard digits of their evaluation: the plan's Symbolica evaluator orders its
+# operations by the process's symbol registrations (e.g. whether the base
+# model was compiled in this process or loaded from the cache), and the
+# couplings' cancellations lose up to about 3 digits (measured at the G_mu
+# target: 98 of 728 references differed between the two histories by up to
+# 3e-30 relative at 32 digits). With these the values a carrier rounds do
+# not depend on the history.
+_COEFFICIENT_GUARD_DIGITS = 16
 _BOUND_KEPT = 8
 
 
@@ -957,12 +1123,12 @@ class CountertermModel:
     (``admitted_alternatives``), ``None`` when the lowering had none.
 
     ``coefficients`` maps every reference parameter of the lowered model
-    (``CoefficientLowering``: a part of a referenced CT scalar's Laurent
-    coefficient) to (scalar name, epsilon power, ``"re"`` or ``"im"``);
-    ``coefficient_plan`` (a ``scalar_bindings.ScalarBindingPlan`` of those
-    (scalar, power) outputs, every helper a scalar-library function, the
-    generation's fixed parameters substituted) binds them at the card
-    (``coefficient_values``).
+    (``CoefficientLowering``: a part of a referenced coupling's Laurent
+    coefficient, or in its exact form of a CT scalar's) to (coupling or
+    scalar name, epsilon power, ``"re"`` or ``"im"``); ``coefficient_plan``
+    (a ``scalar_bindings.ScalarBindingPlan`` of those (name, power) outputs,
+    every helper a scalar-library function, the generation's fixed
+    parameters substituted) binds them at the card (``coefficient_values``).
     """
 
     lowered: CountertermLoweredModel
@@ -993,10 +1159,11 @@ class CountertermModel:
         """The reference parameters (``coefficients``) at the model parameters
         ``card`` (decimal strings; absent ones take their exact source
         defaults, the fixed ones are the generation's), as decimal strings:
-        the scalar library evaluates the CT scalars' exact bodies at
-        ``max(digits, 32)`` digits (a carrier rounds them once, as it rounds
-        its couplings). A value or active diagnostic that is not finite
-        raises ``scalar_bindings.SourceBindingFailure`` (fail closed)."""
+        the scalar library evaluates the couplings' and CT scalars' exact
+        bodies at ``max(digits, 32)`` digits and ``_COEFFICIENT_GUARD_DIGITS``
+        more (a carrier rounds them once, as it rounds its couplings). A
+        value or active diagnostic that is not finite raises
+        ``scalar_bindings.SourceBindingFailure`` (fail closed)."""
 
         if not self.coefficients:
             return {}
@@ -1011,7 +1178,10 @@ class CountertermModel:
             from pyamplicol.loops.scalar_bindings import NativeScalarBindings
 
             state = NativeScalarBindings(
-                plan, arithmetic="arbitrary", precision=digits, parameters=dict(inputs)
+                plan,
+                arithmetic="arbitrary",
+                precision=digits + _COEFFICIENT_GUARD_DIGITS,
+                parameters=dict(inputs),
             )
             values = dict(zip(plan.outputs, state.values.to_decimal(), strict=True))
             found = {
@@ -1168,6 +1338,8 @@ def lower_model_counterterms(
 
     from symbolica import E
 
+    from pyamplicol._internal.physics.symbols import symbols
+
     dirac_fields = frozenset(dirac_fields)
     veto = frozenset(abs(int(pdg)) for pdg in veto)
     vocabulary = TreeVocabulary(
@@ -1222,7 +1394,9 @@ def lower_model_counterterms(
                     for power in COUNTERTERM_POWERS:
                         if coefficients.is_zero(entry, power):
                             continue
-                        value = coefficients(entry, power)
+                        # Left out: its cancellation needs the CT scalars
+                        # shared between couplings (``CoefficientLowering``).
+                        value = coefficients.exact(entry, power)
                         powers[power] = (
                             powers[power] + value if power in powers else value
                         )
@@ -1260,7 +1434,27 @@ def lower_model_counterterms(
         coefficients, values, unlowered, residual, fixed_parameters or {}
     )
 
+    internal = frozenset(
+        record.name for record in compiled.ir.parameters if record.nature == "internal"
+    )
+
+    model_symbols = symbols.model(compiled.name)
+
     def vanishes(expression: Any) -> bool:
+        # ``vanishes_identically``: without an internal parameter of the
+        # payload's its resolution leaves the expansion as it is, and only
+        # the re-parsed expansion is expanded again (Symbolica's expand is
+        # not idempotent: a second one can expand a sum the first left in a
+        # factor).
+        value = expression.expand()
+        if value == E("0"):
+            return True
+        if not any(
+            symbol.get_name().rsplit("::", 1)[-1] in internal
+            for symbol in value.get_all_symbols(False)
+        ):
+            parsed = model_symbols.expression(value.to_canonical_string())
+            return parsed.expand() == E("0")
         return vanishes_identically(compiled, expression)
 
     # Unlowered cells must cancel with the rules' multiplicities; otherwise
@@ -1358,9 +1552,11 @@ def _referenced_scalars(
     residual: dict[RuleKey, str],
     fixed_parameters: Mapping[str, Any],
 ) -> Any:
-    """The coefficient plan of the referenced CT scalars the lowered rows
-    ``values`` (and their left-out cells) read, at the generation's fixed
-    parameters (``coefficient_plan``), or ``None`` when they read none.
+    """The coefficient plan of the references the lowered rows ``values``
+    (and their left-out cells) read: the Laurent coefficients of referenced
+    couplings and, in their exact form, of CT scalars
+    (``CoefficientLowering``), at the generation's fixed parameters
+    (``coefficient_plan``), or ``None`` when they read none.
 
     ``values`` is updated in place: a reference that vanishes at the fixed
     parameters is a structural zero (rows that vanish then have no vertex
@@ -1408,7 +1604,7 @@ def _referenced_scalars(
             del values[key]
             scalars = sorted({references[name][0] for name in bad})
             residual[key] = (
-                "its counterterm scalars "
+                "its counterterm coefficients of "
                 + ", ".join(scalars)
                 + " are not finite at the fixed parameters and the model's "
                 "default card"
@@ -1443,6 +1639,7 @@ def lazily_fixed(
     expression: Any,
     values: Mapping[Any, Any],
     conds: Mapping[str, str] = MappingProxyType({}),
+    memo: dict[tuple[Any, bool], Any] | None = None,
 ) -> Any:
     """``expression`` with the symbols of ``values`` replaced, top down: a
     conditional (``symbolica::if``, or a call of a UFO-standard ``cond``
@@ -1453,7 +1650,9 @@ def lazily_fixed(
     and a decided ``cond`` diagnostic is 0. Scalar-library predicates of
     exact numbers are decided. With ``values``, subexpressions free of their
     symbols are kept as they are; without, the whole expression is walked
-    (``_decided_conditionals``)."""
+    (``_decided_conditionals``). ``memo`` (one per ``values`` and ``conds``)
+    keeps the walk's result per subexpression, which the expressions of one
+    plan share (their CT scalars' bodies)."""
 
     from symbolica import AtomType, E
 
@@ -1462,6 +1661,14 @@ def lazily_fixed(
     keys = frozenset(values)
 
     def walk(atom: Any, everywhere: bool) -> Any:
+        if memo is None:
+            return walked(atom, everywhere)
+        found = memo.get((atom, everywhere))
+        if found is None:
+            found = memo[atom, everywhere] = walked(atom, everywhere)
+        return found
+
+    def walked(atom: Any, everywhere: bool) -> Any:
         if not everywhere and not keys.intersection(atom.get_all_symbols(False)):
             return atom
         kind = atom.get_type()
@@ -1502,9 +1709,10 @@ def lazily_fixed(
 
 @dataclass(frozen=True)
 class _CoefficientPlan:
-    """The referenced CT scalars' coefficients of one lowering: their scalar
-    plan with the fixed parameters substituted (``lazily_fixed``), and the
-    outputs that are exactly zero or not finite there."""
+    """The referenced coefficients (of couplings or CT scalars) of one
+    lowering: their scalar plan with the fixed parameters substituted
+    (``lazily_fixed``), and the outputs that are exactly zero or not finite
+    there."""
 
     plan: Any
     zero: frozenset[tuple[str, int]]
@@ -1518,8 +1726,9 @@ def coefficient_plan(
     standard: Mapping[int, str] | None = None,
 ) -> _CoefficientPlan:
     """The scalar plan (``scalar_bindings.prepare_scalar_bindings``) of the
-    CT scalars' Laurent coefficients ``outputs`` ((name, epsilon power)) of
-    a source scalar ``program``, every helper a scalar-library function,
+    Laurent coefficients ``outputs`` ((name, epsilon power); CT scalars or
+    couplings) of a source scalar ``program``, every helper a scalar-library
+    function,
     with the generation's ``fixed_parameters`` substituted lazily (the
     model's UFO-standard helpers ``standard``, by default
     ``standard_helpers`` of the program's library, resolved; a ``cond``
@@ -1559,10 +1768,11 @@ def coefficient_plan(
         conds[value.get_name()] = "value"
         conds[diagnostic.get_name()] = "diagnostic"
     kept = [i for i, name in enumerate(free.external_names) if name not in fixed]
+    memo: dict[tuple[Any, bool], Any] = {}
     expressions = [
         ScalarExpression(
-            lazily_fixed(e.value, substitution, conds),
-            lazily_fixed(e.diagnostic, substitution, conds),
+            lazily_fixed(e.value, substitution, conds, memo),
+            lazily_fixed(e.diagnostic, substitution, conds, memo),
         )
         for e in free.expressions
     ]
