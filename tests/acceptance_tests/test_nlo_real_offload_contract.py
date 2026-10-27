@@ -889,6 +889,77 @@ class TestNLORealFortranOracle(unittest.TestCase):
         except (OSError, subprocess.CalledProcessError):
             raise unittest.SkipTest('no usable NVIDIA device')
 
+    def _check_cuda_dense_strided(self, output_path, case, manifest):
+        """Compare the dense NLO route with generic strided UMAMI calls.
+
+        Reuse the generated libraries and trusted per-flavour oracle. Vary G,
+        physical flavour, and growing/shrinking batch sizes on each handle;
+        padding sentinels catch writes outside the requested output slice.
+        """
+        points = {point['id']: point for point in case['points']}
+        for real in manifest['real_matrix_elements']:
+            records = [record for record in case['records']
+                       if record['real_me_id'] == real['id']]
+            library = ctypes.CDLL(pjoin(output_path, 'lib',
+                'libmadmatrix_%s_cuda.so' % real['library_process_id']))
+            library.umami_initialize.argtypes = [
+                ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p]
+            library.umami_initialize.restype = ctypes.c_int
+            library.umami_free.argtypes = [ctypes.c_void_p]
+            library.umami_free.restype = ctypes.c_int
+            library.umami_matrix_element.argtypes = [
+                ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t,
+                ctypes.c_size_t, ctypes.c_size_t,
+                ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_void_p),
+                ctypes.c_size_t, ctypes.POINTER(ctypes.c_int),
+                ctypes.POINTER(ctypes.c_void_p)]
+            library.umami_matrix_element.restype = ctypes.c_int
+            handle = ctypes.c_void_p()
+            self.assertEqual(library.umami_initialize(ctypes.byref(handle),
+                pjoin(output_path, 'Cards', 'param_card.dat').encode()), 0)
+            try:
+                for sequence, count in enumerate((1, 3, 255, 256, 257, 513, 3, 1)):
+                    batch = [records[(i + 7 * sequence) % len(records)]
+                             for i in range(count)]
+                    answers = []
+                    for stride, offset in ((count, 0), (count + 7, 3)):
+                        nexternal = manifest['nexternal']
+                        momenta = (ctypes.c_double * (4 * nexternal * stride))()
+                        coupling = (ctypes.c_double * stride)()
+                        flavour = (ctypes.c_uint32 * stride)()
+                        sentinel = -123456789.25
+                        output = (ctypes.c_double * stride)(*([sentinel] * stride))
+                        for event, record in enumerate(batch):
+                            point = points[record['point']]
+                            coupling[offset + event] = point['g_strong']
+                            flavour[offset + event] = record['fortran_flavour_index'] - 1
+                            for particle in range(nexternal):
+                                for component in range(4):
+                                    momenta[stride * (nexternal * component + particle)
+                                            + offset + event] = point['momenta'][particle][component]
+                        keys = (ctypes.c_int * 3)(0, 9, 2)
+                        inputs = (ctypes.c_void_p * 3)(*[
+                            ctypes.cast(array, ctypes.c_void_p)
+                            for array in (momenta, coupling, flavour)])
+                        output_keys = (ctypes.c_int * 1)(6)
+                        outputs = (ctypes.c_void_p * 1)(
+                            ctypes.cast(output, ctypes.c_void_p))
+                        self.assertEqual(library.umami_matrix_element(
+                            handle, count, stride, offset, 3, keys, inputs,
+                            1, output_keys, outputs), 0)
+                        values = list(output)[offset:offset + count]
+                        for actual, record in zip(values, batch):
+                            expected = record['local_squared_orders'][0]['value']
+                            self._assert_close(actual, expected, scale=abs(expected),
+                                label='CUDA dense/strided real %d count %d' % (real['id'], count))
+                        self.assertTrue(all(value == sentinel
+                            for i, value in enumerate(output)
+                            if not offset <= i < offset + count))
+                        answers.append(values)
+                    self.assertEqual(answers[0], answers[1])
+            finally:
+                self.assertEqual(library.umami_free(handle), 0)
+
     def _run_cuda_qcd_case(self):
         """Execute every QCD flavour row and CUDA rounding boundaries."""
         self._require_cuda()
@@ -951,6 +1022,8 @@ class TestNLORealFortranOracle(unittest.TestCase):
         finally:
             self.assertEqual(
                 bridge.mg7_nlo_real_finalize(ctypes.byref(context)), 0)
+
+        self._check_cuda_dense_strided(output_path, case, manifest)
 
         row = manifest['fks_rows'][0]
         records = [record for record in case['records']

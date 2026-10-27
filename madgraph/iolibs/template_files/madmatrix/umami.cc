@@ -437,6 +437,14 @@ extern "C"
     }
 
 #ifdef MGONGPUCPP_GPUIMPL
+    // The NLO bridge supplies dense host arrays and requests one component.
+    // Stage them explicitly instead of faulting ordinary host pages in kernels.
+    const bool dense_nlo = input_count == 3 && output_count == 1 &&
+      momenta_in && g_strong_in && flavor_indices_in && squared_orders_out &&
+      CPPProcess::nsqampso == 1 && stride == count && offset == 0 && !gpu_stream;
+    const std::size_t staging_count = dense_nlo ? count : 0;
+    double *staged_momenta, *staged_g, *staged_result;
+    unsigned int* staged_flavour;
     std::size_t n_threads = 256;
     std::size_t n_blocks = ( count + n_threads - 1 ) / n_threads;
     std::size_t rounded_count = n_blocks * n_threads;
@@ -451,7 +459,7 @@ extern "C"
     unsigned int *flavor_indices, *diagram_index;
 
     std::size_t n_coup = mg5amcGpu::Parameters_dependentCouplings::ndcoup;
-    std::array<std::pair<void**, std::size_t>, 16> ptrs_and_sizes = {{
+    std::array<std::pair<void**, std::size_t>, 20> ptrs_and_sizes = {{
         {reinterpret_cast<void**>(&momenta), rounded_count * CPPProcess::npar * 4 * sizeof( fptype_momenta )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
@@ -472,9 +480,13 @@ extern "C"
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
         {reinterpret_cast<void**>(&ghel_jamps), rounded_count * CPPProcess::ncomb * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype_amp )},
+        {reinterpret_cast<void**>(&staged_momenta), staging_count * CPPProcess::npar * 4 * sizeof( double )},
+        {reinterpret_cast<void**>(&staged_g), staging_count * sizeof( double )},
+        {reinterpret_cast<void**>(&staged_flavour), staging_count * sizeof( unsigned int )},
+        {reinterpret_cast<void**>(&staged_result), staging_count * sizeof( double )},
     }};
     std::size_t total_size = 0;
-    constexpr std::size_t MAX_SIZE = std::max( { sizeof( fptype ), sizeof( fptype_momenta ), sizeof( fptype ), sizeof( int ) } );
+    constexpr std::size_t MAX_SIZE = std::max( { std::size_t(8), sizeof( fptype ), sizeof( fptype_momenta ), sizeof( int ) } );
     for (auto [ptr, size] : ptrs_and_sizes) {
         std::size_t aligned_size = (size + MAX_SIZE - 1) / MAX_SIZE * MAX_SIZE;
         total_size += aligned_size;
@@ -484,11 +496,20 @@ extern "C"
     gpuMallocAsync( &buffer, total_size, gpu_stream );
     std::size_t buf_offset = 0;
     for (auto [ptr, size] : ptrs_and_sizes) {
-        std::size_t aligned_size = (size + 7) / 8 * 8;
+        std::size_t aligned_size = (size + MAX_SIZE - 1) / MAX_SIZE * MAX_SIZE;
         *ptr = buffer + buf_offset;
         buf_offset += aligned_size;
     }
 
+    if( dense_nlo )
+    {
+      gpuMemcpyAsync( staged_momenta, momenta_in, count * CPPProcess::npar * 4 * sizeof(double), gpuMemcpyDefault, gpu_stream );
+      gpuMemcpyAsync( staged_g, g_strong_in, count * sizeof(double), gpuMemcpyDefault, gpu_stream );
+      gpuMemcpyAsync( staged_flavour, flavor_indices_in, count * sizeof(unsigned int), gpuMemcpyDefault, gpu_stream );
+      momenta_in = staged_momenta;
+      g_strong_in = staged_g;
+      flavor_indices_in = staged_flavour;
+    }
     copy_inputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
       momenta_in,
       random_helicity_in,
@@ -542,38 +563,50 @@ extern "C"
       n_blocks,
       n_threads );
 
-    copy_outputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
-      denominators,
-      numerators,
-      matrix_elements,
-      diagram_index,
-      color_index,
-      helicity_index,
-      m2_out,
-      amp2_out,
-      diagram_out,
-      color_out,
-      helicity_out,
-      count,
-      stride,
-      offset );
-    checkGpu( gpuPeekAtLastError() );
-
-    if( squared_orders_out )
+    if( dense_nlo )
     {
-      if( CPPProcess::nsqampso != 1 ) return UMAMI_ERROR_UNSUPPORTED_OUTPUT;
-      // UMAMI GPU calls are asynchronous only when the caller explicitly asks
-      // for the stream. The single component equals the ordinary matrix element.
-      if( !gpu_stream ) checkGpu( gpuDeviceSynchronize() );
-      // copy_outputs already wrote the same physical values to m2_out only. A
-      // direct component destination needs its own device-to-host copy kernel.
-      if( squared_orders_out != m2_out )
+      copy_outputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
+        denominators, numerators, matrix_elements, diagram_index, color_index,
+        helicity_index, staged_result, nullptr, nullptr, nullptr, nullptr,
+        count, stride, offset );
+      checkGpu( gpuPeekAtLastError() );
+      gpuMemcpyAsync( squared_orders_out, staged_result, count * sizeof(double), gpuMemcpyDefault, gpu_stream );
+    }
+    else
+    {
+      copy_outputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
+        denominators,
+        numerators,
+        matrix_elements,
+        diagram_index,
+        color_index,
+        helicity_index,
+        m2_out,
+        amp2_out,
+        diagram_out,
+        color_out,
+        helicity_out,
+        count,
+        stride,
+        offset );
+      checkGpu( gpuPeekAtLastError() );
+
+      if( squared_orders_out )
       {
-        copy_outputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
-          denominators, numerators, matrix_elements, diagram_index, color_index,
-          helicity_index, squared_orders_out, nullptr, nullptr, nullptr, nullptr,
-          count, stride, offset );
-        checkGpu( gpuPeekAtLastError() );
+        if( CPPProcess::nsqampso != 1 ) return UMAMI_ERROR_UNSUPPORTED_OUTPUT;
+        // UMAMI GPU calls are asynchronous only when the caller explicitly asks
+        // for the stream. The single component equals the ordinary matrix element.
+        if( !gpu_stream ) checkGpu( gpuDeviceSynchronize() );
+        // copy_outputs already wrote the same physical values to m2_out only. A
+        // direct component destination needs its own device-to-host copy kernel.
+        if( squared_orders_out != m2_out )
+        {
+          copy_outputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
+            denominators, numerators, matrix_elements, diagram_index, color_index,
+            helicity_index, squared_orders_out, nullptr, nullptr, nullptr, nullptr,
+            count, stride, offset );
+          checkGpu( gpuPeekAtLastError() );
+        }
       }
     }
     gpuFreeAsync( buffer, gpu_stream );
