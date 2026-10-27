@@ -2023,10 +2023,10 @@ c               vol = 1d0/(knt*itm)
                sigma = (sigma/vol/vol - knt*mean*mean)
      .              / dble(knt-1) / dble(knt)
             endif
-c     For a (numerically) constant integrand, e.g. a 1 > 2 decay, the
-c     difference above can round to exactly zero: the 1/sigma weights of
-c     the iterations are then infinite and the result NaN
-            sigma = max(sigma, (1d-12*mean)**2)
+c           a constant integrand (e.g. a 2-body decay) can give a variance
+c           exactly zero (or negative by rounding): floor it at the
+c           numerical precision to keep mean**2/sigma finite
+            sigma = max(sigma, (1d-14*mean)**2, 1d-300)
 
             tmean = tmean + mean * (mean**2 / sigma)
             trmean = trmean + rmean * (mean**2 / sigma)
