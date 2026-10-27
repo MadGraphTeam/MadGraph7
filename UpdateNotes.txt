@@ -5,6 +5,20 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   RF: Add real-diagram channels for fixed-order NLO, through the
+       hidden option real_channels_x0 in the run_card. Useful for
+       processes that have new structures opening beyond LO, such as
+       pp>w+bb [QCD] (W radiating from a final state quark line) or
+       pp>w+h [QED] (photon induced t-channel contribution). A typical
+       value would be a few percent or so (e.g., 0.03). See also
+       Sec.6.3 of 0908.4272 [hep-ph].
+   OM: real_channels_x0 is now set by default, at output, for the processes
+       whose real-emission diagrams have propagators that the Born channels
+       do not follow (0.05, e.g. pp>w+h [QED], pp>w+bb~ [QCD], pp>w+w- [QED];
+       -1 otherwise, e.g. pp>jj, pp>w+j, pp>tt~j, pp>tt~h [QCD]). The
+       decision is the same for a resonance and its decay products
+       (pp>w+j and pp>e+vej). The value is written in the run_card, and
+       ignored for MC@NLO/LO/merged runs.
    OM: The default PDF follows the process when a photon is needed (issue #311):
        a photon in the initial state of a proton beam (LO, NLO and the mg7
        [beam] pdf) or NLO EW corrections ([QED]) select

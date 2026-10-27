@@ -166,11 +166,13 @@ C
       DATA GOODHEL/NCOMB*.FALSE./
       INTEGER NTRY
       DATA NTRY/0/
+      INCLUDE 'real_matrix_weights.inc'
       DATA IDEN/32/
 C     ----------
 C     BEGIN CODE
 C     ----------
       NTRY=NTRY+1
+      IF (GET_REAL_DIAGRAM_WEIGHTS) REAL_AMP2(:)=0D0
       DO I=0,NSQAMPSO
         ANS(I) = 0D0
       ENDDO
@@ -216,6 +218,17 @@ C         add to the sum of helicities
           ENDIF
         ENDIF
       ENDDO
+C     the diagram weights sum over the helicities computed after the
+C     first point (good ones, not identical to an earlier one), also
+C     at the first point, so that they depend on P only
+      IF (NTRY.LT.2 .AND. GET_REAL_DIAGRAM_WEIGHTS) THEN
+        REAL_AMP2(:)=0D0
+        DO IHEL=1,NCOMB
+          IF (GOODHEL(IHEL) .AND. T_IDENT(IHEL).LE.0) THEN
+            CALL MATRIX_1(P ,NHEL(1,IHEL),T)
+          ENDIF
+        ENDDO
+      ENDIF
       DO I=1,NSQAMPSO
         ANS(I)=ANS(I)/DBLE(IDEN)
         ANS(0)=ANS(0)+ANS(I)
@@ -270,6 +283,7 @@ C
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
       TYPE(ALOHA) W(NWAVEFUNCS)
       COMPLEX*16 TMP_JAMP(1)
+      INCLUDE 'real_matrix_weights.inc'
 C     
 C     FUNCTION
 C     
@@ -314,6 +328,16 @@ C     Amplitude(s) for diagram number 7
       CALL FFV1_0(W(8),W(9),W(1),GC_11,AMP(7))
 C     Amplitude(s) for diagram number 8
       CALL FFV1_0(W(7),W(10),W(1),GC_11,AMP(8))
+      IF (GET_REAL_DIAGRAM_WEIGHTS) THEN
+        REAL_AMP2(1)=REAL_AMP2(1)+AMP(1)*DCONJG(AMP(1))
+        REAL_AMP2(2)=REAL_AMP2(2)+AMP(2)*DCONJG(AMP(2))
+        REAL_AMP2(3)=REAL_AMP2(3)+AMP(3)*DCONJG(AMP(3))
+        REAL_AMP2(4)=REAL_AMP2(4)+AMP(4)*DCONJG(AMP(4))
+        REAL_AMP2(5)=REAL_AMP2(5)+AMP(5)*DCONJG(AMP(5))
+        REAL_AMP2(6)=REAL_AMP2(6)+AMP(6)*DCONJG(AMP(6))
+        REAL_AMP2(7)=REAL_AMP2(7)+AMP(7)*DCONJG(AMP(7))
+        REAL_AMP2(8)=REAL_AMP2(8)+AMP(8)*DCONJG(AMP(8))
+      ENDIF
 C     JAMPs contributing to orders QCD=2 QED=1
       TMP_JAMP(1) = AMP(5) +  AMP(6)  ! used 2 times
       JAMP(1,1) = (-1.000000000000000D+00)*AMP(1)+(-1.000000000000000D
@@ -490,5 +514,12 @@ C
 
       NSQSO=NSQAMPSO
 
+      END
+
+
+      BLOCK DATA INITIALIZE_REAL_DIAGRAM_WEIGHTS
+      IMPLICIT NONE
+      INCLUDE 'real_matrix_weights.inc'
+      DATA GET_REAL_DIAGRAM_WEIGHTS /.FALSE./
       END
 
