@@ -721,28 +721,35 @@ class MadgraphProcess:
         """Make sure the requested LHAPDF set is available, downloading it into
         the first writable PDF directory if needed, and return the (possibly
         updated) LHAPDF resolution. Nothing is downloaded when the set is
-        already present."""
+        already present. LHAPDF itself is not needed: madspace reads the grid
+        files directly, so without a usable lhapdf-config (or when 'lhapdf
+        install' fails) the set is fetched straight from the LHAPDF server."""
         paths = lhapdf_paths()
         if paths.find_set(pdf_set):
-            return paths
-        if not paths.config:
-            logger.debug("no usable lhapdf-config: cannot download %s", pdf_set)
             return paths
         if not paths.download_path:
             logger.debug("no writable PDF directory: cannot download %s", pdf_set)
             return paths
-        try:
-            from madgraph.interface.common_run_interface import CommonRunCmd
-            os.makedirs(paths.download_path, exist_ok=True)
-            logger.info("PDF set %s not found; downloading into %s",
-                        pdf_set, paths.download_path)
-            CommonRunCmd.install_lhapdf_pdfset_static(
-                paths.config, paths.download_path, pdf_set)
-        except Exception as err:
-            logger.warning("Could not download PDF set %s: %s", pdf_set, err)
-            return paths
+        logger.info("PDF set %s not found; downloading into %s",
+                    pdf_set, paths.download_path)
+        if paths.config:
+            try:
+                from madgraph.interface.common_run_interface import CommonRunCmd
+                os.makedirs(paths.download_path, exist_ok=True)
+                CommonRunCmd.install_lhapdf_pdfset_static(
+                    paths.config, paths.download_path, pdf_set)
+            except Exception as err:
+                logger.debug("lhapdf could not install %s: %s", pdf_set, err)
+        if not os.path.isdir(os.path.join(paths.download_path, pdf_set)):
+            try:
+                misc.download_lhapdf_set(pdf_set, paths.download_path)
+            except Exception as err:
+                logger.warning("Could not download PDF set %s: %s", pdf_set, err)
+                return paths
         global _LHAPDF
         _LHAPDF = paths.with_data_path(paths.download_path)
+        # subprocesses (systematics, MadSpin, reweight) find it here too
+        os.environ["LHAPDF_DATA_PATH"] = os.pathsep.join(_LHAPDF.data_paths)
         return _LHAPDF
 
     def _no_pdf_message(self, pdf_set: str) -> str:
@@ -752,14 +759,21 @@ class MadgraphProcess:
         if self.lhapdf.config:
             found = "using lhapdf-config: %s" % self.lhapdf.config
         else:
-            found = ("no usable lhapdf-config was found, so the set could not "
-                     "be downloaded automatically")
+            found = "no lhapdf-config found (not needed for the download)"
+        if self.lhapdf.download_path:
+            download = ("the download from %s into %s failed (see the "
+                        "warning above)" % (misc.LHAPDF_SETS_URL,
+                                            self.lhapdf.download_path))
+        else:
+            download = "no writable directory to download the set into"
         return (
             "LHAPDF set %r, requested by [beam] pdf1/pdf2 in Cards/run_card.toml, "
             "was not found.\n"
             "  searched: %s\n"
             "  %s\n"
+            "  %s\n"
             "Fix this in one of the following ways:\n"
+            "  * check the set name against %s/pdfsets.index and your network\n"
             "  * install LHAPDF for this MadGraph:  MG7> install lhapdf6\n"
             "  * point MadGraph at an existing one:\n"
             "        MG7> set lhapdf /path/to/lhapdf-config\n"
@@ -768,7 +782,7 @@ class MadgraphProcess:
             "        lhapdf = /path/to/lhapdf-config\n"
             "    to %s\n"
             "  * or set $LHAPDF_DATA_PATH to a directory containing %r."
-            % (pdf_set, searched, found,
+            % (pdf_set, searched, found, download, misc.LHAPDF_SETS_URL,
                os.path.join("Cards", "me5_configuration.txt"), pdf_set))
 
     def init_beam(self) -> None:
@@ -3608,6 +3622,19 @@ def lhapdf_paths(refresh: bool = False) -> misc.LhapdfPaths:
     return _LHAPDF
 
 
+def lhapdf_index_paths() -> list:
+    """The PDF directories to look an lhaid up in. Without LHAPDF there may be
+    no pdfsets.index anywhere yet, so fetch one into the download directory."""
+
+    paths = lhapdf_paths()
+    data_paths = list(paths.data_paths)
+    if not any(os.path.exists(os.path.join(p, "pdfsets.index")) for p in data_paths) \
+            and paths.download_path \
+            and misc.download_lhapdf_index(paths.download_path):
+        data_paths.append(paths.download_path)
+    return data_paths
+
+
 class MG7Cmd(Cmd):
     """The mg7 run interface: the command object that drives a launch.
 
@@ -4032,7 +4059,7 @@ def build_selector_cmd(mother=None):
                     # madevent beam settings (ebeam, lpp, pdlabel, lhaid, per
                     # beam or for both) onto the per-beam [beam] entries
                     if rest and nlow in run_card.lo_beam_params:
-                        data_paths = lhapdf_paths().data_paths if nlow == "lhaid" else ()
+                        data_paths = lhapdf_index_paths() if nlow == "lhaid" else ()
                         try:
                             done = run_card.set_lo_beam_param(nlow, rest, masses, data_paths)
                         except _banner_mod.InvalidRunCard as error:

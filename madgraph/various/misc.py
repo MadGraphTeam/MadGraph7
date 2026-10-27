@@ -3151,6 +3151,104 @@ def resolve_lhapdf(options=None, root=None, use_env=True, create=False):
     return LhapdfPaths(config, data_paths, download_path)
 
 
+# Where 'lhapdf get' itself fetches the sets and the id index from.
+LHAPDF_SETS_URL = 'https://lhapdfsets.web.cern.ch/current'
+
+class LhapdfServerError(MadGraph5Error):
+    """The LHAPDF server refused a request (e.g. an unknown set name): asking
+    again, or with another client, gets the same answer."""
+
+def _fetch_url(url, path, timeout=60):
+    """Download *url* to *path*: urllib first, then curl/wget (e.g. for a
+    python without usable SSL certificates). Raises MadGraph5Error on failure."""
+
+    import urllib.request, urllib.error
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response, \
+                open(path, 'wb') as out:
+            shutil.copyfileobj(response, out)
+            # a dropped connection just ends the stream early
+            expected = response.headers.get('Content-Length')
+            if expected and out.tell() != int(expected):
+                raise IOError('truncated: got %d of %s bytes'
+                              % (out.tell(), expected))
+        return
+    except urllib.error.HTTPError as error:
+        raise LhapdfServerError('could not download %s: %s' % (url, error))
+    except Exception as error:
+        reason = error
+    for tool, cmd in (('curl', ['curl', '-fsL', url, '-o', path]),
+                      ('wget', ['wget', '-q', url, '-O', path])):
+        if which(tool) and subprocess.call(cmd) == 0:
+            return
+    raise MadGraph5Error('could not download %s: %s' % (url, reason))
+
+
+def download_lhapdf_set(pdf_set, target, base_url=LHAPDF_SETS_URL):
+    """Install the LHAPDF set *pdf_set* into the directory *target* straight
+    from the LHAPDF server, without needing LHAPDF itself (its .info and .dat
+    grids are all madspace reads). pdfsets.index comes along when *target* has
+    none, so an lhaid can be turned into a set name later. The set appears in
+    one rename, so an interrupted download never leaves a partial one behind.
+    Raises MadGraph5Error on failure."""
+
+    import tarfile
+    os.makedirs(target, exist_ok=True)
+    if os.path.isdir(pjoin(target, pdf_set)):
+        return pjoin(target, pdf_set)
+    tmpdir = tempfile.mkdtemp(prefix='.%s.' % pdf_set, dir=target)
+    try:
+        tarball = pjoin(tmpdir, '%s.tar.gz' % pdf_set)
+        for attempt in range(3):
+            try:
+                _fetch_url('%s/%s.tar.gz' % (base_url, pdf_set), tarball)
+                with tarfile.open(tarball) as tar:
+                    tar.extractall(tmpdir, filter='data')
+                break
+            except LhapdfServerError:
+                raise
+            except (MadGraph5Error, tarfile.TarError, EOFError, OSError) as error:
+                # a dropped or corrupted transfer: fetch it again
+                reason = error
+                logger.debug('download of %s failed: %s', pdf_set, reason)
+                shutil.rmtree(pjoin(tmpdir, pdf_set), ignore_errors=True)
+        else:
+            raise MadGraph5Error('could not install %s: %s' % (pdf_set, reason))
+        if not os.path.exists(pjoin(tmpdir, pdf_set, '%s.info' % pdf_set)):
+            raise MadGraph5Error('%s.tar.gz does not contain the set %s'
+                                 % (pdf_set, pdf_set))
+        try:
+            os.rename(pjoin(tmpdir, pdf_set), pjoin(target, pdf_set))
+        except OSError:
+            # another process installed it meanwhile
+            if not os.path.isdir(pjoin(target, pdf_set)):
+                raise
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    download_lhapdf_index(target, base_url)
+    return pjoin(target, pdf_set)
+
+
+def download_lhapdf_index(target, base_url=LHAPDF_SETS_URL):
+    """Fetch LHAPDF's pdfsets.index (lhaid -> set name) into *target* unless
+    it is already there. Returns its path, or None if it could not be had."""
+
+    index = pjoin(target, 'pdfsets.index')
+    if os.path.exists(index):
+        return index
+    try:
+        os.makedirs(target, exist_ok=True)
+        _fetch_url('%s/pdfsets.index' % base_url, index + '.part')
+        os.replace(index + '.part', index)
+        return index
+    except Exception as error:
+        logger.debug('could not download pdfsets.index: %s', error)
+        if os.path.exists(index + '.part'):
+            os.remove(index + '.part')
+        return None
+
+
 python_lhapdf=None
 def import_python_lhapdf(lhapdfconfig):
     """load the python module of lhapdf return None if it can not be loaded"""
