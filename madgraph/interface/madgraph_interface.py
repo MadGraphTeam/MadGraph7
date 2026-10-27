@@ -11572,10 +11572,14 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             except Exception:
                 res = 1
             if res != 0 and args[1] != 'None':
-                logger.info('%s does not seem to correspond to a valid lhapdf-config ' % args[1] + \
+                # the shipped default just means "no LHAPDF here", which the
+                # mg7 output does not need (it downloads the PDF sets itself)
+                log_level = logging.DEBUG if args[1] == 'lhapdf-config' else logging.INFO
+                logger.log(log_level, '%s does not seem to correspond to a valid lhapdf-config ' % args[1] + \
                         'executable. \nPlease set the \'lhapdf\' variable to the (absolute) ' + \
                         '/PATH/TO/lhapdf-config (including lhapdf-config).\n' + \
-                        'Note that you can still compile and run aMC@NLO with the built-in PDFs\n' + \
+                        'Note that you can still compile and run aMC@NLO with the built-in PDFs,\n' + \
+                        'and the mg7 output downloads its PDF sets without LHAPDF\n' + \
                         ' MadGraph7> set lhapdf /PATH/TO/lhapdf-config\n')
                
     set2_lhapdf_py2 = set2_lhapdf
