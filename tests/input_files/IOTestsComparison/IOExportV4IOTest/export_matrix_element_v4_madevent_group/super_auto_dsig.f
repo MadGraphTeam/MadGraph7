@@ -481,8 +481,8 @@ C     ******************************************************
       DOUBLE PRECISION ALL_XBK(2,*)
       DOUBLE PRECISION ALL_Q2FACT(2,*)
       DOUBLE PRECISION ALL_CM_RAP(*)
-      INTEGER ICONF_VEC(NB_WARP), IPROC, IFLAV(NB_WARP),
-     $  IMIRROR_VEC(NB_WARP)
+C     configuration, flavor and orientation are chosen per warp
+      INTEGER ICONF_VEC(NB_WARP), IPROC, IMIRROR_VEC(NB_WARP)
       INTEGER IFLAV_VEC(NB_WARP)
       DOUBLE PRECISION ALL_OUT(*)
       INCLUDE 'maxconfigs.inc'

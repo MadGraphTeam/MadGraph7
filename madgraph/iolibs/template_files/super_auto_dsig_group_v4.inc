@@ -467,8 +467,9 @@ c     ******************************************************
       double precision all_xbk(2,*)
       double precision all_q2fact(2,*)
       double precision all_cm_rap(*)
-      integer iconf_vec(NB_WARP), iproc, iflav(nb_warp), imirror_vec(NB_WARP)
-      integer iflav_vec(nb_warp)
+C     configuration, flavor and orientation are chosen per warp
+      integer iconf_vec(NB_WARP), iproc, imirror_vec(NB_WARP)
+      integer iflav_vec(NB_WARP)
       double precision all_out(*)
       include 'maxconfigs.inc'
       include 'maxamps.inc'
