@@ -517,6 +517,7 @@ def test_slice_request_records_round_trip():
         corrections=("QCD", "QED"),
         fixed_parameters={"MB": "0"},
         particle_veto=(23,),
+        allow_anomalous_veto=True,
         accuracy="lc",
         colour_declaration=declaration,
         scale_parameter="MU_R",
@@ -845,6 +846,52 @@ def test_public_particle_veto_equals_njet_five_flavours(
                 index,
                 key,
             )
+
+
+@pytest.mark.loop_physics
+def test_public_anomalous_veto_is_refused_unless_overridden_and_recorded(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """[U2] through the public path: ``particle_veto = ["t"]`` keeps the
+    axial g g Z R2 of u u~ > e- e+ g from cancelling between the up- and
+    down-type quark loops (two flavours against three) while it cancels
+    with every flavour, so generation is refused by default
+    (``AnomalousVetoError``, naming the counterterm and the override); with
+    ``allow_anomalous_veto = true`` it generates, and the artifact records
+    the override in its request record and in the generation filters next
+    to ``particle_veto``, with the lowered rules and their cells."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.artifacts import load_manifest
+    from pyamplicol.loops.v2.ct_recursion import AnomalousVetoError
+
+    entries = (("uux_emepg", "u u~ > e- e+ g"),)
+    card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries).replace(
+        "emit_api_bundle = false", 'emit_api_bundle = false\nparticle_veto = ["t"]'
+    )
+    refused = tmp_path / "refused"
+    refused.mkdir()
+    with pytest.raises(
+        GenerationError, match=r"\[G G Z\].*R2_GGZ.*allow_anomalous_veto"
+    ) as caught:
+        _generate(card, refused, entries)
+    assert isinstance(caught.value.__cause__, AnomalousVetoError)
+    allowed = card.replace(
+        'particle_veto = ["t"]', 'particle_veto = ["t"]\nallow_anomalous_veto = true'
+    )
+    output = _generate(allowed, tmp_path, entries)
+    manifest = load_manifest(output, verify_payloads=True)
+    (record,) = manifest.extensions["generation"]["concrete_processes"]
+    filters = record["filters"]
+    assert filters["particle_veto"] == ["t"]
+    assert filters["allow_anomalous_veto"] is True
+    lowered = filters["counterterms_anomalous_veto"]
+    assert lowered and all(cells for cells in lowered.values())
+    runtime = Runtime.load(
+        output, process="uux_emepg", model_parameters={"aS": "0.118"}
+    )
+    request = runtime.inspect()["request"]
+    assert request["particle_veto"] == [6] and request["allow_anomalous_veto"] is True
 
 
 @pytest.mark.loop_physics

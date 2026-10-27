@@ -1358,6 +1358,12 @@ class SliceRequest:
     # vertices and propagators, the counterterm program), and every
     # counterterm term whose loop content holds one is dropped.
     particle_veto: tuple[int, ...] = ()
+    # [U2]: a Levi-Civita counterterm cell the veto keeps from cancelling
+    # that cancels without it (an anomalous veto, e.g. one breaking a quark
+    # doublet) refuses the request (``ct_recursion.AnomalousVetoError``)
+    # unless this override lowers it (``ct_recursion``, "Anomalous vetoes";
+    # the artifact records it).
+    allow_anomalous_veto: bool = False
     accuracy: ColourAccuracy = "full"
     # A source-owned formal-N_c continuation (``LoopColorDeclaration``); LC
     # needs it for the counterterm and field colour grades (design §6.7).
@@ -1390,6 +1396,8 @@ class SliceRequest:
         if 0 in veto:
             raise ValueError("particle_veto takes particle PDG codes")
         object.__setattr__(self, "particle_veto", veto)
+        if not isinstance(self.allow_anomalous_veto, bool):
+            raise ValueError("allow_anomalous_veto must be a boolean")
 
     @property
     def exact_loop_orders(self) -> tuple[Mapping[str, int], ...]:
@@ -1822,6 +1830,7 @@ class LoopSlice:
                 selection,
                 blocks.born_orders,
                 veto=request.particle_veto,
+                allow_anomalous_veto=request.allow_anomalous_veto,
                 fixed_parameters=fixed,
                 declaration=declaration,
                 continuation=continuation,

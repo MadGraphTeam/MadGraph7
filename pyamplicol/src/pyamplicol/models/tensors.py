@@ -134,6 +134,7 @@ def _normalize_lorentz_expression(
     expression = _replace(expression, "UFO::Sigma(a_,b_,c_,d_)", context.sigma)
     expression = _replace(expression, "UFO::Identity(a_,b_)", context.identity)
     expression = _replace(expression, "UFO::Metric(a_,b_)", context.metric)
+    expression = _replace(expression, "UFO::Epsilon(a_,b_,c_,d_)", context.epsilon)
     expression = _replace(expression, "UFO::P(a_,b_)", context.momentum)
     expression = _replace(expression, "UFO::P(a_)^n_", context.momentum_power)
     expression = _replace(expression, "UFO::P(a_)", context.propagator_momentum)
@@ -217,6 +218,67 @@ def normalize_vertex_tensor_term(
     )
 
 
+# The four-dimensional Levi-Civita tensor of UFO Lorentz structures
+# (``Epsilon``: the axial R2 of a Z with gluons, ``R2_GGZ`` and ``R2_GGGVa``).
+# The name is the one the loop catalogue's counterterm sites introduced
+# (WP3.1 I-AX); tree kernels and sites contract the same dense tensor.
+LEVI_CIVITA = symbols.qualified_name("loop_v2_ufo_levi_civita")
+
+
+def _permutation_sign(permutation: Sequence[int]) -> int:
+    sign, order = 1, list(permutation)
+    for index in range(len(order)):
+        while order[index] != index:
+            target = order[index]
+            order[index], order[target] = order[target], order[index]
+            sign = -sign
+    return sign
+
+
+@cache
+def levi_civita_components() -> tuple[int, ...]:
+    """The dense components of ``LEVI_CIVITA`` in row-major index order.
+
+    ALOHA (``aloha_object.L_Epsilon``) represents UFO's ``Epsilon`` by its
+    contravariant components with epsilon^{0123} = -1 (epsilon_{0123} = +1)
+    and contracts every Lorentz index with the metric. Spenso contracts
+    Minkowski slots the same way (vectors are contravariant components), so
+    the components are ALOHA's: minus the sign of the index permutation. With
+    the engine's gamma matrices (``gamma5`` = i gamma^0 gamma^1 gamma^2
+    gamma^3) this reads Tr(gamma5 gamma^mu gamma^nu gamma^rho gamma^sigma) =
+    4 i epsilon^{mu nu rho sigma}, as with ALOHA's.
+
+    Evidence: the tree kernels of ``R2_GGZ`` and ``R2_GGGVa`` equal compiled
+    ALOHA routines on identical numbers
+    (``tests/unit/test_model_levi_civita_kernels.py``); with them the
+    Levi-Civita R2 of ``u u~ > e- e+ g g`` with ``particle_veto = [d, s, b]``
+    (an incomplete doublet: the cells do not cancel and are lowered) equals
+    MadLoop's ``/ d s b`` R2, and its bare part MadLoop's, separately to
+    1e-12, and the R2 restores the gluon Ward identity that the anomalous
+    quark triangle breaks (WP3.2 EWI-7b, EW-20;
+    ``tests/unit/test_loop_v2_epsilon_sign.py``).
+    """
+
+    return tuple(
+        -_permutation_sign(axes) if len(set(axes)) == 4 else 0
+        for axes in product(range(4), repeat=4)
+    )
+
+
+@cache
+def levi_civita_tensor() -> Any:
+    """``LEVI_CIVITA`` as a dense Spenso tensor, for a tensor library."""
+
+    _ensure_symbolica()
+    from symbolica.community.tensor import Tensor
+
+    minkowski = Representation.mink(4)
+    return Tensor.dense(
+        TensorName(LEVI_CIVITA)(*[minkowski] * 4),
+        [E(str(value)) for value in levi_civita_components()],
+    )
+
+
 class _LorentzContext:
     def __init__(
         self,
@@ -251,6 +313,18 @@ class _LorentzContext:
         left = self._minkowski_slot(match[_WILDCARDS["a_"]])
         right = self._minkowski_slot(match[_WILDCARDS["b_"]])
         return TensorExpression.g(self.minkowski)(left, right).to_expression()
+
+    def epsilon(self, match: Mapping[Expression, Expression]) -> Expression:
+        """UFO ``Epsilon(a, b, c, d)``: ``LEVI_CIVITA`` on the four Minkowski
+        slots (its dense components, ``levi_civita_components``, enter the
+        networks that contract it, ``compiler_kernels``)."""
+
+        return TensorName(LEVI_CIVITA)(
+            *(
+                self._minkowski_slot(match[_WILDCARDS[label]])
+                for label in ("a_", "b_", "c_", "d_")
+            )
+        ).to_expression()
 
     def _spinor_pair(self, row: Expression, column: Expression) -> tuple[str, str]:
         """spenso's (first, second) bispinor labels of a UFO (row, column)
@@ -917,8 +991,11 @@ def _validate_color_representations(representations: Sequence[int]) -> None:
 
 
 __all__ = [
+    "LEVI_CIVITA",
     "NormalizedTensorExpression",
     "classify_trilinear_color_expression",
+    "levi_civita_components",
+    "levi_civita_tensor",
     "normalize_color_expression",
     "normalize_lorentz_expression",
     "normalize_vertex_tensor_term",

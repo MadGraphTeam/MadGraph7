@@ -631,8 +631,9 @@ def test_goldstone_vector_mixing_is_a_vertex_insertion(gmu):
     lines with the propagator kappa N_S N_V / (D_S D_V), the copies of the
     Goldstone's vertices carry the leg's momentum on a promoted vector leg,
     the vector's copies are plain; P(2,1) (the Goldstone's momentum) is
-    +P(k) and P(2,2) is -P(k), P(k) the tree engine's momentum of the copy's
-    leg (minus the momentum flowing in). In unitary gauge the absorbed Goldstone's
+    -P(k) and P(2,2) is +P(k), P(k) the tree engine's momentum of the copy's
+    leg (minus the momentum flowing in), as the tree engine reads every
+    vertex (WP3.2 EWI-7b). In unitary gauge the absorbed Goldstone's
     terms are refused (inert in every request, REQUIREMENTS_ADDENDUM J)."""
 
     from symbolica import E
@@ -650,7 +651,7 @@ def test_goldstone_vector_mixing_is_a_vertex_insertion(gmu):
     lorentz = {item["name"]: item for item in payload["lorentz_structures"]}
     terms = _mixing_terms(feynman, "Z")
     ratios = {s.lorentz: _momentum_ratio(s, lorentz, particles) for s in terms}
-    assert ratios == {"l_GpWmMass4": E("1"), "l_GpWmMass5": E("-1")}
+    assert ratios == {"l_GpWmMass4": E("-1"), "l_GpWmMass5": E("1")}
 
     def lower(gauge, absorbed=frozenset()):
         return lower_line_insertions(
@@ -670,7 +671,7 @@ def test_goldstone_vector_mixing_is_a_vertex_insertion(gmu):
     assert not any(item["goldstoneboson"] for item in clones.values())
     assert sorted(lines.reads_as.values()) == ["G0", "Z"]
     (scale,) = lines.parameters
-    assert E(scale["expression"]) == E("2*UFO::{}::MZ-(2+𝑖)*UFO::{}::MZ")  # noqa: RUF001
+    assert E(scale["expression"]) == E("(2+𝑖)*UFO::{}::MZ-2*UFO::{}::MZ")  # noqa: RUF001
     for record in lines.propagators:
         assert record["pyamplicol_source"] == "model-supplied"
         assert "Metric" in record["numerator"] and scale["name"] in record["numerator"]
@@ -930,6 +931,171 @@ def test_qcd_corrections_agree_in_both_gauges(gmu_massive_b, loop_native):
             assert abs(float(mine) - float(theirs)) <= 1e-14 * scale
 
 
+@pytest.mark.loop_nightly
+def test_born_closure_reads_the_z_h_goldstone_root_in_both_gauges(gmu, loop_native):
+    """z h > t t~ QED=2 [virt=QCD]: the slice closes its Born and its
+    counterterms at leg 1, the Z, where the 't Hooft-Feynman gauge adds the
+    all-self-conjugate, momentum-odd Z-H-G0 vertex (the G0 s-channel). The
+    root closure reads it as the tree engine does
+    (``ct_sites.SiteClosure._reading_sign``, -1 on it; WP3.2 EWI-7b): Born
+    and virtual agree between the gauges (one point, 32 digits). With the
+    closure's own reading (sign 1) the Feynman-gauge Born was 56.37 against
+    2.86 in unitary gauge."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+
+    request = SliceRequest(
+        "z h > t t~",
+        {"QCD": 0, "QED": 2},
+        {"QCD": 2, "QED": 2},
+        fixed_parameters={"MB": "0", "ymb": "0", **ZERO_WIDTHS},
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    point = [
+        [repr(x) for x in leg] for leg in _process_point(gmu, "z h > t t~", 1000.0)
+    ]
+    results = {}
+    for gauge in ("unitary", "feynman"):
+        compiled = gmu if gauge == "unitary" else _feynman(gmu)
+        slice_ = LoopSlice.generate(compiled, request, loop_native)
+        assert slice_.compiled.ir.gauge == gauge
+        results[gauge] = slice_.evaluate(
+            point,
+            "250000",
+            parameters={"aS": "0.118"},
+            precision=Precision.arbitrary(32),
+        )
+    unitary, feynman = results["unitary"], results["feynman"]
+    for sector, born in unitary.born.items():
+        assert float(feynman.born[sector]) == pytest.approx(float(born), rel=1e-13)
+    for sector, laurent in unitary.components["virtual"].items():
+        scale = max(abs(float(x)) for x in laurent.coefficients)
+        for mine, theirs in zip(
+            feynman.components["virtual"][sector].coefficients,
+            laurent.coefficients,
+            strict=True,
+        ):
+            assert abs(float(mine) - float(theirs)) <= 1e-14 * scale
+
+
+def _born_and_virtual(compiled, process, point, loop_native):
+    """Born and virtual of ``process`` (QED=2 [virt=QCD], G_mu, widths zero)
+    at one point, 32 digits."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+
+    request = SliceRequest(
+        process,
+        {"QCD": 0, "QED": 2},
+        {"QCD": 2, "QED": 2},
+        fixed_parameters=ZERO_WIDTHS,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    assert slice_.compiled.ir.gauge == compiled.ir.gauge
+    return slice_.evaluate(
+        point, "250000", parameters={"aS": "0.118"}, precision=Precision.arbitrary(32)
+    )
+
+
+def _assert_same_born_and_virtual(found, expected):
+    for sector, born in expected.born.items():
+        assert float(found.born[sector]) == pytest.approx(float(born), rel=1e-13)
+    for sector, laurent in expected.components["virtual"].items():
+        scale = max(abs(float(x)) for x in laurent.coefficients)
+        for mine, theirs in zip(
+            found.components["virtual"][sector].coefficients,
+            laurent.coefficients,
+            strict=True,
+        ):
+            assert abs(float(mine) - float(theirs)) <= 1e-14 * scale
+
+
+@pytest.mark.loop_nightly
+def test_root_closure_reads_the_w_goldstone_higgs_root_in_both_gauges_and_leg_orders(
+    gmu_massive_b, loop_native
+):
+    """w+ h > t b~ QED=2 [virt=QCD] with a massive b: in 't Hooft-Feynman
+    gauge its Born and its counterterms close at leg 1, the W+, on the
+    W G H vertex, which is not closed under conjugation (read through its
+    conjugate rule) and odd in the momenta. The root closure reads it as
+    the tree engine does (``ct_sites.SiteClosure._reading_sign``, -1 on it,
+    with each kernel leg taking the momentum of the block whose row it
+    takes; genericity audit 2 G2-M7): Born and virtual equal the
+    unitary-gauge ones, and the legs in the other order (h w+ > t b~, the H
+    at leg 1 closing on the same vertex, at the same physical point) give the
+    same values (one point, 32 digits). With the earlier reading sign 1 the
+    Feynman-gauge Born is wrong."""
+
+    unitary, feynman = gmu_massive_b, _feynman(gmu_massive_b)
+    point = [
+        [repr(x) for x in leg]
+        for leg in _process_point(gmu_massive_b, "w+ h > t b~", 1000.0)
+    ]
+    swapped = [point[1], point[0], *point[2:]]
+    reference = _born_and_virtual(unitary, "w+ h > t b~", point, loop_native)
+    _assert_same_born_and_virtual(
+        _born_and_virtual(feynman, "w+ h > t b~", point, loop_native), reference
+    )
+    _assert_same_born_and_virtual(
+        _born_and_virtual(feynman, "h w+ > t b~", swapped, loop_native), reference
+    )
+
+
+@pytest.mark.loop_nightly
+def test_born_closure_reads_the_w_w_vector_root_as_the_time_reversed_process(
+    gmu, loop_native
+):
+    """w+ w- > u u~ closes its Born at leg 1, the W+, on the W+ W- Z and
+    W+ W- A vertices, closed under conjugation with the W+ and W- rows on
+    each other's UFO legs: each kernel leg takes the momentum of the block
+    whose row it takes and the term the reading sign -1 (genericity audit 2
+    G2-M7). Its summed squared Born equals the time-reversed u u~ > w+ w-'s
+    (closed at a quark root) at the same momenta in both gauges (32
+    digits); the earlier reading gave it 177 times that."""
+
+    import math as _math
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+
+    mass = _mass(gmu, "MW")
+    energy, cosine, sine = 250.0, 0.6, 0.8
+    momentum = _math.sqrt(energy**2 - mass**2)
+    w_plus, w_minus = [energy, 0.0, 0.0, momentum], [energy, 0.0, 0.0, -momentum]
+    quark = [energy, energy * sine, 0.0, energy * cosine]
+    antiquark = [energy, -energy * sine, 0.0, -energy * cosine]
+    fixed = {"MB": "0", "ymb": "0", **ZERO_WIDTHS}
+    for compiled in (gmu, _feynman(gmu)):
+        summed = {}
+        # Initial spin x colour averages: 3 x 3 for the W pair, 2 x 2 x 3 x 3
+        # for the quark pair.
+        for process, legs, average in (
+            ("w+ w- > u u~", (w_plus, w_minus, quark, antiquark), 9),
+            ("u u~ > w+ w-", (quark, antiquark, w_plus, w_minus), 36),
+        ):
+            request = SliceRequest(
+                process,
+                {"QCD": 0, "QED": 2},
+                {"QCD": 2, "QED": 2},
+                fixed_parameters=fixed,
+                compatibility="gmu_particle_anti",
+                scale_parameter="MU_R",
+            )
+            slice_ = LoopSlice.generate(compiled, request, loop_native)
+            result = slice_.evaluate(
+                [[repr(x) for x in leg] for leg in legs],
+                "250000",
+                parameters={"aS": "0.118"},
+                precision=Precision.arbitrary(32),
+            )
+            summed[process] = average * sum(float(x) for x in result.born.values())
+        assert summed["w+ w- > u u~"] == pytest.approx(
+            summed["u u~ > w+ w-"], rel=1e-13
+        )
+
+
 # g t > t t t~ (binary64, on shell to rounding): a top line joined to a top
 # pair by a Z, a photon or a G0, with the gluon at leg 1.
 GT_TTTX_POINT = [
@@ -1047,3 +1213,107 @@ def test_goldstone_vector_mixings_equal_the_site_oracle(
             scale = max(abs(complex(x)) for x in values)
             for a, b in zip(found[name], values, strict=True):
                 assert abs(complex(a) - complex(b)) <= 1e-12 * scale, (name, a, b)
+
+
+def _uv_component_equals_madloop(compiled, name, loop_reference, loop_native):
+    """The UV counterterm component of the request of ``name`` in
+    ``goldstone-mixing.json`` against MadLoop's Born x CT interference
+    without its R2 amplitudes, per point, finite part and single pole within
+    1e-12 of MadLoop's (binary64)."""
+
+    from fractions import Fraction
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+
+    reference = loop_reference("goldstone-mixing")["processes"][name]
+    known = set(compiled.parameter_defaults)
+    request = SliceRequest(
+        reference["process"].split(" QCD=")[0],
+        reference["born_orders"],
+        reference["loop_orders"],
+        corrections=("QED",),
+        fixed_parameters={
+            key: value
+            for key, value in reference["fixed_parameters"].items()
+            if key in known
+        },
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    for point, mu, row in zip(
+        reference["points"], reference["mu_r"], reference["rows"], strict=True
+    ):
+        result = slice_.evaluate(
+            point, str(Fraction(mu) ** 2), parameters=reference["parameters"]
+        )
+        assert sum(float(x) for x in result.born.values()) == pytest.approx(
+            row["born"], rel=1e-13
+        )
+        (sector,) = result.components["uv_local"]
+        uv = [
+            float(a) + float(b)
+            for a, b in zip(
+                result.components["uv_local"][sector].coefficients,
+                result.components["uv_external_fields"][sector].coefficients,
+                strict=True,
+            )
+        ]
+        mixing = row.get("mixing") or {
+            key: row["neutral"][key] + row["charged"][key] for key in row["ct"]
+        }
+        for index, key in enumerate(("finite", "single_pole")):
+            expected = row["ct"][key] - row["r2"][key]
+            # The opposite sign of the mixings would miss by twice theirs.
+            assert abs(mixing[key]) > 1e-9 * abs(expected)
+            assert abs(uv[index] - expected) <= 1e-12 * abs(expected), (key, uv)
+        assert uv[2] == row["ct"]["double_pole"] == 0
+
+
+@pytest.mark.loop_nightly
+def test_goldstone_vector_mixings_equal_madloop(gmu, loop_reference, loop_native):
+    """The Goldstone-vector mixings' sign, decided by MadLoop (WP3.2 EWI-7b):
+    g t > t t t~ with QED corrections (massless b), whose trees join the
+    top line and the top pair through a Z, a photon or a G0, reaches the
+    G0-Z and G0-A mixing counterterms (lowered as clone lines,
+    ``ct_line_insertions._momentum_ratio``). Its UV counterterm component
+    equals MadLoop's Born x CT interference without the R2 amplitudes
+    (``goldstone-mixing.json``, ``tools/loop_reference/madloop_ct_selection.py``)
+    at three points, finite part and single pole within 1e-12 (measured
+    4e-14, MadLoop's binary64); the mixings make 0.3, 3 and 0.45 % of it,
+    and the earlier reading (the scalar leg of the mixing taking the momentum
+    flowing in) missed by twice that. The R2 and bare parts are not compared:
+    pyAmpliCol's R2 of this request differs from MadLoop's (-1.83e-8 against
+    -1.33e-8 at point 0) and its virtual misses Catani's single pole, an open
+    defect outside the counterterm lowering (reported, WP3.2 EWI-7b fix
+    round 1). About 15 minutes."""
+
+    _uv_component_equals_madloop(gmu, "gt_tttx_ew", loop_reference, loop_native)
+
+
+@pytest.mark.loop_nightly
+def test_charged_goldstone_vector_mixings_equal_madloop(
+    gmu_massive_b, loop_reference, loop_native
+):
+    """The charged Goldstone-vector mixings' sign against MadLoop: g b > t t~ b
+    with QED corrections and a massive b reaches the G-W+ mixing (with a
+    t-channel W between the b-t lines), which makes 150 % of its UV
+    counterterm component at point 0 (``goldstone-mixing.json``). The clone
+    lines read the charged mixings as the neutral ones
+    (``ct_line_insertions._momentum_ratio``). The request is refused today
+    at the W ghost vertex [ghA ghWm~ W-] of its loops, not closed under
+    conjugation, whose loop-segment reading through a conjugate rule is not
+    established (``conventions.FermionSignError``; WP3.2 Feynman-gauge loop
+    lines): exactly that refusal is an expected failure (about 10 minutes),
+    and the comparison runs once the request generates."""
+
+    from pyamplicol.loops.v2.conventions import FermionSignError
+
+    try:
+        _uv_component_equals_madloop(
+            gmu_massive_b, "gb_ttxb_ew_mb", loop_reference, loop_native
+        )
+    except FermionSignError as error:
+        if "('ghA', 'ghWm~', 'W-') is not closed under conjugation" in str(error):
+            pytest.xfail(f"the request is refused: {error}")
+        raise
