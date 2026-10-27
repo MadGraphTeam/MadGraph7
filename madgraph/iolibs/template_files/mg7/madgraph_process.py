@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import time
 
-from madgraph.iolibs.template_files.mg7.common import backend_of, format_time, fptype_of, get_start_time, interference_helicities_summed, lhe_helicities, lhe_weight_info, logger, me_parameters, ms, resolve_auto_backend, resolve_seed, resolve_verbosity
+from madgraph.iolibs.template_files.mg7.common import backend_of, fptype_of, get_start_time, interference_helicities_summed, lhe_helicities, lhe_weight_info, logger, me_parameters, ms, resolve_auto_backend, resolve_seed, resolve_verbosity
 from madgraph.various import misc
 from madgraph.various.banner import RunCardMG7
 from madgraph.models.check_param_card import ParamCard
@@ -1588,88 +1588,6 @@ class MadgraphProcess:
             context.copy_globals_from(self.contexts[0])
         self.event_generator = self.build_event_generator(madnis_phasespaces)
         self.madnis_trained = True
-
-    def update_madnis_status_single(
-        self, batch: int, batch_target: int, loss: float, lr: float, channel_count: int
-    ) -> None:
-        now = time.time()
-        if batch + 1 < batch_target:
-            if now - self.last_update_time < 0.1:
-                return
-            self.last_update_time = now
-            progress_bar = ms.format_progress((batch + 1) / batch_target, 52)
-            time_diff = now - self.madnis_wall_time
-            time_str = f"{format_time(time_diff)}"
-        else:
-            progress_bar = ""
-            wall_diff = now - self.madnis_wall_time
-            cpu_diff = time.process_time() - self.madnis_cpu_time
-            time_str = (
-                f"{format_time(wall_diff, centi=True)} wall, "
-                f"{format_time(cpu_diff, centi=True)} cpu"
-            )
-        batch_str = f"{batch + 1} / {batch_target}"
-        self.madnis_box.set_column(1, [
-            f"{batch_str:<15} {progress_bar}",
-            f"{loss:>.4f}",
-            f"{channel_count}",
-            time_str
-        ])
-        self.madnis_box.print_update()
-
-    def update_madnis_status_multi(
-        self,
-        subproc_id: int,
-        batch: int,
-        batch_target: int,
-        loss: float,
-        lr: float,
-        channel_count: int
-    ) -> None:
-        now = time.time()
-        subproc_count = len(self.subprocesses)
-        if batch + 1 < batch_target:
-            if now - self.last_update_time < 0.1:
-                return
-            self.last_update_time = now
-            progress_bar = ms.format_progress((batch + 1) / batch_target, 34)
-            progress_bar_all = ms.format_progress(
-                (subproc_id * batch_target + batch + 1) / (subproc_count * batch_target),
-                52
-            )
-            time_str = f"{format_time(now - self.madnis_wall_time)}"
-            subproc_str = f"{subproc_id} / {subproc_count}"
-        elif subproc_id < subproc_count - 1:
-            progress_bar = ""
-            progress_bar_all = ms.format_progress(
-                ((subproc_id + 1) * batch_target + 1) / (subproc_count * batch_target),
-                52
-            )
-            time_str = f"{format_time(now - self.madnis_wall_time)}"
-            subproc_str = f"{subproc_id} / {subproc_count}"
-        else:
-            progress_bar = ""
-            progress_bar_all = ""
-            wall_diff = now - self.madnis_wall_time
-            cpu_diff = time.process_time() - self.madnis_cpu_time
-            time_str = (
-                f"{format_time(wall_diff, centi=True)} wall, "
-                f"{format_time(cpu_diff, centi=True)} cpu"
-            )
-            subproc_str = f"{subproc_count} / {subproc_count}"
-        batch_str = f"{batch + 1} / {batch_target}"
-        self.madnis_upper_box.set_column(1, [
-            f"{subproc_str:<15} {progress_bar_all}",
-            time_str,
-        ])
-        self.madnis_lower_box.set_row(subproc_id + 1, [
-            f"{subproc_id}",
-            f"{loss:>.4f}",
-            f"{channel_count}",
-            f"{batch_str:<15} {progress_bar}",
-        ])
-        self.madnis_upper_box.print_update()
-        self.madnis_lower_box.print_update()
 
     @property
     def gridpack_run_mode(self) -> str:

@@ -53,15 +53,6 @@ def get_start_time():
     return time.time(), time.process_time()
 
 
-def format_time(t: int, centi: bool = False):
-    hours, t = divmod(t, 3600)
-    minutes, seconds = divmod(t, 60)
-    if centi:
-        return f"{int(hours):02}:{int(minutes):02}:{seconds:02.2f}"
-    else:
-        return f"{int(hours):02}:{int(minutes):02}:{seconds:02.0f}"
-
-
 def resolve_verbosity(verbosity: str) -> str:
     """Resolve the run_card "auto" verbosity to "pretty"/"log" depending on
     whether stdout is attached to a terminal; other values pass through
