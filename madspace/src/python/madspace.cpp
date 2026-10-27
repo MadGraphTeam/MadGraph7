@@ -2399,7 +2399,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<std::size_t>&,
                 std::size_t,
                 const std::optional<CustomFunction>&,
-                const std::optional<PdfGrid>&>(),
+                const std::optional<PdfGrid>&,
+                int>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -2430,6 +2431,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("compressed_channel_weight_count") = 50,
             py::arg("custom_bias") = std::nullopt,
             py::arg("pdf_grid2") = std::nullopt,
+            py::arg("mlm_history_qcd_power") = -1,
             pydoc::doc("Integrand::Integrand")
         )
         .def(
