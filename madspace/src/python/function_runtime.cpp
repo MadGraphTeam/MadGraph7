@@ -212,9 +212,9 @@ std::tuple<int, int> madspace_py::dlpack_device(Tensor tensor) {
     case DeviceType::cpu:
         return {kDLCPU, 0};
     case DeviceType::cuda:
-        return {kDLCUDA, 0};
+        return {kDLCUDA, tensor.device()->device_index()};
     case DeviceType::hip:
-        return {kDLROCM, 0};
+        return {kDLROCM, tensor.device()->device_index()};
     default:
         throw std::logic_error("unreachable");
     }
@@ -585,6 +585,8 @@ Tensor madspace_py::dlpack_to_tensor(
             deleter = [managed_ptr]() {
                 auto ptr = static_cast<DLManagedTensorVersioned*>(managed_ptr);
                 if (ptr->deleter) {
+                    // the producer may be freed on a worker thread without the GIL
+                    PythonGuard guard;
                     ptr->deleter(ptr);
                 }
             };
@@ -592,6 +594,7 @@ Tensor madspace_py::dlpack_to_tensor(
             deleter = [managed_ptr]() {
                 auto ptr = static_cast<DLManagedTensor*>(managed_ptr);
                 if (ptr->deleter) {
+                    PythonGuard guard;
                     ptr->deleter(ptr);
                 }
             };
@@ -623,6 +626,8 @@ std::vector<Tensor> FunctionRuntime::call(std::vector<py::object> args) {
     ProducerStream producer_stream(args);
     auto [inputs, runtime] =
         check_and_convert_args(args, *this, &_dlpack_version_cache);
+    // a Python matrix element called from a worker thread needs the GIL
+    py::gil_scoped_release release;
     return runtime->run(inputs);
 }
 
@@ -633,8 +638,10 @@ FunctionRuntime::call_with_grad(
     ProducerStream producer_stream(args);
     auto [inputs, runtime] =
         check_and_convert_args(args, *this, &_dlpack_version_cache);
-    auto [outputs, loc_grad, eval_grad] =
-        runtime->run_with_grad(inputs, input_requires_grad);
+    auto [outputs, loc_grad, eval_grad] = [&] {
+        py::gil_scoped_release release;
+        return runtime->run_with_grad(inputs, input_requires_grad);
+    }();
     std::vector<std::optional<Tensor>> local_grads;
     for (auto& grad : loc_grad) {
         if (grad) {
@@ -694,8 +701,10 @@ FunctionRuntime::call_backward(
     }
     // TODO: checks here
     Runtime* runtime = get_runtime(*this, expected_device);
-    auto [ret_in_grads, ret_glob_grads] =
-        runtime->run_backward(arg_out, arg_locals, eval_grad);
+    auto [ret_in_grads, ret_glob_grads] = [&] {
+        py::gil_scoped_release release;
+        return runtime->run_backward(arg_out, arg_locals, eval_grad);
+    }();
     std::vector<std::optional<Tensor>> input_grads;
     for (auto& grad : ret_in_grads) {
         if (grad) {

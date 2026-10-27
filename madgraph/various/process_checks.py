@@ -47,7 +47,7 @@ import aloha.create_aloha as create_aloha
 
 import madgraph.iolibs.export_python as export_python
 import madgraph.iolibs.helas_call_writers as helas_call_writers
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import madgraph.iolibs.save_load_object as save_load_object
 import madgraph.iolibs.file_writers as writers
 
@@ -67,7 +67,7 @@ import madgraph.various.progressbar as pbar
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.loop.loop_helas_objects as loop_helas_objects
 import madgraph.loop.loop_base_objects as loop_base_objects
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 
 from madgraph.interface.madevent_interface import MadLoopInitializer
 from madgraph.interface.common_run_interface import AskforEditCard
@@ -75,7 +75,7 @@ from madgraph import MG5DIR, InvalidCmd, MadGraph5Error
 
 from madgraph.iolibs.files import cp
 
-import models.model_reader as model_reader
+import madgraph.models.model_reader as model_reader
 import aloha.template_files.wavefunctions as wavefunctions
 from aloha.template_files.wavefunctions import \
      ixxxxx, oxxxxx, vxxxxx, sxxxxx, txxxxx, irxxxx, orxxxx, sfdxxx, vfdxxxx
@@ -348,7 +348,7 @@ class MatrixElementEvaluator(object):
             fsock = open('output%s.py' % process.shell_string(), 'w')
             text = """
 import madgraph
-import models.model_reader as model_reader
+import madgraph.models.model_reader as model_reader
 import aloha.template_files.wavefunctions as wavefunctions
 from aloha.template_files.wavefunctions import \
      ixxxxx, oxxxxx, vxxxxx, sxxxxx
@@ -6013,9 +6013,11 @@ def check_complex_mass_scheme_process(process, evaluator, opt = [],
                 # 2-body decay is the maximum that should be considered for NLO check.
                 # The default 1% accuracy is not enough when pushing to small
                 # lambdaCMS values, we need 1 per mil at least.
+                # MadEvent integrates it: the check works on the model of its
+                # evaluator, which madspace has not been validated on.
                 command = '%s --output=%s'%(particle_name,pjoin(path,'tmp.dat'))+\
                     ' --path=%s --body_decay=2'%pjoin(path,'tmp.dat')+\
-                    ' --precision_channel=0.001'
+                    ' --precision_channel=0.001 --engine=madevent'
 #                misc.sprint(command)
                 param_card.write(pjoin(options['output_path'],'tmp.dat'))
                 # The MG5 command get_width will change the cmd._curr_model

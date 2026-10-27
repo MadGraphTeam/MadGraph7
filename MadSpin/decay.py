@@ -53,7 +53,7 @@ import itertools
 #import madgraph.core.helas_objects as helas_objects
 #import madgraph.core.diagram_generation as diagram_generation
 
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 #import madgraph.various.process_checks as process_checks
 #from time import strftime
 #from madgraph.interface.madgraph_interface import MadGraphCmd
@@ -71,9 +71,18 @@ import random
 import math
 from madgraph import MG5DIR, MadGraph5Error
 import madgraph.various.misc as misc
+import madmatrix.density as madmatrix_density
 #import time
 
 MAX_COMPAT_FLAVS = 500
+
+
+def density_libtag(run_id, side):
+    """The LIBTAG the madmatrix density libraries of MadSpin run run_id are
+    built and loaded with, side 'p' (production) or 'd' (decay). Production and
+    decay live in one process, as do the trees of a second MadSpin run, and the
+    loader tells libraries apart by their name only."""
+    return '_ms%d%s' % (run_id, side)
 
 # Optimisation flag the matrix elements are compiled with. It is the
 # GLOBAL_FLAG of the tree's Source/make_opts, which every makefile of the tree
@@ -1994,7 +2003,7 @@ class width_estimate(object):
             'br' : value of the branching fraction"""        
         
         if isinstance(param_card, str):
-            import models.check_param_card as check_param_card
+            import madgraph.models.check_param_card as check_param_card
             param_card = check_param_card.ParamCard(param_card)
         
         if 'decay' not in param_card or not hasattr(param_card['decay'], 'decay_table'):
@@ -2352,7 +2361,7 @@ class decay_all_events(object):
         param.close()   
         if model_name == 'mssm' or model_name.startswith('mssm-'):
             #need to convert to SLHA2 format
-            import models.check_param_card as check_param_card
+            import madgraph.models.check_param_card as check_param_card
             check_param_card.convert_to_mg5card(pjoin(self.path_me,'param_card.dat'))
   
         
@@ -5564,26 +5573,35 @@ class decay_all_events_onshell(decay_all_events):
             commandline = commandline.replace('add process', 'generate',1)
             mgcmd.exec_cmd(commandline, precmd=True)
 
-            commandline = 'output standalone_fortran %s --prefix=int' % pjoin(path_me, ms_me_subdir)
+            # same t-channel widths as madevent (zerowidth_tchannel)
+            commandline = 'output standalone_fortran %s --prefix=int --zerowidth_tchannel=True' % pjoin(path_me, ms_me_subdir)
             logger.info(commandline)
             mgcmd.exec_cmd(commandline, precmd=True)
             fill_all_me(self, "production")
         else:
+            # auto_zero_width_PA: the decayed particles in the production
+            # (pdg list), the decaying particle in each decay (True/False)
+            zero_width = self.zerowidth_decay_pdgs()
             commandline_production = commandline.replace('add process', 'generate',1)
-            commandline_production += 'output standalone_fortran %s --prefix=int --density=1' % pjoin(path_me, ms_me_subdir)
-
+            backend = self.density_backend(commandline_production, zero_width)
             logger.info(commandline_production)
             mgcmd.exec_cmd(commandline_production, precmd=True)
+            # same t-channel widths as madevent (zerowidth_tchannel)
+            self.output_density_me(pjoin(path_me, ms_me_subdir), backend, 'p',
+                                   '--zerowidth_tchannel=True --zerowidth_decay=%s'
+                                   % zero_width)
 
             # store information about the production matrix elements
             fill_all_me(self, "production")
 
             commandline_decay = self.get_decay_command()
-            commandline_decay += 'output standalone_fortran %s --prefix=int --density=1 -f' % pjoin(path_me, ms_me_decay_subdir) #we add -f, else it would ask us if we want to clean the folder madspin_decay and madspin_me
             commandline_decay = commandline_decay.replace('add process', 'generate',1)
 
             logger.info(commandline_decay)
             mgcmd.exec_cmd(commandline_decay, precmd=True)
+            self.output_density_me(pjoin(path_me, ms_me_decay_subdir),
+                                   self.density_backend(commandline_decay, zero_width),
+                                   'd', '--zerowidth_decay=%s' % bool(zero_width))
 
             # store information about the decay matrix elements
             fill_all_me(self, "decay")
@@ -5591,6 +5609,82 @@ class decay_all_events_onshell(decay_all_events):
         logger.info('Done %.4g' % (time.time()-start))
 
         return self.all_me
+
+    def density_backend(self, commandline, zero_width=''):
+        """'madmatrix' or 'fortran': what evaluates the density matrices and
+        |M|^2 of the processes commandline generates (option density_backend).
+        zero_width is the --zerowidth_decay of the production
+        (zerowidth_decay_pdgs)."""
+        try:
+            backend = self.options['density_backend']
+        except Exception:
+            backend = 'madmatrix'
+        if backend == 'fortran':
+            return 'fortran'
+        if '[' in commandline:
+            # a loop-induced production (get_LO_definition_from_NLO leaves its
+            # [sqrvirt=...]/[virt=...] in place): MadLoop, only in the Fortran
+            return 'fortran'
+        mgcmd = getattr(self, 'mgcmd', None)
+        if mgcmd is not None and mgcmd.options.get('complex_mass_scheme'):
+            # the complex-mass scheme (set from the banner's proc card): the
+            # parameters madmatrix writes for it do not compile, and its
+            # output only fails at the build, which output_density_me cannot
+            # catch
+            logger.info('MadSpin: complex-mass scheme, the density matrices '
+                        'come from the Fortran matrix elements')
+            return 'fortran'
+        if zero_width:
+            # auto_zero_width_PA: only the Fortran output writes propagators
+            # with a zero width (output standalone_fortran --zerowidth_decay)
+            logger.info('MadSpin: auto_zero_width_PA, the density matrices '
+                        'come from the Fortran matrix elements')
+            return 'fortran'
+        return 'madmatrix'
+
+    def density_libtag(self, side):
+        """The LIBTAG of the madmatrix libraries of one density tree (side 'p'
+        production, 'd' decay) for this MadSpin run (density_libtag)."""
+        return density_libtag(getattr(self.mscmd, '_ms_run_id', 1), side)
+
+    def output_density_me(self, path, backend, side, fortran_options=''):
+        """Write the matrix elements just generated to path, for the density
+        modes (side 'p' production, 'd' decay). A madmatrix output is built
+        right away, while these processes are still the current ones: one that
+        cannot be written or does not compile is replaced by the Fortran one.
+        Returns the backend written; MadSpinInterface.create_f2py_module tells
+        the two apart from what it finds in path."""
+        if backend == 'madmatrix':
+            commandline = 'output standalone %s -f --noeps=True' % path
+            logger.info(commandline)
+            try:
+                self.mgcmd.exec_cmd(commandline, precmd=True)
+                dependent = madmatrix_density.scale_dependence(path)
+                if dependent:
+                    # couplings depending on MU_R: the Fortran output sets it
+                    # from each event's scale, madmatrix keeps the card value
+                    raise madmatrix_density.MadDensityError(
+                        'MU_R-dependent couplings (%s)' % '; '.join(
+                            '%s: %s' % (p, ', '.join(r))
+                            for p, r in sorted(dependent.items())))
+                misc.compile(madmatrix_density.make_variables(
+                                 libtag=self.density_libtag(side)),
+                             cwd=pjoin(path, 'SubProcesses'), mode='cpp',
+                             nb_core=self.mgcmd.options['nb_core'])
+                return backend
+            except Exception as error:
+                logger.warning('MadSpin could not write or build its density matrix '
+                               'elements with madmatrix (%s): falling back to the '
+                               'Fortran standalone output.',
+                               str(error).strip().split('\n')[0])
+                logger.debug('madmatrix failure: %s', error)
+                if os.path.exists(path):
+                    shutil.rmtree(path)
+        commandline = 'output standalone_fortran %s --prefix=int --density=1 %s -f' % (
+                                                        path, fortran_options)
+        logger.info(commandline)
+        self.mgcmd.exec_cmd(commandline, precmd=True)
+        return 'fortran'
 
     @misc.mute_logger()
     def handle_model(self):
@@ -5712,6 +5806,22 @@ class decay_all_events_onshell(decay_all_events):
                 i+=1
         return commandline
 
+    def zerowidth_decay_pdgs(self):
+        """The value of ``output standalone_fortran --zerowidth_decay=`` of the
+        production for auto_zero_width_PA: comma-separated |pdg|, empty for
+        none. The decay output gets True when this is not empty.
+
+        With spinmode=PA, the propagators of the particles MadSpin decays are
+        written with a zero width -- in the production, and in each particle's
+        own decay only (ProcessExporterFortranSA.get_zerowidth_pdgs). The
+        param_card, and so every width MadSpin reads (Breit-Wigner,
+        reshuffling, branching ratios), is untouched.
+        """
+        pdgs = []
+        if hasattr(getattr(self, 'mscmd', None), '_zero_width_pdgs'):
+            pdgs = self.mscmd._zero_width_pdgs()
+        return ','.join(str(pid) for pid in pdgs)
+
     def refresh_me_param_cards(self):
         """Put MadSpin's parameters inside every matrix-element directory.
 
@@ -5790,20 +5900,28 @@ class decay_all_events_onshell(decay_all_events):
             decay_args.insert(0, 'PROCNAME=_ms%d' % ms_run_id)
         #my_env = os.environ.copy()
         #os.environ["GFORTRAN_UNBUFFERED_ALL"] = "y"
-        self.use_global_flag(pjoin(self.path_me, ms_me_subdir))
-        misc.compile(cwd=pjoin(self.path_me, ms_me_subdir, 'Source'),
-                     nb_core=self.mgcmd.options['nb_core'])
-        misc.compile(prod_args,
-                     cwd=pjoin(self.path_me, ms_me_subdir, 'SubProcesses'),
-                     nb_core=self.mgcmd.options['nb_core'])
+        trees = [(ms_me_subdir, prod_args, 'p')]
         #Valentin: not sure the decay_folder exists in all cases, so I check
         if os.path.exists(pjoin(self.path_me, ms_me_decay_subdir)):
-            self.use_global_flag(pjoin(self.path_me, ms_me_decay_subdir))
-            misc.compile(cwd=pjoin(self.path_me, ms_me_decay_subdir, 'Source'),
-                        nb_core=self.mgcmd.options['nb_core'])
-            misc.compile(decay_args,
-                        cwd=pjoin(self.path_me, ms_me_decay_subdir, 'SubProcesses'),
-                        nb_core=self.mgcmd.options['nb_core'])
+            trees.append((ms_me_decay_subdir, decay_args, 'd'))
+        for subdir, fortran_args, side in trees:
+            tree = pjoin(self.path_me, subdir)
+            if madmatrix_density.is_output(tree):
+                # The C++ libraries madmatrix.density loads, which
+                # output_density_me already built (make has nothing left to do
+                # then); named per tree for the same reason the Fortran side
+                # changes MENUM and PROCNAME above (density_libtag).
+                misc.compile(madmatrix_density.make_variables(
+                                 libtag=self.density_libtag(side)),
+                             cwd=pjoin(tree, 'SubProcesses'), mode='cpp',
+                             nb_core=self.mgcmd.options['nb_core'])
+                continue
+            self.use_global_flag(tree)
+            misc.compile(cwd=pjoin(tree, 'Source'),
+                         nb_core=self.mgcmd.options['nb_core'])
+            misc.compile(fortran_args,
+                         cwd=pjoin(tree, 'SubProcesses'),
+                         nb_core=self.mgcmd.options['nb_core'])
 
     def save_to_file(self, *args):
         import sys

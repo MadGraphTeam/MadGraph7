@@ -160,11 +160,13 @@ C
       DATA GOODHEL/NCOMB*.FALSE./
       INTEGER NTRY
       DATA NTRY/0/
+      INCLUDE 'real_matrix_weights.inc'
       DATA IDEN/96/
 C     ----------
 C     BEGIN CODE
 C     ----------
       NTRY=NTRY+1
+      IF (GET_REAL_DIAGRAM_WEIGHTS) REAL_AMP2(:)=0D0
       DO I=0,NSQAMPSO
         ANS(I) = 0D0
       ENDDO
@@ -210,6 +212,17 @@ C         add to the sum of helicities
           ENDIF
         ENDIF
       ENDDO
+C     the diagram weights sum over the helicities computed after the
+C     first point (good ones, not identical to an earlier one), also
+C     at the first point, so that they depend on P only
+      IF (NTRY.LT.2 .AND. GET_REAL_DIAGRAM_WEIGHTS) THEN
+        REAL_AMP2(:)=0D0
+        DO IHEL=1,NCOMB
+          IF (GOODHEL(IHEL) .AND. T_IDENT(IHEL).LE.0) THEN
+            CALL MATRIX_2(P ,NHEL(1,IHEL),T)
+          ENDIF
+        ENDDO
+      ENDIF
       DO I=1,NSQAMPSO
         ANS(I)=ANS(I)/DBLE(IDEN)
         ANS(0)=ANS(0)+ANS(I)
@@ -265,6 +278,7 @@ C
       COMPLEX*16 ZTEMP, AMP(NGRAPHS), JAMP(NCOLOR,NAMPSO)
       TYPE(ALOHA) W(NWAVEFUNCS)
       COMPLEX*16 TMP_JAMP(0)
+      INCLUDE 'real_matrix_weights.inc'
 C     
 C     FUNCTION
 C     
@@ -289,6 +303,10 @@ C     Amplitude(s) for diagram number 1
       CALL FFV1_1(W(4),W(1),GC_5,ZERO,ZERO,W(5))
 C     Amplitude(s) for diagram number 2
       CALL FFV2_0(W(2),W(5),W(3),GC_11,AMP(2))
+      IF (GET_REAL_DIAGRAM_WEIGHTS) THEN
+        REAL_AMP2(1)=REAL_AMP2(1)+AMP(1)*DCONJG(AMP(1))
+        REAL_AMP2(2)=REAL_AMP2(2)+AMP(2)*DCONJG(AMP(2))
+      ENDIF
 C     JAMPs contributing to orders QCD=1 QED=1
       JAMP(1,1) = AMP(1)+AMP(2)
 

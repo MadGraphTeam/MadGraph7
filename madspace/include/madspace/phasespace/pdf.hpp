@@ -2,6 +2,7 @@
 
 #include "madspace/driver/context.hpp"
 #include "madspace/phasespace/base.hpp"
+#include "madspace/phasespace/custom_function.hpp"
 
 namespace madspace {
 
@@ -57,7 +58,8 @@ struct PdfGrid {
  *
  * Interpolates a @ref PdfGrid at the sampled @f$(x, q)@f$, returning
  * @f$x f(x, q)@f$ for the requested flavours; the numerical output agrees with
- * LHAPDF to double precision [1] (Sec. 3.2.3 of [2]).
+ * LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). With a @ref CustomPdf,
+ * the user-supplied library is called once per requested flavour instead.
  *
  * `batch` is the leading batch dimension.
  *
@@ -92,6 +94,19 @@ public:
         bool dynamic_pid = false,
         const std::string& prefix = ""
     );
+    /**
+     * @param custom_pdf    The user-supplied parton density.
+     * @param pids          PDG ids of the flavours to return.
+     * @param beam_index    Index of the beam (0 or 1), passed to the library.
+     * @param dynamic_pid   If true, a single flavour selected per event by the
+     *                      `flavor_index` argument is returned.
+     */
+    PartonDensity(
+        const CustomPdf& custom_pdf,
+        const std::vector<int>& pids,
+        int beam_index,
+        bool dynamic_pid = false
+    );
 
 private:
     NamedVector<Value> build_function_impl(
@@ -99,6 +114,9 @@ private:
     ) const override;
 
     std::vector<me_int_t> _pid_indices;
+    std::vector<me_int_t> _pids;
+    std::optional<CustomPdf> _custom_pdf;
+    me_int_t _beam_index = 0;
     bool _dynamic_pid;
     std::string _prefix;
     std::vector<std::size_t> _logx_shape;

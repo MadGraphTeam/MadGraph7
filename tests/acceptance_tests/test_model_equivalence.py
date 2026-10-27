@@ -28,14 +28,14 @@ from madgraph import MG4DIR, MG5DIR, MadGraph5Error
 
 import madgraph.core.base_objects as base_objects
 import madgraph.iolibs.export_v4 as export_v4
-import models.import_ufo as import_ufo
+import madgraph.models.import_ufo as import_ufo
 import madgraph.iolibs.files as files
 import madgraph.iolibs.import_v4 as import_v4
 import madgraph.iolibs.ufo_expression_parsers as ufo_expression_parsers
 import madgraph.various.misc as misc
 from madgraph.iolibs import save_load_object
 
-import  models.check_param_card as check_param_card 
+import madgraph.models.check_param_card as check_param_card 
 
 logger = logging.getLogger('madgraph.test.model')
 pjoin = os.path.join
