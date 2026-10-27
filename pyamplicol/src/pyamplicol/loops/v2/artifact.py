@@ -696,15 +696,15 @@ def generate_process(
     from .observables import ObservableSlice
     from .plan_export import export_plan
 
-    # The recorded recipe names the corrections the slice takes (a request
-    # that names none takes the model's strong correction).
-    request = resolve_request(compiled, request)
     if request.counterterms != "recursion":
         # Site closure (with its loop matching) is the O6 test oracle only.
         raise ArtifactError(
             "plan v4 processes take their counterterms from the tree recursion; "
             f"counterterms={request.counterterms!r} is a test oracle"
         )
+    # The recorded recipe names the corrections the slice takes (a request
+    # that names none takes the model's strong correction).
+    request = resolve_request(compiled, request)
     declared = correlators is not None and bool(
         correlators.color_correlations
         or correlators.spin_correlations
