@@ -14,6 +14,67 @@ from madmatrix import output as madmatrix_output
 
 
 class TestSingleLanePreparation(unittest.TestCase):
+    def test_scalar_cache_defaults_are_initialized_once(self):
+        compiler = shutil.which('gfortran')
+        if compiler is None:
+            self.skipTest('gfortran is required for the cache lifecycle probe')
+        with open(os.path.join(MG5DIR, 'Template', 'NLO', 'SubProcesses',
+                               'driver_mintMC.f')) as stream:
+            source = stream.read()
+        source = source[source.index('      function sigintF_vec(ifl)'):]
+        start = source.index('      if (firsttime) then')
+        first = source[start:source.index('      if (ifl.eq.0) then', start)]
+        start = source.index('      if (ifl.eq.0 .or. ifl.eq.1) then')
+        reset = source[start:source.index('         if (ifl.eq.0) then', start)]
+        program = '''      program probe
+      implicit none
+      logical firsttime,single_lane_preparation,goodhel_set
+      integer policy,callback,ifl,i,counts,proc_map(0:1,0:1)
+      integer sum,ini_fin_fks,born_class_map(1)
+      integer BORN_FLAVOR_INDEX_D(1),goodhel_calls(1)
+      common /reset_calls/counts
+      BORN_FLAVOR_INDEX_D=1
+      do policy=0,1
+         firsttime=.true.
+         single_lane_preparation=policy.eq.1
+         counts=0
+         do callback=1,12
+            ifl=mod(callback-1,3)
+''' + first + reset + '''         endif
+         enddo
+         if (policy.eq.0.and.counts.ne.8) stop 1
+         if (policy.eq.1.and.counts.ne.1) stop 2
+      enddo
+      print *, 'PASS'
+      end
+      subroutine setup_proc_map(sum,map,ini)
+      integer sum,map(0:1,0:1),ini
+      map=1
+      end
+      subroutine find_iproc_map()
+      end
+      subroutine setup_event_attributes()
+      end
+      subroutine reset_storage()
+      integer counts
+      common /reset_calls/counts
+      counts=counts+1
+      end
+'''
+        with tempfile.TemporaryDirectory(prefix='mg7_cache_lifecycle_') as tmp:
+            path = os.path.join(tmp, 'probe.f')
+            binary = os.path.join(tmp, 'probe')
+            with open(path, 'w') as stream:
+                stream.write(program)
+            compiled = subprocess.run([compiler, '-O0', '-fcheck=all',
+                '-ffixed-line-length-132', path, '-o', binary], cwd=tmp,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout)
+            run = subprocess.run([binary], stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, text=True)
+            self.assertEqual(run.returncode, 0, run.stdout)
+            self.assertEqual(run.stdout.strip(), 'PASS')
+
     def test_emitted_backend_query_ignores_bridge_initialization_and_fallback(self):
         compiler = shutil.which('gfortran')
         if compiler is None:

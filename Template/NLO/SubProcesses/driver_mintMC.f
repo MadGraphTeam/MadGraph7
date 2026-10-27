@@ -1151,6 +1151,10 @@ c "npNLO".
          ! call allocate_storage(1)
          goodhel_set=.false.
          goodhel_calls=0
+c Skipped cache fields are still copied into unused contribution arguments.
+c Initialize their defaults once; consumed single-lane fields are replaced
+c from the current momenta before every read, including subsequent folds.
+         if (single_lane_preparation) call reset_storage()
       endif
 
       if (ifl.eq.0) then
@@ -1161,8 +1165,9 @@ c "npNLO".
 
       fold=ifl
       if (ifl.eq.0 .or. ifl.eq.1) then
-C Clear per-fold MEs before preparing this fold's virtual approximations.
-         call reset_storage()
+C Batched preparation still needs fresh per-fold validity markers/zeros.
+C Scalar preparation overwrites consumed fields and clears real_active itself.
+         if (.not.single_lane_preparation) call reset_storage()
          if (ifl.eq.0) then
             icontr=0
 c Single-lane integration keeps its contribution history in scalar lines.
