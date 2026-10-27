@@ -130,6 +130,15 @@ pub const RESCALING: (i64, i64) = (7, 10);
 /// at it).
 pub const NATIVE_ONSHELL_THRESHOLD: f64 = 1e-9;
 
+/// The fast engine's routing threshold, in the model's units: the larger of
+/// [`NATIVE_ONSHELL_THRESHOLD`] and `FastOptions::infrared_eps` (module
+/// docs). The one value [`V2Reducer`]'s binary64 engine routes by, and the
+/// one the generation record of light masses compares with
+/// (`GeneratedProcess.binary64_exact_masses`).
+pub fn fast_engine_threshold() -> f64 {
+    NATIVE_ONSHELL_THRESHOLD.max(FastOptions::default().infrared_eps)
+}
+
 /// Whether one lane's binary64 inputs reach an absolute threshold of the fast
 /// engine below `threshold` (module docs): a squared mass or an off-diagonal
 /// invariant `x` with `0 < |re x| + |im x| < threshold`, or an off-diagonal
@@ -631,7 +640,7 @@ impl FastEngine {
             masters: MasterCache::new(OneLoopNativeMasters::new().map_err(error)?, cache_masters),
             results: Vec::new(),
             statuses: Vec::new(),
-            threshold: NATIVE_ONSHELL_THRESHOLD.max(FastOptions::default().infrared_eps),
+            threshold: fast_engine_threshold(),
             exact: None,
             exact_lanes: 0,
         })

@@ -3,8 +3,8 @@
 //! v2 family reductions: true-rank buckets, cached masters and frames.
 use rusticol_loop_reduction::runtime::{
     Batch, FamilyGroup, MasterCache, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles,
-    PolynomialPlan, ReduceOptions, ReductionFrame, V2Output, V2Reducer, reaches_fast_threshold,
-    tensor_monomials,
+    PolynomialPlan, ReduceOptions, ReductionFrame, V2Output, V2Reducer, fast_engine_threshold,
+    reaches_fast_threshold, tensor_monomials,
 };
 use symbolica::domains::float::{Float, RealLike};
 
@@ -754,6 +754,7 @@ fn the_pinned_native_masters_snap_at_the_routing_threshold() {
         FastOptions::default().infrared_eps,
         NATIVE_ONSHELL_THRESHOLD
     );
+    assert_eq!(fast_engine_threshold(), NATIVE_ONSHELL_THRESHOLD);
     let mut masters = OneLoopNativeMasters::new().unwrap();
     let mut a0 = |m2: f64| {
         let (mut out, mut ok) = ([[C64::ZERO; 3]], [false]);
