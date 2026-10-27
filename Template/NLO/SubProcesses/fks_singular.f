@@ -1791,7 +1791,7 @@ c equal to ione, so no need to define separate factors.
       end
 
       
-      subroutine add_wgt(type,orders,wgt1,wgt2,wgt3)
+      subroutine add_wgt(type,orders,wgt1_in,wgt2_in,wgt3_in)
 c Adds a contribution to the list in weight_lines. 'type' sets the type
 c of the contribution and wgt1..wgt3 are the coefficients multiplying
 c the logs. The arguments are:
@@ -1882,6 +1882,7 @@ c        contribution
       use weight_lines
       use extra_weights
       use FKSParams
+      use mint_module, only: fold_h_keep,fold_h_scale
       implicit none
       include 'nexternal.inc'
       include 'run.inc'
@@ -1892,7 +1893,7 @@ c        contribution
       include 'orders.inc'
       integer type,i,j
       logical foundIt,foundOrders
-      double precision wgt1,wgt2,wgt3
+      double precision wgt1,wgt2,wgt3,wgt1_in,wgt2_in,wgt3_in
       integer orders(nsplitorders)
       integer              nFKSprocess
       common/c_nFKSprocess/nFKSprocess
@@ -1924,11 +1925,25 @@ c        contribution
       double precision get_rescale_alpha_factor
       external get_n_tagged_photons get_rescale_alpha_factor
 
+c local copies: the arguments are often constants
+      wgt1=wgt1_in
+      wgt2=wgt2_in
+      wgt3=wgt3_in
       if (wgt1.eq.0d0 .and. wgt2.eq.0d0 .and. wgt3.eq.0d0) return
 c Check for NaN's and INF's. Simply skip the contribution
       if (wgt1.ne.wgt1) return
       if (wgt2.ne.wgt2) return
       if (wgt3.ne.wgt3) return
+c With FoldSumSets, the H-event contributions come from one set of FKS
+c configurations only, rescaled accordingly (see sigintF in
+c driver_mintMC.f).
+      if (type.eq.1 .or. type.eq.8 .or. type.eq.9 .or. type.eq.10 .or.
+     $     type.eq.13) then
+         if (.not.fold_h_keep) return
+         wgt1=wgt1*fold_h_scale
+         wgt2=wgt2*fold_h_scale
+         wgt3=wgt3*fold_h_scale
+      endif
 
 C Apply user-defined (in FKS_params.dat) contribution type filters if necessary
       if (VetoedContributionTypes(0).gt.0) then
@@ -4059,7 +4074,7 @@ c H-event
          endif
       enddo
       return
- 30   format(i15,1x,i2,6(1x,d14.8),6(1x,i2),1x,i8,1x,d18.12,1x,d18.12)
+ 30   format(i15,1x,i2,6(1x,d14.8),6(1x,i5),1x,i8,1x,d18.12,1x,d18.12)
       end
       
       

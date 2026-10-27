@@ -160,6 +160,28 @@
 ! Default :: .True.
 !
 ! ==========================================================================
+! Folding (MC@NLO only, used together with the 'folding' run_card entry)
+! ==========================================================================
+!
+! When folding in xi_i or y_ij (run_card), put the folded images of that
+! variable at s=t^2(3-2t) of the equally spaced t, with weights 6t(1-t):
+! exact on average, with an error falling like 1/n^2 instead of 1/n for a
+! smooth integrand. Without folding (1 in the run_card) it has no effect.
+#FoldCubic
+.true.
+! Default :: .true.
+!
+! Sum the S-event contributions of all the sets of FKS configurations
+! (one set per soft singularity) for every point and folded image,
+! instead of the set picked at random for each point. The H-event
+! contributions keep coming from the picked set only, so the
+! real-emission matrix element is not evaluated more often. Fewer
+! negative S events, at the cost of the extra counterterm evaluations.
+#FoldSumSets
+.true.
+! Default :: .true.
+!
+! ==========================================================================
 ! Combination of matrix elements
 ! ==========================================================================
 !
