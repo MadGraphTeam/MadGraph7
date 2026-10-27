@@ -8,7 +8,9 @@ version = "1.0.0"
 description = "Python bindings for Rex/teaRex LHE parsing and event reweighting"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { file = "lgpl-3.0.txt" }
+# dual licensed: upstream Rex is LGPL-3.0-or-later; this copy is distributed
+# with MadGraph7 under the MadGraph7 license (LICENSE at the top of MadGraph7)
+license = { text = "LGPL-3.0-or-later, or the MadGraph7 license (LICENSE in the MadGraph7 distribution)" }
 authors = [
   { name = "Zenny Wettersten" },
 ]

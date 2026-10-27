@@ -29,8 +29,9 @@ madtrex/
 
 `Rex/` is a plain copy of https://github.com/zeniheisser/Rex (commit
 94b4ed435a4bddce2f041c210e0455f2eff01379), tracked as ordinary files in this
-repository; it no longer follows upstream. Rex is distributed under the LGPL
-v3, whose text is in `Rex/lgpl-3.0.txt`.
+repository; it no longer follows upstream. Rex is dual licensed: LGPL v3 (or
+later) as upstream, or, as part of MadGraph7, the MadGraph7 license (`LICENSE`
+at the top of MadGraph7).
 
 ## Requirements
 

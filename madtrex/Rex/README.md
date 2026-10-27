@@ -13,7 +13,10 @@ teaRex is an extension to the Rex library for the generic reweighting of parton-
 Copyright © 2023-2025 CERN, CERN Author Zenny Wettersten.
 Copyright © 2025-2026 Zenny Wettersten.
 
-Licensed under the GNU Lesser General Public License (version 3 or later).
+Dual licensed: under the GNU Lesser General Public License (version 3 or
+later), as upstream Rex (https://github.com/zeniheisser/Rex), or, as part of
+MadGraph7, under the MadGraph7 license (the LICENSE file of the MadGraph7
+distribution).
 
 All rights not expressly granted are reserved.
 
