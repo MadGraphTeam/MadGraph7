@@ -711,9 +711,15 @@ example:
   counterterms carry no poles, and the UV poles of such a request cancel
   (checked on `u u~ > d d~`); its finite part is incomplete until the engine
   handles such shared couplings;
-- more than one colour-singlet fermion line (`e- e+ > m- m+`,
-  `u u~ > e- e+ m- m+`): "the Koszul signs between the blocks that carry them
-  ... are not implemented yet".
+- fermions outside the loop sign rule: vertices joining two or more fermion
+  lines (four-fermion contact vertices: "a loop vertex joins more than one
+  fermion line"), fermions in colour representations other than singlets and
+  (anti)triplets ("a fermion of colour representation 8 has no sign rule"), and
+  Majorana fermions (refused when the model is loaded). Any number of
+  colour-singlet (lepton) fermion lines, mixed with any number of quark lines
+  and running through the loop or not, is admitted: `e- e+ > m- m+` and
+  `e- e+ > e- e+` with QED corrections, `u u~ > e- e+ m- m+` with QCD
+  corrections.
 
 The model's UV and R2 counterterms are taken as declared (`uv_complete`,
 `model_r2_complete`): the engine does not check them against the loops.
