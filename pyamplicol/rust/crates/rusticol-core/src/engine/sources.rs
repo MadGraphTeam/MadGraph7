@@ -866,7 +866,10 @@ impl SchemaSources {
     /// The squared mass of each of `legs` legs' external states, in leg
     /// order, by the wavefunctions' own lookup ([`SourceMasses`]): the mass of
     /// the particle's PDG code, else its antiparticle's, absent = massless.
-    /// Every leg needs a source, and all sources of a leg one mass.
+    /// Every leg needs a source, and all sources of a leg one mass. `masses`
+    /// holds every massive particle's exact mass: an exact external
+    /// parameter, or the exact value of a derived mass's carrier (its legs'
+    /// invariants are then its square, the value its sources take).
     pub(crate) fn leg_masses(
         &self,
         legs: usize,

@@ -209,6 +209,13 @@ pub mod virtual_amplitudes {
             // SAFETY: exclusive access to a live handle.
             check(unsafe { ffi::rusticol_virtual_clear(self.handle.as_ptr()) })
         }
+        /// Pole selection of later evaluations: "all" (default) or "none"
+        /// (plan v4: the finite part, the pole entries quiet NaNs).
+        pub fn set_poles(&mut self, poles: &str) -> Result<()> {
+            let poles = checked_cstring(poles, "pole selection")?;
+            // SAFETY: exclusive live handle and owned string.
+            check(unsafe { ffi::rusticol_virtual_set_poles(self.handle.as_ptr(), poles.as_ptr()) })
+        }
         /// One native bulk call. Binary64 inputs retain exact values in retries.
         /// Omitted verification inherits the policy explicitly configured at open.
         #[allow(clippy::too_many_arguments)]
@@ -715,6 +722,10 @@ pub mod virtual_amplitudes {
                 handle: *mut c_void,
                 changes: *const c_char,
                 revision: *mut u64,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_set_poles(
+                handle: *mut c_void,
+                poles: *const c_char,
             ) -> c_int;
             pub(super) fn rusticol_virtual_metadata_json(
                 handle: *const c_void,

@@ -132,7 +132,7 @@ def export(options: argparse.Namespace) -> int:
     import tempfile
 
     from pyamplicol.loops.native import load_loop_native
-    from pyamplicol.loops.v2.assemble import _mass_values
+    from pyamplicol.loops.v2.assemble import Precision, _mass_values
     from pyamplicol.loops.v2.plan_export import export_plan
 
     options.output.mkdir(parents=True, exist_ok=True)
@@ -150,7 +150,12 @@ def export(options: argparse.Namespace) -> int:
                 continue
             exported = export_plan(twin, forward=False)
             (options.output / f"{stem}.json").write_text(exported.json())
-            squared = _mass_values(twin.compiled, PARAMETERS, exported.masses)
+            squared = _mass_values(
+                twin.compiled,
+                PARAMETERS,
+                exported.masses,
+                Precision.double().working_digits,
+            )
             summary = {
                 "process": PROCESSES[key][0],
                 "accuracy": "full",

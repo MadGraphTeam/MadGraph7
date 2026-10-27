@@ -129,6 +129,14 @@ class ExportedPlan:
     columns: tuple[Hashable, ...]
     # The tree program of native per-point inputs (``native_trees``).
     trees: Any = None
+    # Per named observable column set (``export_plan(column_sets=...)``) the
+    # seed records that replace the plan's for that set: ``seed_classes`` and
+    # ``seeds`` (None: the plan's own; ``RawJSON`` when projected natively,
+    # ``NATIVE_COLUMN_RECORDS``), ``columns`` (count), ``column_rows``
+    # and ``column_weights`` (or None) and the Born components they read
+    # (``born_components``, keys); ``{"same": True, ...}`` when the plan's
+    # own columns serve the set.
+    column_seeds: Mapping[str, Mapping[str, Any]] | None = None
 
     def json(self) -> str:
         """The plan JSON, ``json.dumps(program, separators=(",", ":"))``,
@@ -342,7 +350,9 @@ class _Exporter:
             found = self.seeds[key] = len(self.seeds)
         return found
 
-    def seed_records(self, columns: Sequence[Any]) -> tuple[list[dict], list[dict]]:
+    def seed_records(
+        self, columns: Sequence[Any]
+    ) -> tuple[list[dict], list[dict], list[int] | None]:
         """The seed classes and seed keys of the plan: the projection of
         ``assemble.SectorSeeds`` (``SeedTable.seeds``) in two levels.
 
@@ -355,6 +365,12 @@ class _Exporter:
         degree P and Born basis elements; its helicity rows are the plan's
         ``column_rows``. The admitted entries of each column are indexed by
         (class, loop order) once, in ``SeedTable.admitted`` order.
+
+        Columns that differ only by their helicity rows have equal weights:
+        they share one seed-weight column (the third value, per column its
+        weight column, the plan's ``column_weights``; None when every column
+        has its own, so the sector columns of the inclusive plan are written
+        as before). A class record holds one weight list per weight column.
         """
 
         slice_ = self.slice_
@@ -364,7 +380,12 @@ class _Exporter:
         # Per column, once: its table, degree and, per (class, loop order),
         # its admitted Born entries (table order).
         indexed = []
-        for column in columns:
+        keys, weight_of_column = weight_columns(columns)
+        first: dict[int, int] = {}
+        for k, w in enumerate(weight_of_column):
+            first.setdefault(w, k)
+        for w in range(len(keys)):
+            column = columns[first[w]]
             table, degree = column.table, column.degree
             if accuracy != "full" and degree is None:
                 degree = table.degree(column.pairs, born_grades)
@@ -435,7 +456,8 @@ class _Exporter:
                     ]
                 }
             )
-        return class_records, records
+        shared = weight_of_column != list(range(len(weight_of_column)))
+        return class_records, records, weight_of_column if shared else None
 
     # -- schedule B -----------------------------------------------------------
 
@@ -753,6 +775,106 @@ class SeedColumn:
     basis: frozenset | None = None
 
 
+def weight_columns(
+    columns: Sequence[SeedColumn],
+) -> tuple[list[tuple[Any, ...]], list[int]]:
+    """The distinct seed-weight columns of ``columns`` (keys: table identity,
+    degree, sector pairs, basis elements; a column's helicity rows do not
+    change its weights) in first-use order, and per column its weight
+    column (``_Exporter.seed_records``, the plan's ``column_weights``)."""
+
+    keys: dict[tuple[Any, ...], int] = {}
+    of_column = []
+    for column in columns:
+        key = (id(column.table), column.degree, column.pairs, column.basis)
+        of_column.append(keys.setdefault(key, len(keys)))
+    return list(keys), of_column
+
+
+# The seed records of the stored observable column sets
+# (``export_plan(column_sets=...)``) are projected natively: package C's C2
+# projection (``native_cells.project_records``) reads the directed tables'
+# native cells (``native_cells._DIRECTED``) and writes the records' JSON
+# bytes. False runs the exporter's Python projection
+# (``_Exporter.seed_records``), the oracle; the bytes are equal. The plan's
+# own seed records keep their call site (package D's D3 switch).
+NATIVE_COLUMN_RECORDS = True
+
+
+class RawJSON(bytes):
+    """The compact JSON text of a value (``json.dumps(value,
+    separators=(",", ":"))``), written into an enclosing record as is
+    (``dumps``) instead of being parsed into Python objects first."""
+
+
+def dumps(record: Mapping[str, Any] | None) -> str:
+    """``json.dumps(record, separators=(",", ":"))`` of a mapping (or None)
+    whose values may be ``RawJSON``: the same text, a raw value spliced as
+    is."""
+
+    if not isinstance(record, Mapping) or not any(
+        isinstance(value, RawJSON) for value in record.values()
+    ):
+        return json.dumps(record, separators=(",", ":"))
+    parts = []
+    for key, value in record.items():
+        text = (
+            value.decode()
+            if isinstance(value, RawJSON)
+            else json.dumps(value, separators=(",", ":"))
+        )
+        parts.append(f"{json.dumps(key)}:{text}")
+    return "{" + ",".join(parts) + "}"
+
+
+def _native_tables(columns: Sequence[SeedColumn]) -> dict[int, Any]:
+    """``id(table)`` -> its native cells for the columns' directed tables
+    whose cells package C formed natively (``native_cells.directed_table``
+    keeps them per history and direction), so the projection does not
+    encode their Python cells again; the others are encoded from them."""
+
+    from . import native_cells
+
+    wanted = {id(column.table) for column in columns}
+    out: dict[int, Any] = {}
+    for directed, handles in list(native_cells._DIRECTED.items()):
+        for swapped, handle in handles.items():
+            table = vars(directed).get("swapped") if swapped else directed.table
+            if table is not None and id(table) in wanted:
+                out[id(table)] = handle
+    return out
+
+
+def _set_records(
+    exporter: _Exporter, columns: Sequence[SeedColumn]
+) -> tuple[Any, Any, list[int] | None]:
+    """A column set's seed records, as ``_Exporter.seed_records`` returns
+    them (class records, seed key records, per column its weight column or
+    None); natively (``NATIVE_COLUMN_RECORDS``) the two record lists are
+    their JSON bytes (``RawJSON``): the projection of each weight column's
+    first column (``weight_columns``), ``born_components`` extended in place
+    in the same order."""
+
+    if not NATIVE_COLUMN_RECORDS:
+        return exporter.seed_records(columns)
+    from . import native_cells
+
+    keys, of_column = weight_columns(columns)
+    first: dict[int, int] = {}
+    for k, w in enumerate(of_column):
+        first.setdefault(w, k)
+    distinct = [columns[first[w]] for w in range(len(keys))]
+    class_json, records_json = native_cells.project_records(
+        exporter.slice_,
+        distinct,
+        exporter.seeds,
+        exporter.born_components,
+        tables=_native_tables(distinct),
+    )
+    shared = of_column != list(range(len(of_column)))
+    return RawJSON(class_json), RawJSON(records_json), of_column if shared else None
+
+
 def sector_columns(slice_: Any) -> tuple[SeedColumn, ...]:
     """One column per squared-order sector (the inclusive virtual)."""
 
@@ -773,6 +895,8 @@ def export_plan(
     born_squared: bool = False,
     links: bool = False,
     counterterms: bool = True,
+    keep_kets: bool = False,
+    column_sets: Mapping[str, Sequence[Any]] | None = None,
 ) -> ExportedPlan:
     """The plan v4 program of a generated slice (structure only, no numerics).
 
@@ -787,7 +911,13 @@ def export_plan(
     with the Born colour metric when ``born_squared`` and the counterterm
     and external-field components when ``counterterms``. ``links`` writes the
     schedule-B helicity rows and row links, which the native loader otherwise
-    derives (and with them checks).
+    derives (and with them checks). ``keep_kets`` keeps every counterterm
+    ket component in the tree program (stored observable columns,
+    ``native_observables``). ``column_sets`` (name -> ``SeedColumn``s) also
+    forms the seed records of other column sets on the same families
+    (``ExportedPlan.column_seeds``; the plan itself is unchanged): a set's
+    plan is this plan with its seed records (``native_observables``), at the
+    cost of its seed records only.
     """
 
     from .assemble import _BlockRows
@@ -835,7 +965,7 @@ def export_plan(
     )
     columns_given = columns
     columns = tuple(sector_columns(slice_) if columns is None else columns)
-    seed_classes, seeds = exporter.seed_records(columns)
+    seed_classes, seeds, column_weights = exporter.seed_records(columns)
     native_trees = None
     if trees:
         from .native_trees import export_trees
@@ -846,6 +976,7 @@ def export_plan(
             rows,
             born_squared=born_squared,
             with_counterterms=counterterms,
+            keep_kets=keep_kets,
         )
     legs = len(slice_.blocks.process.legs)
     row_index = {row: i for i, row in enumerate(rows)}
@@ -876,10 +1007,66 @@ def export_plan(
             else sorted(row_index[row] for row in column.rows)
             for column in columns
         ]
+    if column_weights is not None:
+        program["column_weights"] = column_weights
+    born_components = tuple(exporter.born_components)
+    column_seeds = None
+    if column_sets is not None:
+        # After the plan and its tree program: a set's seed records may
+        # register further Born components, which the plan does not read.
+        column_seeds = {}
+
+        def same(a: SeedColumn, b: SeedColumn) -> bool:
+            return (
+                a.table is b.table
+                and a.pairs == b.pairs
+                and a.degree == b.degree
+                and a.rows == b.rows
+                and a.basis == b.basis
+            )
+
+        plan_keys = weight_columns(columns)
+        for name, set_columns in column_sets.items():
+            set_columns = tuple(set_columns)
+            if len(set_columns) == len(columns) and all(
+                same(a, b) for a, b in zip(set_columns, columns, strict=True)
+            ):
+                # The plan's own columns (the Born metric of a process
+                # without declared histories): the plan serves the set.
+                column_seeds[name] = {"same": True, "born_components": born_components}
+                continue
+            set_keys, of_column = weight_columns(set_columns)
+            if plan_keys == (set_keys, list(range(len(set_keys)))):
+                # The plan's own weight columns under other columns (the
+                # helicity-resolved columns at full colour): the plan's seed
+                # records serve the set, which stores only its column fields.
+                set_classes = set_seeds = None
+                set_weights = (
+                    None if of_column == list(range(len(of_column))) else of_column
+                )
+            else:
+                set_classes, set_seeds, set_weights = _set_records(
+                    exporter, set_columns
+                )
+            column_seeds[name] = {
+                "seed_classes": set_classes,
+                "seeds": set_seeds,
+                "column_weights": set_weights,
+                "columns": len(set_columns),
+                "column_rows": [
+                    None
+                    if column.rows is None
+                    else sorted(row_index[row] for row in column.rows)
+                    for column in set_columns
+                ]
+                if any(column.rows is not None for column in set_columns)
+                else None,
+                "born_components": tuple(exporter.born_components),
+            }
     return ExportedPlan(
         program=program,
         rows=rows,
-        born_components=tuple(exporter.born_components),
+        born_components=born_components,
         block_rows=tuple(exporter.block_rows),
         constants=tuple(exporter.constants),
         masses=tuple(exporter.masses),
@@ -889,6 +1076,7 @@ def export_plan(
         if columns_given is None
         else tuple(range(len(columns))),
         trees=native_trees,
+        column_seeds=column_seeds,
     )
 
 
@@ -1182,16 +1370,16 @@ class NativeExecutor:
                     found = signed[flips] = rx.signed_constants(constants, flips)
                 return found.constant(key)
 
+            working = evaluation.numbers.precision.working_digits
             masses = _mass_values(
-                slice_.compiled, evaluation.parameters, exported.masses
+                slice_.compiled, evaluation.parameters, exported.masses, working
             )
             return (
                 [value(constant(key, flips)) for key, flips in exported.constants],
                 [_fraction_text(masses[m]) for m in exported.masses],
-                # "" leaves a leg whose mass is no parameter unbound.
                 [
-                    "" if m is None else _fraction_text(m)
-                    for m in _leg_masses(slice_, evaluation.parameters)
+                    _fraction_text(m)
+                    for m in _leg_masses(slice_, evaluation.parameters, working)
                 ],
             )
 
@@ -1382,6 +1570,20 @@ class NativeExecutor:
         native = self.native(arithmetic, digits, len(evaluations))
         return native.tree_inputs(self._inputs(evaluations, arithmetic))
 
+    def bound_masses(self, points, scales, parameters=None, precision=None):
+        """The squared masses the native lane binds for a batch
+        (``inputs="native"``, ``TreeProgram::bind``): per plan mass and per
+        leg (the on-shell invariants, DESIGN §11.1), exact ``Fraction``s."""
+
+        from .assemble import Precision
+
+        precision = precision or Precision.double()
+        arithmetic, digits = self._arithmetic(precision, False)
+        evaluations = self._native_points(points, scales, parameters, precision)
+        native = self.native(arithmetic, digits, len(evaluations))
+        masses, legs = native.bound_masses(self._inputs(evaluations, arithmetic))
+        return [Fraction(m) for m in masses], [Fraction(m) for m in legs]
+
     def _native_points(self, points, scales, parameters, precision):
         from .assemble import _fraction, _NativePoint, _Numbers
 
@@ -1458,13 +1660,6 @@ class NativeExecutor:
         from .poles import pole_mode, reducer_poles, splits
 
         mode = pole_mode(poles)
-        if splits(mode) and not hasattr(self.slice, "scaleless"):
-            # A stored native process (``native_process``) has no companion of
-            # its certified-scaleless families: its loads regenerate for them.
-            raise NotImplementedError(
-                "the uv and ir pole selections of a stored native process need "
-                "its regenerated slice"
-            )
         sectors = tuple(sector for sector, _pairs in self.slice.sectors)
         if (
             splits(mode)

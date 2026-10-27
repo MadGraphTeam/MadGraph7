@@ -89,6 +89,10 @@ r2_strategy = "auto"
 # engine, the oracle until gate R3) or "v2" (shared-recursion engine, plan v4
 # artifacts with finite-only evaluation and stability checks). Default legacy.
 engine = "legacy"
+# loop.alpha_s_parameter: The v2 engine's alpha_s of the QCD IR-pole prediction
+# (an adjustable external model parameter). Default absent: the unique SLHA
+# SMINPUTS 3 parameter, else no QCD pole prediction (the virtual is unchanged).
+# alpha_s_parameter = "aS"
 # loop.model: Optional whole override of the source model's NLO declaration.
 # Default absent (use the source declaration). A supplied declaration needs all
 # of loop_coupling_orders, uv_complete, model_r2_complete and the seven scheme

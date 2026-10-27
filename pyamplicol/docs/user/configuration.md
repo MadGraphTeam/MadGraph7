@@ -637,6 +637,13 @@ counterterms_uv = result.pole_part("uv", "uv")    # UV_local + field factors' UV
 local_uv = result.pole_part("uv", "uv_local")     # the model's coupling and mass CTs
 ```
 
+The strong coupling of Catani's QCD operator is the model parameter named by
+`[loop] alpha_s_parameter` (an adjustable external parameter), else the unique
+adjustable SLHA `SMINPUTS 3` parameter; a model with neither (or with it fixed)
+generates the same virtual without a QCD pole prediction, whatever the
+correction set. Masses are the model's runtime values, a derived (internal)
+mass included.
+
 The selection is a runtime option: the same artifact serves all four (it stores
 the companion plan of its certified-scaleless loop families, which only `"uv"`
 and `"ir"` evaluate; they cost about 1 % (u u~ > e- e+ g g), 7 % (g g > g g g)
@@ -766,13 +773,15 @@ parameter at UFO/SLHA code `LOOP 1`, or the only one in block `LOOP`.
 A v2 artifact stores its whole program: the loop plan and its per-point tree,
 Born, counterterm and parameter programs (`point_inputs = "native-v2"`), the
 latter as SymJIT IR recompiled for the loading CPU and as saved Symbolica states
-for double-double and arbitrary precision. A plain load (`evaluate` with
-`poles = "all"` or `"none"`) regenerates nothing and takes a small fraction of
-the generation time. Still regenerated from the artifact, until their inputs are
-stored too: exact flavour members served by their representative (at load), and
-correlated and resolved calls and the `"uv"` and `"ir"` pole selections (on
-first use; the latter also evaluate the companion of the certified-scaleless
-families, whose tree inputs are not stored). The SymJIT IR is always compiled at
+for double-double and arbitrary precision, with the companion of the
+certified-scaleless families that the `"uv"` and `"ir"` pole selections
+evaluate and the colour- and spin-correlated and helicity-resolved columns. No
+call of a loaded process regenerates anything: every pole selection, stability
+check, arithmetic, model-parameter change, per-order partial, exact flavour
+member, correlated, resolved and catalogue call reads the stored programs, and a
+load takes a small fraction of the generation time. A process whose programs
+cannot be stored natively is refused at generation with the reason, never stored
+for a regeneration at load. The SymJIT IR is always compiled at
 -O2 (the portable level), whatever `evaluator.jit.optimization_level` says. The
 artifact holds no absolute path, user or host name of the generating host; a
 copy moved to another directory, user or machine loads without regeneration and,
@@ -782,8 +791,17 @@ AVX and FMA3; AArch64 is expected to behave the same but is untested); other CPU
 levels (checked under emulation) run the saved states and agree to rounding
 ([portability](artifacts-and-portability.md#cpu-requirements-of-symjit-kernels)).
 Binary64 evaluation needs no Symbolica licence; double-double and arbitrary
-precision use pyAmpliCol's own Symbolica key. The standalone SDK bundle needs
-`engine = "legacy"` until the v4 SDK runtime exists.
+precision use pyAmpliCol's own Symbolica key. The native SDKs (C, C++,
+Fortran, Rust) open a v2 artifact through `rusticol_virtual_open` and evaluate
+binary64 virtuals, bitwise equal to the Python API, without a licence:
+`rusticol_virtual_set_poles(handle, poles)` takes the same pole selections as
+the Python API: `"all"` (the default) every pole, `"none"` the finite part alone
+(its pole-only work skipped natively, the pole entries quiet NaNs), `"uv"` and
+`"ir"` the split selections (the finite part is the same in all four);
+correlated, resolved and extended-precision calls go through the Python API. A
+v2 artifact carries no API
+bundle (a requested `emit_api_bundle` is dropped with a recorded configuration
+adjustment).
 
 To evaluate numerical colour/spin requests, set
 `evaluation.correlated_requests = "data/requests.json"`. The file maps output

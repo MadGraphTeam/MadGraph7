@@ -104,3 +104,70 @@ fn the_closure_simd_cap_only_lowers_the_width() {
     // Other carriers take the baseline whatever the cap.
     assert_eq!(Wide::detect::<f32>(), Wide::Baseline);
 }
+
+#[test]
+fn carrier_values_read_exactly() {
+    // A derived mass is bound to its carrier value's exact rational (its
+    // square is the legs' invariant): every carrier reads back exactly.
+    let third = parse_rational("1/3").unwrap();
+    let double = cast(&0.0_f64, &third);
+    assert_eq!(cast(&0.0_f64, &double.exact().unwrap()), double);
+    assert_ne!(double.exact().unwrap(), third);
+    let pair = cast(&DoubleFloat::from(0.0), &third);
+    let parts = pair.into_inner();
+    assert_ne!(parts.lo(), 0.0);
+    assert_ne!(pair.exact().unwrap(), parts.hi().exact().unwrap());
+    assert_eq!(cast(&DoubleFloat::from(0.0), &pair.exact().unwrap()), pair);
+    let zero = Float::with_val(200, 0);
+    let float = cast(&zero, &third);
+    assert_eq!(cast(&zero, &float.exact().unwrap()), float);
+    assert!(f64::NAN.exact().is_err());
+}
+
+#[test]
+fn plan_masses_read_inputs_or_outputs() {
+    // A plan mass is massless, an external parameter's index or
+    // `["output", o]`, a derived mass (`load_parameters` checks the tag, the
+    // output and that it is in `positive`).
+    let masses: Vec<Option<MassFile>> =
+        serde_json::from_str(r#"[null, 2, ["output", 5]]"#).unwrap();
+    assert!(masses[0].is_none());
+    assert!(matches!(masses[1], Some(MassFile::Input(2))));
+    assert!(matches!(&masses[2], Some(MassFile::Output(tag, 5)) if tag == "output"));
+}
+
+#[test]
+fn slot_sets_without_a_finite_slot_are_pole_work() {
+    // Slot table (epsilon powers): two finite slots, a 1/eps and a 1/eps^2
+    // slot. masks[0] is every slot, then one set per slot, then a pole pair.
+    let powers = [0, -1, 0, -2];
+    let masks = vec![
+        vec![0, 1, 2, 3],
+        vec![0],
+        vec![1],
+        vec![2],
+        vec![3],
+        vec![1, 3],
+    ];
+    assert_eq!(
+        pole_slot_sets(&masks, &powers).unwrap(),
+        vec![false, false, true, false, true, true]
+    );
+    // A pole-only table skips every current; a finite-only one none.
+    assert_eq!(
+        pole_slot_sets(&[vec![0, 1]], &[-1, -2]).unwrap(),
+        vec![true]
+    );
+    assert_eq!(pole_slot_sets(&[vec![0, 1]], &[0, 0]).unwrap(), vec![false]);
+    // Malformed sets are refused: none, an empty set, slots out of order or
+    // repeated, a slot outside the table.
+    for bad in [
+        vec![],
+        vec![vec![]],
+        vec![vec![1, 0]],
+        vec![vec![0, 0]],
+        vec![vec![4]],
+    ] {
+        assert!(pole_slot_sets(&bad, &powers).is_err(), "{bad:?}");
+    }
+}

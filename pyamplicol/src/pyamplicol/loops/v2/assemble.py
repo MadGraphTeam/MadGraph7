@@ -184,6 +184,7 @@ from .schedules import (
     build_schedules,
     cheapest,
 )
+from .skeletons import Skeleton
 from .stability import (
     ROTATION,
     Budget,
@@ -500,11 +501,6 @@ class TreeRows:
         return self._built().amplitude_stage
 
     def _model_values(self, parameters: Mapping[str, str], digits: int) -> list:
-        from symbolica import E
-
-        from pyamplicol._internal.physics.symbols import symbols
-        from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
-
         external = {
             record["name"]: Decimal(
                 parameters.get(record["name"], repr(record["default"]))
@@ -512,19 +508,7 @@ class TreeRows:
             for record in self._records
             if record["kind"] == "external_parameter"
         }
-        model_symbols = symbols.model(self.compiled.name)
-        substitutions = dict(
-            zip(
-                (
-                    E(model_symbols.symbol(name).to_canonical_string())
-                    for name in external
-                ),
-                _upcast_complex_inputs(
-                    [(value, Decimal(0)) for value in external.values()], digits
-                ),
-                strict=True,
-            )
-        )
+        substitutions = _substitutions(self.compiled, external, digits)
         derived, values = {}, []
         for record in self._records:
             if record["kind"] == "external_parameter":
@@ -532,10 +516,9 @@ class TreeRows:
                 continue
             name = record["runtime_name"]
             if name not in derived:
-                value = E(self._definitions[name]).evaluate(
-                    substitutions, decimal_digit_precision=digits
+                derived[name] = _definition_value(
+                    self._definitions[name], substitutions, digits
                 )
-                derived[name] = tuple(Decimal(x) for x in value.to_decimal_tuple())
             values.append(derived[name][record["complex_component"] == "imag"])
         return values
 
@@ -834,6 +817,11 @@ def _exact_u1_subtraction_weights():
 # block current the tree model allows (the families and every result are
 # unchanged, ``tests/unit/test_loop_v2_generate.py``).
 LOOP_BLOCK_REACHABILITY = True
+# The certified-scaleless companion compresses its seeds with the slice's
+# certificates (``LoopSlice._companion_seeds``); False builds its own table
+# (its generic seeds: the oracle). The extended table has no native build
+# stage: a native LC/NLC prune of the companion needs one (next run).
+SHARED_COMPANION_CERTIFICATES = True
 
 
 def _field_level_table(data, process, selection, request, cap=None) -> ModelBlockTable:
@@ -1006,10 +994,16 @@ def _born_block_requests(
     return frozenset(out)
 
 
-# Schedule-B frame policy of the slice: the cheapest frame by undressed rows
-# (``NativeGeneration.schedules`` runs the same policy natively).
+# Schedule-B frame policy of the slice: the cheapest frame by undressed rows,
+# a segment priced by its legs' helicity rows (``generator_input.leg_rows``;
+# ``NativeGeneration.schedules(leg_rows=...)`` runs the same policy natively).
+# ``_FRAME_POLICY`` prices two rows per leg (exact when every leg has two).
 _FRAME_MODEL = STRUCTURED
 _FRAME_POLICY = cheapest(lambda mask: 2 ** mask.bit_count(), _FRAME_MODEL)
+
+
+def _frame_policy(rows: Sequence[int]) -> Any:
+    return cheapest(generator_input.frame_rows(rows), _FRAME_MODEL)
 
 
 class SectorSeeds:
@@ -1464,17 +1458,17 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     scale_parameter = _external_parameter(
         compiled, request.scale_parameter, _LHA_SCALE, fixed
     )
+    # alpha_s of the QCD operator of the IR-pole prediction (Catani, WP3.2
+    # EWI-6), one rule for every correction set (genericity audit m2): the
+    # named parameter (``loop.alpha_s_parameter``), which must be an
+    # adjustable external parameter, else the unique adjustable SLHA
+    # SMINPUTS 3 one, else none: the operator then makes no prediction (the
+    # virtual itself does not read it).
     alpha_s_parameter = None
     # The strong correction is identified by the gluon's vertices, not by
     # its order's name (``ew_policy.correction_orders``; genericity m1).
     strong = ew_policy.correction_orders(compiled, fixed).strong
-    if strong is not None and set(request.corrections) == {strong}:
-        alpha_s_parameter = _external_parameter(
-            compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
-        )
-    elif strong is not None and strong in request.corrections:
-        # The QCD operator of a joint request's IR-pole prediction (WP3.2
-        # EWI-6); without an identified alpha_s it makes none.
+    if strong is not None and strong in request.corrections:
         try:
             alpha_s_parameter = _external_parameter(
                 compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
@@ -1761,10 +1755,13 @@ class LoopSlice:
 
         def schedules():
             colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
+            rows = generator_input.leg_rows(blocks)
             if generation is not None and "schedules" in generator_input.NATIVE_STAGES:
-                return colour, generation.schedules(colour, model=_FRAME_MODEL)
+                return colour, generation.schedules(
+                    colour, model=_FRAME_MODEL, leg_rows=rows
+                )
             return colour, build_schedules(
-                families, loop_catalogue, colour, policy=_FRAME_POLICY
+                families, loop_catalogue, colour, policy=_frame_policy(rows)
             )
 
         colour, plan = schedules()
@@ -1993,17 +1990,22 @@ class LoopSlice:
             # The native stages schedule the companion's subset of their
             # certified-scaleless families (and prune it at LC/NLC below).
             generation = self.generation.scaleless_companion(twin_families)
-            plan = generation.schedules(self.colour, model=_FRAME_MODEL)
+            plan = generation.schedules(
+                self.colour,
+                model=_FRAME_MODEL,
+                leg_rows=generator_input.leg_rows(self.blocks),
+            )
         else:
             plan = build_schedules(
-                twin_families, self.loop_catalogue, self.colour, policy=_FRAME_POLICY
+                twin_families,
+                self.loop_catalogue,
+                self.colour,
+                policy=_frame_policy(generator_input.leg_rows(self.blocks)),
             )
         readings = rx.reading_skeletons(plan)
         for skeleton in readings:
             self.weights.fermion_sign(skeleton)
-        table, class_of = build_seed_table(
-            self.colour, readings, self.basis, compress=self.request.compress_colour
-        )
+        table, class_of = self._companion_seeds(readings)
         twin = replace(
             self,
             families=twin_families,
@@ -2018,6 +2020,49 @@ class LoopSlice:
         if self.request.accuracy != "full" and prune is not False:
             twin._prune_colour()
         return twin
+
+    def _companion_seeds(
+        self, readings: Sequence[Skeleton]
+    ) -> tuple[SeedTable, dict[Skeleton, SeedCombination]]:
+        """The seed table of the certified-scaleless companion's readings.
+
+        The companion shares this slice's colour (blocks, vertices, Born
+        basis), so the compressions this slice's table certified
+        (``SeedTable.certificates``: a certificate holds for every skeleton
+        of its kind in the process, by its theorem, ``COMPRESSION_THEOREMS``)
+        compress the companion's readings too (``extend_seed_table`` on an
+        empty table with those certificates): the companion's bubbles with a
+        quartic partner are adjoint rings. On its own (``build_seed_table``)
+        the companion has no single-legged instance to certify them from
+        five legs on (one of its two blocks spans at least two legs), so
+        every reading keeps its generic seed, an exact colour-network
+        reduction each (g g > g g g g: 8,640 readings, 1,080 classes against
+        60; with native-seeds' in-crate reductions 1.44 s against 0.32 s,
+        companion plan 10.1 MB against 8.2 MB; before them 60 s, and about
+        30 min of the g g > g g g g g generation). With
+        ``SHARED_COMPANION_CERTIFICATES`` off it builds its own table (the
+        oracle).
+
+        The extended table records no native build stage, so a native LC/NLC
+        prune (native-seeds' ``prune_switch.patch``, next run) must route the
+        companion's prune through the Python callback or record a build
+        source on the extend path (design §12.4, lean companion).
+        """
+
+        compress = self.request.compress_colour
+        if not SHARED_COMPANION_CERTIFICATES or not compress:
+            return build_seed_table(
+                self.colour, readings, self.basis, compress=compress
+            )
+        empty = SeedTable(
+            self.basis,
+            (),
+            (),
+            (),
+            self.colour.formal_nc,
+            certificates=dict(self.table.certificates),
+        )
+        return extend_seed_table(empty, {}, self.colour, readings, compress=True)
 
     def _plan_contraction(self) -> None:
         """Certify the seed FFT's orbits per ``colour_contraction``."""
@@ -2766,7 +2811,10 @@ class _PointEvaluation:
 
         slice_, numbers = self.slice, self.numbers
         self.constants = rx.KernelConstants(
-            _kernel_parameters(slice_.compiled, self.parameters), numbers.carrier
+            _constant_parameters(
+                slice_.compiled, self.parameters, numbers.precision.working_digits
+            ),
+            numbers.carrier,
         )
         carrier = self._site_carrier()
         closure = slice_.closure
@@ -3067,7 +3115,10 @@ class _PointEvaluation:
         )
         constants = (
             rx.KernelConstants(
-                _kernel_parameters(slice_.compiled, self.parameters), carrier
+                _constant_parameters(
+                    slice_.compiled, self.parameters, numbers.precision.working_digits
+                ),
+                carrier,
             )
             if exact
             else self.constants
@@ -3198,12 +3249,14 @@ class _PointEvaluation:
         arithmetic = "double" if numbers.double else "arbitrary"
         digits = None if numbers.double else numbers.precision.digits
         lanes, groups = [], []
+        working = numbers.precision.working_digits
         masses = _mass_values(
             slice_.compiled,
             self.parameters,
             {mass for key in numerators for _mask, mass in key[0]},
+            working,
         )
-        onshell = _leg_masses(slice_, self.parameters)
+        onshell = _leg_masses(slice_, self.parameters, working)
         full = (1 << len(onshell)) - 1
 
         def invariant(arc: int, a, b):
@@ -3211,7 +3264,7 @@ class _PointEvaluation:
             # invariants, design §11.1), exactly the value its propagators
             # take; any other arc is p(arc)^2 of the given momenta.
             leg = onshell_leg(arc, full)
-            if leg is not None and onshell[leg] is not None:
+            if leg is not None:
                 return onshell[leg]
             return _minkowski([x - y for x, y in zip(a, b, strict=True)])
 
@@ -3612,15 +3665,14 @@ class _PointEvaluation:
             label = leg.index + 1
             if label in coloured:
                 gammas[label] = _strong_leg_gamma(slice_, leg, beta0)
-        masses = {}
-        for leg in slice_.families.legs:
-            name = leg.mass.mass
-            if name == ZERO:
-                masses[leg.index + 1] = Fraction(0)
-            elif name in values:
-                masses[leg.index + 1] = values[name] ** 2
-            elif leg.index + 1 in coloured:
-                return None
+        # Every leg's mass from the slice's one mass evaluator (an external
+        # mass exactly, a derived one at the working digits; M2).
+        mass_of = _model_masses(
+            slice_.compiled, self.parameters, numbers.precision.working_digits
+        )
+        masses = {
+            leg.index + 1: mass_of(leg.mass.mass) ** 2 for leg in slice_.families.legs
+        }
         if any(
             colour_casimir(legs[j].representation) is None
             or (masses[j] == 0 and gammas[j] is None)
@@ -3683,13 +3735,13 @@ class _PointEvaluation:
         prefactor alpha / 2 pi takes alpha of the model's photon couplings at
         this point (``_qed_alpha``: alpha_Gmu in a G_mu model), the coupling
         of the loops. A leg is massless where the model's runtime mass is
-        zero (``ZERO``, a compile-time zero or a value bound to 0). On-shell
+        zero (``ZERO``, a compile-time zero or a value bound to 0); a derived
+        mass is the slice's one mass evaluator's (``_model_masses``). On-shell
         external photons couple with alpha(0) (``LoopSlice.external_photons``,
         WP3.2 EWI-6b): the Born is the alpha(0) one (``average``) and the
         photons add no gamma_gamma (``poles.qed_catani_poles``, convention
-        "alpha0"). No prediction for a charged leg of unknown mass, a
-        massless charged vector or an external photon of a slice without that
-        convention.
+        "alpha0"). No prediction for a massless charged vector or an external
+        photon of a slice without that convention.
         """
 
         slice_, numbers = self.slice, self.numbers
@@ -3700,7 +3752,9 @@ class _PointEvaluation:
         parameters = {record.name: record for record in compiled.ir.parameters}
         records = {record.name: record for record in compiled.ir.particles}
         fixed = slice_.request.fixed_parameters
-        values = _kernel_parameters(compiled, self.parameters)
+        mass_of = _model_masses(
+            compiled, self.parameters, numbers.precision.working_digits
+        )
         convention = getattr(slice_, "external_photons", None)
         charges: dict[int, Fraction] = {}
         masses: dict[int, Fraction] = {}
@@ -3719,10 +3773,8 @@ class _PointEvaluation:
             label, name = leg.index + 1, leg.mass.mass
             if name == ZERO or ew_policy.is_zero(name, parameters, {}):
                 masses[label] = Fraction(0)
-            elif name in values:
-                masses[label] = values[name] ** 2
             else:
-                return None
+                masses[label] = mass_of(name) ** 2
             charges[label] = charge
             spins[label] = int(record.spin)
         alpha = self._qed_alpha()
@@ -4164,34 +4216,146 @@ def _kernel_parameters(compiled, parameters: Mapping[str, str]) -> dict[str, Fra
     return values
 
 
-def _mass_values(
-    compiled, parameters: Mapping[str, str], masses: Iterable[Any]
-) -> dict[Any, Fraction]:
-    """Squared real loop masses per mass id (widths are not part of the slice)."""
+def _substitutions(compiled, external: Mapping[str, Decimal], digits: int) -> dict:
+    """The model's external parameter symbols bound to ``external`` (real) at
+    ``digits`` decimal digits, for ``_definition_value``."""
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
+
+    model_symbols = symbols.model(compiled.name)
+    return dict(
+        zip(
+            (E(model_symbols.symbol(name).to_canonical_string()) for name in external),
+            _upcast_complex_inputs(
+                [(value, Decimal(0)) for value in external.values()], digits
+            ),
+            strict=True,
+        )
+    )
+
+
+def _definition_value(
+    definition: str, substitutions: Mapping[Any, Any], digits: int
+) -> tuple[Decimal, Decimal]:
+    """A derived parameter's resolved definition (in the external parameters)
+    at ``digits`` decimal digits: (real, imaginary)."""
+
+    from symbolica import E
+
+    value = E(definition).evaluate(substitutions, decimal_digit_precision=digits)
+    return tuple(Decimal(x) for x in value.to_decimal_tuple())
+
+
+def _model_masses(
+    compiled, parameters: Mapping[str, str], digits: int
+) -> Callable[[str], Fraction]:
+    """The model's mass parameters at ``parameters``, by name, as exact
+    values: an external parameter its exact value; a derived one (loop_sm's
+    MW, an internal mass of any model) its resolved definition at ``digits``
+    decimal digits (the value ``TreeRows._model_values`` gives the
+    wavefunctions at the working digits), read exactly. The one mass
+    evaluator of the slice: loop propagator masses (``_mass_values``), the
+    legs' on-shell invariants (``_leg_masses``) and Catani's massive emitters
+    (``_PointEvaluation._qcd_poles``, ``_qed_poles``) take the same values,
+    so a derived mass's legs are on the shell its propagators and sources
+    take (DESIGN §11.1). A derived mass must be real and positive."""
 
     values = _kernel_parameters(compiled, parameters)
+    definitions = {
+        record.name: record.resolved_expression
+        for record in compiled.ir.parameters
+        if record.nature == "internal"
+    }
+    found: dict[str, Fraction] = {}
+    substitutions: list[dict] = []
 
+    def mass(name: str) -> Fraction:
+        if name == ZERO:
+            return Fraction(0)
+        if name in values:
+            return values[name]
+        if name not in found:
+            if name not in definitions:
+                raise KeyError(f"the mass {name!r} is no model parameter")
+            if not substitutions:
+                external = {
+                    record.name: Decimal(
+                        parameters.get(
+                            record.name,
+                            str(compiled.parameter_defaults[record.name][0]),
+                        )
+                    )
+                    for record in compiled.ir.parameters
+                    if record.nature == "external"
+                    and record.name in compiled.parameter_defaults
+                }
+                substitutions.append(_substitutions(compiled, external, digits))
+            real, imaginary = _definition_value(
+                definitions[name], substitutions[0], digits
+            )
+            if imaginary != 0 or real <= 0:
+                raise ValueError(
+                    f"the derived mass {name!r} is not real and positive ({real}, "
+                    f"{imaginary})"
+                )
+            found[name] = Fraction(real)
+        return found[name]
+
+    return mass
+
+
+def _constant_parameters(
+    compiled, parameters: Mapping[str, str], digits: int
+) -> dict[str, Fraction]:
+    """The model parameter values of the kernel constants
+    (``rx.KernelConstants``): every external parameter exactly, and every
+    particle's derived mass the slice's one mass evaluator gives
+    (``_model_masses``; a loop propagator's kernel reads its mass). A derived
+    mass that is not real and positive here is left out (a constant reading
+    it is refused by ``KernelConstants``)."""
+
+    values = _kernel_parameters(compiled, parameters)
+    internal = {
+        record.name for record in compiled.ir.parameters if record.nature == "internal"
+    }
+    derived = sorted({str(record.mass) for record in compiled.ir.particles} & internal)
+    if derived:
+        mass_of = _model_masses(compiled, parameters, digits)
+        for name in derived:
+            try:
+                values[name] = mass_of(name)
+            except ValueError:
+                continue
+    return values
+
+
+def _mass_values(
+    compiled, parameters: Mapping[str, str], masses: Iterable[Any], digits: int
+) -> dict[Any, Fraction]:
+    """Squared real loop masses per mass id (widths are not part of the
+    slice), a derived mass at ``digits`` decimal digits (``_model_masses``)."""
+
+    mass_of = _model_masses(compiled, parameters, digits)
     return {
-        mass: Fraction(0) if mass.massless else values[mass.mass] ** 2
+        mass: Fraction(0) if mass.massless else mass_of(mass.mass) ** 2
         for mass in masses
     }
 
 
-def _leg_masses(slice_, parameters: Mapping[str, str]) -> tuple[Fraction | None, ...]:
+def _leg_masses(
+    slice_, parameters: Mapping[str, str], digits: int
+) -> tuple[Fraction, ...]:
     """Each external leg's squared mass in leg order, the value of the
     invariants its mass shell fixes (``families.onshell_leg``; DESIGN §11.1):
-    the same exact value ``_mass_values`` gives its mass id, 0 for a massless
-    leg (a mass parameter bound to 0 included), None for a mass that is no
-    external parameter (a derived mass such as loop_sm's MW, which no loop
-    propagator of the slice can carry: those invariants stay p^2)."""
+    the value ``_mass_values`` gives its mass id (``_model_masses``: a
+    derived mass at ``digits`` decimal digits), 0 for a massless leg (a mass
+    parameter bound to 0 included)."""
 
-    values = _kernel_parameters(slice_.compiled, parameters)
-    return tuple(
-        Fraction(0)
-        if leg.mass.mass == ZERO
-        else (values[leg.mass.mass] ** 2 if leg.mass.mass in values else None)
-        for leg in slice_.families.legs
-    )
+    mass_of = _model_masses(slice_.compiled, parameters, digits)
+    return tuple(mass_of(leg.mass.mass) ** 2 for leg in slice_.families.legs)
 
 
 def _charged_fields(compiled) -> frozenset[str]:

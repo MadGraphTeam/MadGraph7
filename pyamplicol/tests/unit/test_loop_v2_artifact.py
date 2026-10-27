@@ -37,9 +37,9 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 * a fresh interpreter loads and evaluates the stored native point inputs
   (``point_inputs = "native-v2"``, WP3.1) with generation forbidden, with
   bitwise-identical binary64 values also after unrelated Symbolica symbols
-  were created; a call that needs the generation objects (correlated and
-  resolved outputs) regenerates the slice and refuses a stored plan that
-  differs from the regenerated one;
+  were created (no call regenerates: ``test_loop_v2_stored_process.py``;
+  a process whose native inputs cannot be exported is refused at
+  generation);
 * the native artifact loader (``load_loop_v2_artifact``) admits each plan v4
   process, cross-checks families, buckets, legs, helicity rows and sectors
   against the declarations, and refuses tampered declarations and digests;
@@ -66,7 +66,8 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
 * requests v2 does not cover yet fail with the reason and leave
   ``loop.engine = "legacy"`` (the default) selectable; the slice request
   records every ``SliceRequest`` field; a generation run's staged
-  validation reuses its processes; O1 loads regenerate from the record;
+  validation reuses its processes; O1 loads read the stored observable
+  columns (nothing regenerates);
 * a six-gluon plan v4 artifact stays below 20 MB (nightly).
 """
 
@@ -77,6 +78,8 @@ import json
 import math
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
@@ -216,7 +219,6 @@ def _assert_inclusive_o1(
 
     fixture = _fixture(name)
     results = fixture["results"]["arbitrary-200"]
-    _forget_generation()
     runtime = Runtime.load(
         artifact, process=process, model_parameters=_parameters(fixture)
     )
@@ -575,6 +577,72 @@ def test_particle_veto_is_resolved_to_pdg_codes_and_refuses_the_site_oracle():
         generate_process(None, replace(request, counterterms="sites"), None)
 
 
+@pytest.mark.loop_physics
+def test_native_export_refusals_fail_the_generation(
+    loop_sm_compiled_model, loop_native, monkeypatch
+):
+    """A process whose native point inputs or observable columns cannot be
+    exported is refused at generation (genericity audit M1; a stored plan v4
+    process never regenerates at load, so there is no plan-only downgrade):
+    a listed feature (``native_trees.NATIVE_EXPORT_REFUSALS``) as a
+    ``GenerationError`` naming it, any other exception of the export as
+    itself; an unlisted feature key is refused."""
+
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.correlators import CorrelatorConfig
+    from pyamplicol.loops.v2 import plan_export
+    from pyamplicol.loops.v2.artifact import generate_process
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.native_observables import StoredObservables
+    from pyamplicol.loops.v2.native_trees import NativeExportUnsupported
+    from pyamplicol.models.loading import load_compiled_model
+
+    with pytest.raises(ValueError, match="unknown native export refusal"):
+        NativeExportUnsupported("plan-only", "a downgrade")
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request = SliceRequest(
+        "d d~ > g g",
+        {"QCD": 2, "QED": 0},
+        {"QCD": 4, "QED": 0},
+        fixed_parameters={"MB": "0"},
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    monkeypatch.setattr(LoopSlice, "generate", lambda *args, **kwargs: slice_)
+
+    def refuse(error):
+        def export(*args, **kwargs):
+            raise error
+
+        return export
+
+    with monkeypatch.context() as patch:
+        patch.setattr(plan_export, "export_plan", refuse(NotImplementedError("plain")))
+        with pytest.raises(NotImplementedError, match=r"^plain$") as raised:
+            generate_process(compiled, request, loop_native)
+        assert not isinstance(raised.value, GenerationError)
+        listed = NativeExportUnsupported("whole-rule-root", "a pole whole-rule root")
+        patch.setattr(plan_export, "export_plan", refuse(listed))
+        with pytest.raises(
+            GenerationError, match=r"native point inputs.*whole-rule-root"
+        ):
+            generate_process(compiled, request, loop_native)
+    # Declared observables whose columns cannot be stored: refused, never
+    # stored without columns.
+    columns = NativeExportUnsupported("observable-columns", "no native components")
+    monkeypatch.setattr(StoredObservables, "export", refuse(columns))
+    record = ROOT / "tests/fixtures/loop/legacy/observables/ddgg_ssgg.json"
+    correlators = CorrelatorConfig.from_json_dict(
+        {
+            "color_correlations": json.loads(record.read_text())["histories"][:1],
+            "spin_correlations": [],
+        }
+    )
+    with pytest.raises(
+        GenerationError, match=r"observable columns.*observable-columns"
+    ):
+        generate_process(compiled, request, loop_native, correlators)
+
+
 @pytest.mark.loop_fast
 def test_loop_orders_follow_the_born_amplitude_orders():
     """One exact loop order per Born amplitude order and correction (not the
@@ -629,41 +697,30 @@ def test_loop_orders_follow_the_born_amplitude_orders():
             _v2_scale_parameter(candidates, fixed)
 
 
-@pytest.mark.loop_fast
-def test_a_generation_run_retains_its_processes(monkeypatch):
-    """Staged validation reuses every process of its run: the generation
-    cache keeps them while ``retained`` holds, then trims to its size."""
-
-    from collections import OrderedDict
-
-    from pyamplicol.loops.v2 import artifact
-
-    monkeypatch.setattr(artifact, "_slices", OrderedDict())
-
-    def remember(index: int) -> None:
-        artifact._remember(
-            "model",
-            artifact.GeneratedProcess(None, None, {"process": str(index)}, str(index)),
-        )
-
-    with artifact.retained(6):
-        for index in range(10):
-            remember(index)
-        assert len(artifact._slices) == 10
-    assert len(artifact._slices) == artifact._SLICE_CACHE_SIZE
-    remember(10)
-    assert len(artifact._slices) == artifact._SLICE_CACHE_SIZE
-
-
-def _forget_generation() -> None:
-    """Make the next ``Runtime.load`` regenerate from the artifact's request
-    record, as a fresh interpreter does, instead of reusing this
-    interpreter's generation objects (``artifact._recall``)."""
+@contextmanager
+def _capturing(found: dict) -> Iterator[None]:
+    """Keep every process ``artifact.generate_process`` returns while the
+    block runs (by plan digest), for tests that inspect the generated slices
+    (nothing else keeps them)."""
 
     from pyamplicol.loops.v2 import artifact
 
-    with artifact._slices_lock:
-        artifact._slices.clear()
+    original = artifact.generate_process
+
+    def generate(*args, **kwargs):
+        generated = original(*args, **kwargs)
+        found[generated.plan_sha256] = generated
+        return generated
+
+    artifact.generate_process = generate
+    try:
+        yield
+    finally:
+        artifact.generate_process = original
+
+
+# The processes the ``full_colour`` fixture generated, by plan digest.
+_FULL_COLOUR: dict = {}
 
 
 # ------------------------------------------------------------------ public path
@@ -677,9 +734,10 @@ def full_colour(loop_sm_compiled_model, loop_native, tmp_path_factory):
         ("uux_ddxg", "u u~ > d d~ g"),
         ("tt", "u u~ > t t~"),
     )
-    return _generate(
-        _card(loop_sm_compiled_model, tmp / "artifact", entries), tmp, entries
-    )
+    with _capturing(_FULL_COLOUR):
+        return _generate(
+            _card(loop_sm_compiled_model, tmp / "artifact", entries), tmp, entries
+        )
 
 
 @pytest.fixture(scope="module")
@@ -723,14 +781,9 @@ def test_public_generation_publishes_plan_v4(full_colour):
     # no counterterm site closure, no veto unless requested (ADDENDUM J).
     assert info["request"]["counterterms"] == "recursion"
     assert info["request"]["particle_veto"] == []
-    from pyamplicol.loops.v2 import artifact
-
-    with artifact._slices_lock:
-        generated = [
-            item.slice
-            for (_model, _record, plan), item in artifact._slices.items()
-            if plan == info["plan_sha256"]
-        ]
+    generated = [
+        item.slice for plan, item in _FULL_COLOUR.items() if plan == info["plan_sha256"]
+    ]
     assert generated
     for slice_ in generated:
         assert slice_.counterterm_program is not None
@@ -772,7 +825,6 @@ def test_public_particle_veto_equals_njet_five_flavours(
     manifest = load_manifest(output, verify_payloads=True)
     (record,) = manifest.extensions["generation"]["concrete_processes"]
     assert record["filters"]["particle_veto"] == ["t"]
-    _forget_generation()
     runtime = Runtime.load(output, process="gg", model_parameters={"aS": "0.118"})
     assert runtime.inspect()["request"]["particle_veto"] == [6]
     controls = json.loads(
@@ -1109,15 +1161,17 @@ FILLER_SYMBOLS = (0, 141)
 
 
 @pytest.mark.loop_physics
-def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
+def test_fresh_interpreter_loads_native_inputs_without_generation(
     full_colour, monkeypatch
 ):
     """A new interpreter loads the artifact's native point inputs and
     evaluates them with generation forbidden (no slice is regenerated),
     giving the same plan and bitwise-identical binary64 Born and virtual
-    values whatever Symbolica symbols it created before; a call that
-    regenerates the slice (the correlated outputs) refuses a stored plan
-    unequal to the regenerated one."""
+    values whatever Symbolica symbols it created before. The correlation
+    catalogue reads the stored observable columns: a load in this
+    interpreter whose generator would give other plan bytes (another
+    build's) never calls it (nothing regenerates,
+    ``test_loop_v2_stored_process.py``)."""
 
     from pyamplicol import Runtime
 
@@ -1157,26 +1211,17 @@ def test_fresh_interpreter_loads_native_inputs_and_refuses_a_different_plan(
         fresh = json.loads(process.stdout.strip().splitlines()[-1])
         assert fresh == expected, fillers
 
-    from pyamplicol.api.errors import ArtifactError
     from pyamplicol.loops.v2 import artifact
 
-    original = artifact.generate_process
-
     def drifted(*args, **kwargs):
-        # Another build's generator: the same process with other plan bytes.
-        generated = original(*args, **kwargs)
-        return artifact.GeneratedProcess(
-            generated.observables,
-            generated.exported,
-            generated.request,
-            generated.plan_json.replace('"schema":4', '"schema": 4'),
-        )
+        raise AssertionError("a load must not generate")
 
-    monkeypatch.setattr(artifact, "_slices", type(artifact._slices)())
     monkeypatch.setattr(artifact, "generate_process", drifted)
     loaded = Runtime.load(full_colour, process="gg")
-    with pytest.raises(ArtifactError, match="differs from the stored one"):
-        loaded.available_color_correlations()
+    # The stored columns serve the catalogue without the generator.
+    assert [item.id for item in loaded.available_color_correlations()] == ["born"]
+    resolved = loaded.evaluate_resolved([POINT], mu_r2="1000000")
+    assert resolved.values
 
 
 def _rewrite_payloads(source: Path, destination: Path, edits) -> Path:
@@ -1267,6 +1312,12 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
         execution["point_inputs"] = "native"
         return execution
 
+    def regenerated(execution):
+        # The retired declaration of a process stored without native inputs
+        # (its loads regenerated it; REQUIREMENTS_ADDENDUM G).
+        execution["point_inputs"] = "regenerated-at-load"
+        return execution
+
     def unresolved(physics):
         physics["metadata"]["resolved"] = False
         return physics
@@ -1314,6 +1365,12 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
             {"processes/gg/execution.json": native_inputs},
             "unsupported plan v4 execution declaration",
             "unsupported plan v4 execution declaration",
+        ),
+        (
+            "regenerated",
+            {"processes/gg/execution.json": regenerated},
+            "no longer supported .*regenerate the artifact",
+            "no longer supported .*regenerate the artifact",
         ),
         (
             "poles",
@@ -1459,6 +1516,12 @@ def test_cli_generates_and_evaluates_through_v2(
     assert coverage["processes"][0]["loop_orders"] == {"QCD": 4, "QED": 0}
     assert coverage["processes"][0]["scale_parameter"] == "MU_R"
     assert coverage["processes"][0]["loop_admission_checked"] is False
+    assert coverage["processes"][0]["native_export_checked"] is False
+    from pyamplicol.loops.v2.native_trees import NATIVE_EXPORT_REFUSALS
+
+    assert [item.split(":")[0] for item in coverage["native_export_refusals"]] == [
+        refusal.key for refusal in NATIVE_EXPORT_REFUSALS
+    ]
     assert not output.exists()
     code = run_cli(
         ("generate", "--card", str(card), *engine, "--progress", "off"),
@@ -2032,9 +2095,8 @@ def _assert_public_o1(observables_artifact, name: str, carriers) -> None:
     representative = record["processes"][0][0]
     assert [process["id"] for process in manifest.processes] == [representative]
     points, scales = record["points"], record["scales_squared"]
-    # The first load regenerates from the request record (correlators,
-    # colour declaration); members are re-admitted on that slice.
-    _forget_generation()
+    # Without the generation objects of this interpreter: the loads read the
+    # stored observable columns and the members listed at generation.
     for process, _expression in record["processes"]:
         expected = record["results"]["arbitrary-200"][process]
         runtime = Runtime.load(
@@ -2365,7 +2427,6 @@ def test_mixed_born_orders_take_one_loop_order_per_born_order(
     points = json.loads((ROOT / "tools/loop_reference/uudd_qcd.json").read_text())
     born_key = {_canonical(v): k for k, v in reference["born_orders"].items()}
     loop_key = {_canonical(v): k for k, v in reference["loop_orders"].items()}
-    _forget_generation()
     runtime = Runtime.load(
         tmp_path / "b", process="uudd", model_parameters=GG_PARAMETERS
     )

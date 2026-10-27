@@ -407,23 +407,24 @@ def test_native_builder_needs_no_symbolica_licence(
     assert leaking
     (tmp_path / "u1.bin").write_bytes(native.dag.columns())
     request["u1"] = [str(tmp_path / "u1.bin"), arguments]
-    # A5's bindings: the interaction program of the CT DAG (its pole slots)
+    # A5's bindings: the interaction program of the CT DAG (its slot masks)
     # and the source and interaction rows the export reads.
+    from pyamplicol.loops.v2.native_trees import counterterm_slots
+
     lowered = CompiledUFOModel(program.recursion.model.lowered.compiled)
-    pole_orders = sorted(
-        {
-            ct_closure.counterterm_slot_order(*slot)
-            for slot in program.recursion.slots
-            if slot[1] != 0
-        }
-    )
-    assert pole_orders
-    text, _payloads = dag_input._program_input(native.dag, lowered, pole_orders)
+    slot_orders = [slot[0] for slot in counterterm_slots(program.recursion)]
+    assert any(name.endswith("_EPS1") for name in slot_orders)
+    text, _payloads = dag_input._program_input(native.dag, lowered, slot_orders)
     request["program"] = [str(tmp_path / "u1.bin"), text]
     probe: dict = {"json": json}
     exec(_PROGRAM_PROBE, probe)
     expected["program"] = probe["program_record"](native.dag._native_handle(), text)
-    assert any(step.get("pole_interactions") for step in expected["program"]["steps"])
+    # Every step records its currents' slot sets; some reach one slot only.
+    assert all("accumulator_masks" in step for step in expected["program"]["steps"])
+    assert any(
+        any(mask > 0 for mask in step["accumulator_masks"])
+        for step in expected["program"]["steps"]
+    )
     (tmp_path / "request.json").write_text(json.dumps(request))
 
     script = (
@@ -1225,8 +1226,21 @@ def test_native_counterterm_trees_equal_the_oracle(loop_sm_compiled_model):
             python.recursion, python.blocks.blocks_dag.process
         )
     native, _oracle = _assert_counterterm_trees_equal(python, blocks)
-    steps = native.record["interactions"]["steps"]
-    assert any(step.get("pole_interactions") for step in steps)
+    # The slot table and the per-slot reachability masks (I5): CT = 0
+    # currents reach every slot, a current with one insertion its slot.
+    record = native.record
+    assert [slot[0] for slot in record["slots"]] == [
+        ct_closure.counterterm_slot_order(*slot) for slot in python.recursion.slots
+    ]
+    count = len(record["slots"])
+    assert record["interactions"]["masks"] == [
+        list(range(count)),
+        *([s] for s in range(count)),
+    ]
+    steps = record["interactions"]["steps"]
+    assert {mask for step in steps for mask in step["accumulator_masks"]} == set(
+        range(count + 1)
+    )
     # Off, or on a DAG the tree engine built, the oracle runs.
     with _program_flag(False):
         program = ct_closure.CountertermProgram(blocks, ())
