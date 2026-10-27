@@ -362,7 +362,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             # no sudo/apt on the self-hosted runner: user install there
             if command -v apt-get > /dev/null; then sudo pip install scipy; else python3 -m pip install --user scipy; fi
-            ./tests/test_manager.py test_DensityMatrixObservables test_DensityMatrixObservables22 test_DensityMatrixObservables23 test_DensityMatrixObservables33 test_utilities -t0
+            ./tests/test_manager.py test_DensityMatrixObservables test_DensityMatrixObservables22 test_additional_steering test_DensityMatrixObservables23 test_DensityMatrixObservables33 test_utilities test_density_selection_not_used test_density_selection_default_order test_density_selection_observable_order test_density_selection_observable_ranks test_density_selection_tie test_density_selection_wrong_inputs -t0
 
       # ---- unittest_madspin_sequential ----
       # MadSpin density primitives and decay/mass drawing (sequential accept/reject),
@@ -415,6 +415,24 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_CF_simple test_cf_computation test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz testIO_test_pptt_ewsudakovSA testIO_test_ppzz_ewsudakov testIO_test_ppw_fksall testIO_Loop_sqso_uux_ddx test_check_import_model test_schedular test_dummy_fcts test_UFO_Python_helas_call_writer_fd test_get_symmetric_color test_get_symmetric_lorentz test_remove_interactions2 test_remove_interactions3 test_fd_python_value_matches_unitary_fixed_point test_shower_card_write -t0
+
+      # ---- unittest_run_output (from mg5 3.8.2) ----
+      # combine_runs, histograms and the madevent run helpers (Delphes split
+      # fusion, LHAPDF info patching); collect_events, systematics, make_opts and
+      # transpole already run in unittest_bundle_7.
+      - name: "unittest_run_output: combine_runs, histograms and madevent interface"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_combine_runs test_histograms test_madevent -t0
+
+      # ---- unittest_tchannel_width (from mg5 3.8.2) ----
+      # t-channel widths of the reweighting and MadSpin matrix elements
+      - name: "unittest_tchannel_width: t-channel widths of the reweighting and MadSpin outputs"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_UFO_fortran_tchannel_width_standalone_rw test_UFO_fortran_tchannel_width_decay test_reweight_tchannel -t0
 
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
