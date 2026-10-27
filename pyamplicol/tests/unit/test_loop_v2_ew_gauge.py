@@ -1199,3 +1199,107 @@ def test_goldstone_vector_mixings_equal_the_site_oracle(
             scale = max(abs(complex(x)) for x in values)
             for a, b in zip(found[name], values, strict=True):
                 assert abs(complex(a) - complex(b)) <= 1e-12 * scale, (name, a, b)
+
+
+def _uv_component_equals_madloop(compiled, name, loop_reference, loop_native):
+    """The UV counterterm component of the request of ``name`` in
+    ``goldstone-mixing.json`` against MadLoop's Born x CT interference
+    without its R2 amplitudes, per point, finite part and single pole within
+    1e-12 of MadLoop's (binary64)."""
+
+    from fractions import Fraction
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+
+    reference = loop_reference("goldstone-mixing")["processes"][name]
+    known = set(compiled.parameter_defaults)
+    request = SliceRequest(
+        reference["process"].split(" QCD=")[0],
+        reference["born_orders"],
+        reference["loop_orders"],
+        corrections=("QED",),
+        fixed_parameters={
+            key: value
+            for key, value in reference["fixed_parameters"].items()
+            if key in known
+        },
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    for point, mu, row in zip(
+        reference["points"], reference["mu_r"], reference["rows"], strict=True
+    ):
+        result = slice_.evaluate(
+            point, str(Fraction(mu) ** 2), parameters=reference["parameters"]
+        )
+        assert sum(float(x) for x in result.born.values()) == pytest.approx(
+            row["born"], rel=1e-13
+        )
+        (sector,) = result.components["uv_local"]
+        uv = [
+            float(a) + float(b)
+            for a, b in zip(
+                result.components["uv_local"][sector].coefficients,
+                result.components["uv_external_fields"][sector].coefficients,
+                strict=True,
+            )
+        ]
+        mixing = row.get("mixing") or {
+            key: row["neutral"][key] + row["charged"][key] for key in row["ct"]
+        }
+        for index, key in enumerate(("finite", "single_pole")):
+            expected = row["ct"][key] - row["r2"][key]
+            # The opposite sign of the mixings would miss by twice theirs.
+            assert abs(mixing[key]) > 1e-9 * abs(expected)
+            assert abs(uv[index] - expected) <= 1e-12 * abs(expected), (key, uv)
+        assert uv[2] == row["ct"]["double_pole"] == 0
+
+
+@pytest.mark.loop_nightly
+def test_goldstone_vector_mixings_equal_madloop(gmu, loop_reference, loop_native):
+    """The Goldstone-vector mixings' sign, decided by MadLoop (WP3.2 EWI-7b):
+    g t > t t t~ with QED corrections (massless b), whose trees join the
+    top line and the top pair through a Z, a photon or a G0, reaches the
+    G0-Z and G0-A mixing counterterms (lowered as clone lines,
+    ``ct_line_insertions._momentum_ratio``). Its UV counterterm component
+    equals MadLoop's Born x CT interference without the R2 amplitudes
+    (``goldstone-mixing.json``, ``tools/loop_reference/madloop_ct_selection.py``)
+    at three points, finite part and single pole within 1e-12 (measured
+    4e-14, MadLoop's binary64); the mixings make 0.3, 3 and 0.45 % of it,
+    and the earlier reading (the scalar leg of the mixing taking the momentum
+    flowing in) missed by twice that. The R2 and bare parts are not compared:
+    pyAmpliCol's R2 of this request differs from MadLoop's (-1.83e-8 against
+    -1.33e-8 at point 0) and its virtual misses Catani's single pole, an open
+    defect outside the counterterm lowering (reported, WP3.2 EWI-7b fix
+    round 1). About 15 minutes."""
+
+    _uv_component_equals_madloop(gmu, "gt_tttx_ew", loop_reference, loop_native)
+
+
+@pytest.mark.loop_nightly
+def test_charged_goldstone_vector_mixings_equal_madloop(
+    gmu_massive_b, loop_reference, loop_native
+):
+    """The charged Goldstone-vector mixings' sign against MadLoop: g b > t t~ b
+    with QED corrections and a massive b reaches the G-W+ mixing (with a
+    t-channel W between the b-t lines), which makes 150 % of its UV
+    counterterm component at point 0 (``goldstone-mixing.json``). The clone
+    lines read the charged mixings as the neutral ones
+    (``ct_line_insertions._momentum_ratio``). The request is refused today
+    at the W ghost vertex [ghA ghWm~ W-] of its loops, not closed under
+    conjugation, whose loop-segment reading through a conjugate rule is not
+    established (``conventions.FermionSignError``; WP3.2 Feynman-gauge loop
+    lines): exactly that refusal is an expected failure (about 4 minutes),
+    and the comparison runs once the request generates."""
+
+    from pyamplicol.loops.v2.conventions import FermionSignError
+
+    try:
+        _uv_component_equals_madloop(
+            gmu_massive_b, "gb_ttxb_ew_mb", loop_reference, loop_native
+        )
+    except FermionSignError as error:
+        if "('ghA', 'ghWm~', 'W-') is not closed under conjugation" in str(error):
+            pytest.xfail(f"the request is refused: {error}")
+        raise

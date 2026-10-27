@@ -22,8 +22,8 @@
       "loop_quark_flavours": 6
     },
     "ew-gmu-b-mass": {
-      "description": "The ew-gmu scheme with a massive b (MG5 loop_qcd_qed_sm_Gmu restriction with_b_mass, MB = ymb = 4.5): every fermion line through a chiral W vertex is massive (pyAmpliCol refuses a line joining massive and massless fermions through one).",
-      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3-with_b_mass",
+      "description": "The ew-gmu scheme with a massive b (MB = ymb = 4.5): every fermion line through a chiral W vertex is massive (pyAmpliCol refuses a line joining massive and massless fermions through one). The MadLoop model is a copy of loop_qcd_qed_sm_Gmu_py3 whose restrict_default.dat keeps MB and ymb (4.5); the UFO's own restrict_with_b_mass.dat omits SMINPUTS 1, which MG5 3.7.0 needs.",
+      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3_b_mass",
       "parameters": {
         "aS": "0.118",
         "Gf": "0.0000116639",
