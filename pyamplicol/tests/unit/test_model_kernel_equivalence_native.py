@@ -9,6 +9,12 @@ stages rely on the kind independence of the kernel networks.
 * loop_sm (R2 and UV vertices, four-point contacts, complex couplings whose
   canonical strings hold the imaginary unit) compiles to the same IR with the
   native and the Python keys and proofs, on one worker and on several;
+* a kernel whose oriented component Symbolica's ``expand`` does not bring to
+  its normal form in one pass (a sum to a half-integer power times its square
+  root, as the G_mu target's CT contact finals hold) gets the oracle's proof
+  natively, so the native lane expands the signed component again as the
+  oracle does (review of EWI-3R: a native lane that skipped it changed the
+  class of 14 of the target's 13,403 kernels);
 * the oriented components and the contact partials of a structure formed for
   one kernel kind, renamed to another kind, equal those formed for that kind
   directly (``compiler_entry._compile_oriented_kernels`` and
@@ -61,6 +67,80 @@ def test_native_kernel_equivalence_equals_the_python_oracle(
     for threads in ("1", "4"):
         monkeypatch.setenv("RAYON_NUM_THREADS", threads)
         assert _compiled_ir(loop_sm_payload, native=True) == oracle, threads
+
+
+def test_native_proofs_expand_the_signed_components_again(monkeypatch):
+    from types import SimpleNamespace
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.models import compiler_entry
+    from pyamplicol.models import compiler_symbolica as _sym
+
+    _sym._ensure_symbolica()
+    model_symbols = symbols.model("kernel_proof_expansion")
+    kind = 5
+
+    def leg(side: str, index: int) -> str:
+        return model_symbols.kernel_component(kind, side, index).to_canonical_string()
+
+    a, g = (model_symbols.expression(name).to_canonical_string() for name in "ag")
+    factored = f"((1-{a})^(3/2)+1/2)*(1-{a})^(1/2)"
+    once = _sym.E(factored).expand()
+    expanded = (1 * once).expand().to_canonical_string()
+    # One expansion leaves (1-a)^2 unexpanded: the case stays discriminating.
+    assert once.to_canonical_string() != expanded
+    kernels = [
+        SimpleNamespace(
+            kind=kind,
+            coupling_expression=g,
+            lc_color_normalization_power=0,
+            component_expressions=(
+                f"{sign}({factor})*{leg('left', 0)}*{leg('right', 1)}",
+                f"{sign}{leg('left', 1)}*{leg('right', 0)}",
+            ),
+        )
+        # The same polynomial factored and expanded, with both signs: the
+        # least signature of one of each sign pair has the sign 1.
+        for sign in ("", "-")
+        for factor in (factored, expanded)
+    ]
+    monkeypatch.setattr(compiler_entry, "_KERNEL_PROOFS", {})
+    keys, proofs = compiler_entry._kernel_keys_and_proofs(
+        kernels, {}, lambda kernel: [], lambda kernel: (4, 4, 4), model_symbols
+    )
+    assert len(set(keys)) == 4
+    # Equal polynomials up to a sign: one class, both signs.
+    assert len({proof[0] for proof in proofs.values()}) == 1
+    assert {proof[1] for proof in proofs.values()} == {(1.0, 0.0), (-1.0, 0.0)}
+    prefix = model_symbols.kernel_component(0, "left", 0).get_name()
+    for threads in ("1", "4"):
+        monkeypatch.setenv("RAYON_NUM_THREADS", threads)
+        native_keys, found = load_loop_native().model_kernel_equivalence(
+            [
+                (
+                    kind,
+                    kernel.coupling_expression,
+                    0,
+                    list(kernel.component_expressions),
+                    [],
+                    (4, 4, 4),
+                )
+                for kernel in kernels
+            ],
+            prefix.rsplit("::", 1)[0] + "::",
+            set(),
+        )
+        assert native_keys == keys
+        assert {
+            key: (
+                digest,
+                (float(sign), 0.0),
+                tuple(order),
+                None if exchange is None else (float(exchange), 0.0),
+            )
+            for key, (digest, sign, order, exchange) in found
+        } == proofs, threads
 
 
 def test_kernel_networks_do_not_depend_on_the_kind(loop_sm_payload):

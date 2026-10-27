@@ -1285,9 +1285,9 @@ def test_counterterm_references_are_native_parameter_program_inputs(
     plan exports native point inputs (no load-time regeneration, ADDENDUM G)
     and every component of the native virtual equals the Python inputs'
     (``CountertermModel.coefficient_values``) in binary64 at the fixture's
-    three points and scales, and in double-double at one. Nightly: the cold
-    G_mu CT lowering takes 83 s (pinned idle cores), whatever the QCD
-    request (review minor 13: the default tier holds no EW CT lowering)."""
+    three points and scales, and in double-double at one. Nightly: it
+    lowers the G_mu CT model cold, a cost the QCD request does not shrink
+    (review minor 13: the default tier holds no EW CT lowering)."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
     from pyamplicol.loops.v2.plan_export import NativeExecutor
