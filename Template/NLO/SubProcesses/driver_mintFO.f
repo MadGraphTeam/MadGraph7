@@ -461,6 +461,8 @@ C Real deg amplitudes
       common/pborn_norad/p_born_norad
 
       logical storeCalculatedBorn
+      integer iextra_cnt,isplitorder_born,isplitorder_cnt
+      common /c_extra_cnt/iextra_cnt,isplitorder_born,isplitorder_cnt
 
       integer              nFKSprocess
       common/c_nFKSprocess/nFKSprocess
@@ -673,6 +675,9 @@ c associated to the initial state. Do not extend this to event generation.
      $                     born_amp_split_cnt,coll_ans_cnt,
      $                     coll_amp_split_cnt)
                       p_born_used(:,:)=p_born(:,:)
+c Ordinary sreal_deg consumes copies of these Born arrays. An extra
+c counterterm hook may modify model/cache state, so retain its refresh.
+                      if (iextra_cnt.gt.0) then
                       calculatedBorn=.false.
                       call sborn_amp_frame(p_born,born_amp2,
      $                     born_jamp2,born_amp_split,
@@ -683,6 +688,7 @@ c associated to the initial state. Do not extend this to event generation.
      $                     coll_jamp2,coll_amp_split,
      $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
      $                     coll_saveamp)
+                      endif
                       call sreal_store(p1_cnt(0,1,2),zero,one,
      $                     fx_sc,ret_amp_split,real_amp_split,
      $                     born_amp_split,born_ans_cnt,born_amp_split_cnt,
@@ -722,6 +728,9 @@ c associated to the initial state. Do not extend this to event generation.
      $                     born_amp_split_cnt,coll_ans_cnt,
      $                     coll_amp_split_cnt)
                       p_born_used(:,:)=p_born(:,:)
+c Ordinary sreal_deg consumes copies of these Born arrays. An extra
+c counterterm hook may modify model/cache state, so retain its refresh.
+                      if (iextra_cnt.gt.0) then
                       calculatedBorn=.false.
                       call sborn_amp_frame(p_born,born_amp2,
      $                     born_jamp2,born_amp_split,
@@ -732,6 +741,7 @@ c associated to the initial state. Do not extend this to event generation.
      $                     coll_jamp2,coll_amp_split,
      $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
      $                     coll_saveamp)
+                      endif
                       call sreal_store(p1_cnt(0,1,1),
      $                     xi_i_fks_cnt(1),one,fx_c,ret_amp_split,
      $                     real_amp_split,born_amp_split,born_ans_cnt,
@@ -926,12 +936,16 @@ c         wgt_me_real=0d0
      $    amp_split_wgtpsch_p, amp_split_wgtpsch_l, amp_split_wgtpsch_d,
      $    born_ans_cnt,born_amp_split_cnt,coll_ans_cnt,coll_amp_split_cnt)
                p_born_used(:,:) = p_born(:,:)
+c Ordinary sreal_deg consumes copies of these Born arrays. An extra
+c counterterm hook may modify model/cache state, so retain its refresh.
+               if (iextra_cnt.gt.0) then
                calculatedBorn=.false.
                call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
      $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
                calculatedBorn=.false.
                call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+               endif
                call sreal_store(p1_cnt(0,1,2),zero,one,fx_sc,
      $              ret_amp_split,real_amp_split,born_amp_split,
      $              born_ans_cnt,born_amp_split_cnt,born_saveamp
@@ -957,12 +971,16 @@ c         wgt_me_real=0d0
      $    amp_split_wgtpsch_p, amp_split_wgtpsch_l, amp_split_wgtpsch_d,
      $    born_ans_cnt,born_amp_split_cnt,coll_ans_cnt,coll_amp_split_cnt)
                p_born_used(:,:) = p_born(:,:)
+c Ordinary sreal_deg consumes copies of these Born arrays. An extra
+c counterterm hook may modify model/cache state, so retain its refresh.
+               if (iextra_cnt.gt.0) then
                calculatedBorn=.false.
                call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
      $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
                calculatedBorn=.false.
                call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+               endif
                call sreal_store(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx_c,
      $              ret_amp_split,real_amp_split,born_amp_split,
      $              born_ans_cnt,born_amp_split_cnt,born_saveamp
