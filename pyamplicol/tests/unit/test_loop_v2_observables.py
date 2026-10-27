@@ -292,6 +292,15 @@ RESOLVED_CONTROLS = {
     ),
     "gg_gg_lc": ("g g > g g", QCD2, QCD4, "lc", "legacy/gg_gg.json"),
     "gg_gg_nlc": ("g g > g g", QCD2, QCD4, "nlc", "legacy/gg_gg.json"),
+    # Identical-flavour lines: blocks of one word and two N_c grades
+    # (``generation.dag_grades``).
+    "uux_uuxg_nlc": (
+        "u u~ > u u~ g",
+        {"QCD": 3, "QED": 0},
+        {"QCD": 5, "QED": 0},
+        "nlc",
+        "legacy/uux_uuxg.json",
+    ),
 }
 
 
