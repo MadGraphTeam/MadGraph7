@@ -97,6 +97,8 @@ c                             n points, see the routine for the layout.
       logical mlapi_mode
       integer mlapi_group
       common /c_mlapi/ mlapi_mode,mlapi_group
+      logical born_only_S_scale
+      common /c_born_only_S_scale/born_only_S_scale
       integer proc_map(0:fks_configs,0:fks_configs)
       common /c_mlapi_map/ proc_map
 
@@ -179,6 +181,10 @@ c No virtual tricks: the exact virtual at every point
 
 c The caller picks the group of FKS configurations
       mlapi_mode=.true.
+c S-event starting scales from the Born kinematics alone (fks_singular.f,
+c set_shower_scale), so that they do not depend on how the radiation
+c variables are chosen
+      born_only_S_scale=.true.
       mlapi_group=1
       call setup_proc_map(sum,proc_map,ini_fin_fks)
       maxsize=0

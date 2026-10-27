@@ -4353,6 +4353,10 @@ c
 !     dependent in case of delta
       integer cur_part
       common /to_ref_scale/cur_part
+      logical born_only_S_scale
+      common /c_born_only_S_scale/born_only_S_scale
+      double precision smin_born,smax_born,sc_born,ran2,emscainv
+      external ran2,emscainv
 c
       if (.not.dampMCsubt) then
          write (*,*) 'ERROR: dampMCsubt should be true'
@@ -4367,7 +4371,30 @@ c
 ! initialize to zero
       SCALUP(iFKS)=0d0
       SCALUP_a(iFKS,1:nexternal,1:nexternal)=0d0
-      
+
+c S-event starting scale from the Born kinematics alone (optional, on in
+c the ML API): emsca drawn between scalemin and scalemax of the Born,
+c without reference to the radiation variables, so that the probability
+c that the shower may emit at hardness q is the damping emscwgt(q) of
+c the MC counter terms for every radiation point.  With it, any choice
+c of how the radiation variables of the S events are sampled or folded
+c leaves the distribution of starting scales unchanged.  Not for
+c MC@NLO-Delta or FxFx, which keep their own assignments.
+      if (born_only_S_scale .and. .not.Hevents .and. .not.mcatnlo_delta
+     $     .and. ickkw.ne.3 .and. ickkw.ne.4 .and. abrv.ne.'born' .and.
+     $     p(0,1).ne.-99d0) then
+         call assign_scaleminmax(shat_ev,xi_i_fks_ev,smin_born
+     $        ,smax_born,ileg,xm12)
+         if ((smax_born-smin_born).lt.(1d-3*smax_born)) then
+            sc_born=smax_born
+         else
+            sc_born=smin_born+emscainv(ran2(),1d0)*(smax_born-smin_born)
+         endif
+         SCALUP(iFKS)=max(min(sc_born,smax_born,shower_S_scale(iFKS))
+     $        ,scaleMCcut)
+         return
+      endif
+
       if (MCcntcalled.eq.15) then
          ! both complete_xmcsubt and MC counter have been called. Set
          ! scales based on emsca and scalemax (for SCALUP), except for
@@ -4502,6 +4529,15 @@ c Safety measure
          enddo
       endif
       return
+      end
+
+
+      block data born_only_S_scale_default
+c Off by default: S-event starting scales as in MadGraph's MC@NLO.
+c mlapi_init (the ML API) switches it on.
+      logical born_only_S_scale
+      common /c_born_only_S_scale/born_only_S_scale
+      data born_only_S_scale /.false./
       end
 
 
