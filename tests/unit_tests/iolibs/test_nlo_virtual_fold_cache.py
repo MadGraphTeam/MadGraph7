@@ -95,7 +95,7 @@ end program
             self.skipTest('gfortran required')
         root = Path(MG5DIR)/'Template/NLO/SubProcesses'
         driver = (root/'driver_mintMC.f').read_text()
-        first = driver.index('            call reset_weight_lines_vec(nexternal)')
+        first = driver.index('call reset_weight_lines_vec(nexternal)')
         reset = driver[first:driver.index('         endif', first)]
         clear = '\n'.join(line for line in reset.splitlines() if any(
             name in line for name in ('bsv_virt_cache', 'virt_wgt_vec',

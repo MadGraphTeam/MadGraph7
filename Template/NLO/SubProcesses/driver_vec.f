@@ -264,6 +264,7 @@ c projection (generate_momenta_conf); other beams retain the norad cache.
             call set_alphaS(p1_cnt(0,1,0))
             call set_alphaS_vec_from_scalar(icoup + 2)
             spb(:,:,iFKS,ivec) = p_born(:,:)
+            if (FKS_J_D(iFKS).eq.2.and.nexternal-1.ne.3) then
             do k=1,nexternal-1
                p_born_rot(0,k)=p_born(0,k)
                p_born_rot(1,k)=-p_born(1,k)
@@ -271,6 +272,7 @@ c projection (generate_momenta_conf); other beams retain the norad cache.
                p_born_rot(3,k)=-p_born(3,k)
             enddo
             spb_rot(:,:,iFKS,ivec) = p_born_rot(:,:)
+            endif
             sp1_cnt(:,:,:,iFKS,ivec) = p1_cnt(:,:,:)
             spb_coll(:,:,iFKS,ivec) = p_born_coll(:,:)
             call set_alphaS(p)
@@ -682,6 +684,7 @@ C Local parameters
                endif
                ! calculatedBorn=.false.
                ! if (.not.passcuts_nbody_vec(iFKS,ivec)) goto 51
+               if (need_mapping_born(2,iFKS,ivec)) then
                call sborn_amp_vec_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
      $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp
      $                    ,icoup+2,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
@@ -689,6 +692,7 @@ C Local parameters
                scb_amp_split_cnt(:,:,:,iFKS,ivec)=coll_amp_split_cnt(:,:,:)
                scb_ans_cnt(:,:,iFKS,ivec)=coll_ans_cnt(:,:)
                scb_saveamp(:,:,iFKS,ivec)=coll_saveamp(:,:)
+               endif
                call sborn_amp_vec_frame(p_born,nb_amp2,nb_jamp2,nb_amp_split
      $                    ,nb_amp_split_cnt,wgt_nb,nb_ans_cnt,nb_saveamp
      $                    ,icoup+2,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
@@ -697,6 +701,7 @@ C Local parameters
                snb_amp_split_cnt(:,:,:,iFKS,ivec)=nb_amp_split_cnt(:,:,:)
                snb_ans_cnt(:,:,iFKS,ivec)=nb_ans_cnt(:,:)
                snb_saveamp(:,:,iFKS,ivec)=nb_saveamp(:,:)
+               if (FKS_J_D(iFKS).eq.2.and.nexternal-1.ne.3) then
                call sborn_amp_vec_frame(p_born_rot,rot_amp2,rot_jamp2,rot_amp_split
      $                    ,rot_amp_split_cnt,wgt_rot,rot_ans_cnt,rot_saveamp
      $                    ,icoup+3,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
@@ -704,8 +709,10 @@ C Local parameters
                ! srot_amp_split(:,iFKS,1)=rot_amp_split(:)
                srot_amp_split_cnt(:,:,:,iFKS,ivec)=rot_amp_split_cnt(:,:,:)
                srot_ans_cnt(:,:,iFKS,ivec)=rot_ans_cnt(:,:)
+               endif
                ! srot_saveamp(:,:,iFKS,1)=rot_saveamp(:,:)
                ! calculatedBorn=.false.
+               if (need_mapping_born(2,iFKS,ivec)) then
                call sborn_amp_vec_frame(p_born_coll,coll_n1_amp2,coll_n1_jamp2,coll_n1_amp_split
      $                    ,coll_n1_split_cnt,wgt_coll_n1,coll_n1_cnt,coll_n1_saveamp
      $                    ,icoup+3,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
@@ -713,6 +720,7 @@ C Local parameters
                sc1_amp_split_cnt(:,:,:,iFKS,ivec)=coll_n1_split_cnt(:,:,:)
                sc1_ans_cnt(:,:,iFKS,ivec)=coll_n1_cnt(:,:)
                sc1_saveamp(:,:,iFKS,ivec)=coll_n1_saveamp(:,:)
+               endif
                call sborn_amp_vec_frame(p_born,n1_amp2,n1_jamp2,n1_amp_split
      $                    ,n1_amp_split_cnt,wgt_n1,n1_ans_cnt,n1_saveamp
      $                    ,icoup+3,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
