@@ -665,7 +665,9 @@ take every selection too; their `pole_parts` follow their own axes (resolved:
 per sector, helicity and colour component).
 
 Current v2 scope: model-supplied R2; full, NLC or LC colour (LC/NLC with the
-model's source colour declaration); double, double-double and arbitrary
+model's source colour declaration; formal-N_c projections for any number of
+quark lines, identical flavours such as `u u~ > u u~ g` included); double,
+double-double and arbitrary
 arithmetic; inclusive results per squared coupling order; colour and spin
 correlations declared at generation (`correlators`); helicity-resolved output
 (also per Born colour component at LC; one contracted component at NLC and full
