@@ -74,6 +74,9 @@ module driver_vec
     double precision, allocatable, public :: sreal_amp_split(:,:,:)
     double precision, allocatable, public :: sfx_ev(:,:)
     logical, allocatable, public :: real_active(:,:)
+    ! Mapping Born caches: event-projected resonance and no-radiation Born.
+    ! Set during serial preparation and read independently by each lane.
+    logical, allocatable, public :: need_mapping_born(:,:,:)
     ! Integer (FKS-group) sampling, one draw per lane: every lane is an
     ! independent MINT point, so it must choose its own group.
     integer, allocatable, public :: lane_group(:), lane_nbody(:)
@@ -186,6 +189,7 @@ module driver_vec
     allocate(sreal_amp_split(amp_split_size,FKS_configs,vector_size))
     allocate(sfx_ev(FKS_configs,vector_size))
     allocate(real_active(FKS_configs,vector_size))
+    allocate(need_mapping_born(2,FKS_configs,vector_size))
     allocate(lane_group(vector_size), lane_nbody(vector_size))
     allocate(lane_vol1(vector_size), lane_born_vol1(vector_size))
     allocate(lane_ifold_S(vector_size), lane_g(vector_size))
@@ -272,6 +276,8 @@ subroutine reset_storage()
     sreal_amp_split(:,:,1:n) = 0d0
     sfx_ev(:,1:n) = 0d0
     real_active(:,1:n) = .false.
+    ! Retain both caches unless the serial preparation proves them unused.
+    need_mapping_born(:,:,1:n) = .true.
     ! Momenta
     spb(:,:,:,1:n) = 0d0
     spb_rot(:,:,:,1:n) = 0d0
@@ -357,6 +363,7 @@ subroutine deallocate_storage()
     if (allocated(sreal_amp_split)) deallocate(sreal_amp_split)
     if (allocated(sfx_ev)) deallocate(sfx_ev)
     if (allocated(real_active)) deallocate(real_active)
+    if (allocated(need_mapping_born)) deallocate(need_mapping_born)
     if (allocated(lane_group)) deallocate(lane_group)
     if (allocated(lane_nbody)) deallocate(lane_nbody)
     if (allocated(lane_vol1)) deallocate(lane_vol1)

@@ -165,6 +165,9 @@ C Common blocks for sigint variables not passed as arguments
         common /colour_connections/ icolup_s,icolup_h
         logical calculatedBorn
         common/ccalculatedBorn/calculatedBorn
+        integer igranny,iaunt
+        logical granny_is_res,granny_chain(-nexternal:nexternal)
+        common /c_granny_res/igranny,iaunt,granny_is_res,granny_chain
 C Momenta
         double precision p_born(0:3,nexternal-1), p_born_rot(0:3,nexternal-1)
         common /pborn/   p_born
@@ -240,12 +243,24 @@ c Preserve the Born-validity marker checked before the cached cut flags.
 c FxFx can change cut state before scalar replay; retain its setup.
             if (ickkw.ne.3.and.
      $          .not.(passcuts_nbody.or.passcuts_n1body)) cycle
-            call set_alphaS(p_born_ev)
-            call set_alphaS_vec_from_scalar(icoup)
-            spb_ev(:,:,iFKS,ivec) = p_born_ev(:,:)
-            call set_alphaS(p_born_norad)
-            call set_alphaS_vec_from_scalar(icoup + 1)
-            spb_norad(:,:,iFKS,ivec) = p_born_norad(:,:)
+c The resonance predicate is fixed by sector/channel, independent of
+c the random mapped/nonshifted branch. These beam pairs always use event
+c projection (generate_momenta_conf); other beams retain the norad cache.
+            need_mapping_born(1,iFKS,ivec)=granny_is_res
+            need_mapping_born(2,iFKS,ivec)=.not.(
+     $         (lpp(1).eq.1.and.lpp(2).eq.1).or.
+     $         (lpp(1).eq.2.and.lpp(2).eq.2).or.
+     $         (lpp(1).eq.0.and.lpp(2).eq.0))
+            if (need_mapping_born(1,iFKS,ivec)) then
+               call set_alphaS(p_born_ev)
+               call set_alphaS_vec_from_scalar(icoup)
+               spb_ev(:,:,iFKS,ivec) = p_born_ev(:,:)
+            endif
+            if (need_mapping_born(2,iFKS,ivec)) then
+               call set_alphaS(p_born_norad)
+               call set_alphaS_vec_from_scalar(icoup + 1)
+               spb_norad(:,:,iFKS,ivec) = p_born_norad(:,:)
+            endif
             call set_alphaS(p1_cnt(0,1,0))
             call set_alphaS_vec_from_scalar(icoup + 2)
             spb(:,:,iFKS,ivec) = p_born(:,:)
@@ -653,14 +668,18 @@ C Local parameters
             passcuts_n1body=passcuts_n1body_vec(iFKS,ivec)
             if (.not. (passcuts_nbody.or.passcuts_n1body)) cycle
             ! if (passcuts_nbody) then
+               if (need_mapping_born(1,iFKS,ivec)) then
                call sborn_amp_vec_frame(p_born_ev,ev_amp2,ev_jamp2,ev_amp_split
      $                    ,ev_amp_split_cnt,wgt_ev,ev_ans_cnt,ev_saveamp
      $                    ,icoup,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                sev_amp2(:,iFKS,ivec)=ev_amp2(:)
+               endif
+               if (need_mapping_born(2,iFKS,ivec)) then
                call sborn_amp_vec_frame(p_born_norad,norad_amp2,norad_jamp2,norad_amp_split
      $                    ,norad_amp_split_cnt,wgt_norad,norad_ans_cnt,norad_saveamp
      $                    ,icoup+1,ivec,iFKS,BORN_FLAVOR_INDEX_D(iFKS))
                snorad_amp2(:,iFKS,ivec)=norad_amp2(:)
+               endif
                ! calculatedBorn=.false.
                ! if (.not.passcuts_nbody_vec(iFKS,ivec)) goto 51
                call sborn_amp_vec_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
