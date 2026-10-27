@@ -34,15 +34,15 @@ owns). Checks:
   O2 per family against the legacy engine (L1/L2) on e- e+ > mu- mu+ with
   massless and massive muons and on Bhabha (O13: the legacy families are
   FeynKit's diagrams with their overall factors), the poles of
-  e- e+ > mu- mu+ on
-  loop_qcd_qed_sm against the QED Catani operator (full EW; photon-only a
-  strict xfail: the veto splits counterterm couplings), the legacy engine's
-  FFS projector exchange checked against MadLoop before the legacy engine
-  serves as the second engine, the native point inputs of
-  e- e+ > mu- mu+ (a strict xfail until EWI-N), and e- e+ > t t~ h against
-  Recola (``required/emep_ttxh_ew``; MadLoop excluded, it omits the G0 t t~
-  R2 of the b loops), a strict xfail until the counterterm roots' reading of
-  Z G0 H (genericity audit 2 G2-M7, ew-epsilon) is integrated;
+  e- e+ > mu- mu+ on loop_qcd_qed_sm against the QED Catani operator (full
+  EW; photon-only a strict xfail: the model's counterterm labels cannot
+  express the veto), the legacy engine's FFS projector exchange checked
+  against MadLoop before the legacy engine serves as the second engine, the
+  native point inputs of e- e+ > mu- mu+ (a strict xfail until EWI-N), and
+  e- e+ > t t~ h against Recola (``required/emep_ttxh_ew``; MadLoop
+  excluded, it omits the G0 t t~ R2 of the b loops), a strict xfail until
+  the counterterm roots' reading of Z G0 H (genericity audit 2 G2-M7,
+  ew-epsilon) is integrated;
 * the tree engine's reading sign of colour-singlet loop segments
   (``catalogue._CatalogueBuilder.reading_sign``): the tree engine reads
   every vertex all-outgoing, so a colour-singlet vertex odd in the momenta of
@@ -1415,10 +1415,13 @@ def test_qed_poles_of_mumu_on_loop_qcd_qed_sm_are_catani(
     raises=AssertionError,
     reason=(
         "photon-only veto on loop_qcd_qed_sm: the single pole is -3.487e-4 "
-        "against Catani's -1.841e-4 (double pole equal); the veto drops "
-        "loop_qcd_qed_sm's counterterm couplings that mix photon and Z parts "
-        "whole, which the field factors' remainder absorbs in the UV only "
-        "([U2] veto guard, WP3.2 EWI-7)"
+        "against Catani's -1.841e-4 (double pole equal); the veto acts on the "
+        "UFO's loop labels, nominal on the UV counterterms (none on the "
+        "vertices, one representative on the two-point ones: A A [e-], e+ e- "
+        "[e-, A]), so their W and Z loops stay, while R2 couplings labelled "
+        "with a Z (R2_eeACp, [e-, Z]) lose their photon part; the field "
+        "factors' remainder absorbs the mismatch in the UV only ([U2] veto "
+        "guard, WP3.2 EWI-7)"
     ),
 )
 def test_qed_poles_of_photon_only_mumu_on_loop_qcd_qed_sm_are_catani(
