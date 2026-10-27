@@ -27,9 +27,10 @@ madtrex/
   install.py         installer
 ```
 
-`Rex/` is a plain copy of https://github.com/zeniheisser/Rex, tracked as
-ordinary files in this repository; it no longer follows upstream. See
-`Rex/FORKED_FROM.md` for the commit it was taken from.
+`Rex/` is a plain copy of https://github.com/zeniheisser/Rex (commit
+94b4ed435a4bddce2f041c210e0455f2eff01379), tracked as ordinary files in this
+repository; it no longer follows upstream. Rex is distributed under the LGPL
+v3, whose text is in `Rex/lgpl-3.0.txt`.
 
 ## Requirements
 

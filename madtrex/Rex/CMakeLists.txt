@@ -33,7 +33,13 @@ target_link_libraries(tearex PUBLIC rex Threads::Threads)
 # tearex only needs to look next to itself to find rex at runtime. Without
 # this, install(TARGETS ...) strips the build-tree RPATH and libtearex.so
 # can't locate librex.so post-install.
-set_target_properties(tearex PROPERTIES INSTALL_RPATH "$ORIGIN")
+# ($ORIGIN is the ELF spelling; macOS's dynamic loader wants @loader_path.)
+if(APPLE)
+    set(REX_RPATH_ORIGIN "@loader_path")
+else()
+    set(REX_RPATH_ORIGIN "$ORIGIN")
+endif()
+set_target_properties(tearex PROPERTIES INSTALL_RPATH "${REX_RPATH_ORIGIN}")
 
 install(TARGETS rex tearex)
 install(FILES include/Rex.h include/teaRex.h DESTINATION include)
@@ -66,6 +72,6 @@ if(REX_BUILD_PYTHON)
     # _rex_py is installed one level below librex/libtearex (pyrex/_rex_py.so
     # vs lib/librex.so) in both the wheel layout and a plain `cmake
     # --install`, so it needs to look up one directory then into lib/.
-    set_target_properties(_rex_py PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
+    set_target_properties(_rex_py PROPERTIES INSTALL_RPATH "${REX_RPATH_ORIGIN}/../lib")
     install(TARGETS _rex_py DESTINATION pyrex)
 endif()

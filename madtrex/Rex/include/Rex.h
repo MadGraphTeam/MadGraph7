@@ -1666,7 +1666,7 @@ namespace REX
             }
             if (it->second.type() != typeid(T))
             {
-                throw std::bad_any_cast("event::get: Parameter '" + name + "' is not of requested type");
+                throw std::runtime_error("event::get: Parameter '" + name + "' is not of requested type");
             }
             return std::any_cast<const T &>(it->second);
         }
