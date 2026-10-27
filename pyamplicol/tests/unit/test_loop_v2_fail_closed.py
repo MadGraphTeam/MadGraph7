@@ -384,7 +384,10 @@ def test_public_generation_and_cli_refuse_lc_and_nlc_of_identical_flavours(
         with pytest.raises(LoopRequestUnsupported) as refused:
             Generator(resolve_config(card)).generate(processes, output)
         assert refused.value.key == NC_EXACT_REFUSAL
-        assert f"'{expression}': {accuracy.upper()} needs" in str(refused.value)
+        # The public route names the process in the model's spelling.
+        assert f"{accuracy.upper()} needs N_c-exact tree currents" in str(
+            refused.value
+        )
         assert not output.exists()
         output = tmp_path / f"cli-{accuracy}"
         card = tmp_path / f"cli-{accuracy}.toml"
@@ -397,7 +400,8 @@ def test_public_generation_and_cli_refuse_lc_and_nlc_of_identical_flavours(
         )
         assert code == 2
         text = stderr.getvalue()
-        assert f"{NC_EXACT_REFUSAL}: '{expression}'" in text
+        assert f"{NC_EXACT_REFUSAL}: '" in text
+        assert f"{accuracy.upper()} needs N_c-exact tree currents" in text
         assert 'full colour (color.accuracy = "full")' in text
         assert not output.exists()
     stdout = io.StringIO()
@@ -419,17 +423,32 @@ def test_public_generation_and_cli_refuse_lc_and_nlc_of_identical_flavours(
 @pytest.fixture(scope="module")
 def leptoquark(loop_sm_ufo, tmp_path_factory):
     """loop_sm with one scalar leptoquark and its u e vertices
-    (``loop_v2_ufo_variants.leptoquark_ufo``)."""
+    (``loop_v2_ufo_variants.leptoquark_ufo``), with loop_sm's checked
+    scalar-arity view (as ``loop_sm_compiled_model``)."""
 
-    from pyamplicol.models.loading import compile_model_source
+    from dataclasses import replace
+
+    from pyamplicol.models.loading import compile_model_source, load_compiled_model
+    from tools.loop_reference.model_compatibility import (
+        prepare_loop_sm_scalar_declarations,
+    )
 
     from .loop_v2_ufo_variants import leptoquark_ufo
 
     root = tmp_path_factory.mktemp("leptoquark")
     source = leptoquark_ufo(loop_sm_ufo, root / "loop_sm_lq")
-    return compile_model_source(
+    model = compile_model_source(
         source, cache_dir=root / "cache", require_supported=False
     )
+    model = replace(
+        model,
+        raw_loop_model=prepare_loop_sm_scalar_declarations(
+            model.raw_loop_model
+        ).derived,
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
+    return load_compiled_model(model.write(root / "loop-sm-lq.json"))
 
 
 EW_BORN = {"QCD": 0, "QED": 2}
@@ -457,7 +476,10 @@ def test_a_fermion_line_changing_representation_is_refused_before_the_trees(
         LoopSlice.generate(leptoquark, request, loop_native)
     assert refused.value.key == LINE_REFUSAL
     message = str(refused.value)
-    assert message.startswith(f"{LINE_REFUSAL}: 'u e- > u e-': the vertex V_LQ")
+    assert message.startswith(
+        f"{LINE_REFUSAL}: 'u e- > u e-': the vertex V_LQ (u~ e- lq), "
+        "V_LQc (e+ u lq~) joins"
+    )
     assert "joins a coloured and a colour-singlet fermion" in message
     assert "particle_veto" in message
     # Vetoing the leptoquark removes the vertex from every tree and loop.
@@ -487,9 +509,9 @@ def test_a_fermion_line_changing_representation_is_refused_before_the_trees(
         )
         == ()
     )
-    # mu+ mu- reaches no electron current from its legs: no tree or loop of
+    # m+ m- reaches no electron current from its legs: no tree or loop of
     # it can use the vertex.
-    assert found("u u~ > mu+ mu-", EW_BORN) == ()
+    assert found("u u~ > m+ m-", EW_BORN) == ()
 
 
 @pytest.mark.loop_physics

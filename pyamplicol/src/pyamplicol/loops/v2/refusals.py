@@ -196,14 +196,15 @@ def representation_changing_vertices(
     ignored_particle_ids: Iterable[int] = (),
     loop_species: Iterable[int] = (),
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    """The vertices (UFO name, particles) of ``compiled`` whose fermions have
+    """The vertices (UFO name, UFO particles) of ``compiled`` whose fermions have
     different sign ownership (``_sign_ownership``) and that a tree or a loop
     of ``process`` can use: an oriented kernel admitted as the DAG admits it
     (no particle in ``ignored_particle_ids``, its coupling orders within one
     of ``order_limits``, ``dag_reachability._coupling_orders_within_limits``)
     whose inputs are both currents some tree of the external legs can
-    produce (a tree vertex), or one such current and a loop species (a loop
-    vertex). The producible currents are the fixed point of the admitted
+    produce (a tree vertex), or one such current and a loop species whose
+    result is a loop species too (a loop vertex; contact auxiliaries count as
+    loop species). The producible currents are the fixed point of the admitted
     kernels from the legs' particles, which over-approximates the trees
     (subsets are not kept disjoint), so a vertex any tree or loop uses is
     always found."""
@@ -242,20 +243,33 @@ def representation_changing_vertices(
             if left in producible and right in producible and result not in producible:
                 producible.add(result)
                 grown = True
-    loop = {int(pdg) for pdg in loop_species} - ignored
+    # A loop vertex takes the loop line in at one input and out at its result
+    # (a loop species, or a contact auxiliary of a decomposed vertex).
+    auxiliaries = {
+        record.pdg_code for record in compiled.ir.particles if record.auxiliary_kind
+    }
+    loop = ({int(pdg) for pdg in loop_species} | auxiliaries) - ignored
+    # A vertex is named by its UFO name and particles (its oriented kernels
+    # are its orientations and contact decompositions).
+    particles_of: dict[str, tuple[str, ...]] = {}
+    for term in compiled.ir.vertex_terms:
+        particles_of.setdefault(term.vertex, tuple(term.particles))
     found: dict[tuple[str, tuple[str, ...]], None] = {}
     for kernel, pdgs in kernels:
-        left, right, _result = pdgs
+        left, right, result = pdgs
         used = (left in producible and right in producible) or (
-            (left in loop and right in producible)
-            or (right in loop and left in producible)
+            result in loop
+            and (
+                (left in loop and right in producible)
+                or (right in loop and left in producible)
+            )
         )
         if not used:
             continue
         owners = {_sign_ownership(model, pdg) for pdg in pdgs}
         owners.discard(None)
         if len(owners) > 1:
-            found.setdefault((kernel.vertex, tuple(kernel.particles)), None)
+            found.setdefault((kernel.vertex, particles_of[kernel.vertex]), None)
     return tuple(found)
 
 
