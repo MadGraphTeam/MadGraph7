@@ -434,6 +434,81 @@ class TestHelRecyclingWarmup(unittest.TestCase):
                          ([1, 3], [(1, 2), (3, 7)]))
 
 
+class TestHelRecyclingWarmupDispatch(unittest.TestCase):
+    """Which directories an output warms up: an mg7 output its own (it has no
+    check_sa.exe of its own, so it is lent one for the probe), and never the
+    directory another output left registered."""
+
+    def setUp(self):
+        from madmatrix import output, model_handling
+        self.output = output
+        self.warmups = model_handling.OneProcessExporterMadMatrix._hr_warmups
+        del self.warmups[:]
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.addCleanup(self.warmups.__delitem__, slice(None))
+
+    def exporter(self, cls, name):
+        exporter = cls.__new__(cls)
+        exporter.dir_path = os.path.join(self.tmp, name)
+        exporter._p_makefile_replace = {}
+        return exporter
+
+    def pdir(self, output_dir):
+        path = os.path.join(output_dir, 'SubProcesses', 'P1_gg_ggg')
+        os.makedirs(path)
+        class Registered(object):
+            pass
+        registered = Registered()
+        registered.path = path
+        self.warmups.append(registered)
+        return path
+
+    def test_mg7_finalize_calls_the_warmup(self):
+        from unittest import mock
+        import madgraph.iolibs.export_cpp as export_cpp
+        exporter = self.exporter(self.output.ProcessExporterMadMatrix, 'mg7')
+        with mock.patch.object(export_cpp.ProcessExporterMG7, 'finalize') as base, \
+             mock.patch.object(self.output.ProcessExporterMadMatrix,
+                               '_run_hel_recycling_warmups') as warmup:
+            exporter.finalize()
+        base.assert_called_once_with()
+        warmup.assert_called_once_with()
+
+    def test_mg7_finalize_clears_the_list_and_builds_only_its_own(self):
+        from unittest import mock
+        import subprocess
+        import madgraph.iolibs.export_cpp as export_cpp
+        exporter = self.exporter(self.output.ProcessExporterMadMatrix, 'mg7')
+        own = self.pdir(exporter.dir_path)
+        foreign = self.pdir(os.path.join(self.tmp, 'other'))
+        calls = []
+        def run(cmd, cwd=None, **opts):
+            calls.append((cmd, cwd, sorted(os.listdir(cwd))))
+            return subprocess.CompletedProcess(cmd, 1, stdout=b'')
+        with mock.patch.object(export_cpp.ProcessExporterMG7, 'finalize'), \
+             mock.patch.object(self.output.subprocess, 'run', side_effect=run):
+            exporter.finalize()
+        self.assertEqual(self.warmups, [])
+        self.assertEqual(set(cwd for _cmd, cwd, _ls in calls), set([own]))
+        # the probe build ran on the lent standalone driver ...
+        build, _cwd, listing = calls[0]
+        self.assertEqual(build[:3], ['make', '-f', 'hrprobe.mk'])
+        self.assertIn('HRPROBE=1', build)
+        for name in ['check_sa.cc', 'hrprobe.mk', 'madmatrix.mk', 'timer.h']:
+            self.assertIn(name, listing)
+        # ... which is taken back with the probe build
+        self.assertEqual(calls[-1][0][-1], 'cleanall')
+        self.assertEqual(os.listdir(own), [])
+        self.assertEqual(os.listdir(foreign), [])
+
+    def test_a_new_output_drops_what_an_earlier_one_left(self):
+        self.pdir(os.path.join(self.tmp, 'earlier'))
+        self.output.ProcessExporterMadMatrix(os.path.join(self.tmp, 'new'),
+                                             {'output_options': {}})
+        self.assertEqual(self.warmups, [])
+
+
 class TestGoodHelIds(unittest.TestCase):
     """NHEL(0,k) of the recycled matrix element is the 1-based id of that
     helicity in the original NHEL table.
