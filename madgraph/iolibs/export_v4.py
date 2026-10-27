@@ -11228,7 +11228,11 @@ C
         # Write the Couplings (for now all of them and not just running ones)
         coupling_list1 = [coupl.name+'_vec(:)' for coupl in self.coups_dep]
         coupling_list2 = [coupl.name+'_vec' for coupl in self.coups_dep]
-        fsock.writelines('double complex, allocatable :: '+', '.join(coupling_list1)+'')
+        # A process without running couplings (e+ e- > e+ e-, t > w+ b, ...)
+        # has none to declare, and an empty entity list after '::' does not
+        # compile.
+        if coupling_list1:
+            fsock.writelines('double complex, allocatable :: '+', '.join(coupling_list1)+'')
         fsock.writelines('contains')
         fsock.writelines('subroutine allocate_couplings(vector_size)')
         fsock.writelines('implicit none')
