@@ -111,6 +111,32 @@ def find_madspace(env: dict) -> Path | None:
     return Path(result.stdout.strip().splitlines()[-1])
 
 
+def madspace_problem(madspace_dir: Path, env: dict) -> str | None:
+    """Why the madspace in madspace_dir is too old to build MadtRex against
+    (it predates the API MadtRex uses: umami.h installed with the headers,
+    MatrixElementApi.set_parameter/supported_inputs), or None."""
+    if not (madspace_dir / "include" / "madspace" / "umami.h").is_file():
+        return "it does not install include/madspace/umami.h"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import madspace; api = madspace.MatrixElementApi; "
+            "missing = [n for n in ('supports_set_parameter', 'set_parameter', "
+            "'supported_inputs') if not hasattr(api, n)]; print(' '.join(missing))",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return "importing it failed:\n" + result.stderr.strip()
+    missing = result.stdout.strip().splitlines()[-1:] if result.stdout.strip() else []
+    if missing and missing[0]:
+        return "its MatrixElementApi has no " + ", ".join(missing[0].split())
+    return None
+
+
 def install_build_deps(env: dict, system: bool) -> None:
     """Install the [build-system] requires of pyproject.toml, needed because
     madtrex is built with --no-build-isolation (so that CMake sees the same
@@ -204,6 +230,14 @@ def main(argv: list[str] | None = None) -> None:
         if madspace_dir is None:
             print("madspace is still not importable after installing it; giving up.")
             sys.exit(1)
+    if problem := madspace_problem(madspace_dir, env):
+        print(
+            f"The madspace in {madspace_dir} is too old for MadtRex: {problem}.\n"
+            "Reinstall madspace from this checkout's sources first:\n    "
+            f"{sys.executable} {MADSPACE_SRC_DIR / 'install.py'} --source --yes\n"
+            "(or 'install madspace --source' in MadGraph), then re-run this script."
+        )
+        sys.exit(1)
     print(f"Using madspace from {madspace_dir}")
 
     env = set_build_parallelism(env, args.jobs)

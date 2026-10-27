@@ -40,6 +40,7 @@ import types
 import unittest
 from unittest import mock
 
+import madgraph
 import madgraph.interface.extended_cmd as ext_cmd
 import madgraph.interface.master_interface as mgcmd
 from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
@@ -443,8 +444,18 @@ class MadspaceInstallCommandTest(unittest.TestCase):
 
     def installer_args(self, line):
         with mock.patch('subprocess.run') as run:
+            run.return_value.returncode = 0
             self.cmd.do_install(line)
         return [str(a) for a in run.call_args[0][0]]
+
+    def test_a_failing_installer_is_an_error(self):
+        """A failed madspace/madtrex install.py (e.g. madtrex without
+        madspace) is reported at the prompt, not passed over silently."""
+        with mock.patch('subprocess.run') as run:
+            run.return_value.returncode = 1
+            with self.assertRaises(madgraph.InvalidCmd) as ctx:
+                self.cmd.do_install('madtrex --yes')
+        self.assertIn('install madtrex failed', str(ctx.exception))
 
     def test_nb_core_is_forwarded_as_the_job_count(self):
         """Without it the installer's cmake build is serial whenever ninja is

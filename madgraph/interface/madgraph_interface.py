@@ -8609,7 +8609,11 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             if not any(a == '-j' or a.startswith('-j') or a.startswith('--jobs')
                        for a in install_args):
                 install_args = install_args + ['-j', str(self.options['nb_core'])]
-            subprocess.run([sys.executable, install_script] + install_args)
+            result = subprocess.run([sys.executable, install_script] + install_args)
+            if result.returncode != 0:
+                raise self.InvalidCmd('install %s failed (%s exited with code %d): see '
+                                      'its output above' % (args[0], install_script,
+                                                            result.returncode))
             return
 
         plugin = self.install_plugin

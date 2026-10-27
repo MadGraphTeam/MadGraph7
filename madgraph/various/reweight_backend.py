@@ -108,6 +108,9 @@ class Env:
     classic_reason: str = ''
     # madtrex/install/madtrex exists
     madtrex_installed: bool = False
+    # why the installed madtrex cannot be used although it is there (built
+    # against another madspace), or ''
+    madtrex_problem: str = ''
 
 
 @dataclass
@@ -299,6 +302,26 @@ def madtrex_is_installed(install_dir=None):
     return (install_dir / 'madtrex').is_dir()
 
 
+def madtrex_build_problem(install_dir=None, madspace_dir=None):
+    """Why the installed madtrex cannot be used with the madspace MadGraph
+    uses (it was built against other madspace headers), or ''. Reads
+    madtrex/_compat.py directly: nothing compiled is imported."""
+    install_dir = Path(install_dir) if install_dir else _MG_ROOT / 'madtrex' / 'install'
+    madspace_dir = (Path(madspace_dir) if madspace_dir
+                    else _MG_ROOT / 'madspace' / 'install' / 'madspace')
+    compat_path = install_dir / 'madtrex' / '_compat.py'
+    if not compat_path.is_file() or not madspace_dir.is_dir():
+        return ''
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('_madtrex_compat', compat_path)
+    compat = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(compat)
+        return compat.build_problem(str(install_dir / 'madtrex'), str(madspace_dir)) or ''
+    except Exception:
+        return ''
+
+
 def probe_environment(me_dir, options=None, madtrex_install_dir=None, has_f2py=None):
     """Env of the process directory me_dir. options are the MadGraph run
     options (mg5_path, f2py_compiler); has_f2py overrides the f2py lookup
@@ -322,6 +345,8 @@ def probe_environment(me_dir, options=None, madtrex_install_dir=None, has_f2py=N
         env.classic_available = False
         env.classic_reason = 'the classic module needs f2py, which was not found'
     env.madtrex_installed = madtrex_is_installed(madtrex_install_dir)
+    if env.madtrex_installed:
+        env.madtrex_problem = madtrex_build_problem(madtrex_install_dir)
     return env
 
 
@@ -340,6 +365,8 @@ def _madtrex_problems(env):
     if not env.madtrex_installed:
         problems.append('MadtRex is not installed (python madtrex/install.py, or '
                         "'install madtrex' in MadGraph)")
+    elif env.madtrex_problem:
+        problems.append(env.madtrex_problem)
     return problems
 
 

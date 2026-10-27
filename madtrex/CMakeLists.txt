@@ -130,3 +130,22 @@ set_target_properties(
         BUILD_RPATH "${MADSPACE_DIR}/lib"
 )
 install(TARGETS _madtrex_py DESTINATION madtrex)
+
+# The madspace headers _madtrex_py is compiled against (its classes and their
+# inline methods are baked in): record a digest of them, which
+# madtrex/_compat.py compares with the madspace found at import time, so that
+# a madspace reinstalled since is refused with a clear message instead of
+# failing as a binary mismatch. Same digest as _compat.headers_digest(): one
+# "<relative path> <sha256>" line per file, in sorted path order.
+file(GLOB_RECURSE madspace_headers LIST_DIRECTORIES false
+     RELATIVE "${MADSPACE_DIR}/include" "${MADSPACE_DIR}/include/*")
+list(SORT madspace_headers)
+set(madspace_headers_lines "")
+foreach(header IN LISTS madspace_headers)
+    file(SHA256 "${MADSPACE_DIR}/include/${header}" header_sha)
+    string(APPEND madspace_headers_lines "${header} ${header_sha}\n")
+endforeach()
+string(SHA256 MADSPACE_HEADERS_DIGEST "${madspace_headers_lines}")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/_build_info.json"
+     "{\"madspace_headers\": \"${MADSPACE_HEADERS_DIGEST}\", \"madspace_dir\": \"${MADSPACE_DIR}\"}\n")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/_build_info.json" DESTINATION madtrex)
