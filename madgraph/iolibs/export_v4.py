@@ -4189,17 +4189,19 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 # Close the vector loops opened above (no PDFs to fetch for decays)
                 pdf_lines += "ENDDO ! IWARP LOOP\n"
                 pdf_lines += "ENDDO ! CURRWARP LOOP\n"
-                # Set ALL_PD for ALL flavor combinations across all IVEC.
-                # No iflav conditioning here (matches ninitial==2 vector pattern):
-                # IPSEL will randomly select the flavor, then GET_FLAVOR maps it.
+                # One entry per leshouche row, in the order of the scalar
+                # code, non-zero only for the flavour class (IFLAV) of the
+                # event: IPSEL then directly is the leshouche row.
                 pdf_lines += "ALL_PD(0,:) = 0d0\nIPROC = 0\n"
                 for i, proc in enumerate(processes):
                     process_line = proc.base_string()
-                    for grp in all_flv:
+                    for nb_flavor, grp in enumerate(all_flv):
                         for one_flv in grp:
                             pdf_lines += "IPROC=IPROC+1 ! " + process_line
                             pdf_lines += "\nDO IVEC=1, VECSIZE_USED\n"
+                            pdf_lines += "IF (ALL_IFLAV(IVEC).EQ.%d) THEN\n" % (nb_flavor + 1)
                             pdf_lines += "ALL_PD(IPROC,IVEC)=1d0\n"
+                            pdf_lines += "ELSE\nALL_PD(IPROC,IVEC)=0d0\nENDIF\n"
                             pdf_lines += "ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))\n"
                             pdf_lines += "ENDDO\n"
             else:
@@ -4425,13 +4427,20 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 pdf_lines += "ENDDO ! IWARP LOOP\n"
                 pdf_lines += "ENDDO ! CURRWARP LOOP\n"
                 pdf_lines = pdf_lines + "ALL_PD(0,:) = 0d0\nIPROC = 0\n"
+                # One entry per leshouche row, in the same order as the
+                # scalar code (flavour class by flavour class), non-zero only
+                # for the flavour class (IFLAV) of the event: IPSEL then
+                # directly is the leshouche row.
+                all_flv = list(matrix_element.get_external_flavors_with_iden())
                 for proc in processes:
-                    # one entry per flavor row of this process
-                    for nb_flavor in range(len(matrix_element.get_external_flavors())):
+                  for nb_flavor in range(len(all_flv)):
+                    for one_flv in all_flv[nb_flavor]:
                         comp_list = []
                         process_line = proc.base_string()
                         pdf_lines = pdf_lines + "IPROC=IPROC+1 ! " + process_line
                         pdf_lines += '\n   DO IVEC=1, VECSIZE_USED'
+                        pdf_lines += "\nIF (ALL_IFLAV(IVEC).NE.%d) THEN" % (nb_flavor + 1)
+                        pdf_lines += "\nALL_PD(IPROC,IVEC)=0d0\nELSE"
                         pdf_lines = pdf_lines + "\nALL_PD(IPROC,IVEC)="
                         for ibeam in [1, 2]:
                             initial_state = proc.get_initial_pdg(ibeam)
@@ -4440,7 +4449,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                                 # honours the leg restriction; a union row
                                 # may not be processes[0]'s)
                                 sign = 1 if initial_state > 0 else -1
-                                initial_state = sign * matrix_element.get_external_flavors()[nb_flavor][ibeam-1]
+                                initial_state = sign * one_flv[ibeam-1]
 
                             if initial_state in list(pdf_codes.keys()):
                                 pdf_lines = pdf_lines + "%s%d(IVEC)*" % \
@@ -4457,6 +4466,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                             pdf_lines += "if (pdlabel.eq.'dressed')" + \
                                 "ALL_PD(IPROC,IVEC)=ee_comp_prod(%s_components(1,IVEC),%s_components(1,IVEC))\n" % \
                                 tuple(comp_list)
+                        pdf_lines += "ENDIF\n"
                         pdf_lines = pdf_lines + "ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))\n"
                         pdf_lines += '\n    ENDDO\n'
                         if not dressed_lep:

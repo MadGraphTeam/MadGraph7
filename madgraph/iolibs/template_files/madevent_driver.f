@@ -173,7 +173,13 @@ c
           fixed_fac_scale1 = .true.
           fixed_fac_scale2 = .true.
           ickkw = 0
-      endif 
+c         Scan the helicities event by event: in vector mode all the events
+c         of a warp share the beam orientation (IMIRROR), so the MAXTRIES
+c         events of the scan could all be mirrored (or not) and miss the
+c         helicities that are only non-zero in the other orientation
+c         (e.g. the Z at rest of q q~ > z).
+          VECSIZE_USED = 1
+      endif
       minvar(1,1) = 0              !This tells it to map things invarients
       write(*,*) 'Attempting mappinvarients',nconfigs,nexternal
       if (mincfig.lt.0)then

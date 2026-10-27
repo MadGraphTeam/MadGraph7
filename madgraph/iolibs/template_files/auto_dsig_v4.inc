@@ -383,6 +383,9 @@ C     Keep track of whether cuts already calculated for this event
       integer selected_hel(VECSIZE_MEMMAX)
       integer selected_col(VECSIZE_MEMMAX)
       double precision all_rwgt(VECSIZE_MEMMAX)
+C     flavour class (IFLAV_VEC is per warp) and leshouche row of each event
+      integer all_iflav(VECSIZE_MEMMAX)
+      integer all_ipsel(VECSIZE_MEMMAX)
       
 C     Common blocks
       include '../../Source/PDF/pdf.inc'
@@ -418,6 +421,9 @@ C     Continue only if IMODE is 0, 4 or 5
       IF(IMODE.NE.0.AND.IMODE.NE.4.and.IMODE.NE.5) RETURN
 
 %(passcuts_begin)s
+      DO IVEC=1, VECSIZE_USED
+         ALL_IFLAV(IVEC) = IFLAV_VEC((IVEC-1)/WARP_SIZE+1)
+      ENDDO
 %(pdf_lines_vec)s
 
      
@@ -455,10 +461,11 @@ C     Select a flavor combination (need to do here for right sign)
 C     .GE. above already covers R = 0; this catches a NaN R (every
 C     comparison false) and IPROC = 0. See the scalar branch.
        IF (IPSEL.LT.1) IPSEL = 1
+       ALL_IPSEL(IVEC) = IPSEL
        %(get_channel_vec)s
 
 
-       CALL GET_FLAVOR%(proc_id)s(IFLAV_VEC(IVEC), FLAVOR)
+       CALL GET_FLAVOR%(proc_id)s(ALL_IFLAV(IVEC), FLAVOR)
        if (IMODE.eq.0) then
          ALL_RWGT(IVEC) = REWGT(all_PP(0,1,IVEC),FLAVOR,ivec)
        else
@@ -474,7 +481,7 @@ C     comparison false) and IPROC = 0. See the scalar branch.
 	 CALL RANMAR(col_rand(IVEC))
 	 ENDDO ! end loop on IWARP/IVEC	 
 	 ENDDO ! end loop on the CURR_WARP
-         call SMATRIX%(proc_id)s_MULTI(p_multi, iflav_vec, hel_rand, col_rand, channels, igraph, ALL_OUT , selected_hel, selected_col, VECSIZE_USED)
+         call SMATRIX%(proc_id)s_MULTI(p_multi, all_iflav, hel_rand, col_rand, channels, igraph, ALL_OUT , selected_hel, selected_col, VECSIZE_USED)
 
 
 	 DO CURR_WARP=1, NB_WARP_USED
@@ -490,6 +497,8 @@ c          config and mirror of this warp (used by the clustering in REWGT and b
 	   IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
 	   DO IWARP=1, WARP_SIZE
        IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+c        flavour combination of this event (sign below and UNWGT)
+	 IPSEL = ALL_IPSEL(IVEC)
 	 DSIGUU = ALL_OUT(IVEC)
 	 IF (IMODE.EQ.5) THEN
             IF (DSIGUU.LT.1D199) THEN		 
@@ -497,7 +506,7 @@ c          config and mirror of this warp (used by the clustering in REWGT and b
 			else
 		      ALL_OUT(IVEC) = 0.0d0
 			endif
-			RETURN
+			CYCLE
 		 ENDIF
 
      XBK(:) = ALL_XBK(:,IVEC)
