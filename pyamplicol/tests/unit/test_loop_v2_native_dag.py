@@ -605,16 +605,23 @@ def test_native_loop_blocks_reachability_and_ignored_ids(models):
 
 @pytest.mark.loop_nightly
 @pytest.mark.parametrize(
-    ("text", "orders"),
+    ("text", "orders", "u1_grades"),
     (
-        ("g g > g g g g", {"QCD": 6}),
-        ("u u~ > d d~ g g", {"QCD": 6}),
-        ("u u~ > g g g g", {"QCD": 6}),
+        ("g g > g g g g", {"QCD": 6}, False),
+        ("u u~ > d d~ g g", {"QCD": 6}, False),
+        ("u u~ > g g g g", {"QCD": 6}, False),
+        # Three identical-flavour lines, graded (grades 0, -1 and -2).
+        ("u u~ > u u~ u u~", {"QCD": 6}, True),
     ),
 )
-def test_native_loop_blocks_six_legs(models, text, orders):
+def test_native_loop_blocks_six_legs(models, text, orders, u1_grades):
     compiled, model = models
-    _assert_equal(compiled, model, text, orders)
+    python, _native_dag = _assert_equal(
+        compiled, model, text, orders, u1_grades=u1_grades
+    )
+    if u1_grades:
+        grades = {c.index.color_state.nc_grade for c in python.currents}
+        assert {0, -1, -2} <= grades, grades
 
 
 def test_stage_digest_names_its_stage():
