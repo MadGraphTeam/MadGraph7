@@ -28,13 +28,16 @@ tree engine reads them through the model's conjugate rule, whose couplings
 and Lorentz structures are the rule's own complex-conjugated with the chiral
 projectors exchanged, so the segment takes the conjugate rule's kernels
 (WP3.2 EWI-2; the root closure does the same, ``ct_sites.SiteClosure``).
-The tree engine also reads every momentum all-outgoing. On a coloured vertex
-its colour reading compensates that; on a colour-singlet vertex the segment
-kernel carries the difference, -1 on the momentum-odd Goldstone vertices
-(Z G0 H, W G0 G+-, W G+- H) and, by the field signs of the closed vertices
-(G0 negated), on the ghost-G0 vertices: the loops then share the tree
-engine's readings, to which the Goldstone Yukawas are matched
-(``catalogue._CatalogueBuilder.reading_sign``, WP3.2 EWI-5).
+The tree engine also reads every momentum and colour flow all-outgoing. The
+segment kernel carries the difference, one rule for every vertex: the sign of
+its Lorentz structure under the momentum reversal (with each boson leg on its
+antiparticle's) times its colour tensor's under the transposition of the
+adjoint generators (``colour_transposition_sign``). It cancels on the SM's
+coloured vertices and is -1 on the momentum-odd Goldstone vertices (Z G0 H,
+W G0 G+-, W G+- H) and, by the field signs of the closed vertices (G0
+negated), on the ghost-G0 vertices: the loops then share the tree engine's
+readings, to which the Goldstone Yukawas are matched
+(``catalogue._CatalogueBuilder.reading_sign``, WP3.2 EWI-5; G2-M6).
 
 Leaf weight of a skeleton (``LeafWeights``), design §3.3:
 
@@ -106,7 +109,7 @@ factor (design §6.4).
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from types import MappingProxyType
@@ -115,7 +118,6 @@ from typing import Any
 from pyamplicol.generation.fermion_ordering import (
     _external_fermion_support_sign,
     _fermion_input_orientation_sign,
-    _fermion_rep_requires_exterior_sign,
 )
 
 from .blocks import _open_last, _parity, identity_pairing_sign
@@ -133,6 +135,78 @@ LOOP_FACTOR_DENOMINATOR = 16
 
 class FermionSignError(NotImplementedError):
     """A fermion line the slice's sign rule does not cover."""
+
+
+class ReadingSignError(NotImplementedError):
+    """A vertex without a sign between the tree engine's reading and a loop
+    segment's or root closure's: its colour tensor has no sign under the
+    transposition of its adjoint generators (``colour_transposition_sign``)
+    or its Lorentz structure none under the momentum reversal."""
+
+
+# The namespace qualifier of a UFO symbol as a compiled model prints it
+# (``UFO::{}::f(1,2,3)``; ``CompiledVertexTerm.color_source``).
+_NAMESPACE = re.compile(r"\b[A-Za-z_]\w*::(?:\{[^{}]*\}::)?")
+
+
+def colour_transposition_sign(colour: str, what: str = "a vertex") -> int:
+    """The sign a UFO colour tensor takes when every adjoint generator is
+    transposed (the order of every trace reversed, the ends of every
+    fundamental line swapped): -1 per ``f``; 1 per ``d``, generator ``T``
+    (transposed between swapped ends), ``Identity`` or two-index trace; the
+    terms of a sum must share it.
+
+    The tree engine reads every vertex with its outgoing particles' colour
+    flows, loop segments and root closures with the incoming ones; the two
+    differ by this sign times the Lorentz structure's under the momentum
+    reversal (``catalogue._CatalogueBuilder.reading_sign``). ``colour`` is
+    the UFO string, bare or namespace-qualified as a compiled model prints
+    it. Other tensors (traces of three or more adjoint indices, which are
+    mixtures of ``d`` and ``f``; sextet and epsilon tensors) are refused with
+    ``ReadingSignError`` naming ``what``."""
+
+    import ast
+
+    def terms(node: ast.AST) -> list[ast.AST]:
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
+            return terms(node.left) + terms(node.right)
+        if isinstance(node, ast.UnaryOp):
+            return terms(node.operand)
+        return [node]
+
+    try:
+        tree = ast.parse(_NAMESPACE.sub("", colour), mode="eval")
+    except SyntaxError as error:
+        raise ReadingSignError(
+            f"{what}: its colour tensor {colour!r} is no UFO colour expression"
+        ) from error
+    signs = set()
+    for term in terms(tree.body):
+        sign = 1
+        for call in (n for n in ast.walk(term) if isinstance(n, ast.Call)):
+            name = call.func.id if isinstance(call.func, ast.Name) else None
+            arity = len(call.args)
+            if name == "complex":
+                continue
+            if name == "f" and arity == 3:
+                sign = -sign
+            elif not (
+                (name in ("d", "T") and arity == 3)
+                or (name in ("Identity", "IdentityB", "Tr") and arity == 2)
+            ):
+                raise ReadingSignError(
+                    f"{what}: the colour tensor {name} of {arity} indices has no "
+                    "sign under the transposition of its adjoint generators (only "
+                    "f, d, T, Identity and two-index traces have one), so it "
+                    "cannot be read as the tree engine reads it"
+                )
+        signs.add(sign)
+    if len(signs) != 1:
+        raise ReadingSignError(
+            f"{what}: the terms of its colour change sign differently under the "
+            "transposition of the adjoint generators"
+        )
+    return signs.pop()
 
 
 @dataclass(frozen=True, slots=True)
@@ -355,6 +429,36 @@ PARTICLE, ANTIPARTICLE = "particle", "antiparticle"
 # ``LeafWeights`` and ``ct_sites.SiteClosure`` (its colour representation;
 # coloured ends hold their all-outgoing representation, 3 or -3).
 SINGLET_END = 1
+
+
+def fermion_end(representation: int, what: str = "a fermion") -> int:
+    """The fermion end of a fermion of colour representation
+    ``representation``, the one classifier of ``LeafWeights`` and
+    ``ct_sites.SiteClosure`` (external ends, blocks): ``SINGLET_END`` for a
+    colour singlet, the representation (3 or -3) for a (anti)triplet. Other
+    representations (sextets, octets) have no sign rule here, as in the tree
+    engine (``fermion_ordering._fermion_rep_requires_exterior_sign``), and
+    are refused (``FermionSignError`` naming ``what``)."""
+
+    representation = int(representation)
+    if representation == 1:
+        return SINGLET_END
+    if abs(representation) == 3:
+        return representation
+    raise FermionSignError(
+        f"{what}: a fermion of colour representation {representation} has no "
+        "sign rule (colour singlets and (anti)triplets only)"
+    )
+
+
+def fermion_ends(fermions: Iterable[tuple[int, int]]) -> dict[int, int]:
+    """label -> ``fermion_end`` of the external fermions given as (label,
+    all-outgoing colour representation)."""
+
+    return {
+        label: fermion_end(representation, f"external fermion {label}")
+        for label, representation in fermions
+    }
 
 
 def open_end_orientation(field: Mapping[str, Any]) -> str:
@@ -630,7 +734,8 @@ class LeafWeights:
                 port = ("block", position, slot)
                 entry = self._particles[block.field]
                 if int(entry["spin"]) == FERMION_SPIN:
-                    if _fermion_rep_requires_exterior_sign(int(entry["color"])):
+                    end = fermion_end(entry["color"], f"fermion block {block.field}")
+                    if end == SINGLET_END:
                         if not singlets:
                             raise FermionSignError(
                                 f"a colour-singlet fermion block {block.field} "
@@ -642,7 +747,7 @@ class LeafWeights:
                         )
                         ports.append(port)
                     else:
-                        (starts if int(entry["color"]) == 3 else stops).append(None)
+                        (starts if end == 3 else stops).append(None)
                 sign *= identity_pairing_sign(starts, stops)
                 for start, stop in zip(
                     sorted(starts, key=_open_last),
@@ -707,10 +812,14 @@ __all__ = [
     "FermionSignError",
     "LeafWeights",
     "Normalisation",
+    "ReadingSignError",
     "TreeReading",
     "closed_under_conjugation",
     "colour_singlet_sign",
+    "colour_transposition_sign",
     "conjugate_vertex_rules",
+    "fermion_end",
+    "fermion_ends",
     "open_end_orientation",
     "tree_reading_legs",
 ]

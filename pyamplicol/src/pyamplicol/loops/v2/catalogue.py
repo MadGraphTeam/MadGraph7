@@ -34,33 +34,41 @@ Conventions
 * Loop lines are full current states (chirality 0). Attached blocks come in
   every current state the tree engine produces, including Weyl-projected
   massless fermions.
-* Segments of colour-singlet vertices carry the tree engine's reading sign
-  (``_CatalogueBuilder.reading_sign``). The tree engine reads every vertex in
-  the all-outgoing convention: the current of each outgoing tree particle on
-  the leg of that particle, with its outgoing momentum
-  (``generation.runtime_schema``: "sum all-outgoing momenta ... negate
-  physical incoming momenta first"). The segments read boson legs by their
-  incoming fields with incoming momenta (fermion legs already take the tree
-  reading, ``conventions.TreeReading``). On a coloured vertex the colour
-  reading compensates the difference (the momentum reversal of the gluon
-  vertex against the transposition of its ``f`` flow; the colour seeds read
-  the incoming legs). On a colour-singlet one nothing does: the tree engine's
-  value is the segment's times ``L(pi legs, -p) / L(legs, p)``, ``L`` the
-  Lorentz structure and ``pi`` the exchange of each boson leg with its
+* Segments carry the tree engine's reading sign
+  (``_CatalogueBuilder.reading_sign``), one rule for every vertex. The tree
+  engine reads every vertex in the all-outgoing convention: the current of
+  each outgoing tree particle on the leg of that particle, with its outgoing
+  momentum and colour flow (``generation.runtime_schema``: "sum all-outgoing
+  momenta ... negate physical incoming momenta first"). The segments read
+  boson legs by their incoming fields with incoming momenta, and the colour
+  seeds read the incoming colour (fermion legs already take the tree
+  reading, ``conventions.TreeReading``). The tree engine's value is the
+  segment's times ``L(pi legs, -p) / L(legs, p)``, ``L`` the Lorentz
+  structure and ``pi`` the exchange of each boson leg with its
   antiparticle's leg (identity for a vertex read through its conjugate rule,
-  which already takes the antiparticles' legs). That ratio is -1 exactly on the
-  Z G0 H, W G0 G+- and W G+- H vertices of the SM. On the vertices closed
-  under conjugation these are the field signs of G0 negated (they fix
-  s(G0) = -1 and s(G+) s(G-) = 1); W G0 G+- and W G+- H, read through their
-  conjugate rules, take the ratio alone and are no field signs. The Goldstone
-  Yukawas' lone chiral projectors are matched to the tree engine's readings
-  (``models.tensors``), and blocks, Born and counterterms come from it. A
-  colour-singlet ghost vertex has no tree
-  reading; it takes the product of the field signs of its other legs, solved
-  over GF(2) from the closed colour-singlet boson vertices (-1 for the
-  ghost-G0 vertices), so the loops' ghost lines share that basis. Found by O2
-  per family on e+ e- > t t~ h and e- e+ > mu- mu+ (massive muon) against the
-  legacy engine and MadLoop (WP3.2 EWI-5).
+  which already takes the antiparticles' legs), times the colour tensor's
+  sign under the transposition of its adjoint generators
+  (``conventions.colour_transposition_sign``: -1 per ``f``, 1 for ``d``,
+  ``T``, identities and two-index traces); a vertex where either factor is
+  not a sign is refused. On the SM's coloured vertices the factors cancel
+  (the momentum-odd three-gluon vertex against its ``f``; the quark-gluon
+  and four-gluon vertices have neither), so QCD segments keep their reading;
+  a coloured vertex whose colour does not compensate its momenta (a W
+  coupling of a coloured scalar pair, a chromomagnetic dipole) takes the
+  sign of its colour-singlet copy. On the SM the product is -1 exactly on
+  the Z G0 H, W G0 G+- and W G+- H vertices. On the vertices closed under
+  conjugation the signs are field signs, those of G0 negated (they fix
+  s(G0) = -1, s(G+) s(G-) = 1 and s(g) = 1); W G0 G+- and W G+- H, read
+  through their conjugate rules, take the ratio alone and are no field
+  signs. The Goldstone Yukawas' lone chiral projectors are matched to the
+  tree engine's readings (``models.tensors``), and blocks, Born and
+  counterterms come from it. A ghost vertex has no tree reading; it takes
+  the product of the field signs of its other legs, solved over GF(2) from
+  the closed boson vertices (-1 for the ghost-G0 vertices, 1 for the gluon's
+  ghost vertex), so the loops' ghost lines share that basis. Found by O2 per
+  family on e+ e- > t t~ h and e- e+ > mu- mu+ (massive muon) against the
+  legacy engine and MadLoop (WP3.2 EWI-5); one rule for coloured vertices
+  too by the second genericity audit (G2-M6).
 """
 
 from __future__ import annotations
@@ -108,6 +116,7 @@ from ...models.prepared_catalog_helpers import (
     used_input_descriptors,
 )
 from ...models.tensors import normalize_lorentz_expression
+from .conventions import ReadingSignError, colour_transposition_sign
 
 if TYPE_CHECKING:
     from ...models.contracts import CompiledParticleRecord, CompiledVertexTerm
@@ -724,13 +733,15 @@ class _CatalogueBuilder:
                 )
             )
 
-    # -- tree reading of colour-singlet vertices --------------------------
+    # -- tree reading of vertices ------------------------------------------
 
     def reading_sign(self, term: CompiledVertexTerm) -> int:
         """The sign of the tree engine's reading of ``term`` against its
-        segments' (module docstring): 1 on a coloured vertex, the ratio of the
-        two readings on a colour-singlet one, the product of its other legs'
-        field signs on a colour-singlet ghost vertex."""
+        segments' (module docstring), one rule for every vertex: on a ghost
+        vertex the product of its other legs' field signs, on any other the
+        ratio of the two readings' Lorentz structures times its colour
+        tensor's transposition sign. A vertex where either is not a sign is
+        refused (``LoopKernelCatalogueError``)."""
 
         found = self._reading_signs.get(term.id)
         if found is None:
@@ -739,24 +750,28 @@ class _CatalogueBuilder:
 
     def _reading_sign(self, term: CompiledVertexTerm) -> int:
         records = tuple(self.particles[name] for name in term.particles)
-        if any(abs(record.color) != 1 for record in records):
-            return 1
-        if not any(record.ghost_number for record in records):
-            return self._kinematic_reading_sign(term, records)
-        if not self._closed(term.particles):
-            # Never read: the readings refuse a ghost vertex not closed under
-            # conjugation (``conventions.conjugate_vertex_rules``).
-            return 1
-        sign = self._signs().product(
-            record.name for record in records if not record.ghost_number
-        )
-        if sign is None:
-            raise LoopKernelCatalogueError(
-                f"ghost vertex {term.vertex} {tuple(term.particles)}: the field "
-                "signs of its other legs are not fixed by the closed "
-                "colour-singlet boson vertices"
+        # Ghosts first: the gluon's ghost vertex is no sign kinematically.
+        if any(record.ghost_number for record in records):
+            if not self._closed(term.particles):
+                # Never read: the readings refuse a ghost vertex not closed
+                # under conjugation (``conventions.conjugate_vertex_rules``).
+                return 1
+            sign = self._signs().product(
+                record.name for record in records if not record.ghost_number
             )
-        return sign
+            if sign is None:
+                raise LoopKernelCatalogueError(
+                    f"ghost vertex {term.vertex} {tuple(term.particles)}: the "
+                    "field signs of its other legs are not fixed by the closed "
+                    "boson vertices"
+                )
+            return sign
+        what = f"vertex {term.vertex} {tuple(term.particles)}"
+        try:
+            colour = colour_transposition_sign(term.color_source, what)
+        except ReadingSignError as error:
+            raise LoopKernelCatalogueError(str(error)) from error
+        return colour * self._kinematic_reading_sign(term, records)
 
     def _closed(self, names: Sequence[str]) -> bool:
         return sorted(names) == sorted(self.particles[name].antiname for name in names)
@@ -820,27 +835,32 @@ class _CatalogueBuilder:
                 return sign
         raise LoopKernelCatalogueError(
             f"vertex {term.vertex} {tuple(term.particles)}: its tree reading is "
-            "not a sign of its loop segments' reading (a colour-singlet Lorentz "
-            "structure of mixed momentum parity or exchange symmetry)"
+            "not a sign of its loop segments' reading (a Lorentz structure of "
+            "mixed momentum parity or exchange symmetry)"
         )
 
     def _signs(self) -> _FieldSigns:
-        """Field signs of the tree engine's basis, from the closed colour-
-        singlet boson vertices of the model (module docstring)."""
+        """Field signs of the tree engine's basis, from the reading signs of
+        the model's closed boson vertices of every colour (module
+        docstring). A vertex without a reading sign fixes no field sign (a
+        segment of it is refused by ``reading_sign`` itself)."""
 
         if self._field_signs is None:
             equations = []
             for term in self.compiled.ir.vertex_terms:
                 records = tuple(self.particles[name] for name in term.particles)
                 if any(
-                    abs(record.color) != 1
-                    or record.ghost_number
+                    record.ghost_number
                     or record.spin == _FERMION_SPIN
                     or record.auxiliary_kind is not None
                     for record in records
                 ) or not self._closed(term.particles):
                     continue
-                equations.append((term.particles, self.reading_sign(term)))
+                try:
+                    sign = self.reading_sign(term)
+                except LoopKernelCatalogueError:
+                    continue
+                equations.append((term.particles, sign))
             self._field_signs = _FieldSigns(equations)
         return self._field_signs
 
@@ -1224,8 +1244,8 @@ class _FieldSigns:
             if not mask:
                 if parity:
                     raise LoopKernelCatalogueError(
-                        "the tree reading signs of the colour-singlet boson "
-                        "vertices are not those of a field basis"
+                        "the tree reading signs of the closed boson vertices "
+                        "are not those of a field basis"
                     )
                 continue
             pivot = mask.bit_length() - 1

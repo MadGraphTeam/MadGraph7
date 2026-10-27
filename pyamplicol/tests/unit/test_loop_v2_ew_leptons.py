@@ -318,8 +318,173 @@ def test_colour_singlet_segments_take_the_tree_engines_reading_sign(loop_gmu_ufo
     assert flips == READING_FLIPS
     assert singlets > 3 * len(READING_FLIPS)
     signs = builder._signs()
-    fields = (["G0"], ["G+", "G-"], ["H"], ["Z"], ["A"], ["W+", "W-"])
-    assert [signs.product(names) for names in fields] == [-1, 1, 1, 1, 1, 1]
+    fields = (["G0"], ["G+", "G-"], ["H"], ["Z"], ["A"], ["W+", "W-"], ["G"])
+    assert [signs.product(names) for names in fields] == [-1, 1, 1, 1, 1, 1, 1]
+
+
+# A toy extension of the G_mu UFO (genericity audit 2, G2-M6): a colour-
+# triplet scalar pair (sq, sd) coupled to the W, the photon and the gluon as
+# the Goldstones and the Higgs are, and a dipole Lorentz structure
+# sigma^{mu nu} k_nu on a quark-gluon and an electron-photon vertex. Each
+# coloured vertex is a copy of a colour-singlet one: (toy vertex, its
+# particles, the singlet copy's particles, Lorentz structure).
+TOY_PARTICLES = """
+SQ = Particle(pdg_code = 9000101, name = 'sq', antiname = 'sq~', spin = 1,
+              color = 3, mass = Param.ZERO, width = Param.ZERO,
+              texname = 'sq', antitexname = 'sq~', charge = 2/3,
+              GhostNumber = 0, LeptonNumber = 0)
+SQ__tilde__ = SQ.anti()
+SD = Particle(pdg_code = 9000102, name = 'sd', antiname = 'sd~', spin = 1,
+              color = 3, mass = Param.ZERO, width = Param.ZERO,
+              texname = 'sd', antitexname = 'sd~', charge = -1/3,
+              GhostNumber = 0, LeptonNumber = 0)
+SD__tilde__ = SD.anti()
+"""
+TOY_LORENTZ = """
+FFVdipole = Lorentz(name = 'FFVdipole', spins = [ 2, 2, 3 ],
+                    structure = 'P(-1,3)*Gamma(3,2,-2)*Gamma(-1,-2,1) - '
+                                'P(-1,3)*Gamma(-1,2,-2)*Gamma(3,-2,1)')
+"""
+TOY_VERTICES = [
+    # (name, particles, colour, Lorentz, coupling, singlet copy's particles)
+    ("V_toy_wp", "W__plus__, P.SQ__tilde__, P.SD", "Identity(2,3)", "VSS1",
+     "GC_55", ("W+", "G-", "H")),
+    ("V_toy_wm", "W__minus__, P.SQ, P.SD__tilde__", "Identity(2,3)", "VSS1",
+     "GC_55", ("W-", "G+", "H")),
+    ("V_toy_a", "A, P.SQ__tilde__, P.SQ", "Identity(2,3)", "VSS1", "GC_3",
+     ("A", "G-", "G+")),
+    ("V_toy_g", "G, P.SQ__tilde__, P.SQ", "T(1,3,2)", "VSS1", "GC_11",
+     ("A", "G-", "G+")),
+    ("V_toy_gdip", "u__tilde__, P.u, P.G", "T(3,2,1)", "FFVdipole", "GC_11",
+     ("e+", "e-", "A")),
+    ("V_toy_adip", "e__plus__, P.e__minus__, P.A", "1", "FFVdipole", "GC_3",
+     ("e+", "e-", "A")),
+]  # fmt: skip
+
+
+def _toy_coloured_ufo(loop_gmu_ufo, directory: Path) -> Path:
+    target = directory / "loop_qcd_qed_sm_Gmu_toy_colour"
+    shutil.copytree(
+        loop_gmu_ufo, target, ignore=shutil.ignore_patterns("__pycache__", "*.pkl")
+    )
+    vertices = "".join(
+        f"\n{name} = Vertex(name = '{name}', particles = [ P.{particles} ],\n"
+        f"    color = [ '{colour}' ], lorentz = [ L.{lorentz} ],\n"
+        f"    couplings = {{(0,0):C.{coupling}}})\n"
+        for name, particles, colour, lorentz, coupling, _ in TOY_VERTICES
+    )
+    for file, text in (
+        ("particles.py", TOY_PARTICLES),
+        ("lorentz.py", TOY_LORENTZ),
+        ("vertices.py", vertices),
+    ):
+        with (target / file).open("a") as handle:
+            handle.write(text)
+    return target
+
+
+@pytest.mark.loop_fast
+def test_coloured_segments_take_the_sign_of_their_colour_singlet_copy(
+    loop_gmu_ufo, tmp_path
+):
+    """One reading-sign rule for every vertex (genericity audit 2, G2-M6):
+    the Lorentz ratio of the two readings times the colour tensor's sign
+    under the transposition of its adjoint generators. A coloured vertex
+    whose colour does not compensate its momenta takes the sign of its
+    colour-singlet copy: W sq~ sd as W G- H (-1, where a rule keeping every
+    coloured vertex at 1 gives 1), the gluon's and the photon's scalar
+    vertices as A G- G+, the chromomagnetic dipole as the photon's (-1). A
+    colour tensor without a transposition sign is refused, typed."""
+
+    from dataclasses import replace
+
+    from pyamplicol.loops.v2.catalogue import (
+        LoopKernelCatalogueError,
+        _CatalogueBuilder,
+    )
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import compile_model_source, with_model_gauge
+
+    compiled = with_model_gauge(
+        compile_model_source(
+            _toy_coloured_ufo(loop_gmu_ufo, tmp_path), require_supported=False
+        ),
+        "feynman",
+    )
+    builder = _CatalogueBuilder(compiled, CompiledUFOModel(compiled))
+    records = {record.name: record for record in compiled.ir.particles}
+    terms = {
+        (term.vertex, term.lorentz_name): term for term in compiled.ir.vertex_terms
+    }
+    singlets = {
+        (tuple(sorted(term.particles)), term.lorentz_name): term
+        for term in compiled.ir.vertex_terms
+        if all(abs(records[name].color) == 1 for name in term.particles)
+    }
+    signs = {}
+    for name, _, _, lorentz, _, copy in TOY_VERTICES:
+        signs[name] = builder.reading_sign(terms[name, lorentz])
+        singlet = singlets[tuple(sorted(copy)), lorentz]
+        assert signs[name] == builder.reading_sign(singlet), name
+    assert signs == {
+        "V_toy_wp": -1,
+        "V_toy_wm": -1,
+        "V_toy_a": 1,
+        "V_toy_g": 1,
+        "V_toy_gdip": -1,
+        "V_toy_adip": -1,
+    }
+    coloured = terms["V_toy_g", "VSS1"]
+    for colour, match in (
+        ("UFO::{}::Epsilon(1,2,3)", "Epsilon of 3 indices has no sign"),
+        ("UFO::{}::f(1,2,3) + UFO::{}::d(1,2,3)", "change sign differently"),
+    ):
+        with pytest.raises(LoopKernelCatalogueError, match=match):
+            builder.reading_sign(replace(coloured, id=-1, color_source=colour))
+
+
+@pytest.mark.loop_fast
+def test_fermion_ends_refuse_sextets_and_octets():
+    """One fermion classifier (genericity audit 2, G2-m2) for the external
+    ends, the root closure and the leaf weights: colour singlets are singlet
+    ends, (anti)triplets keep their representation, sextet and octet
+    fermions are refused, typed, at each of the three."""
+
+    from pyamplicol.loops.v2.conventions import (
+        SINGLET_END,
+        LeafWeights,
+        fermion_end,
+        fermion_ends,
+    )
+    from pyamplicol.loops.v2.ct_sites import SiteClosure
+
+    assert fermion_ends([(1, 1), (2, -3), (3, 3)]) == {1: SINGLET_END, 2: -3, 3: 3}
+    assert [fermion_end(rep) for rep in (1, 3, -3)] == [SINGLET_END, 3, -3]
+    for representation in (6, -6, 8):
+        match = f"representation {representation} has no sign rule"
+        with pytest.raises(FermionSignError, match=match):
+            fermion_ends([(2, representation)])
+        particle = {"name": "x", "antiname": "x~", "spin": 2, "mass": "ZERO"}
+        model = {
+            "particles": [
+                {**particle, "color": representation},
+                {"name": "g", "antiname": "g", "spin": 3, "color": 8, "mass": "ZERO"},
+            ],
+            "parameters": [{"name": "ZERO", "expression": "0"}],
+            "couplings": [],
+            "vertex_rules": [],
+        }
+        block = SimpleNamespace(mask=1, field="x")
+        content = SimpleNamespace(
+            loop_in="g", loop_out="g", terms=(SimpleNamespace(blocks=(block,)),)
+        )
+        with pytest.raises(FermionSignError, match=match):
+            LeafWeights(model, {})._line_parity([content])
+        closure = object.__new__(SiteClosure)
+        closure._ends = {}
+        closure._by_name = {"x": model["particles"][0]}
+        with pytest.raises(FermionSignError, match=match):
+            closure._root_sign([block])
 
 
 # --------------------------- two singlet lines and a quark line (QCD, loop_sm)

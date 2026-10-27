@@ -143,6 +143,8 @@ from .conventions import (
     FermionSignError,
     closed_under_conjugation,
     colour_singlet_sign,
+    fermion_end,
+    fermion_ends,
     open_end_orientation,
 )
 from .families import (
@@ -929,21 +931,18 @@ class SiteClosure:
         self._representations = {leg.label: leg.representation for leg in self.legs}
         # External fermion endpoints: label -> all-outgoing representation
         # (3 or -3) of a coloured one, ``SINGLET_END`` of a colour-singlet one
-        # (``conventions.LeafWeights``). Labels rank the singlet sources as
-        # the tree engine's source slots do (``colour_singlet_sign``).
+        # (``conventions.fermion_ends``, shared with ``LeafWeights`` and
+        # ``_root_sign``; other representations are refused). Labels rank the
+        # singlet sources as the tree engine's source slots do
+        # (``colour_singlet_sign``).
         labels = [leg.label for leg in blocks.process.legs]
         if labels != sorted(labels):
             raise ValueError("process legs out of label order")
-        self._ends = {
-            leg.label: (
-                self._representations[leg.label]
-                if abs(self._representations[leg.label]) == 3
-                else SINGLET_END
-            )
+        self._ends = fermion_ends(
+            (leg.label, self._representations[leg.label])
             for leg in blocks.process.legs
             if self._fields.by_pdg[int(leg.outgoing_pdg)]["spin"] == 2
-            and abs(self._representations[leg.label]) in (1, 3)
-        }
+        )
         self._bindings = {
             binding.key: binding for binding in catalogue.counterterm_sites
         }
@@ -1265,15 +1264,20 @@ class SiteClosure:
             if singlets:
                 supports.append(singlets)
             entry = self._by_name[current.field]
-            if entry["spin"] == 2 and abs(int(entry["color"])) != 3:
+            end = (
+                fermion_end(entry["color"], f"fermion block {current.field}")
+                if entry["spin"] == 2
+                else None
+            )
+            if end == SINGLET_END:
                 if not singlets:
                     raise FermionSignError(
                         f"a colour-singlet fermion block {current.field} holds no "
                         "colour-singlet fermion end"
                     )
                 singlet_ends.append((len(supports) - 1, open_end_orientation(entry)))
-            elif entry["spin"] == 2:
-                (starts if int(entry["color"]) == 3 else stops).append(None)
+            elif end is not None:
+                (starts if end == 3 else stops).append(None)
             sign *= identity_pairing_sign(starts, stops)
             for start, stop in zip(
                 sorted(starts, key=_open_last),
