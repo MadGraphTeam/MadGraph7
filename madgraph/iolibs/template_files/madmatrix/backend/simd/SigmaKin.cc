@@ -589,7 +589,7 @@ namespace madmatrix
   // helicity loop leaves it. Returns the |M|^2 of the event (before the helicity/color
   // average and the channel weight) and sets selhel; a vanishing |M|^2 returns 0 and
   // leaves selhel alone, as the positive case does.
-  static inline fptype
+  [[maybe_unused]] static inline fptype
   select_helicity_signed( const fptype* ighelSum, // input: running sums over the good helicities
                           const fptype rndhel,    // input: random number for the helicity choice
                           int& selhel )           // output: chosen helicity (Fortran range [1,ncomb])

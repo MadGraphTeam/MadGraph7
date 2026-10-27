@@ -83,12 +83,11 @@ namespace rambo
     int iranmr, jranmr;
   };
 
-  inline double rn( int idummy )
+  inline double rn( [[maybe_unused]] int idummy )
   {
     static Random rand;
     double ran;
     static int init = 1;
-    (void)idummy; // prevent unused variable warning
     if( init == 1 )
     {
       init = 0;
