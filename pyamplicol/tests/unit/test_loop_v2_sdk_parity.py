@@ -686,3 +686,76 @@ def test_a_mixed_scale_batch_of_a_running_coupling_is_refused_by_name(
         executor.evaluate([GG_POINT, GG_POINT], SCALES)
     one = executor.evaluate([GG_POINT], SCALES[:1])
     assert len(one) == 1
+
+
+# ------------------------------------------------- request and policy defaults
+
+
+def _particle(name, *, spin=3, color=1):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        name=name,
+        antiname=name,
+        auxiliary_kind=None,
+        spin=spin,
+        color=color,
+        charge=0.0,
+        mass="ZERO",
+        width="ZERO",
+        ghost_number=0,
+        goldstoneboson=False,
+    )
+
+
+def test_slice_request_corrections_default_to_the_strong_correction():
+    """``SliceRequest.corrections`` has no order-name default (second
+    genericity audit, m7): unset, it is the model's strong correction, the
+    order the gluon's minimal vertices carry whatever its name; a model
+    without one is refused with a typed error; explicit corrections stand."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.api.errors import GenerationError
+    from pyamplicol.loops.v2.assemble import SliceRequest, resolve_request
+
+    def model(*vertices):
+        return SimpleNamespace(
+            ir=SimpleNamespace(
+                particles=(_particle("g", color=8), _particle("a")),
+                parameters=(),
+                vertex_terms=tuple(
+                    SimpleNamespace(particles=particles, coupling_orders=orders)
+                    for particles, orders in vertices
+                ),
+            )
+        )
+
+    request = SliceRequest("g g > g g", {"GS": 2}, {"GS": 4})
+    assert request.corrections is None
+    strong = model((("g", "g", "g"), (("GS", 1),)))
+    assert resolve_request(strong, request).corrections == ("GS",)
+    with pytest.raises(GenerationError, match="names no correction orders"):
+        resolve_request(model(), request)
+    explicit = replace(request, corrections=("GS", "EW"))
+    assert resolve_request(model(), explicit) is explicit
+
+
+def test_the_cheapest_frame_policy_requires_the_legs_helicity_rows():
+    """No count per leg is assumed (second genericity audit, m8): the native
+    generation's cheapest frame policy refuses a call without ``leg_rows``
+    (the Rust policy refuses the payload, ``schedules.rs``), and
+    ``assemble._FRAME_POLICY`` is gone."""
+
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.generator_input import NativeGeneration
+    from pyamplicol.loops.v2.schedules import STRUCTURED
+
+    assert not hasattr(assemble, "_FRAME_POLICY")
+    generation = NativeGeneration.__new__(NativeGeneration)
+    generation.legs = (1, 2, 3, 4)
+    with pytest.raises(ValueError, match="needs the helicity rows of every leg"):
+        generation._policy(STRUCTURED, None, [], None)
+    policy = generation._policy(STRUCTURED, None, [], (2, 2, 1, 3))
+    assert policy["kind"] == "cheapest" and policy["leg_rows"] == [2, 2, 1, 3]
