@@ -73,6 +73,24 @@ class NormalizedTensorExpression:
     tensor_heads: tuple[str, ...]
 
 
+# Results of the pure normalisations and projections below by their
+# arguments: a model compile meets each structure once per vertex (a
+# counterterm-lowered model's clone-line copies repeat every vertex of their
+# field). Cleared beyond the bound.
+_NORMALIZED: dict[tuple[object, ...], Any] = {}
+_NORMALIZED_BOUND = 1 << 14
+
+
+def _remembered(key: tuple[object, ...], form: Any) -> Any:
+    found = _NORMALIZED.get(key)
+    if found is None:
+        found = form()
+        if len(_NORMALIZED) >= _NORMALIZED_BOUND:
+            _NORMALIZED.clear()
+        _NORMALIZED[key] = found
+    return found
+
+
 def normalize_lorentz_expression(
     source: str,
     spins: Sequence[int],
@@ -85,6 +103,22 @@ def normalize_lorentz_expression(
     ``vertex`` selects the vertex spinor order; propagators keep their own.
     """
 
+    spins = tuple(int(spin) for spin in spins)
+    return _remembered(
+        ("lorentz", source, spins, model_symbols, bool(vertex)),
+        lambda: _normalize_lorentz_expression(
+            source, spins, model_symbols=model_symbols, vertex=vertex
+        ),
+    )
+
+
+def _normalize_lorentz_expression(
+    source: str,
+    spins: Sequence[int],
+    *,
+    model_symbols: ModelSymbolRegistry | None = None,
+    vertex: bool = True,
+) -> NormalizedTensorExpression:
     _ensure_symbolica()
     context = _LorentzContext(
         tuple(int(spin) for spin in spins),
@@ -121,6 +155,17 @@ def normalize_color_expression(
 ) -> NormalizedTensorExpression:
     """Convert one UFO color expression into typed spenso SU(3) tensors."""
 
+    representations = tuple(int(color) for color in color_representations)
+    return _remembered(
+        ("colour", source, representations),
+        lambda: _normalize_color_expression(source, representations),
+    )
+
+
+def _normalize_color_expression(
+    source: str,
+    color_representations: Sequence[int],
+) -> NormalizedTensorExpression:
     representations = tuple(int(color) for color in color_representations)
     _validate_color_representations(representations)
     _ensure_symbolica()
@@ -636,6 +681,24 @@ def project_trilinear_color_expression(
     projection is available for diagnostics, but must not certify executable
     model contracts.
     """
+
+    representations = tuple(int(value) for value in color_representations)
+    return _remembered(
+        ("trilinear", expression, representations, bool(allow_numeric_fallback)),
+        lambda: _project_trilinear_color_expression(
+            expression,
+            representations,
+            allow_numeric_fallback=allow_numeric_fallback,
+        ),
+    )
+
+
+def _project_trilinear_color_expression(
+    expression: str,
+    color_representations: Sequence[int],
+    *,
+    allow_numeric_fallback: bool = False,
+) -> tuple[str, complex]:
 
     representations = tuple(int(value) for value in color_representations)
     _validate_color_representations(representations)

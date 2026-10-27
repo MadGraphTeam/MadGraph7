@@ -57,6 +57,17 @@ def _safe_text_path(text: str) -> str:
     return "::".join(_safe_text_part(part.strip()) for part in text.split("::") if part)
 
 
+@cache
+def _kernel_symbol(
+    namespace: str, kind: int, side: str, marker: str, index: int
+) -> Any:
+    """A kernel's input component (``marker`` empty) or momentum
+    (``"momentum_"``) symbol of a model namespace: about 10^6 lookups per
+    model compile, each one name (``ModelSymbolRegistry.symbol``)."""
+
+    return _symbol(f"{namespace}::compiler::kernel_{kind}_{side}_{marker}{index}")
+
+
 @dataclass(frozen=True)
 class ModelSymbolRegistry:
     """Symbolica names owned by one externally supplied model."""
@@ -92,12 +103,10 @@ class ModelSymbolRegistry:
         return self.qualified_name(f"compiler::kernel_{int(kind)}_{side}")
 
     def kernel_component(self, kind: int, side: str, index: int) -> Any:
-        return self.symbol(f"compiler::kernel_{int(kind)}_{side}_{int(index)}")
+        return _kernel_symbol(self.namespace, int(kind), side, "", int(index))
 
     def kernel_momentum(self, kind: int, side: str, index: int) -> Any:
-        return self.symbol(
-            f"compiler::kernel_{int(kind)}_{side}_momentum_{int(index)}"
-        )
+        return _kernel_symbol(self.namespace, int(kind), side, "momentum_", int(index))
 
     def contact_leg_tensor_name(self, kind: int, leg: int) -> str:
         return self.qualified_name(

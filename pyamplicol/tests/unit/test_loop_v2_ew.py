@@ -5,9 +5,10 @@ The electroweak UFOs (G_mu, ``loop_qcd_qed_sm_Gmu_py3``, and MG5_aMC's
 ``loop_qcd_qed_sm``) write their UV counterterm parameters with the
 electroweak helpers ``re``, ``recms``, ``regsqrt``, ``grreglog``,
 ``reglogp``/``reglogm``, ``arg`` and a rebound (CMS) ``reglog``.
-``ct_recursion.CoefficientLowering`` keeps every such CT scalar a
-parameter-program reference: the couplings are linear in them, and the
-counterterm program binds them at the card from the scalars' exact bodies,
+``ct_recursion.CoefficientLowering`` lowers every coupling that reads such a
+CT scalar on parameter-program references (one pair per Laurent coefficient
+of the coupling; in the exact form of left-out cells, of its CT scalars),
+and the counterterm program binds them at the card from the exact bodies,
 every helper a function of the model's scalar library
 (``ct_recursion.coefficient_plan``). Oracles, model-level (no process), on
 both UFOs:
@@ -31,9 +32,10 @@ both UFOs:
 
 Further checks:
 
-* the referenced couplings (G_mu): each CT coupling's Laurent coefficients, formed
-  on the reference parameters and bound with the plan, equal the UFO's
-  coupling expression at the oracle's CT values;
+* the referenced couplings (G_mu): each CT coupling's Laurent coefficients,
+  as reference pairs bound with the couplings' plan and in the exact form on
+  the CT scalars' references, equal the UFO's coupling expression at the
+  oracle's CT values;
 * the digest rule: loop_sm's ``cond``, ``reglog`` and ``complexconjugate``
   are UFO-standard (resolved by name, so loop_sm plans are unchanged), the
   G_mu ``reglog`` is not;
@@ -54,6 +56,7 @@ import cmath
 import importlib
 import importlib.util
 import math
+import re
 import sys
 import warnings
 
@@ -637,13 +640,73 @@ def test_model_cms_reglog_conventions_agree_at_real_masses(gmu, gmu_plan):
 
 def test_referenced_couplings_equal_the_ufo_couplings(gmu, gmu_ufo, gmu_plan):
     """Each G_mu CT coupling that reads a CT parameter needing the scalar
-    library is lowered on the reference parameters (``CoefficientLowering``),
-    linearly; bound with the plan and the UFO's parameter values, every
-    Laurent coefficient equals the UFO's coupling expression at the
+    library is lowered on reference parameters (``CoefficientLowering``):
+    every Laurent coefficient is one reference pair, bound by the coefficient
+    plan of the coupling (EWI-3R), and in its exact form (left-out cells,
+    formal N_c) a linear form on the references of its CT scalars, bound by
+    the scalar plan. Both equal the UFO's coupling expression at the
     oracle's CT coefficients (sampled every 7th coupling; all couplings
-    nightly), and every reference it reads is a plan output or a zero."""
+    nightly), a power ``is_zero`` drops is zero there, and every reference
+    is a plan output or a zero."""
 
     _check_referenced_couplings(gmu, gmu_ufo, gmu_plan, every=7)
+
+
+def test_referenced_coupling_powers_cover_products_of_ct_scalars(gmu):
+    """A referenced coupling's epsilon powers that can be non-zero
+    (``CoefficientLowering.is_zero``, ``_reachable_powers``) are bounded from
+    its source by its degree in its CT scalars: G_UVb and G_UVt have an
+    epsilon^-1 and an epsilon^0 coefficient, so a coupling term G_UVb^2 or
+    G_UVb G_UVt reaches epsilon^-2 (an exact Laurent coefficient of the
+    coefficient plan, never dropped), a linear one (``complexconjugate`` of
+    a CT scalar included) does not; a term that is not a polynomial in its
+    CT scalars (1/G_UVb) or reaches below epsilon^-2 (G_UVb^3) raises
+    ``CountertermCouplingError`` (its rule is then residual, refused when a
+    tree of the request can hold it). Review of EWI-3R: products were
+    dropped silently."""
+
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.ct_recursion import (
+        CoefficientLowering,
+        CountertermCouplingError,
+        _Referenced,
+    )
+
+    lowering = CoefficientLowering(gmu.compiled, gmu.fixed)
+    library = gmu.program.library
+    names = ("G_UVb", "G_UVt")
+    for name in names:
+        assert lowering._scalar_powers(gmu.program, name) == frozenset((-1, 0))
+    scalars = tuple((name, library.lower(name).value) for name in names)
+    template = next(
+        definition
+        for (collection, _id), definition in gmu.program.definitions.items()
+        if collection == "couplings"
+    )
+
+    def entry(index: int, text: str):
+        definition = replace(template, id=-1 - index, name=f"test_{index}")
+        found = _Referenced(((0, library.lower(text).value),), scalars)
+        lowering._couplings[id(gmu.program), definition.id] = found
+        return SimpleNamespace(coupling=definition, scalar_program=gmu.program)
+
+    cases = {
+        "G_UVb**2": (0, -1, -2),
+        "G_UVb*G_UVt": (0, -1, -2),
+        "2*G_UVb + G_UVt": (0, -1),
+        "complexconjugate(G_UVb)": (0, -1),
+        "(G_UVb + 1)**2": (0, -1, -2),
+    }
+    for index, (text, powers) in enumerate(cases.items()):
+        coupling = entry(index, text)
+        found = tuple(p for p in (0, -1, -2) if not lowering.is_zero(coupling, p))
+        assert found == powers, text
+    for index, text in enumerate(("1/G_UVb", "G_UVb**3", "cmath.sqrt(G_UVb)")):
+        coupling = entry(len(cases) + index, text)
+        with pytest.raises(CountertermCouplingError):
+            lowering.is_zero(coupling, -2)
 
 
 def _check_referenced_couplings(gmu, gmu_ufo, gmu_plan, *, every: int) -> None:
@@ -651,72 +714,87 @@ def _check_referenced_couplings(gmu, gmu_ufo, gmu_plan, *, every: int) -> None:
 
     from symbolica import Expression
 
-    from pyamplicol.loops.v2.ct_recursion import CoefficientLowering
+    from pyamplicol.loops.v2.ct_recursion import CoefficientLowering, coefficient_plan
 
     builtins = (Expression.PI, Expression.E, Expression.I)
     card = _oracle_card(gmu)
     reference, environment = _ufo_values(gmu_ufo, card)
     lowering = CoefficientLowering(gmu.compiled, gmu.fixed)
-    bound = {
-        key: complex(float(re), float(im))
-        for key, (re, im) in _plan_values(
-            gmu_plan.plan, gmu.card, arithmetic="double"
-        ).items()
-    }
-    bound.update(dict.fromkeys(gmu_plan.zero, 0j))
     ct_names = {name for name, _power in reference}
     sources = {c.name: c.value for c in gmu_ufo[3].all_couplings}
-    checked = 0
+    referenced = []
     for record in gmu.raw.collections["couplings"][::every]:
         entry = SimpleNamespace(
             coupling=gmu.program.definitions["couplings", record["id"]],
             scalar_program=gmu.program,
         )
-        referenced = lowering._referenced(entry)
-        if referenced is None:
-            continue
-        source = sources[record["name"]]
-        for power in (0, -1, -2):
-            value = lowering(entry, power)
-            constants = {}
-            for symbol in value.get_all_symbols(False):
-                if symbol in builtins:
-                    continue
-                name = symbol.get_name().rsplit("::", 1)[-1]
-                if name in lowering.references:
-                    scalar, shift, part = lowering.references[name]
-                    number = bound[scalar, shift]
-                    constants[symbol] = number.real if part == "re" else number.imag
-                else:
-                    constants[symbol] = complex(environment[name])
-            mine = complex(value.evaluate(constants))
+        if lowering._referenced(entry) is not None:
+            referenced.append((record["name"], entry))
+    assert len(referenced) > 20, len(referenced)
+    powers = (0, -1, -2)
+    couplings = coefficient_plan(
+        gmu.program,
+        [(name, p) for name, _entry in referenced for p in powers],
+        gmu.fixed,
+    )
+    bound = {}
+    for found in (gmu_plan, couplings):
+        bound.update(
+            (key, complex(float(re), float(im)))
+            for key, (re, im) in _plan_values(
+                found.plan, gmu.card, arithmetic="double"
+            ).items()
+        )
+        bound.update(dict.fromkeys(found.zero, 0j))
+
+    def value_of(expression):
+        constants = {}
+        for symbol in expression.get_all_symbols(False):
+            if symbol in builtins:
+                continue
+            name = symbol.get_name().rsplit("::", 1)[-1]
+            if name in lowering.references:
+                scalar, shift, part = lowering.references[name]
+                number = bound[scalar, shift]
+                constants[symbol] = number.real if part == "re" else number.imag
+            else:
+                constants[symbol] = complex(environment[name])
+        return complex(expression.evaluate(constants))
+
+    for name, entry in referenced:
+        source = sources[name]
+        for power in powers:
             # The UFO coupling at the oracle's eps^power CT coefficients
             # (it is linear in them), and the binary64 rounding scale: the
             # sum of the magnitudes of its terms, one CT parameter at a time.
             program = _compiled(source, False)
-            read = [name for name in ct_names if name in source]
+            read = [ct for ct in ct_names if ct in source]
             local = {**environment, **dict.fromkeys(ct_names, 0)}
             free = eval(program, local)
             expected, scale = (0 if power else free), abs(free)
-            for name in read:
-                local[name] = reference.get((name, power), 0)
+            for ct in read:
+                local[ct] = reference.get((ct, power), 0)
                 term = eval(program, local) - free
-                local[name] = 0
+                local[ct] = 0
                 expected += term
                 scale += abs(term)
-            assert abs(mine - expected) <= DOUBLE_TOLERANCE * scale, (
-                record["name"],
-                power,
-                mine,
-                expected,
-            )
-        checked += 1
-    assert checked > 20, checked
-    assert lowering.references and all(
-        lowering.references[name][:2] in set(gmu_plan.plan.outputs) | gmu_plan.zero
-        for name in lowering.references
-        if lowering.references[name][0] in ct_names
-    )
+            if lowering.is_zero(entry, power):
+                assert abs(expected) <= DOUBLE_TOLERANCE * scale, (name, power)
+                continue
+            for form in (lowering(entry, power), lowering.exact(entry, power)):
+                mine = value_of(form)
+                assert abs(mine - expected) <= DOUBLE_TOLERANCE * scale, (
+                    name,
+                    power,
+                    mine,
+                    expected,
+                )
+    pair = {(name, p) for name, _entry in referenced for p in powers}
+    assert pair & {key[:2] for key in lowering.references.values()}
+    for scalar, shift, _part in lowering.references.values():
+        found = couplings if (scalar, shift) in pair else gmu_plan
+        assert scalar in ct_names or (scalar, shift) in pair
+        assert (scalar, shift) in set(found.plan.outputs) | found.zero
 
 
 # Arguments of the helper tests: every quadrant, the negative real axis
@@ -1199,15 +1277,17 @@ def test_counterterm_references_are_native_parameter_program_inputs(
     gmu, loop_native, loop_reference
 ):
     """The G_mu UFO's QCD CT scalars (G_UVb, G_UVt, tMass_UV) call its CMS
-    reglog, so g g > t t~ with QCD corrections lowers them on reference
-    parameters (EWI-3). The native parameter program binds them per point
-    from the coefficient plan (``native_trees._CountertermReferences``): the
+    reglog, so g g > t t~ with QCD corrections lowers the couplings that read
+    them on reference parameters (EWI-3, EWI-3R: one pair per Laurent
+    coefficient of each such coupling). The native parameter program binds
+    them per point from the coefficient plan
+    (``native_trees._CountertermReferences``): the
     plan exports native point inputs (no load-time regeneration, ADDENDUM G)
     and every component of the native virtual equals the Python inputs'
     (``CountertermModel.coefficient_values``) in binary64 at the fixture's
-    three points and scales, and in double-double at one. Nightly: the cold
-    G_mu CT lowering takes 83 s (pinned idle cores), whatever the QCD
-    request (review minor 13: the default tier holds no EW CT lowering)."""
+    three points and scales, and in double-double at one. Nightly: it
+    lowers the G_mu CT model cold, a cost the QCD request does not shrink
+    (review minor 13: the default tier holds no EW CT lowering)."""
 
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
     from pyamplicol.loops.v2.plan_export import NativeExecutor
@@ -1223,11 +1303,15 @@ def test_counterterm_references_are_native_parameter_program_inputs(
     )
     slice_ = LoopSlice.generate(gmu.compiled, request, loop_native)
     model = slice_.counterterm_program.recursion.model
-    assert {scalar for scalar, _power, _part in model.coefficients.values()} >= {
-        "G_UVb",
-        "G_UVt",
-        "tMass_UV",
+    sources = {
+        record["name"]: str(gmu.raw.exact_value("couplings", record["id"]))
+        for record in gmu.raw.collections["couplings"]
     }
+    referenced = {name for name, _power, _part in model.coefficients.values()}
+    assert referenced <= sources.keys()
+    for scalar in ("G_UVb", "G_UVt", "tMass_UV"):
+        pattern = re.compile(rf"\b{scalar}\b")
+        assert any(pattern.search(sources[name]) for name in referenced), scalar
     native = NativeExecutor(slice_, forward=False, inputs="native")
     record = native.exported.trees.program["parameters"]
     assert any(item[0] == "output" for item in record["counterterm_model"])
@@ -1346,6 +1430,89 @@ def test_every_referenced_coupling_equals_the_ufo_coupling(gmu, gmu_ufo, gmu_pla
     coupling of the model."""
 
     _check_referenced_couplings(gmu, gmu_ufo, gmu_plan, every=1)
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("carrier", ["double-double", "arbitrary"])
+def test_referenced_couplings_equal_mpmath(ew, carrier):
+    """The production references of the referenced CT couplings (EWI-3R: one
+    pair per Laurent coefficient of each coupling, bound by the couplings'
+    coefficient plan) of each electroweak UFO (G_mu, loop_qcd_qed_sm), in the
+    native double-double carrier and at the working digits of a 60-digit
+    evaluation, equal the UFO's coupling expression (an mpmath
+    transliteration, every literal exact, at 64 and 140 digits) at the
+    oracle's CT coefficients: to 1e-28 and 1e-55 of the sum of the
+    magnitudes of its terms, one CT parameter at a time (the couplings are
+    linear in them; the cancellation between the terms reaches 1e3 in
+    double-double); a power ``is_zero`` drops or the plan proves zero is
+    zero there to the same scale. ``test_counterterm_scalars_equal_madloop``
+    and ``test_counterterm_scalars_equal_mpmath`` bind the CT parameters'
+    plan, ``test_referenced_couplings_equal_the_ufo_couplings`` this one in
+    binary64."""
+
+    from types import SimpleNamespace
+
+    import mpmath
+
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.ct_recursion import CoefficientLowering, coefficient_plan
+
+    model = ew.model
+    if carrier == "double-double":
+        options, digits, tolerance = {"arithmetic": "double-double"}, 64, "1e-28"
+    else:
+        working = Precision.arbitrary(60).working_digits
+        options = {"arithmetic": "arbitrary", "precision": working}
+        digits, tolerance = 2 * working, "1e-55"
+    lowering = CoefficientLowering(model.compiled, model.fixed)
+    referenced = []
+    for record in model.raw.collections["couplings"]:
+        entry = SimpleNamespace(
+            coupling=model.program.definitions["couplings", record["id"]],
+            scalar_program=model.program,
+        )
+        if lowering._referenced(entry) is not None:
+            referenced.append((record["name"], entry))
+    assert len(referenced) > 100, len(referenced)
+    powers = (0, -1, -2)
+    plan = coefficient_plan(
+        model.program,
+        [(name, power) for name, _entry in referenced for power in powers],
+        model.fixed,
+    )
+    assert not plan.nonfinite
+    values = _plan_values(plan.plan, model.card, **options)
+    reference, environment = _ufo_values(ew.ufo, _oracle_card(model), digits=digits)
+    ct_names = {name for name, _power in reference}
+    sources = {c.name: c.value for c in ew.ufo[3].all_couplings}
+    checked = 0
+    with mpmath.workdps(digits):
+        worst = (0.0, None)
+        for name, entry in referenced:
+            source = sources[name]
+            program = _compiled(source, True)
+            read = [ct for ct in ct_names if re.search(rf"\b{ct}\b", source)]
+            local = {**environment, **dict.fromkeys(ct_names, 0)}
+            free = eval(program, local)
+            for power in powers:
+                expected, scale = (free if power == 0 else 0), abs(free)
+                for ct in read:
+                    local[ct] = reference.get((ct, power), 0)
+                    term = eval(program, local) - free
+                    local[ct] = 0
+                    expected += term
+                    scale += abs(term)
+                key = (name, power)
+                if lowering.is_zero(entry, power) or key in plan.zero:
+                    mine = mpmath.mpc(0)
+                else:
+                    mine = mpmath.mpc(*(mpmath.mpf(part) for part in values[key]))
+                    checked += 1
+                deviation = abs(mine - expected) / scale if scale else abs(mine)
+                worst = max(worst, (float(deviation), key), key=lambda x: x[0])
+    assert worst[0] <= float(tolerance), worst
+    # Discriminating: the poles and finite parts of the couplings.
+    assert checked > 200, checked
 
 
 # ------------------------------------------------------------------- ladder

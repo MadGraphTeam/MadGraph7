@@ -81,6 +81,9 @@ class ScalarFunctionLibrary:
         from symbolica import E, FunctionDefinition
 
         self.raw = raw
+        # Lowered sources without local bindings, by (source, closed): a pure
+        # function of the source and this library (``lower``).
+        self._lowered: dict[tuple[str, bool], ScalarExpression] = {}
         self.zero, self.one, self.imaginary = E("0"), E("1"), E("1i")
         self.choose = symbols.qualified("symbolica::if")
         self.predicates = {
@@ -251,7 +254,24 @@ class ScalarFunctionLibrary:
     def lower(
         self, source: str, *, locals: dict[str, Any] | None = None, closed: bool = False
     ) -> ScalarExpression:
-        """Lower supported scalar syntax, retaining Python and/or return values."""
+        """Lower supported scalar syntax, retaining Python and/or return values.
+
+        Without ``locals`` the result is a pure function of ``source``: it is
+        formed once per library (e.g. the dependency scan of every source
+        declaration by ``prepare_scalar_bindings`` and the counterterm
+        lowering's reads of the same sources)."""
+
+        if locals is not None:
+            return self._lower(source, locals=locals, closed=closed)
+        key = (source, closed)
+        found = self._lowered.get(key)
+        if found is None:
+            found = self._lowered[key] = self._lower(source, closed=closed)
+        return found
+
+    def _lower(
+        self, source: str, *, locals: dict[str, Any] | None = None, closed: bool = False
+    ) -> ScalarExpression:
         from symbolica import E
 
         lines = source.splitlines()
