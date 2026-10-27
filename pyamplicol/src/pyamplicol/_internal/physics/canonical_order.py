@@ -313,14 +313,36 @@ def canonical_apply(
     expression: Any,
     *,
     keep: Callable[[Any], bool] | None = None,
+    memo: dict[str, Any] | None = None,
 ) -> Any:
     """``operation(expression)`` computed on canonical symbols (all of the
     expression's symbols but ``keep``'s) and returned on the original ones:
     an order-sensitive operation (``collect_horner``, ``collect_factors``)
-    gives the same structure in every process."""
+    gives the same structure in every process.
 
-    canonical, renaming = canonical_expression(expression, keep=keep)
-    return restore(operation(canonical), renaming)
+    ``memo`` (owned by the caller, one per ``operation`` and ``keep``) keeps
+    the operation's results by the canonical text of their argument: the
+    result on canonical symbols is a function of that text, so expressions
+    equal up to a renaming of their symbols in the same natural order share
+    one operation."""
+
+    from symbolica import E
+
+    if memo is None:
+        canonical, renaming = canonical_expression(expression, keep=keep)
+        return restore(operation(canonical), renaming)
+    text = expression.to_canonical_string()
+    if _FLOAT.search(text):
+        raise ValueError(
+            "an expression with binary64 coefficients cannot be put in canonical "
+            f"order exactly; write them as rationals: {text[:200]}"
+        )
+    renaming = _renaming(expression, keep)
+    renamed = renaming.to_canonical(text)
+    result = memo.get(renamed)
+    if result is None:
+        result = memo[renamed] = operation(E(renamed))
+    return restore(result, renaming)
 
 
 __all__ = [
