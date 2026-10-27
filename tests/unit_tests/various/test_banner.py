@@ -2043,6 +2043,61 @@ class TestRunCardMG7(unittest.TestCase):
         mg7.write(buf, template=self.template)
         tomllib.loads(buf.getvalue())
 
+    def test_legacy_keys_report_mlm_merging(self):
+        """The madevent shower interface picks MLM jet matching from ickkw
+        and sets JetMatching:qCut from xqcut and nQmatch from maxjetflavor.
+        An mg7 MLM sample has to report them, or Pythia8 showers it with no
+        matching and double counts the jets."""
+        card = bannermod.RunCardMG7()
+        # not merged: the plain shower path, as before
+        self.assertEqual(card['ickkw'], 0)
+        self.assertEqual(card['xqcut'], 0.0)
+        self.assertEqual(card['maxjetflavor'], 5)
+        card.set('beam.dynamical_scale_choice', 'mlm')
+        card.set('phasespace.xqcut', 30.0)
+        card.set('beam.max_jet_flavor', 4)
+        self.assertTrue(card.is_mlm_merged())
+        self.assertEqual(card['ickkw'], 1)
+        self.assertEqual(card['xqcut'], 30.0)
+        self.assertEqual(card['maxjetflavor'], 4)
+        self.assertEqual(card['ktdurham'], -1.0)
+        # no merging cut, or no beams to merge on: not a merged sample
+        card.set('phasespace.xqcut', 0.0)
+        self.assertEqual(card['ickkw'], 0)
+        card.set('phasespace.xqcut', 30.0)
+        card.set('beam.leptonic', True)
+        self.assertEqual(card['ickkw'], 0)
+        self.assertEqual(card['xqcut'], 0.0)
+
+    def test_set_maxjetflavor_sets_the_mlm_jet_flavours(self):
+        rc = bannermod.RunCardMG7()
+        rc.set_lo_param('maxjetflavor', '5')
+        self.assertEqual(rc['beam']['max_jet_flavor'], 5)
+
+    def test_from_LO_conversion_of_mlm_merging(self):
+        """ickkw = 1 with xqcut is madevent's MLM: mg7's "mlm" scale choice
+        with madevent's scale scheme, the same xqcut and jet flavours"""
+        lo = bannermod.RunCardLO()
+        lo['ickkw'] = 1
+        lo['xqcut'] = 20
+        lo['maxjetflavor'] = 5
+        lo['auto_ptj_mjj'] = False
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertEqual(mg7['beam']['dynamical_scale_choice'], 'mlm')
+        self.assertEqual(mg7['beam']['scale_scheme'], 'madevent')
+        self.assertEqual(mg7['phasespace']['xqcut'], 20.0)
+        self.assertFalse(mg7['phasespace']['auto_ptj_mjj'])
+        self.assertEqual(mg7['beam']['max_jet_flavor'], 5)
+        joined = ' '.join(dropped)
+        self.assertNotIn('ickkw', joined)
+        self.assertNotIn('xqcut', joined)
+        self.assertEqual(mg7['ickkw'], 1)
+        # without a merging cut there is nothing to merge
+        lo['xqcut'] = 0
+        mg7, dropped = bannermod.RunCardMG7.from_LO(lo, warn=False)
+        self.assertNotEqual(mg7['beam']['dynamical_scale_choice'], 'mlm')
+        self.assertIn('ickkw=1', ' '.join(dropped))
+
     def test_from_LO_conversion_per_beam(self):
         """asymmetric beam energies and PDFs are kept per beam"""
         lo = bannermod.RunCardLO()

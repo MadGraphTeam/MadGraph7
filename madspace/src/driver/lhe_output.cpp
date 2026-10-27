@@ -166,21 +166,45 @@ void LHEEvent::format_to(std::string& buffer) const {
     }
     if (lo_info && lo_info->qcd_power >= 0 && lo_info->has_beam1 &&
         lo_info->has_beam2) {
+        // as madevent's unwgt.f writes it: the alpha_s power left at mu_R and
+        // the vertex scales, then per beam n, the n pdgs, x and scales
+        int n_vertices = static_cast<int>(lo_info->asrwt.size());
         std::format_to(
             insert_iter,
-            "<mgrwt>\n<rscale> {} {:.8e}</rscale>\n<asrwt>0</asrwt>\n"
-            "<pdfrwt beam=\"1\"> 1 {} {:.8e} {:.8e}</pdfrwt>\n"
-            "<pdfrwt beam=\"2\"> 1 {} {:.8e} {:.8e}</pdfrwt>\n"
-            "<totfact> 1.0</totfact>\n</mgrwt>\n",
-            lo_info->qcd_power,
+            "<mgrwt>\n<rscale> {} {:.8e}</rscale>\n<asrwt> {}",
+            lo_info->qcd_power - n_vertices,
             lo_info->ren_scale,
-            lo_info->pdg1,
-            lo_info->x1,
-            lo_info->fact_scale1,
-            lo_info->pdg2,
-            lo_info->x2,
-            lo_info->fact_scale2
+            n_vertices
         );
+        for (double scale : lo_info->asrwt) {
+            std::format_to(insert_iter, " {:.8e}", scale);
+        }
+        buffer += "</asrwt>\n";
+        std::array<int, 2> pdg{lo_info->pdg1, lo_info->pdg2};
+        std::array<double, 2> x{lo_info->x1, lo_info->x2};
+        std::array<double, 2> q{lo_info->fact_scale1, lo_info->fact_scale2};
+        for (std::size_t b = 0; b < 2; ++b) {
+            bool ladder = !lo_info->ladder_pdgs[b].empty();
+            std::size_t n = ladder ? lo_info->ladder_pdgs[b].size() : 1;
+            std::format_to(insert_iter, "<pdfrwt beam=\"{}\"> {}", b + 1, n);
+            for (std::size_t e = 0; e < n; ++e) {
+                std::format_to(
+                    insert_iter, " {}", ladder ? lo_info->ladder_pdgs[b][e] : pdg[b]
+                );
+            }
+            for (std::size_t e = 0; e < n; ++e) {
+                std::format_to(
+                    insert_iter, " {:.8e}", ladder ? lo_info->ladder_x[b][e] : x[b]
+                );
+            }
+            for (std::size_t e = 0; e < n; ++e) {
+                std::format_to(
+                    insert_iter, " {:.8e}", ladder ? lo_info->ladder_q[b][e] : q[b]
+                );
+            }
+            buffer += "</pdfrwt>\n";
+        }
+        buffer += "<totfact> 1.0</totfact>\n</mgrwt>\n";
     }
     if (!rwgt.empty()) {
         buffer += "<rwgt>\n";

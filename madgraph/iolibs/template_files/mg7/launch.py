@@ -971,6 +971,8 @@ class MadgraphProcess:
         grids = [grid for grid in (self.pdf_grid, self.pdf_grid2)
                  if isinstance(grid, ms.PdfGrid)]
         self.max_scale = min(max(grid.q) for grid in grids) if grids else 0.0
+        # the bottom of the same range, where the densities freeze
+        self.min_pdf_scale = max(min(grid.q) for grid in grids) if grids else 0.0
         for context in self.contexts:
             if not isinstance(self.pdf_grid, ms.CustomPdf):
                 self.pdf_grid.initialize_globals(context)
@@ -1141,6 +1143,23 @@ class MadgraphProcess:
         config = ms.SystematicsConfig()
         config.mur = [float(v) for v in syst["mur"]]
         config.muf = [float(v) for v in syst["muf"]]
+        # the emission scale of the MLM alpha_s vertices, which only an MLM
+        # sample with per-vertex alpha_s has
+        if (self.mlm_clustering and not self.is_decay
+                and self.run_card["beam"]["alphas_reweighting"] != "none"):
+            config.alps = [float(v) for v in syst["alps"]]
+        else:
+            config.alps = [1.0]
+        # the pdf reweighting ladder of an MLM sample under madevent's scale
+        # scheme, varied as madevent's systematics vary it; a varied scale is
+        # kept inside the PDF grid, where LHAPDF freezes it for madevent
+        beam = self.run_card["beam"]
+        config.pdf_ladder = bool(
+            self.mlm_clustering and not self.is_decay and not self.leptonic
+            and beam["scale_scheme"] == "madevent" and beam["pdf_reweighting"])
+        if config.pdf_ladder:
+            config.ladder_min_scale = float(self.min_pdf_scale)
+            config.ladder_max_scale = float(self.max_scale)
         config.together = bool(syst["together"])
         config.dyn_scales = self.resolve_dynamical_scales()
         # alternative dynamical scales get the same factor as the nominal one
@@ -1356,7 +1375,8 @@ class MadgraphProcess:
             # values line up across rows, with extra spacing between the two
             return f"{'+%.3g' % up:>6}%   {'-%.3g' % down:>6}%"
 
-        scale_count = sum(1 for v in self.systematics.variations if v.is_scale)
+        scale_count = sum(1 for v in self.systematics.variations
+                          if v.is_scale or v.is_emission)
         member_count = len(self.systematics.members)
         rows = [("Variations per event:",
                  f"{self.systematics.weight_count} ({scale_count} scale, {member_count} PDF members)")]
@@ -1366,6 +1386,9 @@ class MadgraphProcess:
         scale = systematics_summary.scale_percentages(summary)
         if scale is not None:
             rows.append(("Scale variation:", format_variation(*scale)))
+        emission = systematics_summary.emission_percentages(summary)
+        if emission is not None:
+            rows.append(("Emission scale variation:", format_variation(*emission)))
         for _entry, up, down in systematics_summary.pdf_percentages(summary):
             rows.append(("PDF variation:", format_variation(up, down)))
         if self.event_generator_config.verbosity == ms.Verbosity.pretty:
