@@ -21,6 +21,7 @@
 #include "teaRex.h"
 #include "madspace/driver/context.hpp"
 
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -482,14 +483,17 @@ public:
     // Direct access to TupperWare; getting, setting, and adding
     TupperWare& process(std::size_t index);
     const TupperWare& process(std::size_t index) const;
-    std::vector<TupperWare>& processes();
-    const std::vector<TupperWare>& processes() const;
+    std::deque<TupperWare>& processes();
+    const std::deque<TupperWare>& processes() const;
     WareHouse& set_processes(std::vector<TupperWare> processes);
     WareHouse& add_process(TupperWare process);
     WareHouse& add_process(std::vector<TupperWare> processes);
 
 private:
-    std::vector<TupperWare> _processes;
+    // a deque, not a vector: add_process() hands out references to its
+    // elements (also to Python), which adding further processes must not
+    // invalidate
+    std::deque<TupperWare> _processes;
     std::vector<REX::tea::iterator> _iterators;
     REX::tea::iterator _initialise = REX::tea::true_function;
     REX::tea::iterator _finalise = REX::tea::true_function;

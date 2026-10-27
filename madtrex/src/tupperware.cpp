@@ -1346,7 +1346,7 @@ bool WareHouse::is_verbose() const { return _verbose.is_verbose(); }
 namespace {
 
 std::vector<std::shared_ptr<REX::tea::procReweightor>> build_proc_reweightors(
-    std::vector<TupperWare>& processes,
+    std::deque<TupperWare>& processes,
     std::size_t n_iterations,
     bool reload_per_batch,
     std::size_t max_deferred_iterations
@@ -1435,16 +1435,17 @@ const TupperWare& WareHouse::process(std::size_t index) const {
     return _processes[index];
 }
 
-std::vector<TupperWare>& WareHouse::processes() {
+std::deque<TupperWare>& WareHouse::processes() {
     return _processes;
 }
 
-const std::vector<TupperWare>& WareHouse::processes() const {
+const std::deque<TupperWare>& WareHouse::processes() const {
     return _processes;
 }
 
 WareHouse& WareHouse::set_processes(std::vector<TupperWare> processes) {
-    _processes = std::move(processes);
+    _processes.assign(std::make_move_iterator(processes.begin()),
+                      std::make_move_iterator(processes.end()));
     return *this;
 }
 

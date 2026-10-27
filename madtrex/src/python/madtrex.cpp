@@ -107,22 +107,34 @@ PYBIND11_MODULE(_madtrex_py, m) {
     // procReweightor's selector argument in Rex's own tearex.cpp). The
     // convenience constructor taking a plain eventBelongs has no shared_ptr
     // sibling to conflict with, so it's bound as-is.
+    //
+    // Lifetimes: a TupperWare only keeps raw pointers to its MatrixElementApi
+    // objects, so every method taking an api (or a list of them) keeps that
+    // argument alive as long as the TupperWare (keep_alive<1, 2>; a Python
+    // MatrixElementApi in turn keeps its madspace Context, which owns the
+    // loaded library, alive). The builder methods return *this
+    // (reference_internal), so tw.add_api(a).set_normaliser(b) configures tw
+    // itself rather than a detached copy.
     py::classh<TupperWare>(m, "TupperWare")
         .def(py::init<>())
         .def(
             py::init<const MatrixElementApi&, REX::eventBelongs>(),
             py::arg("api"),
-            py::arg("checker")
+            py::arg("checker"),
+            py::keep_alive<1, 2>()
         )
         .def(
             py::init<const MatrixElementApi&, REX::event_bool_fn>(),
             py::arg("api"),
-            py::arg("checker")
+            py::arg("checker"),
+            py::keep_alive<1, 2>()
         )
         .def(
             "add_api",
             py::overload_cast<const MatrixElementApi&>(&TupperWare::add_api),
-            py::arg("api")
+            py::arg("api"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "add_api",
@@ -132,13 +144,17 @@ PYBIND11_MODULE(_madtrex_py, m) {
                 std::vector<UmamiOutputKey>>(&TupperWare::add_api),
             py::arg("api"),
             py::arg("input_keys"),
-            py::arg("output_keys")
+            py::arg("output_keys"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "add_api",
             py::overload_cast<const MatrixElementApi&, ReloadSpec>(&TupperWare::add_api),
             py::arg("api"),
-            py::arg("reload")
+            py::arg("reload"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "add_api",
@@ -150,12 +166,16 @@ PYBIND11_MODULE(_madtrex_py, m) {
             py::arg("api"),
             py::arg("input_keys"),
             py::arg("output_keys"),
-            py::arg("reload")
+            py::arg("reload"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "add_api",
             py::overload_cast<std::vector<const MatrixElementApi*>>(&TupperWare::add_api),
-            py::arg("apis")
+            py::arg("apis"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "add_api",
@@ -165,7 +185,9 @@ PYBIND11_MODULE(_madtrex_py, m) {
                 std::vector<UmamiOutputKey>>(&TupperWare::add_api),
             py::arg("apis"),
             py::arg("input_keys"),
-            py::arg("output_keys")
+            py::arg("output_keys"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "add_api",
@@ -175,12 +197,16 @@ PYBIND11_MODULE(_madtrex_py, m) {
                 std::vector<std::vector<UmamiOutputKey>>>(&TupperWare::add_api),
             py::arg("apis"),
             py::arg("input_keys_list"),
-            py::arg("output_keys_list")
+            py::arg("output_keys_list"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "set_api",
             py::overload_cast<std::vector<const MatrixElementApi*>>(&TupperWare::set_api),
-            py::arg("apis")
+            py::arg("apis"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "set_api",
@@ -190,7 +216,9 @@ PYBIND11_MODULE(_madtrex_py, m) {
                 std::vector<UmamiOutputKey>>(&TupperWare::set_api),
             py::arg("apis"),
             py::arg("input_keys"),
-            py::arg("output_keys")
+            py::arg("output_keys"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "set_api",
@@ -200,12 +228,16 @@ PYBIND11_MODULE(_madtrex_py, m) {
                 std::vector<std::vector<UmamiOutputKey>>>(&TupperWare::set_api),
             py::arg("apis"),
             py::arg("input_keys_list"),
-            py::arg("output_keys_list")
+            py::arg("output_keys_list"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "set_normaliser",
             py::overload_cast<const MatrixElementApi&>(&TupperWare::set_normaliser),
-            py::arg("api")
+            py::arg("api"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "set_normaliser",
@@ -215,13 +247,17 @@ PYBIND11_MODULE(_madtrex_py, m) {
                 std::vector<UmamiOutputKey>>(&TupperWare::set_normaliser),
             py::arg("api"),
             py::arg("input_keys"),
-            py::arg("output_keys")
+            py::arg("output_keys"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "set_normaliser",
             py::overload_cast<const MatrixElementApi&, ReloadSpec>(&TupperWare::set_normaliser),
             py::arg("api"),
-            py::arg("reload")
+            py::arg("reload"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "set_normaliser",
@@ -233,27 +269,32 @@ PYBIND11_MODULE(_madtrex_py, m) {
             py::arg("api"),
             py::arg("input_keys"),
             py::arg("output_keys"),
-            py::arg("reload")
+            py::arg("reload"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
-        .def("set_result_keys", &TupperWare::set_result_keys, py::arg("keys"))
+        .def("set_result_keys", &TupperWare::set_result_keys, py::arg("keys"), py::return_value_policy::reference_internal)
         .def(
             "set_helicity_reweighting",
             &TupperWare::set_helicity_reweighting,
-            py::arg("helicity_reweighting")
+            py::arg("helicity_reweighting"),
+            py::return_value_policy::reference_internal
         )
         .def("helicity_reweighting", &TupperWare::helicity_reweighting)
-        .def("set_use_helicity", &TupperWare::set_use_helicity, py::arg("use_helicity"))
+        .def("set_use_helicity", &TupperWare::set_use_helicity, py::arg("use_helicity"), py::return_value_policy::reference_internal)
         .def(
             "set_event_checker",
             py::overload_cast<std::shared_ptr<REX::eventBelongs>>(
                 &TupperWare::set_event_checker
             ),
-            py::arg("checker")
+            py::arg("checker"),
+            py::return_value_policy::reference_internal
         )
         .def(
             "set_event_checker",
             py::overload_cast<REX::event_bool_fn>(&TupperWare::set_event_checker),
-            py::arg("checker")
+            py::arg("checker"),
+            py::return_value_policy::reference_internal
         )
         .def(
             "build",
@@ -276,19 +317,23 @@ PYBIND11_MODULE(_madtrex_py, m) {
         .def(
             "add_process",
             py::overload_cast<TupperWare>(&WareHouse::add_process),
-            py::arg("process")
+            py::arg("process"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "add_process",
             py::overload_cast<std::vector<TupperWare>>(&WareHouse::add_process),
-            py::arg("processes")
+            py::arg("processes"),
+            py::keep_alive<1, 2>(),
+            py::return_value_policy::reference_internal
         )
         .def(
             "add_process",
             py::overload_cast<>(&WareHouse::add_process),
             py::return_value_policy::reference_internal
         )
-        .def("set_processes", &WareHouse::set_processes, py::arg("processes"))
+        .def("set_processes", &WareHouse::set_processes, py::arg("processes"), py::keep_alive<1, 2>(), py::return_value_policy::reference_internal)
         .def(
             "process",
             py::overload_cast<std::size_t>(&WareHouse::process),
@@ -296,22 +341,23 @@ PYBIND11_MODULE(_madtrex_py, m) {
             py::return_value_policy::reference_internal
         )
         .def("processes", py::overload_cast<>(&WareHouse::processes))
-        .def("set_iterators", &WareHouse::set_iterators, py::arg("iterators"))
-        .def("add_iterator", &WareHouse::add_iterator, py::arg("iterator"))
-        .def("set_initialise", &WareHouse::set_initialise, py::arg("init"))
-        .def("set_finalise", &WareHouse::set_finalise, py::arg("fin"))
-        .def("set_launch_names", &WareHouse::set_launch_names, py::arg("names"))
-        .def("add_launch_name", &WareHouse::add_launch_name, py::arg("name"))
+        .def("set_iterators", &WareHouse::set_iterators, py::arg("iterators"), py::return_value_policy::reference_internal)
+        .def("add_iterator", &WareHouse::add_iterator, py::arg("iterator"), py::return_value_policy::reference_internal)
+        .def("set_initialise", &WareHouse::set_initialise, py::arg("init"), py::return_value_policy::reference_internal)
+        .def("set_finalise", &WareHouse::set_finalise, py::arg("fin"), py::return_value_policy::reference_internal)
+        .def("set_launch_names", &WareHouse::set_launch_names, py::arg("names"), py::return_value_policy::reference_internal)
+        .def("add_launch_name", &WareHouse::add_launch_name, py::arg("name"), py::return_value_policy::reference_internal)
         .def("launch_names", &WareHouse::launch_names)
-        .def("set_max_batch", &WareHouse::set_max_batch, py::arg("max_batch"))
+        .def("set_max_batch", &WareHouse::set_max_batch, py::arg("max_batch"), py::return_value_policy::reference_internal)
         .def("max_batch", &WareHouse::max_batch)
         .def(
             "set_max_deferred_iterations",
             &WareHouse::set_max_deferred_iterations,
-            py::arg("max_deferred_iterations")
+            py::arg("max_deferred_iterations"),
+            py::return_value_policy::reference_internal
         )
         .def("max_deferred_iterations", &WareHouse::max_deferred_iterations)
-        .def("set_verbose", &WareHouse::set_verbose, py::arg("v"))
+        .def("set_verbose", &WareHouse::set_verbose, py::arg("v"), py::return_value_policy::reference_internal)
         .def("is_verbose", &WareHouse::is_verbose)
         .def(
             "build",
@@ -405,9 +451,8 @@ PYBIND11_MODULE(_madtrex_py, m) {
         .def_readonly("helicities", &SubProcessSpec::helicities);
 
     // ---- ParamHandler ----
-    // Builder-style methods are bound with reference_internal (unlike
-    // TupperWare's above, which rely on TupperWare being copy-constructible
-    // and fall back to the default copy policy): ParamHandler is meant to be
+    // Builder-style methods are bound with reference_internal (as
+    // TupperWare's and WareHouse's above): ParamHandler is meant to be
     // configured incrementally and its identity matters once its iterators()
     // are handed to a WareHouse, so returning *this by reference rather than
     // a detached copy keeps chaining behave like the C++ side.
@@ -417,6 +462,7 @@ PYBIND11_MODULE(_madtrex_py, m) {
             "add_api",
             &ParamHandler::add_api,
             py::arg("api"),
+            py::keep_alive<1, 2>(),
             py::return_value_policy::reference_internal
         )
         .def(
@@ -425,12 +471,14 @@ PYBIND11_MODULE(_madtrex_py, m) {
                 &ParamHandler::add_apis
             ),
             py::arg("apis"),
+            py::keep_alive<1, 2>(),
             py::return_value_policy::reference_internal
         )
         .def(
             "add_apis",
             py::overload_cast<const WareHouse&>(&ParamHandler::add_apis),
             py::arg("house"),
+            py::keep_alive<1, 2>(),
             py::return_value_policy::reference_internal
         )
         .def("apis", &ParamHandler::apis)
