@@ -27,6 +27,8 @@ If you need a stable release, use the
    installation
    first_steps
    run_card
+   custom_functions
+   diagram_filters
    gridpacks
    madevent_to_mg7
 

@@ -66,8 +66,9 @@ endif
 #=== Makefile TARGETS and build rules below
 #===============================================================================
 
-# The common library name carries the full BACKEND suffix so each vectorisation/GPU variant is distinct.
-MADMATRIX_COMMONLIB = madmatrix_common_$(BACKEND)
+# The common library name carries the full BACKEND suffix so each vectorisation/GPU variant is distinct
+# (and LIBTAG, see madmatrix.mk).
+MADMATRIX_COMMONLIB = madmatrix_common$(LIBTAG)_$(BACKEND)
 
 # Name recorded in the library itself, and hence in whatever links against it.
 # Without it the linker bakes in the absolute build path (LIBDIR), so the process

@@ -448,9 +448,32 @@ else ifeq ($(DEBUG),1)
   override OPTFLAGS = -O0
 endif
 
+# PCH=1: precompile the standard headers once per build instead of once per file.
+# Every translation unit of a subprocess reparses the same standard headers (~0.3 s
+# each with clang, i.e. most of what a small process costs, six files per
+# subprocess), so for many small processes -- the decay widths, for instance --
+# this makes the build ~3x faster. The precompiled header is shared by all the P*
+# directories (it lives in LIBDIR, tagged like the build) and is made up front by
+# 'commonlib', like the common library. Opt-in, and clang with a C++ (CPU) backend
+# only: other compilers and the GPU compilers have their own requirements. The mg7
+# launcher asks for it from 4 subprocess directories to build (PCH_MIN_SUBPROCESSES):
+# below, the header costs about what it saves.
+PCHFLAGS =
+ifeq ($(PCH),1)
+  ifeq ($(GPUCC),)
+    ifneq ($(shell $(CXX) --version | grep -i clang),)
+      override PCHFILE = $(LIBDIR)/pch_std_$(TAG).h.pch
+      override PCHFLAGS = -include-pch $(PCHFILE)
+    endif
+  endif
+endif
+
 # Dependency on src directory
 # The common library name carries the full BACKEND suffix so each vectorisation/GPU variant is distinct.
-MADMATRIX_COMMONLIB = madmatrix_common_$(BACKEND)
+# LIBTAG (empty by default) goes into the name of every library of this output: the
+# dynamic loader identifies a library by its name, so two outputs loaded into one
+# process (MadSpin's production and decay matrix elements) need different ones.
+MADMATRIX_COMMONLIB = madmatrix_common$(LIBTAG)_$(BACKEND)
 LIBFLAGS = -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB)
 INCFLAGS += -I$(SRC) -I$(SRC)/rambo
 
@@ -791,11 +814,18 @@ override RUNTIME =
 processid_short=$(shell basename $(CURDIR))
 ###$(info processid_short=$(processid_short))
 
-MADMATRIX_LIB = madmatrix_$(processid_short)_$(BACKEND)
+MADMATRIX_LIB = madmatrix$(LIBTAG)_$(processid_short)_$(BACKEND)
 objects_lib=$(BUILDDIR)/CPPProcess.o $(BUILDDIR)/color_sum.o $(BUILDDIR)/MatrixElementKernels.o $(BUILDDIR)/CrossSectionKernels.o $(BUILDDIR)/umami.o $(BUILDDIR)/SigmaKin.o
+# The spin-density matrices for MadSpin (backend/common/Density.h): C++ backends,
+# and only in the builds madmatrix/density.py asks for (DENSITY=1, the scalar
+# libraries MadSpin loads), not in every library of every output
+ifeq ($(DENSITY)$(GPUCC),1)
+  objects_lib += $(BUILDDIR)/Density.o
+endif
 
-# Backend-owned sources
+# Backend-owned sources (the backend variant first, then what all of them share)
 vpath %%.cc ../../backend/$(BACKENDDIR)
+vpath %%.cc ../../backend/common
 
 # Rambo/random-number sources
 vpath %%.cc ../../src/rambo
@@ -805,6 +835,11 @@ vpath %%.cc ../../src/rambo
 
 # First target (default goal): build the process library (which also builds the common library as a dependency)
 all.$(TAG): $(BUILDDIR)/.build.$(TAG) $(LIBDIR)/lib$(MADMATRIX_LIB).so
+
+# Target: the process library alone, whatever the default goal of the makefile
+# including this one (the standalone one adds check_sa.exe to it)
+.PHONY: lib
+lib: all.$(TAG)
 
 # Target (and build options): address sanitizer #207
 ###CXXLIBFLAGSASAN =
@@ -827,6 +862,8 @@ $(BUILDDIR)/.build.$(TAG):
 ifeq ($(shell $(CXX) --version | grep ^nvc++),)
 $(BUILDDIR)/CrossSectionKernels.o: CXXFLAGS := $(filter-out -ffast-math,$(CXXFLAGS))
 $(BUILDDIR)/CrossSectionKernels.o: CXXFLAGS += -fno-fast-math
+# the precompiled header was made with -ffast-math: clang refuses it otherwise
+$(BUILDDIR)/CrossSectionKernels.o: PCHFLAGS :=
 $(BUILDDIR)/CrossSectionKernels.o: GPUFLAGS += $(XCOMPILERFLAG) -fno-fast-math
 endif
 
@@ -845,9 +882,9 @@ endif
 # incompatible backends (different BACKEND, FPTYPE, etc.) in the same directory.
 # Use USEBUILDDIR=1 to build for multiple backends simultaneously without cleaning.
 ifeq ($(GPUCC),)
-$(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG)
+$(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG) $(PCHFILE)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
-	$(CXX) $(CPPFLAGS) $(INCFLAGS) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CPPFLAGS) $(INCFLAGS) $(CXXFLAGS) $(PCHFLAGS) -c $< -o $@
 else
 $(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
@@ -857,7 +894,19 @@ endif
 #-------------------------------------------------------------------------------
 
 # Target (and build rules): common (src) library
-commonlib : $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so
+commonlib : $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so $(PCHFILE)
+
+# The precompiled standard headers (PCH=1), see above. Like the common library
+# they are made once, up front, by whoever owns the build.
+ifneq ($(PCHFILE),)
+ifeq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
+$(PCHFILE): ;
+else
+$(PCHFILE): ../../backend/common/pch_std.h $(BUILDDIR)/.build.$(TAG)
+	@mkdir -p $(LIBDIR)
+	$(CXX) $(CPPFLAGS) $(INCFLAGS) $(CXXFLAGS) -x c++-header $< -o $@
+endif
+endif
 
 # The common library is shared by every P* directory. When several of them are
 # built concurrently (SubProcesses/makefile fanning out under 'make -j N'), they

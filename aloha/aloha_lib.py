@@ -1069,7 +1069,7 @@ class FactoryLorentz(FactoryVar):
     # True when the arguments of the structure commute, so that writing them in
     # any order denotes the same object (Metric(1,2) == Metric(2,1)). Consumers
     # use it to tell a mere reordering apart from a real difference; see
-    # models.import_ufo.canonicalize_lorentz_structure.
+    # madgraph.models.import_ufo.canonicalize_lorentz_structure.
     is_symmetric = False
     
     def __new__(cls, *args):

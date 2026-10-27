@@ -1157,6 +1157,7 @@ class ModelTestRunning(unittest.TestCase):
         import madgraph.interface.master_interface as Cmd
         cmd = Cmd.MasterCmd() 
         cmd.do_import('model %s/tests/input_files/SMEFTatNLO_running/' % madgraph.MG5DIR)
+        self.cmd = cmd
         self.model = cmd._curr_model
         
     def test_get_running(self):
@@ -1188,6 +1189,100 @@ class ModelTestRunning(unittest.TestCase):
         self.assertEqual(len(out[0]),2)
         self.assertEqual(len(out[1]),17)
         self.assertNotIn(out[0].pop(), out[1])
+
+    def test_depends_on_scale(self):
+        """A coupling depending on a parameter evolved by the RGE varies with
+        the event scale, exactly like one depending on aS: the madevent
+        writer must index it by event, whatever its other dependences."""
+
+        model = self.model
+        names = model.get_scale_dependent_parameters()
+        self.assertIn('aS', names)
+        self.assertIn('cQq81', names)
+        self.assertIn('cQt8', names)
+        self.assertNotIn('Gf', names)
+
+        self.assertTrue(model.depends_on_scale(('aS',)))
+        self.assertTrue(model.depends_on_scale(('Gf', 'cQq81')))
+        self.assertTrue(model.depends_on_scale(('cQt8',)))
+        self.assertFalse(model.depends_on_scale(('Gf',)))
+        self.assertFalse(model.depends_on_scale(()))
+
+        # the model of a process without running has only aS
+        plain = base_objects.Model()
+        self.assertEqual(plain.get_scale_dependent_parameters(), set(['aS']))
+        self.assertFalse(plain.depends_on_scale(('Gf',)))
+
+    def test_get_running_blocks(self):
+        """Only the blocks still holding an external parameter evolved by the
+        RGE need a reference scale: a restriction removing every parameter of
+        a block must not make the param_card ask for its scale."""
+
+        model = copy.copy(self.model)
+        self.assertEqual(model.get_running_blocks(), set(['DIM64F']))
+
+        # emulate a restriction which removes the whole dim64f block
+        model['parameters'] = dict(model['parameters'])
+        model['parameters'][('external',)] = [p for p in
+                         model['parameters'][('external',)]
+                         if p.lhablock.lower() != 'dim64f']
+        self.assertEqual(model.get_running_blocks(), set())
+        # the model itself is untouched
+        self.assertEqual(self.model.get_running_blocks(), set(['DIM64F']))
+
+    def test_rge_parameters_used(self):
+        """The outputs without RGE (mg7, madmatrix, ...) warn when the process
+        depends on a running Wilson coefficient; get_all_running_coupling
+        flags the couplings depending on them, not only those with aS."""
+
+        model = self.model
+        coupling_dep = model.get('coupling_dep')
+        running = [c for c, dep in coupling_dep.items()
+                   if 'aS' not in dep and model.depends_on_scale(dep)]
+        fixed = [c for c, dep in coupling_dep.items()
+                 if not model.depends_on_scale(dep)]
+        self.assertTrue(running)
+        self.assertTrue(model.get_rge_parameters_used(running[:1]))
+        self.assertTrue(model.get_rge_parameters_used(['-%s' % running[0]]))
+        self.assertEqual(model.get_rge_parameters_used(fixed), set())
+        self.assertNotIn('aS', model.get_rge_parameters_used(list(coupling_dep)))
+
+        all_running = model.get_all_running_coupling()
+        self.assertIn(running[0], all_running)
+        self.assertTrue(model.is_running_coupling(running[0], reset_cache=True))
+        self.assertFalse(model.is_running_coupling(fixed[0]))
+
+        cmd = self.cmd
+        cmd.do_generate('u u~ > t t~ NP=2 NP^2==2 QCD=2 QED=0')
+        self.assertIn('cQq81', cmd.get_rge_parameters_used())
+        cmd._export_format = 'mg7'
+        with self.assertLogs('cmdprint', level='WARNING') as log:
+            cmd.warn_rge_not_supported()
+        self.assertIn('cQq81', '\n'.join(log.output))
+
+        # no running Wilson coefficient in the diagrams: no warning
+        cmd.do_generate('u u~ > t t~ QCD=2 QED=0 NP=0')
+        self.assertEqual(cmd.get_rge_parameters_used(), set())
+
+    def test_running_coupling_indexed_by_event(self):
+        """The helas calls of a coupling depending on a running Wilson
+        coefficient but not on aS carry the event index, as the arrays of
+        coupl.inc do; without it the madevent matrix element mixes scalar
+        and array couplings and does not compile."""
+
+        import madgraph.core.helas_objects as helas_objects
+        self.cmd.do_generate('u u~ > t t~ NP=2 NP^2==2 QCD=2 QED=0')
+        me = helas_objects.HelasMatrixElement(self.cmd._curr_amps[0], gen_color=False)
+        coupling_dep = self.model.get('coupling_dep')
+        checked = 0
+        for amp in me.get_all_amplitudes():
+            call = amp.get_helas_call_dict()
+            dependence = coupling_dep[call['coup0'].lstrip('-')]
+            self.assertEqual(call['vec0'], '(ivec)' if self.model.depends_on_scale(dependence) else '')
+            if 'aS' not in dependence and self.model.depends_on_scale(dependence):
+                checked += 1
+        # the four-fermion vertices have no aS in their coupling
+        self.assertTrue(checked)
 
 
 #===============================================================================

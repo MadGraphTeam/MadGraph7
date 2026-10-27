@@ -88,6 +88,7 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_group_subprocess -pA -t0 -l INFO
+            ./tests/test_manager.py test_group_subprocess_permuted_scale -pA -t0 -l INFO
 
       # ---- acceptancetest_contur ----
       - name: "acceptancetest_contur: run the test"
@@ -474,7 +475,7 @@ jobs:
             cd $GITHUB_WORKSPACE
             echo "install RunningCoupling" > cmd
             ./bin/madgraph cmd
-            ./tests/test_manager.py test_eft_running -pA -t0 -l INFO
+            ./tests/test_manager.py test_eft_running test_eft_running_nlo -pA -t0 -l INFO
 
       # ---- acceptancetest_heft ----
       - name: "acceptancetest_heft"

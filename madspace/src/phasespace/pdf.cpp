@@ -1,5 +1,7 @@
 #include "madspace/phasespace/pdf.hpp"
 
+#include "madspace/phasespace/matrix_element.hpp"
+
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -384,11 +386,60 @@ PartonDensity::PartonDensity(
     }
 }
 
+PartonDensity::PartonDensity(
+    const CustomPdf& custom_pdf,
+    const std::vector<int>& pids,
+    int beam_index,
+    bool dynamic_pid
+) :
+    FunctionGenerator(
+        "PartonDensity",
+        [&] {
+            NamedVector<Type> arg_types{{"x", batch_float}, {"q", batch_float}};
+            if (dynamic_pid) {
+                arg_types.push_back("flavor_index", batch_int);
+            }
+            return arg_types;
+        }(),
+        {{"pdf", dynamic_pid ? batch_float : batch_float_array(pids.size())}}
+    ),
+    _pids(pids.begin(), pids.end()),
+    _custom_pdf(custom_pdf),
+    _beam_index(beam_index),
+    _dynamic_pid(dynamic_pid) {}
+
 NamedVector<Value> PartonDensity::build_function_impl(
     FunctionBuilder& fb, const NamedVector<Value>& args
 ) const {
     auto x = args.at(0);
     auto q = args.at(1);
+    if (_custom_pdf) {
+        MatrixElement function(
+            _custom_pdf->function_index,
+            0,
+            {MatrixElement::momentum_fraction_in,
+             MatrixElement::scale_in,
+             MatrixElement::pdg_id_in,
+             MatrixElement::beam_index_in},
+            {MatrixElement::pdf_out}
+        );
+        auto batch_size = fb.batch_size({x});
+        auto beam_index = fb.full({_beam_index, batch_size});
+        if (_dynamic_pid) {
+            auto pid = fb.gather_int(args.at(2), _pids);
+            return {
+                {"pdf", function.build_function(fb, {x, q, pid, beam_index}).at(0)}
+            };
+        }
+        ValueVec pdfs;
+        for (me_int_t pid : _pids) {
+            auto pid_value = fb.full({pid, batch_size});
+            pdfs.push_back(
+                function.build_function(fb, {x, q, pid_value, beam_index}).at(0)
+            );
+        }
+        return {{"pdf", fb.stack(pdfs)}};
+    }
     auto grid_logx = fb.global(
         prefixed_name(_prefix, "pdf_logx"),
         DataType::dt_float64,

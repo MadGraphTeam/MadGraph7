@@ -1,6 +1,7 @@
 #include "madspace/phasespace/three_particle.hpp"
 
 #include <stdexcept>
+#include <utility>
 
 using namespace madspace;
 
@@ -100,7 +101,9 @@ TwoToThreeParticleScattering::TwoToThreeParticleScattering(
     double s_width,
     bool has_cut,
     bool arcsine_s23,
-    bool p12_condition
+    bool p12_condition,
+    bool incoming_recoil,
+    bool cut_aware_branch
 ) :
     Mapping(
         "TwoToThreeParticleScattering",
@@ -131,7 +134,9 @@ TwoToThreeParticleScattering::TwoToThreeParticleScattering(
     _s_mass(s_mass),
     _has_cut(has_cut),
     _arcsine_s23(arcsine_s23),
-    _p12_condition(p12_condition) {
+    _p12_condition(p12_condition),
+    _incoming_recoil(incoming_recoil),
+    _cut_aware_branch(cut_aware_branch && has_cut) {
     // The block peels a particle off a t-channel chain, where no s-channel
     // resonance is expected; the arcsine sampling covers power laws only.
     if (arcsine_s23 && s_width != 0.) {
@@ -140,7 +145,18 @@ TwoToThreeParticleScattering::TwoToThreeParticleScattering(
             "Breit-Wigner s23 sampling (s_width != 0)"
         );
     }
+    if (incoming_recoil && !p12_condition) {
+        throw std::invalid_argument(
+            "TwoToThreeParticleScattering: incoming_recoil requires p12_condition"
+        );
+    }
 }
+
+namespace {
+
+Value negated(FunctionBuilder& fb, Value x) { return fb.sub(fb.sub(x, x), x); }
+
+} // namespace
 
 std::array<Value, 3> TwoToThreeParticleScattering::split_conditions(
     FunctionBuilder& fb, const NamedVector<Value>& conditions
@@ -158,6 +174,30 @@ std::array<Value, 3> TwoToThreeParticleScattering::split_conditions(
     return {p_a, fb.sub(fb.add(p_a, p_b), p_3), fb.sub(p_b, p_3)};
 }
 
+std::array<Value, 4> TwoToThreeParticleScattering::sampling_ranges(
+    FunctionBuilder& fb,
+    Value s23_min,
+    Value s23_max,
+    const NamedVector<Value>& conditions
+) const {
+    // returns the sampled and the kinematic range of the sampled variable
+    if (!_incoming_recoil) {
+        return {s23_min, s23_max, s23_min, s23_max};
+    }
+    // v = -(p2 - k)^2 >= 0 runs over [-s23_max, -s23_min]
+    auto v_phys_min = negated(fb, s23_max), v_phys_max = negated(fb, s23_min);
+    auto v_min = v_phys_min, v_max = v_phys_max;
+    if (_has_cut) {
+        // |(p2 - k)^2| >= m_T(p2)^2 for a massless k along the beam axis
+        v_min = fb.max(v_min, fb.square(conditions.at(4)));
+        // an empty range keeps a small width; the weight is zero there, as
+        // the point then lies outside the kinematic range
+        auto width = fb.max(fb.mul(v_min, Value(1e-10)), Value(1e-300));
+        v_max = fb.max(v_max, fb.add(v_min, width));
+    }
+    return {v_min, v_max, v_phys_min, v_phys_max};
+}
+
 Mapping::Result TwoToThreeParticleScattering::build_forward_impl(
     FunctionBuilder& fb,
     const NamedVector<Value>& inputs,
@@ -165,67 +205,81 @@ Mapping::Result TwoToThreeParticleScattering::build_forward_impl(
 ) const {
     auto index_choice = inputs.at(0), r_s23 = inputs.at(1), r_t1 = inputs.at(2),
          m1 = inputs.at(3), m2 = inputs.at(4);
-    auto p_3 = conditions.at(2);
+    auto p_3 = _incoming_recoil ? negated(fb, conditions.at(2)) : conditions.at(2);
     auto [p_a, p_12, p_c] = split_conditions(fb, conditions);
     auto [t1_min, t1_max] = _has_cut
         ? fb.t_inv_min_max_cut(p_a, p_c, m1, m2, conditions.at(3), conditions.at(4))
         : fb.t_inv_min_max(p_a, p_c, m1, m2);
     auto t_inv_result = _t_invariant.build_forward(fb, {r_t1}, {t1_min, t1_max});
-    auto [s23_min, s23_max] = _has_cut
-        ? fb.s23_min_max_cut(
-              p_a,
-              p_12,
-              p_3,
-              t_inv_result["invariant"],
-              m1,
-              m2,
-              conditions.at(3),
-              conditions.at(4),
-              conditions.at(5),
-              conditions.at(6)
-          )
-        : fb.s23_min_max(p_a, p_12, p_3, t_inv_result["invariant"], m1, m2);
+    auto t1 = t_inv_result["invariant"];
     // The scattering kernel takes the position of s23 in its kinematic range,
     // u and 1 - u. Without cuts the sampled and the kinematic range coincide.
-    auto [s23_phys_min, s23_phys_max] = _has_cut
-        ? fb.s23_min_max(p_a, p_12, p_3, t_inv_result["invariant"], m1, m2)
-        : std::array<Value, 2>{s23_min, s23_max};
+    std::array<Value, 4> ranges;
+    if (_incoming_recoil) {
+        auto [lo, hi] = fb.s23_min_max(p_a, p_12, p_3, t1, m1, m2);
+        ranges = sampling_ranges(fb, lo, hi, conditions);
+    } else if (_has_cut) {
+        auto [s_min, s_max] = fb.s23_min_max_cut(
+            p_a,
+            p_12,
+            p_3,
+            t1,
+            m1,
+            m2,
+            conditions.at(3),
+            conditions.at(4),
+            conditions.at(5),
+            conditions.at(6)
+        );
+        auto [lo, hi] = fb.s23_min_max(p_a, p_12, p_3, t1, m1, m2);
+        ranges = {s_min, s_max, lo, hi};
+    } else {
+        auto [lo, hi] = fb.s23_min_max(p_a, p_12, p_3, t1, m1, m2);
+        ranges = {lo, hi, lo, hi};
+    }
+    auto [v_min, v_max, v_phys_min, v_phys_max] = ranges;
     Value u, u_c, det_s23;
     if (_arcsine_s23) {
         // arcsine map and importance sampling in one step, carrying u and
         // 1 - u at full relative precision up to the edges
         auto [u_out, u_c_out, det_out] = fb.s23_arcsine_sample(
-            r_s23,
-            s23_min,
-            s23_max,
-            s23_phys_min,
-            s23_phys_max,
-            Value(_s_power),
-            Value(_s_mass)
+            r_s23, v_min, v_max, v_phys_min, v_phys_max, Value(_s_power), Value(_s_mass)
         );
         u = u_out;
         u_c = u_c_out;
         det_s23 = det_out;
     } else {
-        auto s23_inv_result =
-            _s_invariant.build_forward(fb, {r_s23}, {s23_min, s23_max});
+        auto s23_inv_result = _s_invariant.build_forward(fb, {r_s23}, {v_min, v_max});
         det_s23 = s23_inv_result["det"];
         auto [u_out, u_c_out] =
-            fb.s23_position(s23_inv_result["invariant"], s23_phys_min, s23_phys_max);
+            fb.s23_position(s23_inv_result["invariant"], v_phys_min, v_phys_max);
         u = u_out;
         u_c = u_c_out;
     }
+    if (_incoming_recoil) {
+        // v = -s23 runs the other way through the range of s23
+        std::swap(u, u_c);
+    }
     auto det_inv = fb.mul(t_inv_result["det"], det_s23);
+    if (_cut_aware_branch) {
+        auto [index_pass, factor, inv_factor] = fb.two_to_three_branch_choice(
+            index_choice,
+            p_a,
+            p_12,
+            p_3,
+            u,
+            u_c,
+            t1,
+            m1,
+            m2,
+            conditions.at(3),
+            conditions.at(4)
+        );
+        index_choice = index_pass;
+        det_inv = fb.mul(det_inv, factor);
+    }
     auto [p1, p2, det_scatter] = fb.two_to_three_particle_scattering(
-        index_choice,
-        p_a,
-        p_12,
-        p_3,
-        u,
-        u_c,
-        t_inv_result["invariant"],
-        m1,
-        m2
+        index_choice, p_a, p_12, p_3, u, u_c, t1, m1, m2
     );
     return {{{"momentum1", p1}, {"momentum2", p2}}, fb.mul(det_inv, det_scatter)};
 }
@@ -236,7 +290,7 @@ Mapping::Result TwoToThreeParticleScattering::build_inverse_impl(
     const NamedVector<Value>& conditions
 ) const {
     auto p1 = inputs.at(0), p2 = inputs.at(1);
-    auto p_3 = conditions.at(2);
+    auto p_3 = _incoming_recoil ? negated(fb, conditions.at(2)) : conditions.at(2);
     auto [p_a, p_12, p_c] = split_conditions(fb, conditions);
     auto [t1_abs, t1_min, t1_max] = _has_cut
         ? fb.t_inv_value_and_min_max_cut(
@@ -244,50 +298,82 @@ Mapping::Result TwoToThreeParticleScattering::build_inverse_impl(
           )
         : fb.t_inv_value_and_min_max(p_a, p_c, p1, p2);
     auto t_inv_result = _t_invariant.build_inverse(fb, {t1_abs}, {t1_min, t1_max});
-    auto [s23, s23_min, s23_max] = _has_cut
-        ? fb.s23_value_and_min_max_cut(
-              p_a,
-              p_3,
-              t1_abs,
-              p1,
-              p2,
-              conditions.at(3),
-              conditions.at(4),
-              conditions.at(5),
-              conditions.at(6)
-          )
-        : fb.s23_value_and_min_max(p_a, p_3, t1_abs, p1, p2);
+    Value v;
+    std::array<Value, 4> ranges;
+    if (_incoming_recoil) {
+        auto [s23, lo, hi] = fb.s23_value_and_min_max(p_a, p_3, t1_abs, p1, p2);
+        v = negated(fb, s23);
+        ranges = sampling_ranges(fb, lo, hi, conditions);
+    } else if (_has_cut) {
+        auto [s23, s_min, s_max] = fb.s23_value_and_min_max_cut(
+            p_a,
+            p_3,
+            t1_abs,
+            p1,
+            p2,
+            conditions.at(3),
+            conditions.at(4),
+            conditions.at(5),
+            conditions.at(6)
+        );
+        v = s23;
+        ranges = {s_min, s_max, s_min, s_max};
+        if (_arcsine_s23) {
+            auto [s23_phys, lo, hi] =
+                fb.s23_value_and_min_max(p_a, p_3, t1_abs, p1, p2);
+            ranges = {s_min, s_max, lo, hi};
+        }
+    } else {
+        auto [s23, lo, hi] = fb.s23_value_and_min_max(p_a, p_3, t1_abs, p1, p2);
+        v = s23;
+        ranges = {lo, hi, lo, hi};
+    }
+    auto [v_min, v_max, v_phys_min, v_phys_max] = ranges;
     auto [m1, m2, index_choice, u, u_c, det_scatter] =
         fb.two_to_three_particle_scattering_inverse(p1, p2, p_3, p_a, p_12, t1_abs);
-    Value s23_phys_min = s23_min, s23_phys_max = s23_max;
-    if (_has_cut && _arcsine_s23) {
-        auto [s23_phys, phys_min, phys_max] =
-            fb.s23_value_and_min_max(p_a, p_3, t1_abs, p1, p2);
-        s23_phys_min = phys_min;
-        s23_phys_max = phys_max;
+    Value det_branch = Value(1.);
+    if (_cut_aware_branch) {
+        auto [index_pass, factor, inv_factor] = fb.two_to_three_branch_choice(
+            index_choice,
+            p_a,
+            p_12,
+            p_3,
+            u,
+            u_c,
+            t1_abs,
+            m1,
+            m2,
+            conditions.at(3),
+            conditions.at(4)
+        );
+        det_branch = inv_factor;
     }
+    // position of the sampled variable in its kinematic range
+    Value u_v = _incoming_recoil ? u_c : u, u_c_v = _incoming_recoil ? u : u_c;
     Value r_s23, det_s23;
     if (_arcsine_s23) {
         // u and 1 - u read off the azimuth, at full relative precision
         auto [r, det_r] = fb.s23_arcsine_sample_inverse(
-            u,
-            u_c,
-            s23_min,
-            s23_max,
-            s23_phys_min,
-            s23_phys_max,
+            u_v,
+            u_c_v,
+            v_min,
+            v_max,
+            v_phys_min,
+            v_phys_max,
             Value(_s_power),
             Value(_s_mass)
         );
         r_s23 = r;
         det_s23 = det_r;
     } else {
-        auto s23_inv_result =
-            _s_invariant.build_inverse(fb, {s23}, {s23_min, s23_max});
+        auto s23_inv_result = _s_invariant.build_inverse(fb, {v}, {v_min, v_max});
         r_s23 = s23_inv_result["random"];
         det_s23 = s23_inv_result["det"];
     }
     auto det_inv = fb.mul(t_inv_result["det"], det_s23);
+    if (_cut_aware_branch) {
+        det_inv = fb.mul(det_inv, det_branch);
+    }
     return {
         {{"discrete_choice", index_choice},
          {"random_s23", r_s23},

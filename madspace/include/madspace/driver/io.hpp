@@ -177,6 +177,7 @@ public:
     static constexpr int f_beam2 = 32;
     static constexpr int f_partial_weights = 64;
     static constexpr int f_syst_weights = 128;
+    static constexpr int f_bias = 256;
 
     // `syst_weight_count` columns of systematic variation weights are appended
     // when f_syst_weights is set; `syst_weight_ids` names them (rwgt_<id>).
@@ -240,6 +241,9 @@ public:
                 ret.push_back({std::format("rwgt_{}", id), FieldLayout::f64, 7});
             }
         }
+        if (fields & f_bias) {
+            ret.push_back({"bias", FieldLayout::f64, 8});
+        }
         return ret;
     }
 
@@ -282,6 +286,9 @@ public:
     UnalignedRef<double> syst_weight(std::size_t index) {
         return &_data[_offsets[6] + 8 * index];
     }
+
+    // event bias, divided out of the weight when the channels are combined
+    UnalignedRef<double> bias() { return &_data[_offsets[7] + 0]; }
 
     void from_lhe_event(const LHEEvent& event) {
         lhe_process_id() = event.process_id;

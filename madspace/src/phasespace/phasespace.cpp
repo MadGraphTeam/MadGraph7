@@ -109,36 +109,16 @@ nested_vector2<me_int_t> invert_permutations(nested_vector2<me_int_t> perms_in) 
 } // namespace
 
 namespace {
-// Chain (color) order for the t-channel ColorOrderedMapping: the externally
-// supplied order if given, else the default single chain [0, 2, ..., n+1, 1].
-std::vector<std::size_t> ps_chain_order(
-    const Topology& topology, const std::optional<std::vector<std::size_t>>& color_order
-) {
-    if (color_order) {
-        return *color_order;
-    }
-    std::size_t n_t_out = topology.decays().at(0).child_indices.size();
-    std::vector<std::size_t> chain;
-    chain.reserve(n_t_out + 2);
-    chain.push_back(0);
-    for (std::size_t i = 0; i < n_t_out; ++i) {
-        chain.push_back(i + 2);
-    }
-    chain.push_back(1);
-    return chain;
-}
-
 // Number of discrete two-solution choices for the t-channel (opt-in r_disc):
-// non-zero only for color_ordered with at least one 2->3 peel.
+// non-zero only for color_ordered with at least one 2->3 step.
 std::size_t ps_discrete_dim(
     const Topology& topology,
     PhaseSpaceMapping::TChannelMode mode,
-    const std::optional<std::vector<std::size_t>>& color_order
+    const std::optional<ColorOrderedMapping::Options>& color_ordered
 ) {
-    if (mode == PhaseSpaceMapping::color_ordered &&
+    if (mode == PhaseSpaceMapping::color_ordered && color_ordered &&
         topology.t_propagator_count() >= 1) {
-        ColorOrderedMapping co(ps_chain_order(topology, color_order));
-        return co.discrete_dim();
+        return ColorOrderedMapping(*color_ordered).discrete_dim();
     }
     return 0;
 }
@@ -257,9 +237,10 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     TChannelMode t_channel_mode,
     const std::optional<Cuts>& cuts,
     const std::vector<std::vector<std::size_t>>& permutations,
-    const std::optional<std::vector<std::size_t>>& color_order,
+    const std::optional<ColorOrderedMapping::Options>& color_ordered,
     double beam_rapidity,
-    bool mirror_beams
+    bool mirror_beams,
+    std::optional<double> s_hat_power
 ) :
     Mapping(
         "PhaseSpaceMapping",
@@ -272,7 +253,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             };
             // Opt-in discrete channel: only declared when the t-channel strategy
             // actually has discrete two-solution choices (color_ordered).
-            std::size_t nd = ps_discrete_dim(topology, t_channel_mode, color_order);
+            std::size_t nd = ps_discrete_dim(topology, t_channel_mode, color_ordered);
             if (nd > 0) {
                 in.push_back(
                     "discrete",
@@ -319,6 +300,17 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     ),
     _two_to_one(topology.outgoing_masses().size() == 1),
     _t_mapping(std::monostate{}) {
+    // the chain order and settings belong to the color-ordered mode only
+    if ((t_channel_mode == PhaseSpaceMapping::color_ordered) !=
+        color_ordered.has_value()) {
+        throw std::invalid_argument(
+            t_channel_mode == PhaseSpaceMapping::color_ordered
+                ? "PhaseSpaceMapping: the color_ordered mode needs color_ordered "
+                  "options (the chain order)"
+                : "PhaseSpaceMapping: color_ordered options are only used by the "
+                  "color_ordered mode"
+        );
+    }
     if ((_beam_rapidity != 0. || _mirror_beams) && _topology.is_decay()) {
         throw std::invalid_argument("a decay has no beams to give a rapidity");
     }
@@ -681,7 +673,18 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         if (!is_com_decay || _map_luminosity) {
             double mass = decay.width == 0. ? 0. : decay.mass;
             double width = decay.width;
-            info.invariant = Invariant(invariant_power, mass, width, decay.flat_window);
+            // The root is s_hat, which the PDF convolution samples. A
+            // color-ordered chain samples it as AmpliCol does, with
+            // 1/s_hat^1.2, when masses or cuts bound it from below; without a
+            // bound that density piles the points up at the regulator of
+            // Invariant (and AmpliCol falls back to a flat one).
+            double s_hat_default =
+                t_channel_mode == PhaseSpaceMapping::color_ordered && info.m_min > 0.
+                ? 1.2
+                : invariant_power;
+            double power =
+                is_com_decay ? s_hat_power.value_or(s_hat_default) : invariant_power;
+            info.invariant = Invariant(power, mass, width, decay.flat_window);
         }
     }
     for (std::size_t index : _topology.decay_integration_order()) {
@@ -710,14 +713,6 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             _t_mapping =
                 ChiliMapping(_topology.t_propagator_count() + 1, eta_max, pt_min);
         } else if (t_channel_mode == PhaseSpaceMapping::color_ordered) {
-            // color_order is optional in general but REQUIRED here: the chain is
-            // built in the externally supplied color order so the t-channel
-            // topology matches the known color structure of the process.
-            if (!color_order) {
-                throw std::invalid_argument(
-                    "PhaseSpaceMapping: color_ordered mode requires a color_order"
-                );
-            }
             // Reorder the per-pair cut matrices (indexed by topology outgoing
             // position) into the child order in which masses/pt are handed to the
             // chain, mirroring the pt_min reordering above. Composite (non-leaf)
@@ -762,16 +757,24 @@ PhaseSpaceMapping::PhaseSpaceMapping(
             }
             // The blocks of the chain that scatter the two beams (central 2->2,
             // double-t, first peel of a single chain) take the rapidity bounds.
-            _t_mapping = ColorOrderedMapping(
-                ps_chain_order(topology, color_order),
-                invariant_power,
-                invariant_power,
-                pt_min,
-                m_inv_co,
-                dr_co,
-                true,
-                y_max
-            );
+            // An unset chain power is 1 with cuts, as in AmpliCol, and
+            // invariant_power without: then the ranges of the momentum transfers
+            // and s23 invariants reach zero, where 1/|x| piles the points up at
+            // the regulator of Invariant (AmpliCol falls back to a flat density).
+            auto options = *color_ordered;
+            auto positive = [](double x) { return x > 0.; };
+            bool chain_cuts = std::any_of(pt_min.begin(), pt_min.end(), positive);
+            for (std::size_t a = 0; a < nc; ++a) {
+                chain_cuts |=
+                    std::any_of(
+                        m_inv_co.at(a).begin(), m_inv_co.at(a).end(), positive
+                    ) ||
+                    std::any_of(dr_co.at(a).begin(), dr_co.at(a).end(), positive);
+            }
+            if (!options.chain_invariant_power) {
+                options.chain_invariant_power = chain_cuts ? 1. : invariant_power;
+            }
+            _t_mapping = ColorOrderedMapping(options, pt_min, m_inv_co, dr_co, y_max);
         } else if (t_channel_mode == PhaseSpaceMapping::propagator ||
                    topology.t_propagator_count() < 2) {
             // The first scattering of the chain is between the two beams in
@@ -787,7 +790,7 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     }
 
     // Random-number budget: identical computation to the declared input shape.
-    _n_discrete = ps_discrete_dim(_topology, t_channel_mode, color_order);
+    _n_discrete = ps_discrete_dim(_topology, t_channel_mode, color_ordered);
 
     for (auto& perm : permutations) {
         _permutations.emplace_back(perm.begin(), perm.end());
@@ -801,9 +804,10 @@ PhaseSpaceMapping::PhaseSpaceMapping(
     double invariant_power,
     TChannelMode mode,
     const std::optional<Cuts>& cuts,
-    const std::optional<std::vector<std::size_t>>& color_order,
+    const std::optional<ColorOrderedMapping::Options>& color_ordered,
     double beam_rapidity,
-    bool mirror_beams
+    bool mirror_beams,
+    std::optional<double> s_hat_power
 ) :
     PhaseSpaceMapping(
         Topology([&] {
@@ -854,9 +858,10 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         mode,
         cuts,
         {},
-        color_order,
+        color_ordered,
         beam_rapidity,
-        mirror_beams
+        mirror_beams,
+        s_hat_power
     ) {}
 
 Mapping::Result PhaseSpaceMapping::build_forward_impl(

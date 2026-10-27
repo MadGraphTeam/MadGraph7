@@ -236,16 +236,21 @@ c                 need to restore common block
                   cuts_orient(:) = all_cuts_orient(:, i)
                   call prepare_grouping_choice(all_p(1,i), all_wgt(i),i.eq.(iwarp-1)*WARP_SIZE+1)
                enddo
-               call select_grouping(imirror_vec(iwarp),iflav_vec(iwarp), iproc, iconf_vec(iwarp), all_wgt, iwarp)
+               call store_grouping_choice(iwarp)
+               if (ivec.lt.VECSIZE_USED)then
+                  cycle
+               endif
+c              all warps of the vector share the subprocess (iproc)
+c              while the configuration, flavour and orientation are chosen per warp
+               call select_grouping_vec(imirror_vec, iflav_vec, iproc, iconf_vec, all_wgt, VECSIZE_USED)
 c              events failing the cuts in the selected beam orientation do not contribute
+               do iwarp=1, VECSIZE_USED/WARP_SIZE
                if (imirror_vec(iwarp).eq.1.or.imirror_vec(iwarp).eq.2) then
                   do i=(iwarp-1)*WARP_SIZE+1, iwarp*warp_size
                      if (.not.all_cuts_orient(imirror_vec(iwarp),i)) all_wgt(i)=0d0
                   enddo
                endif
-               if (ivec.lt.VECSIZE_USED)then
-                  cycle
-               endif
+               enddo
 c              reset variable for the next grid               
                ivec = 0
                ilock = 0
@@ -878,7 +883,7 @@ c
 c
 c     Local
 c
-      integer i,k
+      integer i
       integer ngu, ngd
 c
 c     Global
@@ -930,20 +935,16 @@ c
             do i=1,ngd-1
 c               grid(2,i,j) = ((1d0-a)/(xo-a))**(1d0-dble(i)/dble(ngd))
                grid(2,ngd-i,j) = xo-(grid(2,ngd+i,j)-xo)
-               if (grid(2,ngd-i,j) .lt. -1d0) then
-                  write(*,*) 'Error grid set too low',grid(2,ngd-i,j)
-                  do k=1,ng
-                     write(*,*) k,grid(2,k,j)
-                  enddo
-                  stop
-               endif
             enddo
 c
-c     tjs, ja 2/25/11
-c     Make sure sample all the way down to zero only if minimum positive
-c     
-            if (grid(2,1,j) .gt. 0) grid(2,1,j) = 0d0
-c            write(*,*) "Adjusted bin 1 to zero"
+c     The mirrored bins must stay inside [xgmin, xo]: otherwise use
+c     equal bins (a bin below xgmin has a negative width)
+c
+            if (grid(2,1,j) .le. xgmin) then
+               do i=1,ngd-1
+                  grid(2,i,j) = xgmin + (xo-xgmin)*dble(i)/dble(ngd)
+               enddo
+            endif
 
          elseif (itype .eq. 2) then
             do i=2,ng-1
@@ -2022,6 +2023,10 @@ c               vol = 1d0/(knt*itm)
                sigma = (sigma/vol/vol - knt*mean*mean)
      .              / dble(knt-1) / dble(knt)
             endif
+c           a constant integrand (e.g. a 2-body decay) can give a variance
+c           exactly zero (or negative by rounding): floor it at the
+c           numerical precision to keep mean**2/sigma finite
+            sigma = max(sigma, (1d-14*mean)**2, 1d-300)
 
             tmean = tmean + mean * (mean**2 / sigma)
             trmean = trmean + rmean * (mean**2 / sigma)

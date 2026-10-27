@@ -170,8 +170,13 @@ Flow::Flow(
     _condition_dim(condition_dim),
     _bin_count(bin_count),
     _invert_spline(invert_spline) {
-    if (input_dim == 0) {
-        throw std::invalid_argument("Flow input dimension must be at least 2");
+    // A coupling block splits the dimensions in two non-empty halves, so a
+    // one-dimensional input (a 2 -> 1 phase space) would leave the flow
+    // without any block and nothing to train.
+    if (input_dim < 2) {
+        throw std::invalid_argument(
+            std::format("Flow input dimension must be at least 2, got {}", input_dim)
+        );
     }
     std::size_t block_count = 0;
     for (std::size_t dim = input_dim - 1; dim > 0; dim /= 2) {
@@ -227,7 +232,7 @@ void Flow::initialize_from_vegas(
     ContextPtr context, const std::string& grid_name, std::optional<std::uint64_t> seed
 ) const {
     initialize_globals(context, seed);
-    auto& last_block = _coupling_blocks.at(_coupling_blocks.size() - 1);
+    auto& last_block = _coupling_blocks.back();
     vegas_init(
         context,
         grid_name,
