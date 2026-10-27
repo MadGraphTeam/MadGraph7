@@ -543,6 +543,63 @@ Beams:LHEF='events_ouaf.lhe.gz'
         self.assertEqual(modified_PY8Card, read_PY8Card)
 
 
+class TestRivetCard(unittest.TestCase):
+    """ Test the RivetCard functionality """
+
+    def get_weight_name(self, run_opts={}, py8_opts={}, weight_name=None):
+        run_card = bannermod.RunCardLO()
+        for key, value in run_opts.items():
+            run_card[key] = value
+        py8_card = bannermod.PY8Card()
+        for key, value in py8_opts.items():
+            py8_card[key] = value
+        rivet_card = bannermod.RivetCard()
+        if weight_name is not None:
+            rivet_card['weight_name'] = weight_name
+        rivet_card.setWeightName(runcard=run_card, py8card=py8_card)
+        return rivet_card['weight_name']
+
+    def test_setWeightName(self):
+        """ check that the weight name matches the HepMC weight name written
+            by MG5aMC_PY8_interface for the central merging scale """
+
+        # no merging
+        self.assertEqual(self.get_weight_name({'ickkw': 0}), 'None')
+
+        # MLM: user-defined and automatic (1.5*xqcut) qCut
+        self.assertEqual(self.get_weight_name({'ickkw': 1},
+                                              {'JetMatching:qCut': 30.0}),
+                         'Weight_MERGING=30.000')
+        self.assertEqual(self.get_weight_name({'ickkw': 1, 'xqcut': 20.0},
+                                              {'JetMatching:qCut': -1.0}),
+                         'Weight_MERGING=30.000')
+
+        # CKKW-L: user-defined and automatic (ptlund/ktdurham) TMS
+        self.assertEqual(self.get_weight_name({'ickkw': 0, 'ptlund': 15.0},
+                                              {'Merging:TMS': 25.5}),
+                         'Weight_MERGING=25.500')
+        self.assertEqual(self.get_weight_name({'ickkw': 0, 'ptlund': 15.0},
+                                              {'Merging:TMS': -1.0}),
+                         'Weight_MERGING=15.000')
+        self.assertEqual(self.get_weight_name({'ickkw': 0, 'ktdurham': 40.0},
+                                              {'Merging:TMS': -1.0}),
+                         'Weight_MERGING=40.000')
+
+        # NLO run_card (no ktdurham/ptlund/xqcut entries): no crash
+        for ickkw in [0, 3]:
+            run_card = bannermod.RunCardNLO()
+            run_card['ickkw'] = ickkw
+            rivet_card = bannermod.RivetCard()
+            rivet_card.setWeightName(runcard=run_card,
+                                     py8card=bannermod.PY8Card())
+            self.assertEqual(rivet_card['weight_name'], 'None')
+
+        # user-defined weight name is kept
+        self.assertEqual(self.get_weight_name({'ickkw': 1},
+                                              {'JetMatching:qCut': 30.0},
+                                              weight_name='MUR=1_MUF=1'),
+                         'MUR=1_MUF=1')
+
 
 def wrap_like_older_versions(text):
     """the proc card as ProcCard.write used to write it: every line cut at 70
@@ -2286,6 +2343,81 @@ class TestRunCardMG7(unittest.TestCase):
         self.assertIs(rc['beam']['leptonic'], True)
         self.assertEqual(rc['beam']['e_cm'], 1000.0)
         self.assertFalse([k for k in rc['cuts'] if k.startswith('jet')])
+
+
+class TestPhotonPDFDefault(unittest.TestCase):
+    """issue #311: the NNPDF4.0 default sets have no photon, so a process with
+    a photon taken from the proton, or with EW corrections at NLO, defaults to
+    the QED set of the same family."""
+
+    model = None
+
+    @classmethod
+    def setUpClass(cls):
+        import madgraph.models.import_ufo as import_ufo
+        cls.model = import_ufo.import_model('sm')
+
+    def process(self, initial, final=(11, -11), nlo=False):
+        import madgraph.core.base_objects as base_objects
+        import madgraph.fks.fks_common as fks_common
+        Leg = fks_common.FKSLeg if nlo else base_objects.Leg
+        legs = [Leg({'id': i, 'state': False}) for i in initial]
+        legs += [Leg({'id': i, 'state': True}) for i in final]
+        return base_objects.Process({'legs': base_objects.LegList(legs),
+                                     'model': self.model})
+
+    def lo_card(self, initial, **user):
+        rc = bannermod.RunCardLO()
+        for key, value in user.items():
+            rc.set(key, value, user=True)
+        pc = bannermod.ProcCharacteristic()
+        pc['ninitial'] = 2
+        rc.create_default_for_process(pc, '', [[self.process(initial)]])
+        return rc
+
+    def nlo_card(self, initial, splitting_types=('QCD',), **user):
+        rc = bannermod.RunCardNLO()
+        for key, value in user.items():
+            rc.set(key, value, user=True)
+        pc = bannermod.ProcCharacteristic()
+        pc['ninitial'] = 2
+        pc['splitting_types'] = list(splitting_types)
+        rc.create_default_for_process(pc, '', [self.process(initial, nlo=True)])
+        return rc
+
+    def test_lo(self):
+        self.assertEqual(self.lo_card([2, -2])['lhaid'], 331900)
+        self.assertEqual(self.lo_card([22, 22])['lhaid'], 335900)
+        self.assertEqual(self.lo_card([2, 22])['lhaid'], 335900)
+        # the user choice wins
+        self.assertEqual(self.lo_card([22, 22], lhaid=331900)['lhaid'], 331900)
+
+    def test_nlo(self):
+        # plain sm has a massive b: 4-flavour set
+        self.assertEqual(self.nlo_card([2, -2])['lhaid'], [334700])
+        # EW corrections or a photon in the initial state: QED set
+        self.assertEqual(self.nlo_card([2, -2], ('QCD', 'QED'))['lhaid'], [335900])
+        self.assertEqual(self.nlo_card([22, 2])['lhaid'], [335900])
+        # lepton collider: no proton PDF, nothing changes
+        rc = self.nlo_card([11, -11], ('QED',))
+        self.assertEqual(rc['lpp1'], 0)
+        self.assertEqual(rc['lhaid'], [334700])
+        # the user choice wins
+        self.assertEqual(self.nlo_card([2, -2], ('QED',), lhaid=[331700])['lhaid'],
+                         [331700])
+
+    def test_mg7(self):
+        def card(initial):
+            rc = bannermod.RunCardMG7()
+            pc = bannermod.ProcCharacteristic()
+            pc['ninitial'] = 2
+            rc.create_default_for_process(pc, '', [[self.process(initial)]])
+            return rc
+        self.assertEqual(card([2, -2])['beam']['pdf1'], 'NNPDF40_lo_as_01180')
+        rc = card([22, 22])
+        self.assertEqual(rc['beam']['pdf1'], 'NNPDF40_nlo_as_01180_qed')
+        self.assertEqual(rc['beam']['pdf2'], 'NNPDF40_nlo_as_01180_qed')
+        self.assertIs(rc['beam']['leptonic'], False)
 
 
 class FakeParticle(dict):
