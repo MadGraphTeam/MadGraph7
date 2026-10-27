@@ -185,6 +185,12 @@ c Poison the previous sector's dispatch flag; it must not be replayed.
       if (t_vecamp.lt.0.or.t_vecreal.lt.0) stop 7
       print *, 'PASS'
       end
+      subroutine set_alphaS_and_vec(p,value)
+      double precision p(0:3,4)
+      integer value
+      call set_alphaS(p)
+      call set_alphaS_vec_from_scalar(value)
+      end
       subroutine set_alphaS(p)
       double precision p(0:3,4)
       integer calls(4),slot

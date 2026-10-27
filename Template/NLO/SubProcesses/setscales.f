@@ -46,11 +46,28 @@ c
 
 
       subroutine set_alphaS(xp)
+      implicit none
+      include 'nexternal.inc'
+      double precision xp(0:3,nexternal)
+      call set_alphaS_impl(xp,0)
+      end
+
+      subroutine set_alphaS_and_vec(xp,vecid)
+c Keep scalar and vector preparation under one coupling timer.
+      implicit none
+      include 'nexternal.inc'
+      double precision xp(0:3,nexternal)
+      integer vecid
+      call set_alphaS_impl(xp,vecid)
+      end
+
+      subroutine set_alphaS_impl(xp,vecid)
 c This subroutine sets the values of the renormalization, factorization,
 c and Ellis-Sexton scales, and computes the value of alpha_S through the
 c call to set_ren_scale (for backward compatibility).
 c The scale and couplings values are updated in the relevant common blocks
 c (mostly in run.inc, and one  in coupl.inc)
+      use couplings, only: G_vec
       implicit none
       include "genps.inc"
       include "nexternal.inc"
@@ -60,7 +77,7 @@ c (mostly in run.inc, and one  in coupl.inc)
       
       double precision xp(0:3,nexternal)
       double precision dummy,dummyQES,dummies(2)
-      integer i,j
+      integer i,j,vecid
 
       character*80 muR_id_str,muF1_id_str,muF2_id_str,QES_id_str
       common/cscales_id_string/muR_id_str,muF1_id_str,
@@ -151,6 +168,11 @@ c Pass momenta to couplings.f
 cc         call setpara('param_card.dat')
       endif
 
+c Preserve the old scalar-then-vector update order, including MOMENTA_PP.
+      if (vecid.gt.0) then
+         G_vec(vecid)=g
+         call update_as_param_vec(vecid)
+      endif
       call cpu_time(tAfter)
       t_coupl=t_coupl+(tAfter-tBefore)
       

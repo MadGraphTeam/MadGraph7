@@ -137,7 +137,7 @@ class TestMCMappingCache(unittest.TestCase):
             source = stream.read()
         start = source.index('c The resonance predicate', source.index(
             '      subroutine prepare_sector_cache('))
-        stop = source.index('            call set_alphaS(p1_cnt(0,1,0))', start)
+        stop = source.index('            call set_alphaS_and_vec(p1_cnt(0,1,0)', start)
         block = source[start:stop]
         probe = '''      program probe
       implicit none
@@ -163,6 +163,12 @@ class TestMCMappingCache(unittest.TestCase):
             write(*,*) i,r,need_mapping_born(:,1,1),ncalls,slots
          enddo
       enddo
+      end
+      subroutine set_alphaS_and_vec(p,slot)
+      double precision p(0:3,4)
+      integer slot
+      call set_alphaS(p)
+      call set_alphaS_vec_from_scalar(slot)
       end
       subroutine set_alphaS(p)
       implicit none

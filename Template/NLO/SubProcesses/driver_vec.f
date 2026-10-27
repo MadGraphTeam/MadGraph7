@@ -82,8 +82,7 @@ c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
          dummy_jac=1d0
          call generate_momenta(nndim,iconfig,dummy_jac,x,p)
         !  if (p_born(0,1).lt.0d0) goto 12
-         call set_alphaS(p1_cnt(0,1,0))
-         call set_alphaS_vec_from_scalar(indent + coup_step)
+         call set_alphaS_and_vec(p1_cnt(0,1,0),indent + coup_step)
          spb(:,:,0,ivec) = p_born(:,:)
          sp1_cnt(:,:,:,0,ivec) = p1_cnt(:,:,:)
          call set_cms_stuff(izero)
@@ -109,14 +108,11 @@ c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
             call set_cms_stuff(mohdr)
             passcuts_n1body=passcuts(p,rwgt)
             passcuts_n1body_vec(iFKS,ivec)=passcuts_n1body
-            call set_alphaS(p_born_ev)
-            call set_alphaS_vec_from_scalar(icoup)
+            call set_alphaS_and_vec(p_born_ev,icoup)
             spb_ev(:,:,iFKS,ivec) = p_born_ev(:,:)
-            call set_alphaS(p_born_norad)
-            call set_alphaS_vec_from_scalar(icoup + 1)
+            call set_alphaS_and_vec(p_born_norad,icoup + 1)
             spb_norad(:,:,iFKS,ivec) = p_born_norad(:,:)
-            call set_alphaS(p1_cnt(0,1,0))
-            call set_alphaS_vec_from_scalar(icoup + 2)
+            call set_alphaS_and_vec(p1_cnt(0,1,0),icoup + 2)
             spb(:,:,iFKS,ivec) = p_born(:,:)
             do k=1,nexternal-1
                p_born_rot(0,k)=p_born(0,k)
@@ -127,8 +123,7 @@ c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
             spb_rot(:,:,iFKS,ivec) = p_born_rot(:,:)
             sp1_cnt(:,:,:,iFKS,ivec) = p1_cnt(:,:,:)
             spb_coll(:,:,iFKS,ivec) = p_born_coll(:,:)
-            call set_alphaS(p)
-            call set_alphaS_vec_from_scalar(icoup + 3)
+            call set_alphaS_and_vec(p,icoup + 3)
             sp1(:,:,iFKS,ivec) = p(:,:)
          enddo
       enddo
@@ -214,8 +209,7 @@ c Each lane uses its own sampled FKS group (see sigintF_vec)
          call set_cms_stuff(izero)
          call generate_momenta(nndim,iconfig,dummy_jac,x,p)
         !  if (p_born(0,1).lt.0d0) goto 12
-         call set_alphaS(p1_cnt(0,1,0))
-         call set_alphaS_vec_from_scalar(indent + coup_step)
+         call set_alphaS_and_vec(p1_cnt(0,1,0),indent + coup_step)
          spb(:,:,0,ivec) = p_born(:,:)
          sp1_cnt(:,:,:,0,ivec) = p1_cnt(:,:,:)
          passcuts_nbody=passcuts(p1_cnt(0,1,0),rwgt)
@@ -916,17 +910,14 @@ c projection (generate_momenta_conf); other beams retain the norad cache.
      $         (lpp(1).eq.2.and.lpp(2).eq.2).or.
      $         (lpp(1).eq.0.and.lpp(2).eq.0))
             if (need_mapping_born(1,iFKS,ivec)) then
-               call set_alphaS(p_born_ev)
-               call set_alphaS_vec_from_scalar(icoup)
+               call set_alphaS_and_vec(p_born_ev,icoup)
                spb_ev(:,:,iFKS,ivec) = p_born_ev(:,:)
             endif
             if (need_mapping_born(2,iFKS,ivec)) then
-               call set_alphaS(p_born_norad)
-               call set_alphaS_vec_from_scalar(icoup + 1)
+               call set_alphaS_and_vec(p_born_norad,icoup + 1)
                spb_norad(:,:,iFKS,ivec) = p_born_norad(:,:)
             endif
-            call set_alphaS(p1_cnt(0,1,0))
-            call set_alphaS_vec_from_scalar(icoup + 2)
+            call set_alphaS_and_vec(p1_cnt(0,1,0),icoup + 2)
             spb(:,:,iFKS,ivec) = p_born(:,:)
             if (FKS_J_D(iFKS).eq.2.and.nexternal-1.ne.3) then
             do k=1,nexternal-1
@@ -939,8 +930,7 @@ c projection (generate_momenta_conf); other beams retain the norad cache.
             endif
             sp1_cnt(:,:,:,iFKS,ivec) = p1_cnt(:,:,:)
             spb_coll(:,:,iFKS,ivec) = p_born_coll(:,:)
-            call set_alphaS(p)
-            call set_alphaS_vec_from_scalar(icoup + 3)
+            call set_alphaS_and_vec(p,icoup + 3)
             sp1(:,:,iFKS,ivec) = p(:,:)
       end
 
@@ -966,8 +956,7 @@ c No phase-space generation, cut evaluation or scalar Born cache is added.
       proc_map=0
       rwgt=1d0
       if (only_nbody) then
-         call set_alphaS(p1_cnt(0,1,0))
-         call set_alphaS_vec_from_scalar(4*fks_configs+1)
+         call set_alphaS_and_vec(p1_cnt(0,1,0),4*fks_configs+1)
          spb(:,:,0,1)=p_born(:,:)
          sp1_cnt(:,:,:,0,1)=p1_cnt(:,:,:)
          call system_clock(before,rate)
