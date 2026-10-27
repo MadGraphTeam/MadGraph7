@@ -68,7 +68,7 @@ import copy
 import json
 import math
 from collections import defaultdict
-from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Container, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
@@ -997,9 +997,8 @@ def _born_block_requests(
 # Schedule-B frame policy of the slice: the cheapest frame by undressed rows,
 # a segment priced by its legs' helicity rows (``generator_input.leg_rows``;
 # ``NativeGeneration.schedules(leg_rows=...)`` runs the same policy natively).
-# ``_FRAME_POLICY`` prices two rows per leg (exact when every leg has two).
+# No count per leg is assumed: the rows are the request's.
 _FRAME_MODEL = STRUCTURED
-_FRAME_POLICY = cheapest(lambda mask: 2 ** mask.bit_count(), _FRAME_MODEL)
 
 
 def _frame_policy(rows: Sequence[int]) -> Any:
@@ -1350,7 +1349,12 @@ class SliceRequest:
     process: str
     born_orders: Mapping[str, int]
     loop_orders: Mapping[str, int] | Sequence[Mapping[str, int]]
-    corrections: tuple[str, ...] = ("QCD",)
+    # The correction orders. None (the default): the model's strong
+    # correction, identified by the gluon's vertices (``ew_policy.
+    # request_corrections``; refused for a model without one), resolved by
+    # ``resolve_request`` when the slice is generated. The public routes name
+    # them (``[process] loop_coupling_orders``).
+    corrections: tuple[str, ...] | None = None
     fixed_parameters: Mapping[str, str] = field(default_factory=dict)
     # Vetoed particles (|PDG| codes, ``generation.particle_veto``): removed
     # from every tree vertex of every generation step (Born, blocks, loop
@@ -1409,6 +1413,49 @@ class SliceRequest:
         return bounds
 
 
+def resolve_request(compiled: Any, request: SliceRequest) -> SliceRequest:
+    """``request`` with its correction orders resolved
+    (``ew_policy.request_corrections``): unchanged when it names them."""
+
+    if request.corrections is not None:
+        return request
+    return replace(
+        request, corrections=ew_policy.request_corrections(compiled, request)
+    )
+
+
+def check_model_parameters(
+    parameters: Mapping[str, str],
+    externals: Container[str],
+    scale_parameter: str | None,
+    fixed: Mapping[str, Any],
+) -> dict[str, str]:
+    """The caller's real model parameter values, validated as a whole before
+    any is applied (the Python API's and the SDK's one rule, genericity audit
+    2 M2; ``rusticol_loop_reduction::v2_runtime::checked_parameters`` is its
+    native twin): an unknown name (not an external parameter of the model),
+    the renormalisation scale's parameter (each point's ``mu_r2`` sets it) and
+    a value other than the one a parameter was fixed to at generation
+    (``fixed``, ``[loop.preparation] fixed_parameters``) are refused with a
+    ``ValueError``. A known parameter the process does not read is accepted
+    (it has no effect)."""
+
+    for name, value in parameters.items():
+        if name not in externals:
+            raise ValueError(f"unknown external parameter {name!r}")
+        if name == scale_parameter:
+            raise ValueError(
+                f"{name!r} is the renormalisation scale: pass it per point as mu_r2"
+            )
+        if name in fixed and Decimal(str(value)) != Decimal(str(fixed[name])):
+            raise ValueError(
+                f"parameter {name!r} was fixed to {fixed[name]} at generation "
+                "([loop.preparation] fixed_parameters); regenerate the "
+                "artifact to change it"
+            )
+    return dict(parameters)
+
+
 class RequestModel(NamedTuple):
     """The model preparation of one request (``prepare_request_model``)."""
 
@@ -1432,6 +1479,7 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
 
+    request = resolve_request(compiled, request)
     declaration = request.colour_declaration
     fixed: dict[str, Any] = dict(request.fixed_parameters)
     if declaration is not None:
@@ -1629,6 +1677,7 @@ class LoopSlice:
             raise ValueError(f"unknown colour accuracy {request.accuracy!r}")
         if request.counterterms not in ("recursion", "sites"):
             raise ValueError(f"unknown counterterm form {request.counterterms!r}")
+        request = resolve_request(compiled, request)
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter = (
             prepare_request_model(compiled, request)
         )
@@ -2219,10 +2268,22 @@ class LoopSlice:
     def _point_parameters(
         self, parameters: Mapping[str, str], scale: Fraction, precision: Precision
     ) -> dict[str, str]:
-        """A point's parameter values: the caller's, the request's fixed
-        parameters and the renormalisation scale (the root of ``scale``)."""
+        """A point's parameter values: the caller's (``check_model_parameters``:
+        unknown names, the scale parameter and a fixed parameter at another
+        value are refused, as by the Python API's and the SDK's runtimes), the
+        request's fixed parameters and the renormalisation scale (the root of
+        ``scale``)."""
 
-        values = dict(parameters)
+        externals = self._cache.get("external-parameters")
+        if externals is None:
+            externals = self._cache["external-parameters"] = frozenset(
+                record.name
+                for record in self.compiled.ir.parameters
+                if record.nature == "external"
+            )
+        values = check_model_parameters(
+            parameters, externals, self.scale_parameter, self.request.fixed_parameters
+        )
         values.update(self.request.fixed_parameters)
         digits = precision.working_digits
         values[self.scale_parameter] = _decimal_string(

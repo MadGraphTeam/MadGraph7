@@ -1454,11 +1454,19 @@ def _parameter_program(
         ],
         jit_compile=False,
     )
+    scale = index.get(slice_.scale_parameter)
     record = {
         "names": names,
         "defaults": defaults,
         # The renormalisation scale's parameter: sqrt(mu_R^2) per point.
-        "scale": index.get(slice_.scale_parameter),
+        "scale": scale,
+        # Every output that depends on it (genericity audit 2, m3): the
+        # runtime partitions a batch by mu_R^2 when a Born coupling, kernel
+        # constant or mass is among them (a running-coupling or MSbar-mass
+        # model; the usual NLO models' scale enters the counterterms only).
+        "scale_outputs": _scale_outputs(
+            outputs, output_of, None if scale is None else inputs[scale]
+        ),
         "outputs": len(outputs),
         "model": model,
         "counterterm_model": counterterm_model,
@@ -1475,6 +1483,62 @@ def _parameter_program(
         # (unknown field) instead of reading the legs as massless.
         record["derived_masses"] = derived_masses
     return record, bytes(evaluator.save())
+
+
+def _scale_outputs(
+    outputs: Sequence[Any], keys: Mapping[Any, int], scale: Any
+) -> list[list[Any]]:
+    """``[output index, name]`` of every parameter-program output that
+    depends on the renormalisation scale's input ``scale`` (none: the program
+    does not read it), by structure: the output's expression contains the
+    input symbol. The outputs are on the program's input symbols (derived
+    parameters and the scalar plans' coefficients substituted); the helper
+    functions they call are functions of their arguments only, so a helper
+    call depends on the scale exactly when an argument does."""
+
+    if scale is None:
+        return []
+    names = {o: _output_name(key, o) for key, o in keys.items()}
+    return [
+        [o, names[o]]
+        for o, expression in enumerate(outputs)
+        if bool(expression.contains(scale))
+    ]
+
+
+def _output_name(key: Any, o: int) -> str:
+    """A readable name of the parameter-program output ``o`` from its key
+    (``_parameter_program.output``)."""
+
+    kind, *rest = key
+    labels = {
+        "model": "model parameter",
+        "ct-model": "counterterm model parameter",
+        "ct-fixed": "counterterm fixed parameter",
+        "coupling": "Born coupling",
+        "counterterm": "counterterm coupling",
+        "scaled": "counterterm coupling",
+        "derived-mass": "mass",
+    }
+    if kind in labels and rest and isinstance(rest[0], str):
+        detail = ", ".join(
+            str(item) for item in rest[1:] if not isinstance(item, tuple)
+        )
+        name = f"{labels[kind]} {rest[0]}"
+        if kind == "coupling":
+            return f"{name} (N_c grade {rest[1]})"
+        if kind in ("counterterm", "scaled"):
+            return f"{name} (eps^{rest[1]}, N_c grade {rest[2]})"
+        return f"{name} ({detail})" if detail else name
+    labels = {
+        "constant": "kernel constant",
+        "positive": "kernel constant base",
+        "diagnostic": "counterterm coupling diagnostic",
+        "whole": "whole-rule counterterm coefficient",
+        "ct-reference": "counterterm reference coefficient",
+        "ct-reference-diagnostic": "counterterm reference diagnostic",
+    }
+    return f"{labels.get(kind, kind)} (output {o})"
 
 
 def _line_factor(compiled: Any, scale: str, externals: Sequence[Any]) -> Any:
@@ -2333,6 +2397,26 @@ def _external_masses(slice_: Any) -> tuple[tuple[int, str], ...]:
         if mass not in (None, "ZERO", "0"):
             out[abs(int(leg.pdg))] = str(mass)
     return tuple(sorted(out.items()))
+
+
+def scale_dependent_shared(trees: NativeTrees) -> tuple[str, ...]:
+    """The names of a tree program's batch-shared parameter-program outputs
+    (Born couplings, kernel constants, derived external and loop masses) that
+    depend on the renormalisation scale (``_scale_outputs``; the native
+    ``TreeProgram::scale_dependent_shared``): empty for the usual NLO models,
+    whose scale enters the counterterm couplings only. A batch of mixed
+    mu_R^2 of a model that has some runs per scale. A program written before
+    the record has none recorded (its batches are checked per point)."""
+
+    record = trees.program["parameters"]
+    dependent = record.get("scale_outputs") or ()
+    shared = {
+        *record["couplings"],
+        *record["constants"],
+        *(o for _pdg, o in record.get("derived_masses", ())),
+        *(mass[1] for mass in record["plan_masses"] if isinstance(mass, list)),
+    }
+    return tuple(name for o, name in dependent if o in shared)
 
 
 def batch_parameters(trees: NativeTrees, evaluations: Sequence[Any]) -> list[str]:

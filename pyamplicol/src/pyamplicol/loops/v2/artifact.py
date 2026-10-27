@@ -78,6 +78,7 @@ from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal
+from fractions import Fraction
 from functools import cached_property
 from pathlib import Path
 from threading import RLock
@@ -1276,6 +1277,12 @@ class V2VirtualRuntime:
 
         if not points:
             return [], {}
+        if len({Fraction(scale) for scale in scales}) > 1 and self._scale_partitioned(
+            poles
+        ):
+            return self._run_per_scale(
+                points, scales, parameters, setting, poles, checks
+            )
         try:
             return (
                 list(
@@ -1292,6 +1299,53 @@ class V2VirtualRuntime:
             )
         except FailedPoints as failed:
             return list(failed.results), dict(failed.failures)
+
+    def _scale_partitioned(self, poles: PoleSelection) -> bool:
+        """Whether a batch of mixed mu_R^2 runs per scale: the stored tree
+        program (or, for "uv" and "ir", its certified-scaleless companion's)
+        has Born couplings, kernel constants or masses that depend on the
+        renormalisation scale (``native_trees.scale_dependent_shared``, a
+        running-coupling or MSbar-mass model), as the SDK's
+        ``V2Runtime::evaluate`` partitions."""
+
+        from .native_trees import scale_dependent_shared
+
+        process = self._native_process
+        trees = [process.trees]
+        if splits_poles(poles) and process.scaleless is not None:
+            trees.append(process.scaleless.trees)
+        return any(scale_dependent_shared(item) for item in trees)
+
+    def _run_per_scale(
+        self,
+        points: list[list[list[str]]],
+        scales: list[str],
+        parameters: dict[str, str],
+        setting: Any,
+        poles: PoleSelection,
+        checks: VirtualStabilityChecks,
+    ) -> tuple[list[Any], dict[int, list[str]]]:
+        """``_run`` per exact mu_R^2 (first-seen order), each part a batch of
+        one scale; results and failures in the caller's point order."""
+
+        parts: dict[Fraction, list[int]] = {}
+        for index, scale in enumerate(scales):
+            parts.setdefault(Fraction(scale), []).append(index)
+        results: list[Any] = [None] * len(points)
+        failures: dict[int, list[str]] = {}
+        for indices in parts.values():
+            found, failed = self._run(
+                [points[i] for i in indices],
+                [scales[i] for i in indices],
+                parameters,
+                setting,
+                poles,
+                checks,
+            )
+            for local, index in enumerate(indices):
+                results[index] = found[local]
+            failures.update({indices[local]: v for local, v in failed.items()})
+        return results, failures
 
     def _result(
         self,
@@ -1487,22 +1541,14 @@ class V2VirtualRuntime:
         use them, as by the legacy engine: e.g. a width that only loop
         propagators carry does not enter (v2 virtuals are real on-shell)."""
 
-        parameters = _real_parameters(mapping)
-        fixed = self._fixed
-        for name, value in parameters.items():
-            if name not in self._externals:
-                raise ValueError(f"unknown external parameter {name!r}")
-            if name == self._scale_parameter:
-                raise ValueError(
-                    f"{name!r} is the renormalisation scale: pass it per point as mu_r2"
-                )
-            if name in fixed and Decimal(value) != Decimal(fixed[name]):
-                raise ValueError(
-                    f"parameter {name!r} was fixed to {fixed[name]} at generation "
-                    "([loop.preparation] fixed_parameters); regenerate the "
-                    "artifact to change it"
-                )
-        return parameters
+        from .assemble import check_model_parameters
+
+        return check_model_parameters(
+            _real_parameters(mapping),
+            self._externals,
+            self._scale_parameter,
+            self._fixed,
+        )
 
     def set_model_parameters(self, mapping: ModelParameters) -> None:
         parameters = self._checked_parameters(mapping)

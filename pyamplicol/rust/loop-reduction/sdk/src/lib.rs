@@ -79,14 +79,31 @@ const V4_ONLY_ORDINARY: &str = "plan v4 SDK runtimes serve ordinary (unresolved)
     binary64 virtuals with model R2; resolved, correlated, verified and \
     rescued evaluations go through the Python API";
 
+/// The R2 strategy of a plan v4 process, as the Python API's
+/// `runtime.virtual.v2_r2_strategy`: v4 artifacts carry the model-supplied
+/// R2 rules only, so "auto" (the default) and "model" select them and
+/// "direct" is refused.
+fn v4_r2_strategy(strategy: &str) -> RusticolResult<()> {
+    match strategy {
+        "auto" | "model" => Ok(()),
+        "direct" => Err(RusticolError::compatibility(
+            "v2 virtual artifacts carry model-supplied R2 only",
+        )),
+        other => Err(invalid(format!(
+            "r2_strategy must be \"auto\", \"model\" or \"direct\", not {other:?}"
+        ))),
+    }
+}
+
 /// The poles an ordinary virtual returns (REQUIREMENTS_ADDENDUM I, the
 /// API's `poles` option): every Laurent coefficient (`All`), the finite part
 /// alone (`None`, whose pole-only work a plan v4 runtime skips natively; the
 /// pole entries are then quiet NaNs, absent), the bare loop's UV poles
 /// (`Uv`) or the renormalised virtual's IR poles (`Ir`), the split
 /// selections, which run the stored companion of the certified-scaleless
-/// families (`v2_runtime::V2Poles`). The finite part is the same in every
-/// selection. Plan v1-v3 runtimes serve `All` only.
+/// families (`v2_runtime::V2Poles`). These are the four selections of the
+/// Python API (`PoleSelection`: "all", "none", "uv", "ir"). The finite part
+/// is the same in every selection. Plan v1-v3 runtimes serve `All` only.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Poles {
     #[default]
@@ -200,6 +217,10 @@ impl Runtime {
     }
     /// A plan v4 process: its stored native program evaluates every point
     /// (no Python, no generation; `rusticol_loop_reduction::v2_runtime`).
+    /// `r2_strategy` "auto" (the C ABI's default) or "model" selects the
+    /// artifact's model R2; `parameters` are validated as a whole as the
+    /// Python API's `Runtime.load(..., model_parameters=...)` does (a
+    /// refusal opens nothing).
     fn open_v4(
         path: impl AsRef<Path>,
         process: Option<&str>,
@@ -207,7 +228,8 @@ impl Runtime {
         r2_strategy: &str,
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Self> {
-        if r2_strategy != "model" || policy.is_some() {
+        v4_r2_strategy(r2_strategy)?;
+        if policy.is_some() {
             return Err(invalid(V4_ONLY_ORDINARY));
         }
         let mut native = V2Runtime::open(path, process, None)?;
@@ -250,7 +272,8 @@ impl Runtime {
     pub fn shape(&self) -> Shape {
         self.shape
     }
-    /// The pole selection of later evaluations (default all). A plan v4
+    /// The pole selection of later evaluations (default all): "all",
+    /// "none", "uv" or "ir", the Python API's four (`Poles`). A plan v4
     /// runtime serves all four; plan v1-v3 runtimes evaluate every pole.
     pub fn set_poles(&mut self, poles: Poles) -> RusticolResult<()> {
         if poles != Poles::All && matches!(self.engine, Engine::V3(_)) {
@@ -295,7 +318,7 @@ impl Runtime {
                 "color_contraction":metadata.color_contraction,
                 "color_components":self.color_components,
                 "color_component_semantics":"contracted colour",
-                "available_r2_strategies":["model"],
+                "available_r2_strategies":["auto","model"],
                 "r2_strategy":"model", "explicit_verification":false,
                 "source_only":true,
                 "retained_verification_policy":serde_json::Value::Null,
@@ -329,6 +352,12 @@ impl Runtime {
             "normalization":"physical couplings and inclusive initial spin/color average; resolved helicities retain that average"
         })).map_err(serialization)
     }
+    /// Update model parameters. A plan v4 process validates the whole
+    /// mapping first, as the Python API's `set_model_parameters`: unknown
+    /// names, the renormalisation scale's parameter (set per point by
+    /// `mu_r2`) and a value other than the one generation fixed are refused
+    /// with a typed `ModelParameter` error, and a refused update changes
+    /// nothing (its revision is always 0).
     pub fn update_parameters(&mut self, values: &SourceOverrides) -> RusticolResult<u64> {
         match &mut self.engine {
             Engine::V3(native) => native.update_parameters(values),
@@ -384,7 +413,10 @@ impl Runtime {
     ) -> RusticolResult<Evaluation> {
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
         if let Engine::V4(native) = &mut self.engine {
-            if resolved || policy.is_some() || strategy.is_some_and(|s| s != "model") {
+            if let Some(strategy) = strategy {
+                v4_r2_strategy(strategy)?;
+            }
+            if resolved || policy.is_some() {
                 return Err(invalid(V4_ONLY_ORDINARY));
             }
             return Evaluation::from_v4(native, inputs, self.shape, self.poles);

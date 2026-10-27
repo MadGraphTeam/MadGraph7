@@ -54,12 +54,10 @@ pub enum FramePolicy {
     /// `schedules.cheapest(rows, model)` with `rows(mask)` the product of
     /// the helicity rows of the mask's legs: `leg_rows[i]` for leg `i` (bit
     /// `i`; the request's helicity count of the leg,
-    /// `generator_input.leg_rows`), or two per leg without `leg_rows`
-    /// (`lambda mask: 2 ** mask.bit_count()`).
+    /// `generator_input.leg_rows`). Required: no count per leg is assumed.
     Cheapest {
         model: CostModel,
-        #[serde(default)]
-        leg_rows: Option<Vec<u64>>,
+        leg_rows: Vec<u64>,
     },
     /// Per family (in output order) the frame `(start, reflected)` to use;
     /// only that frame's trie is built.
@@ -668,12 +666,8 @@ fn build_trie(
 }
 
 /// The helicity rows of a segment's legs: the product of `leg_rows` over
-/// the mask's legs, or 2^|legs| without them; None past 128 bits or for a
-/// leg without its count.
-fn segment_rows(mask: LegSet, leg_rows: Option<&[u64]>) -> Option<u128> {
-    let Some(leg_rows) = leg_rows else {
-        return 1u128.checked_shl(mask.count_ones());
-    };
+/// the mask's legs; None past 128 bits or for a leg without its count.
+fn segment_rows(mask: LegSet, leg_rows: &[u64]) -> Option<u128> {
     let mut rows: u128 = 1;
     let mut rest = mask;
     while rest != 0 {
@@ -689,7 +683,7 @@ fn trie_cost(
     rank: i64,
     count: usize,
     model: &CostModel,
-    leg_rows: Option<&[u64]>,
+    leg_rows: &[u64],
     segments: &SegmentTable,
 ) -> Result<u128, String> {
     let overflow =
@@ -1024,7 +1018,7 @@ fn view_and_tries(
                 let (nodes, rank) = build_trie(key, &oriented, &data.orders, space, &segments);
                 let cost = match &input.policy {
                     FramePolicy::Cheapest { model, leg_rows } => {
-                        trie_cost(&nodes, rank, count, model, leg_rows.as_deref(), &segments)?
+                        trie_cost(&nodes, rank, count, model, leg_rows, &segments)?
                     }
                     FramePolicy::Fixed { .. } => 0,
                 };
@@ -1060,21 +1054,33 @@ mod tests {
 
     #[test]
     fn segment_rows_are_the_product_of_the_legs_helicity_counts() {
-        // Without counts: two rows per leg (the production default).
-        assert_eq!(segment_rows(0b1011, None), Some(8));
+        // Two rows per leg (massless vectors and fermions).
+        assert_eq!(segment_rows(0b1011, &[2; 4]), Some(8));
         // A scalar (1), a massive vector (3), a fermion (2), a massive
         // spin-2 state (5): legs 0..3.
         let counts = [1, 3, 2, 5];
-        assert_eq!(segment_rows(0b0001, Some(&counts)), Some(1));
-        assert_eq!(segment_rows(0b0110, Some(&counts)), Some(6));
-        assert_eq!(segment_rows(0b1111, Some(&counts)), Some(30));
+        assert_eq!(segment_rows(0b0001, &counts), Some(1));
+        assert_eq!(segment_rows(0b0110, &counts), Some(6));
+        assert_eq!(segment_rows(0b1111, &counts), Some(30));
         // A leg without its count, and a product past 128 bits.
-        assert_eq!(segment_rows(0b10000, Some(&counts)), None);
+        assert_eq!(segment_rows(0b10000, &counts), None);
         let wide = [u64::MAX; 3];
-        assert_eq!(
-            segment_rows(0b11, Some(&wide)),
-            Some(u128::from(u64::MAX).pow(2))
+        assert_eq!(segment_rows(0b11, &wide), Some(u128::from(u64::MAX).pow(2)));
+        assert_eq!(segment_rows(0b111, &wide), None);
+    }
+
+    #[test]
+    fn the_cheapest_policy_requires_the_legs_helicity_counts() {
+        // No silent two-rows-per-leg default (genericity audit 2, m8).
+        let model = r#"{"fused": 1, "split": 1, "vertex": 1, "seed_fused": 1,
+            "seed_split": 1, "closure": 1, "columns": 1}"#;
+        let without = format!(r#"{{"kind": "cheapest", "model": {model}}}"#);
+        let error = serde_json::from_str::<super::FramePolicy>(&without).unwrap_err();
+        assert!(error.to_string().contains("leg_rows"), "{error}");
+        let with = format!(r#"{{"kind": "cheapest", "model": {model}, "leg_rows": [2, 3]}}"#);
+        let policy: super::FramePolicy = serde_json::from_str(&with).unwrap();
+        assert!(
+            matches!(policy, super::FramePolicy::Cheapest { leg_rows, .. } if leg_rows == [2, 3])
         );
-        assert_eq!(segment_rows(0b111, Some(&wide)), None);
     }
 }

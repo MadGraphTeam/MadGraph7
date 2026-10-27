@@ -71,6 +71,28 @@ stored companion of the certified-scaleless families; the finite part is the
 same in every selection, and every selection is bitwise the Python API's.
 Correlated, resolved, verified and extended-precision evaluations of a plan v4
 process go through the Python API; plan v1-v3 handles accept `"all"` only.
+The R2 strategy of a plan v4 process is the model's: `"auto"` (the default,
+`NULL`) and `"model"` select it, `"direct"` is refused.
+
+Model parameters of a plan v4 process (`parameters_json` at open,
+`rusticol_virtual_update_parameters`) behave exactly as the Python API's
+`Runtime.load(..., model_parameters=...)` and `set_model_parameters`: the
+whole mapping is validated before anything is applied, and an unknown name
+(not an external parameter of the artifact's model), the renormalisation
+scale's parameter (set per point through `mu_r2`; generation resolves which
+parameter it is, as the Python API does) and a parameter fixed at generation
+(`[loop.preparation] fixed_parameters`, e.g. a coloured width fixed to zero)
+set to another value are refused with `RUSTICOL_VIRTUAL_INVALID_ARGUMENT` and
+the Python API's message; a refused update changes nothing (an open refuses
+the handle). A known parameter the process does not read is accepted with no
+effect, as in Python. Values are real (zero imaginary part).
+
+A model whose Born couplings, kernel constants or masses depend on the
+renormalisation scale (a running-coupling or MSbar-mass UFO; generation
+records the parameter program's scale-dependent outputs) is evaluated per
+exact `mu_r2`: a batch of mixed scales is partitioned by scale, so every point
+equals its evaluation in a batch of its scale alone. The usual NLO models,
+whose scale enters the counterterms only, run one batch.
 
 `Runtime::evaluate` accepts binary64 inputs and returns binary64 numerical rows.
 It preserves every finite input's exact value for optional higher-precision

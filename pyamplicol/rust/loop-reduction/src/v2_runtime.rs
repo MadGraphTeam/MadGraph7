@@ -12,11 +12,13 @@
 //! alone, in binary64, through the plane applications: no Python and no
 //! Symbolica state (so no licence, REQUIREMENTS_ADDENDUM G (e)):
 //!
-//! 1. the tree program binds the external model parameters (the request's
-//!    fixed parameters over the caller's over the defaults; the scale
-//!    parameter is `sqrt(mu_R²)` of each point) and forms every point's block
-//!    rows, Born components, `|A0|²` per squared Born order and counterterm
-//!    and field components (`loop_v2::trees::TreeProgram`);
+//! 1. the tree program binds the external model parameters (the caller's
+//!    over the defaults, the request's fixed parameters at their fixed
+//!    values; the scale parameter is `sqrt(mu_R²)` of each point) and forms
+//!    every point's block rows, Born components, `|A0|²` per squared Born
+//!    order and counterterm and field components
+//!    (`loop_v2::trees::TreeProgram`), on the runtime's thread pool (the
+//!    `threads` bound of [`V2Runtime::open`]);
 //! 2. the plan's executor dresses and reduces every family
 //!    (`loop_execution::v2::V2Executor`, NinjaRS through
 //!    [`crate::runtime::V2ReductionBackend`]);
@@ -44,6 +46,26 @@
 //! prediction, `PointResult.ir_poles`, not a part of the values), so it is not
 //! formed here. The stored correlated and resolved columns are not served
 //! here (the Python API evaluates them, without regenerating).
+//!
+//! **Model parameters** ([`V2Runtime::set_parameters`]) follow the Python
+//! API (`loops/v2/artifact.V2VirtualRuntime._checked_parameters`): the whole
+//! mapping is validated before any value is applied (all or nothing), and
+//! unknown names (not an external parameter of the artifact's model,
+//! `model/parameters.json`), the renormalisation scale's parameter (resolved
+//! at generation as the Python API resolves it, the native record's
+//! `scale_parameter`; each point's `mu_R²` sets it) and a value other than the
+//! one a parameter was fixed to at generation are refused with a typed
+//! [`RusticolErrorKind::ModelParameter`](rusticol_core::RusticolErrorKind)
+//! error, in the Python API's words.
+//!
+//! **Scale-dependent batches.** A batch shares its Born couplings, kernel
+//! constants and masses across its points. Generation records which outputs
+//! of the parameter program depend on the scale
+//! ([`TreeProgram::scale_dependent_shared`]); for a model whose Born
+//! couplings, constants or masses run with the scale (running-coupling or
+//! MSbar-mass UFOs), [`V2Runtime::evaluate`] partitions a batch by exact
+//! `mu_R²` and evaluates each part on its own, so every point equals its
+//! single-point evaluation.
 
 use crate::runtime::{PoleSelection, V2Reducer, V2ReductionBackend};
 use rusticol_core::VerifiedArtifact;
@@ -56,7 +78,7 @@ use rusticol_core::loop_v2::dress::{V2Batch, parse_rational};
 use rusticol_core::loop_v2::trees::{TreeProgram, TreeRuntime};
 use rusticol_core::{RusticolError, RusticolResult};
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use symbolica::domains::rational::Rational;
 
@@ -71,6 +93,9 @@ const FIELD_COMPONENT: &str = "uv_external_fields";
 const LAURENT_POWERS: [i32; 3] = [0, -1, -2];
 /// The bare virtual's loop factor denominator (`conventions.LOOP_FACTOR_DENOMINATOR`).
 const LOOP_FACTOR_DENOMINATOR: f64 = 16.0;
+/// The artifact's model parameter defaults (`generation/artifact_writer.py`):
+/// every external parameter of the model, by name.
+const MODEL_PARAMETERS_PATH: &str = "model/parameters.json";
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("plan v4 runtime: {}", message.into()))
@@ -103,9 +128,78 @@ struct NativeRecord {
     sectors: Vec<(Orders, Vec<(Orders, Orders)>)>,
     average: i64,
     fixed_parameters: BTreeMap<String, String>,
+    /// The renormalisation scale's external parameter, resolved at
+    /// generation (`LoopSlice.scale_parameter`): each point's `mu_R²` sets it.
+    #[serde(default)]
+    scale_parameter: Option<String>,
     trees: NativeTreesRecord,
     #[serde(flatten)]
     _rest: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct ModelParametersFile {
+    kind: String,
+    parameters: BTreeMap<String, serde_json::Value>,
+}
+
+/// A typed refusal of a model parameter update (the Python API's
+/// `ValueError`, in its words).
+fn refused(message: impl Into<String>) -> RusticolError {
+    RusticolError::model_parameter(message.into())
+}
+
+/// The caller's model parameter values, validated as a whole before any is
+/// applied (`artifact.V2VirtualRuntime._checked_parameters`): every name an
+/// external parameter of the model (`externals`), none the renormalisation
+/// scale's parameter (`scale`, set per point by `mu_R²`), and a parameter the
+/// request fixed at generation (`fixed`) only at its fixed value. Returns the
+/// exact values in input order, or the first refusal (nothing applied).
+pub fn checked_parameters<'a>(
+    values: impl IntoIterator<Item = (&'a str, &'a str)>,
+    externals: &BTreeSet<String>,
+    scale: Option<&str>,
+    fixed: &BTreeMap<String, String>,
+) -> RusticolResult<Vec<(String, Rational)>> {
+    let mut out = Vec::new();
+    for (name, value) in values {
+        if !externals.contains(name) {
+            return Err(refused(format!("unknown external parameter '{name}'")));
+        }
+        if scale == Some(name) {
+            return Err(refused(format!(
+                "'{name}' is the renormalisation scale: pass it per point as mu_r2"
+            )));
+        }
+        let exact = parse_rational(value)
+            .map_err(|e| refused(format!("parameter '{name}': {}", e.message())))?;
+        if let Some(fixed) = fixed.get(name) {
+            let pinned = parse_rational(fixed).map_err(|e| invalid(e.message()))?;
+            if exact != pinned {
+                return Err(refused(format!(
+                    "parameter '{name}' was fixed to {fixed} at generation \
+                     ([loop.preparation] fixed_parameters); regenerate the \
+                     artifact to change it"
+                )));
+            }
+        }
+        out.push((name.to_owned(), exact));
+    }
+    Ok(out)
+}
+
+/// The external parameters of the artifact's model (`model/parameters.json`,
+/// the Python API's `compiled.ir.parameters` of nature "external").
+fn model_externals(artifact: &VerifiedArtifact) -> RusticolResult<BTreeSet<String>> {
+    let bytes = artifact.read_payload(MODEL_PARAMETERS_PATH)?;
+    let file: ModelParametersFile = serde_json::from_slice(&bytes)
+        .map_err(|e| invalid(format!("{MODEL_PARAMETERS_PATH}: {e}")))?;
+    if file.kind != "pyamplicol-model-parameter-defaults" {
+        return Err(invalid(format!(
+            "{MODEL_PARAMETERS_PATH} is not a model parameter record"
+        )));
+    }
+    Ok(file.parameters.into_keys().collect())
 }
 
 /// One evaluated point: the Born per declared Born order and the complete
@@ -212,7 +306,10 @@ pub struct V2Runtime {
     scaleless_inputs: Option<LoopV2NativeTrees>,
     scaleless: Option<Companion>,
     threads: Option<usize>,
-    /// The caller's model parameter values (exact).
+    /// The external parameters of the artifact's model.
+    externals: BTreeSet<String>,
+    /// The caller's model parameter values (exact; validated by
+    /// [`checked_parameters`]).
     parameters: BTreeMap<String, Rational>,
     /// Per declared Born order its squared Born order in the tree program
     /// (none: zero), per declared sector its record sector.
@@ -238,6 +335,7 @@ impl V2Runtime {
     ) -> RusticolResult<Self> {
         let verified = VerifiedArtifact::open(path)?;
         let artifact = load_loop_v2_artifact(&verified, process)?;
+        let externals = model_externals(&verified)?;
         let native = read_loop_v2_native_inputs(&verified, &artifact)?.ok_or_else(|| {
             invalid("the process has no native point inputs; regenerate the artifact")
         })?;
@@ -299,6 +397,15 @@ impl V2Runtime {
         if record.legs.len() != program_legs(&artifact) {
             return Err(invalid("the native record's legs differ from the plan's"));
         }
+        if trees
+            .parameter_names()
+            .iter()
+            .any(|name| !externals.contains(name))
+        {
+            return Err(invalid(
+                "the tree program reads a parameter the model does not declare",
+            ));
+        }
         Ok(Self {
             artifact,
             record,
@@ -312,6 +419,7 @@ impl V2Runtime {
             scaleless_inputs: native.scaleless,
             scaleless: None,
             threads,
+            externals,
             parameters: BTreeMap::new(),
             born_index,
             sector_index,
@@ -389,26 +497,46 @@ impl V2Runtime {
         &self.artifact.plan_sha256
     }
 
+    /// The renormalisation scale's external parameter: the one generation
+    /// resolved (the native record's, as the Python API reads it), else the
+    /// one the tree program reads.
+    pub fn scale_parameter(&self) -> Option<&str> {
+        self.record
+            .scale_parameter
+            .as_deref()
+            .or_else(|| self.trees.scale_parameter())
+    }
+
+    /// The parameters the request fixed at generation, with their exact
+    /// values (decimal or fraction strings).
+    pub fn fixed_parameters(&self) -> &BTreeMap<String, String> {
+        &self.record.fixed_parameters
+    }
+
     /// Set the caller's model parameter values (exact decimal or fraction
-    /// strings) by name; the request's fixed parameters still take
-    /// precedence, as in the Python API.
+    /// strings) by name, as the Python API's `set_model_parameters`: the
+    /// whole mapping is validated first ([`checked_parameters`]: unknown
+    /// names, the scale parameter and a fixed parameter at another value are
+    /// refused with a typed `ModelParameter` error), then every value is
+    /// applied; a refused update changes nothing. A known parameter the
+    /// process does not read is accepted (it has no effect), as in Python.
     pub fn set_parameters<'a>(
         &mut self,
         values: impl IntoIterator<Item = (&'a str, &'a str)>,
     ) -> RusticolResult<()> {
-        let names = self.trees.parameter_names();
-        for (name, value) in values {
-            if !names.iter().any(|known| known == name) {
-                return Err(invalid(format!("unknown model parameter {name:?}")));
-            }
-            let exact = parse_rational(value).map_err(|e| invalid(e.message()))?;
-            self.parameters.insert(name.to_owned(), exact);
-        }
+        let checked = checked_parameters(
+            values,
+            &self.externals,
+            self.scale_parameter(),
+            &self.record.fixed_parameters,
+        )?;
+        self.parameters.extend(checked);
         Ok(())
     }
 
     /// The external parameter values of a batch (`native_trees.
-    /// batch_parameters`): fixed over the caller's over the defaults.
+    /// batch_parameters`): the caller's over the defaults, a fixed parameter
+    /// at its fixed value (`set_parameters` admits no other).
     fn parameter_values(&self) -> RusticolResult<Vec<Rational>> {
         let names = self.trees.parameter_names();
         let defaults = self.trees.parameter_defaults();
@@ -428,16 +556,36 @@ impl V2Runtime {
             .collect()
     }
 
+    /// Whether a batch of mixed `mu_R²` is evaluated per scale: the tree
+    /// program (or, in a split selection, the companion's) has Born
+    /// couplings, kernel constants or masses that depend on the scale
+    /// (recorded at generation; an artifact written before that record is
+    /// checked per batch by `TreeProgram::bind`, which refuses a batch whose
+    /// shared values differ, naming them).
+    fn partitions(&mut self, mode: V2Poles) -> RusticolResult<bool> {
+        let runs = |trees: &TreeProgram| {
+            trees
+                .scale_dependent_shared()
+                .is_some_and(|names| !names.is_empty())
+        };
+        if runs(&self.trees) {
+            return Ok(true);
+        }
+        Ok(mode.split() && self.companion()?.is_some_and(|twin| runs(&twin.trees)))
+    }
+
     /// Evaluate a batch: `momenta` holds per point the physical momenta of
     /// every leg (`4 × legs` exact decimals, label order), `scales` mu_R² per
-    /// point, `mode` the pole selection. Points fail alone.
+    /// point, `mode` the pole selection. Points fail alone. A batch of a
+    /// model whose Born couplings, kernel constants or masses depend on the
+    /// scale ([`TreeProgram::scale_dependent_shared`]) is evaluated per exact
+    /// `mu_R²` (each point as in a batch of its scale alone).
     pub fn evaluate(
         &mut self,
         momenta: &[Vec<Rational>],
         scales: &[Rational],
         mode: V2Poles,
     ) -> RusticolResult<Vec<V2Point>> {
-        let poles = mode.poles();
         let legs = self.record.legs.len();
         if momenta.len() != scales.len() {
             return Err(invalid("one mu_R² per point"));
@@ -451,6 +599,44 @@ impl V2Runtime {
         if scales.iter().any(|scale| *scale <= Rational::from(0)) {
             return Err(invalid("mu_R² must be positive"));
         }
+        if scales.iter().all(|scale| *scale == scales[0]) || !self.partitions(mode)? {
+            return self.evaluate_batch(momenta, scales, mode);
+        }
+        // Exact partition by mu_R² (first-seen order); every part is a batch
+        // of one scale.
+        let mut parts: Vec<(&Rational, Vec<usize>)> = Vec::new();
+        let mut part_of: BTreeMap<&Rational, usize> = BTreeMap::new();
+        for (index, scale) in scales.iter().enumerate() {
+            let part = *part_of.entry(scale).or_insert_with(|| {
+                parts.push((scale, Vec::new()));
+                parts.len() - 1
+            });
+            parts[part].1.push(index);
+        }
+        let mut out: Vec<Option<V2Point>> = vec![None; momenta.len()];
+        for (scale, indices) in parts {
+            let part_momenta: Vec<Vec<Rational>> =
+                indices.iter().map(|&i| momenta[i].clone()).collect();
+            let part_scales = vec![scale.clone(); indices.len()];
+            let points = self.evaluate_batch(&part_momenta, &part_scales, mode)?;
+            for (index, point) in indices.into_iter().zip(points) {
+                out[index] = Some(point);
+            }
+        }
+        Ok(out
+            .into_iter()
+            .map(|point| point.expect("every point is in one part"))
+            .collect())
+    }
+
+    /// One batch through the tree program, the executor and the assembly.
+    fn evaluate_batch(
+        &mut self,
+        momenta: &[Vec<Rational>],
+        scales: &[Rational],
+        mode: V2Poles,
+    ) -> RusticolResult<Vec<V2Point>> {
+        let poles = mode.poles();
         // All-incoming momenta: final legs negated.
         let incoming: Vec<Vec<Rational>> = momenta
             .iter()
@@ -467,16 +653,22 @@ impl V2Runtime {
             .collect();
         let values = self.parameter_values()?;
         let zero = 0.0_f64;
-        let bound = self.trees.bind(&mut self.runtime, &values, scales, &zero)?;
-        let inputs = self.trees.inputs(
-            &mut self.runtime,
-            self.executor.plan(),
-            &bound.trees,
-            &incoming,
-            &bound.constants,
-            poles,
-            &zero,
-        )?;
+        // The tree and closure stages run on the executor's pool (the
+        // runtime's `threads` bound), not on the global one.
+        let (trees, runtime, executor) = (&self.trees, &mut self.runtime, &self.executor);
+        let (bound, inputs) = executor.install(|| -> RusticolResult<_> {
+            let bound = trees.bind(runtime, &values, scales, &zero)?;
+            let inputs = trees.inputs(
+                runtime,
+                executor.plan(),
+                &bound.trees,
+                &incoming,
+                &bound.constants,
+                poles,
+                &zero,
+            )?;
+            Ok((bound, inputs))
+        })?;
         let batch = V2Batch {
             momenta: incoming.clone(),
             scales: scales.to_vec(),
@@ -505,16 +697,20 @@ impl V2Runtime {
         // residues of its lanes (`plan_export.NativeExecutor.reduce`).
         let twin_results = if mode.split() && self.companion()?.is_some() {
             let twin = self.scaleless.as_mut().expect("the companion is built");
-            let bound = twin.trees.bind(&mut twin.runtime, &values, scales, &zero)?;
-            let twin_inputs = twin.trees.inputs(
-                &mut twin.runtime,
-                twin.executor.plan(),
-                &bound.trees,
-                &incoming,
-                &bound.constants,
-                true,
-                &zero,
-            )?;
+            let (trees, runtime, executor) = (&twin.trees, &mut twin.runtime, &twin.executor);
+            let (bound, twin_inputs) = executor.install(|| -> RusticolResult<_> {
+                let bound = trees.bind(runtime, &values, scales, &zero)?;
+                let inputs = trees.inputs(
+                    runtime,
+                    executor.plan(),
+                    &bound.trees,
+                    &incoming,
+                    &bound.constants,
+                    true,
+                    &zero,
+                )?;
+                Ok((bound, inputs))
+            })?;
             let twin_batch = V2Batch {
                 momenta: incoming,
                 scales: scales.to_vec(),
@@ -768,6 +964,57 @@ mod tests {
         assert_eq!(V2Poles::Ir.lanes(), Poles::Split);
         assert_eq!(V2Poles::None.lanes(), Poles::None);
         assert!(!V2Poles::None.poles() && V2Poles::Uv.poles());
+    }
+
+    #[test]
+    fn parameter_updates_are_validated_whole_as_the_python_api() {
+        use rusticol_core::RusticolErrorKind;
+        let externals: BTreeSet<String> = ["MT", "WT", "MU_R", "aS"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        let fixed: BTreeMap<String, String> = [("WT".to_owned(), "0".to_owned())].into();
+        let check = |values: &[(&str, &str)]| {
+            checked_parameters(values.iter().copied(), &externals, Some("MU_R"), &fixed)
+        };
+        // Accepted: known names, a fixed parameter at its fixed value (any
+        // exact spelling), in input order.
+        let accepted = check(&[("MT", "173.5"), ("WT", "0.0"), ("aS", "59/500")]).unwrap();
+        assert_eq!(
+            accepted,
+            vec![
+                ("MT".to_owned(), parse_rational("347/2").unwrap()),
+                ("WT".to_owned(), Rational::from(0)),
+                ("aS".to_owned(), parse_rational("0.118").unwrap()),
+            ]
+        );
+        // Refused, typed, in the Python API's words; one refusal refuses the
+        // whole mapping.
+        for (values, message) in [
+            (
+                vec![("MT", "174"), ("WX", "1")],
+                "unknown external parameter 'WX'",
+            ),
+            (
+                vec![("MU_R", "100")],
+                "'MU_R' is the renormalisation scale: pass it per point as mu_r2",
+            ),
+            (
+                vec![("WT", "1.4915")],
+                "parameter 'WT' was fixed to 0 at generation ([loop.preparation] \
+                 fixed_parameters); regenerate the artifact to change it",
+            ),
+        ] {
+            let error = check(&values).unwrap_err();
+            assert_eq!(error.kind(), RusticolErrorKind::ModelParameter);
+            assert_eq!(error.message(), message);
+        }
+        let error = check(&[("MT", "one")]).unwrap_err();
+        assert_eq!(error.kind(), RusticolErrorKind::ModelParameter);
+        assert!(error.message().starts_with("parameter 'MT': "));
+        // Without a scale parameter (a program that reads none) the name is
+        // just a model parameter.
+        assert!(checked_parameters([("MU_R", "100")], &externals, None, &fixed).is_ok());
     }
 
     #[test]

@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol.loops.v2 import assemble
+from pyamplicol.loops.v2 import assemble, generator_input
 from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
 from pyamplicol.loops.v2.plan_export import NativeExecutor, export_plan
 from tools.loop_reference.njet.njet_fixture import merge_metric
@@ -223,7 +223,7 @@ def test_particle_veto_reaches_the_native_generator(vetoed, name, vetoed_pdg):
             families,
             slice_.loop_catalogue,
             slice_.colour,
-            policy=assemble._FRAME_POLICY,
+            policy=assemble._frame_policy(generator_input.leg_rows(slice_.blocks)),
         ),
     )
     full = vetoed(name, veto=False)

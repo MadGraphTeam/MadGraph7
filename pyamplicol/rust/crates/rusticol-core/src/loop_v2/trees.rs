@@ -60,7 +60,7 @@ use crate::engine::{PlaneDescriptor, SchemaSources, SymjitPlaneKernel, SymjitPla
 use crate::{RusticolError, RusticolResult};
 use rayon::prelude::*;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use symbolica::domains::float::{Complex, DoubleFloat, Float, Real};
 use symbolica::domains::rational::Rational;
 use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
@@ -281,6 +281,12 @@ struct ParameterFile {
     /// The renormalisation scale's parameter, if the program reads it:
     /// sqrt(mu_R^2) of each point.
     scale: Option<usize>,
+    /// Every output that depends on the scale's parameter, with its name
+    /// (generation's structural analysis, `native_trees._scale_outputs`;
+    /// empty without a scale input). Absent in an artifact written before
+    /// the analysis: its batches are then checked per point.
+    #[serde(default)]
+    scale_outputs: Option<Vec<(usize, String)>>,
 }
 
 #[derive(Deserialize)]
@@ -559,6 +565,33 @@ struct Parameters {
     derived_masses: Vec<(i32, usize)>,
     plan_masses: Vec<Option<MassSource>>,
     scale: Option<usize>,
+    scale_outputs: Option<Vec<(usize, String)>>,
+}
+
+impl Parameters {
+    /// `TreeProgram::scale_dependent_shared`.
+    fn scale_dependent_shared(&self) -> Option<Vec<&str>> {
+        let program = self;
+        let dependent = program.scale_outputs.as_ref()?;
+        let shared: BTreeSet<usize> = program
+            .couplings
+            .iter()
+            .chain(&program.constants)
+            .chain(program.derived_masses.iter().map(|(_, o)| o))
+            .chain(program.plan_masses.iter().filter_map(|mass| match mass {
+                Some(MassSource::Output(o)) => Some(o),
+                _ => None,
+            }))
+            .copied()
+            .collect();
+        Some(
+            dependent
+                .iter()
+                .filter(|(o, _)| shared.contains(o))
+                .map(|(_, name)| name.as_str())
+                .collect(),
+        )
+    }
 }
 
 /// The counterterm closure of a program and its interferences.
@@ -1260,7 +1293,11 @@ fn load_parameters(
                 .all(|(pdg, _)| !file.masses.iter().any(|(exact, _)| exact == pdg))
             && file.masses.iter().all(|&(_, i)| i < inputs)
             && file.scale.is_none_or(|i| i < inputs)
-            && file.masses.iter().all(|&(_, i)| Some(i) != file.scale),
+            && file.masses.iter().all(|&(_, i)| Some(i) != file.scale)
+            && file.scale_outputs.as_ref().is_none_or(|dependent| {
+                dependent.iter().all(|(o, _)| output(*o))
+                    && (file.scale.is_some() || dependent.is_empty())
+            }),
         "parameter program index",
     )?;
     let sources = |records: &[(String, usize, bool)]| {
@@ -1303,6 +1340,7 @@ fn load_parameters(
         derived_masses: file.derived_masses,
         plan_masses,
         scale: file.scale,
+        scale_outputs: file.scale_outputs,
     })
 }
 
@@ -1836,6 +1874,45 @@ impl TreeProgram {
         &self.parameters.defaults
     }
 
+    /// The renormalisation scale's external parameter, if the program reads
+    /// it (each point's sqrt(mu_R^2) binds it).
+    pub fn scale_parameter(&self) -> Option<&str> {
+        self.parameters
+            .scale
+            .map(|index| self.parameters.names[index].as_str())
+    }
+
+    /// The names of the batch-shared outputs (Born couplings, kernel
+    /// constants, derived external and loop masses) that depend on the
+    /// renormalisation scale, by generation's record (`None`: an artifact
+    /// written before the record). Empty for the usual NLO models, whose
+    /// scale enters the counterterm couplings only; a running-coupling or
+    /// MSbar-mass model lists its Born couplings or masses here, and a batch
+    /// of such a model takes one mu_R^2 (`V2Runtime` partitions by it).
+    pub fn scale_dependent_shared(&self) -> Option<Vec<&str>> {
+        self.parameters.scale_dependent_shared()
+    }
+
+    /// The names of the outputs `indices` in the generation record (by
+    /// output index without one).
+    fn output_names(&self, indices: &[usize]) -> Vec<String> {
+        let named: BTreeMap<usize, &str> = self
+            .parameters
+            .scale_outputs
+            .iter()
+            .flatten()
+            .map(|(o, name)| (*o, name.as_str()))
+            .collect();
+        indices
+            .iter()
+            .map(|o| {
+                named
+                    .get(o)
+                    .map_or_else(|| format!("output {o}"), |n| (*n).to_owned())
+            })
+            .collect()
+    }
+
     /// Bind a batch's external parameters (`values`, exact, in
     /// `parameter_names` order; the scale parameter's entry is ignored) at
     /// each point's `scales` (mu_R^2): the scale parameter is sqrt(mu_R^2)
@@ -1863,6 +1940,19 @@ impl TreeProgram {
         let width = program.names.len();
         require(points > 0, "a batch needs points")?;
         require(values.len() == width, "external parameter count")?;
+        // A model whose shared values run with the scale takes one mu_R^2
+        // per batch (`V2Runtime::evaluate` partitions by it).
+        if let Some(dependent) = self.scale_dependent_shared()
+            && !dependent.is_empty()
+            && scales.iter().any(|scale| scale != &scales[0])
+        {
+            return Err(RusticolError::invalid_argument(format!(
+                "loop v2 trees: {} depend on the renormalisation scale {}: \
+                 a batch takes one mu_R^2 (evaluate one batch per scale)",
+                dependent.join(", "),
+                self.scale_parameter().unwrap_or("parameter"),
+            )));
+        }
         let czero = Complex::new(zero.clone(), zero.clone());
         let shared: Vec<T> = values.iter().map(|value| cast(zero, value)).collect();
         let mut rows_in = Vec::with_capacity(points);
@@ -1888,16 +1978,26 @@ impl TreeProgram {
             .evaluate_batch(&inputs, &mut outputs, points)
             .map_err(|e| invalid(format!("parameter program: {e}")))?;
         let rows: Vec<&[Complex<T>]> = outputs.chunks_exact(program.outputs).collect();
+        // Values a batch shares (Born couplings, kernel constants, masses):
+        // equal at every point unless they depend on the scale, which a
+        // batch of mixed scales of such a model was refused for above (or,
+        // in an artifact written before the scale record, here, naming the
+        // outputs that differ).
         let shared = |indices: &[usize], what: &str| -> RusticolResult<Vec<Complex<T>>> {
             let first: Vec<Complex<T>> = indices.iter().map(|&o| rows[0][o].clone()).collect();
-            for row in &rows[1..] {
-                require(
-                    indices
-                        .iter()
-                        .zip(&first)
-                        .all(|(&o, value)| row[o] == *value),
-                    what,
-                )?;
+            let differ: Vec<usize> = indices
+                .iter()
+                .zip(&first)
+                .filter(|&(&o, value)| rows[1..].iter().any(|row| row[o] != *value))
+                .map(|(&o, _)| o)
+                .collect();
+            if !differ.is_empty() {
+                return Err(RusticolError::invalid_argument(format!(
+                    "loop v2 trees: the points of one batch need equal {what}; {} \
+                     differ between the batch's scales (they depend on the \
+                     renormalisation scale: evaluate one batch per scale)",
+                    self.output_names(&differ).join(", "),
+                )));
             }
             Ok(first)
         };
@@ -1928,14 +2028,8 @@ impl TreeProgram {
                     .collect()
             })
             .collect();
-        let couplings = shared(
-            &program.couplings,
-            "the points of one batch need equal Born couplings",
-        )?;
-        let constants = shared(
-            &program.constants,
-            "the points of one batch need equal kernel constants",
-        )?;
+        let couplings = shared(&program.couplings, "Born couplings")?;
+        let constants = shared(&program.constants, "kernel constants")?;
         let values_of = |sources: &[ModelSource]| -> Vec<Vec<T>> {
             rows_in
                 .iter()
@@ -1968,10 +2062,7 @@ impl TreeProgram {
         let derived_masses: BTreeMap<i32, T> = program
             .derived_masses
             .iter()
-            .zip(shared(
-                &derived,
-                "the points of one batch need equal external masses",
-            )?)
+            .zip(shared(&derived, "external masses")?)
             .map(|(&(pdg, _), value)| (pdg, value.re))
             .collect();
         // A derived mass is bound like an exact one: its carrier value's
@@ -1989,8 +2080,7 @@ impl TreeProgram {
                 _ => None,
             })
             .collect();
-        let mut derived_plan =
-            shared(&outputs, "the points of one batch need equal loop masses")?.into_iter();
+        let mut derived_plan = shared(&outputs, "loop masses")?.into_iter();
         let mut plan_masses = Vec::with_capacity(program.plan_masses.len());
         for mass in &program.plan_masses {
             plan_masses.push(match mass {
