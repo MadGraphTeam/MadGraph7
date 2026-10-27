@@ -949,6 +949,8 @@ c
       include 'genps.inc'
       include 'born_nhel.inc'
       logical firsttime,passcuts,passcuts_nbody,passcuts_n1body
+      logical single_lane_preparation,use_single_lane_preparation
+      external use_single_lane_preparation
       integer i,j,ifl,proc_map(0:fks_configs,0:fks_configs)
      $     ,nFKS_picked_nbody,nFKS_in,nFKS_out,izero,ione,itwo,mohdr
      $     ,iFKS,sum,k
@@ -1119,6 +1121,8 @@ c
 
       sigintF_vec=0d0
       vector_size=driver_active_size
+      single_lane_preparation=use_single_lane_preparation(
+     $     driver_vector_size,vector_size,imode,ickkw,shower_mc)
       if(vector_size.lt.1.or.vector_size.gt.driver_vector_size) then
          write(*,*) 'Invalid active vector size',vector_size,
      $        driver_vector_size
@@ -1226,6 +1230,8 @@ c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
             call set_goodhel(nndim,iconfig,goodhel_calls,ntry_goodhel,proc_map,goodhel_set)
          end if
 
+c Scalar integration prepares each cache from the existing replay point.
+         if (.not.single_lane_preparation) then
          call generate_momenta_vector(iconfig,sum,proc_map
      $        ,rwgt,vol1,vector_size)
 
@@ -1254,6 +1260,7 @@ c The batched real matrix elements (the part offloaded to MadMatrix)
          endif
 
          
+         endif
       do ivec=1,vector_size
 c With one active lane the scalar weight lines already belong to this point.
          if(vector_size.gt.1.and.allocated(itype_vec))
@@ -1300,6 +1307,12 @@ c changes the S-event cancellation and its shower-group populations.
          endif
          call generate_momenta(nndim,iconfig,jac,x,p)
          if (p_born(0,1).lt.0d0) goto 12
+         ! write(*,*) "NBODY CONTRIBUTION for FKS proc ",nFKS_picked_nbody
+         ! write(*,*) p_born(:,:)
+         call compute_prefactors_nbody(vegas_wgt)
+         call set_cms_stuff(izero)
+         if (single_lane_preparation)
+     $      call prepare_single_lane_cache(p,.true.,.true.,.true.)
          born_amp2(:)=sborn_amp2(:,ivec)
          born_jamp2(:)=sborn_jamp2(:,ivec)
          born_amp_split(:)=sborn_amp_split(:,ivec)
@@ -1307,10 +1320,6 @@ c changes the S-event cancellation and its shower-group populations.
          born_ans_cnt(:,:)=sborn_ans_cnt(:,:,ivec)
          born_saveamp(:,:)=sborn_saveamp(:,:,ivec)
          wgt_born=swgt_born(ivec)
-         ! write(*,*) "NBODY CONTRIBUTION for FKS proc ",nFKS_picked_nbody
-         ! write(*,*) p_born(:,:)
-         call compute_prefactors_nbody(vegas_wgt)
-         call set_cms_stuff(izero)
          call set_shower_scale_noshape(p,nFKS_picked_nbody*2-1)
          if (ickkw.eq.3) call set_FxFx_scale(1,p1_cnt(0,1,0),nFKSprocess)
          passcuts_nbody=passcuts(p1_cnt(0,1,0),rwgt)
@@ -1392,6 +1401,9 @@ c check if event or counter-event passes cuts
             if (ickkw.eq.3) call set_FxFx_scale(-3,p,nFKSprocess)
             passcuts_n1body=passcuts(p,rwgt)
             if (.not. (passcuts_nbody.or.passcuts_n1body)) cycle
+            if (single_lane_preparation)
+     $         call prepare_single_lane_cache(p,.false.,
+     $                       passcuts_nbody,passcuts_n1body)
 
 c Include the various contributions
             nb_amp2(:)=snb_amp2(:,iFKS,ivec)

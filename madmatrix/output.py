@@ -941,12 +941,29 @@ class ProcessExporterMadMatrixNLOReal(ProcessExporterMadMatrix):
             '  success = .true.',
             'end subroutine',
         ])
+        source.extend([
+            '',
+            'logical function mg7_nlo_real_is_fortran()',
+            '  use mg7_nlo_real_offload_state, only: default_backend',
+            '  implicit none',
+            "  mg7_nlo_real_is_fortran = trim(default_backend).eq.'fortran'",
+            'end function',
+        ])
         with open(pjoin(process_path, 'nlo_real_offload.f90'), 'w') as stream:
             stream.write('\n'.join(source) + '\n')
 
         chooser_path = pjoin(process_path, 'real_me_chooser.f')
         with open(chooser_path) as stream:
             chooser = stream.read()
+        # Keep the plain exporter's constant query under an unused name;
+        # production routing must inspect the compiled selector, even before
+        # initialization or when an accelerated backend falls back to Fortran.
+        chooser, backend_query_count = re.subn(
+            r'\bMG7_NLO_REAL_IS_FORTRAN\b',
+            'MG7_NLO_REAL_IS_FORTRAN_DEFAULT', chooser, flags=re.I)
+        if backend_query_count != 2:
+            raise RuntimeError('cannot install NLO real backend query in %s' %
+                               chooser_path)
         scalar = re.compile(r'(SUBROUTINE\s+SMATRIX_REAL)\s*\(', re.I)
         vector = re.compile(
             r'(RECURSIVE\s+SUBROUTINE\s+SMATRIX_REAL_VEC)\s*\(', re.I)

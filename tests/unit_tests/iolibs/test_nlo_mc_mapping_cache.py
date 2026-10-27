@@ -135,9 +135,8 @@ class TestMCMappingCache(unittest.TestCase):
         with open(os.path.join(MG5DIR, 'Template', 'NLO', 'SubProcesses',
                                'driver_vec.f')) as stream:
             source = stream.read()
-        start = source.index('      subroutine generate_momenta_vector(')
-        anchor = '     $          .not.(passcuts_nbody.or.passcuts_n1body)) cycle\n'
-        start = source.index(anchor, start) + len(anchor)
+        start = source.index('c The resonance predicate', source.index(
+            '      subroutine prepare_sector_cache('))
         stop = source.index('            call set_alphaS(p1_cnt(0,1,0))', start)
         block = source[start:stop]
         probe = '''      program probe

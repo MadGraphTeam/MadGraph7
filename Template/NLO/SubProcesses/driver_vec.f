@@ -243,41 +243,7 @@ c Preserve the Born-validity marker checked before the cached cut flags.
 c FxFx can change cut state before scalar replay; retain its setup.
             if (ickkw.ne.3.and.
      $          .not.(passcuts_nbody.or.passcuts_n1body)) cycle
-c The resonance predicate is fixed by sector/channel, independent of
-c the random mapped/nonshifted branch. These beam pairs always use event
-c projection (generate_momenta_conf); other beams retain the norad cache.
-            need_mapping_born(1,iFKS,ivec)=granny_is_res
-            need_mapping_born(2,iFKS,ivec)=.not.(
-     $         (lpp(1).eq.1.and.lpp(2).eq.1).or.
-     $         (lpp(1).eq.2.and.lpp(2).eq.2).or.
-     $         (lpp(1).eq.0.and.lpp(2).eq.0))
-            if (need_mapping_born(1,iFKS,ivec)) then
-               call set_alphaS(p_born_ev)
-               call set_alphaS_vec_from_scalar(icoup)
-               spb_ev(:,:,iFKS,ivec) = p_born_ev(:,:)
-            endif
-            if (need_mapping_born(2,iFKS,ivec)) then
-               call set_alphaS(p_born_norad)
-               call set_alphaS_vec_from_scalar(icoup + 1)
-               spb_norad(:,:,iFKS,ivec) = p_born_norad(:,:)
-            endif
-            call set_alphaS(p1_cnt(0,1,0))
-            call set_alphaS_vec_from_scalar(icoup + 2)
-            spb(:,:,iFKS,ivec) = p_born(:,:)
-            if (FKS_J_D(iFKS).eq.2.and.nexternal-1.ne.3) then
-            do k=1,nexternal-1
-               p_born_rot(0,k)=p_born(0,k)
-               p_born_rot(1,k)=-p_born(1,k)
-               p_born_rot(2,k)=p_born(2,k)
-               p_born_rot(3,k)=-p_born(3,k)
-            enddo
-            spb_rot(:,:,iFKS,ivec) = p_born_rot(:,:)
-            endif
-            sp1_cnt(:,:,:,iFKS,ivec) = p1_cnt(:,:,:)
-            spb_coll(:,:,iFKS,ivec) = p_born_coll(:,:)
-            call set_alphaS(p)
-            call set_alphaS_vec_from_scalar(icoup + 3)
-            sp1(:,:,iFKS,ivec) = p(:,:)
+            call prepare_sector_cache(p,ivec)
          enddo
       enddo
       return
@@ -736,6 +702,9 @@ C Local parameters
          enddo
 
 
+c A zero nbody row requests only the sectors in proc_map. This is used
+c by single-lane integration after its Born contribution was evaluated.
+      if (nFKS_nbody.eq.0) return
 c Pick the first one because that's the one with the soft singularity
          p_born(:,:) = spb(:,:,0,ivec)
          p1_cnt(:,:,:) = sp1_cnt(:,:,:,0,ivec)
@@ -891,4 +860,133 @@ c     if there are no soft singularities at all, just do something trivial
          nFKS_out=nFKSprocessBorn(nFKS_in)
       endif
       return
+      end
+
+      logical function use_single_lane_preparation(configured,active,
+     $                                             mode,matching,shower)
+      implicit none
+      integer configured,active,mode,matching
+      character*(*) shower
+      logical mg7_nlo_real_is_fortran
+      external mg7_nlo_real_is_fortran
+c Pythia8 NLOPS disables the random granny mapping in generate_momenta.
+c Other showers retain their prepass, including its random draws.
+c A short final batch of a wider run must retain the batched path too.
+      use_single_lane_preparation=configured.eq.1.and.active.eq.1
+     $     .and.(mode.eq.0.or.mode.eq.1).and.matching.ne.3
+     $     .and.shower.eq.'PYTHIA8'.and.mg7_nlo_real_is_fortran()
+      end
+
+      subroutine prepare_sector_cache(p,ivec)
+c Store only the momenta and coupling slots consumed by this sector.
+c Shared by the vector prepass and preparation during scalar replay.
+      use driver_vec
+      implicit none
+      include 'nexternal.inc'
+      include 'nFKSconfigs.inc'
+      include 'run.inc'
+      include 'orders.inc'
+      include 'genps.inc'
+      include 'fks_info.inc'
+      integer ivec,iFKS,icoup,k,nFKSprocess,igranny,iaunt
+      common/c_nFKSprocess/nFKSprocess
+      logical granny_is_res,granny_chain(-nexternal:nexternal)
+      common /c_granny_res/igranny,iaunt,granny_is_res,granny_chain
+      double precision p(0:3,nexternal)
+      double precision p_born(0:3,nexternal-1)
+      double precision p_born_rot(0:3,nexternal-1)
+      common /pborn/p_born
+      double precision p_born_coll(0:3,nexternal-1)
+      common /pborn_coll/p_born_coll
+      double precision p_born_ev(0:3,nexternal-1)
+      common /pborn_ev/p_born_ev
+      double precision p_born_norad(0:3,nexternal-1)
+      common /pborn_norad/p_born_norad
+      double precision p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
+      double precision pswgt_cnt(-2:2),jac_cnt(-2:2)
+      common/counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
+      iFKS=nFKSprocess
+      icoup=(ivec-1)*(4*fks_configs+1)+4*(iFKS-1)+1
+c The resonance predicate is fixed by sector/channel, independent of
+c the random mapped/nonshifted branch. These beam pairs always use event
+c projection (generate_momenta_conf); other beams retain the norad cache.
+            need_mapping_born(1,iFKS,ivec)=granny_is_res
+            need_mapping_born(2,iFKS,ivec)=.not.(
+     $         (lpp(1).eq.1.and.lpp(2).eq.1).or.
+     $         (lpp(1).eq.2.and.lpp(2).eq.2).or.
+     $         (lpp(1).eq.0.and.lpp(2).eq.0))
+            if (need_mapping_born(1,iFKS,ivec)) then
+               call set_alphaS(p_born_ev)
+               call set_alphaS_vec_from_scalar(icoup)
+               spb_ev(:,:,iFKS,ivec) = p_born_ev(:,:)
+            endif
+            if (need_mapping_born(2,iFKS,ivec)) then
+               call set_alphaS(p_born_norad)
+               call set_alphaS_vec_from_scalar(icoup + 1)
+               spb_norad(:,:,iFKS,ivec) = p_born_norad(:,:)
+            endif
+            call set_alphaS(p1_cnt(0,1,0))
+            call set_alphaS_vec_from_scalar(icoup + 2)
+            spb(:,:,iFKS,ivec) = p_born(:,:)
+            if (FKS_J_D(iFKS).eq.2.and.nexternal-1.ne.3) then
+            do k=1,nexternal-1
+               p_born_rot(0,k)=p_born(0,k)
+               p_born_rot(1,k)=-p_born(1,k)
+               p_born_rot(2,k)=p_born(2,k)
+               p_born_rot(3,k)=-p_born(3,k)
+            enddo
+            spb_rot(:,:,iFKS,ivec) = p_born_rot(:,:)
+            endif
+            sp1_cnt(:,:,:,iFKS,ivec) = p1_cnt(:,:,:)
+            spb_coll(:,:,iFKS,ivec) = p_born_coll(:,:)
+            call set_alphaS(p)
+            call set_alphaS_vec_from_scalar(icoup + 3)
+            sp1(:,:,iFKS,ivec) = p(:,:)
+      end
+
+      subroutine prepare_single_lane_cache(p,only_nbody,
+     $                                    passcuts_nbody,passcuts_n1body)
+c Reuse the vector amplitude contract after the replay momenta/cuts exist.
+c No phase-space generation, cut evaluation or scalar Born cache is added.
+      use driver_vec
+      implicit none
+      include 'nexternal.inc'
+      include 'nFKSconfigs.inc'
+      integer proc_map(0:fks_configs,0:fks_configs),nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
+      double precision p(0:3,nexternal),rwgt
+      double precision p_born(0:3,nexternal-1)
+      common /pborn/p_born
+      double precision p1_cnt(0:3,nexternal,-2:2),wgt_cnt(-2:2)
+      double precision pswgt_cnt(-2:2),jac_cnt(-2:2)
+      common/counterevnts/p1_cnt,wgt_cnt,pswgt_cnt,jac_cnt
+      logical only_nbody,passcuts_nbody,passcuts_n1body
+      integer(kind=8) before,after,rate,real_before
+      include 'timing_variables.inc'
+      proc_map=0
+      rwgt=1d0
+      if (only_nbody) then
+         call set_alphaS(p1_cnt(0,1,0))
+         call set_alphaS_vec_from_scalar(4*fks_configs+1)
+         spb(:,:,0,1)=p_born(:,:)
+         sp1_cnt(:,:,:,0,1)=p1_cnt(:,:,:)
+         call system_clock(before,rate)
+         call amplitudes_ivec(proc_map,rwgt,1,lane_nbody(1),1)
+         call system_clock(after)
+      else
+         passcuts_nbody_vec(nFKSprocess,1)=passcuts_nbody
+         passcuts_n1body_vec(nFKSprocess,1)=passcuts_n1body
+         call prepare_sector_cache(p,1)
+         real_active(:,:)=.false.
+         proc_map(lane_group(1),0)=1
+         proc_map(lane_group(1),1)=nFKSprocess
+         call system_clock(before,rate)
+         call amplitudes_ivec(proc_map,rwgt,1,0,1)
+         call system_clock(real_before)
+         call amplitudes_real_vec(proc_map,1)
+         call system_clock(after)
+         if (rate.gt.0) t_vecreal=t_vecreal+
+     $        real(after-real_before)/real(rate)
+      endif
+      if (rate.gt.0) t_vecamp=t_vecamp+real(after-before)/real(rate)
       end

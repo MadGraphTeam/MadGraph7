@@ -2040,6 +2040,12 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         writer_me.writelines(text)
         writer_me.writelines(text_vec)
         writer_me.writelines(text_vec_batch)
+        writer_me.writelines("""
+              logical function mg7_nlo_real_is_fortran()
+              implicit none
+              mg7_nlo_real_is_fortran=.true.
+              end
+              """)
         writer_lum.writelines(text1)
         writer_lum.writelines(text1_vec)
         return 0
