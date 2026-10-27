@@ -64,11 +64,18 @@ Colour, kinematics and signs of a site term (design §6.4, §6.6):
   rule, so its kernels and couplings are the conjugate rule's, which differ
   from the vertex's own by complex conjugation and the exchange of chiral
   projectors (``ConjugateVertices``), while its colour stays the incoming
-  reading of the vertex (WP3.2 EWI-2). On a vertex whose legs are all
-  self-conjugate the two readings differ by the direction of the momenta
-  and the transposition of the adjoint colour flows; its terms carry the
-  sign between them (``SiteClosure._reading_sign``), 1 on every QCD vertex,
-  -1 on the Levi-Civita R2 of a Z with gluons (WP3.2 EWI-7b);
+  reading of the vertex (WP3.2 EWI-2). The tree engine reads every vertex
+  with its outgoing particles' momenta and colour flows, the closure with
+  the momenta flowing in and the incoming colour: on a vertex without
+  fermion legs the two differ by (-1)^(momentum degree) times the
+  transposition sign of the adjoint colour flows, which its terms carry
+  (``SiteClosure._reading_sign``): 1 on every QCD vertex, -1 on the
+  colourless vertices odd in the momenta (W+ W- A/Z, Z H G0, the
+  W-Goldstone-scalar vertices, the Goldstone-vector mixings at two-point
+  sites) and on the Levi-Civita R2 of a Z with gluons, at Born roots,
+  counterterm roots and sites alike (WP3.2 EWI-7b; the closure's own reading
+  gave w+ w- > u u~ a Born 177 times the tree engine's and z h > t t~ a
+  Feynman-gauge Born 20 times its unitary-gauge one);
 * ``Block.wick_sign`` turns each block into its Feynman-rule current and the
   root sign completes FeynKit's diagram sign: the parity of the full coloured
   fermion line listing over the product of the blocks' listings
@@ -1090,28 +1097,39 @@ class SiteClosure:
         return tuple(out)
 
     def _reading_sign(self, entry: Any, binding: Any) -> int:
-        """The sign between the tree engine's reading of a vertex whose legs
-        are all self-conjugate fields and the root closure's (module
-        docstring, "Colour, kinematics and signs").
+        """The sign between the tree engine's reading of a vertex without
+        fermion legs and the root closure's (module docstring, "Colour,
+        kinematics and signs").
 
-        On such a vertex both readings fill each kernel leg with the same
-        block row, but the tree engine reads the momenta of its outgoing
-        tree particles and their colour flows, the closure the momenta
-        flowing in from the incoming fields and their colour: the momenta
-        are reversed and each adjoint colour flow is transposed, which
-        changes the sign of an ``f`` and keeps ``d``, two-index traces and
-        identities. The closure value then differs from the tree engine's
-        (the Feynman rule's) by (-1)^(momentum degree of the kernel) times
-        the colour's transposition sign: 1 for every QCD vertex (``f`` with
-        one momentum, ``d`` or metrics without), -1 for the Levi-Civita R2
-        of a Z with gluons (``R2_GGZ``: a two-index trace with one momentum;
-        ``R2_GGGVa``: ``f`` without; WP3.2 EWI-7b, EW-20). Other vertices
-        read through ``ConjugateVertices`` or their own conjugate legs keep
-        sign 1. A kernel of mixed momentum parity or a colour of mixed
-        transposition sign is refused.
+        Both readings fill each kernel leg with the block row of its tree
+        particle (a vertex not closed under conjugation through its conjugate
+        rule, ``read_entries``), but the tree engine reads every vertex with
+        the momenta of its outgoing tree particles and their colour flows,
+        the closure with the momenta flowing in and the incoming colour: the
+        momenta are reversed and each adjoint colour flow is transposed (an
+        ``f`` changes sign; ``d``, generators between the swapped ends of a
+        fundamental line, two-index traces and identities do not). The
+        closure value differs from the tree engine's, the reading of every
+        other vertex of the amplitude, by (-1)^(momentum degree of the
+        kernel) times the colour's transposition sign. It is -1 on every
+        colourless (or ``d``-coloured) vertex odd in the momenta, on Born
+        roots, counterterm roots and two-point sites alike: W+ W- A, W+ W- Z,
+        Z H G0, the W-Goldstone-scalar vertices, their R2 and UV
+        counterterms, the Goldstone-vector mixings G0-Z, G0-A and G+-W- (whose
+        clone lines read them the same way, ``ct_line_insertions.
+        _momentum_ratio``), the Levi-Civita R2 of a Z with gluons
+        (``R2_GGZ``: a two-index trace with one momentum; ``R2_GGGVa``: ``f``
+        without) and the d*f cells of the four-gluon R2 (which sum to zero);
+        it is 1 on every QCD vertex (``f`` with one momentum, ``d`` or metrics
+        without). Vertices with fermion legs keep sign 1: their kernels read
+        the transposed Dirac chain, as the tree engine does. A kernel of
+        mixed momentum parity or a colour without a transposition sign is
+        refused (``ReadingSignError``).
         """
 
-        if not all(self._anti[name] == name for name in entry.particle_names):
+        if any(
+            int(self._by_name[name]["spin"]) % 2 == 0 for name in entry.particle_names
+        ):
             return 1
         key = (_entry_key(entry), binding.kernel_id)
         found = self._reading.get(key)
@@ -1455,12 +1473,13 @@ def _momentum_parity(kernel: Any, what: str = "a ct-site kernel") -> int:
 
 
 def _colour_transposition_sign(colour: str, what: str = "a vertex") -> int:
-    """The sign a UFO colour tensor of adjoint and singlet legs takes when
-    every adjoint generator is transposed (the order of every trace
-    reversed): -1 per ``f``, 1 per ``d``, ``Identity`` or two-index trace;
-    the terms of a sum must share it. Other tensors (traces of three or more
-    adjoint indices, which are mixtures of ``d`` and ``f``; any other
-    tensor) are refused with ``ReadingSignError`` naming ``what``."""
+    """The sign a UFO colour tensor takes when every adjoint generator is
+    transposed (the order of every trace reversed, the ends of every
+    fundamental line swapped): -1 per ``f``; 1 per ``d``, generator ``T``
+    (transposed between swapped ends), ``Identity`` or two-index trace; the
+    terms of a sum must share it. Other tensors (traces of three or more
+    adjoint indices, which are mixtures of ``d`` and ``f``; sextet and
+    epsilon tensors) are refused with ``ReadingSignError`` naming ``what``."""
 
     import ast
 
@@ -1482,8 +1501,8 @@ def _colour_transposition_sign(colour: str, what: str = "a vertex") -> int:
             if name == "f" and arity == 3:
                 sign = -sign
             elif not (
-                (name == "d" and arity == 3)
-                or (name in ("Identity", "Tr") and arity == 2)
+                (name in ("d", "T") and arity == 3)
+                or (name in ("Identity", "IdentityB", "Tr") and arity == 2)
             ):
                 raise ReadingSignError(
                     f"{what}: the colour tensor {name} of {arity} indices has no "

@@ -36,9 +36,17 @@ import pytest
 FIXTURE = (
     Path(__file__).resolve().parents[1] / "fixtures" / "loop" / "epsilon-sign.json"
 )
-# |PDG| codes of d, s and b (MadLoop's ``/ d s b``).
+# |PDG| codes of d, s and b (MadLoop's ``/ d s b``): an anomalous veto (it
+# breaks the quark doublets), which the requests take with the override
+# ``allow_anomalous_veto`` ([U2]; refused by default).
 VETO = (1, 3, 5)
 TOLERANCE = 1e-12
+# Points evaluated in DoubleFloat rather than binary64: point 0's bare double
+# and single poles carry 3.7e-12 and 1.1e-12 of binary64 error of
+# pyAmpliCol's own (its exact Catani double pole -(alpha_s/2 pi)(2 C_F +
+# 2 C_A) Born is met to 3.0e-12 in binary64 and 4e-14 at 32 digits; MadLoop's
+# to 8.3e-13), above the 1e-12 every coefficient is held to.
+DOUBLE_FLOAT_POINTS = frozenset({0})
 
 
 def _laurent(result, component: str) -> list[float]:
@@ -53,15 +61,13 @@ def _laurent(result, component: str) -> list[float]:
 def test_epsilon_sign_bare_and_r2_equal_madloop(
     loop_sm_compiled_model, loop_native, counterterms
 ):
-    """Bare and R2, each per Laurent coefficient, against MadLoop ``/ d s b``:
-    within 1e-12 of the coefficient, or of the virtual's finite part times
-    MadLoop's own accuracy estimate where that is larger (bare = full minus
-    the generated CT sum carries the full virtual's accuracy; the R2 is a
-    tree-level sum). The vetoed request's R2 differs from the unvetoed one
-    (``dilepton-two-gluon.json``, same points and scales): the d, s, b loops
-    are gone and the axial cells no longer cancel."""
+    """Bare and R2, each per Laurent coefficient, against MadLoop ``/ d s b``
+    within 1e-12 of the coefficient (binary64; point 0 in DoubleFloat,
+    ``DOUBLE_FLOAT_POINTS``). The vetoed request's R2 differs from the
+    unvetoed one (``dilepton-two-gluon.json``, same points and scales): the
+    d, s, b loops are gone and the axial cells no longer cancel."""
 
-    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
     from pyamplicol.models.loading import load_compiled_model
 
     fixture = json.loads(FIXTURE.read_text())
@@ -76,6 +82,7 @@ def test_epsilon_sign_bare_and_r2_equal_madloop(
             {"QCD": 4, "QED": 2},
             fixed_parameters=fixture["fixed_parameters"],
             particle_veto=VETO,
+            allow_anomalous_veto=True,
             counterterms=counterterms,
         ),
         loop_native,
@@ -84,17 +91,25 @@ def test_epsilon_sign_bare_and_r2_equal_madloop(
     for index, (point, mu, row) in enumerate(
         zip(fixture["points"], fixture["mu_r"], fixture["rows"]["uu"], strict=True)
     ):
-        result = slice_.evaluate(point, str(int(mu) ** 2), parameters=parameters)
+        result = slice_.evaluate(
+            point,
+            str(int(mu) ** 2),
+            parameters=parameters,
+            precision=(
+                Precision.double_double()
+                if index in DOUBLE_FLOAT_POINTS
+                else Precision.double()
+            ),
+        )
         born = sum(float(x) for x in result.born.values())
         assert abs(born - row["born"]) <= TOLERANCE * abs(row["born"])
-        accuracy = abs(row["components"]["full"]["finite"]) * row["madloop_accuracy"]
         for component in ("bare", "r2"):
             reference = row["components"][component]
             values = _laurent(result, component)
             for value, key in zip(
                 values, ("finite", "single_pole", "double_pole"), strict=True
             ):
-                bound = max(TOLERANCE * abs(reference[key]), accuracy)
+                bound = TOLERANCE * abs(reference[key])
                 assert abs(value - reference[key]) <= bound, (
                     index,
                     component,
@@ -154,6 +169,7 @@ def test_epsilon_sign_restores_the_gluon_ward_identity(
             {"QCD": born["QCD"] + 2, "QED": born["QED"]},
             fixed_parameters=fixture["fixed_parameters"],
             particle_veto=VETO,
+            allow_anomalous_veto=True,
         ),
         loop_native,
         ward=True,
