@@ -24,14 +24,17 @@ owns). Checks:
   of the final state that changes the interleaving of the lines' supports
   (without the loop's Koszul sign the virtual moves by O(1)); the leaf
   weights' fast path equals the full rule (``check_leaf_weights``, WP3.1 D1);
-  u u~ > e- e+ mu- mu+ equals MadLoop (``required/uux_emepmummp``);
+  u u~ > e- e+ mu- mu+ equals MadLoop (``required/uux_emepmummp``) and its
+  copy on a loop_sm whose leptons are renamed and renumbered (G2-M5);
 * nightly, full electroweak corrections with lepton lines through the loop:
   the four MadLoop G_mu controls (``electroweak-*-control.json``, Feynman
   gauge, lhv = 1) per Laurent coefficient and component (bare, R2, UV,
   field and counterterm parts), Bhabha on loop_qcd_qed_sm against MadLoop
   (``required/emep_emep_ew``: the s- and t-channel lines through the boxes),
   O2 per family against the legacy engine (L1/L2) on e- e+ > mu- mu+ with
-  massless and massive muons, the poles of e- e+ > mu- mu+ on
+  massless and massive muons and on Bhabha (O13: the legacy families are
+  FeynKit's diagrams with their overall factors), the poles of
+  e- e+ > mu- mu+ on
   loop_qcd_qed_sm against the QED Catani operator (full EW; photon-only a
   strict xfail: the veto splits counterterm couplings), the legacy engine's
   FFS projector exchange checked against MadLoop before the legacy engine
@@ -47,7 +50,12 @@ owns). Checks:
   massive-muon control, which missed MadLoop by 1e-7); checked by the
   massive-muon control, its O2 and, nightly, g g > t t~ e- e+ against
   MadLoop, Recola and OpenLoops (``required/gg_ttxemep_ew``: off by O(1) in
-  the finite part without the sign).
+  the finite part without the sign). One rule for every vertex (genericity
+  audit 2, G2-M6): the Lorentz ratio times the colour tensor's
+  transposition sign, so the SM's coloured vertices keep their reading and
+  a toy UFO's W sq~ sd and chromomagnetic dipole take their colour-singlet
+  copies' -1; one fermion classifier (G2-m2) refuses sextet and octet
+  fermions at the ends, the root and the leaves.
 """
 
 from __future__ import annotations
@@ -1113,21 +1121,20 @@ def test_bhabha_families_carry_feynkit_overall_factors(gmu_slices, loop_gmu_ufo)
     vertex loops, so a Koszul sign of a lepton line through the loop that
     were wrong on one pairing flips whole families, which the summed
     virtual against MadLoop (``test_bhabha_equals_madloop``) would only show
-    as a total."""
+    as a total. All 44 legacy families agree at 60 digits (about 13 min)."""
 
     point = [["500", "0", "0", "500"], ["500", "0", "0", "-500"]]
     point += [["500", "300", "0", "400"], ["500", "-300", "0", "-400"]]
     scale = "1000000"
     process = "e- e+ > e- e+"
     legacy = _legacy_families(loop_gmu_ufo, process, "massless", point, scale)
-    compared = _assert_families_equal_legacy(
+    _assert_families_equal_legacy(
         gmu_slices(process, "massless"),
         legacy,
         point,
         scale,
         _control_parameters("massless"),
     )
-    print("families", compared)
 
 
 # ------------------------------------- g g > t t~ e- e+ (EW, three providers)
