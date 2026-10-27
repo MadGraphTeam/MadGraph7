@@ -13,6 +13,10 @@ Usage (from a process directory or gridpack, or see --process-dir):
     bin/reweight --rwgt-card reweight_card.dat            # in a gridpack
 """
 
+# annotations stay strings: some name madtrex classes (mtx.Driver), which
+# Python < 3.14 would otherwise evaluate when this module is imported
+from __future__ import annotations
+
 import argparse
 import glob
 import gzip
@@ -95,16 +99,45 @@ if _INSTALL_ROOT is not None:
         if (_dir / _pkg).is_dir() and str(_dir) not in sys.path:
             sys.path.insert(0, str(_dir))
 
+_MISSING_MESSAGE = (
+    "MadtRex reweighting needs the madspace and madtrex packages (madtrex "
+    "is installed separately, on top of madspace: python madtrex/install.py "
+    "in MadGraph, and include_madtrex in the run_card for a gridpack), or "
+    "both on PYTHONPATH. ({})"
+)
+
+
+class _MissingMadtrex:
+    """Stands for the madtrex module when it is not installed: this module
+    still imports (MadGraph imports it to choose and drive the reweighting),
+    and using madtrex raises the ImportError saying how to install it."""
+
+    def __init__(self, reason: str):
+        self._reason = reason
+
+    def __getattr__(self, name):
+        raise ImportError(_MISSING_MESSAGE.format(self._reason))
+
+
 try:
     import madspace as ms
-    import madtrex as mtx
 except ImportError as _err:
-    raise ImportError(
-        "MadtRex reweighting needs the madspace and madtrex packages (madtrex "
-        "is installed separately, on top of madspace: python madtrex/install.py "
-        "in MadGraph, and include_madtrex in the run_card for a gridpack), or "
-        f"both on PYTHONPATH. ({_err})"
-    ) from _err
+    raise ImportError(_MISSING_MESSAGE.format(_err)) from _err
+try:
+    import madtrex as mtx
+    # with the MadGraph directory on sys.path, the madtrex/ source directory
+    # imports as an empty namespace package when madtrex is not installed
+    if not hasattr(mtx, "Driver"):
+        raise ImportError("madtrex is not installed (no madtrex.Driver in %s)"
+                          % list(getattr(mtx, "__path__", [])))
+except ImportError as _err:
+    mtx = _MissingMadtrex(str(_err))
+
+
+def _require_madtrex() -> None:
+    """Raises the ImportError of a missing madtrex, before any work."""
+    if isinstance(mtx, _MissingMadtrex):
+        mtx.Driver  # raises
 
 if __package__:
     from . import param_reweight_card as param_rwgt_card
@@ -1133,6 +1166,7 @@ def run_reweighting(
     "generic" -> run_generic_reweighting(). card_kind defaults to
     generic_reweight_card.card_kind() of the card. Returns that runner's
     result."""
+    _require_madtrex()
     if card_kind is None:
         with open(rwgt_path) as f:
             card_kind = generic_rwgt_card.card_kind(f.read())
@@ -1196,6 +1230,7 @@ def main(argv: list[str] | None = None, regenerate: Regenerator | None = None) -
     """Command line entry point. regenerate is passed on to
     run_parameter_reweighting(); without it a "change model" card is an
     error (see mg7/madtrex.py for the MadGraph-side entry point)."""
+    _require_madtrex()
     parser = argparse.ArgumentParser(
         description="Run MadtRex event reweighting against an existing MadGraph7 run. "
                      "Parameter (matrix-element) and PDF reweighting are independent "
