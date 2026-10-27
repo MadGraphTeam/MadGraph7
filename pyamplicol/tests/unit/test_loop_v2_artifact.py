@@ -887,7 +887,6 @@ def test_public_anomalous_veto_is_refused_unless_overridden_and_recorded(
     assert filters["allow_anomalous_veto"] is True
     lowered = filters["counterterms_anomalous_veto"]
     assert lowered and all(cells for cells in lowered.values())
-    _forget_generation()
     runtime = Runtime.load(
         output, process="uux_emepg", model_parameters={"aS": "0.118"}
     )
