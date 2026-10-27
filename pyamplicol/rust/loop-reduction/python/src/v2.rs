@@ -101,6 +101,12 @@ impl V2Reducer {
                 .collect()
         })
     }
+    /// Lanes the fast engine left to the generic binary64 engine since the
+    /// last call (inputs at its absolute thresholds; 0 for the generic
+    /// engines).
+    fn take_exact_lanes(&mut self) -> u64 {
+        self.0.take_exact_lanes()
+    }
     /// Returns `(direct, check)`: one `ReductionBatch` per group, and the
     /// same for the relabelled frame when `check` is set (else None). The
     /// default frame is `ReductionFrame::REVERSED`.

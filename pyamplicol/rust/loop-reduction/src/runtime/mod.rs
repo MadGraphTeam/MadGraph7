@@ -36,8 +36,8 @@ pub use states::{
 pub use v2_execution::{TypedBatch, V2ReductionBackend};
 pub use v2_poles::{UvResidues, uv_residue};
 pub use v2_reduce::{
-    FamilyGroup, PoleSelection, Poles, ReduceOptions, ReductionFrame, V2Output, V2Reducer,
-    shift_coefficients, tensor_rank, true_rank,
+    FamilyGroup, NATIVE_ONSHELL_THRESHOLD, PoleSelection, Poles, ReduceOptions, ReductionFrame,
+    V2Output, V2Reducer, reaches_fast_threshold, shift_coefficients, tensor_rank, true_rank,
 };
 pub use v2_seeds::V2SeedFourier;
 
