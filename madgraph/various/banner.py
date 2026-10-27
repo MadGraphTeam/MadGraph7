@@ -1867,11 +1867,32 @@ class RivetCard(ConfigFile):
       Give weight names in case the jet merging is used to use for Rivet runs
         '''
 
-        if self['weight_name'] == "default":
-            if runcard['ickkw'] == 0:
-                self['weight_name'] = "None"
-            else:
-                self['weight_name'] = "Weight_MERGING={0}".str(round(py8card['JetMatching:qCut'],3))
+        if self['weight_name'] != "default":
+            return
+
+        # Same run-type classification and automatic merging scale as
+        # do_pythia8/setup_Pythia8RunAndCard in madevent_interface.py
+        # (ktdurham/ptlund/xqcut are LO-only: absent from RunCardNLO)
+        ickkw = int(runcard['ickkw'])
+        ktdurham = runcard['ktdurham'] if 'ktdurham' in runcard else 0.0
+        ptlund = runcard['ptlund'] if 'ptlund' in runcard else 0.0
+        if ickkw == 1:
+            # MLM
+            scale = py8card['JetMatching:qCut']
+            if scale == -1.0:
+                scale = 1.5*runcard['xqcut']
+        elif ickkw == 2 or ktdurham > 0.0 or ptlund > 0.0:
+            # CKKW-L
+            scale = py8card['Merging:TMS']
+            if scale == -1.0:
+                scale = ptlund if ptlund > 0.0 else ktdurham
+        else:
+            self['weight_name'] = "None"
+            return
+
+        # MG5aMC_PY8_interface names the HepMC weights with
+        # 'fixed << setprecision(3)' (e.g. Weight_MERGING=30.000)
+        self['weight_name'] = "Weight_MERGING=%.3f" % scale
 
     def setRelevantParamCard(self, f_params, f_relparams):
 
@@ -4471,6 +4492,10 @@ class RunCardLO(RunCard):
     else:
         default_run_card = None
     
+    # default lhaid when a photon is an initial-state parton of the proton:
+    # NNPDF40_nlo_as_01180_qed (no LO NNPDF4.0 set with a photon but the MC one)
+    photon_lhaid = 335900
+
     def default_setup(self):
         """default value for the run_card.dat"""
         
@@ -5225,6 +5250,14 @@ class RunCardLO(RunCard):
                     self['polbeam2'] = 100
                     if not all(id  in [-12,-14,-16,-83] for id in beam_id_split[1]):
                         logger.warning('Issue with default beam setup of neutrino in the run_card. Please check it up [polbeam2].')
+
+            # a photon taken from the proton needs a PDF set with a photon
+            # density: NNPDF40_lo_as_01180 has none, so use the QED set of the
+            # same family (issue #311)
+            if 'lhaid' not in self.user_set and self['pdlabel'] == 'lhapdf' and \
+                    any(22 in beam_id_split[i] and abs(self['lpp%d' % (i+1)]) == 1
+                        for i in range(2)):
+                self['lhaid'] = self.photon_lhaid
             
             
         # Check if need matching
@@ -5927,6 +5960,10 @@ class RunCardNLO(RunCard):
         default_run_card = None
                       
         
+    # default lhaid for EW corrections or a photon in the initial state:
+    # NNPDF40_nlo_as_01180_qed
+    photon_lhaid = 335900
+
     def default_setup(self):
         """define the default value"""
         
@@ -6492,6 +6529,19 @@ class RunCardNLO(RunCard):
             if b and b['mass'] != 'ZERO':
                 self['lhaid'] = [334700]  # NNPDF40_nlo_as_01180_nf_4
 
+        # EW corrections (photon-initiated real emission and the QED evolution)
+        # or a photon in the initial state need a PDF set with a photon density
+        # (issue #311). NNPDF4.0 has no 4-flavour QED set, so this wins over
+        # the 4-flavour rule above.
+        if 'lhaid' not in self.user_set and \
+                1 in (abs(self['lpp1']), abs(self['lpp2'])) and \
+                (22 in beam_id or 'QED' in proc_characteristic['splitting_types']):
+            if self['lhaid'] == [334700]:
+                logger.info('No 4-flavour PDF set with a photon: using the '
+                            '5-flavour NNPDF40_nlo_as_01180_qed (lhaid %s)',
+                            self.photon_lhaid)
+            self['lhaid'] = [self.photon_lhaid]
+
         # Check if need matching
         min_particle = 99
         max_particle = 0
@@ -6706,6 +6756,10 @@ class RunCardMG7(RunCard):
             'use_pigz': None if run['use_pigz'] == 'auto' else run['use_pigz'],
             'nb_core': threads if threads > 0 else None,
         }
+
+    # default PDF set when a photon is an initial-state parton of the proton
+    # (same as the LO run_card, lhaid 335900)
+    photon_pdf = "NNPDF40_nlo_as_01180_qed"
 
     def default_setup(self):
         """Define every parameter of the default ``run_card.toml``."""
@@ -8059,6 +8113,12 @@ class RunCardMG7(RunCard):
         elif beam_id and not (beam_id & hadronic):
             # e.g. photon/neutrino initiated: also no proton PDF
             self['beam']['leptonic'] = True
+        elif 22 in beam_id:
+            # a photon taken from the proton needs a PDF set with a photon
+            # density: NNPDF40_lo_as_01180 has none (issue #311)
+            for key in ('beam.pdf1', 'beam.pdf2'):
+                if key not in self.user_set:
+                    self[key] = self.photon_pdf
 
         # 1 -> N decay: no cuts at all. A partial width is an inclusive
         # quantity, so any kinematic cut biases it low (the collider defaults
@@ -8524,6 +8584,7 @@ class RunCardMG7(RunCard):
     _LO_LHAID_MAP = {
         230000: 'NNPDF23_lo_as_0130_qed', 247000: 'NNPDF23_lo_as_0130_qed',
         331900: 'NNPDF40_lo_as_01180', 338500: 'NNPDF40MC_lo_as_01180',
+        335900: 'NNPDF40_nlo_as_01180_qed',
         10042: 'cteq6l1',
     }
     # LO parameters that have no MG7 equivalent (reported when non-default).

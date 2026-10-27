@@ -460,6 +460,8 @@ C     MINCFIG has this config number
       COMMON/TO_CONFIGS/MINCFIG, MAXCFIG
       INTEGER MAPCONFIG(0:LMAXCONFIGS), ICONFIG
       COMMON/TO_MCONFIGS/MAPCONFIG, ICONFIG
+      INTEGER IMIRROR_GLOBAL, IPROC_GLOBAL
+      COMMON/TO_MIRROR/ IMIRROR_GLOBAL, IPROC_GLOBAL
 C     Keep track of whether cuts already calculated for this event
       LOGICAL CUTSDONE,CUTSPASSED
       COMMON/TO_CUTSDONE/CUTSDONE,CUTSPASSED
@@ -561,6 +563,10 @@ C           LP=SIGN(1,LPP(2))
           IB(1) = 2
           IB(2) = 1
         ENDIF
+C       config and mirror of this warp (used by the clustering in
+C        REWGT and by UNWGT)
+        ICONFIG = SYMCONF(ICONF_VEC(CURR_WARP))
+        IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
         DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
 C         Do not need those three here. do I?     
@@ -612,6 +618,10 @@ C         comparison false) and IPROC = 0. See the scalar branch.
           IB(1) = 2
           IB(2) = 1
         ENDIF
+C       config and mirror of this warp (used by the clustering in
+C        REWGT and by UNWGT)
+        ICONFIG = SYMCONF(ICONF_VEC(CURR_WARP))
+        IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
         DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
           DSIGUU = ALL_OUT(IVEC)
@@ -771,6 +781,21 @@ C      particle
       INTEGER ICONF
       DOUBLE PRECISION WGT
       INTEGER IWARP
+      RETURN
+      END
+
+      SUBROUTINE STORE_GROUPING_CHOICE(IWARP)
+      INTEGER IWARP
+      RETURN
+      END
+
+      SUBROUTINE SELECT_GROUPING_VEC(IMIRROR_VEC, IPROC, ICONF_VEC,
+     $  WGT, VECSIZE_USED)
+      INTEGER IMIRROR_VEC(*)
+      INTEGER IPROC
+      INTEGER ICONF_VEC(*)
+      DOUBLE PRECISION WGT(*)
+      INTEGER VECSIZE_USED
       RETURN
       END
 

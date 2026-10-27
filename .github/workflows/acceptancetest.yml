@@ -37,9 +37,10 @@ concurrency:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # test_ieva_collision and test_eva_oldrelease_collision are not run: they
-  # assert run_card defaults (evaorder=1, eva_xcut=0) that do not match the
-  # current ones, and test_ieva_collision uses an undefined variable
-  # (err1 = results['error']) after the run
+  # assert run_card defaults (evaorder=1, resp. eva_xcut=0) that do not match
+  # the current ones (evaorder=0, eva_xcut=1).
+  # test_mw_wproduction and test_mw_wjjproduction (test_madweight) are not
+  # run: MadWeight is excluded from CI on request.
 
   acceptancetest_bundle_1:
     # former jobs, run one after the other: readonly_gridpack
@@ -286,6 +287,14 @@ jobs:
             ./tests/test_manager.py test_check_gauge_epem_vevex_wpwm -pA -t0 -l INFO
             ./tests/test_manager.py test_check_gauge_pp_wpwm -pA -t0 -l INFO
             ./tests/test_manager.py test_check_pp_wpwm -pA -t0 -l INFO
+
+      # ---- acceptancetest_standalone_rw_tree_then_virt (from mg5 3.8.2) ----
+      # tree then loop standalone_rw output in one session, as the NLO reweighting
+      - name: "acceptancetest_standalone_rw_tree_then_virt: the tree standalone_rw calls do not leak into MadLoop"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_standalone_rw_tree_then_virt -pA -t0 -l INFO
 
 
   acceptancetest_18:
@@ -759,14 +768,17 @@ jobs:
             ./tests/test_manager.py test_loop_induced_ggh -pA -t0 -l INFO
 
   acceptancetest_105:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-22.04
+    # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue
+    # (needs no HEPTools); fork PRs stay on ubuntu-24.04 so outside code never
+    # runs on our machines.
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5 
       - uses: ./.github/actions/restore-pip-cache
 
@@ -777,6 +789,10 @@ jobs:
             ./tests/test_manager.py test_quarkonium_standalone -pA -t0 -l INFO
             ./tests/test_manager.py test_quarkonium_production -pA -t0 -l INFO
             ./tests/test_manager.py test_leptonium_production -pA -t0 -l INFO
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
 
 
   acceptancetest_bundle_14:

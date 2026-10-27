@@ -5,6 +5,12 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   OM: The default PDF follows the process when a photon is needed (issue #311):
+       a photon in the initial state of a proton beam (LO, NLO and the mg7
+       [beam] pdf) or NLO EW corrections ([QED]) select
+       NNPDF40_nlo_as_01180_qed (lhaid 335900), at NLO also for a model with a
+       massive b (NNPDF4.0 has no 4-flavour QED set). The NNPDF4.0 defaults
+       have no photon. A PDF set by the user is kept.
    ZW: MG7 outputs have two reweighting backends: MadtRex ('install madtrex';
        matrix-element and PDF/scale reweighting on lhe or lhe_npy events) and the
        classic reweighting module (f2py). Both read Cards/reweight_card.dat with the
@@ -32,6 +38,15 @@ ANNOUNCEMENT:
        in a virtual environment) is used before f2py3/f2py on the PATH, which may
        build modules for another Python version (reweighting then failed with "file
        too short" or a missing all_matrix2py module).
+   OM: MadtRex follow-ups: 'install madtrex' builds with clang/macOS; madtrex refuses a
+       madspace other than the one it was built against (with the command to rebuild it;
+       MadGraph then reweights with the classic module) and its installer a too old
+       madspace; a failing reweighting no longer stops the run, and 'reweight RUN' (after
+       'launch PROC -i') reweights the events of an earlier run; MadtRex reweight cards
+       accept '!' comments and multi-index parameters ('set NMIX 1 2 0.5'); the baseline
+       PDF set and precision of a MadtRex reweighting are those of the run that made the
+       events (its LHE header), not of the current run_card; a gridpack made with
+       include_madtrex_source builds madtrex from its sources in bin/reweight.
    OM: new command 'install cuttools_iregi' recompiling CutTools and IREGI (vendor/)
        with the current fortran compiler. The error raised when CutTools/IREGI were
        compiled with another compiler (e.g. after a gfortran update) now points to it.
@@ -175,6 +190,35 @@ ANNOUNCEMENT:
        ('aEWM1','Gf') instead of ('aEWM1',), reordering mp_intparam_definition.inc.
        Each instance now works on its own copy.
 
+
+3.8.2 (XX/XX/XX):
+    OM: LO grouped output (default): the renormalisation/factorisation scales and the MLM xqcut
+        veto were computed on the momenta before the symmetry permutation of the channel (#453).
+        Channels with such permutations were biased (e.g. -3.5% for u q > z u q, also with MLM).
+        Fixed both for the scalar and the vector (vector_size>1, cudacpp) mode.
+    OM: LO vector mode (vector_size>1): fix the reweighting of MLM matching (the central factorisation
+        scale of the last event of the batch was used for all events), the config/mirror used per warp,
+        and a crash (memory corruption) when vector_size was changed in the run_card after the output.
+    OM: LO vector mode with nb_warp>1: when a P directory groups several subprocesses, each warp
+        selected its own subprocess but only the last one was evaluated for all warps (wrong weights,
+        'Clustering failed' crashes). The subprocess is now chosen once per vector (from the PDF weights
+        averaged over the warps) and the configuration/beam orientation per warp.
+    OM: MadSpin (spinmode=PA): new option 'auto_zero_width_PA' (default True) setting the width
+        of the particles decayed by MadSpin to zero in the matrix element of the production density
+        matrix, and each one in the matrix element of its own decay density matrix only (Breit-Wigner
+        sampling, reshuffling, propagator factor and branching ratios keep the param_card widths).
+    OM: output standalone: new option --zerowidth_decay=True|False|<pdg>,<pdg>,... writing propagators
+        with a zero width (param_card untouched): in a 2>N process those of the final-state particles,
+        in a 1>N process (decay) those of the decaying particle only; a pdg list restricts to those.
+    VD+OM: Density mode of the reweighting (since 3.8.0): the particles of the density matrix are now
+        ordered as given in particle_in_density_matrix (they followed the order of the process), also
+        when they are ranked with an observable. That ranking could be wrong, or drop a particle, when
+        other particles were in between. A pdg code (or a rank) absent from the process is now an error.
+    OM: Density mode of the reweighting (since 3.8.0): boost_choice used the wrong particles when the
+        event contains intermediate particles, e.g. the t+W frame instead of the b+t~ one for
+        g g > t t~, t > b w+ with boost_choice [5, -6].
+    VD: Quantum Information library: new observable Get_Steering (two-qubit steering for 2 or 3
+        measurements per site, 1510.08030).
 
 3.8.1 (XX/XX/XX):
     OM: LO: the final unweighting no longer truncates the events above the maximum
