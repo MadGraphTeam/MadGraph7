@@ -1565,8 +1565,11 @@ LADDER = [
     # (EWI-4b): its trees join the top line and the top pair through a Z or
     # photon on one side and a G0 on the other, with the gluon at leg 1; the
     # request generates with the mixings admitted and lowered, and the UV
-    # poles of its QED corrections cancel (blind to the mixings' sign, which
-    # moves only finite parts here; their values: the O6 test
+    # poles of its QED corrections cancel (``poles="uv"`` takes the bare
+    # loop's UV poles from the counterterms, so this is blind to the mixings'
+    # sign, which moves the counterterms' finite part and single pole; their
+    # values against MadLoop: ``test_loop_v2_ew_gauge.
+    # test_goldstone_vector_mixings_equal_madloop``, and the O6 test
     # ``test_loop_v2_ew_gauge.test_goldstone_vector_mixings_equal_the_site_oracle``).
     _rung(
         "gmu_gt_tttx_mixing",

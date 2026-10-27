@@ -41,12 +41,13 @@ FIXTURE = (
 # ``allow_anomalous_veto`` ([U2]; refused by default).
 VETO = (1, 3, 5)
 TOLERANCE = 1e-12
-# Points evaluated in DoubleFloat rather than binary64: point 0's bare double
-# and single poles carry 3.7e-12 and 1.1e-12 of binary64 error of
-# pyAmpliCol's own (its exact Catani double pole -(alpha_s/2 pi)(2 C_F +
-# 2 C_A) Born is met to 3.0e-12 in binary64 and 4e-14 at 32 digits; MadLoop's
-# to 8.3e-13), above the 1e-12 every coefficient is held to.
-DOUBLE_FLOAT_POINTS = frozenset({0})
+# Points evaluated at 32 digits rather than binary64 (the Python reference
+# path has no DoubleFloat carrier): point 0's bare double and single poles
+# carry 3.7e-12 and 1.1e-12 of binary64 error of pyAmpliCol's own (its exact
+# Catani double pole -(alpha_s/2 pi)(2 C_F + 2 C_A) Born is met to 3.0e-12 in
+# binary64 and 4e-14 at 32 digits; MadLoop's to 8.3e-13), above the 1e-12
+# every coefficient is held to.
+HIGH_PRECISION_POINTS = frozenset({0})
 
 
 def _laurent(result, component: str) -> list[float]:
@@ -62,8 +63,8 @@ def test_epsilon_sign_bare_and_r2_equal_madloop(
     loop_sm_compiled_model, loop_native, counterterms
 ):
     """Bare and R2, each per Laurent coefficient, against MadLoop ``/ d s b``
-    within 1e-12 of the coefficient (binary64; point 0 in DoubleFloat,
-    ``DOUBLE_FLOAT_POINTS``). The vetoed request's R2 differs from the
+    within 1e-12 of the coefficient (binary64; point 0 at 32 digits,
+    ``HIGH_PRECISION_POINTS``). The vetoed request's R2 differs from the
     unvetoed one (``dilepton-two-gluon.json``, same points and scales): the
     d, s, b loops are gone and the axial cells no longer cancel."""
 
@@ -96,8 +97,8 @@ def test_epsilon_sign_bare_and_r2_equal_madloop(
             str(int(mu) ** 2),
             parameters=parameters,
             precision=(
-                Precision.double_double()
-                if index in DOUBLE_FLOAT_POINTS
+                Precision.arbitrary(32)
+                if index in HIGH_PRECISION_POINTS
                 else Precision.double()
             ),
         )
