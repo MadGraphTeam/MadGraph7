@@ -371,6 +371,7 @@ C
       DOUBLE PRECISION ALL_CM_RAP(VECSIZE_MEMMAX)
       INTEGER IMODE
       DOUBLE PRECISION ALL_OUT(VECSIZE_MEMMAX)
+C     IMIRROR_VEC, ICONF_VEC and IFLAV_VEC have one entry per warp
       INTEGER IMIRROR_VEC(*)
       INTEGER ICONF_VEC(*)
       INTEGER IFLAV_VEC(*)
@@ -452,6 +453,12 @@ C
       DOUBLE PRECISION P1(0:3, NEXTERNAL)
       INTEGER IVEC, CURR_WARP, IWARP, NB_WARP_USED
       INTEGER CHANNELS(VECSIZE_MEMMAX)
+C     Per-event flavor index and leshouche row passed to SMATRIX_MULTI;
+C     NB_PSEL_WARP(w) is the number of ALL_PD rows of the flavor of
+C      warp w
+      INTEGER ALL_IFLAV(VECSIZE_MEMMAX), ALL_IPSEL(VECSIZE_MEMMAX)
+      INTEGER NB_PSEL_WARP(NB_WARP)
+      INTEGER IFLAV, IPSEL_SHIFT
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER IGRAPH(VECSIZE_MEMMAX)
       COMMON/VEC_IGRAPH/IGRAPH
@@ -504,14 +511,20 @@ C           LP=SIGN(1,LPP(IB(2)))
           ENDIF
         ENDDO  ! IWARP LOOP
       ENDDO  ! CURRWARP LOOP
-      ALL_PD(0,:) = 0D0
-      IPROC = 0
-      IPROC=IPROC+1  ! u u~ > u u~
-      DO IVEC=1, VECSIZE_USED
-        ALL_PD(IPROC,IVEC)=U1(IVEC)*UX2(IVEC)
-        ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))
-
-      ENDDO
+      ALL_PD(:,:) = 0D0
+      DO CURR_WARP=1, NB_WARP_USED
+        IFLAV = IFLAV_VEC(CURR_WARP)
+        DO IWARP=1, WARP_SIZE
+          IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+          IPROC = 0
+          IF (IFLAV.EQ.1) THEN
+            IPROC=IPROC+1  ! u u~ > u u~
+            ALL_PD(IPROC,IVEC)=U1(IVEC)*UX2(IVEC)
+            ALL_PD(0,IVEC)=ALL_PD(0,IVEC)+DABS(ALL_PD(IPROC,IVEC))
+          ENDIF
+        ENDDO  ! IWARP LOOP
+        NB_PSEL_WARP(CURR_WARP) = IPROC
+      ENDDO  ! CURRWARP LOOP
 
 
       IF (IMODE.EQ.4)THEN
@@ -531,6 +544,15 @@ C       config and mirror of this warp (used by the clustering in
 C        REWGT and by UNWGT)
         ICONFIG = SYMCONF(ICONF_VEC(CURR_WARP))
         IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
+C       flavor of this warp (ALL_PD only holds the rows of that flavor)
+        IFLAV = IFLAV_VEC(CURR_WARP)
+        CALL GET_FLAVOR1(IFLAV, FLAVOR)
+
+C       set minimum ipsel for this IFLAV
+        IF (IFLAV.EQ.1) THEN
+          IPSEL_SHIFT = 0
+        ENDIF
+
         DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
 C         Do not need those three here. do I?     
@@ -542,20 +564,23 @@ C         CM_RAP = ALL_CM_RAP(IVEC)
 C         Select a flavor combination (need to do here for right sign)
           CALL RANMAR(R)
           IPSEL=0
-          DO WHILE (R.GE.0D0 .AND. IPSEL.LT.IPROC)
+          DO WHILE (R.GE.0D0 .AND. IPSEL.LT.NB_PSEL_WARP(CURR_WARP))
             IPSEL=IPSEL+1
             R=R-DABS(ALL_PD(IPSEL,IVEC))/ALL_PD(0,IVEC)
           ENDDO
 C         .GE. above already covers R = 0; this catches a NaN R (every
-C         comparison false) and IPROC = 0. See the scalar branch.
+C         comparison false) and a flavor without rows. See the scalar
+C          branch.
           IF (IPSEL.LT.1) IPSEL = 1
+C         leshouche row (IPSEL is used by REWGT, SMATRIX and UNWGT)
+          IPSEL = IPSEL + IPSEL_SHIFT
+          ALL_IPSEL(IVEC) = IPSEL
+          ALL_IFLAV(IVEC) = IFLAV
 
           CHANNELS(IVEC) = CONFSUB(1,SYMCONF(ICONF_VEC(CURR_WARP)))
           SUBDIAG(1) = CHANNELS(IVEC)  ! only valid if a single process
           CHANNEL = SUBDIAG(1)
 
-
-          CALL GET_FLAVOR1(IFLAV_VEC(IVEC), FLAVOR)
           IF (IMODE.EQ.0) THEN
             ALL_RWGT(IVEC) = REWGT(ALL_PP(0,1,IVEC),FLAVOR,IVEC)
           ELSE
@@ -572,9 +597,9 @@ C         comparison false) and IPROC = 0. See the scalar branch.
           CALL RANMAR(COL_RAND(IVEC))
         ENDDO  ! end loop on IWARP/IVEC	 
       ENDDO  ! end loop on the CURR_WARP
-      CALL SMATRIX1_MULTI(P_MULTI, IFLAV_VEC, HEL_RAND, COL_RAND,
-     $  CHANNELS, IGRAPH, ALL_OUT , SELECTED_HEL, SELECTED_COL,
-     $  VECSIZE_USED)
+      CALL SMATRIX1_MULTI(P_MULTI, ALL_IFLAV, ALL_IPSEL, HEL_RAND,
+     $  COL_RAND, CHANNELS, IGRAPH, ALL_OUT , SELECTED_HEL,
+     $  SELECTED_COL, VECSIZE_USED)
 
 
       DO CURR_WARP=1, NB_WARP_USED
@@ -589,8 +614,16 @@ C       config and mirror of this warp (used by the clustering in
 C        REWGT and by UNWGT)
         ICONFIG = SYMCONF(ICONF_VEC(CURR_WARP))
         IMIRROR_GLOBAL = IMIRROR_VEC(CURR_WARP)
+        IFLAV = IFLAV_VEC(CURR_WARP)
+
+C       set minimum ipsel for this IFLAV
+        IF (IFLAV.EQ.1) THEN
+          IPSEL_SHIFT = 0
+        ENDIF
+
         DO IWARP=1, WARP_SIZE
           IVEC = (CURR_WARP-1)*WARP_SIZE+IWARP
+          IPSEL = ALL_IPSEL(IVEC)
           DSIGUU = ALL_OUT(IVEC)
           IF (IMODE.EQ.5) THEN
             IF (DSIGUU.LT.1D199) THEN
@@ -623,7 +656,7 @@ C          1.0)
           IF (DSIGUU.LT.1D199) THEN
 C           Set sign of dsig based on sign of PDF and matrix element
             ALL_OUT(IVEC)=DSIGN(CONV*ALL_PD(0,IVEC)*DSIGUU,DSIGUU
-     $       *ALL_PD(IPSEL,IVEC))
+     $       *ALL_PD(IPSEL-IPSEL_SHIFT,IVEC))
           ELSE
             WRITE(*,*) 'Error in matrix element'
             DSIGUU=0D0
@@ -650,9 +683,9 @@ C           Call UNWGT to unweight and store events
       END
 
 
-      SUBROUTINE SMATRIX1_MULTI(P_MULTI, IFLAV_VEC, HEL_RAND, COL_RAND
-     $ , CHANNELS, IGRAPH, OUT, SELECTED_HEL, SELECTED_COL,
-     $  VECSIZE_USED)
+      SUBROUTINE SMATRIX1_MULTI(P_MULTI, IFLAV_VEC, IPSEL_VEC,
+     $  HEL_RAND, COL_RAND, CHANNELS, IGRAPH, OUT, SELECTED_HEL,
+     $  SELECTED_COL, VECSIZE_USED)
       USE OMP_LIB
       IMPLICIT NONE
 
@@ -664,7 +697,10 @@ C           Call UNWGT to unweight and store events
       DOUBLE PRECISION P_MULTI(0:3, NEXTERNAL, VECSIZE_MEMMAX)
       DOUBLE PRECISION HEL_RAND(VECSIZE_MEMMAX)
       DOUBLE PRECISION COL_RAND(VECSIZE_MEMMAX)
+C     Per-event flavor index and leshouche row (IPSEL, used for
+C      BROKEN_SYM)
       INTEGER IFLAV_VEC(VECSIZE_MEMMAX)
+      INTEGER IPSEL_VEC(VECSIZE_MEMMAX)
       INTEGER CHANNELS(VECSIZE_MEMMAX)
 C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER IGRAPH(VECSIZE_MEMMAX)
@@ -674,6 +710,8 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
       INTEGER VECSIZE_USED
 
       INTEGER IVEC
+      INTEGER          IPSEL
+      COMMON /SUBPROC/ IPSEL
 
 
 
@@ -681,6 +719,7 @@ C     Per-event MLM graph: igraphs(1) from REWGT (0 = no MLM)
 !$OMP PARALLEL
 !$OMP DO
       DO IVEC=1, VECSIZE_USED
+        IPSEL = IPSEL_VEC(IVEC)
         CALL SMATRIX1(P_MULTI(0,1,IVEC),
      &                           IFLAV_VEC(IVEC), 
      &                           hel_rand(IVEC),
