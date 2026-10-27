@@ -32,6 +32,7 @@ two identical-flavour lines).
 from __future__ import annotations
 
 import argparse
+import cmath
 import json
 from fractions import Fraction
 from pathlib import Path
@@ -391,3 +392,222 @@ def test_colour_projections_are_formal_nc_projections(
                             accuracy,
                             k,
                         )
+
+
+# The N_c dependence of the tree currents, independently of the grade
+# bookkeeping of ``generation.dag_grades``: every tree producing k
+# U(1)-subtraction auxiliaries carries the numeric -1/N_c of their colour
+# weight k times, so with that weight doubled (each interaction whose result
+# is the auxiliary, before the fold and the evaluation reuse) the rows of a
+# block of grade g are 2^(-g) times its rows (an N_c scan of the trees). A
+# block that mixes grades scales by no power of 2: the unsplit DAG of every
+# process below has such blocks, so the scan sees a missing or wrong grade.
+# Binary64 (scaling by 2 is exact, measured bitwise) at the first exact
+# point with its last leg rescaled, so that no block current is on shell;
+# loop-request blocks and the CT program; the 2->4 requests run in the
+# nightly tier.
+GRADE_SCAN_NAMES = ("uux_uuxg", "uux_uuxuux", "uux_uuxepem", "gg_uuxuux")
+GRADE_SCAN_TOLERANCE = 1e-14
+
+
+def _doubled_u1_weights(dag):
+    """``dag`` with the colour weight of every interaction producing the
+    U(1)-subtraction auxiliary doubled."""
+
+    from dataclasses import replace
+
+    from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
+
+    auxiliaries = {
+        current.id
+        for current in dag.currents
+        if current.index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
+    }
+    return replace(
+        dag,
+        interactions=tuple(
+            replace(
+                interaction,
+                color_weight=tuple(2 * x for x in interaction.color_weight),
+            )
+            if interaction.result_id in auxiliaries
+            else interaction
+            for interaction in dag.interactions
+        ),
+    )
+
+
+def _block_values(tree, rows):
+    """Block key -> (N_c grade, the block's row values, flattened)."""
+
+    found = {}
+    for block in tree.blocks:
+        if block.key.auxiliary_kind is not None:
+            continue
+        variant = "source" if block.is_source else "propagated"
+        values = []
+        for row in block.rows:
+            values.extend(rows.get((row.current_id, variant), ()))
+        found[block.key] = (block.colour_flow.nc_grade, values)
+    return found
+
+
+def _scaling_powers(plain, doubled):
+    """Block key -> (grade, the power k with doubled = 2^k plain within
+    ``GRADE_SCAN_TOLERANCE`` of the block's largest row, or None) over the
+    blocks with nonzero rows."""
+
+    assert plain.keys() == doubled.keys()
+    found = {}
+    for key, (grade, values) in plain.items():
+        other_grade, others = doubled[key]
+        assert other_grade == grade and len(others) == len(values), key
+        assert all(map(cmath.isfinite, (*values, *others))), key
+        size = max((abs(x) for x in values), default=0.0)
+        if size == 0:
+            assert not any(others), key
+            continue
+        power = next(
+            (
+                k
+                for k in range(len(key.word) + 1)
+                if max(abs(b - 2**k * a) for a, b in zip(values, others, strict=True))
+                <= GRADE_SCAN_TOLERANCE * 2**k * size
+            ),
+            None,
+        )
+        found[key] = (grade, power)
+    return found
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param(
+            name,
+            marks=pytest.mark.loop_physics
+            if name in PROJECTION_PHYSICS
+            else pytest.mark.loop_nightly,
+        )
+        for name in GRADE_SCAN_NAMES
+    ],
+)
+def test_graded_blocks_scale_as_their_u1_pieces(
+    loop_sm_compiled_model, monkeypatch, name
+):
+    """Every block of the grade split (loop-request blocks and the CT
+    program, as leading and next-to-leading colour compile them) has rows
+    proportional to (U(1)-subtraction weight)^(-grade), and the same DAGs
+    without the split have blocks that mix grades (comment above)."""
+
+    from decimal import Decimal
+
+    from pyamplicol.generation import dag_compiler
+    from pyamplicol.loops.v2 import dag_input
+    from pyamplicol.loops.v2.assemble import (
+        Precision,
+        TreeRows,
+        _Numbers,
+        prepare_request_model,
+    )
+    from pyamplicol.loops.v2.blocks import (
+        build_tree_blocks,
+        vetoed_particle_ids,
+        with_ward_kernels,
+    )
+    from pyamplicol.loops.v2.ct_closure import (
+        counterterm_program_blocks,
+        program_propagated_currents,
+    )
+    from pyamplicol.loops.v2.families import LoopOrderSelection, add_orders
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.processes.model import build_model_process_ir
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request, point, _scale, parameters = _projection_request(
+        compiled, name, "full", "double-double"
+    )
+    # Massless legs, the last one rescaled: no momentum conservation, so no
+    # block current is on shell (the leg sets of all legs but one would be).
+    *point, last = [tuple(Decimal(x) for x in momentum) for momentum in point]
+    point = [*point, tuple(Decimal(3) / 2 * x for x in last)]
+    numbers = _Numbers(Precision.double())
+    process = build_model_process_ir(
+        request.process, compiled.ir, color_accuracy="full"
+    )
+    prepared, continuation, fixed, _scale, _alpha = prepare_request_model(
+        compiled, request
+    )
+    data = json.loads(prepared.structure.native.to_json())
+    selection = LoopOrderSelection(
+        frozenset(request.corrections),
+        frozenset(add_orders(tuple(o.items())) for o in request.exact_loop_orders),
+    )
+    fold = dag_compiler.apply_colour_connection_signs
+
+    def build(u1_grades, doubled):
+        """(loop-request blocks, CT program) of the Python lane, their rows
+        at the point."""
+
+        with monkeypatch.context() as patch:
+            if doubled:
+                patch.setattr(
+                    dag_compiler,
+                    "apply_colour_connection_signs",
+                    lambda dag, model: fold(_doubled_u1_weights(dag), model),
+                )
+            with dag_input.native_flags(dag=False):
+                tree = build_tree_blocks(
+                    process,
+                    CompiledUFOModel(compiled),
+                    born_coupling_orders=dict(request.born_orders),
+                    block_coupling_orders=request.loop_order_bounds,
+                    ignored_particle_ids=vetoed_particle_ids(request.particle_veto),
+                    u1_grades=u1_grades,
+                )
+                warded, kernels = with_ward_kernels(tree, compiled, fixed)
+                program = counterterm_program_blocks(
+                    kernels,
+                    prepared,
+                    request.process,
+                    data,
+                    selection,
+                    warded.born_orders,
+                    veto=request.particle_veto,
+                    fixed_parameters=fixed,
+                    declaration=request.colour_declaration,
+                    continuation=continuation,
+                    scope=(
+                        tuple(sorted(request.born_orders.items())),
+                        tuple(sorted(request.loop_order_bounds.items())),
+                        request.compatibility,
+                    ),
+                    u1_grades=u1_grades,
+                )
+        rows = TreeRows(tree.blocks_dag, compiled).evaluate(point, parameters, numbers)
+        dag = program.blocks.blocks_dag
+        # As ``ct_closure.CountertermProgram.rows`` evaluates the program.
+        program_rows = TreeRows(
+            dag,
+            program.recursion.model.lowered.compiled,
+            jit=False,
+            propagated_currents=program_propagated_currents(dag),
+        ).evaluate(point, parameters, numbers)
+        return _block_values(tree, rows), _block_values(program.blocks, program_rows)
+
+    for u1_grades in (True, False):
+        (blocks, ct), (blocks2, ct2) = build(u1_grades, False), build(u1_grades, True)
+        for plain, doubled in ((blocks, blocks2), (ct, ct2)):
+            powers = _scaling_powers(plain, doubled)
+            grades = {grade for grade, _power in powers.values()}
+            if u1_grades:
+                assert None not in grades and len(grades) > 1, grades
+                assert all(power == -grade for grade, power in powers.values()), sorted(
+                    (key.word, grade, power)
+                    for key, (grade, power) in powers.items()
+                    if power != -grade
+                )
+            else:
+                mixed = [power for grade, power in powers.values() if grade is None]
+                assert mixed and not any(power is not None for power in mixed)
