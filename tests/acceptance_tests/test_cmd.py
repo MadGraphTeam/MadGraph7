@@ -1472,7 +1472,9 @@ class TestCmdShell2(unittest.TestCase,
         # process's symbols into every library loaded later in this (shared)
         # test process.
         libdir = pjoin(self.out_dir, 'lib')
-        lib = ctypes.CDLL(glob.glob(pjoin(libdir, 'libmadmatrix_P*.so'))[0])
+        # libmadmatrix_<model>_<Pdir>_<backend>_<fptype>.so
+        lib = ctypes.CDLL([path for path in glob.glob(pjoin(libdir, 'libmadmatrix_*_P*.so'))
+                           if 'libmadmatrix_common' not in path][0])
         handle = ctypes.c_void_p()
         card = pjoin(self.out_dir, 'Cards', 'param_card.dat').encode()
         self.assertEqual(0, lib.umami_initialize(ctypes.byref(handle), card))
@@ -1697,8 +1699,8 @@ class TestCmdShell2(unittest.TestCase,
                                   cwd=proc_dir)
             self.assertEqual(0, make.returncode, 'the %s library did not build:\n%s'
                              % (build, make.stdout.decode(errors='replace')[-3000:]))
-            lib = glob.glob(pjoin(self.out_dir, 'lib',
-                                  'libmadmatrix_P*_%s.so' % backend))[0]
+            lib = glob.glob(pjoin(self.out_dir, 'lib', 'libmadmatrix_*_P*_%s_%s.so'
+                                  % (backend, fptype)))[0]
             runs = {}
             for first in ('single', 'batch', 'forward'):
                 out = subprocess.check_output(
