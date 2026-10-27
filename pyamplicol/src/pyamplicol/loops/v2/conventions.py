@@ -140,8 +140,11 @@ class FermionSignError(NotImplementedError):
 class ReadingSignError(NotImplementedError):
     """A vertex without a sign between the tree engine's reading and a loop
     segment's or root closure's: its colour tensor has no sign under the
-    transposition of its adjoint generators (``colour_transposition_sign``)
-    or its Lorentz structure none under the momentum reversal."""
+    transposition of its adjoint generators (``colour_transposition_sign``:
+    a trace of three or more adjoint indices, a sextet or epsilon tensor, an
+    unknown tensor, or terms of both signs), or its Lorentz structure (the
+    root closure's kernel, ``ct_sites._momentum_parity``) none under the
+    momentum reversal. Generation refuses the request naming the vertex."""
 
 
 # The namespace qualifier of a UFO symbol as a compiled model prints it

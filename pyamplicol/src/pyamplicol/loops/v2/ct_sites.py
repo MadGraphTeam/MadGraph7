@@ -162,11 +162,15 @@ from .conventions import (
     GHOST_SPIN,
     SINGLET_END,
     FermionSignError,
+    ReadingSignError,
     closed_under_conjugation,
     colour_singlet_sign,
     fermion_end,
     fermion_ends,
     open_end_orientation,
+)
+from .conventions import (
+    colour_transposition_sign as _colour_transposition_sign,
 )
 from .families import (
     BlockCurrent,
@@ -198,16 +202,6 @@ Cell = tuple[str, int, int, int]
 
 class CountertermCompletenessError(ValueError):
     """A divergent witness is covered neither by a rule nor by a certified zero."""
-
-
-class ReadingSignError(NotImplementedError):
-    """A vertex closed at a root has no sign between the tree engine's
-    reading of its legs and the root closure's
-    (``SiteClosure._reading_sign``): its kernel is neither even nor odd in
-    the block momenta, or its colour tensor has no transposition sign (a
-    trace of three or more adjoint indices, a sextet or epsilon tensor, an
-    unknown tensor) or terms of both signs. Generation refuses the request
-    naming the vertex."""
 
 
 # --------------------------------------------------------------------------- records
@@ -1423,53 +1417,6 @@ def _momentum_parity(kernel: Any, what: str = "a ct-site kernel") -> int:
             "of its legs and its own"
         )
     return parities.pop()
-
-
-def _colour_transposition_sign(colour: str, what: str = "a vertex") -> int:
-    """The sign a UFO colour tensor takes when every adjoint generator is
-    transposed (the order of every trace reversed, the ends of every
-    fundamental line swapped): -1 per ``f``; 1 per ``d``, generator ``T``
-    (transposed between swapped ends), ``Identity`` or two-index trace; the
-    terms of a sum must share it. Other tensors (traces of three or more
-    adjoint indices, which are mixtures of ``d`` and ``f``; sextet and
-    epsilon tensors) are refused with ``ReadingSignError`` naming ``what``."""
-
-    import ast
-
-    def terms(node: ast.AST) -> list[ast.AST]:
-        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
-            return terms(node.left) + terms(node.right)
-        if isinstance(node, ast.UnaryOp):
-            return terms(node.operand)
-        return [node]
-
-    signs = set()
-    for term in terms(ast.parse(colour, mode="eval").body):
-        sign = 1
-        for call in (n for n in ast.walk(term) if isinstance(n, ast.Call)):
-            name = call.func.id if isinstance(call.func, ast.Name) else None
-            arity = len(call.args)
-            if name == "complex":
-                continue
-            if name == "f" and arity == 3:
-                sign = -sign
-            elif not (
-                (name in ("d", "T") and arity == 3)
-                or (name in ("Identity", "IdentityB", "Tr") and arity == 2)
-            ):
-                raise ReadingSignError(
-                    f"{what}: the colour tensor {name} of {arity} indices has no "
-                    "sign under the transposition of its adjoint generators (only "
-                    "f, d, Identity and two-index traces have one), so the root "
-                    "closure cannot read the vertex as the tree engine does"
-                )
-        signs.add(sign)
-    if len(signs) != 1:
-        raise ReadingSignError(
-            f"{what}: the terms of its colour change sign differently under the "
-            "transposition of the adjoint generators"
-        )
-    return signs.pop()
 
 
 def entry_cell(entry: Any) -> Cell:
