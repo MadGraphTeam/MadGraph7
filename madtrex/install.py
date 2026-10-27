@@ -115,6 +115,9 @@ def madspace_problem(madspace_dir: Path, env: dict) -> str | None:
     """Why the madspace in madspace_dir is too old to build MadtRex against
     (it predates the API MadtRex uses: umami.h installed with the headers,
     MatrixElementApi.set_parameter/supported_inputs), or None."""
+    if not (madspace_dir / "include").is_dir():
+        return ("it has no headers (include/), as a precompiled copy of madspace "
+                "(e.g. in a gridpack) does")
     if not (madspace_dir / "include" / "madspace" / "umami.h").is_file():
         return "it does not install include/madspace/umami.h"
     result = subprocess.run(

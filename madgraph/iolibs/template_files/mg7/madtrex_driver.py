@@ -46,6 +46,46 @@ def _find_install_root() -> Path | None:
     return None
 
 
+def _ensure_gridpack_madtrex() -> None:
+    """In a gridpack made with include_madtrex_source (this file is its
+    bin/reweight, next to madtrex/install.py): build madtrex from those
+    sources when the gridpack has no madtrex install, or rebuild it when the
+    install was compiled against another madspace (e.g. a madspace the
+    gridpack rebuilt on this machine). Elsewhere, nothing."""
+    root = _HERE.parent
+    installer = root / "madtrex" / "install.py"
+    if _HERE.name != "bin" or not installer.is_file():
+        return
+    package = root / "madtrex" / "install" / "madtrex"
+    madspace_package = root / "madspace" / "install" / "madspace"
+    clean = False
+    if not package.is_dir():
+        reason = "this gridpack has no madtrex install"
+    else:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_madtrex_compat",
+                                                      package / "_compat.py")
+        if spec is None or not madspace_package.is_dir():
+            return
+        compat = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(compat)
+        if not compat.build_problem(str(package), str(madspace_package)):
+            return
+        reason = "this gridpack's madtrex was built against another madspace"
+        clean = True
+    if not (madspace_package / "include").is_dir():
+        raise RuntimeError(
+            f"{reason}, and it cannot be built from the included sources: its "
+            "madspace has no headers (a precompiled copy). Make the gridpack "
+            "with include_madspace = false and include_madspace_source = true, "
+            "so that madspace is built here too.")
+    print(f"{reason}: building it from the included sources (madtrex/install.py)")
+    command = [sys.executable, str(installer), "--yes"] + (["--clean"] if clean else [])
+    if subprocess.run(command).returncode != 0:
+        raise RuntimeError("madtrex installation failed: see the output above")
+
+
+_ensure_gridpack_madtrex()
 _INSTALL_ROOT = _find_install_root()
 if _INSTALL_ROOT is not None:
     for _dir, _pkg in (

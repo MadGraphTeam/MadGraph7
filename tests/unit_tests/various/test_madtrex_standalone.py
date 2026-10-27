@@ -595,3 +595,73 @@ class HelicityReweightingDefaultTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GridpackSourceBuildTest(unittest.TestCase):
+    """A gridpack made with include_madtrex_source: bin/reweight builds
+    madtrex from the included sources when there is no install, and
+    rebuilds it when the install was compiled against another madspace.
+    madtrex/install.py is a stand-in here, recording how it was called."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / "bin").mkdir()
+        shutil.copy(SCRIPT, self.root / "bin" / "reweight")
+        (self.root / "madtrex").mkdir()
+        (self.root / "madtrex" / "install.py").write_text(textwrap.dedent("""
+            import sys
+            print("INSTALLER", *sys.argv[1:])
+            sys.exit(3)
+        """))
+        self.include = self.root / "madspace" / "install" / "madspace" / "include"
+        (self.include / "madspace").mkdir(parents=True)
+        (self.include / "madspace" / "umami.h").write_text("// v1\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_reweight(self):
+        return subprocess.run(
+            [sys.executable, "-I", str(self.root / "bin" / "reweight"), "--help"],
+            cwd=self.tmp.name, capture_output=True, text=True,
+        )
+
+    def install_madtrex(self, digest_of):
+        """A madtrex install whose recorded madspace headers are those of
+        the directory digest_of."""
+        sys.path.insert(0, str(MG_ROOT / "madtrex" / "madtrex"))
+        try:
+            import _compat
+        finally:
+            sys.path.pop(0)
+        package = self.root / "madtrex" / "install" / "madtrex"
+        package.mkdir(parents=True)
+        shutil.copy(MG_ROOT / "madtrex" / "madtrex" / "_compat.py", package)
+        (package / "_build_info.json").write_text(
+            '{"madspace_headers": "%s"}' % _compat.headers_digest(digest_of))
+
+    def test_no_install_builds_from_the_sources(self):
+        result = self.run_reweight()
+        self.assertIn("this gridpack has no madtrex install: building it", result.stdout)
+        self.assertIn("INSTALLER --yes\n", result.stdout)
+        self.assertIn("madtrex installation failed", result.stderr)
+
+    def test_install_for_another_madspace_is_rebuilt(self):
+        other = self.root / "other"
+        (other / "madspace").mkdir(parents=True)
+        (other / "madspace" / "umami.h").write_text("// v0\n")
+        self.install_madtrex(other)
+        result = self.run_reweight()
+        self.assertIn("built against another madspace", result.stdout)
+        self.assertIn("INSTALLER --yes --clean", result.stdout)
+
+    def test_matching_install_is_not_rebuilt(self):
+        self.install_madtrex(self.include)
+        self.assertNotIn("INSTALLER", self.run_reweight().stdout)
+
+    def test_precompiled_madspace_cannot_build_madtrex(self):
+        shutil.rmtree(self.include)
+        result = self.run_reweight()
+        self.assertNotIn("INSTALLER", result.stdout)
+        self.assertIn("include_madspace_source = true", result.stderr)

@@ -2219,36 +2219,46 @@ class MadgraphProcess:
                 ignore=shutil.ignore_patterns("build", "install", "__pycache__"),
             )
 
+        # madspace/madtrex sources build with their pyproject.toml, which takes
+        # the version from the MadGraph VERSION file one level above them
+        if (self.run_card["gridpack"]["include_madspace_source"]
+                or self.run_card["gridpack"]["include_madtrex_source"]):
+            shutil.copy(_MG_ROOT / "VERSION", os.path.join(gridpack_path, "VERSION"))
+
         include_madtrex = (
             self.run_card["gridpack"]["include_madtrex"]
             and (_MADTREX_INSTALL_DIR / "madtrex").is_dir()
         )
-        if self.run_card["gridpack"]["include_madtrex"]:
-            if include_madtrex:
-                # only the runtime pieces: madtrex itself, the bundled Rex fork
-                # (pyrex, plus librex/libtearex in lib/), not the build tools
-                # install.py also put there
-                for name in ("madtrex", "pyrex", "lib"):
-                    if (_MADTREX_INSTALL_DIR / name).is_dir():
-                        shutil.copytree(
-                            _MADTREX_INSTALL_DIR / name,
-                            os.path.join(gridpack_path, "madtrex", "install", name),
-                            ignore=shutil.ignore_patterns("__pycache__"),
-                        )
-                # the standalone reweighting driver (bin/reweight, below)
-                # finds the matrix elements through subprocesses.json, which
-                # the gridpack otherwise only has with include_source
-                gridpack_subprocesses_json = os.path.join(
-                    gridpack_path, "SubProcesses", "subprocesses.json")
-                if not os.path.exists(gridpack_subprocesses_json):
-                    os.makedirs(os.path.dirname(gridpack_subprocesses_json), exist_ok=True)
-                    shutil.copy(os.path.join("SubProcesses", "subprocesses.json"),
-                                gridpack_subprocesses_json)
-            else:
-                logger.info(
-                    "madtrex is not installed (python madtrex/install.py), so "
-                    "it is not included in the gridpack"
-                )
+        if include_madtrex:
+            # only the runtime pieces: madtrex itself, the bundled Rex fork
+            # (pyrex, plus librex/libtearex in lib/), not the build tools
+            # install.py also put there
+            for name in ("madtrex", "pyrex", "lib"):
+                if (_MADTREX_INSTALL_DIR / name).is_dir():
+                    shutil.copytree(
+                        _MADTREX_INSTALL_DIR / name,
+                        os.path.join(gridpack_path, "madtrex", "install", name),
+                        ignore=shutil.ignore_patterns("__pycache__"),
+                    )
+        elif self.run_card["gridpack"]["include_madtrex"]:
+            logger.info(
+                "madtrex is not installed (python madtrex/install.py), so it is "
+                "not included in the gridpack%s",
+                "; bin/reweight builds it from the included sources on first use"
+                if self.run_card["gridpack"]["include_madtrex_source"] else "")
+        # bin/reweight (below) with an installed madtrex, or with its sources,
+        # which bin/reweight builds when the gridpack has no (usable) install
+        with_reweight = include_madtrex or self.run_card["gridpack"]["include_madtrex_source"]
+        if with_reweight:
+            # the standalone reweighting driver finds the matrix elements
+            # through subprocesses.json, which the gridpack otherwise only has
+            # with include_source
+            gridpack_subprocesses_json = os.path.join(
+                gridpack_path, "SubProcesses", "subprocesses.json")
+            if not os.path.exists(gridpack_subprocesses_json):
+                os.makedirs(os.path.dirname(gridpack_subprocesses_json), exist_ok=True)
+                shutil.copy(os.path.join("SubProcesses", "subprocesses.json"),
+                            gridpack_subprocesses_json)
 
         matrix_elements = []
         for subproc in self.subprocess_data:
@@ -2316,7 +2326,7 @@ class MadgraphProcess:
             os.path.join(bin_path, "custom_function_loader.py"),
         )
         os.chmod(gen_events_file, 0o755)
-        if include_madtrex:
+        if with_reweight:
             # MadtRex reweighting of the gridpack's events, with the modules
             # parsing its reweight cards
             reweight_file = os.path.join(bin_path, "reweight")

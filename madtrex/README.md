@@ -247,8 +247,21 @@ Without `include_source`, only the precision the libraries were built with
 is available, and `change model` cards need MadGraph.
 
 `include_madtrex_source = true` copies the madtrex sources (including `Rex/`)
-as well. The madtrex module finds `libmadspace` relative to itself in the
-gridpack layout, so the gridpack can be moved.
+as well, and also gives the gridpack `bin/reweight`. On its first use,
+`bin/reweight` builds madtrex from those sources (`madtrex/install.py`) when
+the gridpack has no madtrex install, and rebuilds it when the install was
+compiled against another madspace than the gridpack's (madtrex records the
+madspace headers it was built against and refuses any other madspace). This
+needs a madspace with its headers, i.e. built from source in the gridpack:
+use it with `include_madspace = false` and `include_madspace_source = true`
+when the gridpack runs on another machine. The madtrex module finds
+`libmadspace` relative to itself in the gridpack layout, so the gridpack can
+be moved.
+
+Outside a gridpack, `import madtrex` likewise refuses a madspace other than
+the one it was built against (e.g. after `install madspace`), with the
+command to rebuild it, and MadGraph's automatic backend choice then uses the
+classic module.
 
 ## Building by hand
 

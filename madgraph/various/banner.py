@@ -6785,7 +6785,8 @@ class RunCardMG7(RunCard):
             comment="include the installed madtrex package (MadtRex reweighting), "
                     "if madtrex is installed")
         self.add_toml_param('gridpack', 'include_madtrex_source', False,
-            comment="include the madtrex source code (with its bundled Rex)")
+            comment="include the madtrex source code (with its bundled Rex); "
+                    "bin/reweight builds it when the gridpack has no usable madtrex")
         self.add_toml_param('gridpack', 'compress', False,
             comment="compress the gridpack into a tarball")
         self.add_toml_param('gridpack', 'run_mode', "minimal",
