@@ -586,10 +586,9 @@ def test_cxx_and_fortran_clients_report_the_refusal(ggtt, tmp_path):
 # ------------------------------------------------------------ scale batches
 
 
-@pytest.fixture(scope="module")
-def running(loop_sm_ufo, loop_native, tmp_path_factory):
-    """g g > g g of the toy running-coupling loop_sm, generated through the
-    public API (its model compiled as ``loop_sm_compiled_model`` is)."""
+def _compiled_variant(ufo: Path, root: Path) -> Path:
+    """A loop_sm variant compiled as ``loop_sm_compiled_model`` is (the
+    structural scalar-arity view), written next to it."""
 
     from dataclasses import replace
 
@@ -598,10 +597,6 @@ def running(loop_sm_ufo, loop_native, tmp_path_factory):
         prepare_loop_sm_scalar_declarations,
     )
 
-    from .loop_v2_ufo_variants import running_coupling_ufo
-
-    root = tmp_path_factory.mktemp("running")
-    ufo = running_coupling_ufo(loop_sm_ufo, root / "loop_sm_running")
     model = compile_model_source(ufo, cache_dir=root / "model-cache")
     model = replace(
         model,
@@ -611,8 +606,52 @@ def running(loop_sm_ufo, loop_native, tmp_path_factory):
         _serialized_path=None,
         _prepared_bundle=None,
     )
-    path = model.write(root / "loop-sm-running.json")
+    return model.write(root / f"{ufo.name}.json")
+
+
+@pytest.fixture(scope="module")
+def running(loop_sm_ufo, loop_native, tmp_path_factory):
+    """g g > g g of the toy running-coupling loop_sm, generated through the
+    public API."""
+
+    from .loop_v2_ufo_variants import running_coupling_ufo
+
+    root = tmp_path_factory.mktemp("running")
+    path = _compiled_variant(
+        running_coupling_ufo(loop_sm_ufo, root / "loop_sm_running"), root
+    )
     return _generate(path, root, "g g > g g", "gg"), path
+
+
+def test_a_renamed_scale_parameter_is_refused_by_its_role(
+    loop_sm_ufo, loop_native, tmp_path
+):
+    """The scale parameter is the one generation resolves (UFO/SLHA code
+    LOOP 1), not a name: on the renamed-model harness's ``scale`` variant
+    (``MU_R`` -> ``muR``, same code) the Python API and the native runtime
+    refuse ``muR`` as the renormalisation scale and ``MU_R`` as unknown."""
+
+    from pyamplicol import Runtime
+
+    from .loop_renamed_models import write_variant
+
+    write_variant(loop_sm_ufo, tmp_path / "loop_sm_scale", "scale")
+    path = _compiled_variant(tmp_path / "loop_sm_scale", tmp_path)
+    artifact = _generate(path, tmp_path, "g g > g g", "gg")
+    runtime = Runtime.load(artifact, process="gg")
+    for parameters, message in (
+        (
+            {"muR": "100"},
+            "'muR' is the renormalisation scale: pass it per point as mu_r2",
+        ),
+        ({"MU_R": "100"}, "unknown external parameter 'MU_R'"),
+    ):
+        with pytest.raises(ValueError) as refused:
+            runtime.set_model_parameters(parameters)
+        assert str(refused.value) == message
+        with pytest.raises(ValueError) as refused:
+            _native_values(loop_native, artifact, "gg", GG_POINT, SCALES, parameters)
+        assert str(refused.value) == message
 
 
 GG_POINT = [
