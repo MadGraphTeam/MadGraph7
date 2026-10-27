@@ -126,11 +126,23 @@ def mixed_grade_blocks(blocks: Any) -> tuple[Any, ...]:
     )
 
 
-def _block_names(blocks: Iterable[Any], limit: int = 4) -> str:
-    listed = [f"{block.key.word}" for block in blocks]
+def _block_currents(blocks: Iterable[Any], limit: int = 4) -> str:
+    """The distinct tree currents of ``blocks`` (their ordered external legs
+    and particle; blocks of one current differ by colour, helicity or
+    chirality state), the first ``limit`` of them spelled out."""
+
+    currents = dict.fromkeys(
+        (tuple(block.key.word), block.key.particle_id) for block in blocks
+    )
+    listed = [
+        f"legs {' '.join(map(str, word))} as PDG {particle}"
+        for word, particle in currents
+    ]
     shown = ", ".join(listed[:limit])
     more = len(listed) - limit
-    return f"{shown}, and {more} more" if more > 0 else shown
+    return f"{len(listed)} current(s): {shown}" + (
+        f", and {more} more" if more > 0 else ""
+    )
 
 
 def require_nc_exact(blocks: Any, accuracy: str, process: str) -> None:
@@ -146,7 +158,7 @@ def require_nc_exact(blocks: Any, accuracy: str, process: str) -> None:
             "colour-accuracy-nc-exact",
             f"{process!r}: {accuracy.upper()} needs N_c-exact tree currents, and "
             f"{len(mixed)} loop-side tree block(s) mix U(1)-subtraction grades "
-            f"(words {_block_names(mixed)})",
+            f"({_block_currents(mixed)})",
         )
 
 

@@ -25,8 +25,8 @@ never served as a silently wrong value, and the rule is structural:
   the admission scan bypassed the native DAG refuses with the listed key
   (``rusticol_core::loop_v2::dag::FERMION_LINE_REPRESENTATION``).
 
-The dry run lists both tables. Plans of every request the guards do not
-refuse are unchanged (the guards on and off give the same bytes).
+The dry run lists both tables. The stored processes of the controls the
+guards do not refuse keep the bytes of the slice before the package.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -154,7 +155,12 @@ def test_plane_mismatch_is_a_listed_refusal_naming_the_output(loop_native):
     """A square-root argument on its branch cut at the plane check's real
     probes (x = 1.118 > y = 0.736 in row 0: SymJIT and Symbolica give the
     negated real opposite signed zeros) is refused as ``plane-mismatch``,
-    naming the parameter-program output by its key, or the kernel."""
+    naming the output: a tree program's kernel by its class and index, a
+    parameter-program output by its key, a derived coupling by its UFO
+    coupling and vertex, a counterterm coefficient with its epsilon power
+    and N_c grade."""
+
+    from types import SimpleNamespace
 
     from symbolica import E, Expression, S
 
@@ -165,25 +171,53 @@ def test_plane_mismatch_is_a_listed_refusal_naming_the_output(loop_native):
             [E("x + y"), E("sqrt(1 - x^2/y^2)")], [S("x"), S("y")], jit_compile=False
         ).save()
     )
-    with pytest.raises(native_trees.NativeExportUnsupported) as refused:
-        native_trees._plane_applications(
-            (state,), (("model", "MWx"), ("coupling", "GC_W", 0))
-        )
-    assert refused.value.feature == "plane-mismatch"
-    message = str(refused.value)
-    assert "parameter-program output 1 (coupling GC_W 0) at probe row 0" in message
-    assert "imaginary part" in message
+
+    def refused(states, where=None) -> str:
+        with pytest.raises(native_trees.NativeExportUnsupported) as error:
+            native_trees._plane_applications(states, where)
+        assert error.value.feature == "plane-mismatch"
+        return str(error.value)
+
+    term = SimpleNamespace(
+        id=42, coupling="GC_100", vertex="V_77", particles=("W+", "a")
+    )
+    model = SimpleNamespace(ir=SimpleNamespace(vertex_terms=(term,)))
+    empty = {"kernels": [], "propagators": []}
+    trees = {"interactions": {"kernels": [[]], "propagators": [[]]}}
+    keys = (("model", "MWx"), ("model", "derived_coupling_42"))
+    outputs = native_trees._PlaneOutputs(
+        {"interactions": empty}, keys, (model, None)
+    ).where
+    message = refused((state,), outputs)
+    # The output once, then the native's statement of the disagreement.
+    assert message.startswith(
+        "plane-mismatch: parameter-program output 1 (model coupling GC_100 of "
+        "vertex V_77 (W+ a)): loop v2 trees: the SymJIT plane application "
+        "disagrees with its exact evaluator at output 1 (imaginary part, probe row 0"
+    ), message
+    assert message.count("probe row") == 1
     assert "keep this program on the exact evaluator" not in message
-    with pytest.raises(native_trees.NativeExportUnsupported) as refused:
-        native_trees._plane_applications((state,))
-    assert "output 1 of tree-program kernel 0" in str(refused.value)
+    counterterm = (("model", "MWx"), ("counterterm", "UV_GT", 0, 1))
+    outputs = native_trees._PlaneOutputs(
+        {"interactions": empty}, counterterm, (model, None)
+    ).where
+    assert "(counterterm UV_GT, epsilon power 0, N_c grade 1)" in refused(
+        (state,), outputs
+    )
+    outputs = native_trees._PlaneOutputs(
+        {**trees, "counterterm_trees": trees}, keys, (model, None)
+    ).where
+    assert outputs(1, 1) == "output 1 of propagator kernel 0 of the tree program"
+    assert outputs(2, 3) == "output 3 of vertex kernel 0 of the counterterm program"
+    assert outputs(4, 0) == "parameter-program output 0 (model MWx)"
+    assert "output 1 of saved evaluator 0" in refused((state,))
     # A program off the cut compiles as before.
     off = bytes(
         Expression.evaluator_multiple(
             [E("sqrt(1 + x^2/y^2)")], [S("x"), S("y")], jit_compile=False
         ).save()
     )
-    assert native_trees._plane_applications((off,), (("model", "a"),))
+    assert native_trees._plane_applications((off,), outputs)
 
 
 # ---------------------------------------------------- G2-M1: N_c exactness
@@ -217,7 +251,10 @@ def test_projections_over_blocks_not_exact_in_nc_are_refused_before_the_families
     assert refused.value.key == NC_EXACT_REFUSAL
     message = str(refused.value)
     assert f"'{process}': {accuracy.upper()} needs N_c-exact tree currents" in message
-    assert "mix U(1)-subtraction grades (words (" in message
+    assert re.search(
+        r"mix U\(1\)-subtraction grades \(\d+ current\(s\): legs [\d ]+ as PDG -?\d+",
+        message,
+    ), message
     assert 'full colour (color.accuracy = "full")' in message
 
 
@@ -247,9 +284,9 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
 ):
     """Defence in depth: an LC slice of u u~ > u u~ g built with the
     generation guard bypassed is refused by every export layer in turn
-    (``export_plan``, the seed records, the native trees) and by the native
-    seed records of column sets, so no stored plan carries its grade-0
-    projection."""
+    (``export_plan``, the seed records, the native trees' counterterm
+    program) and by the native seed records of column sets, so no stored
+    plan carries its grade-0 projection."""
 
     from pyamplicol.loops.v2 import assemble, native_cells, plan_export, refusals
     from pyamplicol.loops.v2.assemble import LoopSlice
@@ -281,8 +318,9 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
     # ``export_plan``'s own check off: its seed records refuse.
     monkeypatch.setattr(refusals, "require_nc_exact", off_at_first_call)
     assert "the seed records of an LC request" in refused()
-    # The seed-table check off too: the native trees refuse (their call is
-    # the second).
+    # The seed-table check off too: the native trees refuse over their
+    # counterterm program's blocks (the second call; the slice's own blocks
+    # are ``export_plan``'s first).
     calls.clear()
     monkeypatch.setattr(plan_export, "require_formal_nc_tables", lambda *a: None)
     assert "'u u~ > u u~ g': LC needs N_c-exact" in refused()
@@ -292,36 +330,102 @@ def test_exports_refuse_projections_over_blocks_not_exact_in_nc(
         native_cells.project_records(slice_, plan_export.sector_columns(slice_), (), {})
 
 
-def _plan_digests(process) -> tuple[str, ...]:
-    return tuple(
-        hashlib.sha256(text.encode()).hexdigest()
-        for text in (process.plan_json, process.scaleless_plan_json or "")
+# The bytes of the controls the guards do not refuse, measured on the slice
+# before package fail-closed (work/v2-slice 59d47cb3, native digest a1e0606a;
+# equal at 11542fd5): per control the SHA-256 of the stored plan JSON, of the
+# companion plan JSON, and of every native member but the parameter
+# programs' plane applications (``_identity``). A package that changes these
+# plans on purpose re-measures them on its base and states why.
+CONTROLS = {
+    "uux_ddxg_lc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "lc"),
+    "uux_ddxg_nlc": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, "nlc"),
+    "uux_ddxssx_lc": ("u u~ > d d~ s s~", {"QCD": 4, "QED": 0}, "lc"),
+    "uux_ddxssx_nlc": ("u u~ > d d~ s s~", {"QCD": 4, "QED": 0}, "nlc"),
+    "uux_uuxg_full": (*MIXED["uux_uuxg"], "full"),
+    "gg_uuxuux_full": (*MIXED["gg_uuxuux"], "full"),
+}
+CONTROL_BYTES = {
+    "uux_ddxg_lc": (
+        "f8595356dbb40148749b9828679d4a368518cb0922e3f680fe8313af978ace95",
+        "8c32bb3bc825e3c3fed06ca962091ad64fe3b87ffc636747a0d0482b9ac83fb2",
+        "1df405acd1134b1d511d4478b90b3f3a3216205cb7c334aaed92df7cb1965424",
+    ),
+    "uux_ddxg_nlc": (
+        "4cd00549a72bfa194778472289d5af0c31c7dfc471c27d54bd116152eb62e2ad",
+        "f27586cffefed6fd94ceaef0155a11590ccba22e423f7014efe0f49457ddb249",
+        "4932af5724f4d1c5189028590793e7a0d5e487541f80bd8b59f7a1b850731f39",
+    ),
+    "uux_ddxssx_lc": (
+        "eadb28c424c1d45046399f8b6dd8832d805c0eb1ffb59906b86ead2927c3d09d",
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "c20534efd86e2ecb5ab16bd4f06da3ba04a11b670c85a676861f426d72b1b2b6",
+    ),
+    "uux_ddxssx_nlc": (
+        "698711e3b9670e135f20719c82041c020bbd846f404ee963eb74b92e186432ab",
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "7510bcbbdb0d2f0b9338d89fbbca8f010ad6ecc14a00fb8cc1c908915de95dd6",
+    ),
+    "uux_uuxg_full": (
+        "a80ff312a2155ddbbc9f02f352b90335427eb9e19b560702e21b5431450cf28e",
+        "f3f96c6e2a657899cef204358546e9e6e2d865093ab7a2cda27706af315c6ad5",
+        "31d89b7739a2cafdb919efbb5a0f614e5aaca35c501bbf48d50b00ca6619f693",
+    ),
+    "gg_uuxuux_full": (
+        "52aebd812ec8a579a8268de84370f850b69b3a05f83a8cb54fb109eb74620769",
+        "50b2f50da81a8619ebb3b2b5dd5b078c6c7aa1fe79727531eaebe2a703793d23",
+        "9aec170072cd12f61ac90f5bfa86152244ab0bed3dea011c72533e5996e7cca5",
+    ),
+}
+
+
+def _identity(generated) -> tuple[str, str, str]:
+    """``CONTROL_BYTES``' digests of a stored process. The parameter
+    programs' plane applications (``*parameters.symjit``) are left out: their
+    SymJIT call tags are random (``SYMJIT_RANDOM_CALL_TAG``, strict xfail
+    ``test_symjit_plane_helper_functions``); their exact evaluators
+    (``*parameters.bin``) are in."""
+
+    sha = lambda data: hashlib.sha256(data).hexdigest()  # noqa: E731
+    members = generated.native.members()
+    native = hashlib.sha256()
+    for name in sorted(members):
+        if not name.endswith("parameters.symjit"):
+            native.update(
+                name.encode() + b"\0" + hashlib.sha256(members[name]).digest()
+            )
+    return (
+        sha(generated.plan_json.encode()),
+        sha((generated.scaleless_plan_json or "").encode()),
+        native.hexdigest(),
     )
 
 
 @pytest.mark.loop_physics
-def test_guards_leave_the_plans_they_do_not_refuse_unchanged(
-    loop_sm, loop_native, monkeypatch
-):
-    """u u~ > d d~ at NLC (distinct flavours, N_c-exact blocks): the stored
-    plan and companion plan bytes are the same with every guard of the
-    package on and off (no guard has a side effect on what it admits). The
-    package's comparison against the slice before it (LC/NLC of u u~ > d d~ g
-    and u u~ > d d~ s s~, full colour of the identical-flavour controls) is
-    in its report."""
+@pytest.mark.parametrize(
+    "name",
+    [
+        "uux_ddxg_lc",
+        pytest.param("uux_ddxg_nlc", marks=pytest.mark.loop_nightly),
+        pytest.param("uux_ddxssx_lc", marks=pytest.mark.loop_nightly),
+        pytest.param("uux_ddxssx_nlc", marks=pytest.mark.loop_nightly),
+        "uux_uuxg_full",
+        pytest.param("gg_uuxuux_full", marks=pytest.mark.loop_nightly),
+    ],
+)
+def test_plans_the_guards_do_not_refuse_keep_their_bytes(loop_sm, loop_native, name):
+    """Byte identity of the stored processes the package does not refuse:
+    LC/NLC of distinct-flavour quark lines (u u~ > d d~ g, u u~ > d d~ s s~)
+    and full colour of identical-flavour ones (u u~ > u u~ g,
+    g g > u u~ u u~) give the plan, companion plan and native member bytes
+    of the slice before the package (``CONTROL_BYTES``)."""
 
-    from pyamplicol.loops.v2 import assemble, plan_export, refusals
     from pyamplicol.loops.v2.artifact import generate_process
 
-    request = _request("u u~ > d d~", {"QCD": 2, "QED": 0}, "nlc")
-    guarded = _plan_digests(generate_process(loop_sm, request, loop_native))
-    off = lambda *args, **kwargs: None  # noqa: E731
-    for name in ("require_nc_exact", "require_colour_preserving_fermion_lines"):
-        monkeypatch.setattr(assemble, name, off)
-    for name in ("require_nc_exact", "require_formal_nc_tables"):
-        monkeypatch.setattr(refusals, name, off)
-    monkeypatch.setattr(plan_export, "require_formal_nc_tables", off)
-    assert _plan_digests(generate_process(loop_sm, request, loop_native)) == guarded
+    process, born, accuracy = CONTROLS[name]
+    generated = generate_process(
+        loop_sm, _request(process, born, accuracy), loop_native
+    )
+    assert _identity(generated) == CONTROL_BYTES[name]
 
 
 # ---------------------------------------- G2-M1 through the API and the CLI
@@ -385,9 +489,7 @@ def test_public_generation_and_cli_refuse_lc_and_nlc_of_identical_flavours(
             Generator(resolve_config(card)).generate(processes, output)
         assert refused.value.key == NC_EXACT_REFUSAL
         # The public route names the process in the model's spelling.
-        assert f"{accuracy.upper()} needs N_c-exact tree currents" in str(
-            refused.value
-        )
+        assert f"{accuracy.upper()} needs N_c-exact tree currents" in str(refused.value)
         assert not output.exists()
         output = tmp_path / f"cli-{accuracy}"
         card = tmp_path / f"cli-{accuracy}.toml"

@@ -815,22 +815,31 @@ def test_gg_ttx_electroweak_native_counterterm_program(gg_ttx_ew):
     assert any(block.key.particle_id in goldstones for block in program.blocks.blocks)
 
 
+class _PlaneMismatchRefusal(Exception):
+    """The listed native-export refusal ``plane-mismatch`` as the validate
+    tool records it (``record["native_refusal"]``), raised so that a strict
+    xfail pins exactly that refusal: any other refusal or failure fails."""
+
+
 @pytest.mark.loop_nightly
 @pytest.mark.xfail(
     strict=True,
-    raises=ValueError,
+    raises=_PlaneMismatchRefusal,
     reason=(
-        "WP3.2 EWI-N: the native point inputs of g g > t t~ EW are not exported "
-        "(the SymJIT plane application of its tree program disagrees with the "
-        "exact evaluator)"
+        "WP3.2 EWI-N (ew-native): the native point inputs of g g > t t~ EW are "
+        "refused as the listed plane-mismatch (the SymJIT plane application of "
+        "a parameter-program output disagrees with its exact evaluator at the "
+        "plane check's probes); slice-status DECISIONS 2026-10-26 ~21:10 item 6, "
+        "user-confirmed 2026-10-27 ~19:20"
     ),
 )
 def test_gg_ttx_electroweak_validates_with_native_inputs(
     gg_ttx_ew, tmp_path, monkeypatch
 ):
     """``tools/loop_v2_generate.py validate --inputs native`` on g g > t t~
-    EW: a strict xfail until EWI-N exports its native point inputs, so that a
-    native gap shows here (WP3.2 M8), never as a silent fallback."""
+    EW: a strict xfail on the listed ``plane-mismatch`` refusal until EWI-N
+    exports its native point inputs, so that a native gap shows here as a
+    listed refusal (WP3.2 M8), never as a silent fallback."""
 
     import json
 
@@ -842,8 +851,13 @@ def test_gg_ttx_electroweak_validates_with_native_inputs(
     monkeypatch.setattr(LoopSlice, "generate", lambda *a, **k: slice_)
     out = tmp_path / "record.json"
     arguments = ["validate", "gg_ttx_ew", "--inputs", "native", "--points", "0"]
-    assert loop_v2_generate.main([*arguments, "--json", str(out)]) == 0
+    status = loop_v2_generate.main([*arguments, "--json", str(out)])
     record = json.loads(out.read_text())
+    refusal = record.get("native_refusal")
+    if refusal is not None and refusal.startswith("plane-mismatch: "):
+        assert status == 1 and not record["passed"], record
+        raise _PlaneMismatchRefusal(refusal)
+    assert status == 0 and refusal is None, refusal
     assert record["passed"] and record["points"][0]["max_error"] <= EW_TOLERANCE
 
 

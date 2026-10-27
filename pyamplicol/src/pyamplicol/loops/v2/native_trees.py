@@ -65,8 +65,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import OrderedDict, defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from types import SimpleNamespace
@@ -236,14 +237,14 @@ _PLANES_KEPT = 4096
 
 
 def _plane_applications(
-    states: Sequence[bytes], parameter_outputs: Sequence[Any] = ()
+    states: Sequence[bytes], where: Callable[[int, int], str] | None = None
 ) -> tuple[bytes, ...]:
     """The binary64 SymJIT plane application of each saved exact evaluator
     (storage-v4 IR; the native ``compile_v2_plane`` checks it against the
     evaluator). A disagreement is the listed refusal ``plane-mismatch``
-    naming the kernel, or the parameter-program output by its key in
-    ``parameter_outputs`` when the last state is the parameter program (the
-    kernels come first, ``NativeTrees.planes``)."""
+    naming the output: ``where(state index, output index)`` describes it
+    (``_PlaneOutputs.where`` for a tree program's states; by default the
+    indices)."""
 
     from pyamplicol.loops.native import load_loop_native
 
@@ -258,17 +259,14 @@ def _plane_applications(
                     bytes(state), _PLANE_OPTIMIZATION_LEVEL, False
                 )
             except native.PlaneMismatchError as error:
-                message, output, row, _imaginary = error.args
-                parameter = parameter_outputs and index == len(states) - 1
-                where = (
-                    f"parameter-program output {output} "
-                    f"({_output_label(parameter_outputs[output])})"
-                    if parameter and output < len(parameter_outputs)
-                    else f"output {output} of tree-program kernel {index}"
+                message, output, _row, _imaginary = error.args
+                described = (
+                    where(index, output)
+                    if where is not None
+                    else f"output {output} of saved evaluator {index}"
                 )
                 raise NativeExportUnsupported(
-                    "plane-mismatch",
-                    f"{where} at probe row {row}: {message}",
+                    "plane-mismatch", f"{described}: {message}"
                 ) from error
             plane = _PLANES[key] = bytes(compiled)
             while len(_PLANES) > _PLANES_KEPT:
@@ -279,11 +277,66 @@ def _plane_applications(
     return tuple(out)
 
 
-def _output_label(key: Any) -> str:
+@dataclass(frozen=True)
+class _PlaneOutputs:
+    """What the plane check's refusal names (``_plane_applications``) for the
+    states of a tree program (``NativeTrees.planes``: the trees' vertex and
+    propagator kernels, the counterterm program's, then the parameter
+    program): the kernel by its class and index in the (pruned)
+    ``program``, or the parameter-program output by its key
+    (``_parameter_program``), a derived coupling by its UFO coupling and
+    vertex in ``models`` (the trees' compiled model, then the counterterm
+    program's). Read on a refusal only."""
+
+    program: Mapping[str, Any]
+    parameter_outputs: Sequence[Any]
+    models: tuple[Any, Any]
+
+    def where(self, index: int, output: int) -> str:
+        programs = [("tree program", self.program["interactions"])]
+        ct = self.program.get("counterterm_trees")
+        if ct is not None:
+            programs.append(("counterterm program", ct["interactions"]))
+        for name, interactions in programs:
+            for kind in ("kernels", "propagators"):
+                count = len(interactions[kind])
+                if index < count:
+                    label = "vertex" if kind == "kernels" else "propagator"
+                    return f"output {output} of {label} kernel {index} of the {name}"
+                index -= count
+        if index == 0 and output < len(self.parameter_outputs):
+            label = _output_label(self.parameter_outputs[output], self.models)
+            return f"parameter-program output {output} ({label})"
+        return f"output {output} of saved evaluator {index}"
+
+
+# A derived model parameter that is a vertex term's coupling
+# (``CompiledVertexTerm.id``; ``symbols.runtime_model_parameter``).
+_DERIVED_COUPLING = re.compile(r"derived_coupling_([0-9]+)")
+
+
+def _output_label(key: Any, models: tuple[Any, Any] = (None, None)) -> str:
     """A parameter-program output's key (``_parameter_program``'s ``output``:
-    kind, then the coupling, parameter or constant it forms) as text."""
+    kind, then the coupling, parameter or constant it forms) as text: a
+    derived coupling (``derived_coupling_<term id>``) of the trees' model
+    (kind ``model``) or the counterterm program's (``ct-model``) by its UFO
+    coupling, vertex and particles; a counterterm coefficient with its
+    epsilon power and N_c grade."""
 
     kind, *rest = key
+    model = models[kind == "ct-model"] if kind in ("model", "ct-model") else None
+    derived = None if model is None else _DERIVED_COUPLING.fullmatch(str(rest[0]))
+    if derived is not None:
+        term_id = int(derived.group(1))
+        for term in model.ir.vertex_terms:
+            if term.id == term_id:
+                return (
+                    f"{kind} coupling {term.coupling} of vertex {term.vertex} "
+                    f"({' '.join(term.particles)})"
+                )
+    if kind in ("counterterm", "diagnostic") and len(rest) == 3:
+        name, power, grade = rest
+        return f"{kind} {name}, epsilon power {power}, N_c grade {grade}"
     return " ".join([str(kind), *(str(part) for part in rest)])[:200]
 
 
@@ -312,9 +365,6 @@ def export_trees(
     from .assemble import LAURENT_POWERS, _BlockRows, _single
     from .refusals import require_nc_exact
 
-    # The native Born components and counterterm projections of LC/NLC need
-    # N_c-exact blocks (``refusals``, asserted again at the export).
-    require_nc_exact(slice_.blocks, slice_.request.accuracy, slice_.request.process)
     trees = slice_.tree_rows
     schema = trees.schema
     process = slice_.blocks.process
@@ -340,6 +390,8 @@ def export_trees(
     # closure's index space (``loop_v2::trees``).
     ct_program = slice_.counterterm_program if with_counterterms else None
     if ct_program is not None:
+        # Its LC/NLC counterterm projections need N_c-exact blocks too (the
+        # slice's own are asserted by ``export_plan``, the only caller).
         require_nc_exact(
             ct_program.blocks.blocks, slice_.request.accuracy, slice_.request.process
         )
@@ -629,7 +681,14 @@ def export_trees(
         tuple(components),
         parameter_evaluator,
         () if counterterms is None else counterterms.outputs,
-        _plane_applications((*kernels, parameter_evaluator), parameter_outputs),
+        _plane_applications(
+            (*kernels, parameter_evaluator),
+            _PlaneOutputs(
+                program,
+                parameter_outputs,
+                (trees.compiled, None if ct is None else ct.rows.compiled),
+            ).where,
+        ),
         () if counterterms is None else counterterms.tensors,
     )
 
