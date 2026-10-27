@@ -1647,7 +1647,7 @@ def _check_admitted_loops(slice_, request) -> None:
     recursion = program.recursion
     species = recursion.model.species_orders
     assert species is not None
-    corrections = frozenset(request.corrections)
+    corrections = frozenset(slice_.request.corrections)
     for name, indices in recursion.admission.items():
         for index in indices:
             alternative = recursion.rules[name].alternatives[index]

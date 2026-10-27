@@ -692,10 +692,13 @@ def generate_process(
 
     from pyamplicol.correlators import CorrelatorConfig
 
-    from .assemble import LoopSlice
+    from .assemble import LoopSlice, resolve_request
     from .observables import ObservableSlice
     from .plan_export import export_plan
 
+    # The recorded recipe names the corrections the slice takes (a request
+    # that names none takes the model's strong correction).
+    request = resolve_request(compiled, request)
     if request.counterterms != "recursion":
         # Site closure (with its loop matching) is the O6 test oracle only.
         raise ArtifactError(
