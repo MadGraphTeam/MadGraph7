@@ -1613,7 +1613,13 @@ class MadgraphProcess:
             # rather than dividing by it: that asks for the smallest networks and
             # leaves MadNIS off, which is what an empty subprocess wants.
             rsd = (variance * count_opt)**0.5 / mean if mean else 0.
-            subproc.set_madnis_auto_settings(rsd)
+            subproc.set_madnis_auto_settings(
+                rsd,
+                min(
+                    (channel.phasespace_mapping.random_dim() for channel in ps.channels),
+                    default=0,
+                ),
+            )
             chan_offset += len(ps.channels)
             if subproc.madnis_settings["enable"]:
                 madnis_enabled = True
@@ -1661,9 +1667,15 @@ class MadgraphProcess:
 
         verbosity = resolve_verbosity(run_args["verbosity"])
         madnis_phasespaces = []
+        trained_phasespaces = []
         training_args = []
         self.event_generator = None
         for subproc, phasespace in zip(self.subprocesses, self.phasespaces):
+            if not subproc.madnis_supported:
+                # no flow for a one-dimensional phase space: keep its VEGAS
+                # channels, and their event generators, from the survey
+                madnis_phasespaces.append(phasespace)
+                continue
             for channel in phasespace.channels:
                 channel.event_generator = None
 
@@ -1697,6 +1709,7 @@ class MadgraphProcess:
             config.compressed_channel_weight_count = madnis_args["compressed_channel_weight_count"]
             phasespace = subproc.build_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
+            trained_phasespaces.append(phasespace)
             training_args.append(
                 ms.TrainingArgs(
                     config=config,
@@ -1729,7 +1742,7 @@ class MadgraphProcess:
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
-            madnis_phasespaces, madnis_training.active_channels()
+            trained_phasespaces, madnis_training.active_channels()
         ):
             phasespace.channels = [
                 phasespace.channels[index] for index in active_channels
@@ -2670,6 +2683,8 @@ class MadgraphSubprocess:
         self.process = process
         self.meta = meta
         self.subproc_id = subproc_id
+        # set from the survey by set_madnis_auto_settings
+        self.madnis_supported = True
         self.multi_channel_data = None
 
         self.unmerged_meta = None
@@ -3214,7 +3229,11 @@ class MadgraphSubprocess:
             qcd_s_channel_count,
         )
 
-    def set_madnis_auto_settings(self, rsd: float):
+    def set_madnis_auto_settings(self, rsd: float, random_dim: int):
+        """Choose the MadNIS settings of this subprocess from the relative
+        spread rsd of the survey. random_dim is the smallest number of random
+        numbers of its channels: a normalizing flow needs at least two, so a
+        one-dimensional phase space (a 2 -> 1 process) never uses MadNIS."""
         madnis_args = self.process.run_card["madnis"]
         n_out = len(self.meta["outgoing"])
         n_events = self.process.run_card["generation"]["events"]
@@ -3247,6 +3266,14 @@ class MadgraphSubprocess:
             run_card_value = madnis_args[key]
             if run_card_value != "auto":
                 self.madnis_settings[key] = run_card_value
+        self.madnis_supported = random_dim >= 2
+        if not self.madnis_supported and self.madnis_settings["enable"]:
+            logger.warning(
+                "MadNIS disabled for subprocess %s: its phase space has %d "
+                "random dimension(s), a normalizing flow needs at least 2",
+                self.subproc_id, random_dim,
+            )
+            self.madnis_settings["enable"] = False
 
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
         madnis_args = self.process.run_card["madnis"]
