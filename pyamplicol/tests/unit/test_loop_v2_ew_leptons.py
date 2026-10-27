@@ -38,8 +38,11 @@ owns). Checks:
   loop_qcd_qed_sm against the QED Catani operator (full EW; photon-only a
   strict xfail: the veto splits counterterm couplings), the legacy engine's
   FFS projector exchange checked against MadLoop before the legacy engine
-  serves as the second engine, and the native point inputs of
-  e- e+ > mu- mu+ (a strict xfail until EWI-N);
+  serves as the second engine, the native point inputs of
+  e- e+ > mu- mu+ (a strict xfail until EWI-N), and e- e+ > t t~ h against
+  Recola (``required/emep_ttxh_ew``; MadLoop excluded, it omits the G0 t t~
+  R2 of the b loops), a strict xfail until the counterterm roots' reading of
+  Z G0 H (genericity audit 2 G2-M7, ew-epsilon) is integrated;
 * the tree engine's reading sign of colour-singlet loop segments
   (``catalogue._CatalogueBuilder.reading_sign``): the tree engine reads
   every vertex all-outgoing, so a colour-singlet vertex odd in the momenta of
@@ -1200,6 +1203,83 @@ def test_top_pair_and_leptons_equal_three_providers(
                 worst[provider] = max(worst[provider], error)
                 assert error <= tolerance, (provider, key, value, values[key])
     print({provider: f"{error:.1e}" for provider, error in worst.items()})
+
+
+# ------------------------------------- e- e+ > t t~ h (EW, Recola; MadLoop excluded)
+
+TOP_PAIR_HIGGS = "required/emep_ttxh_ew"
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "the counterterm roots' reading sign of momentum-odd vertices with all "
+        "legs self-conjugate (Z G0 H; genericity audit 2 G2-M7, work/v2-ew-epsilon): "
+        "the single pole misses Recola and Catani by 8.8e-3 of the Born floor; with "
+        "work/v2-ew-epsilon c33ac24a merged every coefficient equals Recola within "
+        "5.7e-12 (whichever package integrates second removes this xfail)"
+    ),
+)
+def test_lepton_initiated_top_pair_higgs_ew_equals_recola(
+    loop_gmu_ufo, loop_native, loop_reference
+):
+    """e- e+ > t t~ h with full electroweak corrections on the G_mu UFO
+    ('t Hooft-Feynman gauge): the electron line through the boxes and
+    pentagons, the Z* -> G0 H and Yukawa vertices on the top line, and the
+    counterterm roots Z G0 H and G0 t t~. Born and every Laurent coefficient
+    at the reference's three points equal Recola within the fixture's
+    tolerance, and the poles equal the QED Catani operator's to 1e-12.
+    MadLoop is excluded (``excluded_providers``): it omits the G0 t t~ R2
+    coupling of the b loops (R2_G0tt_b), whose loop-particle label [W+, b]
+    matches no 't Hooft-Feynman-gauge loop in MG5_aMC's counterterm
+    matching, while the recursion inserts every admitted R2 vertex once
+    (ADDENDUM J); Recola - MadLoop is exactly that term. Generation about
+    11 min, 8 GB."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice, SliceRequest
+    from pyamplicol.models.loading import compile_model_source
+
+    reference = loop_reference(TOP_PAIR_HIGGS)
+    assert reference["validated_providers"] == ["recola"]
+    compiled = compile_model_source(loop_gmu_ufo, require_supported=False)
+    externals = {record.name for record in compiled.ir.parameters}
+    fixed = {k: v for k, v in reference["fixed_parameters"].items() if k in externals}
+    request = SliceRequest(
+        "e- e+ > t t~ h",
+        dict(reference["born_orders"]),
+        dict(reference["loop_orders"]),
+        corrections=("QED",),
+        fixed_parameters=fixed,
+        compatibility="gmu_particle_anti",
+        scale_parameter="MU_R",
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    alpha = float(reference["derived_parameters"]["alpha"])
+    tolerance = reference["tolerance"]
+    worst = 0.0
+    for point, mu, row in zip(
+        reference["points"], reference["mu_r"], reference["rows"], strict=True
+    ):
+        result = slice_.evaluate(
+            point, str(Fraction(mu) ** 2), parameters=dict(reference["parameters"])
+        )
+        born, virtual = _totals(result)
+        recola = row["providers"]["recola"]
+        floor = abs(recola["born"]) * alpha / (2 * math.pi)
+        assert _metric(born, recola["born"], 0.0) <= tolerance
+        for value, key in zip(virtual, LAURENT, strict=True):
+            error = _metric(value, recola[key], floor)
+            worst = max(worst, error)
+            assert error <= tolerance, (key, value, recola[key])
+        assert result.ir_poles is not None
+        for sector, laurent in result.components["virtual"].items():
+            single, double = (complex(x) for x in result.ir_poles[sector])
+            scale = max(abs(single), abs(double))
+            assert abs(complex(laurent.double_pole) - double) <= TOLERANCE * scale
+            assert abs(complex(laurent.single_pole) - single) <= TOLERANCE * scale
+    print(f"recola {worst:.1e}")
 
 
 # ------------------------------------------------ Bhabha (loop_qcd_qed_sm)
