@@ -573,23 +573,29 @@ class PositionColour:
     grades: tuple[int, ...] = ()
 
     @property
-    def graded_words(self) -> tuple[tuple[tuple[int, ...], int | None], ...]:
-        """(word, N_c grade or ``None`` over full-colour blocks) of each
-        attached block: its key among the blocks of its block current
-        (``SeedColour.attached_blocks``, the block rows of
-        ``reference_executor.BlockRows``, ``block_state_grade``)."""
+    def block_names(self) -> tuple[BlockName, ...]:
+        """The name of each attached block among the blocks of its block
+        current (``block_name``; ``SeedColour.attached_blocks``, the block
+        rows of ``reference_executor.BlockRows``): its word, or (word, N_c
+        grade) over graded blocks."""
 
         if not self.grades:
-            return tuple((word, None) for word in self.words)
+            return self.words
         return tuple(zip(self.words, self.grades, strict=True))
 
 
-def block_state_grade(blocks: TreeBlocks, block: Block) -> int | None:
-    """The grade with which a colour state names ``block`` of ``blocks``:
-    its N_c grade over graded blocks (``TreeBlocks.graded``), ``None`` over
-    full-colour blocks, whose word alone names them."""
+# A block's name among the blocks of its block current: its word, or (word,
+# N_c grade) over graded blocks (``block_name``).
+BlockName = tuple[int, ...] | tuple[tuple[int, ...], int | None]
 
-    return block.colour_flow.nc_grade if blocks.graded else None
+
+def block_name(blocks: TreeBlocks, block: Block) -> BlockName:
+    """The name with which a colour state refers to ``block`` of ``blocks``
+    (``PositionColour.block_names``): its word over full-colour blocks, (word,
+    N_c grade) over graded blocks (``TreeBlocks.graded``)."""
+
+    word = block.key.word
+    return (word, block.colour_flow.nc_grade) if blocks.graded else word
 
 
 def block_colour_network(
@@ -632,11 +638,12 @@ def block_colour_network(
 _UFO_SLOT = re.compile(r"ufo_c_(\d+)$")
 
 
-def _graded_word_order(key: tuple[tuple[int, ...], int | None]) -> tuple:
-    """Words in order, then the grades of one word decreasing (0 first)."""
+def _graded_name_order(name: tuple[tuple[int, ...], int]) -> tuple:
+    """Graded block names in state order: words in order, then the grades of
+    one word decreasing (0 first)."""
 
-    word, grade = key
-    return (word, 1 if grade is None else 0, 0 if grade is None else -grade)
+    word, grade = name
+    return (word, -grade)
 
 
 def _vertex_label(name: str) -> Label:
@@ -693,11 +700,9 @@ class SeedColour:
                 )
                 for p in network
             )
-        # (mask, field, orders) -> (word, N_c grade) -> block (the blocks of
-        # one graded word differ only by chirality, which colour ignores).
-        self._words: dict[
-            tuple[int, str, Orders], dict[tuple[tuple[int, ...], int | None], Block]
-        ] = {}
+        # (mask, field, orders) -> block name (``block_name``) -> block (the
+        # blocks of one name differ only by chirality, which colour ignores).
+        self._words: dict[tuple[int, str, Orders], dict[BlockName, Block]] = {}
         for block in blocks.blocks:
             key = block.key
             if key.auxiliary_kind is not None:
@@ -717,11 +722,9 @@ class SeedColour:
             field_name = self._fields.incoming(key.particle_id)["name"]
             self._words.setdefault(
                 (key.external_mask, field_name, key.coupling_orders), {}
-            ).setdefault((key.word, block_state_grade(blocks, block)), block)
-        # The (word, grade) keys of each block current in state order, once.
-        self._ordered: dict[
-            tuple[int, str, Orders], tuple[tuple[tuple[int, ...], int | None], ...]
-        ] = {}
+            ).setdefault(block_name(blocks, block), block)
+        # The block names of each block current in state order, once.
+        self._ordered: dict[tuple[int, str, Orders], tuple[BlockName, ...]] = {}
 
     # -- ColourModel ---------------------------------------------------------
 
@@ -736,14 +739,12 @@ class SeedColour:
             self._fields.by_name[vertex.loop_out]["antiname"],
             tuple(block.field for block in position.blocks),
         )
-        options = [self._ordered_words(block) for block in position.blocks]
+        options = [self._ordered_names(block) for block in position.blocks]
         if not self.blocks.graded:
             return tuple(
-                PositionColour(
-                    vertex.rule, index, legs, tuple(word for word, _ in choice)
-                )
+                PositionColour(vertex.rule, index, legs, words)
                 for index in sorted(indices)
-                for choice in product(*options)
+                for words in product(*options)
             )
         return tuple(
             PositionColour(
@@ -786,7 +787,7 @@ class SeedColour:
         for term in content.terms:
             blocks = tuple(
                 self._words[(current.mask, current.field, current.orders)][word]
-                for current, word in zip(term.blocks, state.graded_words, strict=True)
+                for current, word in zip(term.blocks, state.block_names, strict=True)
             )
             if found is None:
                 found = blocks
@@ -860,23 +861,27 @@ class SeedColour:
 
     # -- helpers -------------------------------------------------------------
 
-    def _block_words(self, block) -> tuple[tuple[tuple[int, ...], int | None], ...]:
-        """The (word, N_c grade) keys of a block current's tree blocks."""
+    def _block_words(self, block) -> tuple[BlockName, ...]:
+        """The names (``block_name``) of a block current's tree blocks."""
 
         words = self._words.get((block.mask, block.field, block.orders))
         if not words:
             raise ValueError(f"no tree block for {block}")
         return tuple(words)
 
-    def _ordered_words(self, block) -> tuple[tuple[tuple[int, ...], int | None], ...]:
-        """``_block_words`` in state order (``_graded_word_order``), cached
-        per block current."""
+    def _ordered_names(self, block) -> tuple[BlockName, ...]:
+        """``_block_words`` in state order (words in order; over graded
+        blocks the grades of one word decreasing), cached per block
+        current."""
 
         key = (block.mask, block.field, block.orders)
         found = self._ordered.get(key)
         if found is None:
+            names = self._block_words(block)
             found = self._ordered[key] = tuple(
-                sorted(self._block_words(block), key=_graded_word_order)
+                sorted(names, key=_graded_name_order)
+                if self.blocks.graded
+                else sorted(names)
             )
         return found
 

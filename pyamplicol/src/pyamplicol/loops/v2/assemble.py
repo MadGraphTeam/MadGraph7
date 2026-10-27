@@ -4012,11 +4012,11 @@ def _interfere(
 
 class _BlockRows:
     """Tree rows of the slice as ``rx.BlockRows``, as Feynman-rule currents,
-    keyed by the contents' graded words (``PositionColour.graded_words``)."""
+    keyed by the contents' block names (``PositionColour.block_names``)."""
 
     def __init__(self, slice_: LoopSlice, rows):
         from .blocks import _NativeFields
-        from .colour import block_state_grade
+        from .colour import block_name
 
         fields = _NativeFields.of(slice_.data)
         index = slice_._cache.get("block-rows")
@@ -4033,7 +4033,7 @@ class _BlockRows:
                         key.external_mask,
                         name,
                         key.coupling_orders,
-                        (key.word, block_state_grade(trees, block)),
+                        block_name(trees, block),
                     )
                 ]
                 for row in block.rows:

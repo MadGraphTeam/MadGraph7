@@ -763,8 +763,9 @@ class BlockRows(Protocol):
         self, block: BlockCurrent, word: Hashable
     ) -> Mapping[int, tuple[Row, ...]]:
         """Helicity rows of a block word, per current chirality. ``word``
-        is the content colour's key of the block: a colour-ordered word, or
-        a ``PositionColour.graded_words`` entry (word, N_c grade)."""
+        is the content colour's name of the block
+        (``PositionColour.block_names``): a colour-ordered word, or (word,
+        N_c grade) over graded blocks."""
         ...
 
     def value(
@@ -997,7 +998,7 @@ class CatalogueKinematics:
                 (state.colour_index,),
                 state.legs,
                 term.vertex.orders,
-                tuple(zip(term.blocks, state.graded_words, strict=True)),
+                tuple(zip(term.blocks, state.block_names, strict=True)),
             )
             return
         if not isinstance(content.colour, tuple):

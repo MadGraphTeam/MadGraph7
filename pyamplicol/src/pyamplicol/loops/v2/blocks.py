@@ -456,7 +456,7 @@ class TreeBlocks:
     under ``dag_input.NATIVE_DAG``. ``graded`` tells that the DAG was
     compiled with the N_c grade split (leading and next-to-leading colour,
     ``generation.dag_grades``): every block has one grade, and a colour state
-    names a block by its word and grade (``colour.block_state_grade``).
+    names a block by its word and grade (``colour.block_name``).
     """
 
     process: CanonicalProcessIR
