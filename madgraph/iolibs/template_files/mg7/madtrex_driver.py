@@ -288,11 +288,73 @@ def _read_run_card(path: str) -> dict:
     """The [run] and [beam] sections of the run_card.toml at path, with
     _RUN_CARD_DEFAULTS filled in for missing entries."""
     with open(path, "rb") as f:
-        card = tomllib.load(f)
+        return _fill_run_card(tomllib.load(f))
+
+
+def _fill_run_card(card: dict) -> dict:
     return {
         section: {**defaults, **card.get(section, {})}
         for section, defaults in _RUN_CARD_DEFAULTS.items()
     }
+
+
+_RUN_CARD_BLOCK_RE = re.compile(r"<MG7RunCard>(.*?)</MG7RunCard>", re.S)
+
+
+def _read_events_run_card(events_path: str) -> dict | None:
+    """The run_card.toml the events of events_path were generated with --
+    the <MG7RunCard> block launch.py (and a gridpack) write into the LHE
+    header: header.lhe next to an events.npy, else the LHE file's own
+    header -- parsed as _read_run_card() does, or None when there is none.
+    This, not the process directory's current Cards/run_card.toml (which
+    may have been edited since, e.g. for another run), is what the sample
+    was made with."""
+    if events_path.endswith(".npy"):
+        header_path = os.path.join(os.path.dirname(events_path), "header.lhe")
+    else:
+        header_path = events_path
+    if not os.path.isfile(header_path):
+        return None
+    opener = gzip.open if header_path.endswith(".gz") else open
+    lines = []
+    try:
+        with opener(header_path, "rt", errors="replace") as f:
+            for line in f:  # the header only: stop at <init> or the first event
+                if "<init" in line or "<event" in line:
+                    break
+                lines.append(line)
+    except OSError:
+        return None
+    match = _RUN_CARD_BLOCK_RE.search("".join(lines))
+    if not match:
+        return None
+    content = match.group(1).strip()
+    if content.startswith("<![CDATA[") and content.endswith("]]>"):
+        content = content[len("<![CDATA["):-len("]]>")]
+    else:
+        import html
+        content = html.unescape(content)
+    try:
+        return _fill_run_card(tomllib.loads(content))
+    except tomllib.TOMLDecodeError:
+        return None
+
+
+def _generation_run_card(process_directory: str, events_path: str | None,
+                         card_path: str) -> tuple[dict | None, str]:
+    """(run card, where it was read) for the sample of events_path: the run
+    card in the events' header (see _read_events_run_card()), else the card
+    at card_path in the process directory, else (None, '')."""
+    if events_path is not None:
+        card = _read_events_run_card(events_path)
+        if card is not None:
+            return card, "the header of " + events_path
+    if os.path.isfile(card_path):
+        try:
+            return _read_run_card(card_path), card_path
+        except tomllib.TOMLDecodeError:
+            pass
+    return None, ""
 
 
 def resolve_auto_backend(build_path: str) -> str:
@@ -356,70 +418,62 @@ def _read_devices(process_directory: str) -> list[str]:
     return list(dict.fromkeys(backends))
 
 
-def _read_default_pdf_set(process_directory: str) -> str | None:
-    """Best-effort read of [beam] pdf1 from process_directory/Cards/
-    run_card.toml -- the PDF set the run itself actually used to generate
-    its events, per the same run_card field launch.py's init_beam() reads
-    (PdfDriver needs the same set on both beams; a run with pdf1 != pdf2
-    returns None, so the card has to name its baseline explicitly). This is run_pdf_reweighting()'s hook for inferring a
-    PDF reweight card's baseline PDF set (see pdf_reweight_card.py's module
-    docstring) when the card's own preamble doesn't set one explicitly:
-    since the run_card is the actual generation record, its [beam] pdf1 is a
-    reliable stand-in for "whatever PDF set this sample's own weight
-    already corresponds to" -- see _read_run_fptype() just below for the
-    equivalent hook for FPTYPE.
+def _read_default_pdf_set(process_directory: str, events_path: str | None = None
+                          ) -> tuple[str | None, str]:
+    """(PDF set, where it was read): [beam] pdf1 of the run card the events
+    of events_path were generated with -- the <MG7RunCard> of their LHE
+    header (see _read_events_run_card()), else process_directory/Cards/
+    run_card.toml. This is run_pdf_reweighting()'s baseline PDF set when the
+    PDF reweight card names none: the PDF set the sample's own weights
+    correspond to. The header comes first because the current run_card may
+    have been edited since the sample was made (another run with another
+    PDF), which would scale every weight by the wrong ratio.
 
-    Returns None, not an error, whenever the run_card doesn't exist or
-    doesn't carry a usable pdf entry (eg process_directory is a bare/
-    relocated sample with no Cards/ of its own, or a leptonic run) --
-    callers fall back to requiring an explicit
-    PDF_SET in that case, same as before this hook existed."""
-    run_card_path = os.path.join(process_directory, "Cards", "run_card.toml")
-    if not os.path.isfile(run_card_path):
-        return None
+    PdfDriver needs the same set on both beams: a run with pdf1 != pdf2, a
+    leptonic run, or no run card at all gives (None, ...), and the card then
+    has to name its baseline PDF_SET explicitly."""
+    card, source = _generation_run_card(
+        process_directory, events_path,
+        os.path.join(process_directory, "Cards", "run_card.toml"))
+    if card is None:
+        return None, ""
     try:
-        beam = _read_run_card(run_card_path)["beam"]
+        beam = card["beam"]
         if beam["leptonic"] or beam["pdf1"] != beam["pdf2"]:
-            return None
+            return None, source
         pdf_set = beam["pdf1"]
-    except (KeyError, TypeError, tomllib.TOMLDecodeError):
-        return None
-    return pdf_set or None
+    except (KeyError, TypeError):
+        return None, source
+    return (pdf_set or None), source
 
 
 # [run] precision -> FPTYPE, as launch.py's fptype_of()
 _PRECISION_2_FPTYPE = {"all64": "d", "all32": "f", "color32": "m", "denom64": "v"}
 
 
-def _read_run_fptype(process_directory: str) -> str | None:
-    """Best-effort read of the FPTYPE from process_directory/Cards/
-    run_card.toml's [run] precision -- the fptype this sample was ACTUALLY
-    generated/compiled at (mapped as launch.py's fptype_of() does; see
-    MadgraphProcess.compile_matrix_elements in launch.py). Used by
-    run_parameter_reweighting() for two, related purposes:
+def _read_run_fptype(process_directory: str, events_path: str | None = None) -> str | None:
+    """The FPTYPE the sample of events_path was generated (and its matrix
+    elements compiled) at: [run] precision of the run card in the events'
+    LHE header (see _read_events_run_card()), else of the process
+    directory's run card (Cards/grid_run_card.toml in a gridpack), mapped as
+    launch.py's fptype_of() does. Used by run_parameter_reweighting() as
 
-    - as the default *target* fptype (param_rwgt_card.group_by_fptype()'s
-      default_fptype) when a reweight card sets no "set FPTYPE ..." at all,
-      so a plain, non-FPTYPE-changing reweight stays at whatever precision
-      the sample already is, rather than drifting to a hardcoded default;
-    - as the *normaliser* fptype (Driver.set_normaliser_fptype_priority()),
-      always -- a launch must be normalised against the sample's real,
-      original configuration, never against whichever fptype it's being
-      reweighted TO. This is the "future hook" param_reweight_card.py's own
-      module docstring flagged as missing; the run_card is the actual
-      generation record, so this is a real fact being looked up, not a
-      guessed default (same reasoning as _read_default_pdf_set() above).
+    - the default *target* fptype (param_rwgt_card.group_by_fptype()'s
+      default_fptype) when a reweight card sets no "change fptype", so a
+      plain reweight stays at the sample's own precision;
+    - the *normaliser* fptype (Driver.set_normaliser_fptype_priority()),
+      always: a launch is normalised against the sample's own configuration,
+      never against the fptype it is reweighted to.
 
-    Returns None, not an error, on any bare/relocated/predates-the-fptype-
-    field process_directory -- callers fall back to
-    param_rwgt_card.DEFAULT_FPTYPE in that case, same as group_by_fptype()'s
-    own pre-existing fallback."""
-    run_card_path = _run_card_path(process_directory)
-    if not os.path.isfile(run_card_path):
+    None when there is no run card to read; callers then fall back to
+    param_rwgt_card.DEFAULT_FPTYPE."""
+    card, _ = _generation_run_card(process_directory, events_path,
+                                   _run_card_path(process_directory))
+    if card is None:
         return None
     try:
-        precision = _read_run_card(run_card_path)["run"]["precision"]
-    except (KeyError, TypeError, tomllib.TOMLDecodeError):
+        precision = card["run"]["precision"]
+    except (KeyError, TypeError):
         return None
     if not precision:
         return None
@@ -681,7 +735,8 @@ def run_parameter_reweighting(
     # unconditionally below, as every group.model_spec-is-None group's
     # *normaliser* fptype -- a launch must always be normalised against this
     # original configuration, never against whichever fptype it targets.
-    original_fptype = _read_run_fptype(process_directory) or param_rwgt_card.DEFAULT_FPTYPE
+    original_fptype = (_read_run_fptype(process_directory, source_path)
+                       or param_rwgt_card.DEFAULT_FPTYPE)
     groups = [
         group for group in param_rwgt_card.group_by_fptype(parsed, default_fptype=original_fptype)
         if group.launches
@@ -854,12 +909,12 @@ def run_pdf_reweighting(
         parsed = pdf_rwgt_card.expand_scans(pdf_rwgt_card.parse_pdf_reweight_card(f.read()))
     baseline = parsed.baseline
     if baseline.pdf_set_name is None and baseline.beam1_pdf_set_name is None and baseline.beam2_pdf_set_name is None:
-        default_pdf_set = _read_default_pdf_set(process_directory)
+        default_pdf_set, source = _read_default_pdf_set(process_directory, source_path)
         if default_pdf_set is not None:
             logger.info(
-                "MadtRex: PDF reweight card %s sets no baseline PDF_SET; inferring '%s' "
-                "from %s",
-                rwgt_path, default_pdf_set, os.path.join(process_directory, "Cards", "run_card.toml"),
+                "MadtRex: PDF reweight card %s sets no baseline PDF_SET; using '%s', "
+                "the PDF set the events were generated with (from %s)",
+                rwgt_path, default_pdf_set, source,
             )
             baseline.pdf_set_name = default_pdf_set
     card = pdf_rwgt_card.resolve(parsed)

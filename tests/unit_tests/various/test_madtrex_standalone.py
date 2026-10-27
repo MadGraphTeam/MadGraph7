@@ -77,11 +77,42 @@ class MadtrexStandaloneTest(unittest.TestCase):
                 import runpy
                 ns = runpy.run_path({str(SCRIPT)!r})
                 print(ns["_read_run_fptype"]({proc_dir!r}),
-                      ns["_read_default_pdf_set"]({proc_dir!r}),
+                      ns["_read_default_pdf_set"]({proc_dir!r})[0],
                       ns["_read_run_card"]({proc_dir!r} + "/Cards/run_card.toml")["run"]["device"])
             """))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.split(), ["d", "X", "['cpu']"])
+
+    def test_generation_run_card_comes_from_the_events(self):
+        """The baseline PDF set and the normaliser fptype are those the
+        events were generated with (the run card in their LHE header), not
+        those of the current Cards/run_card.toml, edited since."""
+        import gzip
+        with tempfile.TemporaryDirectory() as proc_dir:
+            os.mkdir(os.path.join(proc_dir, "Cards"))
+            with open(os.path.join(proc_dir, "Cards", "run_card.toml"), "w") as f:
+                f.write('[run]\nprecision = "all32"\n\n[beam]\npdf1 = "NEW"\npdf2 = "NEW"\n')
+            header = ('<LesHouchesEvents version="3.0">\n<header>\n<MG7RunCard>\n'
+                      '[run]\nprecision = &quot;all64&quot;\n\n[beam]\n'
+                      'pdf1 = &quot;OLD&quot;\npdf2 = &quot;OLD&quot;\n</MG7RunCard>\n'
+                      '</header>\n<init>\n2212 2212 6.5e+03 6.5e+03 0 0 1 1 3 1\n</init>\n')
+            npy_run = os.path.join(proc_dir, "Events", "run_01")
+            lhe_run = os.path.join(proc_dir, "Events", "run_02")
+            for run in (npy_run, lhe_run):
+                os.makedirs(run)
+            with open(os.path.join(npy_run, "header.lhe"), "w") as f:
+                f.write(header + "</LesHouchesEvents>\n")
+            with gzip.open(os.path.join(lhe_run, "events.lhe.gz"), "wt") as f:
+                f.write(header + "<event>\n</event>\n</LesHouchesEvents>\n")
+            result = self.run_isolated(textwrap.dedent(f"""
+                import runpy
+                ns = runpy.run_path({str(SCRIPT)!r})
+                for events in ({npy_run + "/events.npy"!r}, {lhe_run + "/events.lhe.gz"!r}, None):
+                    print(ns["_read_run_fptype"]({proc_dir!r}, events),
+                          ns["_read_default_pdf_set"]({proc_dir!r}, events)[0])
+            """))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.split(), ["d", "OLD", "d", "OLD", "f", "NEW"])
 
     def test_classic_cards_are_refused(self):
         """bin/reweight is MadtRex only: a card for the classic module says
