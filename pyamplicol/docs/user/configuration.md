@@ -643,6 +643,40 @@ within about 1e-3 rad of the z axis can lose up to about 1e-5 of relative
 accuracy silently; use a rotation or the reduction-direction check for such
 kinematics.
 
+#### Leading-colour helicity and colour-flow selection
+
+At leading colour (`[color] accuracy = "lc"`) a v2 virtual offers the tree
+engine's selectors, with the tree engine's identifiers and conventions.
+At evaluation, `Runtime.evaluate(..., helicities=[...], color_flows=[...])`
+returns the sum of the selected Born helicity rows and colour flows (Born
+included): helicities by tree ID (`h:-1,+1,...`, values in leg order) or the
+runtime's `h<index>`, flows by tree ID (`flow:2,4,3,5,1`) or 1-based ordinal
+in the tree runtime's order. `runtime.physics.born_anchored_color_components`
+lists the flows. A complete set of selections sums to the inclusive value; a
+(helicity, flow) selection equals its `evaluate_resolved` entry. At
+generation, `process.selected_source_helicities` (leg label to helicity) and
+`process.selected_color_sector_ids` (sectors of the tree engine's
+leading-colour plan, after `reference_color_order` and `max_color_sectors`)
+prune the recursion to the selection: fewer Born rows, skeletons and tree
+currents. The artifact's `evaluate()` then returns the selection.
+
+```toml
+[process]
+selected_color_sector_ids = [2]
+selected_source_helicities = {"1" = -1, "5" = 1}
+[color]
+accuracy = "lc"
+[loop]
+engine = "v2"
+```
+
+The loop's leading colour is the leading N_c power of the squared matrix
+element. A tree flow below it, such as a flow of u u~ > d d~ g that joins
+each quark to its own antiquark, has no leading-colour Born or virtual. Its
+selection is zero at evaluation and refused at generation. Next-to-leading
+and full colour expose no selection: they evaluate every helicity and colour,
+and their API and plans are unchanged.
+
 #### Ultraviolet and infrared poles
 
 With `poles = "uv"` or `"ir"` every pole of the Born-virtual interference is
