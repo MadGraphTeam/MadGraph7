@@ -686,6 +686,10 @@
   "process": "gg_ttxgg",
   "export": "runs/required/gg_ttxgg/madloop-export",
   "split_points": true,
+  "madloop_evaluation": {
+   "mode": "mlstabthres",
+   "reason": "not re-evaluated (2->4/2->5 runs of 2.0-2.4 CPU-hours per batch; the per-sector batch-2 values stand): MadLoop quadruple precision at every point already (return code 328, MLStabThres 1e-13 with its own CTModeRun -1 test), the evaluation the campaign forces elsewhere; MadLoop's helicity filter computed every helicity configuration (no zero and no folded entry in its HelFilter.dat), the same as HelicityFilterLevel = 0"
+  },
   "note": "per-sector MadLoop accuracy and the mu_R = mu_0/2 point at the committed fixture's points",
   "points": {
    "generator": "fixture",

@@ -936,6 +936,10 @@
    }
   },
   "madloop_accuracy": 1e-20,
+  "madloop_evaluation": {
+   "mode": "mlstabthres",
+   "reason": "not re-evaluated: a fixed CTModeRun = 4 evaluation returns NaN at the theta = 1e-4, 1e-5 points (rows 1, 2: no reference, status none), where MadLoop's own CTModeRun -1 evaluation ends unstable (420); the batch-2 run (MLStabThres 1e-20: quadruple precision, return code 328 at row 0) stands. Its helicity filter set only configurations violating helicity conservation on the massless quark line or with a vanishing Born to zero (no folded entry)"
+  },
   "exclude_providers": {
    "recola": "COLLIER double precision fails at small opening angles (1e-4 relative at theta = 1e-3)"
   },

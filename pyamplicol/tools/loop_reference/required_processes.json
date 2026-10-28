@@ -490,7 +490,8 @@
       "born_orders": {"QCD": 4, "QED": 0},
       "correction": "QCD",
       "scheme": "qcd",
-      "madloop": {"process": "g g > u u~ u u~ QED=0 [virt=QCD]"}
+      "madloop": {"process": "g g > u u~ u u~ QED=0 [virt=QCD]"},
+      "openloops": {"process": "21 21 -> 2 -2 2 -2", "library": "ppjjjj"}
     },
     {
       "name": "ud_ud",
@@ -570,7 +571,8 @@
       "born_orders": {"QCD": 2, "QED": 0},
       "correction": "QCD",
       "scheme": "qcd-4fs",
-      "madloop": {"process": "g g > b b~ QED=0 [virt=QCD]"}
+      "madloop": {"process": "g g > b b~ QED=0 [virt=QCD]"},
+      "recola": {"process": "g g -> b b~"}
     },
     {
       "name": "gg_gg_4fs",
@@ -978,6 +980,7 @@
       "correction": "QCD",
       "scheme": "qcd-4fs",
       "madloop": {"process": "g g > b b~ QED=0 [virt=QCD]"},
+      "recola": {"process": "g g -> b b~"},
       "madloop_export_of": "gg_bbx_4fs",
       "parameter_overrides": {"MB": "4.5", "aS": "0.13"}
     }

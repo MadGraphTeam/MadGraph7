@@ -287,7 +287,7 @@
      "double_pole": -0.13239614287344934,
      "accuracy": 0.0,
      "status": 328,
-     "seconds": 19.4991328,
+     "seconds": 29.6277063,
      "universal_double_pole_relative_error": 4.5282318675298215e-14
     }
    },
@@ -351,7 +351,7 @@
      "double_pole": -0.13573785057011054,
      "accuracy": 0.0,
      "status": 328,
-     "seconds": 19.3345073,
+     "seconds": 29.8165787,
      "universal_double_pole_relative_error": 9.20156682500416e-15
     }
    },
@@ -415,7 +415,7 @@
      "double_pole": -0.14384505058844202,
      "accuracy": 0.0,
      "status": 328,
-     "seconds": 19.5007649,
+     "seconds": 30.3622459,
      "universal_double_pole_relative_error": 1.5629329029180725e-14
     }
    },
@@ -479,7 +479,7 @@
      "double_pole": -0.13239614287344934,
      "accuracy": 6.684242510963587e-16,
      "status": 328,
-     "seconds": 19.4926946,
+     "seconds": 30.3751538,
      "universal_double_pole_relative_error": 4.5282318675298215e-14
     }
    },
@@ -827,7 +827,11 @@
   "settings": {
    "requested_relative_accuracy": 1e-13,
    "stability_check": "forced on every call",
-   "helicities": "all MadLoop helicity configurations"
+   "helicities": "all MadLoop helicity configurations",
+   "MadLoopParams_overrides": {
+    "HelicityFilterLevel": "0"
+   },
+   "quadruple_precision_stage": "every point: the run's loop_matrix.f copy bypasses MadLoop's double-precision acceptance, so its quadruple-precision stage (MLStabThres test over two propagator directions; Ninja, else CutTools) evaluates every point (references.force_quadruple_stage)"
   },
   "rows": [
    [
@@ -841,11 +845,20 @@
      ],
      "madloop_index": 1,
      "status": 328,
-     "born": 0.5310653824464222,
+     "born": 0.5310653824464456,
      "finite": -0.798205116018697,
      "single_pole": -0.4915913939193963,
      "double_pole": -0.14960337487677125,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.411077542218284e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.5310653824464222
     },
     {
      "helicity": [
@@ -857,11 +870,20 @@
      ],
      "madloop_index": 2,
      "status": 328,
-     "born": 0.0002878911206901322,
+     "born": 0.00028789112069014085,
      "finite": -0.0003304632383113507,
      "single_pole": -0.00026649222863129343,
      "double_pole": -8.110015202627938e-05,
-     "accuracy": 6.236049601835482e-15
+     "accuracy": 6.236049601835482e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.0128117043316205e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.0002878911206901322
     },
     {
      "helicity": [
@@ -873,11 +895,20 @@
      ],
      "madloop_index": 3,
      "status": 328,
-     "born": 3.625350744962974e-11,
+     "born": 3.625350744600388e-11,
      "finite": 4.4464521946410695e-08,
      "single_pole": -3.35587911560502e-11,
      "double_pole": -1.0212767098577122e-11,
-     "accuracy": 1.0520851568504746e-14
+     "accuracy": 1.0520851568504746e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0001392961176037e-10,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 1e-10 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 3.625350744962974e-11
     },
     {
      "helicity": [
@@ -888,12 +919,21 @@
       1
      ],
      "madloop_index": 4,
-     "status": 318,
-     "born": 3.435546571037401e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 1.0520851568504746e-14
+     "status": 329,
+     "born": -2.693685823160139e-37,
+     "finite": 9.559105804230917e-36,
+     "single_pole": -1.5815223245134252e-35,
+     "double_pole": 7.5882274258972e-38,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000000784063254,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 3.435546571037401e-30
     },
     {
      "helicity": [
@@ -905,11 +945,20 @@
      ],
      "madloop_index": 5,
      "status": 328,
-     "born": 0.27016191853228094,
+     "born": 0.270161918532293,
      "finite": -0.4056830052125489,
      "single_pole": -0.25008083468634157,
      "double_pole": -0.0761057604421997,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.4587778627812325e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.27016191853228094
     },
     {
      "helicity": [
@@ -920,12 +969,21 @@
       1
      ],
      "madloop_index": 6,
-     "status": 318,
-     "born": 7.645948923434347e-32,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 6.283957769930414e-39,
+     "finite": 2.7785056960843015e-37,
+     "single_pole": 4.230335516374198e-38,
+     "double_pole": -1.770217606039313e-39,
+     "accuracy": 3.566146608247417e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999999178132389,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 7.645948923434347e-32
     },
     {
      "helicity": [
@@ -936,12 +994,21 @@
       -1
      ],
      "madloop_index": 7,
-     "status": 318,
-     "born": 2.3191678344494545e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -1.2372777191639189e-36,
+     "finite": -1.3898085706401875e-35,
+     "single_pole": -2.7749722248424556e-35,
+     "double_pole": 3.485463910188543e-37,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000005335007243,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 2.3191678344494545e-30
     },
     {
      "helicity": [
@@ -952,12 +1019,21 @@
       1
      ],
      "madloop_index": 8,
-     "status": 318,
-     "born": 1.4939207341366642e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 2.353709038926977e-38,
+     "finite": -7.42768980154957e-36,
+     "single_pole": 1.2700558921325968e-36,
+     "double_pole": -6.630498378171858e-39,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999999842447528,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.4939207341366642e-30
     },
     {
      "helicity": [
@@ -968,12 +1044,21 @@
       -1
      ],
      "madloop_index": 9,
-     "status": 318,
-     "born": 1.1131301135533377e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -2.1882263666054602e-38,
+     "finite": 1.0370732542753015e-36,
+     "single_pole": -2.8390512342405155e-37,
+     "double_pole": 6.164326658432202e-39,
+     "accuracy": 3.629883827595281e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000001965831613,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.1131301135533377e-31
     },
     {
      "helicity": [
@@ -985,11 +1070,20 @@
      ],
      "madloop_index": 10,
      "status": 328,
-     "born": 0.045945877629069994,
+     "born": 0.04594587762907269,
      "finite": -0.06490914558667243,
      "single_pole": -0.04253072931336014,
      "double_pole": -0.012943148964671185,
-     "accuracy": 6.916816356139107e-16
+     "accuracy": 6.916816356139107e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.87480285045627e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.045945877629069994
     },
     {
      "helicity": [
@@ -1001,11 +1095,20 @@
      ],
      "madloop_index": 11,
      "status": 328,
-     "born": 0.011145193709987613,
+     "born": 0.011145193709988167,
      "finite": -0.014927534845150803,
      "single_pole": -0.010316773588508715,
      "double_pole": -0.0031396484270705305,
-     "accuracy": 9.167450566292483e-16
+     "accuracy": 9.167450566292483e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.9651607969870716e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.011145193709987613
     },
     {
      "helicity": [
@@ -1017,11 +1120,20 @@
      ],
      "madloop_index": 12,
      "status": 328,
-     "born": 2.008443453602252e-05,
+     "born": 2.0084434536014826e-05,
      "finite": -1.8595550239256702e-07,
      "single_pole": -1.859156234992967e-05,
      "double_pole": -5.657870553033836e-06,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 3.8310499999677146e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 3.8e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 2.008443453602252e-05
     },
     {
      "helicity": [
@@ -1033,11 +1145,20 @@
      ],
      "madloop_index": 13,
      "status": 328,
-     "born": 1.8709444477436644e-05,
+     "born": 1.8709444477444996e-05,
      "finite": -4.125266466370357e-06,
      "single_pole": -1.7318775040005945e-05,
      "double_pole": -5.270530010827059e-06,
-     "accuracy": 1.99752691682353e-14
+     "accuracy": 1.99752691682353e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 4.463919209357484e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 4.5e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 1.8709444477436644e-05
     },
     {
      "helicity": [
@@ -1049,11 +1170,20 @@
      ],
      "madloop_index": 14,
      "status": 328,
-     "born": 0.07672070320751802,
+     "born": 0.076720703207522,
      "finite": -0.10750914175013694,
      "single_pole": -0.07101806797972825,
      "double_pole": -0.02161254810074514,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.1914606283903915e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.07672070320751802
     },
     {
      "helicity": [
@@ -1065,11 +1195,20 @@
      ],
      "madloop_index": 15,
      "status": 328,
-     "born": 0.004599775743474362,
+     "born": 0.004599775743474524,
      "finite": -0.006008551031021183,
      "single_pole": -0.0042578752902977905,
      "double_pole": -0.001295776372638058,
-     "accuracy": 6.751529832611879e-16
+     "accuracy": 6.751529832611879e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.5073293191458955e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.004599775743474362
     },
     {
      "helicity": [
@@ -1080,12 +1219,21 @@
       1
      ],
      "madloop_index": 16,
-     "status": 318,
-     "born": 1.048248306321682e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 6.751529832611879e-16
+     "status": 328,
+     "born": 7.909252137948222e-38,
+     "finite": 1.8250787419738762e-36,
+     "single_pole": 1.084242973337011e-37,
+     "double_pole": -2.2280699358288434e-38,
+     "accuracy": 5.866969511305621e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999992454791398,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.048248306321682e-31
     },
     {
      "helicity": [
@@ -1096,12 +1244,21 @@
       -1
      ],
      "madloop_index": 17,
-     "status": 318,
-     "born": 1.048248306321682e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 6.751529832611879e-16
+     "status": 328,
+     "born": 7.909252137948222e-38,
+     "finite": 1.784544864420064e-36,
+     "single_pole": 9.903094902050538e-38,
+     "double_pole": -2.2280699358288434e-38,
+     "accuracy": 6.73111130189284e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999992454791398,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.048248306321682e-31
     },
     {
      "helicity": [
@@ -1113,11 +1270,20 @@
      ],
      "madloop_index": 18,
      "status": 328,
-     "born": 0.004599775743474362,
+     "born": 0.004599775743474524,
      "finite": -0.006027494059133236,
      "single_pole": -0.004257875290297794,
      "double_pole": -0.001295776372638058,
-     "accuracy": 4.493657668095246e-16
+     "accuracy": 4.493657668095246e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.5073293191458955e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.004599775743474362
     },
     {
      "helicity": [
@@ -1129,11 +1295,20 @@
      ],
      "madloop_index": 19,
      "status": 328,
-     "born": 0.07672070320751802,
+     "born": 0.076720703207522,
      "finite": -0.10762735102855088,
      "single_pole": -0.07101806797972822,
      "double_pole": -0.02161254810074514,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.1914606283903915e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.07672070320751802
     },
     {
      "helicity": [
@@ -1145,11 +1320,20 @@
      ],
      "madloop_index": 20,
      "status": 328,
-     "born": 1.8709444477436644e-05,
+     "born": 1.8709444477444996e-05,
      "finite": -3.7143653656792273e-06,
      "single_pole": -1.7318775040006056e-05,
      "double_pole": -5.270530010827059e-06,
-     "accuracy": 4.0091591881777755e-15
+     "accuracy": 4.0091591881777755e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 4.463919209357484e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 4.5e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 1.8709444477436644e-05
     },
     {
      "helicity": [
@@ -1161,11 +1345,20 @@
      ],
      "madloop_index": 21,
      "status": 328,
-     "born": 2.008443453602252e-05,
+     "born": 2.0084434536014826e-05,
      "finite": -4.4396455995526034e-07,
      "single_pole": -1.8591562349929964e-05,
      "double_pole": -5.657870553033836e-06,
-     "accuracy": 1.921126449829285e-14
+     "accuracy": 1.921126449829285e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 3.8310499999677146e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 3.8e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 2.008443453602252e-05
     },
     {
      "helicity": [
@@ -1177,11 +1370,20 @@
      ],
      "madloop_index": 22,
      "status": 328,
-     "born": 0.011145193709987613,
+     "born": 0.011145193709988167,
      "finite": -0.014912185825743444,
      "single_pole": -0.010316773588508717,
      "double_pole": -0.0031396484270705305,
-     "accuracy": 3.6689642699701653e-16
+     "accuracy": 3.6689642699701653e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.9651607969870716e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.011145193709987613
     },
     {
      "helicity": [
@@ -1193,11 +1395,20 @@
      ],
      "madloop_index": 23,
      "status": 328,
-     "born": 0.045945877629069994,
+     "born": 0.04594587762907269,
      "finite": -0.06491472656822493,
      "single_pole": -0.042530729313360126,
      "double_pole": -0.012943148964671185,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.87480285045627e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.045945877629069994
     },
     {
      "helicity": [
@@ -1208,12 +1419,21 @@
       1
      ],
      "madloop_index": 24,
-     "status": 318,
-     "born": 1.1131301135533377e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -2.1882263666054602e-38,
+     "finite": 6.6020502017702475e-37,
+     "single_pole": -3.329591448584075e-37,
+     "double_pole": 6.164326658432202e-39,
+     "accuracy": 9.018501176699746e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000001965831613,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.1131301135533377e-31
     },
     {
      "helicity": [
@@ -1224,12 +1444,21 @@
       -1
      ],
      "madloop_index": 25,
-     "status": 318,
-     "born": 1.4939207341366642e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 2.353709038926977e-38,
+     "finite": -8.1024521435739e-36,
+     "single_pole": 1.1839878900470074e-36,
+     "double_pole": -6.630498378171858e-39,
+     "accuracy": 1.2736466227957193e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999999842447528,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.4939207341366642e-30
     },
     {
      "helicity": [
@@ -1240,12 +1469,21 @@
       1
      ],
      "madloop_index": 26,
-     "status": 318,
-     "born": 2.3191678344494545e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -1.2372777191639189e-36,
+     "finite": -5.792216593994865e-36,
+     "single_pole": -2.6988669048596084e-35,
+     "double_pole": 3.485463910188543e-37,
+     "accuracy": 5.253668227465838e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000005335007243,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 2.3191678344494545e-30
     },
     {
      "helicity": [
@@ -1256,12 +1494,21 @@
       -1
      ],
      "madloop_index": 27,
-     "status": 318,
-     "born": 7.645948923434347e-32,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 6.283957769930414e-39,
+     "finite": 5.375738200081263e-37,
+     "single_pole": 9.575801677446112e-38,
+     "double_pole": -1.770217606039313e-39,
+     "accuracy": 1.7060224070625817e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999999178132389,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 7.645948923434347e-32
     },
     {
      "helicity": [
@@ -1273,11 +1520,20 @@
      ],
      "madloop_index": 28,
      "status": 328,
-     "born": 0.27016191853228094,
+     "born": 0.270161918532293,
      "finite": -0.4061266396869194,
      "single_pole": -0.25008083468634157,
      "double_pole": -0.0761057604421997,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.4587778627812325e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.27016191853228094
     },
     {
      "helicity": [
@@ -1288,12 +1544,21 @@
       -1
      ],
      "madloop_index": 29,
-     "status": 318,
-     "born": 3.435546571037401e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -2.6936858231561226e-37,
+     "finite": 1.6095513435669606e-35,
+     "single_pole": -1.5454197250454526e-35,
+     "double_pole": 7.588227425885885e-38,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000000784063254,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 3.435546571037401e-30
     },
     {
      "helicity": [
@@ -1305,11 +1570,20 @@
      ],
      "madloop_index": 30,
      "status": 328,
-     "born": 3.625350744962974e-11,
+     "born": 3.625350744600388e-11,
      "finite": 4.568977771833805e-08,
      "single_pole": -3.3558791156300835e-11,
      "double_pole": -1.0212767098577122e-11,
-     "accuracy": 1.0238444953023639e-14
+     "accuracy": 1.0238444953023639e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0001392961176037e-10,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 1e-10 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 3.625350744962974e-11
     },
     {
      "helicity": [
@@ -1321,11 +1595,20 @@
      ],
      "madloop_index": 31,
      "status": 328,
-     "born": 0.0002878911206901322,
+     "born": 0.00028789112069014085,
      "finite": -0.0003336995473760474,
      "single_pole": -0.0002664922286312958,
      "double_pole": -8.110015202627938e-05,
-     "accuracy": 1.0264475072698038e-14
+     "accuracy": 1.0264475072698038e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.0128117043316205e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.0002878911206901322
     },
     {
      "helicity": [
@@ -1337,11 +1620,20 @@
      ],
      "madloop_index": 32,
      "status": 328,
-     "born": 0.5310653824464222,
+     "born": 0.5310653824464456,
      "finite": -0.7972631122249303,
      "single_pole": -0.4915913939193967,
      "double_pole": -0.14960337487677125,
-     "accuracy": 4.630888561729973e-16
+     "accuracy": 4.630888561729973e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.411077542218284e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.5310653824464222
     }
    ],
    [
@@ -1355,11 +1647,20 @@
      ],
      "madloop_index": 1,
      "status": 328,
-     "born": 0.4669544350758818,
+     "born": 0.4669544350758861,
      "finite": -0.46474024961545585,
      "single_pole": -0.2442893323752439,
      "double_pole": -0.13154304857758908,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 9.153695358118216e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.4669544350758818
     },
     {
      "helicity": [
@@ -1371,11 +1672,20 @@
      ],
      "madloop_index": 2,
      "status": 328,
-     "born": 8.613788957928101e-06,
+     "born": 8.6137889579286e-06,
      "finite": 1.1657667746285395e-05,
      "single_pole": -4.506342794263396e-06,
      "double_pole": -2.4265409517863595e-06,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.80173767108655e-14,
+      "reason": null
+     },
+     "born_binary64_input": 8.613788957928101e-06
     },
     {
      "helicity": [
@@ -1387,11 +1697,20 @@
      ],
      "madloop_index": 3,
      "status": 328,
-     "born": 4.7135506558847295e-11,
+     "born": 4.713550656042151e-11,
      "finite": 5.049237708465356e-08,
      "single_pole": -2.4659154221141546e-11,
      "double_pole": -1.3278272489689835e-11,
-     "accuracy": 5.639808187775877e-15
+     "accuracy": 5.639808187775877e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 3.339765059170358e-11,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 3.3e-11 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 4.7135506558847295e-11
     },
     {
      "helicity": [
@@ -1402,12 +1721,21 @@
       1
      ],
      "madloop_index": 4,
-     "status": 318,
-     "born": 1.0368641024531616e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 5.639808187775877e-15
+     "status": 328,
+     "born": 3.83543078675192e-37,
+     "finite": 3.4729828446925935e-36,
+     "single_pole": -1.0928357531612695e-35,
+     "double_pole": -1.0804571504191773e-37,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 0.9999963009320337,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.0368641024531616e-31
     },
     {
      "helicity": [
@@ -1419,11 +1747,20 @@
      ],
      "madloop_index": 5,
      "status": 328,
-     "born": 0.3512548103739044,
+     "born": 0.3512548103739078,
      "finite": -0.34916327139929426,
      "single_pole": -0.18376054851238324,
      "double_pole": -0.0989499726597904,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 9.798275424824313e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.3512548103739044
     },
     {
      "helicity": [
@@ -1434,12 +1771,21 @@
       1
      ],
      "madloop_index": 6,
-     "status": 318,
-     "born": 6.622340429749786e-33,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 3.5959196236460296e-38,
+     "finite": 1.0773867111989328e-36,
+     "single_pole": -1.0549845835718233e-37,
+     "double_pole": -1.0129858380240119e-38,
+     "accuracy": 5.210699340169289e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 0.9999945700169574,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 6.622340429749786e-33
     },
     {
      "helicity": [
@@ -1450,12 +1796,21 @@
       -1
      ],
      "madloop_index": 7,
-     "status": 318,
-     "born": 5.034133655412921e-32,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -1.4198788422580374e-36,
+     "finite": -1.1785046619086654e-35,
+     "single_pole": -1.2727134819935967e-35,
+     "double_pole": 3.999859033164266e-37,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 1.000028205028699,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 5.034133655412921e-32
     },
     {
      "helicity": [
@@ -1466,12 +1821,21 @@
       1
      ],
      "madloop_index": 8,
-     "status": 318,
-     "born": 3.726853458340364e-32,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -2.848047168702784e-39,
+     "finite": -3.0700646842805836e-36,
+     "single_pole": 2.351592873907341e-36,
+     "double_pole": 8.023069895525277e-40,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 1.0000000764196177,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 3.726853458340364e-32
     },
     {
      "helicity": [
@@ -1482,12 +1846,21 @@
       -1
      ],
      "madloop_index": 9,
-     "status": 318,
-     "born": 1.4017214426764582e-33,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 5.032591253370352e-38,
+     "finite": 1.7215725435503072e-36,
+     "single_pole": 3.842140107000368e-40,
+     "double_pole": -1.4177023409268235e-38,
+     "accuracy": 2.946652392449277e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 0.9999640970659351,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.4017214426764582e-33
     },
     {
      "helicity": [
@@ -1499,11 +1872,20 @@
      ],
      "madloop_index": 10,
      "status": 328,
-     "born": 0.05973717769602498,
+     "born": 0.059737177696025316,
      "finite": -0.05405613716688744,
      "single_pole": -0.03125177567908047,
      "double_pole": -0.016828216796525988,
-     "accuracy": 6.114393149002057e-16
+     "accuracy": 6.114393149002057e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.5755380524063155e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.05973717769602498
     },
     {
      "helicity": [
@@ -1515,11 +1897,20 @@
      ],
      "madloop_index": 11,
      "status": 328,
-     "born": 0.009040138621483807,
+     "born": 0.00904013862148388,
      "finite": -0.0075466317055009466,
      "single_pole": -0.004729389556098894,
      "double_pole": -0.002546645463685848,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 8.059432387228888e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.009040138621483807
     },
     {
      "helicity": [
@@ -1531,11 +1922,20 @@
      ],
      "madloop_index": 12,
      "status": 328,
-     "born": 1.1689296474666061e-06,
+     "born": 1.1689296474669178e-06,
      "finite": 6.800902121976316e-06,
      "single_pole": -6.115308512423009e-07,
      "double_pole": -3.2929244879221704e-07,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 2.6666115045080526e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 2.7e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 1.1689296474666061e-06
     },
     {
      "helicity": [
@@ -1547,11 +1947,20 @@
      ],
      "madloop_index": 13,
      "status": 328,
-     "born": 3.2704676529647924e-07,
+     "born": 3.2704676529639686e-07,
      "finite": 3.1882587583979515e-06,
      "single_pole": -1.7109599984150382e-07,
      "double_pole": -9.213046349487159e-08,
-     "accuracy": 9.257533524759211e-15
+     "accuracy": 9.257533524759211e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 2.5187209555736123e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 2.5e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 3.2704676529647924e-07
     },
     {
      "helicity": [
@@ -1563,11 +1972,20 @@
      ],
      "madloop_index": 14,
      "status": 328,
-     "born": 0.07071333811439029,
+     "born": 0.07071333811439086,
      "finite": -0.06339083472731463,
      "single_pole": -0.036994003826480625,
      "double_pole": -0.01992024782707788,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 8.04642116031852e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.07071333811439029
     },
     {
      "helicity": [
@@ -1579,11 +1997,20 @@
      ],
      "madloop_index": 15,
      "status": 328,
-     "born": 0.005980462995355502,
+     "born": 0.005980462995355567,
      "finite": -0.004843696556781193,
      "single_pole": -0.00312870636337963,
      "double_pole": -0.001684721838409532,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 1.0877440492425053e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.005980462995355502
     },
     {
      "helicity": [
@@ -1594,12 +2021,21 @@
       1
      ],
      "madloop_index": 16,
-     "status": 318,
-     "born": 1.8522140375654574e-33,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 1.1209560321439502e-38,
+     "finite": 1.2715306476731582e-36,
+     "single_pole": 1.0383741095883522e-37,
+     "double_pole": -3.157780775027653e-39,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 0.9999939480210742,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.8522140375654574e-33
     },
     {
      "helicity": [
@@ -1610,12 +2046,21 @@
       -1
      ],
      "madloop_index": 17,
-     "status": 318,
-     "born": 1.8522140375654574e-33,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 1.1209560321439502e-38,
+     "finite": 1.4389442011535535e-36,
+     "single_pole": 1.174953044647664e-37,
+     "double_pole": -3.157780775027653e-39,
+     "accuracy": 4.03294018663007e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 0.9999939480210742,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.8522140375654574e-33
     },
     {
      "helicity": [
@@ -1627,11 +2072,20 @@
      ],
      "madloop_index": 18,
      "status": 328,
-     "born": 0.005980462995355502,
+     "born": 0.005980462995355567,
      "finite": -0.004866124404266622,
      "single_pole": -0.0031287063633796313,
      "double_pole": -0.001684721838409532,
-     "accuracy": 2.6882288054690427e-16
+     "accuracy": 2.6882288054690427e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 1.0877440492425053e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.005980462995355502
     },
     {
      "helicity": [
@@ -1643,11 +2097,20 @@
      ],
      "madloop_index": 19,
      "status": 328,
-     "born": 0.07071333811439029,
+     "born": 0.07071333811439086,
      "finite": -0.06352664371158065,
      "single_pole": -0.036994003826480625,
      "double_pole": -0.01992024782707788,
-     "accuracy": 3.456746422983989e-16
+     "accuracy": 3.456746422983989e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 8.04642116031852e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.07071333811439029
     },
     {
      "helicity": [
@@ -1659,11 +2122,20 @@
      ],
      "madloop_index": 20,
      "status": 328,
-     "born": 3.2704676529647924e-07,
+     "born": 3.2704676529639686e-07,
      "finite": 3.2369809233192044e-06,
      "single_pole": -1.7109599984150236e-07,
      "double_pole": -9.213046349487159e-08,
-     "accuracy": 1.2817629410689e-15
+     "accuracy": 1.2817629410689e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 2.5187209555736123e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 2.5e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 3.2704676529647924e-07
     },
     {
      "helicity": [
@@ -1675,11 +2147,20 @@
      ],
      "madloop_index": 21,
      "status": 328,
-     "born": 1.1689296474666061e-06,
+     "born": 1.1689296474669178e-06,
      "finite": 6.768522943853384e-06,
      "single_pole": -6.115308512422825e-07,
      "double_pole": -3.2929244879221704e-07,
-     "accuracy": 1.6351427216599751e-16
+     "accuracy": 1.6351427216599751e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 2.6666115045080526e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 2.7e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 1.1689296474666061e-06
     },
     {
      "helicity": [
@@ -1691,11 +2172,20 @@
      ],
      "madloop_index": 22,
      "status": 328,
-     "born": 0.009040138621483807,
+     "born": 0.00904013862148388,
      "finite": -0.007530768499575096,
      "single_pole": -0.004729389556098895,
      "double_pole": -0.002546645463685848,
-     "accuracy": 1.7573578325416384e-16
+     "accuracy": 1.7573578325416384e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 8.059432387228888e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.009040138621483807
     },
     {
      "helicity": [
@@ -1707,11 +2197,20 @@
      ],
      "madloop_index": 23,
      "status": 328,
-     "born": 0.05973717769602498,
+     "born": 0.059737177696025316,
      "finite": -0.053995922805843706,
      "single_pole": -0.03125177567908043,
      "double_pole": -0.016828216796525988,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.5755380524063155e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.05973717769602498
     },
     {
      "helicity": [
@@ -1722,12 +2221,21 @@
       1
      ],
      "madloop_index": 24,
-     "status": 318,
-     "born": 1.4017214426764582e-33,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 5.032591253370352e-38,
+     "finite": 1.4429072710236878e-36,
+     "single_pole": -4.582837510828115e-38,
+     "double_pole": -1.4177023409268235e-38,
+     "accuracy": 4.405246946613258e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 0.9999640970659351,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.4017214426764582e-33
     },
     {
      "helicity": [
@@ -1738,12 +2246,21 @@
       -1
      ],
      "madloop_index": 25,
-     "status": 318,
-     "born": 3.726853458340364e-32,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -2.848047168702784e-39,
+     "finite": -4.6580659812324687e-36,
+     "single_pole": 2.074927008586847e-36,
+     "double_pole": 8.023069895525277e-40,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 1.0000000764196177,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 3.726853458340364e-32
     },
     {
      "helicity": [
@@ -1754,12 +2271,21 @@
       1
      ],
      "madloop_index": 26,
-     "status": 318,
-     "born": 5.034133655412921e-32,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -1.4198788422580374e-36,
+     "finite": -1.3211119955698455e-35,
+     "single_pole": -1.2448465891028484e-35,
+     "double_pole": 3.999859033164266e-37,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 1.000028205028699,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 5.034133655412921e-32
     },
     {
      "helicity": [
@@ -1770,12 +2296,21 @@
       -1
      ],
      "madloop_index": 27,
-     "status": 318,
-     "born": 6.622340429749786e-33,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 3.5959196236460296e-38,
+     "finite": 1.1418847453741988e-36,
+     "single_pole": -8.558368110626121e-38,
+     "double_pole": -1.0129858380240119e-38,
+     "accuracy": 2.3951308367212055e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 0.9999945700169574,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 6.622340429749786e-33
     },
     {
      "helicity": [
@@ -1787,11 +2322,20 @@
      ],
      "madloop_index": 28,
      "status": 328,
-     "born": 0.3512548103739044,
+     "born": 0.3512548103739078,
      "finite": -0.3499542229243933,
      "single_pole": -0.1837605485123831,
      "double_pole": -0.0989499726597904,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 9.798275424824313e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.3512548103739044
     },
     {
      "helicity": [
@@ -1802,12 +2346,21 @@
       -1
      ],
      "madloop_index": 29,
-     "status": 318,
-     "born": 1.0368641024531616e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 3.83543078675192e-37,
+     "finite": 3.395810910039304e-36,
+     "single_pole": -1.1168859383737716e-35,
+     "double_pole": -1.0804571504191773e-37,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 0.9999963009320337,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.0368641024531616e-31
     },
     {
      "helicity": [
@@ -1819,11 +2372,20 @@
      ],
      "madloop_index": 30,
      "status": 328,
-     "born": 4.7135506558847295e-11,
+     "born": 4.713550656042151e-11,
      "finite": 5.152497142186814e-08,
      "single_pole": -2.465915422122688e-11,
      "double_pole": -1.3278272489689835e-11,
-     "accuracy": 1.9440878353347508e-15
+     "accuracy": 1.9440878353347508e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.9273809453791115,
+      "born_double_pole_relative_mismatch": 3.339765059170358e-11,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 3.3e-11 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 4.7135506558847295e-11
     },
     {
      "helicity": [
@@ -1835,11 +2397,20 @@
      ],
      "madloop_index": 31,
      "status": 328,
-     "born": 8.613788957928101e-06,
+     "born": 8.6137889579286e-06,
      "finite": 1.135743370051202e-05,
      "single_pole": -4.506342794263396e-06,
      "double_pole": -2.4265409517863595e-06,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.80173767108655e-14,
+      "reason": null
+     },
+     "born_binary64_input": 8.613788957928101e-06
     },
     {
      "helicity": [
@@ -1851,11 +2422,20 @@
      ],
      "madloop_index": 32,
      "status": 328,
-     "born": 0.4669544350758818,
+     "born": 0.4669544350758861,
      "finite": -0.4637272185156574,
      "single_pole": -0.24428933237524394,
      "double_pole": -0.13154304857758908,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 9.153695358118216e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.4669544350758818
     }
    ],
    [
@@ -1869,11 +2449,20 @@
      ],
      "madloop_index": 1,
      "status": 328,
-     "born": 0.6647174850877302,
+     "born": 0.6647174850877177,
      "finite": -1.5920810876555582,
      "single_pole": -0.8248160506522391,
      "double_pole": -0.1872537401150426,
-     "accuracy": 7.673908070701264e-16
+     "accuracy": 7.673908070701264e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 1.8873461974012155e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.6647174850877302
     },
     {
      "helicity": [
@@ -1885,11 +2474,20 @@
      ],
      "madloop_index": 2,
      "status": 328,
-     "born": 0.0025965526761240194,
+     "born": 0.0025965526761238937,
      "finite": -0.005925071106281193,
      "single_pole": -0.0032219376978603245,
      "double_pole": -0.0007314599223243841,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.843631834038381e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.0025965526761240194
     },
     {
      "helicity": [
@@ -1901,11 +2499,20 @@
      ],
      "madloop_index": 3,
      "status": 328,
-     "born": 2.7842327070253755e-11,
+     "born": 2.7842327058965596e-11,
      "finite": 4.224686582078514e-08,
      "single_pole": -3.454820846570029e-11,
      "double_pole": -7.843301842149625e-12,
-     "accuracy": 1.548502423213471e-15
+     "accuracy": 1.548502423213471e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 4.0543159251067676e-10,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 4.1e-10 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 2.7842327070253755e-11
     },
     {
      "helicity": [
@@ -1916,12 +2523,21 @@
       1
      ],
      "madloop_index": 4,
-     "status": 318,
-     "born": 2.9113338490400675e-29,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 1.548502423213471e-15
+     "status": 328,
+     "born": -3.1649113561300755e-37,
+     "finite": 4.850414940019663e-36,
+     "single_pole": -2.461511534129031e-35,
+     "double_pole": 8.915689775931226e-38,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 1.000000010871001,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 2.9113338490400675e-29
     },
     {
      "helicity": [
@@ -1932,12 +2548,21 @@
       -1
      ],
      "madloop_index": 5,
-     "status": 216,
-     "born": 0.20748162107791535,
-     "finite": -0.4964108586688819,
-     "single_pole": -0.2574539937938156,
-     "double_pole": -0.05844845430362831,
-     "accuracy": 4.5410015674877986e-14
+     "status": 328,
+     "born": 0.20748162107791138,
+     "finite": -0.49641085866884166,
+     "single_pole": -0.25745399379380607,
+     "double_pole": -0.05844845430362645,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 1.9129633229270185e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.20748162107791535
     },
     {
      "helicity": [
@@ -1948,12 +2573,21 @@
       1
      ],
      "madloop_index": 6,
-     "status": 216,
-     "born": 9.99620595843384e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 4.5410015674877986e-14
+     "status": 328,
+     "born": -5.059209873856241e-38,
+     "finite": 1.761713409192086e-36,
+     "single_pole": 2.6951316515288346e-38,
+     "double_pole": 1.4252009194274745e-38,
+     "accuracy": 1.2160862777543122e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 1.000000050611301,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 9.99620595843384e-31
     },
     {
      "helicity": [
@@ -1964,12 +2598,21 @@
       -1
      ],
      "madloop_index": 7,
-     "status": 216,
-     "born": 2.2125471164767225e-29,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 4.5410015674877986e-14
+     "status": 328,
+     "born": 3.268332168445242e-36,
+     "finite": 1.1303917851255332e-35,
+     "single_pole": 3.768810711753883e-36,
+     "double_pole": -9.207030598855346e-37,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 0.9999998522819178,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 2.2125471164767225e-29
     },
     {
      "helicity": [
@@ -1980,12 +2623,21 @@
       1
      ],
      "madloop_index": 8,
-     "status": 216,
-     "born": 1.5066024074923833e-29,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 4.5410015674877986e-14
+     "status": 328,
+     "born": 2.212760726477913e-37,
+     "finite": 1.0258380011911331e-35,
+     "single_pole": -2.0944650156592557e-36,
+     "double_pole": -6.233440992724747e-38,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 0.9999999853129086,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.5066024074923833e-29
     },
     {
      "helicity": [
@@ -1996,12 +2648,21 @@
       -1
      ],
      "madloop_index": 9,
-     "status": 216,
-     "born": 1.3479628718118053e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 4.5410015674877986e-14
+     "status": 328,
+     "born": -4.883029418572597e-38,
+     "finite": 9.859494367310235e-37,
+     "single_pole": 1.3888996342635953e-37,
+     "double_pole": 1.3755701365352812e-38,
+     "accuracy": 1.6505320322125494e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 1.0000000362252517,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.3479628718118053e-30
     },
     {
      "helicity": [
@@ -2012,12 +2673,21 @@
       1
      ],
      "madloop_index": 10,
-     "status": 216,
-     "born": 0.03528596933319283,
-     "finite": -0.08126826118757877,
-     "single_pole": -0.0437846672033924,
-     "double_pole": -0.00994020750086545,
-     "accuracy": 8.886090953536423e-14
+     "status": 328,
+     "born": 0.035285969333194035,
+     "finite": -0.08126826118757087,
+     "single_pole": -0.043784667203391664,
+     "double_pole": -0.009940207500865344,
+     "accuracy": 1.5420548292472007e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.421664650555792e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.03528596933319283
     },
     {
      "helicity": [
@@ -2029,11 +2699,20 @@
      ],
      "madloop_index": 11,
      "status": 328,
-     "born": 0.014886506057446095,
+     "born": 0.014886506057445563,
      "finite": -0.033200840869686825,
      "single_pole": -0.01847195148280569,
      "double_pole": -0.00419359201320553,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.577468783270995e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.014886506057446095
     },
     {
      "helicity": [
@@ -2045,11 +2724,20 @@
      ],
      "madloop_index": 12,
      "status": 328,
-     "born": 0.00013505771194370167,
+     "born": 0.00013505771194364364,
      "finite": -0.00024339156383658788,
      "single_pole": -0.00016758663804485887,
      "double_pole": -3.804633135156659e-05,
-     "accuracy": 1.0865575074609444e-15
+     "accuracy": 1.0865575074609444e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 4.296823961187572e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 4.3e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 0.00013505771194370167
     },
     {
      "helicity": [
@@ -2061,11 +2749,20 @@
      ],
      "madloop_index": 13,
      "status": 328,
-     "born": 0.0002089510600907375,
+     "born": 0.00020895106009080202,
      "finite": -0.00041114273185995185,
      "single_pole": -0.0002592773501978077,
      "double_pole": -5.8862401517604755e-05,
-     "accuracy": 6.690013658720464e-16
+     "accuracy": 6.690013658720464e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 3.087327206421157e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 3.1e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 0.0002089510600907375
     },
     {
      "helicity": [
@@ -2077,11 +2774,20 @@
      ],
      "madloop_index": 14,
      "status": 328,
-     "born": 0.09240398573792231,
+     "born": 0.09240398573792255,
      "finite": -0.21182516944565277,
      "single_pole": -0.11465967465986171,
      "double_pole": -0.02603059543210257,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 2.553162516192452e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.09240398573792231
     },
     {
      "helicity": [
@@ -2093,11 +2799,20 @@
      ],
      "madloop_index": 15,
      "status": 328,
-     "born": 0.0035325812499252345,
+     "born": 0.003532581249925027,
      "finite": -0.007729454237360073,
      "single_pole": -0.004383410667746789,
      "double_pole": -0.0009951431490047861,
-     "accuracy": 1.985111088750821e-16
+     "accuracy": 1.985111088750821e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.868214790066494e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.0035325812499252345
     },
     {
      "helicity": [
@@ -2108,12 +2823,21 @@
       1
      ],
      "madloop_index": 16,
-     "status": 318,
-     "born": 1.2111745302941568e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 1.985111088750821e-16
+     "status": 328,
+     "born": 3.328624664386707e-38,
+     "finite": 1.6427519661389305e-36,
+     "single_pole": -5.04360517796245e-39,
+     "double_pole": -9.376877121914997e-39,
+     "accuracy": 2.5246344836045697e-17,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 0.9999999725173823,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.2111745302941568e-30
     },
     {
      "helicity": [
@@ -2124,12 +2848,21 @@
       -1
      ],
      "madloop_index": 17,
-     "status": 318,
-     "born": 1.2111745302941568e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 1.985111088750821e-16
+     "status": 328,
+     "born": 3.328624664386707e-38,
+     "finite": 9.654475547801011e-37,
+     "single_pole": -5.743796531721744e-38,
+     "double_pole": -9.376877121914997e-39,
+     "accuracy": 4.18254902358933e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 0.9999999725173823,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.2111745302941568e-30
     },
     {
      "helicity": [
@@ -2141,11 +2874,20 @@
      ],
      "madloop_index": 18,
      "status": 328,
-     "born": 0.0035325812499252345,
+     "born": 0.003532581249925027,
      "finite": -0.007744795216452297,
      "single_pole": -0.004383410667746795,
      "double_pole": -0.0009951431490047861,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.868214790066494e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.0035325812499252345
     },
     {
      "helicity": [
@@ -2157,11 +2899,20 @@
      ],
      "madloop_index": 19,
      "status": 328,
-     "born": 0.09240398573792231,
+     "born": 0.09240398573792255,
      "finite": -0.21193930921907533,
      "single_pole": -0.11465967465986171,
      "double_pole": -0.02603059543210257,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 2.553162516192452e-15,
+      "reason": null
+     },
+     "born_binary64_input": 0.09240398573792231
     },
     {
      "helicity": [
@@ -2173,11 +2924,20 @@
      ],
      "madloop_index": 20,
      "status": 328,
-     "born": 0.0002089510600907375,
+     "born": 0.00020895106009080202,
      "finite": -0.00040922351046925466,
      "single_pole": -0.00025927735019780807,
      "double_pole": -5.8862401517604755e-05,
-     "accuracy": 1.3415331870160036e-15
+     "accuracy": 1.3415331870160036e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 3.087327206421157e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 3.1e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 0.0002089510600907375
     },
     {
      "helicity": [
@@ -2189,11 +2949,20 @@
      ],
      "madloop_index": 21,
      "status": 328,
-     "born": 0.00013505771194370167,
+     "born": 0.00013505771194364364,
      "finite": -0.00024393361240677367,
      "single_pole": -0.00016758663804485865,
      "double_pole": -3.804633135156659e-05,
-     "accuracy": 1.0852474302283767e-15
+     "accuracy": 1.0852474302283767e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 4.296823961187572e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 4.3e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 0.00013505771194370167
     },
     {
      "helicity": [
@@ -2205,11 +2974,20 @@
      ],
      "madloop_index": 22,
      "status": 328,
-     "born": 0.014886506057446095,
+     "born": 0.014886506057445563,
      "finite": -0.0331843796298429,
      "single_pole": -0.018471951482805535,
      "double_pole": -0.00419359201320553,
-     "accuracy": 3.7272534225002827e-16
+     "accuracy": 3.7272534225002827e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.577468783270995e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.014886506057446095
     },
     {
      "helicity": [
@@ -2220,12 +2998,21 @@
       -1
      ],
      "madloop_index": 23,
-     "status": 216,
-     "born": 0.03528596933319283,
-     "finite": -0.0812979414581349,
-     "single_pole": -0.043784667203392635,
-     "double_pole": -0.009940207500865526,
-     "accuracy": 1.3451470877064892e-14
+     "status": 328,
+     "born": 0.035285969333194035,
+     "finite": -0.08129794145813467,
+     "single_pole": -0.043784667203391685,
+     "double_pole": -0.009940207500865344,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.421664650555792e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.03528596933319283
     },
     {
      "helicity": [
@@ -2236,12 +3023,21 @@
       1
      ],
      "madloop_index": 24,
-     "status": 216,
-     "born": 1.3479628718118053e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 1.3451470877064892e-14
+     "status": 328,
+     "born": -4.883029418572597e-38,
+     "finite": 2.4342180773263167e-37,
+     "single_pole": 5.979020949503055e-38,
+     "double_pole": 1.3755701365352812e-38,
+     "accuracy": 1.0178041294863785e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 1.0000000362252517,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.3479628718118053e-30
     },
     {
      "helicity": [
@@ -2252,12 +3048,21 @@
       -1
      ],
      "madloop_index": 25,
-     "status": 216,
-     "born": 1.5066024074923833e-29,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 1.3451470877064892e-14
+     "status": 328,
+     "born": 2.212760726477913e-37,
+     "finite": 6.69324948241898e-36,
+     "single_pole": -2.5378606152067955e-36,
+     "double_pole": -6.233440992724747e-38,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 0.9999999853129086,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.5066024074923833e-29
     },
     {
      "helicity": [
@@ -2268,12 +3073,21 @@
       1
      ],
      "madloop_index": 26,
-     "status": 216,
-     "born": 2.2125471164767225e-29,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 1.3451470877064892e-14
+     "status": 328,
+     "born": 3.268332168445242e-36,
+     "finite": 1.8514982087484726e-35,
+     "single_pole": 3.780557553289662e-36,
+     "double_pole": -9.207030598855346e-37,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 0.9999998522819178,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 2.2125471164767225e-29
     },
     {
      "helicity": [
@@ -2284,12 +3098,21 @@
       -1
      ],
      "madloop_index": 27,
-     "status": 216,
-     "born": 9.99620595843384e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 1.3451470877064892e-14
+     "status": 328,
+     "born": -5.059209873856241e-38,
+     "finite": 1.676514174266162e-36,
+     "single_pole": 1.7601590051226837e-38,
+     "double_pole": 1.4252009194274745e-38,
+     "accuracy": 5.0418897097623385e-17,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 1.000000050611301,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 9.99620595843384e-31
     },
     {
      "helicity": [
@@ -2300,12 +3123,21 @@
       1
      ],
      "madloop_index": 28,
-     "status": 216,
-     "born": 0.20748162107791535,
-     "finite": -0.4966591488119023,
-     "single_pole": -0.2574539937938141,
-     "double_pole": -0.058448454303627606,
-     "accuracy": 2.6002867989040372e-14
+     "status": 328,
+     "born": 0.20748162107791138,
+     "finite": -0.49665914881185896,
+     "single_pole": -0.2574539937938058,
+     "double_pole": -0.05844845430362645,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 1.9129633229270185e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.20748162107791535
     },
     {
      "helicity": [
@@ -2316,12 +3148,21 @@
       -1
      ],
      "madloop_index": 29,
-     "status": 216,
-     "born": 2.9113338490400675e-29,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 2.6002867989040372e-14
+     "status": 328,
+     "born": -3.1649113561300755e-37,
+     "finite": -1.6785499452446667e-36,
+     "single_pole": -2.5121400834666024e-35,
+     "double_pole": 8.915689775931226e-38,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 1.000000010871001,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 2.9113338490400675e-29
     },
     {
      "helicity": [
@@ -2333,11 +3174,20 @@
      ],
      "madloop_index": 30,
      "status": 328,
-     "born": 2.7842327070253755e-11,
+     "born": 2.7842327058965596e-11,
      "finite": 4.341174530292718e-08,
      "single_pole": -3.454820846592018e-11,
      "double_pole": -7.843301842149625e-12,
-     "accuracy": 1.6174141941248345e-14
+     "accuracy": 1.6174141941248345e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 2.0424974200402337,
+      "born_double_pole_relative_mismatch": 4.0543159251067676e-10,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 4.1e-10 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 2.7842327070253755e-11
     },
     {
      "helicity": [
@@ -2349,11 +3199,20 @@
      ],
      "madloop_index": 31,
      "status": 328,
-     "born": 0.0025965526761240194,
+     "born": 0.0025965526761238937,
      "finite": -0.005940747046065881,
      "single_pole": -0.0032219376978603192,
      "double_pole": -0.0007314599223243841,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.843631834038381e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.0025965526761240194
     },
     {
      "helicity": [
@@ -2365,11 +3224,20 @@
      ],
      "madloop_index": 32,
      "status": 328,
-     "born": 0.6647174850877302,
+     "born": 0.6647174850877177,
      "finite": -1.591112210441415,
      "single_pole": -0.8248160506522381,
      "double_pole": -0.1872537401150426,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 1.8873461974012155e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.6647174850877302
     }
    ],
    [
@@ -2383,11 +3251,20 @@
      ],
      "madloop_index": 1,
      "status": 328,
-     "born": 0.5310653824464222,
+     "born": 0.5310653824464456,
      "finite": -0.4194718315206609,
      "single_pole": -0.2841970789232234,
      "double_pole": -0.14960337487677125,
-     "accuracy": 3.9034070731874537e-16
+     "accuracy": 3.9034070731874537e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.411077542218284e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.5310653824464222
     },
     {
      "helicity": [
@@ -2399,11 +3276,20 @@
      ],
      "madloop_index": 2,
      "status": 328,
-     "born": 0.0002878911206901322,
+     "born": 0.00028789112069014085,
      "finite": -0.0001251515133886867,
      "single_pole": -0.0001540635451912965,
      "double_pole": -8.110015202627938e-05,
-     "accuracy": 4.964912754005143e-15
+     "accuracy": 4.964912754005143e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.0128117043316205e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.0002878911206901322
     },
     {
      "helicity": [
@@ -2415,11 +3301,20 @@
      ],
      "madloop_index": 3,
      "status": 328,
-     "born": 3.625350744962974e-11,
+     "born": 3.625350744600388e-11,
      "finite": 4.4490376408786337e-08,
      "single_pole": -1.9400889715919484e-11,
      "double_pole": -1.0212767098577122e-11,
-     "accuracy": 8.409411915265766e-15
+     "accuracy": 8.409411915265766e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0001392961176037e-10,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 1e-10 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 3.625350744962974e-11
     },
     {
      "helicity": [
@@ -2430,12 +3325,21 @@
       1
      ],
      "madloop_index": 4,
-     "status": 318,
-     "born": 3.435546571037401e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 8.409411915265766e-15
+     "status": 328,
+     "born": -2.6936858231561226e-37,
+     "finite": 7.430274998450047e-36,
+     "single_pole": -1.5920418414049255e-35,
+     "double_pole": 7.588227425885885e-38,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000000784063254,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 3.435546571037401e-30
     },
     {
      "helicity": [
@@ -2447,11 +3351,20 @@
      ],
      "madloop_index": 5,
      "status": 328,
-     "born": 0.27016191853228094,
+     "born": 0.270161918532293,
      "finite": -0.21301499457951859,
      "single_pole": -0.14457584813657873,
      "double_pole": -0.0761057604421997,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.4587778627812325e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.27016191853228094
     },
     {
      "helicity": [
@@ -2462,12 +3375,21 @@
       1
      ],
      "madloop_index": 6,
-     "status": 318,
-     "born": 7.645948923434347e-32,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 6.283957769930414e-39,
+     "finite": 3.6255532728182064e-37,
+     "single_pole": 4.475739784895219e-38,
+     "double_pole": -1.770217606039313e-39,
+     "accuracy": 1.737753427736203e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999999178132389,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 7.645948923434347e-32
     },
     {
      "helicity": [
@@ -2478,12 +3400,21 @@
       -1
      ],
      "madloop_index": 7,
-     "status": 318,
-     "born": 2.3191678344494545e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -1.2372777191639189e-36,
+     "finite": -1.6327975693411525e-35,
+     "single_pole": -2.8232910144882803e-35,
+     "double_pole": 3.485463910188543e-37,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000005335007243,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 2.3191678344494545e-30
     },
     {
      "helicity": [
@@ -2494,12 +3425,21 @@
       1
      ],
      "madloop_index": 8,
-     "status": 318,
-     "born": 1.4939207341366642e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 2.353709038926977e-38,
+     "finite": -5.558702885885487e-36,
+     "single_pole": 1.2792477146456396e-36,
+     "double_pole": -6.630498378171858e-39,
+     "accuracy": 2.0110811716032558e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999999842447528,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.4939207341366642e-30
     },
     {
      "helicity": [
@@ -2510,12 +3450,21 @@
       -1
      ],
      "madloop_index": 9,
-     "status": 318,
-     "born": 1.1131301135533377e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -2.1882263666054602e-38,
+     "finite": 1.0669224691644936e-36,
+     "single_pole": -2.9245069471073836e-37,
+     "double_pole": 6.164326658432202e-39,
+     "accuracy": 1.6049199570334306e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000001965831613,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.1131301135533377e-31
     },
     {
      "helicity": [
@@ -2527,11 +3476,20 @@
      ],
      "madloop_index": 10,
      "status": 328,
-     "born": 0.045945877629069994,
+     "born": 0.04594587762907269,
      "finite": -0.03214249628363994,
      "single_pole": -0.02458771488850169,
      "double_pole": -0.012943148964671185,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.87480285045627e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.045945877629069994
     },
     {
      "helicity": [
@@ -2543,11 +3501,20 @@
      ],
      "madloop_index": 11,
      "status": 328,
-     "born": 0.011145193709987613,
+     "born": 0.011145193709988167,
      "finite": -0.0069792558579089385,
      "single_pole": -0.0059642966781619025,
      "double_pole": -0.0031396484270705305,
-     "accuracy": 1.6178901326474325e-15
+     "accuracy": 1.6178901326474325e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.9651607969870716e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.011145193709987613
     },
     {
      "helicity": [
@@ -2559,11 +3526,20 @@
      ],
      "madloop_index": 12,
      "status": 328,
-     "born": 2.008443453602252e-05,
+     "born": 2.0084434536014826e-05,
      "finite": 1.4137410528488278e-05,
      "single_pole": -1.0748088306312525e-05,
      "double_pole": -5.657870553033836e-06,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 3.8310499999677146e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 3.8e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 2.008443453602252e-05
     },
     {
      "helicity": [
@@ -2575,11 +3551,20 @@
      ],
      "madloop_index": 13,
      "status": 328,
-     "born": 1.8709444477436644e-05,
+     "born": 1.8709444477444996e-05,
      "finite": 9.217515029636355e-06,
      "single_pole": -1.0012269005883241e-05,
      "double_pole": -5.270530010827059e-06,
-     "accuracy": 1.67583173165733e-15
+     "accuracy": 1.67583173165733e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 4.463919209357484e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 4.5e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 1.8709444477436644e-05
     },
     {
      "helicity": [
@@ -2591,11 +3576,20 @@
      ],
      "madloop_index": 14,
      "status": 328,
-     "born": 0.07672070320751802,
+     "born": 0.076720703207522,
      "finite": -0.052795193382933876,
      "single_pole": -0.04105671441823285,
      "double_pole": -0.02161254810074514,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.1914606283903915e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.07672070320751802
     },
     {
      "helicity": [
@@ -2607,11 +3601,20 @@
      ],
      "madloop_index": 15,
      "status": 328,
-     "born": 0.004599775743474362,
+     "born": 0.004599775743474524,
      "finite": -0.0027281862532319385,
      "single_pole": -0.0024615478116372705,
      "double_pole": -0.001295776372638058,
-     "accuracy": 2.206683469976703e-15
+     "accuracy": 2.206683469976703e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.5073293191458955e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.004599775743474362
     },
     {
      "helicity": [
@@ -2622,12 +3625,21 @@
       1
      ],
      "madloop_index": 16,
-     "status": 318,
-     "born": 1.048248306321682e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 2.206683469976703e-15
+     "status": 328,
+     "born": 7.909252137948222e-38,
+     "finite": 1.8150001359543532e-36,
+     "single_pole": 1.3931190521590307e-37,
+     "double_pole": -2.2280699358288434e-38,
+     "accuracy": 9.856697532425574e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999992454791398,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.048248306321682e-31
     },
     {
      "helicity": [
@@ -2638,12 +3650,21 @@
       -1
      ],
      "madloop_index": 17,
-     "status": 318,
-     "born": 1.048248306321682e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 2.206683469976703e-15
+     "status": 328,
+     "born": 7.909252137948222e-38,
+     "finite": 1.7874882041991703e-36,
+     "single_pole": 1.299185569027085e-37,
+     "double_pole": -2.2280699358288434e-38,
+     "accuracy": 2.842708713436753e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999992454791398,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.048248306321682e-31
     },
     {
      "helicity": [
@@ -2655,11 +3676,20 @@
      ],
      "madloop_index": 18,
      "status": 328,
-     "born": 0.004599775743474362,
+     "born": 0.004599775743474524,
      "finite": -0.0027471292813439716,
      "single_pole": -0.0024615478116372753,
      "double_pole": -0.001295776372638058,
-     "accuracy": 4.000467107219837e-16
+     "accuracy": 4.000467107219837e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.5073293191458955e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.004599775743474362
     },
     {
      "helicity": [
@@ -2671,11 +3701,20 @@
      ],
      "madloop_index": 19,
      "status": 328,
-     "born": 0.07672070320751802,
+     "born": 0.076720703207522,
      "finite": -0.052913402661347836,
      "single_pole": -0.04105671441823285,
      "double_pole": -0.02161254810074514,
-     "accuracy": 3.6020421711585594e-16
+     "accuracy": 3.6020421711585594e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.1914606283903915e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.07672070320751802
     },
     {
      "helicity": [
@@ -2687,11 +3726,20 @@
      ],
      "madloop_index": 20,
      "status": 328,
-     "born": 1.8709444477436644e-05,
+     "born": 1.8709444477444996e-05,
      "finite": 9.628416130327855e-06,
      "single_pole": -1.0012269005883295e-05,
      "double_pole": -5.270530010827059e-06,
-     "accuracy": 6.651170183162383e-14
+     "accuracy": 6.651170183162383e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 4.463919209357484e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 4.5e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 1.8709444477436644e-05
     },
     {
      "helicity": [
@@ -2703,11 +3751,20 @@
      ],
      "madloop_index": 21,
      "status": 328,
-     "born": 2.008443453602252e-05,
+     "born": 2.0084434536014826e-05,
      "finite": 1.3879401470926126e-05,
      "single_pole": -1.0748088306312864e-05,
      "double_pole": -5.657870553033836e-06,
-     "accuracy": 1.2069065298460138e-14
+     "accuracy": 1.2069065298460138e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 3.8310499999677146e-13,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 3.8e-13 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 2.008443453602252e-05
     },
     {
      "helicity": [
@@ -2719,11 +3776,20 @@
      ],
      "madloop_index": 22,
      "status": 328,
-     "born": 0.011145193709987613,
+     "born": 0.011145193709988167,
      "finite": -0.006963906838501583,
      "single_pole": -0.005964296678161901,
      "double_pole": -0.0031396484270705305,
-     "accuracy": 4.858306928163998e-16
+     "accuracy": 4.858306928163998e-16,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.9651607969870716e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.011145193709987613
     },
     {
      "helicity": [
@@ -2735,11 +3801,20 @@
      ],
      "madloop_index": 23,
      "status": 328,
-     "born": 0.045945877629069994,
+     "born": 0.04594587762907269,
      "finite": -0.0321480772651924,
      "single_pole": -0.024587714888501713,
      "double_pole": -0.012943148964671185,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 5.87480285045627e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.045945877629069994
     },
     {
      "helicity": [
@@ -2750,12 +3825,21 @@
       1
      ],
      "madloop_index": 24,
-     "status": 318,
-     "born": 1.1131301135533377e-31,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -2.1882263666054602e-38,
+     "finite": 7.580575483709161e-37,
+     "single_pole": -3.415047161450922e-37,
+     "double_pole": 6.164326658432202e-39,
+     "accuracy": 3.764054067917376e-14,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000001965831613,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.1131301135533377e-31
     },
     {
      "helicity": [
@@ -2766,12 +3850,21 @@
       -1
      ],
      "madloop_index": 25,
-     "status": 318,
-     "born": 1.4939207341366642e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 2.353709038926977e-38,
+     "finite": -6.114149641945794e-36,
+     "single_pole": 1.1931797125600628e-36,
+     "double_pole": -6.630498378171858e-39,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999999842447528,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 1.4939207341366642e-30
     },
     {
      "helicity": [
@@ -2782,12 +3875,21 @@
       1
      ],
      "madloop_index": 26,
-     "status": 318,
-     "born": 2.3191678344494545e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -1.2372777191639189e-36,
+     "finite": -9.277150340438891e-36,
+     "single_pole": -2.747185694505414e-35,
+     "double_pole": 3.485463910188543e-37,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000005335007243,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 2.3191678344494545e-30
     },
     {
      "helicity": [
@@ -2798,12 +3900,21 @@
       -1
      ],
      "madloop_index": 27,
-     "status": 318,
-     "born": 7.645948923434347e-32,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": 6.283957769930414e-39,
+     "finite": 5.481746817150085e-37,
+     "single_pole": 9.821205945966933e-38,
+     "double_pole": -1.770217606039313e-39,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 0.9999999178132389,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 7.645948923434347e-32
     },
     {
      "helicity": [
@@ -2815,11 +3926,20 @@
      ],
      "madloop_index": 28,
      "status": 328,
-     "born": 0.27016191853228094,
+     "born": 0.270161918532293,
      "finite": -0.2134586290538902,
      "single_pole": -0.14457584813657876,
      "double_pole": -0.0761057604421997,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.4587778627812325e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.27016191853228094
     },
     {
      "helicity": [
@@ -2830,12 +3950,21 @@
       -1
      ],
      "madloop_index": 29,
-     "status": 318,
-     "born": 3.435546571037401e-30,
-     "finite": 0.0,
-     "single_pole": 0.0,
-     "double_pole": 0.0,
-     "accuracy": 0.0
+     "status": 328,
+     "born": -2.6936858231561226e-37,
+     "finite": 1.3466194329249226e-35,
+     "single_pole": -1.555939241936874e-35,
+     "double_pole": 7.588227425885885e-38,
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0000000784063254,
+      "reason": "vanishing helicity: its Born is <= 1e-12 of the point's summed |Born|"
+     },
+     "born_binary64_input": 3.435546571037401e-30
     },
     {
      "helicity": [
@@ -2847,11 +3976,20 @@
      ],
      "madloop_index": 30,
      "status": 328,
-     "born": 3.625350744962974e-11,
+     "born": 3.625350744600388e-11,
      "finite": 4.571563218071412e-08,
      "single_pole": -1.9400889716077336e-11,
      "double_pole": -1.0212767098577122e-11,
-     "accuracy": 2.2270098956160533e-15
+     "accuracy": 2.2270098956160533e-15,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "absolute",
+      "absolute_scale": 1.879931072609506,
+      "born_double_pole_relative_mismatch": 1.0001392961176037e-10,
+      "reason": "suppressed helicity: the printed binary64 Born misses the implied one by 1e-10 > 1e-13, the reference is limited by the point's binary64 condition"
+     },
+     "born_binary64_input": 3.625350744962974e-11
     },
     {
      "helicity": [
@@ -2863,11 +4001,20 @@
      ],
      "madloop_index": 31,
      "status": 328,
-     "born": 0.0002878911206901322,
+     "born": 0.00028789112069014085,
      "finite": -0.00012838782245337837,
      "single_pole": -0.00015406354519129697,
      "double_pole": -8.110015202627938e-05,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 3.0128117043316205e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.0002878911206901322
     },
     {
      "helicity": [
@@ -2879,11 +4026,20 @@
      ],
      "madloop_index": 32,
      "status": 328,
-     "born": 0.5310653824464222,
+     "born": 0.5310653824464456,
      "finite": -0.418529827726896,
      "single_pole": -0.2841970789232234,
      "double_pole": -0.14960337487677125,
-     "accuracy": 0.0
+     "accuracy": 0.0,
+     "reference": {
+      "born_source": "madloop_double_pole_over_universal_factor",
+      "status": "ok",
+      "comparison": "relative",
+      "absolute_scale": null,
+      "born_double_pole_relative_mismatch": 4.411077542218284e-14,
+      "reason": null
+     },
+     "born_binary64_input": 0.5310653824464222
     }
    ]
   ]
@@ -2904,7 +4060,7 @@
    "provider": "madloop",
    "process_name": "gg_ggg",
    "host": "itphlies",
-   "cpu": 267,
+   "cpu": 45,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/gg_ggg/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -2916,9 +4072,13 @@
      "MLReductionLib": "6|7|1",
      "COLLIERGlobalCache": "-1",
      "MLStabThres": "1.000000d-03",
-     "ImprovePSPoint": "2"
+     "ImprovePSPoint": "2",
+     "HelicityFilterLevel": "0"
     },
     "param_card": "######################################################################\n## PARAM_CARD AUTOMATICALY GENERATED BY MG5                       ####\n######################################################################\n###################################\n## INFORMATION FOR LOOP\n###################################\nBLOCK LOOP # \n      1 9.118800e+01 # mu_r\n###################################\n## INFORMATION FOR MASS\n###################################\nBLOCK MASS # \n      6 173 # mt\n      15 0 # mta\n      23 91.188 # mz\n      25 125 # mh\n      1 0.000000e+00 # d : 0.0\n      2 0.000000e+00 # u : 0.0\n      3 0.000000e+00 # s : 0.0\n      4 0.000000e+00 # c : 0.0\n      5 0.000000e+00 # b : 0.0\n      11 0.000000e+00 # e- : 0.0\n      12 0.000000e+00 # ve : 0.0\n      13 0.000000e+00 # mu- : 0.0\n      14 0.000000e+00 # vm : 0.0\n      16 0.000000e+00 # vt : 0.0\n      21 0.000000e+00 # g : 0.0\n      22 0.000000e+00 # a : 0.0\n      24 8.041900e+01 # w+ : cmath.sqrt(mz__exp__2/2. + cmath.sqrt(mz__exp__4/4. - (aew*cmath.pi*mz__exp__2)/(gf*sqrt__2)))\n      250 9.118800e+01 # g0 : mz\n      251 8.041900e+01 # g+ : mw\n###################################\n## INFORMATION FOR SMINPUTS\n###################################\nBLOCK SMINPUTS # \n      1 132.507 # aewm1\n      2 0.0000116639 # gf\n      3 0.118 # as (note: this parameter is not used if you use a pdf set)\n###################################\n## INFORMATION FOR YUKAWA\n###################################\nBLOCK YUKAWA # \n      6 173 # ymt\n      15 0 # ymtau\n###################################\n## INFORMATION FOR DECAY\n###################################\nDECAY 6 0 # wt\nDECAY 23 0 # wz\nDECAY 24 0 # ww\nDECAY 25 0 # wh\nDECAY 1 0.000000e+00 # d : 0.0\nDECAY 2 0.000000e+00 # u : 0.0\nDECAY 3 0.000000e+00 # s : 0.0\nDECAY 4 0.000000e+00 # c : 0.0\nDECAY 5 0.000000e+00 # b : 0.0\nDECAY 11 0.000000e+00 # e- : 0.0\nDECAY 12 0.000000e+00 # ve : 0.0\nDECAY 13 0.000000e+00 # mu- : 0.0\nDECAY 14 0.000000e+00 # vm : 0.0\nDECAY 15 0.000000e+00 # ta- : 0.0\nDECAY 16 0.000000e+00 # vt : 0.0\nDECAY 21 0.000000e+00 # g : 0.0\nDECAY 22 0.000000e+00 # a : 0.0\nDECAY 250 2.441404e+00 # g0 : wz\nDECAY 251 2.047600e+00 # g+ : ww\n###################################\n## INFORMATION FOR QNUMBERS 82\n###################################\nBLOCK QNUMBERS 82 #  gh\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 8 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 250\n###################################\nBLOCK QNUMBERS 250 #  g0\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 0 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 251\n###################################\nBLOCK QNUMBERS 251 #  g+\n      1 3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n\n",
+    "MadLoopParams_overrides": {
+     "HelicityFilterLevel": "0"
+    },
     "export": "${LOOP_REFERENCE_ROOT}/runs/g1/gg_ggg/madloop-export",
     "fortran_flags": {
      "export_make_opts": {
@@ -2939,7 +4099,9 @@
      "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
     ],
     "requested_relative_accuracy": 1e-13,
-    "stability_check": "forced on every call"
+    "stability_check": "forced on every call",
+    "quadruple_precision_stage": "every point: the run's loop_matrix.f copy bypasses MadLoop's double-precision acceptance, so its quadruple-precision stage (MLStabThres test over two propagator directions; Ninja, else CutTools) evaluates every point (references.force_quadruple_stage)",
+    "quadruple_precision_required": true
    },
    "generation": {
     "process_name": "gg_ggg",
@@ -3015,8 +4177,8 @@
     1,
     1
    ],
-   "initial_call_seconds": 50.5482309,
-   "initialization_calls": 2,
+   "initial_call_seconds": 32.5594819,
+   "initialization_calls": 1,
    "squared_split_orders": {
     "born": [
      {
@@ -3033,13 +4195,88 @@
      }
     ]
    },
-   "process_wall_seconds": 128.40647816401906,
+   "process_wall_seconds": 152.77621319703758,
    "evaluation_seconds": [
-    19.4991328,
-    19.3345073,
-    19.5007649,
-    19.4926946
-   ]
+    29.6277063,
+    29.8165787,
+    30.3622459,
+    30.3751538
+   ],
+   "secondary_runs": {
+    "mlstabthres": {
+     "settings": {
+      "requested_relative_accuracy": 1e-13,
+      "stability_check": "forced on every call",
+      "fortran_flags": {
+       "export_make_opts": {
+        "GLOBAL_FLAG": "-O",
+        "ALOHA_FLAG": "",
+        "MATRIX_FLAG": ""
+       },
+       "mg5_production": {
+        "GLOBAL_FLAG": "-O",
+        "ALOHA_FLAG": "",
+        "MATRIX_FLAG": ""
+       },
+       "production_build": true,
+       "source": "MG5_aMC run-card defaults global_flag/aloha_flag/matrix_flag (CommonRunCmd.update_make_opts of an optimised MG5 run); MadLoop's own makefile adds -O3 for polynomial.f"
+      },
+      "MadLoopParams": {
+       "MLReductionLib": "6|7|1",
+       "COLLIERGlobalCache": "-1",
+       "MLStabThres": "1.000000d-03",
+       "ImprovePSPoint": "2"
+      }
+     },
+     "version": "MadLoop/MG5_aMC 3.7.0",
+     "evaluation_seconds": [
+      19.4991328,
+      19.3345073,
+      19.5007649,
+      19.4926946
+     ],
+     "statuses": [
+      328,
+      328,
+      328,
+      328
+     ],
+     "estimated_accuracies": [
+      0.0,
+      0.0,
+      0.0,
+      6.684242510963587e-16
+     ],
+     "relative_deviation_from_reference_run": [
+      {
+       "born": 0.0,
+       "finite": 0.0,
+       "single_pole": 0.0,
+       "double_pole": 0.0
+      },
+      {
+       "born": 0.0,
+       "finite": 0.0,
+       "single_pole": 0.0,
+       "double_pole": 0.0
+      },
+      {
+       "born": 0.0,
+       "finite": 0.0,
+       "single_pole": 0.0,
+       "double_pole": 0.0
+      },
+      {
+       "born": 0.0,
+       "finite": 0.0,
+       "single_pole": 0.0,
+       "double_pole": 0.0
+      }
+     ],
+     "initial_call_seconds": 50.5482309,
+     "cpu": 267
+    }
+   }
   }
  },
  "timing_only_runs": {},

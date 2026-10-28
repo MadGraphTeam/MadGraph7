@@ -149,15 +149,37 @@ def test_reference_fixture_records_its_settings_points_and_sectors(
         "parameter_overrides", spec.get("parameter_overrides", {})
     ).items():
         assert values[key] == value
-    # Provenance and MadLoop's accurate-mode settings.
+    # Provenance and MadLoop's evaluation settings.
     madloop = fixture["providers"]["madloop"]
+    settings = madloop["settings"]
     assert madloop["version"].startswith("MadLoop/MG5_aMC 3.7.0")
-    requested = run.get(
-        "madloop_accuracy", campaign["madloop_settings"]["requested_relative_accuracy"]
-    )
-    assert madloop["settings"]["requested_relative_accuracy"] == requested
-    assert madloop["settings"]["stability_check"] == "forced on every call"
     assert madloop["generation"]["status"] == "compiled"
+    assert settings["stability_check"] == "forced on every call"
+    evaluation = campaign["madloop_settings"]["evaluation"]
+    statuses = [row["madloop_status"] for row in fixture["rows"]]
+    if run.get("madloop_evaluation", {}).get("mode") == "mlstabthres":
+        assert run["madloop_evaluation"]["reason"]
+        requested = run.get(
+            "madloop_accuracy",
+            campaign["madloop_settings"]["requested_relative_accuracy"],
+        )
+        assert settings["requested_relative_accuracy"] == requested
+        assert "quadruple_precision_stage" not in settings
+    else:
+        # Every point in MadLoop's quadruple-precision stage, every helicity
+        # configuration computed, no filter inherited from an earlier run.
+        assert (
+            settings["requested_relative_accuracy"]
+            == (evaluation["requested_relative_accuracy"])
+        )
+        assert settings["quadruple_precision_stage"]
+        assert settings["quadruple_precision_required"] is True
+        assert settings["MadLoopParams_overrides"] == evaluation["madloop_params"]
+        for key, value in evaluation["madloop_params"].items():
+            assert settings["MadLoopParams"][key] == value
+        assert all(status // 100 in (3, 4) for status in statuses), statuses
+        secondary = madloop["secondary_runs"]["mlstabthres"]
+        assert len(secondary["relative_deviation_from_reference_run"]) == len(statuses)
     # Points: on the scheme's mass shells, momentum conserving.
     masses = required_spec.masses(spec)
     assert len(fixture["rows"]) == len(fixture["points"]) == len(fixture["mu_r"])
@@ -212,6 +234,52 @@ def test_per_helicity_rows_sum_to_the_summed_value(campaign: dict, run_id: str) 
             ), key
 
 
+HEL_RELATIVE_LIMIT = 1e-13
+
+
+def _strict(a: float, b: float) -> float:
+    scale = max(abs(a), abs(b))
+    return 0.0 if scale == 0 else abs(a - b) / scale
+
+
+@pytest.mark.parametrize(
+    "run_id",
+    [r["id"] for r in json.loads(CAMPAIGN.read_text())["runs"] if r.get("helicities")],
+)
+def test_per_helicity_entries_carry_reference_records(run_id: str) -> None:
+    """Quadruple-precision helicity entries take their Born from the
+    helicity-diagonal IR double pole; a vanishing helicity, or one whose
+    printed binary64 Born misses that Born by more than 1e-13 (suppressed
+    below the point's binary64 condition), is an absolute entry against the
+    point's summed |Born|."""
+    fixture = _fixture(run_id)
+    per = fixture["per_helicity"]
+    factor = fixture["universal_double_pole_factor"]
+    assert per["settings"]["MadLoopParams_overrides"] == {"HelicityFilterLevel": "0"}
+    assert per["settings"]["quadruple_precision_stage"]
+    for entries in per["rows"]:
+        summed = sum(abs(e["born"]) for e in entries)
+        for entry in entries:
+            record = entry["reference"]
+            assert record["status"] == "ok"
+            assert entry["status"] // 100 in (3, 4), entry["helicity"]
+            mismatch = record["born_double_pole_relative_mismatch"]
+            if factor:
+                assert (
+                    record["born_source"] == "madloop_double_pole_over_universal_factor"
+                )
+                assert entry["born"] == entry["double_pole"] / factor
+                assert mismatch == _strict(entry["born_binary64_input"], entry["born"])
+            else:
+                assert record["born_source"] == "madloop" and mismatch is None
+            vanishing = abs(entry["born"]) <= 1e-12 * summed
+            suppressed = mismatch is not None and mismatch > HEL_RELATIVE_LIMIT
+            absolute = vanishing or suppressed
+            assert record["comparison"] == ("absolute" if absolute else "relative")
+            assert record["absolute_scale"] == (summed if absolute else None)
+            assert bool(record["reason"]) == absolute
+
+
 def test_mixed_order_run_prints_every_squared_split_order() -> None:
     fixture = _fixture("uux_ttx_mixed")
     for row in fixture["rows"]:
@@ -250,6 +318,25 @@ def test_madloop_born_split_orders_read_from_the_born_matrix(tmp_path: Path) -> 
 UNIVERSAL_POLE_TOLERANCE = 1e-10
 RG_TOLERANCE = 1e-11
 RUN_IDS = [r["id"] for r in json.loads(CAMPAIGN.read_text())["runs"]]
+# At a regular point MadLoop's printed Born (double precision at the binary64
+# input) and the Born its quadruple-precision double pole implies are the same
+# Born up to the binary64 rounding of the point: <= 1.1e-13 over the campaign
+# (u u~ > w+ w-: gauge cancellations of the slightly off-shell binary64 W
+# momenta), while a loop defect shows above it (C01 point 1 before
+# HelicityFilterLevel 0: 4.8e-13). An ok point above the floor (or above ten
+# times MadLoop's own accuracy, where that is larger) must be a named outlier.
+REGULAR_IR_FLOOR = 2e-13
+OUTLIER = "OUTLIER"
+# Limit points (madloop_qp_point): the printed Born's binary64 condition, bounded
+# by 1e3 binary64 epsilons times the family's observed sensitivity (soft E/sqrt(s)
+# = v: 1/v; threshold beta: 1/beta^2; collinear theta: 1/theta^3; the
+# radiation-zero family compares absolutely against its regular neighbour).
+EPSILON = 2.0**-53
+FAMILY_SENSITIVITY = {
+    "soft": lambda v: 1 / v,
+    "threshold": lambda v: 1 / v**2,
+    "collinear": lambda v: 1 / v**3,
+}
 
 
 def _reference_born(sectors: dict) -> dict:
@@ -260,9 +347,19 @@ def _reference_born(sectors: dict) -> dict:
 def test_every_loop_sector_has_the_universal_double_pole(run_id: str) -> None:
     """D_s = factor * Born(born sector of s) per loop squared split order at
     every reference point (a garbage Born sector, e.g. MG5's uninitialised
-    JAMP, violates it at O(1)); the recorded MadLoop mismatch is reproduced."""
+    JAMP, violates it at O(1)); the recorded MadLoop mismatch is reproduced
+    and bounded: at regular ok points by REGULAR_IR_FLOOR (named outliers
+    excepted), at limit points by their family's binary64 condition. At
+    madloop_qp_point points the reference Born of every sector with a loop
+    partner IS that sector's double pole over the factor, so the per-sector
+    relation holds there by construction; the falsifiable quantity is the
+    printed binary64 Born's mismatch."""
     fixture = _fixture(run_id)
+    run = fixture["mqcd_run"]
     factor = fixture["universal_double_pole_factor"]
+    construction = fixture["point_construction"]
+    family = construction.get("family")
+    values = construction.get("family_values") or []
     for index, row in enumerate(fixture["rows"]):
         reference = row["reference"]
         sectors = row["sectors"]
@@ -302,6 +399,22 @@ def test_every_loop_sector_has_the_universal_double_pole(run_id: str) -> None:
             assert mismatch == pytest.approx(
                 reference["born_double_pole_relative_mismatch"], rel=1e-6, abs=1e-300
             )
+        error = reference["max_sector_double_pole_relative_error"]
+        if construction.get("madloop_qp_point"):
+            if family in FAMILY_SENSITIVITY:
+                value = float(Fraction(values[index]))
+                bound = 1e3 * EPSILON * FAMILY_SENSITIVITY[family](value)
+            else:
+                bound = 1e3 * EPSILON
+            assert reference["born_double_pole_relative_mismatch"] <= bound, (
+                index,
+                bound,
+            )
+        else:
+            accuracy = max(s["accuracy"] for s in sectors["loop"])
+            note = run.get("reference_notes", {}).get(str(index), "")
+            if OUTLIER not in note:
+                assert error <= max(10 * accuracy, REGULAR_IR_FLOOR), (index, error)
 
 
 @pytest.mark.parametrize("run_id", RUN_IDS)
@@ -458,6 +571,37 @@ def test_point_references_are_recorded_and_listed_in_the_manifest(
                 by_run[run["id"]]["second_provider_trigger"]
                 == run["second_provider_trigger"]
             )
+        # Each second provider's outcome, per point and coefficient.
+        outcome = by_run[run["id"]]["second_provider_outcome"]
+        assert set(outcome) == set(run.get("second_providers", []))
+        for provider, per_point in outcome.items():
+            assert provider in fixture["providers"], (run["id"], provider)
+            for row, recorded in zip(fixture["rows"], per_point, strict=True):
+                theirs = row["providers"][provider]
+                ours = row["providers"]["madloop"]
+                assert recorded == {
+                    k: _strict(ours[k], theirs[k]) for k in ("born", *LAURENT)
+                }
+        hel = by_run[run["id"]]["per_helicity_reference"]
+        if fixture.get("per_helicity"):
+            assert hel == [
+                [{"helicity": e["helicity"], **e["reference"]} for e in entries]
+                for entries in fixture["per_helicity"]["rows"]
+            ]
+        else:
+            assert hel is None
+        superseded = fixture["providers"]["madloop"].get("secondary_runs", {})
+        deviation = by_run[run["id"]]["batch2_relative_deviation"]
+        if run.get("madloop_evaluation", {}).get("mode") == "mlstabthres":
+            assert deviation is None
+        else:
+            assert (
+                deviation
+                == (superseded["mlstabthres"]["relative_deviation_from_reference_run"])
+            )
+            assert superseded["mlstabthres"]["settings"][
+                "requested_relative_accuracy"
+            ] in (1e-13, 1e-20)
         assert (
             fixture["tolerance_scope"] == manifest["conventions"]["fixture_tolerance"]
         )
@@ -601,3 +745,80 @@ def test_supplied_points_refuse_unreachable_configurations() -> None:
         supplied_points.generate(massive, "regular", count=11)
     with pytest.raises(ValueError, match="no room"):
         supplied_points.generate([F(0), F(0), F(173), F(0)], "soft", values=[F(1, 2)])
+
+
+def test_parse_rows_without_sectors_reads_the_new_driver_output() -> None:
+    """The G1 benchmark's MadLoop runs call parse_rows without step/born_so on
+    the driver's full output (LOOP_SO and SECTORS lines included)."""
+    from tools.loop_reference import references
+
+    stdout = (
+        "SPLIT_ORDER_INDICES 1 1 1 1\n"
+        "LOOP_SO 1 6 0\n"
+        "INITIAL_CALL_SECONDS 0.1 1 216\n"
+        "ROW 1 216 0.1 1.0 2.0 3.0 -0.05 1e-15 1.0 2.0 3.0 -0.05\n"
+        "SECTORS 1 216 1.0 2.0 3.0 -0.05 1.0 2.0 3.0 -0.05 1e-15 1e-15\n"
+    )
+    rows, extra = references.parse_rows(stdout, "madloop", 1)
+    assert rows[0]["finite"] == 2.0 and rows[0]["status"] == 216
+    assert "sectors" not in rows[0] and "squared_split_orders" not in extra
+    assert extra["initialization_calls"] == 1
+
+
+LOOP_MATRIX = """        ELSEIF(.NOT.DOING_QP_EVALS)THEN
+          CALL ML5_3_COMPUTE_ACCURACY(DP_RES,N_DP_EVAL,ACC,ANS)
+          IF(FPE_IN_DP_REDUCTION) THEN
+            ACC(0)=1.0D0
+          ENDIF
+          IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN
+            I_LIB=I_LIB+1
+            IF((I_LIB.GT.NLOOPLIB.OR.MLREDUCTIONLIB(I_LIB).EQ.0)
+"""
+
+
+def test_quadruple_stage_bypasses_only_the_double_precision_acceptance() -> None:
+    from tools.loop_reference import references
+
+    qp_test = (
+        "          IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN\n"
+        "            I_QP_LIB=I_QP_LIB+1\n"
+    )
+    text = qp_test + LOOP_MATRIX
+    forced = references.force_quadruple_stage(text, "ML5_3_")
+    assert forced.startswith(qp_test)  # the quadruple-precision test is MadLoop's own
+    assert "          IF(.TRUE.) THEN\n            I_LIB=NLOOPLIB+1\n" in forced
+    assert forced.count("MAXVAL(ACC).GE.MLSTABTHRES") == 1
+    with pytest.raises(RuntimeError, match="branch"):
+        references.force_quadruple_stage(text, "ML5_0_")
+    with pytest.raises(RuntimeError, match="acceptance"):
+        references.force_quadruple_stage(
+            text.replace("I_LIB=I_LIB+1", "I_LIB=1"), "ML5_3_"
+        )
+
+
+def test_per_helicity_records_mark_vanishing_and_suppressed_helicities() -> None:
+    from tools.loop_reference import references
+
+    factor = -0.25
+    regular = {"status": 328, "born": 1.0, "double_pole": factor * (1.0 + 1e-16)}
+    suppressed = {"status": 328, "born": 4e-11, "double_pole": factor * 4.0001e-11}
+    vanishing = {"status": 328, "born": 1e-30, "double_pole": 0.0}
+    double = {"status": 216, "born": 0.5, "double_pole": factor * 0.5}
+    entries = [dict(e) for e in (regular, suppressed, vanishing, double)]
+    references.per_helicity_reference(entries, factor)
+    records = [e["reference"] for e in entries]
+    assert [r["comparison"] for r in records] == [
+        "relative",
+        "absolute",
+        "absolute",
+        "relative",
+    ]
+    assert entries[0]["born"] == regular["double_pole"] / factor
+    assert entries[0]["born_binary64_input"] == 1.0
+    assert (
+        records[3]["born_source"] == "madloop"
+        and "born_binary64_input" not in entries[3]
+    )
+    summed = sum(abs(e["born"]) for e in entries)
+    assert records[1]["absolute_scale"] == records[2]["absolute_scale"] == summed
+    assert "suppressed" in records[1]["reason"] and "vanishing" in records[2]["reason"]
