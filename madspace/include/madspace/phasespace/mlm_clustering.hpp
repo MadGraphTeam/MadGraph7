@@ -139,7 +139,13 @@ public:
         ClusteringMeasure clustering_measure = ClusteringMeasure::fxfx,
         // Anything but all_diagrams also compiles one state machine per
         // diagram, which build_along_diagram walks.
-        ClusteringHistory clustering_history = ClusteringHistory::all_diagrams
+        ClusteringHistory clustering_history = ClusteringHistory::all_diagrams,
+        // With pdf_reweighting, also walk the densities along the clustering
+        // ladder under scale_scheme = clustering_mean: the densities (their
+        // lowered leading scale, the ladder ratios and the per-beam scale the
+        // ladder ends at) are then madevent's, while mu_R, the alpha_s vertex
+        // scales and the jet bookkeeping stay clustering_mean's.
+        bool clustering_mean_pdf_ladder = false
     );
 
     // The same outputs as the function itself, for a history restricted to
@@ -183,6 +189,7 @@ public:
     const std::vector<double>& bw_widths() const { return _bw_widths; }
     AlphasScheme alphas_scheme() const { return _alphas_scheme; }
     bool pdf_reweighting() const { return _pdf_reweighting; }
+    bool clustering_mean_pdf_ladder() const { return _clustering_mean_pdf_ladder; }
     ScaleScheme scale_scheme() const { return _scale_scheme; }
     ClusteringMeasure clustering_measure() const { return _clustering_measure; }
     ClusteringHistory clustering_history() const { return _clustering_history; }
@@ -223,6 +230,7 @@ private:
     PartonLineScheme _parton_line_scheme;
     AlphasScheme _alphas_scheme;
     bool _pdf_reweighting;
+    bool _clustering_mean_pdf_ladder;
     ClusteringMeasure _clustering_measure;
     ClusteringHistory _clustering_history;
     std::vector<int> _pdf_absolute_pdgs;

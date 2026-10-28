@@ -1924,7 +1924,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 AlphasScheme,
                 bool,
                 ClusteringMeasure,
-                ClusteringHistory>(),
+                ClusteringHistory,
+                bool>(),
             py::arg("topologies"),
             py::arg("permutations"),
             py::arg("diagram_indices"),
@@ -1942,7 +1943,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("alphas_scheme") = AlphasScheme::per_vertex,
             py::arg("pdf_reweighting") = true,
             py::arg("clustering_measure") = ClusteringMeasure::fxfx,
-            py::arg("clustering_history") = ClusteringHistory::all_diagrams
+            py::arg("clustering_history") = ClusteringHistory::all_diagrams,
+            py::arg("clustering_mean_pdf_ladder") = false
         )
         .def_property_readonly(
             "pdf_absolute_pdgs", &MLMClustering::pdf_absolute_pdgs

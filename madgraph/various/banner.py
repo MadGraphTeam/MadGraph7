@@ -6888,6 +6888,15 @@ class RunCardMG7(RunCard):
         # and scale_scheme = "madevent".
         self.add_toml_param('beam', 'pdf_reweighting', True,
             comment="re-evaluate the beam densities along the MLM clustering ladder")
+        # The same ladder under scale_scheme = "clustering_mean": the beam
+        # densities are then evaluated as madevent evaluates them (per-beam
+        # factorisation scale, lowered to the scale that pulled the parton out
+        # of the beam and walked back up), while mu_R, the alpha_s vertex
+        # scales and the jet scales stay clustering_mean's. Without it
+        # clustering_mean takes both densities once at the softest clustering
+        # scale. Needs pdf_reweighting.
+        self.add_toml_param('beam', 'clustering_mean_pdf_ladder', False,
+            comment="also walk the pdf ladder under scale_scheme = clustering_mean")
         # Which measure scores a candidate final-state clustering. The two only
         # differ for a non-resonant pair with a massless mother and one massive
         # and one massless daughter (q* > q W, g* > g h), or a massive mother

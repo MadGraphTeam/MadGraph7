@@ -1491,6 +1491,56 @@ def test_pdf_reweighting_off_leaves_the_density_where_the_scale_is(
     assert np.all(out["pdf_rw_active"] == 0.0)
 
 
+def test_clustering_mean_pdf_ladder_takes_only_the_densities_from_madevent(
+    t_channel_momenta,
+):
+    """The ladder under clustering_mean is madevent's pdf half grafted onto
+    clustering_mean: the densities, the factorisation scales they end at and
+    every ladder slot are madevent's, while mu_R, the jet scales, the alpha_s
+    vertex scales and the xqcut veto stay clustering_mean's."""
+    scheme = ms.MLMClustering.ScaleScheme
+    mean = t_channel_clustering(scale_scheme=scheme.clustering_mean, xqcut=20.0)
+    madevent = t_channel_clustering(scale_scheme=scheme.madevent, xqcut=20.0)
+    ladder = t_channel_clustering(
+        scale_scheme=scheme.clustering_mean, xqcut=20.0,
+        clustering_mean_pdf_ladder=True,
+    )
+    # off unless asked for: clustering_mean keeps the density at its scale
+    assert np.all(pdf_outputs(mean, t_channel_momenta)["pdf_rw_active"] == 0.0)
+
+    ren, _, _, jets, diagram, veto = run_all(ladder, t_channel_momenta)
+    ren_m, _, _, jets_m, diagram_m, veto_m = run_all(mean, t_channel_momenta)
+    assert np.array_equal(ren, ren_m)
+    assert np.array_equal(jets, jets_m)
+    assert np.array_equal(diagram, diagram_m)
+    assert np.array_equal(veto, veto_m)
+    for got, want in zip(
+        alphas_outputs(ladder, t_channel_momenta),
+        alphas_outputs(mean, t_channel_momenta),
+    ):
+        assert np.array_equal(got, want)
+
+    _, fact1, fact2, _, _ = run(ladder, t_channel_momenta)
+    _, fact1_e, fact2_e, _, _ = run(madevent, t_channel_momenta)
+    assert np.array_equal(fact1, fact1_e)
+    assert np.array_equal(fact2, fact2_e)
+    out = pdf_outputs(ladder, t_channel_momenta)
+    out_e = pdf_outputs(madevent, t_channel_momenta)
+    assert (out["pdf_rw_active"] == 1.0).any()
+    for name in PDF_OUTPUTS:
+        assert np.array_equal(out[name], out_e[name]), name
+
+    # and the switch is inert without pdf_reweighting
+    off = t_channel_clustering(
+        scale_scheme=scheme.clustering_mean, xqcut=20.0,
+        clustering_mean_pdf_ladder=True, pdf_reweighting=False,
+    )
+    _, fact1_o, fact2_o, _, _ = run(off, t_channel_momenta)
+    _, fact1_m, fact2_m, _, _ = run(mean, t_channel_momenta)
+    assert np.array_equal(fact1_o, fact1_m)
+    assert np.array_equal(fact2_o, fact2_m)
+
+
 def test_pdf_reweighting_drops_the_density_down_the_ladder(t_channel_momenta):
     """The point of the whole thing: with it on, the density is asked for at or
     below the factorisation scale, and for a real part of the sample strictly

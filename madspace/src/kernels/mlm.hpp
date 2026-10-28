@@ -804,7 +804,25 @@ KERNELSPEC int mlm_clustering_walk(
     }
     FVal<T> pdf_scale_val[2] = {-1.0, -1.0};
 
-    if (scale_scheme == SCALES_MADEVENT) {
+    // pdf_reweighting == 2 under clustering_mean: walk the beam lines as
+    // madevent does below, but keep only the pdf half of it - the lowered
+    // leading scale, the ladder and the per-beam scale it ends at, which is
+    // also the factorisation scale then reported. mu_R, the alpha_s vertex
+    // scales, the jet scales and the merging-jet gating are put back to
+    // clustering_mean's after the walk. Without it clustering_mean evaluates
+    // both beam densities at the softest clustering scale, with no ladder.
+    bool mean_with_ladder = scale_scheme != SCALES_MADEVENT && pdf_reweighting == 2;
+    FVal<T> mean_ren_scale = ren_scale_val;
+    FVal<T> mean_alphas_step[N_EXT_MAX - 3];
+    FVal<T> mean_outgoing[N_EXT_MAX];
+    for (int i = 0; i < cluster_max; ++i) {
+        mean_alphas_step[i] = alphas_step[i];
+    }
+    for (int i = 0; i < n_part - 2; ++i) {
+        mean_outgoing[i] = outgoing_scales[i];
+    }
+
+    if (scale_scheme == SCALES_MADEVENT || mean_with_ladder) {
         // madevent clusters one step further than this kernel does: its loop
         // runs all the way to the 2 -> 1 configuration, so it has one more
         // scale than cluster_max. That last step absorbs whatever is left of
@@ -1371,6 +1389,19 @@ KERNELSPEC int mlm_clustering_walk(
                 }
             }
         }
+    }
+    if (mean_with_ladder) {
+        ren_scale_val = mean_ren_scale;
+        for (int i = 0; i < cluster_max; ++i) {
+            alphas_step[i] = mean_alphas_step[i];
+        }
+        for (int i = 0; i < n_part - 2; ++i) {
+            outgoing_scales[i] = mean_outgoing[i];
+        }
+        for (int i = 0; i < n_part; ++i) {
+            merging_jet[i] = false;
+        }
+        have_merging_jets = false;
     }
 
     // The merging cut. A matrix-element jet below xqcut is radiation the parton

@@ -168,7 +168,8 @@ public:
     // ratios would all come out as exactly one.
     bool mlm_pdf_reweighting() const {
         return _clustering && _clustering->pdf_reweighting() &&
-               _clustering->scale_scheme() == ScaleScheme::madevent;
+               (_clustering->scale_scheme() == ScaleScheme::madevent ||
+                _clustering->clustering_mean_pdf_ladder());
     }
     const std::vector<int>& mlm_pdf_absolute_pdgs() const {
         return _clustering.value().pdf_absolute_pdgs();

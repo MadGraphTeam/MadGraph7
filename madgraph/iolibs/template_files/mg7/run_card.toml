@@ -98,6 +98,11 @@ alphas_reweighting = %(beam.alphas_reweighting)s
 # at the factorisation scale, as madevent's pdfwgt does. Only used under
 # dynamical_scale_choice = "mlm" and scale_scheme = "madevent"
 pdf_reweighting = %(beam.pdf_reweighting)s
+# with pdf_reweighting, walk the same pdf ladder under scale_scheme =
+# "clustering_mean" (densities as madevent's, mu_R and alpha_s as
+# clustering_mean's) instead of evaluating both densities at the softest
+# clustering scale
+clustering_mean_pdf_ladder = %(beam.clustering_mean_pdf_ladder)s
 # measure scoring a candidate final-state clustering (dynamical_scale_choice =
 # "mlm"). options: fxfx (NLO cluster_scale), madevent (madevent's LO DJ: a
 # massless-massive pair scores the massless one's transverse mass). They only
