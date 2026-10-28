@@ -1,40 +1,36 @@
 # SPDX-License-Identifier: 0BSD
-"""Refuse a native library the running C library cannot load, before loading it.
+"""Refuse a native library the running glibc cannot load, before loading it.
 
-A Linux native library records the glibc versions it needs (its ELF version
-requirements, ``readelf -V``). The release natives of the loop engine (the
-``_rusticol`` extension and the loop SDK's shared library, built by
-``tools/developer/build_loop_native.py``) can need ``GLIBC_ABI_GNU2_TLS`` (TLS
-descriptors), which glibc 2.43 and newer define, and glibc 2.42 builds that
-include the stable-branch update adding it; a wheel built in a manylinux
-container needs less. Before ``pyamplicol._rusticol`` is loaded,
-:func:`check_native_library` reads that file's requirements and compares their
-newest release (for an ABI marker such as ``GLIBC_ABI_GNU2_TLS``, which carries
-no number, the oldest release that can define it) with the running glibc
-(``os.confstr("CS_GNU_LIBC_VERSION")``). A glibc below that floor, or a C
-library that is not glibc, gets :class:`pyamplicol.api.errors.NativePlatformError`
-naming the required and the running version instead of the dynamic loader's
-raw "version `GLIBC_ABI_GNU2_TLS' not found". A release number cannot decide
-whether a glibc build defines an ABI marker (a glibc 2.42 without the update
-does not); the dynamic loader's own version check decides that, before any of
-the library's code runs, and :func:`translate_loader_error` turns its error
-(and any other missing-glibc-version error: a dependency's requirement, a
-library whose requirements could not be read) into the same error.
+A Linux native library records which symbol versions it needs from each shared
+library it links (its ELF version needs, ``readelf -V``): ``GLIBC_2.38`` from
+``libc.so.6``, for instance. The dynamic loader refuses the library when a
+loaded library does not define one of them. Before ``pyamplicol._rusticol`` is
+loaded, :func:`check_native_library` makes that check itself for glibc: it
+compares the ``GLIBC_*`` versions the library needs from each glibc library
+already loaded into this process (``libc.so.6``, ``libm.so.6``, ...) with the
+versions that library defines (its ELF version definitions), and raises
+:class:`pyamplicol.api.errors.NativePlatformError` naming every missing version
+and the running glibc in place of the loader's raw "version `GLIBC_2.38' not
+found". No glibc release number is assumed: whether a glibc build defines a
+version, an ABI marker such as ``GLIBC_ABI_GNU2_TLS`` included, is read from
+that build. A process that does not run on glibc gets the same error. A
+library not loaded yet is left to the dynamic loader, whose error
+:func:`translate_loader_error` turns into the same error (a dependency's own
+requirement, Symbolica's extension for instance, included).
 
-The normal path reads a few kilobytes of the library's ELF headers once per
-process (~0.1 ms); nothing here imports :mod:`pyamplicol.api` unless an error
-is raised.
+The normal path reads ``/proc/self/maps`` and a few kilobytes of ELF headers
+once per process; nothing here imports :mod:`pyamplicol.api` unless an error is
+raised.
 """
 
 from __future__ import annotations
 
 import importlib.machinery
 import os
-import re
 import struct
 import sys
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, BinaryIO, NamedTuple
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, BinaryIO
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -44,46 +40,12 @@ if TYPE_CHECKING:
 #: Extension modules loaded through the check.
 GUARDED_MODULES = frozenset({"pyamplicol._rusticol"})
 
-
-class AbiMarker(NamedTuple):
-    """The glibc releases that define an ABI marker version (``GLIBC_ABI_*``)."""
-
-    #: The oldest release some of whose builds define it.
-    earliest: tuple[int, ...]
-    #: The first upstream release that defines it.
-    release: tuple[int, ...]
-
-
-#: glibc's ABI marker versions carry no release number. This table names the
-#: releases for the pre-load check, the messages and the floor pin; whether a
-#: glibc build at or above the earliest release defines a marker is decided by
-#: the dynamic loader (its error is translated). GLIBC_ABI_DT_RELR came with
-#: glibc 2.36. The x86 markers were added on glibc master after the 2.42
-#: release (BZ #33129, #33212, #33221): the glibc 2.42 release does not define
-#: them (its source tarball has none), glibc 2.43 does, and they were
-#: cherry-picked to the release/2.42/master stable branch (3970785b, d0f72b96),
-#: so updated 2.42 builds do too. Checked on x86-64 libc.so.6 builds: glibc
-#: 2.40 defines only GLIBC_ABI_DT_RELR; updated 2.42 builds and 2.44 also
-#: GLIBC_ABI_DT_X86_64_PLT and GLIBC_ABI_GNU2_TLS. GLIBC_ABI_GNU_TLS is i386's
-#: (same patch series; no i386 libc.so.6 checked). Numbered versions
-#: GLIBC_x.y[.z] name their release. Another GLIBC_ name is unknown: the check
-#: then leaves the decision to the loader (and translates its error), and
-#: tests/unit/test_native_glibc_floor.py fails so that this table is extended.
-GLIBC_ABI_MARKERS: dict[str, AbiMarker] = {
-    "GLIBC_ABI_DT_RELR": AbiMarker((2, 36), (2, 36)),
-    "GLIBC_ABI_DT_X86_64_PLT": AbiMarker((2, 42), (2, 43)),
-    "GLIBC_ABI_GNU2_TLS": AbiMarker((2, 42), (2, 43)),
-    "GLIBC_ABI_GNU_TLS": AbiMarker((2, 42), (2, 43)),
-}
-
-_NUMBERED = re.compile(r"GLIBC_(\d+(?:\.\d+)+)")
-_RELEASE = re.compile(r"\d+(?:\.\d+)+")
-# ld.so: "version `GLIBC_2.38' not found (required by ...)".
-_LOADER_MISSING_VERSION = re.compile(
-    r"version [`'\"]?(GLIBC_[A-Za-z0-9_.]+?)[`'\"]? not found"
-)
-_LOADER_REQUIRED_BY = re.compile(r" \(required by ([^()]+)\)")
+# ld.so: "LIBC: version `GLIBC_2.38' not found (required by LIBRARY)".
+_LOADER_MISSING_VERSION = r"version [`'\"]?(GLIBC_[A-Za-z0-9_.]+?)[`'\"]? not found"
+_LOADER_REQUIRED_BY = r" \(required by ([^()]+)\)"
+_SHT_GNU_VERDEF = 0x6FFFFFFD
 _SHT_GNU_VERNEED = 0x6FFFFFFE
+_VER_FLG_BASE = 0x1
 
 
 def running_glibc() -> str | None:
@@ -96,7 +58,7 @@ def running_glibc() -> str | None:
     if not value:
         value = _gnu_get_libc_version()
     name, _, version = (value or "").partition(" ")
-    return version if name == "glibc" and _RELEASE.match(version) else None
+    return version if name == "glibc" and _release(version) is not None else None
 
 
 def _gnu_get_libc_version() -> str | None:
@@ -112,117 +74,221 @@ def _gnu_get_libc_version() -> str | None:
     return f"glibc {version.decode('ascii', 'replace')}" if version else None
 
 
-def _release(text: str) -> tuple[int, ...]:
-    match = _RELEASE.match(text)
-    assert match is not None
-    return tuple(int(part) for part in match.group().split("."))
+def _release(text: str) -> tuple[int, ...] | None:
+    """``"2.38"`` -> ``(2, 38)``; None unless dot-separated numbers."""
+
+    parts = text.split(".")
+    if len(parts) < 2 or not all(part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
 
 
-def glibc_release(version_name: str) -> tuple[int, ...] | None:
-    """The oldest glibc release that can provide an ELF version name, if known.
+def numbered_release(version_name: str) -> tuple[int, ...] | None:
+    """The glibc release a numbered version names (``GLIBC_2.38`` -> ``(2, 38)``).
 
-    For an ABI marker that is the oldest release with builds that define it
-    (``(2, 42)`` for ``GLIBC_ABI_GNU2_TLS``, defined by glibc 2.43 and by
-    updated 2.42 builds), see :data:`GLIBC_ABI_MARKERS`.
+    None for any other name, an ABI marker such as ``GLIBC_ABI_GNU2_TLS``
+    included: no release number tells whether a glibc build defines a marker.
     """
 
-    marker = GLIBC_ABI_MARKERS.get(version_name)
-    if marker is not None:
-        return marker.earliest
-    match = _NUMBERED.fullmatch(version_name)
-    return None if match is None else _release(match.group(1))
+    prefix, _, number = version_name.partition("_")
+    return _release(number) if prefix == "GLIBC" else None
 
 
-def glibc_floor(version_names: Iterable[str]) -> tuple[tuple[int, ...], str] | None:
-    """The newest known glibc release among ELF version names, with its name."""
+def _ordered(names: Iterable[str]) -> tuple[str, ...]:
+    """Numbered versions by release, then the other names alphabetically."""
 
-    known = [
-        (release, name)
-        for name in version_names
-        if (release := glibc_release(name)) is not None
-    ]
-    return max(known) if known else None
+    def key(name: str) -> tuple[int, tuple[int, ...], str]:
+        release = numbered_release(name)
+        return (0, release, name) if release is not None else (1, (), name)
 
-
-def glibc_version_requirements(path: str | os.PathLike[str]) -> tuple[str, ...] | None:
-    """The sorted ``GLIBC_*`` versions an ELF file requires (as ``readelf -V``).
-
-    None if the file is not a readable ELF file with section headers (a Mach-O
-    or PE library, a stripped section table): then nothing is checked.
-    """
-
-    try:
-        with open(path, "rb") as stream:
-            needs = _elf_version_needs(stream)
-    except (OSError, ValueError, struct.error):
-        return None
-    if needs is None:
-        return None
-    return tuple(sorted({name for name in needs if name.startswith("GLIBC_")}))
+    return tuple(sorted(set(names), key=key))
 
 
-def _read(stream: BinaryIO, offset: int, size: int) -> bytes:
-    stream.seek(offset)
-    data = stream.read(size)
-    if len(data) != size:
-        raise ValueError("truncated ELF file")
-    return data
+def _newest_numbered(names: Iterable[str]) -> str | None:
+    numbered = [name for name in names if numbered_release(name) is not None]
+    return _ordered(numbered)[-1] if numbered else None
+
+
+# ELF reading: section headers, version needs (SHT_GNU_verneed) and version
+# definitions (SHT_GNU_verdef) of a file, as ``readelf -V`` shows them.
+
+
+class _Elf:
+    def __init__(self, stream: BinaryIO) -> None:
+        self.stream = stream
+        ident = stream.read(16)
+        if len(ident) != 16 or ident[:4] != b"\x7fELF":
+            raise ValueError("not an ELF file")
+        if ident[4] not in (1, 2) or ident[5] not in (1, 2):
+            raise ValueError("unknown ELF class or byte order")
+        wide = ident[4] == 2
+        self.order = "<" if ident[5] == 1 else ">"
+        header = struct.Struct(
+            self.order + ("HHIQQQIHHHHHH" if wide else "HHIIIIIHHHHHH")
+        )
+        fields = header.unpack(self.read(16, header.size))
+        table_offset, entry_size, count = fields[5], fields[10], fields[11]
+        section = struct.Struct(self.order + ("IIQQQQIIQQ" if wide else "IIIIIIIIII"))
+        if table_offset == 0 or entry_size < section.size:
+            raise ValueError("no section headers")
+        if count == 0:  # extended numbering: section 0's sh_size holds the count
+            count = section.unpack(self.read(table_offset, section.size))[5]
+        table = self.read(table_offset, count * entry_size)
+        # (sh_type, sh_offset, sh_size, sh_link, sh_info) per section.
+        self.sections = [
+            (fields[1], fields[4], fields[5], fields[6], fields[7])
+            for fields in (
+                section.unpack_from(table, k * entry_size) for k in range(count)
+            )
+        ]
+
+    def read(self, offset: int, size: int) -> bytes:
+        self.stream.seek(offset)
+        data = self.stream.read(size)
+        if len(data) != size:
+            raise ValueError("truncated ELF file")
+        return data
+
+    def _strings(self, link: int) -> bytes:
+        if link >= len(self.sections):
+            raise ValueError("bad string table link")
+        _, offset, size, _, _ = self.sections[link]
+        return self.read(offset, size)
+
+    def version_needs(self) -> dict[str, list[str]]:
+        """Needed library (``vn_file``) -> the version names needed from it."""
+
+        need = struct.Struct(self.order + "HHIII")
+        auxiliary = struct.Struct(self.order + "IHHII")
+        needs: dict[str, list[str]] = {}
+        for kind, offset, size, link, entries in self.sections:
+            if kind != _SHT_GNU_VERNEED:
+                continue
+            strings, data = self._strings(link), self.read(offset, size)
+            position = 0
+            for _ in range(entries):
+                _, count, file, first, following = need.unpack_from(data, position)
+                names = needs.setdefault(_string(strings, file), [])
+                at = position + first
+                for _ in range(count):
+                    _, _, _, name, step = auxiliary.unpack_from(data, at)
+                    names.append(_string(strings, name))
+                    if step == 0:
+                        break
+                    at += step
+                if following == 0:
+                    break
+                position += following
+        return needs
+
+    def version_definitions(self) -> tuple[str | None, frozenset[str]]:
+        """The base definition (the soname) and the version names defined."""
+
+        definition = struct.Struct(self.order + "HHHHIII")
+        auxiliary = struct.Struct(self.order + "II")
+        base, names = None, set()
+        for kind, offset, size, link, entries in self.sections:
+            if kind != _SHT_GNU_VERDEF:
+                continue
+            strings, data = self._strings(link), self.read(offset, size)
+            position = 0
+            for _ in range(entries):
+                _, flags, _, count, _, first, following = definition.unpack_from(
+                    data, position
+                )
+                if count:
+                    name = _string(
+                        strings, auxiliary.unpack_from(data, position + first)[0]
+                    )
+                    if flags & _VER_FLG_BASE:
+                        base = name
+                    else:
+                        names.add(name)
+                if following == 0:
+                    break
+                position += following
+        return base, frozenset(names)
 
 
 def _string(strings: bytes, offset: int) -> str:
     return strings[offset : strings.index(b"\0", offset)].decode("ascii", "replace")
 
 
-def _elf_version_needs(stream: BinaryIO) -> list[str] | None:
-    """The version names an ELF file needs from its dependencies.
+def _version_needs(path: str | os.PathLike[str]) -> dict[str, list[str]] | None:
+    try:
+        with open(path, "rb") as stream:
+            return _Elf(stream).version_needs()
+    except (OSError, ValueError, struct.error):
+        return None
 
-    From its SHT_GNU_verneed sections (Verneed/Vernaux entries); None if it is
-    not an ELF file with sections.
+
+def _version_definitions(
+    path: str | os.PathLike[str],
+) -> tuple[str | None, frozenset[str]] | None:
+    try:
+        with open(path, "rb") as stream:
+            return _Elf(stream).version_definitions()
+    except (OSError, ValueError, struct.error):
+        return None
+
+
+def glibc_version_requirements(path: str | os.PathLike[str]) -> tuple[str, ...] | None:
+    """The sorted ``GLIBC_*`` versions an ELF file needs (as ``readelf -V``).
+
+    None if the file is not a readable ELF file with section headers (a Mach-O
+    or PE library, a stripped section table): then nothing is checked.
     """
 
-    ident = stream.read(16)
-    if len(ident) != 16 or ident[:4] != b"\x7fELF":
+    needs = _version_needs(path)
+    if needs is None:
         return None
-    if ident[4] not in (1, 2) or ident[5] not in (1, 2):
-        return None
-    wide = ident[4] == 2
-    order = "<" if ident[5] == 1 else ">"
-    header = struct.Struct(order + ("HHIQQQIHHHHHH" if wide else "HHIIIIIHHHHHH"))
-    fields = header.unpack(_read(stream, 16, header.size))
-    table_offset, entry_size, count = fields[5], fields[10], fields[11]
-    section = struct.Struct(order + ("IIQQQQIIQQ" if wide else "IIIIIIIIII"))
-    if table_offset == 0 or entry_size < section.size:
-        return None
-    if count == 0:  # extended numbering: section 0's sh_size holds the count
-        count = section.unpack(_read(stream, table_offset, section.size))[5]
-    table = _read(stream, table_offset, count * entry_size)
-    sections = [section.unpack_from(table, k * entry_size) for k in range(count)]
-    need = struct.Struct(order + "HHIII")
-    auxiliary = struct.Struct(order + "IHHII")
-    needs: list[str] = []
-    for _, kind, _, _, offset, size, link, entries, _, _ in sections:
-        if kind != _SHT_GNU_VERNEED or link >= count:
-            continue
-        strings = _read(stream, sections[link][4], sections[link][5])
-        data = _read(stream, offset, size)
-        position = 0
-        for _ in range(entries):
-            _, auxiliaries, _, first, following = need.unpack_from(data, position)
-            at = position + first
-            for _ in range(auxiliaries):
-                _, _, _, name, step = auxiliary.unpack_from(data, at)
-                needs.append(_string(strings, name))
-                if step == 0:
-                    break
-                at += step
-            if following == 0:
-                break
-            position += following
-    return needs
+    return tuple(
+        sorted({name for names in needs.values() for name in names if _is_glibc(name)})
+    )
 
 
-def _version(release: tuple[int, ...]) -> str:
-    return ".".join(map(str, release))
+def _is_glibc(name: str) -> bool:
+    return name.startswith("GLIBC_")
+
+
+def _mapped_files() -> list[str]:
+    """The files mapped into this process (Linux ``/proc/self/maps``)."""
+
+    try:
+        with open("/proc/self/maps", encoding="utf-8", errors="replace") as maps:
+            lines = maps.read().splitlines()
+    except OSError:
+        return []
+    files: dict[str, None] = {}
+    for line in lines:
+        fields = line.split(None, 5)
+        if len(fields) == 6 and fields[5].startswith("/"):
+            files.setdefault(fields[5], None)
+    return list(files)
+
+
+def _loaded_definitions(
+    soname: str, files: Sequence[str]
+) -> tuple[str, frozenset[str]] | None:
+    """The path and version definitions of the loaded library ``soname``.
+
+    The mapped file named ``soname`` (``/lib64/libc.so.6``), else one in
+    glibc's older naming whose soname it is (``libc-2.31.so``); None when no
+    such library is loaded.
+    """
+
+    stem = soname.partition(".so")[0] + "-"
+    named = [path for path in files if os.path.basename(path) == soname]
+    older = [
+        path
+        for path in files
+        if os.path.basename(path).startswith(stem) and path.endswith(".so")
+    ]
+    for path in (*named, *older):
+        definitions = _version_definitions(path)
+        if definitions is not None and definitions[0] == soname:
+            return path, definitions[1]
+    return None
 
 
 def _is_pyamplicol_library(path: str) -> bool:
@@ -235,56 +301,48 @@ def _is_pyamplicol_library(path: str) -> bool:
 def _error(
     library: str | None,
     *,
-    required: tuple[int, ...] | None,
-    version_name: str,
+    missing: Sequence[str],
     found: str | None,
     loader_message: str | None = None,
     own: bool = True,
 ) -> NativePlatformError:
-    """The NativePlatformError for ``version_name`` missing from glibc ``found``.
-
-    ``found`` at or above ``required`` means that this glibc build lacks an ABI
-    marker its release can define (a glibc 2.42 build without the stable-branch
-    update for ``GLIBC_ABI_GNU2_TLS``).
-    """
+    """The NativePlatformError for ELF versions ``missing`` from glibc ``found``."""
 
     from .api.errors import NativePlatformError
 
-    marker = GLIBC_ABI_MARKERS.get(version_name)
-    floor = None if required is None else _version(required)
-    lacking = found is not None and required is not None and _release(found) >= required
-    defined_by = release_note = ""
-    if floor is None:
-        needs = f"a glibc that provides the ELF version {version_name}"
-        newer = "a newer glibc"
-    elif marker is not None and marker.release != marker.earliest:
-        release, earliest = _version(marker.release), _version(marker.earliest)
-        defined_by = (
-            f", which glibc {release} and newer define, as do glibc {earliest} "
-            "builds with the stable-branch update that added it"
-        )
-        release_note = f"; the glibc {earliest} release does not"
-        needs = f"glibc >= {floor}"
-        newer = f"glibc {release} or newer, or an updated glibc {earliest} build"
-    else:
-        needs = f"glibc >= {floor}"
-        newer = f"glibc {floor} or newer"
+    missing = _ordered(missing)
+    newest = _newest_numbered(missing)
+    required = None if newest is None else newest.partition("_")[2]
+    names = ", ".join(missing)
+    versions = f"the ELF version{'s' if len(missing) > 1 else ''} {names}"
+    subject = f"Native library {library}" if library else "A native library"
     if found is None:
+        what = f"needs glibc{f' >= {required}' if required else ''} ({versions})"
         running = (
             "this process does not run on glibc (no GNU C library version is "
             f"reported on {sys.platform})"
         )
-    elif lacking:
-        running = f"this process runs glibc {found}, which does not define it"
+        where = (
+            "Run it on a Linux system or container with glibc"
+            f"{f' {required} or newer' if required else ''}"
+        )
     else:
-        running = f"this process runs glibc {found}"
-    where = (
-        f"Update this system's glibc ({newer}), or run it on a Linux system or "
-        "container that has one"
-        if lacking
-        else f"Run it on a Linux system or container with {newer}"
-    )
-    subject = f"Native library {library}" if library else "A native library"
+        it = "them" if len(missing) > 1 else "it"
+        what = (
+            f"requires glibc >= {required}: it needs {versions}"
+            if required is not None
+            else f"needs {versions}"
+        )
+        running = f"which this process's glibc {found} does not define"
+        if required is None:
+            release = ""
+        elif len(missing) > 1 and any(numbered_release(n) is None for n in missing):
+            release = f", glibc {required} or newer at least"
+        else:
+            release = f", glibc {required} or newer"
+        where = (
+            f"Run it on a Linux system or container whose glibc defines {it}{release}"
+        )
     if own:
         remedy = (
             f"{where} (`ldd --version` shows the version), or build pyAmpliCol's "
@@ -299,49 +357,50 @@ def _error(
             f"host), or {where[0].lower()}{where[1:]} (`ldd --version` shows "
             "the version)."
         )
-    if lacking:
-        what = f"needs the ELF version {version_name}{defined_by}"
-    elif floor is None:
-        what = f"requires {needs}"
-    else:
-        what = (
-            f"requires {needs} (it needs the ELF version {version_name}"
-            f"{defined_by}{release_note})"
-        )
-    message = f"{subject} {what}, but {running}. {remedy}"
+    separator = ", but " if found is None else ", "
+    message = f"{subject} {what}{separator}{running}. {remedy}"
     if loader_message:
         message += f" The dynamic loader reported: {loader_message}"
     return NativePlatformError(
-        message,
-        library=library,
-        required=floor,
-        found=found,
-        version_name=version_name,
+        message, library=library, required=required, found=found, missing=missing
     )
 
 
 def check_native_library(path: str | os.PathLike[str]) -> None:
-    """Raise NativePlatformError if the running glibc is older than ``path`` needs.
+    """Raise NativePlatformError if this process's glibc cannot load ``path``.
 
-    The library's floor is the newest release among its requirements (for an
-    ABI marker, the oldest release that can define it, :data:`GLIBC_ABI_MARKERS`:
-    2.42 for ``GLIBC_ABI_GNU2_TLS``); a running glibc below it, or a C library
-    that is not glibc, is refused. A glibc at or above it that still lacks a
-    marker (a glibc 2.42 build without the stable-branch update; markers are
-    per architecture) is left to the dynamic loader, whose version check runs
-    before any of the library's code: :func:`translate_loader_error` turns its
-    error into the same NativePlatformError. The ``pyamplicol._rusticol``
+    Every ``GLIBC_*`` version ``path`` needs from a glibc library already
+    loaded into this process must be one that library defines (the dynamic
+    loader's own version check, made before loading); a process that does not
+    run on glibc is refused when ``path`` needs any. Versions needed from a
+    library not loaded yet are left to the dynamic loader, whose version check
+    runs before any of the library's code: :func:`translate_loader_error` turns
+    its error into the same NativePlatformError. The ``pyamplicol._rusticol``
     import calls it before ``dlopen``. Internal: not a public API.
     """
 
-    floor = glibc_floor(glibc_version_requirements(path) or ())
-    if floor is None:
+    needs = _version_needs(path)
+    if not needs:
+        return
+    glibc = {
+        soname: names
+        for soname, names in needs.items()
+        if (names := [name for name in names if _is_glibc(name)])
+    }
+    if not glibc:
         return
     found = running_glibc()
-    if found is None or _release(found) < floor[0]:
-        raise _error(
-            os.fspath(path), required=floor[0], version_name=floor[1], found=found
-        )
+    if found is None:
+        everything = [name for names in glibc.values() for name in names]
+        raise _error(os.fspath(path), missing=everything, found=None)
+    files = _mapped_files()
+    missing: list[str] = []
+    for soname, names in glibc.items():
+        loaded = _loaded_definitions(soname, files)
+        if loaded is not None:
+            missing.extend(name for name in names if name not in loaded[1])
+    if missing:
+        raise _error(os.fspath(path), missing=missing, found=found)
 
 
 def translate_loader_error(
@@ -355,20 +414,20 @@ def translate_loader_error(
     being loaded, which is taken to be pyAmpliCol's).
     """
 
+    import re
+
     text = str(error)
-    match = _LOADER_MISSING_VERSION.search(text)
+    match = re.search(_LOADER_MISSING_VERSION, text)
     if match is None:
         return None
     loading = None if library is None else os.fspath(library)
-    needing = _LOADER_REQUIRED_BY.search(text, match.end())
+    needing = re.compile(_LOADER_REQUIRED_BY).search(text, match.end())
     named = needing.group(1) if needing is not None else loading
     if named is None:
         named = getattr(error, "path", None)
-    name = match.group(1)
     return _error(
         named,
-        required=glibc_release(name),
-        version_name=name,
+        missing=(match.group(1),),
         found=running_glibc(),
         loader_message=text,
         # A dependency's own requirement (Symbolica's extension): its remedy.
@@ -424,14 +483,11 @@ def install() -> None:
 
 
 __all__ = [
-    "GLIBC_ABI_MARKERS",
     "GUARDED_MODULES",
-    "AbiMarker",
     "check_native_library",
-    "glibc_floor",
-    "glibc_release",
     "glibc_version_requirements",
     "install",
+    "numbered_release",
     "running_glibc",
     "translate_loader_error",
 ]
