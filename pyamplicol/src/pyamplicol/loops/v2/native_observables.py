@@ -925,6 +925,31 @@ class _SelectionParts:
     meta: Mapping[str, Any]
     columns: tuple[Any, ...]
     lanes: Mapping[tuple[Any, Orders], tuple[int, int]]
+    # Per plan (process, companion) the families whose seeds the selection
+    # reads (``live_families``); None keeps every family.
+    families: tuple[tuple[int, ...] | None, ...] = (None, None)
+
+
+def live_families(plan: Mapping[str, Any], overlay: Mapping[str, Any]) -> Any:
+    """The families of ``plan`` with a leaf on a seed key that ``overlay``'s
+    seed records (``SEED_FIELDS``) make nonzero in some column: the others
+    dress zero seeds and contribute exact zeros. None when every family is
+    live, or when the plan holds a forward or merged program, which reads
+    the families by index."""
+
+    if plan.get("forward") is not None or plan.get("merged") is not None:
+        return None
+    classes = [
+        any(weights for weights in record["columns"])
+        for record in overlay["seed_classes"]
+    ]
+    seeds = [any(classes[c] for c, *_x in key["classes"]) for key in overlay["seeds"]]
+    kept = tuple(
+        f
+        for f, family in enumerate(plan["families"])
+        if any(seeds[leaf["seed"]] for leaf in family["leaves"])
+    )
+    return None if len(kept) == len(plan["families"]) else kept
 
 
 def _merged_weights(lists: Sequence[Sequence[Sequence[Any]]]) -> list[list[Any]]:
@@ -1090,6 +1115,10 @@ def selection_parts(observables: StoredObservableSlice, column: Any) -> _Selecti
     columns_json = json.dumps(
         {**records, "columns": interference}, separators=(",", ":")
     )
+    families = tuple(
+        live_families(json.loads(plan_json), overlay)
+        for plan_json, overlay in zip(plans, formed, strict=True)
+    )
     return _SelectionParts(
         ObservableSet(
             dumps(formed[0]),
@@ -1101,6 +1130,7 @@ def selection_parts(observables: StoredObservableSlice, column: Any) -> _Selecti
         meta,
         tuple(out_columns),
         lanes,
+        families + (None,) * (2 - len(families)),
     )
 
 
@@ -1190,6 +1220,7 @@ class StoredColumns:
         self.set = stored.sets[kind] if parts is None else parts.set
         self.meta = stored.record["sets"][kind] if parts is None else parts.meta
         self.plan = _plan_class()(_ColumnPlanView(observables, kind, parts))
+        self.families = (None, None) if parts is None else parts.families
         self._native: dict[tuple[str, int | None, int, bool], Any] = {}
         self._plans: dict[bool, str] = {}
 
@@ -1217,7 +1248,15 @@ class StoredColumns:
                 base, overlay = process.plan_json, self.set.overlay_json
             if overlay is None:
                 raise ValueError("the column set stores no companion seeds")
-            found = self._plans[twin] = _plan_of(base, overlay)
+            found = _plan_of(base, overlay)
+            kept = self.families[int(twin)]
+            if kept is not None:
+                # A selection's set: the families of its live seeds only
+                # (``live_families``; lanes keep their family labels apart).
+                plan = json.loads(found)
+                plan["families"] = [plan["families"][f] for f in kept]
+                found = json.dumps(plan, separators=(",", ":"))
+            self._plans[twin] = found
         return found
 
     def _executor(self, arithmetic: str, digits: int | None, points: int, twin: bool):
