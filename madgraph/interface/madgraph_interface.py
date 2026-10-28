@@ -793,7 +793,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("      --f2py_per_process=False: [standalone_fortran with --prefix] build the combined all_matrix2py module with only its dispatching entry points (smatrixhel, smatrixhel_idx, py_get_density, ...), without the per-process py_<prefix>* ones: much faster to build for many subprocesses (used by MadSpin).")
         logger.info("      --use_crossing=False: [standalone_fortran|standalone|mg7|madevent] write this output WITHOUT the crossing machinery (on by default, as on the generate line): the crossed subprocesses folded onto their base at generation are written back as their own directories. With it, mg7 evaluates each crossed subprocess with the library of its base (cpu, simd and GPU).")
         logger.info("      --crossing_table=all: [standalone_fortran|standalone] with the crossing machinery, let the extended flavor index also reach every applicable crossing (each choice of the legs that start in the initial state), not only the crossed subprocesses the generation folded -- e.g. for a single generated process, which folds none. Only the extended-index entry (smatrixhel_idx) reaches these extra crossings: the Fortran PDG-keyed smatrixhel/density still answer only the generated and folded subprocesses (NaN otherwise).")
-        logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran(default:False)|standalone_rw/msP/msF(default:True)] set the t-channel widths to zero as madevent (see option zerowidth_tchannel)")
+        logger.info("      --zerowidth_tchannel=[True|False]: [standalone_fortran|standalone_rw/msP/msF] drop the width of the spacelike (t-channel) propagators as madevent, for this output (default: the option zerowidth_tchannel)")
         logger.info("      --zerowidth_decay=True|False|<pdg>,<pdg>: [standalone_fortran] write the propagators of the final-state particles (of the decaying particle in a 1>N decay) with a zero width; a pdg list restricts to those.")
         logger.info("   Examples:",'$MG:color:GREEN')
         logger.info("       output",'$MG:color:GREEN')
@@ -13386,17 +13386,24 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         zerowidth_tchannel = self.options['zerowidth_tchannel']
         if self._curr_amps and self._curr_amps[0].get_ninitial() == 1:
             zerowidth_tchannel = False
-        # The standalone outputs decide for themselves (zero_tchannel_width):
-        # only the reweighting and MadSpin ones (standalone_rw/msP/msF) drop it
-        # by default, as the sample they reweight; standalone keeps it, and
-        # the output option --zerowidth_tchannel overrides either. The loop
-        # exporters (MadLoop, aMC@NLO, loop-induced madevent) inherit it but
-        # are not concerned.
-        if zerowidth_tchannel and \
-           isinstance(self._curr_exporter, export_v4.ProcessExporterFortranSA) \
+        # The output option --zerowidth_tchannel=True|False of the standalone
+        # Fortran outputs overrides it for that output (MadSpin passes True).
+        # Without it the option decides for every output alike -- standalone
+        # (Fortran and C++), the reweighting (standalone_rw) and MadSpin
+        # (standalone_msP/msF) all drop the width of a spacelike propagator, as
+        # madevent: the runtime check is right for every crossing of a matrix
+        # element too, where the generation-time t-channel tag is not. The
+        # loop exporters (MadLoop, aMC@NLO, loop-induced madevent) are not
+        # concerned.
+        output_options = getattr(self._curr_exporter, 'opt', {}) or {}
+        output_options = output_options.get('output_options') or {}
+        if isinstance(self._curr_exporter, export_v4.ProcessExporterFortranSA) \
            and not isinstance(self._curr_exporter,
-                              loop_exporters.LoopExporterFortran):
-            zerowidth_tchannel = self._curr_exporter.zero_tchannel_width()
+                              loop_exporters.LoopExporterFortran) \
+           and 'zerowidth_tchannel' in output_options \
+           and not (self._curr_amps and self._curr_amps[0].get_ninitial() == 1):
+            zerowidth_tchannel = banner_module.ConfigFile.format_variable(
+                output_options['zerowidth_tchannel'], bool, 'zerowidth_tchannel')
         aloha.t_channel_width = not zerowidth_tchannel
 
         # Define the helas call  writer

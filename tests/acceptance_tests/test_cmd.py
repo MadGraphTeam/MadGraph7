@@ -3343,12 +3343,19 @@ int main(int argc, char** argv){
             sub = os.path.join(out_dir, 'SubProcesses')
             pdir = [d for d in os.listdir(sub) if d.split('_', 1)[-1] == pdir][0]
             text = open(os.path.join(sub, pdir, 'matrix.f')).read()
-            return [l.strip() for l in text.split('\n')
+            # compared without blanks: with the crossing machinery the
+            # written call is ',ZERO,', not the ', ZERO,' of the rewrite
+            return [l.strip().replace(' ', '') for l in text.split('\n')
                     if l.strip().startswith('CALL') and 'XXXXX' not in l]
 
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
         self.do('set group_subprocesses False')
+        # zerowidth_external (on by default) drops the width of any internal
+        # top here, the top being external: switch it off so that only
+        # --zerowidth_decay acts
+        self.do('set zerowidth_external False')
+        self.addCleanup(self.do, 'set zerowidth_external True')
         self.do('generate t > e+ ve b')
         self.do('add process t > w+ b g')
         for option in ('True', '6,24'):
@@ -3359,7 +3366,7 @@ int main(int argc, char** argv){
                              if ',MDL_MW,MDL_WW,' in c])
             # the internal top of t > w+ b g does not
             self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
-                             if ',MDL_MT, ZERO,' in c])
+                             if ',MDL_MT,ZERO,' in c])
         self.do('output standalone_fortran %s --prefix=int --density=1 --zerowidth_decay=False -f'
                 % self.out_dir)
         self.assertTrue([c for c in calls(self.out_dir, 't_wpbg')
@@ -3370,7 +3377,7 @@ int main(int argc, char** argv){
                 % self.out_dir)
         zeroed = [c for c in calls(self.out_dir, 'epem_ttxz') if 'MDL_MT' in c]
         self.assertEqual(len(zeroed), 2)
-        self.assertTrue(all('MDL_MT, ZERO,' in c for c in zeroed), zeroed)
+        self.assertTrue(all('MDL_MT,ZERO,' in c for c in zeroed), zeroed)
 
         self.do('output standalone_fortran %s --prefix=int --density=1 -f' % self.out_dir)
         kept = [c for c in calls(self.out_dir, 'epem_ttxz') if 'MDL_MT' in c]
