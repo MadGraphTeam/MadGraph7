@@ -22,7 +22,13 @@ in the production path (native executor, native inputs):
   u u~ > g g [QCD] (a closed light-top loop): binary64 equals MPFR within
   1e-12, or within its own tenfold estimate (DESIGN §10.4), with lanes
   routed to the exact engine; DoubleFloat equals MPFR within 1e-24; at
-  loop_sm's top mass no lane is routed (the fast engine's bits);
+  loop_sm's top mass no lane is routed (the fast engine's bits). Only
+  e+ e- > t t~ detects the snap end to end (the slice native was 107 % off
+  there): the closed light-top loop of u u~ > g g is smooth as m -> 0, so
+  the massless integrals the snap computed gave the same virtual to
+  binary64 accuracy; it checks the routed path's accuracy on boxes and
+  bubbles of light lines (the Rust tests detect the snap integral by
+  integral);
 * the dimensionless virtual is unit independent: GeV and MeV (every momentum
   and dimensionful parameter times 1e3, its square and the scale times 1e6)
   agree to binary64 accuracy, the light top routed in GeV (m^2 = 1e-12) and
@@ -31,6 +37,11 @@ in the production path (native executor, native inputs):
   (g g > g g: a box of four light lines, D0 not finite), the point fails with
   the master's reason instead of taking the massless integral, and
   DoubleFloat evaluates it (to its own conditioning there, 2.1e-18);
+* the legacy engine (the default ``loop.engine``) routes by the same rule:
+  its binary64 e+ e- > t t~ with MT = 1e-6 equals MPFR;
+* routed lanes use Symbolica in the native code, under pyAmpliCol's package
+  key: unlicensed, with the restricted permit held elsewhere, a routed
+  binary64 evaluation completes with the key and aborts without it;
 * the artifact records the routing: a public generation with MT = 1e-6 fixed
   names MT with its square and the threshold in the generation record of
   e+ e- > t t~ (``binary64_exact_engine``) and writes no entry for
@@ -179,10 +190,11 @@ def test_a_light_top_takes_the_exact_engine_and_agrees_with_mpfr(executors):
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", ["epem_ttx", "uux_gg"])
 def test_a_light_top_agrees_in_every_carrier(executors, name):
-    """The light top in loop lines and legs (e+ e- > t t~) and in a closed
-    loop (u u~ > g g): binary64 with the rescaled check (masters recomputed)
-    within its estimate of MPFR, DoubleFloat within 1e-24; MT = 173 routes
-    nothing."""
+    """The light top in loop lines and legs (e+ e- > t t~, where the snap
+    was 107 % off) and in a closed loop (u u~ > g g, smooth as m -> 0, where
+    the snap was not wrong: a check of the routed path's accuracy): binary64
+    with the rescaled check (masters recomputed) within its estimate of MPFR,
+    DoubleFloat within 1e-24; MT = 173 routes nothing."""
 
     executor = executors(name)
     light = _parameters(name, LIGHT_MT)
@@ -232,13 +244,18 @@ def test_the_virtual_is_unit_independent(executors, name, mt, routed_in_gev):
     assert error <= max(BINARY64, ESTIMATE_MARGIN * estimate), (error, estimate)
 
 
+# DoubleFloat on the box of four light lines (m^2/s ~ 1e-18): measured
+# 2.05e-18 from MPFR(32), which is itself within 2.9e-35 of MPFR(64) there.
+LIGHT_BOX_DOUBLE_DOUBLE = 1e-17
+
+
 @pytest.mark.loop_physics
 def test_light_lanes_beyond_the_binary64_masters_fail_closed(executors):
     """g g > g g with MT = 1e-6: a box of four light lines has no finite
     binary64 D0 in oneloopmaster, so the point fails naming it (the snap gave
-    the massless box instead). DoubleFloat evaluates it; the same box's
-    conditioning (m^2/s ~ 1e-18) limits it to 2.1e-18 of MPFR here, so it is
-    held to the binary64 rule only."""
+    the massless box instead). DoubleFloat evaluates it, limited by the same
+    box's conditioning (m^2/s ~ 1e-18): within 1e-17 of MPFR (measured
+    2.05e-18; the 32-digit reference is within 2.9e-35 of 64 digits)."""
 
     executor = executors("gg_gg")
     light = _parameters("gg_gg", LIGHT_MT)
@@ -246,11 +263,12 @@ def test_light_lanes_beyond_the_binary64_masters_fail_closed(executors):
         _evaluate(executor, POINT, SCALE, light)
     reference = _evaluate(executor, POINT, SCALE, light, Precision.arbitrary(32))
     double_double = _evaluate(executor, POINT, SCALE, light, Precision.double_double())
-    assert deviation(_virtual(reference), _virtual(double_double)) < BINARY64
+    error = deviation(_virtual(reference), _virtual(double_double))
+    assert error < LIGHT_BOX_DOUBLE_DOUBLE, error
 
 
-def _light_top_card(model: Path, output: Path, entries) -> str:
-    """A public v2 generation card of loop_sm with the light top fixed."""
+def _light_top_card(model: Path, output: Path, entries, engine: str = "v2") -> str:
+    """A public generation card of loop_sm with the light top fixed."""
 
     processes = ", ".join(
         f"{{expression={json.dumps(expression)}, name={json.dumps(name)}}}"
@@ -273,7 +291,7 @@ accuracy = "full"
 contraction = "direct"
 [loop]
 r2_strategy = "model"
-engine = "v2"
+engine = "{engine}"
 [loop.preparation]
 fixed_parameters = {{{fixed}}}
 [loop.model]
@@ -341,6 +359,46 @@ def test_the_artifact_records_the_light_masses(light_artifact, loop_native):
         "squared_masses": {"MT": "1e-12"},
     }
     assert "binary64_exact_engine" not in filters["epem_uux"]
+
+
+@pytest.mark.loop_physics
+def test_the_legacy_engine_routes_a_light_top(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """The default ``loop.engine``, legacy, routes by the same rule (its
+    binary64 fast plans, ``runtime::PolynomialPlan``): e+ e- > t t~ with
+    MT = 1e-6 fixed agrees in binary64 with MPFR to binary64 accuracy (the
+    snap's massless top lines would have given a double pole, which massive
+    emitters do not have)."""
+
+    import numpy as np
+
+    from pyamplicol import Runtime
+    from pyamplicol.api import Generator, ProcessRequest, ProcessSet
+    from pyamplicol.config import resolve_config
+
+    output = tmp_path / "artifact"
+    card = tmp_path / "card.toml"
+    entries = (("epem_ttx", "e+ e- > t t~"),)
+    card.write_text(
+        _light_top_card(loop_sm_compiled_model, output, entries, engine="legacy")
+    )
+    Generator(resolve_config(card)).generate(
+        ProcessSet((ProcessRequest.parse("e+ e- > t t~", name="epem_ttx"),)), output
+    )
+    runtime = Runtime.load(output, process="epem_ttx", model_parameters={"aS": "0.118"})
+    values = {
+        arithmetic: np.ravel(
+            runtime.evaluate([POINT], mu_r2=[SCALE], **options).values
+        ).astype(complex)
+        for arithmetic, options in (
+            ("double", {"arithmetic": "double"}),
+            ("arbitrary", {"arithmetic": "arbitrary", "precision": 32}),
+        )
+    }
+    reference = values["arbitrary"]
+    error = np.max(np.abs(values["double"] - reference)) / np.max(np.abs(reference))
+    assert error <= BINARY64, error
 
 
 # The portability tool: unlicensed evaluation processes and the user's
