@@ -984,10 +984,22 @@ fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyRes
     .map_err(error)
 }
 
+pyo3::create_exception!(
+    _loop_reduction,
+    PlaneMismatchError,
+    pyo3::exceptions::PyValueError,
+    "A plane application that disagrees with its exact evaluator at the plane \
+     check's probes (`compile_v2_plane`). Its arguments are the message, the \
+     output index, the probe row and whether the imaginary part disagrees."
+);
+
 /// Generation: the binary64 SymJIT plane application of a saved exact
 /// evaluator of a tree program (a kernel or the parameter program), checked
 /// against the evaluator (`rusticol_core::loop_v2::trees::compile_plane_
-/// application`): `(application, inputs, outputs)`.
+/// application_checked`): `(application, inputs, outputs)`. A disagreement
+/// raises `PlaneMismatchError(message, output, row, imaginary)`, a
+/// `ValueError` (`native_trees._plane_applications` refuses the program
+/// naming the output); any other failure a plain `ValueError`.
 #[pyfunction]
 #[pyo3(signature = (state, optimization_level=2, compress=false))]
 fn compile_v2_plane<'py>(
@@ -996,16 +1008,26 @@ fn compile_v2_plane<'py>(
     optimization_level: u8,
     compress: bool,
 ) -> PyResult<(Bound<'py, pyo3::types::PyBytes>, usize, usize)> {
-    let (plane, inputs, outputs) = py
+    let checked = py
         .detach(|| {
-            rusticol_core::loop_v2::trees::compile_plane_application(
+            rusticol_core::loop_v2::trees::compile_plane_application_checked(
                 state,
                 optimization_level,
                 compress,
             )
         })
         .map_err(error)?;
-    Ok((pyo3::types::PyBytes::new(py, &plane), inputs, outputs))
+    match checked {
+        Ok((plane, inputs, outputs)) => {
+            Ok((pyo3::types::PyBytes::new(py, &plane), inputs, outputs))
+        }
+        Err(mismatch) => Err(PlaneMismatchError::new_err((
+            format!("loop v2 trees: {mismatch}"),
+            mismatch.output,
+            mismatch.row,
+            mismatch.imaginary,
+        ))),
+    }
 }
 
 /// Whether pyAmpliCol's Symbolica library key unlocks the native code of
@@ -1085,6 +1107,10 @@ fn evaluate_v2_artifact(
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Executor>()?;
     module.add_function(wrap_pyfunction!(compile_v2_plane, module)?)?;
+    module.add(
+        "PlaneMismatchError",
+        module.py().get_type::<PlaneMismatchError>(),
+    )?;
     module.add_function(wrap_pyfunction!(native_library_key_active, module)?)?;
     module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)?;
     module.add_function(wrap_pyfunction!(evaluate_v2_artifact, module)?)

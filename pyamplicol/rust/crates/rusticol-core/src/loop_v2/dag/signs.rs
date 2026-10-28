@@ -20,9 +20,12 @@
 
 use super::input::{DagInput, SignContract};
 use super::recursion::{CurrentKey, Dag, FxMap};
-use super::{DagError, DagResult, invalid};
+use super::{DagError, DagResult, FERMION_LINE_REPRESENTATION, invalid, refused};
 
-/// `_fermion_input_orientation_sign`.
+/// `_fermion_input_orientation_sign`. A merge of fermions of different sign
+/// ownership (a coloured and a colour-singlet one: a fermion line changing
+/// colour representation) is the listed refusal
+/// [`FERMION_LINE_REPRESENTATION`].
 fn orientation_sign(left: &SignContract, right: &SignContract) -> DagResult<f64> {
     let (left_fermion, left_orientation, left_owned) = left;
     let (right_fermion, right_orientation, right_owned) = right;
@@ -30,7 +33,12 @@ fn orientation_sign(left: &SignContract, right: &SignContract) -> DagResult<f64>
         return Ok(1.0);
     }
     if left_owned != right_owned {
-        return invalid("external-fermion ordering encountered mixed color-sign ownership");
+        return refused(
+            FERMION_LINE_REPRESENTATION,
+            "a merge of a coloured and a colour-singlet fermion current (one \
+             fermion line changing colour representation): the colour flow signs \
+             coloured fermion lines and the Wick order colour-singlet ones",
+        );
     }
     if !left_owned {
         return Ok(1.0);
@@ -87,7 +95,16 @@ pub fn apply_colour_flow_signs(input: &DagInput, dag: &mut Dag) -> DagResult<()>
             .map(|l| right_ranks.iter().filter(|r| l > *r).count())
             .sum::<usize>();
         let mut sign = if inversions % 2 == 1 { -1.0 } else { 1.0 };
-        sign *= orientation_sign(left_contract, right_contract)?;
+        sign *= orientation_sign(left_contract, right_contract).map_err(|error| match error {
+            DagError::Unsupported(message) => {
+                let vertex = &input.vertices[interaction.vertex as usize];
+                DagError::Unsupported(format!(
+                    "{message} (vertex kind {}, particles {:?})",
+                    vertex.kind, vertex.pdgs
+                ))
+            }
+            other => other,
+        })?;
         if sign < 0.0 {
             interaction.colour_weight =
                 [-interaction.colour_weight[0], -interaction.colour_weight[1]];
@@ -270,7 +287,32 @@ pub fn apply_connection_signs(input: &DagInput, dag: &mut Dag) -> DagResult<()> 
 
 #[cfg(test)]
 mod tests {
-    use super::{connection_parities, size_order};
+    use super::{
+        DagError, FERMION_LINE_REPRESENTATION, connection_parities, orientation_sign, size_order,
+    };
+
+    #[test]
+    fn mixed_sign_ownership_is_the_listed_refusal() {
+        let quark = (true, "particle".to_string(), false);
+        let lepton = (true, "antiparticle".to_string(), true);
+        let gluon = (false, "self-conjugate".to_string(), false);
+        for (left, right) in [(&quark, &lepton), (&lepton, &quark)] {
+            match orientation_sign(left, right) {
+                Err(DagError::Unsupported(message)) => {
+                    assert!(
+                        message.starts_with(&format!("{FERMION_LINE_REPRESENTATION}: ")),
+                        "{message}"
+                    )
+                }
+                other => panic!("expected the listed refusal, got {other:?}"),
+            }
+        }
+        // A fermion with a boson, and fermions of one ownership, are signed.
+        assert_eq!(orientation_sign(&quark, &gluon).unwrap(), 1.0);
+        let antilepton = (true, "particle".to_string(), true);
+        assert_eq!(orientation_sign(&lepton, &antilepton).unwrap(), 1.0);
+        assert_eq!(orientation_sign(&antilepton, &lepton).unwrap(), -1.0);
+    }
 
     type Merge = (usize, usize, usize, bool);
 

@@ -177,15 +177,18 @@ def _assert_same_values(original, variant, rename=ORIGINAL):
 
 
 def _route(slice_) -> str:
-    """The native-or-plan-only route of the artifact writer (its native
-    export of the plan, trees and Born squared)."""
+    """The artifact writer's decision on the native export of the plan,
+    trees and Born squared: ``native-v2``, or the listed refusal's key
+    (``native_trees.NATIVE_EXPORT_REFUSALS``; there is no plan-only route,
+    and any other error propagates)."""
 
+    from pyamplicol.loops.v2.native_trees import NativeExportUnsupported
     from pyamplicol.loops.v2.plan_export import export_plan
 
     try:
         export_plan(slice_, forward=False, trees=True, born_squared=True)
-    except NotImplementedError:
-        return "plan-only"
+    except NativeExportUnsupported as error:
+        return f"refused: {error.feature}"
     return "native-v2"
 
 
@@ -218,7 +221,7 @@ def _electroweak(slice_) -> bool:
 
 def _assert_same_decisions(original, variant, rename, *, electroweak=True):
     """The production decisions of REPORT.md §3 on ``variant`` equal the
-    original's under ``rename``: the native-or-plan-only route, the frames,
+    original's under ``rename``: the native route or refusal, the frames,
     the scale binding and (``electroweak``) the EW classification."""
 
     assert _route(variant) == _route(original)
@@ -860,32 +863,38 @@ def test_mw_nature_gives_the_same_virtual(w_slices, models, name):
 # Where MW > MZ there, the argument of the W coupling's (1 - MW^2/MZ^2)^(-1/2)
 # is a negated real: SymJIT's product with the real constant -1 gives it a
 # -0 imaginary part, Symbolica's complex product +0, so the two take opposite
-# sides of the cut (a sign) and the export is refused (ValueError). Which
-# input gets which probe depends on the parameter order, so on the names
-# (G_mu's card-input MW passes). Off the cut they agree: with every parameter
-# input moved to e_k (1 + i c_k), both this program and the parameter program
-# of g g > t t~ EW on G_mu, whose refusal is WP3.2 EWI-N's (slice-status
-# UPDATE 2026-10-26 ~07:25), pass the check and export. It is EWI-N's defect;
-# the Rust is outside genericity-fixes. Reproducers: the model-free
+# sides of the cut (a sign) and the export is refused, as the listed
+# ``plane-mismatch`` naming the parameter-program output (package
+# fail-closed; ``test_plane_mismatch_names_the_parameter_program_output``
+# below). Which input gets which probe depends on the parameter order, so on
+# the names (G_mu's card-input MW passes). It is WP3.2 EWI-N's defect
+# (ew-native), which also owns the same refusal of g g > t t~ EW's parameter
+# program on G_mu (slice-status UPDATE 2026-10-26 ~07:25): the plane check
+# must not depend on the declaration order or names, by evidence either the
+# SymJIT fix (if its signed-zero branch is a defect against Symbolica), a
+# branch-cut-consistent comparison or off-axis probes that still certify the
+# real-axis evaluation (DECISIONS 2026-10-26 ~21:10 item 6, confirmed by the
+# user 2026-10-27 ~19:20; it supersedes the ~10:10 routing). Reproducers: the model-free
 # ``test_plane_check_accepts_a_negated_real_on_a_branch_cut`` below and
 # ``test_mw_nature_takes_the_same_native_route[loop_sm]`` (--runxfail).
 PLANE_CHECK_OWNER = (
     "SymJIT plane check at real probe inputs on a branch cut (SymJIT gives a "
     "negated real a -0 imaginary part, Symbolica +0; rusticol-core "
-    "loop_v2/trees.rs verify_plane): WP3.2 EWI-N (ew-native, slice-status "
-    "DECISIONS 2026-10-25 ~02:25), the same refusal as EWI-N's g g > t t~ EW "
-    "parameter program (both export with the inputs off the real axis); "
-    "routing to be confirmed by the coordinator"
+    "loop_v2/trees.rs verify_plane), refused as the listed plane-mismatch: "
+    "WP3.2 EWI-N (ew-native), the same refusal as EWI-N's g g > t t~ EW "
+    "parameter program; slice-status DECISIONS 2026-10-26 ~21:10 item 6 "
+    "(user-confirmed 2026-10-27 ~19:20)"
 )
 
 
 @pytest.mark.parametrize(
     "name",
     [
+        # The routes differ (the variant's export is refused).
         pytest.param(
             "loop_sm",
             marks=pytest.mark.xfail(
-                strict=True, raises=ValueError, reason=PLANE_CHECK_OWNER
+                strict=True, raises=AssertionError, reason=PLANE_CHECK_OWNER
             ),
         ),
         # Derived masses are parameter-program outputs since
@@ -896,6 +905,30 @@ PLANE_CHECK_OWNER = (
 )
 def test_mw_nature_takes_the_same_native_route(w_slices, name):
     assert _route(w_slices(name, "mass")) == _route(w_slices(name, None))
+
+
+def test_plane_mismatch_names_the_parameter_program_output(w_slices):
+    """Until EWI-N: the loop_sm variant's export is refused as the listed
+    ``plane-mismatch`` (a ``GenerationError`` at generation, no raw
+    ``ValueError``), naming the parameter-program output, with no stale
+    advice; the original exports natively."""
+
+    from pyamplicol.loops.v2.native_trees import NativeExportUnsupported
+    from pyamplicol.loops.v2.plan_export import export_plan
+
+    assert _route(w_slices("loop_sm", None)) == "native-v2"
+    with pytest.raises(NativeExportUnsupported) as refused:
+        export_plan(
+            w_slices("loop_sm", "mass"), forward=False, trees=True, born_squared=True
+        )
+    assert refused.value.feature == "plane-mismatch"
+    message = str(refused.value)
+    assert re.search(r"parameter-program output \d+ \(\w", message), message
+    # A derived coupling is named by its UFO coupling and vertex, not by the
+    # runtime's term id (``native_trees._output_label``).
+    assert re.search(r"\(model coupling \w+ of vertex \w+ \(", message), message
+    assert "derived_coupling_" not in message, message
+    assert "exact evaluator;" not in message
 
 
 @pytest.mark.parametrize(

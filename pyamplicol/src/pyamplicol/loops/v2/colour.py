@@ -906,13 +906,13 @@ class SeedColour:
     @cached_property
     def formal_nc(self) -> bool:
         """Whether every block is exact in N_c: its numeric U(1)-subtraction
-        pieces have one N_c grade (``BlockColourFlow.nc_grade``)."""
+        pieces have one N_c grade (``BlockColourFlow.nc_grade``); the
+        criterion of the LC/NLC generation refusal
+        (``refusals.mixed_grade_blocks``)."""
 
-        return all(
-            block.colour_flow.nc_grade is not None
-            for block in self.blocks.blocks
-            if block.key.auxiliary_kind is None
-        )
+        from .refusals import mixed_grade_blocks
+
+        return not mixed_grade_blocks(self.blocks)
 
 
 def canonical_seed(seed: ConnectedColorTensor) -> ConnectedColorTensor:

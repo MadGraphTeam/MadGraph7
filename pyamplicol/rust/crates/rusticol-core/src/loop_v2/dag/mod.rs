@@ -55,7 +55,10 @@ use sha2::{Digest, Sha256};
 ///
 /// `Unsupported` names a feature the native builder does not cover yet
 /// (rule 2: fail closed, never silently); `Invalid` mirrors an error the
-/// Python oracle raises for the same input.
+/// Python oracle raises for the same input. An `Unsupported` message that
+/// starts with a key of [`ADMISSION_REFUSALS`] and `": "` is a refusal of the
+/// request itself (no lane covers it), which Python raises as its typed
+/// generation refusal (`loops.v2.refusals.LOOP_ADMISSION_REFUSALS`).
 #[derive(Debug, thiserror::Error)]
 pub enum DagError {
     #[error("unsupported: {0}")]
@@ -67,6 +70,23 @@ pub enum DagError {
 }
 
 pub type DagResult<T> = Result<T, DagError>;
+
+/// [`DagError::Unsupported`] key: a merge of a coloured and a colour-singlet
+/// fermion current, or a block whose coloured fermion ends do not pair (one
+/// fermion line changing colour representation, e.g. at a leptoquark vertex
+/// u e S): the colour flow signs coloured fermion lines and the Wick order
+/// colour-singlet ones, so such a line has no sign (genericity audit 2,
+/// G2-m1). Python admission refuses it before the DAG.
+pub const FERMION_LINE_REPRESENTATION: &str = "fermion-line-representation";
+
+/// The keys of the [`DagError::Unsupported`] refusals that refuse the request
+/// (listed in Python's `LOOP_ADMISSION_REFUSALS`), not fallbacks.
+pub const ADMISSION_REFUSALS: &[&str] = &[FERMION_LINE_REPRESENTATION];
+
+pub(crate) fn refused<T>(key: &str, message: impl std::fmt::Display) -> DagResult<T> {
+    debug_assert!(ADMISSION_REFUSALS.contains(&key));
+    Err(DagError::Unsupported(format!("{key}: {message}")))
+}
 
 pub(crate) fn invalid<T>(message: impl Into<String>) -> DagResult<T> {
     Err(DagError::Invalid(message.into()))
