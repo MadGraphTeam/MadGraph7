@@ -568,6 +568,7 @@ def build_covariant_structure(
     # Classification itself belongs to the native model. Numeric defaults have
     # not entered either the resolved expressions or the structural payload.
     classification = hep.Model.from_json(json.dumps(payload))
+    zero_parameter = any(p["name"] == "ZERO" for p in payload["parameters"])
     for particle in payload["particles"]:
         native = classification.particle(particle["name"])
         proxy = SimpleNamespace(**particle)
@@ -584,16 +585,25 @@ def build_covariant_structure(
                 str(propagator.denominator),
             )
         particle["propagator"] = propagator.name
-        # Native family extraction retains the source mass symbol (apart from
-        # ZERO), including aliases proved structurally massless above. Keep that
-        # same symbolic denominator; the exact source binding supplies its zero.
         denominator = propagator.denominator
         if native.is_massless and native.mass != 0:
-            denominator_proxy = SimpleNamespace(**vars(proxy))
-            denominator_proxy.is_massive = lambda: True
-            denominator = Propagator.from_particle(
-                denominator_proxy, "Feynman"
-            ).denominator
+            # A mass alias proved structurally massless above. The Community
+            # HepKit of the integration kernel (9cdc2949) gives it mass 0 and
+            # exports it as ZERO; the published Community 3.0.2 distribution
+            # keeps the source symbol, which the v2 families would read as a
+            # derived mass of value zero (refused, `_model_masses`). Write ZERO,
+            # so that the native model is the same under both.
+            if zero_parameter:
+                particle["mass"] = "ZERO"
+            else:
+                # No ZERO parameter to name: native family extraction retains
+                # the source symbol; keep that same symbolic denominator (the
+                # exact source binding supplies its zero).
+                denominator_proxy = SimpleNamespace(**vars(proxy))
+                denominator_proxy.is_massive = lambda: True
+                denominator = Propagator.from_particle(
+                    denominator_proxy, "Feynman"
+                ).denominator
         payload["propagators"].append(
             dict(
                 name=propagator.name,
