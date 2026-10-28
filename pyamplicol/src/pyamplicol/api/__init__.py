@@ -15,6 +15,7 @@ if TYPE_CHECKING:
         EvaluationError,
         GenerationError,
         ModelError,
+        NativePlatformError,
         PyAmpliColError,
     )
     from .models import (
@@ -131,6 +132,7 @@ __all__ = [
     "ModelSource",
     "ModelSourceKind",
     "Momenta",
+    "NativePlatformError",
     "PhysicsReduction",
     "PoleSelection",
     "ProcessAlias",
@@ -172,6 +174,7 @@ _ERROR_EXPORTS = (
     "EvaluationError",
     "GenerationError",
     "ModelError",
+    "NativePlatformError",
     "PyAmpliColError",
 )
 _PROTOCOL_EXPORTS = (
