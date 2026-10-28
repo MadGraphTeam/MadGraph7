@@ -534,6 +534,18 @@ def _overlay_of(seeds: Mapping[str, Any]) -> dict[str, Any] | None:
     return overlay
 
 
+def _flows_record(slice_: Any) -> dict[str, Any]:
+    """The leading-colour flows of an LC process (``selection.slice_flows``),
+    which its runtime selects (``helicities``/``color_flows``); NLC and full
+    colour store none (their record is unchanged)."""
+
+    from . import selection
+
+    if slice_.request.accuracy != "lc":
+        return {}
+    return {"color_flows": [flow.record() for flow in selection.slice_flows(slice_)]}
+
+
 @dataclass(frozen=True)
 class ObservableSet:
     """One stored column set: the seed records of its plan over the process
@@ -598,6 +610,7 @@ class StoredObservables:
         rows = tuple(exported.rows)
         record: dict[str, Any] = {
             "schema": SCHEMA,
+            **_flows_record(slice_),
             "rows": [[list(x) for x in row] for row in rows],
             "basis": len(slice_.basis.tensors),
             "spin_classes": [list(legs) for legs in observables.spin_classes],
@@ -779,6 +792,11 @@ class StoredObservableSlice:
         )
         self.rows = tuple(_row(row) for row in stored.record["rows"])
         self.components = tuple(range(int(stored.record["basis"])))
+        from .selection import Flow
+
+        self.flows = tuple(
+            Flow.from_record(flow) for flow in stored.record.get("color_flows", ())
+        )
         # One runner per stored column set, member and executor options: its
         # native executors are built once and serve every call that selects
         # some of its columns.
@@ -801,6 +819,20 @@ class StoredObservableSlice:
         requested histories, served by the stored correlated set;
         ``resolved``: its resolution, which must be the stored one)."""
 
+        from .selection import SELECTION
+
+        if kind == SELECTION:
+            # A leading-colour selection: the sum of the stored resolved
+            # columns of its rows and basis elements.
+            resolved = self.native_columns(
+                "resolved", resolution_of(self), member=member, **options
+            )
+            rows = self.rows if value.rows is None else sorted(value.rows)
+            basis = self.components if value.basis is None else sorted(value.basis)
+            wanted = tuple((row, b) for row in rows for b in basis)
+            if not wanted:
+                raise ValueError("a selection keeps no resolved column")
+            return _Selection(resolved.columns, wanted, group=value.key)
         if kind not in KINDS:
             raise ValueError(f"unknown column set {kind!r}")
         key = (kind, id(member), tuple(sorted(options.items())))
@@ -822,14 +854,24 @@ class StoredObservableSlice:
 
 class _Selection:
     """Some columns of a stored column set (``StoredColumns``): the requested
-    histories of a correlated call, or every resolved column."""
+    histories of a correlated call, every resolved column, or (``group``, a
+    leading-colour selection's key) the sum of some resolved columns as one
+    output."""
 
-    def __init__(self, columns: StoredColumns, wanted: tuple[Any, ...] | None):
+    def __init__(
+        self,
+        columns: StoredColumns,
+        wanted: tuple[Any, ...] | None,
+        group: Any = None,
+    ):
         self.columns = columns
         self.wanted = wanted
+        self.group = group
 
     def evaluate(self, points, scales, **options):
-        return self.columns.evaluate(points, scales, wanted=self.wanted, **options)
+        return self.columns.evaluate(
+            points, scales, wanted=self.wanted, group=self.group, **options
+        )
 
 
 class _ColumnPlanView:
@@ -878,8 +920,13 @@ def _plan_class():
             self.lanes = view.lanes
             self.index = view.index
             self._scaleless = [None]
+            # Summed outputs (``results(group=...)``): key -> column keys.
+            self.groups: dict[Any, tuple[Any, ...]] = {}
 
-        def results(self, evaluation, wanted=None):
+        def results(self, evaluation, wanted=None, group=None):
+            """The outputs of the columns ``wanted`` (keys; None: every
+            column); with ``group`` their sum as the one output ``group``."""
+
             columns = (
                 self.columns
                 if wanted is None
@@ -887,7 +934,24 @@ def _plan_class():
             )
             with evaluation.numbers.scope():
                 assembly = _StoredAssembly(self, evaluation)
-                return {column.key: assembly.result(column) for column in columns}
+                out = {column.key: assembly.result(column) for column in columns}
+                if group is None:
+                    return out
+                from .observables import _sum_results
+
+                self.groups[group] = tuple(out)
+                return {group: _sum_results(list(out.values()))}
+
+        def _lanes_of(self, key):
+            """A group's lanes are its columns' (``ColumnPlan._lanes_of``)."""
+
+            members = self.groups.get(key)
+            if members is None:
+                return super()._lanes_of(key)
+            out = {}
+            for member in members:
+                out.update(super()._lanes_of(member))
+            return out
 
     return _StoredPlan
 
@@ -1007,6 +1071,7 @@ class StoredColumns:
         scales,
         *,
         wanted=None,
+        group=None,
         spin=None,
         ward=None,
         parameters=None,
@@ -1015,7 +1080,9 @@ class StoredColumns:
         stability=None,
     ):
         """``observables.NativeObservables.evaluate`` on the stored columns:
-        the outputs of the columns ``wanted`` (keys; None: every column)."""
+        the outputs of the columns ``wanted`` (keys; None: every column), or
+        with ``group`` their sum as the one output ``group`` (its estimate
+        from the budgets of all their lanes)."""
 
         from .assemble import Precision
         from .observables import (
@@ -1068,13 +1135,13 @@ class StoredColumns:
             if index in failures:
                 out.append(None)
                 continue
-            result = self.plan.results(reference, wanted)
+            result = self.plan.results(reference, wanted, group)
             if stability.enabled:
                 result = self.plan.checked(
                     result,
                     reference,
                     [
-                        (run[index], self.plan.results(run[index], wanted))
+                        (run[index], self.plan.results(run[index], wanted, group))
                         for run in runs
                     ],
                     precision.unit_roundoff,

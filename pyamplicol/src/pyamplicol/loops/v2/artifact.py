@@ -87,6 +87,7 @@ from typing import Any, Literal, cast
 from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.api.protocols import ModelParameters, Momenta, ScalarInput
 from pyamplicol.api.results import (
+    BornAnchoredColorComponent,
     ContractedColorComponent,
     ExternalParticle,
     HelicityConfiguration,
@@ -1199,6 +1200,22 @@ class V2VirtualRuntime:
     def physics(self) -> ProcessPhysics:
         accuracy = cast(Literal["lc", "nlc", "full"], self._metadata["color_accuracy"])
         member = self._group_member
+        anchors = (
+            tuple(
+                BornAnchoredColorComponent(
+                    flow.id,
+                    index,
+                    (flow.basis,),
+                    f"leading-colour flow {flow.word} (Born basis element "
+                    f"{flow.basis})",
+                )
+                for index, flow in enumerate(self._flows())
+                if flow.basis is not None
+            )
+            if accuracy == "lc" and member is None
+            else ()
+        )
+        kind = "born-anchored-interference" if anchors else "contracted-color"
         pdgs = (
             [int(leg["pdg"]) for leg in self._physics["state_legs"]]
             if member is None
@@ -1210,7 +1227,7 @@ class V2VirtualRuntime:
             color_accuracy=accuracy,
             helicity_coverage="all",
             color_coverage="all",
-            color_kind="contracted-color",
+            color_kind=kind,
             structural_zero_helicity_count=0,
             external_particles=tuple(
                 ExternalParticle(
@@ -1230,17 +1247,30 @@ class V2VirtualRuntime:
                 for i, h in enumerate(self._physics["helicities"])
             ),
             color_flows=(),
-            contracted_color_components=(
+            contracted_color_components=()
+            if anchors
+            else (
                 ContractedColorComponent(
                     accuracy, 0, f"{accuracy} colour interference"
                 ),
             ),
-            born_anchored_color_components=(),
+            # Leading colour: the flows ``evaluate(color_flows=...)`` selects
+            # (``selection``: tree-engine IDs and order), each anchored to
+            # its Born basis element (``evaluate_resolved``'s ``basis-<i>``).
+            born_anchored_color_components=anchors,
             contribution_kind="virtual",
-            reduction=PhysicsReduction("contracted-color", ()),
+            reduction=PhysicsReduction(kind, ()),
             model_parameters=(),
-            selector_capabilities=(),
+            selector_capabilities=("helicity", "color_flow") if anchors else (),
         )
+
+    def _flows(self) -> tuple[Any, ...]:
+        """The stored leading-colour flows (none below leading colour)."""
+
+        from .selection import Flow
+
+        record = self._native_process.observables.record
+        return tuple(Flow.from_record(flow) for flow in record.get("color_flows", ()))
 
     def inspect(self) -> Mapping[str, object]:
         with self._lock:
@@ -1316,9 +1346,22 @@ class V2VirtualRuntime:
     ) -> VirtualEvaluation:
         from pyamplicol.runtime.virtual import _inputs, v2_options
 
+        if helicities or color_flows:
+            # A leading-colour selection (``selection``): one summed output
+            # of the stored resolved columns.
+            return self._observable_runtime().evaluate(
+                momenta,
+                helicities=helicities,
+                color_flows=color_flows,
+                mu_r2=mu_r2,
+                r2_strategy=r2_strategy,
+                stability=stability,
+                poles=poles,
+                stability_checks=stability_checks,
+                on_failure=on_failure,
+                **self._observable_options(precision, arithmetic, {}),
+            )
         selection, checks = v2_options(
-            helicities=helicities,
-            color_flows=color_flows,
             r2_strategy=r2_strategy,
             stability=stability,
             poles=poles,

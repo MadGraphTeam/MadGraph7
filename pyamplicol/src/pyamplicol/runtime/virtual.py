@@ -404,6 +404,77 @@ class VirtualRuntimeBackend:
             vectors, self._spin_classes(), point_count=point_count
         )
 
+    def _evaluate_selected(
+        self,
+        momenta: Momenta,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        *,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
+        **options: Any,
+    ) -> VirtualEvaluation:
+        """One selection column (``selection.column``) of every point."""
+
+        from pyamplicol.loops.v2 import selection as lc
+
+        poles, checks = v2_options(on_failure=on_failure, **options)
+        observables = self._observables
+        lc.require_leading_colour(
+            observables.slice.request.accuracy, helicities, color_flows
+        )
+        if self._member is not None:
+            raise CompatibilityError(
+                "helicity and colour-flow selection of a flavour member is not "
+                "available; select on its representative process"
+            )
+        rows, basis = self.selection_catalogue().resolve(helicities, color_flows)
+        column = lc.column(rows, basis)
+        arithmetic, carrier = self._precision(arithmetic, precision)
+        points, scales = _inputs(momenta, mu_r2, self.external_count)
+        with self._lock:
+            parameters = dict(self._parameters)
+        settings = {
+            "parameters": parameters,
+            "precision": carrier,
+            "poles": poles.value,
+            "stability": checks.to_checks() if checks.enabled else None,
+        }
+
+        def python(point: Any, scale: Any, _spin: Any) -> Any:
+            return observables._run(
+                [column],
+                point,
+                scale,
+                settings["parameters"],
+                settings["precision"],
+                settings["poles"],
+                None,
+                None,
+                settings["stability"],
+            )
+
+        per_point, failures = self._run(
+            (lc.SELECTION, column),
+            python,
+            points,
+            scales,
+            [None] * len(points),
+            settings,
+        )
+        self._failed(failures, on_failure)
+        return self._evaluation(
+            [None if result is None else result[column.key] for result in per_point],
+            failures,
+            arithmetic,
+            carrier,
+            False,
+            poles,
+            checks,
+        )
+
     def evaluate_correlated(
         self, momenta: Momenta, *, color_correlation: str = "born", **kwargs: Any
     ) -> VirtualEvaluation:
@@ -1096,6 +1167,8 @@ def v2_options(
     if on_failure not in ("raise", "return"):
         raise ValueError("on_failure must be 'raise' or 'return'")
     if helicities or color_flows:
+        # ``evaluate`` takes them at leading colour (``loops.v2.selection``)
+        # and removes them before this check.
         raise CompatibilityError(
             "v2 virtual runtimes evaluate every helicity and colour; use "
             "evaluate_resolved for per-helicity and per-colour outputs"
@@ -1162,6 +1235,7 @@ class V2ObservablesRuntime:
         if executor not in ("native", "python"):
             raise ValueError(f"unknown v2 executor {executor!r}")
         self._observables = observables
+        self._catalogue: Any = None
         self._member = member
         self._executor = executor
         self._native_options = {
@@ -1231,7 +1305,8 @@ class V2ObservablesRuntime:
 
     def _native_columns(self, key: tuple[Any, ...]) -> Any:
         """The native executor of one output column set (built once):
-        ``("correlated", histories)`` or ``("resolved", resolution)``."""
+        ``("correlated", histories)``, ``("resolved", resolution)`` or
+        ``("selection", column)`` (a leading-colour selection)."""
 
         from pyamplicol.loops.v2.observables import NativeObservables
 
@@ -1245,11 +1320,17 @@ class V2ObservablesRuntime:
                     # A loaded process's stored columns (no slice).
                     found = self._native[key] = stored(kind, value, **options)
                     return found
-                found = self._native[key] = (
-                    NativeObservables.correlated(self._observables, value, **options)
-                    if kind == "correlated"
-                    else NativeObservables.resolved(self._observables, value, **options)
-                )
+                if kind == "correlated":
+                    found = NativeObservables.correlated(
+                        self._observables, value, **options
+                    )
+                elif kind == "selection":
+                    found = NativeObservables(self._observables, [value], **options)
+                else:
+                    found = NativeObservables.resolved(
+                        self._observables, value, **options
+                    )
+                self._native[key] = found
             return found
 
     def _run(
@@ -1487,6 +1568,23 @@ class V2ObservablesRuntime:
             sorted({canonical_order(add_orders(a, b)) for a in orders for b in orders})
         )
 
+    def selection_catalogue(self) -> Any:
+        """The helicity rows and leading-colour flows a selection names
+        (``loops.v2.selection.Catalogue``; no flows below leading colour)."""
+
+        from pyamplicol.loops.v2 import selection
+
+        with self._lock:
+            if self._catalogue is None:
+                observables = self._observables
+                flows = getattr(observables, "flows", None)
+                if flows is None:
+                    flows = selection.slice_flows(observables.slice)
+                self._catalogue = selection.Catalogue(
+                    tuple(observables.rows), tuple(flows)
+                )
+            return self._catalogue
+
     def evaluate(
         self,
         momenta: Momenta,
@@ -1494,8 +1592,25 @@ class V2ObservablesRuntime:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         precision: int | None = None,
         arithmetic: str | None = None,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
         **options: Any,
     ) -> VirtualEvaluation:
+        """The virtual of every point; at leading colour ``helicities`` and
+        ``color_flows`` select Born helicity rows and colour flows with the
+        tree engine's IDs and ordinals (``loops.v2.selection``): the sum of
+        their Born-anchored entries, Born included."""
+
+        if helicities or color_flows:
+            return self._evaluate_selected(
+                momenta,
+                helicities,
+                color_flows,
+                mu_r2=mu_r2,
+                precision=precision,
+                arithmetic=arithmetic,
+                **options,
+            )
         return self.evaluate_correlated_many(
             momenta,
             {"born": CorrelatedRequest("born", {})},
@@ -1505,6 +1620,77 @@ class V2ObservablesRuntime:
             _correlated=False,
             **options,
         )["born"]
+
+    def _evaluate_selected(
+        self,
+        momenta: Momenta,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        *,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+        on_failure: Literal["raise", "return"] = "raise",
+        **options: Any,
+    ) -> VirtualEvaluation:
+        """One selection column (``selection.column``) of every point."""
+
+        from pyamplicol.loops.v2 import selection as lc
+
+        poles, checks = v2_options(on_failure=on_failure, **options)
+        observables = self._observables
+        lc.require_leading_colour(
+            observables.slice.request.accuracy, helicities, color_flows
+        )
+        if self._member is not None:
+            raise CompatibilityError(
+                "helicity and colour-flow selection of a flavour member is not "
+                "available; select on its representative process"
+            )
+        rows, basis = self.selection_catalogue().resolve(helicities, color_flows)
+        column = lc.column(rows, basis)
+        arithmetic, carrier = self._precision(arithmetic, precision)
+        points, scales = _inputs(momenta, mu_r2, self.external_count)
+        with self._lock:
+            parameters = dict(self._parameters)
+        settings = {
+            "parameters": parameters,
+            "precision": carrier,
+            "poles": poles.value,
+            "stability": checks.to_checks() if checks.enabled else None,
+        }
+
+        def python(point: Any, scale: Any, _spin: Any) -> Any:
+            return observables._run(
+                [column],
+                point,
+                scale,
+                settings["parameters"],
+                settings["precision"],
+                settings["poles"],
+                None,
+                None,
+                settings["stability"],
+            )
+
+        per_point, failures = self._run(
+            (lc.SELECTION, column),
+            python,
+            points,
+            scales,
+            [None] * len(points),
+            settings,
+        )
+        self._failed(failures, on_failure)
+        return self._evaluation(
+            [None if result is None else result[column.key] for result in per_point],
+            failures,
+            arithmetic,
+            carrier,
+            False,
+            poles,
+            checks,
+        )
 
     def evaluate_correlated(
         self, momenta: Momenta, *, color_correlation: str = "born", **kwargs: Any
