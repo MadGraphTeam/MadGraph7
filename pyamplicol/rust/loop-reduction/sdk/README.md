@@ -352,15 +352,15 @@ so it cannot tell whether a 2.42 build includes the update:
 
 ```sh
 cc -std=c11 -DRUSTICOL_VIRTUAL_SHARED examples/client.c -Iinclude \
-  -L/path/to/build -lrusticol_loop_sdk -Wl,-rpath,/path/to/build -o client
+  -L/path/to/build -lrusticol_loop_sdk -Wl,-rpath,/path/to/build -lm -o client
 ```
 
 Fortran has no such hook (the module is not preprocessed): rely on the loader
 message above. From Python, `import pyamplicol._rusticol` checks the running
-glibc against the library's own requirements first (its release, and whether
-its `libc.so.6` defines `GLIBC_ABI_GNU2_TLS`) and raises
+glibc release against the library's own requirements first and raises
 `pyamplicol.NativePlatformError` with the required and the running version and
-the remedy. pyAmpliCol does not open `librusticol_loop_sdk.so` from Python;
+the remedy; on a glibc 2.42 build without the update, the loader's refusal is
+turned into the same error. pyAmpliCol does not open `librusticol_loop_sdk.so` from Python;
 code that opens it with `ctypes` gets the dynamic loader's `OSError` (the check
 pyAmpliCol runs, in `pyamplicol._native_loader`, is internal, not a public
 API).

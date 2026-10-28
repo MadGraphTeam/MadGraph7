@@ -47,13 +47,14 @@ class DependencyError(PyAmpliColError):
 class NativePlatformError(DependencyError):
     """The running platform cannot load one of pyAmpliCol's native libraries.
 
-    Raised before the library is loaded when its ELF version requirements name
-    a glibc version the running glibc does not provide (the loop engine's
-    release natives need ``GLIBC_ABI_GNU2_TLS``: glibc 2.43 or newer, or a
-    glibc 2.42 build with the stable-branch update that added it), or a glibc
-    on a platform without one, and in place of the dynamic loader's
-    "version `GLIBC_...' not found" error. It is not an ImportError: no
-    fallback can run the library on this platform.
+    Raised before the library is loaded when its ELF version requirements need
+    a newer glibc release than the running one (the loop engine's release
+    natives can need ``GLIBC_ABI_GNU2_TLS``: glibc 2.43 or newer, or a glibc
+    2.42 build with the stable-branch update that added it), or a glibc on a
+    platform without one, and in place of the dynamic loader's
+    "version `GLIBC_...' not found" error (for instance on a glibc 2.42 build
+    without that update). It is not an ImportError: no fallback can run the
+    library on this platform.
 
     Attributes: ``library`` (path, if known), ``required`` (the oldest glibc
     release that can provide the version, ``"2.42"``; None if unknown),
