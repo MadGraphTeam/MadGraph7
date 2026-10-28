@@ -373,10 +373,12 @@ namespace madmatrix
   // traffic per EVENT, whatever the SIMD width, while the arithmetic gets
   // cheaper with every doubling of the width; past some size the traffic is all
   // that is left and the plain build, which keeps next to nothing, is faster.
-  // Measured (check_sa, recycled over plain), g g > t t~ g g g: 7.7 MB per page
-  // at simd_128 1.6x-1.9x faster on an Intel Xeon Gold 6346 and on an Apple M5
-  // Pro, 15.5 MB at simd_256 0.90x-1.07x, 31 MB at simd_512 0.60x-0.71x;
-  // g g > u u~ g g (0.57 MB at simd_512) 1.36x and more everywhere. Above
+  // Measured (check_sa, recycled over plain), g g > t t~ g g g: 8.3 MB per page
+  // at simd_128 1.6x-1.9x faster on one thread of an Intel Xeon Gold 6346 and an
+  // Apple M5 Pro, and still 1.2x-1.3x with every hardware thread of a 2x AMD EPYC
+  // 7452 busy (64 cores, 128 threads); 16.6 MB at simd_256 1.3x on one thread
+  // but 0.66x-0.75x with every thread busy, 33 MB at simd_512 0.60x-0.71x;
+  // g g > u u~ g g (0.6 MB at simd_512) 1.36x and more everywhere. Above
   // MGONGPU_HR_MAX_TABLE_MB (make HRMAXMB=<n>, 0 for no limit) this build uses
   // the plain helicity loop, which is compiled in the same library anyway. The
   // size is per SIMD page of neppV events: in mixed precision a call makes two
