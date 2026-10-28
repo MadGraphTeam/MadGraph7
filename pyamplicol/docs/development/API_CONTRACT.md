@@ -34,7 +34,10 @@ review.
 - Package metadata: `__version__`.
 - Errors: `PyAmpliColError`, `ConfigurationError`, `ModelError`,
   `GenerationError`, `ArtifactError`, `CompatibilityError`,
-  `EvaluationError`, and `DependencyError`.
+  `EvaluationError`, `DependencyError`, and `NativePlatformError` (a
+  `DependencyError`: the running glibc lacks a version a native library
+  needs; raised before the library is loaded, or in place of the dynamic
+  loader's missing-version error).
 
 No DAG, evaluator, stage, color-sector, Symbolica, or legacy-reference class is
 exported from the package root.
