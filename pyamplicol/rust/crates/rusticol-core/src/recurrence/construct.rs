@@ -4367,6 +4367,103 @@ impl StructuralFeasibilityIndex {
     }
 }
 
+/// Fail-closed guard for the Dirac-Weyl closure class (m-qcd MQ-5F; HANDOFF
+/// §9.1). A fermion current whose line passed a massive fermion is a Dirac
+/// (chirality-0) current, while a massless external fermion is a Weyl
+/// (chirality +-1) source. Where a chiral vertex takes a line between massive
+/// and massless fermions (a massless b and the top through a W), the
+/// complement of a Weyl closure anchor can be a Dirac current of a particle
+/// pair that closes in other chirality states. Templates carry no Dirac-Weyl
+/// closure, so that complement would close on nothing and its diagrams (the
+/// top t channel of b b~ > w+ w-) would be dropped without an error: the
+/// recurrence refuses the request instead, with the listed key
+/// `dirac-weyl-closure`.
+#[derive(Debug)]
+struct DiracWeylClosureGuard {
+    /// Ordered (particle, particle) pairs of fermion current states that
+    /// some closure row joins.
+    closable: BTreeSet<(i32, i32)>,
+}
+
+impl DiracWeylClosureGuard {
+    fn new(
+        template: &OwnedRecurrenceTemplateInput,
+        catalog: &TemplateCatalog<'_>,
+    ) -> RusticolResult<Self> {
+        let mut closable = BTreeSet::new();
+        for closure in &template.closures {
+            let states = catalog.u32_sequence(
+                closure.input_state_sequence_id,
+                "Dirac-Weyl guard closure input states",
+            )?;
+            let [left, right] = states else {
+                return Err(invalid("direct recurrence requires binary prepared closures"));
+            };
+            let left = Self::state(template, *left)?;
+            let right = Self::state(template, *right)?;
+            if Self::fermion(left) && Self::fermion(right) {
+                closable.insert((left.particle_id, right.particle_id));
+                closable.insert((right.particle_id, left.particle_id));
+            }
+        }
+        Ok(Self { closable })
+    }
+
+    fn state(
+        template: &OwnedRecurrenceTemplateInput,
+        state_template_id: u32,
+    ) -> RusticolResult<&super::template::CurrentStateRow> {
+        template
+            .current_states
+            .get(state_template_id as usize)
+            .ok_or_else(|| invalid("Dirac-Weyl guard references an absent current state"))
+    }
+
+    fn fermion(state: &super::template::CurrentStateRow) -> bool {
+        state.statistics == ParticleStatistics::Fermion as u8
+    }
+
+    /// Refuses a closure anchor and complement state that no closure row
+    /// joins, when they are a Dirac and a Weyl state of a closable fermion
+    /// pair.
+    fn check(
+        &self,
+        template: &OwnedRecurrenceTemplateInput,
+        anchor_state: u32,
+        complement_state: u32,
+        sector_id: u32,
+    ) -> RusticolResult<()> {
+        let anchor = Self::state(template, anchor_state)?;
+        let complement = Self::state(template, complement_state)?;
+        if !Self::fermion(anchor)
+            || !Self::fermion(complement)
+            || (anchor.chirality == 0) == (complement.chirality == 0)
+            || !self
+                .closable
+                .contains(&(anchor.particle_id, complement.particle_id))
+        {
+            return Ok(());
+        }
+        let (dirac, weyl) = if anchor.chirality == 0 {
+            (anchor, complement)
+        } else {
+            (complement, anchor)
+        };
+        Err(invalid(format!(
+            "dirac-weyl-closure: LC sector {sector_id} would close a Dirac \
+             (chirality-0) current of particle {} on a Weyl (chirality {}) \
+             current of particle {}; a fermion line that joins massive and \
+             massless fermions through a chiral vertex (a massive internal or \
+             external fermion on a line with a massless sink) has no Dirac-Weyl \
+             closure contraction in the recurrence, which would drop that \
+             line's diagrams. Keep the light fermion massive in the tree model \
+             (the default restriction with its mass fixed to zero) or use the \
+             loop engine, whose Born closes at a vertex",
+            dirac.particle_id, weyl.chirality, weyl.particle_id,
+        )))
+    }
+}
+
 #[derive(Debug)]
 struct StructuralDemandIndex {
     demanded: BTreeMap<TransientSupportKey, BTreeSet<StructuralState>>,
@@ -4388,6 +4485,7 @@ impl StructuralDemandIndex {
         }
         let transitions = prepared_transitions.structural_transitions();
         let full_support = TransientSupportKey::full(feasibility.source_count)?;
+        let dirac_weyl = DiracWeylClosureGuard::new(template, catalog)?;
         let mut demanded = BTreeMap::<TransientSupportKey, BTreeSet<StructuralState>>::new();
         for sector_id in materialized_sectors.iter().copied() {
             let sector = process
@@ -4410,6 +4508,7 @@ impl StructuralDemandIndex {
             let mut sector_has_root = false;
             for anchor in anchor_states.iter().copied() {
                 for complement in complement_states.iter().copied() {
+                    let mut state_pair_closes = false;
                     for closure in &template.closures {
                         let closure_states = catalog.u32_sequence(
                             closure.input_state_sequence_id,
@@ -4435,6 +4534,7 @@ impl StructuralDemandIndex {
                         let Some(ordered) = ordered else {
                             continue;
                         };
+                        state_pair_closes = true;
                         if structural_closure_admits(*closure, ordered, template, catalog)? {
                             demanded
                                 .entry(complement_support.clone())
@@ -4442,6 +4542,14 @@ impl StructuralDemandIndex {
                                 .insert(complement);
                             sector_has_root = true;
                         }
+                    }
+                    if !state_pair_closes {
+                        dirac_weyl.check(
+                            template,
+                            anchor.state_template_id,
+                            complement.state_template_id,
+                            sector_id,
+                        )?;
                     }
                 }
             }
