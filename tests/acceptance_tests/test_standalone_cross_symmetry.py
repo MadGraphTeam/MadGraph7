@@ -60,6 +60,7 @@ import math
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -327,9 +328,11 @@ print('GHREMAP_RELATION_OK checked=%%d genuine=%%d cycles=%%d points=%%d' %%
 
 
 # Subprocess probe for the CROSSED spin-density matrix through the f2py wrapper
-# PY_GET_DENSITY_IDX -- the only path by which a python caller can request a
-# crossed density matrix (the FLAVOR-array PY_GET_DENSITY resolves through
-# GET_FLAVOR_INDEX, which only returns 1..NFLAV and so cannot carry a crossing).
+# PY_GET_DENSITY_IDX -- the per-process path by which a python caller can
+# request a crossed density matrix (the FLAVOR-array PY_GET_DENSITY resolves
+# through GET_FLAVOR_INDEX, which only returns 1..NFLAV and so cannot carry a
+# crossing; the combined module's PDG-keyed py_get_density reaches a FOLDED
+# crossing through f77_crossed_density instead).
 # Prints, per external leg, the three interference terms (++),(+-),(--) of that
 # leg's density matrix, so the parent can compare a crossed evaluation against a
 # natively generated reference term by term. Run in a subprocess because an
@@ -406,7 +409,7 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
         self._build(pdir)
         return pdir
 
-    def _output_standalone(self, process, name, options=''):
+    def _output_standalone(self, process, name, options='', out_options=''):
         """Write the standalone output for `process` and return its P* dir.
 
         Split out of _generate for the tests that only inspect the emitted
@@ -414,7 +417,8 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
 
         A single process records no crossing, so its crossing table would hold
         the identity alone: the output asks for every applicable crossing
-        (--crossing_table=all), the rows these tests probe.
+        (--crossing_table=all), the rows these tests probe. `out_options` is
+        appended to the output command (e.g. --hel_recycling=True).
         """
         outdir = pjoin(self.tmpdir, name)
         self.cmd.exec_cmd('set automatic_html_opening False')
@@ -423,8 +427,8 @@ class TestStandaloneCrossSymmetry(unittest.TestCase):
         self.cmd.exec_cmd('import model sm')
         self.cmd.exec_cmd(
             ('generate %s %s' % (process, _pin_crossing(options))).strip())
-        self.cmd.exec_cmd('output standalone_fortran %s -f --crossing_table=all'
-                          % outdir)
+        self.cmd.exec_cmd(('output standalone_fortran %s -f --crossing_table=all'
+                           ' %s' % (outdir, out_options)).strip())
 
         subproc_root = pjoin(outdir, 'SubProcesses')
         pdirs = [pjoin(subproc_root, name) for name in sorted(os.listdir(subproc_root))
@@ -1230,8 +1234,9 @@ for K in range(ncross):
 
     def test_crossed_density_matrix_chiral_f2py(self):
         """Same chiral crossed-density-matrix check, but through the f2py
-        PY_GET_DENSITY_IDX wrapper -- the only way a python caller can ask for a
-        crossed density matrix. Skips if the f2py build backend is unavailable.
+        PY_GET_DENSITY_IDX wrapper -- the per-process way a python caller can
+        ask for a crossed density matrix by its index. Skips if the f2py build
+        backend is unavailable.
         """
         udx_wpg = self._output_standalone(PROC_UDX_WPG, 'Proc_udx_wpg_f2py')
         ug_wpd = self._output_standalone(PROC_UG_WPD, 'Proc_ug_wpd_f2py')
@@ -1571,7 +1576,19 @@ print("F2PY_PDG_OK")
         PDG codes (smatrixhel). A crossed subprocess folded onto its base has
         no PDG branch of its own, and used to come back as 0 with no error --
         u d~ > w+ g of p p > w+ j, now that crossing is on by default. It must
-        give what the --use_crossing=False output gives."""
+        give what the --use_crossing=False output gives.
+
+        Per helicity too: the table py_<prefix>get_nhel_idx gives for a crossed
+        index must be the crossed process's own (column h = the code h that
+        SMATRIXHEL takes), so it and the per-code values must both match the
+        expanded output. It used to hand back the base table.
+
+        The beam swap of a folded crossing (d~ u > w+ g) is reached as well,
+        where the expanded output has no branch: it must be the expanded
+        u d~ > w+ g with the two beams exchanged.
+
+        A code above NCOMB names no helicity: it gives 0, as in the
+        expanded output. The folded one used to wrap it onto code-NCOMB."""
         outs = {}
         for name, options in (('on', ''), ('off', ' --use_crossing=False')):
             out = pjoin(self.tmpdir, 'all_matrix_' + name)
@@ -1592,7 +1609,7 @@ print("F2PY_PDG_OK")
                               'SubProcesses')) if d.startswith('P')]), 1,
                          'p p > w+ j folded nothing')
         script = '''
-import sys, os, math, numpy as np
+import sys, os, math, json, numpy as np
 sub = os.path.join(sys.argv[1], 'SubProcesses')
 sys.path.insert(0, sub)
 import all_matrix2py as m
@@ -1604,8 +1621,32 @@ P = np.array([[E, 0, 0, E], [E, 0, 0, -E], [e3, q * s, 0, q * c],
               [2 * E - e3, -q * s, 0, -q * c]]).T
 for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
     print('ME %r' % m.smatrixhel(pdgs, -1, P, 0.118, 0, -1))
+# beam swaps of the crossed processes: the folded dispatch also answers
+# them (MIRROR), as SWAP = the process asked with the two beams exchanged
+Ps = np.ascontiguousarray(P[:, [1, 0, 2, 3]])
+for pdgs in ([2, -1, 24, 21], [21, -1, 24, -2]):
+    print('MIRROR %r' % m.smatrixhel([pdgs[1], pdgs[0]] + pdgs[2:], -1, P,
+                                     0.118, 0, -1))
+    print('SWAP %r' % m.smatrixhel(pdgs, -1, Ps, 0.118, 0, -1))
+def nhel_table(pdgs):
+    k = 0
+    while hasattr(m, 'py_m%d_get_flavor_layout' % k):
+        nflav, _nexternal, ncross = getattr(m, 'py_m%d_get_flavor_layout' % k)()
+        for idx in range(1, nflav * ncross + 1):
+            if list(getattr(m, 'py_m%d_get_pdg_for_flavor' % k)(idx)) == pdgs:
+                return getattr(m, 'py_m%d_get_nhel_idx' % k)(idx)[1]
+        k += 1
+for pdgs in ([2, -1, 24, 21], [21, -1, 24, -2]):
+    nhel = np.array(nhel_table(pdgs))
+    print('NHEL %r' % [tuple(int(x) for x in col) for col in nhel.T])
+    print('PER %s' % json.dumps([m.smatrixhel(pdgs, -1, P, 0.118, 0, h)
+                                 for h in range(1, nhel.shape[1] + 1)]))
+for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
+    n = np.array(nhel_table(pdgs)).shape[1]
+    print('ABOVE %s' % json.dumps([m.smatrixhel(pdgs, -1, P, 0.118, 0, h)
+                                   for h in range(n + 1, 2 * n + 1)]))
 '''
-        values = {}
+        values, tables, per_code, mirror, swap = {}, {}, {}, {}, {}
         for name, out in outs.items():
             path = pjoin(self.tmpdir, 'probe_%s.py' % name)
             with open(path, 'w') as fsock:
@@ -1616,10 +1657,131 @@ for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
             values[name] = [float(v) for v in re.findall(r'^ME (\S+)$',
                                                           output, re.M)]
             self.assertEqual(len(values[name]), 3, output)
+            mirror[name] = [float(v) for v in re.findall(r'^MIRROR (\S+)$',
+                                                          output, re.M)]
+            swap[name] = [float(v) for v in re.findall(r'^SWAP (\S+)$',
+                                                        output, re.M)]
+            self.assertEqual(len(mirror[name]), 2, output)
+            self.assertEqual(len(swap[name]), 2, output)
+            tables[name] = re.findall(r'^NHEL (.*)$', output, re.M)
+            per_code[name] = [json.loads(v) for v in re.findall(r'^PER (.*)$',
+                                                          output, re.M)]
+            self.assertEqual(len(tables[name]), 2, output)
+            self.assertEqual(len(per_code[name]), 2, output)
+            above = [json.loads(v) for v in re.findall(r'^ABOVE (.*)$',
+                                                       output, re.M)]
+            self.assertEqual(len(above), 3, output)
+            for codes in above:
+                self.assertEqual(codes, [0.0] * len(codes), (name, above))
         for on, off in zip(values['on'], values['off']):
             self.assertGreater(off, 0.0)
             self.assertLessEqual(abs(on - off), 1e-10 * off,
                                  (values['on'], values['off']))
+        # the folded output also reaches the beam swap of a crossing (a
+        # PDG order the expanded output has no branch for), with the exact
+        # |M|^2 of the crossed process with its beams exchanged
+        for on, off in zip(mirror['on'], swap['off']):
+            self.assertGreater(off, 0.0)
+            self.assertLessEqual(abs(on - off), 1e-10 * off,
+                                 (mirror['on'], swap['off']))
+        # the crossed index labels its codes with its own table
+        self.assertEqual(tables['on'], tables['off'])
+        for total, on, off in zip(values['off'][1:], per_code['on'],
+                                  per_code['off']):
+            self.assertEqual(len(on), len(off))
+            self.assertGreater(max(off), 0.0)
+            for h, (v_on, v_off) in enumerate(zip(on, off)):
+                self.assertLessEqual(abs(v_on - v_off), 1e-10 * total,
+                                     'code %d: %r vs %r' % (h + 1, on, off))
+
+    def test_all_matrix_per_helicity_untabulated_leg_order(self):
+        """smatrixhel with one helicity code for a leg order the flavour
+        table does not tabulate (same-code legs exchanged inside the initial
+        or the final state): the code is re-keyed with the legs, so every
+        helicity stays on its leg, in the uncrossed branches and in the
+        folded crossings alike. It used to give 0 expanded and NaN folded
+        (u~ d~ > u~ d~ of p p > j j), and 0 in both for u d > u d.
+
+        Each code must equal the tabulated order's code carrying the same
+        helicity on the same leg, the codes must sum to the total, and the
+        folded and expanded outputs must agree code by code."""
+        outs = {}
+        for name, options in (('on', ''), ('off', ' --use_crossing=False')):
+            out = pjoin(self.tmpdir, 'perhel_' + name)
+            self.cmd.exec_cmd('set automatic_html_opening False')
+            self.cmd.exec_cmd('import model sm')
+            self.cmd.exec_cmd('generate p p > j j')
+            self.cmd.exec_cmd('output standalone_fortran %s -f --prefix=int%s'
+                              % (out, options))
+            sub = pjoin(out, 'SubProcesses')
+            with open(os.devnull, 'w') as devnull:
+                retcode = subprocess.call(['make', 'f2py'], cwd=sub,
+                                          stdout=devnull, stderr=devnull)
+            if retcode != 0 or not [n for n in os.listdir(sub)
+                                    if n.startswith('all_matrix2py')]:
+                raise unittest.SkipTest('could not build all_matrix2py')
+            outs[name] = out
+        script = '''
+import sys, os, math, json, numpy as np
+sys.path.insert(0, os.path.join(sys.argv[1], 'SubProcesses'))
+import all_matrix2py as m
+m.initialise(os.path.join(sys.argv[1], 'Cards', 'param_card.dat'))
+E, c = 500.0, 0.3
+s = math.sqrt(1 - c * c)
+P = np.array([[E, 0, 0, E], [E, 0, 0, -E], [E, 0.6 * E * s, 0.8 * E * s, E * c],
+              [E, -0.6 * E * s, -0.8 * E * s, -E * c]]).T
+def table(pdgs):
+    k = 0
+    while hasattr(m, 'py_m%d_get_flavor_layout' % k):
+        nflav, _nexternal, ncross = getattr(m, 'py_m%d_get_flavor_layout' % k)()
+        for idx in range(1, nflav * ncross + 1):
+            if list(getattr(m, 'py_m%d_get_pdg_for_flavor' % k)(idx)) == pdgs:
+                return getattr(m, 'py_m%d_get_nhel_idx' % k)(idx)[1].tolist()
+        k += 1
+# (tabulated order, the same process with legs exchanged inside a side)
+for ref, perm in (([-1, -2, -1, -2], [1, 0, 3, 2]),
+                  ([-1, -2, -1, -2], [1, 0, 2, 3]),
+                  ([1, 2, 1, 2], [1, 0, 3, 2]),
+                  ([1, 2, 1, 2], [0, 1, 3, 2])):
+    pdgs = [ref[i] for i in perm]
+    Pp = np.ascontiguousarray(P[:, perm])
+    print('CASE %s' % json.dumps({
+        'table': table(ref),
+        'perm': perm,
+        'total': m.smatrixhel(pdgs, -1, Pp, 0.118, 0, -1),
+        'ref': [m.smatrixhel(ref, -1, P, 0.118, 0, h) for h in range(1, 17)],
+        'per': [m.smatrixhel(pdgs, -1, Pp, 0.118, 0, h)
+                for h in range(1, 17)]}))
+'''
+        cases = {}
+        for name, out in outs.items():
+            path = pjoin(self.tmpdir, 'perhel_%s.py' % name)
+            with open(path, 'w') as fsock:
+                fsock.write(script)
+            output = subprocess.Popen(
+                [sys.executable, path, out], stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT).communicate()[0].decode()
+            cases[name] = [json.loads(v) for v in
+                           re.findall(r'^CASE (.*)$', output, re.M)]
+            self.assertEqual(len(cases[name]), 4, output)
+        for name in outs:
+            for case in cases[name]:
+                table = list(zip(*case['table']))  # one tuple per code
+                perm, per, total = case['perm'], case['per'], case['total']
+                self.assertGreater(total, 0.0)
+                self.assertFalse(any(math.isnan(v) for v in per), case)
+                self.assertLessEqual(abs(sum(per) / 4 - total), 1e-10 * total)
+                for h, value in enumerate(per):
+                    # the caller's leg i is the reference order's leg perm[i]
+                    hel = [None] * 4
+                    for i, j in enumerate(perm):
+                        hel[j] = table[h][i]
+                    ref = case['ref'][table.index(tuple(hel))]
+                    self.assertLessEqual(abs(value - ref), 1e-10 * total,
+                                         '%s code %d' % (name, h + 1))
+        for on, off in zip(cases['on'], cases['off']):
+            for v_on, v_off in zip(on['per'], off['per']):
+                self.assertLessEqual(abs(v_on - v_off), 1e-10 * off['total'])
 
     def _assert_goodhel_relation(self, process, name, ninitial, npts=16):
         """Compiled-module check that one good-helicity filter serves every
@@ -1875,8 +2037,12 @@ for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
         images are rows the crossing needs (two carry the z's helicity 0). The
         filter is shared by every crossing of a flavor, so 40 base calls used
         to freeze it without them: the crossed matrix element then came out
-        low (-2.2e-4 at this point), while asked first it was exact. Training
-        now closes the filter over the helicity of massive legs (HMV).
+        low (-2.2e-4 at this point), while asked first it was exact. Every
+        extended index now trains the shared filter over its own first calls
+        (NTRYX), in its own frame, and adds the rows that frame needs. (The
+        HMV closure over massive-leg helicities that did this first was
+        removed in 0c88ff9c11; the recycled warm-up has its own, see
+        hel_warmup_v4.inc.)
         """
         outdirs = {}
         for name, options in (('fold', '--use_crossing=True'),
@@ -1967,6 +2133,65 @@ for pdgs in ([21, 2, 24, 1], [2, -1, 24, 21], [21, -1, 24, -2]):
             self.assertAlmostEqual(a, b, delta=1e-10 * max(abs(b), 1e-300),
                                    msg='SMATRIXHEL code %d: folded %r, '
                                        'expanded %r' % (code, a, b))
+
+    def test_crossed_helicity_average_of_massive_initial_leg(self):
+        """SMATRIXHEL at a crossed index undoes the crossed process's own
+        initial helicity average.
+
+        The crossing of u g > u z into u z > u g changes the initial helicity
+        count from 2 x 2 to 2 x 3. A single helicity code is |M|^2 times that
+        count; multiplying by the base's HELAVGFACTOR made every code of the
+        crossed process 2/3 of its expanded output while the summed SMATRIX
+        stayed right. Checked code by code against the expanded output, plain
+        and --hel_recycling.
+        """
+        base = 'u g > u z QED=1 QCD=1'
+        fold = self._output_standalone(base, 'zq_fold')
+        self._write_driver(fold)
+        self._build(fold)
+        # u z > u g in its own slots: u <- base u, z <- base z (slot 4),
+        # u <- base final u, g <- base g (slot 2)
+        iflav = self._cross_iflav(fold, (0, 3, 2, 1))
+        fold_hr = self._output_standalone(base, 'zq_fold_hr',
+                                          out_options='--hel_recycling=True')
+        alone_dir = self._output_standalone('u z > u g QED=1 QCD=1', 'zq_exp',
+                                            '--use_crossing=False')
+
+        # one 2 > 2 point of u z > u g in its own slot order
+        mz, energy, cos, phi = 91.188, 500.0, 0.3, 0.7
+        pin = (energy ** 2 - mz ** 2) / (2 * energy)
+        pout = energy / 2
+        sin = math.sqrt(1 - cos ** 2)
+        out = (pout * sin * math.cos(phi), pout * sin * math.sin(phi),
+               pout * cos)
+        point = [(pin, 0, 0, pin), (math.hypot(pin, mz), 0, 0, -pin),
+                 (pout,) + out, (pout,) + tuple(-x for x in out)]
+
+        def per_code(path, flav_idx):
+            with open(pjoin(path, 'check_sa.f'), 'w') as fsock:
+                fsock.write(self._HELCODE_DRIVER)
+            for stale in ('check', 'check_sa.o'):
+                if os.path.exists(pjoin(path, stale)):
+                    os.remove(pjoin(path, stale))
+            self._build(path)
+            lines = ['%d 24' % flav_idx] + [
+                ' '.join('%.17e' % x for x in mom) for mom in point]
+            out = subprocess.run(['./check'], cwd=path, capture_output=True,
+                                 input='\n'.join(lines) + '\n',
+                                 text=True).stdout
+            return [float(v) for v in re.findall(r'HEL=\s*\d+\s+(\S+)', out)]
+        alone = per_code(alone_dir, 1)
+        self.assertEqual(len(alone), 24)
+        scale = max(abs(v) for v in alone)
+        self.assertGreater(scale, 0.0)
+        for label, path in (('plain', fold), ('hel_recycling', fold_hr)):
+            folded = per_code(path, iflav)
+            self.assertEqual(len(folded), 24, label)
+            for code, (a, b) in enumerate(zip(folded, alone), 1):
+                self.assertAlmostEqual(
+                    a, b, delta=1e-10 * max(abs(b), 1e-12 * scale),
+                    msg='%s SMATRIXHEL code %d: folded %r, expanded %r'
+                        % (label, code, a, b))
 
     # SMATRIXHEL for every helicity code 1..NCODE at the momenta read from
     # stdin; stdin: FLAV_IDX NCODE, then the momenta (E px py pz).
@@ -2803,6 +3028,32 @@ class TestCrossingOutputOrder(unittest.TestCase):
              ('madevent', self.REBUILD, 'madevent')],
             generation=self.MIXED)
 
+    def test_madevent_order_matches_uncrossed_generation(self):
+        """The expanded crossings take the place a --use_crossing=False
+        generation gives them, not one after every base: the madevent P
+        directories then come in the same order, with the same iproc.dat,
+        which offsets each one's random seed (ranmar.f). With p p > j j the
+        crossings q q~ > g g (of g g > q q~) used to come after the base
+        q q > q q, so the same iseed gave other events. The added process
+        checks that the crossings stay within their own process
+        definition."""
+        def layout(flag):
+            out = self._session(['madevent'], generation=(
+                'generate p p > j j --use_crossing=%s' % flag,
+                'add process p p > z j --use_crossing=%s' % flag))[0]
+            path = pjoin(out, 'SubProcesses')
+            with open(pjoin(path, 'subproc.mg')) as stream:
+                pdirs = stream.read().split()
+            iproc = []
+            for pdir in pdirs:
+                with open(pjoin(path, pdir, 'iproc.dat')) as stream:
+                    iproc.append(int(stream.read()))
+            return pdirs, iproc
+        folded, expanded = layout(True), layout(False)
+        self.assertTrue(any(pdir.endswith('_qq_gg') for pdir in folded[0]),
+                        folded[0])
+        self.assertEqual(folded, expanded)
+
 
 # The C++ standalone driver: take a fixed RAMBO phase space point once
 # (all-massless, so the momenta are identical between the two P directories) and
@@ -2877,7 +3128,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
 
     # ------------------------------------------------------------------
     def _output_madmatrix(self, process, name, options='',
-                               out_options='', color_basis=None):
+                               out_options='', color_basis=None, model='sm'):
         """Write the standalone (madmatrix) output for `process`, return its P* dir.
 
         `options` goes on the generate line, `out_options` on the output line.
@@ -2894,7 +3145,7 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         cmd.exec_cmd('set apply_flavor_grouping True')
         if color_basis:
             cmd.exec_cmd('set color_basis %s' % color_basis)
-        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('import model %s' % model)
         cmd.exec_cmd(('generate %s %s' % (process, _pin_crossing(options))).strip())
         cmd.exec_cmd(('output standalone %s -f %s'
                       % (outdir, out_options)).strip())
@@ -3019,9 +3270,11 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
 
     # Test-only knob spliced into the output's copy of the backend SigmaKin.cc,
     # at the end of sigmaKin_setGoodHel: MG_PRINT_NGOODHEL prints the length
-    # of the good-helicity list every lane runs.
+    # of the good-helicity list every lane runs (NGOODHEL) and the number of
+    # good rows before the C-parity reduction (NGOODROWS).
     _NGOODHEL_KNOB = '''\
     if( getenv( "MG_PRINT_NGOODHEL" ) ) printf( " NGOODHEL %d\\n", nGoodHel );
+    if( getenv( "MG_PRINT_NGOODHEL" ) ) printf( " NGOODROWS %d\\n", cNGoodHelRows );
 '''
 
     def _add_ngoodhel_knob(self, pdir):
@@ -3041,12 +3294,12 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
             with open(path, 'w') as fsock:
                 fsock.write(src)
 
-    def _ngoodhel(self, pdir, flavor_id):
+    def _ngoodhel(self, pdir, flavor_id, key='NGOODHEL'):
         out = subprocess.check_output(
             ['./check_sa.exe', 'perf', '-f', str(flavor_id), '1', '8', '1'],
             cwd=pdir, env=dict(os.environ, MG_PRINT_NGOODHEL='1')).decode()
-        found = re.findall(r' NGOODHEL (\d+)', out)
-        self.assertTrue(found, 'no NGOODHEL in:\n%s' % out)
+        found = re.findall(r' %s (\d+)' % key, out)
+        self.assertTrue(found, 'no %s in:\n%s' % (key, out))
         return int(found[-1])
 
     def _output_pq_gg_qqx(self, name, options='', out_options=''):
@@ -3219,6 +3472,75 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
         self.assertEqual(self._ngoodhel(folded, cross), n_alone,
                          'the crossings added rows to the good-helicity list')
 
+    def test_massive_leg_keeps_mass_suppressed_rows(self):
+        """A row only suppressed by the mass of a leg stays good.
+
+        heft g g > b b~ (massive b): the rows with equal gluon helicities and
+        a b helicity flip are 1e-31 of the sum at CM points and 2e-11 at the
+        1500 GeV boosted scan points, below the relative limhel cut, but 4%
+        each of |M|^2 near threshold. Dropping them lost 11% of the mg7
+        cross section (test_generation_heft_mg7). With a massive leg only an
+        exact 0 is dropped, and the list is closed over the b helicities
+        (ProcessTables hel_massive / hel_frame_leg), so all 16 rows are kept
+        even on the CM points of check_sa, where those rows vanish."""
+        pdir = self._output_madmatrix('g g > b b~ HIW<=1', 'heft_ggbbx',
+                                      model='heft')
+        with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
+            tables = fsock.read()
+        self.assertIn('constexpr bool hel_massive = true;', tables)
+        self.assertIn('hel_frame_leg[ProcessData::npar] = { 0, 0, 1, 1 };',
+                      tables)
+        self._add_ngoodhel_knob(pdir)
+        self._patch_and_build(pdir)
+        self.assertEqual(self._ngoodhel(pdir, self.IDENTITY, 'NGOODROWS'),
+                         16, 'a mass-suppressed helicity row was dropped')
+
+    def test_massive_quark_pair_near_threshold(self):
+        """sm g g > b b~ near threshold equals the analytic |M|^2.
+
+        The good helicities are chosen once, on scan points at sqrt(s) =
+        max(1500, 2*mtotal) GeV, where the b helicity-flip rows are 4e-15 of
+        the sum. A relative cut there dropped them for every event, and the
+        matrix element came out 4% low at sqrt(s) = 1.3*2*MB and 19% low at
+        1.05*2*MB. The leading-order g g > Q Q~ formula (Combridge) is
+        exact at any sqrt(s), so the C++ |M|^2 must equal it to rounding."""
+        pdir = self._output_madmatrix('g g > b b~', 'sm_ggbbx')
+        self._patch_and_build(pdir)
+        mb, alphas = 4.7, 0.118
+        points = []
+        # 8 events: one full page of every SIMD width
+        for scale, cth, phi in ((1.02, 0.31, 0.4), (1.02, -0.93, 4.4),
+                                (1.05, -0.62, 1.9), (1.05, 0.12, 0.7),
+                                (1.3, 0.85, 3.3), (1.3, -0.44, 2.6),
+                                (3., -0.2, 5.1), (300., 0.47, 2.2)):
+            energy = scale * mb    # half of sqrt(s) = scale*2*MB
+            pmod = math.sqrt(energy ** 2 - mb ** 2)
+            sth = math.sqrt(1. - cth ** 2)
+            p3 = (energy, pmod * sth * math.cos(phi),
+                  pmod * sth * math.sin(phi), pmod * cth)
+            points.append(((energy, 0., 0., energy), (energy, 0., 0., -energy),
+                           p3, (energy, -p3[1], -p3[2], -p3[3])))
+        with open(pjoin(pdir, 'mom.bin'), 'wb') as fsock:
+            for event in points:
+                fsock.write(struct.pack('<16d', *[x for p in event for x in p]))
+        subprocess.check_call(
+            ['./check_sa.exe', 'perf', '--momenta', 'mom.bin', '--alphas',
+             str(alphas), '--dump-me', 'me.bin', '1', str(len(points)), '1'],
+            cwd=pdir, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        with open(pjoin(pdir, 'me.bin'), 'rb') as fsock:
+            mes = struct.unpack('<%dd' % len(points), fsock.read())
+        dot = lambda a, b: a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3]
+        gs2 = 4. * math.pi * alphas
+        for event, me in zip(points, mes):
+            s = 4. * event[0][0] ** 2
+            t1, t2 = 2 * dot(event[0], event[2]) / s, 2 * dot(event[1], event[2]) / s
+            rho = 4. * mb ** 2 / s
+            exact = gs2 ** 2 * (1. / (6. * t1 * t2) - 3. / 8.) * (
+                t1 ** 2 + t2 ** 2 + rho - rho ** 2 / (4. * t1 * t2))
+            self.assertAlmostEqual(me / exact, 1., delta=1e-8,
+                                   msg='sqrt(s) = %g GeV: |M|^2 %r, analytic '
+                                   '%r' % (math.sqrt(s), me, exact))
+
     def test_id_past_the_table_returns_zero(self):
         """An extended id past the last row of the crossing table names no
         crossing: its matrix element must come back as an exact 0 -- not an
@@ -3361,13 +3683,53 @@ class TestStandaloneMg7CrossSymmetry(unittest.TestCase):
                         in sigmakin, 'normalise_output keeps the base denominator')
         self.assertTrue('allselhel[ievt] = selected_hel_code( dcGoodHel[ighel], iflavorVec[ievt] );'
                         in sigmakin, 'the reported helicity is not the crossed code')
-        self.assertTrue('const bool validFlavor = use_crossing || fid < (unsigned int)nmaxflavor;'
-                        in sigmakin, 'a crossing build gives a crossed id a NaN')
+        self.assertTrue('if( !use_crossing && !validFlavor )' in sigmakin,
+                        'a crossing build gives a crossed id a NaN')
+        # an id past the crossing table chooses nothing (its |M|^2 is 0)
+        self.assertTrue('return spincol_cross( (int)( flavor_id / (unsigned int)nmaxflavor ) ) != 0;'
+                        in sigmakin, 'an id past the crossing table passes for '
+                        'a valid one on the GPU')
         self.assertFalse('n_bad_flavors' in umami or 'UMAMI_ERROR_UNSUPPORTED_INPUT;' in
                          umami.split('copy_inputs<<<')[1].split('sigmaKin(')[0],
                          'umami_matrix_element still refuses crossed flavor ids')
         self.assertFalse('not supported by the GPU backend' in check_sa,
                          'check_sa skips the crossing demo on a GPU build')
+
+    def test_gpu_backend_host_emulation(self):
+        """The GPU backend, built and run on the host, against the scalar one.
+
+        No CUDA/HIP toolchain runs in this suite: .github/gpu_ci/host_hip is a
+        hipcc that compiles the GPU templates (backend/gpu) as host C++ and
+        runs every kernel serially. With it, the crossing checks of the GPU CI
+        (madmatrix_checks.py) run here: the |M|^2, helicities and colours of
+        the GPU code equal the scalar ones event by event over every extended
+        flavor id -- a crossing that moves the Z into a massless slot (its own
+        good-helicity scan points, xonshell_tab 0), an axial-gauge gluon whose
+        reference leg is crossed, and |M|^2 = 0 at alpha_s = 0 with no helicity
+        or colour. This checks the logic of the GPU code, not an nvcc/hipcc
+        build: the GPU CI still has to run it on a device."""
+        if not shutil.which('make'):
+            self.skipTest('no make available')
+        repo = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))))
+        gpu_ci = pjoin(repo, '.github', 'gpu_ci')
+        env = dict(os.environ)
+        env['PATH'] = pjoin(gpu_ci, 'host_hip', 'bin') + os.pathsep + env.get('PATH', '')
+        env['CXX'] = self.compiler
+        checks = ('zero_me_good_hel', 'crossed_massive_gpu_vs_cpu',
+                  'axial_crossed_gpu_vs_cpu')
+        cmd = [sys.executable, pjoin(gpu_ci, 'madmatrix_checks.py'),
+               '--repo', repo, '--backend', 'hip']
+        for check in checks:
+            cmd += ['--only', check]
+        run = subprocess.run(cmd, cwd=self.tmpdir, env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        out = run.stdout.decode(errors='replace')
+        for check in checks:
+            self.assertTrue(re.search(r'^PASS %s:' % check, out, re.M),
+                            '%s did not pass on the host-emulated GPU '
+                            'backend:\n%s' % (check, out[-4000:]))
+        self.assertEqual(run.returncode, 0, out[-4000:])
 
     def _assert_plain_path(self, pdir, label):
         """`pdir` was written without the crossing machinery."""
@@ -3584,6 +3946,206 @@ int main( int argc, char** argv )
                 abs(folded.count(code) - alone.count(code)), 2,
                 'code %d %s: reported %d times folded, %d times on its own'
                 % (code, rows[code], folded.count(code), alone.count(code)))
+
+    # Prints |M|^2, helicity, colour and diagram (as umami reports them) of events
+    # at ONE phase-space point, their flavor ids cycling through a comma-separated
+    # list: argv = ids, nevt, then npar*(E px py pz).
+    _IDS_DRIVER = r"""
+#include "umami.h"
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
+int main( int argc, char** argv )
+{
+  std::vector<unsigned int> ids;
+  for( char* t = strtok( argv[1], "," ); t; t = strtok( nullptr, "," ) ) ids.push_back( atoi( t ) );
+  const int nevt = atoi( argv[2] );
+  UmamiHandle h = nullptr;
+  if( umami_initialize( &h, "../../Cards/param_card.dat" ) != UMAMI_SUCCESS ) return 2;
+  int npar = 0;
+  umami_get_meta( UMAMI_META_PARTICLE_COUNT, &npar );
+  std::vector<double> mom( (size_t)4 * npar * nevt ), rh( nevt ), rc( nevt ), rd( nevt ), me( nevt ), as( nevt, 0.118 );
+  std::vector<unsigned int> flv( nevt ), dia( nevt );
+  std::vector<int> hel( nevt ), col( nevt );
+  for( int ie = 0; ie < nevt; ie++ ) flv[ie] = ids[ie % ids.size()];
+  for( int ip = 0; ip < npar; ip++ )
+    for( int i4 = 0; i4 < 4; i4++ )
+      for( int ie = 0; ie < nevt; ie++ )
+        mom[(size_t)i4 * npar * nevt + (size_t)ip * nevt + ie] = atof( argv[3 + 4 * ip + i4] );
+  for( int ie = 0; ie < nevt; ie++ )
+  {
+    const double x = ( ie + 0.5 ) * 0.6180339887498949;
+    rh[ie] = ( ie + 0.5 ) / nevt;
+    rc[ie] = x - std::floor( x );
+    rd[ie] = 1 - rc[ie];
+  }
+  UmamiInputKey ik[6] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S, UMAMI_IN_RANDOM_HELICITY,
+                          UMAMI_IN_RANDOM_COLOR, UMAMI_IN_RANDOM_DIAGRAM };
+  const void* in[6] = { mom.data(), flv.data(), as.data(), rh.data(), rc.data(), rd.data() };
+  UmamiOutputKey ok[4] = { UMAMI_OUT_MATRIX_ELEMENT, UMAMI_OUT_HELICITY_INDEX, UMAMI_OUT_COLOR_INDEX, UMAMI_OUT_DIAGRAM_INDEX };
+  void* out[4] = { me.data(), hel.data(), col.data(), dia.data() };
+  if( umami_matrix_element( h, nevt, nevt, 0, 6, ik, in, 4, ok, out ) != UMAMI_SUCCESS ) return 3;
+  for( int ie = 0; ie < nevt; ie++ ) printf( "%.17g %d %d %u\n", me[ie], hel[ie], col[ie], dia[ie] );
+  umami_free( h );
+  return 0;
+}
+"""
+
+    # a 2 -> 2 point at sqrt(s) = 1 TeV, theta = 0.3
+    _IDS_POINT = [(500., 0, 0, 500.), (500., 0, 0, -500.),
+                  (500., 500. * math.sin(0.3), 0, 500. * math.cos(0.3)),
+                  (500., -500. * math.sin(0.3), 0, -500. * math.cos(0.3))]
+
+    @staticmethod
+    def _pdir_constant(pdir, header, name):
+        with open(pjoin(pdir, header)) as fsock:
+            return int(re.search(r'constexpr (?:unsigned )?int %s = (\d+);' % name,
+                                 fsock.read()).group(1))
+
+    def _jj_pdirs(self, name, options=''):
+        """The P directories of p p > j j written to tmpdir/name."""
+        outdir = pjoin(self.tmpdir, name)
+        cmd = cmd_interface.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False')
+        cmd.exec_cmd('import model sm')
+        cmd.exec_cmd('generate p p > j j')
+        cmd.exec_cmd('output standalone %s -f %s' % (outdir, options))
+        root = pjoin(outdir, 'SubProcesses')
+        return [pjoin(root, d) for d in sorted(os.listdir(root))
+                if d.startswith('P') and os.path.isdir(pjoin(root, d))]
+
+    def _ids_runner(self, pdir, backend):
+        """Build _IDS_DRIVER in pdir for backend; return run(ids), the
+        (|M|^2, helicity, colour, diagram) of each event at _IDS_POINT."""
+        check = pjoin(pdir, 'check_sa.cc')
+        if os.path.islink(check) or os.path.exists(check):
+            os.remove(check)   # a link to the shared SubProcesses/check_sa.cc
+        with open(check, 'w') as fsock:
+            fsock.write(self._IDS_DRIVER)
+        with open(os.devnull, 'w') as devnull:
+            subprocess.call(['make', 'clean'], cwd=pdir, stdout=devnull,
+                            stderr=subprocess.STDOUT)
+            rc = subprocess.call(['make', '-j4', 'BACKEND=' + backend,
+                                  'check_sa.exe'], cwd=pdir,
+                                 stdout=devnull, stderr=subprocess.STDOUT,
+                                 env=dict(os.environ, FPTYPE='d'))
+        if rc != 0:
+            self.skipTest('madmatrix build toolchain unavailable '
+                          '(make BACKEND=%s failed)' % backend)
+        point = ['%.17g' % x for p in self._IDS_POINT for x in p]
+
+        def run(ids):
+            out = subprocess.check_output(
+                ['./check_sa.exe', ','.join(str(i) for i in ids),
+                 str(len(ids))] + point, cwd=pdir).decode()
+            return [(float(me), int(hel), int(col), int(dia))
+                    for me, hel, col, dia in
+                    (line.split() for line in out.splitlines())]
+        return run
+
+    def test_flavor_id_past_table_without_crossing(self):
+        """Without crossing, a flavor id past the flavor table names no
+        flavor: on cpu and simd it gets a NaN |M|^2 and no helicity or colour
+        (-1), as on the GPU, and the valid events sharing its SIMD page keep
+        their own |M|^2.
+
+        The cpu/simd kernels used to read the flavor table (cFlavors) out of
+        bounds with such an id: g g > g g returned twice the |M|^2 of id 0 with
+        a helicity and a colour, and a SIMD page led by an id past the table
+        gave the valid events of the page that same wrong |M|^2. umami groups
+        the events of a page by id % nmaxflavor, so q q~ > q q~ (several
+        flavors) checks ids that land in a page of valid ones.
+        """
+        pdirs = self._jj_pdirs('jj_exp', '--use_crossing=False')
+
+        def nflavor(pdir):
+            return self._pdir_constant(pdir, 'ProcessData.h', 'nmaxflavor')
+        gg = [p for p in pdirs if p.endswith('_gg_gg')]
+        many = sorted(pdirs, key=nflavor)[-1:]
+        self.assertEqual(len(gg), 1, pdirs)
+        self.assertGreater(nflavor(many[0]), 1, 'no subprocess with flavors')
+
+        nevt = 16
+        for pdir in gg + many:
+            nfl = nflavor(pdir)
+            with open(pjoin(pdir, 'ProcessTables.h')) as fsock:
+                self.assertTrue('use_crossing = false' in fsock.read())
+            # valid ids only, then each one after an id past the table of the
+            # same id % nmaxflavor, which leads its page
+            valid = [i % nfl for i in range(nevt // 2)]
+            mixed = []
+            for i, fid in enumerate(valid):
+                mixed += [fid + nfl * (1 + i % 3), fid]
+            for backend in ('scalar', 'simd_128'):
+                run = self._ids_runner(pdir, backend)
+                ref = run([fid for fid in valid for _ in range(2)])
+                got = run(mixed)
+                tag = '%s %s' % (os.path.basename(pdir), backend)
+                for ievt, fid in enumerate(mixed):
+                    me, hel, col, _ = got[ievt]
+                    if fid >= nfl:
+                        self.assertTrue(math.isnan(me) and hel == -1 and col == -1,
+                                        '%s: id %d past the table of %d gives %r'
+                                        % (tag, fid, nfl, got[ievt]))
+                    else:
+                        me_ref = ref[ievt][0]
+                        self.assertTrue(me_ref > 0 and hel >= 0 and col >= 0, ref[ievt])
+                        self.assertLess(abs(me - me_ref), 1e-12 * me_ref,
+                                        '%s: id %d next to an id past the table: '
+                                        '%r, alone %r' % (tag, fid, me, me_ref))
+
+    def test_flavor_id_past_table_with_crossing(self):
+        """With crossing, an extended id past the crossing table names no
+        process: |M|^2 = 0, as in the Fortran and standalone_cpp crossing
+        code, and, as for any zero |M|^2, no helicity or colour (-1) and the
+        fallback channel (the last one) on cpu and simd; the valid crossed ids
+        sharing its SIMD page keep their own |M|^2 and choices.
+
+        Every extended id used to pass for a valid one: the colour and the
+        channel of such an id were drawn from the jamp2 and the numerators it
+        was evaluated with, and only its |M|^2 was zeroed afterwards.
+        q q > q q is the subprocess with both several flavors and several
+        crossings.
+        """
+        pdirs = self._jj_pdirs('jj_fold')
+
+        def nids(pdir):
+            if 'use_crossing = true' not in open(pjoin(pdir, 'ProcessTables.h')).read():
+                return 0
+            return (self._pdir_constant(pdir, 'ProcessTables.h', 'ncross')
+                    * self._pdir_constant(pdir, 'ProcessData.h', 'nmaxflavor'))
+        pdir = sorted(pdirs, key=nids)[-1]
+        ntab = nids(pdir)
+        nfl = self._pdir_constant(pdir, 'ProcessData.h', 'nmaxflavor')
+        nchannels = self._pdir_constant(pdir, 'ColorData.h', 'nchannels')
+        self.assertGreater(ntab // nfl, 1, 'no subprocess folds a crossing')
+        self.assertGreater(nfl, 1, 'no folded subprocess with flavors')
+
+        # every valid id once, each after an id past the table with the same
+        # flavor (id % nmaxflavor), which umami puts in the same SIMD page
+        valid = list(range(ntab))
+        mixed = []
+        for i, fid in enumerate(valid):
+            mixed += [fid + ntab * (1 + i % 3), fid]
+        for backend in ('scalar', 'simd_128'):
+            run = self._ids_runner(pdir, backend)
+            ref = run([fid for fid in valid for _ in range(2)])
+            got = run(mixed)
+            tag = '%s %s' % (os.path.basename(pdir), backend)
+            for ievt, fid in enumerate(mixed):
+                if fid >= ntab:
+                    self.assertEqual(got[ievt], (0.0, -1, -1, nchannels - 1),
+                                     '%s: id %d past the table of %d'
+                                     % (tag, fid, ntab))
+                else:
+                    self.assertTrue(ref[ievt][0] > 0 and min(ref[ievt][1:3]) >= 0,
+                                    '%s: id %d alone gives %r' % (tag, fid, ref[ievt]))
+                    self.assertEqual(got[ievt], ref[ievt],
+                                     '%s: id %d next to an id past the table'
+                                     % (tag, fid))
 
 
 class TestMg7FoldedCrossing(unittest.TestCase):
@@ -4657,6 +5219,30 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
                 routed.append(name)
         return routed
 
+    @staticmethod
+    def _dead_routed_channels(crossed_dir, independent_dir, routed):
+        """Channels (P dir/G dir) of the routed directories whose survey is
+        exactly zero in the crossed build but not in the independent one."""
+        dead = []
+        for pdir in routed:
+            ind = pjoin(independent_dir, 'SubProcesses', pdir)
+            if not os.path.isdir(ind):
+                continue
+            for gdir in sorted(os.listdir(ind)):
+                res_i = pjoin(ind, gdir, 'results.dat')
+                res_c = pjoin(crossed_dir, 'SubProcesses', pdir, gdir,
+                              'results.dat')
+                if not (gdir.startswith('G') and os.path.isfile(res_i)
+                        and os.path.isfile(res_c)):
+                    continue
+                with open(res_i) as fsock:
+                    xs_i = float(fsock.readline().split()[0])
+                with open(res_c) as fsock:
+                    xs_c = float(fsock.readline().split()[0])
+                if xs_i > 0.0 and xs_c == 0.0:
+                    dead.append('%s/%s' % (pdir, gdir))
+        return dead
+
     def test_inclusive_crossing_xsec_matches(self):
         crossed_dir, crossed, err_c = self._generate_and_integrate('', 'on')
         independent_dir, independent, err_i = self._generate_and_integrate(
@@ -4675,6 +5261,14 @@ class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
 
         self.assertGreater(independent, 0.0,
                            'the independent build gives a null cross section')
+        # A channel of a routed directory that integrates to exactly zero while
+        # the independent build's does not is a broken evaluation, however
+        # small its share of the total.
+        dead = self._dead_routed_channels(crossed_dir, independent_dir, routed)
+        self.assertEqual(
+            dead, [], '%s: routed channels integrate to zero although the '
+            'independent build finds them non-zero: %s'
+            % (self.PROCESS, ', '.join(dead)))
         # Same seed and the same channels, so the two runs must agree well
         # inside their combined statistical error; the 1% floor absorbs the grid
         # noise the different routing can introduce.
@@ -4741,6 +5335,92 @@ class TestMadeventMassiveLegCrossingXsec(TestMadeventInclusiveCrossingXsec):
         # the retired prediction tables are gone
         for name in ('crossgroup_helunion.dat', 'crossgroup_helclass.dat'):
             self.assertFalse(os.path.exists(pjoin(subproc, bases[0], name)))
+
+
+class TestMadeventClusteringScaleCrossingXsec(TestMadeventInclusiveCrossingXsec):
+    """The default (CKKW-clustering) scale of a cross-group routed directory.
+
+    `p p > w+ j j`: q q~' > w+ g g is evaluated by the g g > w+ q q~' group.
+    The routed directory links the base's matrix object, so its GET_FLAVOR1 is
+    the base's and returned the base leg order /1,1,1,1,2/ instead of
+    /2,1,1,1,1/. setclscales then clustered the two final-state gluons as
+    different flavours, flavor_filter dropped every gluon propagator, and the
+    two channels whose first clustering is g g -> g failed with
+    'cluster.f: Error. Invalid combination.': P1_qq_wpgg 34% low, the total
+    7646 +- 41 pb against 7837 +- 37 pb (3000 events). A fixed scale hid it.
+    """
+
+    PRELUDE = ''
+    PROCESS = 'p p > w+ j j'
+    NEVENTS = 1000
+    SEED = 21
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_mev_wjj_')
+
+    def test_inclusive_crossing_xsec_matches(self):
+        super().test_inclusive_crossing_xsec_matches()
+
+    @staticmethod
+    def _flavor_tables(text, name):
+        """Flavour columns of the Fortran table *name* in *text*: either the
+        flat column-major DATA of a cross-group table or the per-column DATA
+        of a GET_FLAVOR<n> in a matrix element."""
+        flat = re.search(r'DATA\s+%s\s*/([^/]*)/' % name, text, re.I)
+        if flat:
+            return [int(x) for x in flat.group(1).split(',')]
+        cols = re.findall(r'DATA\s*\(\s*%s\(I,\s*\d+\)[^/]*/([^/]*)/' % name,
+                          text, re.I)
+        return [int(x) for col in cols for x in col.split(',')]
+
+    def test_routed_get_flavor_is_its_own(self):
+        """Run-free: the GET_FLAVOR the routed directory's driver uses for the
+        scale and the clustering returns the routed subprocess's own flavour
+        rows (those of its --use_crossing=False build), not the base's."""
+        from madgraph import MG5DIR
+        dirs = {}
+        for name, options in (('on', ''), ('off', '--use_crossing=False')):
+            dirs[name] = pjoin(self.tmpdir, name)
+            card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
+            with open(card, 'w') as fsock:
+                fsock.write('generate %s %s\noutput madevent %s -f\n'
+                            % (self.PROCESS, _pin_crossing(options), dirs[name]))
+            subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'madgraph'),
+                             card])
+        routed = [d for d in self._routed_groups(dirs['on'])
+                  if os.path.exists(pjoin(dirs['on'], 'SubProcesses', d,
+                                          'crossgroup.mk'))]
+        self.assertTrue(routed, 'no cross-group routed directory')
+        for pdir in routed:
+            with open(pjoin(dirs['on'], 'SubProcesses', pdir,
+                            'auto_dsig.f')) as fsock:
+                dispatch = fsock.read()
+            dispatch = dispatch[dispatch.upper().index(
+                'SUBROUTINE GET_FLAVOR(IFLAV'):]
+            dispatch = dispatch[:re.search(r'\n\s*END\s*\n', dispatch).end()]
+            # the subprocesses routed out of this directory: their
+            # auto_dsig<n>.f carries the inlined DSIG_XGFLAV table
+            routed_ids = []
+            for entry in os.listdir(pjoin(dirs['on'], 'SubProcesses', pdir)):
+                match = re.match(r'auto_dsig(\d+)\.f$', entry)
+                if match:
+                    with open(pjoin(dirs['on'], 'SubProcesses', pdir,
+                                    entry)) as fsock:
+                        if 'DSIG_XGFLAV' in fsock.read():
+                            routed_ids.append(match.group(1))
+            self.assertTrue(routed_ids, pdir)
+            for n in sorted(routed_ids):
+                self.assertNotRegex(
+                    dispatch.upper(), r'CALL\s+GET_FLAVOR%s\(' % n,
+                    '%s: GET_FLAVOR%s is the base\'s, in base leg order'
+                    % (pdir, n))
+                with open(pjoin(dirs['off'], 'SubProcesses', pdir,
+                                'matrix%s_orig.f' % n)) as fsock:
+                    own = self._flavor_tables(fsock.read(), 'FLAVOR')
+                self.assertTrue(own, pdir)
+                self.assertEqual(
+                    self._flavor_tables(dispatch, 'XGFLAV%s' % n), own,
+                    '%s: flavour rows of subprocess %s' % (pdir, n))
 
 
 class TestMadeventVectorCrossingXsec(TestMadeventInclusiveCrossingXsec):

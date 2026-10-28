@@ -178,8 +178,9 @@ C     this template used to rely on).
 
 C     USERHEL selects one helicity configuration: here it is its
 C     row in the NHEL table, which is what the NLO callers pass.
-C     Without polarized legs this row number is also the
-C     helicity code of the other standalone outputs.
+C     The helicity code of the other standalone outputs runs
+C     over the same per-leg lists (polarization included), so
+C     this row number is also that code.
       INTEGER USERHEL
       DATA USERHEL/-1/
       COMMON/%(proc_prefix)sHELUSERCHOICE/USERHEL
@@ -377,13 +378,13 @@ C           be halved uniformly -- refuse the reuse for this flavor.
       ENDDO
       IF(USERHEL.NE.-1) THEN
         DO I=0,NSQAMPSO
-          ANS(I)=ANS(I)*HELAVGFACTOR
+          ANS(I)=ANS(I)*%(helavg_user)s
         ENDDO
       ELSE
         DO J=1,NINITIAL
           IF (POLARIZATIONS(J,0).ne.-1) THEN
             DO I=0,NSQAMPSO
-              ANS(I)=ANS(I)*BEAMS_HELAVGFACTOR(J)
+              ANS(I)=ANS(I)*%(helavg_beam)s
               ANS(I)=ANS(I)/POLARIZATIONS(J,0)
             ENDDO
           ENDIF
@@ -510,6 +511,10 @@ C     reads GET_NHEL and multiplies ANS by it to recover the raw
 C     helicity/color sum -- the natural thing to do -- is
 C     therefore wrong for every non-representative flavor of a
 C     merged matrix element.
+C
+C     NHEL_STAR is the helicity table of the process FLAV_IDX_IN
+C     names, in its own leg order: column C is the code C that
+C     SMATRIXHEL takes for it (the base table when uncrossed).
 C
 C     GET_NHEL is deliberately left alone: its signature and its
 C     value are what existing callers expect.
@@ -942,6 +947,45 @@ C     diagonal stops matching SMATRIX.
 
      RETURN
      END
+
+
+      SUBROUTINE %(proc_prefix)sGET_ALL_INTER_SUMSO(P, NHEL, POS,
+     & N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, INTER)
+C     GET_ALL_INTER summed over the chosen squared split
+C     orders, as GET_DENSITY sums them: one INTER per pair of
+C     helicity combinations, the shape the f2py dispatch
+C     (py_get_all_inter) allocates.
+      implicit none
+      INTEGER NSQAMPSO
+      PARAMETER (NSQAMPSO=%(nSqAmpSplitOrders)d)
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL)
+      INTEGER N_CHANGING, N_COMB
+      INTEGER POS(*)
+      INTEGER ALLOW_HEL(*)
+      INTEGER FLAVOR(NEXTERNAL)
+      DOUBLE COMPLEX INTER(*)
+      INTEGER I, J, NINTER
+      DOUBLE COMPLEX, ALLOCATABLE :: TMP_INTER(:,:)
+      LOGICAL CHOSEN_SO_CONFIGS(NSQAMPSO)
+      COMMON/%(proc_prefix)sCHOSEN_BORN_SQSO/CHOSEN_SO_CONFIGS
+
+      NINTER = N_COMB*(N_COMB+1)/2
+      ALLOCATE(TMP_INTER(NSQAMPSO, NINTER))
+      TMP_INTER(:,:) = (0d0, 0d0)
+      CALL %(proc_prefix)sGET_ALL_INTER(P, NHEL, POS, N_CHANGING,
+     & ALLOW_HEL, N_COMB, FLAVOR, TMP_INTER)
+      DO I = 1, NINTER
+        INTER(I) = (0d0, 0d0)
+        DO J = 1, NSQAMPSO
+          IF (CHOSEN_SO_CONFIGS(J)) INTER(I) = INTER(I) + TMP_INTER(J,I)
+        ENDDO
+      ENDDO
+      DEALLOCATE(TMP_INTER)
+      RETURN
+      END
 
 
 

@@ -22,6 +22,17 @@ namespace madmatrix
                              fptype* allcouplings, // output: couplings[nevt*ndcoup*2]
                              const int nevt );     // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
 
+  // The events sigmaKin_getGoodHel looks at, which umami_initialize makes for it
+  // (choose_good_helicities): one constant, so that the two never disagree.
+  // 16, but at least neppV (otherwise the npagV loop does not even start).
+  // The --hel_recycling warm-up probe (scalar, MG_HR_PROBE) bakes what it finds
+  // with no run-time fallback for a dropped amplitude, so it samples 64.
+#ifndef MG_HR_PROBE
+  constexpr int goodHelScanEvents = ( neppV > 16 ? neppV : 16 );
+#else
+  constexpr int goodHelScanEvents = 64;
+#endif
+
   void
   sigmaKin_getGoodHel( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
                        const fptype* allcouplings,       // input: couplings[nevt*ndcoup*2]
@@ -35,8 +46,14 @@ namespace madmatrix
   int                                          // output: nGoodHel (the number of good helicity combinations out of ncomb)
   sigmaKin_setGoodHel( const bool* isGoodHel ); // input: isGoodHel[ncomb] - host array
 
-  int                    // output: nGoodHel as last set by sigmaKin_setGoodHel (0 before)
+  int                    // output: the good helicity rows set by sigmaKin_setGoodHel, before
+                         // the C-parity reduction (0 before): the same count as on GPUs
   sigmaKin_getNGoodHel();
+
+  // A crossing-table row with no phase space at its own masses (a crossed
+  // decay lighter than its products, see scan_points in umami.cc): set before
+  // sigmaKin_getGoodHel, which then leaves it out of the good-helicity scan.
+  void sigmaKin_setNoPhaseSpace( const int cross );
 
   void
   sigmaKin( const fptype_momenta* allmomenta,  // input: momenta[nevt*npar*4]
@@ -87,6 +104,10 @@ namespace madmatrix
                    const int ievt00 );               // input: first event number in the event page
   const short* getHelicities();
   int broken_symmetry_factor( const int iflavor );
+  // With crossing (ProcessTables::use_crossing): the identical-final-state
+  // factor of the process crossing-table row cross crosses into, for the
+  // flavor iflavor (the crossed denominator, see sigmaKin)
+  int ident_cross( int cross, int iflavor );
 }
 
 #endif // SIGMAKIN_H

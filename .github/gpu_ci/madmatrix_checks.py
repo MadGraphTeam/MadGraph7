@@ -17,18 +17,48 @@ of check_sa.exe, so only the check it belongs to.
    bounds past the first event page), and scale as alpha_s^2 (--alphas 0.10 and 0.12).
 2. zero_me: ``b b~ > ta+ ta- / z a`` (s-channel Higgs only): |M|^2 > 0 with the default
    param card, then the tau Yukawa coupling set to 0, so that no helicity survives the
-   helicity filtering: both backends return |M|^2 = 0 and no helicity (-1), and for the
-   colour either none (-1) or the only colour flow (0, what a -ffast-math build makes of
-   0/0), never stale memory; the GPU used to abort on the invalid launch configuration
+   helicity filtering: both backends return |M|^2 = 0, no helicity and no colour (-1),
+   never stale memory; the GPU used to abort on the invalid launch configuration
    (gridDim.y = 0) of the helicity loop.
-3. nonblocking_stream: ``g g > t t~ g``, 4 calls of 16384 events, with umami handed a
+   zero_me_good_hel: ``p p > w+ j``, the subprocess that folds the crossings
+   (P1_gQ_wpQ), with a good-helicity list: a first call at alpha_s = 0.118 (|M|^2 > 0,
+   a helicity and a colour for every extended flavour id), then a call at alpha_s = 0,
+   where |M|^2 = 0 exactly and no helicity or colour (-1) may be reported on either
+   backend: a -ffast-math build let the 0/0 of the selection pass and reported the first
+   good helicity (relabelled for the crossed ids) and the first colour flow.
+3. mssm_crossed_gpu_vs_cpu: MSSM ``p p > go go j``, the subprocess that folds crossings
+   (P1_gQ_gogoQ: g q > go go q also serves q q~ > go go g, ...), with running flavour
+   couplings: events drawn over every extended flavour id K*nmaxflavor + flavour
+   (crossing-table row K), a random alpha_s and random numbers per event: the GPU |M|^2,
+   helicities and colours equal the CPU ones event by event (the crossed helicity code
+   of a moved leg included).
+   crossed_massive_gpu_vs_cpu: SM ``u g > u z`` and ``u u~ > z g`` in one generation,
+   folded into P1_ug_uz, whose crossing moves the Z into a massless slot (xonshell_tab 0):
+   umami_initialize chooses the good helicities of that crossing on points of its own
+   masses (choose_good_helicities, getGoodHel). The events of every row are on shell for
+   that row, in a randomly boosted frame: the GPU |M|^2, helicities and colours equal
+   the CPU ones event by event, so the GPU kept the same good-helicity list.
+   axial_crossed_gpu_vs_cpu: SM ``p p > z j --axial_gauge=True``, the subprocess that
+   folds crossings (P1_gQ_zQ): the gluon wavefunction is vxxxxxr in the axial gauge of
+   another external leg, whose momentum a crossed event reads from its own input slot
+   (xperm of the reference leg): the same comparison as above.
+   signed_crossed_gpu_vs_cpu: SM ``p p > j j QED^2==2`` and ``p p > t t~ j QED^2==2``,
+   the subprocesses that fold crossings (P1_QQ_QQ, P1_gQ_ttxQ), interferences of the QCD
+   and electroweak amplitudes (nampso 2) whose |M|^2 per helicity is signed: the same
+   comparison as the helicity sum and with one signed helicity per event (--rnd-hel,
+   negative |M|^2 and helicities of both signs included), on the events above the
+   rounding residue of the interferences that vanish (colour, flavour).
+4. nonblocking_stream: ``g g > t t~ g``, 4 calls of 16384 events, with umami handed a
    non-blocking stream (--nonblocking-stream, as a torch side stream, which does not
    synchronise with the default stream) gives the same |M|^2 and helicities as on the
    default stream: every memset, kernel and copy of the matrix element must go to the
    stream umami is given, the helicity filtering of the first call included.
 
 Any CPU backend but scalar (simd_128, ...) works too, to try the script without a GPU;
-check 3 is then skipped. Writes summary.txt (key=value lines) in the current directory;
+check 4 is then skipped. Without a GPU, --backend hip with host_hip/bin first on the
+PATH builds and runs the GPU code itself on the host (serial emulation of HIP, see
+host_hip/include/hip/hip_runtime.h): the logic of the GPU templates against the CPU
+backend, not a real GPU build. Writes summary.txt (key=value lines) in the current directory;
 exit status 1 if a check fails.
 """
 
@@ -46,7 +76,9 @@ import time
 
 GPU_BACKENDS = ('cuda', 'hip')
 CPU_BACKEND = 'scalar'
-CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'nonblocking_stream')
+CHECKS = ('mssm_gpu_vs_cpu', 'zero_me', 'zero_me_good_hel', 'mssm_crossed_gpu_vs_cpu',
+          'crossed_massive_gpu_vs_cpu', 'axial_crossed_gpu_vs_cpu', 'signed_crossed_gpu_vs_cpu',
+          'nonblocking_stream')
 
 results = {}
 
@@ -80,17 +112,66 @@ def read(path, typecode):
     return values
 
 
-def output(repo, name, model, process, backends):
-    """output standalone + make for these backends in every subprocess, keeping the
-    check_sa.exe of each as check_sa_<backend>.exe: the subprocess directories."""
+def ncross(proc_dir):
+    """The number of rows of the crossing table of a subprocess (1: no crossing)."""
+    tables = open(os.path.join(proc_dir, 'ProcessTables.h')).read()
+    return int(re.search(r'constexpr int ncross = (\d+);', tables).group(1))
+
+
+def table(proc_dir, name):
+    """A host table of ProcessTables.h (xonshell_tab, xmass_slot_tab), as a list."""
+    tables = open(os.path.join(proc_dir, 'ProcessTables.h')).read()
+    match = re.search(r'constexpr int %s\[[^]]*\] = \{([^}]*)\};' % name, tables)
+    if not match:
+        raise RuntimeError('no %s in %s/ProcessTables.h' % (name, proc_dir))
+    return [int(v) for v in match.group(1).split(',')]
+
+
+def boosted_two_to_two(rng, masses, energy):
+    """An on-shell 2 > 2 point, legs (E, px, py, pz): the beams along z in the partonic
+    rest frame at sqrt(s) = energy, then boosted along a random axis (|beta| < 0.9)."""
+    def pcm(m_a, m_b):
+        s = energy ** 2
+        return math.sqrt(max((s - (m_a + m_b) ** 2) * (s - (m_a - m_b) ** 2), 0.)) / (2 * energy)
+    def leg(m, p):
+        return [math.sqrt(m * m + sum(c * c for c in p))] + p
+    p_in, p_out = pcm(masses[0], masses[1]), pcm(masses[2], masses[3])
+    cos, phi = rng.uniform(-1, 1), rng.uniform(0, 2 * math.pi)
+    sin = math.sqrt(1 - cos * cos)
+    out = [p_out * sin * math.cos(phi), p_out * sin * math.sin(phi), p_out * cos]
+    legs = [leg(masses[0], [0., 0., p_in]), leg(masses[1], [0., 0., -p_in]),
+            leg(masses[2], out), leg(masses[3], [-c for c in out])]
+    cos, phi, beta = rng.uniform(-1, 1), rng.uniform(0, 2 * math.pi), rng.uniform(0, 0.9)
+    sin = math.sqrt(1 - cos * cos)
+    b = [beta * sin * math.cos(phi), beta * sin * math.sin(phi), beta * cos]
+    gamma = 1 / math.sqrt(1 - beta * beta)
+    boosted = []
+    for e, *p in legs:
+        bp = sum(bi * pi for bi, pi in zip(b, p))
+        boosted.append([gamma * (e + bp)] +
+                       [pi + bi * (gamma * gamma / (gamma + 1) * bp + gamma * e) for bi, pi in zip(b, p)])
+    return boosted
+
+
+def output(repo, name, model, process, backends, select=None, defines=(), options=''):
+    """output standalone + make for these backends in every subprocess (those for which
+    select(proc_dir) is true, if given), keeping the check_sa.exe of each as
+    check_sa_<backend>.exe: the subprocess directories. defines: multiparticle
+    definitions ('b1 = g u~') made before the generation; options: of the output line."""
     with open(name + '.mg5', 'w') as f:
-        f.write('import model %s\ngenerate %s\noutput standalone %s -f\n' % (model, process, name))
+        f.write('import model %s\n' % model)
+        f.write(''.join('define %s\n' % define for define in defines))
+        f.write('generate %s\noutput standalone %s %s -f\n' % (process, name, options))
     if run([sys.executable, os.path.join(repo, 'bin', 'madgraph'), name + '.mg5'],
            log=name + '.log') != 0:
         raise RuntimeError('madgraph failed, see %s.log' % name)
     proc_dirs = sorted(glob.glob(os.path.join(name, 'SubProcesses', 'P*')))
     if not proc_dirs:
         raise RuntimeError('no subprocess directory for %s' % process)
+    if select:
+        proc_dirs = [proc_dir for proc_dir in proc_dirs if select(proc_dir)]
+        if not proc_dirs:
+            raise RuntimeError('no selected subprocess directory for %s' % process)
     jobs = os.environ.get('SLURM_CPUS_PER_TASK', '4')
     for proc_dir in proc_dirs:
         for backend in backends:
@@ -215,19 +296,260 @@ def check_zero_me(backend, repo, nevt=64):
                         read(dump(prefix, 'col'), 'i'))
         if len(me) != nevt or any(v != 0 for v in me):
             problems.append('%s: |M|^2 not 0: %s' % (run_backend, list(me[:4])))
-        if set(hel) != {-1} or not set(col) <= {-1, 0}:
-            problems.append('%s: helicities %s, colours %s (expected -1, and -1 or 0)'
+        if set(hel) != {-1} or set(col) != {-1}:
+            problems.append('%s: helicities %s, colours %s (expected -1)'
                             % (run_backend, sorted(set(hel))[:4], sorted(set(col))[:4]))
-        seen.append('%s colour %s' % (run_backend, sorted(set(col))))
     if len(me_default) != nevt or not all(v > 0 for v in me_default):
         problems.append('|M|^2 with the default card not > 0: %s' % list(me_default[:4]))
     check('zero_me', not problems, '; '.join(problems) or
-          '%d events: |M|^2 = 0, helicity -1, %s (default card: %.3e)'
-          % (nevt, ', '.join(seen), me_default[0]))
+          '%d events: |M|^2 = 0, helicity and colour -1 on %s and %s (default card: %.3e)'
+          % (nevt, backend, CPU_BACKEND, me_default[0]))
+
+
+def check_zero_me_good_hel(backend, repo, nevt=64):
+    section('|M|^2 = 0 with good helicities: p p > w+ j at alpha_s = 0 (%s, %s)'
+            % (backend, CPU_BACKEND))
+    name = 'zero_me_wj'
+    (proc_dir,) = output(repo, name, 'sm', 'p p > w+ j', (CPU_BACKEND, backend),
+                         select=lambda proc_dir: ncross(proc_dir) > 1)
+    sub = os.path.basename(proc_dir)
+    data = open(os.path.join(proc_dir, 'ProcessData.h')).read()
+    nflavor = int(re.search(r'constexpr int nmaxflavor = (\d+);', data).group(1))
+    nids = nflavor * ncross(proc_dir)
+    rng = random.Random(23)
+    # two calls (iterations) of nevt events in one run: the helicity filtering of the
+    # first call, at alpha_s = 0.118, keeps its good helicities for the second, at 0
+    batch = [1, nevt, 2]
+    momenta = dump(name, 'momenta')
+    check_sa(proc_dir, CPU_BACKEND, ['--energy', 1000, '--dump-momenta', momenta] + batch,
+             name + '_rambo.log')
+    ids = [ievt % nids for ievt in range(nevt)] * 2
+    inputs = ['--momenta', momenta,
+              '--alphas', write(name + '_alphas.bin', 'd', [0.118] * nevt + [0.] * nevt),
+              '--flavors', write(name + '_flavors.bin', 'I', ids),
+              '--rnd-hel', write(name + '_rndhel.bin', 'd', [rng.random() for _ in range(2 * nevt)]),
+              '--rnd-col', write(name + '_rndcol.bin', 'd', [rng.random() for _ in range(2 * nevt)])]
+    problems = []
+    for run_backend in (backend, CPU_BACKEND):
+        prefix = '%s_%s' % (name, run_backend)
+        files = {what: dump(prefix, what) for what in ('me', 'hel', 'col')}
+        check_sa(proc_dir, run_backend, inputs + ['--dump-me', files['me'], '--dump-hel', files['hel'],
+                                                  '--dump-col', files['col']] + batch,
+                 prefix + '.log')
+        me, hel, col = read(files['me'], 'd'), read(files['hel'], 'i'), read(files['col'], 'i')
+        if not len(me) == len(hel) == len(col) == 2 * nevt:
+            problems.append('%s: output sizes %d/%d/%d for %d events'
+                            % (run_backend, len(me), len(hel), len(col), 2 * nevt))
+            continue
+        first = [ievt for ievt in range(nevt) if not (me[ievt] > 0 and hel[ievt] >= 0 and col[ievt] >= 0)]
+        if first:
+            ievt = first[0]
+            problems.append('%s: %d events of the alpha_s = 0.118 call without |M|^2 > 0, a helicity '
+                            'and a colour, first event %d (id %d): %.3e, helicity %d, colour %d'
+                            % (run_backend, len(first), ievt, ids[ievt], me[ievt], hel[ievt], col[ievt]))
+        zero = [ievt for ievt in range(nevt, 2 * nevt) if not (me[ievt] == 0 and hel[ievt] == -1 and col[ievt] == -1)]
+        if zero:
+            ievt = zero[0]
+            problems.append('%s: %d events of the alpha_s = 0 call not |M|^2 = 0, helicity -1 and '
+                            'colour -1, first event %d (id %d): %.3e, helicity %d, colour %d'
+                            % (run_backend, len(zero), ievt - nevt, ids[ievt], me[ievt], hel[ievt], col[ievt]))
+    check('zero_me_good_hel', not problems, '; '.join(problems[:3]) or
+          '%s, %d extended ids: |M|^2 > 0 at alpha_s = 0.118, then |M|^2 = 0, helicity and colour -1 '
+          'at alpha_s = 0 on %s and %s' % (sub, nids, backend, CPU_BACKEND))
 
 
 # ---------------------------------------------------------------------------
-# 3. a non-blocking stream
+# 3. crossed subprocesses with running flavour couplings (MSSM p p > go go j)
+# ---------------------------------------------------------------------------
+
+def crossed_gpu_vs_cpu(check_name, backend, name, proc_dirs, energy, seed, nevt, own_points=False,
+                       signed=False):
+    """Events over every extended flavour id K*nmaxflavor + flavour of each subprocess
+    (crossing-table row K), a random alpha_s and random numbers per event: the GPU |M|^2,
+    helicities and colours equal the CPU ones event by event. own_points: the momenta of
+    each event on shell for its own row (2 > 2 only), else the RAMBO points of the base.
+    signed: an interference |M|^2 (nampso > 1), which can be negative, run twice, as the
+    helicity sum (no --rnd-hel: umami uses 0.5) and as one signed helicity per event
+    (--rnd-hel: helicity i drawn on |T_i|, the event gets sign(T_i) sum_j |T_j|); the
+    draws must give negative |M|^2 and, in some subprocess, differ from the helicity sum
+    (helicities of both signs). Only the events whose |M|^2 is above 1e-10 of the
+    largest one compare: where the interference vanishes (colour or flavour), |M|^2 is a
+    rounding residue that differs between the backends, and so does the helicity drawn
+    from it (the GPU one must stay a residue). Every crossing row must have |M|^2 != 0
+    rather than > 0.
+    The helicities compare event by event only because every subprocess checked here
+    violates C parity (chiral or electroweak couplings): on a C-symmetric one (g g > q q~,
+    g g > t t~) the CPU counts each helicity row once for itself and its C mirror and draws
+    between the two, the GPU orders every row, so the same random number selects other
+    rows (same frequencies). Build the CPU reference with -DMGONGPU_NOCSYM there, or
+    compare helicity frequencies."""
+    rng = random.Random(seed)
+    problems, details = [], []
+    mixed = 0  # signed draws that differ from the helicity sum
+    for proc_dir in proc_dirs:
+        sub = os.path.basename(proc_dir)
+        data = open(os.path.join(proc_dir, 'ProcessData.h')).read()
+        ndpf = int(re.search(r'constexpr int nDPF = (\d+);', data).group(1))
+        nflavor = int(re.search(r'constexpr int nmaxflavor = (\d+);', data).group(1))
+        nampso = re.search(r'constexpr int nampso = (\d+);', data)
+        nampso = int(nampso.group(1)) if nampso else 1
+        if signed and nampso < 2:
+            problems.append('%s: nampso = %d, no interference |M|^2 to check' % (sub, nampso))
+        nids = nflavor * ncross(proc_dir)
+        prefix = '%s_%s' % (name, sub)
+        batch = [1, nevt, 1]
+        momenta = dump(prefix, 'momenta')
+        check_sa(proc_dir, CPU_BACKEND, ['--energy', energy, '--dump-momenta', momenta] + batch,
+                 prefix + '_rambo.log')
+        # every extended id at least once, then random ones
+        ids = list(range(nids)) + [rng.randrange(nids) for _ in range(nevt - nids)]
+        rng.shuffle(ids)
+        if own_points:
+            # the base masses from the RAMBO points, then the masses of every row
+            base = read(momenta, 'd')
+            npar = len(base) // nevt // 4
+            if npar != 4:
+                raise RuntimeError('%s: own_points needs a 2 > 2, not %d legs' % (sub, npar))
+            masses = [math.sqrt(max(base[4 * k] ** 2 - sum(c * c for c in base[4 * k + 1:4 * k + 4]), 0.))
+                      for k in range(npar)]
+            masses = [m if m > 1e-6 * energy else 0. for m in masses]
+            slots = table(proc_dir, 'xmass_slot_tab')
+            points = []
+            for xid in ids:
+                row = xid // nflavor
+                for p in boosted_two_to_two(rng, [masses[slots[row * npar + k]] for k in range(npar)], energy):
+                    points.extend(p)
+            momenta = write(prefix + '_own_momenta.bin', 'd', points)
+        inputs = ['--momenta', momenta,
+                  '--alphas', write(prefix + '_alphas.bin', 'd', [rng.uniform(0.09, 0.14) for _ in range(nevt)]),
+                  '--flavors', write(prefix + '_flavors.bin', 'I', ids)]
+        rndhel = ['--rnd-hel', write(prefix + '_rndhel.bin', 'd', [rng.random() for _ in range(nevt)])]
+        inputs += ['--rnd-col', write(prefix + '_rndcol.bin', 'd', [rng.random() for _ in range(nevt)])]
+        modes = (('sum', []), ('draw', rndhel)) if signed else (('', rndhel),)
+        me_sum = None
+        for mode, mode_inputs in modes:
+            tag = sub + (' ' + mode if mode else '')
+            out = {}
+            for run_tag, run_backend in (('cpu', CPU_BACKEND), ('gpu', backend)):
+                run_tag += '_' + mode if mode else ''
+                files = {what: dump(prefix, '%s_%s' % (what, run_tag)) for what in ('me', 'hel', 'col')}
+                check_sa(proc_dir, run_backend, inputs + mode_inputs +
+                         ['--dump-me', files['me'], '--dump-hel', files['hel'], '--dump-col', files['col']] + batch,
+                         '%s_%s.log' % (prefix, run_tag))
+                out[run_backend] = (read(files['me'], 'd'), read(files['hel'], 'i'), read(files['col'], 'i'))
+            (me_cpu, hel_cpu, col_cpu), (me_gpu, hel_gpu, col_gpu) = out[CPU_BACKEND], out[backend]
+            if not len(me_cpu) == len(me_gpu) == len(hel_gpu) == len(col_gpu) == nevt:
+                problems.append('%s: output sizes %d/%d/%d/%d for %d events'
+                                % (tag, len(me_cpu), len(me_gpu), len(hel_gpu), len(col_gpu), nevt))
+                continue
+            # the events that compare: all, or those above the rounding residue (a nan
+            # included, which fails the comparison below)
+            if signed:
+                floor = 1e-10 * max((abs(v) for v in me_cpu if not math.isnan(v)), default=0.)
+                events = [ievt for ievt in range(nevt) if not abs(me_cpu[ievt]) <= floor]
+                residue = [ievt for ievt in sorted(set(range(nevt)) - set(events))
+                           if not abs(me_gpu[ievt]) <= 1e2 * floor]
+                if residue:
+                    first = residue[0]
+                    problems.append('%s: %d events with a CPU residue |M|^2 are not one on %s, first event '
+                                    '%d (id %d) %.10e vs %.10e' % (tag, len(residue), backend, first,
+                                                                   ids[first], me_gpu[first], me_cpu[first]))
+            else:
+                events = list(range(nevt))
+            rels = {ievt: abs(me_cpu[ievt] - me_gpu[ievt]) / abs(me_cpu[ievt]) if me_cpu[ievt] != 0
+                    else (0. if me_gpu[ievt] == 0 else float('inf')) for ievt in events}
+            bad = [ievt for ievt in events if not rels[ievt] < 1e-9]
+            if bad:
+                first = bad[0]
+                problems.append('%s: %d of %d events differ, first event %d (id %d) %s %.10e vs %s %.10e'
+                                % (tag, len(bad), len(events), first, ids[first], backend, me_gpu[first],
+                                   CPU_BACKEND, me_cpu[first]))
+            bad_hel = [ievt for ievt in events if hel_cpu[ievt] != hel_gpu[ievt]]
+            bad_col = [ievt for ievt in events if col_cpu[ievt] != col_gpu[ievt]]
+            if bad_hel or bad_col:
+                first = (bad_hel or bad_col)[0]
+                problems.append('%s: %d helicities and %d colours differ, first event %d (id %d): '
+                                'helicity %d vs %d, colour %d vs %d'
+                                % (tag, len(bad_hel), len(bad_col), first, ids[first], hel_gpu[first],
+                                   hel_cpu[first], col_gpu[first], col_cpu[first]))
+            # every crossing row evaluated: some event of each row has |M|^2 > 0 (!= 0
+            # for an interference)
+            rows = {ids[ievt] // nflavor for ievt in events
+                    if (me_cpu[ievt] != 0 if signed else me_cpu[ievt] > 0)}
+            if len(rows) != nids // nflavor:
+                problems.append('%s: |M|^2 %s 0 only for crossing rows %s of %d'
+                                % (tag, '!=' if signed else '>', sorted(rows), nids // nflavor))
+            negative = sum(1 for ievt in events if me_cpu[ievt] < 0)
+            if mode == 'sum':
+                me_sum = me_cpu
+            elif mode == 'draw':
+                if not 0 < negative < len(events):
+                    problems.append('%s: %d negative |M|^2 of %d events, not a signed helicity draw'
+                                    % (tag, negative, len(events)))
+                own = 0 if me_sum is None else sum(
+                    1 for ievt in events if not abs(me_cpu[ievt] - me_sum[ievt]) <= 1e-9 * abs(me_sum[ievt]))
+                mixed += own
+            worst = max((rel for rel in rels.values() if not math.isnan(rel)), default=0.)
+            details.append('%s nDPF %d, %d extended ids, ' % (tag, ndpf, nids) +
+                           ('nampso %d, %d of %d events compared, %d negative, '
+                            % (nampso, len(events), nevt, negative) if signed else '') +
+                           ('%d differ from the sum, ' % own if mode == 'draw' else '') +
+                           'max rel diff %.1e' % worst)
+            print('  ' + details[-1])
+    if signed and not mixed:
+        problems.append('no signed draw differs from the helicity sum: no helicities of both signs')
+    check(check_name, not problems, '; '.join(problems[:3]) or '; '.join(details))
+
+
+def check_mssm_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
+    section('MSSM p p > go go j, crossed subprocesses: %s against %s' % (backend, CPU_BACKEND))
+    name = 'mssm_gogoj'
+    # only the subprocesses that fold crossings (the others are check 1 with one more jet)
+    proc_dirs = output(repo, name, 'MSSM_SLHA2', 'p p > go go j', (CPU_BACKEND, backend),
+                       select=lambda proc_dir: ncross(proc_dir) > 1)
+    crossed_gpu_vs_cpu('mssm_crossed_gpu_vs_cpu', backend, name, proc_dirs, 3000, 17, nevt)
+
+
+def check_crossed_massive_gpu_vs_cpu(backend, repo, nevt=1024):
+    section('u g > u z with u u~ > z g, a massive leg crossed into a massless slot: %s against %s'
+            % (backend, CPU_BACKEND))
+    name = 'crossed_massive'
+    # u u~ > z g is folded onto u g > u z: its Z sits in the slot of the outgoing u
+    proc_dirs = output(repo, name, 'sm', 'u b1 > c1 d1 QED=1 QCD=1', (CPU_BACKEND, backend),
+                       select=lambda proc_dir: 0 in table(proc_dir, 'xonshell_tab'),
+                       defines=('b1 = g u~', 'c1 = u z', 'd1 = z g'))
+    crossed_gpu_vs_cpu('crossed_massive_gpu_vs_cpu', backend, name, proc_dirs, 1000, 29, nevt,
+                       own_points=True)
+
+
+def check_axial_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
+    section('p p > z j --axial_gauge=True, crossed axial-gauge gluon: %s against %s'
+            % (backend, CPU_BACKEND))
+    name = 'axial_zj'
+    # g q > z q also serves q q~ > z g: the gluon polarisation is vxxxxxr in the axial
+    # gauge of another leg, whose momentum a crossed event reads from its own slot
+    proc_dirs = output(repo, name, 'sm', 'p p > z j', (CPU_BACKEND, backend),
+                       select=lambda proc_dir: ncross(proc_dir) > 1, options='--axial_gauge=True')
+    crossed_gpu_vs_cpu('axial_crossed_gpu_vs_cpu', backend, name, proc_dirs, 1000, 31, nevt)
+
+
+def check_signed_crossed_gpu_vs_cpu(backend, repo, nevt=1024):
+    section('p p > j j and p p > t t~ j QED^2==2, crossed interference |M|^2 (signed helicities): '
+            '%s against %s' % (backend, CPU_BACKEND))
+    # interferences of the QCD and electroweak amplitudes (nampso 2), whose |M|^2 per
+    # helicity is signed, in the subprocesses that fold crossings: P1_QQ_QQ (q q > q q,
+    # q q~ > q q~, ...: 11 rows, many with a vanishing interference) and P1_gQ_ttxQ
+    # (g q > t t~ q with q q~ > t t~ g, whose helicities have both signs)
+    proc_dirs = []
+    for name, process in (('signed_jj', 'p p > j j QED^2==2'), ('signed_ttj', 'p p > t t~ j QED^2==2')):
+        proc_dirs += output(repo, name, 'sm', process, (CPU_BACKEND, backend),
+                            select=lambda proc_dir: ncross(proc_dir) > 1)
+    crossed_gpu_vs_cpu('signed_crossed_gpu_vs_cpu', backend, 'signed', proc_dirs, 1000, 41, nevt,
+                       signed=True)
+
+
+# ---------------------------------------------------------------------------
+# 4. a non-blocking stream
 # ---------------------------------------------------------------------------
 
 def check_nonblocking_stream(backend, repo, ncalls=4):

@@ -256,6 +256,7 @@ C
     COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
     COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR,NAMPSO)
 ${hr_gather_decl}
+    ${dead_row_decl}
 %(jampflow_decl)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
@@ -327,9 +328,7 @@ ${jamp_lines}
     ENDDO ! M
     TS(K) = TS(K) / DENOM
     ${dead_row_if}
-	if(sde_strat.eq.1) then
-        ${amp2_lines}
-	endif
+    ${amp2_row_lines}
         Do I = 1, NCOLOR_FLOW
     	  DO M = 1, NAMPSO
     		DO N = 1, NAMPSO
@@ -341,6 +340,7 @@ ${jamp_lines}
         Enddo
     ${dead_row_endif}
     ENDDO ! ${hr_gather_close}
+    ${amp2_cut_lines}
 
     END
 

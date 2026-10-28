@@ -15,7 +15,8 @@
 #include "MemoryAccessMomenta.h"
 #include "Parameters.h" // ndcoup
 #include "ProcessData.h"
-#include "SigmaKin.h" // calculate_jamps, computeDependentCouplings, getHelicities
+#include "ProcessTables.h" // the crossing table (use_crossing, ncross, cross_pinv)
+#include "SigmaKin.h"      // calculate_jamps, computeDependentCouplings, getHelicities
 
 #include <algorithm>
 #include <cmath>
@@ -32,6 +33,8 @@ namespace madmatrix
   {
     using namespace ProcessData;
     using cplx = std::complex<double>;
+    using ProcessTables::ncross;
+    using ProcessTables::use_crossing;
 
     // Events evaluated by one call of calculate_jamps (two SIMD pages in mixed precision)
 #if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
@@ -135,8 +138,49 @@ namespace madmatrix
         return v[i];
     }
 
-    // Beam-polarisation weight of helicity row hel, as the Fortran density
-    inline double beam_polarisation_factor( const short* hel )
+    // The crossing an extended flavor id carries (ProcessTables::use_crossing):
+    // the row cross of the crossing table in the input-slot view, input slot k
+    // (the caller's leg k) being fed to base slot pinv[k], with the side flip
+    // sgn[k]. The identity for cross 0 (and without crossing).
+    //
+    // The caller gives the momenta, the open legs and their helicities in its
+    // own leg order and the helicities as physical ones, as the Fortran
+    // GET_DENSITY_IDX takes them (its APPLY_CROSSING_TABLE view). calculate_jamps
+    // gathers the momenta itself, from the flavor id, but evaluates the base
+    // helicity row of the base slot s with the opposite helicity where the leg
+    // changes side (the (-nsf, -h) call of a crossed external, see
+    // _crossing_external_block): the physical helicity h of input slot k is
+    // therefore row[pinv[k]] = sgn[k] * h. The spectator sum runs over every row,
+    // which a side flip only reorders.
+    struct CrossView
+    {
+      int cross = 0;
+      int pinv[npar];
+      int sgn[npar];
+      explicit CrossView( const int xcross )
+        : cross( xcross )
+      {
+        if constexpr( use_crossing )
+        {
+          ProcessTables::cross_pinv( xcross, pinv, sgn );
+        }
+        else
+        {
+          for( int k = 0; k < npar; k++ )
+          {
+            pinv[k] = k;
+            sgn[k] = 1;
+          }
+        }
+      }
+      // the physical helicity of input slot k in the base helicity row hel
+      inline int physical( const short* hel, const int k ) const { return sgn[k] * hel[pinv[k]]; }
+    };
+
+    // Beam-polarisation weight of helicity row hel, as the Fortran density: the
+    // helicities of the incoming legs of the process the flavor id names (a
+    // crossing may have moved them into other base slots)
+    inline double beam_polarisation_factor( const short* hel, const CrossView& xv )
     {
       double factor = 1.;
       if( npari != 2 ) return factor; // a 1 -> N process: leg 1 is a resonance, not a beam
@@ -144,12 +188,28 @@ namespace madmatrix
       {
         const double pol = g_beampol[jj];
         if( std::abs( pol ) <= 1. ) continue;
-        factor *= ( hel[jj] == ( pol > 0 ? 1 : -1 ) ) ? std::abs( pol ) : 2. - std::abs( pol );
+        factor *= ( xv.physical( hel, jj ) == ( pol > 0 ? 1 : -1 ) ) ? std::abs( pol ) : 2. - std::abs( pol );
       }
       return factor;
     }
 
-    // Adds the density of nevt events (whole pages of one flavor each) to inter[nevt][ninter],
+    // What the density and |M|^2 of an extended flavor id are multiplied by, as
+    // the Fortran GET_INTER_RESCALE/SMATRIX and sigmaKin: 1/iden times the
+    // identical-particle factor of the actual flavors (broken_symmetry_factor)
+    // for the base process, and the crossed denominator (the initial-state
+    // spin*color average of the crossed process times its identical-final-state
+    // factor) for a crossing; 0 for a row out of the table.
+    inline double normalisation( const unsigned int flavorId )
+    {
+      const int xcross = (int)( flavorId / (unsigned int)nmaxflavor );
+      const int flav = (int)( flavorId % (unsigned int)nmaxflavor );
+      if( xcross == 0 ) return broken_symmetry_factor( flav ) / double( helcolDenominators[0] );
+      if( xcross >= ncross ) return 0.;
+      const double denominator = double( ProcessTables::xspincol_tab[xcross] ) * double( ident_cross( xcross, flav ) );
+      return denominator > 0. ? 1. / denominator : 0.;
+    }
+
+    // Adds the density of nevt events (whole pages of one flavor id each) to inter[nevt][ninter],
     // the first nreal of them real and the others padding
     void
     density_kernel( const fptype_momenta* allmomenta,
@@ -161,6 +221,7 @@ namespace madmatrix
                     const int* pos0, // 0-based
                     const int nComb,
                     const int* allowHel,
+                    const CrossView& xv,
                     HelicityFilter& filter,
                     Scratch& s,
                     cplx* inter )
@@ -191,7 +252,7 @@ namespace madmatrix
         for( const int ihel : filter.base )
         {
           if( !scanning && !filter.good[ihel] ) continue;
-          const double polfact = beam_polarisation_factor( hels + ihel * npar );
+          const double polfact = beam_polarisation_factor( hels + ihel * npar, xv );
           for( int icomb = 0; icomb < nComb; icomb++ )
           {
             short* row = &s.rows[(size_t)icomb * npar];
@@ -277,11 +338,14 @@ namespace madmatrix
     }
 
     // The density (or, with no open leg, the helicity sum) of count events, each
-    // divided by iden: out[count][ninter]. Groups the events by flavor, since all
-    // the events of a page must share it, padding each group to whole pages with
-    // copies of its first event (zero momenta would give nan, see umami.cc).
-    // boosts, if not null, holds per event the lab momentum of the frame its
-    // momenta are given in (boost_from_rest_frame).
+    // normalised as the Fortran density and SMATRIX (normalisation, above):
+    // out[count][ninter]. flavor holds extended ids (cross * nmaxflavor + flavor)
+    // with crossing, pos and allowHel follow the legs of the process the id
+    // names (see CrossView). Groups the events by flavor id, since all the events
+    // of a page must share it, padding each group to whole pages with copies of
+    // its first event (zero momenta would give nan, see umami.cc). boosts, if not
+    // null, holds per event the lab momentum of the frame its momenta are given
+    // in (boost_from_rest_frame).
     int
     evaluate( const size_t count,
               const double* momenta,
@@ -297,22 +361,41 @@ namespace madmatrix
       if( nComb < 1 || nChanging < 0 || ( nChanging == 0 && nComb != 1 ) ) return 1;
       for( int n = 0; n < nChanging; n++ )
         if( pos[n] < 1 || pos[n] > npar ) return 2;
+      const unsigned int nflavorId = (unsigned int)( ncross * nmaxflavor );
       for( size_t i = 0; i < count; i++ )
-        if( flavor[i] >= (unsigned int)nmaxflavor ) return 3;
+        if( flavor[i] >= nflavorId ) return 3;
       std::lock_guard<std::mutex> lock( g_mutex );
       Scratch& s = g_scratch;
-      s.pos0.resize( nChanging );
-      for( int n = 0; n < nChanging; n++ ) s.pos0[n] = pos[n] - 1;
       const int ninter = nComb * ( nComb + 1 ) / 2;
       constexpr size_t neppM = MemoryAccessMomentaBase::neppM;
-      const double iden = helcolDenominators[0];
-      for( int iflavor = 0; iflavor < nmaxflavor; iflavor++ )
+      std::vector<unsigned int> ids( flavor, flavor + count );
+      std::sort( ids.begin(), ids.end() );
+      ids.erase( std::unique( ids.begin(), ids.end() ), ids.end() );
+      std::vector<int> allowHelBase( (size_t)nComb * nChanging );
+      for( const unsigned int flavorId : ids )
       {
         s.events.clear();
         for( size_t i = 0; i < count; i++ )
-          if( flavor[i] == (unsigned int)iflavor ) s.events.push_back( i );
-        if( s.events.empty() ) continue;
+          if( flavor[i] == flavorId ) s.events.push_back( i );
         const size_t nreal = s.events.size();
+        const double norm = normalisation( flavorId );
+        if( norm == 0. )
+        {
+          // a crossing out of the table (or one that cannot be applied): no
+          // process, every entry 0, as the Fortran GET_DENSITY_IDX
+          for( size_t k = 0; k < nreal; k++ )
+            for( int sol = 0; sol < ninter; sol++ )
+              out[s.events[k] * ninter + sol] = 0.;
+          continue;
+        }
+        // the open legs and their helicities in the base slots and the base
+        // row convention (CrossView)
+        const CrossView xv( (int)( flavorId / (unsigned int)nmaxflavor ) );
+        s.pos0.resize( nChanging );
+        for( int n = 0; n < nChanging; n++ ) s.pos0[n] = xv.pinv[pos[n] - 1];
+        for( int icomb = 0; icomb < nComb; icomb++ )
+          for( int n = 0; n < nChanging; n++ )
+            allowHelBase[(size_t)icomb * nChanging + n] = xv.sgn[pos[n] - 1] * allowHel[(size_t)icomb * nChanging + n];
         const size_t nevt = ( nreal + npage - 1 ) / npage * npage;
         fptype_momenta* allmomenta = s.momenta.get( nevt * npar * 4 );
         fptype* gs = s.gs.get( nevt );
@@ -331,18 +414,19 @@ namespace madmatrix
               allmomenta[ipage * npar * 4 * neppM + ipar * 4 * neppM + imom * neppM + ivec] = p[imom];
           }
           gs[k] = std::sqrt( 4. * M_PI * alpha_s[i] );
-          flavors[k] = iflavor;
+          // the extended id: calculate_jamps gathers the momenta of a crossing
+          flavors[k] = flavorId;
         }
         computeDependentCouplings( gs, couplings, nevt );
-        s.key.assign( { iflavor, nChanging } );
+        s.key.assign( { (int)flavorId, nChanging } );
         s.key.insert( s.key.end(), s.pos0.begin(), s.pos0.end() );
         s.key.push_back( nComb );
-        s.key.insert( s.key.end(), allowHel, allowHel + nComb * nChanging );
+        s.key.insert( s.key.end(), allowHelBase.begin(), allowHelBase.end() );
         s.inter.assign( nevt * ninter, 0. );
-        density_kernel( allmomenta, couplings, flavors, (int)nevt, (int)nreal, nChanging, s.pos0.data(), nComb, allowHel, g_filters[s.key], s, s.inter.data() );
+        density_kernel( allmomenta, couplings, flavors, (int)nevt, (int)nreal, nChanging, s.pos0.data(), nComb, allowHelBase.data(), xv, g_filters[s.key], s, s.inter.data() );
         for( size_t k = 0; k < nreal; k++ )
           for( int sol = 0; sol < ninter; sol++ )
-            out[s.events[k] * ninter + sol] = s.inter[k * ninter + sol] / iden;
+            out[s.events[k] * ninter + sol] = s.inter[k * ninter + sol] * norm;
       }
       return 0;
     }
@@ -392,7 +476,7 @@ extern "C"
     const int status = madmatrix::evaluate( count, momenta, nullptr, alpha_s, flavor, 0, nullptr, 1, nullptr, sum.data() );
     if( status != 0 ) return status;
     for( size_t i = 0; i < count; i++ )
-      me[i] = sum[i].real() * madmatrix::broken_symmetry_factor( flavor[i] );
+      me[i] = sum[i].real();
     return 0;
   }
 
@@ -410,5 +494,15 @@ extern "C"
     info[3] = ProcessData::nmaxflavor;
     info[4] = ProcessData::ncolor;
     info[5] = ProcessData::helcolDenominators[0];
+    info[6] = madmatrix::ncross;
+  }
+
+  double madmatrix_iden( unsigned int flavor_id )
+  {
+    const int xcross = (int)( flavor_id / (unsigned int)ProcessData::nmaxflavor );
+    if( xcross == 0 ) return ProcessData::helcolDenominators[0];
+    if( xcross >= madmatrix::ncross ) return 0.;
+    return double( madmatrix::ProcessTables::xspincol_tab[xcross] ) *
+           double( madmatrix::ident_cross( xcross, (int)( flavor_id % (unsigned int)ProcessData::nmaxflavor ) ) );
   }
 }

@@ -41,6 +41,7 @@ import madgraph.iolibs.save_load_object as save_load_object
 import madgraph.interface.master_interface as cmd_interface
 
 import madgraph.various.misc as misc
+import tests
 
 from madgraph import MadGraph5Error, MG5DIR
 from . import me_comparator
@@ -623,11 +624,7 @@ class MG7Runner(MG5Runner):
         (``ChannelEventGenerator``), and a resolvable LHAPDF data path for
         hadronic PDFs.
         """
-        try:
-            import madspace
-        except ImportError:
-            return False
-        if not hasattr(madspace, 'ChannelEventGenerator'):
+        if not hasattr(tests.import_madspace(), 'ChannelEventGenerator'):
             return False
         return cls.resolve_lhapdf_data_path() is not None
 

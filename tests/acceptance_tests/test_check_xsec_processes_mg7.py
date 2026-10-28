@@ -103,7 +103,7 @@ import traceback
 import unittest
 
 import madgraph.interface.master_interface as MGCmd
-import madgraph.various.misc as misc
+import tests
 
 pjoin = os.path.join
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -154,15 +154,10 @@ def _require_mg7_runtime(test):
     Only a skip gate: the run itself must locate LHAPDF from the configuration
     the way a user's ``bin/generate_events`` does, with no environment help.
     """
-    try:
-        import madspace
-        has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-    except ImportError:
-        has_mg7 = False
-    if not has_mg7:
+    if not hasattr(tests.import_madspace(), 'ChannelEventGenerator'):
         test.skipTest('mg7 runtime stack (madspace) unavailable')
 
-    if not misc.resolve_lhapdf().find_set(_REFERENCE_PDF):
+    if not tests.lhapdf_data_path(_REFERENCE_PDF):
         test.skipTest('%s LHAPDF data not found (set the lhapdf option or '
                       '$LHAPDF_DATA_PATH)' % _REFERENCE_PDF)
 

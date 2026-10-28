@@ -58,6 +58,14 @@ cmd_logger = logging.getLogger('cmdprint2') # -> print
 dir_to_f2py_free_mod = {}
 nb_f2py_module = 0 # each time the process/model is changed this number is modified to 
                # forced the python module to re-create an executable
+# names (output directory name + suffix, e.g. rw_me, rw_me_r2) under which a
+# reweighting f2py module and its shared library were imported in this python
+# process. Nothing loaded can be unloaded: the dynamic loader resolves a
+# library by its install name/SONAME to the one already loaded, whichever
+# directory it comes from (e.g. the rw_me of a previous reweighting in the same
+# session, or of another sample). A new build must therefore use a name that is
+# not in here (see get_f2py_suffix), or it gets the previous matrix elements.
+loaded_f2py_names = set()
 
 #lhapdf = None
 
@@ -120,6 +128,9 @@ class ReweightInterface(extended_cmd.Cmd):
         self.inc_sudakov = False
         self.event_path = event_path
         self.path2prefix = {} # store the f2pyprefix associated to a library
+        # output directory name (rw_me, rw_mevirt, ...) -> suffix of the names
+        # its f2py modules and library were built with ('' = default names)
+        self.f2py_suffix = {}
         # id_to_path-style tag -> folded crossed subprocesses reachable through
         # a base matrix element (see build_cross_resolve); empty when crossing
         # folded nothing.
@@ -2039,12 +2050,16 @@ class ReweightInterface(extended_cmd.Cmd):
                         new_value = module.smatrixhel(pdg, pid, p, alphas, me_scale2, nhel)
                     else:
                         # folded crossing: name the matrix element by its slot
-                        # and the process by the extended flavor index, the PDG
-                        # dispatch cannot reach it. NPDG is f2py-derived from p.
+                        # and the process by the extended flavor index the
+                        # event was resolved to (build_cross_resolve), rather
+                        # than by its PDG codes. NPDG is f2py-derived from p.
                         new_value = module.smatrixhel_idx(procindex, flav_idx, p,
                                                     alphas, me_scale2, nhel)
                     #misc.sprint(new_value)
-                    if new_value == 0:
+                    # NaN: no matrix element of the module serves these PDG
+                    # codes (its ERROR line goes to the silenced stdout)
+                    if new_value == 0 or (isinstance(new_value, float)
+                                          and math.isnan(new_value)):
                         raise Exception("Invalid matrix element")
             # for loop we have also the stability status code
             if isinstance(new_value, tuple):
@@ -2365,10 +2380,13 @@ class ReweightInterface(extended_cmd.Cmd):
            element's own leg order, which makes the id_to_path key
            order-sensitive; a folded crossing has no directory and hence no
            such order to promise, so a crossed event would miss the lookup.
-         - the density mode evaluates GET_DENSITY, not SMATRIX, and only its
-           FLAVOR-array entry point is wired up here; the FLAVOR array cannot
-           express a crossing (GET_DENSITY_IDX would be needed, as MadSpin's
-           density path does it).
+         - the density mode evaluates py_get_density, not SMATRIX, and finds
+           the matrix element and its leg order through get_pdg_order, which
+           lists no folded crossing. py_get_density itself falls back to a
+           folded crossing (f77_crossed_density), but only for legs in that
+           crossing's own order (GET_PDG_FOR_FLAVOR) up to exchanges of
+           same-code legs not in POS inside the initial or the final state,
+           which this mode does not build.
          - 'use_eventid' hands the event's process id to SMATRIXHEL, while the
            folded entry point SMATRIXHEL_IDX takes none: a crossed event would
            silently be given the first matching matrix element instead.
@@ -2935,11 +2953,26 @@ class ReweightInterface(extended_cmd.Cmd):
                 if not os.path.isdir(pjoin(path_me,onedir)):
                     continue
                 pdir = pjoin(path_me, onedir, 'SubProcesses')
-                self.compile_SubProcess_dir(pdir)
+                self.f2py_suffix[onedir] = self.get_f2py_suffix(pdir)
+                self.compile_SubProcess_dir(pdir, self.f2py_suffix[onedir])
 
+    @staticmethod
+    def get_f2py_suffix(Sdir):
+        """suffix for the names of the f2py modules/library built in Sdir:
+        '' (the default names) unless that name was already imported in this
+        process, from this or any other directory (see loaded_f2py_names).
+        """
+        name = os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
+        suffix = ''
+        i = 1
+        while name + suffix in loaded_f2py_names:
+            i += 1
+            suffix = '_r%i' % i
+        return suffix
 
-    def compile_SubProcess_dir(self, Sdir):
-        """compile a full Subprocess directory"""
+    def compile_SubProcess_dir(self, Sdir, suffix=''):
+        """compile a full Subprocess directory. A non-empty suffix is appended
+        to the names of the f2py modules and of their shared library."""
 
         if self.mother:
             nb_core = self.mother.options['nb_core'] if self.mother.options['run_mode'] !=0 else 1
@@ -2950,20 +2983,25 @@ class ReweightInterface(extended_cmd.Cmd):
         # the loader hands the second f2py module the first library.
         # The leading '_' keeps it different from the liball<dir>_<N>me.so
         # name that load_module tries to preload with RTLD_GLOBAL.
-        procname = 'PROCNAME=_%s' % os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
-        os.environ['MENUM'] = '2'
-        try: 
-            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=nb_core)
-        except Exception as e:
-            misc.compile([procname, 'all_matrix2py.so'], cwd=Sdir, nb_core=1)
-
-        if not (self.second_model or self.second_process or self.dedicated_path):
-            os.environ['MENUM'] = '3'
+        # A rebuild of a name already loaded in this process (suffix) also
+        # renames the f2py module, and for the loop output (rw_mevirt, whose
+        # makefile names its library after ROOTNAME) the library too.
+        dirname = os.path.basename(os.path.dirname(os.path.normpath(Sdir)))
+        names = ['PROCNAME=_%s%s' % (dirname, suffix)]
+        if suffix:
+            names.append('ROOTNAME=%s%s' % (dirname, suffix))
+        for menum in ['2', '3']:
+            if menum == '3' and (self.second_model or self.second_process or self.dedicated_path):
+                break
+            os.environ['MENUM'] = menum
+            args = names + ['all_matrix%spy.so' % menum]
+            if suffix:
+                args.insert(-1, 'F2PYMOD=all_matrix%spy%s' % (menum, suffix))
             try:
-                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=nb_core)
+                misc.compile(args, cwd=Sdir, nb_core=nb_core)
             except Exception as e:
-                misc.compile([procname, 'all_matrix3py.so'], cwd=Sdir, nb_core=1)
-                
+                misc.compile(args, cwd=Sdir, nb_core=1)
+
 
     def load_module(self, metag=1):
         """load the various module and load the associate information"""
@@ -3003,23 +3041,19 @@ class ReweightInterface(extended_cmd.Cmd):
                             except Exception as err:
                                 logger.debug('ctypes trick fail for module')
                             break
-                    mod_name = '%s.SubProcesses.all_matrix%spy' % (onedir, tag)
-                    #mymod = __import__('%s.SubProcesses.allmatrix%spy' % (onedir, tag), globals(), locals(), [],-1)
-                    if mod_name in list(sys.modules.keys()):
-                        del sys.modules[mod_name]
-                        tmp_mod_name = mod_name
-                        while '.' in tmp_mod_name:
-                            tmp_mod_name = tmp_mod_name.rsplit('.',1)[0]
-                            del sys.modules[tmp_mod_name]
-                        import importlib
-                        mymod = importlib.import_module(mod_name,)
-                        mymod = importlib.reload(mymod)
-                        #mymod = __import__(mod_name, globals(), locals(), [])
-                    else:
-                        import importlib
-                        mymod = importlib.import_module(mod_name,)
-                        #mymod = __import__(mod_name, globals(), locals(), [])
-                    
+                    suffix = self.f2py_suffix.get(onedir, '')
+                    mod_name = '%s.SubProcesses.all_matrix%spy%s' % (onedir, tag, suffix)
+                    # forget the module and its packages: the packages of a
+                    # previous reweighting may point to another rwgt_dir
+                    tmp_mod_name = mod_name
+                    while tmp_mod_name:
+                        sys.modules.pop(tmp_mod_name, None)
+                        tmp_mod_name = tmp_mod_name.rpartition('.')[0]
+                    import importlib
+                    importlib.invalidate_caches()
+                    mymod = importlib.import_module(mod_name)
+                    loaded_f2py_names.add(onedir + suffix)
+
                 if fprefix != '':
                     fprefix = 'f%i_' % fprefix
                     for attr in dir(mymod):
@@ -3505,6 +3539,7 @@ class ReweightInterface(extended_cmd.Cmd):
         to_save['allow_missing_finalstate'] = self.options['allow_missing_finalstate']
         to_save['identical_particle_in_prod_and_decay'] = self.options['identical_particle_in_prod_and_decay']
         to_save['nb_library'] = self.nb_library
+        to_save['f2py_suffix'] = self.f2py_suffix
 
         name = pjoin(self.rwgt_dir, 'rw_me', 'rwgt.pkl')
         save_load_object.save_to_file(name, to_save)
@@ -3554,6 +3589,7 @@ class ReweightInterface(extended_cmd.Cmd):
         self.second_model = obj['second_model']
         self.has_nlo = obj['has_nlo']
         self.nb_library = obj['nb_library']
+        self.f2py_suffix = obj.get('f2py_suffix', {})
         if not self.rwgt_mode:
             self.rwgt_mode = obj['rwgt_mode']
             logger.info("mode set to %s" % self.rwgt_mode)
@@ -4342,6 +4378,13 @@ class DensityInterface(ReweightInterface):
             # the argument event.scale**2 is a dummy argument for LO processes, else it is taken as the value given in the LHE file
             production_matrix = get_density(-1, pinv, pos_corrected, #self.number_changing_helicities,
                                             self.allowed_helicities, event.aqcd, event.scale**2)
+            # NaN (z != z): no matrix element of the module evaluates these
+            # legs in this order (f77_no_process in all_matrix.f).
+            if any(z != z for z in production_matrix):
+                raise Exception("Invalid density matrix: NaN returned for "
+                    "event %s (pdg %s): no matrix element evaluates these "
+                    "legs in this order." % (getattr(event, 'ievent', -1),
+                                             list(pdg)))
 
             if self.symmetrise_initial_state:
                 pinv_bis = self.invert_momenta(all_p_bis[i])

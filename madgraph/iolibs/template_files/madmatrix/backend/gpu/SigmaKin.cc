@@ -30,6 +30,8 @@
 #include "ColorData.h" // for mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
 
 #include <cfloat>
+#include <cmath>
+#include <vector>
 
 namespace madmatrix
 {
@@ -52,11 +54,15 @@ namespace madmatrix
   // Helicity/flavor tables and SM parameter/coupling storage, populated once
   // by CPPProcess's constructor/initProc via the setters below.
   __device__ __constant__ short cHel[ncomb][npar];
+  static short hstHel[ncomb][npar]; // host copy, for the good-helicity closure
   __device__ __constant__ int dcNGoodHel;
   __device__ __constant__ int dcGoodHel[ncomb];
   __device__ __constant__ short cFlavors[nmaxflavor][npar];
   static int cNGoodHel;
   static int cGoodHel[ncomb];
+  // The crossing-table rows with no phase space at their own masses
+  // (sigmaKin_setNoPhaseSpace), which the good-helicity scan skips, as cpu
+  static bool cNoPhaseSpace[ncross];
   __device__ __constant__ fptype cIPD[nIPD > 0 ? nIPD : 1];
 
   // Crossing symmetry (ProcessTables::use_crossing, from --use_crossing), as on
@@ -81,6 +87,8 @@ namespace madmatrix
   void setHelicitiesAndFlavors( const short* tHel, const short* tFlavors )
   {
     gpuMemcpyToSymbol( cHel, tHel, ncomb * npar * sizeof( short ) );
+    for( int ihel = 0; ihel < ncomb; ihel++ )
+      for( int ipar = 0; ipar < npar; ipar++ ) hstHel[ihel][ipar] = tHel[ihel * npar + ipar];
     gpuMemcpyToSymbol( cFlavors, tFlavors, nmaxflavor * npar * sizeof( short ) );
   }
 
@@ -144,6 +152,46 @@ namespace madmatrix
   spincol_cross( int cross )
   {
     return ( cross >= 0 && cross < ncross ) ? xspincol_tab[cross] : 0;
+  }
+
+  // Whether an event's flavor id names a flavor of this process, as on cpu
+  // (backend/cpu valid_flavor_id): an index of cFlavors or, with crossing, an
+  // extended id whose crossing-table row exists. Any other id gets no helicity,
+  // colour or diagram choice, and normalise_output gives it a NaN |M|^2 without
+  // crossing, 0 with (a row past the table, as in the Fortran crossing code).
+  __device__ inline bool
+  valid_flavor_id( const unsigned int flavor_id )
+  {
+    if constexpr( use_crossing )
+      return spincol_cross( (int)( flavor_id / (unsigned int)nmaxflavor ) ) != 0;
+    else
+      return flavor_id < (unsigned int)nmaxflavor;
+  }
+
+  // Whether the total of a running |M|^2, jamp2 or diagram-weight sum can drive
+  // an event-by-event choice: the device copy of backend/cpu selectable_total. A
+  // zero, infinite or NaN total chooses nothing (helicity/colour 0, the fallback
+  // channel). The exponent bits of a volatile copy are read (CUDA/HIP bit-cast
+  // intrinsics), not isnan/isinf or a comparison, which fast math may fold away
+  // (then a NaN ratio passes rnd < ratio). For a float or a double fptype.
+  template<typename T>
+  __device__ inline bool
+  selectable_total( const T total )
+  {
+    static_assert( sizeof( T ) == sizeof( double ) || sizeof( T ) == sizeof( float ) );
+    volatile T vtotal = total;
+    const T t = vtotal;
+    if constexpr( sizeof( T ) == sizeof( double ) )
+    {
+      const unsigned long long bits = (unsigned long long)__double_as_longlong( t );
+      if( ( bits & 0x7ff0000000000000ULL ) == 0x7ff0000000000000ULL ) return false;
+    }
+    else
+    {
+      const unsigned int bits = __float_as_uint( t );
+      if( ( bits & 0x7f800000U ) == 0x7f800000U ) return false;
+    }
+    return t != 0;
   }
 
   // Identical-final-state factor of the crossed process: the device copy of
@@ -264,6 +312,10 @@ namespace madmatrix
   // blocks/streams for a given event race on the same numerator slot (the helicity
   // dimension has been removed to save memory), so an atomicAdd is mandatory.
 #define NUM_ATOMIC_ADD( DST, VAL ) atomicAdd( &( DST ), VAL )
+// The --hel_recycling warm-up probe hook that a recycled output's diagram calls
+// carry after every amplitude: the probe and the recycled build are CPU only
+// (see backend/{cpu,simd}/SigmaKin.cc), so it is nothing here.
+#define MG_HR_PROBE_AMP( NAMP )
 
   // Evaluate QCD partial amplitudes jamps for this given helicity from Feynman diagrams.
   // Also compute running sums over helicities adding jamp2, numerator, denominator
@@ -429,8 +481,49 @@ namespace madmatrix
   }
 
 #undef NUM_ATOMIC_ADD
+#undef MG_HR_PROBE_AMP
 
   //--------------------------------------------------------------------------
+
+  // Close the good rows over the legs whose helicity states mix under a boost
+  // (ProcessTables::hel_frame_leg), as backend/cpu does: every row differing
+  // from a good one only at those legs is good too (host helicity table).
+  inline void
+  close_good_hel( bool* isGoodHel, const short ( *hel )[npar] )
+  {
+    bool closed[ncomb];
+    for( int ihel = 0; ihel < ncomb; ihel++ ) closed[ihel] = isGoodHel[ihel];
+    for( int ihel = 0; ihel < ncomb; ihel++ )
+    {
+      if( !isGoodHel[ihel] ) continue;
+      for( int jhel = 0; jhel < ncomb; jhel++ )
+      {
+        bool same = true;
+        for( int k = 0; k < npar; k++ )
+          if( !hel_frame_leg[k] && hel[jhel][k] != hel[ihel][k] ) same = false;
+        if( same ) closed[jhel] = true;
+      }
+    }
+    for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = closed[ihel];
+  }
+
+  //--------------------------------------------------------------------------
+
+  // The first event of the points crossing `cross` is scanned on: its own block
+  // of the batch, or -1 for the first events (the host copy of backend/cpu
+  // scan_block, which reads the flavor ids of the block from the device).
+  inline int
+  scan_block( const int cross, const unsigned int* devFlavorVec, const int nevt )
+  {
+    if( cross == 0 ) return 0;
+    const int ievt0 = cross * goodHelScanEvents;
+    if( devFlavorVec == nullptr || nevt < ievt0 + goodHelScanEvents ) return -1;
+    unsigned int ids[goodHelScanEvents];
+    gpuMemcpy( ids, devFlavorVec + ievt0, goodHelScanEvents * sizeof( unsigned int ), gpuMemcpyDeviceToHost );
+    for( int ievt = 0; ievt < goodHelScanEvents; ievt++ )
+      if( ids[ievt] / (unsigned int)nmaxflavor != (unsigned int)cross ) return -1;
+    return ievt0;
+  }
 
   void /* clang-format off */
   sigmaKin_getGoodHel( const fptype_momenta* allmomenta, // input: momenta[nevt*npar*4]
@@ -443,15 +536,27 @@ namespace madmatrix
                        bool* isGoodHel,                  // output: isGoodHel[ncomb] - host array
                        const int nevt )                  // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
   { /* clang-format on */
-    const int maxtry0 = 16;
+    constexpr int maxtry0 = goodHelScanEvents; // 16
     fptype hstMEs[maxtry0];
     const int maxtry = std::min( maxtry0, nevt ); // 16, but at most nevt (avoid invalid memory access if nevt<maxtry0)
     // Per-flavor good-helicity union (merged flavors, e.g. PDG=81): sample every
     // flavor combination on the same momenta and OR the result, so cGoodHel is
     // the union over all flavors (see the C++ branch below for the rationale).
     for( int ihel = 0; ihel < ncomb; ihel++ ) isGoodHel[ihel] = false;
-    (void)iflavorVec; // flavor is forced below to scan every flavor combination
+    // the flavor is forced below to scan every flavor combination; iflavorVec
+    // only says where each crossing's own points are (scan_block)
     unsigned int hstFlavorVec[maxtry0] = {};
+    // |M|^2 of every helicity at every sampled event (of the current flavor): a
+    // helicity is good if, at one event, it is above limhel/ncomb of the sum over
+    // helicities there -- madevent's filter (matrix_madevent_group_v4.inc, limhel
+    // its hidden run_card parameter, 1e-8 by default). Comparing to an exact 0 kept
+    // the helicities whose amplitudes only cancel to rounding. With a massive
+    // external leg (hel_massive) only an exact 0 is dropped: at the one sqrt(s) of
+    // the scan points a row suppressed by powers of m/E looks negligible, though
+    // it is several % of |M|^2 near threshold (heft g g > b b~, see backend/cpu).
+    // The list is then closed over the frame-dependent legs (close_good_hel).
+    constexpr double limhel = 1e-8;
+    std::vector<fptype> helMEs( (size_t)ncomb * maxtry0, 0. );
     unsigned int* devFlavorVec = nullptr;
     gpuMalloc( (void**)&devFlavorVec, maxtry * sizeof( unsigned int ) );
     // Crossing: every extended flavor id, i.e. every row of the crossing table
@@ -459,8 +564,23 @@ namespace madmatrix
     constexpr int nscan = use_crossing ? ProcessTables::ncross * nmaxflavor : nmaxflavor;
     for( int iflav = 0; iflav < nscan; ++iflav )
     {
+    if constexpr( use_crossing )
+    {
+      // a placeholder row serves no process (xspincol_tab 0, read on the
+      // host through its copy): skipped, as backend/cpu does
+      if( xspincol_host_tab[iflav / nmaxflavor] == 0 ) continue;
+      // a crossed decay lighter than its products has no physical point
+      if( cNoPhaseSpace[iflav / nmaxflavor] ) continue;
+    }
     for( int i = 0; i < maxtry; ++i ) hstFlavorVec[i] = (unsigned int)iflav;
     gpuMemcpy( devFlavorVec, hstFlavorVec, maxtry * sizeof( unsigned int ), gpuMemcpyHostToDevice );
+    // the points of this crossing: whole pages of the batch, so its momenta and
+    // couplings start at a page boundary
+    static_assert( goodHelScanEvents % MemoryAccessMomentaBase::neppM == 0 );
+    const int iscan = scan_block( iflav / nmaxflavor, iflavorVec, nevt );
+    const size_t iscan0 = iscan > 0 ? (size_t)iscan : 0;
+    const fptype_momenta* scanMomenta = allmomenta + iscan0 * npar * np4;
+    const fptype* scanCouplings = allcouplings + iscan0 * ndcoup * 2;
     for( int ihel = 0; ihel < ncomb; ihel++ )
     {
       const int gpublocks = 1;
@@ -471,17 +591,23 @@ namespace madmatrix
       gpuMemset( allMEs, 0, maxtry * sizeof( fptype ) );
       // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
       constexpr fptype_amp_sv* allJamp2s = nullptr; // no need for color selection during helicity filtering
-      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, ihel, allmomenta, allcouplings, devFlavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, false );
+      gpuLaunchKernel( calculate_jamps, gpublocks, gputhreads, ihel, scanMomenta, scanCouplings, devFlavorVec, allJamps, false, allNumerators, allDenominators, allJamp2s, gpublocks * gputhreads, false );
       gpuLaunchKernel( color_sum_kernel, gpublocks, gputhreads, allMEs, allJamps, nOneHel, 0 );
       gpuMemcpy( hstMEs, allMEs, maxtry * sizeof( fptype ), gpuMemcpyDeviceToHost );
       for( int ievt = 0; ievt < maxtry; ++ievt )
-      {
-        if( hstMEs[ievt] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
-          isGoodHel[ihel] = true;
-      }
+        helMEs[(size_t)ihel * maxtry0 + ievt] = hstMEs[ievt];
+    }
+    const double relhel = hel_massive ? 0. : limhel;
+    for( int ievt = 0; ievt < maxtry; ++ievt )
+    {
+      fptype sumhel = 0;
+      for( int ihel = 0; ihel < ncomb; ihel++ ) sumhel += std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] );
+      for( int ihel = 0; ihel < ncomb; ihel++ )
+        if( std::abs( helMEs[(size_t)ihel * maxtry0 + ievt] ) > sumhel * relhel / ncomb ) isGoodHel[ihel] = true;
     }
     } // end loop over flavor combinations (per-flavor good-helicity union)
     gpuFree( devFlavorVec );
+    close_good_hel( isGoodHel, hstHel );
   }
 
   //--------------------------------------------------------------------------
@@ -514,6 +640,14 @@ namespace madmatrix
   sigmaKin_getNGoodHel()
   {
     return cNGoodHel; // the host copy of dcNGoodHel
+  }
+
+  //--------------------------------------------------------------------------
+
+  void
+  sigmaKin_setNoPhaseSpace( const int cross )
+  {
+    if( cross > 0 && cross < ncross ) cNoPhaseSpace[cross] = true;
   }
 
   //--------------------------------------------------------------------------
@@ -582,12 +716,12 @@ namespace madmatrix
     // evaluated as flavor 0 by calculate_jamps. Flavor 0 stands in for it here too,
     // so that broken_symmetry_factor never reads out of bounds, and its outputs are
     // then overwritten with NaN, which cannot pass for a valid matrix element.
-    // With crossing every id is valid: the crossed denominator is rebuilt per
-    // event, as on cpu -- row 0 keeps the IDEN/BROKEN_SYM path, a crossed row
-    // takes the crossed initial-state spin*color times the identical-final-state
-    // factor of the actual flavors, and a row out of the table gives 0.
+    // With crossing the crossed denominator is rebuilt per event, as on cpu --
+    // row 0 keeps the IDEN/BROKEN_SYM path, a crossed row takes the crossed
+    // initial-state spin*color times the identical-final-state factor of the
+    // actual flavors, and a row out of the table gives 0 (not NaN).
     const unsigned int fid = iflavorVec[ievt];
-    const bool validFlavor = use_crossing || fid < (unsigned int)nmaxflavor;
+    const bool validFlavor = valid_flavor_id( fid );
     if constexpr( use_crossing )
     {
       const int dcr = (int)( fid / (unsigned int)nmaxflavor );
@@ -626,7 +760,7 @@ namespace madmatrix
         allMEs[ievt] *= numerators[channelId - 1] / ( denominator + fptypeMin );
       }
     }
-    if( !validFlavor )
+    if( !use_crossing && !validFlavor )
     {
       // Plain stores, nothing computed with the NaN afterwards: the denominator
       // turns every channel weight (amp2) of the event into a NaN as well.
@@ -648,8 +782,11 @@ namespace madmatrix
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
     // no helicity (0) unless one is chosen below: a vanishing or NaN |M|^2 chooses none, and
-    // allselhel is not cleared beforehand (the CPU buffers are zero-initialised)
+    // callers may reuse allselhel across calls (cleared per event here, as on cpu/simd)
     allselhel[ievt] = 0;
+    // Nor does an id that names no flavor: normalise_output then sets its |M|^2
+    // to NaN, or to 0 for a crossing row past the table
+    if( !valid_flavor_id( iflavorVec[ievt] ) ) return;
     if constexpr( nampso > 1 )
     {
       if( sampleSignedHelicity )
@@ -661,8 +798,10 @@ namespace madmatrix
         fptype absTotal = 0;
         for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
           absTotal += fabs( ghelAllMEs[ighel * nevt + ievt] );
-        allMEs[ievt] = 0;
-        if( absTotal == 0 ) return; // no helicity, as in the positive case
+        // no helicity, as in the positive case, for a vanishing, NaN or infinite
+        // total (the last two kept for the abnormal-ME check)
+        allMEs[ievt] = absTotal;
+        if( !selectable_total( absTotal ) ) return;
         fptype absSum = 0;
         int ighelLast = -1; // last non-vanishing helicity, in case rndhel is not below 1
         for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
@@ -692,7 +831,11 @@ namespace madmatrix
     // Event-by-event random choice of helicity #403. With crossing, the reported
     // code is the crossed one (selected_hel_code). An event with a zero or NaN
     // |M|^2 (including a crossing row out of the table) keeps the 0 set above.
-    for( int ighel = 0; ighel < dcNGoodHel; ighel++ )
+    // The CDF runs in base-row order for every crossing: the same helicity
+    // distribution as --use_crossing=False, not the same helicity per rndhel.
+    // A zero, NaN or infinite total chooses none (selectable_total, as on cpu).
+    const bool okcdf = selectable_total( allMEs[ievt] );
+    for( int ighel = 0; okcdf && ighel < dcNGoodHel; ighel++ )
     {
       if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
       {
@@ -720,9 +863,14 @@ namespace madmatrix
                        const fptype_amp_sv* allJamp2s,    // input: jamp2[ncolor_flow][nevt] for color choice (nullptr if disabled)
                        const fptype_amp* allNumerators,   // input: all numerators
                        const fptype_amp* allDenominators, // input: all denominators
+                       const unsigned int* iflavorVec,    // input: flavor ids (one naming no flavor chooses nothing)
                        const int nevt )                   // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
   {
     const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread)
+    // An id that names no flavor (a NaN |M|^2, or 0 for a crossing row past the
+    // table, see normalise_output) keeps the fallback channel and chooses no
+    // color, as on cpu/simd
+    const bool validFlavor = valid_flavor_id( iflavorVec[ievt] );
     // SCALAR channelId for the current event (CUDA)
     unsigned int channelId = gpu_channelId( allChannelIds );
 
@@ -735,8 +883,11 @@ namespace madmatrix
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
         normalization += allNumerators[ievt * ndiagrams + ichan];
       }
+      // No diagram weight (a zero, NaN or infinite sum): keep the last channel,
+      // as on cpu/simd
       channelId = mgOnGpu::nchannels;
-      for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
+      const bool okcdf = validFlavor && selectable_total( normalization );
+      for( unsigned int ichan = 0; okcdf && ichan < mgOnGpu::nchannels; ichan++ )
       {
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
         numerator_sum += allNumerators[ievt * ndiagrams + ichan];
@@ -787,7 +938,8 @@ namespace madmatrix
         if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] += jamp2_sv[icolC];
       }
       allselcol[ievt] = 0; // no color unless one is chosen below (vanishing or NaN jamp2 sum)
-      for( int icolC = 0; icolC < ncolor_flow; icolC++ )
+      const bool okcdf = validFlavor && selectable_total( targetamp[ncolor_flow - 1] );
+      for( int icolC = 0; okcdf && icolC < ncolor_flow; icolC++ )
       {
         if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
         {
@@ -895,7 +1047,7 @@ namespace madmatrix
     gpuLaunchKernelStream( normalise_output, gpublocks, gputhreads, stream, allMEs, iflavorVec, ghelAllNumerators, ghelAllDenominators, allChannelIds, storeChannelWeights, mulChannelWeight, helcolDenominators[0] );
 
     // Event-by-event random choice of color and diagram #402
-    gpuLaunchKernelStream( select_col_and_diag, gpublocks, gputhreads, stream, allselcol, allDiagramIdsOut, allrndcol, allrnddiagram, allChannelIds, colAllJamp2s, ghelAllNumerators, ghelAllDenominators, gpublocks * gputhreads );
+    gpuLaunchKernelStream( select_col_and_diag, gpublocks, gputhreads, stream, allselcol, allDiagramIdsOut, allrndcol, allrnddiagram, allChannelIds, colAllJamp2s, ghelAllNumerators, ghelAllDenominators, iflavorVec, gpublocks * gputhreads );
 
     mgDebugFinalise();
   }

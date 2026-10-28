@@ -336,7 +336,7 @@ c         Set right sign for ANS, based on sign of chosen helicity
     ENDDO
  10 CONTINUE   
     ENDIF
-    IF (MULTI_CHANNEL) THEN
+%(me_amp2_cut)s    IF (MULTI_CHANNEL) THEN
         XTOT=0D0
         DO I=1,LMAXCONFIGS
 	    J = %(me_confsub_j)s
