@@ -46,7 +46,7 @@
   ]
  },
  "source": "independent references: MadLoop/MG5_aMC 3.7.0",
- "scope": "Independent provider references at exact on-shell decimal points; MadLoop in double precision (return codes 216); timings are single-run by-products, not benchmarks.",
+ "scope": "Independent provider references at exact on-shell decimal points; MadLoop in quadruple precision at every point (return codes 328); timings are single-run by-products, not benchmarks.",
  "convention": "MadLoop/BLHA C_eps=(4pi)^eps/Gamma(1-eps); F_MadLoop=F_Recola+pi^2/6*D; OpenLoops truepoles=1, polenorm=0; physical couplings, no alpha extraction; initial spin/colour average and final identical-particle factor included",
  "normalization": {
   "initial_average": 36,
@@ -243,11 +243,11 @@
  "rows": [
   {
    "born": 5.416202339758132e-09,
-   "finite": -3.973456325044485e-09,
-   "single_pole": -1.6133954759575489e-09,
+   "finite": -3.973456325044484e-09,
+   "single_pole": -1.6133954759575487e-09,
    "double_pole": -5.424950094330172e-10,
-   "madloop_accuracy": 2.9858599323468107e-15,
-   "madloop_status": 216,
+   "madloop_accuracy": 0.0,
+   "madloop_status": 328,
    "sectors": {
     "born": [
      {
@@ -260,10 +260,10 @@
      {
       "QCD": 2,
       "QED": 6,
-      "finite": -3.973456325044485e-09,
-      "single_pole": -1.6133954759575489e-09,
+      "finite": -3.973456325044484e-09,
+      "single_pole": -1.6133954759575487e-09,
       "double_pole": -5.424950094330172e-10,
-      "accuracy": 2.9858599323468107e-15,
+      "accuracy": 0.0,
       "born_sector": {
        "QCD": 0,
        "QED": 6
@@ -272,22 +272,22 @@
     ],
     "total": {
      "born": 5.416202339758132e-09,
-     "finite": -3.973456325044485e-09,
-     "single_pole": -1.6133954759575489e-09,
+     "finite": -3.973456325044484e-09,
+     "single_pole": -1.6133954759575487e-09,
      "double_pole": -5.424950094330172e-10,
-     "accuracy": 2.9858599323468107e-15
+     "accuracy": 0.0
     }
    },
    "born_from_madloop_double_pole": 5.416202339758132e-09,
    "providers": {
     "madloop": {
      "born": 5.416202339758132e-09,
-     "finite": -3.973456325044485e-09,
-     "single_pole": -1.6133954759575489e-09,
+     "finite": -3.973456325044484e-09,
+     "single_pole": -1.6133954759575487e-09,
      "double_pole": -5.424950094330172e-10,
-     "accuracy": 2.9858599323468107e-15,
-     "status": 216,
-     "seconds": 6.563e-05,
+     "accuracy": 0.0,
+     "status": 328,
+     "seconds": 0.018533448,
      "universal_double_pole_relative_error": 0.0
     }
    },
@@ -299,7 +299,7 @@
     "absolute_scale_row": null,
     "absolute_scale": null,
     "born_source": "madloop",
-    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
     "born_double_pole_relative_mismatch": 0.0,
     "max_sector_double_pole_relative_error": 0.0,
     "reason": null
@@ -307,11 +307,11 @@
   },
   {
    "born": 4.260670661583818e-10,
-   "finite": -1.4421904859042096e-10,
-   "single_pole": -4.0213131729036034e-11,
-   "double_pole": -4.267552107091538e-11,
-   "madloop_accuracy": 2.7316795318552343e-15,
-   "madloop_status": 216,
+   "finite": -1.4421904859042104e-10,
+   "single_pole": -4.021313172903605e-11,
+   "double_pole": -4.2675521070915384e-11,
+   "madloop_accuracy": 0.0,
+   "madloop_status": 328,
    "sectors": {
     "born": [
      {
@@ -324,10 +324,10 @@
      {
       "QCD": 2,
       "QED": 6,
-      "finite": -1.4421904859042096e-10,
-      "single_pole": -4.0213131729036034e-11,
-      "double_pole": -4.267552107091538e-11,
-      "accuracy": 2.7316795318552343e-15,
+      "finite": -1.4421904859042104e-10,
+      "single_pole": -4.021313172903605e-11,
+      "double_pole": -4.2675521070915384e-11,
+      "accuracy": 0.0,
       "born_sector": {
        "QCD": 0,
        "QED": 6
@@ -336,23 +336,23 @@
     ],
     "total": {
      "born": 4.260670661583818e-10,
-     "finite": -1.4421904859042096e-10,
-     "single_pole": -4.0213131729036034e-11,
-     "double_pole": -4.267552107091538e-11,
-     "accuracy": 2.7316795318552343e-15
+     "finite": -1.4421904859042104e-10,
+     "single_pole": -4.021313172903605e-11,
+     "double_pole": -4.2675521070915384e-11,
+     "accuracy": 0.0
     }
    },
-   "born_from_madloop_double_pole": 4.260670661583819e-10,
+   "born_from_madloop_double_pole": 4.2606706615838193e-10,
    "providers": {
     "madloop": {
      "born": 4.260670661583818e-10,
-     "finite": -1.4421904859042096e-10,
-     "single_pole": -4.0213131729036034e-11,
-     "double_pole": -4.267552107091538e-11,
-     "accuracy": 2.7316795318552343e-15,
-     "status": 216,
-     "seconds": 7.166e-05,
-     "universal_double_pole_relative_error": 3.0285973660787045e-16
+     "finite": -1.4421904859042104e-10,
+     "single_pole": -4.021313172903605e-11,
+     "double_pole": -4.2675521070915384e-11,
+     "accuracy": 0.0,
+     "status": 328,
+     "seconds": 0.018399088,
+     "universal_double_pole_relative_error": 4.542896049118057e-16
     }
    },
    "provider_pair_relative_errors": {},
@@ -363,19 +363,19 @@
     "absolute_scale_row": null,
     "absolute_scale": null,
     "born_source": "madloop",
-    "madloop_point": "binary64 rounding of the published point (double precision)",
-    "born_double_pole_relative_mismatch": 2.426791103602748e-16,
-    "max_sector_double_pole_relative_error": 3.0285973660787045e-16,
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 3.6401866554041216e-16,
+    "max_sector_double_pole_relative_error": 4.542896049118057e-16,
     "reason": null
    }
   },
   {
    "born": 3.917717206016437e-09,
-   "finite": -3.547762451199933e-09,
-   "single_pole": -1.3618255993007552e-09,
-   "double_pole": -3.924044744474392e-10,
-   "madloop_accuracy": 1.5503807858209183e-15,
-   "madloop_status": 216,
+   "finite": -3.5477624511999373e-09,
+   "single_pole": -1.3618255993007562e-09,
+   "double_pole": -3.9240447444743936e-10,
+   "madloop_accuracy": 0.0,
+   "madloop_status": 328,
    "sectors": {
     "born": [
      {
@@ -388,10 +388,10 @@
      {
       "QCD": 2,
       "QED": 6,
-      "finite": -3.547762451199933e-09,
-      "single_pole": -1.3618255993007552e-09,
-      "double_pole": -3.924044744474392e-10,
-      "accuracy": 1.5503807858209183e-15,
+      "finite": -3.5477624511999373e-09,
+      "single_pole": -1.3618255993007562e-09,
+      "double_pole": -3.9240447444743936e-10,
+      "accuracy": 0.0,
       "born_sector": {
        "QCD": 0,
        "QED": 6
@@ -400,23 +400,23 @@
     ],
     "total": {
      "born": 3.917717206016437e-09,
-     "finite": -3.547762451199933e-09,
-     "single_pole": -1.3618255993007552e-09,
-     "double_pole": -3.924044744474392e-10,
-     "accuracy": 1.5503807858209183e-15
+     "finite": -3.5477624511999373e-09,
+     "single_pole": -1.3618255993007562e-09,
+     "double_pole": -3.9240447444743936e-10,
+     "accuracy": 0.0
     }
    },
-   "born_from_madloop_double_pole": 3.917717206016437e-09,
+   "born_from_madloop_double_pole": 3.917717206016438e-09,
    "providers": {
     "madloop": {
      "born": 3.917717206016437e-09,
-     "finite": -3.547762451199933e-09,
-     "single_pole": -1.3618255993007552e-09,
-     "double_pole": -3.924044744474392e-10,
-     "accuracy": 1.5503807858209183e-15,
-     "status": 216,
-     "seconds": 6.959e-05,
-     "universal_double_pole_relative_error": 1.3174872268559985e-16
+     "finite": -3.5477624511999373e-09,
+     "single_pole": -1.3618255993007562e-09,
+     "double_pole": -3.9240447444743936e-10,
+     "accuracy": 0.0,
+     "status": 328,
+     "seconds": 0.018316828,
+     "universal_double_pole_relative_error": 2.6349744537119964e-16
     }
    },
    "provider_pair_relative_errors": {},
@@ -427,9 +427,9 @@
     "absolute_scale_row": null,
     "absolute_scale": null,
     "born_source": "madloop",
-    "madloop_point": "binary64 rounding of the published point (double precision)",
-    "born_double_pole_relative_mismatch": 0.0,
-    "max_sector_double_pole_relative_error": 1.3174872268559985e-16,
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
+    "born_double_pole_relative_mismatch": 2.1113841787322642e-16,
+    "max_sector_double_pole_relative_error": 2.6349744537119964e-16,
     "reason": null
    }
   },
@@ -438,8 +438,8 @@
    "finite": -2.2581019991035444e-09,
    "single_pole": -8.613377034448751e-10,
    "double_pole": -5.424950094330172e-10,
-   "madloop_accuracy": 2.795342048795e-15,
-   "madloop_status": 216,
+   "madloop_accuracy": 0.0,
+   "madloop_status": 328,
    "sectors": {
     "born": [
      {
@@ -455,7 +455,7 @@
       "finite": -2.2581019991035444e-09,
       "single_pole": -8.613377034448751e-10,
       "double_pole": -5.424950094330172e-10,
-      "accuracy": 2.795342048795e-15,
+      "accuracy": 0.0,
       "born_sector": {
        "QCD": 0,
        "QED": 6
@@ -467,7 +467,7 @@
      "finite": -2.2581019991035444e-09,
      "single_pole": -8.613377034448751e-10,
      "double_pole": -5.424950094330172e-10,
-     "accuracy": 2.795342048795e-15
+     "accuracy": 0.0
     }
    },
    "born_from_madloop_double_pole": 5.416202339758132e-09,
@@ -477,9 +477,9 @@
      "finite": -2.2581019991035444e-09,
      "single_pole": -8.613377034448751e-10,
      "double_pole": -5.424950094330172e-10,
-     "accuracy": 2.795342048795e-15,
-     "status": 216,
-     "seconds": 6.69e-05,
+     "accuracy": 0.0,
+     "status": 328,
+     "seconds": 0.041809884,
      "universal_double_pole_relative_error": 0.0
     }
    },
@@ -491,7 +491,7 @@
     "absolute_scale_row": null,
     "absolute_scale": null,
     "born_source": "madloop",
-    "madloop_point": "binary64 rounding of the published point (double precision)",
+    "madloop_point": "MadLoop's quadruple-precision repair of the binary64 rounding (~1e-16 from the published point)",
     "born_double_pole_relative_mismatch": 0.0,
     "max_sector_double_pole_relative_error": 0.0,
     "reason": null
@@ -503,7 +503,7 @@
  "universal_double_pole_factor": -0.10016151085249947,
  "maximum_provider_relative_error": null,
  "error_metric": "|a-b|/max(|a|,|b|,|Born|*coupling/(2pi)) for Laurent coefficients, |a-b|/max(|a|,|b|) for Born; strict relative errors also listed per row",
- "maximum_universal_double_pole_relative_error": 3.0285973660787045e-16,
+ "maximum_universal_double_pole_relative_error": 4.542896049118057e-16,
  "tolerance": 2e-08,
  "validation_status": "single provider; no cross-check",
  "validated_providers": [
@@ -515,7 +515,7 @@
    "provider": "madloop",
    "process_name": "ud_udh",
    "host": "itphlies",
-   "cpu": 324,
+   "cpu": 132,
    "points_file": "${LOOP_REFERENCE_ROOT}/runs/mqcd/ud_udh/points.json",
    "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
    "settings": {
@@ -527,9 +527,13 @@
      "MLReductionLib": "6|7|1",
      "COLLIERGlobalCache": "-1",
      "MLStabThres": "1.000000d-03",
-     "ImprovePSPoint": "2"
+     "ImprovePSPoint": "2",
+     "HelicityFilterLevel": "0"
     },
     "param_card": "######################################################################\n## PARAM_CARD AUTOMATICALY GENERATED BY MG5                       ####\n######################################################################\n###################################\n## INFORMATION FOR LOOP\n###################################\nBLOCK LOOP # \n      1 9.118800e+01 # mu_r\n###################################\n## INFORMATION FOR MASS\n###################################\nBLOCK MASS # \n      6 173 # mt\n      15 0 # mta\n      23 91.188 # mz\n      25 125 # mh\n      1 0.000000e+00 # d : 0.0\n      2 0.000000e+00 # u : 0.0\n      3 0.000000e+00 # s : 0.0\n      4 0.000000e+00 # c : 0.0\n      5 0.000000e+00 # b : 0.0\n      11 0.000000e+00 # e- : 0.0\n      12 0.000000e+00 # ve : 0.0\n      13 0.000000e+00 # mu- : 0.0\n      14 0.000000e+00 # vm : 0.0\n      16 0.000000e+00 # vt : 0.0\n      21 0.000000e+00 # g : 0.0\n      22 0.000000e+00 # a : 0.0\n      24 8.041900e+01 # w+ : cmath.sqrt(mz__exp__2/2. + cmath.sqrt(mz__exp__4/4. - (aew*cmath.pi*mz__exp__2)/(gf*sqrt__2)))\n      250 9.118800e+01 # g0 : mz\n      251 8.041900e+01 # g+ : mw\n###################################\n## INFORMATION FOR SMINPUTS\n###################################\nBLOCK SMINPUTS # \n      1 132.507 # aewm1\n      2 0.0000116639 # gf\n      3 0.118 # as (note: this parameter is not used if you use a pdf set)\n###################################\n## INFORMATION FOR YUKAWA\n###################################\nBLOCK YUKAWA # \n      6 173 # ymt\n      15 0 # ymtau\n###################################\n## INFORMATION FOR DECAY\n###################################\nDECAY 6 0 # wt\nDECAY 23 0 # wz\nDECAY 24 0 # ww\nDECAY 25 0 # wh\nDECAY 1 0.000000e+00 # d : 0.0\nDECAY 2 0.000000e+00 # u : 0.0\nDECAY 3 0.000000e+00 # s : 0.0\nDECAY 4 0.000000e+00 # c : 0.0\nDECAY 5 0.000000e+00 # b : 0.0\nDECAY 11 0.000000e+00 # e- : 0.0\nDECAY 12 0.000000e+00 # ve : 0.0\nDECAY 13 0.000000e+00 # mu- : 0.0\nDECAY 14 0.000000e+00 # vm : 0.0\nDECAY 15 0.000000e+00 # ta- : 0.0\nDECAY 16 0.000000e+00 # vt : 0.0\nDECAY 21 0.000000e+00 # g : 0.0\nDECAY 22 0.000000e+00 # a : 0.0\nDECAY 250 2.441404e+00 # g0 : wz\nDECAY 251 2.047600e+00 # g+ : ww\n###################################\n## INFORMATION FOR QNUMBERS 82\n###################################\nBLOCK QNUMBERS 82 #  gh\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 8 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 250\n###################################\nBLOCK QNUMBERS 250 #  g0\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 0 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 251\n###################################\nBLOCK QNUMBERS 251 #  g+\n      1 3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n\n",
+    "MadLoopParams_overrides": {
+     "HelicityFilterLevel": "0"
+    },
     "export": "${LOOP_REFERENCE_ROOT}/runs/mqcd/ud_udh/madloop-export",
     "fortran_flags": {
      "export_make_opts": {
@@ -550,7 +554,9 @@
      "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
     ],
     "requested_relative_accuracy": 1e-13,
-    "stability_check": "forced on every call"
+    "stability_check": "forced on every call",
+    "quadruple_precision_stage": "every point: the run's loop_matrix.f copy bypasses MadLoop's double-precision acceptance, so its quadruple-precision stage (MLStabThres test over two propagator directions; Ninja, else CutTools) evaluates every point (references.force_quadruple_stage)",
+    "quadruple_precision_required": true
    },
    "generation": {
     "process_name": "ud_udh",
@@ -629,8 +635,8 @@
     1,
     1
    ],
-   "initial_call_seconds": 0.028888425,
-   "initialization_calls": 2,
+   "initial_call_seconds": 0.032796021,
+   "initialization_calls": 1,
    "squared_split_orders": {
     "born": [
      {
@@ -647,13 +653,88 @@
      }
     ]
    },
-   "process_wall_seconds": 0.04766159690916538,
+   "process_wall_seconds": 0.14125355193391442,
    "evaluation_seconds": [
-    6.563e-05,
-    7.166e-05,
-    6.959e-05,
-    6.69e-05
-   ]
+    0.018533448,
+    0.018399088,
+    0.018316828,
+    0.041809884
+   ],
+   "secondary_runs": {
+    "mlstabthres": {
+     "settings": {
+      "requested_relative_accuracy": 1e-13,
+      "stability_check": "forced on every call",
+      "fortran_flags": {
+       "export_make_opts": {
+        "GLOBAL_FLAG": "-O",
+        "ALOHA_FLAG": "",
+        "MATRIX_FLAG": ""
+       },
+       "mg5_production": {
+        "GLOBAL_FLAG": "-O",
+        "ALOHA_FLAG": "",
+        "MATRIX_FLAG": ""
+       },
+       "production_build": true,
+       "source": "MG5_aMC run-card defaults global_flag/aloha_flag/matrix_flag (CommonRunCmd.update_make_opts of an optimised MG5 run); MadLoop's own makefile adds -O3 for polynomial.f"
+      },
+      "MadLoopParams": {
+       "MLReductionLib": "6|7|1",
+       "COLLIERGlobalCache": "-1",
+       "MLStabThres": "1.000000d-03",
+       "ImprovePSPoint": "2"
+      }
+     },
+     "version": "MadLoop/MG5_aMC 3.7.0",
+     "evaluation_seconds": [
+      6.563e-05,
+      7.166e-05,
+      6.959e-05,
+      6.69e-05
+     ],
+     "statuses": [
+      216,
+      216,
+      216,
+      216
+     ],
+     "estimated_accuracies": [
+      2.9858599323468107e-15,
+      2.7316795318552343e-15,
+      1.5503807858209183e-15,
+      2.795342048795e-15
+     ],
+     "relative_deviation_from_reference_run": [
+      {
+       "born": 0.0,
+       "finite": 2.0817659611340187e-16,
+       "single_pole": 1.2817387690734918e-16,
+       "double_pole": 0.0
+      },
+      {
+       "born": 0.0,
+       "finite": 5.377110942333387e-16,
+       "single_pole": 3.2140488729478214e-16,
+       "double_pole": 1.514298683039352e-16
+      },
+      {
+       "born": 0.0,
+       "finite": 1.1657779007628535e-15,
+       "single_pole": 7.592571076811821e-16,
+       "double_pole": 3.952461680567995e-16
+      },
+      {
+       "born": 0.0,
+       "finite": 0.0,
+       "single_pole": 0.0,
+       "double_pole": 0.0
+      }
+     ],
+     "initial_call_seconds": 0.028888425,
+     "cpu": 324
+    }
+   }
   }
  },
  "timing_only_runs": {},

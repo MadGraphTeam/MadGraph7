@@ -168,8 +168,9 @@ def test_reference_fixture_records_its_settings_points_and_sectors(
     else:
         # Every point in MadLoop's quadruple-precision stage, every helicity
         # configuration computed, no filter inherited from an earlier run.
-        assert settings["requested_relative_accuracy"] == (
-            evaluation["requested_relative_accuracy"]
+        assert (
+            settings["requested_relative_accuracy"]
+            == (evaluation["requested_relative_accuracy"])
         )
         assert settings["quadruple_precision_stage"]
         assert settings["quadruple_precision_required"] is True
@@ -594,13 +595,13 @@ def test_point_references_are_recorded_and_listed_in_the_manifest(
         if run.get("madloop_evaluation", {}).get("mode") == "mlstabthres":
             assert deviation is None
         else:
-            assert deviation == (
-                superseded["mlstabthres"]["relative_deviation_from_reference_run"]
-            )
             assert (
-                superseded["mlstabthres"]["settings"]["requested_relative_accuracy"]
-                in (1e-13, 1e-20)
+                deviation
+                == (superseded["mlstabthres"]["relative_deviation_from_reference_run"])
             )
+            assert superseded["mlstabthres"]["settings"][
+                "requested_relative_accuracy"
+            ] in (1e-13, 1e-20)
         assert (
             fixture["tolerance_scope"] == manifest["conventions"]["fixture_tolerance"]
         )
@@ -778,7 +779,10 @@ LOOP_MATRIX = """        ELSEIF(.NOT.DOING_QP_EVALS)THEN
 def test_quadruple_stage_bypasses_only_the_double_precision_acceptance() -> None:
     from tools.loop_reference import references
 
-    qp_test = "          IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN\n            I_QP_LIB=I_QP_LIB+1\n"
+    qp_test = (
+        "          IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN\n"
+        "            I_QP_LIB=I_QP_LIB+1\n"
+    )
     text = qp_test + LOOP_MATRIX
     forced = references.force_quadruple_stage(text, "ML5_3_")
     assert forced.startswith(qp_test)  # the quadruple-precision test is MadLoop's own
@@ -787,7 +791,9 @@ def test_quadruple_stage_bypasses_only_the_double_precision_acceptance() -> None
     with pytest.raises(RuntimeError, match="branch"):
         references.force_quadruple_stage(text, "ML5_0_")
     with pytest.raises(RuntimeError, match="acceptance"):
-        references.force_quadruple_stage(text.replace("I_LIB=I_LIB+1", "I_LIB=1"), "ML5_3_")
+        references.force_quadruple_stage(
+            text.replace("I_LIB=I_LIB+1", "I_LIB=1"), "ML5_3_"
+        )
 
 
 def test_per_helicity_records_mark_vanishing_and_suppressed_helicities() -> None:
@@ -809,7 +815,10 @@ def test_per_helicity_records_mark_vanishing_and_suppressed_helicities() -> None
     ]
     assert entries[0]["born"] == regular["double_pole"] / factor
     assert entries[0]["born_binary64_input"] == 1.0
-    assert records[3]["born_source"] == "madloop" and "born_binary64_input" not in entries[3]
+    assert (
+        records[3]["born_source"] == "madloop"
+        and "born_binary64_input" not in entries[3]
+    )
     summed = sum(abs(e["born"]) for e in entries)
     assert records[1]["absolute_scale"] == records[2]["absolute_scale"] == summed
     assert "suppressed" in records[1]["reason"] and "vanishing" in records[2]["reason"]
